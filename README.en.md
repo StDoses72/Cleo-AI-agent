@@ -1,35 +1,24 @@
 # Cleo AI Agent
 
-Cleo is a local personal AI agent project currently being migrated from an older
-AI4Casting codebase. The repository still keeps some `ai4casting` package names
-and CLI entry points for compatibility, but the current architecture is now a
-more general Deep Agents local runtime: it can load local skills, read and write
-workspace files, save thread snapshots, and use DreamAgent to consolidate short
-conversations into long-term project memory.
+Cleo AI Agent is a local personal AI agent runtime built on Deep Agents and
+LangChain. It is designed for local project workflows: one-shot messages,
+interactive chat, local skill loading, workspace file access, thread snapshots,
+and DreamAgent memory consolidation into durable project memory.
 
-This README describes only what currently exists in this repository. It does not
-present pre-migration prototypes or future plans as implemented features.
+This README describes only the capabilities that currently exist in the tracked
+repository. It does not present future plans as implemented features.
 
 Chinese version: [README.md](README.md)
 
-## Current State
+## Current Capabilities
 
-Implemented:
-
-- `main.py` provides one-shot and interactive chat entry points.
-- `core/agent.py` creates the main Cleo agent and the background DreamAgent.
-- `config/settings.py` manages local paths, shell tool policy, runtime directories, and environment variables.
-- `core/runtime/model.py` maintains CLI runtime state in `data/runtime.json`.
-- `core/memory/thread_memory.py` saves and restores thread message snapshots.
-- `tools/shell_tools.py` provides a restricted shell tool and writes audit logs.
-- `tools/dream_agent_tools.py` lets DreamAgent read short-term memory and write project memory.
-- `skills/demo-production/` is the only skill directory currently present in the tracked repository.
-
-Migrating or not yet implemented:
-
-- Casting workflow skill directories mentioned by older README versions are not present in the current tracked files.
-- Thread resume has a first implementation: startup can detect an unfinished `current_thread_id` and load message snapshots, but the underlying LangGraph checkpointer is still in memory.
-- Initial setup still requires manually copying template files. There is no `init` or `doctor` command yet.
+- `main.py` provides one-shot message and interactive chat entry points.
+- The main path uses Deep Agents runtime, LangChain model initialization, and the Deep Agents filesystem backend.
+- `/attach` can attach an image file to the next message. JPEG, PNG, WebP, and GIF are supported.
+- Thread snapshots are saved on exit, reset, interruption, and one-shot completion.
+- DreamAgent can read thread snapshots and write long-term project memory under `memory/projects/<project>/`.
+- `tools/shell_tools.py` provides a restricted shell tool and writes a shell audit log.
+- `skills/` is the Deep Agents skills loading directory. The currently tracked skill is `demo-production`.
 
 ## Project Structure
 
@@ -62,9 +51,12 @@ Cleo-AI-agent/
     runtime.json                  # Local runtime state, ignored by Git
     shell_audit.log               # Runtime generated shell tool audit log
   workspace/
-    product.stl                   # Current workspace input file
+    product.stl                   # Workspace input file
     双联屏-DieCasting_DFM_EON-2020.9.03.pptx
 ```
+
+Files under `workspace/` are treated as user input or migration validation
+files. They do not define Cleo's current project identity.
 
 ## Installation
 
@@ -80,17 +72,19 @@ Development dependencies:
 pip install -e ".[dev]"
 ```
 
-`requirements.txt` is only a compatibility entry point. Prefer managing dependencies through `pyproject.toml`.
+`requirements.txt` is only a compatibility entry point. Prefer managing
+dependencies through `pyproject.toml`.
 
 ## Local Configuration
 
-Before running Cleo, prepare three local files:
+Before the first run, prepare three local files:
 
 1. Copy `.env.example` to `.env` and adjust shell tool settings as needed.
 2. Copy `config/cleo.example.json` to `config/cleo.json`, then fill in the real model profile and API key.
 3. Copy `data/runtime_example.json` to `data/runtime.json` as the initial runtime state.
 
-`.env`, `config/cleo.json`, and `data/runtime.json` are local files and should not be committed.
+`.env`, `config/cleo.json`, and `data/runtime.json` are local private or runtime
+state files and should not be committed.
 
 Minimal profile example:
 
@@ -111,13 +105,25 @@ Minimal profile example:
 
 ## Running
 
-One-shot message:
+After installation, the recommended command is `cleo`:
+
+```bash
+cleo "Summarize what the current Cleo project can do."
+```
+
+You can also run the entry file directly:
 
 ```bash
 python main.py "Summarize what the current Cleo project can do."
 ```
 
 Interactive chat:
+
+```bash
+cleo
+```
+
+Or:
 
 ```bash
 python main.py
@@ -127,7 +133,7 @@ Interactive commands:
 
 - `/quit` or `/exit`: save the current thread snapshot, run DreamAgent memory consolidation, then exit.
 - `/reset`: save the current thread snapshot and start a new thread.
-- `/attach`: attach an image file to the next message. JPEG, PNG, WebP, and GIF are currently supported.
+- `/attach`: attach an image file to the next message.
 
 ## Runtime Files
 
@@ -139,28 +145,12 @@ These files are maintained by the code at runtime:
 - `memory/threads.jsonl`: thread snapshot metadata registry.
 - `memory/projects/<project>/AGENT.md`: long-term project memory generated by DreamAgent.
 
-Most of these paths are ignored by `.gitignore`. They are local state, not source assets.
+Most of these paths are ignored by `.gitignore`. They are local state, not source
+assets.
 
-## Manual Configuration And Automation Candidates
+## Naming Migration
 
-Still manual today:
-
-- Copy `.env.example` to `.env`.
-- Copy `config/cleo.example.json` to `config/cleo.json` and fill in secrets.
-- Copy `data/runtime_example.json` to `data/runtime.json`.
-- Create or organize workspace input files.
-- Maintain skill directories and skill instructions.
-
-Recommended automation:
-
-- Add `cleo init` or `python main.py --init` to create missing template-based files and directories.
-- Add `cleo doctor` to check config files, profiles, placeholder API keys, runtime JSON, and runtime directories.
-- Let `Runtime` create a default `data/runtime.json` when it is missing.
-- Let `Agent` return clear user-facing errors when `config/cleo.json` is missing or still contains placeholder secrets.
-
-## Migration Notes
-
-Some package names, console scripts, and historical docs still use `ai4casting`.
-That is migration compatibility residue. The current project should be understood
-as the Cleo local agent runtime. Casting-related capabilities should be migrated
-into `skills/` as future skills rather than assumed to exist by default.
+The current project identity is `Cleo AI Agent`, the Python distribution name is
+`cleo-ai-agent`, and the recommended console script is `cleo`. The old project
+name and old CLI entry point are no longer retained as recommended or compatible
+usage.

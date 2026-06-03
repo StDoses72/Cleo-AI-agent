@@ -1,8 +1,9 @@
 import argparse
+import base64
 import mimetypes
+import os
 import textwrap
 import uuid
-import base64
 
 from langchain_core.messages import (
     AIMessage,
@@ -13,17 +14,15 @@ from langchain_core.messages import (
 )
 
 from core.agent import Agent, DreamAgent
-from core.memory.thread_memory import save_messages_to_file, load_messages_from_file
-
+from core.memory.thread_memory import load_messages_from_file, save_messages_to_file
 from core.runtime.model import Runtime
-
-import os
 
 SUPPORTED_IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
 
 def clear_screen() -> None:
     os.system("cls" if os.name == "nt" else "clear")
+
 
 def _new_thread_id() -> str:
     return f"local-{uuid.uuid4().hex[:12]}"
@@ -80,7 +79,7 @@ def _run_chat_loop(
     thread_id: str,
     restored_messages: list[BaseMessage] | None = None,
 ) -> None:
-    print("AI4Casting interactive chat. Type /quit to exit, /reset to start a fresh thread.")
+    print("Cleo AI Agent interactive chat. Type /quit to exit, /reset to start a fresh thread.")
     print(f"Thread id: {thread_id}")
     print()
     runtime.update_current_thread_id(thread_id)
@@ -92,7 +91,7 @@ def _run_chat_loop(
                 for i, attachment in enumerate(attachment_list):
                     print(f"  {i + 1}. {attachment['name']}")
             message = input(">> ").strip()
-            
+
         except EOFError:
             print()
             _save_thread_snapshot(agent, runtime, thread_id, restored_messages)
@@ -129,7 +128,10 @@ def _run_chat_loop(
             continue
 
         if message == "/attach":
-            print("Enter the file path to attach or leave empty to cancel (currently support image files only):")
+            print(
+                "Enter the file path to attach or leave empty to cancel "
+                "(currently support image files only):"
+            )
             file_path = input(">> ").strip().strip("\"'")
             if file_path:
                 if not os.path.isfile(file_path):
@@ -141,10 +143,14 @@ def _run_chat_loop(
                     continue
                 with open(file_path, "rb") as f:
                     base64_image = base64.b64encode(f.read()).decode("utf-8")
-                attachment_list.append({"base64": base64_image, "mime_type": mime_type, "name": os.path.basename(file_path)})
+                attachment_list.append(
+                    {
+                        "base64": base64_image,
+                        "mime_type": mime_type,
+                        "name": os.path.basename(file_path),
+                    }
+                )
             continue
-
-
 
         try:
             print()
@@ -232,8 +238,9 @@ def _print_restored_messages(thread_id: str, loaded_messages: list[BaseMessage])
     print("-" * 72)
     print()
 
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the AI4Casting deepagent.")
+    parser = argparse.ArgumentParser(description="Run the Cleo AI Agent local runtime.")
     parser.add_argument(
         "message",
         nargs="?",
@@ -243,7 +250,10 @@ def main() -> None:
     parser.add_argument(
         "--thread-id",
         default=None,
-        help="Conversation thread id used by the in-memory checkpointer. Defaults to a generated id.",
+        help=(
+            "Conversation thread id used by the in-memory checkpointer. "
+            "Defaults to a generated id."
+        ),
     )
     args = parser.parse_args()
 
@@ -252,14 +262,17 @@ def main() -> None:
     thread_id = args.thread_id or _new_thread_id()
     loaded_messages: list[BaseMessage] | None = None
     if runtime.current_thread_id:
-        print(f"Determined an unfinished thread with id {runtime.current_thread_id}. Do you want to continue it? (y/n)")
+        print(
+            f"Determined an unfinished thread with id {runtime.current_thread_id}. "
+            "Do you want to continue it? (y/n)"
+        )
         choice = input(">> ").strip().lower()
         if choice == "y":
             thread_id = runtime.current_thread_id
             print(f"Recovering with thread id {thread_id}")
             loaded_messages = load_messages_from_file(f"{thread_id}.json")
             _print_restored_messages(thread_id, loaded_messages)
-        elif (choice == "n"):
+        elif choice == "n":
             thread_id = _new_thread_id()
             print(f"Starting a new thread with id {thread_id}")
             clear_screen()
@@ -270,8 +283,6 @@ def main() -> None:
     _print_streaming_reply(agent, args.message, thread_id, loaded_info=loaded_messages)
     _save_thread_snapshot(agent, runtime, thread_id, loaded_messages)
     _run_dream_agent(thread_id, runtime.current_project)
-
-
 
 if __name__ == "__main__":
     main()
