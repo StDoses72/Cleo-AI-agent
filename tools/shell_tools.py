@@ -3,15 +3,17 @@ import shlex
 import subprocess
 import time
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from langchain_core.tools import tool
 
 from config.settings import settings
 
 
-VIRTUAL_WORKSPACE_PREFIX = "/workspace"
-VIRTUAL_PROJECT_PREFIXES = {
+# Maps a virtual path prefix (as seen by Deep Agents' virtual filesystem) to the
+# project subdirectory it resolves to. "" means the sandbox root itself.
+VIRTUAL_PREFIX_MAP = {
+    "/workspace": "",
     "/config": "config",
     "/core": "core",
     "/data": "data",
@@ -42,29 +44,35 @@ def _strip_matching_quotes(value: str) -> str:
     return value
 
 
-def _translate_virtual_workspace_path(text: str) -> str:
-    if not text:
-        return text
-    root = str(settings.SHELL_SANDBOX_ROOT)
-    translated = text.replace(f"{VIRTUAL_WORKSPACE_PREFIX}/", root + "\\")
-    if translated == VIRTUAL_WORKSPACE_PREFIX:
-        return root
-    for virtual_prefix, real_child in VIRTUAL_PROJECT_PREFIXES.items():
-        real_prefix = str(settings.SHELL_SANDBOX_ROOT / real_child)
-        translated = translated.replace(f"{virtual_prefix}/", real_prefix + "\\")
-        if translated == virtual_prefix:
-            return real_prefix
-    return translated
+def _translate_virtual_token(token: str) -> str:
+    """Translate a single argument token from a virtual path to a real path.
 
+    Only tokens that *start* with a known virtual prefix on a path boundary
+    (end-of-string or a following ``/``) are translated. Real Windows paths
+    (e.g. ``D:\\Supremium\\part.stl`` or ``D:/data/part.stl``), URLs, and
+    relative paths are returned untouched, so a project script can still
+    receive user-provided absolute file paths as arguments.
 
-def _extract_primary_command(command: str) -> str:
-    try:
-        parts = _split_command(_translate_virtual_workspace_path(command))
-        if not parts:
-            return ""
-        return Path(parts[0].strip().strip('"').strip("'")).name
-    except Exception:
-        return Path((command or "").strip().split(" ")[0].strip().strip('"').strip("'")).name
+    The remainder after the prefix is rejoined with :class:`pathlib.Path`, so the
+    result always uses native (Windows) separators rather than mixing ``\\`` and
+    ``/``.
+    """
+    if not token:
+        return token
+    # Longest prefix first so e.g. a future "/workspace-foo" can't shadow others.
+    for prefix in sorted(VIRTUAL_PREFIX_MAP, key=len, reverse=True):
+        if token == prefix or token.startswith(prefix + "/"):
+            child = VIRTUAL_PREFIX_MAP[prefix]
+            base = (
+                settings.SHELL_SANDBOX_ROOT
+                if not child
+                else settings.SHELL_SANDBOX_ROOT / child
+            )
+            rest = token[len(prefix):].lstrip("/")
+            if rest:
+                return str(base.joinpath(*PurePosixPath(rest).parts))
+            return str(base)
+    return token
 
 
 def _contains_denied_pattern(command: str) -> str:
@@ -76,7 +84,7 @@ def _contains_denied_pattern(command: str) -> str:
 
 
 def _resolve_cwd(working_directory: str) -> Path:
-    working_directory = _translate_virtual_workspace_path(working_directory)
+    working_directory = _translate_virtual_token(working_directory)
     if not working_directory:
         return settings.SHELL_SANDBOX_ROOT
 
@@ -138,14 +146,19 @@ def run_shell_command(command: str, working_directory: str = "") -> str:
     if not command or not command.strip():
         return "Error: command cannot be empty."
 
-    command = _translate_virtual_workspace_path(command)
     sandbox_root = settings.SHELL_SANDBOX_ROOT
     cwd = _resolve_cwd(working_directory)
-    primary = _extract_primary_command(command)
+
+    # Tokenize first, then translate each token only if it is a genuine virtual
+    # path. Real Windows paths / URLs passed as arguments are left untouched.
+    raw_args = _split_command(command)
+    args = [_translate_virtual_token(part) for part in raw_args]
+    primary = Path(args[0]).name if args else ""
 
     audit = {
         "timestamp_utc": now,
         "command": command,
+        "translated_args": args,
         "primary_command": primary,
         "working_directory": str(cwd),
         "sandbox_root": str(sandbox_root),
@@ -180,7 +193,6 @@ def run_shell_command(command: str, working_directory: str = "") -> str:
         return "Error: working directory is outside the configured sandbox root."
 
     try:
-        args = _split_command(command)
         result = subprocess.run(
             args,
             cwd=str(cwd),
