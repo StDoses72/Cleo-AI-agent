@@ -1,0 +1,13 @@
+{
+    "active_profiles": "moonshot_openai_compatible",
+    "profiles": {
+        "moonshot_openai_compatible": {
+            "provider": "openai",
+            "model": "kimi-k2.6",
+            "temperature": 0.7,
+            "max_tokens": 100000,
+            "api_key": "YOUR_MOONSHOT_API_KEY",
+            "base_url": "https://api.moonshot.cn/v1"
+        }
+    }
+}

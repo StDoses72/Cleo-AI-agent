@@ -1,12 +1,13 @@
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
-import os
+import json
 
 from deepagents import create_deep_agent
 from deepagents.backends import FilesystemBackend
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import InMemorySaver
+from langchain.chat_models import init_chat_model
 
 from langchain.agents import create_agent
 
@@ -85,6 +86,20 @@ Core principles:
 """.strip()
 
 
+with open(settings.PROFILE_DIR, "r", encoding="utf-8") as f:
+    profile_data = json.load(f)
+
+active_profile_name = profile_data.get("active_profiles")
+
+if not active_profile_name:
+    raise ValueError("No active profile specified in the configuration.")
+
+actiev_profile = profile_data["profiles"].get(active_profile_name)
+
+if not actiev_profile:
+    raise ValueError(f"Active profile '{active_profile_name}' not found in the configuration.")
+
+
 class Agent:
     def __init__(self, system_prompt: str = SYSTEM_PROMPT) -> None:
         self.root_dir = Path(__file__).resolve().parent.parent
@@ -99,10 +114,12 @@ class Agent:
             else None
         )
         self.deepagent = create_deep_agent(
-            model=ChatOpenAI(
-                model=settings.MODEL,
-                temperature=0.2,
-                api_key=settings.OPENAI_API_KEY,
+            model=init_chat_model(
+                model=actiev_profile["model"],
+                model_provider=actiev_profile["provider"],
+                api_key=actiev_profile["api_key"],
+                temperature=actiev_profile["temperature"],
+                base_url=actiev_profile.get("base_url", None),
             ),
             checkpointer=InMemorySaver(),
             system_prompt=system_prompt,
@@ -122,25 +139,47 @@ class Agent:
     #         config={"configurable": {"thread_id": thread_id}},
     #     )
 
-    def stream_text(self, message: str, thread_id: str = "local", loaded_info:list|None = None) -> Iterator[str]:
-        if loaded_info is None:
-            for chunk in self.deepagent.stream(
-                {"messages": [{"role": "user", "content": message}]},
-                config={"configurable": {"thread_id": thread_id}},
-                stream_mode="messages",
-            ):
-                text = _extract_text_delta(chunk)
-                if text:
-                    yield text
-        else:
-            for chunk in self.deepagent.stream(
-                {"messages": [*loaded_info, {"role": "user", "content": message}]},
-                config={"configurable": {"thread_id": thread_id}},
-                stream_mode="messages",
-            ):
-                text = _extract_text_delta(chunk)
-                if text:
-                    yield text
+    def stream_text(
+        self,
+        message: str,
+        thread_id: str = "local",
+        loaded_info: list | None = None,
+        images: list[dict[str, str]] | None = None,
+    ) -> Iterator[str]:
+        image_inputs = list(images or [])
+
+        user_message = {
+            "role": "user",
+            "content": _build_user_content(message, image_inputs),
+        }
+        messages = [user_message] if loaded_info is None else [*loaded_info, user_message]
+
+        for chunk in self.deepagent.stream(
+            {"messages": messages},
+            config={"configurable": {"thread_id": thread_id}},
+            stream_mode="messages",
+        ):
+            text = _extract_text_delta(chunk)
+            if text:
+                yield text
+
+
+def _build_user_content(message: str, images: list[dict[str, str]]) -> str | list[dict[str, str]]:
+    if not images:
+        return message
+
+    content: list[dict[str, str]] = [{"type": "text", "text": message}]
+    for index, image in enumerate(images, start=1):
+        name = image.get("name") or f"image-{index}"
+        content.append({"type": "text", "text": f"Image {index}: {name}"})
+        content.append(
+            {
+                "type": "image",
+                "base64": image["base64"],
+                "mime_type": image.get("mime_type", "image/jpeg"),
+            }
+        )
+    return content
 
 
 def _extract_text_delta(chunk: Any) -> str:
@@ -166,10 +205,12 @@ class DreamAgent: # This is an in-progress class for main agentic system's memor
     def __init__(self,system_prompt: str = DREAM_AGENT_SYSTEM_PROMPT) -> None:
         self.root_dir = Path(__file__).resolve().parent.parent
         self.toolist = [read_memory_from_json, list_all_thread_ids, list_all_project_names, read_project_memory, write_memory_to_markdown]
-        self.model = ChatOpenAI(
-                model=settings.MODEL,
-                temperature=0.2,
-                api_key=settings.OPENAI_API_KEY,
+        self.model = init_chat_model(
+                model=actiev_profile["model"],
+                model_provider=actiev_profile["provider"],
+                api_key=actiev_profile["api_key"],
+                temperature=actiev_profile["temperature"],
+                base_url=actiev_profile.get("base_url", None),
             )
         self.system_prompt = system_prompt
         self.dreamagent = create_agent(model=self.model,tools=self.toolist,system_prompt=self.system_prompt)

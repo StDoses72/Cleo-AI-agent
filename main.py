@@ -1,6 +1,8 @@
 import argparse
+import mimetypes
 import textwrap
 import uuid
+import base64
 
 from langchain_core.messages import (
     AIMessage,
@@ -17,6 +19,9 @@ from core.runtime.model import Runtime
 
 import os
 
+SUPPORTED_IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+
+
 def clear_screen() -> None:
     os.system("cls" if os.name == "nt" else "clear")
 
@@ -29,9 +34,15 @@ def _print_streaming_reply(
     message: str,
     thread_id: str,
     loaded_info: list[BaseMessage] | None = None,
+    images: list[dict[str, str]] | None = None,
 ) -> None:
     received_text = False
-    for text in agent.stream_text(message, thread_id=thread_id, loaded_info=loaded_info):
+    for text in agent.stream_text(
+        message,
+        thread_id=thread_id,
+        loaded_info=loaded_info,
+        images=images,
+    ):
         received_text = True
         print(text, end="", flush=True)
     if not received_text:
@@ -73,9 +84,15 @@ def _run_chat_loop(
     print(f"Thread id: {thread_id}")
     print()
     runtime.update_current_thread_id(thread_id)
+    attachment_list: list[dict[str, str]] = []
     while True:
         try:
+            if attachment_list:
+                print("The current attachments to be sent with the next message:")
+                for i, attachment in enumerate(attachment_list):
+                    print(f"  {i + 1}. {attachment['name']}")
             message = input(">> ").strip()
+            
         except EOFError:
             print()
             _save_thread_snapshot(agent, runtime, thread_id, restored_messages)
@@ -111,6 +128,24 @@ def _run_chat_loop(
             print(f"Started new thread: {thread_id}")
             continue
 
+        if message == "/attach":
+            print("Enter the file path to attach or leave empty to cancel (currently support image files only):")
+            file_path = input(">> ").strip().strip("\"'")
+            if file_path:
+                if not os.path.isfile(file_path):
+                    print(f"File not found: {file_path}")
+                    continue
+                mime_type, _ = mimetypes.guess_type(file_path)
+                if mime_type not in SUPPORTED_IMAGE_MIME_TYPES:
+                    print(f"Unsupported image type: {mime_type or 'unknown'}")
+                    continue
+                with open(file_path, "rb") as f:
+                    base64_image = base64.b64encode(f.read()).decode("utf-8")
+                attachment_list.append({"base64": base64_image, "mime_type": mime_type, "name": os.path.basename(file_path)})
+            continue
+
+
+
         try:
             print()
             _print_streaming_reply(
@@ -118,8 +153,10 @@ def _run_chat_loop(
                 message,
                 thread_id,
                 loaded_info=restored_messages,
+                images=attachment_list,
             )
             restored_messages = None
+            attachment_list = []
         except KeyboardInterrupt:
             print()
             print("Chat interrupted by user. Exiting.")

@@ -1,7 +1,24 @@
 .env
+.env.*
+!.env.example
+
 __pycache__/
-*.pyc
+*.py[cod]
 .venv/
+
+# Local model/provider profile with real API keys.
+config/cleo.json
+!config/cleo.example.json
+
+# Runtime state, logs, and generated local data.
 data/*
 !data/.gitkeep
+!data/runtime_example.json
 
+# Conversation snapshots and generated long-term project memory.
+memory/thread_objects/
+memory/threads.jsonl
+memory/projects/
+
+# Temporary test backups created during local validation.
+.codex-test-backup-*/

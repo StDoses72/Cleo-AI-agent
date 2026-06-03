@@ -23,9 +23,8 @@ def _parse_bool_env(value: str | None, default: bool) -> bool:
 
 class Settings:
     def __init__(self) -> None:
-        self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
         self.TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
-        self.MODEL = os.getenv("AI4CASTING_MODEL", "gpt-5.4-mini")
+        self.PROFILE_DIR = PROJECT_ROOT / "config" / "cleo.json"
         self.DATA_DIR = PROJECT_ROOT / "data"
         self.SKILLS_DIR = PROJECT_ROOT / "skills"
         self.WORKSPACE_DIR = PROJECT_ROOT / "workspace"
