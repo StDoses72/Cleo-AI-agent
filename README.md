@@ -142,8 +142,3 @@ python main.py
 - `memory/projects/<project>/AGENT.md`：DreamAgent 生成的项目长期记忆。
 
 这些路径大多已被 `.gitignore` 忽略。它们属于本地状态，不是源代码资产。
-
-## 命名迁移说明
-
-当前项目身份是 `Cleo AI Agent`，Python distribution name 是 `cleo-ai-agent`，
-推荐 console script 是 `cleo`。旧项目名和旧 CLI 入口不再作为推荐或兼容用法保留。
