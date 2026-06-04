@@ -147,10 +147,3 @@ These files are maintained by the code at runtime:
 
 Most of these paths are ignored by `.gitignore`. They are local state, not source
 assets.
-
-## Naming Migration
-
-The current project identity is `Cleo AI Agent`, the Python distribution name is
-`cleo-ai-agent`, and the recommended console script is `cleo`. The old project
-name and old CLI entry point are no longer retained as recommended or compatible
-usage.
