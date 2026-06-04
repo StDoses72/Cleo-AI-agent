@@ -50,9 +50,7 @@ Cleo-AI-agent/
     runtime_example.json          # Runtime state template
     runtime.json                  # Local runtime state, ignored by Git
     shell_audit.log               # Runtime generated shell tool audit log
-  workspace/
-    product.stl                   # Workspace input file
-    双联屏-DieCasting_DFM_EON-2020.9.03.pptx
+  workspace/                      # Workspace input file
 ```
 
 Files under `workspace/` are treated as user input or migration validation
