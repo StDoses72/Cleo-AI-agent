@@ -1,24 +1,21 @@
 import json
+import os
 import shlex
 import subprocess
 import time
 from datetime import datetime, timezone
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 from langchain_core.tools import tool
 
 from config.settings import settings
 
 
-# Maps a virtual path prefix (as seen by Deep Agents' virtual filesystem) to the
-# project subdirectory it resolves to. "" means the sandbox root itself.
-VIRTUAL_PREFIX_MAP = {
-    "/workspace": "",
+VIRTUAL_WORKSPACE_PREFIX = "/workspace"
+VIRTUAL_PROJECT_PREFIXES = {
     "/config": "config",
     "/core": "core",
-    "/data": "data",
-    "/docs": "docs",
-    "/memory": "memory",
+    "/scripts": "scripts",
     "/skills": "skills",
     "/tools": "tools",
 }
@@ -44,35 +41,40 @@ def _strip_matching_quotes(value: str) -> str:
     return value
 
 
-def _translate_virtual_token(token: str) -> str:
-    """Translate a single argument token from a virtual path to a real path.
+def _translate_virtual_path(value: str) -> str:
+    """Translate one complete virtual path argument into a project-local path."""
+    if not value:
+        return value
 
-    Only tokens that *start* with a known virtual prefix on a path boundary
-    (end-of-string or a following ``/``) are translated. Real Windows paths
-    (e.g. ``D:\\Supremium\\part.stl`` or ``D:/data/part.stl``), URLs, and
-    relative paths are returned untouched, so a project script can still
-    receive user-provided absolute file paths as arguments.
+    normalized = value.replace("\\", "/")
+    mappings: list[tuple[str, Path]] = [
+        (VIRTUAL_WORKSPACE_PREFIX, settings.SHELL_SANDBOX_ROOT),
+        *(
+            (virtual_prefix, settings.SHELL_SANDBOX_ROOT / real_child)
+            for virtual_prefix, real_child in VIRTUAL_PROJECT_PREFIXES.items()
+        ),
+    ]
+    for virtual_prefix, real_base in mappings:
+        if normalized == virtual_prefix:
+            return str(real_base)
+        if normalized.startswith(f"{virtual_prefix}/"):
+            suffix = normalized[len(virtual_prefix) + 1 :]
+            return str(real_base / Path(*suffix.split("/")))
+    return value
 
-    The remainder after the prefix is rejoined with :class:`pathlib.Path`, so the
-    result always uses native (Windows) separators rather than mixing ``\\`` and
-    ``/``.
-    """
-    if not token:
-        return token
-    # Longest prefix first so e.g. a future "/workspace-foo" can't shadow others.
-    for prefix in sorted(VIRTUAL_PREFIX_MAP, key=len, reverse=True):
-        if token == prefix or token.startswith(prefix + "/"):
-            child = VIRTUAL_PREFIX_MAP[prefix]
-            base = (
-                settings.SHELL_SANDBOX_ROOT
-                if not child
-                else settings.SHELL_SANDBOX_ROOT / child
-            )
-            rest = token[len(prefix):].lstrip("/")
-            if rest:
-                return str(base.joinpath(*PurePosixPath(rest).parts))
-            return str(base)
-    return token
+
+def _translate_command_args(command: str) -> list[str]:
+    return [_translate_virtual_path(part) for part in _split_command(command)]
+
+
+def _extract_primary_command(command: str) -> str:
+    try:
+        parts = _translate_command_args(command)
+        if not parts:
+            return ""
+        return Path(parts[0].strip().strip('"').strip("'")).name
+    except Exception:
+        return Path((command or "").strip().split(" ")[0].strip().strip('"').strip("'")).name
 
 
 def _contains_denied_pattern(command: str) -> str:
@@ -84,7 +86,7 @@ def _contains_denied_pattern(command: str) -> str:
 
 
 def _resolve_cwd(working_directory: str) -> Path:
-    working_directory = _translate_virtual_token(working_directory)
+    working_directory = _translate_virtual_path(_strip_matching_quotes(working_directory))
     if not working_directory:
         return settings.SHELL_SANDBOX_ROOT
 
@@ -146,19 +148,26 @@ def run_shell_command(command: str, working_directory: str = "") -> str:
     if not command or not command.strip():
         return "Error: command cannot be empty."
 
+    try:
+        args = _translate_command_args(command)
+    except ValueError as exc:
+        # shlex.split raises "No closing quotation" on an unbalanced/unclosed quote.
+        # Hand a clear, actionable message back to the agent so it can re-issue the
+        # command, instead of letting the exception crash the whole invoke.
+        return (
+            f"Error: could not parse the command ({exc}). This almost always means an "
+            "unbalanced or unclosed quote in the command string. Re-issue it with matching "
+            "quotes. For multi-line or quote-heavy python, write the code to a .py file and run "
+            "that file, rather than a long `python -c \"...\"` one-liner with embedded quotes."
+        )
+    translated_command = subprocess.list2cmdline(args)
     sandbox_root = settings.SHELL_SANDBOX_ROOT
     cwd = _resolve_cwd(working_directory)
-
-    # Tokenize first, then translate each token only if it is a genuine virtual
-    # path. Real Windows paths / URLs passed as arguments are left untouched.
-    raw_args = _split_command(command)
-    args = [_translate_virtual_token(part) for part in raw_args]
     primary = Path(args[0]).name if args else ""
 
     audit = {
         "timestamp_utc": now,
-        "command": command,
-        "translated_args": args,
+        "command": translated_command,
         "primary_command": primary,
         "working_directory": str(cwd),
         "sandbox_root": str(sandbox_root),
@@ -193,13 +202,19 @@ def run_shell_command(command: str, working_directory: str = "") -> str:
         return "Error: working directory is outside the configured sandbox root."
 
     try:
+        env = os.environ.copy()
+        env.setdefault("PYTHONUTF8", "1")
+        env.setdefault("PYTHONIOENCODING", "utf-8")
         result = subprocess.run(
             args,
             cwd=str(cwd),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=settings.SHELL_TIMEOUT_SECONDS,
             shell=False,
+            env=env,
         )
 
         audit["allowed"] = True
