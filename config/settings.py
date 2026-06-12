@@ -1,6 +1,9 @@
 import os
+import json
 from pathlib import Path
-
+from pydantic import BaseModel,Field,SecretStr
+from typing import Optional
+from enum import Enum
 from dotenv import find_dotenv, load_dotenv
 
 
@@ -19,6 +22,95 @@ def _parse_bool_env(value: str | None, default: bool) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+class AgentProfile(BaseModel):
+    profile_name: str
+    api_key: SecretStr
+    model_name: str
+    provider: str
+    base_url: str
+    max_tokens: int = Field(default=100000,lt=0)
+    temperature: float = Field(default=0.7,gt=0,le=1)
+
+class DirectoryProfile(BaseModel):
+    root_dir = PROJECT_ROOT
+    DATA_DIR = PROJECT_ROOT / "data"
+    SKILLS_DIR = PROJECT_ROOT / "skills"
+    WORKSPACE_DIR = PROJECT_ROOT / "workspace"
+    MEMORY_DIR = PROJECT_ROOT / "memory"
+    MEMORY_AGENT_PATH = MEMORY_DIR / "AGENT.md"
+    MEMORY_PROJECTS_DIR = MEMORY_DIR / "projects"
+    THREAD_OBJECTS_DIR = MEMORY_DIR / "thread_objects"
+    THREAD_REGISTRY_PATH = MEMORY_DIR / "threads.jsonl"
+    RUNTIME_STATE_PATH = DATA_DIR / "runtime.json"
+    SANDBOX_ROOT: str = str(PROJECT_ROOT).resolve()
+    SHELL_AUDIT_LOG_PATH: str = str(PROJECT_ROOT / "data" / "shell_audit.log").resolve()
+
+class ShellProfile(BaseModel):
+    SHELL_REQUIRE_ALLOWLIST:Optional[bool] = True
+    SHELL_ENFORCE_SANDBOX:Optional[bool] = True
+    SHELL_REQUIRE_APPROVAL:Optional[bool] = False
+    SHELL_TIMEOUT_SECONDS:int = 30
+    SHELL_MAX_OUTPUT_CHARS:int = 12000
+    SHELL_ALLOWED_COMMANDS: list[str] = ["python", "python.exe", "py", "py.exe"]
+    SHELL_DENIED_PATTERNS: list[str] = [
+                "&&",
+                "||",
+                ";",
+                "|",
+                ">",
+                "<",
+                "`",
+                "$(",
+                "../",
+                "..\\",
+                " rm ",
+                " rmdir ",
+                " del ",
+                " erase ",
+                " format ",
+                " shutdown ",
+                " restart-computer ",
+                " powershell -enc",
+                " certutil -decode",
+            ]
+
+
+class SettingsModel(BaseModel):
+    agent_profile: AgentProfile
+    directory_profile: DirectoryProfile
+    shell_profile: ShellProfile
+
+
+
+
+def load_settings()->SettingsModel:
+    agent_profile_path = PROJECT_ROOT / "config" / "cleo.json"
+    if not agent_profile_path.exists():
+        agent_profile_path.mkdir(parents=True,exist_ok=True)
+        default_config = {
+                            "active_profiles": None,
+                            "profiles": {
+                                "default_placeholder": {
+                                    "provider": None,
+                                    "model": None,
+                                    "temperature": None,
+                                    "max_tokens": None,
+                                    "api_key": None,
+                                    "base_url": None
+                                }
+                            }
+                        }
+        with open(agent_profile_path,encoding="utf-8") as f:
+            json.dump(default_config,f,ensure_ascii=False,indent="\t")
+        raise FileNotFoundError(f"Created default config at {agent_profile_path}. Please fill in your API key, model and other related information for normally using the agent.")
+    with open(PROJECT_ROOT / "config" / "cleo.json",encoding="utf-8") as f:
+        agent_profile = json.load(f)
+    active_profiles = agent_profile["active_profiles"]
+    setting_profiles = agent_profile["profiles"][active_profiles]
+    return 
+
+settings:SettingsModel = load_settings()
 
 
 class Settings:
