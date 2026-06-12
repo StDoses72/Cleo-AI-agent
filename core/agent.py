@@ -1,4 +1,3 @@
-import json
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -94,18 +93,7 @@ Core principles:
 """.strip()
 
 
-with open(settings.PROFILE_DIR, encoding="utf-8") as f:
-    profile_data = json.load(f)
-
-active_profile_name = profile_data.get("active_profiles")
-
-if not active_profile_name:
-    raise ValueError("No active profile specified in the configuration.")
-
-active_profile = profile_data["profiles"].get(active_profile_name)
-
-if not active_profile:
-    raise ValueError(f"Active profile '{active_profile_name}' not found in the configuration.")
+active_profile = settings.active_agent_profile
 
 
 class Agent:
@@ -123,11 +111,11 @@ class Agent:
         )
         self.deepagent = create_deep_agent(
             model=init_chat_model(
-                model=active_profile["model"],
-                model_provider=active_profile["provider"],
-                api_key=active_profile["api_key"],
-                temperature=active_profile["temperature"],
-                base_url=active_profile.get("base_url", None),
+                model=active_profile.model,
+                model_provider=active_profile.provider,
+                api_key=active_profile.api_key.get_secret_value(),
+                temperature=active_profile.temperature,
+                base_url=active_profile.base_url,
             ),
             checkpointer=InMemorySaver(),
             system_prompt=system_prompt,
@@ -221,11 +209,11 @@ class DreamAgent:
             write_memory_to_markdown,
         ]
         self.model = init_chat_model(
-            model=active_profile["model"],
-            model_provider=active_profile["provider"],
-            api_key=active_profile["api_key"],
-            temperature=active_profile["temperature"],
-            base_url=active_profile.get("base_url", None),
+            model=active_profile.model,
+            model_provider=active_profile.provider,
+            api_key=active_profile.api_key.get_secret_value(),
+            temperature=active_profile.temperature,
+            base_url=active_profile.base_url,
         )
         self.system_prompt = system_prompt
         self.dreamagent = create_agent(

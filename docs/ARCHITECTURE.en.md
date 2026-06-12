@@ -34,7 +34,7 @@ Cleo-AI-agent/
 ```
 
 - `main.py`: CLI entry point for one-shot messages, interactive chat, thread lifecycle, and image attachments.
-- `config/`: local settings and profile templates. The real `config/cleo.json` is ignored by Git.
+- `config/`: Pydantic settings models and profile templates. The real `config/cleo.json` is ignored by Git.
 - `core/`: agent construction, runtime state model, and thread memory serialization.
 - `tools/`: LangChain tools used by Cleo or DreamAgent.
 - `skills/`: Deep Agents skill directory. `demo-production` is the current tracked skill.
@@ -64,7 +64,7 @@ File: `core/agent.py`
 
 Responsibilities:
 
-- Read the active profile from `config/cleo.json`.
+- Read validated active profiles from `config/cleo.json`.
 - Initialize the model with `langchain.chat_models.init_chat_model`.
 - Create the main Cleo agent with `create_deep_agent`.
 - Expose the project virtual filesystem through `FilesystemBackend(root_dir=repo_root, virtual_mode=True)`.
@@ -74,7 +74,7 @@ Responsibilities:
 
 Current behavior:
 
-- `config/cleo.json` must already exist.
+- If `config/cleo.json` is missing, Cleo creates a default template and asks the user to fill it in.
 - `InMemorySaver` only persists LangGraph state inside the current process.
 - Thread resume relies on replaying message snapshots, not restoring a full durable graph checkpoint.
 
@@ -141,31 +141,27 @@ File: `config/settings.py`
 
 Reads:
 
-- `.env`
-- OS environment variables
+- `config/cleo.json`
 
-Core paths:
+Core settings:
 
-- `PROFILE_DIR` -> `config/cleo.json`
-- `DATA_DIR` -> `data/`
-- `SKILLS_DIR` -> `skills/`
-- `WORKSPACE_DIR` -> `workspace/`
-- `MEMORY_DIR` -> `memory/`
-- `THREAD_OBJECTS_DIR` -> `memory/thread_objects/`
-- `THREAD_REGISTRY_PATH` -> `memory/threads.jsonl`
-- `RUNTIME_STATE_PATH` -> `data/runtime.json`
+- `active_profiles.agent` selects the active `AgentProfile`.
+- `active_profiles.directory` selects the active `DirectoryProfile`.
+- `active_profiles.shell` selects the active `ShellProfile`.
+- `active_profiles.tools` selects the active `ToolsProfile`.
+- Directory profile paths resolve relative to the project root unless absolute.
 
 Shell tool settings:
 
-- `SHELL_SANDBOX_ROOT`
-- `SHELL_AUDIT_LOG_PATH`
-- `SHELL_REQUIRE_ALLOWLIST`
-- `SHELL_ENFORCE_SANDBOX`
-- `SHELL_REQUIRE_APPROVAL`
-- `SHELL_TIMEOUT_SECONDS`
-- `SHELL_MAX_OUTPUT_CHARS`
-- `SHELL_ALLOWED_COMMANDS`
-- `SHELL_DENIED_PATTERNS`
+- `sandbox_root`
+- `audit_log_path`
+- `require_allowlist`
+- `enforce_sandbox`
+- `require_approval`
+- `timeout_seconds`
+- `max_output_chars`
+- `allowed_commands`
+- `denied_patterns`
 
 ### 7. Restricted Shell Tool Layer
 
@@ -239,7 +235,6 @@ code.
 - `memory/AGENT.md`
 - `pyproject.toml`
 - `requirements.txt`
-- `.env.example`
 - `config/cleo.example.json`
 - `data/runtime_example.json`
 - `README.md`
@@ -247,7 +242,6 @@ code.
 
 ### Local Private Configuration
 
-- `.env`
 - `config/cleo.json`
 
 These files are copied from templates and maintained locally. They should not be committed.

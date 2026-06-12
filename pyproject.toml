@@ -14,7 +14,7 @@ dependencies = [
   "langchain-core",
   "langchain-openai",
   "langgraph",
-  "python-dotenv",
+  "pydantic",
   "rich",
 ]
 
