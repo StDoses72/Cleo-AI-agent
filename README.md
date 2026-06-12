@@ -71,12 +71,11 @@ pip install -e ".[dev]"
 
 ## 本地配置
 
-首次运行前需要准备两个本地文件：
+首次运行前需要准备本地配置文件：
 
 1. 从 `config/cleo.example.json` 复制 `config/cleo.json`，填入真实模型 profile、API key、active profile、shell profile 和 directory profile。
-2. 从 `data/runtime_example.json` 复制 `data/runtime.json`，作为初始运行状态。
 
-`config/cleo.json` 和 `data/runtime.json` 是本地私密或运行状态文件，不应提交。
+`config/cleo.json` 是本地私密文件，不应提交。`data/runtime.json` 会在首次初始化 Runtime 时自动生成。
 
 `config/cleo.json` 使用一个 JSON 文件管理多个 profile registry：
 

@@ -74,13 +74,12 @@ dependencies through `pyproject.toml`.
 
 ## Local Configuration
 
-Before the first run, prepare two local files:
+Before the first run, prepare the local config file:
 
 1. Copy `config/cleo.example.json` to `config/cleo.json`, then fill in the real model profile, API key, active profile choices, shell profile, and directory profile.
-2. Copy `data/runtime_example.json` to `data/runtime.json` as the initial runtime state.
 
-`config/cleo.json` and `data/runtime.json` are local private or runtime state
-files and should not be committed.
+`config/cleo.json` is a local private file and should not be committed.
+`data/runtime.json` is generated automatically on first runtime initialization.
 
 Minimal config shape:
 

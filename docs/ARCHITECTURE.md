@@ -119,6 +119,10 @@ Cleo-AI-agent/
 - 维护 recent threads。
 - 从 `memory/projects/` 同步项目名。
 
+当前行为：
+
+- 如果 `data/runtime.json` 缺失，Runtime 会用默认状态自动创建。
+
 ### 5. Thread Snapshot Layer
 
 文件：`core/memory/thread_memory.py`

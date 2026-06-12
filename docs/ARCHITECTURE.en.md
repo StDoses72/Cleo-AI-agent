@@ -119,6 +119,10 @@ Responsibilities:
 - Maintain a recent thread list.
 - Sync project names from `memory/projects/`.
 
+Current behavior:
+
+- If `data/runtime.json` is missing, Runtime creates it with the default state.
+
 ### 5. Thread Snapshot Layer
 
 File: `core/memory/thread_memory.py`

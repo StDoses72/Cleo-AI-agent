@@ -1,20 +1,36 @@
-from pathlib import Path
 import json
 
 from config.settings import settings
 
-class Runtime():
+DEFAULT_RUNTIME_STATE = {
+    "current_project": None,
+    "current_thread_id": None,
+    "projects_list": ["general"],
+    "recent_threads": [],
+}
+
+
+class Runtime:
     runtime_json_path = settings.RUNTIME_STATE_PATH
     projects_path = settings.MEMORY_PROJECTS_DIR
 
-    def __init__(self):
-        with open(self.runtime_json_path, "r", encoding="utf-8-sig") as f:
+    def __init__(self) -> None:
+        self.ensure_runtime_json()
+        with open(self.runtime_json_path, encoding="utf-8-sig") as f:
             runtime_data = json.load(f)
         self.current_project = runtime_data.get("current_project")
         self.current_thread_id = runtime_data.get("current_thread_id")
-        self.projects_list = runtime_data.get("projects_list", [])
+        self.projects_list = runtime_data.get("projects_list", ["general"])
         self.recent_threads = runtime_data.get("recent_threads", [])
         self.sync_projects_from_disk()
+
+    @classmethod
+    def ensure_runtime_json(cls) -> None:
+        if cls.runtime_json_path.exists():
+            return
+        cls.runtime_json_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(cls.runtime_json_path, "w", encoding="utf-8") as f:
+            json.dump(DEFAULT_RUNTIME_STATE, f, ensure_ascii=False, indent=2)
 
     def update_current_thread_id(self, thread_id: str) -> None:
         self.current_thread_id = thread_id
@@ -46,7 +62,8 @@ class Runtime():
         self.update_runtime_json()
 
     def update_runtime_json(self) -> None:
-        with open(Runtime.runtime_json_path, "r", encoding="utf-8-sig") as f:
+        self.ensure_runtime_json()
+        with open(Runtime.runtime_json_path, encoding="utf-8-sig") as f:
             runtime_data = json.load(f)
         runtime_data["current_project"] = self.current_project
         runtime_data["current_thread_id"] = self.current_thread_id
