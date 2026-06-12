@@ -27,10 +27,9 @@ Cleo-AI-agent/
   main.py                         # CLI entry point
   pyproject.toml                  # Python project metadata and dependencies
   requirements.txt                # Compatibility wrapper that delegates to -e .
-  .env.example                    # Local environment template
   config/
-    settings.py                   # Paths, environment variables, shell policy
-    cleo.example.json             # Model profile template
+    settings.py                   # Pydantic settings loader and profile models
+    cleo.example.json             # Local config template
     cleo.json                     # Local private profile, ignored by Git
   core/
     agent.py                      # Cleo / DreamAgent construction
@@ -75,27 +74,34 @@ dependencies through `pyproject.toml`.
 
 ## Local Configuration
 
-Before the first run, prepare three local files:
+Before the first run, prepare two local files:
 
-1. Copy `.env.example` to `.env` and adjust shell tool settings as needed.
-2. Copy `config/cleo.example.json` to `config/cleo.json`, then fill in the real model profile and API key.
-3. Copy `data/runtime_example.json` to `data/runtime.json` as the initial runtime state.
+1. Copy `config/cleo.example.json` to `config/cleo.json`, then fill in the real model profile, API key, active profile choices, shell profile, and directory profile.
+2. Copy `data/runtime_example.json` to `data/runtime.json` as the initial runtime state.
 
-`.env`, `config/cleo.json`, and `data/runtime.json` are local private or runtime
-state files and should not be committed.
+`config/cleo.json` and `data/runtime.json` are local private or runtime state
+files and should not be committed.
 
-Minimal profile example:
+Minimal config shape:
 
 ```json
 {
-  "active_profiles": "moonshot_openai_compatible",
+  "active_profiles": {
+    "agent": "moonshot_openai_compatible",
+    "directory": "default",
+    "shell": "default",
+    "tools": "default"
+  },
   "profiles": {
-    "moonshot_openai_compatible": {
-      "provider": "openai",
-      "model": "kimi-k2.6",
-      "temperature": 0.7,
-      "api_key": "YOUR_API_KEY",
-      "base_url": "https://api.moonshot.cn/v1"
+    "agents": {
+      "moonshot_openai_compatible": {
+        "provider": "openai",
+        "model": "kimi-k2.6",
+        "temperature": 0.7,
+        "max_tokens": 100000,
+        "api_key": "YOUR_API_KEY",
+        "base_url": "https://api.moonshot.cn/v1"
+      }
     }
   }
 }

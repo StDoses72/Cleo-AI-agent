@@ -33,7 +33,7 @@ Cleo-AI-agent/
 ```
 
 - `main.py`：CLI 入口，负责 one-shot message、interactive chat、thread 生命周期和图片附件输入。
-- `config/`：本地设置和 profile 模板。真实 `config/cleo.json` 被 Git 忽略。
+- `config/`：Pydantic settings models 和 profile 模板。真实 `config/cleo.json` 被 Git 忽略。
 - `core/`：agent 构建、runtime 状态模型、thread memory 序列化。
 - `tools/`：提供给 Cleo 或 DreamAgent 使用的 LangChain tools。
 - `skills/`：Deep Agents skills 目录，当前 tracked skill 是 `demo-production`。
@@ -63,7 +63,7 @@ Cleo-AI-agent/
 
 职责：
 
-- 读取 `config/cleo.json` 中的 active profile。
+- 从 `config/cleo.json` 读取经过 Pydantic 验证的 active profiles。
 - 使用 `langchain.chat_models.init_chat_model` 初始化模型。
 - 使用 `create_deep_agent` 创建 Cleo 主 agent。
 - 使用 `FilesystemBackend(root_dir=repo_root, virtual_mode=True)` 暴露项目虚拟文件系统。
@@ -73,7 +73,7 @@ Cleo-AI-agent/
 
 当前行为：
 
-- `config/cleo.json` 必须已存在。
+- 如果 `config/cleo.json` 缺失，Cleo 会创建默认模板并提示用户填写。
 - `InMemorySaver` 只在当前进程内保存 LangGraph 状态。
 - thread resume 依赖 message snapshot replay，而不是完整 durable graph checkpoint。
 
@@ -141,31 +141,27 @@ Cleo-AI-agent/
 
 读取：
 
-- `.env`
-- OS environment variables
+- `config/cleo.json`
 
-核心路径：
+核心设置：
 
-- `PROFILE_DIR` -> `config/cleo.json`
-- `DATA_DIR` -> `data/`
-- `SKILLS_DIR` -> `skills/`
-- `WORKSPACE_DIR` -> `workspace/`
-- `MEMORY_DIR` -> `memory/`
-- `THREAD_OBJECTS_DIR` -> `memory/thread_objects/`
-- `THREAD_REGISTRY_PATH` -> `memory/threads.jsonl`
-- `RUNTIME_STATE_PATH` -> `data/runtime.json`
+- `active_profiles.agent` 选择当前 `AgentProfile`。
+- `active_profiles.directory` 选择当前 `DirectoryProfile`。
+- `active_profiles.shell` 选择当前 `ShellProfile`。
+- `active_profiles.tools` 选择当前 `ToolsProfile`。
+- Directory profile 路径默认相对项目根目录解析，绝对路径保持绝对路径。
 
 shell tool 相关设置：
 
-- `SHELL_SANDBOX_ROOT`
-- `SHELL_AUDIT_LOG_PATH`
-- `SHELL_REQUIRE_ALLOWLIST`
-- `SHELL_ENFORCE_SANDBOX`
-- `SHELL_REQUIRE_APPROVAL`
-- `SHELL_TIMEOUT_SECONDS`
-- `SHELL_MAX_OUTPUT_CHARS`
-- `SHELL_ALLOWED_COMMANDS`
-- `SHELL_DENIED_PATTERNS`
+- `sandbox_root`
+- `audit_log_path`
+- `require_allowlist`
+- `enforce_sandbox`
+- `require_approval`
+- `timeout_seconds`
+- `max_output_chars`
+- `allowed_commands`
+- `denied_patterns`
 
 ### 7. Restricted Shell Tool Layer
 
@@ -237,7 +233,6 @@ skills/
 - `memory/AGENT.md`
 - `pyproject.toml`
 - `requirements.txt`
-- `.env.example`
 - `config/cleo.example.json`
 - `data/runtime_example.json`
 - `README.md`
@@ -245,7 +240,6 @@ skills/
 
 ### 本地私密配置
 
-- `.env`
 - `config/cleo.json`
 
 这些文件从模板复制后由本地维护，不应提交。

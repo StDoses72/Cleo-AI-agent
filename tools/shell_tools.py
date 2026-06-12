@@ -3,13 +3,12 @@ import os
 import shlex
 import subprocess
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from langchain_core.tools import tool
 
 from config.settings import settings
-
 
 VIRTUAL_WORKSPACE_PREFIX = "/workspace"
 VIRTUAL_PROJECT_PREFIXES = {
@@ -143,7 +142,7 @@ def run_shell_command(command: str, working_directory: str = "") -> str:
         A text summary containing stdout or stderr.
     """
     start = time.perf_counter()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     if not command or not command.strip():
         return "Error: command cannot be empty."
@@ -192,7 +191,7 @@ def run_shell_command(command: str, working_directory: str = "") -> str:
             _append_shell_audit(audit)
             return (
                 f"Error: command '{primary}' is not allowlisted. "
-                "Update SHELL_ALLOWED_COMMANDS in .env if this command is needed."
+                "Update the active shell profile in config/cleo.json if this command is needed."
             )
 
     if settings.SHELL_ENFORCE_SANDBOX and not _is_inside_sandbox(cwd, sandbox_root):

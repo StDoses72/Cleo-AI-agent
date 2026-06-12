@@ -26,11 +26,10 @@ Cleo-AI-agent/
   main.py                         # CLI entry point
   pyproject.toml                  # Python project metadata and dependencies
   requirements.txt                # Compatibility wrapper that delegates to -e .
-  .env.example                    # Local environment template
   config/
-    settings.py                   # Paths, environment variables, shell policy
-    cleo.example.json             # Model profile template
-    cleo.json                     # Local private profile, ignored by Git
+    settings.py                   # Pydantic settings loader and profile models
+    cleo.example.json             # Local config template
+    cleo.json                     # Local private config, ignored by Git
   core/
     agent.py                      # Cleo / DreamAgent construction
     memory/thread_memory.py       # Thread snapshot serialization
@@ -49,7 +48,7 @@ Cleo-AI-agent/
     runtime_example.json          # Runtime state template
     runtime.json                  # Local runtime state, ignored by Git
     shell_audit.log               # Runtime generated shell tool audit log
-  workspace/                      # Workspace input file
+  workspace/                      # Workspace input files
 ```
 
 `workspace/` 下的文件按用户输入或迁移验证文件处理，不代表 Cleo 当前项目身份。
@@ -72,30 +71,39 @@ pip install -e ".[dev]"
 
 ## 本地配置
 
-首次运行前需要准备三个本地文件：
+首次运行前需要准备两个本地文件：
 
-1. 从 `.env.example` 复制 `.env`，按需调整 shell tool 配置。
-2. 从 `config/cleo.example.json` 复制 `config/cleo.json`，填入真实模型 profile 和 API key。
-3. 从 `data/runtime_example.json` 复制 `data/runtime.json`，作为初始运行状态。
+1. 从 `config/cleo.example.json` 复制 `config/cleo.json`，填入真实模型 profile、API key、active profile、shell profile 和 directory profile。
+2. 从 `data/runtime_example.json` 复制 `data/runtime.json`，作为初始运行状态。
 
-`.env`、`config/cleo.json` 和 `data/runtime.json` 是本地私密或运行状态文件，不应提交。
+`config/cleo.json` 和 `data/runtime.json` 是本地私密或运行状态文件，不应提交。
 
-最小 profile 示例：
+`config/cleo.json` 使用一个 JSON 文件管理多个 profile registry：
 
 ```json
 {
-  "active_profiles": "moonshot_openai_compatible",
-  "profiles": {
-    "moonshot_openai_compatible": {
-      "provider": "openai",
-      "model": "kimi-k2.6",
-      "temperature": 0.7,
-      "api_key": "YOUR_API_KEY",
-      "base_url": "https://api.moonshot.cn/v1"
-    }
-  }
+	"active_profiles": {
+		"agent": "moonshot_openai_compatible",
+		"directory": "default",
+		"shell": "default",
+		"tools": "default"
+	},
+	"profiles": {
+		"agents": {
+			"moonshot_openai_compatible": {
+				"provider": "openai",
+				"model": "kimi-k2.6",
+				"temperature": 0.7,
+				"max_tokens": 100000,
+				"api_key": "YOUR_API_KEY",
+				"base_url": "https://api.moonshot.cn/v1"
+			}
+		}
+	}
 }
 ```
+
+如果 `config/cleo.json` 缺失，Cleo 会自动创建默认模板并提示你填写。
 
 ## 运行
 
