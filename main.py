@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 import argparse
 import base64
 import mimetypes
 import os
 import textwrap
 import uuid
+from typing import TYPE_CHECKING
 
 from langchain_core.messages import (
     AIMessage,
@@ -13,9 +16,11 @@ from langchain_core.messages import (
     ToolMessage,
 )
 
-from core.agent import Agent, DreamAgent
 from core.memory.thread_memory import load_messages_from_file, save_messages_to_file
 from core.runtime.model import Runtime
+
+if TYPE_CHECKING:
+    from core.agent import Agent
 
 SUPPORTED_IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
@@ -64,6 +69,8 @@ def _save_thread_snapshot(
 
 
 def _run_dream_agent(thread_id: str, project: str | None) -> None:
+    from core.agent import DreamAgent
+
     project_name = project or "general"
     try:
         print(f"Running DreamAgent memory consolidation for {thread_id} -> {project_name}...")
@@ -79,7 +86,7 @@ def _run_chat_loop(
     thread_id: str,
     restored_messages: list[BaseMessage] | None = None,
 ) -> None:
-    print("Cleo AI Agent interactive chat. Type /quit to exit, /reset to start a fresh thread.")
+    print("Cleo AI Agent interactive chat. Type /quit to exit, /new to start a fresh thread.")
     print(f"Thread id: {thread_id}")
     print()
     runtime.update_current_thread_id(thread_id)
@@ -114,9 +121,8 @@ def _run_chat_loop(
             runtime.update_current_thread_id(None)
             runtime.update_runtime_json()
             print("Exiting the chat. Goodbye!")
-
             break
-        if message == "/reset":
+        if message == "/new":
             _save_thread_snapshot(agent, runtime, thread_id, restored_messages)
             thread_id = _new_thread_id()
             restored_messages = None
@@ -247,7 +253,9 @@ def main() -> None:
         default=None,
         help="Optional one-shot user message. Omit it to enter interactive chat.",
     )
-    parser.add_argument(
+    thread_group = parser.add_mutually_exclusive_group()
+
+    thread_group.add_argument(
         "--thread-id",
         default=None,
         help=(
@@ -255,13 +263,27 @@ def main() -> None:
             "Defaults to a generated id."
         ),
     )
+    thread_group.add_argument(
+        "--resume",
+        dest="resume_id",
+        metavar="THREAD_ID",
+        default=None,
+        help="Resume a saved thread snapshot by thread id.",
+    )
+
     args = parser.parse_args()
 
-    agent = Agent()
     runtime = Runtime()
-    thread_id = args.thread_id or _new_thread_id()
     loaded_messages: list[BaseMessage] | None = None
-    if runtime.current_thread_id:
+    if args.resume_id is not None:
+        thread_id = args.resume_id
+        try:
+            loaded_messages = load_messages_from_file(f"{thread_id}.json")
+        except FileNotFoundError as exc:
+            raise SystemExit(f"No saved thread snapshot found for thread id: {thread_id}") from exc
+    elif args.thread_id is not None:
+        thread_id = args.thread_id
+    elif args.message is None and runtime.current_thread_id:
         print(
             f"Determined an unfinished thread with id {runtime.current_thread_id}. "
             "Do you want to continue it? (y/n)"
@@ -276,13 +298,33 @@ def main() -> None:
             thread_id = _new_thread_id()
             print(f"Starting a new thread with id {thread_id}")
             clear_screen()
-    if args.message is None:
-        _run_chat_loop(agent, runtime, thread_id=thread_id, restored_messages=loaded_messages)
-        return
+        else:
+            thread_id = _new_thread_id()
+            print(f"Starting a new thread with id {thread_id}")
+            clear_screen()
+    else:
+        thread_id = _new_thread_id()
 
-    _print_streaming_reply(agent, args.message, thread_id, loaded_info=loaded_messages)
-    _save_thread_snapshot(agent, runtime, thread_id, loaded_messages)
-    _run_dream_agent(thread_id, runtime.current_project)
+    from core.agent import Agent
+
+    agent = Agent()
+    if args.resume_id is not None:
+        if args.message is None:
+            _print_restored_messages(thread_id, loaded_messages=loaded_messages)
+            _run_chat_loop(agent, runtime, thread_id=thread_id, restored_messages=loaded_messages)
+        else:
+            _print_streaming_reply(agent, args.message, thread_id, loaded_info=loaded_messages)
+            _save_thread_snapshot(agent, runtime, thread_id, loaded_messages)
+            _run_dream_agent(thread_id, runtime.current_project)
+        return
+    else:
+        if args.message is None:
+            _run_chat_loop(agent, runtime, thread_id, restored_messages=loaded_messages)
+        else:
+            _print_streaming_reply(agent, args.message, thread_id, loaded_info=loaded_messages)
+            _save_thread_snapshot(agent, runtime, thread_id, loaded_messages)
+            _run_dream_agent(thread_id, runtime.current_project)
+        return
 
 if __name__ == "__main__":
     main()
