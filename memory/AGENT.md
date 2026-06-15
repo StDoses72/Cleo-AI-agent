@@ -21,7 +21,7 @@ Do not remember:
 
 ## Shell Tool Policy
 
-Use `run_shell_command` only for project-local scripts or diagnostics that are
-required by the current task. Prefer specific scripts referenced by a skill.
-Do not use shell execution for broad filesystem exploration, destructive
-operations, credential handling, or commands outside the configured sandbox.
+Use `run_shell_command` as Cleo's local shell access when it helps complete the
+current task. Prefer clear, targeted commands and specific project scripts over
+noisy command sequences. Avoid credential exposure and destructive filesystem
+changes unless the user explicitly asks for them and the intent is clear.

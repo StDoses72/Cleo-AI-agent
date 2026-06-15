@@ -4,7 +4,7 @@ English version: [ARCHITECTURE.en.md](ARCHITECTURE.en.md)
 
 本文档描述当前仓库实际存在的 Cleo AI Agent 本地 runtime 架构。Cleo 是一个基于
 Deep Agents 和 LangChain 的本地个人 AI agent runtime，重点保留可检查、可迁移的
-本地工作区、thread snapshot、DreamAgent memory、restricted shell tool 和 skills
+本地工作区、thread snapshot、DreamAgent memory、local shell tool 和 skills
 loading。
 
 ## 架构目标
@@ -15,7 +15,7 @@ loading。
 - 使用 `skills/` 作为能力扩展入口。
 - 使用 `memory/` 保存可检查、可迁移的长期记忆。
 - 使用 `data/runtime.json` 保存 CLI 级别运行状态。
-- 使用 restricted shell tool 运行项目内脚本，并保留审计日志。
+- 使用 local shell tool 运行脚本和诊断命令，并保留审计日志。
 
 ## 顶层结构
 
@@ -53,8 +53,8 @@ Cleo-AI-agent/
 - 解析命令行参数。
 - 创建 `Agent()` 和 `Runtime()`。
 - 为会话生成 `local-{12_hex_chars}` 格式的 thread id。
-- 在 interactive chat 中处理 `/quit`、`/exit`、`/reset` 和 `/attach`。
-- 在退出、重置、中断或 one-shot 结束时保存 thread snapshot。
+- 在 interactive chat 中处理 `/quit`、`/exit`、`/new` 和 `/attach`。
+- 在退出、新建 thread、中断或 one-shot 结束时保存 thread snapshot。
 - 在正常退出和 one-shot 结束时调用 DreamAgent 做记忆整理。
 
 ### 2. Agent Runtime Layer
@@ -92,7 +92,7 @@ Cleo-AI-agent/
 
 - `/quit` 和 `/exit` 正常退出时触发。
 - one-shot message 结束后触发。
-- `/reset`、EOF 和 KeyboardInterrupt 当前只保存 thread snapshot。
+- `/new`、EOF 和 KeyboardInterrupt 当前只保存 thread snapshot。
 
 ### 4. Runtime State Layer
 
@@ -167,7 +167,11 @@ shell tool 相关设置：
 - `allowed_commands`
 - `denied_patterns`
 
-### 7. Restricted Shell Tool Layer
+allowlist、denylist、approval 和 sandbox 字段会继续保留用于兼容已有
+`config/cleo.json`，但当前 personal-assistant shell tool 不再强制执行这些限制。
+`sandbox_root` 目前作为未显式传入 working directory 时的默认工作目录使用。
+
+### 7. Local Shell Tool Layer
 
 文件：`tools/shell_tools.py`
 
@@ -175,10 +179,10 @@ shell tool 相关设置：
 
 职责：
 
-- 只运行 allowlist 中的命令。
-- 阻止 pipes、redirects、shell chaining、路径穿越和危险命令模式。
+- 运行用户需要的本地 PowerShell / system shell 命令。
 - 将 Deep Agents 虚拟路径映射到真实项目路径。
-- 将 working directory 限制在 sandbox root 内。
+- 使用配置中的项目根目录作为默认 working directory。
+- 应用 timeout 和 output truncation。
 - 把每次尝试写入 `data/shell_audit.log`。
 
 虚拟路径映射：

@@ -54,16 +54,15 @@ project names or ask the user which project to use. Treat project memory as
 reference material: prefer the user's latest message and verified file/tool
 evidence when they conflict with memory.
 
-You have a restricted `run_shell_command` tool for project-local scripts.
-Use it only when a skill or user task requires script execution. Prefer
-specific project scripts over ad hoc commands, and never use it for secrets,
-credentials, destructive filesystem changes, or commands outside the project
-sandbox.
+You have a local `run_shell_command` tool for shell commands, scripts, and
+diagnostics. Use it when shell access helps complete the user's task, and
+prefer clear, targeted commands over broad or noisy command sequences.
+Avoid credential exposure and destructive filesystem changes unless the user
+explicitly asks for them and the intent is clear.
 
-The shell sandbox constrains the command working directory to this project.
-It does not mean user-provided input files must live in the virtual
-filesystem. When a trusted project script asks for an input file, pass the
-user's Windows absolute path exactly as provided. 
+The tool starts in the configured project root by default, but it can run in
+other working directories when needed. User-provided input files may be Windows
+absolute paths; pass those paths exactly as provided when a script needs them.
 Do not rewrite Windows paths to `/workspace`.
 """.strip()
 
@@ -104,11 +103,6 @@ class Agent:
             virtual_mode=True,
         )
         self.toolist = [run_shell_command]
-        interrupt_on = (
-            {"run_shell_command": True}
-            if settings.SHELL_REQUIRE_APPROVAL
-            else None
-        )
         self.deepagent = create_deep_agent(
             model=init_chat_model(
                 model=active_profile.model,
@@ -120,7 +114,7 @@ class Agent:
             checkpointer=InMemorySaver(),
             system_prompt=system_prompt,
             tools=self.toolist,
-            interrupt_on=interrupt_on,
+            interrupt_on=None,
             backend=self.backend,
             skills=["/skills"],
             memory=["/memory/AGENT.md"],

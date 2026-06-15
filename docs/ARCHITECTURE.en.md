@@ -3,7 +3,7 @@
 This document describes the Cleo AI Agent local runtime architecture that
 actually exists in the current repository. Cleo is a local personal AI agent
 runtime built on Deep Agents and LangChain, with inspectable local workspace
-access, thread snapshots, DreamAgent memory, a restricted shell tool, and skills
+access, thread snapshots, DreamAgent memory, a local shell tool, and skills
 loading.
 
 Chinese version: [ARCHITECTURE.md](ARCHITECTURE.md)
@@ -16,7 +16,7 @@ Chinese version: [ARCHITECTURE.md](ARCHITECTURE.md)
 - Use `skills/` as the extension point for capabilities.
 - Use `memory/` for inspectable and portable long-term memory.
 - Use `data/runtime.json` for CLI-level runtime state.
-- Use a restricted shell tool for project-local scripts with audit logging.
+- Use a local shell tool for scripts and diagnostics with audit logging.
 
 ## Top-Level Structure
 
@@ -54,8 +54,8 @@ Responsibilities:
 - Parse command-line arguments.
 - Create `Agent()` and `Runtime()`.
 - Generate local thread ids in the form `local-{12_hex_chars}`.
-- Handle `/quit`, `/exit`, `/reset`, and `/attach` in interactive mode.
-- Save thread snapshots on exit, reset, interruption, or one-shot completion.
+- Handle `/quit`, `/exit`, `/new`, and `/attach` in interactive mode.
+- Save thread snapshots on exit, new-thread creation, interruption, or one-shot completion.
 - Run DreamAgent memory consolidation on clean exit and one-shot completion.
 
 ### 2. Agent Runtime Layer
@@ -92,7 +92,7 @@ Current trigger points:
 
 - `/quit` and `/exit` trigger DreamAgent after a clean interactive exit.
 - One-shot messages trigger DreamAgent after completion.
-- `/reset`, EOF, and KeyboardInterrupt currently save thread snapshots but do not run DreamAgent.
+- `/new`, EOF, and KeyboardInterrupt currently save thread snapshots but do not run DreamAgent.
 
 ### 4. Runtime State Layer
 
@@ -167,7 +167,12 @@ Shell tool settings:
 - `allowed_commands`
 - `denied_patterns`
 
-### 7. Restricted Shell Tool Layer
+The allowlist, denylist, approval, and sandbox fields are retained for config
+compatibility, but the current personal-assistant shell tool does not enforce
+them. It uses `sandbox_root` as the default working directory when no explicit
+working directory is provided.
+
+### 7. Local Shell Tool Layer
 
 File: `tools/shell_tools.py`
 
@@ -175,10 +180,10 @@ Tool: `run_shell_command`
 
 Responsibilities:
 
-- Run only allowlisted commands.
-- Block pipes, redirects, shell chaining, path traversal, and dangerous command patterns.
+- Run local PowerShell/system shell commands for the user.
 - Translate Deep Agents virtual paths into real project paths.
-- Keep the working directory inside the sandbox root.
+- Use the configured project root as the default working directory.
+- Apply timeout and output truncation.
 - Write every attempt to `data/shell_audit.log`.
 
 Virtual path mapping:

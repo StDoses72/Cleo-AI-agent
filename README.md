@@ -4,7 +4,7 @@ English version: [README.en.md](README.en.md)
 
 Cleo AI Agent 是一个 local-first 的个人 AI agent runtime，基于 Deep Agents 和
 LangChain 构建，通过 API 调用语言模型。Cleo 把配置、会话状态、thread snapshot、
-项目记忆、工作区文件和受限 shell 工具都放在本地管理；模型推理由你在
+项目记忆、工作区文件和local shell 工具都放在本地管理；模型推理由你在
 `config/cleo.json` 中配置的 API provider 提供。
 
 本文只描述当前仓库已经存在的能力，不把未来计划写成已完成能力。
@@ -19,7 +19,7 @@ LangChain 构建，通过 API 调用语言模型。Cleo 把配置、会话状态
 - thread snapshot：退出、重置、中断或 one-shot 完成时保存 `memory/thread_objects/{thread_id}.json`。
 - resume：启动时如果存在未结束的 `current_thread_id`，会询问是否恢复该 thread。
 - DreamAgent memory：正常退出或 one-shot 完成后，DreamAgent 可把 thread snapshot 整理为项目长期记忆。
-- restricted shell tool：提供 allowlist、denylist、sandbox root、timeout 和 audit log。
+- local shell tool：提供 timeout、输出截断、默认工作目录和 audit log。
 - skills loading：Deep Agents 从 `skills/` 加载本地 skill，当前 tracked skill 是 `demo-production`。
 - runtime state：`data/runtime.json` 缺失时会自动生成默认状态。
 
@@ -39,7 +39,7 @@ Cleo-AI-agent/
     memory/thread_memory.py       # Thread snapshot serialization
     runtime/model.py              # data/runtime.json read/write model
   tools/
-    shell_tools.py                # Restricted shell tool
+    shell_tools.py                # Local shell tool
     dream_agent_tools.py          # DreamAgent memory tools
   skills/
     demo-production/              # Currently available skill
@@ -131,13 +131,13 @@ copy config\cleo.example.json config\cleo.json
 			"default": {
 				"sandbox_root": ".",
 				"audit_log_path": "data/shell_audit.log",
-				"require_allowlist": true,
-				"enforce_sandbox": true,
+				"require_allowlist": false,
+				"enforce_sandbox": false,
 				"require_approval": false,
 				"timeout_seconds": 30,
 				"max_output_chars": 12000,
 				"allowed_commands": ["python", "python.exe", "py", "py.exe"],
-				"denied_patterns": ["&&", "||", ";", "|", ">", "<", "`", "$(", "../", "..\\"]
+				"denied_patterns": []
 			}
 		},
 		"tools": {
@@ -183,7 +183,7 @@ python main.py
 交互式命令：
 
 - `/quit` 或 `/exit`：保存当前 thread snapshot，运行 DreamAgent 记忆整理，然后退出。
-- `/reset`：保存当前 thread snapshot 并开启新 thread。
+- `/new`：保存当前 thread snapshot 并开启新 thread。
 - `/attach`：为下一条消息附加图片文件。
 
 ## 运行时文件
@@ -191,7 +191,7 @@ python main.py
 这些文件由代码在运行时维护：
 
 - `data/runtime.json`：当前 project、当前 thread、recent threads。缺失时会自动生成。
-- `data/shell_audit.log`：restricted shell tool 调用审计。
+- `data/shell_audit.log`：local shell tool 调用审计。
 - `memory/thread_objects/{thread_id}.json`：thread message snapshot。
 - `memory/threads.jsonl`：thread snapshot metadata registry。
 - `memory/projects/<project>/AGENT.md`：DreamAgent 生成的项目长期记忆。
@@ -202,5 +202,4 @@ python main.py
 
 - 目前还没有 `/threads` 或 `/switch <thread_id>` 这种自由切换历史 thread 的交互命令。
 - 当前 resume 是 message snapshot replay，不是完整 durable LangGraph checkpoint。
-- `SHELL_REQUIRE_APPROVAL=True` 的完整 interrupt/resume 交互还没有在 CLI 中实现。
 - `skills/` 当前只包含 `demo-production`。

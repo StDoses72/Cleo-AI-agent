@@ -114,13 +114,13 @@ class ShellProfile(BaseModel):
 
     sandbox_root: Path | None = None
     audit_log_path: Path | None = None
-    require_allowlist: bool = True
-    enforce_sandbox: bool = True
+    require_allowlist: bool = False
+    enforce_sandbox: bool = False
     require_approval: bool = False
     timeout_seconds: int = Field(default=30, gt=0)
     max_output_chars: int = Field(default=12000, ge=0)
     allowed_commands: list[str] = Field(default_factory=lambda: DEFAULT_ALLOWED_COMMANDS.copy())
-    denied_patterns: list[str] = Field(default_factory=lambda: DEFAULT_DENIED_PATTERNS.copy())
+    denied_patterns: list[str] = Field(default_factory=list)
 
 
 class ToolsProfile(BaseModel):
@@ -313,13 +313,13 @@ def _default_config() -> dict[str, Any]:
                 "default": {
                     "sandbox_root": ".",
                     "audit_log_path": "data/shell_audit.log",
-                    "require_allowlist": True,
-                    "enforce_sandbox": True,
+                    "require_allowlist": False,
+                    "enforce_sandbox": False,
                     "require_approval": False,
                     "timeout_seconds": 30,
                     "max_output_chars": 12000,
                     "allowed_commands": DEFAULT_ALLOWED_COMMANDS,
-                    "denied_patterns": DEFAULT_DENIED_PATTERNS,
+                    "denied_patterns": [],
                 }
             },
             "tools": {"default": {"tavily_api_key": None}},
