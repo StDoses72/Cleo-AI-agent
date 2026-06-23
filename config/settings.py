@@ -313,13 +313,13 @@ def _default_config() -> dict[str, Any]:
                 "default": {
                     "sandbox_root": ".",
                     "audit_log_path": "data/shell_audit.log",
-                    "require_allowlist": False,
-                    "enforce_sandbox": False,
+                    "require_allowlist": True,
+                    "enforce_sandbox": True,
                     "require_approval": False,
                     "timeout_seconds": 30,
                     "max_output_chars": 12000,
                     "allowed_commands": DEFAULT_ALLOWED_COMMANDS,
-                    "denied_patterns": [],
+                    "denied_patterns": DEFAULT_DENIED_PATTERNS,
                 }
             },
             "tools": {"default": {"tavily_api_key": None}},

@@ -37,13 +37,33 @@
 			"default": {
 				"sandbox_root": ".",
 				"audit_log_path": "data/shell_audit.log",
-				"require_allowlist": false,
-				"enforce_sandbox": false,
+				"require_allowlist": true,
+				"enforce_sandbox": true,
 				"require_approval": false,
 				"timeout_seconds": 30,
 				"max_output_chars": 12000,
 				"allowed_commands": ["python", "python.exe", "py", "py.exe"],
-				"denied_patterns": []
+				"denied_patterns": [
+					"&&",
+					"||",
+					";",
+					"|",
+					">",
+					"<",
+					"`",
+					"$(",
+					"../",
+					"..\\",
+					" rm ",
+					" rmdir ",
+					" del ",
+					" erase ",
+					" format ",
+					" shutdown ",
+					" restart-computer ",
+					" powershell -enc",
+					" certutil -decode"
+				]
 			}
 		},
 		"tools": {

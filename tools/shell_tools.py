@@ -109,15 +109,59 @@ def _truncate_output(text: str) -> str:
     return f"{text[:max_chars]}\n\n...[truncated {omitted} chars]"
 
 
+def _path_is_inside(child: Path, parent: Path) -> bool:
+    try:
+        child_resolved = child.resolve()
+        parent_resolved = parent.resolve()
+        common = os.path.commonpath([str(child_resolved), str(parent_resolved)])
+    except (OSError, ValueError):
+        return False
+    return os.path.normcase(common) == os.path.normcase(str(parent_resolved))
+
+
+def _normalized_command_names(commands: list[str]) -> set[str]:
+    names: set[str] = set()
+    for command in commands:
+        stripped = _strip_matching_quotes(command.strip())
+        if stripped:
+            names.add(Path(stripped).name.casefold())
+    return names
+
+
+def _first_denied_pattern(command: str) -> str | None:
+    command_text = command.casefold()
+    for pattern in settings.SHELL_DENIED_PATTERNS:
+        if pattern and pattern.casefold() in command_text:
+            return pattern
+    return None
+
+
+def _first_outside_sandbox_path(command: str, sandbox_root: Path) -> str | None:
+    for arg in _translate_command_args(command)[1:]:
+        candidate = Path(_strip_matching_quotes(arg))
+        if candidate.is_absolute() and not _path_is_inside(candidate, sandbox_root):
+            return str(candidate)
+    return None
+
+
+def _blocked_shell_result(audit: dict, start: float, reason: str) -> str:
+    audit["allowed"] = False
+    audit["reason"] = reason
+    audit["duration_ms"] = round((time.perf_counter() - start) * 1000, 2)
+    _append_shell_audit(audit)
+    return f"Command blocked by shell policy: {reason}"
+
+
 @tool
 def run_shell_command(command: str, working_directory: str = "") -> str:
     """
     Run a local shell command for the user.
 
-    Cleo is a personal assistant, so this tool intentionally does not enforce
-    an allowlist, denylist, or sandbox boundary. It still records audit entries,
-    applies the configured timeout, truncates oversized output, and starts in
-    the configured project root when no working directory is provided.
+    The tool reads its shell policy from the active shell profile. It can enforce
+    an allowlist, configured denied patterns, a best-effort sandbox boundary, and
+    a fail-closed approval requirement. It always records audit entries, applies
+    the configured timeout, truncates oversized output, and starts in the
+    configured project root when no working directory is provided.
 
     Args:
         command: Command string to execute. `/workspace/...`, `/skills/...`,
@@ -151,6 +195,45 @@ def run_shell_command(command: str, working_directory: str = "") -> str:
         "returncode": None,
         "duration_ms": None,
     }
+
+    if settings.SHELL_REQUIRE_APPROVAL:
+        return _blocked_shell_result(
+            audit,
+            start,
+            "approval is required, but no interactive approval flow is available",
+        )
+
+    denied_pattern = _first_denied_pattern(translated_command)
+    if denied_pattern is not None:
+        return _blocked_shell_result(
+            audit,
+            start,
+            f"command matched denied pattern: {denied_pattern}",
+        )
+
+    if settings.SHELL_REQUIRE_ALLOWLIST:
+        allowed_commands = _normalized_command_names(settings.SHELL_ALLOWED_COMMANDS)
+        if primary.casefold() not in allowed_commands:
+            return _blocked_shell_result(
+                audit,
+                start,
+                f"primary command is not in allowlist: {primary or '<empty>'}",
+            )
+
+    if settings.SHELL_ENFORCE_SANDBOX:
+        if not _path_is_inside(cwd, sandbox_root):
+            return _blocked_shell_result(
+                audit,
+                start,
+                f"working directory is outside sandbox: {cwd}",
+            )
+        outside_path = _first_outside_sandbox_path(translated_command, sandbox_root)
+        if outside_path is not None:
+            return _blocked_shell_result(
+                audit,
+                start,
+                f"absolute path argument is outside sandbox: {outside_path}",
+            )
 
     try:
         env = os.environ.copy()
