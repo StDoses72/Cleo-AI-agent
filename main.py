@@ -4,8 +4,12 @@ import argparse
 import base64
 import mimetypes
 import os
+import shutil
+import subprocess
+import tempfile
 import textwrap
 import uuid
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from langchain_core.messages import (
@@ -16,13 +20,12 @@ from langchain_core.messages import (
     ToolMessage,
 )
 
-from core.memory.thread_memory import load_messages_from_file, save_messages_to_file
-from core.runtime.model import Runtime
-
 if TYPE_CHECKING:
     from core.agent import Agent
+    from core.runtime.model import Runtime
 
 SUPPORTED_IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+LOCAL_CONFIG_PATH = "config/cleo.json"
 
 
 def clear_screen() -> None:
@@ -60,6 +63,8 @@ def _save_thread_snapshot(
     thread_id: str,
     fallback_messages: list[BaseMessage] | None = None,
 ) -> None:
+    from core.memory.thread_memory import save_messages_to_file
+
     config = {"configurable": {"thread_id": thread_id}}
     thread_messages = agent.deepagent.get_state(config).values.get("messages", [])
     if not thread_messages and fallback_messages is not None:
@@ -245,6 +250,97 @@ def _print_restored_messages(thread_id: str, loaded_messages: list[BaseMessage])
     print()
 
 
+def _run_git(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
+        ["git", "-C", str(repo_root), *args],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        details = result.stderr.strip() or result.stdout.strip() or "no output"
+        command = "git " + " ".join(args)
+        raise RuntimeError(f"{command} failed: {details}")
+    return result
+
+
+def _validated_preserve_paths(
+    repo_root: Path,
+    preserve_paths: tuple[str, ...],
+) -> list[tuple[str, Path]]:
+    validated: list[tuple[str, Path]] = []
+    for rel in preserve_paths:
+        rel_path = Path(rel)
+        if rel_path.is_absolute() or ".." in rel_path.parts:
+            raise RuntimeError(f"Refusing invalid preserve path: {rel}")
+
+        absolute = (repo_root / rel_path).resolve()
+        if not absolute.is_relative_to(repo_root):
+            raise RuntimeError(f"Refusing preserve path outside repository: {rel}")
+
+        validated.append((rel_path.as_posix(), absolute))
+    return validated
+
+
+def _copy_path(src: Path, dst: Path) -> None:
+    if src.is_dir():
+        shutil.copytree(src, dst, dirs_exist_ok=True)
+        return
+    if src.exists():
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+
+
+def _git_clean_args(preserved: list[tuple[str, Path]]) -> list[str]:
+    args = ["clean", "-ffdx"]
+    for rel, _ in preserved:
+        args.extend(["-e", rel])
+    return args
+
+
+def reset_workspace_to_main(
+    repo_root: Path,
+    *,
+    main_branch: str = "main",
+    preserve_paths: tuple[str, ...] = (LOCAL_CONFIG_PATH,),
+) -> None:
+    repo_root = repo_root.resolve()
+
+    git_root = Path(_run_git(repo_root, "rev-parse", "--show-toplevel").stdout.strip()).resolve()
+    if git_root != repo_root:
+        raise RuntimeError(f"Refusing to reset unexpected repository root: {git_root}")
+
+    try:
+        _run_git(repo_root, "rev-parse", "--verify", "--quiet", f"refs/heads/{main_branch}")
+    except RuntimeError as exc:
+        raise RuntimeError(f"Local branch '{main_branch}' does not exist.") from exc
+
+    preserved = _validated_preserve_paths(repo_root, preserve_paths)
+    clean_args = _git_clean_args(preserved)
+
+    with tempfile.TemporaryDirectory(prefix="cleo-reset-") as tmp_dir:
+        backup_root = Path(tmp_dir)
+        for rel, absolute in preserved:
+            if absolute.exists():
+                _copy_path(absolute, backup_root / rel)
+
+        _run_git(repo_root, "reset", "--hard")
+        _run_git(repo_root, *clean_args)
+        _run_git(repo_root, "switch", main_branch)
+        _run_git(repo_root, "reset", "--hard", main_branch)
+        _run_git(repo_root, *clean_args)
+
+        for rel, absolute in preserved:
+            backup = backup_root / rel
+            if backup.exists():
+                _copy_path(backup, absolute)
+
+    print(f"Reset workspace to local '{main_branch}' branch.")
+    if preserved:
+        preserved_list = ", ".join(rel for rel, _ in preserved)
+        print(f"Preserved local file(s): {preserved_list}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the Cleo AI Agent local runtime.")
     parser.add_argument(
@@ -252,6 +348,14 @@ def main() -> None:
         nargs="?",
         default=None,
         help="Optional one-shot user message. Omit it to enter interactive chat.",
+    )
+    parser.add_argument(
+        "--reset-to-main",
+        action="store_true",
+        help=(
+            "Reset this repository to the local main branch and remove untracked "
+            "or ignored files. Preserves config/cleo.json."
+        ),
     )
     thread_group = parser.add_mutually_exclusive_group()
 
@@ -272,6 +376,18 @@ def main() -> None:
     )
 
     args = parser.parse_args()
+
+    if args.reset_to_main:
+        if args.message is not None or args.thread_id is not None or args.resume_id is not None:
+            raise SystemExit("--reset-to-main cannot be combined with chat or thread arguments.")
+        try:
+            reset_workspace_to_main(Path(__file__).resolve().parent)
+        except RuntimeError as exc:
+            raise SystemExit(f"Reset to main failed: {exc}") from exc
+        return
+
+    from core.memory.thread_memory import load_messages_from_file
+    from core.runtime.model import Runtime
 
     runtime = Runtime()
     loaded_messages: list[BaseMessage] | None = None
