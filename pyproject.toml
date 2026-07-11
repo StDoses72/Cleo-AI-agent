@@ -10,10 +10,12 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
   "deepagents",
+  "fastmcp>=3.4,<4",
   "langchain",
   "langchain-core",
   "langchain-openai",
   "langgraph",
+  "openai-codex>=0.1.0b3,<0.2",
   "pydantic",
   "rich",
 ]
