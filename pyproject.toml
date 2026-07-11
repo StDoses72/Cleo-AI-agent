@@ -28,12 +28,13 @@ dev = [
 
 [project.scripts]
 cleo = "main:main"
+cleo-codex-mcp = "mcp_servers.openai_codex_mcp:main"
 
 [tool.setuptools]
 py-modules = ["main"]
 
 [tool.setuptools.packages.find]
-include = ["config*", "core*", "tools*"]
+include = ["config*", "core*", "tools*", "mcp_servers*"]
 
 [tool.ruff]
 line-length = 100

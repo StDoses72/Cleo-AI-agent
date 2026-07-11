@@ -127,6 +127,7 @@ class ToolsProfile(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     tavily_api_key: SecretStr | None = None
+    codex_model: str = Field(default="gpt-5.5", min_length=1)
 
 
 class ActiveProfiles(BaseModel):
@@ -322,7 +323,12 @@ def _default_config() -> dict[str, Any]:
                     "denied_patterns": DEFAULT_DENIED_PATTERNS,
                 }
             },
-            "tools": {"default": {"tavily_api_key": None}},
+            "tools": {
+                "default": {
+                    "tavily_api_key": None,
+                    "codex_model": "gpt-5.5",
+                }
+            },
         },
     }
 

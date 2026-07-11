@@ -16,9 +16,6 @@
 				"base_url": "https://api.moonshot.cn/v1"
 			}
 		},
-		"subagents": {
-
-		},
 		"directories": {
 			"default": {
 				"root_dir": ".",
@@ -68,6 +65,7 @@
 		},
 		"tools": {
 			"default": {
+				"codex_model": "gpt-5.5",
 				"tavily_api_key": null
 			}
 		}

@@ -9,6 +9,7 @@ from langchain.chat_models import init_chat_model
 from langgraph.checkpoint.memory import InMemorySaver
 
 from config.settings import settings
+from tools.codex_tools import codex_reply_tool, codex_tool
 from tools.dream_agent_tools import (
     list_all_project_names,
     list_all_thread_ids,
@@ -102,7 +103,7 @@ class Agent:
             root_dir=str(self.root_dir),
             virtual_mode=True,
         )
-        self.toolist = [run_shell_command]
+        self.toolist = [run_shell_command, codex_tool, codex_reply_tool]
         self.deepagent = create_deep_agent(
             model=init_chat_model(
                 model=active_profile.model,
