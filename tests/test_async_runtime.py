@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import time
 
 from langchain_core.messages import AIMessageChunk
 
 import main
 from core.agent import Agent, DreamAgent
+from core.integrations.agent_adapter import AgentResult
 from core.integrations.codex import CodexAdapter, CodexResult
 
 
@@ -38,22 +38,30 @@ def test_agent_stream_text_uses_async_graph_streaming() -> None:
     assert asyncio.run(collect()) == ["hello", " world"]
 
 
-def test_codex_sync_sdk_work_runs_outside_event_loop(tmp_path, monkeypatch) -> None:
+def test_codex_facade_uses_async_unified_adapter(tmp_path, monkeypatch) -> None:
     adapter = CodexAdapter(default_model="test-model", project_root=tmp_path)
 
-    def slow_start(prompt: str, project_path: str, model: str) -> CodexResult:
-        time.sleep(0.05)
-        return CodexResult(
-            thread_id="thread-1",
+    async def fake_run(**kwargs) -> AgentResult:
+        assert kwargs == {
+            "provider": "codex",
+            "prompt": "hello",
+            "project_path": ".",
+            "model": "test-model",
+        }
+        await asyncio.sleep(0.05)
+        return AgentResult(
+            session_id="agent-1",
+            provider="codex",
+            native_session_id="thread-1",
             turn_id="turn-1",
             status="completed",
-            response=f"{prompt}:{model}:{project_path}",
+            response="done",
         )
 
-    monkeypatch.setattr(adapter, "_start_sync", slow_start)
+    monkeypatch.setattr(adapter._adapter, "run", fake_run)
 
     async def exercise() -> CodexResult:
-        task = asyncio.create_task(adapter.start("hello", "."))
+        task = asyncio.create_task(adapter.start("hello", ".", "test-model"))
         await asyncio.sleep(0.01)
         assert not task.done()
         return await task

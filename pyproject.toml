@@ -9,6 +9,8 @@ description = "A local personal AI agent runtime built on Deep Agents and LangCh
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+  "agent-client-protocol>=0.11,<1",
+  "claude-agent-sdk>=0.2,<0.3",
   "deepagents",
   "fastmcp>=3.4,<4",
   "langchain",

@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import asyncio
-import os
 from pathlib import Path
 
-from openai_codex import ApprovalMode, Codex, Sandbox, TurnResult
 from pydantic import BaseModel, ConfigDict
+
+from core.integrations.agent_adapter import AgentAdapter, AgentResult, CodexProvider
 
 
 class CodexResult(BaseModel):
@@ -19,13 +18,12 @@ class CodexResult(BaseModel):
 
 
 class CodexAdapter:
-    """Async application boundary around the synchronous Codex SDK."""
+    """Backward-compatible Codex facade backed by the unified agent adapter."""
 
     def __init__(self, default_model: str, project_root: str | Path) -> None:
-        self._default_model = self._required_text(default_model, "default_model")
-        self._project_root = Path(project_root).expanduser().resolve()
-        if not self._project_root.is_dir():
-            raise ValueError(f"Project root does not exist: {self._project_root}")
+        self._adapter = AgentAdapter(project_root)
+        self._adapter.register(CodexProvider(default_model=default_model))
+        self._handles: dict[str, str] = {}
 
     async def start(
         self,
@@ -33,16 +31,13 @@ class CodexAdapter:
         project_path: str,
         model: str | None = None,
     ) -> CodexResult:
-        prompt = self._required_text(prompt, "prompt")
-        project_path = self._project_directory(project_path)
-        model = self._required_text(model or self._default_model, "model")
-
-        return await asyncio.to_thread(
-            self._start_sync,
-            prompt,
-            project_path,
-            model,
+        result = await self._adapter.run(
+            provider="codex",
+            prompt=prompt,
+            project_path=project_path,
+            model=model,
         )
+        return self._result(result)
 
     async def reply(
         self,
@@ -50,87 +45,27 @@ class CodexAdapter:
         prompt: str,
         project_path: str,
     ) -> CodexResult:
-        thread_id = self._required_text(thread_id, "thread_id")
-        prompt = self._required_text(prompt, "prompt")
-        project_path = self._project_directory(project_path)
-
-        return await asyncio.to_thread(
-            self._reply_sync,
-            thread_id,
-            prompt,
-            project_path,
-        )
-
-    @staticmethod
-    def _start_sync(prompt: str, project_path: str, model: str) -> CodexResult:
-        with Codex() as client:
-            thread = client.thread_start(
-                approval_mode=ApprovalMode.deny_all,
-                cwd=project_path,
-                model=model,
-                sandbox=Sandbox.workspace_write,
+        handle = self._handles.get(thread_id)
+        if handle is None:
+            session = await self._adapter.resume_session(
+                provider="codex",
+                native_session_id=thread_id,
+                project_path=project_path,
             )
-            result = thread.run(
-                prompt,
-                approval_mode=ApprovalMode.deny_all,
-                cwd=project_path,
-                sandbox=Sandbox.workspace_write,
-            )
+            handle = session.id
+            self._handles[thread_id] = handle
+        return self._result(await self._adapter.prompt(handle, prompt))
 
-        return CodexAdapter._result(thread.id, result)
+    async def close(self) -> None:
+        await self._adapter.aclose()
 
-    @staticmethod
-    def _reply_sync(
-        thread_id: str,
-        prompt: str,
-        project_path: str,
-    ) -> CodexResult:
-        with Codex() as client:
-            thread = client.thread_resume(
-                thread_id,
-                approval_mode=ApprovalMode.deny_all,
-                cwd=project_path,
-                sandbox=Sandbox.workspace_write,
-            )
-            result = thread.run(
-                prompt,
-                approval_mode=ApprovalMode.deny_all,
-                cwd=project_path,
-                sandbox=Sandbox.workspace_write,
-            )
-
-        return CodexAdapter._result(thread.id, result)
-
-    @staticmethod
-    def _required_text(value: str, field_name: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError(f"{field_name} cannot be empty")
-        return value
-
-    def _project_directory(self, project_path: str) -> str:
-        raw_path = self._required_text(project_path, "project_path")
-        expanded_path = os.path.expanduser(raw_path)
-        drive, _ = os.path.splitdrive(expanded_path)
-
-        if os.name == "nt" and expanded_path.startswith(("/", "\\")) and not drive:
-            path = self._project_root / expanded_path.lstrip("/\\")
-        else:
-            path = Path(expanded_path)
-            if not path.is_absolute():
-                path = self._project_root / path
-
-        path = path.resolve()
-        if not path.is_dir():
-            raise ValueError(f"Project directory does not exist: {path}")
-        return os.path.normcase(str(path))
-
-    @staticmethod
-    def _result(thread_id: str, result: TurnResult) -> CodexResult:
+    def _result(self, result: AgentResult) -> CodexResult:
+        thread_id = result.native_session_id or result.session_id
+        self._handles[thread_id] = result.session_id
         return CodexResult(
             thread_id=thread_id,
-            turn_id=result.id,
-            status=result.status.value,
-            response=result.final_response,
-            error=result.error.message if result.error is not None else None,
+            turn_id=result.turn_id,
+            status=result.status,
+            response=result.response,
+            error=result.error,
         )
