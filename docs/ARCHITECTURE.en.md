@@ -64,29 +64,45 @@ File: `core/agent.py`
 
 Responsibilities:
 
-- Read validated active profiles from `config/cleo.json`.
+- Read validated active profiles from the default `config/cleo.json` or the
+  path selected through `CLEO_CONFIG_PATH`.
 - Initialize the model with `langchain.chat_models.init_chat_model`.
 - Create the main Cleo agent with `create_deep_agent`.
 - Expose the project virtual filesystem through `FilesystemBackend(root_dir=repo_root, virtual_mode=True)`.
 - Use `InMemorySaver` as the current LangGraph checkpointer.
 - Inject the `run_shell_command` tool.
-- Load `/skills` and `/memory/AGENT.md`.
+- Load `/skills` and the developer-owned `/memory/MEMORY_POLICY.md`.
 
 Current behavior:
 
-- If `config/cleo.json` is missing, Cleo creates a default template and asks the user to fill it in.
+- If the active config path is missing, Cleo creates a default template and asks the user to fill it in.
 - `InMemorySaver` only persists LangGraph state inside the current process.
 - Thread resume relies on replaying message snapshots, not restoring a full durable graph checkpoint.
 
 ### 3. DreamAgent Layer
 
-Files: `core/agent.py`, `tools/dream_agent_tools.py`
+Files: `core/agent.py`, `tools/dream_agent_tools.py`,
+`core/memory/compaction.py`, `core/memory/state.py`, and `core/memory/store.py`
 
 Responsibilities:
 
-- Read `memory/thread_objects/{thread_id}.json`.
+- Build a deterministic, redacted compact view after saving the raw snapshot.
+- Let DreamAgent read only compact views whose source hash still matches raw data.
 - Read existing project memory under `memory/projects/<project>/`.
-- Write durable facts, decisions, preferences, corrections, and open questions to `memory/projects/<project>/AGENT.md`.
+- Store atomic facts, decisions, constraints, preferences, corrections, and open
+  questions in SQLite with message evidence from the current source.
+- Atomically render `memory/projects/<project>/MEMORY.md`; its atomic-memory index
+  is generated from SQLite.
+- Advance `memory_state.json` only after Markdown succeeds and an explicit
+  completion tool validates the source-backed memory count.
+
+Write-ownership boundaries:
+
+- `AGENTS.md` is user/team-approved guidance and changes only on an explicit user request.
+- `memory/MEMORY_POLICY.md` is a developer-owned extraction policy that DreamAgent reads only.
+- `memory/projects/<project>/MEMORY.md` is rebuildable descriptive memory written by DreamAgent.
+- `skills/` changes only on an explicit user request; memory is never promoted automatically
+  into repository instructions or skills.
 
 Current trigger points:
 
@@ -130,14 +146,25 @@ File: `core/memory/thread_memory.py`
 Generated files:
 
 - `memory/thread_objects/{thread_id}.json`
+- `memory/compact_threads/{thread_id}.json`
 - `memory/threads.jsonl`
+- `memory/memory.sqlite3`
+- `memory/memory_state.json`
 
 Responsibilities:
 
 - Serialize LangChain messages with `messages_to_dict`.
-- Save the current thread's message snapshot.
+- Atomically save the authoritative thread message snapshot.
+- Merge tool calls/results, omit large file-read/write bodies, preserve structured
+  JSON, redact common credential fields, and record source hashes and statistics.
+- Build Human-led conversation chunks and idempotently replace the thread's
+  SQLite index; the main Agent uses project-bound local lexical retrieval tools.
 - Append thread registry metadata.
 - Reload historical messages with `messages_from_dict`.
+
+A derived-layer failure does not undo a successfully written raw snapshot.
+History retrieval also checks each SQLite chunk's source hash against the current
+compact file so stale index entries are not returned.
 
 ### 6. Configuration Layer
 
@@ -145,7 +172,9 @@ File: `config/settings.py`
 
 Reads:
 
-- `config/cleo.json`
+- `config/cleo.json` by default.
+- The path selected by `CLEO_CONFIG_PATH` when set; Docker images use
+  `/config/cleo.json`.
 
 Core settings:
 
@@ -154,6 +183,9 @@ Core settings:
 - `active_profiles.shell` selects the active `ShellProfile`.
 - `active_profiles.tools` selects the active `ToolsProfile`.
 - Directory profile paths resolve relative to the project root unless absolute.
+- The memory pipeline uses `thread_objects_dir`, `compact_threads_dir`,
+  `thread_registry_path`, `memory_database_path`, `memory_state_path`, and
+  `memory_projects_dir`.
 
 Shell tool settings:
 
@@ -165,12 +197,14 @@ Shell tool settings:
 - `timeout_seconds`
 - `max_output_chars`
 - `allowed_commands`
+- `include_platform_defaults`
 - `denied_patterns`
 
-The allowlist, denylist, approval, and sandbox fields are retained for config
-compatibility, but the current personal-assistant shell tool does not enforce
-them. It uses `sandbox_root` as the default working directory when no explicit
-working directory is provided.
+The shell tool enforces the allowlist, denylist, approval, and sandbox settings.
+`include_platform_defaults` defaults to `true` and adds basic Windows or POSIX
+commands so one `cleo.json` can be portable. Set it to `false` to use only the
+configured allowlist. `sandbox_root` is the default working directory when no
+explicit working directory is provided.
 
 ### 7. Local Shell Tool Layer
 
@@ -241,7 +275,8 @@ code.
 - `tools/**/*.py`
 - `skills/demo-production/SKILL.md`
 - `skills/demo-production/agents/openai.yaml`
-- `memory/AGENT.md`
+- `AGENTS.md`
+- `memory/MEMORY_POLICY.md`
 - `pyproject.toml`
 - `requirements.txt`
 - `config/cleo.example.json`
@@ -261,7 +296,7 @@ These files are copied from templates and maintained locally. They should not be
 - `data/shell_audit.log`
 - `memory/thread_objects/{thread_id}.json`
 - `memory/threads.jsonl`
-- `memory/projects/<project>/AGENT.md`
+- `memory/projects/<project>/MEMORY.md`
 
 ### Workspace Inputs Or Temporary Artifacts
 

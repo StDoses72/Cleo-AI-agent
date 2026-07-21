@@ -20,7 +20,9 @@ Chinese version: [README.md](README.md)
 - Image attachments in interactive chat through `/attach`; JPEG, PNG, WebP, and GIF are supported.
 - Thread snapshots saved on exit, reset, interruption, and one-shot completion.
 - Resume prompt on startup when `current_thread_id` points to an unfinished thread.
-- DreamAgent memory consolidation from thread snapshots into project memory.
+- Layered memory derived from authoritative raw snapshots: redacted compact views, SQLite history chunks, and atomic durable memory with message evidence.
+- DreamAgent consolidation reads only source-hash-validated compact views before updating project memory.
+- Project-bound tools separately retrieve stable long-term memory and detailed historical discussion.
 - Local shell tool with timeout, output truncation, default working directory, and audit log settings.
 - Deep Agents skills loading from `skills/`; the currently tracked skill is `demo-production`.
 - Automatic creation of `data/runtime.json` with a default runtime state when it is missing.
@@ -29,6 +31,7 @@ Chinese version: [README.md](README.md)
 
 ```text
 Cleo-AI-agent/
+  AGENTS.md                       # Human-approved repository instructions
   main.py                         # CLI entry point
   pyproject.toml                  # Python project metadata and dependencies
   requirements.txt                # Compatibility wrapper that delegates to -e .
@@ -38,18 +41,25 @@ Cleo-AI-agent/
     cleo.json                     # Local private config, ignored by Git
   core/
     agent.py                      # Cleo / DreamAgent construction
+    memory/compaction.py          # Deterministic compact/redacted thread view
+    memory/state.py               # Memory source version and completion state
+    memory/store.py               # SQLite memory, evidence, and history chunks
     memory/thread_memory.py       # Thread snapshot serialization
     runtime/model.py              # data/runtime.json read/write model
   tools/
     shell_tools.py                # Local shell tool
     dream_agent_tools.py          # DreamAgent memory tools
+    memory_tools.py               # Project-bound retrieval tools
   skills/
     demo-production/              # Currently available skill
     demo-production/agents/       # Skill-local agent config
   memory/
-    AGENT.md                      # Global memory policy
+    MEMORY_POLICY.md              # Developer-owned memory extraction policy
     thread_objects/               # Runtime generated thread message snapshots
+    compact_threads/              # Runtime generated compact/redacted snapshots
     threads.jsonl                 # Runtime generated thread snapshot registry
+    memory.sqlite3                # Atomic memory, evidence, and history index
+    memory_state.json             # Memory source/consolidation state
     projects/                     # Runtime generated long-term project memory
   data/
     .gitkeep
@@ -60,11 +70,18 @@ Cleo-AI-agent/
   docs/
     ARCHITECTURE.md
     ARCHITECTURE.en.md
+    CASTMIND_MEMORY_MIGRATION.md
 ```
 
 `config/cleo.json`, `data/runtime.json`, `data/shell_audit.log`,
-`memory/thread_objects/`, `memory/threads.jsonl`, and `memory/projects/` are local
-configuration or runtime state and should not be committed.
+`memory/thread_objects/`, `memory/compact_threads/`, `memory/threads.jsonl`,
+`memory/memory.sqlite3`, `memory/memory_state.json`, and `memory/projects/` are
+local configuration or runtime state and should not be committed.
+
+`AGENTS.md` contains repository guidance explicitly maintained by the user or
+team. `memory/MEMORY_POLICY.md` is the developer-owned extraction policy, while
+`memory/projects/<project>/MEMORY.md` is DreamAgent-generated derived memory.
+Automatic memory never edits `AGENTS.md` or creates or updates skills.
 
 ## Installation
 
@@ -80,13 +97,78 @@ Development dependencies:
 pip install -e ".[dev]"
 ```
 
-`requirements.txt` is only a compatibility entry point for older setup notes.
-Prefer managing dependencies through `pyproject.toml`.
+`pyproject.toml` is the only manually maintained source for direct dependencies.
+`requirements.txt` is the exact Linux container lock file and should not be edited
+manually.
+
+## Dependency Updates and Docker
+
+Docker does not replace dependency manifests: `pyproject.toml` describes project
+dependencies, `requirements.txt` locks resolved versions, and Docker installs that
+lock file to produce a repeatable runtime.
+
+Regenerate the lock file and build the image with one command:
+
+```bash
+python scripts/update_project.py
+```
+
+For networks where the official index is slow, use a mirror and keep official
+PyPI as a fallback for Codex pre-release packages that may not be mirrored:
+
+```bash
+python scripts/update_project.py --index-url https://pypi.tuna.tsinghua.edu.cn/simple --extra-index-url https://pypi.org/simple
+```
+
+Update only the lock file without building the application image:
+
+```bash
+python scripts/update_project.py --skip-build
+```
+
+After a local build, Compose mounts the existing `config/cleo.json`; a separate
+Docker-specific profile is not required:
+
+```bash
+docker compose run --rm cleo
+docker compose run --rm cleo "Describe the current project"
+```
+
+The same `cleo.json` works for local Windows and Linux Docker runs. Cleo adds
+appropriate shell commands for the current platform automatically. Set
+`include_platform_defaults: false` to manage the allowlist entirely yourself.
+
+After publishing to Docker Hub or GHCR, users do not need to clone GitHub. They
+can generate a config directly from the image (replace `<image>` with the real
+image name):
+
+```powershell
+cmd /c "docker run --rm <image> --print-config-template > cleo.json"
+notepad cleo.json
+```
+
+After filling in model settings and an API key, run:
+
+```powershell
+docker run --rm -it `
+  --mount "type=bind,source=$($PWD.Path)\cleo.json,target=/config/cleo.json,readonly" `
+  --mount "type=volume,source=cleo-data,target=/app/data" `
+  --mount "type=volume,source=cleo-memory,target=/app/memory" `
+  --mount "type=volume,source=cleo-workspace,target=/app/workspace" `
+  --mount "type=volume,source=cleo-codex-home,target=/home/cleo/.codex" `
+  <image>
+```
+
+This direct-run example uses named volumes to persist `data/`, `memory/`,
+`workspace/`, and Codex login state. When using the project Compose file,
+`workspace/` is bind-mounted from the host by default. No network port is
+exposed because Cleo and its MCP server are currently CLI/stdio processes.
 
 ## Local Configuration
 
-Cleo no longer uses `.env` as a configuration source. The configuration entry
-point is `config/cleo.json`.
+Cleo no longer uses `.env` as a configuration source. Local runs use
+`config/cleo.json` by default; containers set
+`CLEO_CONFIG_PATH=/config/cleo.json` and mount the same config format there.
 
 Before the first run, you can copy the template manually:
 
@@ -125,10 +207,13 @@ default template and asks you to fill in real profile settings.
 				"skills_dir": "skills",
 				"workspace_dir": "workspace",
 				"memory_dir": "memory",
-				"memory_agent_path": "memory/AGENT.md",
+				"memory_policy_path": "memory/MEMORY_POLICY.md",
 				"memory_projects_dir": "memory/projects",
 				"thread_objects_dir": "memory/thread_objects",
+				"compact_threads_dir": "memory/compact_threads",
 				"thread_registry_path": "memory/threads.jsonl",
+				"memory_database_path": "memory/memory.sqlite3",
+				"memory_state_path": "memory/memory_state.json",
 				"runtime_state_path": "data/runtime.json"
 			}
 		},
@@ -141,7 +226,8 @@ default template and asks you to fill in real profile settings.
 				"require_approval": false,
 				"timeout_seconds": 30,
 				"max_output_chars": 12000,
-				"allowed_commands": ["python", "python.exe", "py", "py.exe"],
+				"allowed_commands": ["python", "git"],
+				"include_platform_defaults": true,
 				"denied_patterns": []
 			}
 		},
@@ -168,6 +254,12 @@ One-shot message:
 cleo "Summarize what the current Cleo project can do."
 ```
 
+Bind the thread and both retrieval tools to a project:
+
+```bash
+cleo --project cleo "Review why we designed the memory system this way."
+```
+
 Or:
 
 ```bash
@@ -192,6 +284,10 @@ Interactive commands:
 - `/new`: save the current thread snapshot and start a new thread.
 - `/attach`: attach an image file to the next message.
 
+Interactive mode also accepts `cleo --project <name>`. `/new` keeps the same
+project binding. `--resume` restores the project stored in the raw snapshot and
+rejects a conflicting `--project` argument.
+
 ## Runtime Files
 
 These files are maintained by the code at runtime:
@@ -199,14 +295,20 @@ These files are maintained by the code at runtime:
 - `data/runtime.json`: current project, current thread, and recent threads. It is generated automatically when missing.
 - `data/shell_audit.log`: local shell tool audit log.
 - `memory/thread_objects/{thread_id}.json`: thread message snapshot.
+- `memory/compact_threads/{thread_id}.json`: deterministic, redacted memory input with a source hash.
 - `memory/threads.jsonl`: thread snapshot metadata registry.
-- `memory/projects/<project>/AGENT.md`: long-term project memory generated by DreamAgent.
+- `memory/memory.sqlite3`: atomic durable memory, message evidence, and conversation chunks.
+- `memory/memory_state.json`: source versions, hashes, Dream status, and failures.
+- `memory/projects/<project>/MEMORY.md`: long-term project memory generated by DreamAgent.
 
-`Runtime` stores only current state and indexes. The conversation content itself
-lives in thread snapshots.
+`Runtime` stores only current CLI state. Raw thread snapshots are authoritative;
+compact files, SQLite indexes, and project `MEMORY.md` files are rebuildable derived layers. See
+[`docs/CASTMIND_MEMORY_MIGRATION.md`](docs/CASTMIND_MEMORY_MIGRATION.md) for the
+migration review and tradeoffs.
 
 ## Current Limits
 
 - There is no `/threads` or `/switch <thread_id>` command for freely switching between historical threads yet.
 - Current resume is message snapshot replay, not a full durable LangGraph checkpoint.
+- Historical retrieval currently uses local lexical ranking; uncalibrated vector retrieval is not enabled.
 - `skills/` currently only contains `demo-production`.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 
@@ -18,7 +19,7 @@ class CodexResult(BaseModel):
 
 
 class CodexAdapter:
-    """Synchronous application boundary around the Codex SDK."""
+    """Async application boundary around the synchronous Codex SDK."""
 
     def __init__(self, default_model: str, project_root: str | Path) -> None:
         self._default_model = self._required_text(default_model, "default_model")
@@ -26,7 +27,7 @@ class CodexAdapter:
         if not self._project_root.is_dir():
             raise ValueError(f"Project root does not exist: {self._project_root}")
 
-    def start(
+    async def start(
         self,
         prompt: str,
         project_path: str,
@@ -36,6 +37,32 @@ class CodexAdapter:
         project_path = self._project_directory(project_path)
         model = self._required_text(model or self._default_model, "model")
 
+        return await asyncio.to_thread(
+            self._start_sync,
+            prompt,
+            project_path,
+            model,
+        )
+
+    async def reply(
+        self,
+        thread_id: str,
+        prompt: str,
+        project_path: str,
+    ) -> CodexResult:
+        thread_id = self._required_text(thread_id, "thread_id")
+        prompt = self._required_text(prompt, "prompt")
+        project_path = self._project_directory(project_path)
+
+        return await asyncio.to_thread(
+            self._reply_sync,
+            thread_id,
+            prompt,
+            project_path,
+        )
+
+    @staticmethod
+    def _start_sync(prompt: str, project_path: str, model: str) -> CodexResult:
         with Codex() as client:
             thread = client.thread_start(
                 approval_mode=ApprovalMode.deny_all,
@@ -50,18 +77,14 @@ class CodexAdapter:
                 sandbox=Sandbox.workspace_write,
             )
 
-        return self._result(thread.id, result)
+        return CodexAdapter._result(thread.id, result)
 
-    def reply(
-        self,
+    @staticmethod
+    def _reply_sync(
         thread_id: str,
         prompt: str,
         project_path: str,
     ) -> CodexResult:
-        thread_id = self._required_text(thread_id, "thread_id")
-        prompt = self._required_text(prompt, "prompt")
-        project_path = self._project_directory(project_path)
-
         with Codex() as client:
             thread = client.thread_resume(
                 thread_id,
@@ -76,7 +99,7 @@ class CodexAdapter:
                 sandbox=Sandbox.workspace_write,
             )
 
-        return self._result(thread.id, result)
+        return CodexAdapter._result(thread.id, result)
 
     @staticmethod
     def _required_text(value: str, field_name: str) -> str:

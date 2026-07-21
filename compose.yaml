@@ -1,0 +1,40 @@
+name: cleo
+
+services:
+  cleo:
+    image: cleo-ai-agent:local
+    build:
+      context: .
+      args:
+        PIP_INDEX_URL: ${CLEO_PYPI_INDEX_URL:-https://pypi.org/simple}
+        PIP_EXTRA_INDEX_URL: ${CLEO_PYPI_EXTRA_INDEX_URL:-}
+    init: true
+    stdin_open: true
+    tty: true
+    working_dir: /app
+    environment:
+      CLEO_CONFIG_PATH: /config/cleo.json
+      HOME: /home/cleo
+      TERM: xterm-256color
+    volumes:
+      - type: bind
+        source: ${CLEO_CONFIG_FILE:-./config/cleo.json}
+        target: /config/cleo.json
+        read_only: true
+      - type: bind
+        source: ${CLEO_WORKSPACE_DIR:-./workspace}
+        target: /app/workspace
+      - type: volume
+        source: cleo-data
+        target: /app/data
+      - type: volume
+        source: cleo-memory
+        target: /app/memory
+      - type: volume
+        source: cleo-codex-home
+        target: /home/cleo/.codex
+
+volumes:
+  cleo-data:
+  cleo-memory:
+  cleo-codex-home:

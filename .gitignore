@@ -4,6 +4,7 @@
 __pycache__/
 *.py[cod]
 .venv/
+.venv-*/
 
 # Local model/provider profile with real API keys.
 config/cleo.json
@@ -16,8 +17,12 @@ data/*
 
 # Conversation snapshots and generated long-term project memory.
 memory/thread_objects/
+memory/compact_threads/
 memory/threads.jsonl
 memory/projects/
+memory/memory.sqlite3*
+memory/memory_state.json
 
 # Temporary test backups created during local validation.
 .codex-test-backup-*/
+.codex-test-tmp-*/

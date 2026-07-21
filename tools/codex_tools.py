@@ -10,7 +10,7 @@ _adapter = CodexAdapter(
 
 
 @tool("codex")
-def codex_tool(
+async def codex_tool(
     prompt: str,
     project_path: str = ".",
     model: str | None = None,
@@ -20,14 +20,14 @@ def codex_tool(
     Use an absolute project path when Codex should work outside Cleo's current
     directory. The returned thread_id can be passed to codex_reply.
     """
-    return _adapter.start(prompt, project_path, model).model_dump()
+    return (await _adapter.start(prompt, project_path, model)).model_dump()
 
 
 @tool("codex_reply")
-def codex_reply_tool(
+async def codex_reply_tool(
     thread_id: str,
     prompt: str,
     project_path: str = ".",
 ) -> dict[str, str | None]:
     """Continue an existing Codex thread and wait for the completed turn."""
-    return _adapter.reply(thread_id, prompt, project_path).model_dump()
+    return (await _adapter.reply(thread_id, prompt, project_path)).model_dump()

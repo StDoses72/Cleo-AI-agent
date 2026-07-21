@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import base64
 import mimetypes
 import os
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
 
 SUPPORTED_IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 LOCAL_CONFIG_PATH = "config/cleo.json"
+CONFIG_TEMPLATE_PATH = Path(__file__).resolve().parent / "config" / "cleo.example.json"
 
 
 def clear_screen() -> None:
@@ -36,7 +38,14 @@ def _new_thread_id() -> str:
     return f"local-{uuid.uuid4().hex[:12]}"
 
 
-def _print_streaming_reply(
+def _project_name(value: str) -> str:
+    project = value.strip()
+    if not project or any(part in project for part in ("/", "\\", "..")):
+        raise argparse.ArgumentTypeError("project must be a name, not a path")
+    return project
+
+
+async def _print_streaming_reply(
     agent: Agent,
     message: str,
     thread_id: str,
@@ -44,7 +53,7 @@ def _print_streaming_reply(
     images: list[dict[str, str]] | None = None,
 ) -> None:
     received_text = False
-    for text in agent.stream_text(
+    async for text in agent.stream_text(
         message,
         thread_id=thread_id,
         loaded_info=loaded_info,
@@ -57,7 +66,7 @@ def _print_streaming_reply(
     print()
 
 
-def _save_thread_snapshot(
+async def _save_thread_snapshot(
     agent: Agent,
     runtime: Runtime,
     thread_id: str,
@@ -66,26 +75,27 @@ def _save_thread_snapshot(
     from core.memory.thread_memory import save_messages_to_file
 
     config = {"configurable": {"thread_id": thread_id}}
-    thread_messages = agent.deepagent.get_state(config).values.get("messages", [])
+    state = await agent.deepagent.aget_state(config)
+    thread_messages = state.values.get("messages", [])
     if not thread_messages and fallback_messages is not None:
         thread_messages = fallback_messages
     save_messages_to_file(thread_messages, f"{thread_id}.json", runtime)
     runtime.append_recent_threads(thread_id)
 
 
-def _run_dream_agent(thread_id: str, project: str | None) -> None:
+async def _run_dream_agent(thread_id: str, project: str | None) -> None:
     from core.agent import DreamAgent
 
     project_name = project or "general"
     try:
         print(f"Running DreamAgent memory consolidation for {thread_id} -> {project_name}...")
-        DreamAgent().invoke(thread_id=thread_id, project=project_name)
+        await DreamAgent().invoke(thread_id=thread_id, project=project_name)
         print("DreamAgent memory consolidation finished.")
     except Exception as exc:
         print(f"DreamAgent memory consolidation failed: {exc}")
 
 
-def _run_chat_loop(
+async def _run_chat_loop(
     agent: Agent,
     runtime: Runtime,
     thread_id: str,
@@ -93,6 +103,7 @@ def _run_chat_loop(
 ) -> None:
     print("Cleo AI Agent interactive chat. Type /quit to exit, /new to start a fresh thread.")
     print(f"Thread id: {thread_id}")
+    print(f"Project: {runtime.current_project or 'general'}")
     print()
     runtime.update_current_thread_id(thread_id)
     attachment_list: list[dict[str, str]] = []
@@ -102,17 +113,17 @@ def _run_chat_loop(
                 print("The current attachments to be sent with the next message:")
                 for i, attachment in enumerate(attachment_list):
                     print(f"  {i + 1}. {attachment['name']}")
-            message = input(">> ").strip()
+            message = (await asyncio.to_thread(input, ">> ")).strip()
 
         except EOFError:
             print()
-            _save_thread_snapshot(agent, runtime, thread_id, restored_messages)
+            await _save_thread_snapshot(agent, runtime, thread_id, restored_messages)
             runtime.update_runtime_json()
             break
         except KeyboardInterrupt:
             print()
             print("Chat interrupted by user. Exiting.")
-            _save_thread_snapshot(agent, runtime, thread_id, restored_messages)
+            await _save_thread_snapshot(agent, runtime, thread_id, restored_messages)
             runtime.update_runtime_json()
             break
 
@@ -120,18 +131,17 @@ def _run_chat_loop(
             continue
         if message in {"/quit", "/exit"}:
             print(f"Saving thread snapshot: {thread_id}")
-            _save_thread_snapshot(agent, runtime, thread_id, restored_messages)
-            _run_dream_agent(thread_id, runtime.current_project)
+            await _save_thread_snapshot(agent, runtime, thread_id, restored_messages)
+            await _run_dream_agent(thread_id, runtime.current_project)
             runtime.update_current_project(None)
             runtime.update_current_thread_id(None)
             runtime.update_runtime_json()
             print("Exiting the chat. Goodbye!")
             break
         if message == "/new":
-            _save_thread_snapshot(agent, runtime, thread_id, restored_messages)
+            await _save_thread_snapshot(agent, runtime, thread_id, restored_messages)
             thread_id = _new_thread_id()
             restored_messages = None
-            runtime.update_current_project(None)
             runtime.update_current_thread_id(thread_id)
             runtime.update_runtime_json()
             clear_screen()
@@ -143,7 +153,7 @@ def _run_chat_loop(
                 "Enter the file path to attach or leave empty to cancel "
                 "(currently support image files only):"
             )
-            file_path = input(">> ").strip().strip("\"'")
+            file_path = (await asyncio.to_thread(input, ">> ")).strip().strip("\"'")
             if file_path:
                 if not os.path.isfile(file_path):
                     print(f"File not found: {file_path}")
@@ -165,7 +175,7 @@ def _run_chat_loop(
 
         try:
             print()
-            _print_streaming_reply(
+            await _print_streaming_reply(
                 agent,
                 message,
                 thread_id,
@@ -177,7 +187,7 @@ def _run_chat_loop(
         except KeyboardInterrupt:
             print()
             print("Chat interrupted by user. Exiting.")
-            _save_thread_snapshot(agent, runtime, thread_id, restored_messages)
+            await _save_thread_snapshot(agent, runtime, thread_id, restored_messages)
             runtime.update_runtime_json()
             break
         except Exception as exc:
@@ -341,7 +351,7 @@ def reset_workspace_to_main(
         print(f"Preserved local file(s): {preserved_list}")
 
 
-def main() -> None:
+async def amain() -> None:
     parser = argparse.ArgumentParser(description="Run the Cleo AI Agent local runtime.")
     parser.add_argument(
         "message",
@@ -350,12 +360,23 @@ def main() -> None:
         help="Optional one-shot user message. Omit it to enter interactive chat.",
     )
     parser.add_argument(
+        "--print-config-template",
+        action="store_true",
+        help="Print a portable cleo.json template and exit.",
+    )
+    parser.add_argument(
         "--reset-to-main",
         action="store_true",
         help=(
             "Reset this repository to the local main branch and remove untracked "
             "or ignored files. Preserves config/cleo.json."
         ),
+    )
+    parser.add_argument(
+        "--project",
+        type=_project_name,
+        default=None,
+        help="Bind this thread and its memory retrieval tools to a project name.",
     )
     thread_group = parser.add_mutually_exclusive_group()
 
@@ -377,8 +398,27 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    if args.print_config_template:
+        if (
+            args.message is not None
+            or args.thread_id is not None
+            or args.resume_id is not None
+            or args.reset_to_main
+            or args.project is not None
+        ):
+            raise SystemExit(
+                "--print-config-template cannot be combined with other operations."
+            )
+        print(CONFIG_TEMPLATE_PATH.read_text(encoding="utf-8"), end="")
+        return
+
     if args.reset_to_main:
-        if args.message is not None or args.thread_id is not None or args.resume_id is not None:
+        if (
+            args.message is not None
+            or args.thread_id is not None
+            or args.resume_id is not None
+            or args.project is not None
+        ):
             raise SystemExit("--reset-to-main cannot be combined with chat or thread arguments.")
         try:
             reset_workspace_to_main(Path(__file__).resolve().parent)
@@ -386,17 +426,26 @@ def main() -> None:
             raise SystemExit(f"Reset to main failed: {exc}") from exc
         return
 
-    from core.memory.thread_memory import load_messages_from_file
+    from core.memory.thread_memory import load_messages_from_file, load_thread_project
     from core.runtime.model import Runtime
 
     runtime = Runtime()
+    if args.project is not None:
+        runtime.update_current_project(args.project)
     loaded_messages: list[BaseMessage] | None = None
     if args.resume_id is not None:
         thread_id = args.resume_id
         try:
             loaded_messages = load_messages_from_file(f"{thread_id}.json")
+            saved_project = load_thread_project(f"{thread_id}.json")
         except FileNotFoundError as exc:
             raise SystemExit(f"No saved thread snapshot found for thread id: {thread_id}") from exc
+        if args.project is not None and saved_project and args.project != saved_project:
+            raise SystemExit(
+                f"Saved thread {thread_id} belongs to project {saved_project!r}, "
+                f"not {args.project!r}."
+            )
+        runtime.update_current_project(saved_project or args.project or "general")
     elif args.thread_id is not None:
         thread_id = args.thread_id
     elif args.message is None and runtime.current_thread_id:
@@ -404,11 +453,14 @@ def main() -> None:
             f"Determined an unfinished thread with id {runtime.current_thread_id}. "
             "Do you want to continue it? (y/n)"
         )
-        choice = input(">> ").strip().lower()
+        choice = (await asyncio.to_thread(input, ">> ")).strip().lower()
         if choice == "y":
             thread_id = runtime.current_thread_id
             print(f"Recovering with thread id {thread_id}")
             loaded_messages = load_messages_from_file(f"{thread_id}.json")
+            saved_project = load_thread_project(f"{thread_id}.json")
+            if saved_project:
+                runtime.update_current_project(saved_project)
             _print_restored_messages(thread_id, loaded_messages)
         elif choice == "n":
             thread_id = _new_thread_id()
@@ -421,26 +473,54 @@ def main() -> None:
     else:
         thread_id = _new_thread_id()
 
+    if runtime.current_project is None:
+        runtime.update_current_project("general")
+
     from core.agent import Agent
 
-    agent = Agent()
+    agent = Agent(project=runtime.current_project or "general")
     if args.resume_id is not None:
         if args.message is None:
             _print_restored_messages(thread_id, loaded_messages=loaded_messages)
-            _run_chat_loop(agent, runtime, thread_id=thread_id, restored_messages=loaded_messages)
+            await _run_chat_loop(
+                agent,
+                runtime,
+                thread_id=thread_id,
+                restored_messages=loaded_messages,
+            )
         else:
-            _print_streaming_reply(agent, args.message, thread_id, loaded_info=loaded_messages)
-            _save_thread_snapshot(agent, runtime, thread_id, loaded_messages)
-            _run_dream_agent(thread_id, runtime.current_project)
+            await _print_streaming_reply(
+                agent,
+                args.message,
+                thread_id,
+                loaded_info=loaded_messages,
+            )
+            await _save_thread_snapshot(agent, runtime, thread_id, loaded_messages)
+            await _run_dream_agent(thread_id, runtime.current_project)
         return
     else:
         if args.message is None:
-            _run_chat_loop(agent, runtime, thread_id, restored_messages=loaded_messages)
+            await _run_chat_loop(
+                agent,
+                runtime,
+                thread_id,
+                restored_messages=loaded_messages,
+            )
         else:
-            _print_streaming_reply(agent, args.message, thread_id, loaded_info=loaded_messages)
-            _save_thread_snapshot(agent, runtime, thread_id, loaded_messages)
-            _run_dream_agent(thread_id, runtime.current_project)
+            await _print_streaming_reply(
+                agent,
+                args.message,
+                thread_id,
+                loaded_info=loaded_messages,
+            )
+            await _save_thread_snapshot(agent, runtime, thread_id, loaded_messages)
+            await _run_dream_agent(thread_id, runtime.current_project)
         return
+
+def main() -> None:
+    """Synchronous console-script boundary for the async Cleo runtime."""
+    asyncio.run(amain())
+
 
 if __name__ == "__main__":
     main()

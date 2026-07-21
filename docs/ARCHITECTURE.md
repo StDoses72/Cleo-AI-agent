@@ -63,30 +63,44 @@ Cleo-AI-agent/
 
 职责：
 
-- 从 `config/cleo.json` 读取经过 Pydantic 验证的 active profiles。
+- 从默认的 `config/cleo.json` 或 `CLEO_CONFIG_PATH` 指定路径读取经过 Pydantic
+  验证的 active profiles。
 - 使用 `langchain.chat_models.init_chat_model` 初始化模型。
 - 使用 `create_deep_agent` 创建 Cleo 主 agent。
 - 使用 `FilesystemBackend(root_dir=repo_root, virtual_mode=True)` 暴露项目虚拟文件系统。
 - 使用 `InMemorySaver` 作为当前 LangGraph checkpointer。
 - 注入 `run_shell_command` tool。
-- 加载 `/skills` 和 `/memory/AGENT.md`。
+- 加载 `/skills` 和开发者拥有的 `/memory/MEMORY_POLICY.md`。
 
 当前行为：
 
-- 如果 `config/cleo.json` 缺失，Cleo 会创建默认模板并提示用户填写。
+- 如果生效的配置路径缺失，Cleo 会创建默认模板并提示用户填写。
 - `InMemorySaver` 只在当前进程内保存 LangGraph 状态。
 - thread resume 依赖 message snapshot replay，而不是完整 durable graph checkpoint。
 
 ### 3. DreamAgent Layer
 
-文件：`core/agent.py`、`tools/dream_agent_tools.py`
+文件：`core/agent.py`、`tools/dream_agent_tools.py`、
+`core/memory/compaction.py`、`core/memory/state.py`、`core/memory/store.py`
 
 职责：
 
-- 读取 `memory/thread_objects/{thread_id}.json`。
+- 原始 thread snapshot 保存后，以确定性规则生成脱敏 compact view。
+- DreamAgent 只读取 source Hash 与原始 snapshot 一致的 compact view。
 - 读取已有 `memory/projects/<project>/` 项目记忆。
-- 把 durable facts、decisions、preferences、corrections 和 open questions 写入
-  `memory/projects/<project>/AGENT.md`。
+- 把 durable facts、decisions、constraints、preferences、corrections 和 open
+  questions 原子化写入 SQLite，并强制关联当前 source 中的 message evidence。
+- 原子写入 `memory/projects/<project>/MEMORY.md`，其中的 atomic memory index 从
+  SQLite 自动渲染。
+- 只有 Markdown 写入成功且显式 completion tool 校验 source memory count 后，
+  才推进 `memory_state.json` 的完成状态。
+
+写入所有权边界：
+
+- `AGENTS.md` 是用户/团队批准的规范，只有用户明确要求时才修改。
+- `memory/MEMORY_POLICY.md` 是开发者拥有的提取策略，DreamAgent 只读。
+- `memory/projects/<project>/MEMORY.md` 是 DreamAgent 可重建的描述性记忆。
+- `skills/` 只在用户明确要求时创建或更新；记忆不会自动晋升为规则或 skill。
 
 触发点：
 
@@ -130,14 +144,24 @@ Cleo-AI-agent/
 生成文件：
 
 - `memory/thread_objects/{thread_id}.json`
+- `memory/compact_threads/{thread_id}.json`
 - `memory/threads.jsonl`
+- `memory/memory.sqlite3`
+- `memory/memory_state.json`
 
 职责：
 
 - 使用 `messages_to_dict` 序列化 LangChain messages。
-- 保存当前 thread 的 message snapshot。
+- 原子保存当前 thread 的权威 message snapshot。
+- 合并 tool call/result，省略文件读取和写入类大正文，保留结构化 JSON，脱敏
+  常见 credential 字段，并记录 source Hash 和压缩统计。
+- 按 Human message 边界生成 conversation chunks 并幂等替换当前 thread 的 SQLite
+  索引；主 Agent 通过 project-bound 工具做本地词法检索。
 - 追加 thread registry metadata。
 - 使用 `messages_from_dict` 重新加载历史 messages。
+
+派生层失败不会撤销已经成功写入的原始 snapshot。历史检索还会检查 SQLite chunk
+记录的 source Hash 是否与当前 compact 文件一致，避免返回失效索引。
 
 ### 6. Configuration Layer
 
@@ -145,7 +169,9 @@ Cleo-AI-agent/
 
 读取：
 
-- `config/cleo.json`
+- 默认读取 `config/cleo.json`。
+- 设置 `CLEO_CONFIG_PATH` 时读取指定路径；Docker image 使用
+  `/config/cleo.json`。
 
 核心设置：
 
@@ -154,6 +180,9 @@ Cleo-AI-agent/
 - `active_profiles.shell` 选择当前 `ShellProfile`。
 - `active_profiles.tools` 选择当前 `ToolsProfile`。
 - Directory profile 路径默认相对项目根目录解析，绝对路径保持绝对路径。
+- Memory pipeline 使用 `thread_objects_dir`、`compact_threads_dir`、
+  `thread_registry_path`、`memory_database_path`、`memory_state_path` 和
+  `memory_projects_dir`。
 
 shell tool 相关设置：
 
@@ -165,11 +194,13 @@ shell tool 相关设置：
 - `timeout_seconds`
 - `max_output_chars`
 - `allowed_commands`
+- `include_platform_defaults`
 - `denied_patterns`
 
-allowlist、denylist、approval 和 sandbox 字段会继续保留用于兼容已有
-`config/cleo.json`，但当前 personal-assistant shell tool 不再强制执行这些限制。
-`sandbox_root` 目前作为未显式传入 working directory 时的默认工作目录使用。
+shell tool 会执行 allowlist、denylist、approval 和 sandbox 设置。
+`include_platform_defaults` 默认为 `true`，会按 Windows 或 POSIX 平台补充基础命令，
+使同一份 `cleo.json` 可跨平台使用；设为 `false` 时完全采用配置中的 allowlist。
+`sandbox_root` 作为未显式传入 working directory 时的默认工作目录使用。
 
 ### 7. Local Shell Tool Layer
 
@@ -238,7 +269,8 @@ skills/
 - `tools/**/*.py`
 - `skills/demo-production/SKILL.md`
 - `skills/demo-production/agents/openai.yaml`
-- `memory/AGENT.md`
+- `AGENTS.md`
+- `memory/MEMORY_POLICY.md`
 - `pyproject.toml`
 - `requirements.txt`
 - `config/cleo.example.json`
@@ -258,7 +290,7 @@ skills/
 - `data/shell_audit.log`
 - `memory/thread_objects/{thread_id}.json`
 - `memory/threads.jsonl`
-- `memory/projects/<project>/AGENT.md`
+- `memory/projects/<project>/MEMORY.md`
 
 ### 工作区输入或临时产物
 

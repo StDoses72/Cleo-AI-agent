@@ -1,4 +1,4 @@
-"""Expose the synchronous Codex adapter through a stdio MCP server."""
+"""Expose the async Codex adapter through a stdio MCP server."""
 
 from fastmcp import FastMCP
 
@@ -13,23 +13,23 @@ _adapter = CodexAdapter(
 
 
 @mcp.tool(name="codex")
-def codex(
+async def codex(
     prompt: str,
     project_path: str = ".",
     model: str | None = None,
 ) -> dict[str, str | None]:
     """Run a complete Codex turn in a new thread and return its final result."""
-    return _adapter.start(prompt, project_path, model).model_dump()
+    return (await _adapter.start(prompt, project_path, model)).model_dump()
 
 
 @mcp.tool(name="codex-reply")
-def codex_reply(
+async def codex_reply(
     thread_id: str,
     prompt: str,
     project_path: str = ".",
 ) -> dict[str, str | None]:
     """Run a complete follow-up turn on an existing Codex thread."""
-    return _adapter.reply(thread_id, prompt, project_path).model_dump()
+    return (await _adapter.reply(thread_id, prompt, project_path)).model_dump()
 
 
 def main() -> None:

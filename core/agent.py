@@ -1,4 +1,4 @@
-from collections.abc import Iterator
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
@@ -9,13 +9,26 @@ from langchain.chat_models import init_chat_model
 from langgraph.checkpoint.memory import InMemorySaver
 
 from config.settings import settings
+from core.memory.compaction import load_validated_compact
+from core.memory.state import (
+    get_thread_source,
+    mark_consolidation_failed,
+    mark_consolidation_started,
+    needs_consolidation,
+)
 from tools.codex_tools import codex_reply_tool, codex_tool
 from tools.dream_agent_tools import (
+    complete_memory_consolidation,
     list_all_project_names,
     list_all_thread_ids,
-    read_memory_from_json,
+    read_compact_memory,
     read_project_memory,
+    remember_durable_knowledge,
     write_memory_to_markdown,
+)
+from tools.memory_tools import (
+    create_conversation_history_search_tool,
+    create_project_memory_search_tool,
 )
 from tools.shell_tools import run_shell_command
 
@@ -44,7 +57,7 @@ It is not automatically injected into your prompt. When a task depends on
 project history, user preferences, previous decisions, unresolved questions,
 or prior artifacts, inspect the project memory yourself before answering.
 Useful locations include:
-- `/memory/projects/<project_name>/AGENT.md` for concise project context.
+- `/memory/projects/<project_name>/MEMORY.md` for concise project context.
 - `/memory/projects/<project_name>/decisions.md` for accepted decisions.
 - `/memory/projects/<project_name>/open_questions.md` for unresolved items.
 - `/memory/projects/<project_name>/artifacts.md` for important generated files.
@@ -54,6 +67,13 @@ If the current project is unclear, inspect `/memory/projects/` to see available
 project names or ask the user which project to use. Treat project memory as
 reference material: prefer the user's latest message and verified file/tool
 evidence when they conflict with memory.
+
+Two project-bound retrieval tools are available:
+- `search_long_term_memory` finds stable, evidence-backed facts and decisions.
+- `search_conversation_history` finds details from earlier compact threads.
+Use the first for durable knowledge and the second for how or why something was
+discussed. Do not treat either source as stronger than the user's latest message
+or current files.
 
 You have a local `run_shell_command` tool for shell commands, scripts, and
 diagnostics. Use it when shell access helps complete the user's task, and
@@ -90,6 +110,11 @@ Core principles:
 - Treat user corrections as high-priority memory.
 - Treat implementation decisions as durable only when the user accepted them or
   the codebase already reflects them.
+- Every atomic memory must cite message IDs from the validated compact source.
+- Never bypass the compact source by reading the raw thread snapshot.
+- Project-private memory stays inside the named project.
+- A run is successful only after project Markdown is written and the explicit
+  completion tool accepts the source hash.
 """.strip()
 
 
@@ -97,13 +122,24 @@ active_profile = settings.active_agent_profile
 
 
 class Agent:
-    def __init__(self, system_prompt: str = SYSTEM_PROMPT) -> None:
+    def __init__(
+        self,
+        system_prompt: str = SYSTEM_PROMPT,
+        project: str = "general",
+    ) -> None:
         self.root_dir = Path(__file__).resolve().parent.parent
+        self.project = project
         self.backend = FilesystemBackend(
             root_dir=str(self.root_dir),
             virtual_mode=True,
         )
-        self.toolist = [run_shell_command, codex_tool, codex_reply_tool]
+        self.toolist = [
+            run_shell_command,
+            codex_tool,
+            codex_reply_tool,
+            create_project_memory_search_tool(project),
+            create_conversation_history_search_tool(project),
+        ]
         self.deepagent = create_deep_agent(
             model=init_chat_model(
                 model=active_profile.model,
@@ -118,25 +154,16 @@ class Agent:
             interrupt_on=None,
             backend=self.backend,
             skills=["/skills"],
-            memory=["/memory/AGENT.md"],
+            memory=["/memory/MEMORY_POLICY.md"],
         )
 
-    # The `invoke` method is not used in this implementation, but it can be defined for
-    # one-shot interactions if needed or used in the future for non-streaming responses.
-
-    # def invoke(self, message: str, thread_id: str = "local") -> Any:
-    #     return self.deepagent.invoke(
-    #         {"messages": [{"role": "user", "content": message}]},
-    #         config={"configurable": {"thread_id": thread_id}},
-    #     )
-
-    def stream_text(
+    async def stream_text(
         self,
         message: str,
         thread_id: str = "local",
         loaded_info: list | None = None,
         images: list[dict[str, str]] | None = None,
-    ) -> Iterator[str]:
+    ) -> AsyncIterator[str]:
         image_inputs = list(images or [])
 
         user_message = {
@@ -145,7 +172,7 @@ class Agent:
         }
         messages = [user_message] if loaded_info is None else [*loaded_info, user_message]
 
-        for chunk in self.deepagent.stream(
+        async for chunk in self.deepagent.astream(
             {"messages": messages},
             config={"configurable": {"thread_id": thread_id}},
             stream_mode="messages",
@@ -197,11 +224,13 @@ class DreamAgent:
     def __init__(self, system_prompt: str = DREAM_AGENT_SYSTEM_PROMPT) -> None:
         self.root_dir = Path(__file__).resolve().parent.parent
         self.toolist = [
-            read_memory_from_json,
+            read_compact_memory,
             list_all_thread_ids,
             list_all_project_names,
             read_project_memory,
+            remember_durable_knowledge,
             write_memory_to_markdown,
+            complete_memory_consolidation,
         ]
         self.model = init_chat_model(
             model=active_profile.model,
@@ -217,27 +246,59 @@ class DreamAgent:
             system_prompt=self.system_prompt,
         )
 
-    def invoke(self, thread_id: str, project: str = "general") -> Any:
+    async def invoke(self, thread_id: str, project: str = "general") -> Any:
+        payload = load_validated_compact(
+            project=project,
+            thread_id=thread_id,
+            thread_objects_dir=settings.THREAD_OBJECTS_DIR,
+            compact_dir=settings.COMPACT_THREADS_DIR,
+        )
+        source_hash = str((payload.get("source") or {}).get("source_content_hash") or "")
+        if not needs_consolidation(project, thread_id, source_hash):
+            return {
+                "status": "skipped",
+                "reason": "source snapshot is already consolidated",
+                "source_hash": source_hash,
+            }
+        mark_consolidation_started(project, thread_id, source_hash)
         prompt = f"""
 Consolidate the short-term thread memory into durable project memory.
 
 Thread ID: {thread_id}
 Project: {project}
+Source Hash: {source_hash}
 
 Steps:
-1. Use the available tools to read the saved thread messages for this thread.
+1. Read the validated compact memory for this exact project and thread. Do not
+   read or request the raw thread snapshot.
 2. Use the available tools to read existing project memory for this project.
-3. Extract only durable information that will help future Cleo sessions.
-4. Preserve important facts, decisions, user preferences, corrections, open questions,
-   next actions, and artifact references.
-5. Ignore greetings, repeated debugging noise, transient command output, and low-value
-   conversational filler.
+3. Extract only durable information that will help future Cleo sessions. For
+   each atomic item, call remember_durable_knowledge with this exact source hash
+   and evidence message IDs that occur in the compact source.
+4. Preserve accepted facts, decisions, constraints, user preferences,
+   corrections, open questions, next actions, and artifact references.
+5. Ignore greetings, repeated debugging noise, transient command output, and
+   low-value conversational filler.
 6. Do not invent facts. Mark uncertainty clearly when needed.
-7. Write one formatted long-term project memory file using the memory writing tool.
+7. Write the formatted project memory file with this exact source hash. Preserve
+   existing durable context when producing its narrative sections.
+8. Finish by calling complete_memory_consolidation. Report the number of atomic
+   memories backed by this source (including idempotent retry results); if it is
+   zero, give a concrete no-op reason.
 
 The result should be concise, structured, and useful for future Cleo sessions.
 """.strip()
-        return self.dreamagent.invoke(
-            {"messages": [{"role": "user", "content": prompt}]},
-            config={"configurable": {"thread_id": thread_id}},
-        )
+        try:
+            result = await self.dreamagent.ainvoke(
+                {"messages": [{"role": "user", "content": prompt}]},
+                config={"configurable": {"thread_id": thread_id}},
+            )
+            source_state = get_thread_source(project, thread_id)
+            if source_state is None or source_state.get("consolidated_hash") != source_hash:
+                raise RuntimeError(
+                    "DreamAgent returned without completing the memory consolidation protocol"
+                )
+            return result
+        except Exception as exc:
+            mark_consolidation_failed(project, thread_id, source_hash, str(exc))
+            raise

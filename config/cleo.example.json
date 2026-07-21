@@ -23,10 +23,13 @@
 				"skills_dir": "skills",
 				"workspace_dir": "workspace",
 				"memory_dir": "memory",
-				"memory_agent_path": "memory/AGENT.md",
+				"memory_policy_path": "memory/MEMORY_POLICY.md",
 				"memory_projects_dir": "memory/projects",
 				"thread_objects_dir": "memory/thread_objects",
+				"compact_threads_dir": "memory/compact_threads",
 				"thread_registry_path": "memory/threads.jsonl",
+				"memory_database_path": "memory/memory.sqlite3",
+				"memory_state_path": "memory/memory_state.json",
 				"runtime_state_path": "data/runtime.json"
 			}
 		},
@@ -39,7 +42,8 @@
 				"require_approval": false,
 				"timeout_seconds": 30,
 				"max_output_chars": 12000,
-				"allowed_commands": ["python", "python.exe", "py", "py.exe"],
+				"allowed_commands": ["python", "git"],
+				"include_platform_defaults": true,
 				"denied_patterns": [
 					"&&",
 					"||",

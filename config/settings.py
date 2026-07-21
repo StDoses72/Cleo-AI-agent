@@ -1,13 +1,31 @@
 import json
+import os
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, SecretStr, model_validator
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-CONFIG_PATH = PROJECT_ROOT / "config" / "cleo.json"
 
-DEFAULT_ALLOWED_COMMANDS = ["python", "python.exe", "py", "py.exe"]
+
+def _config_path() -> Path:
+    override = os.environ.get("CLEO_CONFIG_PATH")
+    if not override:
+        return PROJECT_ROOT / "config" / "cleo.json"
+
+    candidate = Path(override).expanduser()
+    if not candidate.is_absolute():
+        candidate = PROJECT_ROOT / candidate
+    return candidate.resolve()
+
+
+CONFIG_PATH = _config_path()
+
+DEFAULT_ALLOWED_COMMANDS = ["python", "git"]
+PLATFORM_ALLOWED_COMMANDS = {
+    "nt": ["python", "python.exe", "py", "py.exe", "powershell", "powershell.exe", "git"],
+    "posix": ["python", "python3", "sh", "bash", "git"],
+}
 DEFAULT_DENIED_PATTERNS = [
     "&&",
     "||",
@@ -38,6 +56,16 @@ def _resolve_path(path: Path | str | None, default: Path, base: Path = PROJECT_R
     return (base / candidate).resolve()
 
 
+def _effective_allowed_commands(
+    configured: list[str],
+    *,
+    platform: str | None = None,
+) -> list[str]:
+    platform_name = platform or os.name
+    platform_defaults = PLATFORM_ALLOWED_COMMANDS.get(platform_name, ["python", "git"])
+    return list(dict.fromkeys([*configured, *platform_defaults]))
+
+
 class AgentProfile(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -57,10 +85,16 @@ class DirectoryProfile(BaseModel):
     skills_dir: Path = Path("skills")
     workspace_dir: Path = Path("workspace")
     memory_dir: Path = Path("memory")
-    memory_agent_path: Path = Path("memory/AGENT.md")
+    memory_policy_path: Path = Field(
+        default=Path("memory/MEMORY_POLICY.md"),
+        validation_alias=AliasChoices("memory_policy_path", "memory_agent_path"),
+    )
     memory_projects_dir: Path = Path("memory/projects")
     thread_objects_dir: Path = Path("memory/thread_objects")
+    compact_threads_dir: Path = Path("memory/compact_threads")
     thread_registry_path: Path = Path("memory/threads.jsonl")
+    memory_database_path: Path = Path("memory/memory.sqlite3")
+    memory_state_path: Path = Path("memory/memory_state.json")
     runtime_state_path: Path = Path("data/runtime.json")
 
     def project_path(self, path: Path) -> Path:
@@ -89,8 +123,8 @@ class DirectoryProfile(BaseModel):
         return self.project_path(self.memory_dir)
 
     @property
-    def memory_agent_file(self) -> Path:
-        return self.project_path(self.memory_agent_path)
+    def memory_policy_file(self) -> Path:
+        return self.project_path(self.memory_policy_path)
 
     @property
     def memory_projects_path(self) -> Path:
@@ -101,8 +135,20 @@ class DirectoryProfile(BaseModel):
         return self.project_path(self.thread_objects_dir)
 
     @property
+    def compact_threads_path(self) -> Path:
+        return self.project_path(self.compact_threads_dir)
+
+    @property
     def thread_registry_file(self) -> Path:
         return self.project_path(self.thread_registry_path)
+
+    @property
+    def memory_database_file(self) -> Path:
+        return self.project_path(self.memory_database_path)
+
+    @property
+    def memory_state_file(self) -> Path:
+        return self.project_path(self.memory_state_path)
 
     @property
     def runtime_state_file(self) -> Path:
@@ -120,6 +166,7 @@ class ShellProfile(BaseModel):
     timeout_seconds: int = Field(default=30, gt=0)
     max_output_chars: int = Field(default=12000, ge=0)
     allowed_commands: list[str] = Field(default_factory=lambda: DEFAULT_ALLOWED_COMMANDS.copy())
+    include_platform_defaults: bool = True
     denied_patterns: list[str] = Field(default_factory=list)
 
 
@@ -213,8 +260,13 @@ class SettingsModel(BaseModel):
         return self.active_directory_profile.memory_path
 
     @property
+    def MEMORY_POLICY_PATH(self) -> Path:
+        return self.active_directory_profile.memory_policy_file
+
+    @property
     def MEMORY_AGENT_PATH(self) -> Path:
-        return self.active_directory_profile.memory_agent_file
+        """Backward-compatible alias for integrations using the old setting name."""
+        return self.MEMORY_POLICY_PATH
 
     @property
     def MEMORY_PROJECTS_DIR(self) -> Path:
@@ -225,8 +277,20 @@ class SettingsModel(BaseModel):
         return self.active_directory_profile.thread_objects_path
 
     @property
+    def COMPACT_THREADS_DIR(self) -> Path:
+        return self.active_directory_profile.compact_threads_path
+
+    @property
     def THREAD_REGISTRY_PATH(self) -> Path:
         return self.active_directory_profile.thread_registry_file
+
+    @property
+    def MEMORY_DATABASE_PATH(self) -> Path:
+        return self.active_directory_profile.memory_database_file
+
+    @property
+    def MEMORY_STATE_PATH(self) -> Path:
+        return self.active_directory_profile.memory_state_file
 
     @property
     def RUNTIME_STATE_PATH(self) -> Path:
@@ -270,7 +334,10 @@ class SettingsModel(BaseModel):
 
     @property
     def SHELL_ALLOWED_COMMANDS(self) -> list[str]:
-        return self.active_shell_profile.allowed_commands
+        configured = self.active_shell_profile.allowed_commands
+        if not self.active_shell_profile.include_platform_defaults:
+            return configured
+        return _effective_allowed_commands(configured)
 
     @property
     def SHELL_DENIED_PATTERNS(self) -> list[str]:
@@ -303,10 +370,13 @@ def _default_config() -> dict[str, Any]:
                     "skills_dir": "skills",
                     "workspace_dir": "workspace",
                     "memory_dir": "memory",
-                    "memory_agent_path": "memory/AGENT.md",
+                    "memory_policy_path": "memory/MEMORY_POLICY.md",
                     "memory_projects_dir": "memory/projects",
                     "thread_objects_dir": "memory/thread_objects",
+                    "compact_threads_dir": "memory/compact_threads",
                     "thread_registry_path": "memory/threads.jsonl",
+                    "memory_database_path": "memory/memory.sqlite3",
+                    "memory_state_path": "memory/memory_state.json",
                     "runtime_state_path": "data/runtime.json",
                 }
             },
@@ -320,6 +390,7 @@ def _default_config() -> dict[str, Any]:
                     "timeout_seconds": 30,
                     "max_output_chars": 12000,
                     "allowed_commands": DEFAULT_ALLOWED_COMMANDS,
+                    "include_platform_defaults": True,
                     "denied_patterns": DEFAULT_DENIED_PATTERNS,
                 }
             },
