@@ -3,7 +3,7 @@
 English version: [README.en.md](README.en.md)
 
 Cleo AI Agent 是一个 local-first 的个人 AI agent runtime，基于 Deep Agents 和
-LangChain 构建，通过 API 调用语言模型。Cleo 把配置、会话状态、thread snapshot、
+LangChain 构建，通过 API 调用语言模型。Cleo 把配置、会话状态、session event log、
 项目记忆、工作区文件和local shell 工具都放在本地管理；模型推理由你在
 `config/cleo.json` 中配置的 API provider 提供。
 
@@ -16,9 +16,10 @@ LangChain 构建，通过 API 调用语言模型。Cleo 把配置、会话状态
 - API-backed model profile：使用 `config/cleo.json` 中的 active agent profile 初始化 LangChain 模型。
 - Pydantic settings：`config/settings.py` 用 Pydantic 校验 agent、directory、shell、tools 四类 profile。
 - image attach：交互中使用 `/attach` 为下一条消息附加图片，支持 JPEG、PNG、WebP 和 GIF。
-- thread snapshot：退出、重置、中断或 one-shot 完成时保存 `memory/thread_objects/{thread_id}.json`。
+- session event log：每轮结束后向 `events.jsonl` 增量追加规范事件，并原子更新 `manifest.json`。
 - resume：启动时如果存在未结束的 `current_thread_id`，会询问是否恢复该 thread。
-- layered memory：原始 thread snapshot 派生出脱敏 compact view、SQLite 历史 chunks 和带 message evidence 的原子长期记忆。
+- layered memory：原始 event log 派生出脱敏 compact view、SQLite 历史 chunks 和带 event evidence 的原子长期记忆。
+- memory spaces：`non_productivity` 与 `productivity` 分区保存 session、project 和长期记忆。
 - DreamAgent memory：正常退出或 one-shot 完成后，DreamAgent 只读取 Hash 校验通过的 compact view，并更新项目长期记忆。
 - project-bound retrieval：主 Agent 可分别检索稳定长期记忆和历史讨论细节，不允许通过工具参数跨 project。
 - local shell tool：提供 timeout、输出截断、默认工作目录和 audit log。
@@ -39,10 +40,11 @@ Cleo-AI-agent/
     cleo.json                     # Local private config, ignored by Git
   core/
     agent.py                      # Cleo / DreamAgent construction
-    memory/compaction.py          # Deterministic compact/redacted thread view
+    memory/compaction.py          # Deterministic compact/redacted event view
+    memory/paths.py               # Space/project/session path boundaries
+    memory/session_store.py       # Manifest, JSONL events, and session registry
     memory/state.py               # Memory source version and completion state
     memory/store.py               # SQLite memory, evidence, and history chunks
-    memory/thread_memory.py       # Thread snapshot serialization
     runtime/model.py              # data/runtime.json read/write model
   tools/
     shell_tools.py                # Local shell tool
@@ -53,12 +55,9 @@ Cleo-AI-agent/
     demo-production/agents/       # Skill-local agent config
   memory/
     MEMORY_POLICY.md              # Developer-owned memory extraction policy
-    thread_objects/               # Runtime generated thread message snapshots
-    compact_threads/              # Runtime generated compact/redacted snapshots
-    threads.jsonl                 # Runtime generated thread snapshot registry
-    memory.sqlite3                # Atomic memory, evidence, and history index
-    memory_state.json             # Memory source/consolidation state
-    projects/                     # Runtime generated long-term project memory
+    sessions.sqlite3              # Global rebuildable session metadata index
+    non_productivity/projects/    # Personal/general sessions and memory
+    productivity/projects/        # Harness sessions and project memory
   data/
     .gitkeep
     runtime_example.json          # Reference runtime state template
@@ -72,12 +71,12 @@ Cleo-AI-agent/
 ```
 
 `config/cleo.json`、`data/runtime.json`、`data/shell_audit.log`、
-`memory/thread_objects/`、`memory/compact_threads/`、`memory/threads.jsonl`、
-`memory/memory.sqlite3`、`memory/memory_state.json` 和 `memory/projects/` 都属于
+`memory/sessions.sqlite3`、`memory/non_productivity/` 和
+`memory/productivity/` 都属于
 本地配置或运行状态，不应提交到 Git。
 
 `AGENTS.md` 是由用户或团队明确维护的仓库规范；`memory/MEMORY_POLICY.md` 是
-开发者拥有的记忆提取策略；`memory/projects/<project>/MEMORY.md` 是 DreamAgent
+开发者拥有的记忆提取策略；`memory/<space>/projects/<project>/MEMORY.md` 是 DreamAgent
 生成的派生记忆。自动记忆不会修改 `AGENTS.md`，也不会自动创建或更新 skill。
 
 ## 安装
@@ -199,12 +198,8 @@ copy config\cleo.example.json config\cleo.json
 				"workspace_dir": "workspace",
 				"memory_dir": "memory",
 				"memory_policy_path": "memory/MEMORY_POLICY.md",
-				"memory_projects_dir": "memory/projects",
-				"thread_objects_dir": "memory/thread_objects",
-				"compact_threads_dir": "memory/compact_threads",
-				"thread_registry_path": "memory/threads.jsonl",
-				"memory_database_path": "memory/memory.sqlite3",
-				"memory_state_path": "memory/memory_state.json",
+				"session_index_path": "memory/sessions.sqlite3",
+				"session_artifacts_dir": "data/session_artifacts",
 				"runtime_state_path": "data/runtime.json"
 			}
 		},
@@ -270,34 +265,54 @@ python main.py
 
 交互式命令：
 
-- `/quit` 或 `/exit`：保存当前 thread snapshot，运行 DreamAgent 记忆整理，然后退出。
-- `/new`：保存当前 thread snapshot 并开启新 thread。
+- `/quit` 或 `/exit`：关闭当前 session event log，运行 DreamAgent 记忆整理，然后退出。
+- `/new`：完成当前 session 并开启新 thread。
+- `/productivity`：进入 Codex productivity 页面；在其中用 `/back` 或 `/quit` 返回主聊天。
 - `/attach`：为下一条消息附加图片文件。
 
 交互模式同样可用 `cleo --project <name>` 启动。`/new` 会在同一 project 内创建新
-thread；`--resume` 会恢复 snapshot 中保存的 project 绑定，并拒绝冲突的
+thread；`--resume` 会恢复 manifest 中保存的 space/project 绑定，并拒绝冲突的
 `--project` 参数。
+
+主聊天中推荐直接输入 `/productivity`。也可以从命令行直接启动 Codex productivity
+模式：
+
+```bash
+# 进入连续交互
+python main.py --productivity --project cleo --cwd .
+
+# 单次任务
+python main.py --productivity --cwd . "检查当前改动并运行测试"
+
+# 使用 Cleo session id 恢复对应的 Codex native session
+python main.py --productivity --resume agent_xxx
+```
+
+可用 `--model` 覆盖 `profiles.tools.<name>.codex_model`。productivity 交互支持
+`/new`、`/back`、`/quit` 和 `/exit`；Codex SDK 的消息、工具、终端、计划和文件变更事件会
+流式显示，并统一写入 `productivity` space。
 
 ## 运行时文件
 
 这些文件由代码在运行时维护：
 
-- `data/runtime.json`：当前 project、当前 thread、recent threads。缺失时会自动生成。
+- `data/runtime.json`：当前 space/project/thread，以及按 space 分区的 recent threads。
 - `data/shell_audit.log`：local shell tool 调用审计。
-- `memory/thread_objects/{thread_id}.json`：thread message snapshot。
-- `memory/compact_threads/{thread_id}.json`：确定性压缩、脱敏并带 source Hash 的记忆输入。
-- `memory/threads.jsonl`：thread snapshot metadata registry。
-- `memory/memory.sqlite3`：原子长期记忆、message evidence 和历史 conversation chunks。
-- `memory/memory_state.json`：source version、Hash、Dream 完成状态和失败信息。
-- `memory/projects/<project>/MEMORY.md`：DreamAgent 生成的项目长期记忆。
+- `memory/sessions.sqlite3`：全局可重建 session metadata registry。
+- `memory/<space>/projects/<project>/sessions/<session>/manifest.json`：当前 session 投影。
+- `memory/<space>/projects/<project>/sessions/<session>/events.jsonl`：append-only 原始证据。
+- `memory/<space>/projects/<project>/sessions/<session>/compact.json`：脱敏 compact 投影。
+- `memory/<space>/memory.sqlite3`：原子长期记忆、event evidence 和 conversation chunks。
+- `memory/<space>/memory_state.json`：source version、Hash 与 Dream 状态。
+- `memory/<space>/projects/<project>/MEMORY.md`：DreamAgent 生成的长期记忆。
 
-`Runtime` 只保存当前 CLI 状态。原始 thread snapshot 是对话的权威记录；compact、
-SQLite 索引和项目 `MEMORY.md` 都是可重建的派生层。迁移复盘与取舍见
+`Runtime` 只保存当前 CLI 状态。append-only event log 是权威交互记录，manifest 是
+当前 metadata；compact、SQLite 索引和项目 `MEMORY.md` 都是可重建的派生层。迁移复盘与取舍见
 [`docs/CASTMIND_MEMORY_MIGRATION.md`](docs/CASTMIND_MEMORY_MIGRATION.md)。
 
 ## 当前限制
 
 - 目前还没有 `/threads` 或 `/switch <thread_id>` 这种自由切换历史 thread 的交互命令。
-- 当前 resume 是 message snapshot replay，不是完整 durable LangGraph checkpoint。
+- 当前 resume 是 session message event replay，不是完整 durable LangGraph checkpoint。
 - 历史检索当前使用本地词法排序；尚未启用需要校准和额外服务的向量检索。
 - `skills/` 当前只包含 `demo-production`。

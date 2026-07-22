@@ -15,13 +15,11 @@ data/*
 !data/.gitkeep
 !data/runtime_example.json
 
-# Conversation snapshots and generated long-term project memory.
-memory/thread_objects/
-memory/compact_threads/
-memory/threads.jsonl
-memory/projects/
-memory/memory.sqlite3*
-memory/memory_state.json
+# Session event logs, indexes, and generated long-term memory.
+memory/non_productivity/
+memory/productivity/
+memory/sessions.sqlite3*
+data/session_artifacts/
 
 # Temporary test backups created during local validation.
 .codex-test-backup-*/

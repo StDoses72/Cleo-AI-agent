@@ -54,12 +54,24 @@ class _AcpClientHost:
 
     async def session_update(self, session_id: str, update: Any, **_kwargs: Any) -> None:
         data = update.model_dump(by_alias=True, exclude_none=True)
-        event_type = data.get("sessionUpdate", type(update).__name__)
+        native_event_type = data.get("sessionUpdate", type(update).__name__)
+        event_type = {
+            "agent_message_chunk": "assistant_message_chunk",
+            "agent_thought_chunk": "thought",
+            "tool_call": "tool_call",
+            "tool_call_update": "tool_result",
+            "plan": "plan_update",
+        }.get(native_event_type, "provider_event")
         content = data.get("content") or {}
         text = content.get("text") if isinstance(content, dict) else None
+        data = {
+            "provider_event_type": native_event_type,
+            "schema_version": 1,
+            "payload": data,
+        }
         event = AgentEvent(provider=self._provider, type=event_type, text=text, data=data)
         self.events.append(event)
-        if event_type == "agent_message_chunk" and text:
+        if native_event_type == "agent_message_chunk" and text:
             self.response_parts.append(text)
         await emit_event(self._callback, event)
 

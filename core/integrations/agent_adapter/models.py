@@ -23,6 +23,8 @@ class AgentSession(BaseModel):
     provider: str
     project_path: str
     native_session_id: str | None = None
+    space: str = "productivity"
+    project: str = "general"
 
 
 class AgentResult(BaseModel):
@@ -36,6 +38,8 @@ class AgentResult(BaseModel):
     response: str | None = None
     error: str | None = None
     events: list[AgentEvent] = Field(default_factory=list)
+    space: str = "productivity"
+    project: str = "general"
 
 
 EventCallback = Callable[[AgentEvent], Awaitable[None] | None]

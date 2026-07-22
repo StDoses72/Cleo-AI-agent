@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, SecretStr, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -85,16 +85,9 @@ class DirectoryProfile(BaseModel):
     skills_dir: Path = Path("skills")
     workspace_dir: Path = Path("workspace")
     memory_dir: Path = Path("memory")
-    memory_policy_path: Path = Field(
-        default=Path("memory/MEMORY_POLICY.md"),
-        validation_alias=AliasChoices("memory_policy_path", "memory_agent_path"),
-    )
-    memory_projects_dir: Path = Path("memory/projects")
-    thread_objects_dir: Path = Path("memory/thread_objects")
-    compact_threads_dir: Path = Path("memory/compact_threads")
-    thread_registry_path: Path = Path("memory/threads.jsonl")
-    memory_database_path: Path = Path("memory/memory.sqlite3")
-    memory_state_path: Path = Path("memory/memory_state.json")
+    memory_policy_path: Path = Path("memory/MEMORY_POLICY.md")
+    session_index_path: Path = Path("memory/sessions.sqlite3")
+    session_artifacts_dir: Path = Path("data/session_artifacts")
     runtime_state_path: Path = Path("data/runtime.json")
 
     def project_path(self, path: Path) -> Path:
@@ -127,28 +120,12 @@ class DirectoryProfile(BaseModel):
         return self.project_path(self.memory_policy_path)
 
     @property
-    def memory_projects_path(self) -> Path:
-        return self.project_path(self.memory_projects_dir)
+    def session_index_file(self) -> Path:
+        return self.project_path(self.session_index_path)
 
     @property
-    def thread_objects_path(self) -> Path:
-        return self.project_path(self.thread_objects_dir)
-
-    @property
-    def compact_threads_path(self) -> Path:
-        return self.project_path(self.compact_threads_dir)
-
-    @property
-    def thread_registry_file(self) -> Path:
-        return self.project_path(self.thread_registry_path)
-
-    @property
-    def memory_database_file(self) -> Path:
-        return self.project_path(self.memory_database_path)
-
-    @property
-    def memory_state_file(self) -> Path:
-        return self.project_path(self.memory_state_path)
+    def session_artifacts_path(self) -> Path:
+        return self.project_path(self.session_artifacts_dir)
 
     @property
     def runtime_state_file(self) -> Path:
@@ -264,33 +241,12 @@ class SettingsModel(BaseModel):
         return self.active_directory_profile.memory_policy_file
 
     @property
-    def MEMORY_AGENT_PATH(self) -> Path:
-        """Backward-compatible alias for integrations using the old setting name."""
-        return self.MEMORY_POLICY_PATH
+    def SESSION_INDEX_PATH(self) -> Path:
+        return self.active_directory_profile.session_index_file
 
     @property
-    def MEMORY_PROJECTS_DIR(self) -> Path:
-        return self.active_directory_profile.memory_projects_path
-
-    @property
-    def THREAD_OBJECTS_DIR(self) -> Path:
-        return self.active_directory_profile.thread_objects_path
-
-    @property
-    def COMPACT_THREADS_DIR(self) -> Path:
-        return self.active_directory_profile.compact_threads_path
-
-    @property
-    def THREAD_REGISTRY_PATH(self) -> Path:
-        return self.active_directory_profile.thread_registry_file
-
-    @property
-    def MEMORY_DATABASE_PATH(self) -> Path:
-        return self.active_directory_profile.memory_database_file
-
-    @property
-    def MEMORY_STATE_PATH(self) -> Path:
-        return self.active_directory_profile.memory_state_file
+    def SESSION_ARTIFACTS_DIR(self) -> Path:
+        return self.active_directory_profile.session_artifacts_path
 
     @property
     def RUNTIME_STATE_PATH(self) -> Path:
@@ -371,12 +327,8 @@ def _default_config() -> dict[str, Any]:
                     "workspace_dir": "workspace",
                     "memory_dir": "memory",
                     "memory_policy_path": "memory/MEMORY_POLICY.md",
-                    "memory_projects_dir": "memory/projects",
-                    "thread_objects_dir": "memory/thread_objects",
-                    "compact_threads_dir": "memory/compact_threads",
-                    "thread_registry_path": "memory/threads.jsonl",
-                    "memory_database_path": "memory/memory.sqlite3",
-                    "memory_state_path": "memory/memory_state.json",
+                    "session_index_path": "memory/sessions.sqlite3",
+                    "session_artifacts_dir": "data/session_artifacts",
                     "runtime_state_path": "data/runtime.json",
                 }
             },

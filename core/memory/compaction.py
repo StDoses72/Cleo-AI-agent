@@ -1,4 +1,4 @@
-"""Deterministic, evidence-preserving projection of raw thread messages."""
+"""Deterministic, evidence-preserving projection of append-only session events."""
 
 from __future__ import annotations
 
@@ -9,7 +9,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 1
+from core.memory.paths import compact_path, events_path, manifest_path
+
+SCHEMA_VERSION = 2
 
 _OMIT_RESULT_TOOLS = {"read_file", "ls", "glob", "grep"}
 _FILE_WRITE_TOOLS = {"write_file", "edit_file", "apply_patch"}
@@ -43,14 +45,27 @@ def _canonical_json(value: Any) -> str:
     )
 
 
-def source_content_hash(messages: list[dict[str, Any]]) -> str:
-    """Return a stable hash for an exact logical raw-message snapshot."""
-    digest = hashlib.sha256(_canonical_json(messages).encode()).hexdigest()
+def event_content_hash(events: list[dict[str, Any]]) -> str:
+    digest = hashlib.sha256(_canonical_json(events).encode()).hexdigest()
     return f"sha256:{digest}"
 
 
-def compact_thread_path(compact_dir: Path, thread_id: str) -> Path:
-    return compact_dir / f"{thread_id}.json"
+def load_events(path: Path) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    previous_seq = 0
+    with path.open(encoding="utf-8-sig") as source:
+        for line_number, line in enumerate(source, start=1):
+            if not line.strip():
+                continue
+            event = json.loads(line)
+            if not isinstance(event, dict):
+                raise ValueError(f"event line {line_number} is not an object")
+            seq = int(event.get("seq", 0))
+            if seq <= previous_seq:
+                raise ValueError("session event sequence is not strictly increasing")
+            previous_seq = seq
+            events.append(event)
+    return events
 
 
 def _content_characters(content: Any) -> int:
@@ -89,8 +104,12 @@ def _sanitize_value(
                 "content_omitted": True,
             }
         return {
-            str(k): _sanitize_value(v, str(k), truncate_strings=truncate_strings)
-            for k, v in value.items()
+            str(child_key): _sanitize_value(
+                child_value,
+                str(child_key),
+                truncate_strings=truncate_strings,
+            )
+            for child_key, child_value in value.items()
         }
     if isinstance(value, (list, tuple)):
         return [_sanitize_value(item, truncate_strings=truncate_strings) for item in value]
@@ -134,12 +153,7 @@ def _bounded_text(content: Any, limit: int) -> tuple[Any, bool]:
     return content[:limit] + f"... <truncated:{len(content) - limit} chars>", True
 
 
-def _compact_tool_result(
-    *,
-    name: str,
-    status: str,
-    content: Any,
-) -> tuple[dict[str, Any], int]:
+def _compact_tool_result(name: str, status: str, content: Any) -> tuple[dict[str, Any], int]:
     result_characters = _content_characters(content)
     if name in _OMIT_RESULT_TOOLS or name in _FILE_WRITE_TOOLS:
         return (
@@ -154,7 +168,7 @@ def _compact_tool_result(
     if parsed_result is not None:
         return {"result": parsed_result}, 0
 
-    is_error = str(status).casefold() not in {"", "success"}
+    is_error = str(status).casefold() not in {"", "success", "completed"}
     limit = 2000 if is_error else 1000
     result, truncated = _bounded_text(content, limit)
     compacted: dict[str, Any] = {"result": result}
@@ -165,15 +179,43 @@ def _compact_tool_result(
     return compacted, 0
 
 
-def _normalize_message(message: dict[str, Any], index: int) -> dict[str, Any]:
-    data = message.get("data") if isinstance(message.get("data"), dict) else message
-    message_type = str(message.get("type") or data.get("type") or "unknown")
-    message_id = data.get("id") or message.get("id") or f"{message_type}-{index}"
+def _normalize_message_event(event: dict[str, Any], index: int) -> dict[str, Any] | None:
+    serialized = event.get("message")
+    if isinstance(serialized, dict):
+        data = serialized.get("data") if isinstance(serialized.get("data"), dict) else serialized
+        message_type = str(serialized.get("type") or data.get("type") or "unknown")
+        return {
+            "id": str(event["id"]),
+            "source_message_id": str(
+                event.get("source_message_id")
+                or data.get("id")
+                or f"{message_type}-{index}"
+            ),
+            "type": message_type,
+            "content": data.get("content"),
+            "created_at": event.get("created_at") or data.get("created_at"),
+            "name": data.get("name"),
+            "status": data.get("status"),
+            "tool_call_id": data.get("tool_call_id"),
+            "tool_calls": data.get("tool_calls") or [],
+        }
+
+    event_type = str(event.get("type") or "")
+    role = {
+        "user_message": "human",
+        "assistant_message": "ai",
+        "system_message": "system",
+        "tool_result": "tool",
+    }.get(event_type)
+    if role is None:
+        return None
+    data = event.get("data") if isinstance(event.get("data"), dict) else {}
     return {
-        "id": str(message_id),
-        "type": message_type,
-        "content": data.get("content"),
-        "created_at": data.get("created_at") or message.get("created_at"),
+        "id": str(event["id"]),
+        "source_message_id": str(event.get("source_message_id") or event["id"]),
+        "type": role,
+        "content": event.get("content"),
+        "created_at": event.get("created_at"),
         "name": data.get("name"),
         "status": data.get("status"),
         "tool_call_id": data.get("tool_call_id"),
@@ -187,6 +229,8 @@ def _base_message(message: dict[str, Any]) -> dict[str, Any]:
         "type": message["type"],
         "content": _sanitize_value(message.get("content"), truncate_strings=False),
         "created_at": message.get("created_at"),
+        "source_event_ids": [message["id"]],
+        "source_message_id": message.get("source_message_id"),
     }
     return {key: value for key, value in compacted.items() if value is not None}
 
@@ -199,69 +243,68 @@ def _tool_event(
     tool_call = tool_call or {}
     result_message = result_message or {}
     name = str(tool_call.get("name") or result_message.get("name") or "unknown")
-    args = _sanitize_args(tool_call.get("args"))
     status = str(result_message.get("status") or ("pending" if not result_message else "success"))
     result_fields, omitted_characters = _compact_tool_result(
-        name=name,
-        status=status,
-        content=result_message.get("content"),
+        name,
+        status,
+        result_message.get("content"),
     )
-
-    source_message_ids = [
+    source_event_ids = [
         message["id"] for message in (call_message, result_message) if message and message.get("id")
     ]
     event: dict[str, Any] = {
-        "id": result_message.get("id") or tool_call.get("id"),
+        "id": result_message.get("id") or (call_message or {}).get("id"),
         "type": "tool_event",
         "name": name,
-        "args": args,
+        "args": _sanitize_args(tool_call.get("args")),
         "status": status,
         "tool_call_id": tool_call.get("id") or result_message.get("tool_call_id"),
-        "source_message_ids": source_message_ids,
-        "created_at": result_message.get("created_at")
-        or (call_message or {}).get("created_at"),
+        "source_event_ids": source_event_ids,
+        "created_at": result_message.get("created_at") or (call_message or {}).get("created_at"),
         **result_fields,
     }
     return ({key: value for key, value in event.items() if value is not None}, omitted_characters)
 
 
-def compact_messages(
+def compact_events(
     *,
+    space: str,
     project: str,
-    thread_id: str,
-    messages: list[dict[str, Any]],
+    session_id: str,
+    events: list[dict[str, Any]],
     source_version: int | None = None,
 ) -> dict[str, Any]:
-    """Build a compact mirror for DreamAgent and history retrieval."""
-    normalized = [
-        _normalize_message(message, index)
-        for index, message in enumerate(messages)
-        if isinstance(message, dict)
+    """Build a compact, redacted projection backed by raw event IDs."""
+    normalized_messages = [
+        message
+        for index, event in enumerate(events)
+        if isinstance(event, dict)
+        if (message := _normalize_message_event(event, index)) is not None
     ]
     results_by_call_id = {
         str(message["tool_call_id"]): message
-        for message in normalized
+        for message in normalized_messages
         if message["type"] == "tool" and message.get("tool_call_id")
     }
 
-    compacted_messages: list[dict[str, Any]] = []
+    compacted_events: list[dict[str, Any]] = []
     associated_result_ids: set[str] = set()
     omitted_tool_characters = 0
     tool_event_count = 0
 
-    for message in normalized:
+    for message in normalized_messages:
         message_type = message["type"]
         if message_type == "system":
             continue
         if message_type == "ai":
             if message.get("content") not in (None, "", [], {}):
-                compacted_messages.append(_base_message(message))
+                compacted_events.append(_base_message(message))
             for tool_call in message.get("tool_calls") or []:
                 if not isinstance(tool_call, dict):
                     continue
                 result_message = results_by_call_id.get(str(tool_call.get("id") or ""))
-                event, omitted = _tool_event(message, tool_call, result_message)
-                compacted_messages.append(event)
+                tool_event, omitted = _tool_event(message, tool_call, result_message)
+                compacted_events.append(tool_event)
                 omitted_tool_characters += omitted
                 tool_event_count += 1
                 if result_message:
@@ -270,27 +313,67 @@ def compact_messages(
         if message_type == "tool":
             if message["id"] in associated_result_ids:
                 continue
-            event, omitted = _tool_event(None, None, message)
-            compacted_messages.append(event)
+            tool_event, omitted = _tool_event(None, None, message)
+            compacted_events.append(tool_event)
             omitted_tool_characters += omitted
             tool_event_count += 1
             continue
-        compacted_messages.append(_base_message(message))
+        compacted_events.append(_base_message(message))
 
-    raw_json = _canonical_json(messages)
-    compact_json = _canonical_json(compacted_messages)
+    represented_ids = {
+        event_id
+        for compacted in compacted_events
+        for event_id in compacted.get("source_event_ids") or []
+    }
+    for event in events:
+        event_id = str(event.get("id") or "")
+        event_type = str(event.get("type") or "")
+        if not event_id or event_id in represented_ids:
+            continue
+        if event_type in {
+            "session_failed",
+            "session_cancelled",
+            "tool_call",
+            "tool_result",
+            "permission_request",
+            "permission_response",
+            "file_change",
+            "terminal_output",
+            "plan_update",
+            "error",
+            "provider_event",
+        }:
+            compacted_events.append(
+                {
+                    "id": event_id,
+                    "type": event_type,
+                    "content": _sanitize_value(event.get("content"), truncate_strings=False),
+                    "data": _sanitize_value(event.get("data") or {}),
+                    "created_at": event.get("created_at"),
+                    "source_event_ids": [event_id],
+                }
+            )
+
+    source_hash = event_content_hash(events)
+    raw_json = _canonical_json(events)
+    compact_json = _canonical_json(compacted_events)
     source: dict[str, Any] = {
-        "relative_path": f"thread_objects/{thread_id}.json",
-        "message_count": len(messages),
-        "source_content_hash": source_content_hash(messages),
+        "relative_path": (
+            f"{space}/projects/{project}/sessions/{session_id}/events.jsonl"
+        ),
+        "event_count": len(events),
+        "from_seq": int(events[0]["seq"]) if events else 0,
+        "to_seq": int(events[-1]["seq"]) if events else 0,
+        "source_content_hash": source_hash,
     }
     if source_version is not None:
         source["source_version"] = int(source_version)
 
     return {
         "schema_version": SCHEMA_VERSION,
+        "space": space,
         "project": project,
-        "thread_id": thread_id,
+        "session_id": session_id,
         "source": source,
         "compression": {
             "compressed_at": _now_iso(),
@@ -299,25 +382,27 @@ def compact_messages(
             "omitted_tool_characters": omitted_tool_characters,
             "tool_event_count": tool_event_count,
         },
-        "messages": compacted_messages,
+        "events": compacted_events,
     }
 
 
-def write_compact_messages(
+def write_compact_events(
     *,
-    compact_dir: Path,
+    memory_root: Path,
+    space: str,
     project: str,
-    thread_id: str,
-    messages: list[dict[str, Any]],
+    session_id: str,
+    events: list[dict[str, Any]],
     source_version: int | None = None,
 ) -> tuple[Path, dict[str, Any]]:
-    payload = compact_messages(
+    payload = compact_events(
+        space=space,
         project=project,
-        thread_id=thread_id,
-        messages=messages,
+        session_id=session_id,
+        events=events,
         source_version=source_version,
     )
-    output_path = compact_thread_path(compact_dir, thread_id)
+    output_path = compact_path(memory_root, space, project, session_id)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = output_path.with_suffix(".json.tmp")
     temp_path.write_text(
@@ -330,28 +415,40 @@ def write_compact_messages(
 
 def load_validated_compact(
     *,
+    memory_root: Path,
+    space: str,
     project: str,
-    thread_id: str,
-    thread_objects_dir: Path,
-    compact_dir: Path,
+    session_id: str,
 ) -> dict[str, Any]:
-    """Load compact data only when it still matches the authoritative raw snapshot."""
-    raw_path = thread_objects_dir / f"{thread_id}.json"
-    compact_path = compact_thread_path(compact_dir, thread_id)
-    raw_data = json.loads(raw_path.read_text(encoding="utf-8-sig"))
-    messages = raw_data.get("messages", []) if isinstance(raw_data, dict) else []
-    payload = json.loads(compact_path.read_text(encoding="utf-8-sig"))
+    """Load compact data only when it matches the append-only event source."""
+    raw_events = load_events(events_path(memory_root, space, project, session_id))
+    manifest = json.loads(
+        manifest_path(memory_root, space, project, session_id).read_text(encoding="utf-8-sig")
+    )
+    payload = json.loads(
+        compact_path(memory_root, space, project, session_id).read_text(encoding="utf-8-sig")
+    )
     source = payload.get("source") or {}
-    raw_project = raw_data.get("project") if isinstance(raw_data, dict) else None
-    raw_thread_id = raw_data.get("thread_id") if isinstance(raw_data, dict) else None
-    if raw_project and raw_project != project:
-        raise ValueError("raw snapshot project binding does not match")
-    if raw_thread_id and raw_thread_id != thread_id:
-        raise ValueError("raw snapshot thread binding does not match")
+    expected_binding = (space, project, session_id)
+    manifest_binding = (
+        manifest.get("space"),
+        manifest.get("project"),
+        manifest.get("id"),
+    )
+    compact_binding = (
+        payload.get("space"),
+        payload.get("project"),
+        payload.get("session_id"),
+    )
+    if manifest_binding != expected_binding:
+        raise ValueError("session manifest binding does not match")
     if payload.get("schema_version") != SCHEMA_VERSION:
         raise ValueError("compact memory schema is not supported")
-    if payload.get("project") != project or payload.get("thread_id") != thread_id:
-        raise ValueError("compact memory project/thread binding does not match")
-    if source.get("source_content_hash") != source_content_hash(messages):
-        raise ValueError("compact memory is stale relative to the raw thread snapshot")
+    if compact_binding != expected_binding:
+        raise ValueError("compact memory space/project/session binding does not match")
+    if source.get("source_content_hash") != event_content_hash(raw_events):
+        raise ValueError("compact memory is stale relative to the session event log")
+    expected_seq = int(raw_events[-1]["seq"]) if raw_events else 0
+    if int(source.get("to_seq", -1)) != expected_seq:
+        raise ValueError("compact memory event range is stale")
     return payload

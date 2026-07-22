@@ -10,8 +10,9 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from config.settings import settings
 from core.memory.compaction import load_validated_compact
+from core.memory.paths import DEFAULT_MEMORY_SPACE
 from core.memory.state import (
-    get_thread_source,
+    get_session_source,
     mark_consolidation_failed,
     mark_consolidation_started,
     needs_consolidation,
@@ -20,7 +21,7 @@ from tools.codex_tools import codex_reply_tool, codex_tool
 from tools.dream_agent_tools import (
     complete_memory_consolidation,
     list_all_project_names,
-    list_all_thread_ids,
+    list_all_session_ids,
     read_compact_memory,
     read_project_memory,
     remember_durable_knowledge,
@@ -52,19 +53,19 @@ Core behavior:
   context, answer from general model knowledge and clearly state that limitation.
 - Do not pretend to have completed actions you have not performed.
 
-Long-term project memory is stored in `memory/projects/<project_name>/`.
+Long-term project memory is stored in
+`memory/<space>/projects/<project_name>/`.
 It is not automatically injected into your prompt. When a task depends on
 project history, user preferences, previous decisions, unresolved questions,
 or prior artifacts, inspect the project memory yourself before answering.
 Useful locations include:
-- `/memory/projects/<project_name>/MEMORY.md` for concise project context.
-- `/memory/projects/<project_name>/decisions.md` for accepted decisions.
-- `/memory/projects/<project_name>/open_questions.md` for unresolved items.
-- `/memory/projects/<project_name>/artifacts.md` for important generated files.
-- `/memory/projects/<project_name>/dreams/` for memory consolidation proposals.
+- `/memory/<space>/projects/<project_name>/MEMORY.md` for concise context.
+- `/memory/<space>/projects/<project_name>/decisions.md` for decisions.
+- `/memory/<space>/projects/<project_name>/open_questions.md` for open items.
+- `/memory/<space>/projects/<project_name>/artifacts.md` for artifacts.
 
-If the current project is unclear, inspect `/memory/projects/` to see available
-project names or ask the user which project to use. Treat project memory as
+If the current project is unclear, inspect the active space's `projects/`
+directory or ask the user which project to use. Treat project memory as
 reference material: prefer the user's latest message and verified file/tool
 evidence when they conflict with memory.
 
@@ -110,9 +111,9 @@ Core principles:
 - Treat user corrections as high-priority memory.
 - Treat implementation decisions as durable only when the user accepted them or
   the codebase already reflects them.
-- Every atomic memory must cite message IDs from the validated compact source.
-- Never bypass the compact source by reading the raw thread snapshot.
-- Project-private memory stays inside the named project.
+- Every atomic memory must cite event IDs from the validated compact source.
+- Never bypass the compact source by reading the raw session event log.
+- Memory stays inside the exact space and project named by the request.
 - A run is successful only after project Markdown is written and the explicit
   completion tool accepts the source hash.
 """.strip()
@@ -126,9 +127,11 @@ class Agent:
         self,
         system_prompt: str = SYSTEM_PROMPT,
         project: str = "general",
+        space: str = DEFAULT_MEMORY_SPACE,
     ) -> None:
         self.root_dir = Path(__file__).resolve().parent.parent
         self.project = project
+        self.space = space
         self.backend = FilesystemBackend(
             root_dir=str(self.root_dir),
             virtual_mode=True,
@@ -137,8 +140,8 @@ class Agent:
             run_shell_command,
             codex_tool,
             codex_reply_tool,
-            create_project_memory_search_tool(project),
-            create_conversation_history_search_tool(project),
+            create_project_memory_search_tool(space, project),
+            create_conversation_history_search_tool(space, project),
         ]
         self.deepagent = create_deep_agent(
             model=init_chat_model(
@@ -225,7 +228,7 @@ class DreamAgent:
         self.root_dir = Path(__file__).resolve().parent.parent
         self.toolist = [
             read_compact_memory,
-            list_all_thread_ids,
+            list_all_session_ids,
             list_all_project_names,
             read_project_memory,
             remember_durable_knowledge,
@@ -246,35 +249,50 @@ class DreamAgent:
             system_prompt=self.system_prompt,
         )
 
-    async def invoke(self, thread_id: str, project: str = "general") -> Any:
+    async def invoke(
+        self,
+        session_id: str,
+        project: str = "general",
+        space: str = DEFAULT_MEMORY_SPACE,
+    ) -> Any:
         payload = load_validated_compact(
+            memory_root=settings.MEMORY_DIR,
+            space=space,
             project=project,
-            thread_id=thread_id,
-            thread_objects_dir=settings.THREAD_OBJECTS_DIR,
-            compact_dir=settings.COMPACT_THREADS_DIR,
+            session_id=session_id,
         )
         source_hash = str((payload.get("source") or {}).get("source_content_hash") or "")
-        if not needs_consolidation(project, thread_id, source_hash):
+        if not needs_consolidation(space, project, session_id, source_hash):
             return {
                 "status": "skipped",
-                "reason": "source snapshot is already consolidated",
+                "reason": "session event source is already consolidated",
                 "source_hash": source_hash,
             }
-        mark_consolidation_started(project, thread_id, source_hash)
+        mark_consolidation_started(space, project, session_id, source_hash)
+        focus = (
+            "Extract user preferences, goals, relationships, corrections, plans, and durable facts."
+            if space == "non_productivity"
+            else (
+                "Extract task intent, technical decisions, changed files, tests, "
+                "errors, artifacts, and unfinished work."
+            )
+        )
         prompt = f"""
-Consolidate the short-term thread memory into durable project memory.
+Consolidate the short-term session memory into durable project memory.
 
-Thread ID: {thread_id}
+Space: {space}
 Project: {project}
+Session ID: {session_id}
 Source Hash: {source_hash}
+Space-specific focus: {focus}
 
 Steps:
-1. Read the validated compact memory for this exact project and thread. Do not
-   read or request the raw thread snapshot.
-2. Use the available tools to read existing project memory for this project.
+1. Read validated compact memory for this exact space, project, and session. Do
+   not read or request the raw event log.
+2. Read existing project memory from the same space and project.
 3. Extract only durable information that will help future Cleo sessions. For
    each atomic item, call remember_durable_knowledge with this exact source hash
-   and evidence message IDs that occur in the compact source.
+   and evidence event IDs that occur in the compact source.
 4. Preserve accepted facts, decisions, constraints, user preferences,
    corrections, open questions, next actions, and artifact references.
 5. Ignore greetings, repeated debugging noise, transient command output, and
@@ -291,14 +309,14 @@ The result should be concise, structured, and useful for future Cleo sessions.
         try:
             result = await self.dreamagent.ainvoke(
                 {"messages": [{"role": "user", "content": prompt}]},
-                config={"configurable": {"thread_id": thread_id}},
+                config={"configurable": {"thread_id": session_id}},
             )
-            source_state = get_thread_source(project, thread_id)
+            source_state = get_session_source(space, project, session_id)
             if source_state is None or source_state.get("consolidated_hash") != source_hash:
                 raise RuntimeError(
                     "DreamAgent returned without completing the memory consolidation protocol"
                 )
             return result
         except Exception as exc:
-            mark_consolidation_failed(project, thread_id, source_hash, str(exc))
+            mark_consolidation_failed(space, project, session_id, source_hash, str(exc))
             raise

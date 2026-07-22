@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 from acp import update_agent_message_text
@@ -12,6 +13,8 @@ from core.integrations.agent_adapter import (
     ProviderTurn,
 )
 from core.integrations.agent_adapter.acp import _AcpClientHost
+from core.integrations.agent_adapter.codex import CodexProvider, _CodexRuntime
+from core.memory.compaction import load_validated_compact
 
 
 class FakeProvider:
@@ -39,6 +42,16 @@ class FakeProvider:
 
     async def prompt(self, session_id, prompt, on_event=None) -> ProviderTurn:
         event = AgentEvent(provider=self.name, type="agent_message", text=prompt)
+        tool_event = AgentEvent(
+            provider=self.name,
+            type="tool_call",
+            data={"name": "read_file", "path": "README.md"},
+        )
+        future_event = AgentEvent(
+            provider=self.name,
+            type="future_protocol_event",
+            data={"new_field": True},
+        )
         if on_event is not None:
             result = on_event(event)
             if asyncio.iscoroutine(result):
@@ -48,7 +61,7 @@ class FakeProvider:
             turn_id="turn-1",
             status="completed",
             response=f"done:{prompt}",
-            events=(event,),
+            events=(event, tool_event, future_event),
         )
 
     async def cancel(self, session_id: str) -> None:
@@ -76,6 +89,18 @@ def test_agent_adapter_routes_provider_sessions(tmp_path) -> None:
         assert result.native_session_id == "native-session"
         assert result.response == "done:hello"
         assert received[0].text == "hello"
+        payload = load_validated_compact(
+            memory_root=tmp_path / "memory",
+            space="productivity",
+            project=tmp_path.name,
+            session_id=result.session_id,
+        )
+        assert any(event["type"] == "tool_call" for event in payload["events"])
+        fallback = next(
+            event for event in payload["events"] if event["type"] == "provider_event"
+        )
+        assert fallback["data"]["provider_event_type"] == "future_protocol_event"
+        assert fallback["data"]["payload"] == {"new_field": True}
 
         await adapter.cancel(result.session_id)
         await adapter.close(result.session_id)
@@ -120,3 +145,79 @@ def test_acp_host_streams_events_and_scopes_file_access(tmp_path) -> None:
     asyncio.run(exercise())
     assert host.response_parts == ["hello"]
     assert received[0].provider == "native-acp"
+    assert received[0].type == "assistant_message_chunk"
+    assert received[0].data["provider_event_type"] == "agent_message_chunk"
+
+
+def test_codex_provider_streams_new_sdk_notifications() -> None:
+    class Payload:
+        def __init__(self, data):
+            self.data = data
+
+        def model_dump(self, **_kwargs):
+            return self.data
+
+    class FakeTurn:
+        id = "turn-1"
+
+        async def stream(self):
+            yield SimpleNamespace(
+                method="item/agentMessage/delta",
+                payload=Payload({"delta": "hello", "turnId": self.id}),
+            )
+            yield SimpleNamespace(
+                method="item/started",
+                payload=Payload(
+                    {
+                        "turnId": self.id,
+                        "item": {
+                            "type": "commandExecution",
+                            "id": "tool-1",
+                            "command": "git status",
+                        },
+                    }
+                ),
+            )
+            yield SimpleNamespace(
+                method="item/completed",
+                payload=Payload(
+                    {
+                        "turnId": self.id,
+                        "item": {
+                            "type": "agentMessage",
+                            "id": "message-1",
+                            "phase": "final_answer",
+                            "text": "hello world",
+                        },
+                    }
+                ),
+            )
+            yield SimpleNamespace(
+                method="turn/completed",
+                payload=Payload({"turn": {"id": self.id, "status": "completed"}}),
+            )
+
+        async def interrupt(self):
+            return None
+
+    class FakeThread:
+        id = "codex-thread-1"
+
+        async def turn(self, *_args, **_kwargs):
+            return FakeTurn()
+
+    provider = CodexProvider(default_model="test-model")
+    provider._sessions["session-1"] = _CodexRuntime(
+        client=SimpleNamespace(),
+        thread=FakeThread(),
+    )
+    received: list[AgentEvent] = []
+
+    result = asyncio.run(provider.prompt("session-1", "hello", received.append))
+
+    assert result.status == "completed"
+    assert result.response == "hello world"
+    assert received[0].type == "assistant_message_chunk"
+    assert received[0].text == "hello"
+    assert received[1].type == "tool_call"
+    assert received[1].data["provider_event_type"] == "item/started"

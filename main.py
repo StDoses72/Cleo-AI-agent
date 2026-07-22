@@ -22,7 +22,10 @@ from langchain_core.messages import (
 )
 
 if TYPE_CHECKING:
+    from config.settings import SettingsModel
     from core.agent import Agent
+    from core.integrations.agent_adapter import AgentAdapter, AgentEvent, AgentResult, AgentSession
+    from core.memory.session_store import SessionStore
     from core.runtime.model import Runtime
 
 SUPPORTED_IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
@@ -66,33 +69,297 @@ async def _print_streaming_reply(
     print()
 
 
-async def _save_thread_snapshot(
+async def _sync_session_events(
     agent: Agent,
     runtime: Runtime,
     thread_id: str,
     fallback_messages: list[BaseMessage] | None = None,
+    *,
+    status: str = "active",
 ) -> None:
-    from core.memory.thread_memory import save_messages_to_file
+    from config.settings import settings
+    from core.memory.session_store import SessionStore
 
     config = {"configurable": {"thread_id": thread_id}}
     state = await agent.deepagent.aget_state(config)
     thread_messages = state.values.get("messages", [])
     if not thread_messages and fallback_messages is not None:
         thread_messages = fallback_messages
-    save_messages_to_file(thread_messages, f"{thread_id}.json", runtime)
-    runtime.append_recent_threads(thread_id)
+    store = SessionStore(settings.MEMORY_DIR, settings.SESSION_INDEX_PATH)
+    store.sync_langchain_messages(
+        session_id=thread_id,
+        space=runtime.current_space,
+        project=runtime.current_project or "general",
+        messages=thread_messages,
+        provider="cleo",
+        owner_type="user",
+        cwd=str(settings.active_directory_profile.root_path),
+        status=status,
+    )
+    runtime.append_recent_threads(thread_id, runtime.current_space)
 
 
-async def _run_dream_agent(thread_id: str, project: str | None) -> None:
+async def _run_dream_agent(
+    thread_id: str,
+    project: str | None,
+    space: str,
+) -> None:
     from core.agent import DreamAgent
 
     project_name = project or "general"
     try:
         print(f"Running DreamAgent memory consolidation for {thread_id} -> {project_name}...")
-        await DreamAgent().invoke(thread_id=thread_id, project=project_name)
+        await DreamAgent().invoke(
+            session_id=thread_id,
+            project=project_name,
+            space=space,
+        )
         print("DreamAgent memory consolidation finished.")
     except Exception as exc:
         print(f"DreamAgent memory consolidation failed: {exc}")
+
+
+def _productivity_event_payload(event: AgentEvent) -> dict[str, object]:
+    payload = event.data.get("payload")
+    return payload if isinstance(payload, dict) else event.data
+
+
+def _productivity_event_summary(event: AgentEvent) -> str | None:
+    payload = _productivity_event_payload(event)
+    item = payload.get("item")
+    item = item if isinstance(item, dict) else {}
+    if event.type == "tool_call":
+        command = item.get("command")
+        if command:
+            return f"[tool] {command}"
+        server = item.get("server")
+        tool = item.get("tool")
+        if server or tool:
+            return f"[tool] {server or 'tool'}/{tool or 'unknown'}"
+        return f"[tool] {item.get('type', 'started')}"
+    if event.type == "tool_result":
+        status = item.get("status") or "completed"
+        return f"[tool {status}]"
+    if event.type == "plan_update":
+        plan = payload.get("plan")
+        if isinstance(plan, list):
+            steps = [
+                str(step.get("step"))
+                for step in plan
+                if isinstance(step, dict) and step.get("step")
+            ]
+            if steps:
+                return "[plan] " + " | ".join(steps)
+        return "[plan updated]"
+    if event.type == "file_change" and not event.text:
+        return "[file change]"
+    if event.type == "error":
+        return f"[error] {event.text or 'Codex reported an error'}"
+    return None
+
+
+async def _prompt_productivity_session(
+    adapter: AgentAdapter,
+    session_id: str,
+    prompt: str,
+) -> AgentResult:
+    assistant_streamed = False
+    terminal_streamed = False
+
+    def on_event(event: AgentEvent) -> None:
+        nonlocal assistant_streamed, terminal_streamed
+        if event.type == "assistant_message_chunk" and event.text:
+            assistant_streamed = True
+            terminal_streamed = False
+            print(event.text, end="", flush=True)
+            return
+        if event.type == "terminal_output" and event.text:
+            if not terminal_streamed:
+                print("\n[terminal]", flush=True)
+            terminal_streamed = True
+            print(event.text, end="", flush=True)
+            return
+        summary = _productivity_event_summary(event)
+        if summary:
+            terminal_streamed = False
+            print(f"\n{summary}", flush=True)
+
+    result = await adapter.prompt(session_id, prompt, on_event=on_event)
+    if assistant_streamed or terminal_streamed:
+        print()
+    elif result.response:
+        print(result.response)
+    if result.status != "completed":
+        details = f": {result.error}" if result.error else ""
+        print(f"[session {result.status}]{details}")
+    return result
+
+
+async def _finish_productivity_session(
+    adapter: AgentAdapter,
+    session: AgentSession,
+    runtime: Runtime,
+) -> None:
+    await adapter.close(session.id)
+    runtime.append_recent_threads(session.id, "productivity")
+    await _run_dream_agent(session.id, session.project, "productivity")
+
+
+async def _run_productivity_loop(
+    adapter: AgentAdapter,
+    session: AgentSession,
+    runtime: Runtime,
+    *,
+    provider: str,
+    project_path: str,
+    project: str,
+    model: str | None,
+    return_to_chat: bool = False,
+) -> None:
+    exit_action = "return to Cleo chat" if return_to_chat else "exit"
+    print(
+        "Cleo productivity mode. "
+        f"Type /back or /quit to {exit_action}, /new to start a new harness session."
+    )
+    print(f"Provider: {session.provider}")
+    print(f"Session id: {session.id}")
+    print(f"Native session id: {session.native_session_id or 'pending'}")
+    print(f"Project: {session.project}")
+    print(f"Working directory: {session.project_path}")
+    print()
+
+    while True:
+        try:
+            prompt = (await asyncio.to_thread(input, "productivity>> ")).strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            await _finish_productivity_session(adapter, session, runtime)
+            break
+
+        if not prompt:
+            continue
+        if prompt in {"/back", "/quit", "/exit"}:
+            await _finish_productivity_session(adapter, session, runtime)
+            break
+        if prompt == "/new":
+            await _finish_productivity_session(adapter, session, runtime)
+            session = await adapter.create_session(
+                provider,
+                project_path=project_path,
+                model=model,
+                project=project,
+            )
+            runtime.update_current_thread_id(session.id)
+            runtime.append_recent_threads(session.id, "productivity")
+            print(f"Started new {provider} session: {session.id}")
+            continue
+
+        try:
+            print()
+            await _prompt_productivity_session(adapter, session.id, prompt)
+            runtime.append_recent_threads(session.id, "productivity")
+        except KeyboardInterrupt:
+            print("\nCancelling the active harness turn...")
+            await adapter.cancel(session.id)
+        except Exception as exc:
+            print(f"Productivity error: {exc}")
+        print()
+
+    runtime.update_current_thread_id(None)
+    runtime.update_current_project(None)
+    runtime.update_runtime_json()
+
+
+async def _run_productivity_mode(
+    args: argparse.Namespace,
+    runtime: Runtime,
+    store: SessionStore,
+    settings: SettingsModel,
+    *,
+    return_to_chat: bool = False,
+) -> None:
+    from core.integrations.agent_adapter import AgentAdapter, CodexProvider
+
+    default_model = settings.active_tools_profile.codex_model
+    adapter = AgentAdapter(
+        settings.active_directory_profile.root_path,
+        session_store=store,
+    )
+    adapter.register(CodexProvider(default_model=default_model))
+
+    provider = args.provider or "codex"
+    if provider not in adapter.providers:
+        available = ", ".join(adapter.providers)
+        raise SystemExit(f"Unknown productivity provider {provider!r}; available: {available}")
+
+    model = args.model or default_model
+    project_path = args.cwd or "."
+    project = args.project
+    try:
+        if args.resume_id is not None:
+            manifest = store.load_manifest(args.resume_id)
+            if manifest["space"] != "productivity":
+                raise SystemExit(
+                    f"Session {args.resume_id} is not a productivity session."
+                )
+            saved_provider = str(manifest["provider"])
+            if args.provider is not None and args.provider != saved_provider:
+                raise SystemExit(
+                    f"Session {args.resume_id} belongs to provider {saved_provider!r}, "
+                    f"not {args.provider!r}."
+                )
+            native_session_id = manifest.get("native_session_id")
+            if not native_session_id:
+                raise SystemExit(
+                    f"Session {args.resume_id} has no native harness session id."
+                )
+            provider = saved_provider
+            project_path = args.cwd or manifest.get("cwd") or "."
+            project = args.project or str(manifest["project"])
+            session = await adapter.resume_session(
+                provider,
+                str(native_session_id),
+                project_path=project_path,
+                model=model,
+                project=project,
+            )
+        else:
+            session = await adapter.create_session(
+                provider,
+                project_path=project_path,
+                model=model,
+                project=project,
+            )
+    except FileNotFoundError as exc:
+        raise SystemExit(f"No saved session found for id: {args.resume_id}") from exc
+    except (KeyError, ValueError) as exc:
+        raise SystemExit(f"Unable to start productivity session: {exc}") from exc
+
+    runtime.update_current_space("productivity")
+    runtime.update_current_project(session.project)
+    runtime.update_current_thread_id(session.id)
+    runtime.append_recent_threads(session.id, "productivity")
+
+    try:
+        if args.message is None:
+            await _run_productivity_loop(
+                adapter,
+                session,
+                runtime,
+                provider=provider,
+                project_path=project_path,
+                project=session.project,
+                model=model,
+                return_to_chat=return_to_chat,
+            )
+        else:
+            await _prompt_productivity_session(adapter, session.id, args.message)
+            await _finish_productivity_session(adapter, session, runtime)
+            runtime.update_current_thread_id(None)
+            runtime.update_current_project(None)
+            runtime.update_runtime_json()
+    finally:
+        await adapter.aclose()
 
 
 async def _run_chat_loop(
@@ -101,7 +368,10 @@ async def _run_chat_loop(
     thread_id: str,
     restored_messages: list[BaseMessage] | None = None,
 ) -> None:
-    print("Cleo AI Agent interactive chat. Type /quit to exit, /new to start a fresh thread.")
+    print(
+        "Cleo AI Agent interactive chat. Type /productivity to open productivity mode, "
+        "/quit to exit, or /new to start a fresh thread."
+    )
     print(f"Thread id: {thread_id}")
     print(f"Project: {runtime.current_project or 'general'}")
     print()
@@ -117,35 +387,106 @@ async def _run_chat_loop(
 
         except EOFError:
             print()
-            await _save_thread_snapshot(agent, runtime, thread_id, restored_messages)
+            await _sync_session_events(
+                agent,
+                runtime,
+                thread_id,
+                restored_messages,
+                status="interrupted",
+            )
             runtime.update_runtime_json()
             break
         except KeyboardInterrupt:
             print()
             print("Chat interrupted by user. Exiting.")
-            await _save_thread_snapshot(agent, runtime, thread_id, restored_messages)
+            await _sync_session_events(
+                agent,
+                runtime,
+                thread_id,
+                restored_messages,
+                status="interrupted",
+            )
             runtime.update_runtime_json()
             break
 
         if not message:
             continue
         if message in {"/quit", "/exit"}:
-            print(f"Saving thread snapshot: {thread_id}")
-            await _save_thread_snapshot(agent, runtime, thread_id, restored_messages)
-            await _run_dream_agent(thread_id, runtime.current_project)
+            print(f"Closing session event log: {thread_id}")
+            await _sync_session_events(
+                agent,
+                runtime,
+                thread_id,
+                restored_messages,
+                status="completed",
+            )
+            await _run_dream_agent(
+                thread_id,
+                runtime.current_project,
+                runtime.current_space,
+            )
             runtime.update_current_project(None)
             runtime.update_current_thread_id(None)
             runtime.update_runtime_json()
             print("Exiting the chat. Goodbye!")
             break
         if message == "/new":
-            await _save_thread_snapshot(agent, runtime, thread_id, restored_messages)
+            await _sync_session_events(
+                agent,
+                runtime,
+                thread_id,
+                restored_messages,
+                status="completed",
+            )
             thread_id = _new_thread_id()
             restored_messages = None
             runtime.update_current_thread_id(thread_id)
             runtime.update_runtime_json()
             clear_screen()
             print(f"Started new thread: {thread_id}")
+            continue
+
+        if message == "/productivity":
+            from config.settings import settings
+            from core.memory.session_store import SessionStore
+
+            saved_space = runtime.current_space
+            saved_project = runtime.current_project or "general"
+            await _sync_session_events(
+                agent,
+                runtime,
+                thread_id,
+                restored_messages,
+                status="active",
+            )
+            productivity_args = argparse.Namespace(
+                message=None,
+                provider=None,
+                cwd=str(settings.active_directory_profile.root_path),
+                model=None,
+                project=saved_project,
+                resume_id=None,
+            )
+            try:
+                clear_screen()
+                await _run_productivity_mode(
+                    productivity_args,
+                    runtime,
+                    SessionStore(settings.MEMORY_DIR, settings.SESSION_INDEX_PATH),
+                    settings,
+                    return_to_chat=True,
+                )
+            except (Exception, SystemExit) as exc:
+                print(f"Unable to open productivity mode: {exc}")
+            finally:
+                runtime.update_current_space(saved_space)
+                runtime.update_current_project(saved_project)
+                runtime.update_current_thread_id(thread_id)
+                runtime.append_recent_threads(thread_id, saved_space)
+            clear_screen()
+            print(f"Returned to Cleo chat. Thread id: {thread_id}")
+            print(f"Project: {saved_project}")
+            print()
             continue
 
         if message == "/attach":
@@ -184,10 +525,17 @@ async def _run_chat_loop(
             )
             restored_messages = None
             attachment_list = []
+            await _sync_session_events(agent, runtime, thread_id, status="active")
         except KeyboardInterrupt:
             print()
             print("Chat interrupted by user. Exiting.")
-            await _save_thread_snapshot(agent, runtime, thread_id, restored_messages)
+            await _sync_session_events(
+                agent,
+                runtime,
+                thread_id,
+                restored_messages,
+                status="interrupted",
+            )
             runtime.update_runtime_json()
             break
         except Exception as exc:
@@ -378,6 +726,26 @@ async def amain() -> None:
         default=None,
         help="Bind this thread and its memory retrieval tools to a project name.",
     )
+    parser.add_argument(
+        "--productivity",
+        action="store_true",
+        help="Run an external agent harness through Cleo's productivity adapter.",
+    )
+    parser.add_argument(
+        "--provider",
+        default=None,
+        help="Productivity harness provider. Defaults to codex.",
+    )
+    parser.add_argument(
+        "--cwd",
+        default=None,
+        help="Working directory for the productivity harness. Defaults to this project root.",
+    )
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="Optional productivity harness model override.",
+    )
     thread_group = parser.add_mutually_exclusive_group()
 
     thread_group.add_argument(
@@ -393,7 +761,7 @@ async def amain() -> None:
         dest="resume_id",
         metavar="THREAD_ID",
         default=None,
-        help="Resume a saved thread snapshot by thread id.",
+        help="Resume a saved Cleo or productivity session by Cleo session id.",
     )
 
     args = parser.parse_args()
@@ -405,6 +773,10 @@ async def amain() -> None:
             or args.resume_id is not None
             or args.reset_to_main
             or args.project is not None
+            or args.productivity
+            or args.provider is not None
+            or args.cwd is not None
+            or args.model is not None
         ):
             raise SystemExit(
                 "--print-config-template cannot be combined with other operations."
@@ -418,6 +790,10 @@ async def amain() -> None:
             or args.thread_id is not None
             or args.resume_id is not None
             or args.project is not None
+            or args.productivity
+            or args.provider is not None
+            or args.cwd is not None
+            or args.model is not None
         ):
             raise SystemExit("--reset-to-main cannot be combined with chat or thread arguments.")
         try:
@@ -426,39 +802,73 @@ async def amain() -> None:
             raise SystemExit(f"Reset to main failed: {exc}") from exc
         return
 
-    from core.memory.thread_memory import load_messages_from_file, load_thread_project
+    if args.productivity and args.thread_id is not None:
+        raise SystemExit("--thread-id is only available for Cleo chat sessions.")
+    if not args.productivity and any(
+        value is not None for value in (args.provider, args.cwd, args.model)
+    ):
+        raise SystemExit("--provider, --cwd, and --model require --productivity.")
+
+    from config.settings import settings
+    from core.memory.session_store import SessionStore
     from core.runtime.model import Runtime
 
     runtime = Runtime()
+    store = SessionStore(settings.MEMORY_DIR, settings.SESSION_INDEX_PATH)
+    if args.productivity:
+        await _run_productivity_mode(args, runtime, store, settings)
+        return
+
+    unfinished_thread_id = (
+        runtime.current_thread_id
+        if runtime.current_space == "non_productivity"
+        else None
+    )
+    runtime.update_current_space("non_productivity")
     if args.project is not None:
         runtime.update_current_project(args.project)
     loaded_messages: list[BaseMessage] | None = None
     if args.resume_id is not None:
         thread_id = args.resume_id
         try:
-            loaded_messages = load_messages_from_file(f"{thread_id}.json")
-            saved_project = load_thread_project(f"{thread_id}.json")
+            manifest = store.load_manifest(thread_id)
+            if manifest["provider"] != "cleo":
+                raise SystemExit(
+                    "The Cleo chat CLI can only resume Cleo sessions; "
+                    "use the productivity interface for harness sessions."
+                )
+            loaded_messages = store.load_langchain_messages(thread_id)
+            saved_project = str(manifest["project"])
         except FileNotFoundError as exc:
-            raise SystemExit(f"No saved thread snapshot found for thread id: {thread_id}") from exc
+            raise SystemExit(f"No saved session found for id: {thread_id}") from exc
         if args.project is not None and saved_project and args.project != saved_project:
             raise SystemExit(
                 f"Saved thread {thread_id} belongs to project {saved_project!r}, "
                 f"not {args.project!r}."
             )
+        runtime.update_current_space(str(manifest["space"]))
         runtime.update_current_project(saved_project or args.project or "general")
     elif args.thread_id is not None:
         thread_id = args.thread_id
-    elif args.message is None and runtime.current_thread_id:
+    elif args.message is None and unfinished_thread_id:
         print(
-            f"Determined an unfinished thread with id {runtime.current_thread_id}. "
+            f"Determined an unfinished thread with id {unfinished_thread_id}. "
             "Do you want to continue it? (y/n)"
         )
         choice = (await asyncio.to_thread(input, ">> ")).strip().lower()
         if choice == "y":
-            thread_id = runtime.current_thread_id
+            thread_id = unfinished_thread_id
             print(f"Recovering with thread id {thread_id}")
-            loaded_messages = load_messages_from_file(f"{thread_id}.json")
-            saved_project = load_thread_project(f"{thread_id}.json")
+            try:
+                manifest = store.load_manifest(thread_id)
+                loaded_messages = store.load_langchain_messages(thread_id)
+                saved_project = str(manifest["project"])
+                runtime.update_current_space(str(manifest["space"]))
+            except FileNotFoundError:
+                thread_id = _new_thread_id()
+                loaded_messages = None
+                saved_project = None
+                print("The unfinished session was not found; starting a new one.")
             if saved_project:
                 runtime.update_current_project(saved_project)
             _print_restored_messages(thread_id, loaded_messages)
@@ -478,7 +888,10 @@ async def amain() -> None:
 
     from core.agent import Agent
 
-    agent = Agent(project=runtime.current_project or "general")
+    agent = Agent(
+        project=runtime.current_project or "general",
+        space=runtime.current_space,
+    )
     if args.resume_id is not None:
         if args.message is None:
             _print_restored_messages(thread_id, loaded_messages=loaded_messages)
@@ -495,8 +908,18 @@ async def amain() -> None:
                 thread_id,
                 loaded_info=loaded_messages,
             )
-            await _save_thread_snapshot(agent, runtime, thread_id, loaded_messages)
-            await _run_dream_agent(thread_id, runtime.current_project)
+            await _sync_session_events(
+                agent,
+                runtime,
+                thread_id,
+                loaded_messages,
+                status="completed",
+            )
+            await _run_dream_agent(
+                thread_id,
+                runtime.current_project,
+                runtime.current_space,
+            )
         return
     else:
         if args.message is None:
@@ -513,8 +936,18 @@ async def amain() -> None:
                 thread_id,
                 loaded_info=loaded_messages,
             )
-            await _save_thread_snapshot(agent, runtime, thread_id, loaded_messages)
-            await _run_dream_agent(thread_id, runtime.current_project)
+            await _sync_session_events(
+                agent,
+                runtime,
+                thread_id,
+                loaded_messages,
+                status="completed",
+            )
+            await _run_dream_agent(
+                thread_id,
+                runtime.current_project,
+                runtime.current_space,
+            )
         return
 
 def main() -> None:

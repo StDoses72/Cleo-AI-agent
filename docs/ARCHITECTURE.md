@@ -1,314 +1,200 @@
-# Cleo 架构文档
+# Cleo 当前架构
 
-English version: [ARCHITECTURE.en.md](ARCHITECTURE.en.md)
+本文描述仓库中已经实现的运行时、harness adapter、session storage 和 memory
+pipeline，不把未来前端或完整 SessionHub 服务写成已完成能力。
 
-本文档描述当前仓库实际存在的 Cleo AI Agent 本地 runtime 架构。Cleo 是一个基于
-Deep Agents 和 LangChain 的本地个人 AI agent runtime，重点保留可检查、可迁移的
-本地工作区、thread snapshot、DreamAgent memory、local shell tool 和 skills
-loading。
-
-## 架构目标
-
-- 使用 Deep Agents 作为主 agent 执行环境。
-- 使用 LangChain 初始化模型和工具调用路径。
-- 使用 Deep Agents filesystem backend 暴露项目文件。
-- 使用 `skills/` 作为能力扩展入口。
-- 使用 `memory/` 保存可检查、可迁移的长期记忆。
-- 使用 `data/runtime.json` 保存 CLI 级别运行状态。
-- 使用 local shell tool 运行脚本和诊断命令，并保留审计日志。
-
-## 顶层结构
+## 组件边界
 
 ```text
-Cleo-AI-agent/
-  main.py
-  config/
-  core/
-  tools/
-  skills/
-  memory/
-  data/
-  workspace/
-  docs/
+Cleo CLI / Main Agent
+        │
+        ├── non_productivity session
+        │
+        ├── AgentAdapter ── Codex / Claude SDK
+        │        │
+        │        └───────── ACP harness
+        │
+        ▼
+SessionStore
+        ├── manifest.json
+        ├── events.jsonl
+        ├── compact.json
+        └── sessions.sqlite3
+                │
+                ▼
+        DreamAgent / Retrieval
 ```
 
-- `main.py`：CLI 入口，负责 one-shot message、interactive chat、thread 生命周期和图片附件输入。
-- `config/`：Pydantic settings models 和 profile 模板。真实 `config/cleo.json` 被 Git 忽略。
-- `core/`：agent 构建、runtime 状态模型、thread memory 序列化。
-- `tools/`：提供给 Cleo 或 DreamAgent 使用的 LangChain tools。
-- `skills/`：Deep Agents skills 目录，当前 tracked skill 是 `demo-production`。
-- `memory/`：全局记忆策略、thread snapshot 和项目长期记忆。
-- `data/`：runtime 状态、审计日志和后续本地数据。
-- `workspace/`：用户输入文件、临时 workflow state 和生成结果。
-- `docs/`：架构文档和迁移说明。
+- `core/agent.py`：Cleo 主 Agent 与 DreamAgent。
+- `core/integrations/agent_adapter/`：统一 harness 接口和 provider-specific adapter。
+- `core/memory/session_store.py`：session manifest、append-only events 和全局 registry。
+- `core/memory/compaction.py`：从 event log 生成脱敏 compact projection。
+- `core/memory/store.py`：space-bound SQLite 长期记忆与历史 chunks。
+- `core/memory/state.py`：source version 与 consolidation 状态。
+- `core/runtime/model.py`：当前 CLI space/project/thread 和 recent threads。
 
-## Runtime Layers
+## Space 与 Project
 
-### 1. CLI Entry Layer
-
-文件：`main.py`
-
-职责：
-
-- 解析命令行参数。
-- 创建 `Agent()` 和 `Runtime()`。
-- 为会话生成 `local-{12_hex_chars}` 格式的 thread id。
-- 在 interactive chat 中处理 `/quit`、`/exit`、`/new` 和 `/attach`。
-- 在退出、新建 thread、中断或 one-shot 结束时保存 thread snapshot。
-- 在正常退出和 one-shot 结束时调用 DreamAgent 做记忆整理。
-
-### 2. Agent Runtime Layer
-
-文件：`core/agent.py`
-
-职责：
-
-- 从默认的 `config/cleo.json` 或 `CLEO_CONFIG_PATH` 指定路径读取经过 Pydantic
-  验证的 active profiles。
-- 使用 `langchain.chat_models.init_chat_model` 初始化模型。
-- 使用 `create_deep_agent` 创建 Cleo 主 agent。
-- 使用 `FilesystemBackend(root_dir=repo_root, virtual_mode=True)` 暴露项目虚拟文件系统。
-- 使用 `InMemorySaver` 作为当前 LangGraph checkpointer。
-- 注入 `run_shell_command` tool。
-- 加载 `/skills` 和开发者拥有的 `/memory/MEMORY_POLICY.md`。
-
-当前行为：
-
-- 如果生效的配置路径缺失，Cleo 会创建默认模板并提示用户填写。
-- `InMemorySaver` 只在当前进程内保存 LangGraph 状态。
-- thread resume 依赖 message snapshot replay，而不是完整 durable graph checkpoint。
-
-### 3. DreamAgent Layer
-
-文件：`core/agent.py`、`tools/dream_agent_tools.py`、
-`core/memory/compaction.py`、`core/memory/state.py`、`core/memory/store.py`
-
-职责：
-
-- 原始 thread snapshot 保存后，以确定性规则生成脱敏 compact view。
-- DreamAgent 只读取 source Hash 与原始 snapshot 一致的 compact view。
-- 读取已有 `memory/projects/<project>/` 项目记忆。
-- 把 durable facts、decisions、constraints、preferences、corrections 和 open
-  questions 原子化写入 SQLite，并强制关联当前 source 中的 message evidence。
-- 原子写入 `memory/projects/<project>/MEMORY.md`，其中的 atomic memory index 从
-  SQLite 自动渲染。
-- 只有 Markdown 写入成功且显式 completion tool 校验 source memory count 后，
-  才推进 `memory_state.json` 的完成状态。
-
-写入所有权边界：
-
-- `AGENTS.md` 是用户/团队批准的规范，只有用户明确要求时才修改。
-- `memory/MEMORY_POLICY.md` 是开发者拥有的提取策略，DreamAgent 只读。
-- `memory/projects/<project>/MEMORY.md` 是 DreamAgent 可重建的描述性记忆。
-- `skills/` 只在用户明确要求时创建或更新；记忆不会自动晋升为规则或 skill。
-
-触发点：
-
-- `/quit` 和 `/exit` 正常退出时触发。
-- one-shot message 结束后触发。
-- `/new`、EOF 和 KeyboardInterrupt 当前只保存 thread snapshot。
-
-### 4. Runtime State Layer
-
-文件：`core/runtime/model.py`
-
-状态文件：`data/runtime.json`
-
-字段：
-
-```json
-{
-  "current_project": null,
-  "current_thread_id": null,
-  "projects_list": ["general"],
-  "recent_threads": []
-}
-```
-
-职责：
-
-- 读取当前 CLI 状态。
-- 更新当前 project。
-- 更新当前 thread id。
-- 维护 recent threads。
-- 从 `memory/projects/` 同步项目名。
-
-当前行为：
-
-- 如果 `data/runtime.json` 缺失，Runtime 会用默认状态自动创建。
-
-### 5. Thread Snapshot Layer
-
-文件：`core/memory/thread_memory.py`
-
-生成文件：
-
-- `memory/thread_objects/{thread_id}.json`
-- `memory/compact_threads/{thread_id}.json`
-- `memory/threads.jsonl`
-- `memory/memory.sqlite3`
-- `memory/memory_state.json`
-
-职责：
-
-- 使用 `messages_to_dict` 序列化 LangChain messages。
-- 原子保存当前 thread 的权威 message snapshot。
-- 合并 tool call/result，省略文件读取和写入类大正文，保留结构化 JSON，脱敏
-  常见 credential 字段，并记录 source Hash 和压缩统计。
-- 按 Human message 边界生成 conversation chunks 并幂等替换当前 thread 的 SQLite
-  索引；主 Agent 通过 project-bound 工具做本地词法检索。
-- 追加 thread registry metadata。
-- 使用 `messages_from_dict` 重新加载历史 messages。
-
-派生层失败不会撤销已经成功写入的原始 snapshot。历史检索还会检查 SQLite chunk
-记录的 source Hash 是否与当前 compact 文件一致，避免返回失效索引。
-
-### 6. Configuration Layer
-
-文件：`config/settings.py`
-
-读取：
-
-- 默认读取 `config/cleo.json`。
-- 设置 `CLEO_CONFIG_PATH` 时读取指定路径；Docker image 使用
-  `/config/cleo.json`。
-
-核心设置：
-
-- `active_profiles.agent` 选择当前 `AgentProfile`。
-- `active_profiles.directory` 选择当前 `DirectoryProfile`。
-- `active_profiles.shell` 选择当前 `ShellProfile`。
-- `active_profiles.tools` 选择当前 `ToolsProfile`。
-- Directory profile 路径默认相对项目根目录解析，绝对路径保持绝对路径。
-- Memory pipeline 使用 `thread_objects_dir`、`compact_threads_dir`、
-  `thread_registry_path`、`memory_database_path`、`memory_state_path` 和
-  `memory_projects_dir`。
-
-shell tool 相关设置：
-
-- `sandbox_root`
-- `audit_log_path`
-- `require_allowlist`
-- `enforce_sandbox`
-- `require_approval`
-- `timeout_seconds`
-- `max_output_chars`
-- `allowed_commands`
-- `include_platform_defaults`
-- `denied_patterns`
-
-shell tool 会执行 allowlist、denylist、approval 和 sandbox 设置。
-`include_platform_defaults` 默认为 `true`，会按 Windows 或 POSIX 平台补充基础命令，
-使同一份 `cleo.json` 可跨平台使用；设为 `false` 时完全采用配置中的 allowlist。
-`sandbox_root` 作为未显式传入 working directory 时的默认工作目录使用。
-
-### 7. Local Shell Tool Layer
-
-文件：`tools/shell_tools.py`
-
-工具：`run_shell_command`
-
-职责：
-
-- 运行用户需要的本地 PowerShell / system shell 命令。
-- 将 Deep Agents 虚拟路径映射到真实项目路径。
-- 使用配置中的项目根目录作为默认 working directory。
-- 应用 timeout 和 output truncation。
-- 把每次尝试写入 `data/shell_audit.log`。
-
-虚拟路径映射：
+每个 session 都必须同时绑定：
 
 ```text
-/workspace -> repo root
-/config    -> repo/config
-/core      -> repo/core
-/data      -> repo/data
-/docs      -> repo/docs
-/memory    -> repo/memory
-/skills    -> repo/skills
-/tools     -> repo/tools
+space + project + session_id
 ```
 
-### 8. Skills Layer
+当前 space 为：
 
-目录：`skills/`
+- `non_productivity`：Cleo 主聊天、个人上下文、长期偏好和一般计划。
+- `productivity`：Codex、Claude、ACP 等 harness 的工程任务与执行记录。
 
-当前实际存在：
+同名 project 在两个 space 中仍然是不同的数据边界。SQLite 查询、compact 校验、
+DreamAgent 工具和 evidence 都必须携带 space，避免 productivity 内容自动进入个人记忆。
+
+## Session 存储
 
 ```text
-skills/
-  demo-production/
-    SKILL.md
-    agents/openai.yaml
+memory/
+├── MEMORY_POLICY.md
+├── sessions.sqlite3
+├── non_productivity/
+│   ├── memory.sqlite3
+│   ├── memory_state.json
+│   └── projects/<project>/
+│       ├── MEMORY.md
+│       └── sessions/<session_id>/
+│           ├── manifest.json
+│           ├── events.jsonl
+│           └── compact.json
+└── productivity/
+    ├── memory.sqlite3
+    ├── memory_state.json
+    └── projects/<project>/
+        ├── MEMORY.md
+        └── sessions/<session_id>/
+            ├── manifest.json
+            ├── events.jsonl
+            └── compact.json
 ```
 
-职责：
+### Manifest
 
-- 为 Deep Agents 提供本地 skill instructions 和 agent 配置。
-- 后续业务能力应以独立 skill 目录迁移进入。
+`manifest.json` 是可变的当前状态投影，记录 provider、native session ID、owner、
+status、cwd、event sequence、source hash 和更新时间。更新使用临时文件加原子替换。
 
-### 9. Workspace Layer
+### Event Log
 
-目录：`workspace/`
+`events.jsonl` 是权威记录，只追加不覆盖。每行包含全局 event ID、严格递增 seq、
+space/project/session 绑定、actor、type、时间和 payload。
 
-职责：
+流式 token 只发送给实时调用者；完成后的语义消息才持久化。工具调用、权限、文件变化、
+计划、状态和错误以独立规范事件保存。大型输出应使用 `data/session_artifacts/`，event
+只保存引用。
 
-- 存放用户输入文件。
-- 存放临时 workflow state。
-- 存放 agent 或脚本生成的工作结果。
+### Compact Projection
 
-当前 tracked workspace 文件更像迁移验证输入或用户工作区文件，不是当前核心代码生成的 runtime 状态。
+`compact.json` 是可重建派生层：
 
-## 文件来源分类
+- 从 `events.jsonl` 读取 semantic events。
+- 合并 tool call/result。
+- 脱敏 secret 与大型参数。
+- 省略低价值读取结果和超长终端内容。
+- 保存 `source_content_hash`、event range 和 `source_event_ids`。
 
-### 源代码与手写资产
+加载 compact 时必须重新计算 event hash，并校验 space/project/session 和最后 seq。
 
-- `main.py`
-- `config/settings.py`
-- `core/**/*.py`
-- `tools/**/*.py`
-- `skills/demo-production/SKILL.md`
-- `skills/demo-production/agents/openai.yaml`
-- `AGENTS.md`
-- `memory/MEMORY_POLICY.md`
-- `pyproject.toml`
-- `requirements.txt`
-- `config/cleo.example.json`
-- `data/runtime_example.json`
-- `README.md`
-- `docs/ARCHITECTURE.md`
+### SQLite
 
-### 本地私密配置
+`memory/sessions.sqlite3` 是所有 session 的全局 metadata registry，可由 manifest 重建。
+每个 space 自己的 `memory.sqlite3` 保存 atomic memory、event evidence、consolidation
+记录与 lexical conversation chunks。SQLite 不是原始对话事实源。
 
-- `config/cleo.json`
+## Harness 事件适配
 
-这些文件从模板复制后由本地维护，不应提交。
+不同 harness 的原生输出先在 provider adapter 中翻译：
 
-### 运行生成或运行维护
+```text
+native provider event
+    → provider-specific translator
+    → Cleo canonical event
+    → SessionStore
+```
 
-- `data/runtime.json`
-- `data/shell_audit.log`
-- `memory/thread_objects/{thread_id}.json`
-- `memory/threads.jsonl`
-- `memory/projects/<project>/MEMORY.md`
+公共语义包括：
 
-### 工作区输入或临时产物
+- `assistant_message`
+- `tool_call` / `tool_result`
+- `permission_request` / `permission_response`
+- `file_change`
+- `terminal_output`
+- `plan_update`
+- `status` / `error`
 
-- `workspace/*`
+无法稳定归一化的事件保存为 `provider_event`，并在 `data` 中保留 provider、原始事件
+类型和清理后的 payload。SessionStore 不依赖任何单个 harness 的 SDK 类型。
 
-workspace 中的 STL 和 PPTX 文件应视为用户工作区文件或迁移验证输入。
+## Cleo 主聊天流转
 
-## Resume 机制
+```text
+用户消息
+  → Agent.stream_text
+  → LangGraph state
+  → 每轮结束同步新增 LangChain messages
+  → SessionStore 追加 events.jsonl
+  → 原子更新 manifest
+  → 重建 compact.json
+  → 更新 space-bound conversation chunks
+```
 
-当前 resume 是 message snapshot resume：
+`--resume` 通过全局 registry 找到 manifest，再从 message events 重建 LangChain
+messages。它不是 durable LangGraph checkpoint 恢复。
 
-1. 启动时读取 `data/runtime.json`。
-2. 如果存在 `current_thread_id`，询问用户是否继续。
-3. 用户确认后读取 `memory/thread_objects/{thread_id}.json`。
-4. 使用 `messages_from_dict` 恢复 LangChain messages。
-5. 下一次用户消息会与恢复的历史 messages 一起传给 Deep Agents。
+## Harness 流转
 
-已知限制：
+```text
+AgentAdapter.create_session
+  → provider 创建 native session
+  → productivity manifest + session_created
 
-- tool state、graph internal state 和 checkpoint metadata 不会完整恢复。
-- 当前实现保持 Deep Agents / LangChain 主路径不变。
+AgentAdapter.prompt
+  → user_message + session_running
+  → provider prompt
+  → provider events 归一化
+  → assistant_message + terminal status
+  → compact + SQLite index
+```
+
+主聊天中的 `/productivity` 是交互式终端入口，退出后会恢复原 Cleo space/project/thread。
+`main.py --productivity` 仍作为直接启动和脚本入口。两者都默认注册 Codex provider，
+支持新建或通过 Cleo session ID 恢复 native session，并把 SDK notification 实时输出
+到终端。`--cwd` 控制 harness 工作目录，`--project` 只控制 Cleo 的 memory scope。
+
+`AgentAdapter` 当前承担轻量 SessionHub 的 active route 职责：Cleo session handle 映射到
+provider connection 和 native session ID。已完成内容只留在 SessionStore；provider
+连接关闭后不会常驻内存。
+
+## DreamAgent 流转
+
+```text
+validated compact
+  → space/project/session/source hash 校验
+  → DreamAgent 读取同 scope 的项目记忆
+  → atomic memory + evidence_event_ids
+  → 原子写入 MEMORY.md
+  → 显式 complete consolidation
+```
+
+两个 space 使用不同提取重点：non-productivity 偏向用户事实、偏好、目标与纠正；
+productivity 偏向任务目标、技术决策、改动文件、测试结果、错误、产物和未完成事项。
+
+自动 consolidation 不会修改 `AGENTS.md`，也不会创建或更新 skill。
+
+## Runtime State
+
+`data/runtime.json` 只保存交互入口状态：
+
+- `current_space`
+- `current_project`
+- `current_thread_id`
+- 按 space 分区的 projects
+- 按 space 分区的 recent threads
+
+它不保存对话正文，也不是 session registry。

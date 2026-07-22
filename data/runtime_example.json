@@ -1,8 +1,14 @@
 {
+  "schema_version": 2,
+  "current_space": "non_productivity",
   "current_project": null,
   "current_thread_id": null,
-  "projects_list": [
-    "general"
-  ],
-  "recent_threads": []
+  "projects": {
+    "non_productivity": ["general"],
+    "productivity": []
+  },
+  "recent_threads": {
+    "non_productivity": [],
+    "productivity": []
+  }
 }

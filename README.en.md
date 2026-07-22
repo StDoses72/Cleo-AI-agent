@@ -2,7 +2,7 @@
 
 Cleo AI Agent is a local-first personal AI agent runtime built on Deep Agents
 and LangChain for API-backed language models. Cleo keeps configuration, runtime
-state, thread snapshots, project memory, workspace files, and the local shell
+state, session event logs, project memory, workspace files, and the local shell
 tool local; model inference is provided by the API provider configured in
 `config/cleo.json`.
 
@@ -18,9 +18,10 @@ Chinese version: [README.md](README.md)
 - API-backed model profiles loaded from the active agent profile in `config/cleo.json`.
 - Pydantic settings in `config/settings.py` for agent, directory, shell, and tools profiles.
 - Image attachments in interactive chat through `/attach`; JPEG, PNG, WebP, and GIF are supported.
-- Thread snapshots saved on exit, reset, interruption, and one-shot completion.
+- Append-only session events with an atomically updated manifest after each completed turn.
 - Resume prompt on startup when `current_thread_id` points to an unfinished thread.
-- Layered memory derived from authoritative raw snapshots: redacted compact views, SQLite history chunks, and atomic durable memory with message evidence.
+- Layered memory derived from authoritative event logs: redacted compact views, SQLite history chunks, and atomic durable memory with event evidence.
+- Separate `non_productivity` and `productivity` spaces for sessions, projects, and memory.
 - DreamAgent consolidation reads only source-hash-validated compact views before updating project memory.
 - Project-bound tools separately retrieve stable long-term memory and detailed historical discussion.
 - Local shell tool with timeout, output truncation, default working directory, and audit log settings.
@@ -41,10 +42,11 @@ Cleo-AI-agent/
     cleo.json                     # Local private config, ignored by Git
   core/
     agent.py                      # Cleo / DreamAgent construction
-    memory/compaction.py          # Deterministic compact/redacted thread view
+    memory/compaction.py          # Deterministic compact/redacted event view
+    memory/paths.py               # Space/project/session path boundaries
+    memory/session_store.py       # Manifests, JSONL events, and session registry
     memory/state.py               # Memory source version and completion state
     memory/store.py               # SQLite memory, evidence, and history chunks
-    memory/thread_memory.py       # Thread snapshot serialization
     runtime/model.py              # data/runtime.json read/write model
   tools/
     shell_tools.py                # Local shell tool
@@ -55,12 +57,9 @@ Cleo-AI-agent/
     demo-production/agents/       # Skill-local agent config
   memory/
     MEMORY_POLICY.md              # Developer-owned memory extraction policy
-    thread_objects/               # Runtime generated thread message snapshots
-    compact_threads/              # Runtime generated compact/redacted snapshots
-    threads.jsonl                 # Runtime generated thread snapshot registry
-    memory.sqlite3                # Atomic memory, evidence, and history index
-    memory_state.json             # Memory source/consolidation state
-    projects/                     # Runtime generated long-term project memory
+    sessions.sqlite3              # Global rebuildable session metadata index
+    non_productivity/projects/    # Personal/general sessions and memory
+    productivity/projects/        # Harness sessions and project memory
   data/
     .gitkeep
     runtime_example.json          # Reference runtime state template
@@ -74,13 +73,13 @@ Cleo-AI-agent/
 ```
 
 `config/cleo.json`, `data/runtime.json`, `data/shell_audit.log`,
-`memory/thread_objects/`, `memory/compact_threads/`, `memory/threads.jsonl`,
-`memory/memory.sqlite3`, `memory/memory_state.json`, and `memory/projects/` are
+`memory/sessions.sqlite3`, `memory/non_productivity/`, and
+`memory/productivity/` are
 local configuration or runtime state and should not be committed.
 
 `AGENTS.md` contains repository guidance explicitly maintained by the user or
 team. `memory/MEMORY_POLICY.md` is the developer-owned extraction policy, while
-`memory/projects/<project>/MEMORY.md` is DreamAgent-generated derived memory.
+`memory/<space>/projects/<project>/MEMORY.md` is DreamAgent-generated derived memory.
 Automatic memory never edits `AGENTS.md` or creates or updates skills.
 
 ## Installation
@@ -208,12 +207,8 @@ default template and asks you to fill in real profile settings.
 				"workspace_dir": "workspace",
 				"memory_dir": "memory",
 				"memory_policy_path": "memory/MEMORY_POLICY.md",
-				"memory_projects_dir": "memory/projects",
-				"thread_objects_dir": "memory/thread_objects",
-				"compact_threads_dir": "memory/compact_threads",
-				"thread_registry_path": "memory/threads.jsonl",
-				"memory_database_path": "memory/memory.sqlite3",
-				"memory_state_path": "memory/memory_state.json",
+				"session_index_path": "memory/sessions.sqlite3",
+				"session_artifacts_dir": "data/session_artifacts",
 				"runtime_state_path": "data/runtime.json"
 			}
 		},
@@ -280,35 +275,57 @@ python main.py
 
 Interactive commands:
 
-- `/quit` or `/exit`: save the current thread snapshot, run DreamAgent memory consolidation, then exit.
-- `/new`: save the current thread snapshot and start a new thread.
+- `/quit` or `/exit`: close the current event log, run DreamAgent consolidation, then exit.
+- `/new`: complete the current session and start a new thread.
+- `/productivity`: open Codex productivity mode; use `/back` or `/quit` there to return.
 - `/attach`: attach an image file to the next message.
 
 Interactive mode also accepts `cleo --project <name>`. `/new` keeps the same
-project binding. `--resume` restores the project stored in the raw snapshot and
+project binding. `--resume` restores the space/project stored in the manifest and
 rejects a conflicting `--project` argument.
+
+The recommended interactive entry is `/productivity` from the main chat. Codex
+productivity mode can also be started directly from the command line:
+
+```bash
+# Continuous interaction
+python main.py --productivity --project cleo --cwd .
+
+# One-shot task
+python main.py --productivity --cwd . "Inspect the current changes and run tests"
+
+# Resume the Codex native session associated with a Cleo session id
+python main.py --productivity --resume agent_xxx
+```
+
+Use `--model` to override `profiles.tools.<name>.codex_model`. Productivity
+interaction supports `/new`, `/back`, `/quit`, and `/exit`; Codex SDK message, tool,
+terminal, plan, and file-change events stream to the console and are normalized
+into the `productivity` space.
 
 ## Runtime Files
 
 These files are maintained by the code at runtime:
 
-- `data/runtime.json`: current project, current thread, and recent threads. It is generated automatically when missing.
+- `data/runtime.json`: current space/project/thread and space-partitioned recent threads.
 - `data/shell_audit.log`: local shell tool audit log.
-- `memory/thread_objects/{thread_id}.json`: thread message snapshot.
-- `memory/compact_threads/{thread_id}.json`: deterministic, redacted memory input with a source hash.
-- `memory/threads.jsonl`: thread snapshot metadata registry.
-- `memory/memory.sqlite3`: atomic durable memory, message evidence, and conversation chunks.
-- `memory/memory_state.json`: source versions, hashes, Dream status, and failures.
-- `memory/projects/<project>/MEMORY.md`: long-term project memory generated by DreamAgent.
+- `memory/sessions.sqlite3`: global rebuildable session metadata registry.
+- `memory/<space>/projects/<project>/sessions/<session>/manifest.json`: current session projection.
+- `memory/<space>/projects/<project>/sessions/<session>/events.jsonl`: append-only evidence.
+- `memory/<space>/projects/<project>/sessions/<session>/compact.json`: redacted compact projection.
+- `memory/<space>/memory.sqlite3`: durable memory, event evidence, and conversation chunks.
+- `memory/<space>/memory_state.json`: source versions, hashes, Dream status, and failures.
+- `memory/<space>/projects/<project>/MEMORY.md`: DreamAgent-generated long-term memory.
 
-`Runtime` stores only current CLI state. Raw thread snapshots are authoritative;
-compact files, SQLite indexes, and project `MEMORY.md` files are rebuildable derived layers. See
+`Runtime` stores only current CLI state. Append-only event logs are authoritative
+interaction history, while manifests hold current metadata. Compact files,
+SQLite indexes, and project `MEMORY.md` files are rebuildable. See
 [`docs/CASTMIND_MEMORY_MIGRATION.md`](docs/CASTMIND_MEMORY_MIGRATION.md) for the
 migration review and tradeoffs.
 
 ## Current Limits
 
 - There is no `/threads` or `/switch <thread_id>` command for freely switching between historical threads yet.
-- Current resume is message snapshot replay, not a full durable LangGraph checkpoint.
+- Current resume is session message event replay, not a full durable LangGraph checkpoint.
 - Historical retrieval currently uses local lexical ranking; uncalibrated vector retrieval is not enabled.
 - `skills/` currently only contains `demo-production`.

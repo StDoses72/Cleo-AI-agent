@@ -23,9 +23,12 @@ foreach ($requiredPath in $requiredPaths) {
 $relativeTargets = @(
     "data/runtime.json",
     "data/shell_audit.log",
-    "memory/thread_objects",
-    "memory/threads.jsonl",
-    "memory/projects"
+    "data/session_artifacts",
+    "memory/non_productivity",
+    "memory/productivity",
+    "memory/sessions.sqlite3",
+    "memory/sessions.sqlite3-shm",
+    "memory/sessions.sqlite3-wal"
 )
 
 if ($IncludeToolCaches) {

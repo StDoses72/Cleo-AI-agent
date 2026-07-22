@@ -21,12 +21,15 @@ Do not remember:
 
 ## Evidence And Scope
 
-- Treat raw thread snapshots as authoritative; compact views, SQLite indexes,
-  and project Markdown are derived and may be rebuilt.
-- Keep durable memory inside the current project unless the user explicitly
-  asks for a global preference or rule.
-- Every atomic project memory must cite message IDs from its validated compact
+- Treat append-only session event logs as authoritative interaction history and
+  each session manifest as authoritative current metadata. Compact views,
+  SQLite indexes, and project Markdown are derived and may be rebuilt.
+- Keep durable memory inside the exact `space + project` boundary unless the
+  user explicitly requests a different scope.
+- Every atomic project memory must cite event IDs from its validated compact
   source. Never invent an evidence reference.
+- Keep `productivity` and `non_productivity` memory separate. Cross-space
+  inspection must be an explicit retrieval or audit action.
 - Prefer the user's latest instruction and current file/tool evidence when they
   conflict with remembered material.
 - Do not modify `AGENTS.md` or create/update skills as part of automatic memory

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from typing import Any
 
 from openai_codex import ApprovalMode, AsyncCodex, AsyncThread, AsyncTurnHandle, Sandbox
 
@@ -73,6 +74,11 @@ class CodexProvider:
         on_event: EventCallback | None = None,
     ) -> ProviderTurn:
         runtime = self._sessions[session_id]
+        events: list[AgentEvent] = []
+        response_parts: list[str] = []
+        final_response: str | None = None
+        status = "failed"
+        error: str | None = None
         async with runtime.lock:
             turn = await runtime.thread.turn(
                 prompt,
@@ -81,26 +87,41 @@ class CodexProvider:
             )
             runtime.active_turn = turn
             try:
-                result = await turn.run()
+                async for notification in turn.stream():
+                    data = self._notification_data(notification.payload)
+                    if notification.method == "item/completed":
+                        item = data.get("item")
+                        if isinstance(item, dict) and item.get("type") == "agentMessage":
+                            text = item.get("text")
+                            phase = item.get("phase")
+                            if isinstance(text, str) and phase in {None, "final_answer"}:
+                                final_response = text
+                    elif notification.method == "turn/completed":
+                        completed_turn = data.get("turn")
+                        if isinstance(completed_turn, dict):
+                            status = self._turn_status(completed_turn.get("status"))
+                            turn_error = completed_turn.get("error")
+                            if isinstance(turn_error, dict):
+                                error = str(turn_error.get("message") or "") or None
+
+                    event = self._event_from_notification(notification.method, data)
+                    if event is None:
+                        continue
+                    events.append(event)
+                    if event.type == "assistant_message_chunk" and event.text:
+                        response_parts.append(event.text)
+                    await emit_event(on_event, event)
             finally:
                 runtime.active_turn = None
 
-        events: tuple[AgentEvent, ...] = ()
-        if result.final_response:
-            event = AgentEvent(
-                provider=self.name,
-                type="agent_message",
-                text=result.final_response,
-            )
-            events = (event,)
-            await emit_event(on_event, event)
+        response = final_response or "".join(response_parts) or None
         return ProviderTurn(
             native_session_id=runtime.thread.id,
-            turn_id=result.id,
-            status=result.status.value,
-            response=result.final_response,
-            error=result.error.message if result.error is not None else None,
-            events=events,
+            turn_id=turn.id,
+            status=status,
+            response=response,
+            error=error,
+            events=tuple(events),
         )
 
     async def cancel(self, session_id: str) -> None:
@@ -115,3 +136,96 @@ class CodexProvider:
         if runtime.active_turn is not None:
             await runtime.active_turn.interrupt()
         await runtime.client.close()
+
+    @staticmethod
+    def _notification_data(payload: Any) -> dict[str, Any]:
+        if hasattr(payload, "model_dump"):
+            data = payload.model_dump(mode="json", by_alias=True, exclude_none=True)
+            return data if isinstance(data, dict) else {"value": data}
+        params = getattr(payload, "params", None)
+        return params if isinstance(params, dict) else {"value": str(payload)}
+
+    @classmethod
+    def _event_from_notification(
+        cls,
+        method: str,
+        data: dict[str, Any],
+    ) -> AgentEvent | None:
+        if method in {"turn/started", "turn/completed"}:
+            return None
+
+        item = data.get("item")
+        item_type = item.get("type") if isinstance(item, dict) else None
+        if method == "item/completed" and item_type == "agentMessage":
+            return None
+
+        event_type: str
+        text: str | None = None
+        if method == "item/agentMessage/delta":
+            event_type = "assistant_message_chunk"
+            text = str(data.get("delta") or "") or None
+        elif method in {
+            "item/reasoning/summaryTextDelta",
+            "item/reasoning/textDelta",
+        }:
+            event_type = "thought"
+            text = str(data.get("delta") or "") or None
+        elif method == "item/commandExecution/outputDelta":
+            event_type = "terminal_output"
+            text = str(data.get("delta") or "") or None
+        elif method in {
+            "item/fileChange/outputDelta",
+            "item/fileChange/patchUpdated",
+        }:
+            event_type = "file_change"
+            text = str(data.get("delta") or "") or None
+        elif method in {"turn/plan/updated", "item/plan/delta"}:
+            event_type = "plan_update"
+        elif method == "turn/diff/updated":
+            event_type = "file_change"
+            text = str(data.get("diff") or "") or None
+        elif method == "error":
+            event_type = "error"
+            error = data.get("error")
+            message = error.get("message") if isinstance(error, dict) else None
+            text = str(message or data.get("message") or "") or None
+        elif method == "item/commandExecution/terminalInteraction":
+            event_type = "terminal_output"
+        elif method in {"item/started", "item/completed"}:
+            tool_types = {
+                "commandExecution",
+                "mcpToolCall",
+                "dynamicToolCall",
+                "collabAgentToolCall",
+                "serverRequest",
+            }
+            if item_type in tool_types:
+                event_type = "tool_call" if method == "item/started" else "tool_result"
+            elif item_type == "fileChange":
+                event_type = "file_change"
+            elif item_type == "plan":
+                event_type = "plan_update"
+            elif item_type == "reasoning":
+                event_type = "thought"
+            else:
+                event_type = "provider_event"
+        elif method == "thread/tokenUsage/updated":
+            event_type = "status"
+        else:
+            event_type = "provider_event"
+
+        return AgentEvent(
+            provider=cls.name,
+            type=event_type,
+            text=text,
+            data={
+                "provider_event_type": method,
+                "schema_version": 2,
+                "payload": data,
+            },
+        )
+
+    @staticmethod
+    def _turn_status(value: Any) -> str:
+        status = str(value or "failed")
+        return {"inProgress": "running", "interrupted": "cancelled"}.get(status, status)

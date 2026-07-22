@@ -1,4 +1,4 @@
-"""Evidence-aware tools used by Cleo's DreamAgent."""
+"""Evidence-aware tools used by Cleo's space-bound DreamAgent."""
 
 from __future__ import annotations
 
@@ -8,6 +8,14 @@ from langchain.tools import tool
 
 from config.settings import settings
 from core.memory.compaction import load_validated_compact
+from core.memory.paths import (
+    events_path,
+    project_directory,
+    projects_directory,
+    sessions_directory,
+    validate_name,
+    validate_space,
+)
 from core.memory.state import mark_consolidated
 from core.memory.store import (
     count_source_memories,
@@ -23,11 +31,11 @@ PROJECT_MEMORY_FILENAMES = (
     "open_questions.md",
     "artifacts.md",
 )
-LEGACY_PROJECT_MEMORY_FILENAME = "AGENT.md"
 PROJECT_MEMORY_TEMPLATE = """# Project Memory: {project}
 
-## Last Consolidated Source
-- Thread ID: {thread_id}
+## Scope
+- Space: {space}
+- Last Session ID: {session_id}
 - Source Hash: {source_hash}
 
 ## Executive Summary
@@ -65,30 +73,26 @@ PROJECT_MEMORY_TEMPLATE = """# Project Memory: {project}
 """
 
 
-def _is_safe_name(value: str) -> bool:
-    return bool(value) and not any(part in value for part in ("/", "\\", ".."))
+def _safe_project_dir(space: str, project: str):
+    return project_directory(
+        settings.MEMORY_DIR,
+        validate_space(space),
+        validate_name(project, "project"),
+    )
 
 
-def _safe_project_dir(project: str):
-    if not _is_safe_name(project):
-        raise ValueError("project must be a project name, not a path")
-    return settings.MEMORY_PROJECTS_DIR / project
+def _validate_session_id(session_id: str) -> str:
+    return validate_name(session_id, "session_id")
 
 
-def _validate_thread_id(thread_id: str) -> str:
-    if not _is_safe_name(thread_id):
-        raise ValueError("thread_id must be an id, not a path")
-    return thread_id
-
-
-def _validated_compact(project: str, thread_id: str) -> dict:
-    _safe_project_dir(project)
-    _validate_thread_id(thread_id)
+def _validated_compact(space: str, project: str, session_id: str) -> dict:
+    _safe_project_dir(space, project)
+    _validate_session_id(session_id)
     return load_validated_compact(
+        memory_root=settings.MEMORY_DIR,
+        space=space,
         project=project,
-        thread_id=thread_id,
-        thread_objects_dir=settings.THREAD_OBJECTS_DIR,
-        compact_dir=settings.COMPACT_THREADS_DIR,
+        session_id=session_id,
     )
 
 
@@ -108,17 +112,17 @@ def _format_markdown_items(value: str) -> str:
 
 def _valid_evidence_ids(payload: dict) -> set[str]:
     valid: set[str] = set()
-    for message in payload.get("messages") or []:
-        if not isinstance(message, dict):
+    for event in payload.get("events") or []:
+        if not isinstance(event, dict):
             continue
-        if message.get("id"):
-            valid.add(str(message["id"]))
-        valid.update(str(item) for item in message.get("source_message_ids") or [])
+        if event.get("id"):
+            valid.add(str(event["id"]))
+        valid.update(str(item) for item in event.get("source_event_ids") or [])
     return valid
 
 
-def _atomic_memory_markdown(project: str) -> str:
-    memories = search_memories(project=project, limit=100)
+def _atomic_memory_markdown(space: str, project: str) -> str:
+    memories = search_memories(space=space, project=project, limit=100)
     if not memories:
         return "- None"
     sections: list[str] = []
@@ -130,119 +134,121 @@ def _atomic_memory_markdown(project: str) -> str:
         for memory in by_category[category]:
             evidence = memory["evidence"]
             sources = ", ".join(
-                f"{item['thread_id']}#{item['message_id']}" for item in evidence[:5]
+                f"{item['session_id']}#{item['event_id']}" for item in evidence[:5]
             )
             if len(evidence) > 5:
                 sources += f", +{len(evidence) - 5} more"
             sections.append(
-                f"- **{memory['subject']}** — {memory['content']} "
+                f"- **{memory['subject']}** - {memory['content']} "
                 f"(evidence: {sources})"
             )
     return "\n".join(sections)
 
 
 @tool
-def read_memory_from_json(thread_id: str) -> str:
-    """Read the authoritative raw snapshot for manual audit or debugging only."""
+def read_session_events(space: str, project: str, session_id: str) -> str:
+    """Read an append-only event log for explicit audit or debugging."""
     try:
-        safe_thread_id = _validate_thread_id(thread_id)
+        path = events_path(
+            settings.MEMORY_DIR,
+            validate_space(space),
+            validate_name(project, "project"),
+            _validate_session_id(session_id),
+        )
     except ValueError as exc:
         return f"Error: {exc}"
-    file_path = settings.THREAD_OBJECTS_DIR / f"{safe_thread_id}.json"
-    if not file_path.exists():
+    if not path.exists():
         return ""
-    return file_path.read_text(encoding="utf-8-sig")
+    return path.read_text(encoding="utf-8-sig")
 
 
 @tool
-def read_compact_memory(project: str, thread_id: str) -> str:
-    """Read the validated, redacted compact snapshot for one project thread."""
+def read_compact_memory(space: str, project: str, session_id: str) -> str:
+    """Read one validated, redacted compact session projection."""
     try:
-        payload = _validated_compact(project, thread_id)
+        payload = _validated_compact(space, project, session_id)
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         return f"Error: {exc}"
     return json.dumps(payload, ensure_ascii=False, indent=2, default=str)
 
 
 @tool
-def list_all_thread_ids() -> list[str]:
-    """List saved raw thread IDs."""
-    if not settings.THREAD_OBJECTS_DIR.exists():
-        return []
-    return sorted(path.stem for path in settings.THREAD_OBJECTS_DIR.glob("*.json"))
-
-
-@tool
-def list_all_project_names() -> list[str]:
-    """List project names that currently have long-term memory directories."""
-    if not settings.MEMORY_PROJECTS_DIR.exists():
-        return []
-    return sorted(path.name for path in settings.MEMORY_PROJECTS_DIR.iterdir() if path.is_dir())
-
-
-@tool
-def read_project_memory(project: str) -> str:
-    """Read existing inspectable long-term memory for one project."""
+def list_all_session_ids(space: str, project: str) -> list[str]:
+    """List session IDs within one explicit space and project."""
     try:
-        project_directory = _safe_project_dir(project)
+        root = sessions_directory(settings.MEMORY_DIR, space, project)
+    except ValueError:
+        return []
+    if not root.exists():
+        return []
+    return sorted(path.name for path in root.iterdir() if path.is_dir())
+
+
+@tool
+def list_all_project_names(space: str) -> list[str]:
+    """List project names inside one memory space."""
+    try:
+        root = projects_directory(settings.MEMORY_DIR, validate_space(space))
+    except ValueError:
+        return []
+    if not root.exists():
+        return []
+    return sorted(path.name for path in root.iterdir() if path.is_dir())
+
+
+@tool
+def read_project_memory(space: str, project: str) -> str:
+    """Read inspectable long-term memory for one space-bound project."""
+    try:
+        directory = _safe_project_dir(space, project)
     except ValueError as exc:
         return f"Error: {exc}"
-    if not project_directory.exists():
+    if not directory.exists():
         return ""
     sections = []
     for filename in PROJECT_MEMORY_FILENAMES:
-        file_path = project_directory / filename
-        if file_path.is_file():
-            content = file_path.read_text(encoding="utf-8-sig").strip()
+        path = directory / filename
+        if path.is_file():
+            content = path.read_text(encoding="utf-8-sig").strip()
             if content:
                 sections.append(f"# {filename}\n\n{content}")
-    if not (project_directory / "MEMORY.md").is_file():
-        legacy_path = project_directory / LEGACY_PROJECT_MEMORY_FILENAME
-        if legacy_path.is_file():
-            content = legacy_path.read_text(encoding="utf-8-sig").strip()
-            if content:
-                sections.append(f"# {LEGACY_PROJECT_MEMORY_FILENAME} (legacy)\n\n{content}")
     return "\n\n---\n\n".join(sections)
 
 
 @tool
 def remember_durable_knowledge(
+    space: str,
     project: str,
-    thread_id: str,
+    session_id: str,
     source_hash: str,
     category: str,
     subject: str,
     content: str,
-    evidence_message_ids: list[str],
+    evidence_event_ids: list[str],
     confidence: float = 1.0,
     importance: int = 3,
     tags: list[str] | None = None,
 ) -> str:
-    """Store one atomic durable memory with validated source-message evidence.
-
-    Category must be one of fact, decision, constraint, correction, preference,
-    action, pattern, artifact, or question. Evidence IDs must occur in the
-    current compact snapshot and should point to user or tool evidence whenever
-    possible. Project-private information always remains project-scoped.
-    """
+    """Store one durable memory with validated event evidence."""
     try:
-        payload = _validated_compact(project, thread_id)
+        payload = _validated_compact(space, project, session_id)
         current_hash = str((payload.get("source") or {}).get("source_content_hash") or "")
         if source_hash != current_hash:
-            raise ValueError("source_hash does not match the current compact snapshot")
+            raise ValueError("source_hash does not match the current compact projection")
         valid_ids = _valid_evidence_ids(payload)
-        requested_ids = list(dict.fromkeys(str(item) for item in evidence_message_ids))
+        requested_ids = list(dict.fromkeys(str(item) for item in evidence_event_ids))
         missing_ids = [item for item in requested_ids if item not in valid_ids]
         if missing_ids:
-            raise ValueError(f"unknown evidence message ids: {', '.join(missing_ids)}")
+            raise ValueError(f"unknown evidence event ids: {', '.join(missing_ids)}")
         memory = upsert_memory(
+            space=space,
             project=project,
-            thread_id=thread_id,
+            session_id=session_id,
             source_hash=source_hash,
             category=category,
             subject=subject,
             content=content,
-            evidence_message_ids=requested_ids,
+            evidence_event_ids=requested_ids,
             confidence=confidence,
             importance=importance,
             tags=tags,
@@ -262,8 +268,9 @@ def remember_durable_knowledge(
 
 @tool
 def write_memory_to_markdown(
+    space: str,
     project: str,
-    thread_id: str,
+    session_id: str,
     source_hash: str,
     executive_summary: str = "",
     facts: str = "",
@@ -276,28 +283,24 @@ def write_memory_to_markdown(
     memory_patch: str = "",
     excluded_noise: str = "",
 ) -> str:
-    """Atomically render inspectable project memory for a validated source.
-
-    Read existing project memory first and preserve durable context in the
-    narrative sections. The evidence-backed atomic index is rendered from
-    SQLite automatically and cannot be omitted accidentally.
-    """
+    """Atomically render project memory for a validated session source."""
     try:
-        project_directory = _safe_project_dir(project)
-        safe_thread_id = _validate_thread_id(thread_id)
-        payload = _validated_compact(project, safe_thread_id)
+        directory = _safe_project_dir(space, project)
+        safe_session_id = _validate_session_id(session_id)
+        payload = _validated_compact(space, project, safe_session_id)
         current_hash = str((payload.get("source") or {}).get("source_content_hash") or "")
         if source_hash != current_hash:
-            raise ValueError("source_hash does not match the current compact snapshot")
+            raise ValueError("source_hash does not match the current compact projection")
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         return f"Error: {exc}"
 
-    project_directory.mkdir(parents=True, exist_ok=True)
-    memory_path = project_directory / "MEMORY.md"
+    directory.mkdir(parents=True, exist_ok=True)
+    memory_path = directory / "MEMORY.md"
     content = PROJECT_MEMORY_TEMPLATE.format(
-        thread_id=safe_thread_id,
-        source_hash=source_hash,
+        space=space,
         project=project,
+        session_id=safe_session_id,
+        source_hash=source_hash,
         executive_summary=(executive_summary or "No durable summary provided.").strip(),
         facts=_format_markdown_items(facts),
         decisions=_format_markdown_items(decisions),
@@ -307,7 +310,7 @@ def write_memory_to_markdown(
         next_actions=_format_markdown_items(next_actions),
         artifact_refs=_format_markdown_items(artifact_refs),
         memory_patch=(memory_patch or "No additional notes.").strip(),
-        atomic_memory=_atomic_memory_markdown(project),
+        atomic_memory=_atomic_memory_markdown(space, project),
         excluded_noise=_format_markdown_items(excluded_noise),
     ).rstrip() + "\n"
 
@@ -315,8 +318,9 @@ def write_memory_to_markdown(
     temp_path.write_text(content, encoding="utf-8")
     temp_path.replace(memory_path)
     record_consolidation(
+        space=space,
         project=project,
-        thread_id=safe_thread_id,
+        session_id=safe_session_id,
         source_hash=source_hash,
         summary_markdown=content,
     )
@@ -325,33 +329,31 @@ def write_memory_to_markdown(
 
 @tool
 def complete_memory_consolidation(
+    space: str,
     project: str,
-    thread_id: str,
+    session_id: str,
     source_hash: str,
     durable_memory_count: int,
     no_durable_memory_reason: str = "",
 ) -> str:
-    """Commit a memory run after its project Markdown was written successfully.
-
-    durable_memory_count must equal the number of distinct atomic memories with
-    evidence from this source, including idempotent writes from a retried run.
-    """
+    """Commit consolidation after Markdown and atomic evidence are consistent."""
     try:
-        payload = _validated_compact(project, thread_id)
+        payload = _validated_compact(space, project, session_id)
         current_hash = str((payload.get("source") or {}).get("source_content_hash") or "")
         if source_hash != current_hash:
-            raise ValueError("source_hash does not match the current compact snapshot")
-        if not has_consolidation(project, thread_id, source_hash):
+            raise ValueError("source_hash does not match the current compact projection")
+        if not has_consolidation(space, project, session_id, source_hash):
             raise ValueError("write_memory_to_markdown must succeed before completion")
-        actual_count = count_source_memories(project, thread_id, source_hash)
+        actual_count = count_source_memories(space, project, session_id, source_hash)
         if durable_memory_count != actual_count:
             raise ValueError(
                 "durable_memory_count does not match the evidence-backed source count "
                 f"({actual_count})"
             )
         entry = mark_consolidated(
+            space,
             project,
-            thread_id,
+            session_id,
             source_hash,
             durable_memory_count=durable_memory_count,
             no_durable_memory_reason=no_durable_memory_reason,
@@ -361,8 +363,9 @@ def complete_memory_consolidation(
     return json.dumps(
         {
             "status": "complete",
+            "space": space,
             "project": project,
-            "thread_id": thread_id,
+            "session_id": session_id,
             "source_version": entry["source_version"],
             "durable_memory_count": durable_memory_count,
         },

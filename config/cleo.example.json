@@ -24,12 +24,8 @@
 				"workspace_dir": "workspace",
 				"memory_dir": "memory",
 				"memory_policy_path": "memory/MEMORY_POLICY.md",
-				"memory_projects_dir": "memory/projects",
-				"thread_objects_dir": "memory/thread_objects",
-				"compact_threads_dir": "memory/compact_threads",
-				"thread_registry_path": "memory/threads.jsonl",
-				"memory_database_path": "memory/memory.sqlite3",
-				"memory_state_path": "memory/memory_state.json",
+				"session_index_path": "memory/sessions.sqlite3",
+				"session_artifacts_dir": "data/session_artifacts",
 				"runtime_state_path": "data/runtime.json"
 			}
 		},

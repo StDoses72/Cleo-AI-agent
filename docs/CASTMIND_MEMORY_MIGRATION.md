@@ -2,6 +2,9 @@
 
 日期：2026-07-20
 
+2026-07-22 更新：Cleo 已将原始 snapshot 架构升级为按 space/project 分区的
+append-only session event log。下面的迁移取舍仍然有效，数据流以更新后的章节为准。
+
 ## 证据边界
 
 本次复盘基于本机 `D:\Supremium\castmind-backend-python-master` 的 2026-07-17
@@ -53,10 +56,10 @@ preview/dry-run API。
 |---|---|---|
 | 原始消息完整保留 | 保留 | 原始层继续是唯一权威记录 |
 | 确定性 compact 投影 | 保留并泛化 | 先规则降噪和脱敏，不额外消耗 LLM |
-| tool call/result 合并 | 保留 | 保住因果关系和 message evidence |
+| tool call/result 合并 | 保留 | 保住因果关系和 event evidence |
 | source hash 失效校验 | 保留 | 防止旧索引和新原文错配 |
 | SQLite 原子记忆与 evidence | 保留 | 让长期记忆可去重、可检索、可回查 |
-| workspace-bound 检索工具 | 改为 project-bound | Cleo 的隔离边界是 project |
+| workspace-bound 检索工具 | 改为 space/project-bound | Cleo 使用两级隔离边界 |
 | Qdrant + BGE + reranker | 暂缓 | 需要 Docker、两个模型、校准集和运维；Cleo 当前是轻量 CLI |
 | 历史语义检索 | 改为 SQLite + 词法排序 | 零新增服务，先提供可解释的高确定性召回 |
 | FastAPI 后台 scheduler | 改为保存时建索引、退出时整理 | 符合 CLI 生命周期，不引入常驻服务 |
@@ -67,26 +70,29 @@ preview/dry-run API。
 ## Cleo 融合后的数据流
 
 ```text
-LangChain messages
-  -> memory/thread_objects/<thread>.json       完整、权威、原子写入
-  -> memory/compact_threads/<thread>.json      规则压缩、脱敏、source hash
-  -> memory/memory.sqlite3
-       |-> conversation_chunks                 项目绑定的历史片段
-       |-> memory_entries + memory_evidence    原子长期记忆与证据
+LangChain / harness events
+  -> memory/<space>/projects/<project>/sessions/<session>/events.jsonl
+       append-only 权威记录
+  -> manifest.json                             当前 metadata/status 投影
+  -> compact.json                              规则压缩、脱敏、source hash
+  -> memory/<space>/memory.sqlite3
+       |-> conversation_chunks                 space/project 绑定的历史片段
+       |-> memory_entries + memory_evidence    原子长期记忆与 event evidence
        `-> memory_consolidations               Dream 写入记录
-  -> memory/projects/<project>/MEMORY.md       人可读投影 + 原子记忆索引
+  -> memory/<space>/projects/<project>/MEMORY.md
+       人可读投影 + 原子记忆索引
 ```
 
-`memory/memory_state.json` 单独记录 raw source version、hash、Dream 状态、失败次数和
+`memory/<space>/memory_state.json` 单独记录 source version、hash、Dream 状态、失败次数和
 最后成功版本。相同 source hash 再次退出时会跳过 Dream；失败不会推进完成状态。
 
-主 Agent 获得两个 project-bound 工具：
+主 Agent 获得两个 space/project-bound 工具：
 
 - `search_long_term_memory`：查询稳定事实、决策、约束、纠错和行动项；
 - `search_conversation_history`：查询未必值得长期保存的历史讨论细节。
 
 DreamAgent 不再获得 raw reader，只能读取 hash 校验通过的 compact source。写入原子
-记忆时 evidence message ID 必须在该 source 中存在；写完 Markdown 后还必须显式调用
+记忆时 evidence event ID 必须在该 source 中存在；写完 Markdown 后还必须显式调用
 完成工具，否则本次运行视为失败。
 
 ## 后续升级条件

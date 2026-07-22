@@ -17,8 +17,8 @@ dependencies = [
   "langchain-core",
   "langchain-openai",
   "langgraph",
-  "openai-codex>=0.1.0b3,<0.2",
-  "openai-codex-cli-bin==0.137.0a4",
+  "openai-codex>=0.144.4,<0.145",
+  "openai-codex-cli-bin==0.144.4",
   "pydantic",
   "rich",
 ]

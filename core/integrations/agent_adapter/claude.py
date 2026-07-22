@@ -156,5 +156,5 @@ class ClaudeProvider:
         if isinstance(block, ToolUseBlock):
             return AgentEvent(provider=self.name, type="tool_call", data=asdict(block))
         if isinstance(block, ToolResultBlock):
-            return AgentEvent(provider=self.name, type="tool_call_update", data=asdict(block))
+            return AgentEvent(provider=self.name, type="tool_result", data=asdict(block))
         return None
