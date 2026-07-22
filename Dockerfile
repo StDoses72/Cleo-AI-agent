@@ -5,7 +5,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUTF8=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     HOME=/home/cleo \
-    CLEO_CONFIG_PATH=/config/cleo.json
+    CLEO_CONFIG_PATH=/config/cleo.json \
+    CLEO_HARNESSES_CONFIG_PATH=/config/harnesses.json
 
 ARG CLEO_UID=10001
 ARG CLEO_GID=10001

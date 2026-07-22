@@ -21,8 +21,18 @@ class _CodexRuntime:
 class CodexProvider:
     name = "codex"
 
-    def __init__(self, default_model: str) -> None:
+    def __init__(
+        self,
+        default_model: str,
+        *,
+        name: str = "codex",
+        approval_mode: ApprovalMode = ApprovalMode.deny_all,
+        sandbox: Sandbox = Sandbox.workspace_write,
+    ) -> None:
+        self.name = name
         self._default_model = default_model
+        self._approval_mode = approval_mode
+        self._sandbox = sandbox
         self._sessions: dict[str, _CodexRuntime] = {}
 
     async def create_session(
@@ -34,10 +44,10 @@ class CodexProvider:
         await client.__aenter__()
         try:
             thread = await client.thread_start(
-                approval_mode=ApprovalMode.deny_all,
+                approval_mode=self._approval_mode,
                 cwd=project_path,
                 model=model or self._default_model,
-                sandbox=Sandbox.workspace_write,
+                sandbox=self._sandbox,
             )
         except Exception:
             await client.close()
@@ -56,10 +66,10 @@ class CodexProvider:
         try:
             thread = await client.thread_resume(
                 native_session_id,
-                approval_mode=ApprovalMode.deny_all,
+                approval_mode=self._approval_mode,
                 cwd=project_path,
                 model=model or self._default_model,
-                sandbox=Sandbox.workspace_write,
+                sandbox=self._sandbox,
             )
         except Exception:
             await client.close()
@@ -82,8 +92,8 @@ class CodexProvider:
         async with runtime.lock:
             turn = await runtime.thread.turn(
                 prompt,
-                approval_mode=ApprovalMode.deny_all,
-                sandbox=Sandbox.workspace_write,
+                approval_mode=self._approval_mode,
+                sandbox=self._sandbox,
             )
             runtime.active_turn = turn
             try:
@@ -145,9 +155,8 @@ class CodexProvider:
         params = getattr(payload, "params", None)
         return params if isinstance(params, dict) else {"value": str(payload)}
 
-    @classmethod
     def _event_from_notification(
-        cls,
+        self,
         method: str,
         data: dict[str, Any],
     ) -> AgentEvent | None:
@@ -215,7 +224,7 @@ class CodexProvider:
             event_type = "provider_event"
 
         return AgentEvent(
-            provider=cls.name,
+            provider=self.name,
             type=event_type,
             text=text,
             data={

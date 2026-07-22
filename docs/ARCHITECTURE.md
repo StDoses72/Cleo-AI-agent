@@ -28,6 +28,7 @@ SessionStore
 - `core/agent.py`：Cleo 主 Agent 与 DreamAgent。
 - `core/cli.py`：Rich CLI 的 header、流式事件与 Session Hub 表现层，以及基于
   `prompt_toolkit` 的模式化命令、目录和 session ID 补全。
+- `core/usage.py`：Cleo 与 harness 共用的 context-window usage 状态模型。
 - `core/integrations/agent_adapter/`：统一 harness 接口和 provider-specific adapter。
 - `core/memory/session_store.py`：session manifest、append-only events 和全局 registry。
 - `core/memory/compaction.py`：从 event log 生成脱敏 compact projection。
@@ -149,6 +150,9 @@ native provider event
 `--resume` 与主聊天内的 `/resume` 都通过全局 registry 找到 manifest，再从 message
 events 重建 LangChain messages。它不是 durable LangGraph checkpoint 恢复。
 
+Cleo 在流式 `AIMessageChunk` 上捕获 provider 返回的 usage metadata；若 provider 不返回，
+状态栏只显示配置的窗口上限和 `waiting`。
+
 ## Harness 流转
 
 ```text
@@ -165,11 +169,16 @@ AgentAdapter.prompt
 ```
 
 主聊天中的 `/productivity` 是交互式终端入口，退出后会恢复原 Cleo space/project/thread。
-`main.py --productivity` 仍作为直接启动和脚本入口。两者都默认注册 Codex provider，
-支持新建或通过 Cleo session ID 恢复 native session，并把 SDK notification 实时输出
-到终端。productivity 内的 `/resume` 使用相同恢复路径；`/cwd` 查询工作目录，`/cd`
-创建绑定到目标目录的新 session。`--cwd` 控制 harness 工作目录，`--project` 只控制
-Cleo 的 memory scope。
+`main.py --productivity` 仍作为直接启动和脚本入口。两者都通过 provider factory 读取
+独立的 `config/harnesses.json`，注册启用的 Codex SDK、Claude SDK 或 ACP provider，并
+选择配置的 default provider。加载后仍以 `settings.productivity` 提供给 runtime。它们
+支持新建或通过 Cleo session ID 恢复 native session，并把 SDK
+notification 实时输出到终端。productivity 内的 `/resume` 使用相同恢复路径；`/cwd`
+查询工作目录，`/cd` 创建绑定到目标目录的新 session。`--cwd` 控制 harness 工作目录，
+`--project` 只控制 Cleo 的 memory scope。
+
+Codex 的 `thread/tokenUsage/updated` 会归一化为 `status` event，同时驱动 CLI context
+状态栏；展示值来自 SDK 的 `totalTokens` 与 `modelContextWindow`。
 
 `AgentAdapter` 当前承担轻量 SessionHub 的 active route 职责：Cleo session handle 映射到
 provider connection 和 native session ID。已完成内容只留在 SessionStore；provider

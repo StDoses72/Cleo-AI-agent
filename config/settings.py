@@ -1,7 +1,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
@@ -20,6 +20,20 @@ def _config_path() -> Path:
 
 
 CONFIG_PATH = _config_path()
+
+
+def _harnesses_config_path() -> Path:
+    override = os.environ.get("CLEO_HARNESSES_CONFIG_PATH")
+    if not override:
+        return CONFIG_PATH.with_name("harnesses.json")
+
+    candidate = Path(override).expanduser()
+    if not candidate.is_absolute():
+        candidate = PROJECT_ROOT / candidate
+    return candidate.resolve()
+
+
+HARNESSES_CONFIG_PATH = _harnesses_config_path()
 
 DEFAULT_ALLOWED_COMMANDS = ["python", "git"]
 PLATFORM_ALLOWED_COMMANDS = {
@@ -154,6 +168,100 @@ class ToolsProfile(BaseModel):
     codex_model: str = Field(default="gpt-5.5", min_length=1)
 
 
+class HarnessProviderSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    model: str | None = Field(default=None, min_length=1)
+
+
+class CodexHarnessOptions(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    approval_mode: Literal["deny_all", "auto_review"] = "deny_all"
+    sandbox: Literal["read-only", "workspace-write", "full-access"] = (
+        "workspace-write"
+    )
+
+
+class ClaudeHarnessOptions(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    permission_mode: Literal[
+        "default",
+        "acceptEdits",
+        "plan",
+        "bypassPermissions",
+        "dontAsk",
+        "auto",
+    ] = "acceptEdits"
+
+
+class AcpHarnessOptions(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    command: str = Field(..., min_length=1)
+    args: list[str] = Field(default_factory=list)
+    env: dict[str, str] = Field(default_factory=dict)
+    auth_method: str | None = None
+    auto_approve: bool = False
+    model_config_id: str | None = None
+
+
+class CodexHarnessSettings(HarnessProviderSettings):
+    type: Literal["codex_sdk"] = "codex_sdk"
+    model: str = Field(default="gpt-5.5", min_length=1)
+    options: CodexHarnessOptions = Field(default_factory=CodexHarnessOptions)
+
+
+class ClaudeHarnessSettings(HarnessProviderSettings):
+    type: Literal["claude_sdk"] = "claude_sdk"
+    options: ClaudeHarnessOptions = Field(default_factory=ClaudeHarnessOptions)
+
+
+class AcpHarnessSettings(HarnessProviderSettings):
+    type: Literal["acp"] = "acp"
+    options: AcpHarnessOptions
+
+
+ProductivityProviderSettings = Annotated[
+    CodexHarnessSettings | ClaudeHarnessSettings | AcpHarnessSettings,
+    Field(discriminator="type"),
+]
+
+
+def _default_productivity_providers() -> dict[str, ProductivityProviderSettings]:
+    return {"codex": CodexHarnessSettings()}
+
+
+class ProductivitySettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    default_provider: str = Field(default="codex", min_length=1)
+    providers: dict[str, ProductivityProviderSettings] = Field(
+        default_factory=_default_productivity_providers
+    )
+
+    @model_validator(mode="after")
+    def validate_default_provider(self) -> "ProductivitySettings":
+        provider = self.providers.get(self.default_provider)
+        if provider is None:
+            raise ValueError(
+                f"Default productivity provider not found: {self.default_provider}"
+            )
+        if not provider.enabled:
+            raise ValueError(
+                f"Default productivity provider is disabled: {self.default_provider}"
+            )
+        return self
+
+    def provider(self, name: str) -> ProductivityProviderSettings:
+        try:
+            return self.providers[name]
+        except KeyError as exc:
+            raise KeyError(f"Unknown productivity provider: {name}") from exc
+
+
 class ActiveProfiles(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -179,6 +287,7 @@ class SettingsModel(BaseModel):
 
     active_profiles: ActiveProfiles
     profiles: ProfileRegistry
+    productivity: ProductivitySettings = Field(default_factory=ProductivitySettings)
 
     @model_validator(mode="after")
     def validate_active_profiles(self) -> "SettingsModel":
@@ -356,13 +465,39 @@ def _default_config() -> dict[str, Any]:
     }
 
 
+def _default_harnesses_config() -> dict[str, Any]:
+    return {
+        "default_provider": "codex",
+        "providers": {
+            "codex": {
+                "type": "codex_sdk",
+                "enabled": True,
+                "model": "gpt-5.5",
+                "options": {
+                    "approval_mode": "deny_all",
+                    "sandbox": "workspace-write",
+                },
+            }
+        },
+    }
+
+
 def _create_default_config(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(_default_config(), f, ensure_ascii=False, indent="\t")
 
 
-def load_settings(config_path: Path = CONFIG_PATH) -> SettingsModel:
+def _create_default_harnesses_config(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(_default_harnesses_config(), f, ensure_ascii=False, indent="\t")
+
+
+def load_settings(
+    config_path: Path = CONFIG_PATH,
+    harnesses_config_path: Path | None = None,
+) -> SettingsModel:
     if not config_path.exists():
         _create_default_config(config_path)
         raise FileNotFoundError(
@@ -372,6 +507,24 @@ def load_settings(config_path: Path = CONFIG_PATH) -> SettingsModel:
 
     with open(config_path, encoding="utf-8") as f:
         raw_config = json.load(f)
+
+    if "productivity" in raw_config:
+        raise ValueError(
+            "Productivity configuration belongs in config/harnesses.json, "
+            "not cleo.json."
+        )
+
+    harnesses_path = harnesses_config_path
+    if harnesses_path is None:
+        harnesses_path = (
+            HARNESSES_CONFIG_PATH
+            if config_path.resolve() == CONFIG_PATH
+            else config_path.with_name("harnesses.json")
+        )
+    if not harnesses_path.exists():
+        _create_default_harnesses_config(harnesses_path)
+    with open(harnesses_path, encoding="utf-8") as f:
+        raw_config["productivity"] = json.load(f)
 
     return SettingsModel.model_validate(raw_config)
 

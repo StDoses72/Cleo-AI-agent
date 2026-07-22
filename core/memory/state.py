@@ -67,7 +67,13 @@ def touch_session_source(
     last_event_seq: int,
     path: Path | None = None,
 ) -> dict[str, Any]:
-    """Register an event-log revision without advancing consolidation state."""
+    """Register an event-log revision without advancing consolidation state.
+
+    ``source_version`` is a monotonic revision counter for this session's
+    persisted event source. In normal conversation flow it advances roughly
+    once per completed interaction batch, but lifecycle/status events can also
+    advance it, so it is not an exact turn count or a schema/model version.
+    """
     state_path = _state_path(space, path)
     source_id = _source_id(space, project, session_id)
     with _STATE_LOCK:
@@ -92,6 +98,8 @@ def touch_session_source(
             }
             state["sources"][source_id] = entry
         elif entry.get("source_hash") != source_hash:
+            # A distinct event-log hash represents a new source revision. Keep
+            # only the latest revision number; no per-version history is stored.
             entry["source_version"] = int(entry.get("source_version", 0)) + 1
             entry["source_hash"] = source_hash
             entry["last_event_seq"] = int(last_event_seq)

@@ -6,6 +6,7 @@ from rich.console import Console
 
 from core.cli import CleoCLI, SlashCommandCompleter
 from core.integrations.agent_adapter import AgentEvent, AgentResult, AgentSession
+from core.usage import ContextWindowUsage
 
 
 def _captured_cli() -> tuple[CleoCLI, StringIO]:
@@ -24,8 +25,23 @@ def test_cli_renders_chat_productivity_and_session_hub() -> None:
         project="cleo",
     )
 
-    cli.render_chat_header("local-123", "cleo")
-    cli.render_productivity_header(session)
+    usage = ContextWindowUsage(
+        used_tokens=50_000,
+        window_tokens=100_000,
+        input_tokens=48_000,
+        output_tokens=2_000,
+    )
+    cli.render_chat_header(
+        "local-123",
+        "cleo",
+        model="deepseek-v4-flash",
+        context_usage=usage,
+    )
+    cli.render_productivity_header(
+        session,
+        model="gpt-5.5",
+        context_usage=usage,
+    )
     cli.render_session_hub(
         [
             {
@@ -45,11 +61,36 @@ def test_cli_renders_chat_productivity_and_session_hub() -> None:
     assert "SESSION HUB" in rendered
     assert "agent_123456789" in rendered
     assert "productivity" in rendered
+    assert "deepseek-v4-flash" in rendered
+    assert "gpt-5.5" in rendered
+    assert "50%" in rendered
 
 
 def test_productivity_renderer_formats_canonical_events() -> None:
     cli, output = _captured_cli()
-    renderer = cli.productivity_renderer()
+    usage = ContextWindowUsage()
+    renderer = cli.productivity_renderer(model="gpt-5.5", context_usage=usage)
+
+    renderer(
+        AgentEvent(
+            provider="codex",
+            type="status",
+            data={
+                "provider_event_type": "thread/tokenUsage/updated",
+                "payload": {
+                    "tokenUsage": {
+                        "total": {"totalTokens": 40_000},
+                        "last": {
+                            "inputTokens": 9_000,
+                            "outputTokens": 1_000,
+                            "cachedInputTokens": 2_000,
+                        },
+                        "modelContextWindow": 100_000,
+                    }
+                },
+            },
+        )
+    )
 
     renderer(
         AgentEvent(
@@ -86,6 +127,9 @@ def test_productivity_renderer_formats_canonical_events() -> None:
     assert "git status" in rendered
     assert "CODEX" in rendered
     assert "COMPLETED" in rendered
+    assert "gpt-5.5" in rendered
+    assert "40%" in rendered
+    assert usage.used_tokens == 40_000
 
 
 def test_slash_command_completer_uses_mode_and_saved_sessions() -> None:

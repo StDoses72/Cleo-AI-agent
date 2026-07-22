@@ -9,6 +9,8 @@ __pycache__/
 # Local model/provider profile with real API keys.
 config/cleo.json
 !config/cleo.example.json
+config/harnesses.json
+!config/harnesses.example.json
 
 # Runtime state, logs, and generated local data.
 data/*

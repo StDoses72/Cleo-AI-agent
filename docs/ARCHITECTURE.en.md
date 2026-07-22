@@ -29,6 +29,7 @@ SessionStore
 - `core/agent.py`: the Cleo main agent and DreamAgent.
 - `core/cli.py`: Rich headers, streamed events, Session Hub presentation, and
   `prompt_toolkit` completion for mode-specific commands, paths, and session IDs.
+- `core/usage.py`: shared context-window usage state for Cleo and harness views.
 - `core/integrations/agent_adapter/`: unified harness API and provider adapters.
 - `core/memory/session_store.py`: manifests, append-only events, and registry.
 - `core/memory/compaction.py`: redacted projections derived from event logs.
@@ -126,6 +127,10 @@ user message
 the manifest, then reconstruct LangChain messages from message events. This is
 not durable LangGraph checkpoint recovery.
 
+Cleo captures provider usage metadata from streamed `AIMessageChunk` objects. If
+the provider omits it, the status bar shows only the configured limit and
+`waiting`.
+
 ## Harness Flow
 
 ```text
@@ -143,12 +148,19 @@ AgentAdapter.prompt
 
 `/productivity` in the main chat is the interactive terminal entry point; leaving
 it restores the prior Cleo space/project/thread. `main.py --productivity` remains
-the direct and scriptable entry. Both register Codex by default, can create or
-resume a native session through a Cleo session ID, and render SDK notifications
-as they arrive. Productivity `/resume` uses the same restoration path; `/cwd`
-shows the working directory and `/cd` creates a new session bound to the target
-directory. `--cwd` controls the harness working directory; `--project` controls
-only Cleo's memory scope.
+the direct and scriptable entry. Both use the provider factory to read the
+separate `config/harnesses.json`, register enabled Codex SDK, Claude SDK, or ACP
+providers, and select the configured default. The loader exposes the validated
+result as `settings.productivity`. They can create or resume a native
+session through a Cleo session ID and render SDK notifications as they arrive.
+Productivity `/resume` uses the same restoration path; `/cwd` shows the working
+directory and `/cd` creates a new session bound to the target directory. `--cwd`
+controls the harness working directory; `--project` controls only Cleo's memory
+scope.
+
+Codex `thread/tokenUsage/updated` notifications are normalized as `status` events
+and drive the CLI context bar using the SDK's `totalTokens` and
+`modelContextWindow` values.
 
 `AgentAdapter` currently provides the active-route portion of a lightweight
 SessionHub. It maps Cleo handles to provider connections and native session IDs.

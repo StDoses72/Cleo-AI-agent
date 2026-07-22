@@ -179,6 +179,32 @@ def test_codex_provider_streams_new_sdk_notifications() -> None:
                 ),
             )
             yield SimpleNamespace(
+                method="thread/tokenUsage/updated",
+                payload=Payload(
+                    {
+                        "threadId": "codex-thread-1",
+                        "turnId": self.id,
+                        "tokenUsage": {
+                            "total": {
+                                "cachedInputTokens": 0,
+                                "inputTokens": 800,
+                                "outputTokens": 200,
+                                "reasoningOutputTokens": 0,
+                                "totalTokens": 1000,
+                            },
+                            "last": {
+                                "cachedInputTokens": 0,
+                                "inputTokens": 800,
+                                "outputTokens": 200,
+                                "reasoningOutputTokens": 0,
+                                "totalTokens": 1000,
+                            },
+                            "modelContextWindow": 200000,
+                        },
+                    }
+                ),
+            )
+            yield SimpleNamespace(
                 method="item/completed",
                 payload=Payload(
                     {
@@ -221,3 +247,5 @@ def test_codex_provider_streams_new_sdk_notifications() -> None:
     assert received[0].text == "hello"
     assert received[1].type == "tool_call"
     assert received[1].data["provider_event_type"] == "item/started"
+    assert received[2].type == "status"
+    assert received[2].data["provider_event_type"] == "thread/tokenUsage/updated"

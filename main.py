@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import tempfile
 import uuid
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -21,6 +22,7 @@ from langchain_core.messages import (
 )
 
 from core.cli import CleoCLI
+from core.usage import ContextWindowUsage
 
 if TYPE_CHECKING:
     from config.settings import SettingsModel
@@ -31,12 +33,25 @@ if TYPE_CHECKING:
 
 SUPPORTED_IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 LOCAL_CONFIG_PATH = "config/cleo.json"
+LOCAL_HARNESSES_CONFIG_PATH = "config/harnesses.json"
 CONFIG_TEMPLATE_PATH = Path(__file__).resolve().parent / "config" / "cleo.example.json"
+HARNESSES_TEMPLATE_PATH = (
+    Path(__file__).resolve().parent / "config" / "harnesses.example.json"
+)
 cli = CleoCLI()
 
 
 def clear_screen() -> None:
     cli.clear()
+
+
+def _render_chat_header(agent: Agent, runtime: Runtime, thread_id: str) -> None:
+    cli.render_chat_header(
+        thread_id,
+        runtime.current_project or "general",
+        model=str(getattr(agent, "model_name", "unknown")),
+        context_usage=getattr(agent, "context_usage", None),
+    )
 
 
 def _new_thread_id() -> str:
@@ -68,6 +83,11 @@ async def _print_streaming_reply(
         received_text = True
         cli.stream_assistant(text)
     cli.end_assistant(received=received_text)
+    cli.render_runtime_status(
+        str(getattr(agent, "model_name", "unknown")),
+        getattr(agent, "context_usage", None),
+        accent="cyan",
+    )
 
 
 async def _sync_session_events(
@@ -126,8 +146,14 @@ async def _prompt_productivity_session(
     adapter: AgentAdapter,
     session_id: str,
     prompt: str,
+    *,
+    model: str,
+    context_usage: ContextWindowUsage,
 ) -> AgentResult:
-    renderer = cli.productivity_renderer()
+    renderer = cli.productivity_renderer(
+        model=model,
+        context_usage=context_usage,
+    )
     result = await adapter.prompt(session_id, prompt, on_event=renderer)
     renderer.finish(result)
     return result
@@ -203,10 +229,23 @@ async def _run_productivity_loop(
     store: SessionStore,
     *,
     model: str | None,
+    provider_models: Mapping[str, str | None] | None = None,
     return_to_chat: bool = False,
 ) -> None:
     exit_action = "return to Cleo chat" if return_to_chat else "exit"
-    cli.render_productivity_header(session)
+    configured_models = provider_models or {}
+
+    def model_for(provider: str) -> str | None:
+        return model or configured_models.get(provider)
+
+    session_model = model_for(session.provider)
+    active_model = session_model or "default"
+    context_usage = ContextWindowUsage()
+    cli.render_productivity_header(
+        session,
+        model=active_model,
+        context_usage=context_usage,
+    )
     cli.info(f"Use /back or /quit to {exit_action}; /new starts a new harness session.")
     cli.console.print()
 
@@ -233,13 +272,18 @@ async def _run_productivity_loop(
             session = await adapter.create_session(
                 session.provider,
                 project_path=session.project_path,
-                model=model,
+                model=session_model,
                 project=session.project,
             )
             runtime.update_current_thread_id(session.id)
             runtime.append_recent_threads(session.id, "productivity")
+            context_usage = ContextWindowUsage()
             clear_screen()
-            cli.render_productivity_header(session)
+            cli.render_productivity_header(
+                session,
+                model=active_model,
+                context_usage=context_usage,
+            )
             cli.success(f"Started new {session.provider} session: {session.id}")
             continue
         if prompt == "/cwd":
@@ -254,7 +298,7 @@ async def _run_productivity_loop(
                 next_session = await adapter.create_session(
                     session.provider,
                     project_path=target_cwd,
-                    model=model,
+                    model=session_model,
                     project=session.project,
                 )
             except (KeyError, OSError, ValueError) as exc:
@@ -266,8 +310,13 @@ async def _run_productivity_loop(
             runtime.update_current_project(session.project)
             runtime.update_current_thread_id(session.id)
             runtime.append_recent_threads(session.id, "productivity")
+            context_usage = ContextWindowUsage()
             clear_screen()
-            cli.render_productivity_header(session)
+            cli.render_productivity_header(
+                session,
+                model=active_model,
+                context_usage=context_usage,
+            )
             cli.success(
                 f"Changed cwd to {session.project_path}; started session {session.id}."
             )
@@ -281,11 +330,13 @@ async def _run_productivity_loop(
                 cli.info(f"Session {session.id} is already active.")
                 continue
             try:
+                resume_manifest = store.load_manifest(resume_id)
+                resume_model = model_for(str(resume_manifest["provider"]))
                 resumed_session = await _resume_productivity_session(
                     adapter,
                     store,
                     resume_id,
-                    model=model,
+                    model=resume_model,
                 )
             except (FileNotFoundError, KeyError, OSError, ValueError) as exc:
                 cli.error(f"Unable to resume {resume_id}: {exc}")
@@ -293,11 +344,18 @@ async def _run_productivity_loop(
             previous_session = session
             await _finish_productivity_session(adapter, previous_session, runtime)
             session = resumed_session
+            session_model = resume_model
+            active_model = session_model or "default"
             runtime.update_current_project(session.project)
             runtime.update_current_thread_id(session.id)
             runtime.append_recent_threads(session.id, "productivity")
+            context_usage = ContextWindowUsage()
             clear_screen()
-            cli.render_productivity_header(session)
+            cli.render_productivity_header(
+                session,
+                model=active_model,
+                context_usage=context_usage,
+            )
             cli.success(f"Resumed {session.provider} session: {session.id}")
             continue
         if prompt == "/sessions":
@@ -305,12 +363,22 @@ async def _run_productivity_loop(
             cli.render_session_hub(store.list_sessions())
             await asyncio.to_thread(cli.wait_for_return)
             clear_screen()
-            cli.render_productivity_header(session)
+            cli.render_productivity_header(
+                session,
+                model=active_model,
+                context_usage=context_usage,
+            )
             continue
 
         try:
             cli.console.print()
-            await _prompt_productivity_session(adapter, session.id, prompt)
+            await _prompt_productivity_session(
+                adapter,
+                session.id,
+                prompt,
+                model=active_model,
+                context_usage=context_usage,
+            )
             runtime.append_recent_threads(session.id, "productivity")
         except KeyboardInterrupt:
             cli.warning("Cancelling the active harness turn...")
@@ -332,21 +400,33 @@ async def _run_productivity_mode(
     *,
     return_to_chat: bool = False,
 ) -> None:
-    from core.integrations.agent_adapter import AgentAdapter, CodexProvider
+    from core.integrations.agent_adapter.factory import build_agent_adapter
 
-    default_model = settings.active_tools_profile.codex_model
-    adapter = AgentAdapter(
+    adapter = build_agent_adapter(
         settings.active_directory_profile.root_path,
+        settings.productivity,
         session_store=store,
     )
-    adapter.register(CodexProvider(default_model=default_model))
 
-    provider = args.provider or "codex"
+    if args.resume_id is not None and args.provider is None:
+        try:
+            resume_manifest = store.load_manifest(args.resume_id)
+        except FileNotFoundError as exc:
+            raise SystemExit(f"No saved session found for id: {args.resume_id}") from exc
+        provider = str(resume_manifest["provider"])
+    else:
+        provider = args.provider or settings.productivity.default_provider
     if provider not in adapter.providers:
         available = ", ".join(adapter.providers)
         raise SystemExit(f"Unknown productivity provider {provider!r}; available: {available}")
 
-    model = args.model or default_model
+    model = args.model or settings.productivity.provider(provider).model
+    display_model = model or "default"
+    provider_models = {
+        name: provider_settings.model
+        for name, provider_settings in settings.productivity.providers.items()
+        if provider_settings.enabled
+    }
     project_path = args.cwd or "."
     project = args.project
     try:
@@ -384,12 +464,24 @@ async def _run_productivity_mode(
                 session,
                 runtime,
                 store,
-                model=model,
+                model=args.model,
+                provider_models=provider_models,
                 return_to_chat=return_to_chat,
             )
         else:
-            cli.render_productivity_header(session)
-            await _prompt_productivity_session(adapter, session.id, args.message)
+            context_usage = ContextWindowUsage()
+            cli.render_productivity_header(
+                session,
+                model=display_model,
+                context_usage=context_usage,
+            )
+            await _prompt_productivity_session(
+                adapter,
+                session.id,
+                args.message,
+                model=display_model,
+                context_usage=context_usage,
+            )
             await _finish_productivity_session(adapter, session, runtime)
             runtime.update_current_thread_id(None)
             runtime.update_current_project(None)
@@ -411,7 +503,7 @@ async def _run_chat_loop(
 
         store = SessionStore(settings.MEMORY_DIR, settings.SESSION_INDEX_PATH)
     runtime.update_current_thread_id(thread_id)
-    cli.render_chat_header(thread_id, runtime.current_project or "general")
+    _render_chat_header(agent, runtime, thread_id)
     if restored_messages:
         _print_restored_messages(thread_id, restored_messages)
     attachment_list: list[dict[str, str]] = []
@@ -483,7 +575,7 @@ async def _run_chat_loop(
             runtime.update_current_thread_id(thread_id)
             runtime.update_runtime_json()
             clear_screen()
-            cli.render_chat_header(thread_id, runtime.current_project or "general")
+            _render_chat_header(agent, runtime, thread_id)
             cli.success(f"Started new thread: {thread_id}")
             continue
 
@@ -531,7 +623,7 @@ async def _run_chat_loop(
             runtime.append_recent_threads(thread_id, "non_productivity")
             runtime.update_runtime_json()
             clear_screen()
-            cli.render_chat_header(thread_id, saved_project)
+            _render_chat_header(agent, runtime, thread_id)
             _print_restored_messages(thread_id, restored_messages)
             cli.success(f"Resumed Cleo thread: {thread_id}")
             continue
@@ -541,7 +633,7 @@ async def _run_chat_loop(
             cli.render_session_hub(store.list_sessions())
             await asyncio.to_thread(cli.wait_for_return)
             clear_screen()
-            cli.render_chat_header(thread_id, runtime.current_project or "general")
+            _render_chat_header(agent, runtime, thread_id)
             continue
 
         if message == "/productivity":
@@ -581,7 +673,7 @@ async def _run_chat_loop(
                 runtime.update_current_thread_id(thread_id)
                 runtime.append_recent_threads(thread_id, saved_space)
             clear_screen()
-            cli.render_chat_header(thread_id, saved_project)
+            _render_chat_header(agent, runtime, thread_id)
             cli.success("Returned to Cleo chat.")
             continue
 
@@ -731,7 +823,10 @@ def reset_workspace_to_main(
     repo_root: Path,
     *,
     main_branch: str = "main",
-    preserve_paths: tuple[str, ...] = (LOCAL_CONFIG_PATH,),
+    preserve_paths: tuple[str, ...] = (
+        LOCAL_CONFIG_PATH,
+        LOCAL_HARNESSES_CONFIG_PATH,
+    ),
 ) -> None:
     repo_root = repo_root.resolve()
 
@@ -784,11 +879,16 @@ async def amain() -> None:
         help="Print a portable cleo.json template and exit.",
     )
     parser.add_argument(
+        "--print-harnesses-template",
+        action="store_true",
+        help="Print a portable harnesses.json template and exit.",
+    )
+    parser.add_argument(
         "--reset-to-main",
         action="store_true",
         help=(
             "Reset this repository to the local main branch and remove untracked "
-            "or ignored files. Preserves config/cleo.json."
+            "or ignored files. Preserves local Cleo and harness configuration."
         ),
     )
     parser.add_argument(
@@ -805,7 +905,7 @@ async def amain() -> None:
     parser.add_argument(
         "--provider",
         default=None,
-        help="Productivity harness provider. Defaults to codex.",
+        help="Productivity harness provider. Defaults to harnesses.json selection.",
     )
     parser.add_argument(
         "--cwd",
@@ -837,6 +937,9 @@ async def amain() -> None:
 
     args = parser.parse_args()
 
+    if args.print_config_template and args.print_harnesses_template:
+        raise SystemExit("Choose only one config template to print.")
+
     if args.print_config_template:
         if (
             args.message is not None
@@ -855,6 +958,24 @@ async def amain() -> None:
         print(CONFIG_TEMPLATE_PATH.read_text(encoding="utf-8"), end="")
         return
 
+    if args.print_harnesses_template:
+        if (
+            args.message is not None
+            or args.thread_id is not None
+            or args.resume_id is not None
+            or args.reset_to_main
+            or args.project is not None
+            or args.productivity
+            or args.provider is not None
+            or args.cwd is not None
+            or args.model is not None
+        ):
+            raise SystemExit(
+                "--print-harnesses-template cannot be combined with other operations."
+            )
+        print(HARNESSES_TEMPLATE_PATH.read_text(encoding="utf-8"), end="")
+        return
+
     if args.reset_to_main:
         if (
             args.message is not None
@@ -865,6 +986,7 @@ async def amain() -> None:
             or args.provider is not None
             or args.cwd is not None
             or args.model is not None
+            or args.print_harnesses_template
         ):
             raise SystemExit("--reset-to-main cannot be combined with chat or thread arguments.")
         try:
@@ -963,7 +1085,7 @@ async def amain() -> None:
         space=runtime.current_space,
     )
     if args.message is not None:
-        cli.render_chat_header(thread_id, runtime.current_project or "general")
+        _render_chat_header(agent, runtime, thread_id)
     if args.resume_id is not None:
         if args.message is None:
             await _run_chat_loop(

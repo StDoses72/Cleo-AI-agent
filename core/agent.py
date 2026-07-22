@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +17,7 @@ from core.memory.state import (
     mark_consolidation_started,
     needs_consolidation,
 )
+from core.usage import ContextWindowUsage
 from tools.codex_tools import codex_reply_tool, codex_tool
 from tools.dream_agent_tools import (
     complete_memory_consolidation,
@@ -132,6 +133,10 @@ class Agent:
         self.root_dir = Path(__file__).resolve().parent.parent
         self.project = project
         self.space = space
+        self.model_name = active_profile.model
+        self.context_usage = ContextWindowUsage(
+            window_tokens=active_profile.max_tokens,
+        )
         self.backend = FilesystemBackend(
             root_dir=str(self.root_dir),
             virtual_mode=True,
@@ -180,9 +185,35 @@ class Agent:
             config={"configurable": {"thread_id": thread_id}},
             stream_mode="messages",
         ):
+            self._capture_usage(chunk)
             text = _extract_text_delta(chunk)
             if text:
                 yield text
+
+    def _capture_usage(self, chunk: Any) -> None:
+        message = chunk[0] if isinstance(chunk, tuple) and chunk else chunk
+        usage = getattr(message, "usage_metadata", None)
+        if not isinstance(usage, Mapping):
+            response_metadata = getattr(message, "response_metadata", None)
+            token_usage = (
+                response_metadata.get("token_usage")
+                if isinstance(response_metadata, Mapping)
+                else None
+            )
+            usage = token_usage if isinstance(token_usage, Mapping) else None
+        if not usage:
+            return
+
+        input_tokens = _usage_int(usage, "input_tokens", "prompt_tokens")
+        output_tokens = _usage_int(usage, "output_tokens", "completion_tokens")
+        total_tokens = _usage_int(usage, "total_tokens")
+        if total_tokens is None and (input_tokens is not None or output_tokens is not None):
+            total_tokens = (input_tokens or 0) + (output_tokens or 0)
+        self.context_usage.update(
+            used_tokens=total_tokens,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
 
 
 def _build_user_content(message: str, images: list[dict[str, str]]) -> str | list[dict[str, str]]:
@@ -220,6 +251,14 @@ def _extract_text_delta(chunk: Any) -> str:
         elif isinstance(block, dict) and block.get("type") in {"text", "text_delta"}:
             parts.append(str(block.get("text", "")))
     return "".join(parts)
+
+
+def _usage_int(usage: Mapping[str, Any], *keys: str) -> int | None:
+    for key in keys:
+        value = usage.get(key)
+        if isinstance(value, int):
+            return value
+    return None
 
 
 class DreamAgent:

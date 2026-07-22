@@ -137,6 +137,7 @@ docker compose run --rm cleo "介绍一下当前项目"
 
 ```powershell
 cmd /c "docker run --rm <image> --print-config-template > cleo.json"
+cmd /c "docker run --rm <image> --print-harnesses-template > harnesses.json"
 notepad cleo.json
 ```
 
@@ -145,6 +146,7 @@ notepad cleo.json
 ```powershell
 docker run --rm -it `
   --mount "type=bind,source=$($PWD.Path)\cleo.json,target=/config/cleo.json,readonly" `
+  --mount "type=bind,source=$($PWD.Path)\harnesses.json,target=/config/harnesses.json,readonly" `
   --mount "type=volume,source=cleo-data,target=/app/data" `
   --mount "type=volume,source=cleo-memory,target=/app/memory" `
   --mount "type=volume,source=cleo-workspace,target=/app/workspace" `
@@ -159,12 +161,14 @@ docker run --rm -it `
 ## 本地配置
 
 Cleo 不再使用 `.env` 作为配置来源。本地默认读取 `config/cleo.json`；容器通过
-`CLEO_CONFIG_PATH=/config/cleo.json` 读取用户挂载的同一格式配置。
+`CLEO_CONFIG_PATH=/config/cleo.json` 读取用户挂载的同一格式配置。Productivity harness
+独立读取 `config/harnesses.json`，容器路径可通过 `CLEO_HARNESSES_CONFIG_PATH` 指定。
 
 首次运行前可以手动复制模板：
 
 ```bash
 copy config\cleo.example.json config\cleo.json
+copy config\harnesses.example.json config\harnesses.json
 ```
 
 也可以直接运行 Cleo。如果 `config/cleo.json` 缺失，Cleo 会自动创建默认模板并提示你填写真实配置。
@@ -231,6 +235,31 @@ copy config\cleo.example.json config\cleo.json
 `settings.active_directory_profile`、`settings.active_shell_profile` 和
 `settings.active_tools_profile` 取得当前生效配置。
 
+Productivity harness 由独立的 `config/harnesses.json` 注册。`default_provider` 决定未传
+`--provider` 时使用哪个 harness；`providers` 中的 key 是写入 session metadata 的
+provider 名称。所有 provider 共用 `type`、`enabled`、`model` 外壳，原生差异放在
+`options` 中。例如：
+
+```json
+{
+	"default_provider": "codex",
+	"providers": {
+		"codex": {
+			"type": "codex_sdk",
+			"enabled": true,
+			"model": "gpt-5.5",
+			"options": {
+				"approval_mode": "deny_all",
+				"sandbox": "workspace-write"
+			}
+		}
+	}
+}
+```
+
+`--model` 仍可覆盖当前 provider 的配置模型。`profiles.tools.codex_model` 单独服务于
+Cleo 主聊天中的 `codex` 工具，不再作为所有 productivity provider 的通用默认值。
+
 ## 运行
 
 一次性消息：
@@ -274,6 +303,11 @@ python main.py
 
 输入 `/` 后按 `Tab` 可查看当前模式支持的命令；`/resume` 后按 `Tab` 可补全可恢复的
 session ID。
+
+Cleo 与 productivity 页面的运行状态栏都会显示当前模型和 context window。Cleo 使用
+active agent profile 的 `max_tokens` 作为配置上限，并在兼容服务返回 usage metadata 后
+显示本轮实际占用；Codex 直接使用 SDK 的 `thread/tokenUsage/updated` 数据。数据尚未返回
+时会显示 `waiting`，不会估算或伪造百分比。
 
 交互模式同样可用 `cleo --project <name>` 启动。`/new` 会在同一 project 内创建新
 thread；`--resume` 会恢复 manifest 中保存的 space/project 绑定，并拒绝冲突的

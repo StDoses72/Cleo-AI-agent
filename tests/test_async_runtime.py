@@ -12,6 +12,7 @@ import main
 from core.agent import Agent, DreamAgent
 from core.integrations.agent_adapter import AgentResult, AgentSession
 from core.integrations.codex import CodexAdapter, CodexResult
+from core.usage import ContextWindowUsage
 
 
 def test_primary_runtime_boundaries_are_async() -> None:
@@ -31,14 +32,25 @@ def test_agent_stream_text_uses_async_graph_streaming() -> None:
             assert stream_mode == "messages"
             yield AIMessageChunk(content="hello"), {}
             yield AIMessageChunk(content=" world"), {}
+            yield AIMessageChunk(
+                content="",
+                usage_metadata={
+                    "input_tokens": 120,
+                    "output_tokens": 30,
+                    "total_tokens": 150,
+                },
+            ), {}
 
     agent = Agent.__new__(Agent)
     agent.deepagent = FakeGraph()
+    agent.context_usage = ContextWindowUsage(window_tokens=1000)
 
     async def collect() -> list[str]:
         return [text async for text in agent.stream_text("hello", thread_id="thread-1")]
 
     assert asyncio.run(collect()) == ["hello", " world"]
+    assert agent.context_usage.used_tokens == 150
+    assert agent.context_usage.ratio == 0.15
 
 
 def test_codex_facade_uses_async_unified_adapter(tmp_path, monkeypatch) -> None:
@@ -388,7 +400,7 @@ def test_productivity_loop_resumes_then_changes_cwd(tmp_path, monkeypatch) -> No
                 "id": session_id,
                 "space": "productivity",
                 "project": "cleo",
-                "provider": "codex",
+                "provider": "claude",
                 "native_session_id": "native-saved",
                 "cwd": str(current),
             }
@@ -397,6 +409,7 @@ def test_productivity_loop_resumes_then_changes_cwd(tmp_path, monkeypatch) -> No
         def __init__(self):
             self.closed: list[str] = []
             self.created_cwd: str | None = None
+            self.models: list[tuple[str, str | None]] = []
 
         async def resume_session(
             self,
@@ -406,6 +419,7 @@ def test_productivity_loop_resumes_then_changes_cwd(tmp_path, monkeypatch) -> No
             model,
             project,
         ):
+            self.models.append((provider, model))
             return AgentSession(
                 id="agent_saved",
                 provider=provider,
@@ -416,6 +430,7 @@ def test_productivity_loop_resumes_then_changes_cwd(tmp_path, monkeypatch) -> No
 
         async def create_session(self, provider, project_path, model, project):
             self.created_cwd = project_path
+            self.models.append((provider, model))
             return AgentSession(
                 id="agent_cd",
                 provider=provider,
@@ -443,9 +458,14 @@ def test_productivity_loop_resumes_then_changes_cwd(tmp_path, monkeypatch) -> No
             initial,
             FakeRuntime(),
             FakeStore(),
-            model="test-model",
+            model=None,
+            provider_models={"codex": "gpt-test", "claude": "claude-test"},
         )
     )
 
     assert Path(adapter.created_cwd or "") == target
+    assert adapter.models == [
+        ("claude", "claude-test"),
+        ("claude", "claude-test"),
+    ]
     assert adapter.closed == ["agent_initial", "agent_saved", "agent_cd"]

@@ -20,6 +20,8 @@ from rich.status import Status
 from rich.table import Table
 from rich.text import Text
 
+from core.usage import ContextWindowUsage
+
 if TYPE_CHECKING:
     from core.integrations.agent_adapter import AgentEvent, AgentResult, AgentSession
 
@@ -188,13 +190,21 @@ class CleoCLI:
         prompt.append("  ↵ ", style="cyan")
         self.console.input(prompt)
 
-    def render_chat_header(self, thread_id: str, project: str) -> None:
+    def render_chat_header(
+        self,
+        thread_id: str,
+        project: str,
+        *,
+        model: str = "unknown",
+        context_usage: ContextWindowUsage | None = None,
+    ) -> None:
         self._render_header(
             brand="CLEO",
             breadcrumb=f"non-productivity / {project} / {self._short_id(thread_id)}",
             state="ready",
             accent="cyan",
         )
+        self.render_runtime_status(model, context_usage, accent="cyan")
         self.console.print(
             Text.assemble(
                 ("/productivity", "bold cyan"),
@@ -211,13 +221,20 @@ class CleoCLI:
         )
         self.console.print()
 
-    def render_productivity_header(self, session: AgentSession) -> None:
+    def render_productivity_header(
+        self,
+        session: AgentSession,
+        *,
+        model: str = "unknown",
+        context_usage: ContextWindowUsage | None = None,
+    ) -> None:
         self._render_header(
             brand="PRODUCTIVITY · CODEX",
             breadcrumb=f"productivity / {session.project} / {self._short_id(session.id)}",
             state="connected",
             accent="magenta",
         )
+        self.render_runtime_status(model, context_usage, accent="magenta")
         details = Table.grid(expand=True, padding=(0, 1))
         details.add_column(style="dim", no_wrap=True)
         details.add_column(ratio=1, overflow="fold")
@@ -308,8 +325,31 @@ class CleoCLI:
             self.console.print(Text("(No assistant response returned.)", style="dim"), end="")
         self.console.print()
 
-    def productivity_renderer(self) -> ProductivityEventRenderer:
-        return ProductivityEventRenderer(self.console)
+    def productivity_renderer(
+        self,
+        *,
+        model: str = "unknown",
+        context_usage: ContextWindowUsage | None = None,
+    ) -> ProductivityEventRenderer:
+        return ProductivityEventRenderer(
+            self.console,
+            model=model,
+            context_usage=context_usage,
+        )
+
+    def render_runtime_status(
+        self,
+        model: str,
+        context_usage: ContextWindowUsage | None,
+        *,
+        accent: str,
+    ) -> None:
+        _render_runtime_status(
+            self.console,
+            model=model,
+            context_usage=context_usage,
+            accent=accent,
+        )
 
     def info(self, message: str) -> None:
         self._notice("INFO", message, "cyan")
@@ -374,12 +414,21 @@ class CleoCLI:
 class ProductivityEventRenderer:
     """Render one normalized harness event stream without knowing provider SDK types."""
 
-    def __init__(self, console: Console) -> None:
+    def __init__(
+        self,
+        console: Console,
+        *,
+        model: str = "unknown",
+        context_usage: ContextWindowUsage | None = None,
+    ) -> None:
         self.console = console
+        self.model = model
+        self.context_usage = context_usage or ContextWindowUsage()
         self.assistant_streamed = False
         self.terminal_streamed = False
 
     def __call__(self, event: AgentEvent) -> None:
+        self._capture_context_usage(event)
         if event.type == "assistant_message_chunk" and event.text:
             if not self.assistant_streamed:
                 self._start_line("CODEX", "green")
@@ -417,6 +466,47 @@ class ProductivityEventRenderer:
         if result.error:
             status.append(f"  ·  {result.error}", style="red")
         self.console.print(status)
+        _render_runtime_status(
+            self.console,
+            model=self.model,
+            context_usage=self.context_usage,
+            accent="magenta",
+        )
+
+    def _capture_context_usage(self, event: AgentEvent) -> None:
+        if event.data.get("provider_event_type") != "thread/tokenUsage/updated":
+            return
+        payload = self._payload(event)
+        token_usage = payload.get("tokenUsage")
+        if not isinstance(token_usage, dict):
+            return
+        total = token_usage.get("total")
+        last = token_usage.get("last")
+        total = total if isinstance(total, dict) else {}
+        last = last if isinstance(last, dict) else {}
+        self.context_usage.update(
+            used_tokens=self._token_int(total, "totalTokens", "total_tokens"),
+            window_tokens=self._token_int(
+                token_usage,
+                "modelContextWindow",
+                "model_context_window",
+            ),
+            input_tokens=self._token_int(last, "inputTokens", "input_tokens"),
+            output_tokens=self._token_int(last, "outputTokens", "output_tokens"),
+            cached_input_tokens=self._token_int(
+                last,
+                "cachedInputTokens",
+                "cached_input_tokens",
+            ),
+        )
+
+    @staticmethod
+    def _token_int(payload: dict[str, Any], *keys: str) -> int | None:
+        for key in keys:
+            value = payload.get(key)
+            if isinstance(value, int):
+                return value
+        return None
 
     def _ensure_newline(self) -> None:
         if self.assistant_streamed or self.terminal_streamed:
@@ -480,3 +570,54 @@ class ProductivityEventRenderer:
             first_line = diff.splitlines()[0]
             return first_line[:120]
         return "updated"
+
+
+def _render_runtime_status(
+    console: Console,
+    *,
+    model: str,
+    context_usage: ContextWindowUsage | None,
+    accent: str,
+) -> None:
+    usage = context_usage or ContextWindowUsage()
+    status = Table.grid(expand=True)
+    status.add_column(ratio=1, overflow="ellipsis")
+    status.add_column(justify="right", no_wrap=True)
+
+    model_text = Text("MODEL  ", style="dim")
+    model_text.append(model or "unknown", style=f"bold {accent}")
+
+    context_text = Text("CONTEXT  ", style="dim")
+    if usage.used_tokens is None:
+        context_text.append("waiting", style="dim")
+        if usage.window_tokens:
+            context_text.append(f" / {_format_tokens(usage.window_tokens)}", style="dim")
+    elif usage.window_tokens:
+        ratio = usage.ratio or 0.0
+        filled = round(ratio * 10)
+        context_text.append(
+            f"{_format_tokens(usage.used_tokens)} / {_format_tokens(usage.window_tokens)} ",
+            style=accent,
+        )
+        context_text.append("●" * filled, style=f"bold {accent}")
+        context_text.append("·" * (10 - filled), style="dim")
+        context_text.append(f" {ratio:.0%}", style="dim")
+    else:
+        context_text.append(f"{_format_tokens(usage.used_tokens)} used", style=accent)
+
+    if usage.input_tokens is not None or usage.output_tokens is not None:
+        context_text.append(
+            f"  in {_format_tokens(usage.input_tokens or 0)}"
+            f" · out {_format_tokens(usage.output_tokens or 0)}",
+            style="dim",
+        )
+    status.add_row(model_text, context_text)
+    console.print(Panel(status, border_style=accent, padding=(0, 1)))
+
+
+def _format_tokens(value: int) -> str:
+    if value >= 1_000_000:
+        return f"{value / 1_000_000:.1f}m"
+    if value >= 1_000:
+        return f"{value / 1_000:.1f}k"
+    return str(value)

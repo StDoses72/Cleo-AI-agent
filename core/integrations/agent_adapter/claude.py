@@ -44,7 +44,10 @@ class ClaudeProvider:
         self,
         default_model: str | None = None,
         permission_mode: ClaudePermissionMode = "acceptEdits",
+        *,
+        name: str = "claude",
     ) -> None:
+        self.name = name
         self._default_model = default_model
         self._permission_mode = permission_mode
         self._sessions: dict[str, _ClaudeRuntime] = {}

@@ -14,12 +14,17 @@ services:
     working_dir: /app
     environment:
       CLEO_CONFIG_PATH: /config/cleo.json
+      CLEO_HARNESSES_CONFIG_PATH: /config/harnesses.json
       HOME: /home/cleo
       TERM: xterm-256color
     volumes:
       - type: bind
         source: ${CLEO_CONFIG_FILE:-./config/cleo.json}
         target: /config/cleo.json
+        read_only: true
+      - type: bind
+        source: ${CLEO_HARNESSES_CONFIG_FILE:-./config/harnesses.json}
+        target: /config/harnesses.json
         read_only: true
       - type: bind
         source: ${CLEO_WORKSPACE_DIR:-./workspace}

@@ -143,6 +143,7 @@ image name):
 
 ```powershell
 cmd /c "docker run --rm <image> --print-config-template > cleo.json"
+cmd /c "docker run --rm <image> --print-harnesses-template > harnesses.json"
 notepad cleo.json
 ```
 
@@ -151,6 +152,7 @@ After filling in model settings and an API key, run:
 ```powershell
 docker run --rm -it `
   --mount "type=bind,source=$($PWD.Path)\cleo.json,target=/config/cleo.json,readonly" `
+  --mount "type=bind,source=$($PWD.Path)\harnesses.json,target=/config/harnesses.json,readonly" `
   --mount "type=volume,source=cleo-data,target=/app/data" `
   --mount "type=volume,source=cleo-memory,target=/app/memory" `
   --mount "type=volume,source=cleo-workspace,target=/app/workspace" `
@@ -168,11 +170,14 @@ exposed because Cleo and its MCP server are currently CLI/stdio processes.
 Cleo no longer uses `.env` as a configuration source. Local runs use
 `config/cleo.json` by default; containers set
 `CLEO_CONFIG_PATH=/config/cleo.json` and mount the same config format there.
+Productivity harnesses use `config/harnesses.json`; containers can select its
+path with `CLEO_HARNESSES_CONFIG_PATH`.
 
 Before the first run, you can copy the template manually:
 
 ```bash
 copy config\cleo.example.json config\cleo.json
+copy config\harnesses.example.json config\harnesses.json
 ```
 
 You can also run Cleo directly. If `config/cleo.json` is missing, Cleo creates a
@@ -241,6 +246,33 @@ uses `settings.active_agent_profile`, `settings.active_directory_profile`,
 `settings.active_shell_profile`, and `settings.active_tools_profile` to access
 the active configuration.
 
+Productivity harnesses are registered from the separate
+`config/harnesses.json`. `default_provider` selects the harness used when
+`--provider` is omitted. Each key under `providers` becomes the provider name
+stored in session metadata. Every provider shares the `type`, `enabled`, and
+`model` envelope, while native differences stay under `options`. For example:
+
+```json
+{
+	"default_provider": "codex",
+	"providers": {
+		"codex": {
+			"type": "codex_sdk",
+			"enabled": true,
+			"model": "gpt-5.5",
+			"options": {
+				"approval_mode": "deny_all",
+				"sandbox": "workspace-write"
+			}
+		}
+	}
+}
+```
+
+`--model` can still override the configured model for the selected provider.
+`profiles.tools.codex_model` remains specific to the `codex` tool in Cleo's
+main chat and is no longer the generic productivity model fallback.
+
 ## Running
 
 One-shot message:
@@ -284,6 +316,12 @@ Interactive commands:
 
 Type `/` and press `Tab` to list commands for the current mode. After `/resume`,
 press `Tab` to complete resumable session IDs.
+
+Runtime status bars in both Cleo and productivity mode show the active model and
+context window. Cleo uses the active agent profile's `max_tokens` as the configured
+limit and shows actual usage when the compatible service returns usage metadata.
+Codex uses `thread/tokenUsage/updated` directly from the SDK. Until usage is
+available, the bar says `waiting` instead of estimating a percentage.
 
 Interactive mode also accepts `cleo --project <name>`. `/new` keeps the same
 project binding. `--resume` restores the space/project stored in the manifest and
