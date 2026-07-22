@@ -8,7 +8,6 @@ import os
 import shutil
 import subprocess
 import tempfile
-import textwrap
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -21,20 +20,23 @@ from langchain_core.messages import (
     ToolMessage,
 )
 
+from core.cli import CleoCLI
+
 if TYPE_CHECKING:
     from config.settings import SettingsModel
     from core.agent import Agent
-    from core.integrations.agent_adapter import AgentAdapter, AgentEvent, AgentResult, AgentSession
+    from core.integrations.agent_adapter import AgentAdapter, AgentResult, AgentSession
     from core.memory.session_store import SessionStore
     from core.runtime.model import Runtime
 
 SUPPORTED_IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 LOCAL_CONFIG_PATH = "config/cleo.json"
 CONFIG_TEMPLATE_PATH = Path(__file__).resolve().parent / "config" / "cleo.example.json"
+cli = CleoCLI()
 
 
 def clear_screen() -> None:
-    os.system("cls" if os.name == "nt" else "clear")
+    cli.clear()
 
 
 def _new_thread_id() -> str:
@@ -56,6 +58,7 @@ async def _print_streaming_reply(
     images: list[dict[str, str]] | None = None,
 ) -> None:
     received_text = False
+    cli.begin_assistant()
     async for text in agent.stream_text(
         message,
         thread_id=thread_id,
@@ -63,10 +66,8 @@ async def _print_streaming_reply(
         images=images,
     ):
         received_text = True
-        print(text, end="", flush=True)
-    if not received_text:
-        print("(No assistant response returned.)", end="")
-    print()
+        cli.stream_assistant(text)
+    cli.end_assistant(received=received_text)
 
 
 async def _sync_session_events(
@@ -108,54 +109,17 @@ async def _run_dream_agent(
 
     project_name = project or "general"
     try:
-        print(f"Running DreamAgent memory consolidation for {thread_id} -> {project_name}...")
-        await DreamAgent().invoke(
-            session_id=thread_id,
-            project=project_name,
-            space=space,
-        )
-        print("DreamAgent memory consolidation finished.")
+        with cli.status(
+            f"Consolidating {space}/{project_name}/{thread_id} with DreamAgent..."
+        ):
+            await DreamAgent().invoke(
+                session_id=thread_id,
+                project=project_name,
+                space=space,
+            )
+        cli.success("DreamAgent memory consolidation finished.")
     except Exception as exc:
-        print(f"DreamAgent memory consolidation failed: {exc}")
-
-
-def _productivity_event_payload(event: AgentEvent) -> dict[str, object]:
-    payload = event.data.get("payload")
-    return payload if isinstance(payload, dict) else event.data
-
-
-def _productivity_event_summary(event: AgentEvent) -> str | None:
-    payload = _productivity_event_payload(event)
-    item = payload.get("item")
-    item = item if isinstance(item, dict) else {}
-    if event.type == "tool_call":
-        command = item.get("command")
-        if command:
-            return f"[tool] {command}"
-        server = item.get("server")
-        tool = item.get("tool")
-        if server or tool:
-            return f"[tool] {server or 'tool'}/{tool or 'unknown'}"
-        return f"[tool] {item.get('type', 'started')}"
-    if event.type == "tool_result":
-        status = item.get("status") or "completed"
-        return f"[tool {status}]"
-    if event.type == "plan_update":
-        plan = payload.get("plan")
-        if isinstance(plan, list):
-            steps = [
-                str(step.get("step"))
-                for step in plan
-                if isinstance(step, dict) and step.get("step")
-            ]
-            if steps:
-                return "[plan] " + " | ".join(steps)
-        return "[plan updated]"
-    if event.type == "file_change" and not event.text:
-        return "[file change]"
-    if event.type == "error":
-        return f"[error] {event.text or 'Codex reported an error'}"
-    return None
+        cli.error(f"DreamAgent memory consolidation failed: {exc}")
 
 
 async def _prompt_productivity_session(
@@ -163,35 +127,9 @@ async def _prompt_productivity_session(
     session_id: str,
     prompt: str,
 ) -> AgentResult:
-    assistant_streamed = False
-    terminal_streamed = False
-
-    def on_event(event: AgentEvent) -> None:
-        nonlocal assistant_streamed, terminal_streamed
-        if event.type == "assistant_message_chunk" and event.text:
-            assistant_streamed = True
-            terminal_streamed = False
-            print(event.text, end="", flush=True)
-            return
-        if event.type == "terminal_output" and event.text:
-            if not terminal_streamed:
-                print("\n[terminal]", flush=True)
-            terminal_streamed = True
-            print(event.text, end="", flush=True)
-            return
-        summary = _productivity_event_summary(event)
-        if summary:
-            terminal_streamed = False
-            print(f"\n{summary}", flush=True)
-
-    result = await adapter.prompt(session_id, prompt, on_event=on_event)
-    if assistant_streamed or terminal_streamed:
-        print()
-    elif result.response:
-        print(result.response)
-    if result.status != "completed":
-        details = f": {result.error}" if result.error else ""
-        print(f"[session {result.status}]{details}")
+    renderer = cli.productivity_renderer()
+    result = await adapter.prompt(session_id, prompt, on_event=renderer)
+    renderer.finish(result)
     return result
 
 
@@ -205,34 +143,83 @@ async def _finish_productivity_session(
     await _run_dream_agent(session.id, session.project, "productivity")
 
 
+def _slash_command_argument(prompt: str, command: str) -> str:
+    argument = prompt.removeprefix(command).strip()
+    if (
+        len(argument) >= 2
+        and argument[0] in {'"', "'"}
+        and argument[-1] == argument[0]
+    ):
+        return argument[1:-1]
+    return argument
+
+
+def _resolve_productivity_cwd(argument: str, current_cwd: str) -> str:
+    if not argument:
+        raise ValueError("Usage: /cd <directory>")
+    expanded = Path(os.path.expandvars(argument)).expanduser()
+    path = expanded if expanded.is_absolute() else Path(current_cwd) / expanded
+    path = path.resolve()
+    if not path.is_dir():
+        raise ValueError(f"Directory does not exist: {path}")
+    return os.path.normcase(str(path))
+
+
+async def _resume_productivity_session(
+    adapter: AgentAdapter,
+    store: SessionStore,
+    session_id: str,
+    *,
+    model: str | None,
+    provider_override: str | None = None,
+    cwd_override: str | None = None,
+    project_override: str | None = None,
+) -> AgentSession:
+    manifest = store.load_manifest(session_id)
+    if manifest["space"] != "productivity":
+        raise ValueError(f"Session {session_id} is not a productivity session.")
+    provider = str(manifest["provider"])
+    if provider_override is not None and provider_override != provider:
+        raise ValueError(
+            f"Session {session_id} belongs to provider {provider!r}, "
+            f"not {provider_override!r}."
+        )
+    native_session_id = manifest.get("native_session_id")
+    if not native_session_id:
+        raise ValueError(f"Session {session_id} has no native harness session id.")
+    return await adapter.resume_session(
+        provider,
+        str(native_session_id),
+        project_path=cwd_override or manifest.get("cwd") or ".",
+        model=model,
+        project=project_override or str(manifest["project"]),
+    )
+
+
 async def _run_productivity_loop(
     adapter: AgentAdapter,
     session: AgentSession,
     runtime: Runtime,
+    store: SessionStore,
     *,
-    provider: str,
-    project_path: str,
-    project: str,
     model: str | None,
     return_to_chat: bool = False,
 ) -> None:
     exit_action = "return to Cleo chat" if return_to_chat else "exit"
-    print(
-        "Cleo productivity mode. "
-        f"Type /back or /quit to {exit_action}, /new to start a new harness session."
-    )
-    print(f"Provider: {session.provider}")
-    print(f"Session id: {session.id}")
-    print(f"Native session id: {session.native_session_id or 'pending'}")
-    print(f"Project: {session.project}")
-    print(f"Working directory: {session.project_path}")
-    print()
+    cli.render_productivity_header(session)
+    cli.info(f"Use /back or /quit to {exit_action}; /new starts a new harness session.")
+    cli.console.print()
 
     while True:
         try:
-            prompt = (await asyncio.to_thread(input, "productivity>> ")).strip()
+            prompt = await asyncio.to_thread(
+                cli.prompt,
+                "productivity",
+                cwd=session.project_path,
+                sessions=store.list_sessions(space="productivity"),
+            )
         except (EOFError, KeyboardInterrupt):
-            print()
+            cli.console.print()
             await _finish_productivity_session(adapter, session, runtime)
             break
 
@@ -244,26 +231,93 @@ async def _run_productivity_loop(
         if prompt == "/new":
             await _finish_productivity_session(adapter, session, runtime)
             session = await adapter.create_session(
-                provider,
-                project_path=project_path,
+                session.provider,
+                project_path=session.project_path,
                 model=model,
-                project=project,
+                project=session.project,
             )
             runtime.update_current_thread_id(session.id)
             runtime.append_recent_threads(session.id, "productivity")
-            print(f"Started new {provider} session: {session.id}")
+            clear_screen()
+            cli.render_productivity_header(session)
+            cli.success(f"Started new {session.provider} session: {session.id}")
+            continue
+        if prompt == "/cwd":
+            cli.info(session.project_path)
+            continue
+        if prompt == "/cd" or prompt.startswith("/cd "):
+            try:
+                target_cwd = _resolve_productivity_cwd(
+                    _slash_command_argument(prompt, "/cd"),
+                    session.project_path,
+                )
+                next_session = await adapter.create_session(
+                    session.provider,
+                    project_path=target_cwd,
+                    model=model,
+                    project=session.project,
+                )
+            except (KeyError, OSError, ValueError) as exc:
+                cli.error(str(exc))
+                continue
+            previous_session = session
+            await _finish_productivity_session(adapter, previous_session, runtime)
+            session = next_session
+            runtime.update_current_project(session.project)
+            runtime.update_current_thread_id(session.id)
+            runtime.append_recent_threads(session.id, "productivity")
+            clear_screen()
+            cli.render_productivity_header(session)
+            cli.success(
+                f"Changed cwd to {session.project_path}; started session {session.id}."
+            )
+            continue
+        if prompt == "/resume" or prompt.startswith("/resume "):
+            resume_id = _slash_command_argument(prompt, "/resume")
+            if not resume_id:
+                cli.warning("Usage: /resume <productivity-session-id>")
+                continue
+            if resume_id == session.id:
+                cli.info(f"Session {session.id} is already active.")
+                continue
+            try:
+                resumed_session = await _resume_productivity_session(
+                    adapter,
+                    store,
+                    resume_id,
+                    model=model,
+                )
+            except (FileNotFoundError, KeyError, OSError, ValueError) as exc:
+                cli.error(f"Unable to resume {resume_id}: {exc}")
+                continue
+            previous_session = session
+            await _finish_productivity_session(adapter, previous_session, runtime)
+            session = resumed_session
+            runtime.update_current_project(session.project)
+            runtime.update_current_thread_id(session.id)
+            runtime.append_recent_threads(session.id, "productivity")
+            clear_screen()
+            cli.render_productivity_header(session)
+            cli.success(f"Resumed {session.provider} session: {session.id}")
+            continue
+        if prompt == "/sessions":
+            clear_screen()
+            cli.render_session_hub(store.list_sessions())
+            await asyncio.to_thread(cli.wait_for_return)
+            clear_screen()
+            cli.render_productivity_header(session)
             continue
 
         try:
-            print()
+            cli.console.print()
             await _prompt_productivity_session(adapter, session.id, prompt)
             runtime.append_recent_threads(session.id, "productivity")
         except KeyboardInterrupt:
-            print("\nCancelling the active harness turn...")
+            cli.warning("Cancelling the active harness turn...")
             await adapter.cancel(session.id)
         except Exception as exc:
-            print(f"Productivity error: {exc}")
-        print()
+            cli.error(f"Productivity error: {exc}")
+        cli.console.print()
 
     runtime.update_current_thread_id(None)
     runtime.update_current_project(None)
@@ -297,31 +351,14 @@ async def _run_productivity_mode(
     project = args.project
     try:
         if args.resume_id is not None:
-            manifest = store.load_manifest(args.resume_id)
-            if manifest["space"] != "productivity":
-                raise SystemExit(
-                    f"Session {args.resume_id} is not a productivity session."
-                )
-            saved_provider = str(manifest["provider"])
-            if args.provider is not None and args.provider != saved_provider:
-                raise SystemExit(
-                    f"Session {args.resume_id} belongs to provider {saved_provider!r}, "
-                    f"not {args.provider!r}."
-                )
-            native_session_id = manifest.get("native_session_id")
-            if not native_session_id:
-                raise SystemExit(
-                    f"Session {args.resume_id} has no native harness session id."
-                )
-            provider = saved_provider
-            project_path = args.cwd or manifest.get("cwd") or "."
-            project = args.project or str(manifest["project"])
-            session = await adapter.resume_session(
-                provider,
-                str(native_session_id),
-                project_path=project_path,
+            session = await _resume_productivity_session(
+                adapter,
+                store,
+                args.resume_id,
                 model=model,
-                project=project,
+                provider_override=args.provider,
+                cwd_override=args.cwd,
+                project_override=args.project,
             )
         else:
             session = await adapter.create_session(
@@ -346,13 +383,12 @@ async def _run_productivity_mode(
                 adapter,
                 session,
                 runtime,
-                provider=provider,
-                project_path=project_path,
-                project=session.project,
+                store,
                 model=model,
                 return_to_chat=return_to_chat,
             )
         else:
+            cli.render_productivity_header(session)
             await _prompt_productivity_session(adapter, session.id, args.message)
             await _finish_productivity_session(adapter, session, runtime)
             runtime.update_current_thread_id(None)
@@ -367,26 +403,30 @@ async def _run_chat_loop(
     runtime: Runtime,
     thread_id: str,
     restored_messages: list[BaseMessage] | None = None,
+    store: SessionStore | None = None,
 ) -> None:
-    print(
-        "Cleo AI Agent interactive chat. Type /productivity to open productivity mode, "
-        "/quit to exit, or /new to start a fresh thread."
-    )
-    print(f"Thread id: {thread_id}")
-    print(f"Project: {runtime.current_project or 'general'}")
-    print()
+    if store is None:
+        from config.settings import settings
+        from core.memory.session_store import SessionStore
+
+        store = SessionStore(settings.MEMORY_DIR, settings.SESSION_INDEX_PATH)
     runtime.update_current_thread_id(thread_id)
+    cli.render_chat_header(thread_id, runtime.current_project or "general")
+    if restored_messages:
+        _print_restored_messages(thread_id, restored_messages)
     attachment_list: list[dict[str, str]] = []
     while True:
         try:
             if attachment_list:
-                print("The current attachments to be sent with the next message:")
-                for i, attachment in enumerate(attachment_list):
-                    print(f"  {i + 1}. {attachment['name']}")
-            message = (await asyncio.to_thread(input, ">> ")).strip()
+                cli.render_attachments([item["name"] for item in attachment_list])
+            message = await asyncio.to_thread(
+                cli.prompt,
+                "chat",
+                sessions=store.list_sessions(space="non_productivity"),
+            )
 
         except EOFError:
-            print()
+            cli.console.print()
             await _sync_session_events(
                 agent,
                 runtime,
@@ -397,8 +437,8 @@ async def _run_chat_loop(
             runtime.update_runtime_json()
             break
         except KeyboardInterrupt:
-            print()
-            print("Chat interrupted by user. Exiting.")
+            cli.console.print()
+            cli.warning("Chat interrupted by user. Exiting.")
             await _sync_session_events(
                 agent,
                 runtime,
@@ -412,7 +452,7 @@ async def _run_chat_loop(
         if not message:
             continue
         if message in {"/quit", "/exit"}:
-            print(f"Closing session event log: {thread_id}")
+            cli.info(f"Closing session event log: {thread_id}")
             await _sync_session_events(
                 agent,
                 runtime,
@@ -428,7 +468,7 @@ async def _run_chat_loop(
             runtime.update_current_project(None)
             runtime.update_current_thread_id(None)
             runtime.update_runtime_json()
-            print("Exiting the chat. Goodbye!")
+            cli.success("Session closed. Goodbye!")
             break
         if message == "/new":
             await _sync_session_events(
@@ -443,12 +483,69 @@ async def _run_chat_loop(
             runtime.update_current_thread_id(thread_id)
             runtime.update_runtime_json()
             clear_screen()
-            print(f"Started new thread: {thread_id}")
+            cli.render_chat_header(thread_id, runtime.current_project or "general")
+            cli.success(f"Started new thread: {thread_id}")
+            continue
+
+        if message == "/resume" or message.startswith("/resume "):
+            resume_id = _slash_command_argument(message, "/resume")
+            if not resume_id:
+                cli.warning("Usage: /resume <cleo-session-id>")
+                continue
+            if resume_id == thread_id:
+                cli.info(f"Thread {thread_id} is already active.")
+                continue
+            try:
+                manifest = store.load_manifest(resume_id)
+                if (
+                    manifest["space"] != "non_productivity"
+                    or manifest["provider"] != "cleo"
+                ):
+                    raise ValueError(f"Session {resume_id} is not a Cleo chat thread.")
+                loaded_messages = store.load_langchain_messages(resume_id)
+                saved_project = str(manifest["project"])
+                from core.agent import Agent
+
+                resumed_agent = Agent(
+                    project=saved_project,
+                    space="non_productivity",
+                )
+            except (FileNotFoundError, KeyError, OSError, ValueError) as exc:
+                cli.error(f"Unable to resume {resume_id}: {exc}")
+                continue
+
+            await _sync_session_events(
+                agent,
+                runtime,
+                thread_id,
+                restored_messages,
+                status="completed",
+            )
+            agent = resumed_agent
+            thread_id = resume_id
+            restored_messages = loaded_messages
+            attachment_list = []
+            runtime.update_current_space("non_productivity")
+            runtime.update_current_project(saved_project)
+            runtime.update_current_thread_id(thread_id)
+            runtime.append_recent_threads(thread_id, "non_productivity")
+            runtime.update_runtime_json()
+            clear_screen()
+            cli.render_chat_header(thread_id, saved_project)
+            _print_restored_messages(thread_id, restored_messages)
+            cli.success(f"Resumed Cleo thread: {thread_id}")
+            continue
+
+        if message == "/sessions":
+            clear_screen()
+            cli.render_session_hub(store.list_sessions())
+            await asyncio.to_thread(cli.wait_for_return)
+            clear_screen()
+            cli.render_chat_header(thread_id, runtime.current_project or "general")
             continue
 
         if message == "/productivity":
             from config.settings import settings
-            from core.memory.session_store import SessionStore
 
             saved_space = runtime.current_space
             saved_project = runtime.current_project or "general"
@@ -472,36 +569,35 @@ async def _run_chat_loop(
                 await _run_productivity_mode(
                     productivity_args,
                     runtime,
-                    SessionStore(settings.MEMORY_DIR, settings.SESSION_INDEX_PATH),
+                    store,
                     settings,
                     return_to_chat=True,
                 )
             except (Exception, SystemExit) as exc:
-                print(f"Unable to open productivity mode: {exc}")
+                cli.error(f"Unable to open productivity mode: {exc}")
             finally:
                 runtime.update_current_space(saved_space)
                 runtime.update_current_project(saved_project)
                 runtime.update_current_thread_id(thread_id)
                 runtime.append_recent_threads(thread_id, saved_space)
             clear_screen()
-            print(f"Returned to Cleo chat. Thread id: {thread_id}")
-            print(f"Project: {saved_project}")
-            print()
+            cli.render_chat_header(thread_id, saved_project)
+            cli.success("Returned to Cleo chat.")
             continue
 
         if message == "/attach":
-            print(
+            cli.info(
                 "Enter the file path to attach or leave empty to cancel "
                 "(currently support image files only):"
             )
-            file_path = (await asyncio.to_thread(input, ">> ")).strip().strip("\"'")
+            file_path = (await asyncio.to_thread(cli.field_prompt, "file")).strip("\"'")
             if file_path:
                 if not os.path.isfile(file_path):
-                    print(f"File not found: {file_path}")
+                    cli.error(f"File not found: {file_path}")
                     continue
                 mime_type, _ = mimetypes.guess_type(file_path)
                 if mime_type not in SUPPORTED_IMAGE_MIME_TYPES:
-                    print(f"Unsupported image type: {mime_type or 'unknown'}")
+                    cli.error(f"Unsupported image type: {mime_type or 'unknown'}")
                     continue
                 with open(file_path, "rb") as f:
                     base64_image = base64.b64encode(f.read()).decode("utf-8")
@@ -515,7 +611,7 @@ async def _run_chat_loop(
             continue
 
         try:
-            print()
+            cli.console.print()
             await _print_streaming_reply(
                 agent,
                 message,
@@ -527,8 +623,8 @@ async def _run_chat_loop(
             attachment_list = []
             await _sync_session_events(agent, runtime, thread_id, status="active")
         except KeyboardInterrupt:
-            print()
-            print("Chat interrupted by user. Exiting.")
+            cli.console.print()
+            cli.warning("Chat interrupted by user. Exiting.")
             await _sync_session_events(
                 agent,
                 runtime,
@@ -539,10 +635,10 @@ async def _run_chat_loop(
             runtime.update_runtime_json()
             break
         except Exception as exc:
-            print(f"Error: {exc}")
+            cli.error(str(exc))
             continue
 
-        print()
+        cli.console.print()
 
 
 def _message_role(message: BaseMessage) -> str:
@@ -573,39 +669,14 @@ def _message_content_to_text(content: object) -> str:
     return str(content)
 
 
-def _print_wrapped_message(role: str, content: str) -> None:
-    label = f"{role}: "
-    paragraphs = content.splitlines() or [""]
-    first = True
-    for paragraph in paragraphs:
-        wrapped_lines = textwrap.wrap(
-            paragraph,
-            width=88,
-            initial_indent=label if first else " " * len(label),
-            subsequent_indent=" " * len(label),
-            replace_whitespace=False,
-        )
-        if wrapped_lines:
-            for line in wrapped_lines:
-                print(line)
-        else:
-            print(label if first else "")
-        first = False
-
-
 def _print_restored_messages(thread_id: str, loaded_messages: list[BaseMessage]) -> None:
-    print()
-    print(f"Restored thread: {thread_id}")
-    print(f"Messages: {len(loaded_messages)}")
-    print("-" * 72)
+    messages: list[tuple[str, str]] = []
     for msg in loaded_messages:
         content = _message_content_to_text(getattr(msg, "content", "")).strip()
         if not content:
             continue
-        _print_wrapped_message(_message_role(msg), content)
-        print()
-    print("-" * 72)
-    print()
+        messages.append((_message_role(msg), content))
+    cli.render_restored_messages(thread_id, messages)
 
 
 def _run_git(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -851,14 +922,14 @@ async def amain() -> None:
     elif args.thread_id is not None:
         thread_id = args.thread_id
     elif args.message is None and unfinished_thread_id:
-        print(
+        cli.info(
             f"Determined an unfinished thread with id {unfinished_thread_id}. "
             "Do you want to continue it? (y/n)"
         )
-        choice = (await asyncio.to_thread(input, ">> ")).strip().lower()
+        choice = (await asyncio.to_thread(cli.field_prompt, "resume [y/n]")).lower()
         if choice == "y":
             thread_id = unfinished_thread_id
-            print(f"Recovering with thread id {thread_id}")
+            cli.info(f"Recovering with thread id {thread_id}")
             try:
                 manifest = store.load_manifest(thread_id)
                 loaded_messages = store.load_langchain_messages(thread_id)
@@ -868,17 +939,16 @@ async def amain() -> None:
                 thread_id = _new_thread_id()
                 loaded_messages = None
                 saved_project = None
-                print("The unfinished session was not found; starting a new one.")
+                cli.warning("The unfinished session was not found; starting a new one.")
             if saved_project:
                 runtime.update_current_project(saved_project)
-            _print_restored_messages(thread_id, loaded_messages)
         elif choice == "n":
             thread_id = _new_thread_id()
-            print(f"Starting a new thread with id {thread_id}")
+            cli.info(f"Starting a new thread with id {thread_id}")
             clear_screen()
         else:
             thread_id = _new_thread_id()
-            print(f"Starting a new thread with id {thread_id}")
+            cli.info(f"Starting a new thread with id {thread_id}")
             clear_screen()
     else:
         thread_id = _new_thread_id()
@@ -892,14 +962,16 @@ async def amain() -> None:
         project=runtime.current_project or "general",
         space=runtime.current_space,
     )
+    if args.message is not None:
+        cli.render_chat_header(thread_id, runtime.current_project or "general")
     if args.resume_id is not None:
         if args.message is None:
-            _print_restored_messages(thread_id, loaded_messages=loaded_messages)
             await _run_chat_loop(
                 agent,
                 runtime,
                 thread_id=thread_id,
                 restored_messages=loaded_messages,
+                store=store,
             )
         else:
             await _print_streaming_reply(
@@ -928,6 +1000,7 @@ async def amain() -> None:
                 runtime,
                 thread_id,
                 restored_messages=loaded_messages,
+                store=store,
             )
         else:
             await _print_streaming_reply(

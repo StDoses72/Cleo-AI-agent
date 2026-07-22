@@ -27,6 +27,8 @@ SessionStore
 ```
 
 - `core/agent.py`: the Cleo main agent and DreamAgent.
+- `core/cli.py`: Rich headers, streamed events, Session Hub presentation, and
+  `prompt_toolkit` completion for mode-specific commands, paths, and session IDs.
 - `core/integrations/agent_adapter/`: unified harness API and provider adapters.
 - `core/memory/session_store.py`: manifests, append-only events, and registry.
 - `core/memory/compaction.py`: redacted projections derived from event logs.
@@ -120,9 +122,9 @@ user message
   → update space-bound history chunks
 ```
 
-Resume uses the global registry to locate the manifest, then reconstructs
-LangChain messages from message events. It is not durable LangGraph checkpoint
-recovery.
+`--resume` and the main chat's `/resume` both use the global registry to locate
+the manifest, then reconstruct LangChain messages from message events. This is
+not durable LangGraph checkpoint recovery.
 
 ## Harness Flow
 
@@ -143,8 +145,10 @@ AgentAdapter.prompt
 it restores the prior Cleo space/project/thread. `main.py --productivity` remains
 the direct and scriptable entry. Both register Codex by default, can create or
 resume a native session through a Cleo session ID, and render SDK notifications
-as they arrive. `--cwd` controls the harness working directory; `--project`
-controls only Cleo's memory scope.
+as they arrive. Productivity `/resume` uses the same restoration path; `/cwd`
+shows the working directory and `/cd` creates a new session bound to the target
+directory. `--cwd` controls the harness working directory; `--project` controls
+only Cleo's memory scope.
 
 `AgentAdapter` currently provides the active-route portion of a lightweight
 SessionHub. It maps Cleo handles to provider connections and native session IDs.

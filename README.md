@@ -267,8 +267,13 @@ python main.py
 
 - `/quit` 或 `/exit`：关闭当前 session event log，运行 DreamAgent 记忆整理，然后退出。
 - `/new`：完成当前 session 并开启新 thread。
+- `/resume <session-id>`：在当前 CLI 中恢复一个已保存的 Cleo thread。
 - `/productivity`：进入 Codex productivity 页面；在其中用 `/back` 或 `/quit` 返回主聊天。
+- `/sessions`：打开跨 space 的 Session Hub，查看 provider、project 和当前状态。
 - `/attach`：为下一条消息附加图片文件。
+
+输入 `/` 后按 `Tab` 可查看当前模式支持的命令；`/resume` 后按 `Tab` 可补全可恢复的
+session ID。
 
 交互模式同样可用 `cleo --project <name>` 启动。`/new` 会在同一 project 内创建新
 thread；`--resume` 会恢复 manifest 中保存的 space/project 绑定，并拒绝冲突的
@@ -288,9 +293,16 @@ python main.py --productivity --cwd . "检查当前改动并运行测试"
 python main.py --productivity --resume agent_xxx
 ```
 
-可用 `--model` 覆盖 `profiles.tools.<name>.codex_model`。productivity 交互支持
-`/new`、`/back`、`/quit` 和 `/exit`；Codex SDK 的消息、工具、终端、计划和文件变更事件会
-流式显示，并统一写入 `productivity` space。
+可用 `--model` 覆盖 `profiles.tools.<name>.codex_model`。productivity 交互支持：
+
+- `/cwd`：显示当前 harness 工作目录。
+- `/cd <directory>`：切换目录并创建新的 harness session；相对路径以当前 `cwd` 为准。
+- `/resume <agent-id>`：恢复已保存的 productivity session 及其原生 harness 上下文。
+- `/new`、`/sessions`、`/back`、`/quit` 和 `/exit`：管理 session 或离开页面。
+
+Codex SDK 的消息、工具、终端、计划和文件变更事件会流式显示，并统一写入
+`productivity` space。CLI 输入补全与 Rich 表现层集中在 `core/cli.py`，不包含 runtime、
+memory 或 provider 业务逻辑。
 
 ## 运行时文件
 

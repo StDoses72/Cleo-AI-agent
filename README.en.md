@@ -277,8 +277,13 @@ Interactive commands:
 
 - `/quit` or `/exit`: close the current event log, run DreamAgent consolidation, then exit.
 - `/new`: complete the current session and start a new thread.
+- `/resume <session-id>`: resume a saved Cleo thread inside the current CLI.
 - `/productivity`: open Codex productivity mode; use `/back` or `/quit` there to return.
+- `/sessions`: open the cross-space Session Hub with provider, project, and status metadata.
 - `/attach`: attach an image file to the next message.
+
+Type `/` and press `Tab` to list commands for the current mode. After `/resume`,
+press `Tab` to complete resumable session IDs.
 
 Interactive mode also accepts `cleo --project <name>`. `/new` keeps the same
 project binding. `--resume` restores the space/project stored in the manifest and
@@ -298,10 +303,19 @@ python main.py --productivity --cwd . "Inspect the current changes and run tests
 python main.py --productivity --resume agent_xxx
 ```
 
-Use `--model` to override `profiles.tools.<name>.codex_model`. Productivity
-interaction supports `/new`, `/back`, `/quit`, and `/exit`; Codex SDK message, tool,
-terminal, plan, and file-change events stream to the console and are normalized
-into the `productivity` space.
+Use `--model` to override `profiles.tools.<name>.codex_model`. Productivity mode
+supports:
+
+- `/cwd`: show the harness working directory.
+- `/cd <directory>`: change directory and create a new harness session; relative
+  paths are resolved from the current `cwd`.
+- `/resume <agent-id>`: resume a saved productivity session and its native harness context.
+- `/new`, `/sessions`, `/back`, `/quit`, and `/exit`: manage the session or leave the view.
+
+Codex SDK message, tool, terminal, plan, and file-change events stream to the
+console and are normalized into the `productivity` space. CLI completion and the
+Rich presentation layer live in `core/cli.py` and contain no runtime, memory, or
+provider business logic.
 
 ## Runtime Files
 

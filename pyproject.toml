@@ -19,6 +19,7 @@ dependencies = [
   "langgraph",
   "openai-codex>=0.144.4,<0.145",
   "openai-codex-cli-bin==0.144.4",
+  "prompt-toolkit>=3.0,<4",
   "pydantic",
   "rich",
 ]
