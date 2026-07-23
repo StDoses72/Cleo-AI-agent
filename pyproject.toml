@@ -23,6 +23,7 @@ dependencies = [
   "prompt-toolkit>=3.0,<4",
   "pydantic",
   "rich",
+  "textual-image>=0.8.5,<0.9",
 ]
 
 [project.optional-dependencies]
@@ -32,17 +33,18 @@ dev = [
 ]
 
 [project.scripts]
-cleo = "main:main"
-cleo-codex-mcp = "mcp_servers.openai_codex_mcp:main"
+cleo = "cleo.cli.application:main"
+cleo-codex-mcp = "cleo.mcp.codex_server:main"
 
 [tool.setuptools]
 py-modules = ["main"]
 
 [tool.setuptools.packages.find]
-include = ["config*", "core*", "tools*", "mcp_servers*"]
+include = ["cleo*"]
 
 [tool.setuptools.package-data]
-config = ["cleo.example.json", "harnesses.example.json"]
+"cleo.config" = ["templates/*.json"]
+"cleo.images" = ["assets/*.png"]
 
 [tool.ruff]
 line-length = 100

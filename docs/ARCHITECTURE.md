@@ -25,20 +25,34 @@ SessionStore
         DreamAgent / Retrieval
 ```
 
-- `core/agent.py`：Cleo 主 Agent 与 DreamAgent。
-- `core/cli.py`：Rich CLI 的 header、流式事件与 Session Hub 表现层，以及基于
-  `prompt_toolkit` 的模式化命令、目录和 session ID 补全。
-- `core/usage.py`：Cleo 与 harness 共用的 context-window usage 状态模型。
-- `core/integrations/agent_adapter/`：统一 harness 接口和 provider-specific adapter。
-- `core/memory/session_store.py`：session manifest、append-only events 和全局 registry。
-- `core/memory/compaction.py`：从 event log 生成脱敏 compact projection。
-- `core/memory/store.py`：space-bound SQLite 长期记忆与历史 chunks。
-- `core/memory/state.py`：source version 与 consolidation 状态。
-- `core/runtime/model.py`：当前 CLI space/project/thread 和 recent threads。
+- `cleo/agents/cleo.py`：前台 Cleo Agent；`cleo/agents/dream.py`：后台记忆整理 Agent。
+  两者可调用的工具集中在 `cleo/agents/tools/`。
+- `cleo/cli/application.py`：只负责参数解析和顶层 dispatch；根目录 `main.py` 只保留
+  `python main.py` 兼容入口。
+- `cleo/cli/chat.py` 与 `cleo/cli/productivity.py`：分别编排主聊天和 harness 交互流。
+- `cleo/cli/lifecycle.py`：session 保存与 DreamAgent consolidation 生命周期。
+- `cleo/cli/console.py`：Rich 输出、流式事件、Session Hub 表现层，以及基于
+  `prompt_toolkit` 的输入；命令补全和 harness event 渲染分别位于
+  `cleo/cli/completion.py` 与 `cleo/cli/productivity_renderer.py`。
+- `cleo/images/`：可替换 PNG 的加载与自动裁剪、终端图像选择、动态像素回退和 Sixel 渲染。
+- `cleo/sessions/store.py`：session manifest、append-only events 和全局 registry。
+- `cleo/sessions/hub.py`：合并 Cleo-managed session 与原生 harness session；不依赖 CLI。
+- `cleo/memory/`：compact projection、长期记忆、evidence、路径与 consolidation state。
+- `cleo/runtime/state.py`：当前 CLI space/project/thread 和 recent threads；
+  `cleo/runtime/usage.py`：共用 context-window usage。
+- `cleo/harnesses/`：provider-neutral harness API、控制面和 session adapter。
+- `cleo/integrations/harnesses/`：Codex、Claude 和 ACP provider 实现及 composition factory。
+- `cleo/integrations/git.py`：只读 Git 状态；`cleo/integrations/codex.py`：兼容 Codex facade。
+- `cleo/config/`：配置模型、加载逻辑和打包模板；`cleo/mcp/`：stdio MCP 入口。
+
+依赖方向保持为 `cli → agents / sessions / runtime / integrations`，session persistence
+可以依赖 memory projection，但 session 聚合和 Git 集成不反向依赖 CLI。目录重排不改变
+运行流：CLI 仍构造相同的 Agent、adapter、SessionStore 和 Runtime，并沿用原有入口、
+配置格式与持久化协议。
 
 ## 安装与运行目录
 
-源码 checkout 保持现有行为：当 `config/settings.py` 能在源码根目录看到
+源码 checkout 保持现有行为：当 `cleo/config/settings.py` 能在源码根目录看到
 `pyproject.toml` 时，相对目录仍以仓库根目录为基准。
 
 Windows 的 `scripts/install.ps1` 使用分离布局：
@@ -52,7 +66,8 @@ Windows 的 `scripts/install.ps1` 使用分离布局：
 launcher 通过 `CLEO_HOME` 明确指定数据根目录。其他打包环境未设置
 `CLEO_HOME` 时使用 `platformdirs` 的用户数据目录；Docker 显式设置
 `CLEO_HOME=/app`，并继续通过 volume 持久化运行数据。升级程序不会覆盖已有配置
-或用户数据，卸载默认也保留数据目录。
+或用户数据，卸载默认也保留数据目录。独立安装版优先读取
+`%LOCALAPPDATA%\Cleo\assets\startup.png`；缺失时回退到包内默认图片。
 
 ## Space 与 Project
 

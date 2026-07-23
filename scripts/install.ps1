@@ -73,8 +73,9 @@ if (
 $requiredSourcePaths = @(
     "pyproject.toml",
     "main.py",
-    "config\cleo.example.json",
-    "config\harnesses.example.json",
+    "cleo\config\templates\cleo.example.json",
+    "cleo\config\templates\harnesses.example.json",
+    "cleo\images\assets\cleo-startup.png",
     "memory\MEMORY_POLICY.md"
 )
 foreach ($relativePath in $requiredSourcePaths) {
@@ -264,6 +265,7 @@ if ($uv) {
 
 $layoutDirectories = @(
     "config",
+    "assets",
     "data",
     "data\session_artifacts",
     "memory",
@@ -277,8 +279,9 @@ foreach ($relativePath in $layoutDirectories) {
         Out-Null
 }
 
-$sourceConfig = Join-Path $SourceRoot "config\cleo.example.json"
-$sourceHarnesses = Join-Path $SourceRoot "config\harnesses.example.json"
+$sourceConfig = Join-Path $SourceRoot "cleo\config\templates\cleo.example.json"
+$sourceHarnesses = Join-Path $SourceRoot "cleo\config\templates\harnesses.example.json"
+$sourceStartupImage = Join-Path $SourceRoot "cleo\images\assets\cleo-startup.png"
 if ($MigrateCurrentData) {
     $localConfig = Join-Path $SourceRoot "config\cleo.json"
     $localHarnesses = Join-Path $SourceRoot "config\harnesses.json"
@@ -296,6 +299,9 @@ Copy-FileIfMissing `
 Copy-FileIfMissing `
     -Source $sourceHarnesses `
     -Destination (Join-Path $CleoHome "config\harnesses.json")
+Copy-FileIfMissing `
+    -Source $sourceStartupImage `
+    -Destination (Join-Path $CleoHome "assets\startup.png")
 Copy-FileIfMissing `
     -Source (Join-Path $SourceRoot "memory\MEMORY_POLICY.md") `
     -Destination (Join-Path $CleoHome "memory\MEMORY_POLICY.md")
@@ -384,6 +390,7 @@ Write-Host ""
 Write-Host "Cleo $version installed successfully." -ForegroundColor Green
 Write-Host "Program: $InstallRoot"
 Write-Host "Data:    $CleoHome"
+Write-Host "Portrait: $(Join-Path $CleoHome 'assets\startup.png')"
 Write-Host "Run:     cleo"
 if (-not $SkipPathUpdate) {
     Write-Host "Open a new terminal if the cleo command is not visible in existing shells."

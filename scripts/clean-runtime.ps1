@@ -9,7 +9,7 @@ $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
 
 $requiredPaths = @(
     "pyproject.toml",
-    "config/settings.py",
+    "cleo/config/settings.py",
     "memory/MEMORY_POLICY.md"
 )
 
@@ -70,13 +70,10 @@ foreach ($relativeTarget in $relativeTargets) {
 
 if ($IncludeToolCaches) {
     $sourceRoots = @(
-        "config",
-        "core",
-        "mcp_servers",
+        "cleo",
         "scripts",
         "skills",
-        "tests",
-        "tools"
+        "tests"
     )
     Remove-WorkspaceItem -LiteralPath (Join-Path $repoRoot "__pycache__")
     foreach ($sourceRoot in $sourceRoots) {

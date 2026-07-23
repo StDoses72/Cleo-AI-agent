@@ -26,20 +26,41 @@ SessionStore
         DreamAgent / Retrieval
 ```
 
-- `core/agent.py`: the Cleo main agent and DreamAgent.
-- `core/cli.py`: Rich headers, streamed events, Session Hub presentation, and
-  `prompt_toolkit` completion for mode-specific commands, paths, and session IDs.
-- `core/usage.py`: shared context-window usage state for Cleo and harness views.
-- `core/integrations/agent_adapter/`: unified harness API and provider adapters.
-- `core/memory/session_store.py`: manifests, append-only events, and registry.
-- `core/memory/compaction.py`: redacted projections derived from event logs.
-- `core/memory/store.py`: space-bound durable memory and history chunks.
-- `core/memory/state.py`: source versions and consolidation state.
-- `core/runtime/model.py`: current CLI scope and recent sessions.
+- `cleo/agents/cleo.py`: the foreground Cleo agent; `cleo/agents/dream.py`: the
+  background memory-consolidation agent. Agent-callable tools live under
+  `cleo/agents/tools/`.
+- `cleo/cli/application.py`: argument parsing and top-level dispatch only; the
+  root `main.py` preserves the `python main.py` compatibility entry point.
+- `cleo/cli/chat.py` and `cleo/cli/productivity.py`: the chat and harness flows.
+- `cleo/cli/lifecycle.py`: session persistence and DreamAgent consolidation lifecycle.
+- `cleo/cli/console.py`: Rich output, streamed events, Session Hub presentation,
+  and `prompt_toolkit` input. Command completion and normalized harness event
+  rendering live in `cleo/cli/completion.py` and
+  `cleo/cli/productivity_renderer.py`.
+- `cleo/images/`: replaceable PNG loading and automatic cropping, terminal-image
+  selection, dynamic pixel fallback, and Sixel rendering.
+- `cleo/sessions/store.py`: manifests, append-only events, and the global registry.
+- `cleo/sessions/hub.py`: managed/native session aggregation with no CLI dependency.
+- `cleo/memory/`: compact projections, durable memory, evidence, paths, and consolidation state.
+- `cleo/runtime/state.py`: current CLI scope and recent sessions;
+  `cleo/runtime/usage.py`: shared context-window usage.
+- `cleo/harnesses/`: provider-neutral harness API, control plane, and session adapter.
+- `cleo/integrations/harnesses/`: Codex, Claude, and ACP providers plus their composition factory.
+- `cleo/integrations/git.py`: read-only Git status; `cleo/integrations/codex.py`:
+  the backward-compatible Codex facade.
+- `cleo/config/`: settings models, loading, and packaged templates; `cleo/mcp/`:
+  the stdio MCP entry point.
+
+Dependencies flow from `cli` into `agents`, `sessions`, `runtime`, and
+`integrations`. Session persistence may depend on memory projections, while
+session aggregation and Git integration do not depend back on the CLI. These
+directory boundaries change source ownership only: the CLI still constructs the
+same Agent, adapter, SessionStore, and Runtime through the same entry points,
+configuration formats, and persistence protocols.
 
 ## Installation And Runtime Paths
 
-A source checkout keeps the existing behavior: when `config/settings.py` can
+A source checkout keeps the existing behavior: when `cleo/config/settings.py` can
 see `pyproject.toml` at the source root, relative paths remain rooted at the
 repository.
 
@@ -55,7 +76,9 @@ The launcher sets `CLEO_HOME` explicitly. Other packaged environments use the
 `platformdirs` user data directory when `CLEO_HOME` is absent. Docker sets
 `CLEO_HOME=/app` and continues to persist runtime data through volumes.
 Updating does not overwrite existing configuration or user data, and
-uninstalling preserves the data directory by default.
+uninstalling preserves the data directory by default. Standalone installs
+prefer `%LOCALAPPDATA%\Cleo\assets\startup.png` and fall back to the packaged
+default when that file is absent.
 
 ## Space And Project
 

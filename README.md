@@ -14,7 +14,7 @@ LangChain 构建，通过 API 调用语言模型。Cleo 把配置、会话状态
 - one-shot message：通过 `cleo "..."` 或 `python main.py "..."` 发送一次性消息。
 - interactive chat：直接运行 `cleo` 或 `python main.py` 进入交互式聊天。
 - API-backed model profile：使用 `config/cleo.json` 中的 active agent profile 初始化 LangChain 模型。
-- Pydantic settings：`config/settings.py` 用 Pydantic 校验 agent、directory、shell、tools 四类 profile。
+- Pydantic settings：`cleo/config/settings.py` 用 Pydantic 校验 agent、directory、shell、tools 四类 profile。
 - image attach：交互中使用 `/attach` 为下一条消息附加图片，支持 JPEG、PNG、WebP 和 GIF。
 - session event log：每轮结束后向 `events.jsonl` 增量追加规范事件，并原子更新 `manifest.json`。
 - resume：启动时如果存在未结束的 `current_thread_id`，会询问是否恢复该 thread。
@@ -31,29 +31,51 @@ LangChain 构建，通过 API 调用语言模型。Cleo 把配置、会话状态
 ```text
 Cleo-AI-agent/
   AGENTS.md                       # Human-approved repository instructions
-  main.py                         # CLI entry point
+  main.py                         # Backward-compatible CLI launcher
   pyproject.toml                  # Python project metadata and dependencies
   requirements.txt                # Python 3.12/Linux container dependency lock
   scripts/
     install.ps1                   # Windows per-user installer
     update.ps1                    # Update an existing Windows installation
     uninstall.ps1                 # Remove the Windows installation
-  config/
-    settings.py                   # Pydantic settings loader and profile models
-    cleo.example.json             # Local config template
-    cleo.json                     # Local private config, ignored by Git
-  core/
-    agent.py                      # Cleo / DreamAgent construction
-    memory/compaction.py          # Deterministic compact/redacted event view
-    memory/paths.py               # Space/project/session path boundaries
-    memory/session_store.py       # Manifest, JSONL events, and session registry
-    memory/state.py               # Memory source version and completion state
-    memory/store.py               # SQLite memory, evidence, and history chunks
-    runtime/model.py              # data/runtime.json read/write model
-  tools/
-    shell_tools.py                # Local shell tool
-    dream_agent_tools.py          # DreamAgent memory tools
-    memory_tools.py               # Project-bound retrieval tools
+  cleo/                           # Single Python application package
+    agents/
+      cleo.py                     # Foreground Cleo agent
+      dream.py                    # Memory-consolidation DreamAgent
+      tools/                      # Agent-owned shell, memory, and Codex tools
+    cli/
+      application.py              # Argument parsing and top-level dispatch
+      chat.py                     # Interactive Cleo chat flow
+      productivity.py             # Harness interaction flow
+      lifecycle.py                # Session persistence and consolidation lifecycle
+      console.py                  # Rich and prompt_toolkit presentation
+      completion.py               # Mode-aware slash-command completion
+      productivity_renderer.py    # Normalized harness event rendering
+      context.py                  # Shared terminal context
+      workspace.py                # Explicit workspace reset operation
+    config/
+      settings.py                 # Pydantic settings loader and profile models
+      templates/                  # Packaged Cleo and harness config templates
+    images/
+      startup.py                  # Terminal startup image selection
+      portrait.py                 # Rich pixel-art fallback
+      sixel_encoder.py            # Transparent Sixel encoder
+      assets/                     # Packaged startup image
+    harnesses/                    # Provider-neutral harness API and adapter
+    integrations/
+      git.py                      # Read-only Git integration
+      codex.py                    # Backward-compatible Codex facade
+      harnesses/                  # Codex, Claude, and ACP provider implementations
+    mcp/codex_server.py           # Stdio MCP process entry point
+    memory/                       # Compaction, durable memory, evidence, and paths
+    sessions/
+      hub.py                      # Managed/native session aggregation
+      store.py                    # Manifests, JSONL events, and session registry
+    runtime/
+      state.py                    # data/runtime.json read/write model
+      usage.py                    # Shared context-window usage state
+  config/                         # Local private configs, ignored by Git
+  tests/                          # Tests mirror cleo/ responsibility domains
   skills/
     demo-production/              # Currently available skill
     demo-production/agents/       # Skill-local agent config
@@ -82,6 +104,26 @@ Cleo-AI-agent/
 `AGENTS.md` 是由用户或团队明确维护的仓库规范；`memory/MEMORY_POLICY.md` 是
 开发者拥有的记忆提取策略；`memory/<space>/projects/<project>/MEMORY.md` 是 DreamAgent
 生成的派生记忆。自动记忆不会修改 `AGENTS.md`，也不会自动创建或更新 skill。
+
+## 启动立绘
+
+启动画面只依赖一张 PNG。源码运行时直接替换
+`cleo/images/assets/cleo-startup.png` 即可；独立安装版替换
+`%LOCALAPPDATA%\Cleo\assets\startup.png`。更新脚本只会在该文件缺失时复制默认图片，
+不会覆盖已经替换的立绘。
+
+图片尺寸和宽高比不限，渲染时会保持比例并适配终端。推荐使用带透明背景的 RGBA PNG；
+程序会自动裁掉透明留白与相对主体极小的孤立标记。完全不透明的 PNG 会显示整个画布。
+也可以使用 `CLEO_STARTUP_IMAGE_PATH` 指向任意 PNG：
+
+```powershell
+$env:CLEO_STARTUP_IMAGE_PATH = "D:\portraits\cleo.png"
+cleo
+```
+
+Compose 默认把源码 PNG 挂载到容器中；可用 `CLEO_STARTUP_IMAGE_FILE` 指定另一张宿主机
+图片。Sixel、Kitty graphics 和字符画 fallback 都读取同一张 PNG，因此不需要重新生成
+Python 文件。
 
 ## 安装
 
@@ -206,8 +248,8 @@ Cleo 不再使用 `.env` 作为配置来源。本地默认读取 `config/cleo.js
 首次运行前可以手动复制模板：
 
 ```bash
-copy config\cleo.example.json config\cleo.json
-copy config\harnesses.example.json config\harnesses.json
+copy cleo\config\templates\cleo.example.json config\cleo.json
+copy cleo\config\templates\harnesses.example.json config\harnesses.json
 ```
 
 也可以直接运行 Cleo。如果 `config/cleo.json` 缺失，Cleo 会自动创建默认模板并提示你填写真实配置。
@@ -394,8 +436,10 @@ python main.py --productivity --resume agent_xxx
 - `/new`、`/back`、`/quit` 和 `/exit`：管理 session 或离开页面。
 
 Codex SDK 的消息、工具、终端、计划和文件变更事件会流式显示，并统一写入
-`productivity` space。CLI 输入补全与 Rich 表现层集中在 `core/cli.py`，不包含 runtime、
-memory 或 provider 业务逻辑。Codex 专属控制能力留在 Codex provider；通用 adapter
+`productivity` space。CLI 输入补全与 Rich 表现层集中在 `cleo/cli/console.py`，聊天和
+productivity 编排分别位于 `cleo/cli/chat.py` 与 `cleo/cli/productivity.py`；它们与
+runtime、memory、session 聚合和 provider 实现保持独立。
+Codex 专属控制能力留在 Codex provider；通用 adapter
 仍维持 create/resume/prompt/cancel/close 数据面。
 
 ## 运行时文件

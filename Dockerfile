@@ -27,8 +27,9 @@ RUN python -m pip install --no-cache-dir --requirement requirements.txt
 
 COPY . .
 RUN python -m pip install --no-cache-dir --no-deps . \
-    && mkdir -p /config data/session_artifacts memory/non_productivity/projects \
+    && mkdir -p /config assets data/session_artifacts memory/non_productivity/projects \
         memory/productivity/projects workspace /home/cleo/.codex \
+    && cp cleo/images/assets/cleo-startup.png assets/startup.png \
     && chown -R cleo:cleo /app /config /home/cleo \
     && cleo --help >/dev/null
 

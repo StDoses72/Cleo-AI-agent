@@ -27,6 +27,10 @@ services:
         target: /config/harnesses.json
         read_only: true
       - type: bind
+        source: ${CLEO_STARTUP_IMAGE_FILE:-./cleo/images/assets/cleo-startup.png}
+        target: /app/assets/startup.png
+        read_only: true
+      - type: bind
         source: ${CLEO_WORKSPACE_DIR:-./workspace}
         target: /app/workspace
       - type: volume

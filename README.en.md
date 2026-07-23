@@ -16,7 +16,7 @@ Chinese version: [README.md](README.md)
 - One-shot messages through `cleo "..."` or `python main.py "..."`.
 - Interactive chat through `cleo` or `python main.py`.
 - API-backed model profiles loaded from the active agent profile in `config/cleo.json`.
-- Pydantic settings in `config/settings.py` for agent, directory, shell, and tools profiles.
+- Pydantic settings in `cleo/config/settings.py` for agent, directory, shell, and tools profiles.
 - Image attachments in interactive chat through `/attach`; JPEG, PNG, WebP, and GIF are supported.
 - Append-only session events with an atomically updated manifest after each completed turn.
 - Resume prompt on startup when `current_thread_id` points to an unfinished thread.
@@ -33,29 +33,51 @@ Chinese version: [README.md](README.md)
 ```text
 Cleo-AI-agent/
   AGENTS.md                       # Human-approved repository instructions
-  main.py                         # CLI entry point
+  main.py                         # Backward-compatible CLI launcher
   pyproject.toml                  # Python project metadata and dependencies
   requirements.txt                # Python 3.12/Linux container dependency lock
   scripts/
     install.ps1                   # Windows per-user installer
     update.ps1                    # Update an existing Windows installation
     uninstall.ps1                 # Remove the Windows installation
-  config/
-    settings.py                   # Pydantic settings loader and profile models
-    cleo.example.json             # Local config template
-    cleo.json                     # Local private config, ignored by Git
-  core/
-    agent.py                      # Cleo / DreamAgent construction
-    memory/compaction.py          # Deterministic compact/redacted event view
-    memory/paths.py               # Space/project/session path boundaries
-    memory/session_store.py       # Manifests, JSONL events, and session registry
-    memory/state.py               # Memory source version and completion state
-    memory/store.py               # SQLite memory, evidence, and history chunks
-    runtime/model.py              # data/runtime.json read/write model
-  tools/
-    shell_tools.py                # Local shell tool
-    dream_agent_tools.py          # DreamAgent memory tools
-    memory_tools.py               # Project-bound retrieval tools
+  cleo/                           # Single Python application package
+    agents/
+      cleo.py                     # Foreground Cleo agent
+      dream.py                    # Memory-consolidation DreamAgent
+      tools/                      # Agent-owned shell, memory, and Codex tools
+    cli/
+      application.py              # Argument parsing and top-level dispatch
+      chat.py                     # Interactive Cleo chat flow
+      productivity.py             # Harness interaction flow
+      lifecycle.py                # Session persistence and consolidation lifecycle
+      console.py                  # Rich and prompt_toolkit presentation
+      completion.py               # Mode-aware slash-command completion
+      productivity_renderer.py    # Normalized harness event rendering
+      context.py                  # Shared terminal context
+      workspace.py                # Explicit workspace reset operation
+    config/
+      settings.py                 # Pydantic settings loader and profile models
+      templates/                  # Packaged Cleo and harness config templates
+    images/
+      startup.py                  # Terminal startup image selection
+      portrait.py                 # Rich pixel-art fallback
+      sixel_encoder.py            # Transparent Sixel encoder
+      assets/                     # Packaged startup image
+    harnesses/                    # Provider-neutral harness API and adapter
+    integrations/
+      git.py                      # Read-only Git integration
+      codex.py                    # Backward-compatible Codex facade
+      harnesses/                  # Codex, Claude, and ACP provider implementations
+    mcp/codex_server.py           # Stdio MCP process entry point
+    memory/                       # Compaction, durable memory, evidence, and paths
+    sessions/
+      hub.py                      # Managed/native session aggregation
+      store.py                    # Manifests, JSONL events, and session registry
+    runtime/
+      state.py                    # data/runtime.json read/write model
+      usage.py                    # Shared context-window usage state
+  config/                         # Local private configs, ignored by Git
+  tests/                          # Tests mirror cleo/ responsibility domains
   skills/
     demo-production/              # Currently available skill
     demo-production/agents/       # Skill-local agent config
@@ -85,6 +107,29 @@ local configuration or runtime state and should not be committed.
 team. `memory/MEMORY_POLICY.md` is the developer-owned extraction policy, while
 `memory/<space>/projects/<project>/MEMORY.md` is DreamAgent-generated derived memory.
 Automatic memory never edits `AGENTS.md` or creates or updates skills.
+
+## Startup Portrait
+
+The startup splash depends on one PNG. For a source checkout, replace
+`cleo/images/assets/cleo-startup.png`. For a standalone installation, replace
+`%LOCALAPPDATA%\Cleo\assets\startup.png`. The updater copies the default only
+when this file is missing, so it does not overwrite a customized portrait.
+
+Any image dimensions and aspect ratio are accepted and remain proportional
+when fitted to the terminal. An RGBA PNG with a transparent background is
+recommended. Transparent padding and detached marks that are negligible
+relative to the main artwork are cropped automatically. A fully opaque PNG
+uses its complete canvas. An arbitrary PNG can also be selected with
+`CLEO_STARTUP_IMAGE_PATH`:
+
+```powershell
+$env:CLEO_STARTUP_IMAGE_PATH = "D:\portraits\cleo.png"
+cleo
+```
+
+Compose mounts the source PNG by default; set `CLEO_STARTUP_IMAGE_FILE` to use a
+different host file. Sixel, Kitty graphics, and the Rich half-cell fallback all
+read the same PNG, so no generated Python portrait data needs to be rebuilt.
 
 ## Installation
 
@@ -220,8 +265,8 @@ path with `CLEO_HARNESSES_CONFIG_PATH`.
 Before the first run, you can copy the template manually:
 
 ```bash
-copy config\cleo.example.json config\cleo.json
-copy config\harnesses.example.json config\harnesses.json
+copy cleo\config\templates\cleo.example.json config\cleo.json
+copy cleo\config\templates\harnesses.example.json config\harnesses.json
 ```
 
 You can also run Cleo directly. If `config/cleo.json` is missing, Cleo creates a
@@ -424,8 +469,10 @@ mode supports:
 
 Codex SDK message, tool, terminal, plan, and file-change events stream to the
 console and are normalized into the `productivity` space. CLI completion and the
-Rich presentation layer live in `core/cli.py` and contain no runtime, memory, or
-provider business logic. Codex-specific controls remain in the Codex provider;
+Rich presentation layer live in `cleo/cli/console.py`; chat and productivity
+orchestration live in `cleo/cli/chat.py` and `cleo/cli/productivity.py`.
+They remain separate from runtime, memory, session aggregation, and provider
+implementations. Codex-specific controls remain in the Codex provider;
 the generic adapter keeps the create/resume/prompt/cancel/close data plane.
 
 ## Runtime Files
