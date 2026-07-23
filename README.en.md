@@ -91,7 +91,8 @@ Automatic memory never edits `AGENTS.md` or creates or updates skills.
 On Windows, run the per-user installer from the repository root. It creates an
 isolated Python runtime under `%LOCALAPPDATA%\Programs\Cleo`, stores
 configuration, sessions, memory, and workspace data under
-`%LOCALAPPDATA%\Cleo`, and adds the `cleo` command to the user `PATH`:
+`%LOCALAPPDATA%\Cleo`, and places the standalone `cleo` launcher first in the
+user `PATH`:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
@@ -105,7 +106,9 @@ copying only files that are missing at the destination:
 .\scripts\install.ps1 -MigrateCurrentData
 ```
 
-Afterward, run `cleo` from a new terminal. Update or uninstall with:
+Afterward, run `cleo` from a new terminal. The standalone launcher takes
+precedence even when an editable or source installation is also present.
+Update or uninstall with:
 
 ```powershell
 .\scripts\update.ps1
@@ -350,13 +353,23 @@ Interactive commands:
 
 - `/quit` or `/exit`: close the current event log, run DreamAgent consolidation, then exit.
 - `/new`: complete the current session and start a new thread.
+- `/project`: show the current and known Cleo projects plus threads in the active project.
+- `/project <name>`: create or switch a Cleo project and start a thread in that memory scope.
+- `/project move <name>`: move the current unconsolidated thread and its context to a project.
+- `/rename <title>`: rename the current Cleo thread.
 - `/resume <session-id>`: resume a saved Cleo thread inside the current CLI.
 - `/productivity`: open Codex productivity mode; use `/back` or `/quit` there to return.
 - `/sessions`: open the cross-space Session Hub with provider, project, and status metadata.
 - `/attach`: attach an image file to the next message.
 
 Type `/` and press `Tab` to list commands for the current mode. After `/resume`,
-press `Tab` to complete resumable session IDs.
+press `Tab` to complete resumable session IDs; after `/project`, press `Tab` to
+complete known Cleo projects.
+
+A thread title is generated from its first user message. Use `/rename` for a
+Cleo thread; productivity mode continues to synchronize title changes through
+the harness `/rename` capability. Titles are metadata, so renaming does not
+trigger compaction or DreamAgent.
 
 Runtime status bars in both Cleo and productivity mode show the active model and
 context window. Cleo uses the active agent profile's `max_tokens` as the configured
@@ -366,9 +379,16 @@ available, the bar says `waiting` instead of estimating a percentage. A second
 productivity bar shows reasoning effort, filesystem access, approval behavior,
 and the current Git branch and dirty count.
 
-Interactive mode also accepts `cleo --project <name>`. `/new` keeps the same
-project binding. `--resume` restores the space/project stored in the manifest and
-rejects a conflicting `--project` argument.
+Interactive mode also accepts `cleo --project <name>`. A Cleo project is a
+logical memory boundary and does not need to match a code repository; keep using
+the default `general` project when no separation is useful. `/new` keeps the
+same project binding. `--resume` restores the space/project stored in the
+manifest and rejects a conflicting `--project` argument.
+
+Use `/project move <name>` to move an active thread while preserving its
+context. A thread that DreamAgent has already consolidated cannot be moved
+directly because durable knowledge may already exist in the original project;
+switch projects and start a new thread instead.
 
 The recommended interactive entry is `/productivity` from the main chat. Codex
 productivity mode can also be started directly from the command line:

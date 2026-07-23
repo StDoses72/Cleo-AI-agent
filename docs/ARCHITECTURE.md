@@ -70,6 +70,17 @@ space + project + session_id
 同名 project 在两个 space 中仍然是不同的数据边界。SQLite 查询、compact 校验、
 DreamAgent 工具和 evidence 都必须携带 space，避免 productivity 内容自动进入个人记忆。
 
+Cleo 主模式中的 project 是可选的逻辑记忆边界，可表示一个长期话题、计划或工作流，
+并不要求存在代码目录；`general` 是默认边界。productivity 中的 project 仍用于 Cleo
+侧的记录分区，而 harness 的实际代码边界由 `cwd`/仓库决定。外部 harness 的本地
+project 可按规范化 `cwd` 做可选关联，但不与 Cleo project 名称或内部 ID 强制一一对应。
+
+Cleo thread 的标题由首条 `user_message` 确定，也可作为纯 metadata 手动修改。
+活跃且尚未 consolidation 的 thread 可以迁移 project：session 目录、manifest、event
+绑定、SQLite registry、compact、memory state 与 conversation chunks 会一起转移。
+一旦 source 已被 DreamAgent consolidation，迁移会被拒绝，以免旧 project 的长期记忆
+无法可靠回收。
+
 ## Session 存储
 
 ```text
@@ -98,8 +109,9 @@ memory/
 
 ### Manifest
 
-`manifest.json` 是可变的当前状态投影，记录 provider、native session ID、owner、
-status、cwd、event sequence、source hash 和更新时间。更新使用临时文件加原子替换。
+`manifest.json` 是可变的当前状态投影，记录 title、provider、native session ID、
+owner、status、cwd、event sequence、source hash 和更新时间。更新使用临时文件加原子
+替换。
 
 ### Event Log
 

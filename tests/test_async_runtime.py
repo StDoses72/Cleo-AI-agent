@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
-from langchain_core.messages import AIMessageChunk
+from langchain_core.messages import AIMessageChunk, HumanMessage
 
 import main
 from core.agent import Agent, DreamAgent
@@ -159,6 +159,9 @@ def test_chat_productivity_command_restores_cleo_context(tmp_path, monkeypatch) 
         def append_recent_threads(self, *_args):
             return None
 
+        def projects_for(self, _space=None):
+            return ["general", "cleo"]
+
         def update_runtime_json(self):
             return None
 
@@ -309,6 +312,9 @@ def test_chat_resume_command_switches_to_saved_thread(monkeypatch) -> None:
         def append_recent_threads(self, *_args):
             return None
 
+        def projects_for(self, _space=None):
+            return ["general", "current", "saved-project"]
+
         def update_runtime_json(self):
             return None
 
@@ -363,6 +369,208 @@ def test_chat_resume_command_switches_to_saved_thread(monkeypatch) -> None:
     assert created_agents == [("saved-project", "non_productivity")]
     assert synced_threads == ["local-current", "local-saved"]
     assert "local-saved" in runtime.thread_updates
+
+
+def test_chat_project_command_creates_scoped_thread(monkeypatch) -> None:
+    import core.agent as agent_module
+
+    class FakeRuntime:
+        current_space = "non_productivity"
+        current_project = "general"
+        current_thread_id = "local-current"
+
+        def __init__(self):
+            self.projects = ["general"]
+            self.thread_updates: list[str | None] = []
+
+        def update_current_space(self, value):
+            self.current_space = value
+
+        def update_current_project(self, value):
+            self.current_project = value
+            if value is not None and value not in self.projects:
+                self.projects.append(value)
+
+        def update_current_thread_id(self, value):
+            self.current_thread_id = value
+            self.thread_updates.append(value)
+
+        def append_recent_threads(self, *_args):
+            return None
+
+        def projects_for(self, _space=None):
+            return list(self.projects)
+
+        def update_runtime_json(self):
+            return None
+
+    class FakeStore:
+        def list_sessions(self, **_kwargs):
+            return []
+
+        def load_manifest(self, session_id):
+            assert session_id == "local-current"
+            return {"last_event_seq": 2}
+
+    created_agents: list[tuple[str, str]] = []
+
+    class FakeAgent:
+        def __init__(self, *, project, space):
+            created_agents.append((project, space))
+
+    prompts = iter(["/project research", "/project", "/quit"])
+    synced_threads: list[tuple[str, str]] = []
+    consolidated: list[tuple[str, str, str]] = []
+
+    async def fake_sync(_agent, _runtime, thread_id, *_args, **kwargs):
+        synced_threads.append((thread_id, kwargs["status"]))
+
+    async def fake_dream(thread_id, project, space):
+        consolidated.append((thread_id, project, space))
+
+    monkeypatch.setattr(agent_module, "Agent", FakeAgent)
+    monkeypatch.setattr(main.cli, "prompt", lambda *_args, **_kwargs: next(prompts))
+    monkeypatch.setattr(main, "_sync_session_events", fake_sync)
+    monkeypatch.setattr(main, "_run_dream_agent", fake_dream)
+    monkeypatch.setattr(main, "clear_screen", lambda: None)
+
+    runtime = FakeRuntime()
+    asyncio.run(
+        main._run_chat_loop(
+            SimpleNamespace(),
+            runtime,
+            "local-current",
+            store=FakeStore(),
+        )
+    )
+
+    assert created_agents == [("research", "non_productivity")]
+    assert runtime.current_project is None
+    assert "research" in runtime.projects
+    assert synced_threads[0] == ("local-current", "completed")
+    assert synced_threads[-1][1] == "completed"
+    assert consolidated[0] == ("local-current", "general", "non_productivity")
+    assert any(
+        thread_id is not None and thread_id != "local-current"
+        for thread_id in runtime.thread_updates
+    )
+
+
+def test_chat_can_rename_and_move_current_thread(monkeypatch) -> None:
+    import core.agent as agent_module
+
+    class FakeRuntime:
+        current_space = "non_productivity"
+        current_project = "general"
+        current_thread_id = "local-current"
+
+        def __init__(self):
+            self.projects = ["general"]
+
+        def update_current_space(self, value):
+            self.current_space = value
+
+        def update_current_project(self, value):
+            self.current_project = value
+            if value is not None and value not in self.projects:
+                self.projects.append(value)
+
+        def update_current_thread_id(self, value):
+            self.current_thread_id = value
+
+        def append_recent_threads(self, *_args):
+            return None
+
+        def projects_for(self, _space=None):
+            return list(self.projects)
+
+        def update_runtime_json(self):
+            return None
+
+    class FakeStore:
+        def __init__(self):
+            self.project = "general"
+            self.title = "Original title"
+            self.moved: list[tuple[str, str]] = []
+
+        def list_sessions(self, *, project=None, **_kwargs):
+            if project != self.project:
+                return []
+            return [
+                {
+                    "id": "local-current",
+                    "title": self.title,
+                    "status": "active",
+                    "updated_at": "2026-07-23T10:00:00+00:00",
+                }
+            ]
+
+        def rename_session(self, session_id, title):
+            assert session_id == "local-current"
+            self.title = title
+            return {"title": title}
+
+        def load_langchain_messages(self, session_id):
+            assert session_id == "local-current"
+            return [HumanMessage(content="Existing context")]
+
+        def move_session(self, session_id, project):
+            self.moved.append((session_id, project))
+            self.project = project
+            return {"id": session_id, "project": project}
+
+    created_agents: list[tuple[str, str]] = []
+
+    class FakeAgent:
+        def __init__(self, *, project, space):
+            created_agents.append((project, space))
+
+    prompts = iter(
+        [
+            "/rename Research plan",
+            "/project",
+            "/project move research",
+            "/project",
+            "/quit",
+        ]
+    )
+    synced: list[tuple[str, object, str]] = []
+    rendered: list[tuple[str, list[dict], str]] = []
+
+    async def fake_sync(_agent, _runtime, thread_id, fallback=None, *, status):
+        synced.append((thread_id, fallback, status))
+
+    monkeypatch.setattr(agent_module, "Agent", FakeAgent)
+    monkeypatch.setattr(main.cli, "prompt", lambda *_args, **_kwargs: next(prompts))
+    monkeypatch.setattr(
+        main.cli,
+        "render_project_sessions",
+        lambda project, rows, **kwargs: rendered.append(
+            (project, rows, kwargs["current_thread_id"])
+        ),
+    )
+    monkeypatch.setattr(main, "_sync_session_events", fake_sync)
+    monkeypatch.setattr(main, "_run_dream_agent", lambda *_args, **_kwargs: asyncio.sleep(0))
+    monkeypatch.setattr(main, "clear_screen", lambda: None)
+
+    runtime = FakeRuntime()
+    store = FakeStore()
+    asyncio.run(
+        main._run_chat_loop(
+            SimpleNamespace(),
+            runtime,
+            "local-current",
+            store=store,
+        )
+    )
+
+    assert store.title == "Research plan"
+    assert store.moved == [("local-current", "research")]
+    assert created_agents == [("research", "non_productivity")]
+    assert [item[0] for item in rendered] == ["general", "research"]
+    assert rendered[-1][1][0]["title"] == "Research plan"
+    assert synced[-1][1][0].content == "Existing context"
+    assert runtime.current_project is None
 
 
 def test_productivity_loop_resumes_then_changes_cwd(tmp_path, monkeypatch) -> None:

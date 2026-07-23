@@ -354,18 +354,28 @@ if (-not $SkipPathUpdate) {
     $pathEntries = @(
         ($userPath -split ";") |
             Where-Object { $_ -and $_.Trim() } |
-            ForEach-Object { $_.Trim().TrimEnd("\") }
+            ForEach-Object { $_.Trim().TrimEnd("\") } |
+            Where-Object {
+                -not $_.Equals(
+                    $binRoot.TrimEnd("\"),
+                    [System.StringComparison]::OrdinalIgnoreCase
+                )
+            }
     )
-    $alreadyPresent = $pathEntries | Where-Object {
-        $_.Equals($binRoot.TrimEnd("\"), [System.StringComparison]::OrdinalIgnoreCase)
-    }
-    if (-not $alreadyPresent) {
-        $newUserPath = (@($pathEntries) + $binRoot) -join ";"
-        [Environment]::SetEnvironmentVariable("Path", $newUserPath, "User")
-    }
-    if (-not (($env:Path -split ";") -contains $binRoot)) {
-        $env:Path = "$binRoot;$env:Path"
-    }
+    $newUserPath = (@($binRoot) + @($pathEntries)) -join ";"
+    [Environment]::SetEnvironmentVariable("Path", $newUserPath, "User")
+
+    $processPathEntries = @(
+        ($env:Path -split ";") |
+            Where-Object { $_ -and $_.Trim() } |
+            Where-Object {
+                -not $_.Trim().TrimEnd("\").Equals(
+                    $binRoot.TrimEnd("\"),
+                    [System.StringComparison]::OrdinalIgnoreCase
+                )
+            }
+    )
+    $env:Path = (@($binRoot) + @($processPathEntries)) -join ";"
 }
 
 Invoke-Checked -FilePath $cleoExecutable -Arguments @("--help")

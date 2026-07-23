@@ -74,6 +74,20 @@ The same project name in two spaces still represents separate data. SQLite
 queries, compact validation, DreamAgent tools, and evidence all require the
 space to prevent productivity records from silently entering personal memory.
 
+A project in Cleo chat is an optional logical memory boundary for a long-running
+topic, plan, or workflow; it does not require a code directory, and `general`
+is the default. In productivity, the project still partitions Cleo-owned
+records while the harness code boundary comes from its `cwd` or repository.
+External local projects may be associated by normalized `cwd`, but are not
+forced into a one-to-one mapping with Cleo project names or internal IDs.
+
+A Cleo thread title is derived from its first `user_message` and can be changed
+as metadata. An active, unconsolidated thread can move between projects; its
+session directory, manifest, event bindings, SQLite registry, compact view,
+memory state, and conversation chunks move together. Once DreamAgent has
+consolidated the source, migration is rejected because durable knowledge in the
+old project cannot be retracted reliably.
+
 ## Session Storage
 
 ```text
@@ -100,8 +114,8 @@ memory/
             └── compact.json
 ```
 
-`manifest.json` is an atomically replaced projection of current status and
-metadata. `events.jsonl` is the authoritative append-only record. Completed
+`manifest.json` is an atomically replaced projection of title, current status,
+and metadata. `events.jsonl` is the authoritative append-only record. Completed
 semantic messages are persisted rather than individual streaming token deltas.
 
 `compact.json` merges tool calls and results, redacts secrets, omits low-value

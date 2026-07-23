@@ -10,7 +10,7 @@ $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
 $requiredPaths = @(
     "pyproject.toml",
     "config/settings.py",
-    "memory/AGENT.md"
+    "memory/MEMORY_POLICY.md"
 )
 
 foreach ($requiredPath in $requiredPaths) {
@@ -24,6 +24,9 @@ $relativeTargets = @(
     "data/runtime.json",
     "data/shell_audit.log",
     "data/session_artifacts",
+    "data/pytest-session-store",
+    "data/pytest-session-store-targeted",
+    "data/pytest-tmp",
     "memory/non_productivity",
     "memory/productivity",
     "memory/sessions.sqlite3",
@@ -65,9 +68,28 @@ foreach ($relativeTarget in $relativeTargets) {
     Remove-WorkspaceItem -LiteralPath (Join-Path $repoRoot $relativeTarget)
 }
 
-Get-ChildItem -LiteralPath $repoRoot -Recurse -Directory -Force -Filter "__pycache__" |
-    ForEach-Object {
-        Remove-WorkspaceItem -LiteralPath $_.FullName
+if ($IncludeToolCaches) {
+    $sourceRoots = @(
+        "config",
+        "core",
+        "mcp_servers",
+        "scripts",
+        "skills",
+        "tests",
+        "tools"
+    )
+    Remove-WorkspaceItem -LiteralPath (Join-Path $repoRoot "__pycache__")
+    foreach ($sourceRoot in $sourceRoots) {
+        $sourcePath = Join-Path $repoRoot $sourceRoot
+        if (-not (Test-Path -LiteralPath $sourcePath)) {
+            continue
+        }
+        Get-ChildItem -LiteralPath $sourcePath -Recurse -Directory -Force `
+            -Filter "__pycache__" |
+            ForEach-Object {
+                Remove-WorkspaceItem -LiteralPath $_.FullName
+            }
     }
+}
 
-Write-Host "Runtime cleanup complete. Local provider config was preserved: config/cleo.json"
+Write-Host "Runtime cleanup complete. Local provider configs were preserved: config/cleo.json, config/harnesses.json"

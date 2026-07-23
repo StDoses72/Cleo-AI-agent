@@ -1,3 +1,29 @@
+Metadata-Version: 2.4
+Name: cleo-ai-agent
+Version: 0.1.0
+Summary: A local personal AI agent runtime built on Deep Agents and LangChain.
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: agent-client-protocol<1,>=0.11
+Requires-Dist: claude-agent-sdk<0.3,>=0.2
+Requires-Dist: deepagents
+Requires-Dist: fastmcp<4,>=3.4
+Requires-Dist: langchain
+Requires-Dist: langchain-core
+Requires-Dist: langchain-openai
+Requires-Dist: langgraph
+Requires-Dist: openai-codex<0.145,>=0.144.4
+Requires-Dist: openai-codex-cli-bin==0.144.4
+Requires-Dist: platformdirs<5,>=4.4
+Requires-Dist: prompt-toolkit<4,>=3.0
+Requires-Dist: pydantic
+Requires-Dist: rich
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: ruff; extra == "dev"
+Dynamic: license-file
+
 # Cleo AI Agent
 
 English version: [README.en.md](README.en.md)

@@ -217,9 +217,31 @@ def test_slash_command_completer_uses_mode_and_saved_sessions() -> None:
             CompleteEvent(completion_requested=True),
         )
     ]
+    project_values = [
+        item.text
+        for item in SlashCommandCompleter(
+            "chat",
+            projects=("general", "cleo", "research"),
+        ).get_completions(
+            Document("/project re"),
+            CompleteEvent(completion_requested=True),
+        )
+    ]
+    move_project_values = [
+        item.text
+        for item in SlashCommandCompleter(
+            "chat",
+            projects=("general", "cleo", "research"),
+        ).get_completions(
+            Document("/project move re"),
+            CompleteEvent(completion_requested=True),
+        )
+    ]
 
     assert command_values == {"/cd", "/compact", "/cwd"}
     assert resume_values == ["agent_saved123"]
     assert native_values == ["native-thread-1"]
     assert model_values == ["gpt-5.6-sol"]
-    assert chat_values == {"/resume"}
+    assert project_values == ["research"]
+    assert move_project_values == ["research"]
+    assert chat_values == {"/rename", "/resume"}

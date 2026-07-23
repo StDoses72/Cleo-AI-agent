@@ -90,6 +90,7 @@ def test_agent_adapter_routes_provider_sessions(tmp_path) -> None:
         assert result.native_session_id == "native-session"
         assert result.response == "done:hello"
         assert received[0].text == "hello"
+        assert adapter._store.load_manifest(result.session_id)["title"] == "hello"
         payload = load_validated_compact(
             memory_root=tmp_path / "memory",
             space="productivity",
