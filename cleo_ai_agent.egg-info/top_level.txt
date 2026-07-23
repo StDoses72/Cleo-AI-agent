@@ -1,5 +1,0 @@
-config
-core
-main
-mcp_servers
-tools

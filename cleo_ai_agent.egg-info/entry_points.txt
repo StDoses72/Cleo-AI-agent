@@ -1,3 +1,0 @@
-[console_scripts]
-cleo = main:main
-cleo-codex-mcp = mcp_servers.openai_codex_mcp:main

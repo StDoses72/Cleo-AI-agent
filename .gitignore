@@ -6,6 +6,11 @@ __pycache__/
 .venv/
 .venv-*/
 
+# Python packaging outputs.
+/build/
+/dist/
+/*.egg-info/
+
 # Local model/provider profile with real API keys.
 config/cleo.json
 !config/cleo.example.json
