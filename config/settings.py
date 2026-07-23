@@ -3,19 +3,35 @@ import os
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
+from platformdirs import user_data_dir
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
+def _app_home(source_root: Path = PROJECT_ROOT) -> Path:
+    override = os.environ.get("CLEO_HOME")
+    if override:
+        candidate = Path(override).expanduser()
+        if not candidate.is_absolute():
+            candidate = Path.cwd() / candidate
+        return candidate.resolve()
+    if (source_root / "pyproject.toml").is_file():
+        return source_root.resolve()
+    return Path(user_data_dir("Cleo", appauthor=False)).resolve()
+
+
+APP_HOME = _app_home()
+
+
 def _config_path() -> Path:
     override = os.environ.get("CLEO_CONFIG_PATH")
     if not override:
-        return PROJECT_ROOT / "config" / "cleo.json"
+        return APP_HOME / "config" / "cleo.json"
 
     candidate = Path(override).expanduser()
     if not candidate.is_absolute():
-        candidate = PROJECT_ROOT / candidate
+        candidate = APP_HOME / candidate
     return candidate.resolve()
 
 
@@ -29,7 +45,7 @@ def _harnesses_config_path() -> Path:
 
     candidate = Path(override).expanduser()
     if not candidate.is_absolute():
-        candidate = PROJECT_ROOT / candidate
+        candidate = APP_HOME / candidate
     return candidate.resolve()
 
 
@@ -63,11 +79,15 @@ DEFAULT_DENIED_PATTERNS = [
 ]
 
 
-def _resolve_path(path: Path | str | None, default: Path, base: Path = PROJECT_ROOT) -> Path:
+def _resolve_path(
+    path: Path | str | None,
+    default: Path,
+    base: Path | None = None,
+) -> Path:
     candidate = Path(path) if path is not None else default
     if candidate.is_absolute():
         return candidate.resolve()
-    return (base / candidate).resolve()
+    return ((base or APP_HOME) / candidate).resolve()
 
 
 def _effective_allowed_commands(

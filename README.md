@@ -33,7 +33,11 @@ Cleo-AI-agent/
   AGENTS.md                       # Human-approved repository instructions
   main.py                         # CLI entry point
   pyproject.toml                  # Python project metadata and dependencies
-  requirements.txt                # Compatibility wrapper that delegates to -e .
+  requirements.txt                # Python 3.12/Linux container dependency lock
+  scripts/
+    install.ps1                   # Windows per-user installer
+    update.ps1                    # Update an existing Windows installation
+    uninstall.ps1                 # Remove the Windows installation
   config/
     settings.py                   # Pydantic settings loader and profile models
     cleo.example.json             # Local config template
@@ -81,7 +85,33 @@ Cleo-AI-agent/
 
 ## 安装
 
-建议使用 Python 3.12 或更高版本。
+Windows 用户可以从仓库根目录执行每用户安装。脚本会创建独立 Python runtime，
+将程序安装到 `%LOCALAPPDATA%\Programs\Cleo`，把配置、会话、记忆和工作区保存在
+`%LOCALAPPDATA%\Cleo`，并将 `cleo` 命令加入当前用户的 `PATH`：
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\install.ps1
+```
+
+如果要把当前仓库里的本地配置和运行数据迁移到安装目录（只复制目标中缺失的文件）：
+
+```powershell
+.\scripts\install.ps1 -MigrateCurrentData
+```
+
+之后可直接运行 `cleo`。更新和卸载分别使用：
+
+```powershell
+.\scripts\update.ps1
+.\scripts\uninstall.ps1
+```
+
+卸载默认保留 `%LOCALAPPDATA%\Cleo`。只有明确需要永久删除所有本地配置、会话和记忆时，
+才使用 `.\scripts\uninstall.ps1 -PurgeData`。Codex 的登录与 task 历史仍由 Codex
+管理在用户级目录中，不会复制进 Cleo 的数据目录。
+
+源码开发建议使用 Python 3.12 或更高版本：
 
 ```bash
 pip install -e .
@@ -118,6 +148,13 @@ python scripts/update_project.py --index-url https://pypi.tuna.tsinghua.edu.cn/s
 
 ```bash
 python scripts/update_project.py --skip-build
+```
+
+Docker Desktop 暂时不可用但本机已安装 `uv` 时，可以仍按 Python 3.12/Linux
+目标生成锁文件：
+
+```bash
+python scripts/update_project.py --local-resolver --skip-build
 ```
 
 本地构建完成后，Compose 直接挂载现有的 `config/cleo.json`，不需要另一份
@@ -307,7 +344,8 @@ session ID。
 Cleo 与 productivity 页面的运行状态栏都会显示当前模型和 context window。Cleo 使用
 active agent profile 的 `max_tokens` 作为配置上限，并在兼容服务返回 usage metadata 后
 显示本轮实际占用；Codex 直接使用 SDK 的 `thread/tokenUsage/updated` 数据。数据尚未返回
-时会显示 `waiting`，不会估算或伪造百分比。
+时会显示 `waiting`，不会估算或伪造百分比。Productivity 的第二条状态栏显示 reasoning
+effort、filesystem access、approval behavior，以及当前 Git branch 和 dirty count。
 
 交互模式同样可用 `cleo --project <name>` 启动。`/new` 会在同一 project 内创建新
 thread；`--resume` 会恢复 manifest 中保存的 space/project 绑定，并拒绝冲突的
@@ -327,16 +365,23 @@ python main.py --productivity --cwd . "检查当前改动并运行测试"
 python main.py --productivity --resume agent_xxx
 ```
 
-可用 `--model` 覆盖 `profiles.tools.<name>.codex_model`。productivity 交互支持：
+可用 `--model` 覆盖 harness 配置的模型。productivity 交互支持：
 
-- `/cwd`：显示当前 harness 工作目录。
+- `/cwd`、`/project`、`/git`：查看工作目录、项目边界与只读 Git 状态。
 - `/cd <directory>`：切换目录并创建新的 harness session；相对路径以当前 `cwd` 为准。
 - `/resume <agent-id>`：恢复已保存的 productivity session 及其原生 harness 上下文。
-- `/new`、`/sessions`、`/back`、`/quit` 和 `/exit`：管理 session 或离开页面。
+- `/sessions`：合并展示 Cleo-managed session 与尚未接管的 Codex native thread。
+- `/native <native-id>`：只读查看 Codex 原生历史，不导入 Cleo 记忆。
+- `/resume-native <native-id>`：把原生 thread 显式接入 Cleo 并继续对话。
+- `/model`、`/effort`、`/access`、`/approval`：查看或修改下一轮 Codex 的运行参数。
+- `/fork`、`/rename <name>`、`/compact`、`/archive`：管理 Codex 原生 thread 生命周期。
+- `/account`：查看当前 Codex 登录状态。
+- `/new`、`/back`、`/quit` 和 `/exit`：管理 session 或离开页面。
 
 Codex SDK 的消息、工具、终端、计划和文件变更事件会流式显示，并统一写入
 `productivity` space。CLI 输入补全与 Rich 表现层集中在 `core/cli.py`，不包含 runtime、
-memory 或 provider 业务逻辑。
+memory 或 provider 业务逻辑。Codex 专属控制能力留在 Codex provider；通用 adapter
+仍维持 create/resume/prompt/cancel/close 数据面。
 
 ## 运行时文件
 
@@ -358,7 +403,7 @@ memory 或 provider 业务逻辑。
 
 ## 当前限制
 
-- 目前还没有 `/threads` 或 `/switch <thread_id>` 这种自由切换历史 thread 的交互命令。
+- 原生历史目前按页读取最近 50 条；尚未在 CLI 中暴露继续翻页与复杂筛选。
 - 当前 resume 是 session message event replay，不是完整 durable LangGraph checkpoint。
 - 历史检索当前使用本地词法排序；尚未启用需要校准和额外服务的向量检索。
 - `skills/` 当前只包含 `demo-production`。

@@ -129,6 +129,52 @@ def _compile_requirements(
         _run(command)
         generated = _normalized_requirements(output_path)
 
+    return _apply_requirements(generated, check_only=check_only)
+
+
+def _compile_requirements_locally(
+    *,
+    check_only: bool,
+    index_url: str,
+    extra_index_url: str,
+) -> bool:
+    uv = shutil.which("uv")
+    if uv is None:
+        raise RuntimeError("uv was not found on PATH")
+
+    with tempfile.TemporaryDirectory(prefix="cleo-dependencies-") as output_dir:
+        output_path = Path(output_dir) / "requirements.txt"
+        command = [
+            uv,
+            "pip",
+            "compile",
+            "--upgrade",
+            "--strip-extras",
+            "--no-header",
+            "--no-annotate",
+            "--no-emit-index-url",
+            "--python-platform",
+            "linux",
+            "--python-version",
+            "3.12",
+            "--index-url",
+            index_url,
+        ]
+        if extra_index_url:
+            command.extend(["--extra-index-url", extra_index_url])
+        command.extend(
+            [
+                f"--output-file={output_path}",
+                str(PYPROJECT_PATH),
+            ]
+        )
+        _run(command)
+        generated = _normalized_requirements(output_path)
+
+    return _apply_requirements(generated, check_only=check_only)
+
+
+def _apply_requirements(generated: str, *, check_only: bool) -> bool:
     current = (
         REQUIREMENTS_PATH.read_text(encoding="utf-8").replace("\r\n", "\n")
         if REQUIREMENTS_PATH.exists()
@@ -180,6 +226,14 @@ def _parse_args() -> argparse.Namespace:
         help="Update requirements.txt without rebuilding the Docker image.",
     )
     parser.add_argument(
+        "--local-resolver",
+        action="store_true",
+        help=(
+            "Resolve the Python 3.12 Linux lock with local uv instead of the "
+            "Docker resolver image. Docker is still required unless --skip-build is set."
+        ),
+    )
+    parser.add_argument(
         "--check",
         action="store_true",
         help="Exit with status 1 when requirements.txt is stale; do not modify files or build.",
@@ -212,22 +266,34 @@ def main() -> int:
     args = _parse_args()
     try:
         _validate_pyproject()
-        _check_docker()
-        _build_resolver_image(args.index_url, args.extra_index_url)
-        stale = _compile_requirements(
-            check_only=args.check,
-            index_url=args.index_url,
-            extra_index_url=args.extra_index_url,
-        )
+        if args.local_resolver:
+            stale = _compile_requirements_locally(
+                check_only=args.check,
+                index_url=args.index_url,
+                extra_index_url=args.extra_index_url,
+            )
+        else:
+            _check_docker()
+            _build_resolver_image(args.index_url, args.extra_index_url)
+            stale = _compile_requirements(
+                check_only=args.check,
+                index_url=args.index_url,
+                extra_index_url=args.extra_index_url,
+            )
         if args.check:
             return 1 if stale else 0
         if not args.skip_build:
+            if args.local_resolver:
+                _check_docker()
             _build_image(args.index_url, args.extra_index_url, pull=args.pull)
     except (OSError, RuntimeError, subprocess.CalledProcessError) as exc:
         print(f"Update failed: {exc}", file=sys.stderr)
         return 1
 
-    print("Dependency lock and Docker image are ready.")
+    if args.skip_build:
+        print("Dependency lock is ready; Docker image build was skipped.")
+    else:
+        print("Dependency lock and Docker image are ready.")
     return 0
 
 

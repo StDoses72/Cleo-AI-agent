@@ -13,6 +13,7 @@ __pycache__
 .env
 .env.*
 config/cleo.json
+config/harnesses.json
 
 data/*
 !data/.gitkeep
@@ -21,6 +22,9 @@ data/*
 memory/thread_objects
 memory/threads.jsonl
 memory/projects
+memory/non_productivity
+memory/productivity
+memory/sessions.sqlite3*
 
 workspace
 

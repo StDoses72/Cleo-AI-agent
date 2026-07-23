@@ -5,7 +5,13 @@ from prompt_toolkit.document import Document
 from rich.console import Console
 
 from core.cli import CleoCLI, SlashCommandCompleter
-from core.integrations.agent_adapter import AgentEvent, AgentResult, AgentSession
+from core.integrations.agent_adapter import (
+    AgentEvent,
+    AgentResult,
+    AgentSession,
+    HarnessModel,
+    NativeSession,
+)
 from core.usage import ContextWindowUsage
 
 
@@ -151,6 +157,29 @@ def test_slash_command_completer_uses_mode_and_saved_sessions() -> None:
                 "native_session_id": None,
             },
         ],
+        native_sessions=(
+            NativeSession(
+                id="native-thread-1",
+                name="Native work",
+                preview="Inspect the repository",
+                cwd="D:/workspace/cleo",
+                status="idle",
+                source="vscode",
+                model_provider="openai",
+                created_at="2026-07-22T10:00:00+00:00",
+                updated_at="2026-07-22T10:30:00+00:00",
+            ),
+        ),
+        models=(
+            HarnessModel(
+                id="gpt-5.6-sol",
+                display_name="GPT-5.6 Sol",
+                description="",
+                is_default=True,
+                default_effort="medium",
+                supported_efforts=("medium", "high"),
+            ),
+        ),
     )
 
     command_values = {
@@ -174,7 +203,23 @@ def test_slash_command_completer_uses_mode_and_saved_sessions() -> None:
             CompleteEvent(completion_requested=True),
         )
     }
+    native_values = [
+        item.text
+        for item in completer.get_completions(
+            Document("/resume-native native-"),
+            CompleteEvent(completion_requested=True),
+        )
+    ]
+    model_values = [
+        item.text
+        for item in completer.get_completions(
+            Document("/model gpt-"),
+            CompleteEvent(completion_requested=True),
+        )
+    ]
 
-    assert command_values == {"/cd", "/cwd"}
+    assert command_values == {"/cd", "/compact", "/cwd"}
     assert resume_values == ["agent_saved123"]
+    assert native_values == ["native-thread-1"]
+    assert model_values == ["gpt-5.6-sol"]
     assert chat_values == {"/resume"}

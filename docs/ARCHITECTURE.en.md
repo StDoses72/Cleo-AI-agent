@@ -37,6 +37,26 @@ SessionStore
 - `core/memory/state.py`: source versions and consolidation state.
 - `core/runtime/model.py`: current CLI scope and recent sessions.
 
+## Installation And Runtime Paths
+
+A source checkout keeps the existing behavior: when `config/settings.py` can
+see `pyproject.toml` at the source root, relative paths remain rooted at the
+repository.
+
+The Windows `scripts/install.ps1` uses a split layout:
+
+```text
+%LOCALAPPDATA%\Programs\Cleo\   # launcher and isolated Python runtime
+%LOCALAPPDATA%\Cleo\            # config, data, memory, skills, workspace
+%USERPROFILE%\.codex\           # Codex-managed authentication and task history
+```
+
+The launcher sets `CLEO_HOME` explicitly. Other packaged environments use the
+`platformdirs` user data directory when `CLEO_HOME` is absent. Docker sets
+`CLEO_HOME=/app` and continues to persist runtime data through volumes.
+Updating does not overwrite existing configuration or user data, and
+uninstalling preserves the data directory by default.
+
 ## Space And Project
 
 Every session is bound by:
@@ -144,6 +164,12 @@ AgentAdapter.prompt
   → translate provider events
   → assistant_message + terminal status
   → compact projection + SQLite index
+
+Codex rich control plane
+  → thread/list + thread/read (browse native history)
+  → model/list + account/read (capability discovery)
+  → per-turn model / effort / sandbox / approval
+  → thread/fork / name/set / compact / archive
 ```
 
 `/productivity` in the main chat is the interactive terminal entry point; leaving
@@ -160,11 +186,20 @@ scope.
 
 Codex `thread/tokenUsage/updated` notifications are normalized as `status` events
 and drive the CLI context bar using the SDK's `totalTokens` and
-`modelContextWindow` values.
+`modelContextWindow` values. A second status bar shows reasoning effort, sandbox,
+approval behavior, and a read-only Git branch/dirty-count projection.
 
-`AgentAdapter` currently provides the active-route portion of a lightweight
-SessionHub. It maps Cleo handles to provider connections and native session IDs.
-Completed content remains in SessionStore after provider connections close.
+The generic `AgentAdapter` data plane remains limited to
+create/resume/prompt/cancel/close. Codex history, models, and thread lifecycle are
+optional control-plane capabilities, so Claude and ACP providers do not need to
+pretend they expose the same native operations.
+
+SessionHub merges Cleo-managed rows from `sessions.sqlite3` with live Codex
+`thread/list` results. Attached threads appear as `cleo+native`; unmanaged Codex
+threads appear as `native`. `/native` browses a native transcript without writing
+it into Cleo's event log. `/resume-native` is the explicit boundary that creates
+or reuses a Cleo handle to native-thread mapping. Completed content remains in
+SessionStore after provider connections close.
 
 ## DreamAgent Flow
 

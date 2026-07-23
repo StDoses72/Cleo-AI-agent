@@ -23,7 +23,17 @@ from rich.text import Text
 from core.usage import ContextWindowUsage
 
 if TYPE_CHECKING:
-    from core.integrations.agent_adapter import AgentEvent, AgentResult, AgentSession
+    from core.git_status import GitStatus
+    from core.integrations.agent_adapter import (
+        AgentEvent,
+        AgentResult,
+        AgentSession,
+        HarnessAccount,
+        HarnessModel,
+        NativeSession,
+        NativeSessionDetail,
+        SessionOptions,
+    )
 
 CLIMode = Literal["chat", "productivity"]
 
@@ -38,10 +48,23 @@ CHAT_COMMANDS = {
 }
 
 PRODUCTIVITY_COMMANDS = {
+    "/project": "show project, repository, and working tree",
+    "/git": "show Git status",
     "/cd": "switch working directory and start a new session",
     "/cwd": "show the current working directory",
     "/resume": "resume a saved productivity session",
-    "/sessions": "show saved sessions",
+    "/resume-native": "attach and resume a native harness thread",
+    "/native": "inspect a native harness thread",
+    "/sessions": "show Cleo and native sessions",
+    "/model": "show or change the model",
+    "/effort": "show or change reasoning effort",
+    "/access": "show or change filesystem access",
+    "/approval": "show or change approval behavior",
+    "/account": "show harness account status",
+    "/fork": "fork the current native thread",
+    "/rename": "rename the current native thread",
+    "/compact": "compact the current native context",
+    "/archive": "archive the current native thread",
     "/new": "start a new harness session",
     "/back": "return to Cleo chat",
     "/quit": "leave productivity mode",
@@ -69,12 +92,16 @@ class SlashCommandCompleter(Completer):
         *,
         cwd: str | None = None,
         sessions: list[dict[str, Any]] | None = None,
+        native_sessions: tuple[NativeSession, ...] = (),
+        models: tuple[HarnessModel, ...] = (),
     ) -> None:
         self.mode = mode
         self.commands = (
             PRODUCTIVITY_COMMANDS if mode == "productivity" else CHAT_COMMANDS
         )
         self.sessions = sessions or []
+        self.native_sessions = native_sessions
+        self.models = models
         base_path = str(Path(cwd).expanduser()) if cwd else None
         self.path_completer = PathCompleter(
             only_directories=True,
@@ -133,6 +160,27 @@ class SlashCommandCompleter(Completer):
                         start_position=-len(argument),
                         display_meta=meta,
                     )
+            return
+
+        if command in {"/native", "/resume-native"}:
+            for session in self.native_sessions:
+                if session.id.startswith(argument):
+                    yield Completion(
+                        session.id,
+                        start_position=-len(argument),
+                        display_meta=session.name or session.preview or session.cwd,
+                    )
+            return
+
+        choices = {
+            "/model": tuple(model.id for model in self.models),
+            "/effort": ("none", "minimal", "low", "medium", "high", "xhigh"),
+            "/access": ("read-only", "workspace-write", "full-access"),
+            "/approval": ("deny_all", "auto_review"),
+        }.get(command, ())
+        for choice in choices:
+            if choice.startswith(argument):
+                yield Completion(choice, start_position=-len(argument))
 
 
 class CleoCLI:
@@ -151,6 +199,8 @@ class CleoCLI:
         *,
         cwd: str | None = None,
         sessions: list[dict[str, Any]] | None = None,
+        native_sessions: tuple[NativeSession, ...] = (),
+        models: tuple[HarnessModel, ...] = (),
     ) -> str:
         label = "productivity" if mode == "productivity" else "cleo"
         style = "bold magenta" if mode == "productivity" else "bold cyan"
@@ -169,6 +219,8 @@ class CleoCLI:
                     mode,
                     cwd=cwd,
                     sessions=sessions,
+                    native_sessions=native_sessions,
+                    models=models,
                 ),
                 complete_while_typing=False,
                 auto_suggest=AutoSuggestFromHistory(),
@@ -227,14 +279,17 @@ class CleoCLI:
         *,
         model: str = "unknown",
         context_usage: ContextWindowUsage | None = None,
+        options: SessionOptions | None = None,
+        git_status: GitStatus | None = None,
     ) -> None:
         self._render_header(
-            brand="PRODUCTIVITY · CODEX",
+            brand=f"PRODUCTIVITY · {session.provider.upper()}",
             breadcrumb=f"productivity / {session.project} / {self._short_id(session.id)}",
             state="connected",
             accent="magenta",
         )
         self.render_runtime_status(model, context_usage, accent="magenta")
+        self.render_productivity_controls(options, git_status)
         details = Table.grid(expand=True, padding=(0, 1))
         details.add_column(style="dim", no_wrap=True)
         details.add_column(ratio=1, overflow="fold")
@@ -246,6 +301,12 @@ class CleoCLI:
             Text.assemble(
                 ("/cd", "bold magenta"),
                 (" cwd  ", "dim"),
+                ("/model", "bold magenta"),
+                (" model  ", "dim"),
+                ("/effort", "bold magenta"),
+                (" think  ", "dim"),
+                ("/access", "bold magenta"),
+                (" access  ", "dim"),
                 ("/resume", "bold magenta"),
                 (" session  ", "dim"),
                 ("/new", "bold magenta"),
@@ -260,6 +321,40 @@ class CleoCLI:
         )
         self.console.print()
 
+    def render_productivity_controls(
+        self,
+        options: SessionOptions | None,
+        git_status: GitStatus | None,
+    ) -> None:
+        controls = Table.grid(expand=True)
+        controls.add_column(ratio=1, overflow="ellipsis")
+        controls.add_column(ratio=1, overflow="ellipsis")
+        option_text = Text("CONTROL  ", style="dim")
+        if options is None:
+            option_text.append("provider defaults", style="dim")
+        else:
+            option_text.append(options.effort or "default effort", style="magenta")
+            option_text.append(" · ", style="dim")
+            option_text.append(options.sandbox or "default access", style="magenta")
+            option_text.append(" · ", style="dim")
+            option_text.append(options.approval_mode or "default approval", style="magenta")
+
+        git_text = Text("GIT  ", style="dim")
+        if git_status is None:
+            git_text.append("not a repository", style="dim")
+        else:
+            git_text.append(git_status.branch, style="bold blue")
+            if git_status.ahead:
+                git_text.append(f" ↑{git_status.ahead}", style="green")
+            if git_status.behind:
+                git_text.append(f" ↓{git_status.behind}", style="yellow")
+            git_text.append(
+                f" · {git_status.dirty_count} change(s)",
+                style="yellow" if git_status.dirty_count else "dim",
+            )
+        controls.add_row(option_text, git_text)
+        self.console.print(Panel(controls, border_style="magenta", padding=(0, 1)))
+
     def render_session_hub(self, sessions: list[dict[str, Any]]) -> None:
         self._render_header(
             brand="SESSION HUB",
@@ -269,6 +364,8 @@ class CleoCLI:
         )
         table = Table(box=box.SIMPLE_HEAVY, expand=True, show_edge=False)
         table.add_column("Session", ratio=2, overflow="ellipsis", no_wrap=True)
+        table.add_column("Title", ratio=3, overflow="ellipsis")
+        table.add_column("Origin", ratio=1, overflow="ellipsis")
         table.add_column("Space", ratio=2, overflow="ellipsis")
         table.add_column("Project", ratio=1, overflow="ellipsis")
         table.add_column("Provider", ratio=1, overflow="ellipsis")
@@ -280,6 +377,8 @@ class CleoCLI:
             status = str(session.get("status") or "unknown")
             table.add_row(
                 self._short_id(str(session.get("id") or "unknown"), width=22),
+                str(session.get("title") or "—"),
+                str(session.get("origin") or "cleo"),
                 Text(space, style=space_style),
                 str(session.get("project") or "general"),
                 str(session.get("provider") or "unknown"),
@@ -290,6 +389,100 @@ class CleoCLI:
             self.console.print(table)
         else:
             self.console.print(Panel("No sessions have been recorded yet.", border_style="dim"))
+
+    def render_native_session(self, detail: NativeSessionDetail) -> None:
+        session = detail.session
+        self._render_header(
+            brand="NATIVE THREAD",
+            breadcrumb=session.name or self._short_id(session.id, width=32),
+            state=session.status,
+            accent="magenta",
+        )
+        metadata = Table.grid(expand=True, padding=(0, 1))
+        metadata.add_column(style="dim", no_wrap=True)
+        metadata.add_column(ratio=1, overflow="fold")
+        metadata.add_row("id", session.id)
+        metadata.add_row("source", session.source)
+        metadata.add_row("cwd", session.cwd)
+        metadata.add_row("preview", session.preview or "—")
+        self.console.print(metadata)
+        self.console.print()
+
+        shown = 0
+        for turn in detail.turns:
+            for item in turn.get("items", []):
+                if not isinstance(item, dict):
+                    continue
+                item = item.get("root") if isinstance(item.get("root"), dict) else item
+                item_type = item.get("type")
+                if item_type == "userMessage":
+                    content = self._native_user_text(item.get("content"))
+                    if content:
+                        self.console.print(
+                            Panel(Text(content), title="User", border_style="cyan")
+                        )
+                        shown += 1
+                elif item_type == "agentMessage" and item.get("text"):
+                    self.console.print(
+                        Panel(
+                            Text(str(item["text"])),
+                            title="Codex",
+                            border_style="green",
+                        )
+                    )
+                    shown += 1
+                elif item_type == "contextCompaction":
+                    self.info("Codex compacted the native context here.")
+                elif item_type == "commandExecution" and item.get("command"):
+                    self.console.print(
+                        Text.assemble(
+                            ("TOOL    ", "bold yellow"),
+                            (str(item["command"]), "dim"),
+                        )
+                    )
+        if shown == 0:
+            self.warning("No user/assistant messages were returned for this thread.")
+
+    def render_models(
+        self,
+        models: tuple[HarnessModel, ...],
+        *,
+        active: str | None,
+    ) -> None:
+        table = Table(box=box.SIMPLE_HEAVY, expand=True, show_edge=False)
+        table.add_column("Model", ratio=2)
+        table.add_column("Default effort", ratio=1)
+        table.add_column("Supported efforts", ratio=3)
+        for model in models:
+            marker = "● " if model.id == active else "  "
+            table.add_row(
+                Text(marker + model.id, style="bold magenta" if marker.strip() else None),
+                model.default_effort or "—",
+                ", ".join(model.supported_efforts),
+            )
+        self.console.print(table)
+
+    def render_account(self, account: HarnessAccount) -> None:
+        if not account.authenticated:
+            self.warning("Codex is not authenticated.")
+            return
+        parts = [account.account_type or "authenticated"]
+        if account.email:
+            parts.append(account.email)
+        if account.plan:
+            parts.append(account.plan)
+        self.info(" · ".join(parts))
+
+    def render_git_status(self, status: GitStatus | None) -> None:
+        if status is None:
+            self.warning("The current working directory is not inside a Git repository.")
+            return
+        self.info(f"{status.repo_root} · {status.branch}")
+        if not status.changes:
+            self.success("Working tree clean.")
+            return
+        for change in status.changes:
+            self.console.print(Text(change, style="yellow"))
 
     def render_restored_messages(
         self,
@@ -409,6 +602,20 @@ class CleoCLI:
             "failed": "red",
             "cancelled": "yellow",
         }.get(status, "dim")
+
+    @staticmethod
+    def _native_user_text(content: Any) -> str:
+        if not isinstance(content, list):
+            return ""
+        parts: list[str] = []
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            item = item.get("root") if isinstance(item.get("root"), dict) else item
+            text = item.get("text")
+            if isinstance(text, str):
+                parts.append(text)
+        return "\n".join(parts)
 
 
 class ProductivityEventRenderer:

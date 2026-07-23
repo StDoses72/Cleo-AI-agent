@@ -222,6 +222,39 @@ async def _resume_productivity_session(
     )
 
 
+async def _load_productivity_catalog(
+    adapter: AgentAdapter,
+    provider: str,
+):
+    from core.integrations.agent_adapter import NativeSessionPage
+
+    models = ()
+    native_page = NativeSessionPage(())
+    list_models = getattr(adapter, "list_models", None)
+    if callable(list_models):
+        try:
+            models = await list_models(provider)
+        except (NotImplementedError, OSError, RuntimeError):
+            pass
+    list_native = getattr(adapter, "list_native_sessions", None)
+    if callable(list_native):
+        try:
+            native_page = await list_native(provider, limit=50)
+        except (NotImplementedError, OSError, RuntimeError):
+            pass
+    return models, native_page
+
+
+def _productivity_options(adapter: AgentAdapter, session_id: str):
+    session_options = getattr(adapter, "session_options", None)
+    if not callable(session_options):
+        return None
+    try:
+        return session_options(session_id)
+    except (KeyError, NotImplementedError):
+        return None
+
+
 async def _run_productivity_loop(
     adapter: AgentAdapter,
     session: AgentSession,
@@ -241,11 +274,31 @@ async def _run_productivity_loop(
     session_model = model_for(session.provider)
     active_model = session_model or "default"
     context_usage = ContextWindowUsage()
-    cli.render_productivity_header(
-        session,
-        model=active_model,
-        context_usage=context_usage,
+    available_models, native_page = await _load_productivity_catalog(
+        adapter,
+        session.provider,
     )
+
+    def render_active_controls() -> None:
+        from core.git_status import inspect_git_status
+
+        cli.render_productivity_controls(
+            _productivity_options(adapter, session.id),
+            inspect_git_status(session.project_path),
+        )
+
+    def render_active_header() -> None:
+        from core.git_status import inspect_git_status
+
+        cli.render_productivity_header(
+            session,
+            model=active_model,
+            context_usage=context_usage,
+            options=_productivity_options(adapter, session.id),
+            git_status=inspect_git_status(session.project_path),
+        )
+
+    render_active_header()
     cli.info(f"Use /back or /quit to {exit_action}; /new starts a new harness session.")
     cli.console.print()
 
@@ -256,6 +309,8 @@ async def _run_productivity_loop(
                 "productivity",
                 cwd=session.project_path,
                 sessions=store.list_sessions(space="productivity"),
+                native_sessions=native_page.sessions,
+                models=available_models,
             )
         except (EOFError, KeyboardInterrupt):
             cli.console.print()
@@ -279,15 +334,105 @@ async def _run_productivity_loop(
             runtime.append_recent_threads(session.id, "productivity")
             context_usage = ContextWindowUsage()
             clear_screen()
-            cli.render_productivity_header(
-                session,
-                model=active_model,
-                context_usage=context_usage,
-            )
+            render_active_header()
             cli.success(f"Started new {session.provider} session: {session.id}")
             continue
         if prompt == "/cwd":
             cli.info(session.project_path)
+            continue
+        if prompt == "/project":
+            from core.git_status import inspect_git_status
+
+            cli.info(f"{session.project} · {session.project_path}")
+            cli.render_git_status(inspect_git_status(session.project_path))
+            continue
+        if prompt == "/git":
+            from core.git_status import inspect_git_status
+
+            cli.render_git_status(inspect_git_status(session.project_path))
+            continue
+        if prompt == "/model" or prompt.startswith("/model "):
+            requested = _slash_command_argument(prompt, "/model")
+            if not requested:
+                cli.info(f"Active model: {active_model}")
+                if available_models:
+                    cli.render_models(available_models, active=active_model)
+                continue
+            known_models = {item.id for item in available_models}
+            if known_models and requested not in known_models:
+                cli.error(f"Unknown model: {requested}")
+                continue
+            try:
+                options = await adapter.update_session_options(
+                    session.id,
+                    model=requested,
+                )
+            except (KeyError, NotImplementedError, ValueError) as exc:
+                cli.error(str(exc))
+                continue
+            session_model = options.model
+            active_model = session_model or "default"
+            cli.success(f"Model set to {active_model}; it applies to the next turn.")
+            cli.render_runtime_status(
+                active_model,
+                context_usage,
+                accent="magenta",
+            )
+            render_active_controls()
+            continue
+        if prompt == "/effort" or prompt.startswith("/effort "):
+            requested = _slash_command_argument(prompt, "/effort")
+            current = _productivity_options(adapter, session.id)
+            if not requested:
+                cli.info(f"Reasoning effort: {(current and current.effort) or 'default'}")
+                continue
+            try:
+                options = await adapter.update_session_options(
+                    session.id,
+                    effort=requested,
+                )
+            except (KeyError, NotImplementedError, ValueError) as exc:
+                cli.error(str(exc))
+                continue
+            cli.success(f"Reasoning effort set to {options.effort}.")
+            render_active_controls()
+            continue
+        if prompt == "/access" or prompt.startswith("/access "):
+            requested = _slash_command_argument(prompt, "/access")
+            current = _productivity_options(adapter, session.id)
+            if not requested:
+                cli.info(f"Filesystem access: {(current and current.sandbox) or 'default'}")
+                continue
+            try:
+                options = await adapter.update_session_options(
+                    session.id,
+                    sandbox=requested,
+                )
+            except (KeyError, NotImplementedError, ValueError) as exc:
+                cli.error(str(exc))
+                continue
+            cli.success(f"Filesystem access set to {options.sandbox}.")
+            render_active_controls()
+            continue
+        if prompt == "/approval" or prompt.startswith("/approval "):
+            requested = _slash_command_argument(prompt, "/approval")
+            current = _productivity_options(adapter, session.id)
+            if not requested:
+                cli.info(
+                    f"Approval behavior: "
+                    f"{(current and current.approval_mode) or 'default'}"
+                )
+                continue
+            try:
+                options = await adapter.update_session_options(
+                    session.id,
+                    approval_mode=requested,
+                )
+            except (KeyError, NotImplementedError, ValueError) as exc:
+                cli.error(str(exc))
+                continue
+            cli.success(f"Approval behavior set to {options.approval_mode}.")
+            render_active_controls()
             continue
         if prompt == "/cd" or prompt.startswith("/cd "):
             try:
@@ -312,11 +457,7 @@ async def _run_productivity_loop(
             runtime.append_recent_threads(session.id, "productivity")
             context_usage = ContextWindowUsage()
             clear_screen()
-            cli.render_productivity_header(
-                session,
-                model=active_model,
-                context_usage=context_usage,
-            )
+            render_active_header()
             cli.success(
                 f"Changed cwd to {session.project_path}; started session {session.id}."
             )
@@ -351,23 +492,143 @@ async def _run_productivity_loop(
             runtime.append_recent_threads(session.id, "productivity")
             context_usage = ContextWindowUsage()
             clear_screen()
-            cli.render_productivity_header(
-                session,
-                model=active_model,
-                context_usage=context_usage,
+            available_models, native_page = await _load_productivity_catalog(
+                adapter,
+                session.provider,
             )
+            render_active_header()
             cli.success(f"Resumed {session.provider} session: {session.id}")
             continue
-        if prompt == "/sessions":
+        if prompt == "/resume-native" or prompt.startswith("/resume-native "):
+            native_id = _slash_command_argument(prompt, "/resume-native")
+            if not native_id:
+                cli.warning("Usage: /resume-native <native-thread-id>")
+                continue
+            native = next(
+                (item for item in native_page.sessions if item.id == native_id),
+                None,
+            )
+            try:
+                resumed_session = await adapter.resume_session(
+                    session.provider,
+                    native_id,
+                    project_path=(native.cwd if native is not None else session.project_path),
+                    model=session_model,
+                    project=session.project,
+                )
+            except (KeyError, OSError, ValueError) as exc:
+                cli.error(f"Unable to resume native thread {native_id}: {exc}")
+                continue
+            previous_session = session
+            await _finish_productivity_session(adapter, previous_session, runtime)
+            session = resumed_session
+            runtime.update_current_project(session.project)
+            runtime.update_current_thread_id(session.id)
+            runtime.append_recent_threads(session.id, "productivity")
+            context_usage = ContextWindowUsage()
             clear_screen()
-            cli.render_session_hub(store.list_sessions())
+            render_active_header()
+            cli.success(f"Attached native thread as Cleo session: {session.id}")
+            continue
+        if prompt == "/native" or prompt.startswith("/native "):
+            native_id = _slash_command_argument(prompt, "/native")
+            if not native_id:
+                cli.warning("Usage: /native <native-thread-id>")
+                continue
+            try:
+                detail = await adapter.read_native_session(session.provider, native_id)
+            except (KeyError, NotImplementedError, OSError, RuntimeError, ValueError) as exc:
+                cli.error(f"Unable to read native thread {native_id}: {exc}")
+                continue
+            clear_screen()
+            cli.render_native_session(detail)
             await asyncio.to_thread(cli.wait_for_return)
             clear_screen()
-            cli.render_productivity_header(
-                session,
-                model=active_model,
-                context_usage=context_usage,
+            render_active_header()
+            continue
+        if prompt == "/sessions":
+            from core.session_hub import merge_session_rows
+
+            _, native_page = await _load_productivity_catalog(
+                adapter,
+                session.provider,
             )
+            clear_screen()
+            cli.render_session_hub(
+                merge_session_rows(
+                    store.list_sessions(),
+                    native_page.sessions,
+                    provider=session.provider,
+                )
+            )
+            await asyncio.to_thread(cli.wait_for_return)
+            clear_screen()
+            render_active_header()
+            continue
+        if prompt == "/account":
+            try:
+                account = await adapter.account_status(session.provider)
+            except (NotImplementedError, OSError, RuntimeError) as exc:
+                cli.error(str(exc))
+                continue
+            cli.render_account(account)
+            continue
+        if prompt == "/fork":
+            try:
+                forked = await adapter.fork_session(session.id)
+            except (KeyError, NotImplementedError, OSError, RuntimeError) as exc:
+                cli.error(f"Unable to fork session: {exc}")
+                continue
+            previous_session = session
+            await _finish_productivity_session(adapter, previous_session, runtime)
+            session = forked
+            runtime.update_current_thread_id(session.id)
+            runtime.append_recent_threads(session.id, "productivity")
+            context_usage = ContextWindowUsage()
+            clear_screen()
+            render_active_header()
+            cli.success(f"Forked native thread into session: {session.id}")
+            continue
+        if prompt == "/rename" or prompt.startswith("/rename "):
+            name = _slash_command_argument(prompt, "/rename")
+            if not name:
+                cli.warning("Usage: /rename <name>")
+                continue
+            try:
+                await adapter.rename_session(session.id, name)
+            except (KeyError, NotImplementedError, OSError, RuntimeError, ValueError) as exc:
+                cli.error(f"Unable to rename session: {exc}")
+                continue
+            cli.success(f"Native thread renamed to: {name}")
+            continue
+        if prompt == "/compact":
+            try:
+                await adapter.compact_session(session.id)
+            except (KeyError, NotImplementedError, OSError, RuntimeError) as exc:
+                cli.error(f"Unable to compact native context: {exc}")
+                continue
+            context_usage = ContextWindowUsage()
+            cli.success("Native Codex context compaction started.")
+            continue
+        if prompt == "/archive":
+            try:
+                await adapter.archive_session(session.id)
+            except (KeyError, NotImplementedError, OSError, RuntimeError) as exc:
+                cli.error(f"Unable to archive session: {exc}")
+                continue
+            await _finish_productivity_session(adapter, session, runtime)
+            session = await adapter.create_session(
+                session.provider,
+                project_path=session.project_path,
+                model=session_model,
+                project=session.project,
+            )
+            runtime.update_current_thread_id(session.id)
+            runtime.append_recent_threads(session.id, "productivity")
+            context_usage = ContextWindowUsage()
+            clear_screen()
+            render_active_header()
+            cli.success("Archived the native thread and started a new session.")
             continue
 
         try:
@@ -469,11 +730,15 @@ async def _run_productivity_mode(
                 return_to_chat=return_to_chat,
             )
         else:
+            from core.git_status import inspect_git_status
+
             context_usage = ContextWindowUsage()
             cli.render_productivity_header(
                 session,
                 model=display_model,
                 context_usage=context_usage,
+                options=_productivity_options(adapter, session.id),
+                git_status=inspect_git_status(session.project_path),
             )
             await _prompt_productivity_session(
                 adapter,

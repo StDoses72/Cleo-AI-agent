@@ -5,6 +5,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUTF8=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     HOME=/home/cleo \
+    CLEO_HOME=/app \
     CLEO_CONFIG_PATH=/config/cleo.json \
     CLEO_HARNESSES_CONFIG_PATH=/config/harnesses.json
 
@@ -28,9 +29,10 @@ COPY . .
 RUN python -m pip install --no-cache-dir --no-deps . \
     && mkdir -p /config data/session_artifacts memory/non_productivity/projects \
         memory/productivity/projects workspace /home/cleo/.codex \
-    && chown -R cleo:cleo /app /config /home/cleo
+    && chown -R cleo:cleo /app /config /home/cleo \
+    && cleo --help >/dev/null
 
 USER cleo
 
 STOPSIGNAL SIGINT
-ENTRYPOINT ["python", "/app/main.py"]
+ENTRYPOINT ["cleo"]

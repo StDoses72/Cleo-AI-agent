@@ -35,7 +35,11 @@ Cleo-AI-agent/
   AGENTS.md                       # Human-approved repository instructions
   main.py                         # CLI entry point
   pyproject.toml                  # Python project metadata and dependencies
-  requirements.txt                # Compatibility wrapper that delegates to -e .
+  requirements.txt                # Python 3.12/Linux container dependency lock
+  scripts/
+    install.ps1                   # Windows per-user installer
+    update.ps1                    # Update an existing Windows installation
+    uninstall.ps1                 # Remove the Windows installation
   config/
     settings.py                   # Pydantic settings loader and profile models
     cleo.example.json             # Local config template
@@ -84,7 +88,37 @@ Automatic memory never edits `AGENTS.md` or creates or updates skills.
 
 ## Installation
 
-Python 3.12 or newer is recommended.
+On Windows, run the per-user installer from the repository root. It creates an
+isolated Python runtime under `%LOCALAPPDATA%\Programs\Cleo`, stores
+configuration, sessions, memory, and workspace data under
+`%LOCALAPPDATA%\Cleo`, and adds the `cleo` command to the user `PATH`:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\install.ps1
+```
+
+To migrate local configuration and runtime data from the current checkout,
+copying only files that are missing at the destination:
+
+```powershell
+.\scripts\install.ps1 -MigrateCurrentData
+```
+
+Afterward, run `cleo` from a new terminal. Update or uninstall with:
+
+```powershell
+.\scripts\update.ps1
+.\scripts\uninstall.ps1
+```
+
+Uninstalling preserves `%LOCALAPPDATA%\Cleo` by default. Use
+`.\scripts\uninstall.ps1 -PurgeData` only when you explicitly want to
+permanently remove all local Cleo configuration, sessions, and memory. Codex
+authentication and task history remain in the Codex-managed user directory and
+are not copied into Cleo's data directory.
+
+For source development, Python 3.12 or newer is recommended.
 
 ```bash
 pip install -e .
@@ -123,6 +157,13 @@ Update only the lock file without building the application image:
 
 ```bash
 python scripts/update_project.py --skip-build
+```
+
+If Docker Desktop is temporarily unavailable but local `uv` is installed,
+resolve the lock for the Python 3.12/Linux target with:
+
+```bash
+python scripts/update_project.py --local-resolver --skip-build
 ```
 
 After a local build, Compose mounts the existing `config/cleo.json`; a separate
@@ -321,7 +362,9 @@ Runtime status bars in both Cleo and productivity mode show the active model and
 context window. Cleo uses the active agent profile's `max_tokens` as the configured
 limit and shows actual usage when the compatible service returns usage metadata.
 Codex uses `thread/tokenUsage/updated` directly from the SDK. Until usage is
-available, the bar says `waiting` instead of estimating a percentage.
+available, the bar says `waiting` instead of estimating a percentage. A second
+productivity bar shows reasoning effort, filesystem access, approval behavior,
+and the current Git branch and dirty count.
 
 Interactive mode also accepts `cleo --project <name>`. `/new` keeps the same
 project binding. `--resume` restores the space/project stored in the manifest and
@@ -341,19 +384,29 @@ python main.py --productivity --cwd . "Inspect the current changes and run tests
 python main.py --productivity --resume agent_xxx
 ```
 
-Use `--model` to override `profiles.tools.<name>.codex_model`. Productivity mode
-supports:
+Use `--model` to override the model configured for the harness. Productivity
+mode supports:
 
-- `/cwd`: show the harness working directory.
+- `/cwd`, `/project`, and `/git`: inspect the working directory, project scope,
+  and read-only Git status.
 - `/cd <directory>`: change directory and create a new harness session; relative
   paths are resolved from the current `cwd`.
 - `/resume <agent-id>`: resume a saved productivity session and its native harness context.
-- `/new`, `/sessions`, `/back`, `/quit`, and `/exit`: manage the session or leave the view.
+- `/sessions`: merge Cleo-managed sessions with unmanaged Codex native threads.
+- `/native <native-id>`: browse native Codex history without importing it into
+  Cleo memory.
+- `/resume-native <native-id>`: explicitly attach a native thread to Cleo and continue it.
+- `/model`, `/effort`, `/access`, and `/approval`: inspect or change the next
+  Codex turn's runtime options.
+- `/fork`, `/rename <name>`, `/compact`, and `/archive`: manage the native thread lifecycle.
+- `/account`: show the current Codex account state.
+- `/new`, `/back`, `/quit`, and `/exit`: manage the session or leave the view.
 
 Codex SDK message, tool, terminal, plan, and file-change events stream to the
 console and are normalized into the `productivity` space. CLI completion and the
 Rich presentation layer live in `core/cli.py` and contain no runtime, memory, or
-provider business logic.
+provider business logic. Codex-specific controls remain in the Codex provider;
+the generic adapter keeps the create/resume/prompt/cancel/close data plane.
 
 ## Runtime Files
 
@@ -377,7 +430,8 @@ migration review and tradeoffs.
 
 ## Current Limits
 
-- There is no `/threads` or `/switch <thread_id>` command for freely switching between historical threads yet.
+- Native history currently loads the latest 50 threads; cursor pagination and
+  advanced filters are not exposed in the CLI yet.
 - Current resume is session message event replay, not a full durable LangGraph checkpoint.
 - Historical retrieval currently uses local lexical ranking; uncalibrated vector retrieval is not enabled.
 - `skills/` currently only contains `demo-production`.

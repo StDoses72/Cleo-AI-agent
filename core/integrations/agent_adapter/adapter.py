@@ -7,6 +7,13 @@ from pathlib import Path
 from typing import Any
 
 from core.integrations.agent_adapter.acp import AcpAgentSpec, AcpProvider
+from core.integrations.agent_adapter.control import (
+    HarnessAccount,
+    HarnessModel,
+    NativeSessionDetail,
+    NativeSessionPage,
+    SessionOptions,
+)
 from core.integrations.agent_adapter.models import (
     AgentResult,
     AgentSession,
@@ -57,6 +64,10 @@ class AgentAdapter:
     def register_acp(self, name: str, spec: AcpAgentSpec) -> None:
         self.register(AcpProvider(name=name, spec=spec))
 
+    def provider_control(self, name: str) -> AgentProvider:
+        """Return a provider so richer clients can inspect optional capabilities."""
+        return self._provider(name)
+
     async def create_session(
         self,
         provider: str,
@@ -85,15 +96,18 @@ class AgentAdapter:
     ) -> AgentSession:
         implementation = self._provider(provider)
         resolved_path = self._project_directory(project_path)
-        session = await implementation.resume_session(
-            self._required_text(native_session_id, "native_session_id"),
-            resolved_path,
-            model,
-        )
         stored = self._store.find_by_native_session(
             provider=provider,
             native_session_id=native_session_id,
             space=self._space,
+        )
+        stored_handle = (stored or {}).get("id")
+        if stored_handle in self._sessions:
+            raise ValueError(f"Session {stored_handle} is already active.")
+        session = await implementation.resume_session(
+            self._required_text(native_session_id, "native_session_id"),
+            resolved_path,
+            model,
         )
         return self._add_route(
             implementation,
@@ -193,6 +207,112 @@ class AgentAdapter:
         session = await self.create_session(provider, project_path, model, project)
         return await self.prompt(session.id, prompt, on_event)
 
+    async def list_models(self, provider: str) -> tuple[HarnessModel, ...]:
+        implementation = self._provider(provider)
+        method = self._capability(implementation, "list_models")
+        return await method()
+
+    async def list_native_sessions(
+        self,
+        provider: str,
+        *,
+        limit: int = 50,
+        cursor: str | None = None,
+        archived: bool | None = None,
+        cwd: str | None = None,
+        search_term: str | None = None,
+    ) -> NativeSessionPage:
+        implementation = self._provider(provider)
+        method = self._capability(implementation, "list_native_sessions")
+        return await method(
+            limit=limit,
+            cursor=cursor,
+            archived=archived,
+            cwd=cwd,
+            search_term=search_term,
+        )
+
+    async def read_native_session(
+        self,
+        provider: str,
+        native_session_id: str,
+    ) -> NativeSessionDetail:
+        implementation = self._provider(provider)
+        method = self._capability(implementation, "read_native_session")
+        return await method(self._required_text(native_session_id, "native_session_id"))
+
+    async def account_status(self, provider: str) -> HarnessAccount:
+        implementation = self._provider(provider)
+        method = self._capability(implementation, "account_status")
+        return await method()
+
+    def session_options(self, session_id: str) -> SessionOptions:
+        route = self._route(session_id)
+        method = self._capability(route.provider, "session_options")
+        return method(route.provider_session_id)
+
+    async def update_session_options(
+        self,
+        session_id: str,
+        *,
+        model: str | None = None,
+        effort: str | None = None,
+        approval_mode: str | None = None,
+        sandbox: str | None = None,
+    ) -> SessionOptions:
+        route = self._route(session_id)
+        method = self._capability(route.provider, "update_session_options")
+        options = await method(
+            route.provider_session_id,
+            model=model,
+            effort=effort,
+            approval_mode=approval_mode,
+            sandbox=sandbox,
+        )
+        self._store.update_manifest(session_id, runtime_options=options.as_dict())
+        return options
+
+    async def fork_session(self, session_id: str) -> AgentSession:
+        route = self._route(session_id)
+        method = self._capability(route.provider, "fork_session")
+        forked = await method(route.provider_session_id)
+        return self._add_route(
+            route.provider,
+            forked.id,
+            route.project_path,
+            forked.native_id,
+            project=route.project,
+            parent_session_id=session_id,
+        )
+
+    async def rename_session(self, session_id: str, name: str) -> None:
+        route = self._route(session_id)
+        name = self._required_text(name, "name")
+        method = self._capability(route.provider, "rename_session")
+        await method(route.provider_session_id, name)
+        self._store.update_manifest(session_id, title=name)
+
+    async def compact_session(self, session_id: str) -> None:
+        route = self._route(session_id)
+        method = self._capability(route.provider, "compact_session")
+        await method(route.provider_session_id)
+        self._store.append_event(
+            space=self._space,
+            project=route.project,
+            session_id=session_id,
+            event_type="provider_event",
+            actor=route.provider.name,
+            data={"provider_event_type": "thread/compact", "native": True},
+        )
+        self._store.refresh_compact(session_id)
+
+    async def archive_session(self, session_id: str) -> None:
+        route = self._route(session_id)
+        method = self._capability(route.provider, "archive_session")
+        await method(route.provider_session_id)
+        self._sessions.pop(session_id, None)
+        self._store.set_status(session_id, "archived")
+
     async def cancel(self, session_id: str) -> None:
         route = self._route(session_id)
         await route.provider.cancel(route.provider_session_id)
@@ -227,6 +347,7 @@ class AgentAdapter:
         *,
         project: str | None = None,
         handle: str | None = None,
+        parent_session_id: str | None = None,
     ) -> AgentSession:
         handle = handle or f"agent_{secrets.token_hex(6)}"
         project = project or Path(project_path).name
@@ -248,6 +369,7 @@ class AgentAdapter:
                 owner_type=self._owner_type,
                 native_session_id=native_session_id,
                 cwd=project_path,
+                parent_session_id=parent_session_id,
             )
         else:
             self._store.update_manifest(
@@ -256,6 +378,11 @@ class AgentAdapter:
                 status="active",
                 cwd=project_path,
             )
+        options_method = getattr(provider, "session_options", None)
+        if callable(options_method):
+            options = options_method(provider_session_id)
+            if isinstance(options, SessionOptions):
+                self._store.update_manifest(handle, runtime_options=options.as_dict())
         return AgentSession(
             id=handle,
             provider=provider.name,
@@ -312,6 +439,15 @@ class AgentAdapter:
         if provider is None:
             raise KeyError(f"Unknown agent provider: {name}")
         return provider
+
+    @staticmethod
+    def _capability(provider: AgentProvider, name: str):
+        method = getattr(provider, name, None)
+        if not callable(method):
+            raise NotImplementedError(
+                f"Provider {provider.name!r} does not support {name.replace('_', ' ')}."
+            )
+        return method
 
     def _route(self, session_id: str) -> _SessionRoute:
         session_id = self._required_text(session_id, "session_id")

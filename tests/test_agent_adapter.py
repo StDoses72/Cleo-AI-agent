@@ -11,6 +11,7 @@ from core.integrations.agent_adapter import (
     AgentEvent,
     ProviderSession,
     ProviderTurn,
+    SessionOptions,
 )
 from core.integrations.agent_adapter.acp import _AcpClientHost
 from core.integrations.agent_adapter.codex import CodexProvider, _CodexRuntime
@@ -249,3 +250,123 @@ def test_codex_provider_streams_new_sdk_notifications() -> None:
     assert received[1].data["provider_event_type"] == "item/started"
     assert received[2].type == "status"
     assert received[2].data["provider_event_type"] == "thread/tokenUsage/updated"
+
+
+def test_codex_provider_applies_runtime_options_to_next_turn() -> None:
+    received_kwargs: dict[str, object] = {}
+
+    class FakeTurn:
+        id = "turn-options"
+
+        async def stream(self):
+            yield SimpleNamespace(
+                method="turn/completed",
+                payload=SimpleNamespace(
+                    model_dump=lambda **_kwargs: {
+                        "turn": {"id": self.id, "status": "completed"}
+                    }
+                ),
+            )
+
+    class FakeThread:
+        id = "codex-options"
+
+        async def turn(self, _prompt, **kwargs):
+            received_kwargs.update(kwargs)
+            return FakeTurn()
+
+    provider = CodexProvider(default_model="gpt-default")
+    provider._sessions["session-options"] = _CodexRuntime(
+        client=SimpleNamespace(),
+        thread=FakeThread(),
+        options=SessionOptions(
+            model="gpt-before",
+            approval_mode="deny_all",
+            sandbox="workspace-write",
+        ),
+    )
+
+    async def exercise() -> None:
+        options = await provider.update_session_options(
+            "session-options",
+            model="gpt-after",
+            effort="high",
+            approval_mode="auto_review",
+            sandbox="full-access",
+        )
+        assert options.model == "gpt-after"
+        await provider.prompt("session-options", "continue")
+
+    asyncio.run(exercise())
+
+    assert str(received_kwargs["model"]) == "gpt-after"
+    assert str(received_kwargs["effort"].value) == "high"
+    assert str(received_kwargs["approval_mode"].value) == "auto_review"
+    assert str(received_kwargs["sandbox"].value) == "full-access"
+
+
+def test_agent_adapter_persists_rich_session_controls(tmp_path) -> None:
+    class RichProvider(FakeProvider):
+        def __init__(self) -> None:
+            super().__init__()
+            self.options = SessionOptions(
+                model="gpt-test",
+                approval_mode="deny_all",
+                sandbox="workspace-write",
+            )
+            self.renamed: list[str] = []
+            self.compacted: list[str] = []
+            self.archived: list[str] = []
+
+        def session_options(self, _session_id: str) -> SessionOptions:
+            return self.options
+
+        async def update_session_options(self, _session_id: str, **changes):
+            self.options = SessionOptions(
+                model=changes.get("model") or self.options.model,
+                effort=changes.get("effort") or self.options.effort,
+                approval_mode=changes.get("approval_mode") or self.options.approval_mode,
+                sandbox=changes.get("sandbox") or self.options.sandbox,
+            )
+            return self.options
+
+        async def fork_session(self, _session_id: str) -> ProviderSession:
+            return ProviderSession(id="provider-fork", native_id="native-fork")
+
+        async def rename_session(self, _session_id: str, name: str) -> None:
+            self.renamed.append(name)
+
+        async def compact_session(self, session_id: str) -> None:
+            self.compacted.append(session_id)
+
+        async def archive_session(self, session_id: str) -> None:
+            self.archived.append(session_id)
+
+    provider = RichProvider()
+    adapter = AgentAdapter(tmp_path)
+    adapter.register(provider)
+
+    async def exercise() -> None:
+        session = await adapter.create_session("fake", model="test-model")
+        manifest = adapter._store.load_manifest(session.id)
+        assert manifest["runtime_options"]["model"] == "gpt-test"
+
+        options = await adapter.update_session_options(session.id, effort="high")
+        assert options.effort == "high"
+        assert adapter._store.load_manifest(session.id)["runtime_options"]["effort"] == "high"
+
+        await adapter.rename_session(session.id, "Focused work")
+        assert adapter._store.load_manifest(session.id)["title"] == "Focused work"
+
+        forked = await adapter.fork_session(session.id)
+        assert adapter._store.load_manifest(forked.id)["parent_session_id"] == session.id
+
+        await adapter.compact_session(forked.id)
+        await adapter.archive_session(forked.id)
+        assert adapter._store.load_manifest(forked.id)["status"] == "archived"
+
+    asyncio.run(exercise())
+
+    assert provider.renamed == ["Focused work"]
+    assert provider.compacted == ["provider-fork"]
+    assert provider.archived == ["provider-fork"]

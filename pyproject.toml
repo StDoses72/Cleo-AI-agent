@@ -19,6 +19,7 @@ dependencies = [
   "langgraph",
   "openai-codex>=0.144.4,<0.145",
   "openai-codex-cli-bin==0.144.4",
+  "platformdirs>=4.4,<5",
   "prompt-toolkit>=3.0,<4",
   "pydantic",
   "rich",
@@ -39,6 +40,9 @@ py-modules = ["main"]
 
 [tool.setuptools.packages.find]
 include = ["config*", "core*", "tools*", "mcp_servers*"]
+
+[tool.setuptools.package-data]
+config = ["cleo.example.json", "harnesses.example.json"]
 
 [tool.ruff]
 line-length = 100
