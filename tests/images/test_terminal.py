@@ -102,6 +102,31 @@ def test_fully_transparent_startup_image_uses_safe_fallback(tmp_path) -> None:
     assert render_startup_art(image_path=image_path).plain == "◇"
 
 
+def test_startup_status_keeps_each_field_on_one_line() -> None:
+    for width in (88, 100, 120, 134):
+        output = StringIO()
+        console = Console(
+            file=output,
+            color_system=None,
+            force_terminal=False,
+            width=width,
+        )
+        cli = CleoCLI(console)
+
+        console.print(
+            cli._startup_status(
+                "local-0358db624610",
+                "general",
+                "kimi-k2.6",
+            )
+        )
+
+        rendered = output.getvalue()
+        assert len(rendered.splitlines()) == 1
+        if width >= 100:
+            assert "local-0358db624610" in rendered
+
+
 def test_cli_prefers_native_terminal_image_when_available(monkeypatch) -> None:
     output = StringIO()
     console = Console(

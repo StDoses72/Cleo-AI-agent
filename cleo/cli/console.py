@@ -160,15 +160,15 @@ class CleoCLI:
             (self._short_id(model, width=24), "white"),
         )
         if self.console.size.width < 88:
-            status.add_column(ratio=1, overflow="ellipsis")
-            status.add_column(ratio=1, overflow="ellipsis")
+            status.add_column(ratio=1, overflow="ellipsis", no_wrap=True)
+            status.add_column(ratio=1, overflow="ellipsis", no_wrap=True)
             status.add_row(memory, project_status)
             status.add_row(thread, model_status)
         else:
-            status.add_column(ratio=2, overflow="ellipsis")
-            status.add_column(ratio=2, overflow="ellipsis")
-            status.add_column(ratio=2, overflow="ellipsis")
-            status.add_column(ratio=3, overflow="ellipsis")
+            status.add_column(ratio=2, overflow="ellipsis", no_wrap=True)
+            status.add_column(ratio=2, overflow="ellipsis", no_wrap=True)
+            status.add_column(ratio=3, overflow="ellipsis", no_wrap=True)
+            status.add_column(ratio=2, overflow="ellipsis", no_wrap=True)
             status.add_row(memory, project_status, thread, model_status)
         return status
 
