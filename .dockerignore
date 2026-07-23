@@ -2,6 +2,7 @@
 .gitattributes
 .agents
 .codex
+.codex-test-*
 .venv
 .venv-*
 __pycache__
