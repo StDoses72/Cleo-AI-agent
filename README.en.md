@@ -15,7 +15,7 @@ Chinese version: [README.md](README.md)
 
 - One-shot messages through `cleo "..."` or `python main.py "..."`.
 - Interactive chat through `cleo` or `python main.py`.
-- API-backed model profiles loaded from the active agent profile in `config/cleo.json`.
+- Independently selected API-backed agent profiles for foreground Cleo and DreamAgent.
 - Pydantic settings in `cleo/config/settings.py` for agent, directory, shell, and tools profiles.
 - Image attachments in interactive chat through `/attach`; JPEG, PNG, WebP, and GIF are supported.
 - Append-only session events with an atomically updated manifest after each completed turn.
@@ -278,6 +278,7 @@ default template and asks you to fill in real profile settings.
 {
 	"active_profiles": {
 		"agent": "moonshot_openai_compatible",
+		"dream_agent": "moonshot_openai_compatible",
 		"directory": "default",
 		"shell": "default",
 		"tools": "default"
@@ -330,10 +331,13 @@ default template and asks you to fill in real profile settings.
 ```
 
 `active_profiles` stores the selected profile names. `profiles` stores all
-available profile definitions. Pydantic validates the JSON, and the runtime code
-uses `settings.active_agent_profile`, `settings.active_directory_profile`,
-`settings.active_shell_profile`, and `settings.active_tools_profile` to access
-the active configuration.
+available profile definitions. `agent` selects the foreground Cleo profile,
+while `dream_agent` independently selects a profile from `profiles.agents` for
+background consolidation. Legacy configurations that omit `dream_agent` fall
+back to `agent`. Pydantic validates the JSON, and the runtime code uses
+`settings.active_agent_profile`, `settings.active_dream_agent_profile`,
+`settings.active_directory_profile`, `settings.active_shell_profile`, and
+`settings.active_tools_profile` to access the active configuration.
 
 Productivity harnesses are registered from the separate
 `config/harnesses.json`. `default_provider` selects the harness used when

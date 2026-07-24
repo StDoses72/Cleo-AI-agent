@@ -13,7 +13,7 @@ LangChain 构建，通过 API 调用语言模型。Cleo 把配置、会话状态
 
 - one-shot message：通过 `cleo "..."` 或 `python main.py "..."` 发送一次性消息。
 - interactive chat：直接运行 `cleo` 或 `python main.py` 进入交互式聊天。
-- API-backed model profile：使用 `config/cleo.json` 中的 active agent profile 初始化 LangChain 模型。
+- API-backed model profile：前台 Cleo 与 DreamAgent 可从 `config/cleo.json` 独立选择 agent profile。
 - Pydantic settings：`cleo/config/settings.py` 用 Pydantic 校验 agent、directory、shell、tools 四类 profile。
 - image attach：交互中使用 `/attach` 为下一条消息附加图片，支持 JPEG、PNG、WebP 和 GIF。
 - session event log：每轮结束后向 `events.jsonl` 增量追加规范事件，并原子更新 `manifest.json`。
@@ -260,6 +260,7 @@ copy cleo\config\templates\harnesses.example.json config\harnesses.json
 {
 	"active_profiles": {
 		"agent": "moonshot_openai_compatible",
+		"dream_agent": "moonshot_openai_compatible",
 		"directory": "default",
 		"shell": "default",
 		"tools": "default"
@@ -312,7 +313,9 @@ copy cleo\config\templates\harnesses.example.json config\harnesses.json
 ```
 
 `active_profiles` 只保存当前选择的 profile 名称；`profiles` 保存所有候选 profile。
-代码通过 Pydantic 校验配置，再通过 `settings.active_agent_profile`、
+`agent` 服务前台 Cleo，`dream_agent` 为后台记忆整理独立选择 `profiles.agents` 中的
+profile。旧配置省略 `dream_agent` 时会回退到 `agent`。代码通过 Pydantic 校验配置，
+再通过 `settings.active_agent_profile`、`settings.active_dream_agent_profile`、
 `settings.active_directory_profile`、`settings.active_shell_profile` 和
 `settings.active_tools_profile` 取得当前生效配置。
 

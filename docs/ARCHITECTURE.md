@@ -255,6 +255,9 @@ validated compact
 两个 space 使用不同提取重点：non-productivity 偏向用户事实、偏好、目标与纠正；
 productivity 偏向任务目标、技术决策、改动文件、测试结果、错误、产物和未完成事项。
 
+DreamAgent 使用 `active_profiles.dream_agent` 独立选择 `profiles.agents` 中的模型配置。
+旧配置未设置该字段时回退到前台 `active_profiles.agent`。
+
 自动 consolidation 不会修改 `AGENTS.md`，也不会创建或更新 skill。
 
 ## Runtime State

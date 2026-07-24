@@ -286,6 +286,7 @@ class ActiveProfiles(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     agent: str
+    dream_agent: str | None = None
     directory: str = "default"
     shell: str = "default"
     tools: str = "default"
@@ -314,6 +315,11 @@ class SettingsModel(BaseModel):
         missing: list[str] = []
         if self.active_profiles.agent not in self.profiles.agents:
             missing.append(f"agent:{self.active_profiles.agent}")
+        if (
+            self.active_profiles.dream_agent is not None
+            and self.active_profiles.dream_agent not in self.profiles.agents
+        ):
+            missing.append(f"dream_agent:{self.active_profiles.dream_agent}")
         if self.active_profiles.directory not in self.profiles.directories:
             missing.append(f"directory:{self.active_profiles.directory}")
         if self.active_profiles.shell not in self.profiles.shell:
@@ -327,6 +333,11 @@ class SettingsModel(BaseModel):
     @property
     def active_agent_profile(self) -> AgentProfile:
         return self.profiles.agents[self.active_profiles.agent]
+
+    @property
+    def active_dream_agent_profile(self) -> AgentProfile:
+        profile_name = self.active_profiles.dream_agent or self.active_profiles.agent
+        return self.profiles.agents[profile_name]
 
     @property
     def active_directory_profile(self) -> DirectoryProfile:
@@ -433,6 +444,7 @@ def _default_config() -> dict[str, Any]:
     return {
         "active_profiles": {
             "agent": "moonshot_openai_compatible",
+            "dream_agent": "moonshot_openai_compatible",
             "directory": "default",
             "shell": "default",
             "tools": "default",

@@ -253,6 +253,10 @@ Non-productivity consolidation emphasizes user facts, preferences, goals, and
 corrections. Productivity consolidation emphasizes task intent, technical
 decisions, changed files, tests, errors, artifacts, and unfinished work.
 
+DreamAgent independently selects a model profile from `profiles.agents` through
+`active_profiles.dream_agent`. Legacy configurations fall back to the foreground
+`active_profiles.agent` selection when this field is absent.
+
 Automatic consolidation never edits `AGENTS.md` and never creates or updates a
 skill.
 

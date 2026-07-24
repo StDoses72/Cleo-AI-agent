@@ -55,13 +55,11 @@ Core principles:
   completion tool accepts the source hash.
 """.strip()
 
-active_profile = settings.active_agent_profile
-
-
 class DreamAgent:
     """Consolidate validated session projections into project memory."""
 
     def __init__(self, system_prompt: str = DREAM_AGENT_SYSTEM_PROMPT) -> None:
+        active_profile = settings.active_dream_agent_profile
         self.root_dir = Path(__file__).resolve().parents[2]
         self.toolist = [
             read_compact_memory,
