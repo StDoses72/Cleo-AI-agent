@@ -1,4 +1,5 @@
 import asyncio
+from types import SimpleNamespace
 
 from langchain_core.messages import AIMessageChunk
 
@@ -33,3 +34,36 @@ def test_agent_stream_text_uses_async_graph_streaming() -> None:
     assert asyncio.run(collect()) == ["hello", " world"]
     assert agent.context_usage.used_tokens == 150
     assert agent.context_usage.ratio == 0.15
+
+
+def test_agent_backend_uses_configured_application_root(tmp_path, monkeypatch) -> None:
+    import cleo.agents.cleo as agent_module
+
+    (tmp_path / "skills" / "demo").mkdir(parents=True)
+    (tmp_path / "memory").mkdir()
+    (tmp_path / "memory" / "MEMORY_POLICY.md").write_text(
+        "# Memory Policy\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "workspace").mkdir()
+
+    monkeypatch.setattr(
+        agent_module,
+        "settings",
+        SimpleNamespace(
+            active_directory_profile=SimpleNamespace(root_path=tmp_path),
+        ),
+    )
+    monkeypatch.setattr(agent_module, "init_chat_model", lambda **_kwargs: object())
+    monkeypatch.setattr(
+        agent_module,
+        "create_deep_agent",
+        lambda **_kwargs: SimpleNamespace(),
+    )
+
+    agent = agent_module.Agent()
+
+    assert agent.root_dir == tmp_path
+    assert agent.backend.ls("/skills").error is None
+    assert agent.backend.read("/memory/MEMORY_POLICY.md").error is None
+    assert agent.backend.ls("/workspace").error is None

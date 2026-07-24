@@ -1,5 +1,4 @@
 from collections.abc import AsyncIterator, Mapping
-from pathlib import Path
 from typing import Any
 
 from deepagents import create_deep_agent
@@ -82,7 +81,7 @@ class Agent:
         project: str = "general",
         space: str = DEFAULT_MEMORY_SPACE,
     ) -> None:
-        self.root_dir = Path(__file__).resolve().parents[2]
+        self.root_dir = settings.active_directory_profile.root_path
         self.project = project
         self.space = space
         self.model_name = active_profile.model
