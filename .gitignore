@@ -6,6 +6,9 @@ __pycache__/
 .venv/
 .venv-*/
 
+# Local uv resolution; this project locks deploy dependencies in requirements.txt.
+/uv.lock
+
 # Python packaging outputs.
 /build/
 /dist/
