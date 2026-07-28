@@ -21,6 +21,7 @@ from langchain_core.messages import (
 from cleo.cli.context import clear_screen, cli
 from cleo.cli.lifecycle import _run_dream_agent, _sync_session_events
 from cleo.cli.productivity import _run_productivity_mode, _slash_command_argument
+from cleo.memory.paths import DEFAULT_MEMORY_SPACE
 
 if TYPE_CHECKING:
     from cleo.agents import Agent
@@ -50,8 +51,8 @@ def _render_chat_header(agent: Agent, runtime: Runtime, thread_id: str) -> None:
     cli.render_chat_header(
         thread_id,
         runtime.current_project or "general",
-        model=str(getattr(agent, "model_name", "unknown")),
-        context_usage=getattr(agent, "context_usage", None),
+        model=agent.model_name,
+        context_usage=agent.context_usage,
     )
 
 
@@ -130,8 +131,8 @@ async def _print_streaming_reply(
         cli.stream_assistant(text)
     cli.end_assistant(received=received_text)
     cli.render_runtime_status(
-        str(getattr(agent, "model_name", "unknown")),
-        getattr(agent, "context_usage", None),
+        agent.model_name,
+        agent.context_usage,
         accent="cyan",
     )
 
@@ -174,7 +175,7 @@ async def _run_chat_loop(
     cli.render_startup_splash(
         thread_id,
         runtime.current_project or "general",
-        model=str(getattr(agent, "model_name", "unknown")),
+        model=agent.model_name,
     )
     _render_chat_header(agent, runtime, thread_id)
     if restored_messages:
@@ -187,8 +188,8 @@ async def _run_chat_loop(
             message = await asyncio.to_thread(
                 cli.prompt,
                 "chat",
-                sessions=store.list_sessions(space="non_productivity"),
-                projects=tuple(runtime.projects_for("non_productivity")),
+                sessions=store.list_sessions(space=DEFAULT_MEMORY_SPACE),
+                projects=tuple(runtime.projects_for(DEFAULT_MEMORY_SPACE)),
             )
 
         except EOFError:
@@ -199,6 +200,7 @@ async def _run_chat_loop(
                 thread_id,
                 restored_messages,
                 status="interrupted",
+                store=store,
             )
             runtime.update_runtime_json()
             break
@@ -211,6 +213,7 @@ async def _run_chat_loop(
                 thread_id,
                 restored_messages,
                 status="interrupted",
+                store=store,
             )
             runtime.update_runtime_json()
             break
@@ -225,6 +228,7 @@ async def _run_chat_loop(
                 thread_id,
                 restored_messages,
                 status="completed",
+                store=store,
             )
             await _run_dream_agent(
                 thread_id,
@@ -243,6 +247,7 @@ async def _run_chat_loop(
                 thread_id,
                 restored_messages,
                 status="completed",
+                store=store,
             )
             thread_id = _new_thread_id()
             restored_messages = None
@@ -265,6 +270,7 @@ async def _run_chat_loop(
                     thread_id,
                     restored_messages,
                     status="active",
+                    store=store,
                 )
                 renamed = store.rename_session(thread_id, title)
             except (FileNotFoundError, OSError, ValueError) as exc:
@@ -275,11 +281,11 @@ async def _run_chat_loop(
 
         if message == "/project" or message.startswith("/project "):
             project_argument = _slash_command_argument(message, "/project")
-            known_projects = runtime.projects_for("non_productivity")
+            known_projects = runtime.projects_for(DEFAULT_MEMORY_SPACE)
             if not project_argument:
                 current_project = runtime.current_project or "general"
                 project_sessions = store.list_sessions(
-                    space="non_productivity",
+                    space=DEFAULT_MEMORY_SPACE,
                     project=current_project,
                 )
                 if not any(row.get("id") == thread_id for row in project_sessions):
@@ -319,7 +325,7 @@ async def _run_chat_loop(
                 try:
                     moved_agent = Agent(
                         project=target_project,
-                        space="non_productivity",
+                        space=DEFAULT_MEMORY_SPACE,
                     )
                     await _sync_session_events(
                         agent,
@@ -327,6 +333,7 @@ async def _run_chat_loop(
                         thread_id,
                         restored_messages,
                         status="active",
+                        store=store,
                     )
                     moved_messages = store.load_langchain_messages(thread_id)
                     store.move_session(thread_id, target_project)
@@ -337,7 +344,7 @@ async def _run_chat_loop(
                 created = target_project not in known_projects
                 agent = moved_agent
                 restored_messages = moved_messages
-                runtime.update_current_space("non_productivity")
+                runtime.update_current_space(DEFAULT_MEMORY_SPACE)
                 runtime.update_current_project(target_project)
                 runtime.update_current_thread_id(thread_id)
                 runtime.update_runtime_json()
@@ -364,7 +371,7 @@ async def _run_chat_loop(
             try:
                 next_agent = Agent(
                     project=next_project,
-                    space="non_productivity",
+                    space=DEFAULT_MEMORY_SPACE,
                 )
             except Exception as exc:
                 cli.error(f"Unable to open project {next_project!r}: {exc}")
@@ -377,16 +384,18 @@ async def _run_chat_loop(
                 thread_id,
                 restored_messages,
                 status="completed",
+                store=store,
             )
             try:
                 completed_manifest = store.load_manifest(thread_id)
-            except (FileNotFoundError, KeyError, OSError, ValueError):
-                completed_manifest = {}
-            if int(completed_manifest.get("last_event_seq", 0)) > 0:
+                last_event_seq = int(completed_manifest.get("last_event_seq", 0))
+            except (FileNotFoundError, KeyError, OSError, TypeError, ValueError):
+                last_event_seq = 0
+            if last_event_seq > 0:
                 await _run_dream_agent(
                     thread_id,
                     previous_project,
-                    "non_productivity",
+                    DEFAULT_MEMORY_SPACE,
                 )
 
             created = next_project not in known_projects
@@ -394,7 +403,7 @@ async def _run_chat_loop(
             thread_id = _new_thread_id()
             restored_messages = None
             attachment_list = []
-            runtime.update_current_space("non_productivity")
+            runtime.update_current_space(DEFAULT_MEMORY_SPACE)
             runtime.update_current_project(next_project)
             runtime.update_current_thread_id(thread_id)
             runtime.update_runtime_json()
@@ -415,7 +424,7 @@ async def _run_chat_loop(
             try:
                 manifest = store.load_manifest(resume_id)
                 if (
-                    manifest["space"] != "non_productivity"
+                    manifest["space"] != DEFAULT_MEMORY_SPACE
                     or manifest["provider"] != "cleo"
                 ):
                     raise ValueError(f"Session {resume_id} is not a Cleo chat thread.")
@@ -425,7 +434,7 @@ async def _run_chat_loop(
 
                 resumed_agent = Agent(
                     project=saved_project,
-                    space="non_productivity",
+                    space=DEFAULT_MEMORY_SPACE,
                 )
             except (FileNotFoundError, KeyError, OSError, ValueError) as exc:
                 cli.error(f"Unable to resume {resume_id}: {exc}")
@@ -437,15 +446,16 @@ async def _run_chat_loop(
                 thread_id,
                 restored_messages,
                 status="completed",
+                store=store,
             )
             agent = resumed_agent
             thread_id = resume_id
             restored_messages = loaded_messages
             attachment_list = []
-            runtime.update_current_space("non_productivity")
+            runtime.update_current_space(DEFAULT_MEMORY_SPACE)
             runtime.update_current_project(saved_project)
             runtime.update_current_thread_id(thread_id)
-            runtime.append_recent_threads(thread_id, "non_productivity")
+            runtime.append_recent_threads(thread_id, DEFAULT_MEMORY_SPACE)
             runtime.update_runtime_json()
             clear_screen()
             _render_chat_header(agent, runtime, thread_id)
@@ -490,7 +500,7 @@ async def _run_chat_loop(
                     settings,
                     return_to_chat=True,
                 )
-            except (Exception, SystemExit) as exc:
+            except Exception as exc:
                 cli.error(f"Unable to open productivity mode: {exc}")
             finally:
                 runtime.update_current_space(saved_space)
@@ -538,7 +548,7 @@ async def _run_chat_loop(
             )
             restored_messages = None
             attachment_list = []
-            await _sync_session_events(agent, runtime, thread_id, status="active")
+            await _sync_session_events(agent, runtime, thread_id, status="active", store=store)
         except KeyboardInterrupt:
             cli.console.print()
             cli.warning("Chat interrupted by user. Exiting.")
@@ -548,6 +558,7 @@ async def _run_chat_loop(
                 thread_id,
                 restored_messages,
                 status="interrupted",
+                store=store,
             )
             runtime.update_runtime_json()
             break

@@ -13,6 +13,11 @@ import cleo.cli.productivity as productivity_cli
 from cleo.harnesses import AgentSession
 
 
+def _fake_chat_agent() -> SimpleNamespace:
+    """Provide the minimal Agent surface used by the chat loop rendering."""
+    return SimpleNamespace(model_name="fake-model", context_usage=None)
+
+
 def test_main_routes_productivity_mode(tmp_path, monkeypatch) -> None:
     import cleo.config.settings as settings_module
     import cleo.runtime.state as runtime_module
@@ -140,7 +145,7 @@ def test_chat_productivity_command_restores_cleo_context(tmp_path, monkeypatch) 
 
     asyncio.run(
         chat_cli._run_chat_loop(
-            SimpleNamespace(),
+            _fake_chat_agent(),
             runtime,
             "cleo-thread",
         )
@@ -265,6 +270,9 @@ def test_chat_resume_command_switches_to_saved_thread(monkeypatch) -> None:
     created_agents: list[tuple[str, str]] = []
 
     class FakeAgent:
+        model_name = "fake-model"
+        context_usage = None
+
         def __init__(self, *, project, space):
             created_agents.append((project, space))
 
@@ -286,7 +294,7 @@ def test_chat_resume_command_switches_to_saved_thread(monkeypatch) -> None:
     runtime = FakeRuntime()
     asyncio.run(
         chat_cli._run_chat_loop(
-            SimpleNamespace(),
+            _fake_chat_agent(),
             runtime,
             "local-current",
             store=FakeStore(),
@@ -342,6 +350,9 @@ def test_chat_project_command_creates_scoped_thread(monkeypatch) -> None:
     created_agents: list[tuple[str, str]] = []
 
     class FakeAgent:
+        model_name = "fake-model"
+        context_usage = None
+
         def __init__(self, *, project, space):
             created_agents.append((project, space))
 
@@ -364,7 +375,7 @@ def test_chat_project_command_creates_scoped_thread(monkeypatch) -> None:
     runtime = FakeRuntime()
     asyncio.run(
         chat_cli._run_chat_loop(
-            SimpleNamespace(),
+            _fake_chat_agent(),
             runtime,
             "local-current",
             store=FakeStore(),
@@ -449,6 +460,9 @@ def test_chat_can_rename_and_move_current_thread(monkeypatch) -> None:
     created_agents: list[tuple[str, str]] = []
 
     class FakeAgent:
+        model_name = "fake-model"
+        context_usage = None
+
         def __init__(self, *, project, space):
             created_agents.append((project, space))
 
@@ -464,7 +478,7 @@ def test_chat_can_rename_and_move_current_thread(monkeypatch) -> None:
     synced: list[tuple[str, object, str]] = []
     rendered: list[tuple[str, list[dict], str]] = []
 
-    async def fake_sync(_agent, _runtime, thread_id, fallback=None, *, status):
+    async def fake_sync(_agent, _runtime, thread_id, fallback=None, *, status, **_kwargs):
         synced.append((thread_id, fallback, status))
 
     monkeypatch.setattr(agent_module, "Agent", FakeAgent)
@@ -488,7 +502,7 @@ def test_chat_can_rename_and_move_current_thread(monkeypatch) -> None:
     store = FakeStore()
     asyncio.run(
         chat_cli._run_chat_loop(
-            SimpleNamespace(),
+            _fake_chat_agent(),
             runtime,
             "local-current",
             store=store,

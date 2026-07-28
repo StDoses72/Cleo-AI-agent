@@ -27,6 +27,24 @@ HARNESSES_TEMPLATE_PATH = (
 )
 
 
+def _has_other_operations(args: argparse.Namespace, allowed: str) -> bool:
+    """判断除 ``allowed`` 指定的 flag 外是否还传入了其他操作参数。
+
+    参数:
+        args: ``parser.parse_args()`` 的结果,来源: :func:`amain` 的参数解析。
+        allowed: 本次唯一允许的操作 flag 名(如 ``"print_config_template"``)。
+
+    返回值:
+        bool。被 :func:`amain` 用于模板打印与 ``--reset-to-main`` 三类
+        互斥校验,替代原先三段逐字段复制的 ``if`` 链。
+    """
+    return any(
+        value not in (None, False)
+        for name, value in vars(args).items()
+        if name != allowed
+    )
+
+
 async def amain() -> None:
     """Cleo CLI 的异步顶层入口:解析 argparse 参数并分发到对应的运行模式。
 
@@ -111,21 +129,8 @@ async def amain() -> None:
 
     args = parser.parse_args()
 
-    if args.print_config_template and args.print_harnesses_template:
-        raise SystemExit("Choose only one config template to print.")
-
     if args.print_config_template:
-        if (
-            args.message is not None
-            or args.thread_id is not None
-            or args.resume_id is not None
-            or args.reset_to_main
-            or args.project is not None
-            or args.productivity
-            or args.provider is not None
-            or args.cwd is not None
-            or args.model is not None
-        ):
+        if _has_other_operations(args, "print_config_template"):
             raise SystemExit(
                 "--print-config-template cannot be combined with other operations."
             )
@@ -133,17 +138,7 @@ async def amain() -> None:
         return
 
     if args.print_harnesses_template:
-        if (
-            args.message is not None
-            or args.thread_id is not None
-            or args.resume_id is not None
-            or args.reset_to_main
-            or args.project is not None
-            or args.productivity
-            or args.provider is not None
-            or args.cwd is not None
-            or args.model is not None
-        ):
+        if _has_other_operations(args, "print_harnesses_template"):
             raise SystemExit(
                 "--print-harnesses-template cannot be combined with other operations."
             )
@@ -151,17 +146,7 @@ async def amain() -> None:
         return
 
     if args.reset_to_main:
-        if (
-            args.message is not None
-            or args.thread_id is not None
-            or args.resume_id is not None
-            or args.project is not None
-            or args.productivity
-            or args.provider is not None
-            or args.cwd is not None
-            or args.model is not None
-            or args.print_harnesses_template
-        ):
+        if _has_other_operations(args, "reset_to_main"):
             raise SystemExit("--reset-to-main cannot be combined with chat or thread arguments.")
         try:
             reset_workspace_to_main(SOURCE_ROOT)
@@ -177,6 +162,7 @@ async def amain() -> None:
         raise SystemExit("--provider, --cwd, and --model require --productivity.")
 
     from cleo.config.settings import settings
+    from cleo.memory.paths import DEFAULT_MEMORY_SPACE
     from cleo.runtime.state import Runtime
     from cleo.sessions.store import SessionStore
 
@@ -188,10 +174,10 @@ async def amain() -> None:
 
     unfinished_thread_id = (
         runtime.current_thread_id
-        if runtime.current_space == "non_productivity"
+        if runtime.current_space == DEFAULT_MEMORY_SPACE
         else None
     )
-    runtime.update_current_space("non_productivity")
+    runtime.update_current_space(DEFAULT_MEMORY_SPACE)
     if args.project is not None:
         runtime.update_current_project(args.project)
     loaded_messages: list[BaseMessage] | None = None
@@ -260,64 +246,34 @@ async def amain() -> None:
     )
     if args.message is not None:
         _render_chat_header(agent, runtime, thread_id)
-    if args.resume_id is not None:
-        if args.message is None:
-            await _run_chat_loop(
-                agent,
-                runtime,
-                thread_id=thread_id,
-                restored_messages=loaded_messages,
-                store=store,
-            )
-        else:
-            await _print_streaming_reply(
-                agent,
-                args.message,
-                thread_id,
-                loaded_info=loaded_messages,
-            )
-            await _sync_session_events(
-                agent,
-                runtime,
-                thread_id,
-                loaded_messages,
-                status="completed",
-            )
-            await _run_dream_agent(
-                thread_id,
-                runtime.current_project,
-                runtime.current_space,
-            )
-        return
+    if args.message is None:
+        await _run_chat_loop(
+            agent,
+            runtime,
+            thread_id=thread_id,
+            restored_messages=loaded_messages,
+            store=store,
+        )
     else:
-        if args.message is None:
-            await _run_chat_loop(
-                agent,
-                runtime,
-                thread_id,
-                restored_messages=loaded_messages,
-                store=store,
-            )
-        else:
-            await _print_streaming_reply(
-                agent,
-                args.message,
-                thread_id,
-                loaded_info=loaded_messages,
-            )
-            await _sync_session_events(
-                agent,
-                runtime,
-                thread_id,
-                loaded_messages,
-                status="completed",
-            )
-            await _run_dream_agent(
-                thread_id,
-                runtime.current_project,
-                runtime.current_space,
-            )
-        return
+        await _print_streaming_reply(
+            agent,
+            args.message,
+            thread_id,
+            loaded_info=loaded_messages,
+        )
+        await _sync_session_events(
+            agent,
+            runtime,
+            thread_id,
+            loaded_messages,
+            status="completed",
+            store=store,
+        )
+        await _run_dream_agent(
+            thread_id,
+            runtime.current_project,
+            runtime.current_space,
+        )
 
 
 def main() -> None:
