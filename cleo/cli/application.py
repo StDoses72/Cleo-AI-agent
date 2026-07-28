@@ -17,7 +17,7 @@ from cleo.cli.chat import (
 )
 from cleo.cli.context import clear_screen, cli
 from cleo.cli.lifecycle import _run_dream_agent, _sync_session_events
-from cleo.cli.productivity import _run_productivity_mode
+from cleo.cli.productivity import ProductivityStartupError, _run_productivity_mode
 from cleo.cli.workspace import reset_workspace_to_main
 
 SOURCE_ROOT = Path(__file__).resolve().parents[2]
@@ -169,7 +169,10 @@ async def amain() -> None:
     runtime = Runtime()
     store = SessionStore(settings.MEMORY_DIR, settings.SESSION_INDEX_PATH)
     if args.productivity:
-        await _run_productivity_mode(args, runtime, store, settings)
+        try:
+            await _run_productivity_mode(args, runtime, store, settings)
+        except ProductivityStartupError as exc:
+            raise SystemExit(str(exc)) from exc
         return
 
     unfinished_thread_id = (

@@ -223,7 +223,10 @@ class SessionStore:
         )
         self._lock = RLock()
         self._index_ready = False
-        self._event_id_cache: dict[str, tuple[int | None, set[str]]] = {}
+        self._event_id_cache: dict[
+            str,
+            tuple[tuple[int, int, int] | None, set[str]],
+        ] = {}
         self._ensure_index()
 
     def create_session(
@@ -439,9 +442,9 @@ class SessionStore:
     ) -> list[dict[str, Any]]:
         """批量追加事件到 events.jsonl(按 id 幂等去重), 并同步 manifest 与索引。
 
-        已持久化事件的 id 集合经 _cached_event_ids 按 events 文件 mtime
-        缓存复用, 避免每次追加都全量重读 events.jsonl; 文件被外部写入
-        导致 mtime 变化时自动重读, 正确性优先。
+        已持久化事件的 id 集合经 _cached_event_ids 按 events 文件元数据
+        签名缓存复用,避免每次追加都全量重读 events.jsonl;文件被外部写入
+        导致 mtime/ctime/size 变化时自动重读。
 
         参数(keyword-only):
             space / project / session_id: 事件归属, 必须与 manifest 一致,
@@ -500,9 +503,14 @@ class SessionStore:
                     for event in appended:
                         stream.write(json.dumps(event, ensure_ascii=False, default=str) + "\n")
                     stream.flush()
+                output_stat = output_path.stat()
                 self._event_id_cache[session_id] = (
-                    output_path.stat().st_mtime_ns,
-                    existing_ids,
+                    (
+                        output_stat.st_mtime_ns,
+                        output_stat.st_ctime_ns,
+                        output_stat.st_size,
+                    ),
+                    set(existing_ids),
                 )
                 manifest["last_event_seq"] = appended[-1]["seq"]
                 if not manifest.get("title"):
@@ -544,28 +552,33 @@ class SessionStore:
         return load_events(path) if path.exists() else []
 
     def _cached_event_ids(self, session_id: str, path: Path) -> set[str]:
-        """返回会话已持久化事件的 id 集合(按 events 文件 mtime 缓存失效)。
+        """返回会话已持久化事件 id 的隔离副本(按文件元数据缓存失效)。
 
         参数:
             session_id / path: 会话 id 与其 events.jsonl 路径, 来自
                 append_events(事件 id 去重)。
         返回:
-            与缓存共享同一对象的 id 集合, 供 append_events 在持有 _lock
-            时原地 add 新事件 id; 仅当文件 mtime 与缓存一致时复用缓存,
-            多进程/跨实例写入导致 mtime 变化时自动全量重读(正确性优先),
-            文件不存在时以 mtime None 缓存空集合。
+            id 集合副本,供 append_events 安全地加入待写事件 id;写入失败
+            不会污染缓存。仅当文件 mtime_ns、ctime_ns 与 size 均和缓存一致
+            时复用缓存,多进程/跨实例写入后自动全量重读;文件不存在时以
+            None 签名缓存空集合。
         """
-        mtime_ns = path.stat().st_mtime_ns if path.exists() else None
+        stat = path.stat() if path.exists() else None
+        signature = (
+            (stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size)
+            if stat is not None
+            else None
+        )
         cached = self._event_id_cache.get(session_id)
-        if cached is not None and cached[0] == mtime_ns:
-            return cached[1]
+        if cached is not None and cached[0] == signature:
+            return set(cached[1])
         ids = {
             str(event.get("id"))
             for event in (load_events(path) if path.exists() else [])
             if event.get("id")
         }
-        self._event_id_cache[session_id] = (mtime_ns, ids)
-        return ids
+        self._event_id_cache[session_id] = (signature, ids)
+        return set(ids)
 
     def sync_langchain_messages(
         self,

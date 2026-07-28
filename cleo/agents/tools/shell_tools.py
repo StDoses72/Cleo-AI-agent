@@ -25,6 +25,37 @@ VIRTUAL_PROJECT_PREFIXES = {
     "/tools": "tools",
 }
 
+# Characters that mean a slash-prefixed value is embedded in another path or
+# identifier rather than starting a virtual Cleo path.  Keeping this explicit
+# avoids treating URLs, drive-prefixed paths, and names such as
+# ``prefix/workspace`` as virtual paths.
+_VIRTUAL_PATH_LEFT_EMBEDDING_CHARS = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./:\\-"
+)
+_VIRTUAL_PATH_RIGHT_BOUNDARIES = frozenset(
+    "/\\ \t\r\n'\"`|;&<>()[]{};,"
+)
+
+
+def _virtual_path_mappings() -> tuple[tuple[str, Path], ...]:
+    """构造虚拟路径前缀到当前 shell sandbox 实际路径的映射。
+
+    无参数。路径根在每次调用时从 ``settings.SHELL_SANDBOX_ROOT`` 读取,
+    因而测试或运行时 profile 切换后不会复用过期路径。
+
+    返回值:
+        ``(virtual_prefix, real_path)`` 元组序列;由
+        :func:`_translate_virtual_path` 与
+        :func:`_translate_virtual_paths_in_command` 共用。
+    """
+    return (
+        (VIRTUAL_WORKSPACE_PREFIX, settings.SHELL_SANDBOX_ROOT),
+        *(
+            (virtual_prefix, settings.SHELL_SANDBOX_ROOT / real_child)
+            for virtual_prefix, real_child in VIRTUAL_PROJECT_PREFIXES.items()
+        ),
+    )
+
 
 def _append_shell_audit(record: dict) -> None:
     """追加一条 shell 审计记录到 JSONL 日志, 失败静默忽略。
@@ -97,14 +128,7 @@ def _translate_virtual_path(value: str) -> str:
         return value
 
     normalized = value.replace("\\", "/")
-    mappings: list[tuple[str, Path]] = [
-        (VIRTUAL_WORKSPACE_PREFIX, settings.SHELL_SANDBOX_ROOT),
-        *(
-            (virtual_prefix, settings.SHELL_SANDBOX_ROOT / real_child)
-            for virtual_prefix, real_child in VIRTUAL_PROJECT_PREFIXES.items()
-        ),
-    ]
-    for virtual_prefix, real_base in mappings:
+    for virtual_prefix, real_base in _virtual_path_mappings():
         if normalized == virtual_prefix:
             return str(real_base)
         if normalized.startswith(f"{virtual_prefix}/"):
@@ -114,34 +138,58 @@ def _translate_virtual_path(value: str) -> str:
 
 
 def _translate_virtual_paths_in_command(command: str) -> str:
-    """对命令按 token 做虚拟路径前缀替换 (非子串级), 保持原有引号。
+    """按词法边界替换命令中的虚拟路径,不拆分或重组 shell 文本。
 
-    仅被 `run_shell_command` 调用。复用 `_split_command` 的拆分结果,
-    只对以虚拟前缀开头的 token 调 `_translate_virtual_path` 做前缀匹配,
-    避免误改 URL 或 `C:/tools_old` 这类仅含虚拟前缀子串的参数值;
-    拆分失败 (如引号不配对) 时原样返回。
+    仅被 `run_shell_command` 调用。替换支持普通参数、带引号路径、
+    ``--file=/workspace/...`` 选项及 ``powershell -Command`` / ``python -c``
+    等嵌套命令字符串;原始空白、引号与转义保持不变。前缀左侧若属于
+    URL/文件路径/标识符字符则不替换,右侧仅在路径分隔符或 shell 边界
+    处匹配,从而避免误改 URL、``C:/workspace`` 与 ``/workspace_old``。
 
     Args:
         command: 原始命令字符串; 来自 tool 入参。
 
     Returns:
-        替换后的命令 str, 供策略检查与 subprocess 执行。
+        保持原命令结构的翻译后 str,供策略检查与 subprocess 执行。
     """
-    try:
-        parts = _split_command(command)
-    except ValueError:
+    mappings = _virtual_path_mappings()
+    pieces: list[str] = []
+    copied_until = 0
+    search_from = 0
+    while search_from < len(command):
+        if command[search_from] != "/":
+            search_from += 1
+            continue
+        matched = next(
+            (
+                (virtual_prefix, real_base)
+                for virtual_prefix, real_base in mappings
+                if command.startswith(virtual_prefix, search_from)
+            ),
+            None,
+        )
+        if matched is not None:
+            virtual_prefix, real_base = matched
+            match_end = search_from + len(virtual_prefix)
+            left_is_boundary = (
+                search_from == 0
+                or command[search_from - 1] not in _VIRTUAL_PATH_LEFT_EMBEDDING_CHARS
+            )
+            right_is_boundary = (
+                match_end == len(command)
+                or command[match_end] in _VIRTUAL_PATH_RIGHT_BOUNDARIES
+            )
+            if left_is_boundary and right_is_boundary:
+                pieces.append(command[copied_until:search_from])
+                pieces.append(str(real_base))
+                copied_until = match_end
+                search_from = match_end
+                continue
+        search_from += 1
+    if not pieces:
         return command
-    translated: list[str] = []
-    for part in parts:
-        stripped = _strip_matching_quotes(part)
-        replaced = _translate_virtual_path(stripped)
-        if replaced == stripped:
-            translated.append(part)
-        elif part != stripped:
-            translated.append(f"{part[0]}{replaced}{part[0]}")
-        else:
-            translated.append(replaced)
-    return " ".join(translated)
+    pieces.append(command[copied_until:])
+    return "".join(pieces)
 
 
 def _translate_command_args(command: str) -> list[str]:

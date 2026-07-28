@@ -482,6 +482,7 @@ async def _run_chat_loop(
                 thread_id,
                 restored_messages,
                 status="active",
+                store=store,
             )
             productivity_args = argparse.Namespace(
                 message=None,

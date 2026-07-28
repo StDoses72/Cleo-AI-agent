@@ -21,6 +21,15 @@ if TYPE_CHECKING:
     from cleo.sessions.store import SessionStore
 
 
+class ProductivityStartupError(RuntimeError):
+    """productivity 会话在进入交互循环前无法启动。
+
+    由 :func:`_run_productivity_mode` 在 provider、已保存会话或初始 harness
+    session 无法解析时抛出。嵌入 Cleo chat 的调用方把它显示为普通错误并
+    恢复聊天上下文;顶层 CLI 入口将其转换为 ``SystemExit``。
+    """
+
+
 async def _prompt_productivity_session(
     adapter: AgentAdapter,
     session_id: str,
@@ -804,8 +813,10 @@ async def _run_productivity_mode(
         return_to_chat: 是否退出后回到 chat; chat.py 的 /productivity 调用为 True。
 
     返回:
-        None; 结束时统一 adapter.aclose()。校验失败时抛出 SystemExit
-        (unknown provider / 会话不存在 / 启动失败)。
+        None;结束时统一 adapter.aclose()。unknown provider、会话不存在或
+        初始 harness session 启动失败时抛出
+        :class:`ProductivityStartupError`,由顶层 CLI 或 chat 调用方按各自
+        交互语义处理。
     """
     from cleo.integrations.harnesses.factory import build_agent_adapter
 
@@ -819,13 +830,17 @@ async def _run_productivity_mode(
         try:
             resume_manifest = store.load_manifest(args.resume_id)
         except FileNotFoundError as exc:
-            raise SystemExit(f"No saved session found for id: {args.resume_id}") from exc
+            raise ProductivityStartupError(
+                f"No saved session found for id: {args.resume_id}"
+            ) from exc
         provider = str(resume_manifest["provider"])
     else:
         provider = args.provider or settings.productivity.default_provider
     if provider not in adapter.providers:
         available = ", ".join(adapter.providers)
-        raise SystemExit(f"Unknown productivity provider {provider!r}; available: {available}")
+        raise ProductivityStartupError(
+            f"Unknown productivity provider {provider!r}; available: {available}"
+        )
 
     model = args.model or settings.productivity.provider(provider).model
     display_model = model or "default"
@@ -855,9 +870,11 @@ async def _run_productivity_mode(
                 project=project,
             )
     except FileNotFoundError as exc:
-        raise SystemExit(f"No saved session found for id: {args.resume_id}") from exc
+        raise ProductivityStartupError(
+            f"No saved session found for id: {args.resume_id}"
+        ) from exc
     except (KeyError, ValueError) as exc:
-        raise SystemExit(f"Unable to start productivity session: {exc}") from exc
+        raise ProductivityStartupError(f"Unable to start productivity session: {exc}") from exc
 
     runtime.update_current_space("productivity")
     runtime.update_current_project(session.project)

@@ -66,6 +66,115 @@ def test_session_store_appends_events_and_updates_manifest(tmp_path: Path) -> No
     assert store.list_sessions(project="cleo")[0]["title"] == "Session storage design"
 
 
+def test_session_store_event_id_cache_invalidates_after_another_writer(
+    tmp_path: Path,
+) -> None:
+    memory_root = tmp_path / "memory"
+    first_store = SessionStore(memory_root)
+    first_store.create_session(
+        session_id="session-cache",
+        space="non_productivity",
+        project="cleo",
+        provider="cleo",
+        owner_type="user",
+    )
+    first_store.append_event(
+        space="non_productivity",
+        project="cleo",
+        session_id="session-cache",
+        event_type="user_message",
+        actor="user",
+        content="prime the cache",
+        event_id="evt-first",
+    )
+
+    second_store = SessionStore(memory_root)
+    second_store.append_event(
+        space="non_productivity",
+        project="cleo",
+        session_id="session-cache",
+        event_type="assistant_message",
+        actor="cleo",
+        content="written by another store instance",
+        event_id="evt-external",
+    )
+    appended = first_store.append_events(
+        space="non_productivity",
+        project="cleo",
+        session_id="session-cache",
+        events=[
+            {
+                "type": "assistant_message",
+                "actor": "cleo",
+                "content": "must not be duplicated",
+                "id": "evt-external",
+            }
+        ],
+    )
+
+    assert appended == []
+    assert [
+        event["id"] for event in first_store.read_events("session-cache")
+    ].count("evt-external") == 1
+
+
+def test_session_store_event_id_cache_survives_failed_append(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    memory_root = tmp_path / "memory"
+    store = SessionStore(memory_root)
+    store.create_session(
+        session_id="session-retry",
+        space="non_productivity",
+        project="cleo",
+        provider="cleo",
+        owner_type="user",
+    )
+    event_file = events_path(
+        memory_root,
+        "non_productivity",
+        "cleo",
+        "session-retry",
+    )
+    original_open = Path.open
+    should_fail = True
+
+    def flaky_open(path, *args, **kwargs):
+        nonlocal should_fail
+        if path == event_file and args and args[0] == "a" and should_fail:
+            should_fail = False
+            raise OSError("simulated append failure")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", flaky_open)
+    with pytest.raises(OSError, match="simulated append failure"):
+        store.append_event(
+            space="non_productivity",
+            project="cleo",
+            session_id="session-retry",
+            event_type="user_message",
+            actor="user",
+            content="retry me",
+            event_id="evt-retry",
+        )
+
+    retried = store.append_event(
+        space="non_productivity",
+        project="cleo",
+        session_id="session-retry",
+        event_type="user_message",
+        actor="user",
+        content="retry me",
+        event_id="evt-retry",
+    )
+
+    assert retried["id"] == "evt-retry"
+    assert [event["id"] for event in store.read_events("session-retry")].count(
+        "evt-retry"
+    ) == 1
+
+
 def test_session_store_moves_pending_thread_between_projects(tmp_path: Path) -> None:
     memory_root = tmp_path / "memory"
     store = SessionStore(memory_root)

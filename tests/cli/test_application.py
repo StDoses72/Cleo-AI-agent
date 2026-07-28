@@ -5,12 +5,13 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from langchain_core.messages import HumanMessage
 
 import cleo.cli.application as application
 import cleo.cli.chat as chat_cli
 import cleo.cli.productivity as productivity_cli
-from cleo.harnesses import AgentSession
+from cleo.harnesses import AgentSession, SessionOptions
 
 
 def _fake_chat_agent() -> SimpleNamespace:
@@ -68,7 +69,42 @@ def test_main_routes_productivity_mode(tmp_path, monkeypatch) -> None:
     assert received["args"].message == "inspect this repo"
 
 
-def test_chat_productivity_command_restores_cleo_context(tmp_path, monkeypatch) -> None:
+def test_main_reports_productivity_startup_error_as_cli_exit(tmp_path, monkeypatch) -> None:
+    import cleo.config.settings as settings_module
+    import cleo.runtime.state as runtime_module
+    import cleo.sessions.store as session_store_module
+
+    fake_settings = SimpleNamespace(
+        MEMORY_DIR=tmp_path / "memory",
+        SESSION_INDEX_PATH=tmp_path / "memory" / "sessions.sqlite3",
+    )
+
+    class FakeRuntime:
+        pass
+
+    class FakeSessionStore:
+        def __init__(self, *_args):
+            pass
+
+    async def fake_productivity(*_args, **_kwargs):
+        raise productivity_cli.ProductivityStartupError("provider is unavailable")
+
+    monkeypatch.setattr(settings_module, "settings", fake_settings)
+    monkeypatch.setattr(runtime_module, "Runtime", FakeRuntime)
+    monkeypatch.setattr(session_store_module, "SessionStore", FakeSessionStore)
+    monkeypatch.setattr(application, "_run_productivity_mode", fake_productivity)
+    monkeypatch.setattr(sys, "argv", ["main.py", "--productivity"])
+
+    with pytest.raises(SystemExit, match="provider is unavailable"):
+        asyncio.run(application.amain())
+
+
+@pytest.mark.parametrize("startup_fails", [False, True])
+def test_chat_productivity_command_restores_cleo_context(
+    tmp_path,
+    monkeypatch,
+    startup_fails,
+) -> None:
     import builtins
 
     import cleo.config.settings as settings_module
@@ -105,6 +141,7 @@ def test_chat_productivity_command_restores_cleo_context(tmp_path, monkeypatch) 
         active_directory_profile=SimpleNamespace(root_path=tmp_path),
     )
     productivity_calls: list[bool] = []
+    reported_errors: list[str] = []
     input_count = 0
 
     class FakeSessionStore:
@@ -118,8 +155,11 @@ def test_chat_productivity_command_restores_cleo_context(tmp_path, monkeypatch) 
         active_runtime.update_current_space("productivity")
         active_runtime.update_current_project("cleo")
         active_runtime.update_current_thread_id("agent-session")
+        if startup_fails:
+            raise productivity_cli.ProductivityStartupError("provider is unavailable")
 
-    async def fake_sync(*_args, **_kwargs):
+    async def fake_sync(*_args, **kwargs):
+        assert kwargs["store"] is fake_store
         return None
 
     async def fake_dream(*_args, **_kwargs):
@@ -141,6 +181,7 @@ def test_chat_productivity_command_restores_cleo_context(tmp_path, monkeypatch) 
     monkeypatch.setattr(chat_cli, "_sync_session_events", fake_sync)
     monkeypatch.setattr(chat_cli, "_run_dream_agent", fake_dream)
     monkeypatch.setattr(chat_cli, "clear_screen", lambda: None)
+    monkeypatch.setattr(chat_cli.cli, "error", reported_errors.append)
     monkeypatch.setattr(builtins, "input", fake_input)
 
     asyncio.run(
@@ -152,6 +193,9 @@ def test_chat_productivity_command_restores_cleo_context(tmp_path, monkeypatch) 
     )
 
     assert productivity_calls == [True]
+    assert bool(reported_errors) is startup_fails
+    if startup_fails:
+        assert "provider is unavailable" in reported_errors[0]
 
 
 def test_productivity_cwd_resolution_and_saved_session_resume(tmp_path) -> None:
@@ -218,6 +262,41 @@ def test_productivity_cwd_resolution_and_saved_session_resume(tmp_path) -> None:
         "model": "test-model",
         "project": "cleo",
     }
+
+
+def test_productivity_option_helper_preserves_feedback_order(monkeypatch) -> None:
+    events: list[str] = []
+
+    class FakeAdapter:
+        async def update_session_options(self, session_id, **changes):
+            assert session_id == "agent-current"
+            assert changes == {"effort": "high"}
+            return SessionOptions(effort="high")
+
+    monkeypatch.setattr(
+        productivity_cli.cli,
+        "success",
+        lambda message: events.append(f"success:{message}"),
+    )
+
+    options = asyncio.run(
+        productivity_cli._update_productivity_option(
+            FakeAdapter(),
+            "agent-current",
+            option_key="effort",
+            requested="high",
+            label="Reasoning effort",
+            before_controls=lambda updated: events.append(f"status:{updated.effort}"),
+            render_controls=lambda: events.append("controls"),
+        )
+    )
+
+    assert options == SessionOptions(effort="high")
+    assert events == [
+        "success:Reasoning effort set to high.",
+        "status:high",
+        "controls",
+    ]
 
 
 def test_chat_resume_command_switches_to_saved_thread(monkeypatch) -> None:

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
@@ -40,7 +43,7 @@ class CodexAdapter:
         """
         self._adapter = AgentAdapter(project_root)
         self._adapter.register(CodexProvider(default_model=default_model))
-        self._handles: dict[str, str] = {}
+        self._thread_locks: dict[str, tuple[asyncio.Lock, int]] = {}
 
     async def start(
         self,
@@ -60,16 +63,15 @@ class CodexAdapter:
             ``CodexResult``, 其 ``thread_id`` 可用于后续 ``reply``
             (``reply`` 会按需 resume 已释放的 thread)。
         """
-        result = await self._adapter.run(
-            provider="codex",
-            prompt=prompt,
+        session = await self._adapter.create_session(
+            "codex",
             project_path=project_path,
             model=model,
         )
         try:
-            return self._result(result)
+            return self._result(await self._adapter.prompt(session.id, prompt))
         finally:
-            await self._close_session(result.session_id)
+            await self._adapter.close(session.id)
 
     async def reply(
         self,
@@ -83,64 +85,77 @@ class CodexAdapter:
         调用。
         参数:
             thread_id: ``start`` / 上次 ``reply`` 返回结果中的 thread_id;
-                首次出现(或上一轮已释放)时通过 ``AgentAdapter.resume_session``
-                恢复并缓存逻辑 handle。
+                每轮通过 ``AgentAdapter.resume_session`` 恢复,完成后释放
+                逻辑 handle。
             prompt: 后续输入文本, 由工具调用方提供。
             project_path: Codex 工作目录, resume 时使用。
         返回:
             ``CodexResult``。
         """
-        handle = self._handles.get(thread_id)
-        if handle is None:
+        async with self._serialize_thread(thread_id):
             session = await self._adapter.resume_session(
                 provider="codex",
                 native_session_id=thread_id,
                 project_path=project_path,
             )
-            handle = session.id
-            self._handles[thread_id] = handle
-        try:
-            return self._result(await self._adapter.prompt(handle, prompt))
-        finally:
-            await self._close_session(handle)
+            try:
+                return self._result(await self._adapter.prompt(session.id, prompt))
+            finally:
+                await self._adapter.close(session.id)
 
     async def close(self) -> None:
-        """关闭底层 adapter 及其全部 provider session, 并清空句柄缓存。
+        """关闭底层 adapter 及其全部 provider session。
 
         供调用方(如 MCP server 退出前)做资源清理。
         """
         await self._adapter.aclose()
-        self._handles.clear()
 
-    async def _close_session(self, handle: str) -> None:
-        """关闭底层 adapter 会话并清理 ``_handles`` 中指向它的条目。
+    @asynccontextmanager
+    async def _serialize_thread(self, thread_id: str) -> AsyncIterator[None]:
+        """串行化同一原生 Codex thread 的并发 reply,并回收空闲锁。
 
-        由 ``start`` / ``reply`` 在 turn 完成后调用, 避免 AsyncCodex
-        client 在 provider ``_sessions`` 中随调用次数无界滞留; MCP server
-        (长驻进程) 的后续 ``reply`` 会经 ``resume_session`` 按需恢复
-        thread, 长会话语义不受影响。
+        client 生命周期缩短为单 turn 后,并发 ``reply`` 若同时 resume 同一
+        原生 thread 会绕过 provider session 内部的锁。本上下文
+        管理器以 thread id 串行化 resume→prompt→close 整段流程;等待者计数
+        归零后删除锁,避免长驻 MCP server 随 thread 数量无限积累锁对象。
 
         参数:
-            handle: ``AgentAdapter`` 的对外 session handle, 来自
-                ``start`` / ``reply`` 的本轮会话。
+            thread_id: ``start`` 或上次 ``reply`` 返回的原生 Codex thread id。
+
+        返回值:
+            异步上下文管理器;``reply`` 在其范围内独占指定 thread。
         """
-        await self._adapter.close(handle)
-        for thread_id, mapped in tuple(self._handles.items()):
-            if mapped == handle:
-                del self._handles[thread_id]
+        entry = self._thread_locks.get(thread_id)
+        if entry is None:
+            lock = asyncio.Lock()
+            waiting = 1
+        else:
+            lock, waiting = entry
+            waiting += 1
+        self._thread_locks[thread_id] = (lock, waiting)
+        try:
+            async with lock:
+                yield
+        finally:
+            current = self._thread_locks.get(thread_id)
+            if current is not None and current[0] is lock:
+                remaining = current[1] - 1
+                if remaining:
+                    self._thread_locks[thread_id] = (lock, remaining)
+                else:
+                    del self._thread_locks[thread_id]
 
     def _result(self, result: AgentResult) -> CodexResult:
         """把统一 ``AgentResult`` 转换为兼容门面的 ``CodexResult``。
 
         参数:
-            result: ``AgentAdapter.run`` / ``prompt`` 返回的统一结果,
-                来自 ``start`` / ``reply``。
+            result: ``AgentAdapter.prompt`` 返回的统一结果,来自 ``start`` /
+                ``reply``。
         返回:
-            ``CodexResult``; 同时更新 ``_handles`` 中 thread_id→逻辑
-            session handle 的映射, 供 ``reply`` 复用。
+            ``CodexResult``。逻辑 adapter session 会在本轮结果转换后立即
+            关闭;后续 ``reply`` 使用返回的原生 thread id 按需恢复。
         """
         thread_id = result.native_session_id or result.session_id
-        self._handles[thread_id] = result.session_id
         return CodexResult(
             thread_id=thread_id,
             turn_id=result.turn_id,
