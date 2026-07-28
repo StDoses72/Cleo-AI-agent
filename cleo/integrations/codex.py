@@ -48,7 +48,7 @@ class CodexAdapter:
         project_path: str,
         model: str | None = None,
     ) -> CodexResult:
-        """新建 thread 并执行一个完整 turn。
+        """新建 thread 并执行一个完整 turn, 结束后释放底层会话。
 
         由 MCP 工具 ``codex``(cleo/mcp/codex_server.py)与 langchain 工具
         ``codex_tool``(cleo/agents/tools/codex_tools.py)调用。
@@ -57,7 +57,8 @@ class CodexAdapter:
             project_path: Codex 工作目录, 由工具调用方提供(默认 ``.``)。
             model: 可选模型 id, 覆盖 default_model。
         返回:
-            ``CodexResult``, 其 ``thread_id`` 可用于后续 ``reply``。
+            ``CodexResult``, 其 ``thread_id`` 可用于后续 ``reply``
+            (``reply`` 会按需 resume 已释放的 thread)。
         """
         result = await self._adapter.run(
             provider="codex",
@@ -65,7 +66,10 @@ class CodexAdapter:
             project_path=project_path,
             model=model,
         )
-        return self._result(result)
+        try:
+            return self._result(result)
+        finally:
+            await self._close_session(result.session_id)
 
     async def reply(
         self,
@@ -73,14 +77,14 @@ class CodexAdapter:
         prompt: str,
         project_path: str,
     ) -> CodexResult:
-        """在既有 thread 上执行一个后续 turn(必要时先 resume)。
+        """在既有 thread 上执行一个后续 turn(必要时先 resume), 结束后释放会话。
 
         由 MCP 工具 ``codex-reply`` 与 langchain 工具 ``codex_reply_tool``
         调用。
         参数:
             thread_id: ``start`` / 上次 ``reply`` 返回结果中的 thread_id;
-                首次出现时通过 ``AgentAdapter.resume_session`` 恢复并缓存
-                逻辑 handle。
+                首次出现(或上一轮已释放)时通过 ``AgentAdapter.resume_session``
+                恢复并缓存逻辑 handle。
             prompt: 后续输入文本, 由工具调用方提供。
             project_path: Codex 工作目录, resume 时使用。
         返回:
@@ -95,14 +99,35 @@ class CodexAdapter:
             )
             handle = session.id
             self._handles[thread_id] = handle
-        return self._result(await self._adapter.prompt(handle, prompt))
+        try:
+            return self._result(await self._adapter.prompt(handle, prompt))
+        finally:
+            await self._close_session(handle)
 
     async def close(self) -> None:
-        """关闭底层 adapter 及其全部 provider session。
+        """关闭底层 adapter 及其全部 provider session, 并清空句柄缓存。
 
         供调用方(如 MCP server 退出前)做资源清理。
         """
         await self._adapter.aclose()
+        self._handles.clear()
+
+    async def _close_session(self, handle: str) -> None:
+        """关闭底层 adapter 会话并清理 ``_handles`` 中指向它的条目。
+
+        由 ``start`` / ``reply`` 在 turn 完成后调用, 避免 AsyncCodex
+        client 在 provider ``_sessions`` 中随调用次数无界滞留; MCP server
+        (长驻进程) 的后续 ``reply`` 会经 ``resume_session`` 按需恢复
+        thread, 长会话语义不受影响。
+
+        参数:
+            handle: ``AgentAdapter`` 的对外 session handle, 来自
+                ``start`` / ``reply`` 的本轮会话。
+        """
+        await self._adapter.close(handle)
+        for thread_id, mapped in tuple(self._handles.items()):
+            if mapped == handle:
+                del self._handles[thread_id]
 
     def _result(self, result: AgentResult) -> CodexResult:
         """把统一 ``AgentResult`` 转换为兼容门面的 ``CodexResult``。

@@ -1,6 +1,5 @@
 """Background agent responsible for durable memory consolidation."""
 
-from pathlib import Path
 from typing import Any
 
 from langchain.agents import create_agent
@@ -73,7 +72,6 @@ class DreamAgent:
                 DREAM_AGENT_SYSTEM_PROMPT (本文件顶部定义)。
         """
         active_profile = settings.active_dream_agent_profile
-        self.root_dir = Path(__file__).resolve().parents[2]
         self.toolist = [
             read_compact_memory,
             list_all_session_ids,

@@ -115,7 +115,7 @@ class Agent:
             root_dir=str(self.root_dir),
             virtual_mode=True,
         )
-        self.toolist = [
+        self.tool_list = [
             run_shell_command,
             codex_tool,
             codex_reply_tool,
@@ -132,7 +132,7 @@ class Agent:
             ),
             checkpointer=InMemorySaver(),
             system_prompt=system_prompt,
-            tools=self.toolist,
+            tools=self.tool_list,
             interrupt_on=None,
             backend=self.backend,
             skills=["/skills"],

@@ -9,7 +9,6 @@ from langchain.tools import tool
 from cleo.config.settings import settings
 from cleo.memory.compaction import load_validated_compact
 from cleo.memory.paths import (
-    events_path,
     project_directory,
     projects_directory,
     sessions_directory,
@@ -99,8 +98,7 @@ def _safe_project_dir(space: str, project: str):
 def _validate_session_id(session_id: str) -> str:
     """校验 session_id 合法性 (防路径穿越) 并返回原名。
 
-    被 `read_session_events`、`write_memory_to_markdown` 和
-    `_validated_compact` 调用。
+    被 `write_memory_to_markdown` 和 `_validated_compact` 调用。
 
     Args:
         session_id: 会话 ID; 来自 tool 调用参数。
@@ -218,37 +216,6 @@ def _atomic_memory_markdown(space: str, project: str) -> str:
                 f"(evidence: {sources})"
             )
     return "\n".join(sections)
-
-
-@tool
-def read_session_events(space: str, project: str, session_id: str) -> str:
-    """Read an append-only event log for explicit audit or debugging.
-
-    中文说明: 读取 session 的原始 event log (仅供审计/调试)。
-
-    注意: 该工具当前未注册进任何 Agent 的 toolist (dream.py 的
-    DreamAgent 刻意不暴露 raw event log), 属于未被框架消费的导出。
-
-    Args:
-        space/project/session_id: 定位 event log 的三元组;
-            由 tool 调用方 (LLM) 传入。
-
-    Returns:
-        event log 全文 str (文件不存在时为空串, 名称非法时为
-        "Error: ..."); 由 langchain 框架回传给 LLM。
-    """
-    try:
-        path = events_path(
-            settings.MEMORY_DIR,
-            validate_space(space),
-            validate_name(project, "project"),
-            _validate_session_id(session_id),
-        )
-    except ValueError as exc:
-        return f"Error: {exc}"
-    if not path.exists():
-        return ""
-    return path.read_text(encoding="utf-8-sig")
 
 
 @tool

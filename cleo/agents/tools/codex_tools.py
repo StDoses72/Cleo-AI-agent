@@ -1,7 +1,7 @@
 """Codex 委派工具: 把编码任务交给 Codex harness 并等待完成。
 
 通过 langchain `@tool` 注册到前台 Agent (cleo/agents/cleo.py 的
-Agent.toolist), 由 deepagents 框架按 LLM 的 tool call 调用。
+Agent.tool_list), 由 deepagents 框架按 LLM 的 tool call 调用。
 """
 
 from langchain.tools import tool

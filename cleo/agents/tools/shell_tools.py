@@ -1,7 +1,7 @@
 """本地 shell 执行工具: 带审计、沙箱与 allowlist 策略的命令执行。
 
 核心入口 `run_shell_command` 注册于 cleo/agents/cleo.py 的
-Agent.toolist, 由 deepagents 框架按前台 LLM 的 tool call 调用。
+Agent.tool_list, 由 deepagents 框架按前台 LLM 的 tool call 调用。
 """
 
 import json
@@ -48,24 +48,25 @@ def _append_shell_audit(record: dict) -> None:
 
 
 def _split_command(command: str) -> list[str]:
-    """把命令字符串拆分为参数列表 (posix=False 保留引号) 并剥离成对引号。
+    """把命令字符串拆分为参数 token 列表 (posix=False, 保留成对引号)。
 
-    被 `_translate_command_args` 调用 (间接服务于策略检查)。
+    被 `_translate_command_args` 与 `_translate_virtual_paths_in_command`
+    调用 (间接服务于策略检查与执行前翻译); 引号剥离由调用方按需进行。
 
     Args:
         command: 原始命令字符串; 来自 `run_shell_command` 的入参。
 
     Returns:
-        参数 token 列表, 供路径翻译与主命令提取使用。
+        参数 token 列表 (引号原样保留), 供路径翻译与主命令提取使用。
     """
-    return [_strip_matching_quotes(part) for part in shlex.split(command, posix=False)]
+    return shlex.split(command, posix=False)
 
 
 def _strip_matching_quotes(value: str) -> str:
     """剥离字符串两端成对的单/双引号。
 
-    被 `_split_command`、`_resolve_cwd`、`_normalized_command_names`
-    等本文件内部函数调用。
+    被 `_translate_command_args`、`_translate_virtual_paths_in_command`、
+    `_resolve_cwd` 等本文件内部函数调用。
 
     Args:
         value: 待处理 token; 来自命令拆分结果或配置项。
@@ -83,7 +84,8 @@ def _translate_virtual_path(value: str) -> str:
 
     中文说明: 将 Deep Agents 虚拟路径 (如 /workspace、/skills) 翻译为
     SHELL_SANDBOX_ROOT 下的真实本地路径; 非虚拟路径原样返回。
-    被 `_translate_command_args` 与 `_resolve_cwd` 调用。
+    被 `_translate_command_args`、`_translate_virtual_paths_in_command`
+    与 `_resolve_cwd` 调用。
 
     Args:
         value: 单个路径参数; 来自命令 token 或 working_directory。
@@ -112,9 +114,12 @@ def _translate_virtual_path(value: str) -> str:
 
 
 def _translate_virtual_paths_in_command(command: str) -> str:
-    """对整条命令字符串做虚拟路径替换 (子串级, 长前缀优先)。
+    """对命令按 token 做虚拟路径前缀替换 (非子串级), 保持原有引号。
 
-    仅被 `run_shell_command` 调用, 处理引号内或拼接形式的虚拟路径。
+    仅被 `run_shell_command` 调用。复用 `_split_command` 的拆分结果,
+    只对以虚拟前缀开头的 token 调 `_translate_virtual_path` 做前缀匹配,
+    避免误改 URL 或 `C:/tools_old` 这类仅含虚拟前缀子串的参数值;
+    拆分失败 (如引号不配对) 时原样返回。
 
     Args:
         command: 原始命令字符串; 来自 tool 入参。
@@ -122,21 +127,25 @@ def _translate_virtual_paths_in_command(command: str) -> str:
     Returns:
         替换后的命令 str, 供策略检查与 subprocess 执行。
     """
-    translated = command
-    mappings: list[tuple[str, Path]] = [
-        (VIRTUAL_WORKSPACE_PREFIX, settings.SHELL_SANDBOX_ROOT),
-        *(
-            (virtual_prefix, settings.SHELL_SANDBOX_ROOT / real_child)
-            for virtual_prefix, real_child in VIRTUAL_PROJECT_PREFIXES.items()
-        ),
-    ]
-    for virtual_prefix, real_base in sorted(mappings, key=lambda item: len(item[0]), reverse=True):
-        translated = translated.replace(virtual_prefix, str(real_base))
-    return translated
+    try:
+        parts = _split_command(command)
+    except ValueError:
+        return command
+    translated: list[str] = []
+    for part in parts:
+        stripped = _strip_matching_quotes(part)
+        replaced = _translate_virtual_path(stripped)
+        if replaced == stripped:
+            translated.append(part)
+        elif part != stripped:
+            translated.append(f"{part[0]}{replaced}{part[0]}")
+        else:
+            translated.append(replaced)
+    return " ".join(translated)
 
 
 def _translate_command_args(command: str) -> list[str]:
-    """拆分命令并对每个 token 做虚拟路径翻译。
+    """拆分命令并对每个 token (剥离引号后) 做虚拟路径翻译。
 
     被 `_extract_primary_command` 与 `_first_outside_sandbox_path` 调用。
 
@@ -146,7 +155,10 @@ def _translate_command_args(command: str) -> list[str]:
     Returns:
         翻译后的参数列表, 供主命令提取与沙箱边界检查。
     """
-    return [_translate_virtual_path(part) for part in _split_command(command)]
+    return [
+        _translate_virtual_path(_strip_matching_quotes(part))
+        for part in _split_command(command)
+    ]
 
 
 def _extract_primary_command(command: str) -> str:
@@ -331,7 +343,7 @@ def run_shell_command(command: str, working_directory: str = "") -> str:
 
     中文说明: 执行本地 shell 命令 (Windows 走 powershell, 其他平台走
     shell=True), 全流程带审计日志与策略检查。注册于 cleo/agents/cleo.py
-    的 Agent.toolist, 由 deepagents 框架按前台 LLM 的 tool call 调用。
+    的 Agent.tool_list, 由 deepagents 框架按前台 LLM 的 tool call 调用。
 
     参数来源:
         command/working_directory 均由前台 Agent 的 LLM 在 tool call 中
