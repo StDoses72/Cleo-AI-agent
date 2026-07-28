@@ -5,7 +5,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -15,7 +16,7 @@ from cleo.runtime.usage import ContextWindowUsage
 
 if TYPE_CHECKING:
     from cleo.config.settings import SettingsModel
-    from cleo.harnesses import AgentAdapter, AgentResult, AgentSession
+    from cleo.harnesses import AgentAdapter, AgentResult, AgentSession, SessionOptions
     from cleo.runtime.state import Runtime
     from cleo.sessions.store import SessionStore
 
@@ -41,7 +42,7 @@ async def _prompt_productivity_session(
 
     返回:
         AgentResult: adapter.prompt 的结果, 先交给 renderer.finish 渲染状态;
-        当前调用方(_run_productivity_loop:514 与 _run_productivity_mode:621)
+        当前调用方(_run_productivity_loop 与 _run_productivity_mode)
         均不消费返回值, 仅依赖其副作用与异常。
     """
     renderer = cli.productivity_renderer(
@@ -223,6 +224,164 @@ def _productivity_options(adapter: AgentAdapter, session_id: str):
         return None
 
 
+def _render_productivity_header(
+    adapter: AgentAdapter,
+    session: AgentSession,
+    *,
+    active_model: str,
+    context_usage: ContextWindowUsage,
+) -> None:
+    """渲染 productivity 会话的完整 header(品牌行 + runtime status + controls + 明细)。
+
+    参数:
+        adapter: AgentAdapter, 用于 _productivity_options 读取当前 options。
+        session: 当前 AgentSession; header 展示其 project/cwd/id 等信息。
+        active_model: 展示用模型名, 由 _run_productivity_loop 闭包、
+            _switch_productivity_session 或 _run_productivity_mode 传入。
+        context_usage: 当前会话的 ContextWindowUsage, 随会话切换重置后传入。
+
+    返回:
+        None; 副作用为 cli.render_productivity_header 输出以及
+        cleo.integrations.git.inspect_git_status 的 git 状态采集。
+    """
+    from cleo.integrations.git import inspect_git_status
+
+    cli.render_productivity_header(
+        session,
+        model=active_model,
+        context_usage=context_usage,
+        options=_productivity_options(adapter, session.id),
+        git_status=inspect_git_status(session.project_path),
+    )
+
+
+def _restart_productivity_session(
+    adapter: AgentAdapter,
+    session: AgentSession,
+    model: str | None,
+) -> Awaitable[AgentSession]:
+    """按旧会话的 provider/cwd/project 与当前模型重建会话(/new、/archive 共用)。
+
+    参数:
+        adapter: AgentAdapter, 由 _run_productivity_loop 传入。
+        session: 旧会话, 取其 provider/project_path/project 作为新会话配置。
+        model: 当前 session_model, 原样传给 create_session。
+
+    返回:
+        Awaitable[AgentSession]: 未 await 的 create_session 协程; 供
+        _switch_productivity_session 在收尾旧会话之后再建, 保持原有调用次序。
+    """
+    return adapter.create_session(
+        session.provider,
+        project_path=session.project_path,
+        model=model,
+        project=session.project,
+    )
+
+
+async def _switch_productivity_session(
+    adapter: AgentAdapter,
+    runtime: Runtime,
+    previous_session: AgentSession,
+    next_session: AgentSession | Callable[[], Awaitable[AgentSession]],
+    *,
+    active_model: str,
+    update_project: bool = False,
+    before_header: Callable[[AgentSession], Awaitable[None]] | None = None,
+    success: Callable[[AgentSession], str],
+) -> tuple[AgentSession, ContextWindowUsage]:
+    """结束旧会话并接管新会话: 收尾→换会话→更新 runtime→清屏→渲染 header→success。
+
+    参数:
+        adapter / runtime: 由 _run_productivity_loop 传入的共享实例。
+        previous_session: 待结束的旧会话, 先经 _finish_productivity_session 收尾。
+        next_session: 已建好的新会话(/cd、/resume、/resume-native、/fork 先在
+            try 中建好, 失败时旧会话不受影响); 或返回新会话的异步工厂
+            (/new、/archive 需要先收尾再建会话, 保持原有调用次序)。
+        active_model: 渲染 header 用的模型名; /resume 时为新会话的模型。
+        update_project: 是否 runtime.update_current_project(/cd、/resume、
+            /resume-native 为 True; /new、/fork、/archive 沿用旧 project)。
+        before_header: 清屏后、渲染 header 前的异步钩子(如 /resume 重载
+            模型/会话目录), 入参为新会话。
+        success: 由新会话生成成功提示文案的回调。
+
+    返回:
+        tuple: (新会话, 重置后的 ContextWindowUsage); 由调用方接管为
+        当前会话与 token 统计。
+    """
+    await _finish_productivity_session(adapter, previous_session, runtime)
+    if callable(next_session):
+        next_session = await next_session()
+    session = next_session
+    if update_project:
+        runtime.update_current_project(session.project)
+    runtime.update_current_thread_id(session.id)
+    runtime.append_recent_threads(session.id, "productivity")
+    context_usage = ContextWindowUsage()
+    clear_screen()
+    if before_header is not None:
+        await before_header(session)
+    _render_productivity_header(
+        adapter,
+        session,
+        active_model=active_model,
+        context_usage=context_usage,
+    )
+    cli.success(success(session))
+    return session, context_usage
+
+
+async def _update_productivity_option(
+    adapter: AgentAdapter,
+    session_id: str,
+    *,
+    option_key: str,
+    requested: str,
+    label: str,
+    render_controls: Callable[[], None],
+    format_success: Callable[[SessionOptions], str] | None = None,
+    before_controls: Callable[[SessionOptions], None] | None = None,
+) -> SessionOptions | None:
+    """更新单个 SessionOptions 字段并反馈(/model、/effort、/access、/approval 共用)。
+
+    参数:
+        adapter: AgentAdapter, 由 _run_productivity_loop 传入。
+        session_id: 当前会话 id(session.id)。
+        option_key: update_session_options 的关键字名("model"、"effort"、
+            "sandbox"、"approval_mode"), 同时用于从更新结果中读回新值。
+        requested: 用户输入的目标值; 为空时仅显示当前值并返回 None。
+        label: 提示文案中的选项名(如 "Reasoning effort"、"Filesystem access")。
+        render_controls: 更新成功后重渲染 controls 面板的回调。
+        format_success: 自定义成功文案(默认 f"{label} set to {新值}."); /model
+            用它附带 "applies to the next turn" 说明。
+        before_controls: 渲染 controls 前的额外回调; /model 用它先按
+            success→runtime status→controls 的次序重渲染 runtime status 行。
+
+    返回:
+        SessionOptions | None: 更新成功返回 adapter 结果(调用方可继续同步
+        本地状态, 如 /model 的 session_model/active_model); 无参展示或
+        adapter 报错时返回 None(提示已输出)。
+    """
+    if not requested:
+        current = _productivity_options(adapter, session_id)
+        cli.info(f"{label}: {(current and getattr(current, option_key)) or 'default'}")
+        return None
+    try:
+        options = await adapter.update_session_options(session_id, **{option_key: requested})
+    except (KeyError, NotImplementedError, ValueError) as exc:
+        cli.error(str(exc))
+        return None
+    if format_success is not None:
+        message = format_success(options)
+    else:
+        message = f"{label} set to {getattr(options, option_key)}."
+    cli.success(message)
+    if before_controls is not None:
+        before_controls(options)
+    render_controls()
+    return options
+
+
 async def _run_productivity_loop(
     adapter: AgentAdapter,
     session: AgentSession,
@@ -288,17 +447,14 @@ async def _run_productivity_loop(
         """重渲染当前会话的完整 header(品牌行 + runtime status + controls + 明细)。
 
         无参数(闭包捕获 session/active_model/context_usage/adapter), 无返回值;
-        由 loop 启动时及 /new、/cd、/resume、/resume-native、/fork、/archive、
-        /native、/sessions 等需要清屏重绘的分支调用。
+        由 loop 启动时及 /native、/sessions 等需要清屏重绘的分支调用;
+        各换会话分支统一走 _switch_productivity_session。
         """
-        from cleo.integrations.git import inspect_git_status
-
-        cli.render_productivity_header(
+        _render_productivity_header(
+            adapter,
             session,
-            model=active_model,
+            active_model=active_model,
             context_usage=context_usage,
-            options=_productivity_options(adapter, session.id),
-            git_status=inspect_git_status(session.project_path),
         )
 
     render_active_header()
@@ -326,19 +482,14 @@ async def _run_productivity_loop(
             await _finish_productivity_session(adapter, session, runtime)
             break
         if prompt == "/new":
-            await _finish_productivity_session(adapter, session, runtime)
-            session = await adapter.create_session(
-                session.provider,
-                project_path=session.project_path,
-                model=session_model,
-                project=session.project,
+            session, context_usage = await _switch_productivity_session(
+                adapter,
+                runtime,
+                session,
+                partial(_restart_productivity_session, adapter, session, session_model),
+                active_model=active_model,
+                success=lambda new: f"Started new {new.provider} session: {new.id}",
             )
-            runtime.update_current_thread_id(session.id)
-            runtime.append_recent_threads(session.id, "productivity")
-            context_usage = ContextWindowUsage()
-            clear_screen()
-            render_active_header()
-            cli.success(f"Started new {session.provider} session: {session.id}")
             continue
         if prompt == "/cwd":
             cli.info(session.project_path)
@@ -365,77 +516,58 @@ async def _run_productivity_loop(
             if known_models and requested not in known_models:
                 cli.error(f"Unknown model: {requested}")
                 continue
-            try:
-                options = await adapter.update_session_options(
-                    session.id,
-                    model=requested,
-                )
-            except (KeyError, NotImplementedError, ValueError) as exc:
-                cli.error(str(exc))
-                continue
-            session_model = options.model
-            active_model = session_model or "default"
-            cli.success(f"Model set to {active_model}; it applies to the next turn.")
-            cli.render_runtime_status(
-                active_model,
-                context_usage,
-                accent="magenta",
+            options = await _update_productivity_option(
+                adapter,
+                session.id,
+                option_key="model",
+                requested=requested,
+                label="Model",
+                render_controls=render_active_controls,
+                format_success=lambda updated: (
+                    f"Model set to {updated.model or 'default'}; "
+                    f"it applies to the next turn."
+                ),
+                before_controls=lambda updated, usage=context_usage: (
+                    cli.render_runtime_status(
+                        updated.model or "default",
+                        usage,
+                        accent="magenta",
+                    )
+                ),
             )
-            render_active_controls()
+            if options is not None:
+                session_model = options.model
+                active_model = session_model or "default"
             continue
         if prompt == "/effort" or prompt.startswith("/effort "):
-            requested = _slash_command_argument(prompt, "/effort")
-            current = _productivity_options(adapter, session.id)
-            if not requested:
-                cli.info(f"Reasoning effort: {(current and current.effort) or 'default'}")
-                continue
-            try:
-                options = await adapter.update_session_options(
-                    session.id,
-                    effort=requested,
-                )
-            except (KeyError, NotImplementedError, ValueError) as exc:
-                cli.error(str(exc))
-                continue
-            cli.success(f"Reasoning effort set to {options.effort}.")
-            render_active_controls()
+            await _update_productivity_option(
+                adapter,
+                session.id,
+                option_key="effort",
+                requested=_slash_command_argument(prompt, "/effort"),
+                label="Reasoning effort",
+                render_controls=render_active_controls,
+            )
             continue
         if prompt == "/access" or prompt.startswith("/access "):
-            requested = _slash_command_argument(prompt, "/access")
-            current = _productivity_options(adapter, session.id)
-            if not requested:
-                cli.info(f"Filesystem access: {(current and current.sandbox) or 'default'}")
-                continue
-            try:
-                options = await adapter.update_session_options(
-                    session.id,
-                    sandbox=requested,
-                )
-            except (KeyError, NotImplementedError, ValueError) as exc:
-                cli.error(str(exc))
-                continue
-            cli.success(f"Filesystem access set to {options.sandbox}.")
-            render_active_controls()
+            await _update_productivity_option(
+                adapter,
+                session.id,
+                option_key="sandbox",
+                requested=_slash_command_argument(prompt, "/access"),
+                label="Filesystem access",
+                render_controls=render_active_controls,
+            )
             continue
         if prompt == "/approval" or prompt.startswith("/approval "):
-            requested = _slash_command_argument(prompt, "/approval")
-            current = _productivity_options(adapter, session.id)
-            if not requested:
-                cli.info(
-                    f"Approval behavior: "
-                    f"{(current and current.approval_mode) or 'default'}"
-                )
-                continue
-            try:
-                options = await adapter.update_session_options(
-                    session.id,
-                    approval_mode=requested,
-                )
-            except (KeyError, NotImplementedError, ValueError) as exc:
-                cli.error(str(exc))
-                continue
-            cli.success(f"Approval behavior set to {options.approval_mode}.")
-            render_active_controls()
+            await _update_productivity_option(
+                adapter,
+                session.id,
+                option_key="approval_mode",
+                requested=_slash_command_argument(prompt, "/approval"),
+                label="Approval behavior",
+                render_controls=render_active_controls,
+            )
             continue
         if prompt == "/cd" or prompt.startswith("/cd "):
             try:
@@ -452,17 +584,16 @@ async def _run_productivity_loop(
             except (KeyError, OSError, ValueError) as exc:
                 cli.error(str(exc))
                 continue
-            previous_session = session
-            await _finish_productivity_session(adapter, previous_session, runtime)
-            session = next_session
-            runtime.update_current_project(session.project)
-            runtime.update_current_thread_id(session.id)
-            runtime.append_recent_threads(session.id, "productivity")
-            context_usage = ContextWindowUsage()
-            clear_screen()
-            render_active_header()
-            cli.success(
-                f"Changed cwd to {session.project_path}; started session {session.id}."
+            session, context_usage = await _switch_productivity_session(
+                adapter,
+                runtime,
+                session,
+                next_session,
+                active_model=active_model,
+                update_project=True,
+                success=lambda new: (
+                    f"Changed cwd to {new.project_path}; started session {new.id}."
+                ),
             )
             continue
         if prompt == "/resume" or prompt.startswith("/resume "):
@@ -485,22 +616,26 @@ async def _run_productivity_loop(
             except (FileNotFoundError, KeyError, OSError, ValueError) as exc:
                 cli.error(f"Unable to resume {resume_id}: {exc}")
                 continue
-            previous_session = session
-            await _finish_productivity_session(adapter, previous_session, runtime)
-            session = resumed_session
+
+            async def reload_catalog(new_session: AgentSession) -> None:
+                nonlocal available_models, native_page
+                available_models, native_page = await _load_productivity_catalog(
+                    adapter,
+                    new_session.provider,
+                )
+
+            session, context_usage = await _switch_productivity_session(
+                adapter,
+                runtime,
+                session,
+                resumed_session,
+                active_model=resume_model or "default",
+                update_project=True,
+                before_header=reload_catalog,
+                success=lambda new: f"Resumed {new.provider} session: {new.id}",
+            )
             session_model = resume_model
             active_model = session_model or "default"
-            runtime.update_current_project(session.project)
-            runtime.update_current_thread_id(session.id)
-            runtime.append_recent_threads(session.id, "productivity")
-            context_usage = ContextWindowUsage()
-            clear_screen()
-            available_models, native_page = await _load_productivity_catalog(
-                adapter,
-                session.provider,
-            )
-            render_active_header()
-            cli.success(f"Resumed {session.provider} session: {session.id}")
             continue
         if prompt == "/resume-native" or prompt.startswith("/resume-native "):
             native_id = _slash_command_argument(prompt, "/resume-native")
@@ -522,16 +657,15 @@ async def _run_productivity_loop(
             except (KeyError, OSError, ValueError) as exc:
                 cli.error(f"Unable to resume native thread {native_id}: {exc}")
                 continue
-            previous_session = session
-            await _finish_productivity_session(adapter, previous_session, runtime)
-            session = resumed_session
-            runtime.update_current_project(session.project)
-            runtime.update_current_thread_id(session.id)
-            runtime.append_recent_threads(session.id, "productivity")
-            context_usage = ContextWindowUsage()
-            clear_screen()
-            render_active_header()
-            cli.success(f"Attached native thread as Cleo session: {session.id}")
+            session, context_usage = await _switch_productivity_session(
+                adapter,
+                runtime,
+                session,
+                resumed_session,
+                active_model=active_model,
+                update_project=True,
+                success=lambda new: f"Attached native thread as Cleo session: {new.id}",
+            )
             continue
         if prompt == "/native" or prompt.startswith("/native "):
             native_id = _slash_command_argument(prompt, "/native")
@@ -582,15 +716,14 @@ async def _run_productivity_loop(
             except (KeyError, NotImplementedError, OSError, RuntimeError) as exc:
                 cli.error(f"Unable to fork session: {exc}")
                 continue
-            previous_session = session
-            await _finish_productivity_session(adapter, previous_session, runtime)
-            session = forked
-            runtime.update_current_thread_id(session.id)
-            runtime.append_recent_threads(session.id, "productivity")
-            context_usage = ContextWindowUsage()
-            clear_screen()
-            render_active_header()
-            cli.success(f"Forked native thread into session: {session.id}")
+            session, context_usage = await _switch_productivity_session(
+                adapter,
+                runtime,
+                session,
+                forked,
+                active_model=active_model,
+                success=lambda new: f"Forked native thread into session: {new.id}",
+            )
             continue
         if prompt == "/rename" or prompt.startswith("/rename "):
             name = _slash_command_argument(prompt, "/rename")
@@ -619,19 +752,14 @@ async def _run_productivity_loop(
             except (KeyError, NotImplementedError, OSError, RuntimeError) as exc:
                 cli.error(f"Unable to archive session: {exc}")
                 continue
-            await _finish_productivity_session(adapter, session, runtime)
-            session = await adapter.create_session(
-                session.provider,
-                project_path=session.project_path,
-                model=session_model,
-                project=session.project,
+            session, context_usage = await _switch_productivity_session(
+                adapter,
+                runtime,
+                session,
+                partial(_restart_productivity_session, adapter, session, session_model),
+                active_model=active_model,
+                success=lambda _new: "Archived the native thread and started a new session.",
             )
-            runtime.update_current_thread_id(session.id)
-            runtime.append_recent_threads(session.id, "productivity")
-            context_usage = ContextWindowUsage()
-            clear_screen()
-            render_active_header()
-            cli.success("Archived the native thread and started a new session.")
             continue
 
         try:
@@ -748,15 +876,12 @@ async def _run_productivity_mode(
                 return_to_chat=return_to_chat,
             )
         else:
-            from cleo.integrations.git import inspect_git_status
-
             context_usage = ContextWindowUsage()
-            cli.render_productivity_header(
+            _render_productivity_header(
+                adapter,
                 session,
-                model=display_model,
+                active_model=display_model,
                 context_usage=context_usage,
-                options=_productivity_options(adapter, session.id),
-                git_status=inspect_git_status(session.project_path),
             )
             await _prompt_productivity_session(
                 adapter,
