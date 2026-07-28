@@ -13,7 +13,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from cleo.config.settings import settings
 from cleo.memory.compaction import load_validated_compact
 from cleo.memory.paths import memory_database_path, validate_space
 
@@ -29,8 +28,38 @@ MEMORY_CATEGORIES = {
     "question",
 }
 
-_CJK_SEQUENCE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]+")
+_CJK_SEQUENCE = re.compile(r"[㐀-䶿一-鿿]+")
 _WORD = re.compile(r"[a-z0-9_][a-z0-9_.-]*", re.IGNORECASE)
+
+
+def _settings() -> Any:
+    """函数调用期解析 memory store 使用的配置单例。
+
+    模块级 `settings` 名称被测试 monkeypatch 替换时(见
+    tests/memory/test_pipeline.py 对 cleo.memory.store 的注入)优先
+    返回注入值; 否则惰性导入 cleo.config.settings 并返回其当前
+    settings 单例, 避免 import 期二次绑定配置对象(import 本模块
+    不再触发配置加载, 运行期替换 cleo.config.settings.settings
+    亦生效)。
+    """
+    injected = globals().get("settings")
+    if injected is not None:
+        return injected
+    from cleo.config.settings import settings
+
+    return settings
+
+
+def __getattr__(name: str) -> Any:
+    """模块级惰性属性: 保留 `cleo.memory.store.settings` 这一测试注入点。
+
+    monkeypatch.setattr(cleo.memory.store, "settings", fake) 前会先
+    getattr 校验名称存在, 此处经 _settings() 返回当前配置单例即满足;
+    setattr 后注入值写入模块 globals, 由 _settings() 优先命中。
+    """
+    if name == "settings":
+        return _settings()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def _now_iso() -> str:
@@ -51,7 +80,7 @@ def _database_path(space: str, path: Path | None) -> Path:
         memory.sqlite3 的 Path, 供 _connect 与 ensure_memory_database 使用。
     """
     validate_space(space)
-    return path or memory_database_path(settings.MEMORY_DIR, space)
+    return path or memory_database_path(_settings().MEMORY_DIR, space)
 
 
 def _connect(space: str, path: Path | None = None) -> sqlite3.Connection:
@@ -817,7 +846,7 @@ def search_conversation_history(
     space = validate_space(space)
     ensure_memory_database(space, path)
     top_k = max(1, min(int(top_k), 20))
-    root = memory_root or settings.MEMORY_DIR
+    root = memory_root or _settings().MEMORY_DIR
     selected_sessions = {str(item) for item in (session_ids or []) if str(item)}
     with closing(_connect(space, path)) as conn, conn:
         rows = conn.execute(

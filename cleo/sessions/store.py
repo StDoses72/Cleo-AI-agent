@@ -222,6 +222,8 @@ class SessionStore:
             else self.memory_root / "sessions.sqlite3"
         )
         self._lock = RLock()
+        self._index_ready = False
+        self._event_id_cache: dict[str, tuple[int | None, set[str]]] = {}
         self._ensure_index()
 
     def create_session(
@@ -437,6 +439,10 @@ class SessionStore:
     ) -> list[dict[str, Any]]:
         """批量追加事件到 events.jsonl(按 id 幂等去重), 并同步 manifest 与索引。
 
+        已持久化事件的 id 集合经 _cached_event_ids 按 events 文件 mtime
+        缓存复用, 避免每次追加都全量重读 events.jsonl; 文件被外部写入
+        导致 mtime 变化时自动重读, 正确性优先。
+
         参数(keyword-only):
             space / project / session_id: 事件归属, 必须与 manifest 一致,
                 否则抛 ValueError; 来自 append_event、
@@ -461,9 +467,7 @@ class SessionStore:
                 raise ValueError("session event binding does not match its manifest")
             output_path = events_path(self.memory_root, space, project, session_id)
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            existing_ids = {
-                str(event.get("id")) for event in self.read_events(session_id) if event.get("id")
-            }
+            existing_ids = self._cached_event_ids(session_id, output_path)
             next_seq = int(manifest.get("last_event_seq", 0))
             appended: list[dict[str, Any]] = []
             for item in events:
@@ -496,6 +500,10 @@ class SessionStore:
                     for event in appended:
                         stream.write(json.dumps(event, ensure_ascii=False, default=str) + "\n")
                     stream.flush()
+                self._event_id_cache[session_id] = (
+                    output_path.stat().st_mtime_ns,
+                    existing_ids,
+                )
                 manifest["last_event_seq"] = appended[-1]["seq"]
                 if not manifest.get("title"):
                     for event in appended:
@@ -519,10 +527,9 @@ class SessionStore:
         """读取会话的全部事件(events.jsonl 不存在时返回空列表)。
 
         参数:
-            session_id: 会话 id, 由 append_events(查重)、
-                sync_langchain_messages(查 source_message_id)、
-                load_langchain_messages、move_session、refresh_compact
-                及 tests 传入。
+            session_id: 会话 id, 由 sync_langchain_messages
+                (查 source_message_id)、load_langchain_messages、
+                move_session、refresh_compact 及 tests 传入。
         返回:
             事件字典列表, 经 cleo.memory.compaction.load_events 解析;
             被 refresh_compact 用于计算 source_hash 与 compact 载荷。
@@ -535,6 +542,30 @@ class SessionStore:
             session_id,
         )
         return load_events(path) if path.exists() else []
+
+    def _cached_event_ids(self, session_id: str, path: Path) -> set[str]:
+        """返回会话已持久化事件的 id 集合(按 events 文件 mtime 缓存失效)。
+
+        参数:
+            session_id / path: 会话 id 与其 events.jsonl 路径, 来自
+                append_events(事件 id 去重)。
+        返回:
+            与缓存共享同一对象的 id 集合, 供 append_events 在持有 _lock
+            时原地 add 新事件 id; 仅当文件 mtime 与缓存一致时复用缓存,
+            多进程/跨实例写入导致 mtime 变化时自动全量重读(正确性优先),
+            文件不存在时以 mtime None 缓存空集合。
+        """
+        mtime_ns = path.stat().st_mtime_ns if path.exists() else None
+        cached = self._event_id_cache.get(session_id)
+        if cached is not None and cached[0] == mtime_ns:
+            return cached[1]
+        ids = {
+            str(event.get("id"))
+            for event in (load_events(path) if path.exists() else [])
+            if event.get("id")
+        }
+        self._event_id_cache[session_id] = (mtime_ns, ids)
+        return ids
 
     def sync_langchain_messages(
         self,
@@ -755,6 +786,7 @@ class SessionStore:
 
             target_directory.parent.mkdir(parents=True, exist_ok=True)
             source_directory.replace(target_directory)
+            self._event_id_cache.pop(session_id, None)
             manifest["project"] = target_project
             manifest["last_event_seq"] = next_seq
             manifest["updated_at"] = moved_at
@@ -902,39 +934,52 @@ class SessionStore:
         return len(manifests)
 
     def _ensure_index(self) -> None:
-        self.index_path.parent.mkdir(parents=True, exist_ok=True)
-        with closing(sqlite3.connect(self.index_path)) as conn, conn:
-            conn.execute("PRAGMA journal_mode = WAL")
-            conn.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS sessions (
-                    id TEXT PRIMARY KEY,
-                    space TEXT NOT NULL,
-                    project TEXT NOT NULL,
-                    provider TEXT NOT NULL,
-                    native_session_id TEXT,
-                    owner_type TEXT NOT NULL,
-                    owner_id TEXT,
-                    status TEXT NOT NULL,
-                    title TEXT,
-                    cwd TEXT,
-                    parent_session_id TEXT,
-                    manifest_path TEXT NOT NULL UNIQUE,
-                    last_event_seq INTEGER NOT NULL DEFAULT 0,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS idx_sessions_scope
-                    ON sessions(space, project, status, updated_at);
-                CREATE INDEX IF NOT EXISTS idx_sessions_native
-                    ON sessions(provider, native_session_id);
-                """
-            )
-            columns = {
-                str(row[1]) for row in conn.execute("PRAGMA table_info(sessions)").fetchall()
-            }
-            if "title" not in columns:
-                conn.execute("ALTER TABLE sessions ADD COLUMN title TEXT")
+        """确保全局会话索引 SQLite 表结构存在(每实例仅执行一次 DDL)。
+
+        首次调用(构造时)执行建表 DDL 并置 _index_ready; 之后
+        _upsert_index / _session_index_row / find_by_native_session /
+        rebuild_index 的重复调用直接跳过。索引文件被外部删除时自动
+        重建; 双重检查经 _lock 保证线程安全。
+        """
+        if self._index_ready and self.index_path.exists():
+            return
+        with self._lock:
+            if self._index_ready and self.index_path.exists():
+                return
+            self.index_path.parent.mkdir(parents=True, exist_ok=True)
+            with closing(sqlite3.connect(self.index_path)) as conn, conn:
+                conn.execute("PRAGMA journal_mode = WAL")
+                conn.executescript(
+                    """
+                    CREATE TABLE IF NOT EXISTS sessions (
+                        id TEXT PRIMARY KEY,
+                        space TEXT NOT NULL,
+                        project TEXT NOT NULL,
+                        provider TEXT NOT NULL,
+                        native_session_id TEXT,
+                        owner_type TEXT NOT NULL,
+                        owner_id TEXT,
+                        status TEXT NOT NULL,
+                        title TEXT,
+                        cwd TEXT,
+                        parent_session_id TEXT,
+                        manifest_path TEXT NOT NULL UNIQUE,
+                        last_event_seq INTEGER NOT NULL DEFAULT 0,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_sessions_scope
+                        ON sessions(space, project, status, updated_at);
+                    CREATE INDEX IF NOT EXISTS idx_sessions_native
+                        ON sessions(provider, native_session_id);
+                    """
+                )
+                columns = {
+                    str(row[1]) for row in conn.execute("PRAGMA table_info(sessions)").fetchall()
+                }
+                if "title" not in columns:
+                    conn.execute("ALTER TABLE sessions ADD COLUMN title TEXT")
+            self._index_ready = True
 
     def _upsert_index(self, manifest: dict[str, Any], path: Path) -> None:
         self._ensure_index()
@@ -998,12 +1043,3 @@ class SessionStore:
         validate_name(str(manifest.get("id") or ""), "session_id")
         validate_name(str(manifest.get("provider") or ""), "provider")
         validate_name(str(manifest.get("owner_type") or ""), "owner_type")
-
-    def session_directory(self, session_id: str) -> Path:
-        manifest = self.load_manifest(session_id)
-        return session_directory(
-            self.memory_root,
-            manifest["space"],
-            manifest["project"],
-            session_id,
-        )

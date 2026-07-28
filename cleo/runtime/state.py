@@ -5,7 +5,6 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
-from cleo.config.settings import settings
 from cleo.memory.paths import DEFAULT_MEMORY_SPACE, MEMORY_SPACES, projects_directory
 
 DEFAULT_PROJECT = "general"
@@ -143,28 +142,28 @@ class RuntimeState(BaseModel):
         return self
 
 
-# 默认状态快照(dict 形式); 当前仓库内暂无消费方, 保留作参考/外部使用。
-DEFAULT_RUNTIME_STATE = RuntimeState().model_dump()
-
-
 class Runtime:
     """运行时状态门面(facade): 内存中持有当前状态并负责落盘到 runtime.json。
 
     由 CLI 各入口实例化: cleo/cli/application.py(main 流程)、
     cleo/cli/chat.py、cleo/cli/lifecycle.py、cleo/cli/productivity.py;
     这些调用方通过 update_* / append_recent_threads 修改状态,
-    通过 projects_for / recent_threads_for 读取状态渲染交互界面。
+    通过 projects_for 读取状态渲染交互界面。
     """
 
-    runtime_json_path = settings.RUNTIME_STATE_PATH
-    memory_root = settings.MEMORY_DIR
-
     def __init__(self) -> None:
-        """初始化 Runtime: 确保 runtime.json 存在, 载入状态并从磁盘同步项目列表。
+        """初始化 Runtime: 绑定配置路径, 确保 runtime.json 存在并载入状态。
 
-        状态来源为 settings.RUNTIME_STATE_PATH 指向的 JSON 文件(缺失或损坏时
-        回退默认值); 完成后实例属性被 CLI 各命令直接读取。
+        runtime_json_path / memory_root 在实例化时才读取 settings
+        (class body 不再于 import 期二次绑定配置, 运行期可替换、
+        测试可注入); 状态来源为 settings.RUNTIME_STATE_PATH 指向的
+        JSON 文件(缺失或损坏时回退默认值); 完成后实例属性被 CLI
+        各命令直接读取。
         """
+        from cleo.config.settings import settings
+
+        self.runtime_json_path = settings.RUNTIME_STATE_PATH
+        self.memory_root = settings.MEMORY_DIR
         self.ensure_runtime_json()
         state = self._load_runtime_state()
         self.current_space = state.current_space
@@ -174,29 +173,27 @@ class Runtime:
         self.recent_threads = state.recent_threads
         self.sync_projects_from_disk()
 
-    @classmethod
-    def ensure_runtime_json(cls) -> None:
+    def ensure_runtime_json(self) -> None:
         """若 runtime.json 不存在则写入默认状态文件。
 
         由 Runtime.__init__ 与 update_runtime_json 调用; 无返回值,
-        副作用是创建 settings.RUNTIME_STATE_PATH 及其父目录。
+        副作用是创建 self.runtime_json_path 及其父目录。
         """
-        if cls.runtime_json_path.exists():
+        if self.runtime_json_path.exists():
             return
-        cls.runtime_json_path.parent.mkdir(parents=True, exist_ok=True)
-        cls._write_runtime_state(RuntimeState())
+        self.runtime_json_path.parent.mkdir(parents=True, exist_ok=True)
+        self._write_runtime_state(RuntimeState())
 
-    @classmethod
-    def _load_runtime_state(cls) -> RuntimeState:
+    def _load_runtime_state(self) -> RuntimeState:
         """从 runtime.json 读取并校验运行时状态。
 
-        读取 settings.RUNTIME_STATE_PATH; JSON 损坏、IO 错误、结构非法或
+        读取 self.runtime_json_path; JSON 损坏、IO 错误、结构非法或
         校验失败时静默回退为默认 RuntimeState。
         返回:
             规范化后的 RuntimeState, 由 Runtime.__init__ 消费以填充实例属性。
         """
         try:
-            with open(cls.runtime_json_path, encoding="utf-8-sig") as source:
+            with open(self.runtime_json_path, encoding="utf-8-sig") as source:
                 runtime_data = json.load(source)
         except (json.JSONDecodeError, OSError):
             return RuntimeState()
@@ -207,8 +204,7 @@ class Runtime:
         except ValidationError:
             return RuntimeState()
 
-    @classmethod
-    def _write_runtime_state(cls, state: RuntimeState) -> None:
+    def _write_runtime_state(self, state: RuntimeState) -> None:
         """以原子写(tmp + replace)方式把状态持久化到 runtime.json。
 
         参数:
@@ -216,13 +212,13 @@ class Runtime:
                 或 update_runtime_json 中重建的当前状态。
         无返回值; 写入结果由后续的 _load_runtime_state 读取。
         """
-        cls.runtime_json_path.parent.mkdir(parents=True, exist_ok=True)
-        temp_path = cls.runtime_json_path.with_suffix(cls.runtime_json_path.suffix + ".tmp")
+        self.runtime_json_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = self.runtime_json_path.with_suffix(self.runtime_json_path.suffix + ".tmp")
         temp_path.write_text(
             json.dumps(state.model_dump(), ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-        temp_path.replace(cls.runtime_json_path)
+        temp_path.replace(self.runtime_json_path)
 
     def update_current_space(self, space: str) -> None:
         """切换当前 memory space 并立即落盘。
@@ -296,17 +292,6 @@ class Runtime:
             项目名列表, 被 chat.py 的交互提示与项目切换校验消费。
         """
         return list(self.projects[space or self.current_space])
-
-    def recent_threads_for(self, space: str | None = None) -> list[str]:
-        """返回指定 space 的最近线程 id 列表副本(缺省为当前 space)。
-
-        参数:
-            space: 目标 memory space。当前仓库内暂无生产代码调用
-                (仅作为与 projects_for 对称的读取 API 保留)。
-        返回:
-            最近线程 id 列表。
-        """
-        return list(self.recent_threads[space or self.current_space])
 
     def sync_projects_from_disk(self) -> None:
         """扫描磁盘上各 space 的项目目录, 把未登记的项目并入状态后落盘。
