@@ -1,3 +1,9 @@
+"""前台交互 Agent:Cleo 主对话代理,基于 deepagents 构建。
+
+组装 shell/codex/memory 工具与 system prompt, 通过 `Agent.stream_text`
+向 CLI 层(cleo/cli/chat.py)流式输出文本增量。
+"""
+
 from collections.abc import AsyncIterator, Mapping
 from typing import Any
 
@@ -75,12 +81,29 @@ active_profile = settings.active_agent_profile
 
 
 class Agent:
+    """Cleo 前台对话 Agent,封装 deepagents 图与工具集。
+
+    由 CLI 层实例化: cleo/cli/application.py:245、cleo/cli/chat.py:237/282/343,
+    以及 tests/agents/test_cleo.py。实例属性 `context_usage` 被
+    cleo/cli/chat.py:38/73 读取用于渲染 token 用量。
+    """
+
     def __init__(
         self,
         system_prompt: str = SYSTEM_PROMPT,
         project: str = "general",
         space: str = DEFAULT_MEMORY_SPACE,
     ) -> None:
+        """初始化模型、backend、工具列表与 deepagent 图。
+
+        Args:
+            system_prompt: 系统提示词; 调用方目前均使用默认值 SYSTEM_PROMPT
+                (本文件顶部定义), 仅在测试中可能被替换。
+            project: 绑定的项目名; 来自 CLI 的 `/project` 选择
+                (chat.py/application.py), 用于绑定 memory 检索工具。
+            space: 记忆空间名; 来自 CLI runtime 的当前 space,
+                默认 DEFAULT_MEMORY_SPACE。
+        """
         self.root_dir = settings.active_directory_profile.root_path
         self.project = project
         self.space = space
@@ -123,6 +146,25 @@ class Agent:
         loaded_info: list | None = None,
         images: list[dict[str, str]] | None = None,
     ) -> AsyncIterator[str]:
+        """以 async generator 形式流式产出 Agent 回复的文本增量。
+
+        底层调用 `deepagent.astream(..., stream_mode="messages")`,
+        逐 chunk 提取 AIMessageChunk 的文本并 yield。
+
+        Args:
+            message: 用户本轮输入文本; 来自 CLI 输入框
+                (cleo/cli/application.py -> chat.py)。
+            thread_id: 会话 thread ID, 作为 langgraph checkpointer 的
+                thread_id; 由 chat.py 的当前 thread 传入, 默认 "local"。
+            loaded_info: 恢复的历史消息列表; 由 chat.py:57/453
+                (restored/loaded messages) 传入, None 表示新会话。
+            images: 图片附件列表, 每项含 name/base64/mime_type;
+                由 chat.py:66/454 的 attachment_list 传入。
+
+        Yields:
+            文本增量 str; 由 cleo/cli/chat.py:62-69 消费,
+            经 `cli.stream_assistant(text)` 实时渲染到终端。
+        """
         image_inputs = list(images or [])
 
         user_message = {
@@ -142,6 +184,20 @@ class Agent:
                 yield text
 
     def _capture_usage(self, chunk: Any) -> None:
+        """从流式 chunk 中提取 token usage 并累计到 `self.context_usage`。
+
+        由 `stream_text` 在每个 chunk 上调用 (本文件)。兼容两种 metadata
+        结构: langchain 的 `usage_metadata` 与部分 provider 放在
+        `response_metadata.token_usage` 中的 usage。
+
+        Args:
+            chunk: `deepagent.astream(stream_mode="messages")` 产出的单项,
+                可能是 (message, metadata) tuple 或 message 本身。
+
+        Returns:
+            None; 副作用为更新 `self.context_usage`, 最终由 CLI
+            (chat.py) 读取并渲染 token 用量。
+        """
         message = chunk[0] if isinstance(chunk, tuple) and chunk else chunk
         usage = getattr(message, "usage_metadata", None)
         if not isinstance(usage, Mapping):
@@ -168,6 +224,19 @@ class Agent:
 
 
 def _build_user_content(message: str, images: list[dict[str, str]]) -> str | list[dict[str, str]]:
+    """构造发给模型的 user message content, 支持多模态图片附件。
+
+    仅被 `Agent.stream_text` 调用 (本文件)。
+
+    Args:
+        message: 用户文本; 来自 `stream_text` 的同名参数。
+        images: 图片附件 dict 列表 (name/base64/mime_type);
+            来自 `stream_text` 的 images 参数 (CLI 附件)。
+
+    Returns:
+        无图片时返回纯文本 str; 有图片时返回 OpenAI 风格的 content block
+        list, 供 `deepagent.astream` 的 messages 使用。
+    """
     if not images:
         return message
 
@@ -186,6 +255,18 @@ def _build_user_content(message: str, images: list[dict[str, str]]) -> str | lis
 
 
 def _extract_text_delta(chunk: Any) -> str:
+    """从流式 chunk 中提取 AIMessageChunk 的文本增量。
+
+    仅被 `Agent.stream_text` 调用 (本文件)。非 AI 消息 (如 tool
+    message) 返回空串, 避免工具输出混入助手文本流。
+
+    Args:
+        chunk: `astream(stream_mode="messages")` 的产出项, 可能是
+            (message, metadata) tuple 或 message 本身。
+
+    Returns:
+        文本增量 str (可能为空串); 由 `stream_text` 过滤后 yield 给 CLI。
+    """
     message = chunk[0] if isinstance(chunk, tuple) and chunk else chunk
     if getattr(message, "type", None) != "AIMessageChunk":
         return ""
@@ -205,6 +286,18 @@ def _extract_text_delta(chunk: Any) -> str:
 
 
 def _usage_int(usage: Mapping[str, Any], *keys: str) -> int | None:
+    """按候选 key 顺序从 usage mapping 中取第一个 int 值。
+
+    仅被 `Agent._capture_usage` 调用 (本文件), 用于兼容不同 provider
+    的 token 字段命名 (如 input_tokens vs prompt_tokens)。
+
+    Args:
+        usage: token usage mapping (usage_metadata 或 token_usage)。
+        *keys: 按优先级排列的候选字段名。
+
+    Returns:
+        命中的 int 值; 全部缺失或类型不符时返回 None, 由调用方跳过累计。
+    """
     for key in keys:
         value = usage.get(key)
         if isinstance(value, int):

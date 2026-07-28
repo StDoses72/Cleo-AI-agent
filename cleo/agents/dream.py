@@ -56,9 +56,22 @@ Core principles:
 """.strip()
 
 class DreamAgent:
-    """Consolidate validated session projections into project memory."""
+    """Consolidate validated session projections into project memory.
+
+    后台记忆整理 Agent: 读取 hash 校验通过的 compact session 投影,
+    提取 durable knowledge 并写入项目长期记忆 (MEMORY.md 等)。
+
+    由 cleo/cli/lifecycle.py:58 在会话结束 (/quit、one-shot 完成)
+    时实例化并调用 `invoke`; 也被 tests/agents/test_dream.py 使用。
+    """
 
     def __init__(self, system_prompt: str = DREAM_AGENT_SYSTEM_PROMPT) -> None:
+        """初始化 DreamAgent 的模型与工具集 (langchain `create_agent`)。
+
+        Args:
+            system_prompt: 系统提示词; 调用方均使用默认值
+                DREAM_AGENT_SYSTEM_PROMPT (本文件顶部定义)。
+        """
         active_profile = settings.active_dream_agent_profile
         self.root_dir = Path(__file__).resolve().parents[2]
         self.toolist = [
@@ -90,6 +103,27 @@ class DreamAgent:
         project: str = "general",
         space: str = DEFAULT_MEMORY_SPACE,
     ) -> Any:
+        """对单个 session 执行一次记忆整理 (consolidation) 流程。
+
+        加载 validated compact payload, 若 source_hash 已整理则跳过;
+        否则构造整理 prompt 让内部 agent 调用 dream_agent_tools 完成
+        原子记忆写入与 Markdown 落盘, 最后校验完成状态。
+
+        Args:
+            session_id: 待整理的会话 ID (即 thread_id);
+                来自 cleo/cli/lifecycle.py:58。
+            project: 目标项目名; 来自 lifecycle 的当前 project,
+                默认 "general"。
+            space: 记忆空间; 来自 lifecycle 的当前 space,
+                默认 DEFAULT_MEMORY_SPACE。
+
+        Returns:
+            已整理过: dict(status="skipped", reason, source_hash)。
+            正常完成: langchain agent `ainvoke` 的结果 dict。
+            返回值本身未被 lifecycle.py 使用 (仅依赖其副作用与异常);
+            agent 未完成 consolidation 协议时抛 RuntimeError, 异常由
+            lifecycle.py:64 捕获并记录 `mark_consolidation_failed`。
+        """
         payload = load_validated_compact(
             memory_root=settings.MEMORY_DIR,
             space=space,

@@ -7,6 +7,14 @@ from dataclasses import dataclass
 
 @dataclass(slots=True)
 class ContextWindowUsage:
+    """模型 context window 使用量的共享数据模型(用于 UI 展示)。
+
+    由 cleo/agents/cleo.py(agent 根据模型配置创建)与
+    cleo/cli/productivity.py(各会话命令创建空实例)实例化;
+    经 update() 增量更新后, 由 cleo/cli/productivity_renderer.py
+    与 cleo/cli/console.py 读取字段及 ratio 渲染用量指示。
+    """
+
     used_tokens: int | None = None
     window_tokens: int | None = None
     input_tokens: int | None = None
@@ -15,6 +23,14 @@ class ContextWindowUsage:
 
     @property
     def ratio(self) -> float | None:
+        """计算已用 token 占 context window 的比例(clamp 到 [0.0, 1.0])。
+
+        数据来自 update() 写入的 used_tokens / window_tokens。
+        返回:
+            使用比例; 数据不足时返回 None。被
+            cleo/cli/productivity_renderer.py:200 用于渲染进度条,
+            以及 tests/agents/test_cleo.py 断言。
+        """
         if self.used_tokens is None or not self.window_tokens:
             return None
         return max(0.0, min(self.used_tokens / self.window_tokens, 1.0))
@@ -28,6 +44,19 @@ class ContextWindowUsage:
         output_tokens: int | None = None,
         cached_input_tokens: int | None = None,
     ) -> None:
+        """增量更新各项 token 计数; 传 None 的字段保持不变, 负数归零。
+
+        参数(均为 keyword-only):
+            used_tokens: 当前已占用的 context token 数, 来自
+                cleo/agents/cleo.py:169(LLM 响应 usage 元数据)。
+            window_tokens: 模型 context window 总大小, 来源同上;
+                0 会被归一为 None(表示未知)。
+            input_tokens: 本轮输入 token 数, 来源同上。
+            output_tokens: 本轮输出 token 数, 来源同上。
+            cached_input_tokens: 命中缓存的输入 token 数, 来源同上。
+            另见 cleo/cli/productivity_renderer.py:91 的渲染侧更新。
+        无返回值; 更新结果由 ratio 属性及各 UI 渲染函数消费。
+        """
         if used_tokens is not None:
             self.used_tokens = max(0, used_tokens)
         if window_tokens is not None:

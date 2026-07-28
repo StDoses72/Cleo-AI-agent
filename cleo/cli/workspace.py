@@ -12,6 +12,17 @@ LOCAL_HARNESSES_CONFIG_PATH = "config/harnesses.json"
 
 
 def _run_git(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    """执行一条 git 子命令并在失败时抛出 RuntimeError。
+
+    参数:
+        repo_root: 仓库根目录, 由 reset_workspace_to_main 解析后传入(绝对路径)。
+        args: git 子命令及参数, 由各调用点(clean/reset/switch 等)拼接传入。
+
+    返回:
+        subprocess.CompletedProcess[str]: 成功后的进程结果(含 stdout),
+        仅被 reset_workspace_to_main 用于读取 `rev-parse --show-toplevel` 的输出;
+        其余调用点忽略返回值, 仅依赖副作用。
+    """
     result = subprocess.run(
         ["git", "-C", str(repo_root), *args],
         text=True,
@@ -29,6 +40,18 @@ def _validated_preserve_paths(
     repo_root: Path,
     preserve_paths: tuple[str, ...],
 ) -> list[tuple[str, Path]]:
+    """校验 preserve_paths 均为仓库内的相对路径, 防止 path traversal。
+
+    参数:
+        repo_root: 已 resolve 的仓库根目录, 由 reset_workspace_to_main 传入。
+        preserve_paths: 待保留的相对路径元组, 来自 reset_workspace_to_main 的
+            preserve_paths 参数(默认 LOCAL_CONFIG_PATH / LOCAL_HARNESSES_CONFIG_PATH)。
+
+    返回:
+        list[tuple[str, Path]]: (POSIX 风格相对路径, 绝对路径) 列表,
+        由 reset_workspace_to_main 消费, 用于备份/恢复以及构造 git clean 的
+        -e exclude 参数(经 _git_clean_args)。
+    """
     validated: list[tuple[str, Path]] = []
     for rel in preserve_paths:
         rel_path = Path(rel)
@@ -44,6 +67,17 @@ def _validated_preserve_paths(
 
 
 def _copy_path(src: Path, dst: Path) -> None:
+    """把单个文件或目录拷贝到目标位置(目录用 copytree 合并)。
+
+    参数:
+        src: 源路径, 来自 reset_workspace_to_main 中的 preserve 文件绝对路径
+            或其临时备份路径。
+        dst: 目标路径, 由 reset_workspace_to_main 构造(临时备份目录内或仓库内原位置)。
+
+    返回:
+        None; 副作用为文件系统拷贝, 结果由 reset_workspace_to_main 在
+        备份/恢复两个阶段直接使用。
+    """
     if src.is_dir():
         shutil.copytree(src, dst, dirs_exist_ok=True)
         return
@@ -53,6 +87,14 @@ def _copy_path(src: Path, dst: Path) -> None:
 
 
 def _git_clean_args(preserved: list[tuple[str, Path]]) -> list[str]:
+    """构造带 -e exclude 的 `git clean -ffdx` 参数列表, 保护 preserve 文件不被清理。
+
+    参数:
+        preserved: (相对路径, 绝对路径) 列表, 来自 _validated_preserve_paths 的返回值。
+
+    返回:
+        list[str]: git clean 参数列表, 由 reset_workspace_to_main 解包后传给 _run_git。
+    """
     args = ["clean", "-ffdx"]
     for rel, _ in preserved:
         args.extend(["-e", rel])
@@ -68,6 +110,22 @@ def reset_workspace_to_main(
         LOCAL_HARNESSES_CONFIG_PATH,
     ),
 ) -> None:
+    """把工作区硬重置到本地 main 分支, 同时备份并恢复 preserve 的本地配置文件。
+
+    流程: 校验仓库根与 main 分支存在 -> 备份 preserve 文件到临时目录 ->
+    `git reset --hard` + `git clean -ffdx`(带 -e exclude) -> 切回 main 并再次
+    重置清理 -> 恢复 preserve 文件。
+
+    参数:
+        repo_root: 仓库根目录, 由 cleo/cli/application.py:155 传入 SOURCE_ROOT。
+        main_branch: 目标分支名, 目前调用方使用默认值 "main"。
+        preserve_paths: 需在重置中保留的仓库内相对路径, 目前调用方使用默认值
+            (config/cleo.json 与 config/harnesses.json)。
+
+    返回:
+        None; 通过 print 向终端输出重置结果与保留文件清单(直接由 CLI 用户阅读)。
+        校验失败时抛出 RuntimeError, 由 application.py 的异常处理兜底。
+    """
     repo_root = repo_root.resolve()
 
     git_root = Path(_run_git(repo_root, "rev-parse", "--show-toplevel").stdout.strip()).resolve()

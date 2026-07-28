@@ -12,6 +12,12 @@ _DIVERGENCE = re.compile(r"(ahead|behind) (\d+)")
 
 @dataclass(frozen=True, slots=True)
 class GitStatus:
+    """只读的 Git 仓库状态快照。
+
+    由 ``inspect_git_status`` 构造; 被 CLI productivity
+    (cleo/cli/productivity.py)与 console 渲染(cleo/cli/console.py)消费。
+    """
+
     repo_root: str
     branch: str
     upstream: str | None
@@ -21,11 +27,22 @@ class GitStatus:
 
     @property
     def dirty_count(self) -> int:
+        """变更文件数量(``changes`` 长度), 供 console 渲染角标。"""
         return len(self.changes)
 
 
 def inspect_git_status(cwd: str) -> GitStatus | None:
-    """Return a compact status without mutating the repository."""
+    """Return a compact status without mutating the repository.
+
+    由 CLI productivity(cleo/cli/productivity.py 多处)以
+    ``session.project_path`` 调用, 用于在界面展示分支与变更概览。
+    参数:
+        cwd: 待检查目录(通常是 session 的 project_path); 内部先解析
+            repo 顶层再执行 ``git status --short --branch``。
+    返回:
+        ``GitStatus``; 目录不在 git 仓库内或 git 命令失败时返回 None
+        (调用方按无状态处理)。
+    """
     root_result = _git(cwd, "rev-parse", "--show-toplevel")
     if root_result.returncode != 0:
         return None
@@ -56,6 +73,15 @@ def inspect_git_status(cwd: str) -> GitStatus | None:
 
 
 def _git(cwd: str, *args: str) -> subprocess.CompletedProcess[str]:
+    """执行一次只读 git 子命令(带 5 秒超时, 不抛异常)。
+
+    参数:
+        cwd: 工作目录, 来自 ``inspect_git_status``。
+        *args: git 子命令及参数。
+    返回:
+        ``CompletedProcess``; git 不可用或超时时返回 returncode=1 的
+        合成结果, 由调用方按失败分支处理。
+    """
     try:
         return subprocess.run(
             ["git", "-C", cwd, *args],

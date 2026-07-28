@@ -25,6 +25,16 @@ class ProductivityEventRenderer:
         model: str = "unknown",
         context_usage: ContextWindowUsage | None = None,
     ) -> None:
+        """初始化 renderer 状态。
+
+        参数:
+            console: rich Console, 由 CleoCLI.productivity_renderer() (console.py:549) 传入
+                共享的终端 console。
+            model: 当前模型名, 由调用方(CleoCLI.productivity_renderer 的调用方,
+                即 productivity.py 的 _prompt_productivity_session)传入的 active model。
+            context_usage: 可选的共享 ContextWindowUsage; 若提供则与原对象共享,
+                token 统计会回写到该对象供 productivity loop 的 header 复用。
+        """
         self.console = console
         self.model = model
         self.context_usage = context_usage or ContextWindowUsage()
@@ -32,6 +42,20 @@ class ProductivityEventRenderer:
         self.terminal_streamed = False
 
     def __call__(self, event: AgentEvent) -> None:
+        """渲染单个归一化 harness event(作为 EventCallback 被 adapter 调用)。
+
+        本方法使实例满足 EventCallback 协议: 由
+        cleo/harnesses/adapter.py 的 AgentAdapter.prompt 在流式收到
+        provider 事件时逐个调用(经 productivity.py:35 的 on_event=renderer 传入)。
+
+        参数:
+            event: AgentAdapter 归一化后的 AgentEvent; 先交给
+                _capture_context_usage 统计 token, 再按 event.type 分流为
+                流式输出(assistant/terminal chunk)或单行摘要(_event_summary)。
+
+        返回:
+            None; 输出直接写入 self.console(rich), 不向上游返回值。
+        """
         self._capture_context_usage(event)
         if event.type == "assistant_message_chunk" and event.text:
             if not self.assistant_streamed:
@@ -58,6 +82,17 @@ class ProductivityEventRenderer:
         self.terminal_streamed = False
 
     def finish(self, result: AgentResult) -> None:
+        """turn 结束后收尾: 补换行、渲染最终状态与 runtime status 面板。
+
+        参数:
+            result: AgentAdapter.prompt 返回的 AgentResult, 由
+                productivity.py 的 _prompt_productivity_session 在 await 完成后传入
+                (productivity.py:36)。
+
+        返回:
+            None; 输出(状态行 + _render_runtime_status 面板)直接写入 console,
+            供终端用户阅读。
+        """
         if self.assistant_streamed or self.terminal_streamed:
             self.console.print()
         elif result.response:
@@ -78,6 +113,16 @@ class ProductivityEventRenderer:
         )
 
     def _capture_context_usage(self, event: AgentEvent) -> None:
+        """从 tokenUsage 事件 payload 中提取 token 统计并写入 self.context_usage。
+
+        参数:
+            event: 由 __call__ 传入的归一化 AgentEvent; 仅当
+                data["provider_event_type"] == "thread/tokenUsage/updated" 时处理。
+
+        返回:
+            None; 结果写入 self.context_usage(可能是与 productivity loop 共享的
+            ContextWindowUsage 实例), 供 finish()/header 渲染 context 占用。
+        """
         if event.data.get("provider_event_type") != "thread/tokenUsage/updated":
             return
         payload = self._payload(event)
@@ -106,6 +151,16 @@ class ProductivityEventRenderer:
 
     @staticmethod
     def _token_int(payload: dict[str, Any], *keys: str) -> int | None:
+        """在 payload 中按候选 key 顺序取第一个 int 类型的 token 数值。
+
+        参数:
+            payload: tokenUsage 的子字典(total/last/顶层), 来自 _capture_context_usage。
+            keys: 兼容 camelCase 与 snake_case 的候选字段名。
+
+        返回:
+            int | None: 匹配到的 token 数; 全部缺失时返回 None,
+            由 _capture_context_usage 传给 ContextWindowUsage.update 表示该字段未知。
+        """
         for key in keys:
             value = payload.get(key)
             if isinstance(value, int):
@@ -113,14 +168,35 @@ class ProductivityEventRenderer:
         return None
 
     def _ensure_newline(self) -> None:
+        """若上一次输出是未换行的流式 chunk, 先补一个换行, 并重置 assistant 流状态。
+
+        无参数, 无返回值; 仅被 __call__ 内部在输出非流式摘要前调用。
+        """
         if self.assistant_streamed or self.terminal_streamed:
             self.console.print()
         self.assistant_streamed = False
 
     def _start_line(self, label: str, style: str) -> None:
+        """在行首打印固定宽度的标签前缀(不换行), 供后续流式文本衔接。
+
+        参数:
+            label: 标签文本(如 "CODEX"/"TERM"), 由 __call__ 内部传入。
+            style: rich style 名称("green"/"yellow"), 由 __call__ 内部传入。
+
+        返回:
+            None; 输出写入 console, 后续 chunk 以 end="" 续接在同一行。
+        """
         self.console.print(Text(f"{label:<8}", style=f"bold {style}"), end="")
 
     def _render_event(self, label: str, message: str, style: str) -> None:
+        """以 "LABEL   message" 形式渲染一整行事件摘要并换行。
+
+        参数:
+            label/message/style: 由 __call__ 从 _event_summary 的返回元组解包传入。
+
+        返回:
+            None; 输出写入 console, 供终端用户阅读。
+        """
         line = Text()
         line.append(f"{label:<8}", style=f"bold {style}")
         line.append(message)
@@ -128,6 +204,16 @@ class ProductivityEventRenderer:
 
     @classmethod
     def _event_summary(cls, event: AgentEvent) -> tuple[str, str, str] | None:
+        """把非流式 AgentEvent 归约为 (label, message, style) 单行摘要。
+
+        参数:
+            event: 由 __call__ 传入的归一化 AgentEvent; 覆盖 tool_call /
+                tool_result / plan_update / file_change / error 等类型。
+
+        返回:
+            tuple[str, str, str] | None: (标签, 消息, rich style); 无需展示的
+            事件返回 None, 由 __call__ 解包后交给 _render_event 渲染。
+        """
         payload = cls._payload(event)
         item = payload.get("item")
         item = item if isinstance(item, dict) else {}
@@ -161,11 +247,29 @@ class ProductivityEventRenderer:
 
     @staticmethod
     def _payload(event: AgentEvent) -> dict[str, Any]:
+        """取出事件的 payload 字典(data["payload"] 缺失时退回 data 本身)。
+
+        参数:
+            event: 归一化 AgentEvent, 由 _capture_context_usage / _event_summary 传入。
+
+        返回:
+            dict[str, Any]: 事件 payload; 被 _event_summary / _capture_context_usage
+            用于读取 item、tokenUsage、diff 等字段。
+        """
         payload = event.data.get("payload")
         return payload if isinstance(payload, dict) else event.data
 
     @staticmethod
     def _file_change_summary(item: dict[str, Any], payload: dict[str, Any]) -> str:
+        """为 file_change 事件生成简短描述(变更数或 diff 首行)。
+
+        参数:
+            item: 事件 item 字典, 由 _event_summary 从 payload 提取后传入。
+            payload: 事件 payload 字典, 由 _event_summary 传入, 用于兜底读取 diff。
+
+        返回:
+            str: 摘要文本, 作为 _event_summary 返回元组的 message 字段被渲染。
+        """
         changes = item.get("changes")
         if isinstance(changes, list):
             return f"{len(changes)} change(s)"
@@ -183,6 +287,21 @@ def _render_runtime_status(
     context_usage: ContextWindowUsage | None,
     accent: str,
 ) -> None:
+    """渲染一行 model + context 占用的状态面板(Panel 内含进度点与百分比)。
+
+    参数:
+        console: rich Console; 由 ProductivityEventRenderer.finish 传入自身 console,
+            或由 CleoCLI.render_runtime_status (console.py:562) 传入共享 console。
+        model: 当前模型名; 来自 finish 的 self.model 或 console.py 调用方的
+            active_model。
+        context_usage: token 统计; 为 None 时以空 ContextWindowUsage 兜底,
+            显示 "waiting"。
+        accent: rich 强调色("cyan"/"magenta"), 由调用方按 chat/productivity
+            上下文传入。
+
+    返回:
+        None; 输出直接写入 console, 供终端用户阅读。
+    """
     usage = context_usage or ContextWindowUsage()
     status = Table.grid(expand=True)
     status.add_column(ratio=1, overflow="ellipsis")
@@ -220,6 +339,15 @@ def _render_runtime_status(
 
 
 def _format_tokens(value: int) -> str:
+    """把 token 数格式化为紧凑字符串(如 12.3k / 1.2m)。
+
+    参数:
+        value: token 数量, 来自 _render_runtime_status 读取的
+            ContextWindowUsage 各字段。
+
+    返回:
+        str: 格式化文本, 由 _render_runtime_status 拼入状态面板。
+    """
     if value >= 1_000_000:
         return f"{value / 1_000_000:.1f}m"
     if value >= 1_000:

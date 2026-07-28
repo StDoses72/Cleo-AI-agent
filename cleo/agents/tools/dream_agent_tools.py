@@ -74,6 +74,21 @@ PROJECT_MEMORY_TEMPLATE = """# Project Memory: {project}
 
 
 def _safe_project_dir(space: str, project: str):
+    """校验 space/project 名称并返回项目记忆目录路径。
+
+    被本文件的 `read_project_memory`、`write_memory_to_markdown` 和
+    `_validated_compact` 调用。
+
+    Args:
+        space: 记忆空间名; 来自 tool 调用参数 (最终源自 DreamAgent
+            prompt 中指定的 space)。
+        project: 项目名; 来源同上。
+
+    Returns:
+        `memory/<space>/projects/<project>/` 对应的 Path;
+        名称非法时由 validate_space/validate_name 抛 ValueError,
+        由调用方捕获并转为 "Error: ..." 字符串返回给 LLM。
+    """
     return project_directory(
         settings.MEMORY_DIR,
         validate_space(space),
@@ -82,10 +97,36 @@ def _safe_project_dir(space: str, project: str):
 
 
 def _validate_session_id(session_id: str) -> str:
+    """校验 session_id 合法性 (防路径穿越) 并返回原名。
+
+    被 `read_session_events`、`write_memory_to_markdown` 和
+    `_validated_compact` 调用。
+
+    Args:
+        session_id: 会话 ID; 来自 tool 调用参数。
+
+    Returns:
+        校验通过的 session_id str; 非法时抛 ValueError 由调用方转为
+        "Error: ..." 返回给 LLM。
+    """
     return validate_name(session_id, "session_id")
 
 
 def _validated_compact(space: str, project: str, session_id: str) -> dict:
+    """加载指定 space/project/session 的 validated compact 投影。
+
+    被 `read_compact_memory`、`remember_durable_knowledge`、
+    `write_memory_to_markdown`、`complete_memory_consolidation` 调用,
+    是所有证据校验的统一入口。
+
+    Args:
+        space/project/session_id: 定位 compact 文件的三元组;
+            来自各 tool 的调用参数 (DreamAgent prompt 指定)。
+
+    Returns:
+        compact payload dict (含 events 与 source.source_content_hash);
+        调用方用它校验 source_hash 与 evidence event IDs。
+    """
     _safe_project_dir(space, project)
     _validate_session_id(session_id)
     return load_validated_compact(
@@ -97,6 +138,16 @@ def _validated_compact(space: str, project: str, session_id: str) -> dict:
 
 
 def _format_markdown_items(value: str) -> str:
+    """把自由文本规范化为 Markdown 列表片段, 空内容回退 "- None"。
+
+    仅被 `write_memory_to_markdown` 调用, 用于渲染 MEMORY.md 各小节。
+
+    Args:
+        value: DreamAgent 通过 tool 参数传入的某一小节原始文本。
+
+    Returns:
+        格式化后的 Markdown 片段 str, 嵌入 PROJECT_MEMORY_TEMPLATE。
+    """
     text = (value or "").strip()
     if not text:
         return "- None"
@@ -111,6 +162,18 @@ def _format_markdown_items(value: str) -> str:
 
 
 def _valid_evidence_ids(payload: dict) -> set[str]:
+    """从 compact payload 收集全部可引用的 evidence event ID。
+
+    仅被 `remember_durable_knowledge` 调用, 用于校验 LLM 提供的
+    evidence_event_ids 是否真实存在于 compact source 中。
+
+    Args:
+        payload: `_validated_compact` 返回的 compact dict。
+
+    Returns:
+        合法 event ID 集合 (含 event.id 与 event.source_event_ids);
+        调用方据此拒绝未知 ID。
+    """
     valid: set[str] = set()
     for event in payload.get("events") or []:
         if not isinstance(event, dict):
@@ -122,6 +185,18 @@ def _valid_evidence_ids(payload: dict) -> set[str]:
 
 
 def _atomic_memory_markdown(space: str, project: str) -> str:
+    """按 category 渲染该项目的全部原子记忆为 Markdown 片段。
+
+    仅被 `write_memory_to_markdown` 调用, 填充模板的
+    "Evidence-backed Atomic Memory" 小节。
+
+    Args:
+        space/project: 记忆定位参数; 来自 `write_memory_to_markdown`
+            的同名参数。
+
+    Returns:
+        分类后的 Markdown str (无记忆时为 "- None"), 嵌入 MEMORY.md。
+    """
     memories = search_memories(space=space, project=project, limit=100)
     if not memories:
         return "- None"
@@ -147,7 +222,21 @@ def _atomic_memory_markdown(space: str, project: str) -> str:
 
 @tool
 def read_session_events(space: str, project: str, session_id: str) -> str:
-    """Read an append-only event log for explicit audit or debugging."""
+    """Read an append-only event log for explicit audit or debugging.
+
+    中文说明: 读取 session 的原始 event log (仅供审计/调试)。
+
+    注意: 该工具当前未注册进任何 Agent 的 toolist (dream.py 的
+    DreamAgent 刻意不暴露 raw event log), 属于未被框架消费的导出。
+
+    Args:
+        space/project/session_id: 定位 event log 的三元组;
+            由 tool 调用方 (LLM) 传入。
+
+    Returns:
+        event log 全文 str (文件不存在时为空串, 名称非法时为
+        "Error: ..."); 由 langchain 框架回传给 LLM。
+    """
     try:
         path = events_path(
             settings.MEMORY_DIR,
@@ -164,7 +253,20 @@ def read_session_events(space: str, project: str, session_id: str) -> str:
 
 @tool
 def read_compact_memory(space: str, project: str, session_id: str) -> str:
-    """Read one validated, redacted compact session projection."""
+    """Read one validated, redacted compact session projection.
+
+    中文说明: 读取经 hash 校验与脱敏的 compact 会话投影, 是
+    DreamAgent 整理记忆的唯一合法输入源。注册于 dream.py 的
+    DreamAgent.toolist, 由 langchain agent 按 prompt 步骤 1 调用。
+
+    Args:
+        space/project/session_id: 定位 compact 文件的三元组;
+            由 LLM 按 invoke prompt 中给出的值传入。
+
+    Returns:
+        compact payload 的 JSON 格式化 str; 失败时为 "Error: ..."。
+        由 langchain 框架作为 tool message 回传给 DreamAgent LLM。
+    """
     try:
         payload = _validated_compact(space, project, session_id)
     except (OSError, json.JSONDecodeError, ValueError) as exc:
@@ -174,7 +276,18 @@ def read_compact_memory(space: str, project: str, session_id: str) -> str:
 
 @tool
 def list_all_session_ids(space: str, project: str) -> list[str]:
-    """List session IDs within one explicit space and project."""
+    """List session IDs within one explicit space and project.
+
+    中文说明: 列出指定 space/project 下的全部 session ID。注册于
+    dream.py 的 DreamAgent.toolist, 由 langchain agent 调用。
+
+    Args:
+        space/project: 记忆定位参数; 由 LLM 按 prompt 指定值传入。
+
+    Returns:
+        排序后的 session ID 列表 (非法或不存在时为 []); 由框架
+        回传给 DreamAgent LLM 供其核对整理范围。
+    """
     try:
         root = sessions_directory(settings.MEMORY_DIR, space, project)
     except ValueError:
@@ -186,7 +299,18 @@ def list_all_session_ids(space: str, project: str) -> list[str]:
 
 @tool
 def list_all_project_names(space: str) -> list[str]:
-    """List project names inside one memory space."""
+    """List project names inside one memory space.
+
+    中文说明: 列出指定 space 下的全部项目名。注册于 dream.py 的
+    DreamAgent.toolist, 由 langchain agent 调用。
+
+    Args:
+        space: 记忆空间名; 由 LLM 按 prompt 指定值传入。
+
+    Returns:
+        排序后的项目名列表 (非法或不存在时为 []); 由框架回传给
+        DreamAgent LLM。
+    """
     try:
         root = projects_directory(settings.MEMORY_DIR, validate_space(space))
     except ValueError:
@@ -198,7 +322,19 @@ def list_all_project_names(space: str) -> list[str]:
 
 @tool
 def read_project_memory(space: str, project: str) -> str:
-    """Read inspectable long-term memory for one space-bound project."""
+    """Read inspectable long-term memory for one space-bound project.
+
+    中文说明: 读取项目现有长期记忆 (MEMORY.md/decisions.md 等),
+    供 DreamAgent 在整理时保留既有 durable context。注册于 dream.py
+    的 DreamAgent.toolist (invoke prompt 步骤 2)。
+
+    Args:
+        space/project: 记忆定位参数; 由 LLM 按 prompt 指定值传入。
+
+    Returns:
+        各记忆文件拼接的 Markdown str (无内容时为空串, 非法时为
+        "Error: ..."); 由框架回传给 DreamAgent LLM。
+    """
     try:
         directory = _safe_project_dir(space, project)
     except ValueError as exc:
@@ -229,7 +365,30 @@ def remember_durable_knowledge(
     importance: int = 3,
     tags: list[str] | None = None,
 ) -> str:
-    """Store one durable memory with validated event evidence."""
+    """Store one durable memory with validated event evidence.
+
+    中文说明: 写入一条原子记忆, 强制校验 source_hash 与
+    evidence_event_ids 均来自当前 compact source (防幻觉证据)。
+    注册于 dream.py 的 DreamAgent.toolist (invoke prompt 步骤 3)。
+
+    Args:
+        space/project/session_id: 记忆定位三元组; 由 LLM 按 prompt
+            指定值传入。
+        source_hash: 当前 compact source 的内容 hash; 由 LLM 从
+            invoke prompt / read_compact_memory 结果取得。
+        category: 记忆分类 (fact/decision/preference 等); LLM 生成。
+        subject: 记忆主体简述; LLM 生成。
+        content: 记忆正文; LLM 生成。
+        evidence_event_ids: 支撑该记忆的 event ID 列表; 必须出现在
+            compact source 中, 否则报错。
+        confidence: 置信度 0-1, 默认 1.0; LLM 评估给出。
+        importance: 重要度, 默认 3; LLM 评估给出。
+        tags: 可选标签列表; LLM 生成。
+
+    Returns:
+        JSON str (status/id/category/evidence_count), 失败时为
+        "Error: ..."; 由框架回传给 DreamAgent LLM 确认写入结果。
+    """
     try:
         payload = _validated_compact(space, project, session_id)
         current_hash = str((payload.get("source") or {}).get("source_content_hash") or "")
@@ -283,7 +442,27 @@ def write_memory_to_markdown(
     memory_patch: str = "",
     excluded_noise: str = "",
 ) -> str:
-    """Atomically render project memory for a validated session source."""
+    """Atomically render project memory for a validated session source.
+
+    中文说明: 校验 source_hash 后, 用 PROJECT_MEMORY_TEMPLATE 渲染并
+    原子写入 MEMORY.md (tmp + replace), 同时 record_consolidation。
+    注册于 dream.py 的 DreamAgent.toolist (invoke prompt 步骤 7)。
+
+    Args:
+        space/project/session_id: 记忆定位三元组; 由 LLM 按 prompt
+            指定值传入。
+        source_hash: 当前 compact source 的内容 hash; 必须匹配,
+            否则拒绝写入。
+        executive_summary/facts/decisions/preferences/corrections/
+        open_questions/next_actions/artifact_refs/memory_patch/
+        excluded_noise: MEMORY.md 各小节文本, 均由 LLM 整理生成,
+            默认空串。
+
+    Returns:
+        "Project memory written to <path>" 或 "Error: ..." str;
+        由框架回传给 DreamAgent LLM, 成功是其调用
+        complete_memory_consolidation 的前置条件。
+    """
     try:
         directory = _safe_project_dir(space, project)
         safe_session_id = _validate_session_id(session_id)
@@ -336,7 +515,26 @@ def complete_memory_consolidation(
     durable_memory_count: int,
     no_durable_memory_reason: str = "",
 ) -> str:
-    """Commit consolidation after Markdown and atomic evidence are consistent."""
+    """Commit consolidation after Markdown and atomic evidence are consistent.
+
+    中文说明: 整理协议的最后一步: 校验 source_hash、确认
+    write_memory_to_markdown 已成功、核对原子记忆数量一致后, 调用
+    mark_consolidated 落盘完成状态。注册于 dream.py 的
+    DreamAgent.toolist (invoke prompt 步骤 8); DreamAgent.invoke 随后
+    通过 get_session_source 验证 consolidated_hash。
+
+    Args:
+        space/project/session_id: 记忆定位三元组; 由 LLM 按 prompt
+            指定值传入。
+        source_hash: 当前 compact source 的内容 hash; 必须匹配。
+        durable_memory_count: LLM 自报的本次原子记忆数量; 与
+            count_source_memories 的实际数量不一致时报错。
+        no_durable_memory_reason: 数量为 0 时的 no-op 理由; LLM 给出。
+
+    Returns:
+        JSON str (status="complete", source_version, ...), 失败时为
+        "Error: ..."; 由框架回传给 DreamAgent LLM。
+    """
     try:
         payload = _validated_compact(space, project, session_id)
         current_hash = str((payload.get("source") or {}).get("source_content_hash") or "")

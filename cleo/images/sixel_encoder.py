@@ -31,7 +31,19 @@ _ALPHA_DITHER = (
 
 
 def image_to_transparent_sixels(image: PILImage.Image) -> str:
-    """Encode an RGBA image while leaving transparent Sixel pixels untouched."""
+    """Encode an RGBA image while leaving transparent Sixel pixels untouched.
+
+    参数:
+        image: 待编码图像(任意 mode,内部转 RGBA);来源:
+            cleo/images/sixel_renderable.py:44 传入缩放后的 pil_image,测试
+            tests/images/test_terminal.py:170 传入合成图。
+
+    返回:
+        完整 Sixel 序列字符串(DCS ... ST);透明像素经 4x4 Bayer 抖动
+        (_ALPHA_DITHER)映射到 _TRANSPARENT_INDEX 并编码为 "?" 空 sixel,
+        配合 header 的 P2=1 保留终端原背景。消费方: sixel_renderable.Image
+        .__rich_console__ 作为控制段 yield 给终端。
+    """
 
     rgba = image.convert("RGBA")
     alpha = rgba.getchannel("A")
@@ -62,6 +74,14 @@ def image_to_transparent_sixels(image: PILImage.Image) -> str:
 
 
 def _get_header(image: PILImage.Image, color_count: int) -> str:
+    """构造 Sixel 头部: DCS 引入、raster attributes 与调色板寄存器定义。
+
+    参数:
+        image: 已量化到 "P" mode 的图像;来源: image_to_transparent_sixels。
+        color_count: 实际使用的调色板颜色数;来源: 同上(最大索引 + 1)。
+
+    返回: 头部字符串;消费方: image_to_transparent_sixels 拼接输出。
+    """
     # P2=1 leaves pixels that are not explicitly painted at their current color.
     sixel_mode = f"{_DCS}0;1;0"
     raster_attributes = f'q"1;1;{image.width};{image.height}'
@@ -78,6 +98,14 @@ def _get_header(image: PILImage.Image, color_count: int) -> str:
 
 
 def _get_body(image: PILImage.Image) -> str:
+    """构造 Sixel 数据体: 逐行按颜色 RLE 编码,透明索引输出 "?" 空 sixel。
+
+    参数:
+        image: 已量化到 "P" mode 的图像;来源: image_to_transparent_sixels。
+
+    返回: 数据体字符串("-" 换 sixel 行 / "$" 回车);消费方:
+    image_to_transparent_sixels 拼接输出。
+    """
     tokens: list[str] = []
     width = image.width
     pixels = image.tobytes()
@@ -99,6 +127,15 @@ def _get_body(image: PILImage.Image) -> str:
 
 
 def _append_run(tokens: list[str], character: str, count: int) -> None:
+    """向 token 列表追加一段重复字符,>=3 时用 Sixel RLE("!count char")。
+
+    参数:
+        tokens: 输出 token 列表(就地修改);来源: _get_body 的累加器。
+        character: 要重复的 sixel 字符;来源: _get_body。
+        count: 重复次数;来源: _get_body 的 groupby run 长度。
+
+    返回: None。
+    """
     if count < 3:
         tokens.append(character * count)
     else:

@@ -32,10 +32,20 @@ _BEARER_TOKEN = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{12,}")
 
 
 def _now_iso() -> str:
+    """返回当前 UTC 时间的 ISO 8601 字符串, 供 compression 时间戳等字段使用。"""
     return datetime.now(UTC).isoformat()
 
 
 def _canonical_json(value: Any) -> str:
+    """把任意值序列化为 key 排序、无多余空白的 canonical JSON 字符串。
+
+    参数:
+        value: 待序列化的值; 来自本文件内 event_content_hash、
+            _content_characters、_bounded_text 与 compact_events。
+
+    返回:
+        稳定可比较的 JSON 文本, 供 hash 计算与字符数统计使用。
+    """
     return json.dumps(
         value,
         ensure_ascii=False,
@@ -46,11 +56,35 @@ def _canonical_json(value: Any) -> str:
 
 
 def event_content_hash(events: list[dict[str, Any]]) -> str:
+    """计算 append-only 事件日志内容的 SHA-256 content hash, 用于 stale 检测与 source 绑定。
+
+    参数:
+        events: 原始 session 事件列表; 来自 cleo/sessions/store.py 中
+            read_events 的结果 (refresh_compact 传入), 或本文件
+            load_validated_compact 中 load_events 读出的 events.jsonl 内容。
+
+    返回:
+        ``"sha256:<hex>"`` 形式的指纹字符串; 被 sessions/store.py 的
+        refresh_compact 写入 manifest 与 memory_state, 也被
+        load_validated_compact 用来校验 compact projection 是否与事件源一致。
+    """
     digest = hashlib.sha256(_canonical_json(events).encode()).hexdigest()
     return f"sha256:{digest}"
 
 
 def load_events(path: Path) -> list[dict[str, Any]]:
+    """逐行读取 events.jsonl 并校验 seq 严格递增, 还原完整 append-only 事件列表。
+
+    参数:
+        path: events.jsonl 文件路径; 来自 events_path (本文件
+            load_validated_compact) 或 sessions/store.py read_events 中
+            拼出的 session 事件路径。
+
+    返回:
+        事件 dict 列表; 被 sessions/store.py read_events 返回给
+        refresh_compact/move_session, 也被 load_validated_compact 用于
+        hash 校验。非 object 行或 seq 非严格递增时抛 ValueError。
+    """
     events: list[dict[str, Any]] = []
     previous_seq = 0
     with path.open(encoding="utf-8-sig") as source:
@@ -69,6 +103,16 @@ def load_events(path: Path) -> list[dict[str, Any]]:
 
 
 def _content_characters(content: Any) -> int:
+    """统计 content 的字符数, 供 omitted/truncated 统计标记使用。
+
+    参数:
+        content: 任意消息或工具结果内容; 来自 _sanitize_value 与
+            _compact_tool_result。
+
+    返回:
+        字符串长度或其 canonical JSON 长度 (int), 用于生成
+        ``<omitted:N chars>`` 与 original_result_characters。
+    """
     if content is None:
         return 0
     if isinstance(content, str):
@@ -77,6 +121,14 @@ def _content_characters(content: Any) -> int:
 
 
 def _redact_text(value: str) -> str:
+    """对文本中的 secret 模式 (api_key、token、Bearer 等) 做正则 redaction。
+
+    参数:
+        value: 待脱敏文本; 来自 _sanitize_value 与 _bounded_text。
+
+    返回:
+        敏感片段替换为 ``<redacted>`` 后的字符串, 回到原调用方的截断流程。
+    """
     redacted = _SENSITIVE_TEXT.sub(lambda match: f"{match[1]}{match[2]}<redacted>", value)
     return _BEARER_TOKEN.sub("Bearer <redacted>", redacted)
 
@@ -87,6 +139,18 @@ def _sanitize_value(
     *,
     truncate_strings: bool = True,
 ) -> Any:
+    """递归脱敏并压缩任意值: redact secret 键、省略大字段、图片降级为引用。
+
+    参数:
+        value: 待清洗的值; 来自事件 args/result/content (经 _sanitize_args、
+            _parse_json_result、_base_message、compact_events 传入)。
+        key: 该值在父对象中的键名, 用于识别 secret/大字段; 顶层调用传 ""。
+        truncate_strings: 是否截断超长字符串; 由调用方按场景控制
+            (content 类不截断, args/result 类截断)。
+
+    返回:
+        结构不变但已脱敏/省略/截断的值, 最终进入 compact payload 的 events。
+    """
     normalized_key = key.casefold()
     if any(part in normalized_key for part in _SECRET_KEY_PARTS):
         return "<redacted>"
@@ -122,12 +186,30 @@ def _sanitize_value(
 
 
 def _sanitize_args(args: Any) -> dict[str, Any]:
+    """清洗 tool call 的 args dict, 生成 tool_event.args。
+
+    参数:
+        args: 工具调用参数; 来自 _tool_event 中 tool_call.get("args")。
+
+    返回:
+        逐键脱敏后的 dict; 非 dict 输入返回 {}, 由 _tool_event 合并进 tool_event。
+    """
     if not isinstance(args, dict):
         return {}
     return {str(key): _sanitize_value(value, str(key)) for key, value in args.items()}
 
 
 def _parse_json_result(content: Any) -> Any:
+    """尝试把 tool result content 解析为 JSON 并脱敏, 无法解析时返回 None。
+
+    参数:
+        content: 工具结果内容; 来自 _compact_tool_result 的 result_message
+            content。
+
+    返回:
+        脱敏后的 dict/list; 非 JSON 文本返回 None, 调用方据此回退到
+        _bounded_text 的截断路径。
+    """
     if isinstance(content, (dict, list)):
         return _sanitize_value(content)
     if not isinstance(content, str):
@@ -143,6 +225,16 @@ def _parse_json_result(content: Any) -> Any:
 
 
 def _bounded_text(content: Any, limit: int) -> tuple[Any, bool]:
+    """对工具结果文本做 redaction 并按字符上限截断。
+
+    参数:
+        content: 工具结果内容; 来自 _compact_tool_result。
+        limit: 字符上限; 由 _compact_tool_result 按是否 error 选 2000/1000。
+
+    返回:
+        ``(截断后的文本, 是否发生截断)`` 二元组, 供 _compact_tool_result
+        组装 result 与 result_truncated 字段。
+    """
     if content is None:
         return None, False
     if not isinstance(content, str):
@@ -154,6 +246,18 @@ def _bounded_text(content: Any, limit: int) -> tuple[Any, bool]:
 
 
 def _compact_tool_result(name: str, status: str, content: Any) -> tuple[dict[str, Any], int]:
+    """把单个工具结果压缩为 compact 字段, 并统计被省略的字符数。
+
+    参数:
+        name: 工具名; 来自 _tool_event 从 tool_call/result_message 解析的结果,
+            用于命中 _OMIT_RESULT_TOOLS/_FILE_WRITE_TOOLS 整体省略策略。
+        status: 工具执行状态; 同来源, 非 success 时放宽截断上限到 2000。
+        content: 工具结果内容; 来自 result_message.get("content")。
+
+    返回:
+        ``(compact 字段 dict, 省略字符数)`` 二元组; 字段并入 tool_event,
+        字符数由 compact_events 累计进 compression.omitted_tool_characters。
+    """
     result_characters = _content_characters(content)
     if name in _OMIT_RESULT_TOOLS or name in _FILE_WRITE_TOOLS:
         return (
@@ -180,6 +284,17 @@ def _compact_tool_result(name: str, status: str, content: Any) -> tuple[dict[str
 
 
 def _normalize_message_event(event: dict[str, Any], index: int) -> dict[str, Any] | None:
+    """把一条原始事件规范化为统一 message 结构, 非消息类事件返回 None。
+
+    参数:
+        event: 原始事件 dict; 来自 compact_events 遍历的 events 列表,
+            兼容 "message" 包装与扁平 (user_message/tool_result 等) 两种格式。
+        index: 事件在列表中的序号, 用于生成 fallback source_message_id。
+
+    返回:
+        规范化 message dict 或 None; 供 compact_events 分组组装
+        tool_event 与 base message。
+    """
     serialized = event.get("message")
     if isinstance(serialized, dict):
         data = serialized.get("data") if isinstance(serialized.get("data"), dict) else serialized
@@ -224,6 +339,16 @@ def _normalize_message_event(event: dict[str, Any], index: int) -> dict[str, Any
 
 
 def _base_message(message: dict[str, Any]) -> dict[str, Any]:
+    """生成消息类事件 (human/ai) 的 compact 表示, 保留 source event 引用。
+
+    参数:
+        message: 规范化 message; 来自 compact_events 中
+            _normalize_message_event 的输出。
+
+    返回:
+        去除 None 字段后的 compact message dict, 由 compact_events 追加进
+        payload["events"]。
+    """
     compacted = {
         "id": message["id"],
         "type": message["type"],
@@ -240,6 +365,19 @@ def _tool_event(
     tool_call: dict[str, Any] | None,
     result_message: dict[str, Any] | None,
 ) -> tuple[dict[str, Any], int]:
+    """把 tool call 与其 result 合并为一条 tool_event compact 记录。
+
+    参数:
+        call_message: 发起调用的 ai message; 来自 compact_events 的遍历,
+            孤立 result 场景为 None。
+        tool_call: tool_calls 中的单个调用 dict; 孤立 result 场景为 None。
+        result_message: 对应的 tool result message; 由 compact_events 通过
+            results_by_call_id 按 tool_call_id 匹配, 无结果时为 None。
+
+    返回:
+        ``(tool_event dict, 省略字符数)`` 二元组, 由 compact_events 追加进
+        payload["events"] 并累计 compression 统计。
+    """
     tool_call = tool_call or {}
     result_message = result_message or {}
     name = str(tool_call.get("name") or result_message.get("name") or "unknown")
@@ -274,7 +412,25 @@ def compact_events(
     events: list[dict[str, Any]],
     source_version: int | None = None,
 ) -> dict[str, Any]:
-    """Build a compact, redacted projection backed by raw event IDs."""
+    """Build a compact, redacted projection backed by raw event IDs.
+
+    将 append-only 原始事件投影为脱敏、压缩的 compact payload, 每条记录通过
+    source_event_ids 回溯原始事件, 并附带 source/compression 元数据。
+
+    参数:
+        space: memory space; 来自 write_compact_events, 最终由
+            sessions/store.py refresh_compact 传入 manifest["space"]。
+        project: 项目名; 同上, 来自 manifest["project"]。
+        session_id: 会话 ID; 同上, 来自会话标识。
+        events: 原始事件列表; 来自 sessions/store.py read_events 的输出。
+        source_version: 事件源单调修订号; 来自 memory_state 中
+            touch_session_source 返回的 source_version。
+
+    返回:
+        完整 compact payload dict (schema_version/source/compression/events);
+        被 write_compact_events 落盘为 compact.json, 也被
+        sessions/store.py refresh_compact 传给 replace_conversation_chunks。
+    """
     normalized_messages = [
         message
         for index, event in enumerate(events)
@@ -395,6 +551,22 @@ def write_compact_events(
     events: list[dict[str, Any]],
     source_version: int | None = None,
 ) -> tuple[Path, dict[str, Any]]:
+    """生成 compact payload 并以临时文件原子替换方式写入 compact.json。
+
+    参数:
+        memory_root: memory 根目录; 来自 sessions/store.py refresh_compact
+            的 self.memory_root。
+        space: memory space; 来自 manifest["space"]。
+        project: 项目名; 来自 manifest["project"]。
+        session_id: 会话 ID; 来自 refresh_compact 的入参。
+        events: 原始事件列表; 来自 sessions/store.py read_events 的输出。
+        source_version: 事件源修订号; 来自 touch_session_source 返回的
+            source_state["source_version"]。
+
+    返回:
+        ``(compact.json 路径, payload)`` 二元组; payload 被 refresh_compact
+        继续传给 replace_conversation_chunks 并回写 manifest。
+    """
     payload = compact_events(
         space=space,
         project=project,
@@ -420,7 +592,24 @@ def load_validated_compact(
     project: str,
     session_id: str,
 ) -> dict[str, Any]:
-    """Load compact data only when it matches the append-only event source."""
+    """Load compact data only when it matches the append-only event source.
+
+    读取 compact.json 并做多重绑定校验 (space/project/session、schema_version、
+    source_content_hash、seq 范围), 防止消费 stale 或错绑的投影。
+
+    参数:
+        memory_root: memory 根目录; 调用方为 cleo/agents/dream.py invoke、
+            dream_agent_tools.py 的 _validated_compact、memory/store.py 的
+            search_conversation_history, 均传 settings.MEMORY_DIR 或 memory_root。
+        space: memory space; 来自各调用方的会话上下文。
+        project: 项目名; 同来源。
+        session_id: 会话 ID; 同来源。
+
+    返回:
+        校验通过的 compact payload dict; 被 DreamAgent 用于提取 durable
+        memory, 被 search_conversation_history 用于 source_hash 新鲜度比对。
+        任何校验失败抛 ValueError。
+    """
     raw_events = load_events(events_path(memory_root, space, project, session_id))
     manifest = json.loads(
         manifest_path(memory_root, space, project, session_id).read_text(encoding="utf-8-sig")

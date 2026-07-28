@@ -20,7 +20,19 @@ def create_provider(
     name: str,
     settings: ProductivityProviderSettings,
 ) -> AgentProvider:
-    """Create one harness provider from its validated configuration."""
+    """Create one harness provider from its validated configuration.
+
+    根据配置类型实例化对应的 provider(CodexProvider / ClaudeProvider /
+    AcpProvider)。由 ``build_agent_adapter`` 及测试
+    (tests/integrations/test_harness_factory.py) 调用。
+    参数:
+        name: provider 名称, 来自 ``ProductivitySettings.providers`` 的 key。
+        settings: 已校验的 provider 配置(pydantic settings), 由
+            ``build_agent_adapter`` 遍历传入。
+    返回:
+        实现 ``AgentProvider`` 协议的 provider 实例; 未知 ``settings.type``
+        时抛 ``TypeError``。
+    """
     if settings.type == "codex_sdk":
         options = settings.options
         return CodexProvider(
@@ -59,7 +71,18 @@ def build_agent_adapter(
     space: str = "productivity",
     owner_type: str = "agent",
 ) -> AgentAdapter:
-    """Build an AgentAdapter and register every enabled configured provider."""
+    """Build an AgentAdapter and register every enabled configured provider.
+
+    由 CLI productivity 入口(cleo/cli/productivity.py:544)及测试调用。
+    参数:
+        project_root: 项目根目录, 由 CLI 传入, 作为 adapter 的工作根。
+        productivity: 全局 productivity 配置, 遍历其中 enabled 的 providers
+            并逐一 ``create_provider`` 注册。
+        session_store: 可选会话存储, 由调用方注入; None 时 adapter 自建。
+        space / owner_type: adapter 的会话空间与属主标识, 通常用默认值。
+    返回:
+        已注册全部启用 provider 的 ``AgentAdapter``, 由 CLI 会话循环消费。
+    """
     adapter = AgentAdapter(
         project_root,
         session_store=session_store,

@@ -25,6 +25,12 @@ def resolve_startup_image_path() -> Path:
     A path explicitly selected with ``CLEO_STARTUP_IMAGE_PATH`` wins. Standalone
     installations can replace ``<CLEO_HOME>/assets/startup.png`` without editing
     the installed Python package. Source checkouts fall back to the packaged PNG.
+
+    参数: 无;读取环境变量 CLEO_STARTUP_IMAGE_PATH 与 CLEO_HOME。
+
+    返回:
+        启动 PNG 路径(不保证存在);消费方: load_startup_image(本文件),
+        以及 tests/images/test_terminal.py 的断言。
     """
 
     override = os.environ.get(_IMAGE_PATH_ENV)
@@ -44,7 +50,18 @@ def resolve_startup_image_path() -> Path:
 
 
 def load_startup_image(path: str | Path | None = None) -> Any | None:
-    """Load a PNG and crop transparent padding without image-specific coordinates."""
+    """Load a PNG and crop transparent padding without image-specific coordinates.
+
+    参数:
+        path: 可选 PNG 路径;None 时走 resolve_startup_image_path;来源:
+            cleo/images/portrait.py:25(render_startup_art 透传)与本文件
+            build_startup_image:204,测试可直接注入。
+
+    返回:
+        PIL RGBA Image(已按 EXIF 旋正并裁剪可见内容 bbox);PIL 缺失、
+        文件不可读或图像为空/全透明时返回 None。消费方:
+        portrait.render_startup_art 与 build_startup_image。
+    """
 
     try:
         from PIL import Image as PILImage
@@ -75,6 +92,13 @@ def _visible_content_bbox(image: Any) -> tuple[int, int, int, int] | None:
     relative to the main artwork are discarded, which removes stray pixels and
     detached generator marks without encoding assumptions about a specific
     character, canvas size, or composition.
+
+    参数:
+        image: PIL RGBA Image;来源: load_startup_image 内部调用。
+
+    返回:
+        原图坐标系的裁剪框 (left, top, right, bottom),带 1% padding;无
+        可见 alpha 时返回 None。消费方: load_startup_image 的 image.crop。
     """
 
     try:

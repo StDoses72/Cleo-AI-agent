@@ -51,11 +51,27 @@ class CleoCLI:
     """Terminal input and rendering for chat, productivity, and session views."""
 
     def __init__(self, console: Console | None = None) -> None:
+        """初始化共享终端上下文。
+
+        参数:
+            console: 可选 rich Console; 由 cleo/cli/context.py:5 以默认值创建
+                全局单例 cli = CleoCLI() 时为 None, 内部自建 highlight 关闭的
+                Console; 测试可注入自定义 Console。
+
+        返回:
+            None; 实例经 context.py 的模块级单例被 chat.py / productivity.py /
+            application.py / lifecycle.py 共享使用。
+        """
         self.console = console or Console(highlight=False)
         self._prompt_session: PromptSession[str] | None = None
         self._startup_rendered = False
 
     def clear(self) -> None:
+        """清空终端屏幕。
+
+        无参数, 无返回值; 由 cleo/cli/context.py 的 clear_screen() 代理,
+        被 chat.py / productivity.py 在切换视图前调用。
+        """
         self.console.clear()
 
     def render_startup_splash(
@@ -65,7 +81,19 @@ class CleoCLI:
         *,
         model: str = "unknown",
     ) -> None:
-        """Show Cleo's terminal portrait once per interactive process."""
+        """Show Cleo's terminal portrait once per interactive process.
+
+        每个交互进程只渲染一次启动画面; 非 TTY 或终端太窄/无色彩时静默跳过。
+        优先使用 iTerm2/kitty 内联图片, 不支持时退回 ASCII art 布局。
+
+        参数:
+            thread_id: 当前线程 id; 由 cleo/cli/chat.py:91 在启动时传入。
+            project: 当前项目名; 同上, 来自 chat 入口的运行时状态。
+            model: 当前模型名; 同上, 缺省 "unknown"。
+
+        返回:
+            None; 输出直接写入 console, 供终端用户阅读。
+        """
 
         if self._startup_rendered or not self.console.is_terminal:
             return
@@ -142,6 +170,15 @@ class CleoCLI:
         self.console.print()
 
     def _startup_status(self, thread_id: str, project: str, model: str) -> Table:
+        """构建启动画面内嵌的状态 grid(memory/project/thread/model 四格)。
+
+        参数:
+            thread_id / project / model: 由 render_startup_splash 透传,
+                源自 chat.py 启动入口的运行时状态。
+
+        返回:
+            Table: rich grid; 仅被 render_startup_splash 放入 Panel 渲染。
+        """
         status = Table.grid(expand=True, padding=(0, 2))
         memory = Text.assemble(
             ("●  MEMORY  ", "bold #43dff5"),
@@ -182,6 +219,23 @@ class CleoCLI:
         models: tuple[HarnessModel, ...] = (),
         projects: tuple[str, ...] = (),
     ) -> str:
+        """读取一行用户输入; TTY 下走 prompt-toolkit(补全+历史+建议), 否则退回 console.input。
+
+        参数:
+            mode: "chat" 或 "productivity"; 由 chat.py:105 / productivity.py:186
+                的 asyncio.to_thread 调用传入, 决定提示符颜色与补全命令集。
+            cwd: 当前工作目录, 供 SlashCommandCompleter 补全 /cd 路径;
+                productivity loop 传 session.project_path。
+            sessions: 会话列表(补全 /resume 等); productivity loop 传
+                store.list_sessions(space="productivity") 的结果。
+            native_sessions / models: native 线程与模型列表, 来自
+                _load_productivity_catalog, 供 /resume-native、/model 补全。
+            projects: 已知项目名元组, 供 /project 补全。
+
+        返回:
+            str: 用户输入(已 strip); 由 chat.py / productivity loop 的调用方
+            分发为 slash command 或发送给 agent。
+        """
         label = "productivity" if mode == "productivity" else "cleo"
         style = "bold magenta" if mode == "productivity" else "bold cyan"
         if self.console.is_terminal:
@@ -214,11 +268,25 @@ class CleoCLI:
         return self.console.input(marker).strip()
 
     def field_prompt(self, label: str) -> str:
+        """带黄色标签的单行输入(用于确认/表单式询问)。
+
+        参数:
+            label: 提示标签; 由 application.py:213 ("resume [y/n]") 与
+                chat.py:427 ("file") 等调用点传入。
+
+        返回:
+            str: 用户输入(已 strip); 由调用方继续解析(如 lower() 后判断 y/n)。
+        """
         marker = Text(label, style="bold yellow")
         marker.append(" ❯ ", style="yellow")
         return self.console.input(marker).strip()
 
     def wait_for_return(self) -> None:
+        """阻塞等待用户按 Enter(查看只读视图后返回)。
+
+        无参数, 无返回值; 由 chat.py:376 与 productivity.py:423/442 经
+        asyncio.to_thread 在展示 session hub / native thread 后调用。
+        """
         prompt = Text("Press Enter to return", style="dim")
         prompt.append("  ↵ ", style="cyan")
         self.console.input(prompt)
@@ -231,6 +299,15 @@ class CleoCLI:
         model: str = "unknown",
         context_usage: ContextWindowUsage | None = None,
     ) -> None:
+        """渲染 chat 模式头部(品牌行 + runtime status + 可用 slash command 提示)。
+
+        参数:
+            thread_id / project / model / context_usage: 由 chat.py:34 在启动与
+                /new 等场景传入, 源自 runtime 当前线程与 token 统计。
+
+        返回:
+            None; 输出写入 console, 供终端用户阅读。
+        """
         self._render_header(
             brand="CLEO",
             breadcrumb=f"non-productivity / {project} / {self._short_id(thread_id)}",
@@ -265,6 +342,18 @@ class CleoCLI:
         options: SessionOptions | None = None,
         git_status: GitStatus | None = None,
     ) -> None:
+        """渲染 productivity 模式头部(品牌行 + runtime status + controls + 会话明细)。
+
+        参数:
+            session: 当前 AgentSession; 由 productivity.py 的
+                render_active_header 闭包或 _run_productivity_mode 单条消息分支传入。
+            model / context_usage: active_model 与共享 token 统计, 由调用方传入。
+            options: _productivity_options 的结果(SessionOptions 或 None)。
+            git_status: inspect_git_status(session.project_path) 的结果。
+
+        返回:
+            None; 输出写入 console, 供终端用户阅读。
+        """
         self._render_header(
             brand=f"PRODUCTIVITY · {session.provider.upper()}",
             breadcrumb=f"productivity / {session.project} / {self._short_id(session.id)}",
@@ -309,6 +398,18 @@ class CleoCLI:
         options: SessionOptions | None,
         git_status: GitStatus | None,
     ) -> None:
+        """渲染 controls 面板: 左侧 effort/access/approval, 右侧 git 分支与变更数。
+
+        参数:
+            options: SessionOptions 或 None(provider defaults); 来自
+                productivity.py 的 _productivity_options。
+            git_status: GitStatus 或 None(非 git 仓库); 来自
+                cleo/integrations/git.py 的 inspect_git_status。
+
+        返回:
+            None; 输出写入 console。被 render_productivity_header 及
+            productivity loop 的 render_active_controls 调用。
+        """
         controls = Table.grid(expand=True)
         controls.add_column(ratio=1, overflow="ellipsis")
         controls.add_column(ratio=1, overflow="ellipsis")
@@ -339,6 +440,15 @@ class CleoCLI:
         self.console.print(Panel(controls, border_style="magenta", padding=(0, 1)))
 
     def render_session_hub(self, sessions: list[dict[str, Any]]) -> None:
+        """渲染跨 space 的会话总表(SESSION HUB)。
+
+        参数:
+            sessions: 会话行字典列表; 由 chat.py:375 传 store.list_sessions(),
+                或 productivity.py:435 传 merge_session_rows(store + native) 的结果。
+
+        返回:
+            None; 输出写入 console, 之后调用方用 wait_for_return 暂停查看。
+        """
         self._render_header(
             brand="SESSION HUB",
             breadcrumb="all spaces / all projects",
@@ -381,6 +491,17 @@ class CleoCLI:
         current_thread_id: str,
         known_projects: tuple[str, ...] = (),
     ) -> None:
+        """渲染单个项目下的 chat 线程列表(带当前线程标记与项目导航)。
+
+        参数:
+            project: 项目名; 由 chat.py:212 的 /project 分支传入。
+            sessions: 该项目的会话字典列表(store.list_sessions 过滤结果)。
+            current_thread_id: 当前线程 id, 用于打 ● 标记。
+            known_projects: 全部已知项目名, 用于底部导航提示。
+
+        返回:
+            None; 输出写入 console, 供终端用户阅读。
+        """
         self._render_header(
             brand="CLEO PROJECT",
             breadcrumb=f"non-productivity / {project}",
@@ -413,6 +534,15 @@ class CleoCLI:
             )
 
     def render_native_session(self, detail: NativeSessionDetail) -> None:
+        """渲染 native 线程的只读视图(元数据 + 按时间顺序的消息/工具调用)。
+
+        参数:
+            detail: NativeSessionDetail; 由 productivity.py:422 的 /native 分支
+                经 adapter.read_native_session 获取后传入。
+
+        返回:
+            None; 输出写入 console, 之后调用方用 wait_for_return 暂停查看。
+        """
         session = detail.session
         self._render_header(
             brand="NATIVE THREAD",
@@ -471,6 +601,16 @@ class CleoCLI:
         *,
         active: str | None,
     ) -> None:
+        """渲染 provider 支持的模型表(含默认/支持的 effort 档位)。
+
+        参数:
+            models: HarnessModel 元组; 由 productivity.py:237 的 /model 分支传
+                _load_productivity_catalog 加载的 available_models。
+            active: 当前激活的模型 id(active_model), 用于打 ● 标记。
+
+        返回:
+            None; 输出写入 console, 供终端用户阅读。
+        """
         table = Table(box=box.SIMPLE_HEAVY, expand=True, show_edge=False)
         table.add_column("Model", ratio=2)
         table.add_column("Default effort", ratio=1)
@@ -485,6 +625,15 @@ class CleoCLI:
         self.console.print(table)
 
     def render_account(self, account: HarnessAccount) -> None:
+        """渲染 harness 账号信息(类型/邮箱/套餐), 未认证时显示警告。
+
+        参数:
+            account: HarnessAccount; 由 productivity.py:452 的 /account 分支
+                经 adapter.account_status 获取后传入。
+
+        返回:
+            None; 输出写入 console, 供终端用户阅读。
+        """
         if not account.authenticated:
             self.warning("Codex is not authenticated.")
             return
@@ -496,6 +645,15 @@ class CleoCLI:
         self.info(" · ".join(parts))
 
     def render_git_status(self, status: GitStatus | None) -> None:
+        """渲染 git 仓库状态(根目录/分支/变更列表), 非仓库时显示警告。
+
+        参数:
+            status: GitStatus 或 None; 由 productivity.py 的 /project、/git 分支
+                经 inspect_git_status(session.project_path) 获取后传入。
+
+        返回:
+            None; 输出写入 console, 供终端用户阅读。
+        """
         if status is None:
             self.warning("The current working directory is not inside a Git repository.")
             return
@@ -511,6 +669,15 @@ class CleoCLI:
         thread_id: str,
         messages: list[tuple[str, str]],
     ) -> None:
+        """渲染恢复线程时回放的历史消息(User/Assistant 分 Panel 展示)。
+
+        参数:
+            thread_id: 恢复的线程 id; 由 chat.py:513 在 /resume 成功后传入。
+            messages: (role, content) 列表, 由 chat.py 从消息记录构建。
+
+        返回:
+            None; 输出写入 console, 供终端用户阅读。
+        """
         self.console.print(
             Text.assemble(
                 ("RESTORED", "bold cyan"),
@@ -523,6 +690,15 @@ class CleoCLI:
             self.console.print(Panel(Text(content), title=role, border_style=style))
 
     def render_attachments(self, names: list[str]) -> None:
+        """渲染本轮消息附带的附件文件名列表(空列表时不输出)。
+
+        参数:
+            names: 附件名列表; 由 chat.py:103 从用户输入解析出的
+                attachment_list 构建后传入。
+
+        返回:
+            None; 输出写入 console, 供终端用户阅读。
+        """
         if not names:
             return
         line = Text("ATTACHMENTS  ", style="bold yellow")

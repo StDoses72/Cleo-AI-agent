@@ -27,6 +27,19 @@ if TYPE_CHECKING:
 
 @dataclass(slots=True)
 class _SessionRoute:
+    """内部路由项: 把对外 session handle 映射到 provider 侧会话。
+
+    字段(均由 AgentAdapter._add_route 写入,来源: 各 provider 的
+    create/resume/fork 返回值及调用方传入的 project 信息):
+        provider: 处理该会话的 AgentProvider 实例。
+        provider_session_id: provider 侧会话 id。
+        project_path: 规范化后的项目目录(normcase)。
+        native_session_id: harness 原生会话 id(prompt 后可能更新)。
+        project: SessionStore 中的 project 分组名。
+
+    消费方: AgentAdapter 各方法经 _route/_sessions 查表后转发调用。
+    """
+
     provider: AgentProvider
     provider_session_id: str
     project_path: str
@@ -45,6 +58,21 @@ class AgentAdapter:
         space: str = "productivity",
         owner_type: str = "agent",
     ) -> None:
+        """初始化 adapter 并校验项目根目录存在。
+
+        参数:
+            project_root: 项目根目录;来源: cleo/integrations/codex.py:25 与
+                cleo/integrations/harnesses/factory.py:63
+                (build_agent_adapter)。
+            session_store: 可选的会话持久化存储;None 时在
+                <project_root>/memory 下自建 SessionStore;来源: 调用方注入。
+            space: SessionStore 的 space 分组;来源: 调用方(factory 默认
+                "productivity")。
+            owner_type: 会话属主类型标记;来源: 调用方(默认 "agent")。
+
+        返回: None(构造器);实例被 factory.build_agent_adapter 返回给
+        cleo/cli/productivity.py 与 cleo/integrations/codex.py 使用。
+        """
         self._project_root = Path(project_root).expanduser().resolve()
         if not self._project_root.is_dir():
             raise ValueError(f"Project root does not exist: {self._project_root}")
@@ -56,20 +84,49 @@ class AgentAdapter:
 
     @property
     def providers(self) -> tuple[str, ...]:
+        """已注册 provider 名元组。
+
+        来源: register/register_acp; 消费方: 调用方枚举可用 provider(如 CLI 展示)。
+        """
         return tuple(self._providers)
 
     def register(self, provider: AgentProvider) -> None:
+        """注册一个 provider,重名抛 ValueError。
+
+        参数:
+            provider: 实现 AgentProvider 协议的实例;来源: factory.py:71
+                (create_provider 产物)及 register_acp、测试 fake provider。
+
+        返回: None;注册结果经 self._providers 供 create_session 等方法查找。
+        """
         if provider.name in self._providers:
             raise ValueError(f"Provider already registered: {provider.name}")
         self._providers[provider.name] = provider
 
     def register_acp(self, name: str, spec: AcpAgentSpec) -> None:
+        """便捷方法: 用 AcpAgentSpec 构造 AcpProvider 并注册(延迟导入)。
+
+        参数:
+            name: provider 名;来源: 调用方(外部装配代码)。
+            spec: ACP agent 启动规格;来源: 调用方(通常由
+                factory.create_provider 的 AcpHarnessOptions 组装)。
+
+        返回: None;效果同 register。
+        """
         from cleo.integrations.harnesses.acp import AcpProvider
 
         self.register(AcpProvider(name=name, spec=spec))
 
     def provider_control(self, name: str) -> AgentProvider:
-        """Return a provider so richer clients can inspect optional capabilities."""
+        """Return a provider so richer clients can inspect optional capabilities.
+
+        参数:
+            name: provider 名;来源: 需要访问 provider 可选能力(如
+                list_native_sessions)的上层客户端。
+
+        返回:
+            已注册的 AgentProvider;未注册时由 _provider 抛 KeyError。
+        """
         return self._provider(name)
 
     async def create_session(
@@ -79,6 +136,20 @@ class AgentAdapter:
         model: str | None = None,
         project: str | None = None,
     ) -> AgentSession:
+        """在指定 provider 上创建新会话并登记路由与持久化 manifest。
+
+        参数:
+            provider: provider 名;来源: cleo/cli/productivity.py(--provider
+                或 default_provider)。
+            project_path: 相对 project_root 的工作目录;来源: CLI --cwd
+                或默认值。
+            model: 可选模型覆盖;来源: CLI --model 或配置默认。
+            project: 会话归属 project 名;来源: 调用方,缺省取目录名。
+
+        返回:
+            AgentSession(对外 handle);消费方: productivity.py:205/321/498/583
+            及 self.run,随后以其 id 调 prompt/close 等。
+        """
         implementation = self._provider(provider)
         resolved_path = self._project_directory(project_path)
         session = await implementation.create_session(resolved_path, model)
@@ -98,6 +169,20 @@ class AgentAdapter:
         model: str | None = None,
         project: str | None = None,
     ) -> AgentSession:
+        """按 harness 原生会话 id 恢复会话,复用 SessionStore 中已有 handle。
+
+        参数:
+            provider: provider 名;来源: productivity.py:94/390、
+                cleo/integrations/codex.py:51。
+            native_session_id: 原生会话 id;来源: 调用方(SessionStore 记录
+                或 CLI 选择)。
+            project_path / model: 同 create_session。
+            project: 可选 project 名,缺省沿用 SessionStore 中存储值。
+
+        返回:
+            AgentSession;消费方: 同 create_session。若对应 handle 已处于
+            活跃状态则抛 ValueError。
+        """
         implementation = self._provider(provider)
         resolved_path = self._project_directory(project_path)
         stored = self._store.find_by_native_session(
@@ -128,6 +213,21 @@ class AgentAdapter:
         prompt: str,
         on_event: EventCallback | None = None,
     ) -> AgentResult:
+        """向已存在的会话发送一轮 prompt,并把事件/状态写入 SessionStore。
+
+        参数:
+            session_id: 对外 session handle;来源: create/resume/fork 返回的
+                AgentSession.id,由 productivity.py:35 或
+                cleo/integrations/codex.py:58 传入。
+            prompt: 用户输入文本;来源: CLI 用户输入。
+            on_event: 流式事件回调;来源: productivity.py 的 renderer 或
+                None。
+
+        返回:
+            AgentResult(含 status/response/events);消费方: productivity.py
+            渲染输出、cleo/integrations/codex.py:58 经 _result 转为工具
+            返回值。失败时先把 SessionStore 状态置 "failed" 再抛原异常。
+        """
         session_id = self._required_text(session_id, "session_id")
         route = self._sessions.get(session_id)
         if route is None:
@@ -208,10 +308,27 @@ class AgentAdapter:
         on_event: EventCallback | None = None,
         project: str | None = None,
     ) -> AgentResult:
+        """一步到位: 创建会话并立即执行一轮 prompt。
+
+        参数: 与 create_session/prompt 相同;来源: cleo/integrations/codex.py:35
+        (CodexTool 的一次性执行路径)。
+
+        返回:
+            AgentResult;消费方: codex.py 经 _result 转为工具返回值。
+        """
         session = await self.create_session(provider, project_path, model, project)
         return await self.prompt(session.id, prompt, on_event)
 
     async def list_models(self, provider: str) -> tuple[HarnessModel, ...]:
+        """列出 provider 支持的模型(可选能力,缺失时抛 NotImplementedError)。
+
+        参数:
+            provider: provider 名;来源: cleo/cli/productivity.py:114 通过
+                getattr 探测后调用。
+
+        返回:
+            HarnessModel 元组;消费方: productivity.py 的模型选择 UI。
+        """
         implementation = self._provider(provider)
         method = self._capability(implementation, "list_models")
         return await method()
@@ -226,6 +343,18 @@ class AgentAdapter:
         cwd: str | None = None,
         search_term: str | None = None,
     ) -> NativeSessionPage:
+        """分页列出 provider 侧的原生会话(可选能力)。
+
+        参数:
+            provider: provider 名;来源: cleo/cli/productivity.py:117 附近的
+                会话浏览命令。
+            limit / cursor: 分页参数;来源: CLI 选项,透传给 provider。
+            archived / cwd / search_term: 过滤条件;来源: CLI 选项。
+
+        返回:
+            NativeSessionPage(sessions + next_cursor);消费方:
+            productivity.py 的会话列表/恢复 UI。
+        """
         implementation = self._provider(provider)
         method = self._capability(implementation, "list_native_sessions")
         return await method(
@@ -241,16 +370,43 @@ class AgentAdapter:
         provider: str,
         native_session_id: str,
     ) -> NativeSessionDetail:
+        """读取某个原生会话的完整详情(可选能力)。
+
+        参数:
+            provider: provider 名;来源: cleo/cli/productivity.py:417。
+            native_session_id: 原生会话 id;来源: 用户在会话列表中选择的项。
+
+        返回:
+            NativeSessionDetail(会话元数据 + turns);消费方:
+            productivity.py 的会话详情展示。
+        """
         implementation = self._provider(provider)
         method = self._capability(implementation, "read_native_session")
         return await method(self._required_text(native_session_id, "native_session_id"))
 
     async def account_status(self, provider: str) -> HarnessAccount:
+        """查询 provider 账号登录状态(可选能力)。
+
+        参数:
+            provider: provider 名;来源: cleo/cli/productivity.py:448。
+
+        返回:
+            HarnessAccount;消费方: productivity.py 的账号状态展示。
+        """
         implementation = self._provider(provider)
         method = self._capability(implementation, "account_status")
         return await method()
 
     def session_options(self, session_id: str) -> SessionOptions:
+        """读取会话当前的运行时选项(model/effort/approval/sandbox)。
+
+        参数:
+            session_id: 对外 session handle;来源: 上层 UI(经 _route 校验)。
+
+        返回:
+            SessionOptions;消费方: 上层展示当前选项;_add_route 也在建会话时
+            调用以写入 manifest.runtime_options。
+        """
         route = self._route(session_id)
         method = self._capability(route.provider, "session_options")
         return method(route.provider_session_id)
@@ -264,6 +420,17 @@ class AgentAdapter:
         approval_mode: str | None = None,
         sandbox: str | None = None,
     ) -> SessionOptions:
+        """更新会话运行时选项并同步到 SessionStore manifest。
+
+        参数:
+            session_id: 对外 session handle;来源: cleo/cli/productivity.py
+                的 /model、/effort、/approval、/sandbox 命令(244/268/285/305)。
+            model / effort / approval_mode / sandbox: 待更新的选项,None 表示
+                不修改;来源: CLI 命令参数。
+
+        返回:
+            更新后的 SessionOptions;消费方: productivity.py 回显新选项。
+        """
         route = self._route(session_id)
         method = self._capability(route.provider, "update_session_options")
         options = await method(
@@ -277,6 +444,14 @@ class AgentAdapter:
         return options
 
     async def fork_session(self, session_id: str) -> AgentSession:
+        """分叉现有会话,新会话记录 parent_session_id。
+
+        参数:
+            session_id: 源会话 handle;来源: cleo/cli/productivity.py:456。
+
+        返回:
+            新会话的 AgentSession;消费方: productivity.py 切换到分叉会话。
+        """
         route = self._route(session_id)
         method = self._capability(route.provider, "fork_session")
         forked = await method(route.provider_session_id)
@@ -290,6 +465,14 @@ class AgentAdapter:
         )
 
     async def rename_session(self, session_id: str, name: str) -> None:
+        """重命名会话(provider 侧与本地 manifest 同步)。
+
+        参数:
+            session_id: 会话 handle;来源: cleo/cli/productivity.py:476。
+            name: 新名称;来源: CLI 命令参数,空串抛 ValueError。
+
+        返回: None。
+        """
         route = self._route(session_id)
         name = self._required_text(name, "name")
         method = self._capability(route.provider, "rename_session")
@@ -297,6 +480,13 @@ class AgentAdapter:
         self._store.update_manifest(session_id, title=name)
 
     async def compact_session(self, session_id: str) -> None:
+        """触发 provider 侧上下文压缩,并记录事件、刷新本地 compact 摘要。
+
+        参数:
+            session_id: 会话 handle;来源: cleo/cli/productivity.py:484。
+
+        返回: None。
+        """
         route = self._route(session_id)
         method = self._capability(route.provider, "compact_session")
         await method(route.provider_session_id)
@@ -311,6 +501,13 @@ class AgentAdapter:
         self._store.refresh_compact(session_id)
 
     async def archive_session(self, session_id: str) -> None:
+        """归档会话: provider 侧归档、移除本地路由、状态置 archived。
+
+        参数:
+            session_id: 会话 handle;来源: cleo/cli/productivity.py:493。
+
+        返回: None。
+        """
         route = self._route(session_id)
         method = self._capability(route.provider, "archive_session")
         await method(route.provider_session_id)
@@ -318,11 +515,27 @@ class AgentAdapter:
         self._store.set_status(session_id, "archived")
 
     async def cancel(self, session_id: str) -> None:
+        """取消进行中的 turn,状态置 cancelled。
+
+        参数:
+            session_id: 会话 handle;来源: cleo/cli/productivity.py:524
+                (用户中断)。
+
+        返回: None。
+        """
         route = self._route(session_id)
         await route.provider.cancel(route.provider_session_id)
         self._store.set_status(session_id, "cancelled")
 
     async def close(self, session_id: str) -> None:
+        """关闭会话并释放 provider 资源;未达终态的会话状态置 closed。
+
+        参数:
+            session_id: 会话 handle;来源: cleo/cli/productivity.py:45 及
+                self.aclose 遍历;不存在的 id 静默忽略。
+
+        返回: None。
+        """
         session_id = self._required_text(session_id, "session_id")
         route = self._sessions.get(session_id)
         if route is not None:
@@ -333,13 +546,22 @@ class AgentAdapter:
             self._sessions.pop(session_id, None)
 
     async def aclose(self) -> None:
+        """关闭所有活跃会话。
+
+        参数: 无;来源: cleo/cli/productivity.py:633 与
+        cleo/integrations/codex.py:61 在退出时调用,也被 __aexit__ 调用。
+
+        返回: None。
+        """
         for session_id in tuple(self._sessions):
             await self.close(session_id)
 
     async def __aenter__(self) -> AgentAdapter:
+        """async with 入口;返回自身供调用方在块内使用。"""
         return self
 
     async def __aexit__(self, _exc_type, _exc, _tb) -> None:
+        """async with 出口;统一调用 aclose 释放全部会话。"""
         await self.aclose()
 
     def _add_route(

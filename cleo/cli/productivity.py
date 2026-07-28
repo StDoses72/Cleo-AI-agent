@@ -28,6 +28,22 @@ async def _prompt_productivity_session(
     model: str,
     context_usage: ContextWindowUsage,
 ) -> AgentResult:
+    """向 harness 会话发送一轮 prompt, 用 ProductivityEventRenderer 流式渲染事件。
+
+    参数:
+        adapter: AgentAdapter, 由 _run_productivity_loop / _run_productivity_mode
+            持有并传入(经 build_agent_adapter 构建)。
+        session_id: 目标会话 id(session.id), 由调用方传入。
+        prompt: 用户输入; 来自 productivity loop 的 cli.prompt 返回值,
+            或一次性模式的 args.message。
+        model: 展示用模型名(active_model/display_model), 由调用方传入。
+        context_usage: 与 loop 共享的 ContextWindowUsage, renderer 会回写 token 统计。
+
+    返回:
+        AgentResult: adapter.prompt 的结果, 先交给 renderer.finish 渲染状态;
+        当前调用方(_run_productivity_loop:514 与 _run_productivity_mode:621)
+        均不消费返回值, 仅依赖其副作用与异常。
+    """
     renderer = cli.productivity_renderer(
         model=model,
         context_usage=context_usage,
@@ -42,12 +58,34 @@ async def _finish_productivity_session(
     session: AgentSession,
     runtime: Runtime,
 ) -> None:
+    """关闭当前 productivity 会话并做收尾: 记录 recent thread、触发 DreamAgent。
+
+    参数:
+        adapter: AgentAdapter, 由 _run_productivity_loop / _run_productivity_mode 传入。
+        session: 待关闭的 AgentSession, 由调用方在退出/切换会话前传入。
+        runtime: Runtime 状态对象, 用于 append_recent_threads 持久化最近线程。
+
+    返回:
+        None; 副作用包括 adapter.close、runtime 记录以及
+        cleo/cli/lifecycle.py 的 _run_dream_agent 后台记忆整理。
+    """
     await adapter.close(session.id)
     runtime.append_recent_threads(session.id, "productivity")
     await _run_dream_agent(session.id, session.project, "productivity")
 
 
 def _slash_command_argument(prompt: str, command: str) -> str:
+    """从用户输入中取出 slash command 的参数部分, 并剥掉成对的引号。
+
+    参数:
+        prompt: 用户原始输入; 来自 productivity loop 的 cli.prompt 返回值,
+            或 cleo/cli/chat.py 中 chat 模式的 message(/rename、/project、/resume)。
+        command: 要剥离的命令前缀(如 "/model"、"/cd"), 由各调用点传入。
+
+    返回:
+        str: 命令后的参数字符串(已 strip 并去除成对的 ' 或 ");
+        由各调用点继续作为 id、路径、模型名等使用。
+    """
     argument = prompt.removeprefix(command).strip()
     if (
         len(argument) >= 2
@@ -59,6 +97,18 @@ def _slash_command_argument(prompt: str, command: str) -> str:
 
 
 def _resolve_productivity_cwd(argument: str, current_cwd: str) -> str:
+    """把 /cd 参数解析为已存在的绝对目录路径(支持 ~、环境变量与相对路径)。
+
+    参数:
+        argument: /cd 的参数, 由 _run_productivity_loop 经
+            _slash_command_argument(prompt, "/cd") 传入(productivity.py)。
+        current_cwd: 当前会话目录(session.project_path), 作为相对路径的基准。
+
+    返回:
+        str: normcase 后的绝对路径; 由 _run_productivity_loop 作为
+        create_session(project_path=...) 的新工作目录。
+        参数为空或目录不存在时抛出 ValueError, 由调用点捕获并显示错误。
+    """
     if not argument:
         raise ValueError("Usage: /cd <directory>")
     expanded = Path(os.path.expandvars(argument)).expanduser()
@@ -79,6 +129,22 @@ async def _resume_productivity_session(
     cwd_override: str | None = None,
     project_override: str | None = None,
 ) -> AgentSession:
+    """从 SessionStore 的 manifest 恢复一个已保存的 productivity 会话。
+
+    参数:
+        adapter: AgentAdapter, 由 _run_productivity_loop(/resume 分支)或
+            _run_productivity_mode(args.resume_id 分支)传入。
+        store: SessionStore, 用于 load_manifest 读取会话元数据。
+        session_id: 待恢复的会话 id; 来自用户 /resume 参数或 CLI args.resume_id。
+        model: 目标模型; 来自 provider 配置(model_for)或 args/model 设置。
+        provider_override: CLI 指定的 provider, 用于校验与 manifest 一致。
+        cwd_override / project_override: CLI args.cwd / args.project, 优先于
+            manifest 中的记录。
+
+    返回:
+        AgentSession: adapter.resume_session 的结果; 由调用方接管为新的当前
+        会话并更新 runtime 状态。校验失败抛出 ValueError, 由调用点捕获。
+    """
     manifest = store.load_manifest(session_id)
     if manifest["space"] != "productivity":
         raise ValueError(f"Session {session_id} is not a productivity session.")
@@ -104,6 +170,19 @@ async def _load_productivity_catalog(
     adapter: AgentAdapter,
     provider: str,
 ):
+    """尽力加载 provider 的模型列表与最近 native sessions(失败则静默回退为空)。
+
+    参数:
+        adapter: AgentAdapter; 通过 getattr 探测 list_models / list_native_sessions
+            能力, 不存在或调用失败时保持空结果。
+        provider: provider 名(如 "codex"), 由 _run_productivity_loop 传入
+            session.provider。
+
+    返回:
+        tuple: (models, native_page) — HarnessModel 元组与 NativeSessionPage;
+        由 _run_productivity_loop 用于 /model 校验、prompt 补全与
+        /resume-native、/sessions 的展示数据。
+    """
     from cleo.harnesses import NativeSessionPage
 
     models = ()
@@ -124,6 +203,17 @@ async def _load_productivity_catalog(
 
 
 def _productivity_options(adapter: AgentAdapter, session_id: str):
+    """读取会话当前的 SessionOptions(adapter 不支持或会话未知时返回 None)。
+
+    参数:
+        adapter: AgentAdapter; 通过 getattr 探测 session_options 能力。
+        session_id: 当前会话 id(session.id), 由 _run_productivity_loop /
+            _run_productivity_mode 传入。
+
+    返回:
+        SessionOptions | None; 由调用方用于渲染 controls 面板、以及
+        /effort、/access、/approval 显示当前值。
+    """
     session_options = getattr(adapter, "session_options", None)
     if not callable(session_options):
         return None
@@ -143,10 +233,34 @@ async def _run_productivity_loop(
     provider_models: Mapping[str, str | None] | None = None,
     return_to_chat: bool = False,
 ) -> None:
+    """productivity 模式的交互主循环: 读取输入并分发 slash command 或 prompt。
+
+    参数:
+        adapter: AgentAdapter, 由 _run_productivity_mode 构建后传入。
+        session: 当前 AgentSession; 由 _run_productivity_mode 的
+            create_session / _resume_productivity_session 结果传入。
+        runtime: Runtime 状态, 用于更新 current thread/project 与 recent threads。
+        store: SessionStore, 用于 /resume 的 manifest 读取与补全列表。
+        model: CLI args.model; 为 None 时回退到 provider_models 中的配置。
+        provider_models: provider -> model 映射, 由 _run_productivity_mode 从
+            settings.productivity.providers 构建。
+        return_to_chat: 退出语义提示用; 由 _run_productivity_mode 传入
+            (chat 内 /productivity 进入时为 True)。
+
+    返回:
+        None; 循环退出时( /back、/quit、EOF )清理 runtime 的 current
+        thread/project 并 update_runtime_json。
+    """
     exit_action = "return to Cleo chat" if return_to_chat else "exit"
     configured_models = provider_models or {}
 
     def model_for(provider: str) -> str | None:
+        """按优先级取模型: CLI args.model 优先, 否则用 provider 配置。
+
+        参数: provider — 会话的 provider 名, 来自 session.provider 或
+        /resume 时读取的 manifest["provider"]。
+        返回: str | None; 供 loop 内计算 session_model / resume_model 使用。
+        """
         return model or configured_models.get(provider)
 
     session_model = model_for(session.provider)
@@ -158,6 +272,11 @@ async def _run_productivity_loop(
     )
 
     def render_active_controls() -> None:
+        """重渲染当前会话的 controls 面板(effort/access/approval + git 状态)。
+
+        无参数(闭包捕获 session/adapter), 无返回值; 由 /model、/effort、
+        /access、/approval 等分支在更新 options 后调用。
+        """
         from cleo.integrations.git import inspect_git_status
 
         cli.render_productivity_controls(
@@ -166,6 +285,12 @@ async def _run_productivity_loop(
         )
 
     def render_active_header() -> None:
+        """重渲染当前会话的完整 header(品牌行 + runtime status + controls + 明细)。
+
+        无参数(闭包捕获 session/active_model/context_usage/adapter), 无返回值;
+        由 loop 启动时及 /new、/cd、/resume、/resume-native、/fork、/archive、
+        /native、/sessions 等需要清屏重绘的分支调用。
+        """
         from cleo.integrations.git import inspect_git_status
 
         cli.render_productivity_header(
@@ -539,6 +664,21 @@ async def _run_productivity_mode(
     *,
     return_to_chat: bool = False,
 ) -> None:
+    """productivity 模式入口: 建 adapter、创建/恢复会话, 再进交互循环或跑单条消息。
+
+    参数:
+        args: argparse.Namespace; 由 cleo/cli/application.py:174 的命令行入口
+            或 cleo/cli/chat.py:403 的 /productivity slash command 传入,
+            含 resume_id/provider/model/cwd/project/message 等字段。
+        runtime / store: Runtime 与 SessionStore, 由上述调用方传入共享实例。
+        settings: SettingsModel, 提供 productivity 配置(默认 provider、
+            各 provider 模型、目录 profile)。
+        return_to_chat: 是否退出后回到 chat; chat.py 的 /productivity 调用为 True。
+
+    返回:
+        None; 结束时统一 adapter.aclose()。校验失败时抛出 SystemExit
+        (unknown provider / 会话不存在 / 启动失败)。
+    """
     from cleo.integrations.harnesses.factory import build_agent_adapter
 
     adapter = build_agent_adapter(

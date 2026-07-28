@@ -28,6 +28,18 @@ HARNESSES_TEMPLATE_PATH = (
 
 
 async def amain() -> None:
+    """Cleo CLI 的异步顶层入口:解析 argparse 参数并分发到对应的运行模式。
+
+    无参数。命令行实参由本函数内部通过 ``parser.parse_args()`` 从
+    ``sys.argv`` 读取;本函数由 :func:`main` 通过 ``asyncio.run(amain())``
+    调用,也被 ``main.py`` 重新导出、被 ``tests/test_boundaries.py`` 与
+    ``tests/cli/test_application.py`` 直接以 ``asyncio.run`` 驱动。
+
+    返回值:
+        None。副作用为启动 one-shot 回复、交互式 chat loop 或 productivity
+        模式;模板打印与 ``--reset-to-main`` 分支提前 return。不合法参数组合
+        通过 ``SystemExit`` 终止进程(由 argparse/CLI 框架呈现给用户)。
+    """
     parser = argparse.ArgumentParser(description="Run the Cleo AI Agent local runtime.")
     parser.add_argument(
         "message",
@@ -309,5 +321,14 @@ async def amain() -> None:
 
 
 def main() -> None:
-    """Synchronous console-script boundary for the async Cleo runtime."""
+    """Synchronous console-script boundary for the async Cleo runtime.
+
+    无参数。作为 pyproject.toml ``[project.scripts]`` 中
+    ``cleo = "cleo.cli.application:main"`` 声明的 console script 入口,
+    由安装生成的 ``cleo`` 可执行文件在进程启动时调用;``main.py`` 也重新
+    导出它供 ``python main.py`` 使用。
+
+    返回值:
+        None。内部以 ``asyncio.run`` 驱动 :func:`amain` 直至事件循环结束。
+    """
     asyncio.run(amain())
