@@ -69,6 +69,21 @@ if (
 ) {
     throw "Install root and Cleo home must not overlap."
 }
+foreach ($targetPath in @($InstallRoot, $CleoHome)) {
+    if (
+        $targetPath.Equals($SourceRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
+        $targetPath.StartsWith(
+            $SourceRoot.TrimEnd("\") + "\",
+            [System.StringComparison]::OrdinalIgnoreCase
+        ) -or
+        $SourceRoot.StartsWith(
+            $targetPath.TrimEnd("\") + "\",
+            [System.StringComparison]::OrdinalIgnoreCase
+        )
+    ) {
+        throw "Source directory must not overlap an installation directory: $targetPath"
+    }
+}
 
 $requiredSourcePaths = @(
     "pyproject.toml",
@@ -222,45 +237,65 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $uv = Get-Command uv -ErrorAction SilentlyContinue
-if ($uv) {
-    $installArguments = @(
-        "pip",
-        "install",
-        "--python",
-        $runtimePython,
-        "--upgrade"
-    )
-    if ($IndexUrl) {
-        $installArguments += @("--index-url", $IndexUrl)
+# Setuptools writes build metadata beside a local source tree, so package a disposable copy.
+$packageSourceRoot = Join-Path $InstallRoot (
+    ".install-source-" + [guid]::NewGuid().ToString("N")
+)
+New-Item -ItemType Directory -Path $packageSourceRoot | Out-Null
+try {
+    foreach ($relativePath in @("pyproject.toml", "README.md", "main.py", "LICENSE")) {
+        $sourcePath = Join-Path $SourceRoot $relativePath
+        if (Test-Path -LiteralPath $sourcePath) {
+            Copy-Item -LiteralPath $sourcePath -Destination $packageSourceRoot
+        }
     }
-    $installArguments += $SourceRoot
-    Invoke-Checked -FilePath $uv.Source -Arguments $installArguments
-} else {
-    $pipUpgradeArguments = @(
-        "-m",
-        "pip",
-        "install",
-        "--disable-pip-version-check",
-        "--upgrade",
-        "pip"
-    )
-    if ($IndexUrl) {
-        $pipUpgradeArguments += @("--index-url", $IndexUrl)
-    }
-    Invoke-Checked -FilePath $runtimePython -Arguments $pipUpgradeArguments
+    Copy-Item `
+        -LiteralPath (Join-Path $SourceRoot "cleo") `
+        -Destination (Join-Path $packageSourceRoot "cleo") `
+        -Recurse
 
-    $installArguments = @(
-        "-m",
-        "pip",
-        "install",
-        "--disable-pip-version-check",
-        "--upgrade"
-    )
-    if ($IndexUrl) {
-        $installArguments += @("--index-url", $IndexUrl)
+    if ($uv) {
+        $installArguments = @(
+            "pip",
+            "install",
+            "--python",
+            $runtimePython,
+            "--upgrade"
+        )
+        if ($IndexUrl) {
+            $installArguments += @("--index-url", $IndexUrl)
+        }
+        $installArguments += $packageSourceRoot
+        Invoke-Checked -FilePath $uv.Source -Arguments $installArguments
+    } else {
+        $pipUpgradeArguments = @(
+            "-m",
+            "pip",
+            "install",
+            "--disable-pip-version-check",
+            "--upgrade",
+            "pip"
+        )
+        if ($IndexUrl) {
+            $pipUpgradeArguments += @("--index-url", $IndexUrl)
+        }
+        Invoke-Checked -FilePath $runtimePython -Arguments $pipUpgradeArguments
+
+        $installArguments = @(
+            "-m",
+            "pip",
+            "install",
+            "--disable-pip-version-check",
+            "--upgrade"
+        )
+        if ($IndexUrl) {
+            $installArguments += @("--index-url", $IndexUrl)
+        }
+        $installArguments += $packageSourceRoot
+        Invoke-Checked -FilePath $runtimePython -Arguments $installArguments
     }
-    $installArguments += $SourceRoot
-    Invoke-Checked -FilePath $runtimePython -Arguments $installArguments
+} finally {
+    Remove-Item -LiteralPath $packageSourceRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 $layoutDirectories = @(
