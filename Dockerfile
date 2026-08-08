@@ -13,6 +13,8 @@ ARG CLEO_UID=10001
 ARG CLEO_GID=10001
 ARG PIP_INDEX_URL=https://pypi.org/simple
 ARG PIP_EXTRA_INDEX_URL
+ARG CLEO_MEMORY_GATE_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+ARG CLEO_SKIP_MEMORY_MODEL_DOWNLOAD=0
 
 RUN groupadd --gid "${CLEO_GID}" cleo \
     && useradd --uid "${CLEO_UID}" --gid "${CLEO_GID}" --create-home --shell /bin/bash cleo \
@@ -30,6 +32,9 @@ RUN python -m pip install --no-cache-dir --no-deps . \
     && mkdir -p /config assets data/session_artifacts memory/non_productivity/projects \
         memory/productivity/projects workspace /home/cleo/.codex \
     && cp cleo/images/assets/cleo-startup.png assets/startup.png \
+    && if [ "${CLEO_SKIP_MEMORY_MODEL_DOWNLOAD}" != "1" ]; then \
+        python -m cleo.memory.model_download --model "${CLEO_MEMORY_GATE_MODEL}"; \
+       fi \
     && chown -R cleo:cleo /app /config /home/cleo \
     && cleo --help >/dev/null
 

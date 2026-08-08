@@ -133,8 +133,9 @@ def test_acp_host_streams_events_and_scopes_file_access(tmp_path) -> None:
         host.begin_turn(received.append)
         await host.session_update("session-1", update_agent_message_text("hello"))
         target = tmp_path / "notes.txt"
-        await host.write_text_file("session-1", str(target), "one\ntwo\n")
-        content = await host.read_text_file("session-1", str(target), line=2, limit=1)
+        await host.write_text_file("session-1", "notes.txt", "one\ntwo\n")
+        content = await host.read_text_file("session-1", "notes.txt", line=2, limit=1)
+        assert target.read_text(encoding="utf-8") == "one\ntwo\n"
         assert content.content == "two\n"
 
         with pytest.raises(PermissionError):
@@ -251,6 +252,42 @@ def test_codex_provider_streams_new_sdk_notifications() -> None:
     assert received[1].data["provider_event_type"] == "item/started"
     assert received[2].type == "status"
     assert received[2].data["provider_event_type"] == "thread/tokenUsage/updated"
+
+
+def test_codex_provider_reads_account_rate_limit_windows() -> None:
+    class FakeClient:
+        async def request(self, method, params, *, response_model):
+            assert method == "account/rateLimits/read"
+            assert params is None
+            return response_model.model_validate(
+                {
+                    "rateLimits": {
+                        "primary": {
+                            "usedPercent": 20,
+                            "windowDurationMins": 300,
+                            "resetsAt": 1_800_000_000,
+                        },
+                        "secondary": {
+                            "usedPercent": 35,
+                            "windowDurationMins": 10_080,
+                            "resetsAt": 1_800_100_000,
+                        },
+                    }
+                }
+            )
+
+    provider = CodexProvider(default_model="test-model")
+    provider._sessions["session-limits"] = _CodexRuntime(
+        client=SimpleNamespace(_client=FakeClient()),
+        thread=SimpleNamespace(id="thread-limits"),
+    )
+
+    windows = asyncio.run(provider.account_rate_limits("session-limits"))
+
+    assert [(window.window_minutes, window.used_percent) for window in windows] == [
+        (300, 20),
+        (10_080, 35),
+    ]
 
 
 def test_codex_provider_applies_runtime_options_to_next_turn() -> None:

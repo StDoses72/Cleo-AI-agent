@@ -5,14 +5,21 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
+@dataclass(frozen=True, slots=True)
+class RateLimitWindowUsage:
+    """One account-level Codex usage window reported by app-server."""
+
+    used_percent: int
+    window_minutes: int | None = None
+    resets_at: int | None = None
+
+
 @dataclass(slots=True)
 class ContextWindowUsage:
     """模型 context window 使用量的共享数据模型(用于 UI 展示)。
 
-    由 cleo/agents/cleo.py(agent 根据模型配置创建)与
-    cleo/cli/productivity.py(各会话命令创建空实例)实例化;
-    经 update() 增量更新后, 由 cleo/cli/productivity_renderer.py
-    与 cleo/cli/console.py 读取字段及 ratio 渲染用量指示。
+    由 cleo/agents/cleo.py 与 productivity TUI 实例化; 经 update()
+    增量更新后, 由 Rich/Textual presentation 读取并渲染用量指示。
     """
 
     used_tokens: int | None = None
@@ -20,6 +27,8 @@ class ContextWindowUsage:
     input_tokens: int | None = None
     output_tokens: int | None = None
     cached_input_tokens: int | None = None
+    rate_limit_windows: tuple[RateLimitWindowUsage, ...] = ()
+    rate_limits_loaded: bool = False
 
     @property
     def ratio(self) -> float | None:
@@ -67,3 +76,11 @@ class ContextWindowUsage:
             self.output_tokens = max(0, output_tokens)
         if cached_input_tokens is not None:
             self.cached_input_tokens = max(0, cached_input_tokens)
+
+    def update_rate_limits(
+        self,
+        windows: tuple[RateLimitWindowUsage, ...],
+    ) -> None:
+        """Replace account-level Codex limits while preserving context counters."""
+        self.rate_limit_windows = windows
+        self.rate_limits_loaded = True

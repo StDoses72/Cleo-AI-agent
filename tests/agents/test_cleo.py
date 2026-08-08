@@ -39,6 +39,7 @@ def test_agent_stream_text_uses_async_graph_streaming() -> None:
 def test_agent_backend_uses_configured_application_root(tmp_path, monkeypatch) -> None:
     import cleo.agents.cleo as agent_module
 
+    captured_options = {}
     (tmp_path / "skills" / "demo").mkdir(parents=True)
     (tmp_path / "memory").mkdir()
     (tmp_path / "memory" / "MEMORY_POLICY.md").write_text(
@@ -52,13 +53,15 @@ def test_agent_backend_uses_configured_application_root(tmp_path, monkeypatch) -
         "settings",
         SimpleNamespace(
             active_directory_profile=SimpleNamespace(root_path=tmp_path),
+            PERSONA_PATH=tmp_path / "PERSONA.md",
+            MEMORY_DIR=tmp_path / "memory",
         ),
     )
     monkeypatch.setattr(agent_module, "init_chat_model", lambda **_kwargs: object())
     monkeypatch.setattr(
         agent_module,
         "create_deep_agent",
-        lambda **_kwargs: SimpleNamespace(),
+        lambda **kwargs: captured_options.update(kwargs) or SimpleNamespace(),
     )
 
     agent = agent_module.Agent()
@@ -66,4 +69,9 @@ def test_agent_backend_uses_configured_application_root(tmp_path, monkeypatch) -
     assert agent.root_dir == tmp_path
     assert agent.backend.ls("/skills").error is None
     assert agent.backend.read("/memory/MEMORY_POLICY.md").error is None
+    assert agent.backend.read("/PERSONA.md").error is None
     assert agent.backend.ls("/workspace").error is None
+    assert captured_options["memory"] == [
+        "/memory/MEMORY_POLICY.md",
+        "/PERSONA.md",
+    ]

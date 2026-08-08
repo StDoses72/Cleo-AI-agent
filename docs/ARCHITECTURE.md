@@ -1,7 +1,7 @@
 # Cleo 当前架构
 
 本文描述仓库中已经实现的运行时、harness adapter、session storage 和 memory
-pipeline，不把未来前端或完整 SessionHub 服务写成已完成能力。
+pipeline，不把尚未实现的独立 SessionHub 服务写成已完成能力。
 
 ## 组件边界
 
@@ -29,11 +29,13 @@ SessionStore
   两者可调用的工具集中在 `cleo/agents/tools/`。
 - `cleo/cli/application.py`：只负责参数解析和顶层 dispatch；根目录 `main.py` 只保留
   `python main.py` 兼容入口。
-- `cleo/cli/chat.py` 与 `cleo/cli/productivity.py`：分别编排主聊天和 harness 交互流。
+- `cleo/cli/chat.py` 与 `cleo/cli/productivity.py`：分别负责主聊天和 harness 的后端编排；
+  `cleo/cli/chat_tui.py` 与 `cleo/cli/productivity_tui.py` 提供两套 Textual 全屏交互界面。
+- `cleo/cli/productivity_history.py`：把 Codex native turns 或 Cleo event log 规范化为可恢复的
+  transcript；恢复 native thread 与历史显示相互独立，显示失败不会阻断 session resume。
 - `cleo/cli/lifecycle.py`：session 保存与 DreamAgent consolidation 生命周期。
-- `cleo/cli/console.py`：Rich 输出、流式事件、Session Hub 表现层，以及基于
-  `prompt_toolkit` 的输入；命令补全和 harness event 渲染分别位于
-  `cleo/cli/completion.py` 与 `cleo/cli/productivity_renderer.py`。
+- `cleo/cli/console.py`：一次性命令的紧凑 Rich 输出；共享 harness event 投影与
+  非交互渲染位于 `cleo/cli/productivity_renderer.py`。
 - `cleo/images/`：可替换 PNG 的加载与自动裁剪、终端图像选择、动态像素回退和 Sixel 渲染。
 - `cleo/sessions/store.py`：session manifest、append-only events 和全局 registry。
 - `cleo/sessions/hub.py`：合并 Cleo-managed session 与原生 harness session；不依赖 CLI。
@@ -84,11 +86,13 @@ space + project + session_id
 
 同名 project 在两个 space 中仍然是不同的数据边界。SQLite 查询、compact 校验、
 DreamAgent 工具和 evidence 都必须携带 space，避免 productivity 内容自动进入个人记忆。
+全局人格是唯一例外，但只允许跨 scope 传播抽象的互动倾向，不能携带任一 scope 的事实。
 
 Cleo 主模式中的 project 是可选的逻辑记忆边界，可表示一个长期话题、计划或工作流，
-并不要求存在代码目录；`general` 是默认边界。productivity 中的 project 仍用于 Cleo
-侧的记录分区，而 harness 的实际代码边界由 `cwd`/仓库决定。外部 harness 的本地
-project 可按规范化 `cwd` 做可选关联，但不与 Cleo project 名称或内部 ID 强制一一对应。
+并不要求存在代码目录；`general` 是默认边界。Productivity UI 则把规范化 `cwd` 当成
+用户可见的项目身份，项目选择器只列出最近工作目录，不混入 Cleo 记忆 project 或
+Codex native thread。内部 session 的 `project` 字段仍用于 Cleo 侧记录分区，默认取
+工作目录名；harness 的真实代码边界始终由 `cwd`/仓库决定。
 
 Cleo thread 的标题由首条 `user_message` 确定，也可作为纯 metadata 手动修改。
 活跃且尚未 consolidation 的 thread 可以迁移 project：session 目录、manifest、event
@@ -101,6 +105,7 @@ Cleo thread 的标题由首条 `user_message` 确定，也可作为纯 metadata 
 ```text
 memory/
 ├── MEMORY_POLICY.md
+├── persona.sqlite3
 ├── sessions.sqlite3
 ├── non_productivity/
 │   ├── memory.sqlite3
@@ -154,6 +159,10 @@ space/project/session 绑定、actor、type、时间和 payload。
 `memory/sessions.sqlite3` 是所有 session 的全局 metadata registry，可由 manifest 重建。
 每个 space 自己的 `memory.sqlite3` 保存 atomic memory、event evidence、consolidation
 记录与 lexical conversation chunks。SQLite 不是原始对话事实源。
+
+`memory/persona.sqlite3` 是唯一的跨 project/space 记忆库，只保存人格 trait 及其私有
+event evidence。根目录 `PERSONA.md` 是其不暴露 project/session 来源的可读投影，并由
+前台 Cleo 作为低权限描述性记忆加载。
 
 ## Harness 事件适配
 
@@ -246,9 +255,14 @@ Cleo handle ↔ native thread ID 映射。已完成内容只留在 SessionStore�
 ```text
 validated compact
   → space/project/session/source hash 校验
-  → DreamAgent 读取同 scope 的项目记忆
+  → Sentence Transformer 对比 durable/transient prototypes
+      → 明确 transient：记录 processed_hash + skipped，不启动 DreamAgent
+      → durable 或不确定：继续 DreamAgent（fail-open）
+  → DreamAgent 读取同 scope 的项目记忆与全局 PERSONA.md
   → atomic memory + evidence_event_ids
+  → 可选写入 project-independent persona trait + evidence
   → 原子写入 MEMORY.md
+  → 原子渲染根目录 PERSONA.md
   → 显式 complete consolidation
 ```
 
@@ -258,7 +272,12 @@ productivity 偏向任务目标、技术决策、改动文件、测试结果、�
 DreamAgent 使用 `active_profiles.dream_agent` 独立选择 `profiles.agents` 中的模型配置。
 旧配置未设置该字段时回退到前台 `active_profiles.agent`。
 
-自动 consolidation 不会修改 `AGENTS.md`，也不会创建或更新 skill。
+自动 consolidation 不会修改 `AGENTS.md`，也不会创建或更新 skill。人格层只能描述
+交流、表达、关系连续性、适应方式和互动边界；不能包含项目事实、权限、政策或工具指令。
+
+gate 只读取 validated compact 中有界的 human text，并在实际 consolidation 进程中懒加载模型。
+`processed_hash` 表示该 source 已经完成 gate/整理流程；`consolidated_hash` 只表示确实进入过
+项目记忆协议，因此被 gate 跳过的 thread 仍可按未 consolidation 的规则迁移 project。
 
 ## Runtime State
 

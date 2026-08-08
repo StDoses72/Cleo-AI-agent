@@ -27,6 +27,7 @@ data/*
 memory/non_productivity/
 memory/productivity/
 memory/sessions.sqlite3*
+memory/persona.sqlite3*
 data/session_artifacts/
 
 # Temporary test backups created during local validation.

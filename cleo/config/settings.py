@@ -6,6 +6,8 @@ from typing import Annotated, Any, Literal
 from platformdirs import user_data_dir
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
+from cleo.memory.gate import DEFAULT_MEMORY_GATE_MODEL
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -179,6 +181,47 @@ class AgentProfile(BaseModel):
     temperature: float = Field(default=0.7, ge=0, le=2)
 
 
+class MemoryGateSettings(BaseModel):
+    """Local Sentence Transformer gate used before DreamAgent consolidation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    model: str = DEFAULT_MEMORY_GATE_MODEL
+    local_files_only: bool = False
+    minimum_similarity: float = Field(default=0.42, ge=-1, le=1)
+    run_margin: float = Field(default=0.08, ge=0, le=2)
+    skip_margin: float = Field(default=0.10, ge=0, le=2)
+    max_messages: int = Field(default=24, gt=0, le=256)
+    max_characters_per_message: int = Field(default=1200, gt=0, le=20_000)
+    positive_prototypes: list[str] = Field(
+        default_factory=lambda: [
+            "The user stated a durable preference that should apply in future conversations.",
+            "The user corrected an important fact or a previous misunderstanding.",
+            "The conversation established or accepted a lasting technical decision.",
+            "The user introduced a durable constraint, plan, open question, or next action.",
+            "The interaction revealed a stable project-independent communication preference.",
+            "用户表达了今后也应当遵循的长期偏好。",
+            "用户纠正了一个重要事实或之前的误解。",
+            "对话确认了需要长期保留的技术决定、约束、计划或下一步行动。",
+            "交互体现了稳定且跨项目的沟通或相处偏好。",
+        ],
+        min_length=1,
+    )
+    negative_prototypes: list[str] = Field(
+        default_factory=lambda: [
+            "The conversation only contains a greeting, thanks, or acknowledgement.",
+            "The user made casual small talk with no lasting preference or decision.",
+            "The exchange contains only transient status chatter or repeated noise.",
+            "The user ended or cancelled the interaction without creating durable information.",
+            "对话只有问候、感谢、确认或告别，没有值得长期保存的信息。",
+            "用户只是随意闲聊，没有形成长期偏好、决定、约束或后续行动。",
+            "内容只是临时状态、重复信息或调试噪声。",
+        ],
+        min_length=1,
+    )
+
+
 class DirectoryProfile(BaseModel):
     """目录布局 profile(cleo.json 中 profiles.directories.<name>)。
 
@@ -189,6 +232,7 @@ class DirectoryProfile(BaseModel):
         data_dir / skills_dir / workspace_dir / memory_dir: 各功能子目录;
             经对应 *_path property 暴露给 SettingsModel 的 DATA_DIR 等。
         memory_policy_path: memory 抽取策略文件;经 MEMORY_POLICY_PATH 暴露。
+        persona_path: 全局人格投影文件;经 PERSONA_PATH 暴露。
         session_index_path: 会话索引 SQLite;经 SESSION_INDEX_PATH 暴露,
             消费方: cleo/cli/application.py:172 等 SessionStore 构造处。
         session_artifacts_dir: 会话产物目录;经 SESSION_ARTIFACTS_DIR 暴露。
@@ -204,6 +248,7 @@ class DirectoryProfile(BaseModel):
     workspace_dir: Path = Path("workspace")
     memory_dir: Path = Path("memory")
     memory_policy_path: Path = Path("memory/MEMORY_POLICY.md")
+    persona_path: Path = Path("PERSONA.md")
     session_index_path: Path = Path("memory/sessions.sqlite3")
     session_artifacts_dir: Path = Path("data/session_artifacts")
     runtime_state_path: Path = Path("data/runtime.json")
@@ -258,6 +303,11 @@ class DirectoryProfile(BaseModel):
         来源: memory_policy_path 字段; 消费方: SettingsModel.MEMORY_POLICY_PATH。
         """
         return self.project_path(self.memory_policy_path)
+
+    @property
+    def persona_file(self) -> Path:
+        """全局人格投影绝对路径;默认与 ``AGENTS.md`` 同处应用根目录。"""
+        return self.project_path(self.persona_path)
 
     @property
     def session_index_file(self) -> Path:
@@ -316,6 +366,22 @@ class ShellProfile(BaseModel):
     denied_patterns: list[str] = Field(default_factory=list)
 
 
+class BrowserToolSettings(BaseModel):
+    """Configuration for Cleo's dedicated agent-browser adapter."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    command: str = Field(default="agent-browser", min_length=1)
+    headless: bool = True
+    allow_private_network: bool = False
+    allowed_domains: list[str] = Field(default_factory=list)
+    timeout_seconds: int = Field(default=45, gt=0, le=300)
+    operation_timeout_ms: int = Field(default=25000, gt=0, le=120000)
+    idle_timeout_seconds: int = Field(default=900, ge=0, le=86400)
+    max_output_chars: int = Field(default=12000, ge=1000, le=200000)
+
+
 class ToolsProfile(BaseModel):
     """工具 profile(cleo.json 中 profiles.tools.<name>)。
 
@@ -324,12 +390,14 @@ class ToolsProfile(BaseModel):
             暴露(当前仓库内暂无消费方)。
         codex_model: codex 工具默认模型;消费方: cleo/agents/tools/codex_tools.py:7
             与 cleo/mcp/codex_server.py:10。
+        browser: 专用 agent-browser 适配器的启用状态、命令、网络边界、超时与输出上限。
     """
 
     model_config = ConfigDict(extra="forbid")
 
     tavily_api_key: SecretStr | None = None
     codex_model: str = Field(default="gpt-5.5", min_length=1)
+    browser: BrowserToolSettings = Field(default_factory=BrowserToolSettings)
 
 
 class HarnessProviderSettings(BaseModel):
@@ -361,9 +429,7 @@ class CodexHarnessOptions(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     approval_mode: Literal["deny_all", "auto_review"] = "deny_all"
-    sandbox: Literal["read-only", "workspace-write", "full-access"] = (
-        "workspace-write"
-    )
+    sandbox: Literal["read-only", "workspace-write", "full-access"] = "workspace-write"
 
 
 class ClaudeHarnessOptions(BaseModel):
@@ -496,13 +562,9 @@ class ProductivitySettings(BaseModel):
         """
         provider = self.providers.get(self.default_provider)
         if provider is None:
-            raise ValueError(
-                f"Default productivity provider not found: {self.default_provider}"
-            )
+            raise ValueError(f"Default productivity provider not found: {self.default_provider}")
         if not provider.enabled:
-            raise ValueError(
-                f"Default productivity provider is disabled: {self.default_provider}"
-            )
+            raise ValueError(f"Default productivity provider is disabled: {self.default_provider}")
         return self
 
     def provider(self, name: str) -> ProductivityProviderSettings:
@@ -581,6 +643,7 @@ class SettingsModel(BaseModel):
     active_profiles: ActiveProfiles
     profiles: ProfileRegistry
     productivity: ProductivitySettings = Field(default_factory=ProductivitySettings)
+    memory_gate: MemoryGateSettings = Field(default_factory=MemoryGateSettings)
 
     @model_validator(mode="after")
     def validate_active_profiles(self) -> "SettingsModel":
@@ -686,6 +749,11 @@ class SettingsModel(BaseModel):
     def MEMORY_POLICY_PATH(self) -> Path:
         """memory 策略文件绝对路径;来源: active directory profile;当前仓库内暂无直接消费方。"""
         return self.active_directory_profile.memory_policy_file
+
+    @property
+    def PERSONA_PATH(self) -> Path:
+        """全局人格投影路径;来源: active directory profile。"""
+        return self.active_directory_profile.persona_file
 
     @property
     def SESSION_INDEX_PATH(self) -> Path:
@@ -809,6 +877,7 @@ def _default_config() -> dict[str, Any]:
                     "workspace_dir": "workspace",
                     "memory_dir": "memory",
                     "memory_policy_path": "memory/MEMORY_POLICY.md",
+                    "persona_path": "PERSONA.md",
                     "session_index_path": "memory/sessions.sqlite3",
                     "session_artifacts_dir": "data/session_artifacts",
                     "runtime_state_path": "data/runtime.json",
@@ -832,6 +901,17 @@ def _default_config() -> dict[str, Any]:
                 "default": {
                     "tavily_api_key": None,
                     "codex_model": "gpt-5.5",
+                    "browser": {
+                        "enabled": True,
+                        "command": "agent-browser",
+                        "headless": True,
+                        "allow_private_network": False,
+                        "allowed_domains": [],
+                        "timeout_seconds": 45,
+                        "operation_timeout_ms": 25000,
+                        "idle_timeout_seconds": 900,
+                        "max_output_chars": 12000,
+                    },
                 }
             },
         },
@@ -926,8 +1006,7 @@ def load_settings(
 
     if "productivity" in raw_config:
         raise ValueError(
-            "Productivity configuration belongs in config/harnesses.json, "
-            "not cleo.json."
+            "Productivity configuration belongs in config/harnesses.json, not cleo.json."
         )
 
     harnesses_path = harnesses_config_path

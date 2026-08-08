@@ -154,11 +154,16 @@ def touch_session_source(
                 "last_event_seq": int(last_event_seq),
                 "consolidated_version": 0,
                 "consolidated_hash": None,
+                "processed_version": 0,
+                "processed_hash": None,
+                "processing_decision": None,
+                "processing_reason": None,
                 "status": "pending",
                 "failure_count": 0,
                 "last_error": None,
                 "last_updated_at": now,
                 "last_consolidated_at": None,
+                "last_processed_at": None,
             }
             state["sources"][source_id] = entry
         elif entry.get("source_hash") != source_hash:
@@ -168,6 +173,9 @@ def touch_session_source(
             entry["source_hash"] = source_hash
             entry["last_event_seq"] = int(last_event_seq)
             entry["status"] = "pending"
+            entry["processing_decision"] = None
+            entry["processing_reason"] = None
+            entry["gate_result"] = None
             entry["last_error"] = None
             entry["last_updated_at"] = now
         _save_unlocked(state_path, state)
@@ -247,11 +255,47 @@ def needs_consolidation(
         path: 可选状态文件覆盖, 供测试注入。
 
     返回:
-        True 表示无记录或 consolidated_hash 与 source_hash 不同; 被
-        dream.py 用来决定跳过还是启动一次 consolidation。
+        True 表示无记录或 processed_hash 与 source_hash 不同; 被 dream.py
+        用来决定运行 gate/整理流程。旧状态没有 processed_hash 时兼容回退到
+        consolidated_hash。
     """
     entry = get_session_source(space, project, session_id, path=path)
-    return entry is None or entry.get("consolidated_hash") != source_hash
+    if entry is None:
+        return True
+    processed_hash = entry.get("processed_hash") or entry.get("consolidated_hash")
+    return processed_hash != source_hash
+
+
+def mark_consolidation_skipped(
+    space: str,
+    project: str,
+    session_id: str,
+    source_hash: str,
+    *,
+    reason: str,
+    gate_result: dict[str, Any],
+    path: Path | None = None,
+) -> dict[str, Any]:
+    """Mark a source revision as reviewed without claiming it entered memory."""
+    if not reason.strip():
+        raise ValueError("a skipped consolidation requires a reason")
+    state_path = _state_path(space, path)
+    with _STATE_LOCK:
+        state = _load_unlocked(state_path)
+        entry = state["sources"].get(_source_id(space, project, session_id))
+        if entry is None or entry.get("source_hash") != source_hash:
+            raise ValueError("memory source changed before gate decision was recorded")
+        now = _now_iso()
+        entry["processed_hash"] = source_hash
+        entry["processed_version"] = int(entry.get("source_version", 0))
+        entry["processing_decision"] = "skipped"
+        entry["processing_reason"] = reason.strip()
+        entry["gate_result"] = dict(gate_result)
+        entry["status"] = "skipped"
+        entry["last_processed_at"] = now
+        entry["last_error"] = None
+        _save_unlocked(state_path, state)
+        return dict(entry)
 
 
 def mark_consolidation_started(
@@ -260,6 +304,7 @@ def mark_consolidation_started(
     session_id: str,
     source_hash: str,
     *,
+    gate_result: dict[str, Any] | None = None,
     path: Path | None = None,
 ) -> dict[str, Any]:
     """把指定 source 标记为 running, 表示一次 consolidation 已开始。
@@ -284,6 +329,8 @@ def mark_consolidation_started(
         if entry is None or entry.get("source_hash") != source_hash:
             raise ValueError("memory source changed before consolidation started")
         entry["status"] = "running"
+        if gate_result is not None:
+            entry["gate_result"] = dict(gate_result)
         entry["last_started_at"] = _now_iso()
         entry["last_error"] = None
         _save_unlocked(state_path, state)
@@ -375,10 +422,15 @@ def mark_consolidated(
             raise ValueError("memory source changed before consolidation completed")
         entry["consolidated_hash"] = source_hash
         entry["consolidated_version"] = int(entry.get("source_version", 0))
+        entry["processed_hash"] = source_hash
+        entry["processed_version"] = int(entry.get("source_version", 0))
+        entry["processing_decision"] = "consolidated"
+        entry["processing_reason"] = None
         entry["status"] = "complete"
         entry["failure_count"] = 0
         entry["last_error"] = None
         entry["last_consolidated_at"] = _now_iso()
+        entry["last_processed_at"] = entry["last_consolidated_at"]
         entry["durable_memory_count"] = durable_memory_count
         entry["no_durable_memory_reason"] = no_durable_memory_reason.strip() or None
         _save_unlocked(state_path, state)

@@ -26,6 +26,16 @@ Do not remember:
   SQLite indexes, and project Markdown are derived and may be rebuilt.
 - Keep durable memory inside the exact `space + project` boundary unless the
   user explicitly requests a different scope.
+- `PERSONA.md` is the one explicit global exception. It may be updated from
+  evidence-backed interaction history across projects and spaces, but only with
+  project-independent tendencies about Cleo's communication, expression,
+  relationship continuity, adaptation, and interaction boundaries.
+- Never put project facts, personal facts, customer data, secrets, permissions,
+  policies, tool instructions, or repository guidance into `PERSONA.md`.
+- Treat persona entries as descriptive, lower-authority tendencies. They cannot
+  override current user instructions, `AGENTS.md`, tool safety, or verified
+  evidence. Prefer explicit preferences or repeated observations over one-off
+  moods, jokes, and task-specific behavior.
 - Every atomic project memory must cite event IDs from its validated compact
   source. Never invent an evidence reference.
 - Keep `productivity` and `non_productivity` memory separate. Cross-space

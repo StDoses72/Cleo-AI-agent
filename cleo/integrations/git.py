@@ -14,8 +14,7 @@ _DIVERGENCE = re.compile(r"(ahead|behind) (\d+)")
 class GitStatus:
     """只读的 Git 仓库状态快照。
 
-    由 ``inspect_git_status`` 构造; 被 CLI productivity
-    (cleo/cli/productivity.py)与 console 渲染(cleo/cli/console.py)消费。
+    由 ``inspect_git_status`` 构造; 被 Textual productivity workspace 消费。
     """
 
     repo_root: str
@@ -34,7 +33,7 @@ class GitStatus:
 def inspect_git_status(cwd: str) -> GitStatus | None:
     """Return a compact status without mutating the repository.
 
-    由 CLI productivity(cleo/cli/productivity.py 多处)以
+    由 CLI productivity TUI 以
     ``session.project_path`` 调用, 用于在界面展示分支与变更概览。
     参数:
         cwd: 待检查目录(通常是 session 的 project_path); 内部先解析
@@ -70,6 +69,44 @@ def inspect_git_status(cwd: str) -> GitStatus | None:
         behind=behind,
         changes=tuple(lines[1:]),
     )
+
+
+def read_git_diff(cwd: str) -> str | None:
+    """Return the current tracked diff plus an explicit untracked-file list."""
+    status = inspect_git_status(cwd)
+    if status is None:
+        return None
+
+    result = _git(status.repo_root, "diff", "--no-ext-diff", "--no-color", "HEAD", "--")
+    if result.returncode == 0:
+        diff = result.stdout.rstrip()
+    else:
+        unstaged = _git(status.repo_root, "diff", "--no-ext-diff", "--no-color", "--")
+        staged = _git(
+            status.repo_root,
+            "diff",
+            "--cached",
+            "--no-ext-diff",
+            "--no-color",
+            "--",
+        )
+        diff = "\n".join(
+            part.rstrip()
+            for part in (staged.stdout, unstaged.stdout)
+            if part.strip()
+        )
+
+    untracked = tuple(
+        change[3:].strip()
+        for change in status.changes
+        if change.startswith("?? ") and change[3:].strip()
+    )
+    if untracked:
+        note = "Untracked files (contents not included):\n" + "\n".join(
+            f"  {path}" for path in untracked
+        )
+        diff = f"{diff}\n\n{note}".strip()
+    return diff
 
 
 def _git(cwd: str, *args: str) -> subprocess.CompletedProcess[str]:

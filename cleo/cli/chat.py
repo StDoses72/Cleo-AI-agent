@@ -3,10 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import asyncio
-import base64
-import mimetypes
-import os
 import uuid
 from typing import TYPE_CHECKING
 
@@ -18,17 +14,12 @@ from langchain_core.messages import (
     ToolMessage,
 )
 
-from cleo.cli.context import clear_screen, cli
-from cleo.cli.lifecycle import _run_dream_agent, _sync_session_events
-from cleo.cli.productivity import _run_productivity_mode, _slash_command_argument
-from cleo.memory.paths import DEFAULT_MEMORY_SPACE
+from cleo.cli.context import cli
 
 if TYPE_CHECKING:
     from cleo.agents import Agent
     from cleo.runtime.state import Runtime
     from cleo.sessions.store import SessionStore
-
-SUPPORTED_IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
 
 def _render_chat_header(agent: Agent, runtime: Runtime, thread_id: str) -> None:
@@ -144,443 +135,34 @@ async def _run_chat_loop(
     restored_messages: list[BaseMessage] | None = None,
     store: SessionStore | None = None,
 ) -> None:
-    """运行交互式 chat 主循环:读取用户输入、处理斜杠命令并流式回复。
-
-    参数:
-        agent: 当前 :class:`~cleo.agents.Agent`,由 ``amain()`` 按
-            ``runtime.current_project``/``current_space`` 构造;循环内
-            ``/project``、``/resume`` 命令会重建并替换该局部引用。
-        runtime: 全局 :class:`~cleo.runtime.state.Runtime`,由 ``amain()``
-            创建;用于读写 current project/space/thread 并落盘 runtime.json。
-        thread_id: 初始线程 id,由 ``amain()`` 依据 ``--thread-id``、
-            ``--resume`` 或 ``_new_thread_id()`` 决定。
-        restored_messages: ``--resume`` / ``/resume`` 恢复时经
-            ``SessionStore.load_langchain_messages`` 读出的历史消息;
-            首轮回复后由本函数置 None。缺省 None 表示全新会话。
-        store: 会话存储;``amain()`` 传入共享实例,缺省时本函数惰性构造
-            (``SessionStore(settings.MEMORY_DIR, settings.SESSION_INDEX_PATH)``)。
-
-    返回值:
-        None。循环直到 ``/quit``、``/exit``、EOF 或 KeyboardInterrupt 才
-        break;期间通过 ``_sync_session_events`` 持久化会话、通过
-        ``_run_dream_agent`` 做 memory consolidation。调用方为
-        ``application.amain`` (application.py) 及 tests/cli/test_application.py。
-    """
+    """Run the full-screen Textual Cleo chat interface."""
     if store is None:
         from cleo.config.settings import settings
         from cleo.sessions.store import SessionStore
 
         store = SessionStore(settings.MEMORY_DIR, settings.SESSION_INDEX_PATH)
-    runtime.update_current_thread_id(thread_id)
-    cli.render_startup_splash(
+
+    from cleo.cli.chat_tui import run_chat_tui
+
+    await run_chat_tui(
+        agent,
+        runtime,
         thread_id,
-        runtime.current_project or "general",
-        model=agent.model_name,
+        store,
+        restored_messages=restored_messages,
     )
-    _render_chat_header(agent, runtime, thread_id)
-    if restored_messages:
-        _print_restored_messages(thread_id, restored_messages)
-    attachment_list: list[dict[str, str]] = []
-    while True:
-        try:
-            if attachment_list:
-                cli.render_attachments([item["name"] for item in attachment_list])
-            message = await asyncio.to_thread(
-                cli.prompt,
-                "chat",
-                sessions=store.list_sessions(space=DEFAULT_MEMORY_SPACE),
-                projects=tuple(runtime.projects_for(DEFAULT_MEMORY_SPACE)),
-            )
-
-        except EOFError:
-            cli.console.print()
-            await _sync_session_events(
-                agent,
-                runtime,
-                thread_id,
-                restored_messages,
-                status="interrupted",
-                store=store,
-            )
-            runtime.update_runtime_json()
-            break
-        except KeyboardInterrupt:
-            cli.console.print()
-            cli.warning("Chat interrupted by user. Exiting.")
-            await _sync_session_events(
-                agent,
-                runtime,
-                thread_id,
-                restored_messages,
-                status="interrupted",
-                store=store,
-            )
-            runtime.update_runtime_json()
-            break
-
-        if not message:
-            continue
-        if message in {"/quit", "/exit"}:
-            cli.info(f"Closing session event log: {thread_id}")
-            await _sync_session_events(
-                agent,
-                runtime,
-                thread_id,
-                restored_messages,
-                status="completed",
-                store=store,
-            )
-            await _run_dream_agent(
-                thread_id,
-                runtime.current_project,
-                runtime.current_space,
-            )
-            runtime.update_current_project(None)
-            runtime.update_current_thread_id(None)
-            runtime.update_runtime_json()
-            cli.success("Session closed. Goodbye!")
-            break
-        if message == "/new":
-            await _sync_session_events(
-                agent,
-                runtime,
-                thread_id,
-                restored_messages,
-                status="completed",
-                store=store,
-            )
-            thread_id = _new_thread_id()
-            restored_messages = None
-            runtime.update_current_thread_id(thread_id)
-            runtime.update_runtime_json()
-            clear_screen()
-            _render_chat_header(agent, runtime, thread_id)
-            cli.success(f"Started new thread: {thread_id}")
-            continue
-
-        if message == "/rename" or message.startswith("/rename "):
-            title = _slash_command_argument(message, "/rename")
-            if not title:
-                cli.warning("Usage: /rename <title>")
-                continue
-            try:
-                await _sync_session_events(
-                    agent,
-                    runtime,
-                    thread_id,
-                    restored_messages,
-                    status="active",
-                    store=store,
-                )
-                renamed = store.rename_session(thread_id, title)
-            except (FileNotFoundError, OSError, ValueError) as exc:
-                cli.error(f"Unable to rename thread {thread_id}: {exc}")
-                continue
-            cli.success(f"Renamed thread to {renamed['title']!r}.")
-            continue
-
-        if message == "/project" or message.startswith("/project "):
-            project_argument = _slash_command_argument(message, "/project")
-            known_projects = runtime.projects_for(DEFAULT_MEMORY_SPACE)
-            if not project_argument:
-                current_project = runtime.current_project or "general"
-                project_sessions = store.list_sessions(
-                    space=DEFAULT_MEMORY_SPACE,
-                    project=current_project,
-                )
-                if not any(row.get("id") == thread_id for row in project_sessions):
-                    project_sessions.insert(
-                        0,
-                        {
-                            "id": thread_id,
-                            "title": None,
-                            "status": "active",
-                            "updated_at": "",
-                        },
-                    )
-                cli.render_project_sessions(
-                    current_project,
-                    project_sessions,
-                    current_thread_id=thread_id,
-                    known_projects=tuple(known_projects),
-                )
-                continue
-
-            if project_argument == "move" or project_argument.startswith("move "):
-                target_argument = project_argument.removeprefix("move").strip()
-                if not target_argument:
-                    cli.warning("Usage: /project move <name>")
-                    continue
-                try:
-                    target_project = _project_name(target_argument)
-                except argparse.ArgumentTypeError as exc:
-                    cli.warning(f"Usage: /project move <name> ({exc})")
-                    continue
-                if target_project == runtime.current_project:
-                    cli.info(f"Thread {thread_id} is already in project {target_project!r}.")
-                    continue
-
-                from cleo.agents import Agent
-
-                try:
-                    moved_agent = Agent(
-                        project=target_project,
-                        space=DEFAULT_MEMORY_SPACE,
-                    )
-                    await _sync_session_events(
-                        agent,
-                        runtime,
-                        thread_id,
-                        restored_messages,
-                        status="active",
-                        store=store,
-                    )
-                    moved_messages = store.load_langchain_messages(thread_id)
-                    store.move_session(thread_id, target_project)
-                except (FileNotFoundError, OSError, ValueError) as exc:
-                    cli.error(f"Unable to move thread {thread_id}: {exc}")
-                    continue
-
-                created = target_project not in known_projects
-                agent = moved_agent
-                restored_messages = moved_messages
-                runtime.update_current_space(DEFAULT_MEMORY_SPACE)
-                runtime.update_current_project(target_project)
-                runtime.update_current_thread_id(thread_id)
-                runtime.update_runtime_json()
-                clear_screen()
-                _render_chat_header(agent, runtime, thread_id)
-                action = "Created project and moved" if created else "Moved"
-                cli.success(
-                    f"{action} thread {thread_id} to project {target_project!r}; "
-                    "context preserved."
-                )
-                continue
-
-            try:
-                next_project = _project_name(project_argument)
-            except argparse.ArgumentTypeError as exc:
-                cli.warning(f"Usage: /project <name> ({exc})")
-                continue
-            if next_project == runtime.current_project:
-                cli.info(f"Project {next_project!r} is already active.")
-                continue
-
-            from cleo.agents import Agent
-
-            try:
-                next_agent = Agent(
-                    project=next_project,
-                    space=DEFAULT_MEMORY_SPACE,
-                )
-            except Exception as exc:
-                cli.error(f"Unable to open project {next_project!r}: {exc}")
-                continue
-
-            previous_project = runtime.current_project or "general"
-            await _sync_session_events(
-                agent,
-                runtime,
-                thread_id,
-                restored_messages,
-                status="completed",
-                store=store,
-            )
-            try:
-                completed_manifest = store.load_manifest(thread_id)
-                last_event_seq = int(completed_manifest.get("last_event_seq", 0))
-            except (FileNotFoundError, KeyError, OSError, TypeError, ValueError):
-                last_event_seq = 0
-            if last_event_seq > 0:
-                await _run_dream_agent(
-                    thread_id,
-                    previous_project,
-                    DEFAULT_MEMORY_SPACE,
-                )
-
-            created = next_project not in known_projects
-            agent = next_agent
-            thread_id = _new_thread_id()
-            restored_messages = None
-            attachment_list = []
-            runtime.update_current_space(DEFAULT_MEMORY_SPACE)
-            runtime.update_current_project(next_project)
-            runtime.update_current_thread_id(thread_id)
-            runtime.update_runtime_json()
-            clear_screen()
-            _render_chat_header(agent, runtime, thread_id)
-            action = "Created and switched to" if created else "Switched to"
-            cli.success(f"{action} project {next_project!r}; new thread: {thread_id}")
-            continue
-
-        if message == "/resume" or message.startswith("/resume "):
-            resume_id = _slash_command_argument(message, "/resume")
-            if not resume_id:
-                cli.warning("Usage: /resume <cleo-session-id>")
-                continue
-            if resume_id == thread_id:
-                cli.info(f"Thread {thread_id} is already active.")
-                continue
-            try:
-                manifest = store.load_manifest(resume_id)
-                if (
-                    manifest["space"] != DEFAULT_MEMORY_SPACE
-                    or manifest["provider"] != "cleo"
-                ):
-                    raise ValueError(f"Session {resume_id} is not a Cleo chat thread.")
-                loaded_messages = store.load_langchain_messages(resume_id)
-                saved_project = str(manifest["project"])
-                from cleo.agents import Agent
-
-                resumed_agent = Agent(
-                    project=saved_project,
-                    space=DEFAULT_MEMORY_SPACE,
-                )
-            except (FileNotFoundError, KeyError, OSError, ValueError) as exc:
-                cli.error(f"Unable to resume {resume_id}: {exc}")
-                continue
-
-            await _sync_session_events(
-                agent,
-                runtime,
-                thread_id,
-                restored_messages,
-                status="completed",
-                store=store,
-            )
-            agent = resumed_agent
-            thread_id = resume_id
-            restored_messages = loaded_messages
-            attachment_list = []
-            runtime.update_current_space(DEFAULT_MEMORY_SPACE)
-            runtime.update_current_project(saved_project)
-            runtime.update_current_thread_id(thread_id)
-            runtime.append_recent_threads(thread_id, DEFAULT_MEMORY_SPACE)
-            runtime.update_runtime_json()
-            clear_screen()
-            _render_chat_header(agent, runtime, thread_id)
-            _print_restored_messages(thread_id, restored_messages)
-            cli.success(f"Resumed Cleo thread: {thread_id}")
-            continue
-
-        if message == "/sessions":
-            clear_screen()
-            cli.render_session_hub(store.list_sessions())
-            await asyncio.to_thread(cli.wait_for_return)
-            clear_screen()
-            _render_chat_header(agent, runtime, thread_id)
-            continue
-
-        if message == "/productivity":
-            from cleo.config.settings import settings
-
-            saved_space = runtime.current_space
-            saved_project = runtime.current_project or "general"
-            await _sync_session_events(
-                agent,
-                runtime,
-                thread_id,
-                restored_messages,
-                status="active",
-                store=store,
-            )
-            productivity_args = argparse.Namespace(
-                message=None,
-                provider=None,
-                cwd=str(settings.active_directory_profile.root_path),
-                model=None,
-                project=saved_project,
-                resume_id=None,
-            )
-            try:
-                clear_screen()
-                await _run_productivity_mode(
-                    productivity_args,
-                    runtime,
-                    store,
-                    settings,
-                    return_to_chat=True,
-                )
-            except Exception as exc:
-                cli.error(f"Unable to open productivity mode: {exc}")
-            finally:
-                runtime.update_current_space(saved_space)
-                runtime.update_current_project(saved_project)
-                runtime.update_current_thread_id(thread_id)
-                runtime.append_recent_threads(thread_id, saved_space)
-            clear_screen()
-            _render_chat_header(agent, runtime, thread_id)
-            cli.success("Returned to Cleo chat.")
-            continue
-
-        if message == "/attach":
-            cli.info(
-                "Enter the file path to attach or leave empty to cancel "
-                "(currently support image files only):"
-            )
-            file_path = (await asyncio.to_thread(cli.field_prompt, "file")).strip("\"'")
-            if file_path:
-                if not os.path.isfile(file_path):
-                    cli.error(f"File not found: {file_path}")
-                    continue
-                mime_type, _ = mimetypes.guess_type(file_path)
-                if mime_type not in SUPPORTED_IMAGE_MIME_TYPES:
-                    cli.error(f"Unsupported image type: {mime_type or 'unknown'}")
-                    continue
-                with open(file_path, "rb") as f:
-                    base64_image = base64.b64encode(f.read()).decode("utf-8")
-                attachment_list.append(
-                    {
-                        "base64": base64_image,
-                        "mime_type": mime_type,
-                        "name": os.path.basename(file_path),
-                    }
-                )
-            continue
-
-        try:
-            cli.console.print()
-            await _print_streaming_reply(
-                agent,
-                message,
-                thread_id,
-                loaded_info=restored_messages,
-                images=attachment_list,
-            )
-            restored_messages = None
-            attachment_list = []
-            await _sync_session_events(agent, runtime, thread_id, status="active", store=store)
-        except KeyboardInterrupt:
-            cli.console.print()
-            cli.warning("Chat interrupted by user. Exiting.")
-            await _sync_session_events(
-                agent,
-                runtime,
-                thread_id,
-                restored_messages,
-                status="interrupted",
-                store=store,
-            )
-            runtime.update_runtime_json()
-            break
-        except Exception as exc:
-            cli.error(str(exc))
-            continue
-
-        cli.console.print()
 
 
 def _message_role(message: BaseMessage) -> str:
     """把 LangChain 消息对象映射为展示用的角色标签。
 
     参数:
-        message: 单条 :class:`BaseMessage` 及其子类实例;由
-            ``_print_restored_messages`` 遍历恢复的历史消息列表时传入。
+        message: 单条 :class:`BaseMessage` 及其子类实例;由 Textual chat
+            恢复历史消息时传入。
 
     返回值:
         str: ``User``/``Assistant``/``System``/``Tool`` 之一,未知子类回退为
-        类名;由 ``_print_restored_messages`` 收集进 ``(role, content)`` 元组,
-        最终传给 ``cli.render_restored_messages`` 渲染。
+        类名。
     """
     if isinstance(message, HumanMessage):
         return "User"
@@ -598,13 +180,12 @@ def _message_content_to_text(content: object) -> str:
 
     参数:
         content: 消息对象的 ``content`` 属性,可能是 ``str``、由 ``str`` /
-            ``dict`` block 组成的 ``list``(multimodal 消息),或其他对象;由
-            ``_print_restored_messages`` 以 ``getattr(msg, "content", "")`` 传入。
+            ``dict`` block 组成的 ``list``(multimodal 消息),或其他对象；由
+            Textual chat 从恢复的 LangChain message 传入。
 
     返回值:
         str: 拼接后的纯文本(block 间以换行连接,只取 block 的 ``text`` /
-        ``content`` 字段);由 ``_print_restored_messages`` strip 后作为展示
-        内容传给 ``cli.render_restored_messages``。
+        ``content`` 字段);由 Textual chat 作为历史消息内容渲染。
     """
     if isinstance(content, str):
         return content
@@ -619,25 +200,3 @@ def _message_content_to_text(content: object) -> str:
                     parts.append(str(text))
         return "\n".join(part for part in parts if part)
     return str(content)
-
-
-def _print_restored_messages(thread_id: str, loaded_messages: list[BaseMessage]) -> None:
-    """把恢复的历史消息渲染为终端中的只读回放。
-
-    参数:
-        thread_id: 当前线程 id;由 ``_run_chat_loop`` 在启动(有
-            ``restored_messages``)及 ``/resume`` 分支传入,用于渲染标题。
-        loaded_messages: 经 ``SessionStore.load_langchain_messages`` 读出的
-            历史 :class:`BaseMessage` 列表。
-
-    返回值:
-        None。``(role, content)`` 元组列表交给 ``cli.render_restored_messages``
-        输出到终端;空内容消息被跳过。仅被 ``_run_chat_loop`` 调用。
-    """
-    messages: list[tuple[str, str]] = []
-    for msg in loaded_messages:
-        content = _message_content_to_text(getattr(msg, "content", "")).strip()
-        if not content:
-            continue
-        messages.append((_message_role(msg), content))
-    cli.render_restored_messages(thread_id, messages)

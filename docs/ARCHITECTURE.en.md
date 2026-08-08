@@ -1,8 +1,8 @@
 # Current Cleo Architecture
 
 This document describes the implemented runtime, harness adapters, session
-storage, and memory pipeline. It does not present the future productivity UI or
-a standalone SessionHub service as completed work.
+storage, and memory pipeline. It does not present an unimplemented standalone
+SessionHub service as completed work.
 
 ## Component Boundaries
 
@@ -31,11 +31,15 @@ SessionStore
   `cleo/agents/tools/`.
 - `cleo/cli/application.py`: argument parsing and top-level dispatch only; the
   root `main.py` preserves the `python main.py` compatibility entry point.
-- `cleo/cli/chat.py` and `cleo/cli/productivity.py`: the chat and harness flows.
+- `cleo/cli/chat.py` and `cleo/cli/productivity.py`: backend orchestration for
+  chat and harness flows; `cleo/cli/chat_tui.py` and
+  `cleo/cli/productivity_tui.py` provide the two full-screen Textual views.
+- `cleo/cli/productivity_history.py`: normalizes Codex native turns or Cleo event
+  logs into restored transcript cards. Native-thread resume remains independent
+  from history rendering, so a display failure does not block continuation.
 - `cleo/cli/lifecycle.py`: session persistence and DreamAgent consolidation lifecycle.
-- `cleo/cli/console.py`: Rich output, streamed events, Session Hub presentation,
-  and `prompt_toolkit` input. Command completion and normalized harness event
-  rendering live in `cleo/cli/completion.py` and
+- `cleo/cli/console.py`: compact Rich output for one-shot commands. Shared
+  harness event projection and non-interactive rendering live in
   `cleo/cli/productivity_renderer.py`.
 - `cleo/images/`: replaceable PNG loading and automatic cropping, terminal-image
   selection, dynamic pixel fallback, and Sixel rendering.
@@ -96,13 +100,17 @@ The implemented spaces are:
 The same project name in two spaces still represents separate data. SQLite
 queries, compact validation, DreamAgent tools, and evidence all require the
 space to prevent productivity records from silently entering personal memory.
+Global persona is the sole exception, and it may carry only abstract interaction
+tendencies across scopes—not facts from either scope.
 
 A project in Cleo chat is an optional logical memory boundary for a long-running
 topic, plan, or workflow; it does not require a code directory, and `general`
-is the default. In productivity, the project still partitions Cleo-owned
-records while the harness code boundary comes from its `cwd` or repository.
-External local projects may be associated by normalized `cwd`, but are not
-forced into a one-to-one mapping with Cleo project names or internal IDs.
+is the default. The productivity UI instead treats normalized `cwd` as the
+user-visible project identity. Its project picker lists recent workspace
+directories without mixing in Cleo memory projects or Codex native threads.
+The internal session `project` field still partitions Cleo-owned records and
+defaults to the folder name; the harness code boundary always comes from `cwd`
+or the repository.
 
 A Cleo thread title is derived from its first `user_message` and can be changed
 as metadata. An active, unconsolidated thread can move between projects; its
@@ -116,6 +124,7 @@ old project cannot be retracted reliably.
 ```text
 memory/
 ├── MEMORY_POLICY.md
+├── persona.sqlite3
 ├── sessions.sqlite3
 ├── non_productivity/
 │   ├── memory.sqlite3
@@ -150,6 +159,11 @@ still match the raw event log.
 has its own `memory.sqlite3` containing atomic memory, event evidence,
 consolidation records, and lexical conversation chunks. SQLite is not the raw
 conversation source of truth.
+
+`memory/persona.sqlite3` is the single cross-project and cross-space memory store.
+It contains only persona traits and private event evidence. The root-level
+`PERSONA.md` is a readable projection that omits project/session provenance and
+is loaded by foreground Cleo as lower-authority descriptive memory.
 
 ## Harness Event Adaptation
 
@@ -243,9 +257,14 @@ SessionStore after provider connections close.
 ```text
 validated compact
   → validate space/project/session/source hash
-  → read project memory in the same scope
+  → Sentence Transformer comparison against durable/transient prototypes
+      → clearly transient: record processed_hash + skipped; do not start DreamAgent
+      → durable or uncertain: continue to DreamAgent (fail open)
+  → read project memory in the same scope and global PERSONA.md
   → atomic memory + evidence_event_ids
+  → optionally store project-independent persona trait + evidence
   → atomically render MEMORY.md
+  → atomically render root PERSONA.md
   → explicitly complete consolidation
 ```
 
@@ -258,7 +277,15 @@ DreamAgent independently selects a model profile from `profiles.agents` through
 `active_profiles.agent` selection when this field is absent.
 
 Automatic consolidation never edits `AGENTS.md` and never creates or updates a
-skill.
+skill. Persona may describe only communication, expression, relationship
+continuity, adaptation, and interaction boundaries; it cannot contain project
+facts, permissions, policy, or tool instructions.
+
+The gate reads only bounded human text from the validated compact projection and
+lazily loads its model inside the active consolidation process. `processed_hash` means the
+source completed gating/processing; `consolidated_hash` remains reserved for a
+source that actually entered the project-memory protocol, so gate-skipped threads
+remain movable under the unconsolidated-thread rule.
 
 ## Runtime State
 

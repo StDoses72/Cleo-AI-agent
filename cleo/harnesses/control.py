@@ -12,7 +12,7 @@ class HarnessModel:
 
     字段(来源: 各 provider 的 list_models 实现,如
     cleo/integrations/harnesses/codex.py:197;消费方:
-    AgentAdapter.list_models -> cleo/cli/productivity.py 的模型选择 UI):
+    AgentAdapter.list_models -> productivity TUI 的模型选择 UI):
         id: 模型标识。
         display_name: 展示名。
         description: 描述文本。
@@ -69,7 +69,7 @@ class NativeSession:
     """provider 侧原生会话的元数据。
 
     字段(来源: provider 的 list_native_sessions/read_native_session 实现;
-    消费方: cleo/cli/productivity.py 的会话列表与详情展示):
+    消费方: productivity TUI 的会话列表与详情展示):
         id: 原生会话 id。
         name: 可选会话名。
         preview: 内容预览文本。
@@ -96,7 +96,7 @@ class NativeSessionPage:
     """一页原生会话列表结果。
 
     字段(来源: provider 的 list_native_sessions 实现,如 codex.py:232;
-    消费方: AgentAdapter.list_native_sessions -> productivity.py 分页浏览):
+    消费方: AgentAdapter.list_native_sessions -> productivity TUI 浏览):
         sessions: 本页 NativeSession 元组。
         next_cursor: 下一页游标,None 表示没有更多。
     """
@@ -110,8 +110,7 @@ class NativeSessionDetail:
     """单个原生会话的完整详情。
 
     字段(来源: provider 的 read_native_session 实现;消费方:
-    AgentAdapter.read_native_session -> cleo/cli/productivity.py:417 的
-    详情展示):
+    AgentAdapter.read_native_session -> productivity TUI 的详情展示):
         session: 会话元数据。
         turns: 各 turn 的原始 dict 元组(结构由 provider 定义)。
     """
@@ -125,8 +124,7 @@ class HarnessAccount:
     """provider 账号状态。
 
     字段(来源: provider 的 account_status 实现;消费方:
-    AgentAdapter.account_status -> cleo/cli/productivity.py:448 的账号
-    状态展示):
+    AgentAdapter.account_status -> productivity TUI 的账号状态展示):
         authenticated: 是否已登录。
         account_type: 账号类型(如 API key / OAuth)。
         email: 账号邮箱。

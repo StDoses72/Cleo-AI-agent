@@ -6,12 +6,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from langchain_core.messages import HumanMessage
 
 import cleo.cli.application as application
-import cleo.cli.chat as chat_cli
 import cleo.cli.productivity as productivity_cli
-from cleo.harnesses import AgentSession, SessionOptions
+from cleo.harnesses import AgentSession
 
 
 def _fake_chat_agent() -> SimpleNamespace:
@@ -99,105 +97,6 @@ def test_main_reports_productivity_startup_error_as_cli_exit(tmp_path, monkeypat
         asyncio.run(application.amain())
 
 
-@pytest.mark.parametrize("startup_fails", [False, True])
-def test_chat_productivity_command_restores_cleo_context(
-    tmp_path,
-    monkeypatch,
-    startup_fails,
-) -> None:
-    import builtins
-
-    import cleo.config.settings as settings_module
-    import cleo.sessions.store as session_store_module
-
-    class FakeRuntime:
-        current_space = "non_productivity"
-        current_project = "cleo"
-        current_thread_id = "cleo-thread"
-
-        def update_current_space(self, value):
-            self.current_space = value
-
-        def update_current_project(self, value):
-            self.current_project = value
-
-        def update_current_thread_id(self, value):
-            self.current_thread_id = value
-
-        def append_recent_threads(self, *_args):
-            return None
-
-        def projects_for(self, _space=None):
-            return ["general", "cleo"]
-
-        def update_runtime_json(self):
-            return None
-
-    runtime = FakeRuntime()
-    fake_store = SimpleNamespace(list_sessions=lambda **_kwargs: [])
-    fake_settings = SimpleNamespace(
-        MEMORY_DIR=tmp_path / "memory",
-        SESSION_INDEX_PATH=tmp_path / "memory" / "sessions.sqlite3",
-        active_directory_profile=SimpleNamespace(root_path=tmp_path),
-    )
-    productivity_calls: list[bool] = []
-    reported_errors: list[str] = []
-    input_count = 0
-
-    class FakeSessionStore:
-        def __new__(cls, *_args):
-            return fake_store
-
-    async def fake_productivity(_args, active_runtime, store, settings, *, return_to_chat):
-        assert store is fake_store
-        assert settings is fake_settings
-        productivity_calls.append(return_to_chat)
-        active_runtime.update_current_space("productivity")
-        active_runtime.update_current_project("cleo")
-        active_runtime.update_current_thread_id("agent-session")
-        if startup_fails:
-            raise productivity_cli.ProductivityStartupError("provider is unavailable")
-
-    async def fake_sync(*_args, **kwargs):
-        assert kwargs["store"] is fake_store
-        return None
-
-    async def fake_dream(*_args, **_kwargs):
-        return None
-
-    def fake_input(_prompt=None):
-        nonlocal input_count
-        input_count += 1
-        if input_count == 1:
-            return "/productivity"
-        assert runtime.current_space == "non_productivity"
-        assert runtime.current_project == "cleo"
-        assert runtime.current_thread_id == "cleo-thread"
-        return "/quit"
-
-    monkeypatch.setattr(settings_module, "settings", fake_settings)
-    monkeypatch.setattr(session_store_module, "SessionStore", FakeSessionStore)
-    monkeypatch.setattr(chat_cli, "_run_productivity_mode", fake_productivity)
-    monkeypatch.setattr(chat_cli, "_sync_session_events", fake_sync)
-    monkeypatch.setattr(chat_cli, "_run_dream_agent", fake_dream)
-    monkeypatch.setattr(chat_cli, "clear_screen", lambda: None)
-    monkeypatch.setattr(chat_cli.cli, "error", reported_errors.append)
-    monkeypatch.setattr(builtins, "input", fake_input)
-
-    asyncio.run(
-        chat_cli._run_chat_loop(
-            _fake_chat_agent(),
-            runtime,
-            "cleo-thread",
-        )
-    )
-
-    assert productivity_calls == [True]
-    assert bool(reported_errors) is startup_fails
-    if startup_fails:
-        assert "provider is unavailable" in reported_errors[0]
-
-
 def test_productivity_cwd_resolution_and_saved_session_resume(tmp_path) -> None:
     current = tmp_path / "current"
     target = current / "nested"
@@ -264,440 +163,52 @@ def test_productivity_cwd_resolution_and_saved_session_resume(tmp_path) -> None:
     }
 
 
-def test_productivity_option_helper_preserves_feedback_order(monkeypatch) -> None:
-    events: list[str] = []
-
-    class FakeAdapter:
-        async def update_session_options(self, session_id, **changes):
-            assert session_id == "agent-current"
-            assert changes == {"effort": "high"}
-            return SessionOptions(effort="high")
-
-    monkeypatch.setattr(
-        productivity_cli.cli,
-        "success",
-        lambda message: events.append(f"success:{message}"),
-    )
-
-    options = asyncio.run(
-        productivity_cli._update_productivity_option(
-            FakeAdapter(),
-            "agent-current",
-            option_key="effort",
-            requested="high",
-            label="Reasoning effort",
-            before_controls=lambda updated: events.append(f"status:{updated.effort}"),
-            render_controls=lambda: events.append("controls"),
-        )
-    )
-
-    assert options == SessionOptions(effort="high")
-    assert events == [
-        "success:Reasoning effort set to high.",
-        "status:high",
-        "controls",
-    ]
-
-
-def test_chat_resume_command_switches_to_saved_thread(monkeypatch) -> None:
-    import cleo.agents as agent_module
-
-    class FakeRuntime:
-        current_space = "non_productivity"
-        current_project = "current"
-        current_thread_id = "local-current"
-
-        def __init__(self):
-            self.thread_updates: list[str | None] = []
-
-        def update_current_space(self, value):
-            self.current_space = value
-
-        def update_current_project(self, value):
-            self.current_project = value
-
-        def update_current_thread_id(self, value):
-            self.current_thread_id = value
-            self.thread_updates.append(value)
-
-        def append_recent_threads(self, *_args):
-            return None
-
-        def projects_for(self, _space=None):
-            return ["general", "current", "saved-project"]
-
-        def update_runtime_json(self):
-            return None
-
-    class FakeStore:
-        def list_sessions(self, **_kwargs):
-            return []
-
-        def load_manifest(self, session_id):
-            assert session_id == "local-saved"
-            return {
-                "id": session_id,
-                "space": "non_productivity",
-                "project": "saved-project",
-                "provider": "cleo",
-            }
-
-        def load_langchain_messages(self, session_id):
-            assert session_id == "local-saved"
-            return []
-
-    created_agents: list[tuple[str, str]] = []
-
-    class FakeAgent:
-        model_name = "fake-model"
-        context_usage = None
-
-        def __init__(self, *, project, space):
-            created_agents.append((project, space))
-
-    prompts = iter(["/resume local-saved", "/quit"])
-    synced_threads: list[str] = []
-
-    async def fake_sync(_agent, _runtime, thread_id, *_args, **_kwargs):
-        synced_threads.append(thread_id)
-
-    async def fake_dream(*_args, **_kwargs):
-        return None
-
-    monkeypatch.setattr(agent_module, "Agent", FakeAgent)
-    monkeypatch.setattr(chat_cli.cli, "prompt", lambda *_args, **_kwargs: next(prompts))
-    monkeypatch.setattr(chat_cli, "_sync_session_events", fake_sync)
-    monkeypatch.setattr(chat_cli, "_run_dream_agent", fake_dream)
-    monkeypatch.setattr(chat_cli, "clear_screen", lambda: None)
-
-    runtime = FakeRuntime()
-    asyncio.run(
-        chat_cli._run_chat_loop(
-            _fake_chat_agent(),
-            runtime,
-            "local-current",
-            store=FakeStore(),
-        )
-    )
-
-    assert created_agents == [("saved-project", "non_productivity")]
-    assert synced_threads == ["local-current", "local-saved"]
-    assert "local-saved" in runtime.thread_updates
-
-
-def test_chat_project_command_creates_scoped_thread(monkeypatch) -> None:
-    import cleo.agents as agent_module
-
-    class FakeRuntime:
-        current_space = "non_productivity"
-        current_project = "general"
-        current_thread_id = "local-current"
-
-        def __init__(self):
-            self.projects = ["general"]
-            self.thread_updates: list[str | None] = []
-
-        def update_current_space(self, value):
-            self.current_space = value
-
-        def update_current_project(self, value):
-            self.current_project = value
-            if value is not None and value not in self.projects:
-                self.projects.append(value)
-
-        def update_current_thread_id(self, value):
-            self.current_thread_id = value
-            self.thread_updates.append(value)
-
-        def append_recent_threads(self, *_args):
-            return None
-
-        def projects_for(self, _space=None):
-            return list(self.projects)
-
-        def update_runtime_json(self):
-            return None
-
-    class FakeStore:
-        def list_sessions(self, **_kwargs):
-            return []
-
-        def load_manifest(self, session_id):
-            assert session_id == "local-current"
-            return {"last_event_seq": 2}
-
-    created_agents: list[tuple[str, str]] = []
-
-    class FakeAgent:
-        model_name = "fake-model"
-        context_usage = None
-
-        def __init__(self, *, project, space):
-            created_agents.append((project, space))
-
-    prompts = iter(["/project research", "/project", "/quit"])
-    synced_threads: list[tuple[str, str]] = []
-    consolidated: list[tuple[str, str, str]] = []
-
-    async def fake_sync(_agent, _runtime, thread_id, *_args, **kwargs):
-        synced_threads.append((thread_id, kwargs["status"]))
-
-    async def fake_dream(thread_id, project, space):
-        consolidated.append((thread_id, project, space))
-
-    monkeypatch.setattr(agent_module, "Agent", FakeAgent)
-    monkeypatch.setattr(chat_cli.cli, "prompt", lambda *_args, **_kwargs: next(prompts))
-    monkeypatch.setattr(chat_cli, "_sync_session_events", fake_sync)
-    monkeypatch.setattr(chat_cli, "_run_dream_agent", fake_dream)
-    monkeypatch.setattr(chat_cli, "clear_screen", lambda: None)
-
-    runtime = FakeRuntime()
-    asyncio.run(
-        chat_cli._run_chat_loop(
-            _fake_chat_agent(),
-            runtime,
-            "local-current",
-            store=FakeStore(),
-        )
-    )
-
-    assert created_agents == [("research", "non_productivity")]
-    assert runtime.current_project is None
-    assert "research" in runtime.projects
-    assert synced_threads[0] == ("local-current", "completed")
-    assert synced_threads[-1][1] == "completed"
-    assert consolidated[0] == ("local-current", "general", "non_productivity")
-    assert any(
-        thread_id is not None and thread_id != "local-current"
-        for thread_id in runtime.thread_updates
-    )
-
-
-def test_chat_can_rename_and_move_current_thread(monkeypatch) -> None:
-    import cleo.agents as agent_module
-
-    class FakeRuntime:
-        current_space = "non_productivity"
-        current_project = "general"
-        current_thread_id = "local-current"
-
-        def __init__(self):
-            self.projects = ["general"]
-
-        def update_current_space(self, value):
-            self.current_space = value
-
-        def update_current_project(self, value):
-            self.current_project = value
-            if value is not None and value not in self.projects:
-                self.projects.append(value)
-
-        def update_current_thread_id(self, value):
-            self.current_thread_id = value
-
-        def append_recent_threads(self, *_args):
-            return None
-
-        def projects_for(self, _space=None):
-            return list(self.projects)
-
-        def update_runtime_json(self):
-            return None
-
-    class FakeStore:
-        def __init__(self):
-            self.project = "general"
-            self.title = "Original title"
-            self.moved: list[tuple[str, str]] = []
-
-        def list_sessions(self, *, project=None, **_kwargs):
-            if project != self.project:
-                return []
-            return [
-                {
-                    "id": "local-current",
-                    "title": self.title,
-                    "status": "active",
-                    "updated_at": "2026-07-23T10:00:00+00:00",
-                }
-            ]
-
-        def rename_session(self, session_id, title):
-            assert session_id == "local-current"
-            self.title = title
-            return {"title": title}
-
-        def load_langchain_messages(self, session_id):
-            assert session_id == "local-current"
-            return [HumanMessage(content="Existing context")]
-
-        def move_session(self, session_id, project):
-            self.moved.append((session_id, project))
-            self.project = project
-            return {"id": session_id, "project": project}
-
-    created_agents: list[tuple[str, str]] = []
-
-    class FakeAgent:
-        model_name = "fake-model"
-        context_usage = None
-
-        def __init__(self, *, project, space):
-            created_agents.append((project, space))
-
-    prompts = iter(
-        [
-            "/rename Research plan",
-            "/project",
-            "/project move research",
-            "/project",
-            "/quit",
-        ]
-    )
-    synced: list[tuple[str, object, str]] = []
-    rendered: list[tuple[str, list[dict], str]] = []
-
-    async def fake_sync(_agent, _runtime, thread_id, fallback=None, *, status, **_kwargs):
-        synced.append((thread_id, fallback, status))
-
-    monkeypatch.setattr(agent_module, "Agent", FakeAgent)
-    monkeypatch.setattr(chat_cli.cli, "prompt", lambda *_args, **_kwargs: next(prompts))
-    monkeypatch.setattr(
-        chat_cli.cli,
-        "render_project_sessions",
-        lambda project, rows, **kwargs: rendered.append(
-            (project, rows, kwargs["current_thread_id"])
-        ),
-    )
-    monkeypatch.setattr(chat_cli, "_sync_session_events", fake_sync)
-    monkeypatch.setattr(
-        chat_cli,
-        "_run_dream_agent",
-        lambda *_args, **_kwargs: asyncio.sleep(0),
-    )
-    monkeypatch.setattr(chat_cli, "clear_screen", lambda: None)
-
-    runtime = FakeRuntime()
-    store = FakeStore()
-    asyncio.run(
-        chat_cli._run_chat_loop(
-            _fake_chat_agent(),
-            runtime,
-            "local-current",
+def test_productivity_loop_delegates_to_textual_ui(monkeypatch) -> None:
+    import cleo.cli.productivity_tui as productivity_tui
+
+    received: dict[str, object] = {}
+
+    async def fake_tui(adapter, session, runtime, store, **kwargs):
+        received.update(
+            adapter=adapter,
+            session=session,
+            runtime=runtime,
             store=store,
+            kwargs=kwargs,
         )
-    )
 
-    assert store.title == "Research plan"
-    assert store.moved == [("local-current", "research")]
-    assert created_agents == [("research", "non_productivity")]
-    assert [item[0] for item in rendered] == ["general", "research"]
-    assert rendered[-1][1][0]["title"] == "Research plan"
-    assert synced[-1][1][0].content == "Existing context"
-    assert runtime.current_project is None
-
-
-def test_productivity_loop_resumes_then_changes_cwd(tmp_path, monkeypatch) -> None:
-    current = tmp_path / "current"
-    target = current / "nested"
-    target.mkdir(parents=True)
-    initial = AgentSession(
-        id="agent_initial",
+    monkeypatch.setattr(productivity_tui, "run_productivity_tui", fake_tui)
+    adapter = object()
+    session = AgentSession(
+        id="agent-current",
         provider="codex",
-        native_session_id="native-initial",
-        project_path=str(current),
+        project_path=".",
         project="cleo",
     )
+    runtime = object()
+    store = object()
 
-    class FakeRuntime:
-        def update_current_project(self, _value):
-            return None
-
-        def update_current_thread_id(self, _value):
-            return None
-
-        def append_recent_threads(self, *_args):
-            return None
-
-        def update_runtime_json(self):
-            return None
-
-    class FakeStore:
-        def list_sessions(self, **_kwargs):
-            return []
-
-        def load_manifest(self, session_id):
-            assert session_id == "agent_saved"
-            return {
-                "id": session_id,
-                "space": "productivity",
-                "project": "cleo",
-                "provider": "claude",
-                "native_session_id": "native-saved",
-                "cwd": str(current),
-            }
-
-    class FakeAdapter:
-        def __init__(self):
-            self.closed: list[str] = []
-            self.created_cwd: str | None = None
-            self.models: list[tuple[str, str | None]] = []
-
-        async def resume_session(
-            self,
-            provider,
-            native_session_id,
-            project_path,
-            model,
-            project,
-        ):
-            self.models.append((provider, model))
-            return AgentSession(
-                id="agent_saved",
-                provider=provider,
-                native_session_id=native_session_id,
-                project_path=project_path,
-                project=project,
-            )
-
-        async def create_session(self, provider, project_path, model, project):
-            self.created_cwd = project_path
-            self.models.append((provider, model))
-            return AgentSession(
-                id="agent_cd",
-                provider=provider,
-                native_session_id="native-cd",
-                project_path=project_path,
-                project=project,
-            )
-
-        async def close(self, session_id):
-            self.closed.append(session_id)
-
-    prompts = iter(["/resume agent_saved", "/cd nested", "/quit"])
-
-    async def fake_dream(*_args, **_kwargs):
-        return None
-
-    monkeypatch.setattr(productivity_cli.cli, "prompt", lambda *_args, **_kwargs: next(prompts))
-    monkeypatch.setattr(productivity_cli, "_run_dream_agent", fake_dream)
-    monkeypatch.setattr(productivity_cli, "clear_screen", lambda: None)
-
-    adapter = FakeAdapter()
     asyncio.run(
         productivity_cli._run_productivity_loop(
             adapter,
-            initial,
-            FakeRuntime(),
-            FakeStore(),
-            model=None,
-            provider_models={"codex": "gpt-test", "claude": "claude-test"},
+            session,
+            runtime,
+            store,
+            model="gpt-test",
+            provider_models={"codex": "gpt-configured"},
+            return_to_chat=True,
         )
     )
 
-    assert Path(adapter.created_cwd or "") == target
-    assert adapter.models == [
-        ("claude", "claude-test"),
-        ("claude", "claude-test"),
-    ]
-    assert adapter.closed == ["agent_initial", "agent_saved", "agent_cd"]
+    assert received == {
+        "adapter": adapter,
+        "session": session,
+        "runtime": runtime,
+        "store": store,
+        "kwargs": {
+            "model": "gpt-test",
+            "provider_models": {"codex": "gpt-configured"},
+            "return_to_chat": True,
+            "restore_initial_history": False,
+        },
+    }

@@ -28,6 +28,8 @@ memory/projects
 memory/non_productivity
 memory/productivity
 memory/sessions.sqlite3*
+memory/persona.sqlite3*
+PERSONA.md
 
 workspace
 

@@ -1,19 +1,19 @@
-"""Shared terminal context for Cleo's interactive entry points."""
+"""Shared CLI context and terminal restoration helpers."""
+
+from __future__ import annotations
+
+import sys
+from typing import TextIO
 
 from cleo.cli.console import CleoCLI
 
 cli = CleoCLI()
 
 
-def clear_screen() -> None:
-    """清空终端屏幕(``cli.clear`` 的薄封装,见 cleo/cli/console.py)。
-
-    无参数。被 ``application.amain`` (application.py)、``_run_chat_loop``
-    (chat.py,在 ``/new``、``/project``、``/resume``、``/sessions``、
-    ``/productivity`` 等分支)以及 productivity 模式循环 (productivity.py)
-    调用,用于切换界面上下文前重置终端显示。
-
-    返回值:
-        None。清屏效果直接作用于终端,无下游消费者。
-    """
-    cli.clear()
+def clear_terminal_after_tui(stream: TextIO | None = None) -> None:
+    """Clear the restored terminal so the shell prompt returns on a clean screen."""
+    output = stream or sys.stdout
+    if not output.isatty():
+        return
+    output.write("\x1b[0m\x1b[?25h\x1b[2J\x1b[H")
+    output.flush()

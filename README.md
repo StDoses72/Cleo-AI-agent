@@ -12,18 +12,25 @@ LangChain 构建，通过 API 调用语言模型。Cleo 把配置、会话状态
 ## 当前能力
 
 - one-shot message：通过 `cleo "..."` 或 `python main.py "..."` 发送一次性消息。
-- interactive chat：直接运行 `cleo` 或 `python main.py` 进入交互式聊天。
+- interactive chat：直接运行 `cleo` 或 `python main.py` 进入 Textual 全屏聊天，支持流式输出、
+  可点击的记忆项目与会话选择、图片附件和快捷操作。
+- productivity TUI：使用 `cleo --productivity` 或聊天中的 `/productivity` 进入 Textual
+  全屏工作区，支持流式 agent 输出、可点击折叠 diff、项目选择、点击恢复会话、Git 侧栏和快捷操作。
 - API-backed model profile：前台 Cleo 与 DreamAgent 可从 `config/cleo.json` 独立选择 agent profile。
 - Pydantic settings：`cleo/config/settings.py` 用 Pydantic 校验 agent、directory、shell、tools 四类 profile。
 - image attach：交互中使用 `/attach` 为下一条消息附加图片，支持 JPEG、PNG、WebP 和 GIF。
 - session event log：每轮结束后向 `events.jsonl` 增量追加规范事件，并原子更新 `manifest.json`。
-- resume：启动时如果存在未结束的 `current_thread_id`，会询问是否恢复该 thread。
+- resume：启动时如果存在未结束的 `current_thread_id`，会直接恢复该 thread；也可在会话选择器中点击恢复。
 - layered memory：原始 event log 派生出脱敏 compact view、SQLite 历史 chunks 和带 event evidence 的原子长期记忆。
 - memory spaces：`non_productivity` 与 `productivity` 分区保存 session、project 和长期记忆。
-- DreamAgent memory：正常退出或 one-shot 完成后，DreamAgent 只读取 Hash 校验通过的 compact view，并更新项目长期记忆。
+- DreamAgent memory：交互退出时把整理任务交给独立后台 worker，one-shot 完成后直接运行；
+  本地 Sentence Transformer gate 会先筛掉明确只有寒暄或确认的会话；其余内容才交给
+  DreamAgent。DreamAgent 只读取 Hash 校验通过的 compact view，并更新项目长期记忆与全局人格倾向。
+- global persona：根目录 `PERSONA.md` 在所有 project/space 间共享，只承载带 event evidence 的
+  交流、表达、关系连续性和适应倾向，不承载项目事实、权限或规则。
 - project-bound retrieval：主 Agent 可分别检索稳定长期记忆和历史讨论细节，不允许通过工具参数跨 project。
 - local shell tool：提供 timeout、输出截断、默认工作目录和 audit log。
-- skills loading：Deep Agents 从 `skills/` 加载本地 skill，当前 tracked skill 是 `demo-production`。
+- skills loading：Deep Agents 从 `skills/` 加载本地 skill；当前包含 `demo-production` 和 `agent-browser`。
 - runtime state：`data/runtime.json` 缺失时会自动生成默认状态。
 
 ## 项目结构
@@ -31,6 +38,7 @@ LangChain 构建，通过 API 调用语言模型。Cleo 把配置、会话状态
 ```text
 Cleo-AI-agent/
   AGENTS.md                       # Human-approved repository instructions
+  PERSONA.md                      # Global descriptive persona projection
   main.py                         # Backward-compatible CLI launcher
   pyproject.toml                  # Python project metadata and dependencies
   requirements.txt                # Python 3.12/Linux container dependency lock
@@ -46,11 +54,13 @@ Cleo-AI-agent/
     cli/
       application.py              # Argument parsing and top-level dispatch
       chat.py                     # Interactive Cleo chat flow
-      productivity.py             # Harness interaction flow
+      chat_tui.py                 # Full-screen Textual Cleo chat workspace
+      productivity.py             # Harness startup and backend lifecycle bridge
+      productivity_tui.py         # Full-screen Textual productivity workspace
+      dream_worker.py             # Detached sequential DreamAgent consolidation worker
       lifecycle.py                # Session persistence and consolidation lifecycle
-      console.py                  # Rich and prompt_toolkit presentation
-      completion.py               # Mode-aware slash-command completion
-      productivity_renderer.py    # Normalized harness event rendering
+      console.py                  # Compact Rich one-shot presentation
+      productivity_renderer.py    # Shared harness event and usage projection
       context.py                  # Shared terminal context
       workspace.py                # Explicit workspace reset operation
     config/
@@ -81,6 +91,7 @@ Cleo-AI-agent/
     demo-production/agents/       # Skill-local agent config
   memory/
     MEMORY_POLICY.md              # Developer-owned memory extraction policy
+    persona.sqlite3               # Global persona traits and private evidence
     sessions.sqlite3              # Global rebuildable session metadata index
     non_productivity/projects/    # Personal/general sessions and memory
     productivity/projects/        # Harness sessions and project memory
@@ -97,13 +108,16 @@ Cleo-AI-agent/
 ```
 
 `config/cleo.json`、`data/runtime.json`、`data/shell_audit.log`、
-`memory/sessions.sqlite3`、`memory/non_productivity/` 和
+`memory/sessions.sqlite3`、`memory/persona.sqlite3`、`memory/non_productivity/` 和
 `memory/productivity/` 都属于
 本地配置或运行状态，不应提交到 Git。
 
-`AGENTS.md` 是由用户或团队明确维护的仓库规范；`memory/MEMORY_POLICY.md` 是
-开发者拥有的记忆提取策略；`memory/<space>/projects/<project>/MEMORY.md` 是 DreamAgent
-生成的派生记忆。自动记忆不会修改 `AGENTS.md`，也不会自动创建或更新 skill。
+`AGENTS.md` 是由用户或团队明确维护的仓库规范；根目录 `PERSONA.md` 是 DreamAgent
+维护的全局描述性人格投影；`memory/MEMORY_POLICY.md` 是开发者拥有的记忆提取策略；
+`memory/<space>/projects/<project>/MEMORY.md` 是 project-bound 派生记忆。自动记忆不会修改
+`AGENTS.md`，人格也不能授予权限、定义工具规则或自动创建/更新 skill。
+`PERSONA.md` 是由 `memory/persona.sqlite3` 重建的投影，启动和人格整理时会重新渲染，
+不应把只存在于手工编辑中的内容放进该文件。
 
 ## 启动立绘
 
@@ -130,7 +144,9 @@ Python 文件。
 Windows 用户可以从仓库根目录执行每用户安装。脚本会创建独立 Python runtime，
 将程序安装到 `%LOCALAPPDATA%\Programs\Cleo`，把配置、会话、记忆和工作区保存在
 `%LOCALAPPDATA%\Cleo`，并将独立安装版的 `cleo` launcher 置于当前用户 `PATH` 的
-最前面：
+最前面。浏览器控制还会通过 npm 安装固定版本的 `agent-browser`，因此安装时需要
+Node.js 和 npm。安装器也会读取目标 `config/cleo.json` 的 `memory_gate.model`，下载并
+warm-up Sentence Transformer，因此首次安装需要能够访问 Hugging Face：
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
@@ -167,13 +183,30 @@ pip install -e .
 pip install -e ".[dev]"
 ```
 
+源码运行时还需安装浏览器 runtime：
+
+```bash
+npm install -g agent-browser@0.33.1
+```
+
+`agent-browser` 会优先使用本机 Chrome/Edge；找不到可用浏览器时可运行
+`agent-browser install` 下载 Chrome for Testing。只安装 Cleo、暂不安装浏览器 runtime
+时可给 Windows 安装或更新脚本传入 `-SkipBrowserInstall`。Cleo 的卸载脚本不会移除
+全局 `agent-browser`，因为它可能同时被其他应用使用。
+
+模型默认在安装或更新阶段下载，运行时直接使用 Hugging Face 用户缓存。如果需要离线完成
+其余安装，可传入 `-SkipMemoryModelDownload`；此时首次 gate 运行仍可能联网下载，模型
+不可用时 gate 会 fail-open 到 DreamAgent。
+
 `pyproject.toml` 是直接依赖的唯一手工维护入口。`requirements.txt` 是为 Linux
 容器生成的精确版本锁文件，不应手工修改。
 
 ## 依赖更新与 Docker
 
 Docker 不会取代依赖清单：`pyproject.toml` 描述项目依赖，`requirements.txt`
-锁定实际安装版本，Docker 使用锁文件构建可重复的运行环境。
+锁定实际安装版本，Docker 使用锁文件构建可重复的运行环境，并在 image build 阶段缓存
+默认 Sentence Transformer。可用 `--build-arg CLEO_MEMORY_GATE_MODEL=<model>` 覆盖模型，
+或用 `--build-arg CLEO_SKIP_MEMORY_MODEL_DOWNLOAD=1` 明确跳过。
 
 一条命令重新解析依赖、更新 `requirements.txt` 并构建镜像：
 
@@ -284,6 +317,7 @@ copy cleo\config\templates\harnesses.example.json config\harnesses.json
 				"workspace_dir": "workspace",
 				"memory_dir": "memory",
 				"memory_policy_path": "memory/MEMORY_POLICY.md",
+				"persona_path": "PERSONA.md",
 				"session_index_path": "memory/sessions.sqlite3",
 				"session_artifacts_dir": "data/session_artifacts",
 				"runtime_state_path": "data/runtime.json"
@@ -305,7 +339,19 @@ copy cleo\config\templates\harnesses.example.json config\harnesses.json
 		},
 		"tools": {
 			"default": {
-				"tavily_api_key": null
+				"tavily_api_key": null,
+				"codex_model": "gpt-5.5",
+				"browser": {
+					"enabled": true,
+					"command": "agent-browser",
+					"headless": true,
+					"allow_private_network": false,
+					"allowed_domains": [],
+					"timeout_seconds": 45,
+					"operation_timeout_ms": 25000,
+					"idle_timeout_seconds": 900,
+					"max_output_chars": 12000
+				}
 			}
 		}
 	}
@@ -318,6 +364,20 @@ profile。旧配置省略 `dream_agent` 时会回退到 `agent`。代码通过 P
 再通过 `settings.active_agent_profile`、`settings.active_dream_agent_profile`、
 `settings.active_directory_profile`、`settings.active_shell_profile` 和
 `settings.active_tools_profile` 取得当前生效配置。
+
+`profiles.tools.<name>.browser` 控制 Cleo 的专用浏览器适配器。每个 Cleo thread 使用独立
+的 `agent-browser` session；截图和被截断的完整结果写入
+`data/session_artifacts/browser/`。显式打开或新建 tab 的目标默认只允许公网 HTTP(S)
+地址，并拒绝 localhost、局域网、链路本地和云 metadata 地址。只有测试受信任的本地
+站点时才应设置 `allow_private_network: true`；生产环境还可以用 `allowed_domains`
+收紧域名范围。
+
+`memory_gate` 在启动 DreamAgent 前懒加载本地 Sentence Transformer。只有所有用户消息都
+明显更接近 transient prototypes 时才跳过；判断模糊、模型缺失或下载失败时会 fail-open，
+继续运行 DreamAgent。正式安装与 Docker build 会预下载模型；仅跳过预下载或直接源码运行时，
+首次使用才会下载到 Hugging Face 用户缓存。跳过的 source 记录为
+`processed_hash`，不会伪装成已经写入项目记忆的 `consolidated_hash`。完整参数见
+`cleo/config/templates/cleo.example.json`。
 
 Productivity harness 由独立的 `config/harnesses.json` 注册。`default_provider` 决定未传
 `--provider` 时使用哪个 harness；`providers` 中的 key 是写入 session metadata 的
@@ -378,29 +438,29 @@ python main.py
 
 交互式命令：
 
-- `/quit` 或 `/exit`：关闭当前 session event log，运行 DreamAgent 记忆整理，然后退出。
+- `/quit` 或 `/exit`：立即关闭 Textual、清空界面并把控制权交还命令行；已完成的每轮对话
+  已经持久化，只有包含用户消息的 session 才会在界面退出后启动后台 DreamAgent 整理。
 - `/new`：完成当前 session 并开启新 thread。
-- `/project`：查看当前 Cleo project、已有 project，以及当前 project 下的 threads。
+- `/project`：打开 Cleo 记忆项目选择器；点击已有项目，或输入名称创建项目。
 - `/project <name>`：创建或切换 Cleo project，并在该记忆边界中开启新 thread。
 - `/project move <name>`：把尚未经过 DreamAgent consolidation 的当前 thread 连同上下文迁移到目标 project。
 - `/rename <title>`：修改当前 Cleo thread 的标题。
-- `/resume <session-id>`：在当前 CLI 中恢复一个已保存的 Cleo thread。
+- `/resume <session-id>`：恢复一个已保存的 Cleo thread；也可用 `/sessions` 点击恢复。
 - `/productivity`：进入 Codex productivity 页面；在其中用 `/back` 或 `/quit` 返回主聊天。
-- `/sessions`：打开跨 space 的 Session Hub，查看 provider、project 和当前状态。
+- `/sessions`：打开 Cleo 会话选择器并点击恢复；Productivity 中的 `/sessions` 单独管理代码会话。
 - `/attach`：为下一条消息附加图片文件。
 
-输入 `/` 后按 `Tab` 可查看当前模式支持的命令；`/resume` 后按 `Tab` 可补全可恢复的
-session ID，`/project` 后按 `Tab` 可补全已知 Cleo project。
+输入 `/` 可使用命令建议；常用操作也可以直接点击右侧快捷按钮。
 
 Thread 会使用第一条用户消息自动生成标题；Cleo thread 可用 `/rename` 修改，
 productivity thread 则继续通过 harness 的 `/rename` 能力同步标题。标题只属于 metadata，
 修改标题不会触发 compact 或 DreamAgent。
 
-Cleo 与 productivity 页面的运行状态栏都会显示当前模型和 context window。Cleo 使用
-active agent profile 的 `max_tokens` 作为配置上限，并在兼容服务返回 usage metadata 后
-显示本轮实际占用；Codex 直接使用 SDK 的 `thread/tokenUsage/updated` 数据。数据尚未返回
-时会显示 `waiting`，不会估算或伪造百分比。Productivity 的第二条状态栏显示 reasoning
-effort、filesystem access、approval behavior，以及当前 Git branch 和 dirty count。
+Cleo 状态栏显示当前模型和 context window；它使用 active agent profile 的 `max_tokens`
+作为配置上限，并在兼容服务返回 usage metadata 后显示本轮实际占用。Productivity 状态栏
+优先显示 Codex 账户的剩余 5 小时与每周用量及重置时间；SDK 尚未返回限额时才回退到
+context usage，并显示 `waiting` 而不是估算数据。侧栏显示 reasoning effort、filesystem
+access、approval behavior，以及当前 Git branch 和 dirty count。
 
 交互模式同样可用 `cleo --project <name>` 启动。Cleo project 是逻辑记忆边界，不要求
 对应一个代码仓库；不需要分类时继续使用默认的 `general` 即可。`/new` 会在同一 project
@@ -415,8 +475,8 @@ consolidation 的 thread 不允许直接迁移，因为其长期记忆可能已�
 模式：
 
 ```bash
-# 进入连续交互
-python main.py --productivity --project cleo --cwd .
+# 进入连续交互；工作目录就是 Productivity 的项目身份
+python main.py --productivity --cwd .
 
 # 单次任务
 python main.py --productivity --cwd . "检查当前改动并运行测试"
@@ -427,21 +487,24 @@ python main.py --productivity --resume agent_xxx
 
 可用 `--model` 覆盖 harness 配置的模型。productivity 交互支持：
 
-- `/cwd`、`/project`、`/git`：查看工作目录、项目边界与只读 Git 状态。
+- `/project`：像 Codex 一样把项目视为工作目录；点击最近目录，或输入任意现有目录。
+  Cleo 的记忆项目不会混入这里；`/cwd`、`/git` 查看当前目录与 Git 状态。
 - `/cd <directory>`：切换目录并创建新的 harness session；相对路径以当前 `cwd` 为准。
-- `/resume <agent-id>`：恢复已保存的 productivity session 及其原生 harness 上下文。
-- `/sessions`：合并展示 Cleo-managed session 与尚未接管的 Codex native thread。
+- `/resume <agent-id>`：恢复已保存的 productivity session、原生 harness 上下文与历史 transcript。
+- `/sessions`：在弹窗中合并展示 Cleo-managed session 与 Codex native thread；点击后读取原生
+  Codex turns（不可用时回退到 Cleo event log），恢复历史内容，并连接同一个 native thread
+  继续对话。纯 Codex native thread 会在首次恢复时自动建立 Cleo-managed session 映射。
 - `/native <native-id>`：只读查看 Codex 原生历史，不导入 Cleo 记忆。
-- `/resume-native <native-id>`：把原生 thread 显式接入 Cleo 并继续对话。
+- `/resume-native <native-id>`：恢复原生历史，把该 thread 接入 Cleo，并从原上下文继续对话。
 - `/model`、`/effort`、`/access`、`/approval`：查看或修改下一轮 Codex 的运行参数。
 - `/fork`、`/rename <name>`、`/compact`、`/archive`：管理 Codex 原生 thread 生命周期。
 - `/account`：查看当前 Codex 登录状态。
 - `/new`、`/back`、`/quit` 和 `/exit`：管理 session 或离开页面。
 
 Codex SDK 的消息、工具、终端、计划和文件变更事件会流式显示，并统一写入
-`productivity` space。CLI 输入补全与 Rich 表现层集中在 `cleo/cli/console.py`，聊天和
-productivity 编排分别位于 `cleo/cli/chat.py` 与 `cleo/cli/productivity.py`；它们与
-runtime、memory、session 聚合和 provider 实现保持独立。
+`productivity` space。两种交互界面分别位于 `cleo/cli/chat_tui.py` 与
+`cleo/cli/productivity_tui.py`，一次性输出保留在 `cleo/cli/console.py`；它们与 runtime、
+memory、session 聚合和 provider 实现保持独立。
 Codex 专属控制能力留在 Codex provider；通用 adapter
 仍维持 create/resume/prompt/cancel/close 数据面。
 
@@ -452,12 +515,14 @@ Codex 专属控制能力留在 Codex provider；通用 adapter
 - `data/runtime.json`：当前 space/project/thread，以及按 space 分区的 recent threads。
 - `data/shell_audit.log`：local shell tool 调用审计。
 - `memory/sessions.sqlite3`：全局可重建 session metadata registry。
+- `memory/persona.sqlite3`：跨 project/space 的人格 trait 与私有 event evidence。
 - `memory/<space>/projects/<project>/sessions/<session>/manifest.json`：当前 session 投影。
 - `memory/<space>/projects/<project>/sessions/<session>/events.jsonl`：append-only 原始证据。
 - `memory/<space>/projects/<project>/sessions/<session>/compact.json`：脱敏 compact 投影。
 - `memory/<space>/memory.sqlite3`：原子长期记忆、event evidence 和 conversation chunks。
-- `memory/<space>/memory_state.json`：source version、Hash 与 Dream 状态。
+- `memory/<space>/memory_state.json`：source version、processed/consolidated Hash、gate 结果与 Dream 状态。
 - `memory/<space>/projects/<project>/MEMORY.md`：DreamAgent 生成的长期记忆。
+- `PERSONA.md`：由全局 persona evidence 渲染、自动载入前台 Cleo 的描述性人格。
 
 `Runtime` 只保存当前 CLI 状态。append-only event log 是权威交互记录，manifest 是
 当前 metadata；compact、SQLite 索引和项目 `MEMORY.md` 都是可重建的派生层。迁移复盘与取舍见
@@ -468,4 +533,4 @@ Codex 专属控制能力留在 Codex provider；通用 adapter
 - 原生历史目前按页读取最近 50 条；尚未在 CLI 中暴露继续翻页与复杂筛选。
 - 当前 resume 是 session message event replay，不是完整 durable LangGraph checkpoint。
 - 历史检索当前使用本地词法排序；尚未启用需要校准和额外服务的向量检索。
-- `skills/` 当前只包含 `demo-production`。
+- `skills/` 当前包含 `demo-production` 和 `agent-browser`。

@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
+import sys
 from typing import TYPE_CHECKING
 
 from langchain_core.messages import BaseMessage
@@ -12,6 +16,25 @@ if TYPE_CHECKING:
     from cleo.agents import Agent
     from cleo.runtime.state import Runtime
     from cleo.sessions.store import SessionStore
+
+
+def _has_meaningful_content(content: object) -> bool:
+    """Return whether a persisted user message contains actual input."""
+    if isinstance(content, str):
+        return bool(content.strip())
+    if isinstance(content, dict):
+        return any(_has_meaningful_content(value) for value in content.values())
+    if isinstance(content, (list, tuple, set)):
+        return any(_has_meaningful_content(value) for value in content)
+    return content is not None and bool(content)
+
+
+def _has_user_interaction(events: list[dict[str, object]]) -> bool:
+    """Return whether the session includes at least one non-empty user turn."""
+    return any(
+        event.get("type") == "user_message" and _has_meaningful_content(event.get("content"))
+        for event in events
+    )
 
 
 async def _sync_session_events(
@@ -96,18 +119,78 @@ async def _run_dream_agent(
         写入 project memory;本函数只负责显示 status spinner 与成功/失败
         提示,异常被捕获后仅输出 ``cli.error``,不向调用方传播。
     """
-    from cleo.agents import DreamAgent
+    from cleo.config.settings import settings
+    from cleo.sessions.store import SessionStore
 
     project_name = project or "general"
     try:
-        with cli.status(
-            f"Consolidating {space}/{project_name}/{thread_id} with DreamAgent..."
-        ):
-            await DreamAgent().invoke(
+        store = SessionStore(settings.MEMORY_DIR, settings.SESSION_INDEX_PATH)
+        if not _has_user_interaction(store.read_events(thread_id)):
+            return
+
+        from cleo.agents import DreamAgent
+
+        with cli.status(f"Consolidating {space}/{project_name}/{thread_id} with DreamAgent..."):
+            result = await DreamAgent().invoke(
                 session_id=thread_id,
                 project=project_name,
                 space=space,
             )
-        cli.success("DreamAgent memory consolidation finished.")
+        if isinstance(result, dict) and result.get("status") == "skipped":
+            cli.info(f"Memory consolidation skipped: {result.get('reason', 'not needed')}")
+        else:
+            cli.success("DreamAgent memory consolidation finished.")
     except Exception as exc:
         cli.error(f"DreamAgent memory consolidation failed: {exc}")
+
+
+def _launch_dream_agent_worker(
+    jobs: list[tuple[str, str | None, str]],
+    *,
+    store: SessionStore | None = None,
+) -> bool:
+    """Launch one detached worker to consolidate interactive sessions in order."""
+    unique_jobs: list[tuple[str, str | None, str]] = []
+    seen: set[tuple[str, str | None, str]] = set()
+    for thread_id, project, space in jobs:
+        job = (str(thread_id), project, str(space))
+        if not job[0] or job in seen:
+            continue
+        seen.add(job)
+        unique_jobs.append(job)
+    if store is not None:
+        meaningful_jobs: list[tuple[str, str | None, str]] = []
+        for job in unique_jobs:
+            try:
+                events = store.read_events(job[0])
+            except (FileNotFoundError, OSError, ValueError):
+                continue
+            if _has_user_interaction(events):
+                meaningful_jobs.append(job)
+        unique_jobs = meaningful_jobs
+    if not unique_jobs:
+        return False
+
+    command = [
+        sys.executable,
+        "-m",
+        "cleo.cli.dream_worker",
+        json.dumps(unique_jobs, ensure_ascii=False),
+    ]
+    kwargs: dict[str, object] = {
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+        "close_fds": True,
+    }
+    if os.name == "nt":
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(
+            subprocess, "CREATE_NEW_PROCESS_GROUP", 0
+        )
+    else:
+        kwargs["start_new_session"] = True
+    try:
+        subprocess.Popen(command, **kwargs)  # noqa: S603
+    except OSError:
+        return False
+    return True

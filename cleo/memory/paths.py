@@ -204,6 +204,15 @@ def memory_database_path(memory_root: Path, space: str) -> Path:
     return space_directory(memory_root, space) / "memory.sqlite3"
 
 
+def persona_database_path(memory_root: Path) -> Path:
+    """返回全局人格证据库 ``<memory_root>/persona.sqlite3`` 的路径。
+
+    人格跨越 project 与 memory space，因此数据库位于 memory 根目录，
+    不接受 space/project 参数。根目录 ``PERSONA.md`` 是它的可读投影。
+    """
+    return Path(memory_root) / "persona.sqlite3"
+
+
 def memory_state_path(memory_root: Path, space: str) -> Path:
     """返回 space 级 consolidation 状态文件 memory_state.json 的路径。
 

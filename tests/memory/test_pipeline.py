@@ -9,6 +9,7 @@ from cleo.memory.paths import project_directory
 from cleo.memory.state import (
     get_session_source,
     mark_consolidated,
+    mark_consolidation_skipped,
     needs_consolidation,
     touch_session_source,
 )
@@ -135,6 +136,40 @@ def test_memory_state_is_bound_to_space_project_and_session(tmp_path: Path) -> N
     )
     assert state is not None
     assert state["consolidated_hash"] == "sha256:first"
+    assert state["processed_hash"] == "sha256:first"
+
+
+def test_skipped_source_is_processed_without_becoming_consolidated(tmp_path: Path) -> None:
+    state_path = tmp_path / "memory-state.json"
+    touch_session_source(
+        space="non_productivity",
+        project="cleo",
+        session_id="session-skip",
+        source_hash="sha256:small-talk",
+        last_event_seq=2,
+        path=state_path,
+    )
+
+    skipped = mark_consolidation_skipped(
+        "non_productivity",
+        "cleo",
+        "session-skip",
+        "sha256:small-talk",
+        reason="Only thanks and acknowledgement.",
+        gate_result={"decision": "skip", "negative_score": 0.91},
+        path=state_path,
+    )
+
+    assert skipped["processed_hash"] == "sha256:small-talk"
+    assert skipped["consolidated_hash"] is None
+    assert skipped["status"] == "skipped"
+    assert not needs_consolidation(
+        "non_productivity",
+        "cleo",
+        "session-skip",
+        "sha256:small-talk",
+        path=state_path,
+    )
 
 
 def test_atomic_memory_is_idempotent_and_space_scoped(tmp_path: Path) -> None:
@@ -156,13 +191,16 @@ def test_atomic_memory_is_idempotent_and_space_scoped(tmp_path: Path) -> None:
 
     assert first["id"] == repeated["id"]
     assert repeated["evidence_count"] == 1
-    assert count_source_memories(
-        "productivity",
-        "cleo",
-        "session-a",
-        "sha256:source",
-        path=database_path,
-    ) == 1
+    assert (
+        count_source_memories(
+            "productivity",
+            "cleo",
+            "session-a",
+            "sha256:source",
+            path=database_path,
+        )
+        == 1
+    )
     results = search_memories(
         space="productivity",
         project="cleo",
@@ -170,12 +208,15 @@ def test_atomic_memory_is_idempotent_and_space_scoped(tmp_path: Path) -> None:
         path=database_path,
     )
     assert [item["id"] for item in results] == [first["id"]]
-    assert search_memories(
-        space="non_productivity",
-        project="cleo",
-        query="local lexical index",
-        path=tmp_path / "other-space.sqlite3",
-    ) == []
+    assert (
+        search_memories(
+            space="non_productivity",
+            project="cleo",
+            query="local lexical index",
+            path=tmp_path / "other-space.sqlite3",
+        )
+        == []
+    )
 
 
 def test_history_search_rejects_stale_compact_event_sources(tmp_path: Path) -> None:
@@ -212,13 +253,16 @@ def test_history_search_rejects_stale_compact_event_sources(tmp_path: Path) -> N
         actor="user",
         content="This event has not been compacted yet.",
     )
-    assert search_conversation_history(
-        space="productivity",
-        project="cleo",
-        query="Qdrant",
-        path=database_path,
-        memory_root=memory_root,
-    ) == []
+    assert (
+        search_conversation_history(
+            space="productivity",
+            project="cleo",
+            query="Qdrant",
+            path=database_path,
+            memory_root=memory_root,
+        )
+        == []
+    )
 
 
 def test_event_to_dream_completion_protocol(tmp_path: Path, monkeypatch) -> None:
@@ -227,7 +271,10 @@ def test_event_to_dream_completion_protocol(tmp_path: Path, monkeypatch) -> None
     from cleo.memory import store as memory_store
 
     memory_root = tmp_path / "memory"
-    fake_settings = SimpleNamespace(MEMORY_DIR=memory_root)
+    fake_settings = SimpleNamespace(
+        MEMORY_DIR=memory_root,
+        PERSONA_PATH=tmp_path / "PERSONA.md",
+    )
     monkeypatch.setattr(state, "settings", fake_settings)
     monkeypatch.setattr(memory_store, "settings", fake_settings)
     monkeypatch.setattr(dream_agent_tools, "settings", fake_settings)
@@ -249,9 +296,7 @@ def test_event_to_dream_completion_protocol(tmp_path: Path, monkeypatch) -> None
         session_id="session-dream",
     )
     source_hash = payload["source"]["source_content_hash"]
-    evidence_event_id = next(
-        event["id"] for event in payload["events"] if event["type"] == "human"
-    )
+    evidence_event_id = next(event["id"] for event in payload["events"] if event["type"] == "human")
 
     remembered = dream_agent_tools.remember_durable_knowledge.invoke(
         {
@@ -267,6 +312,23 @@ def test_event_to_dream_completion_protocol(tmp_path: Path, monkeypatch) -> None
         }
     )
     assert json.loads(remembered)["status"] == "stored"
+
+    persona_result = dream_agent_tools.remember_global_persona_trait.invoke(
+        {
+            "space": "productivity",
+            "project": "cleo",
+            "session_id": "session-dream",
+            "source_hash": source_hash,
+            "category": "adaptation",
+            "trait": "Explains architecture choices before implementation details.",
+            "evidence_event_ids": [evidence_event_id],
+            "confidence": 0.85,
+            "tags": ["technical-collaboration"],
+        }
+    )
+    assert json.loads(persona_result)["status"] == "stored"
+    persona_text = (tmp_path / "PERSONA.md").read_text(encoding="utf-8")
+    assert "Explains architecture choices before implementation details." in persona_text
 
     written = dream_agent_tools.write_memory_to_markdown.invoke(
         {
@@ -296,7 +358,7 @@ def test_event_to_dream_completion_protocol(tmp_path: Path, monkeypatch) -> None
     )
     assert source_state is not None
     assert source_state["consolidated_hash"] == source_hash
-    memory_text = (
-        project_directory(memory_root, "productivity", "cleo") / "MEMORY.md"
-    ).read_text(encoding="utf-8")
+    memory_text = (project_directory(memory_root, "productivity", "cleo") / "MEMORY.md").read_text(
+        encoding="utf-8"
+    )
     assert f"session-dream#{evidence_event_id}" in memory_text

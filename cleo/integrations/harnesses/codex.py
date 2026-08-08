@@ -8,6 +8,7 @@ from typing import Any
 
 from openai_codex import ApprovalMode, AsyncCodex, AsyncThread, AsyncTurnHandle, Sandbox
 from openai_codex.api import ReasoningEffort
+from openai_codex.generated.v2_all import GetAccountRateLimitsResponse
 
 from cleo.harnesses.control import (
     HarnessAccount,
@@ -19,6 +20,7 @@ from cleo.harnesses.control import (
 )
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 from cleo.harnesses.provider import ProviderSession, ProviderTurn
+from cleo.runtime.usage import RateLimitWindowUsage
 
 
 @dataclass(slots=True)
@@ -381,6 +383,29 @@ class CodexProvider:
             plan=self._optional_text(data.get("planType")),
         )
 
+    async def account_rate_limits(
+        self,
+        session_id: str,
+    ) -> tuple[RateLimitWindowUsage, ...]:
+        """Read the active Codex account's short and weekly usage windows."""
+        runtime = self._sessions[session_id]
+        async with runtime.lock:
+            response = await runtime.client._client.request(
+                "account/rateLimits/read",
+                None,
+                response_model=GetAccountRateLimitsResponse,
+            )
+        snapshot = response.rate_limits
+        return tuple(
+            RateLimitWindowUsage(
+                used_percent=max(0, min(int(window.used_percent), 100)),
+                window_minutes=window.window_duration_mins,
+                resets_at=window.resets_at,
+            )
+            for window in (snapshot.primary, snapshot.secondary)
+            if window is not None
+        )
+
     async def fork_session(self, session_id: str) -> ProviderSession:
         """从既有 session fork 出一个继承其上下文的新 thread。
 
@@ -645,7 +670,10 @@ class CodexProvider:
                 event_type = "thought"
             else:
                 event_type = "provider_event"
-        elif method == "thread/tokenUsage/updated":
+        elif method in {
+            "thread/tokenUsage/updated",
+            "account/rateLimits/updated",
+        }:
             event_type = "status"
         else:
             event_type = "provider_event"

@@ -88,6 +88,36 @@ def test_dream_agent_profile_falls_back_to_foreground_for_legacy_config() -> Non
     assert settings.active_dream_agent_profile is settings.active_agent_profile
 
 
+def test_memory_gate_has_safe_multilingual_defaults() -> None:
+    settings = SettingsModel.model_validate(_settings_payload(dream_agent=None))
+
+    assert settings.memory_gate.enabled is True
+    assert "multilingual" in settings.memory_gate.model
+    assert settings.memory_gate.skip_margin > settings.memory_gate.run_margin
+    assert any("用户" in item for item in settings.memory_gate.positive_prototypes)
+
+
 def test_missing_dream_agent_profile_is_rejected() -> None:
     with pytest.raises(ValidationError, match="dream_agent:missing"):
         SettingsModel.model_validate(_settings_payload(dream_agent="missing"))
+
+
+def test_browser_tools_have_safe_defaults() -> None:
+    settings = SettingsModel.model_validate(_settings_payload(dream_agent=None))
+
+    browser = settings.active_tools_profile.browser
+    assert browser.enabled is True
+    assert browser.headless is True
+    assert browser.allow_private_network is False
+    assert browser.allowed_domains == []
+    assert browser.idle_timeout_seconds == 900
+
+
+def test_browser_tool_unknown_configuration_is_rejected() -> None:
+    payload = _settings_payload(dream_agent=None)
+    payload["profiles"]["tools"] = {
+        "default": {"browser": {"enabled": True, "unknown_option": True}}
+    }
+
+    with pytest.raises(ValidationError, match="unknown_option"):
+        SettingsModel.model_validate(payload)

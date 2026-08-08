@@ -213,7 +213,10 @@ class _AcpClientHost:
         返回:
             已 resolve 的 ``Path``; 路径越出项目根目录时抛出 ``PermissionError``。
         """
-        path = Path(value).resolve()
+        path = Path(value)
+        if not path.is_absolute():
+            path = self._root / path
+        path = path.resolve()
         if not path.is_relative_to(self._root):
             raise PermissionError(f"ACP file access is outside the project: {path}")
         return path

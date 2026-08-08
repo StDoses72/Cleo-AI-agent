@@ -31,7 +31,7 @@ class AgentSession(BaseModel):
     """对外暴露的会话句柄(frozen)。
 
     字段(来源: AgentAdapter._add_route 组装;消费方:
-    cleo/cli/productivity.py 与 cleo/integrations/codex.py 用 id 继续调用
+    cleo/cli/productivity_tui.py 与 cleo/integrations/codex.py 用 id 继续调用
     prompt/close 等):
         id: 对外 session handle("agent_" + 随机 hex 或复用存储 id)。
         provider: provider 名。
@@ -55,7 +55,7 @@ class AgentResult(BaseModel):
     """一轮 prompt 的最终结果(frozen)。
 
     字段(来源: AgentAdapter.prompt 由 ProviderTurn 组装;消费方:
-    cleo/cli/productivity.py 渲染输出,cleo/integrations/codex.py 经
+    cleo/cli/productivity_tui.py 渲染输出,cleo/integrations/codex.py 经
     _result 转为工具返回值):
         session_id: 对外 session handle。
         provider: provider 名。
@@ -94,7 +94,7 @@ async def emit_event(callback: EventCallback | None, event: AgentEvent) -> None:
             AgentAdapter.prompt 的 on_event。
         event: 待派发的 AgentEvent;来源: provider 事件翻译循环。
 
-    返回: None;事件最终由 cleo/cli/productivity.py 的 renderer 消费。
+    返回: None;事件最终由 productivity TUI 或 one-shot renderer 消费。
     """
     if callback is None:
         return

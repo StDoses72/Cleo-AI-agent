@@ -5,6 +5,8 @@ param(
     [string]$SourceRoot,
     [switch]$RecreateRuntime,
     [switch]$SkipPathUpdate,
+    [switch]$SkipBrowserInstall,
+    [switch]$SkipMemoryModelDownload,
     [string]$IndexUrl
 )
 
@@ -25,6 +27,12 @@ if ($RecreateRuntime) {
 }
 if ($SkipPathUpdate) {
     $arguments.SkipPathUpdate = $true
+}
+if ($SkipBrowserInstall) {
+    $arguments.SkipBrowserInstall = $true
+}
+if ($SkipMemoryModelDownload) {
+    $arguments.SkipMemoryModelDownload = $true
 }
 if ($IndexUrl) {
     $arguments.IndexUrl = $IndexUrl

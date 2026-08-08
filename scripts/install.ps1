@@ -6,6 +6,8 @@ param(
     [switch]$MigrateCurrentData,
     [switch]$SkipPathUpdate,
     [switch]$RecreateRuntime,
+    [switch]$SkipBrowserInstall,
+    [switch]$SkipMemoryModelDownload,
     [string]$IndexUrl
 )
 
@@ -91,7 +93,8 @@ $requiredSourcePaths = @(
     "cleo\config\templates\cleo.example.json",
     "cleo\config\templates\harnesses.example.json",
     "cleo\images\assets\cleo-startup.png",
-    "memory\MEMORY_POLICY.md"
+    "memory\MEMORY_POLICY.md",
+    "PERSONA.md"
 )
 foreach ($relativePath in $requiredSourcePaths) {
     if (-not (Test-Path -LiteralPath (Join-Path $SourceRoot $relativePath))) {
@@ -298,6 +301,24 @@ try {
     Remove-Item -LiteralPath $packageSourceRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+if (-not $SkipBrowserInstall) {
+    $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
+    if (-not $npm) {
+        $npm = Get-Command npm -ErrorAction SilentlyContinue
+    }
+    if (-not $npm) {
+        throw (
+            "Node.js with npm is required to install Cleo browser control. " +
+            "Install Node.js and retry, or pass -SkipBrowserInstall."
+        )
+    }
+    Invoke-Checked -FilePath $npm.Source -Arguments @(
+        "install",
+        "--global",
+        "agent-browser@0.33.1"
+    )
+}
+
 $layoutDirectories = @(
     "config",
     "assets",
@@ -340,9 +361,37 @@ Copy-FileIfMissing `
 Copy-FileIfMissing `
     -Source (Join-Path $SourceRoot "memory\MEMORY_POLICY.md") `
     -Destination (Join-Path $CleoHome "memory\MEMORY_POLICY.md")
+Copy-FileIfMissing `
+    -Source (Join-Path $SourceRoot "PERSONA.md") `
+    -Destination (Join-Path $CleoHome "PERSONA.md")
 Copy-TreeMissing `
     -Source (Join-Path $SourceRoot "skills") `
     -Destination (Join-Path $CleoHome "skills")
+
+$memoryGateEnabled = $true
+$memoryGateModel = $null
+$installedConfig = Join-Path $CleoHome "config\cleo.json"
+try {
+    $configuredGate = (Get-Content -LiteralPath $installedConfig -Raw | ConvertFrom-Json).memory_gate
+    if ($null -ne $configuredGate) {
+        if ($null -ne $configuredGate.enabled) {
+            $memoryGateEnabled = [bool]$configuredGate.enabled
+        }
+        if ($configuredGate.model) {
+            $memoryGateModel = [string]$configuredGate.model
+        }
+    }
+} catch {
+    throw "Unable to read memory gate settings from $installedConfig`: $($_.Exception.Message)"
+}
+
+if (-not $SkipMemoryModelDownload -and $memoryGateEnabled) {
+    $modelDownloadArguments = @("-m", "cleo.memory.model_download")
+    if ($memoryGateModel) {
+        $modelDownloadArguments += @("--model", $memoryGateModel)
+    }
+    Invoke-Checked -FilePath $runtimePython -Arguments $modelDownloadArguments
+}
 
 if ($MigrateCurrentData) {
     Write-Host "Migrating missing runtime files. Cleo should not be running during migration."
@@ -426,6 +475,18 @@ Write-Host "Cleo $version installed successfully." -ForegroundColor Green
 Write-Host "Program: $InstallRoot"
 Write-Host "Data:    $CleoHome"
 Write-Host "Portrait: $(Join-Path $CleoHome 'assets\startup.png')"
+if ($SkipBrowserInstall) {
+    Write-Host "Browser: skipped; install agent-browser before using browser tools"
+} else {
+    Write-Host "Browser: agent-browser 0.33.1"
+}
+if ($SkipMemoryModelDownload) {
+    Write-Host "Memory model: skipped; first gate run may need to download it"
+} elseif (-not $memoryGateEnabled) {
+    Write-Host "Memory model: skipped because memory_gate.enabled is false"
+} else {
+    Write-Host "Memory model: downloaded and warmed up"
+}
 Write-Host "Run:     cleo"
 if (-not $SkipPathUpdate) {
     Write-Host "Open a new terminal if the cleo command is not visible in existing shells."

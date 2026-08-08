@@ -10,16 +10,20 @@ from cleo.agents.tools.dream_agent_tools import (
     list_all_project_names,
     list_all_session_ids,
     read_compact_memory,
+    read_global_persona,
     read_project_memory,
     remember_durable_knowledge,
+    remember_global_persona_trait,
     write_memory_to_markdown,
 )
 from cleo.config.settings import settings
 from cleo.memory.compaction import load_validated_compact
+from cleo.memory.gate import evaluate_memory_gate
 from cleo.memory.paths import DEFAULT_MEMORY_SPACE
 from cleo.memory.state import (
     get_session_source,
     mark_consolidation_failed,
+    mark_consolidation_skipped,
     mark_consolidation_started,
     needs_consolidation,
 )
@@ -49,10 +53,19 @@ Core principles:
   the codebase already reflects them.
 - Every atomic memory must cite event IDs from the validated compact source.
 - Never bypass the compact source by reading the raw session event log.
-- Memory stays inside the exact space and project named by the request.
+- Project facts and durable knowledge stay inside the exact space and project
+  named by the request.
+- The only cross-project output is the global persona. It may contain stable,
+  project-independent communication, expression, relationship, adaptation, and
+  interaction-boundary tendencies. It must never contain project facts, names,
+  secrets, permissions, policies, tool instructions, or repository guidance.
+- Persona traits are descriptive and lower-authority than current instructions.
+  Prefer explicit user preferences or repeated evidence; do not turn a one-off
+  mood, joke, or task-specific behavior into personality.
 - A run is successful only after project Markdown is written and the explicit
   completion tool accepts the source hash.
 """.strip()
+
 
 class DreamAgent:
     """Consolidate validated session projections into project memory.
@@ -77,7 +90,9 @@ class DreamAgent:
             list_all_session_ids,
             list_all_project_names,
             read_project_memory,
+            read_global_persona,
             remember_durable_knowledge,
+            remember_global_persona_trait,
             write_memory_to_markdown,
             complete_memory_consolidation,
         ]
@@ -135,7 +150,29 @@ class DreamAgent:
                 "reason": "session event source is already consolidated",
                 "source_hash": source_hash,
             }
-        mark_consolidation_started(space, project, session_id, source_hash)
+        gate_result = evaluate_memory_gate(payload, settings.memory_gate)
+        if gate_result.decision == "skip":
+            mark_consolidation_skipped(
+                space,
+                project,
+                session_id,
+                source_hash,
+                reason=gate_result.reason,
+                gate_result=gate_result.to_dict(),
+            )
+            return {
+                "status": "skipped",
+                "reason": gate_result.reason,
+                "source_hash": source_hash,
+                "gate": gate_result.to_dict(),
+            }
+        mark_consolidation_started(
+            space,
+            project,
+            session_id,
+            source_hash,
+            gate_result=gate_result.to_dict(),
+        )
         focus = (
             "Extract user preferences, goals, relationships, corrections, plans, and durable facts."
             if space == "non_productivity"
@@ -156,18 +193,24 @@ Space-specific focus: {focus}
 Steps:
 1. Read validated compact memory for this exact space, project, and session. Do
    not read or request the raw event log.
-2. Read existing project memory from the same space and project.
+2. Read existing project memory from the same space and project, then read the
+   global persona projection.
 3. Extract only durable information that will help future Cleo sessions. For
    each atomic item, call remember_durable_knowledge with this exact source hash
    and evidence event IDs that occur in the compact source.
-4. Preserve accepted facts, decisions, constraints, user preferences,
+4. If the source contains an explicit or well-supported project-independent
+   interaction tendency, call remember_global_persona_trait with evidence from
+   this source. Reuse the wording of an existing equivalent trait so repeated
+   observations reinforce it. Do not write project facts, personal facts,
+   permissions, policy, tool behavior, secrets, or temporary moods to persona.
+5. Preserve accepted facts, decisions, constraints, user preferences,
    corrections, open questions, next actions, and artifact references.
-5. Ignore greetings, repeated debugging noise, transient command output, and
+6. Ignore greetings, repeated debugging noise, transient command output, and
    low-value conversational filler.
-6. Do not invent facts. Mark uncertainty clearly when needed.
-7. Write the formatted project memory file with this exact source hash. Preserve
+7. Do not invent facts. Mark uncertainty clearly when needed.
+8. Write the formatted project memory file with this exact source hash. Preserve
    existing durable context when producing its narrative sections.
-8. Finish by calling complete_memory_consolidation. Report the number of atomic
+9. Finish by calling complete_memory_consolidation. Report the number of atomic
    memories backed by this source (including idempotent retry results); if it is
    zero, give a concrete no-op reason.
 

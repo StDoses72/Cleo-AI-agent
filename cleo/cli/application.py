@@ -15,7 +15,6 @@ from cleo.cli.chat import (
     _render_chat_header,
     _run_chat_loop,
 )
-from cleo.cli.context import clear_screen, cli
 from cleo.cli.lifecycle import _run_dream_agent, _sync_session_events
 from cleo.cli.productivity import ProductivityStartupError, _run_productivity_mode
 from cleo.cli.workspace import reset_workspace_to_main
@@ -207,34 +206,18 @@ async def amain() -> None:
     elif args.thread_id is not None:
         thread_id = args.thread_id
     elif args.message is None and unfinished_thread_id:
-        cli.info(
-            f"Determined an unfinished thread with id {unfinished_thread_id}. "
-            "Do you want to continue it? (y/n)"
-        )
-        choice = (await asyncio.to_thread(cli.field_prompt, "resume [y/n]")).lower()
-        if choice == "y":
-            thread_id = unfinished_thread_id
-            cli.info(f"Recovering with thread id {thread_id}")
-            try:
-                manifest = store.load_manifest(thread_id)
-                loaded_messages = store.load_langchain_messages(thread_id)
-                saved_project = str(manifest["project"])
-                runtime.update_current_space(str(manifest["space"]))
-            except FileNotFoundError:
-                thread_id = _new_thread_id()
-                loaded_messages = None
-                saved_project = None
-                cli.warning("The unfinished session was not found; starting a new one.")
-            if saved_project:
-                runtime.update_current_project(saved_project)
-        elif choice == "n":
+        thread_id = unfinished_thread_id
+        try:
+            manifest = store.load_manifest(thread_id)
+            loaded_messages = store.load_langchain_messages(thread_id)
+            saved_project = str(manifest["project"])
+            runtime.update_current_space(str(manifest["space"]))
+        except FileNotFoundError:
             thread_id = _new_thread_id()
-            cli.info(f"Starting a new thread with id {thread_id}")
-            clear_screen()
-        else:
-            thread_id = _new_thread_id()
-            cli.info(f"Starting a new thread with id {thread_id}")
-            clear_screen()
+            loaded_messages = None
+            saved_project = None
+        if saved_project:
+            runtime.update_current_project(saved_project)
     else:
         thread_id = _new_thread_id()
 

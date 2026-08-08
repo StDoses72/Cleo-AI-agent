@@ -25,6 +25,7 @@
 				"workspace_dir": "workspace",
 				"memory_dir": "memory",
 				"memory_policy_path": "memory/MEMORY_POLICY.md",
+				"persona_path": "PERSONA.md",
 				"session_index_path": "memory/sessions.sqlite3",
 				"session_artifacts_dir": "data/session_artifacts",
 				"runtime_state_path": "data/runtime.json"
@@ -67,8 +68,29 @@
 		"tools": {
 			"default": {
 				"codex_model": "gpt-5.5",
-				"tavily_api_key": null
+				"tavily_api_key": null,
+				"browser": {
+					"enabled": true,
+					"command": "agent-browser",
+					"headless": true,
+					"allow_private_network": false,
+					"allowed_domains": [],
+					"timeout_seconds": 45,
+					"operation_timeout_ms": 25000,
+					"idle_timeout_seconds": 900,
+					"max_output_chars": 12000
+				}
 			}
 		}
+	},
+	"memory_gate": {
+		"enabled": true,
+		"model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+		"local_files_only": false,
+		"minimum_similarity": 0.42,
+		"run_margin": 0.08,
+		"skip_margin": 0.1,
+		"max_messages": 24,
+		"max_characters_per_message": 1200
 	}
 }

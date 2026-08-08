@@ -19,6 +19,7 @@ from cleo.harnesses.models import (
     EventCallback,
 )
 from cleo.harnesses.provider import AgentProvider
+from cleo.runtime.usage import RateLimitWindowUsage
 from cleo.sessions.store import SessionStore
 
 if TYPE_CHECKING:
@@ -396,6 +397,15 @@ class AgentAdapter:
         implementation = self._provider(provider)
         method = self._capability(implementation, "account_status")
         return await method()
+
+    async def account_rate_limits(
+        self,
+        session_id: str,
+    ) -> tuple[RateLimitWindowUsage, ...]:
+        """Read account usage windows through the active session's provider."""
+        route = self._route(session_id)
+        method = self._capability(route.provider, "account_rate_limits")
+        return await method(route.provider_session_id)
 
     def session_options(self, session_id: str) -> SessionOptions:
         """读取会话当前的运行时选项(model/effort/approval/sandbox)。

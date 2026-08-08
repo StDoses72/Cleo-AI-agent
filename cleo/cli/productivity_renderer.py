@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING, Any
 
 from rich.console import Console
@@ -57,6 +58,11 @@ class ProductivityEventRenderer:
             None; 输出直接写入 self.console(rich), 不向上游返回值。
         """
         self._capture_context_usage(event)
+        if event.type == "file_change" and event.data.get("provider_event_type") in {
+            "item/fileChange/outputDelta",
+            "item/fileChange/patchUpdated",
+        }:
+            return
         if event.type == "assistant_message_chunk" and event.text:
             if not self.assistant_streamed:
                 self._start_line("CODEX", "green")
@@ -123,31 +129,7 @@ class ProductivityEventRenderer:
             None; 结果写入 self.context_usage(可能是与 productivity loop 共享的
             ContextWindowUsage 实例), 供 finish()/header 渲染 context 占用。
         """
-        if event.data.get("provider_event_type") != "thread/tokenUsage/updated":
-            return
-        payload = self._payload(event)
-        token_usage = payload.get("tokenUsage")
-        if not isinstance(token_usage, dict):
-            return
-        total = token_usage.get("total")
-        last = token_usage.get("last")
-        total = total if isinstance(total, dict) else {}
-        last = last if isinstance(last, dict) else {}
-        self.context_usage.update(
-            used_tokens=self._token_int(total, "totalTokens", "total_tokens"),
-            window_tokens=self._token_int(
-                token_usage,
-                "modelContextWindow",
-                "model_context_window",
-            ),
-            input_tokens=self._token_int(last, "inputTokens", "input_tokens"),
-            output_tokens=self._token_int(last, "outputTokens", "output_tokens"),
-            cached_input_tokens=self._token_int(
-                last,
-                "cachedInputTokens",
-                "cached_input_tokens",
-            ),
-        )
+        capture_context_usage(event, self.context_usage)
 
     @staticmethod
     def _token_int(payload: dict[str, Any], *keys: str) -> int | None:
@@ -218,15 +200,19 @@ class ProductivityEventRenderer:
         item = payload.get("item")
         item = item if isinstance(item, dict) else {}
         if event.type == "tool_call":
-            command = item.get("command")
+            source = item or payload
+            command = source.get("command")
             if command:
                 return "TOOL", str(command), "yellow"
-            server = item.get("server")
-            tool = item.get("tool")
-            name = f"{server or 'tool'}/{tool or item.get('type', 'unknown')}"
+            server = source.get("server")
+            tool = source.get("tool") or source.get("name")
+            name = f"{server or 'tool'}/{tool or source.get('type', 'unknown')}"
             return "TOOL", name, "yellow"
         if event.type == "tool_result":
-            return "RESULT", str(item.get("status") or "completed"), "yellow"
+            source = item or payload
+            return "RESULT", str(source.get("status") or "completed"), "yellow"
+        if event.type == "thought" and event.text:
+            return "THOUGHT", event.text, "blue"
         if event.type == "plan_update":
             plan = payload.get("plan")
             if isinstance(plan, list):
@@ -239,8 +225,10 @@ class ProductivityEventRenderer:
                     return "PLAN", " → ".join(steps), "blue"
             return "PLAN", "updated", "blue"
         if event.type == "file_change":
-            message = event.text or cls._file_change_summary(item, payload)
-            return "FILE", message, "magenta"
+            if event.data.get("provider_event_type") == "turn/diff/updated":
+                diff = event.text or payload.get("diff")
+                return "DIFF", cls._diff_summary(diff), "magenta"
+            return "FILE", cls._file_change_summary(item, payload), "magenta"
         if event.type == "error":
             return "ERROR", event.text or "Provider reported an error", "red"
         return None
@@ -279,6 +267,69 @@ class ProductivityEventRenderer:
             return first_line[:120]
         return "updated"
 
+    @staticmethod
+    def _diff_summary(diff: Any) -> str:
+        """Collapse a unified diff into file and line counts for scrollback."""
+        if not isinstance(diff, str) or not diff:
+            return "updated · /diff to expand"
+        lines = diff.splitlines()
+        files = sum(line.startswith("diff --git ") for line in lines)
+        additions = sum(
+            line.startswith("+") and not line.startswith("+++") for line in lines
+        )
+        deletions = sum(
+            line.startswith("-") and not line.startswith("---") for line in lines
+        )
+        file_label = f"{files} file(s)" if files else "working tree"
+        return f"{file_label} · +{additions} -{deletions} · /diff to expand"
+
+
+def capture_context_usage(event: AgentEvent, usage: ContextWindowUsage) -> None:
+    """Project a token-usage event into shared runtime usage state."""
+    if event.data.get("provider_event_type") != "thread/tokenUsage/updated":
+        return
+    payload = ProductivityEventRenderer._payload(event)
+    token_usage = payload.get("tokenUsage")
+    if not isinstance(token_usage, dict):
+        return
+    total = token_usage.get("total")
+    last = token_usage.get("last")
+    total = total if isinstance(total, dict) else {}
+    last = last if isinstance(last, dict) else {}
+    token_int = ProductivityEventRenderer._token_int
+    usage.update(
+        used_tokens=token_int(total, "totalTokens", "total_tokens"),
+        window_tokens=token_int(
+            token_usage,
+            "modelContextWindow",
+            "model_context_window",
+        ),
+        input_tokens=token_int(last, "inputTokens", "input_tokens"),
+        output_tokens=token_int(last, "outputTokens", "output_tokens"),
+        cached_input_tokens=token_int(
+            last,
+            "cachedInputTokens",
+            "cached_input_tokens",
+        ),
+    )
+
+
+def event_payload(event: AgentEvent) -> dict[str, Any]:
+    """Return the normalized payload carried by a harness event."""
+    return ProductivityEventRenderer._payload(event)
+
+
+def summarize_productivity_event(
+    event: AgentEvent,
+) -> tuple[str, str, str] | None:
+    """Return the canonical label, message, and color for a harness event."""
+    return ProductivityEventRenderer._event_summary(event)
+
+
+def summarize_diff(diff: Any) -> str:
+    """Return compact file/addition/deletion counts for a unified diff."""
+    return ProductivityEventRenderer._diff_summary(diff)
+
 
 def _render_runtime_status(
     console: Console,
@@ -310,32 +361,79 @@ def _render_runtime_status(
     model_text = Text("MODEL  ", style="dim")
     model_text.append(model or "unknown", style=f"bold {accent}")
 
-    context_text = Text("CONTEXT  ", style="dim")
-    if usage.used_tokens is None:
-        context_text.append("waiting", style="dim")
-        if usage.window_tokens:
-            context_text.append(f" / {_format_tokens(usage.window_tokens)}", style="dim")
-    elif usage.window_tokens:
-        ratio = usage.ratio or 0.0
-        filled = round(ratio * 10)
-        context_text.append(
-            f"{_format_tokens(usage.used_tokens)} / {_format_tokens(usage.window_tokens)} ",
-            style=accent,
-        )
-        context_text.append("●" * filled, style=f"bold {accent}")
-        context_text.append("·" * (10 - filled), style="dim")
-        context_text.append(f" {ratio:.0%}", style="dim")
+    if usage.rate_limits_loaded:
+        context_text = _rate_limit_text(usage, accent)
     else:
-        context_text.append(f"{_format_tokens(usage.used_tokens)} used", style=accent)
+        context_text = Text("CONTEXT  ", style="dim")
+        if usage.used_tokens is None:
+            context_text.append("waiting", style="dim")
+            if usage.window_tokens:
+                context_text.append(
+                    f" / {_format_tokens(usage.window_tokens)}", style="dim"
+                )
+        elif usage.window_tokens:
+            ratio = usage.ratio or 0.0
+            filled = round(ratio * 10)
+            context_text.append(
+                f"{_format_tokens(usage.used_tokens)} / "
+                f"{_format_tokens(usage.window_tokens)} ",
+                style=accent,
+            )
+            context_text.append("●" * filled, style=f"bold {accent}")
+            context_text.append("·" * (10 - filled), style="dim")
+            context_text.append(f" {ratio:.0%}", style="dim")
+        else:
+            context_text.append(f"{_format_tokens(usage.used_tokens)} used", style=accent)
 
-    if usage.input_tokens is not None or usage.output_tokens is not None:
-        context_text.append(
-            f"  in {_format_tokens(usage.input_tokens or 0)}"
-            f" · out {_format_tokens(usage.output_tokens or 0)}",
-            style="dim",
-        )
+        if usage.input_tokens is not None or usage.output_tokens is not None:
+            context_text.append(
+                f"  in {_format_tokens(usage.input_tokens or 0)}"
+                f" · out {_format_tokens(usage.output_tokens or 0)}",
+                style="dim",
+            )
     status.add_row(model_text, context_text)
     console.print(Panel(status, border_style=accent, padding=(0, 1)))
+
+
+def _rate_limit_text(usage: ContextWindowUsage, accent: str) -> Text:
+    """Render remaining five-hour and weekly account limits."""
+    output = Text("LIMITS  ", style="dim")
+    windows = {
+        window.window_minutes: window
+        for window in usage.rate_limit_windows
+        if window.window_minutes is not None
+    }
+    for index, (minutes, label) in enumerate(((300, "5H"), (10_080, "WEEK"))):
+        if index:
+            output.append("  ·  ", style="dim")
+        output.append(f"{label} ", style="dim")
+        window = windows.get(minutes)
+        if window is None:
+            output.append("n/a", style="dim")
+            continue
+        remaining = max(0, min(100 - window.used_percent, 100))
+        output.append(f"{remaining}% left", style=f"bold {accent}")
+        if window.resets_at is not None:
+            output.append(f" · resets {_format_reset(window.resets_at)}", style="dim")
+    return output
+
+
+def _format_reset(resets_at: int) -> str:
+    """Format a Unix reset timestamp as a compact relative duration."""
+    remaining = max(0, resets_at - int(time.time()))
+    days, remainder = divmod(remaining, 86_400)
+    hours, remainder = divmod(remainder, 3_600)
+    minutes = remainder // 60
+    if days:
+        return f"{days}d {hours}h"
+    if hours:
+        return f"{hours}h {minutes}m"
+    return f"{max(1, minutes)}m"
+
+
+def format_reset(resets_at: int) -> str:
+    """Public reset-time formatter shared by Rich and Textual views."""
+    return _format_reset(resets_at)
 
 
 def _format_tokens(value: int) -> str:

@@ -1,19 +1,14 @@
 from io import StringIO
 
-from prompt_toolkit.completion import CompleteEvent
-from prompt_toolkit.document import Document
 from rich.console import Console
 
-from cleo.cli.completion import SlashCommandCompleter
 from cleo.cli.console import CleoCLI
 from cleo.harnesses import (
     AgentEvent,
     AgentResult,
     AgentSession,
-    HarnessModel,
-    NativeSession,
 )
-from cleo.runtime.usage import ContextWindowUsage
+from cleo.runtime.usage import ContextWindowUsage, RateLimitWindowUsage
 
 
 def _captured_cli() -> tuple[CleoCLI, StringIO]:
@@ -22,7 +17,7 @@ def _captured_cli() -> tuple[CleoCLI, StringIO]:
     return CleoCLI(console), output
 
 
-def test_cli_renders_chat_productivity_and_session_hub() -> None:
+def test_cli_renders_one_shot_chat_and_productivity_headers() -> None:
     cli, output = _captured_cli()
     session = AgentSession(
         id="agent_123456789",
@@ -49,25 +44,10 @@ def test_cli_renders_chat_productivity_and_session_hub() -> None:
         model="gpt-5.5",
         context_usage=usage,
     )
-    cli.render_session_hub(
-        [
-            {
-                "id": session.id,
-                "space": "productivity",
-                "project": "cleo",
-                "provider": "codex",
-                "status": "running",
-                "updated_at": "2026-07-22T10:30:00+00:00",
-            }
-        ]
-    )
-
     rendered = output.getvalue()
     assert "CLEO" in rendered
     assert "PRODUCTIVITY · CODEX" in rendered
-    assert "SESSION HUB" in rendered
     assert "agent_123456789" in rendered
-    assert "productivity" in rendered
     assert "deepseek-v4-flash" in rendered
     assert "gpt-5.5" in rendered
     assert "50%" in rendered
@@ -116,6 +96,20 @@ def test_productivity_renderer_formats_canonical_events() -> None:
     renderer(
         AgentEvent(provider="codex", type="assistant_message_chunk", text="Done")
     )
+    renderer(
+        AgentEvent(
+            provider="codex",
+            type="file_change",
+            text=(
+                "diff --git a/app.py b/app.py\n"
+                "--- a/app.py\n"
+                "+++ b/app.py\n"
+                "-old secret line\n"
+                "+new secret line\n"
+            ),
+            data={"provider_event_type": "turn/diff/updated"},
+        )
+    )
     renderer.finish(
         AgentResult(
             session_id="agent-1",
@@ -136,113 +130,26 @@ def test_productivity_renderer_formats_canonical_events() -> None:
     assert "COMPLETED" in rendered
     assert "gpt-5.5" in rendered
     assert "40%" in rendered
+    assert "DIFF" in rendered
+    assert "1 file(s) · +1 -1 · /diff to expand" in rendered
+    assert "new secret line" not in rendered
     assert usage.used_tokens == 40_000
 
 
-def test_slash_command_completer_uses_mode_and_saved_sessions() -> None:
-    completer = SlashCommandCompleter(
-        "productivity",
-        sessions=[
-            {
-                "id": "agent_saved123",
-                "project": "cleo",
-                "provider": "codex",
-                "status": "completed",
-                "native_session_id": "native-1",
-            },
-            {
-                "id": "agent_without_native",
-                "project": "cleo",
-                "provider": "codex",
-                "status": "created",
-                "native_session_id": None,
-            },
-        ],
-        native_sessions=(
-            NativeSession(
-                id="native-thread-1",
-                name="Native work",
-                preview="Inspect the repository",
-                cwd="D:/workspace/cleo",
-                status="idle",
-                source="vscode",
-                model_provider="openai",
-                created_at="2026-07-22T10:00:00+00:00",
-                updated_at="2026-07-22T10:30:00+00:00",
-            ),
-        ),
-        models=(
-            HarnessModel(
-                id="gpt-5.6-sol",
-                display_name="GPT-5.6 Sol",
-                description="",
-                is_default=True,
-                default_effort="medium",
-                supported_efforts=("medium", "high"),
-            ),
-        ),
+def test_productivity_status_prefers_account_rate_limits() -> None:
+    cli, output = _captured_cli()
+    usage = ContextWindowUsage(used_tokens=40_000, window_tokens=100_000)
+    usage.update_rate_limits(
+        (
+            RateLimitWindowUsage(used_percent=25, window_minutes=300),
+            RateLimitWindowUsage(used_percent=10, window_minutes=10_080),
+        )
     )
 
-    command_values = {
-        item.text
-        for item in completer.get_completions(
-            Document("/c"),
-            CompleteEvent(completion_requested=True),
-        )
-    }
-    resume_values = [
-        item.text
-        for item in completer.get_completions(
-            Document("/resume agent_"),
-            CompleteEvent(completion_requested=True),
-        )
-    ]
-    chat_values = {
-        item.text
-        for item in SlashCommandCompleter("chat").get_completions(
-            Document("/r"),
-            CompleteEvent(completion_requested=True),
-        )
-    }
-    native_values = [
-        item.text
-        for item in completer.get_completions(
-            Document("/resume-native native-"),
-            CompleteEvent(completion_requested=True),
-        )
-    ]
-    model_values = [
-        item.text
-        for item in completer.get_completions(
-            Document("/model gpt-"),
-            CompleteEvent(completion_requested=True),
-        )
-    ]
-    project_values = [
-        item.text
-        for item in SlashCommandCompleter(
-            "chat",
-            projects=("general", "cleo", "research"),
-        ).get_completions(
-            Document("/project re"),
-            CompleteEvent(completion_requested=True),
-        )
-    ]
-    move_project_values = [
-        item.text
-        for item in SlashCommandCompleter(
-            "chat",
-            projects=("general", "cleo", "research"),
-        ).get_completions(
-            Document("/project move re"),
-            CompleteEvent(completion_requested=True),
-        )
-    ]
+    cli.render_runtime_status("gpt-5.6-sol", usage, accent="magenta")
 
-    assert command_values == {"/cd", "/compact", "/cwd"}
-    assert resume_values == ["agent_saved123"]
-    assert native_values == ["native-thread-1"]
-    assert model_values == ["gpt-5.6-sol"]
-    assert project_values == ["research"]
-    assert move_project_values == ["research"]
-    assert chat_values == {"/rename", "/resume"}
+    rendered = output.getvalue()
+    assert "LIMITS" in rendered
+    assert "5H 75% left" in rendered
+    assert "WEEK 90% left" in rendered
+    assert "CONTEXT" not in rendered
