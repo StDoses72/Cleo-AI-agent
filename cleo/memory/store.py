@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from cleo.memory.compaction import load_validated_compact
-from cleo.memory.paths import memory_database_path, validate_space
+from cleo.memory.paths import memory_database_path, validate_name, validate_space
 
 MEMORY_CATEGORIES = {
     "fact",
@@ -517,6 +517,63 @@ def search_memories(
             scored.append((score + row["importance"] * 0.01, item))
         scored.sort(key=lambda pair: (pair[0], pair[1]["updated_at"]), reverse=True)
         return [item for _, item in scored[:limit]]
+
+
+def get_memory_inventory(
+    *,
+    space: str,
+    project: str | None = None,
+    limit: int = 100,
+    path: Path | None = None,
+) -> dict[str, Any]:
+    """Return counts and recent active memories for a dashboard projection."""
+    space = validate_space(space)
+    project = validate_name(project, "project") if project is not None else None
+    limit = max(1, min(int(limit), 500))
+    ensure_memory_database(space, path)
+    where = "space = ? AND status = 'active'"
+    parameters: list[Any] = [space]
+    if project is not None:
+        where += " AND project = ?"
+        parameters.append(project)
+    with closing(_connect(space, path)) as conn:
+        summary = conn.execute(
+            f"""
+            SELECT COUNT(*) AS active_memory_count,
+                   COUNT(DISTINCT project) AS project_count
+            FROM memory_entries WHERE {where}
+            """,
+            parameters,
+        ).fetchone()
+        project_rows = conn.execute(
+            f"""
+            SELECT project, COUNT(*) AS memory_count, MAX(updated_at) AS updated_at
+            FROM memory_entries WHERE {where}
+            GROUP BY project
+            ORDER BY updated_at DESC, project
+            """,
+            parameters,
+        ).fetchall()
+        rows = conn.execute(
+            f"""
+            SELECT * FROM memory_entries WHERE {where}
+            ORDER BY updated_at DESC, importance DESC LIMIT ?
+            """,
+            [*parameters, limit],
+        ).fetchall()
+        return {
+            "active_memory_count": int(summary["active_memory_count"]),
+            "project_count": int(summary["project_count"]),
+            "projects": [
+                {
+                    "project": row["project"],
+                    "memory_count": int(row["memory_count"]),
+                    "updated_at": row["updated_at"],
+                }
+                for row in project_rows
+            ],
+            "entries": [_row_to_memory(conn, row) for row in rows],
+        }
 
 
 def record_consolidation(

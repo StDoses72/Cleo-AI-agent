@@ -210,6 +210,18 @@ def get_session_source(
         return dict(entry) if entry else None
 
 
+def list_session_sources(
+    space: str,
+    *,
+    path: Path | None = None,
+) -> list[dict[str, Any]]:
+    """Return consolidation source states for memory status projections."""
+    with _STATE_LOCK:
+        state = _load_unlocked(_state_path(space, path))
+        entries = [dict(entry) for entry in state["sources"].values()]
+    return sorted(entries, key=lambda entry: entry.get("last_updated_at") or "", reverse=True)
+
+
 def discard_session_source(
     space: str,
     project: str,

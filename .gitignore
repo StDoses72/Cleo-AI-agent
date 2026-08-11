@@ -3,6 +3,8 @@
 
 __pycache__/
 *.py[cod]
+.pytest_cache/
+.ruff_cache/
 .venv/
 .venv-*/
 
@@ -33,3 +35,13 @@ data/session_artifacts/
 # Temporary test backups created during local validation.
 .codex-test-backup-*/
 .codex-test-tmp-*/
+
+# Cleo desktop UI dependencies and renderer artifacts.
+/ui/node_modules/
+/ui/dist/
+/ui/output/
+/ui/*.tsbuildinfo
+
+# Clean desktop release workspace and final distributables.
+/.release-build/
+/release/

@@ -122,6 +122,7 @@ def _git(cwd: str, *args: str) -> subprocess.CompletedProcess[str]:
     try:
         return subprocess.run(
             ["git", "-C", cwd, *args],
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             encoding="utf-8",

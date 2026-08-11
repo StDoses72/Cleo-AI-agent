@@ -187,7 +187,7 @@ class MemoryGateSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
-    model: str = DEFAULT_MEMORY_GATE_MODEL
+    model: str = Field(default=DEFAULT_MEMORY_GATE_MODEL, min_length=1)
     local_files_only: bool = False
     minimum_similarity: float = Field(default=0.42, ge=-1, le=1)
     run_margin: float = Field(default=0.08, ge=0, le=2)

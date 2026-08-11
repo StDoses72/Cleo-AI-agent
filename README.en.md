@@ -49,10 +49,12 @@ Cleo-AI-agent/
   pyproject.toml                  # Python project metadata and dependencies
   requirements.txt                # Python 3.12/Linux container dependency lock
   scripts/
-    install.ps1                   # Windows per-user installer
-    update.ps1                    # Update an existing Windows installation
-    uninstall.ps1                 # Remove the Windows installation
-  cleo/                           # Single Python application package
+    build-release.ps1             # Clean cross-stack Windows release builder
+    download.ps1                  # Verified Windows desktop downloader/updater
+    uninstall.ps1                 # Remove desktop program files
+  release/                        # Generated Windows app, ZIP, checksum, and manifest
+  ui/                             # Standalone Electron/React desktop client
+  cleo/                           # Python backend application package
     agents/
       cleo.py                     # Foreground Cleo agent
       dream.py                    # Memory-consolidation DreamAgent
@@ -72,6 +74,11 @@ Cleo-AI-agent/
     config/
       settings.py                 # Pydantic settings loader and profile models
       templates/                  # Packaged Cleo and harness config templates
+    desktop/
+      server.py                   # Electron JSONL stdio protocol boundary
+      service.py                  # Desktop use cases backed by core services
+      projection.py               # Canonical backend events to UI data
+      configuration.py            # Local model profile reads and atomic writes
     images/
       startup.py                  # Terminal startup image selection
       portrait.py                 # Rich pixel-art fallback
@@ -108,8 +115,10 @@ Cleo-AI-agent/
     shell_audit.log               # Runtime generated shell tool audit log
   workspace/                      # Optional local workspace inputs/outputs
   docs/
+    README.md                     # Documentation index
     ARCHITECTURE.md
     ARCHITECTURE.en.md
+    BACKEND_CODE_REVIEW.md        # Offline backend review route (Chinese)
     CASTMIND_MEMORY_MIGRATION.md
 ```
 
@@ -131,7 +140,7 @@ persona consolidation, so it is not a surface for untracked manual-only edits.
 
 The startup splash depends on one PNG. For a source checkout, replace
 `cleo/images/assets/cleo-startup.png`. For a standalone installation, replace
-`%LOCALAPPDATA%\Cleo\assets\startup.png`. The updater copies the default only
+`%APPDATA%\Cleo\assets\startup.png`. The packaged app copies the default only
 when this file is missing, so it does not overwrite a customized portrait.
 
 Any image dimensions and aspect ratio are accepted and remain proportional
@@ -152,41 +161,57 @@ read the same PNG, so no generated Python portrait data needs to be rebuilt.
 
 ## Installation
 
-On Windows, run the per-user installer from the repository root. It creates an
-isolated Python runtime under `%LOCALAPPDATA%\Programs\Cleo`, stores
-configuration, sessions, memory, and workspace data under
-`%LOCALAPPDATA%\Cleo`, and places the standalone `cleo` launcher first in the
-user `PATH`. Browser control also installs a pinned `agent-browser` release via
-npm, so Node.js and npm are required during installation. The installer also
-reads `memory_gate.model` from the destination `config/cleo.json`, downloads it,
-and performs an embedding warm-up, so initial installation needs Hugging Face access:
+Windows users download one prebuilt desktop package. Python, Node.js, and npm are
+not required on the target machine. The downloader retrieves the ZIP and SHA256,
+verifies it, then atomically replaces the program directory:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\install.ps1
+.\scripts\download.ps1 -Launch
 ```
 
-To migrate local configuration and runtime data from the current checkout,
-copying only files that are missing at the destination:
+Install the complete desktop package just built in this checkout:
 
 ```powershell
-.\scripts\install.ps1 -MigrateCurrentData
+.\scripts\download.ps1 -PackagePath .\release\Cleo-windows-x64.zip -Launch
 ```
 
-Afterward, run `cleo` from a new terminal. The standalone launcher takes
-precedence even when an editable or source installation is also present.
-Update or uninstall with:
+Run the same command to update. Program files live under
+`%LOCALAPPDATA%\Programs\Cleo`; configuration, sessions, memory, model cache, and
+runtime state live under `%APPDATA%\Cleo` and are not replaced by an update. The
+downloader installs the complete UI plus bundled Python backend to the program directory;
+it does not leave `Cleo.exe` in the Windows Downloads folder.
+Codex authentication and task history remain under `%USERPROFILE%\.codex`.
+
+Use **Settings → Models** in the desktop app to add or update a model profile with
+its provider, model name, API key, optional base URL, and context length, then
+activate it for Cleo and/or DreamAgent. The key is written only to the local Cleo
+configuration; backend reads expose only `hasApiKey`, never the secret itself.
+
+Uninstalling preserves user data by default:
 
 ```powershell
-.\scripts\update.ps1
 .\scripts\uninstall.ps1
 ```
 
-Uninstalling preserves `%LOCALAPPDATA%\Cleo` by default. Use
-`.\scripts\uninstall.ps1 -PurgeData` only when you explicitly want to
-permanently remove all local Cleo configuration, sessions, and memory. Codex
-authentication and task history remain in the Codex-managed user directory and
-are not copied into Cleo's data directory.
+Use the following only when all local Cleo configuration, sessions, and memory
+should be permanently removed:
+
+```powershell
+.\scripts\uninstall.ps1 -PurgeData
+```
+
+Release builds use `scripts/build-release.ps1`. It runs a fresh `npm ci` in a
+isolated temporary directory, downloads a standalone Python runtime with `uv`,
+installs Cleo dependencies from scratch, then creates the ZIP and checksum:
+
+```powershell
+cd ui
+npm run package:portable
+```
+
+Final artifacts always live in the repository-level `release/` directory. `ui/`
+contains only desktop-client source and renderer tests, never the Python backend or release package.
 
 For source development, Python 3.12 or newer is recommended.
 
@@ -206,16 +231,10 @@ Source checkouts also need the browser runtime:
 npm install -g agent-browser@0.33.1
 ```
 
-`agent-browser` prefers an installed Chrome or Edge. If neither is available,
-run `agent-browser install` to download Chrome for Testing. Pass
-`-SkipBrowserInstall` to the Windows install or update script to install Cleo
-without browser control. The Cleo uninstaller leaves the global
-`agent-browser` package in place because other applications may use it.
-
-The model is downloaded during installation or update and reused from the
-Hugging Face user cache at runtime. Pass `-SkipMemoryModelDownload` to finish the
-rest of an offline installation; the first gate run may then download it, and an
-unavailable model fails open to DreamAgent.
+`agent-browser` prefers an installed Chrome or Edge. Desktop releases bundle a
+Node runtime and the pinned `agent-browser` package. Sentence Transformer models
+are downloaded into the user's Cleo model cache according to configuration; an
+unavailable model still fails open to DreamAgent.
 
 `pyproject.toml` is the only manually maintained source for direct dependencies.
 `requirements.txt` is the exact Linux container lock file and should not be edited

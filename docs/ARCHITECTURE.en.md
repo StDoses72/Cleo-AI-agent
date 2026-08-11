@@ -68,21 +68,21 @@ A source checkout keeps the existing behavior: when `cleo/config/settings.py` ca
 see `pyproject.toml` at the source root, relative paths remain rooted at the
 repository.
 
-The Windows `scripts/install.ps1` uses a split layout:
+The Windows desktop download uses a split layout:
 
 ```text
-%LOCALAPPDATA%\Programs\Cleo\   # launcher and isolated Python runtime
-%LOCALAPPDATA%\Cleo\            # config, data, memory, skills, workspace
+%LOCALAPPDATA%\Programs\Cleo\   # Electron app and isolated Python/Node runtimes
+%APPDATA%\Cleo\                 # config, data, memory, models, skills, workspace
 %USERPROFILE%\.codex\           # Codex-managed authentication and task history
 ```
 
-The launcher sets `CLEO_HOME` explicitly. Other packaged environments use the
-`platformdirs` user data directory when `CLEO_HOME` is absent. Docker sets
+The Electron main process sets `CLEO_HOME` explicitly and copies only missing
+files from packaged defaults. Downloads replace only a SHA256-verified program
+directory and never overwrite user data. Docker sets
 `CLEO_HOME=/app` and continues to persist runtime data through volumes.
 Updating does not overwrite existing configuration or user data, and
-uninstalling preserves the data directory by default. Standalone installs
-prefer `%LOCALAPPDATA%\Cleo\assets\startup.png` and fall back to the packaged
-default when that file is absent.
+uninstalling preserves the data directory by default. Source checkouts and
+desktop packages do not depend on each other's data directories.
 
 ## Space And Project
 

@@ -57,19 +57,18 @@ SessionStore
 源码 checkout 保持现有行为：当 `cleo/config/settings.py` 能在源码根目录看到
 `pyproject.toml` 时，相对目录仍以仓库根目录为基准。
 
-Windows 的 `scripts/install.ps1` 使用分离布局：
+Windows 桌面下载包使用分离布局：
 
 ```text
-%LOCALAPPDATA%\Programs\Cleo\   # launcher 与独立 Python runtime
-%LOCALAPPDATA%\Cleo\            # config、data、memory、skills、workspace
+%LOCALAPPDATA%\Programs\Cleo\   # Electron 应用、独立 Python/Node runtime
+%APPDATA%\Cleo\                 # config、data、memory、models、skills、workspace
 %USERPROFILE%\.codex\           # Codex 自己管理的认证与 task 历史
 ```
 
-launcher 通过 `CLEO_HOME` 明确指定数据根目录。其他打包环境未设置
-`CLEO_HOME` 时使用 `platformdirs` 的用户数据目录；Docker 显式设置
+Electron 主进程通过 `CLEO_HOME` 明确指定数据根目录，并从包内 defaults 只补齐缺失文件。
+下载更新只替换经过 SHA256 校验的程序目录，不覆盖用户数据；Docker 显式设置
 `CLEO_HOME=/app`，并继续通过 volume 持久化运行数据。升级程序不会覆盖已有配置
-或用户数据，卸载默认也保留数据目录。独立安装版优先读取
-`%LOCALAPPDATA%\Cleo\assets\startup.png`；缺失时回退到包内默认图片。
+或用户数据，卸载默认也保留数据目录。源码 checkout 与桌面包的数据目录互不耦合。
 
 ## Space 与 Project
 
