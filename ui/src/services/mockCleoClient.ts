@@ -1,8 +1,11 @@
 import type {
   CleoClient,
   Attachment,
+  CreateThreadOptions,
   ModelProfileInput,
   ModelSettings,
+  ProductivityModelCatalog,
+  RuntimeCatalog,
   MemoryReviewAction,
   MemoryReviewSource,
   RuntimeProfile,
@@ -25,8 +28,18 @@ export class MockCleoClient implements CleoClient {
     return clone(snapshot);
   }
 
-  async createThread(space: ThreadSpace, projectId: string, _projectPath?: string): Promise<Thread> {
+  async createThread(
+    space: ThreadSpace,
+    projectId: string,
+    options: CreateThreadOptions = {},
+  ): Promise<Thread> {
     await delay(180);
+    const selectedProfile = options.profileId ?? "deepseek-flash";
+    const chatModels: Record<string, string> = {
+      "deepseek-flash": "deepseek-v4-flash",
+      kimi: "kimi-k3",
+      chatgpt: "gpt-5.4-mini",
+    };
     return {
       id: `draft-${Date.now()}`,
       space,
@@ -38,6 +51,24 @@ export class MockCleoClient implements CleoClient {
       items: [],
       changes: [],
       usage: { used: 0, limit: 128000, input: 0, output: 0 },
+      runtime: space === "chat"
+        ? {
+            profileId: selectedProfile,
+            provider: "openai",
+            model: chatModels[selectedProfile] ?? selectedProfile,
+            effort: "高",
+            access: "workspace-write",
+            approval: "Cleo 工具策略",
+            editable: true,
+          }
+        : {
+            provider: options.provider ?? "codex",
+            model: options.model ?? "gpt-5.6-sol",
+            effort: "高",
+            access: "workspace-write",
+            approval: "auto_review",
+            editable: true,
+          },
     };
   }
 
@@ -194,6 +225,43 @@ export class MockCleoClient implements CleoClient {
       activeAgent: "demo",
       activeDreamAgent: "demo",
     };
+  }
+
+  async getRuntimeCatalog(): Promise<RuntimeCatalog> {
+    await delay(120);
+    return {
+      nonProductivityProfiles: [
+        { id: "deepseek-flash", provider: "openai", model: "deepseek-v4-flash", maxTokens: 100000, active: true },
+        { id: "kimi", provider: "openai", model: "kimi-k3", maxTokens: 100000, active: false },
+        { id: "chatgpt", provider: "openai", model: "gpt-5.4-mini", maxTokens: 100000, active: false },
+      ],
+      productivityProviders: [
+        { id: "codex", type: "codex_sdk", defaultModel: "gpt-5.6-sol", modelSource: "dynamic" },
+        { id: "claude", type: "claude_sdk", defaultModel: "claude-sonnet-4-5", modelSource: "config" },
+      ],
+      defaultNonProductivityProfile: "deepseek-flash",
+      defaultProductivityProvider: "codex",
+    };
+  }
+
+  async getProductivityModels(provider: string): Promise<ProductivityModelCatalog> {
+    await delay(260);
+    return provider === "claude"
+      ? {
+          provider,
+          source: "config",
+          models: [
+            { id: "claude-sonnet-4-5", label: "Claude Sonnet 4.5", description: "Configured model", isDefault: true, defaultEffort: null, supportedEfforts: [] },
+          ],
+        }
+      : {
+          provider,
+          source: "sdk",
+          models: [
+            { id: "gpt-5.6-sol", label: "GPT-5.6-Sol", description: "Frontier coding model", isDefault: true, defaultEffort: "medium", supportedEfforts: ["low", "medium", "high"] },
+            { id: "gpt-5.6-terra", label: "GPT-5.6-Terra", description: "Balanced coding model", isDefault: false, defaultEffort: "medium", supportedEfforts: ["low", "medium", "high"] },
+          ],
+        };
   }
 
   async saveModelProfile(profile: ModelProfileInput): Promise<ModelSettings> {

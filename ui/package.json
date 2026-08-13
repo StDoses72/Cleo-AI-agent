@@ -9,6 +9,7 @@
     "start": "npm run build && electron .",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
+    "test:backend": "node --test electron/backend.test.mjs",
     "package:portable": "powershell -ExecutionPolicy Bypass -File ../scripts/build-release.ps1",
     "smoke": "npm run build && node scripts/smoke.mjs",
     "smoke:real": "npm run build && node scripts/smoke-real.mjs",

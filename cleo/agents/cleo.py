@@ -19,7 +19,7 @@ from cleo.agents.tools.memory_tools import (
     create_project_memory_search_tool,
 )
 from cleo.agents.tools.shell_tools import run_shell_command
-from cleo.config.settings import settings
+from cleo.config.settings import AgentProfile, settings
 from cleo.memory.paths import DEFAULT_MEMORY_SPACE
 from cleo.memory.persona import render_persona_markdown
 from cleo.runtime.usage import ContextWindowUsage
@@ -106,6 +106,7 @@ class Agent:
         system_prompt: str = SYSTEM_PROMPT,
         project: str = "general",
         space: str = DEFAULT_MEMORY_SPACE,
+        profile: AgentProfile | None = None,
     ) -> None:
         """初始化模型、backend、工具列表与 deepagent 图。
 
@@ -117,6 +118,7 @@ class Agent:
             space: 记忆空间名; 来自 CLI runtime 的当前 space,
                 默认 DEFAULT_MEMORY_SPACE。
         """
+        selected_profile = profile or active_profile
         self.root_dir = settings.active_directory_profile.root_path
         self.persona_path = settings.PERSONA_PATH
         try:
@@ -132,9 +134,9 @@ class Agent:
         persona_memory_path = f"/{persona_relative_path.as_posix()}"
         self.project = project
         self.space = space
-        self.model_name = active_profile.model
+        self.model_name = selected_profile.model
         self.context_usage = ContextWindowUsage(
-            window_tokens=active_profile.max_tokens,
+            window_tokens=selected_profile.max_tokens,
         )
         self.backend = FilesystemBackend(
             root_dir=str(self.root_dir),
@@ -150,11 +152,11 @@ class Agent:
         ]
         self.deepagent = create_deep_agent(
             model=init_chat_model(
-                model=active_profile.model,
-                model_provider=active_profile.provider,
-                api_key=active_profile.api_key.get_secret_value(),
-                temperature=active_profile.temperature,
-                base_url=active_profile.base_url,
+                model=selected_profile.model,
+                model_provider=selected_profile.provider,
+                api_key=selected_profile.api_key.get_secret_value(),
+                temperature=selected_profile.temperature,
+                base_url=selected_profile.base_url,
             ),
             checkpointer=InMemorySaver(),
             system_prompt=system_prompt,

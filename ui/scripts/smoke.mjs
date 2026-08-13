@@ -54,6 +54,14 @@ try {
   await window.getByTestId("choose-workspace").waitFor();
   await window.locator(".project-picker").click();
 
+  await window.getByRole("button", { name: "对话", exact: true }).click();
+  await window.getByRole("heading", { name: "对话", exact: true }).waitFor();
+  await window.getByTestId("new-thread").click();
+  await window.getByText("从一个清晰的目标开始。").waitFor();
+  await window.getByTestId("runtime-selector").click();
+  await window.getByText("gpt-5.4-mini", { exact: true }).click();
+  await window.getByTestId("runtime-selector").getByText("gpt-5.4-mini", { exact: true }).waitFor();
+
   await window.getByRole("button", { name: "记忆", exact: true }).click();
   await window.getByTestId("memory-view").waitFor();
   await window.getByText("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2").waitFor();
@@ -76,6 +84,12 @@ try {
   await window.getByTestId("conversation").waitFor();
   await window.getByTestId("new-thread").click();
   await window.getByText("从一个清晰的目标开始。").waitFor();
+  await window.getByTestId("runtime-selector").click();
+  await window.getByText("codex", { exact: true }).click();
+  await window.getByText("GPT-5.6-Terra", { exact: true }).waitFor();
+  await window.screenshot({ path: join(outputDir, "03-runtime-selector.png") });
+  await window.getByText("GPT-5.6-Terra", { exact: true }).click();
+  await window.getByTestId("runtime-selector").getByText("gpt-5.6-terra", { exact: true }).waitFor();
   await window.screenshot({ path: join(outputDir, "03-new-thread.png") });
 
   await window.getByTestId("composer-input").fill("检查当前 mock 边界并完成一次可见的运行");

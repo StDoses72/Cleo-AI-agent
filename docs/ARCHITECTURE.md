@@ -61,7 +61,7 @@ Windows 桌面下载包使用分离布局：
 
 ```text
 %LOCALAPPDATA%\Programs\Cleo\   # Electron 应用、独立 Python/Node runtime
-%APPDATA%\Cleo\                 # config、data、memory、models、skills、workspace
+%LOCALAPPDATA%\Cleo\            # config、data、memory、models、skills、workspace
 %USERPROFILE%\.codex\           # Codex 自己管理的认证与 task 历史
 ```
 

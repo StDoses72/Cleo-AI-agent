@@ -15,6 +15,8 @@ const allowedMethods = new Set([
   "update_runtime",
   "get_config_templates",
   "get_model_settings",
+  "get_runtime_catalog",
+  "get_productivity_models",
   "save_model_profile",
   "review_memory_source",
   "reset_workspace",

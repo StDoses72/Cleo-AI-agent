@@ -120,7 +120,7 @@ export function App() {
 
   if (!workspace.snapshot) return <LoadingScreen error={workspace.loadingError} />;
 
-  const activeRuntime = workspace.activeThread?.runtime ?? workspace.snapshot.runtime;
+  const activeRuntime = workspace.activeThread?.runtime ?? workspace.draftRuntime;
   const showInspector = inspectorOpen && workspace.activeSpace !== "memory";
   const appClasses = [
     "app-shell",
@@ -167,8 +167,13 @@ export function App() {
         <Conversation
           thread={workspace.activeThread}
           project={workspace.activeProject}
+          space={workspace.activeSpace === "chat" ? "chat" : "productivity"}
           runtime={activeRuntime}
-          running={workspace.runningThreadId === workspace.activeThreadId}
+          runtimeCatalog={workspace.runtimeCatalog}
+          productivityModels={workspace.productivityModels}
+          runtimeModelsLoading={workspace.runtimeModelsLoading}
+          runtimeModelsError={workspace.runtimeModelsError}
+          running={workspace.runningThreadId !== null && workspace.runningThreadId === workspace.activeThreadId}
           sidebarCollapsed={sidebarCollapsed}
           inspectorOpen={showInspector}
           onToggleSidebar={() => setSidebarCollapsed((collapsed) => !collapsed)}
@@ -176,7 +181,13 @@ export function App() {
           onOpenCommand={() => setCommandOpen(true)}
           onSend={(prompt) => void workspace.sendPrompt(prompt)}
           onCancel={workspace.cancelRun}
-          onModelChange={(model) => workspace.updateRuntime({ model })}
+          onSelectNonProductivityProfile={(profileId) => {
+            void workspace.selectNonProductivityProfile(profileId).catch(
+              (error: unknown) => notify(error instanceof Error ? error.message : "无法切换模型"),
+            );
+          }}
+          onLoadProductivityModels={workspace.loadProductivityModels}
+          onSelectProductivityRuntime={workspace.selectProductivityRuntime}
           onEffortChange={(effort) => workspace.updateRuntime({ effort })}
           attachments={workspace.attachments}
           onPickAttachments={() => void workspace.pickAttachments()}

@@ -24,6 +24,7 @@ $temporaryRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
     "cleo-download-" + [guid]::NewGuid().ToString("N")
 )
 $downloadedArchive = Join-Path $temporaryRoot "Cleo-windows-x64.zip"
+$downloadedChecksum = Join-Path $temporaryRoot "Cleo-windows-x64.sha256"
 $extractRoot = Join-Path $temporaryRoot "extract"
 $backupRoot = Join-Path $installParent (".cleo-backup-" + [guid]::NewGuid().ToString("N"))
 
@@ -68,9 +69,9 @@ try {
         $archiveUrl = "$releaseBase/Cleo-windows-x64.zip"
         $checksumUrl = "$releaseBase/Cleo-windows-x64.sha256"
         Write-Host "Downloading $archiveUrl"
-        Invoke-WebRequest -Uri $archiveUrl -OutFile $downloadedArchive
-        $checksumResponse = Invoke-WebRequest -Uri $checksumUrl
-        $Sha256 = (($checksumResponse.Content.Trim()) -split "\s+")[0]
+        Invoke-WebRequest -UseBasicParsing -Uri $archiveUrl -OutFile $downloadedArchive
+        Invoke-WebRequest -UseBasicParsing -Uri $checksumUrl -OutFile $downloadedChecksum
+        $Sha256 = (((Get-Content -LiteralPath $downloadedChecksum -Raw).Trim()) -split "\s+")[0]
     }
 
     if (-not $Sha256 -or $Sha256 -notmatch "^[a-fA-F0-9]{64}$") {

@@ -1,5 +1,13 @@
 import { spawn } from "node:child_process";
-import { copyFileSync, cpSync, existsSync, mkdirSync } from "node:fs";
+import {
+  copyFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
 import { createInterface } from "node:readline";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -110,10 +118,13 @@ export class BackendBridge {
       const sourceRoot = resolve(this.here, "../..");
       return { backendRoot: sourceRoot, cleoHome: sourceRoot };
     }
-    const cleoHome = process.env.CLEO_HOME || this.app.getPath("userData");
+    const electronUserData = this.app.getPath("userData");
+    const cleoHome = process.env.CLEO_HOME
+      || (process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, "Cleo") : electronUserData);
     return {
       backendRoot: process.resourcesPath,
       cleoHome,
+      legacyCleoHome: process.env.CLEO_HOME ? null : electronUserData,
       python: join(process.resourcesPath, "python", "python.exe"),
       defaultsRoot: join(process.resourcesPath, "defaults"),
       browserRoot: join(process.resourcesPath, "browser"),
@@ -125,6 +136,7 @@ export class BackendBridge {
 
   prepareHome(paths) {
     if (!paths.defaultsRoot) return;
+    this.migrateLegacyHome(paths);
     for (const directory of ["assets", "config", "data", "memory", "skills", "workspace", "models"]) {
       mkdirSync(join(paths.cleoHome, directory), { recursive: true });
     }
@@ -147,6 +159,59 @@ export class BackendBridge {
         errorOnExist: false,
       });
     }
+  }
+
+  migrateLegacyHome(paths) {
+    const legacy = paths.legacyCleoHome;
+    if (!legacy || resolve(legacy) === resolve(paths.cleoHome) || !existsSync(legacy)) return;
+    const marker = join(paths.cleoHome, ".desktop-home-migrated-v1");
+    if (existsSync(marker)) return;
+
+    mkdirSync(paths.cleoHome, { recursive: true });
+    for (const name of ["assets", "config", "data", "memory", "skills", "workspace", "models", "PERSONA.md"]) {
+      const source = join(legacy, name);
+      if (!existsSync(source)) continue;
+      cpSync(source, join(paths.cleoHome, name), {
+        recursive: true,
+        force: false,
+        errorOnExist: false,
+      });
+    }
+    this.mergeNamedConfig(
+      join(legacy, "config", "cleo.json"),
+      join(paths.cleoHome, "config", "cleo.json"),
+      ["profiles", "agents"],
+    );
+    this.mergeNamedConfig(
+      join(legacy, "config", "harnesses.json"),
+      join(paths.cleoHome, "config", "harnesses.json"),
+      ["providers"],
+    );
+    writeFileSync(marker, `${new Date().toISOString()}\n`, "utf8");
+  }
+
+  mergeNamedConfig(source, destination, sectionPath) {
+    if (!existsSync(source) || !existsSync(destination)) return;
+    const incoming = JSON.parse(readFileSync(source, "utf8"));
+    const current = JSON.parse(readFileSync(destination, "utf8"));
+    let sourceSection = incoming;
+    let targetSection = current;
+    for (const key of sectionPath) {
+      sourceSection = sourceSection?.[key];
+      targetSection[key] ||= {};
+      targetSection = targetSection[key];
+    }
+    if (!sourceSection || typeof sourceSection !== "object") return;
+    let changed = false;
+    for (const [name, value] of Object.entries(sourceSection)) {
+      if (Object.hasOwn(targetSection, name)) continue;
+      targetSection[name] = value;
+      changed = true;
+    }
+    if (!changed) return;
+    const temporary = `${destination}.${randomUUID()}.tmp`;
+    writeFileSync(temporary, `${JSON.stringify(current, null, 2)}\n`, "utf8");
+    renameSync(temporary, destination);
   }
 
   debug(message) {

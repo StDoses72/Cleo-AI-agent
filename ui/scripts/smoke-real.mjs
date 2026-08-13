@@ -34,6 +34,9 @@ try {
   }
   await window.getByRole("button", { name: "对话", exact: true }).click();
   await window.getByTestId("new-thread").click();
+  await window.getByTestId("runtime-selector").click();
+  await window.getByText("gpt-5.4-mini", { exact: true }).waitFor();
+  await window.getByTestId("runtime-selector").click();
   const composer = window.getByTestId("composer-input");
   await composer.fill("/");
   await window.getByTestId("slash-menu").waitFor();

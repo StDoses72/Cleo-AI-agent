@@ -408,12 +408,14 @@ class HarnessProviderSettings(BaseModel):
             决定是否注册进 AgentAdapter。
         model: 默认模型覆盖;消费方: factory.py 构造 provider 及
             cleo/cli/productivity.py:562 的 --model 缺省值。
+        models: provider 未暴露模型枚举接口时，由用户显式声明的可选模型。
     """
 
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
     model: str | None = Field(default=None, min_length=1)
+    models: list[str] = Field(default_factory=list)
 
 
 class CodexHarnessOptions(BaseModel):

@@ -23,6 +23,7 @@ from cleo.desktop.projection import (
     stream_event_item,
     timeline_from_events,
 )
+from cleo.harnesses.control import HarnessModel
 from cleo.integrations.git import inspect_git_status, read_git_diff
 from cleo.memory.overview import build_memory_overview
 from cleo.memory.paths import memory_state_path
@@ -210,6 +211,7 @@ class DesktopService:
         project_id_value: str,
         provider: str | None = None,
         model: str | None = None,
+        profile_id: str | None = None,
         project_path: str | None = None,
     ) -> dict[str, Any]:
         selected_path: str | None = None
@@ -234,6 +236,12 @@ class DesktopService:
                 provider="cleo",
                 owner_type="user",
                 cwd=str(self.settings.active_directory_profile.root_path),
+            )
+            selected_profile = profile_id or self._active_agent_profile_id()
+            self._agent_profile(selected_profile)
+            manifest = self.store.update_manifest(
+                thread_id,
+                runtime_options={"agent_profile": selected_profile},
             )
         else:
             adapter = self._adapter()
@@ -306,7 +314,22 @@ class DesktopService:
     ) -> dict[str, Any]:
         manifest = self.store.load_manifest(thread_id)
         if manifest["space"] != "productivity":
-            return self._runtime_profile(manifest)
+            if "profileId" not in update:
+                return self._runtime_profile(manifest)
+            profile_id = str(update["profileId"])
+            self._agent_profile(profile_id)
+            current = (
+                manifest.get("runtime_options")
+                if isinstance(manifest.get("runtime_options"), dict)
+                else {}
+            )
+            self.store.update_manifest(
+                thread_id,
+                runtime_options={**current, "agent_profile": profile_id},
+            )
+            self._chat_agents.pop(thread_id, None)
+            self._chat_agents_restored.discard(thread_id)
+            return self._runtime_profile(self.store.load_manifest(thread_id))
         await self._ensure_productivity_session(manifest)
         options: dict[str, Any] = {}
         if "model" in update:
@@ -332,6 +355,86 @@ class DesktopService:
 
     async def get_model_settings(self) -> dict[str, Any]:
         return read_model_settings(self.settings.PROFILE_DIR)
+
+    async def get_runtime_catalog(self) -> dict[str, Any]:
+        registered = set(self._adapter().providers)
+        profiles = [
+            {
+                "id": name,
+                "provider": profile.provider,
+                "model": profile.model,
+                "maxTokens": profile.max_tokens,
+                "active": name == self._active_agent_profile_id(),
+            }
+            for name, profile in sorted(self._agent_profiles().items())
+        ]
+        providers = []
+        for name, provider in self.settings.productivity.providers.items():
+            if not provider.enabled or name not in registered:
+                continue
+            dynamic = provider.type == "codex_sdk" or (
+                provider.type == "acp" and bool(provider.options.model_config_id)
+            )
+            providers.append(
+                {
+                    "id": name,
+                    "type": provider.type,
+                    "defaultModel": provider.model,
+                    "modelSource": "dynamic" if dynamic else "config",
+                }
+            )
+        return {
+            "nonProductivityProfiles": profiles,
+            "productivityProviders": providers,
+            "defaultNonProductivityProfile": self._active_agent_profile_id(),
+            "defaultProductivityProvider": self.settings.productivity.default_provider,
+        }
+
+    async def get_productivity_models(
+        self,
+        *,
+        provider: str,
+        project_path: str | None = None,
+    ) -> dict[str, Any]:
+        provider_settings = self.settings.productivity.provider(provider)
+        if not provider_settings.enabled or provider not in self._adapter().providers:
+            raise ValueError(f"Productivity provider is not available: {provider}")
+
+        dynamic = provider_settings.type == "codex_sdk" or (
+            provider_settings.type == "acp" and bool(provider_settings.options.model_config_id)
+        )
+        if dynamic:
+            if provider_settings.type == "acp":
+                control = self._adapter().provider_control(provider)
+                models = await control.list_models(
+                    project_path
+                    or str(self.settings.active_directory_profile.root_path)
+                )
+                source = "acp"
+            else:
+                models = await self._adapter().list_models(provider)
+                source = "sdk"
+        else:
+            identifiers = list(
+                dict.fromkeys(
+                    [
+                        *([provider_settings.model] if provider_settings.model else []),
+                        *provider_settings.models,
+                    ]
+                )
+            )
+            models = tuple(
+                self._configured_harness_model(identifier, provider_settings.model)
+                for identifier in identifiers
+            )
+            source = "config"
+        if not models:
+            raise ValueError(f"Provider {provider!r} did not expose any selectable models.")
+        return {
+            "provider": provider,
+            "source": source,
+            "models": [self._harness_model(model) for model in models],
+        }
 
     async def save_model_profile(self, *, profile: dict[str, Any]) -> dict[str, Any]:
         return save_model_profile(self.settings.PROFILE_DIR, profile)
@@ -370,7 +473,11 @@ class DesktopService:
     ) -> None:
         agent = self._chat_agents.get(manifest["id"])
         if agent is None:
-            agent = self._new_agent(project=manifest["project"], space=manifest["space"])
+            agent = self._new_agent(
+                project=manifest["project"],
+                space=manifest["space"],
+                profile=self._chat_profile(manifest),
+            )
             self._chat_agents[manifest["id"]] = agent
         loaded = None
         if manifest["id"] not in self._chat_agents_restored:
@@ -736,11 +843,18 @@ class DesktopService:
 
     def _runtime_profile(self, manifest: dict[str, Any] | None) -> dict[str, Any]:
         if manifest is None or manifest.get("space") == "non_productivity":
-            profile = self.settings.active_agent_profile
+            options = (
+                manifest.get("runtime_options")
+                if manifest is not None and isinstance(manifest.get("runtime_options"), dict)
+                else {}
+            )
+            profile_id = str(options.get("agent_profile") or self._active_agent_profile_id())
+            profile = self._agent_profile(profile_id)
             return {
+                "profileId": profile_id,
                 "provider": profile.provider,
                 "model": profile.model,
-                "models": [profile.model],
+                "models": [item.model for item in self._agent_profiles().values()],
                 "effort": "高",
                 "access": str(self.settings.active_shell_profile.sandbox_root),
                 "approval": "Cleo 工具策略",
@@ -773,6 +887,54 @@ class DesktopService:
             ),
             "contextWindow": 128_000,
             "editable": True,
+        }
+
+    def _agent_profiles(self) -> dict[str, Any]:
+        registry = getattr(getattr(self.settings, "profiles", None), "agents", None)
+        if isinstance(registry, dict) and registry:
+            return registry
+        return {self._active_agent_profile_id(): self.settings.active_agent_profile}
+
+    def _active_agent_profile_id(self) -> str:
+        active = getattr(getattr(self.settings, "active_profiles", None), "agent", None)
+        return str(active or "active")
+
+    def _agent_profile(self, profile_id: str) -> Any:
+        profile = self._agent_profiles().get(profile_id)
+        if profile is None:
+            raise ValueError(f"Unknown non-productivity model profile: {profile_id}")
+        return profile
+
+    def _chat_profile(self, manifest: dict[str, Any]) -> Any:
+        options = (
+            manifest.get("runtime_options")
+            if isinstance(manifest.get("runtime_options"), dict)
+            else {}
+        )
+        return self._agent_profile(
+            str(options.get("agent_profile") or self._active_agent_profile_id())
+        )
+
+    @staticmethod
+    def _configured_harness_model(identifier: str, default_model: str | None) -> HarnessModel:
+        return HarnessModel(
+            id=identifier,
+            display_name=identifier,
+            description="Configured in harnesses.json",
+            is_default=identifier == default_model,
+            default_effort=None,
+            supported_efforts=(),
+        )
+
+    @staticmethod
+    def _harness_model(model: HarnessModel) -> dict[str, Any]:
+        return {
+            "id": model.id,
+            "label": model.display_name,
+            "description": model.description,
+            "isDefault": model.is_default,
+            "defaultEffort": model.default_effort,
+            "supportedEfforts": list(model.supported_efforts),
         }
 
     async def _ensure_productivity_session(self, manifest: dict[str, Any]) -> Any:

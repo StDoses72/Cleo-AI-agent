@@ -6,6 +6,8 @@ import type {
   ModelSettings,
   MemoryReviewAction,
   MemoryReviewSource,
+  ProductivityModelCatalog,
+  RuntimeCatalog,
   RuntimeProfile,
   Thread,
   ThreadSpace,
@@ -28,15 +30,29 @@ export function useCleoWorkspace() {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [modelSettings, setModelSettings] = useState<ModelSettings | null>(null);
   const [modelSettingsLoading, setModelSettingsLoading] = useState(false);
+  const [runtimeCatalog, setRuntimeCatalog] = useState<RuntimeCatalog | null>(null);
+  const [productivityModels, setProductivityModels] = useState<Record<string, ProductivityModelCatalog>>({});
+  const [runtimeModelsLoading, setRuntimeModelsLoading] = useState<string | null>(null);
+  const [runtimeModelsError, setRuntimeModelsError] = useState<string | null>(null);
+  const [draftProfileId, setDraftProfileId] = useState("");
+  const [draftProvider, setDraftProvider] = useState("");
+  const [draftModel, setDraftModel] = useState("");
   const generationRef = useRef(0);
 
   useEffect(() => {
     let active = true;
-    cleoClient
-      .loadWorkspace()
-      .then((loaded) => {
+    Promise.all([cleoClient.loadWorkspace(), cleoClient.getRuntimeCatalog()])
+      .then(([loaded, catalog]) => {
         if (!active) return;
         setSnapshot(loaded);
+        setRuntimeCatalog(catalog);
+        setDraftProfileId(catalog.defaultNonProductivityProfile);
+        setDraftProvider(catalog.defaultProductivityProvider);
+        setDraftModel(
+          catalog.productivityProviders.find(
+            (provider) => provider.id === catalog.defaultProductivityProvider,
+          )?.defaultModel ?? "",
+        );
         const initialThread = loaded.threads.find(
           (thread) => thread.id === loaded.activeThreadId,
         ) ?? loaded.threads[0];
@@ -70,6 +86,35 @@ export function useCleoWorkspace() {
     () => snapshot?.projects.find((project) => project.id === activeProjectId) ?? null,
     [activeProjectId, snapshot],
   );
+  const draftRuntime = useMemo<RuntimeProfile>(() => {
+    if (activeSpace === "chat") {
+      const profile = runtimeCatalog?.nonProductivityProfiles.find(
+        (candidate) => candidate.id === draftProfileId,
+      ) ?? runtimeCatalog?.nonProductivityProfiles[0];
+      return {
+        profileId: profile?.id,
+        provider: profile?.provider ?? "Cleo",
+        model: profile?.model ?? "选择模型",
+        effort: "高",
+        access: "workspace-write",
+        approval: "Cleo 工具策略",
+        contextWindow: profile?.maxTokens,
+        editable: false,
+      };
+    }
+    const provider = runtimeCatalog?.productivityProviders.find(
+      (candidate) => candidate.id === draftProvider,
+    );
+    return {
+      provider: (provider?.id ?? draftProvider) || "选择 SDK / ACP",
+      model: draftModel || provider?.defaultModel || "选择模型",
+      effort: "高",
+      access: "workspace-write",
+      approval: "default",
+      contextWindow: 128000,
+      editable: false,
+    };
+  }, [activeSpace, draftModel, draftProfileId, draftProvider, runtimeCatalog]);
 
   const updateThread = (threadId: string, update: (thread: Thread) => Thread) => {
     setSnapshot((current) =>
@@ -120,12 +165,33 @@ export function useCleoWorkspace() {
     setActiveThreadId(threadId);
   };
 
+  const startNewThread = () => {
+    if (activeThread?.space === "chat" && activeThread.runtime?.profileId) {
+      setDraftProfileId(activeThread.runtime.profileId);
+    }
+    if (activeThread?.space === "productivity") {
+      setDraftProvider(activeThread.runtime?.provider ?? draftProvider);
+      setDraftModel(activeThread.runtime?.model ?? draftModel);
+    }
+    setActiveThreadId(null);
+  };
+
   const createThread = async () => {
     const space: ThreadSpace = activeSpace === "chat" ? "chat" : "productivity";
     const projectId =
       snapshot?.projects.find((project) => project.id === activeProjectId && project.space === space)
         ?.id ?? snapshot?.projects.find((project) => project.space === space)?.id ?? activeProjectId;
-    const thread = await cleoClient.createThread(space, projectId);
+    const thread = await cleoClient.createThread(
+      space,
+      projectId,
+      space === "chat"
+        ? { profileId: draftProfileId || runtimeCatalog?.defaultNonProductivityProfile }
+        : {
+            projectPath: activeProject?.path,
+            provider: draftProvider || runtimeCatalog?.defaultProductivityProvider,
+            model: draftModel || undefined,
+          },
+    );
     setSnapshot((current) =>
       current ? { ...current, threads: [thread, ...current.threads] } : current,
     );
@@ -136,13 +202,25 @@ export function useCleoWorkspace() {
   const chooseWorkspace = async () => {
     const projectPath = await cleoClient.pickWorkspace();
     if (!projectPath) return null;
-    const thread = await cleoClient.createThread("productivity", "", projectPath);
-    const refreshed = await cleoClient.loadWorkspace();
-    setSnapshot(refreshed);
+    const name = projectPath.split(/[\\/]/).filter(Boolean).at(-1) ?? "workspace";
+    const projectId = `productivity:${name}`;
+    setSnapshot((current) => current
+      ? {
+          ...current,
+          projects: current.projects.some((project) => project.id === projectId)
+            ? current.projects.map((project) =>
+                project.id === projectId ? { ...project, name, path: projectPath } : project,
+              )
+            : [
+                ...current.projects,
+                { id: projectId, space: "productivity", name, path: projectPath, accent: "#75c9d6" },
+              ],
+        }
+      : current);
     setActiveSpace("productivity");
-    setActiveProjectId(thread.projectId);
-    setActiveThreadId(thread.id);
-    return thread;
+    setActiveProjectId(projectId);
+    setActiveThreadId(null);
+    return projectPath;
   };
 
   const sendPrompt = async (rawPrompt: string) => {
@@ -304,6 +382,50 @@ export function useCleoWorkspace() {
       });
   };
 
+  const selectNonProductivityProfile = async (profileId: string) => {
+    setDraftProfileId(profileId);
+    if (activeSpace !== "chat" || !activeThreadId) return;
+    const runtime = await cleoClient.updateRuntime(activeThreadId, { profileId });
+    setSnapshot((current) => current
+      ? {
+          ...current,
+          runtime,
+          threads: current.threads.map((thread) =>
+            thread.id === activeThreadId ? { ...thread, runtime } : thread),
+        }
+      : current);
+  };
+
+  const loadProductivityModels = async (provider: string) => {
+    const cached = productivityModels[provider];
+    if (cached) return cached;
+    setRuntimeModelsLoading(provider);
+    setRuntimeModelsError(null);
+    try {
+      const loaded = await cleoClient.getProductivityModels(provider, activeProject?.path);
+      setProductivityModels((current) => ({ ...current, [provider]: loaded }));
+      return loaded;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "无法读取模型列表";
+      setRuntimeModelsError(message);
+      throw error;
+    } finally {
+      setRuntimeModelsLoading(null);
+    }
+  };
+
+  const selectProductivityRuntime = (provider: string, model: string) => {
+    setDraftProvider(provider);
+    setDraftModel(model);
+    if (
+      activeThread?.space === "productivity"
+      && activeThread.runtime?.provider === provider
+      && activeThread.runtime?.model === model
+    ) return;
+    setActiveSpace("productivity");
+    setActiveThreadId(null);
+  };
+
   const pickAttachments = async () => {
     const selected = await cleoClient.pickAttachments();
     setAttachments((current) => [...current, ...selected]);
@@ -339,8 +461,12 @@ export function useCleoWorkspace() {
     try {
       const saved = await cleoClient.saveModelProfile(profile);
       setModelSettings(saved);
-      const refreshed = await cleoClient.loadWorkspace();
+      const [refreshed, catalog] = await Promise.all([
+        cleoClient.loadWorkspace(),
+        cleoClient.getRuntimeCatalog(),
+      ]);
       setSnapshot(refreshed);
+      setRuntimeCatalog(catalog);
       return saved;
     } finally {
       setModelSettingsLoading(false);
@@ -364,17 +490,25 @@ export function useCleoWorkspace() {
     activeThread,
     activeThreadId,
     runningThreadId,
+    draftRuntime,
     attachments,
     modelSettings,
     modelSettingsLoading,
+    runtimeCatalog,
+    productivityModels,
+    runtimeModelsLoading,
+    runtimeModelsError,
     selectSpace,
     selectProject,
     selectThread,
-    createThread,
+    createThread: startNewThread,
     chooseWorkspace,
     sendPrompt,
     cancelRun,
     updateRuntime,
+    selectNonProductivityProfile,
+    loadProductivityModels,
+    selectProductivityRuntime,
     pickAttachments,
     removeAttachment,
     copyText,

@@ -72,7 +72,7 @@ The Windows desktop download uses a split layout:
 
 ```text
 %LOCALAPPDATA%\Programs\Cleo\   # Electron app and isolated Python/Node runtimes
-%APPDATA%\Cleo\                 # config, data, memory, models, skills, workspace
+%LOCALAPPDATA%\Cleo\            # config, data, memory, models, skills, workspace
 %USERPROFILE%\.codex\           # Codex-managed authentication and task history
 ```
 

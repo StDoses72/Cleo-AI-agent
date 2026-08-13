@@ -100,6 +100,7 @@ export interface MemoryEntry {
 }
 
 export interface RuntimeProfile {
+  profileId?: string;
   provider: string;
   model: string;
   models?: string[];
@@ -108,6 +109,52 @@ export interface RuntimeProfile {
   approval: string;
   contextWindow?: number;
   editable?: boolean;
+}
+
+export interface RuntimeModelOption {
+  id: string;
+  label: string;
+  description: string;
+  isDefault: boolean;
+  defaultEffort: string | null;
+  supportedEfforts: string[];
+}
+
+export interface NonProductivityProfileOption {
+  id: string;
+  provider: string;
+  model: string;
+  maxTokens: number;
+  active: boolean;
+}
+
+export type ProductivityProviderType = "codex_sdk" | "claude_sdk" | "acp";
+
+export interface ProductivityProviderOption {
+  id: string;
+  type: ProductivityProviderType;
+  defaultModel: string | null;
+  modelSource: "dynamic" | "config";
+}
+
+export interface RuntimeCatalog {
+  nonProductivityProfiles: NonProductivityProfileOption[];
+  productivityProviders: ProductivityProviderOption[];
+  defaultNonProductivityProfile: string;
+  defaultProductivityProvider: string;
+}
+
+export interface ProductivityModelCatalog {
+  provider: string;
+  source: "sdk" | "acp" | "config";
+  models: RuntimeModelOption[];
+}
+
+export interface CreateThreadOptions {
+  projectPath?: string;
+  provider?: string;
+  model?: string;
+  profileId?: string;
 }
 
 export interface ModelProfileSummary {
@@ -242,7 +289,7 @@ export type StreamEvent =
 
 export interface CleoClient {
   loadWorkspace(): Promise<WorkspaceSnapshot>;
-  createThread(space: ThreadSpace, projectId: string, projectPath?: string): Promise<Thread>;
+  createThread(space: ThreadSpace, projectId: string, options?: CreateThreadOptions): Promise<Thread>;
   streamTurn(threadId: string, prompt: string, attachments?: Attachment[]): AsyncGenerator<StreamEvent>;
   cancelRun(threadId: string): Promise<void>;
   updateRuntime(threadId: string, update: Partial<RuntimeProfile>): Promise<RuntimeProfile>;
@@ -252,6 +299,8 @@ export interface CleoClient {
   revealPath(value: string): Promise<void>;
   getConfigTemplates(): Promise<{ cleo: string; harnesses: string }>;
   getModelSettings(): Promise<ModelSettings>;
+  getRuntimeCatalog(): Promise<RuntimeCatalog>;
+  getProductivityModels(provider: string, projectPath?: string): Promise<ProductivityModelCatalog>;
   saveModelProfile(profile: ModelProfileInput): Promise<ModelSettings>;
   reviewMemorySource(
     source: MemoryReviewSource,

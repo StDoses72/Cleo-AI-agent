@@ -2,6 +2,7 @@ import asyncio
 from types import SimpleNamespace
 
 from langchain_core.messages import AIMessageChunk
+from pydantic import SecretStr
 
 from cleo.agents import Agent
 from cleo.runtime.usage import ContextWindowUsage
@@ -57,14 +58,28 @@ def test_agent_backend_uses_configured_application_root(tmp_path, monkeypatch) -
             MEMORY_DIR=tmp_path / "memory",
         ),
     )
-    monkeypatch.setattr(agent_module, "init_chat_model", lambda **_kwargs: object())
+    captured_model = {}
+    monkeypatch.setattr(
+        agent_module,
+        "init_chat_model",
+        lambda **kwargs: captured_model.update(kwargs) or object(),
+    )
     monkeypatch.setattr(
         agent_module,
         "create_deep_agent",
         lambda **kwargs: captured_options.update(kwargs) or SimpleNamespace(),
     )
 
-    agent = agent_module.Agent()
+    agent = agent_module.Agent(
+        profile=SimpleNamespace(
+            provider="openai",
+            model="selected-model",
+            api_key=SecretStr("secret"),
+            temperature=0.2,
+            base_url="https://models.example/v1",
+            max_tokens=42_000,
+        )
+    )
 
     assert agent.root_dir == tmp_path
     assert agent.backend.ls("/skills").error is None
@@ -75,3 +90,6 @@ def test_agent_backend_uses_configured_application_root(tmp_path, monkeypatch) -
         "/memory/MEMORY_POLICY.md",
         "/PERSONA.md",
     ]
+    assert agent.model_name == "selected-model"
+    assert captured_model["model"] == "selected-model"
+    assert captured_model["api_key"] == "secret"

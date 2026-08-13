@@ -40,6 +40,7 @@ def test_factory_builds_configured_provider_types(tmp_path: Path) -> None:
                 "claude": {
                     "type": "claude_sdk",
                     "model": "claude-test",
+                    "models": ["claude-test", "claude-other"],
                     "options": {"permission_mode": "plan"},
                 },
                 "acp-test": {
@@ -71,6 +72,7 @@ def test_factory_builds_configured_provider_types(tmp_path: Path) -> None:
     assert isinstance(claude, ClaudeProvider)
     assert claude._default_model == "claude-test"
     assert claude._permission_mode == "plan"
+    assert productivity.provider("claude").models == ["claude-test", "claude-other"]
     assert isinstance(acp, AcpProvider)
     assert acp._spec.command == "agent-command"
     assert acp._spec.args == ("--acp",)

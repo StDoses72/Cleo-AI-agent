@@ -24,6 +24,7 @@ from acp.schema import (
     Implementation,
 )
 
+from cleo.harnesses.control import HarnessModel
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 from cleo.harnesses.provider import ProviderSession, ProviderTurn
 
@@ -255,6 +256,65 @@ class AcpProvider:
         self.name = name
         self._spec = spec
         self._sessions: dict[str, _AcpRuntime] = {}
+
+    async def list_models(self, project_path: str) -> tuple[HarnessModel, ...]:
+        """Read the model select option exposed by a short-lived ACP session."""
+        if not self._spec.model_config_id:
+            return ()
+        resolved_path = str(Path(project_path).expanduser().resolve())
+        connection, manager, _host, _initialize = await self._connect(resolved_path)
+        try:
+            created = await connection.new_session(cwd=resolved_path, mcp_servers=[])
+            target = next(
+                (
+                    option
+                    for option in (created.config_options or [])
+                    if str(getattr(option, "id", "")) == self._spec.model_config_id
+                ),
+                None,
+            )
+            if target is None:
+                raise ValueError(
+                    f"ACP provider {self.name!r} did not expose config option "
+                    f"{self._spec.model_config_id!r}."
+                )
+            payload = target.model_dump(mode="json", by_alias=True, exclude_none=True)
+            current = str(payload.get("currentValue") or payload.get("current_value") or "")
+            return tuple(
+                HarnessModel(
+                    id=value,
+                    display_name=label,
+                    description=description,
+                    is_default=value == current,
+                    default_effort=None,
+                    supported_efforts=(),
+                )
+                for value, label, description in self._select_options(payload.get("options", []))
+            )
+        finally:
+            await manager.__aexit__(None, None, None)
+
+    @classmethod
+    def _select_options(cls, options: list[Any]) -> list[tuple[str, str, str]]:
+        result: list[tuple[str, str, str]] = []
+        for option in options:
+            if not isinstance(option, dict):
+                continue
+            nested = option.get("options")
+            if isinstance(nested, list):
+                result.extend(cls._select_options(nested))
+                continue
+            value = str(option.get("value") or "").strip()
+            if not value:
+                continue
+            result.append(
+                (
+                    value,
+                    str(option.get("name") or value),
+                    str(option.get("description") or ""),
+                )
+            )
+        return result
 
     async def create_session(
         self,

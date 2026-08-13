@@ -1,8 +1,11 @@
 import type {
   Attachment,
   CleoClient,
+  CreateThreadOptions,
   ModelProfileInput,
   ModelSettings,
+  ProductivityModelCatalog,
+  RuntimeCatalog,
   MemoryReviewAction,
   MemoryReviewSource,
   RuntimeProfile,
@@ -19,11 +22,18 @@ export class IpcCleoClient implements CleoClient {
     return this.bridge.request("load_workspace");
   }
 
-  async createThread(space: ThreadSpace, projectId: string, projectPath?: string): Promise<Thread> {
+  async createThread(
+    space: ThreadSpace,
+    projectId: string,
+    options: CreateThreadOptions = {},
+  ): Promise<Thread> {
     return this.bridge.request("create_thread", {
       space,
       project_id_value: projectId,
-      project_path: projectPath,
+      project_path: options.projectPath,
+      provider: options.provider,
+      model: options.model,
+      profile_id: options.profileId,
     });
   }
 
@@ -107,6 +117,20 @@ export class IpcCleoClient implements CleoClient {
 
   getModelSettings(): Promise<ModelSettings> {
     return this.bridge.request("get_model_settings");
+  }
+
+  getRuntimeCatalog(): Promise<RuntimeCatalog> {
+    return this.bridge.request("get_runtime_catalog");
+  }
+
+  getProductivityModels(
+    provider: string,
+    projectPath?: string,
+  ): Promise<ProductivityModelCatalog> {
+    return this.bridge.request("get_productivity_models", {
+      provider,
+      project_path: projectPath,
+    });
   }
 
   saveModelProfile(profile: ModelProfileInput): Promise<ModelSettings> {

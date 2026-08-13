@@ -13,7 +13,7 @@ from cleo.harnesses import (
     ProviderTurn,
     SessionOptions,
 )
-from cleo.integrations.harnesses.acp import _AcpClientHost
+from cleo.integrations.harnesses.acp import AcpProvider, _AcpClientHost
 from cleo.integrations.harnesses.codex import CodexProvider, _CodexRuntime
 from cleo.memory.compaction import load_validated_compact
 
@@ -70,6 +70,24 @@ class FakeProvider:
 
     async def close(self, session_id: str) -> None:
         self.closed.append(session_id)
+
+
+def test_acp_model_options_flatten_named_groups() -> None:
+    assert AcpProvider._select_options(
+        [
+            {
+                "name": "Recommended",
+                "options": [
+                    {"name": "Fast", "value": "fast", "description": "Low latency"},
+                    {"name": "Deep", "value": "deep"},
+                ],
+            },
+            {"name": "Ignored"},
+        ]
+    ) == [
+        ("fast", "Fast", "Low latency"),
+        ("deep", "Deep", ""),
+    ]
 
 
 def test_agent_adapter_routes_provider_sessions(tmp_path) -> None:

@@ -6,6 +6,7 @@ from cleo.cli.chat_tui import COMMANDS as CHAT_TUI_COMMANDS
 from cleo.cli.productivity_tui import COMMANDS as PRODUCTIVITY_TUI_COMMANDS
 from cleo.config.settings import MemoryGateSettings
 from cleo.desktop.service import CHAT_COMMANDS, PRODUCTIVITY_COMMANDS, DesktopService
+from cleo.harnesses.control import HarnessModel
 from cleo.memory.paths import memory_state_path
 from cleo.memory.state import (
     get_session_source,
@@ -45,19 +46,42 @@ class FakeRuntime:
 
 class FakeProductivity:
     default_provider = "codex"
-
-    @staticmethod
-    def provider(_name: str):
-        return SimpleNamespace(
+    providers = {
+        "codex": SimpleNamespace(
+            enabled=True,
+            type="codex_sdk",
             model="gpt-test",
+            models=[],
             options=SimpleNamespace(sandbox="workspace-write", approval_mode="on-request"),
         )
+    }
+
+    @classmethod
+    def provider(cls, name: str):
+        return cls.providers[name]
 
 
 class FakeAdapter:
     def __init__(self, store: SessionStore) -> None:
         self.store = store
         self.created_with = None
+
+    @property
+    def providers(self):
+        return ("codex",)
+
+    async def list_models(self, provider):
+        assert provider == "codex"
+        return (
+            HarnessModel(
+                id="gpt-test",
+                display_name="GPT Test",
+                description="Test model",
+                is_default=True,
+                default_effort="high",
+                supported_efforts=("low", "high"),
+            ),
+        )
 
     async def create_session(self, provider, *, project_path, model, project):
         self.created_with = {
@@ -86,15 +110,25 @@ def _service(tmp_path: Path) -> DesktopService:
     memory_root = tmp_path / "memory"
     workspace = tmp_path / "workspace"
     workspace.mkdir()
+    primary_profile = SimpleNamespace(
+        provider="openai",
+        model="chat-test",
+        max_tokens=64_000,
+    )
+    secondary_profile = SimpleNamespace(
+        provider="openai",
+        model="chat-secondary",
+        max_tokens=32_000,
+    )
     settings = SimpleNamespace(
         MEMORY_DIR=memory_root,
         SESSION_INDEX_PATH=memory_root / "sessions.sqlite3",
         memory_gate=MemoryGateSettings(),
         active_directory_profile=SimpleNamespace(root_path=workspace),
-        active_agent_profile=SimpleNamespace(
-            provider="openai",
-            model="chat-test",
-            max_tokens=64_000,
+        active_agent_profile=primary_profile,
+        active_profiles=SimpleNamespace(agent="primary"),
+        profiles=SimpleNamespace(
+            agents={"primary": primary_profile, "secondary": secondary_profile}
         ),
         active_shell_profile=SimpleNamespace(sandbox_root=workspace),
         productivity=FakeProductivity(),
@@ -192,6 +226,50 @@ def test_create_productivity_thread_uses_selected_workspace(tmp_path: Path) -> N
         }
         assert thread["projectId"] == "productivity:selected-project"
         assert service.store.load_manifest(thread["id"])["cwd"] == str(selected.resolve())
+
+    asyncio.run(scenario())
+
+
+def test_runtime_catalog_and_profile_selection_use_configured_models(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        service = _service(tmp_path)
+        service._adapter_instance = FakeAdapter(service.store)
+
+        catalog = await service.get_runtime_catalog()
+        assert [profile["id"] for profile in catalog["nonProductivityProfiles"]] == [
+            "primary",
+            "secondary",
+        ]
+        assert catalog["productivityProviders"] == [
+            {
+                "id": "codex",
+                "type": "codex_sdk",
+                "defaultModel": "gpt-test",
+                "modelSource": "dynamic",
+            }
+        ]
+
+        models = await service.get_productivity_models(provider="codex")
+        assert models["source"] == "sdk"
+        assert models["models"][0]["id"] == "gpt-test"
+
+        thread = await service.create_thread(
+            space="chat",
+            project_id_value="chat:general",
+            profile_id="secondary",
+        )
+        assert thread["runtime"]["profileId"] == "secondary"
+        assert thread["runtime"]["model"] == "chat-secondary"
+
+        service._chat_agents[thread["id"]] = object()
+        service._chat_agents_restored.add(thread["id"])
+        runtime = await service.update_runtime(
+            thread_id=thread["id"],
+            update={"profileId": "primary"},
+        )
+        assert runtime["profileId"] == "primary"
+        assert thread["id"] not in service._chat_agents
+        assert thread["id"] not in service._chat_agents_restored
 
     asyncio.run(scenario())
 

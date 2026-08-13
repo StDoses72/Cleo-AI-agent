@@ -51,7 +51,7 @@ Python 后端和运行时。构建不会复用 `ui/node_modules`、系统 Python
 ```
 
 更新时重复运行同一命令。下载器会先验证 SHA256，再原子替换程序目录；配置、会话和记忆保留在
-`%APPDATA%\Cleo`。下载内容是完整桌面应用，不是单独的后端 CLI；最终 `Cleo.exe` 安装到
+`%LOCALAPPDATA%\Cleo`（首次启动会迁移旧 `%APPDATA%\Cleo` 数据）。下载内容是完整桌面应用，不是单独的后端 CLI；最终 `Cleo.exe` 安装到
 `%LOCALAPPDATA%\Programs\Cleo`。
 
 模型通过应用内“设置 → 模型”管理，可填写 provider、模型名称、API Key、Base URL 和上下文长度，

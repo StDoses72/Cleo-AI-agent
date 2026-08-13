@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import {
+  ArrowLeft,
   ArrowUp,
   AtSign,
   Check,
@@ -20,12 +21,26 @@ import {
   Wrench,
   X,
 } from "lucide-react";
-import type { Attachment, Project, RuntimeProfile, Thread, TimelineItem } from "../types";
+import type {
+  Attachment,
+  ProductivityModelCatalog,
+  Project,
+  RuntimeCatalog,
+  RuntimeProfile,
+  Thread,
+  ThreadSpace,
+  TimelineItem,
+} from "../types";
 
 interface ConversationProps {
   thread: Thread | null;
   project: Project | null;
+  space: ThreadSpace;
   runtime: RuntimeProfile;
+  runtimeCatalog: RuntimeCatalog | null;
+  productivityModels: Record<string, ProductivityModelCatalog>;
+  runtimeModelsLoading: string | null;
+  runtimeModelsError: string | null;
   running: boolean;
   sidebarCollapsed: boolean;
   inspectorOpen: boolean;
@@ -34,7 +49,9 @@ interface ConversationProps {
   onOpenCommand: () => void;
   onSend: (prompt: string) => void;
   onCancel: () => void;
-  onModelChange: (model: string) => void;
+  onSelectNonProductivityProfile: (profileId: string) => void;
+  onLoadProductivityModels: (provider: string) => Promise<ProductivityModelCatalog>;
+  onSelectProductivityRuntime: (provider: string, model: string) => void;
   onEffortChange: (effort: RuntimeProfile["effort"]) => void;
   attachments: Attachment[];
   onPickAttachments: () => void;
@@ -55,7 +72,12 @@ const suggestions = [
 export function Conversation({
   thread,
   project,
+  space,
   runtime,
+  runtimeCatalog,
+  productivityModels,
+  runtimeModelsLoading,
+  runtimeModelsError,
   running,
   sidebarCollapsed,
   inspectorOpen,
@@ -64,7 +86,9 @@ export function Conversation({
   onOpenCommand,
   onSend,
   onCancel,
-  onModelChange,
+  onSelectNonProductivityProfile,
+  onLoadProductivityModels,
+  onSelectProductivityRuntime,
   onEffortChange,
   attachments,
   onPickAttachments,
@@ -118,11 +142,18 @@ export function Conversation({
       </div>
 
       <Composer
+        space={space}
         runtime={runtime}
+        runtimeCatalog={runtimeCatalog}
+        productivityModels={productivityModels}
+        runtimeModelsLoading={runtimeModelsLoading}
+        runtimeModelsError={runtimeModelsError}
         running={running}
         onSend={onSend}
         onCancel={onCancel}
-        onModelChange={onModelChange}
+        onSelectNonProductivityProfile={onSelectNonProductivityProfile}
+        onLoadProductivityModels={onLoadProductivityModels}
+        onSelectProductivityRuntime={onSelectProductivityRuntime}
         onEffortChange={onEffortChange}
         attachments={attachments}
         onPickAttachments={onPickAttachments}
@@ -343,11 +374,18 @@ function WelcomeState({ project, onUseSuggestion }: { project: Project | null; o
 }
 
 function Composer({
+  space,
   runtime,
+  runtimeCatalog,
+  productivityModels,
+  runtimeModelsLoading,
+  runtimeModelsError,
   running,
   onSend,
   onCancel,
-  onModelChange,
+  onSelectNonProductivityProfile,
+  onLoadProductivityModels,
+  onSelectProductivityRuntime,
   onEffortChange,
   attachments,
   onPickAttachments,
@@ -357,10 +395,17 @@ function Composer({
 }: Pick<
   ConversationProps,
   | "runtime"
+  | "space"
+  | "runtimeCatalog"
+  | "productivityModels"
+  | "runtimeModelsLoading"
+  | "runtimeModelsError"
   | "running"
   | "onSend"
   | "onCancel"
-  | "onModelChange"
+  | "onSelectNonProductivityProfile"
+  | "onLoadProductivityModels"
+  | "onSelectProductivityRuntime"
   | "onEffortChange"
   | "attachments"
   | "onPickAttachments"
@@ -369,7 +414,6 @@ function Composer({
   | "commands"
 >) {
   const [prompt, setPrompt] = useState("");
-  const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const submit = () => {
     if (!prompt.trim() || running) return;
     onSend(prompt);
@@ -427,30 +471,19 @@ function Composer({
               <AtSign size={16} />
             </button>
             <span className="composer-divider" />
-            <div className="model-menu-wrap">
-              <button className="text-control" type="button" disabled={runtime.editable === false} onClick={() => setModelMenuOpen((open) => !open)}>
-                <span>{runtime.model}</span>
-                <ChevronDown size={13} />
-              </button>
-              {modelMenuOpen ? (
-                <div className="model-menu surface-popover">
-                  {(runtime.models?.length ? runtime.models : [runtime.model]).map((model) => (
-                    <button
-                      type="button"
-                      key={model}
-                      onClick={() => {
-                        onModelChange(model);
-                        setModelMenuOpen(false);
-                      }}
-                    >
-                      <span>{model}</span>
-                      {runtime.model === model ? <Check size={14} /> : null}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-            <button className="text-control" type="button" disabled={runtime.editable === false} onClick={cycleEffort} title="切换推理强度">
+            <RuntimeSelector
+              space={space}
+              runtime={runtime}
+              catalog={runtimeCatalog}
+              productivityModels={productivityModels}
+              loadingProvider={runtimeModelsLoading}
+              error={runtimeModelsError}
+              running={running}
+              onSelectProfile={onSelectNonProductivityProfile}
+              onLoadModels={onLoadProductivityModels}
+              onSelectProductivityRuntime={onSelectProductivityRuntime}
+            />
+            <button className="text-control" type="button" disabled={running || space !== "productivity" || runtime.editable === false} onClick={cycleEffort} title="切换推理强度">
               {runtime.effort}推理
             </button>
           </div>
@@ -476,4 +509,169 @@ function Composer({
       <div className="composer-hint">Enter 发送 · Shift Enter 换行 · 内容仅保存在本地</div>
     </div>
   );
+}
+
+function RuntimeSelector({
+  space,
+  runtime,
+  catalog,
+  productivityModels,
+  loadingProvider,
+  error,
+  running,
+  onSelectProfile,
+  onLoadModels,
+  onSelectProductivityRuntime,
+}: {
+  space: ThreadSpace;
+  runtime: RuntimeProfile;
+  catalog: RuntimeCatalog | null;
+  productivityModels: Record<string, ProductivityModelCatalog>;
+  loadingProvider: string | null;
+  error: string | null;
+  running: boolean;
+  onSelectProfile: (profileId: string) => void;
+  onLoadModels: (provider: string) => Promise<ProductivityModelCatalog>;
+  onSelectProductivityRuntime: (provider: string, model: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [providerScreen, setProviderScreen] = useState<string | null>(null);
+  const profiles = catalog?.nonProductivityProfiles ?? [];
+  const providers = catalog?.productivityProviders ?? [];
+  const selectedProfile = profiles.find(
+    (profile) => profile.id === runtime.profileId,
+  );
+  const selectedProvider = providers.find(
+    (provider) => provider.id === providerScreen,
+  );
+  const selectedModels = providerScreen ? productivityModels[providerScreen]?.models : undefined;
+
+  useEffect(() => {
+    setOpen(false);
+    setProviderScreen(null);
+  }, [space]);
+
+  const toggleMenu = () => {
+    setOpen((current) => {
+      if (current) setProviderScreen(null);
+      return !current;
+    });
+  };
+  const openProvider = (provider: string) => {
+    setProviderScreen(provider);
+    void onLoadModels(provider).catch(() => undefined);
+  };
+
+  return (
+    <div className="model-menu-wrap runtime-selector">
+      <button
+        className="text-control runtime-selector-trigger"
+        type="button"
+        disabled={running || !catalog}
+        aria-expanded={open}
+        onClick={toggleMenu}
+        data-testid="runtime-selector"
+      >
+        <span>{runtime.model}</span>
+        <ChevronDown size={13} />
+      </button>
+      {open ? (
+        <div className="model-menu runtime-menu surface-popover" data-testid="runtime-menu">
+          {space === "chat" ? (
+            <>
+              <div className="runtime-menu-heading">
+                <span>模型配置</span>
+                <small>cleo.json</small>
+              </div>
+              <div className="runtime-menu-list">
+                {profiles.map((profile) => (
+                  <button
+                    className="runtime-menu-row"
+                    type="button"
+                    key={profile.id}
+                    onClick={() => {
+                      onSelectProfile(profile.id);
+                      setOpen(false);
+                    }}
+                  >
+                    <span className="runtime-menu-copy">
+                      <strong>{profile.model}</strong>
+                      <small>{profile.id} · {profile.provider}</small>
+                    </span>
+                    {(selectedProfile?.id ?? runtime.profileId) === profile.id ? <Check size={14} /> : null}
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : providerScreen ? (
+            <>
+              <div className="runtime-menu-heading runtime-menu-heading-back">
+                <button type="button" aria-label="返回 provider 列表" onClick={() => setProviderScreen(null)}>
+                  <ArrowLeft size={14} />
+                </button>
+                <span>{selectedProvider?.id ?? providerScreen}</span>
+                <small>{providerTypeLabel(selectedProvider?.type)}</small>
+              </div>
+              <div className="runtime-menu-list">
+                {loadingProvider === providerScreen ? (
+                  <div className="runtime-menu-status"><LoaderCircle className="spin" size={14} />正在读取可用模型…</div>
+                ) : error && !selectedModels ? (
+                  <div className="runtime-menu-status error">{error}</div>
+                ) : (
+                  selectedModels?.map((model) => (
+                    <button
+                      className="runtime-menu-row"
+                      type="button"
+                      key={model.id}
+                      onClick={() => {
+                        onSelectProductivityRuntime(providerScreen, model.id);
+                        setOpen(false);
+                        setProviderScreen(null);
+                      }}
+                    >
+                      <span className="runtime-menu-copy">
+                        <strong>{model.label}</strong>
+                        {model.description ? <small>{model.description}</small> : null}
+                      </span>
+                      {runtime.provider === providerScreen && runtime.model === model.id ? <Check size={14} /> : null}
+                    </button>
+                  ))
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="runtime-menu-heading">
+                <span>运行方式</span>
+                <small>新任务生效</small>
+              </div>
+              <div className="runtime-menu-list">
+                {providers.map((provider) => (
+                  <button
+                    className="runtime-menu-row"
+                    type="button"
+                    key={provider.id}
+                    onClick={() => openProvider(provider.id)}
+                  >
+                    <span className="runtime-menu-copy">
+                      <strong>{provider.id}</strong>
+                      <small>{providerTypeLabel(provider.type)}{provider.defaultModel ? ` · ${provider.defaultModel}` : ""}</small>
+                    </span>
+                    <ChevronRight size={14} />
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function providerTypeLabel(type?: string) {
+  if (type === "codex_sdk") return "Codex SDK";
+  if (type === "claude_sdk") return "Claude Agent SDK";
+  if (type === "acp") return "ACP";
+  return "Provider";
 }
