@@ -361,6 +361,59 @@ kbd {
   padding: 0 16px 13px 17px;
 }
 
+.sidebar-actions-wrap {
+  position: relative;
+}
+
+.sidebar-actions-menu {
+  position: absolute;
+  z-index: 50;
+  top: 34px;
+  right: 0;
+  width: 218px;
+  padding: 5px;
+  animation: pop-in 140ms ease both;
+}
+
+.sidebar-actions-menu button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 9px;
+  padding: 8px;
+  border-radius: 7px;
+  color: var(--accent);
+  text-align: left;
+}
+
+.sidebar-actions-menu button:hover {
+  background: var(--surface-hover);
+}
+
+.sidebar-actions-menu button > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sidebar-actions-menu strong {
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.sidebar-actions-menu small,
+.sidebar-actions-empty {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.sidebar-actions-empty {
+  display: block;
+  padding: 8px;
+}
+
 .eyebrow {
   display: block;
   margin-bottom: 5px;

@@ -152,6 +152,8 @@ export function App() {
         onCreateThread={() => void workspace.createThread()}
         onChooseWorkspace={() => void workspace.chooseWorkspace().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法打开工作目录"))}
         onOpenCommand={() => setCommandOpen(true)}
+        recoverableChatBackups={workspace.snapshot.backend?.recoverableChatBackups ?? 0}
+        onRestoreChatHistory={() => void workspace.restoreChatHistory().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法恢复旧对话"))}
         memoryOverview={workspace.snapshot.memoryOverview}
         memoryView={memoryView}
         onMemoryViewChange={setMemoryView}

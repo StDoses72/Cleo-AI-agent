@@ -25,6 +25,7 @@ from cleo.desktop.projection import (
 )
 from cleo.harnesses.control import HarnessModel
 from cleo.integrations.git import inspect_git_status, read_git_diff
+from cleo.memory.compaction import load_events
 from cleo.memory.overview import build_memory_overview
 from cleo.memory.paths import memory_state_path
 from cleo.memory.state import (
@@ -113,11 +114,25 @@ class DesktopService:
     async def load_workspace(self) -> dict[str, Any]:
         self._debug("load rows")
         rows = self.store.list_sessions()
-        manifests = [self.store.load_manifest(str(row["id"])) for row in rows[:100]]
+        records: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
+        for row in rows:
+            if len(records) >= 100:
+                break
+            try:
+                manifest = self.store.load_manifest(str(row["id"]))
+                events = self.store.read_events(manifest["id"])
+            except (FileNotFoundError, OSError, ValueError):
+                continue
+            if manifest["space"] == "non_productivity" and not self._has_chat_history(events):
+                continue
+            records.append((manifest, events))
+        manifests = [manifest for manifest, _events in records]
         self._debug("load projects")
         projects = await self._projects(manifests)
         self._debug("load threads")
-        threads = [await self._thread(manifest) for manifest in manifests]
+        threads = [
+            await self._thread(manifest, events=events) for manifest, events in records
+        ]
         self._debug("load overview")
         overview = build_memory_overview(
             memory_root=self.settings.MEMORY_DIR,
@@ -150,8 +165,75 @@ class DesktopService:
                     "chat": list(CHAT_COMMANDS),
                     "productivity": list(PRODUCTIVITY_COMMANDS),
                 },
+                "recoverableChatBackups": len(self._chat_backup_candidates()),
             },
         }
+
+    async def load_thread(self, *, thread_id: str) -> dict[str, Any]:
+        """Reload one persisted thread and make it the active resume target."""
+        manifest = self.store.load_manifest(thread_id)
+        self._activate(manifest)
+        return await self._thread(manifest)
+
+    async def restore_chat_backups(self) -> dict[str, Any]:
+        """Copy recoverable chat histories out of memory-reset backups."""
+        existing_ids = {str(row["id"]) for row in self.store.list_sessions()}
+        first_restored_id: str | None = None
+        for candidate in self._chat_backup_candidates():
+            source_id = candidate["source_id"]
+            target_id = source_id
+            if target_id in existing_ids:
+                target_id = f"restored-{source_id}"
+            if target_id in existing_ids:
+                continue
+            copied_events = [
+                {
+                    key: event[key]
+                    for key in (
+                        "type",
+                        "actor",
+                        "content",
+                        "data",
+                        "message",
+                        "source_message_id",
+                        "id",
+                        "created_at",
+                    )
+                    if key in event
+                }
+                for event in candidate["events"]
+                if event.get("type") != "session_created"
+                and str(event.get("type") or "").strip()
+                and str(event.get("actor") or "").strip()
+            ]
+            if not self._has_chat_history(copied_events):
+                continue
+            self.store.create_session(
+                session_id=target_id,
+                space="non_productivity",
+                project=candidate["project"],
+                provider="cleo",
+                owner_type="user",
+                cwd=str(self.settings.MEMORY_DIR.parent),
+            )
+            self.store.append_events(
+                space="non_productivity",
+                project=candidate["project"],
+                session_id=target_id,
+                events=copied_events,
+                manifest_updates={
+                    "status": "completed",
+                    "tags": [f"restored-backup:{source_id}"],
+                },
+            )
+            self.store.refresh_compact(target_id)
+            existing_ids.add(target_id)
+            if first_restored_id is None:
+                first_restored_id = target_id
+
+        if first_restored_id is not None:
+            self._activate(self.store.load_manifest(first_restored_id))
+        return await self.load_workspace()
 
     async def review_memory_source(
         self,
@@ -808,8 +890,70 @@ class DesktopService:
             )
         return sorted(projects, key=lambda item: (item["space"], item["name"].casefold()))
 
-    async def _thread(self, manifest: dict[str, Any]) -> dict[str, Any]:
-        events = self.store.read_events(manifest["id"])
+    @staticmethod
+    def _has_chat_history(events: list[dict[str, Any]]) -> bool:
+        return any(item.get("type") == "message" for item in timeline_from_events(events))
+
+    def _chat_backup_candidates(self) -> list[dict[str, Any]]:
+        backup_root = self.settings.MEMORY_DIR.parent / "backups"
+        if not backup_root.is_dir():
+            return []
+
+        current_history_ids: set[str] = set()
+        restored_source_ids: set[str] = set()
+        for row in self.store.list_sessions(space="non_productivity"):
+            session_id = str(row["id"])
+            try:
+                manifest = self.store.load_manifest(session_id)
+                events = self.store.read_events(session_id)
+            except (FileNotFoundError, OSError, ValueError):
+                continue
+            if self._has_chat_history(events):
+                current_history_ids.add(session_id)
+            for tag in manifest.get("tags") or []:
+                if isinstance(tag, str) and tag.startswith("restored-backup:"):
+                    restored_source_ids.add(tag.removeprefix("restored-backup:"))
+
+        pattern = (
+            "memory-reset-*/memory/non_productivity/projects/"
+            "*/sessions/*/events.jsonl"
+        )
+        paths = list(backup_root.glob(pattern))
+        paths.sort(key=lambda path: path.stat().st_mtime_ns, reverse=True)
+        candidates: list[dict[str, Any]] = []
+        seen_source_ids: set[str] = set()
+        for path in paths:
+            source_id = path.parent.name
+            if (
+                source_id in seen_source_ids
+                or source_id in current_history_ids
+                or source_id in restored_source_ids
+            ):
+                continue
+            try:
+                events = load_events(path)
+            except (OSError, ValueError):
+                continue
+            if not self._has_chat_history(events):
+                continue
+            seen_source_ids.add(source_id)
+            candidates.append(
+                {
+                    "source_id": source_id,
+                    "project": path.parent.parent.parent.name,
+                    "events": events,
+                }
+            )
+        return candidates
+
+    async def _thread(
+        self,
+        manifest: dict[str, Any],
+        *,
+        events: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        if events is None:
+            events = self.store.read_events(manifest["id"])
         items = timeline_from_events(events)
         summary = next(
             (

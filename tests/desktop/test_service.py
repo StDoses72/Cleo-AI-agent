@@ -2,6 +2,8 @@ import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
+from langchain_core.messages import AIMessage, HumanMessage
+
 from cleo.cli.chat_tui import COMMANDS as CHAT_TUI_COMMANDS
 from cleo.cli.productivity_tui import COMMANDS as PRODUCTIVITY_TUI_COMMANDS
 from cleo.config.settings import MemoryGateSettings
@@ -197,9 +199,110 @@ def test_workspace_snapshot_and_chat_commands_use_real_session_store(tmp_path: P
         assert service.store.load_manifest(thread["id"])["project"] == "desktop"
         assert any(event["type"] == "done" for event in events)
 
+        service.store.append_event(
+            space="non_productivity",
+            project="desktop",
+            session_id=thread["id"],
+            event_type="user_message",
+            actor="user",
+            content="Keep this renamed session in desktop history",
+        )
+
         snapshot = await service.load_workspace()
         assert snapshot["threads"][0]["title"] == "Desktop session"
         assert snapshot["threads"][0]["projectId"] == "chat:desktop"
+
+    asyncio.run(scenario())
+
+
+def test_workspace_hides_empty_chat_sessions_and_loads_saved_history(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        service = _service(tmp_path)
+        empty = await service.create_thread(
+            space="chat",
+            project_id_value="chat:general",
+        )
+        history = await service.create_thread(
+            space="chat",
+            project_id_value="chat:general",
+        )
+        service.store.sync_langchain_messages(
+            session_id=history["id"],
+            space="non_productivity",
+            project="general",
+            messages=[
+                HumanMessage(content="Remember the saved question", id="human-saved"),
+                AIMessage(content="The saved answer is available", id="ai-saved"),
+            ],
+            status="completed",
+        )
+
+        snapshot = await service.load_workspace()
+
+        assert [thread["id"] for thread in snapshot["threads"]] == [history["id"]]
+        assert empty["id"] not in {thread["id"] for thread in snapshot["threads"]}
+
+        loaded = await service.load_thread(thread_id=history["id"])
+
+        assert [item["content"] for item in loaded["items"] if item["type"] == "message"] == [
+            "Remember the saved question",
+            "The saved answer is available",
+        ]
+        assert service.runtime.current_thread_id == history["id"]
+
+    asyncio.run(scenario())
+
+
+def test_restore_chat_backups_copies_recoverable_history_without_deleting_backup(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        service = _service(tmp_path)
+        backup_memory = (
+            tmp_path
+            / "backups"
+            / "memory-reset-20260724-120000-test"
+            / "memory"
+        )
+        backup_store = SessionStore(backup_memory)
+        backup_store.sync_langchain_messages(
+            session_id="local-saved-backup",
+            space="non_productivity",
+            project="general",
+            messages=[
+                HumanMessage(content="Restore this question", id="human-backup"),
+                AIMessage(content="Restore this answer", id="ai-backup"),
+            ],
+            status="completed",
+        )
+        backup_events = (
+            backup_memory
+            / "non_productivity"
+            / "projects"
+            / "general"
+            / "sessions"
+            / "local-saved-backup"
+            / "events.jsonl"
+        )
+
+        before = await service.load_workspace()
+        assert before["threads"] == []
+        assert before["backend"]["recoverableChatBackups"] == 1
+
+        restored = await service.restore_chat_backups()
+
+        assert backup_events.is_file()
+        assert restored["backend"]["recoverableChatBackups"] == 0
+        assert len(restored["threads"]) == 1
+        assert [
+            item["content"]
+            for item in restored["threads"][0]["items"]
+            if item["type"] == "message"
+        ] == ["Restore this question", "Restore this answer"]
+        assert [
+            message.content
+            for message in service.store.load_langchain_messages(restored["threads"][0]["id"])
+        ] == ["Restore this question", "Restore this answer"]
 
     asyncio.run(scenario())
 

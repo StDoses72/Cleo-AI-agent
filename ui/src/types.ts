@@ -273,6 +273,7 @@ export interface WorkspaceSnapshot {
     connected: boolean;
     mode: "local" | "mock";
     commands: Record<ThreadSpace, string[]>;
+    recoverableChatBackups?: number;
   };
 }
 
@@ -289,7 +290,9 @@ export type StreamEvent =
 
 export interface CleoClient {
   loadWorkspace(): Promise<WorkspaceSnapshot>;
+  loadThread(threadId: string): Promise<Thread>;
   createThread(space: ThreadSpace, projectId: string, options?: CreateThreadOptions): Promise<Thread>;
+  restoreChatBackups(): Promise<WorkspaceSnapshot>;
   streamTurn(threadId: string, prompt: string, attachments?: Attachment[]): AsyncGenerator<StreamEvent>;
   cancelRun(threadId: string): Promise<void>;
   updateRuntime(threadId: string, update: Partial<RuntimeProfile>): Promise<RuntimeProfile>;

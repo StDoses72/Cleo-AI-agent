@@ -6,6 +6,7 @@ import {
   FileClock,
   FolderOpen,
   FolderGit2,
+  History,
   MoreHorizontal,
   Plus,
   Search,
@@ -23,6 +24,8 @@ interface ThreadSidebarProps {
   onCreateThread: () => void;
   onChooseWorkspace: () => void;
   onOpenCommand: () => void;
+  recoverableChatBackups: number;
+  onRestoreChatHistory: () => void;
   memoryOverview: MemoryOverview;
   memoryView: MemoryViewMode;
   onMemoryViewChange: (view: MemoryViewMode) => void;
@@ -47,6 +50,8 @@ export function ThreadSidebar({
   onCreateThread,
   onChooseWorkspace,
   onOpenCommand,
+  recoverableChatBackups,
+  onRestoreChatHistory,
   memoryOverview,
   memoryView,
   onMemoryViewChange,
@@ -54,6 +59,7 @@ export function ThreadSidebar({
 }: ThreadSidebarProps) {
   const [query, setQuery] = useState("");
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
+  const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
   const activeProject = projects.find((project) => project.id === activeProjectId) ?? projects[0];
   const visibleThreads = useMemo(() => {
     if (space === "memory") return [];
@@ -76,9 +82,39 @@ export function ThreadSidebar({
           <h1>{space === "chat" ? "对话" : space === "memory" ? "记忆" : "开发任务"}</h1>
         </div>
         {space !== "memory" ? (
-          <button className="icon-button" type="button" aria-label="更多" title="更多">
-            <MoreHorizontal size={17} />
-          </button>
+          <div className="sidebar-actions-wrap">
+            <button
+              className="icon-button"
+              type="button"
+              aria-label="更多"
+              title="更多"
+              aria-expanded={actionsMenuOpen}
+              onClick={() => setActionsMenuOpen((open) => !open)}
+            >
+              <MoreHorizontal size={17} />
+            </button>
+            {actionsMenuOpen ? (
+              <div className="sidebar-actions-menu surface-popover">
+                {space === "chat" && recoverableChatBackups > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActionsMenuOpen(false);
+                      onRestoreChatHistory();
+                    }}
+                  >
+                    <History size={15} />
+                    <span>
+                      <strong>恢复旧对话</strong>
+                      <small>找到 {recoverableChatBackups} 条可恢复记录</small>
+                    </span>
+                  </button>
+                ) : (
+                  <span className="sidebar-actions-empty">没有可恢复的历史记录</span>
+                )}
+              </div>
+            ) : null}
+          </div>
         ) : null}
       </div>
 

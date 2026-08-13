@@ -38,6 +38,7 @@ export function useCleoWorkspace() {
   const [draftProvider, setDraftProvider] = useState("");
   const [draftModel, setDraftModel] = useState("");
   const generationRef = useRef(0);
+  const selectionRef = useRef(0);
 
   useEffect(() => {
     let active = true;
@@ -130,6 +131,7 @@ export function useCleoWorkspace() {
   };
 
   const selectSpace = (space: WorkspaceSpace) => {
+    selectionRef.current += 1;
     setActiveSpace(space);
     if (space === "memory" || !snapshot) return;
     const projectForSpace = snapshot.projects.find((project) => project.space === space);
@@ -149,6 +151,7 @@ export function useCleoWorkspace() {
   };
 
   const selectProject = (projectId: string) => {
+    selectionRef.current += 1;
     setActiveProjectId(projectId);
     if (!snapshot || activeSpace === "memory") return;
     const next = snapshot.threads.find(
@@ -160,12 +163,26 @@ export function useCleoWorkspace() {
   const selectThread = (threadId: string) => {
     const thread = snapshot?.threads.find((candidate) => candidate.id === threadId);
     if (!thread) return;
+    const selection = ++selectionRef.current;
     setActiveSpace(thread.space);
     setActiveProjectId(thread.projectId);
     setActiveThreadId(threadId);
+    void cleoClient
+      .loadThread(threadId)
+      .then((loaded) => {
+        if (selectionRef.current !== selection) return;
+        updateThread(threadId, () => loaded);
+        setActiveSpace(loaded.space);
+        setActiveProjectId(loaded.projectId);
+      })
+      .catch((error: unknown) => {
+        if (selectionRef.current !== selection) return;
+        setLoadingError(error instanceof Error ? error.message : "无法恢复历史记录");
+      });
   };
 
   const startNewThread = () => {
+    selectionRef.current += 1;
     if (activeThread?.space === "chat" && activeThread.runtime?.profileId) {
       setDraftProfileId(activeThread.runtime.profileId);
     }
@@ -177,6 +194,7 @@ export function useCleoWorkspace() {
   };
 
   const createThread = async () => {
+    selectionRef.current += 1;
     const space: ThreadSpace = activeSpace === "chat" ? "chat" : "productivity";
     const projectId =
       snapshot?.projects.find((project) => project.id === activeProjectId && project.space === space)
@@ -446,6 +464,19 @@ export function useCleoWorkspace() {
     const refreshed = await cleoClient.loadWorkspace();
     setSnapshot(refreshed);
   };
+  const restoreChatHistory = async () => {
+    const refreshed = await cleoClient.restoreChatBackups();
+    setSnapshot(refreshed);
+    const restored = refreshed.threads.find(
+      (thread) => thread.id === refreshed.activeThreadId && thread.space === "chat",
+    ) ?? refreshed.threads.find((thread) => thread.space === "chat");
+    setActiveSpace("chat");
+    if (restored) {
+      setActiveProjectId(restored.projectId);
+      setActiveThreadId(restored.id);
+    }
+    return refreshed;
+  };
   const loadModelSettings = async () => {
     setModelSettingsLoading(true);
     try {
@@ -515,6 +546,7 @@ export function useCleoWorkspace() {
     revealPath,
     copyConfigTemplate,
     resetWorkspace,
+    restoreChatHistory,
     loadModelSettings,
     saveModelProfile,
     reviewMemorySource,

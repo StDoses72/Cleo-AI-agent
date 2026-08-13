@@ -22,6 +22,10 @@ export class IpcCleoClient implements CleoClient {
     return this.bridge.request("load_workspace");
   }
 
+  async loadThread(threadId: string): Promise<Thread> {
+    return this.bridge.request("load_thread", { thread_id: threadId });
+  }
+
   async createThread(
     space: ThreadSpace,
     projectId: string,
@@ -35,6 +39,10 @@ export class IpcCleoClient implements CleoClient {
       model: options.model,
       profile_id: options.profileId,
     });
+  }
+
+  async restoreChatBackups(): Promise<WorkspaceSnapshot> {
+    return this.bridge.request("restore_chat_backups");
   }
 
   async *streamTurn(

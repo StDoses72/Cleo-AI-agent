@@ -28,6 +28,13 @@ export class MockCleoClient implements CleoClient {
     return clone(snapshot);
   }
 
+  async loadThread(threadId: string): Promise<Thread> {
+    await delay(120);
+    const thread = snapshot.threads.find((candidate) => candidate.id === threadId);
+    if (!thread) throw new Error(`Unknown thread: ${threadId}`);
+    return clone(thread);
+  }
+
   async createThread(
     space: ThreadSpace,
     projectId: string,
@@ -70,6 +77,11 @@ export class MockCleoClient implements CleoClient {
             editable: true,
           },
     };
+  }
+
+  async restoreChatBackups(): Promise<WorkspaceSnapshot> {
+    await delay(180);
+    return clone(snapshot);
   }
 
   async *streamTurn(
