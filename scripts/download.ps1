@@ -4,7 +4,8 @@ param(
     [string]$InstallRoot,
     [string]$PackagePath,
     [string]$Sha256,
-    [switch]$Launch
+    [switch]$Launch,
+    [switch]$NoPause
 )
 
 $ErrorActionPreference = "Stop"
@@ -27,6 +28,49 @@ $downloadedArchive = Join-Path $temporaryRoot "Cleo-windows-x64.zip"
 $downloadedChecksum = Join-Path $temporaryRoot "Cleo-windows-x64.sha256"
 $extractRoot = Join-Path $temporaryRoot "extract"
 $backupRoot = Join-Path $installParent (".cleo-backup-" + [guid]::NewGuid().ToString("N"))
+
+function Invoke-VerifiedDownload {
+    param(
+        [Parameter(Mandatory = $true)][string]$Uri,
+        [Parameter(Mandatory = $true)][string]$Destination,
+        [switch]$Resume
+    )
+
+    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+    if (-not $curl) {
+        throw "curl.exe is required to download Cleo on Windows."
+    }
+    $arguments = @(
+        "--fail",
+        "--location",
+        "--retry", "5",
+        "--retry-all-errors",
+        "--retry-delay", "2",
+        "--connect-timeout", "20",
+        "--progress-bar"
+    )
+    if ($Resume) {
+        $arguments += @("--continue-at", "-")
+    }
+    $arguments += @("--output", $Destination, $Uri)
+    & $curl.Source @arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to download $Uri (curl exit code $LASTEXITCODE)."
+    }
+}
+
+function Wait-ForClose {
+    if ($NoPause -or -not [Environment]::UserInteractive) {
+        return
+    }
+    Write-Host ""
+    Write-Host "Press Enter to close this window"
+    try {
+        [void](Read-Host)
+    } catch {
+        # Some redirected hosts do not expose an interactive input stream.
+    }
+}
 
 function Assert-SafeInstallRoot {
     param([string]$Path)
@@ -68,10 +112,11 @@ try {
         }
         $archiveUrl = "$releaseBase/Cleo-windows-x64.zip"
         $checksumUrl = "$releaseBase/Cleo-windows-x64.sha256"
-        Write-Host "Downloading $archiveUrl"
-        Invoke-WebRequest -UseBasicParsing -Uri $archiveUrl -OutFile $downloadedArchive
-        Invoke-WebRequest -UseBasicParsing -Uri $checksumUrl -OutFile $downloadedChecksum
+        Write-Host "Reading release checksum from $checksumUrl"
+        Invoke-VerifiedDownload -Uri $checksumUrl -Destination $downloadedChecksum
         $Sha256 = (((Get-Content -LiteralPath $downloadedChecksum -Raw).Trim()) -split "\s+")[0]
+        Write-Host "Downloading $archiveUrl"
+        Invoke-VerifiedDownload -Uri $archiveUrl -Destination $downloadedArchive -Resume
     }
 
     if (-not $Sha256 -or $Sha256 -notmatch "^[a-fA-F0-9]{64}$") {
@@ -90,6 +135,26 @@ try {
     $packageRoot = Join-Path $extractRoot "Cleo"
     if (-not (Test-Path -LiteralPath (Join-Path $packageRoot "Cleo.exe"))) {
         throw "The downloaded archive does not contain Cleo\Cleo.exe."
+    }
+    $packageMetadataPath = Join-Path $packageRoot "release.json"
+    if (-not (Test-Path -LiteralPath $packageMetadataPath)) {
+        throw "The downloaded archive does not contain Cleo\release.json."
+    }
+    try {
+        $packageMetadata = Get-Content -LiteralPath $packageMetadataPath -Raw | ConvertFrom-Json
+    } catch {
+        throw "The downloaded archive contains invalid release metadata."
+    }
+    $installedVersion = [string]$packageMetadata.version
+    if (
+        $packageMetadata.app -ne "Cleo" -or
+        $packageMetadata.platform -ne "windows-x64" -or
+        -not $installedVersion
+    ) {
+        throw "The downloaded archive contains unexpected release metadata."
+    }
+    if ($Version -ne "latest" -and (($Version -replace '^v', '') -ne $installedVersion)) {
+        throw "Requested Cleo $Version, but the package contains version $installedVersion."
     }
 
     $WhatIfPreference = $requestedWhatIf
@@ -127,7 +192,7 @@ try {
         @{
             schema_version = 1
             app = "Cleo"
-            version = $Version
+            version = $installedVersion
             installed_at = [DateTimeOffset]::UtcNow.ToString("o")
             sha256 = $actualHash.ToLowerInvariant()
         } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $InstallRoot "install.json") -Encoding UTF8
@@ -145,9 +210,11 @@ try {
     }
 
     $installedExecutable = Join-Path $InstallRoot "Cleo.exe"
-    Write-Host "Cleo installed from a verified prebuilt package." -ForegroundColor Green
+    Write-Host ""
+    Write-Host "Cleo download and installation complete." -ForegroundColor Green
+    Write-Host "Version: $installedVersion"
     Write-Host "Program: $installedExecutable"
-    Write-Host "Data:    $env:APPDATA\Cleo"
+    Write-Host "Data:    $env:LOCALAPPDATA\Cleo"
     if ($Launch) {
         Start-Process -FilePath $installedExecutable -WorkingDirectory $InstallRoot
     }
@@ -157,4 +224,5 @@ try {
         Remove-Item -LiteralPath $temporaryRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
     $WhatIfPreference = $requestedWhatIf
+    Wait-ForClose
 }

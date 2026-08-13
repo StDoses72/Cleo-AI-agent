@@ -162,6 +162,9 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\download.ps1 -Launch
 ```
 
+下载过程中会自动重试临时网络错误，并在同一次运行中续传未完成的 ZIP。安装完成后窗口会显示
+实际版本与安装位置，并等待按 Enter 关闭；脚本化调用可传入 `-NoPause`。
+
 安装当前仓库刚构建的完整桌面包：
 
 ```powershell

@@ -44,6 +44,9 @@ Python 后端和运行时。构建不会复用 `ui/node_modules`、系统 Python
 ..\scripts\download.ps1 -Launch
 ```
 
+下载器会自动重试临时网络错误，并在同一次运行中续传；完成后等待按 Enter 关闭。
+自动化调用可传入 `-NoPause`。
+
 安装当前仓库构建的包：
 
 ```powershell
