@@ -149,6 +149,30 @@ try {
   await window.getByTestId("composer-input").waitFor({ state: "visible" });
   await window.screenshot({ path: join(outputDir, "08-recoverable-error.png") });
 
+  await window.getByRole("button", { name: "对话", exact: true }).click();
+  const chatRowsBeforeDelete = await window.locator(".thread-row").count();
+  await window.locator(".thread-row").first().hover();
+  await window.getByTestId("delete-thread").first().click();
+  await window.getByRole("alertdialog").waitFor();
+  await window.screenshot({ path: join(outputDir, "09-delete-chat-confirmation.png") });
+  await window.getByRole("button", { name: "永久删除", exact: true }).click();
+  await window.waitForFunction(
+    (count) => document.querySelectorAll(".thread-row").length === count - 1,
+    chatRowsBeforeDelete,
+  );
+
+  await window.getByRole("button", { name: "开发", exact: true }).click();
+  const productivityRowsBeforeDelete = await window.locator(".thread-row").count();
+  await window.locator(".thread-row").first().hover();
+  await window.getByTestId("delete-thread").first().click();
+  await window.getByText("SDK / ACP 中的原生会话不会被远程删除。", { exact: false }).waitFor();
+  await window.getByRole("button", { name: "永久删除", exact: true }).click();
+  await window.waitForFunction(
+    (count) => document.querySelectorAll(".thread-row").length === count - 1,
+    productivityRowsBeforeDelete,
+  );
+  await window.screenshot({ path: join(outputDir, "10-delete-productivity-complete.png") });
+
   assert(consoleErrors.length === 0, `Console errors: ${consoleErrors.join(" | ")}`);
   console.log(
     JSON.stringify(

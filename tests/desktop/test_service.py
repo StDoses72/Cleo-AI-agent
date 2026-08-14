@@ -2,6 +2,7 @@ import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
 from cleo.cli.chat_tui import COMMANDS as CHAT_TUI_COMMANDS
@@ -27,6 +28,10 @@ class FakeRuntime:
             "non_productivity": ["general"],
             "productivity": ["workspace"],
         }
+        self.recent_threads = {
+            "non_productivity": [],
+            "productivity": [],
+        }
 
     def projects_for(self, space: str) -> list[str]:
         return list(self.projects[space])
@@ -42,8 +47,17 @@ class FakeRuntime:
     def update_current_thread_id(self, value: str) -> None:
         self.current_thread_id = value
 
-    def append_recent_threads(self, _thread_id: str, _space: str) -> None:
-        pass
+    def append_recent_threads(self, thread_id: str, space: str) -> None:
+        self.recent_threads[space] = [
+            candidate for candidate in self.recent_threads[space] if candidate != thread_id
+        ] + [thread_id]
+
+    def forget_thread(self, thread_id: str, space: str) -> None:
+        self.recent_threads[space] = [
+            candidate for candidate in self.recent_threads[space] if candidate != thread_id
+        ]
+        if self.current_thread_id == thread_id:
+            self.current_thread_id = None
 
 
 class FakeProductivity:
@@ -67,6 +81,7 @@ class FakeAdapter:
     def __init__(self, store: SessionStore) -> None:
         self.store = store
         self.created_with = None
+        self.closed = []
 
     @property
     def providers(self):
@@ -103,6 +118,9 @@ class FakeAdapter:
             cwd=project_path,
         )
         return SimpleNamespace(id=session_id, project=project, project_path=project_path)
+
+    async def close(self, session_id: str) -> None:
+        self.closed.append(session_id)
 
     async def aclose(self) -> None:
         pass
@@ -329,6 +347,70 @@ def test_create_productivity_thread_uses_selected_workspace(tmp_path: Path) -> N
         }
         assert thread["projectId"] == "productivity:selected-project"
         assert service.store.load_manifest(thread["id"])["cwd"] == str(selected.resolve())
+
+    asyncio.run(scenario())
+
+
+def test_delete_thread_handles_chat_and_productivity_sessions(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        service = _service(tmp_path)
+        first = await service.create_thread(
+            space="chat",
+            project_id_value="chat:general",
+        )
+        service.store.append_event(
+            space="non_productivity",
+            project="general",
+            session_id=first["id"],
+            event_type="user_message",
+            actor="user",
+            content="Keep this thread as the replacement",
+        )
+        second = await service.create_thread(
+            space="chat",
+            project_id_value="chat:general",
+        )
+        service.store.append_event(
+            space="non_productivity",
+            project="general",
+            session_id=second["id"],
+            event_type="user_message",
+            actor="user",
+            content="Delete this active thread",
+        )
+
+        service._run_tasks[second["id"]] = asyncio.current_task()
+        with pytest.raises(ValueError, match="正在运行"):
+            await service.delete_thread(thread_id=second["id"])
+        service._run_tasks.pop(second["id"])
+        assert service.store.load_manifest(second["id"])["id"] == second["id"]
+
+        chat_snapshot = await service.delete_thread(thread_id=second["id"])
+
+        assert [thread["id"] for thread in chat_snapshot["threads"]] == [first["id"]]
+        assert chat_snapshot["activeThreadId"] == first["id"]
+        assert service.runtime.current_thread_id == first["id"]
+        with pytest.raises(FileNotFoundError):
+            service.store.load_manifest(second["id"])
+
+        adapter = FakeAdapter(service.store)
+        service._adapter_instance = adapter
+        selected = tmp_path / "delete-productivity"
+        selected.mkdir()
+        productivity = await service.create_thread(
+            space="productivity",
+            project_id_value="",
+            project_path=str(selected),
+        )
+
+        productivity_snapshot = await service.delete_thread(thread_id=productivity["id"])
+
+        assert adapter.closed == [productivity["id"]]
+        assert productivity["id"] not in {
+            thread["id"] for thread in productivity_snapshot["threads"]
+        }
+        with pytest.raises(FileNotFoundError):
+            service.store.load_manifest(productivity["id"])
 
     asyncio.run(scenario())
 

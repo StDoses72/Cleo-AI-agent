@@ -15,6 +15,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Sun,
+  Trash2,
   X,
 } from "lucide-react";
 import type {
@@ -89,6 +90,56 @@ export function CommandPalette({ open, actions, onClose }: CommandPaletteProps) 
           {!filtered.length ? <div className="command-empty">没有匹配的命令</div> : null}
         </div>
         <footer><span><kbd>↑↓</kbd> 选择</span><span><kbd>↵</kbd> 打开</span></footer>
+      </div>
+    </div>
+  );
+}
+
+interface DeleteThreadDialogProps {
+  threadTitle: string | null;
+  productivity: boolean;
+  deleting: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}
+
+export function DeleteThreadDialog({
+  threadTitle,
+  productivity,
+  deleting,
+  onCancel,
+  onConfirm,
+}: DeleteThreadDialogProps) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (threadTitle) window.setTimeout(() => cancelRef.current?.focus(), 30);
+  }, [threadTitle]);
+  if (!threadTitle) return null;
+  return (
+    <div className="overlay-backdrop delete-thread-backdrop" role="presentation" onMouseDown={deleting ? undefined : onCancel}>
+      <div
+        className="delete-thread-dialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="delete-thread-title"
+        aria-describedby="delete-thread-detail"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <span className="delete-thread-icon"><Trash2 size={18} /></span>
+        <div>
+          <span className="eyebrow">DELETE THREAD</span>
+          <h2 id="delete-thread-title">删除“{threadTitle}”？</h2>
+          <p id="delete-thread-detail">
+            此操作会永久删除 Cleo 保存的 thread 与本地历史记录，无法撤销。
+            {productivity ? " SDK / ACP 中的原生会话不会被远程删除。" : ""}
+          </p>
+        </div>
+        <footer>
+          <button ref={cancelRef} type="button" onClick={onCancel} disabled={deleting}>取消</button>
+          <button className="danger" type="button" onClick={onConfirm} disabled={deleting}>
+            {deleting ? "删除中…" : "永久删除"}
+          </button>
+        </footer>
       </div>
     </div>
   );

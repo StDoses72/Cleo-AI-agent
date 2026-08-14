@@ -79,6 +79,16 @@ export class MockCleoClient implements CleoClient {
     };
   }
 
+  async deleteThread(threadId: string): Promise<WorkspaceSnapshot> {
+    await delay(180);
+    const index = snapshot.threads.findIndex((thread) => thread.id === threadId);
+    if (index >= 0) snapshot.threads.splice(index, 1);
+    if (snapshot.activeThreadId === threadId) {
+      snapshot.activeThreadId = snapshot.threads[index]?.id ?? snapshot.threads[index - 1]?.id ?? null;
+    }
+    return clone(snapshot);
+  }
+
   async restoreChatBackups(): Promise<WorkspaceSnapshot> {
     await delay(180);
     return clone(snapshot);

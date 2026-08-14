@@ -477,6 +477,31 @@ export function useCleoWorkspace() {
     }
     return refreshed;
   };
+  const deleteThread = async (threadId: string) => {
+    if (runningThreadId === threadId) {
+      throw new Error("正在运行的 thread 不能删除，请先停止运行。");
+    }
+    const deleted = snapshot?.threads.find((thread) => thread.id === threadId);
+    const deletedWasActive = activeThreadId === threadId;
+    selectionRef.current += 1;
+    const refreshed = await cleoClient.deleteThread(threadId);
+    setSnapshot(refreshed);
+    if (deletedWasActive) {
+      const replacement = refreshed.threads.find(
+        (thread) =>
+          thread.id === refreshed.activeThreadId && thread.space === deleted?.space,
+      ) ?? refreshed.threads.find(
+        (thread) =>
+          thread.space === deleted?.space && thread.projectId === deleted?.projectId,
+      ) ?? refreshed.threads.find((thread) => thread.space === deleted?.space);
+      setActiveThreadId(replacement?.id ?? null);
+      if (replacement) {
+        setActiveSpace(replacement.space);
+        setActiveProjectId(replacement.projectId);
+      }
+    }
+    return refreshed;
+  };
   const loadModelSettings = async () => {
     setModelSettingsLoading(true);
     try {
@@ -547,6 +572,7 @@ export function useCleoWorkspace() {
     copyConfigTemplate,
     resetWorkspace,
     restoreChatHistory,
+    deleteThread,
     loadModelSettings,
     saveModelProfile,
     reviewMemorySource,

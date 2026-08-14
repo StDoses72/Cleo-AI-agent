@@ -11,6 +11,7 @@ const allowedMethods = new Set([
   "load_workspace",
   "load_thread",
   "create_thread",
+  "delete_thread",
   "restore_chat_backups",
   "stream_turn",
   "cancel_run",

@@ -282,6 +282,17 @@ class Runtime:
         self.recent_threads[target_space] = recent[-MAX_RECENT_THREADS:]
         self.update_runtime_json()
 
+    def forget_thread(self, thread_id: str, space: str) -> None:
+        """Remove a deleted thread from runtime navigation state."""
+        if space not in MEMORY_SPACES:
+            raise ValueError(f"unsupported memory space: {space}")
+        self.recent_threads[space] = [
+            candidate for candidate in self.recent_threads[space] if candidate != thread_id
+        ]
+        if self.current_thread_id == thread_id:
+            self.current_thread_id = None
+        self.update_runtime_json()
+
     def projects_for(self, space: str | None = None) -> list[str]:
         """返回指定 space 的项目名列表副本(缺省为当前 space)。
 

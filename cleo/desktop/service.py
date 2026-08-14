@@ -175,6 +175,53 @@ class DesktopService:
         self._activate(manifest)
         return await self._thread(manifest)
 
+    async def delete_thread(self, *, thread_id: str) -> dict[str, Any]:
+        """Delete one local thread after releasing any resident provider session."""
+        manifest = self.store.load_manifest(thread_id)
+        if thread_id in self._run_tasks:
+            raise ValueError("正在运行的 thread 不能删除，请先停止运行。")
+
+        was_active = self.runtime.current_thread_id == thread_id
+        if manifest["space"] == "productivity" and thread_id in self._productivity_sessions:
+            await self._adapter().close(thread_id)
+            self._productivity_sessions.pop(thread_id, None)
+        self._chat_agents.pop(thread_id, None)
+        self._chat_agents_restored.discard(thread_id)
+        self.store.delete_session(thread_id)
+        self.runtime.forget_thread(thread_id, str(manifest["space"]))
+
+        if was_active:
+            candidates: list[dict[str, Any]] = []
+            for row in self.store.list_sessions():
+                try:
+                    candidate = self.store.load_manifest(str(row["id"]))
+                    if candidate["space"] == "non_productivity" and not self._has_chat_history(
+                        self.store.read_events(str(candidate["id"]))
+                    ):
+                        continue
+                except (FileNotFoundError, OSError, ValueError):
+                    continue
+                candidates.append(candidate)
+            replacement = next(
+                (
+                    candidate
+                    for candidate in candidates
+                    if candidate["space"] == manifest["space"]
+                    and candidate["project"] == manifest["project"]
+                ),
+                None,
+            ) or next(
+                (
+                    candidate
+                    for candidate in candidates
+                    if candidate["space"] == manifest["space"]
+                ),
+                None,
+            )
+            if replacement is not None:
+                self._activate(replacement)
+        return await self.load_workspace()
+
     async def restore_chat_backups(self) -> dict[str, Any]:
         """Copy recoverable chat histories out of memory-reset backups."""
         existing_ids = {str(row["id"]) for row in self.store.list_sessions()}

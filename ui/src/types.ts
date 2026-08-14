@@ -292,6 +292,7 @@ export interface CleoClient {
   loadWorkspace(): Promise<WorkspaceSnapshot>;
   loadThread(threadId: string): Promise<Thread>;
   createThread(space: ThreadSpace, projectId: string, options?: CreateThreadOptions): Promise<Thread>;
+  deleteThread(threadId: string): Promise<WorkspaceSnapshot>;
   restoreChatBackups(): Promise<WorkspaceSnapshot>;
   streamTurn(threadId: string, prompt: string, attachments?: Attachment[]): AsyncGenerator<StreamEvent>;
   cancelRun(threadId: string): Promise<void>;

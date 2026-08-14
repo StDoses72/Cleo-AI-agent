@@ -5,6 +5,7 @@ import { Inspector, type InspectorTab } from "./components/Inspector";
 import { MemoryView } from "./components/MemoryView";
 import {
   CommandPalette,
+  DeleteThreadDialog,
   LoadingScreen,
   SettingsModal,
   Toast,
@@ -14,7 +15,7 @@ import {
 import { ThreadSidebar } from "./components/ThreadSidebar";
 import { WorkspaceRail } from "./components/WorkspaceRail";
 import { useCleoWorkspace } from "./useCleoWorkspace";
-import type { MemoryViewMode } from "./types";
+import type { MemoryViewMode, Thread } from "./types";
 
 export function App() {
   const workspace = useCleoWorkspace();
@@ -23,6 +24,8 @@ export function App() {
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("changes");
   const [commandOpen, setCommandOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [threadPendingDeletion, setThreadPendingDeletion] = useState<Thread | null>(null);
+  const [deletingThread, setDeletingThread] = useState(false);
   const [memoryView, setMemoryView] = useState<MemoryViewMode>("all");
   const [theme, setTheme] = useState<"dark" | "light">(() =>
     localStorage.getItem("cleo-theme") === "light" ? "light" : "dark",
@@ -46,6 +49,7 @@ export function App() {
       if (event.key === "Escape") {
         setCommandOpen(false);
         setSettingsOpen(false);
+        if (!deletingThread) setThreadPendingDeletion(null);
         return;
       }
       if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === "k") {
@@ -60,7 +64,7 @@ export function App() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [workspace.activeSpace, workspace.createThread, workspace.selectSpace]);
+  }, [deletingThread, workspace.activeSpace, workspace.createThread, workspace.selectSpace]);
 
   const commandActions = useMemo<CommandAction[]>(
     () => [
@@ -149,6 +153,7 @@ export function App() {
         activeThreadId={workspace.activeThreadId}
         onSelectProject={workspace.selectProject}
         onSelectThread={workspace.selectThread}
+        onDeleteThread={setThreadPendingDeletion}
         onCreateThread={() => void workspace.createThread()}
         onChooseWorkspace={() => void workspace.chooseWorkspace().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法打开工作目录"))}
         onOpenCommand={() => setCommandOpen(true)}
@@ -240,6 +245,25 @@ export function App() {
           void workspace.resetWorkspace().then(() => notify("工作区已重置到 main"));
         }}
         onClose={() => setSettingsOpen(false)}
+      />
+      <DeleteThreadDialog
+        threadTitle={threadPendingDeletion?.title ?? null}
+        productivity={threadPendingDeletion?.space === "productivity"}
+        deleting={deletingThread}
+        onCancel={() => setThreadPendingDeletion(null)}
+        onConfirm={() => {
+          if (!threadPendingDeletion) return;
+          setDeletingThread(true);
+          void workspace.deleteThread(threadPendingDeletion.id)
+            .then(() => {
+              setThreadPendingDeletion(null);
+              notify("Thread 已删除");
+            })
+            .catch((error: unknown) => {
+              notify(error instanceof Error ? error.message : "无法删除 thread");
+            })
+            .finally(() => setDeletingThread(false));
+        }}
       />
       {toast ? <Toast message={toast} /> : null}
     </div>

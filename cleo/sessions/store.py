@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sqlite3
 import uuid
 from contextlib import closing
@@ -725,6 +726,33 @@ class SessionStore:
         if not normalized:
             raise ValueError("title cannot be empty")
         return self.update_manifest(session_id, title=normalized[:120])
+
+    def delete_session(self, session_id: str) -> dict[str, Any]:
+        """Permanently delete one local session and its derived conversation state."""
+        session_id = validate_name(session_id, "session_id")
+        with self._lock:
+            manifest = self.load_manifest(session_id)
+            space = str(manifest["space"])
+            project = str(manifest["project"])
+            directory = session_directory(self.memory_root, space, project, session_id)
+
+            discard_session_source(
+                space,
+                project,
+                session_id,
+                path=memory_state_path(self.memory_root, space),
+            )
+            delete_conversation_chunks(
+                space=space,
+                project=project,
+                session_id=session_id,
+                path=memory_database_path(self.memory_root, space),
+            )
+            shutil.rmtree(directory)
+            with closing(sqlite3.connect(self.index_path)) as conn, conn:
+                conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+            self._event_id_cache.pop(session_id, None)
+            return manifest
 
     def move_session(self, session_id: str, target_project: str) -> dict[str, Any]:
         """把会话整体迁移到目标项目(移动目录、重写事件、清理源侧记忆)。

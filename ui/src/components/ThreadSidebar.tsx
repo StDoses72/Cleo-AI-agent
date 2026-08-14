@@ -10,6 +10,7 @@ import {
   MoreHorizontal,
   Plus,
   Search,
+  Trash2,
 } from "lucide-react";
 import type { MemoryOverview, MemoryViewMode, Project, Thread, WorkspaceSpace } from "../types";
 
@@ -21,6 +22,7 @@ interface ThreadSidebarProps {
   activeThreadId: string | null;
   onSelectProject: (projectId: string) => void;
   onSelectThread: (threadId: string) => void;
+  onDeleteThread: (thread: Thread) => void;
   onCreateThread: () => void;
   onChooseWorkspace: () => void;
   onOpenCommand: () => void;
@@ -47,6 +49,7 @@ export function ThreadSidebar({
   activeThreadId,
   onSelectProject,
   onSelectThread,
+  onDeleteThread,
   onCreateThread,
   onChooseWorkspace,
   onOpenCommand,
@@ -212,6 +215,7 @@ export function ThreadSidebar({
                   thread={thread}
                   active={thread.id === activeThreadId}
                   onClick={() => onSelectThread(thread.id)}
+                  onDelete={() => onDeleteThread(thread)}
                 />
               ))
             ) : (
@@ -233,29 +237,50 @@ export function ThreadSidebar({
   );
 }
 
-function ThreadRow({ thread, active, onClick }: { thread: Thread; active: boolean; onClick: () => void }) {
+function ThreadRow({
+  thread,
+  active,
+  onClick,
+  onDelete,
+}: {
+  thread: Thread;
+  active: boolean;
+  onClick: () => void;
+  onDelete: () => void;
+}) {
   return (
-    <button
+    <div
       className={`thread-row ${active ? "active" : ""}`}
-      type="button"
-      onClick={onClick}
       data-status={thread.status}
     >
-      <span className="thread-status-dot" />
-      <span className="thread-copy">
-        <span className="thread-title-line">
-          <strong>{thread.title}</strong>
-          <time>{thread.updatedAt}</time>
-        </span>
-        <span className="thread-summary">{thread.summary}</span>
-        {statusLabel[thread.status] ? (
-          <span className={`thread-status-label ${thread.status}`}>
-            {thread.status === "attention" ? <CircleAlert size={11} /> : null}
-            {statusLabel[thread.status]}
+      <button className="thread-row-select" type="button" onClick={onClick}>
+        <span className="thread-status-dot" />
+        <span className="thread-copy">
+          <span className="thread-title-line">
+            <strong>{thread.title}</strong>
+            <time>{thread.updatedAt}</time>
           </span>
-        ) : null}
-      </span>
-    </button>
+          <span className="thread-summary">{thread.summary}</span>
+          {statusLabel[thread.status] ? (
+            <span className={`thread-status-label ${thread.status}`}>
+              {thread.status === "attention" ? <CircleAlert size={11} /> : null}
+              {statusLabel[thread.status]}
+            </span>
+          ) : null}
+        </span>
+      </button>
+      <button
+        className="thread-delete-button"
+        type="button"
+        aria-label={`删除 ${thread.title}`}
+        title={thread.status === "running" ? "请先停止运行" : "删除 thread"}
+        disabled={thread.status === "running"}
+        onClick={onDelete}
+        data-testid="delete-thread"
+      >
+        <Trash2 size={13} />
+      </button>
+    </div>
   );
 }
 

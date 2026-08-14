@@ -265,3 +265,41 @@ def test_session_store_refuses_to_move_consolidated_thread(tmp_path: Path) -> No
 
     with pytest.raises(ValueError, match="already been consolidated"):
         store.move_session(session_id, "research")
+
+
+def test_session_store_deletes_thread_and_derived_conversation_state(tmp_path: Path) -> None:
+    memory_root = tmp_path / "memory"
+    store = SessionStore(memory_root)
+    session_id = "session-delete"
+    store.sync_langchain_messages(
+        session_id=session_id,
+        space="non_productivity",
+        project="general",
+        messages=[HumanMessage(content="Delete this local history", id="human-delete")],
+    )
+
+    deleted = store.delete_session(session_id)
+
+    assert deleted["id"] == session_id
+    assert store.list_sessions() == []
+    assert not manifest_path(
+        memory_root,
+        "non_productivity",
+        "general",
+        session_id,
+    ).exists()
+    assert get_session_source(
+        "non_productivity",
+        "general",
+        session_id,
+        path=memory_root / "non_productivity" / "memory_state.json",
+    ) is None
+    assert search_conversation_history(
+        space="non_productivity",
+        project="general",
+        query="local history",
+        path=memory_root / "non_productivity" / "memory.sqlite3",
+        memory_root=memory_root,
+    ) == []
+    with pytest.raises(FileNotFoundError):
+        store.load_manifest(session_id)
