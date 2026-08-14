@@ -47,3 +47,34 @@ test("legacy desktop profiles migrate into the canonical Cleo home", async () =>
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("desktop home receives user-editable AGENTS guidance without overwriting it", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cleo-backend-defaults-"));
+  const defaultsRoot = join(root, "defaults");
+  const cleoHome = join(root, "home");
+  try {
+    await mkdir(join(defaultsRoot, "config"), { recursive: true });
+    await mkdir(join(defaultsRoot, "memory"), { recursive: true });
+    await mkdir(join(defaultsRoot, "assets"), { recursive: true });
+    await writeFile(join(defaultsRoot, "config", "cleo.json"), "{}\n", "utf8");
+    await writeFile(join(defaultsRoot, "config", "harnesses.json"), "{}\n", "utf8");
+    await writeFile(
+      join(defaultsRoot, "memory", "MEMORY_POLICY.md"),
+      "# Memory Policy\n",
+      "utf8",
+    );
+    await writeFile(join(defaultsRoot, "assets", "startup.png"), "image", "utf8");
+    await writeFile(join(defaultsRoot, "AGENTS.md"), "# Default Guidance\n", "utf8");
+    await writeFile(join(defaultsRoot, "PERSONA.md"), "# Persona\n", "utf8");
+
+    const bridge = new BackendBridge({ app: {}, here: "" });
+    bridge.prepareHome({ cleoHome, defaultsRoot });
+    assert.equal(await readFile(join(cleoHome, "AGENTS.md"), "utf8"), "# Default Guidance\n");
+
+    await writeFile(join(cleoHome, "AGENTS.md"), "# My Guidance\n", "utf8");
+    bridge.prepareHome({ cleoHome, defaultsRoot });
+    assert.equal(await readFile(join(cleoHome, "AGENTS.md"), "utf8"), "# My Guidance\n");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

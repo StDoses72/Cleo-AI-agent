@@ -324,6 +324,7 @@ try {
     Copy-Item -LiteralPath (Join-Path $sourceRoot "cleo\config\templates\cleo.example.json") -Destination (Join-Path $defaultsPath "config\cleo.json")
     Copy-Item -LiteralPath (Join-Path $sourceRoot "cleo\config\templates\harnesses.example.json") -Destination (Join-Path $defaultsPath "config\harnesses.json")
     Copy-Item -LiteralPath (Join-Path $sourceRoot "memory\MEMORY_POLICY.md") -Destination (Join-Path $defaultsPath "memory\MEMORY_POLICY.md")
+    Copy-Item -LiteralPath (Join-Path $sourceRoot "AGENTS.md") -Destination (Join-Path $defaultsPath "AGENTS.md")
     Copy-Item -LiteralPath (Join-Path $sourceRoot "PERSONA.md") -Destination (Join-Path $defaultsPath "PERSONA.md")
     if (Test-Path -LiteralPath (Join-Path $sourceRoot "skills")) {
         Copy-Item -LiteralPath (Join-Path $sourceRoot "skills") -Destination $defaultsPath -Recurse

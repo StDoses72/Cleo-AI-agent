@@ -145,6 +145,7 @@ export class BackendBridge {
       ["config/harnesses.json", "config/harnesses.json"],
       ["memory/MEMORY_POLICY.md", "memory/MEMORY_POLICY.md"],
       ["assets/startup.png", "assets/startup.png"],
+      ["AGENTS.md", "AGENTS.md"],
       ["PERSONA.md", "PERSONA.md"],
     ];
     for (const [source, destination] of defaults) {

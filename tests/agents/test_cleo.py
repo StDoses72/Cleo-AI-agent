@@ -47,6 +47,7 @@ def test_agent_backend_uses_configured_application_root(tmp_path, monkeypatch) -
         "# Memory Policy\n",
         encoding="utf-8",
     )
+    (tmp_path / "AGENTS.md").write_text("# Durable Guidance\n", encoding="utf-8")
     (tmp_path / "workspace").mkdir()
 
     monkeypatch.setattr(
@@ -84,9 +85,11 @@ def test_agent_backend_uses_configured_application_root(tmp_path, monkeypatch) -
     assert agent.root_dir == tmp_path
     assert agent.backend.ls("/skills").error is None
     assert agent.backend.read("/memory/MEMORY_POLICY.md").error is None
+    assert agent.backend.read("/AGENTS.md").error is None
     assert agent.backend.read("/PERSONA.md").error is None
     assert agent.backend.ls("/workspace").error is None
     assert captured_options["memory"] == [
+        "/AGENTS.md",
         "/memory/MEMORY_POLICY.md",
         "/PERSONA.md",
     ]

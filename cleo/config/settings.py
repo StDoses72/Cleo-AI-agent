@@ -387,7 +387,7 @@ class ToolsProfile(BaseModel):
 
     字段(均来自 cleo.json 的 profiles.tools 配置):
         tavily_api_key: Tavily 搜索密钥(SecretStr);经 SettingsModel.TAVILY_API_KEY
-            暴露(当前仓库内暂无消费方)。
+            暴露给前台 web_search 工具。
         codex_model: codex 工具默认模型;消费方: cleo/agents/tools/codex_tools.py:7
             与 cleo/mcp/codex_server.py:10。
         browser: 专用 agent-browser 适配器的启用状态、命令、网络边界、超时与输出上限。
@@ -718,7 +718,7 @@ class SettingsModel(BaseModel):
     def TAVILY_API_KEY(self) -> str | None:
         """明文 Tavily API key 或 None。
 
-        来源: active tools profile 的 tavily_api_key; 当前仓库内暂无消费方。
+        来源: active tools profile 的 tavily_api_key; 由前台 web_search 工具消费。
         """
         key = self.active_tools_profile.tavily_api_key
         return key.get_secret_value() if key else None

@@ -121,8 +121,9 @@ Cleo-AI-agent/
 `memory/productivity/` 都属于
 本地配置或运行状态，不应提交到 Git。
 
-`AGENTS.md` 是由用户或团队明确维护的仓库规范；根目录 `PERSONA.md` 是 DreamAgent
-维护的全局描述性人格投影；`memory/MEMORY_POLICY.md` 是开发者拥有的记忆提取策略；
+`AGENTS.md` 是由用户或团队明确维护、自动载入前台 Cleo 的长期规范；根目录
+`PERSONA.md` 是 DreamAgent 维护的全局描述性人格投影；`memory/MEMORY_POLICY.md`
+是开发者拥有的记忆提取策略；
 `memory/<space>/projects/<project>/MEMORY.md` 是 project-bound 派生记忆。自动记忆不会修改
 `AGENTS.md`，人格也不能授予权限、定义工具规则或自动创建/更新 skill。
 `PERSONA.md` 是由 `memory/persona.sqlite3` 重建的投影，启动和人格整理时会重新渲染，
