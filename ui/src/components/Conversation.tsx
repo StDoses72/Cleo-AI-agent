@@ -414,6 +414,23 @@ function Composer({
   | "commands"
 >) {
   const [prompt, setPrompt] = useState("");
+  const effortProviderRequest = useRef<string | null>(null);
+  const selectedModel = productivityModels[runtime.provider]?.models.find(
+    (model) => model.id === runtime.model,
+  );
+  const supportedEfforts = selectedModel?.supportedEfforts ?? [];
+  const selectedEffort = supportedEfforts.includes(runtime.effort) ? runtime.effort : "";
+
+  useEffect(() => {
+    if (
+      space !== "productivity"
+      || productivityModels[runtime.provider]
+      || effortProviderRequest.current === runtime.provider
+    ) return;
+    effortProviderRequest.current = runtime.provider;
+    void onLoadProductivityModels(runtime.provider).catch(() => undefined);
+  }, [onLoadProductivityModels, productivityModels, runtime.provider, space]);
+
   const submit = () => {
     if (!prompt.trim() || running) return;
     onSend(prompt);
@@ -424,10 +441,6 @@ function Composer({
       event.preventDefault();
       submit();
     }
-  };
-  const cycleEffort = () => {
-    const next = runtime.effort === "低" ? "中" : runtime.effort === "中" ? "高" : "低";
-    onEffortChange(next);
   };
   const matchingCommands = prompt.startsWith("/")
     ? commands.filter((command) => command.startsWith(prompt.trim())).slice(0, 8)
@@ -483,9 +496,18 @@ function Composer({
               onLoadModels={onLoadProductivityModels}
               onSelectProductivityRuntime={onSelectProductivityRuntime}
             />
-            <button className="text-control" type="button" disabled={running || space !== "productivity" || runtime.editable === false} onClick={cycleEffort} title="切换推理强度">
-              {runtime.effort}推理
-            </button>
+            <select
+              className="text-control effort-selector"
+              value={selectedEffort}
+              disabled={running || space !== "productivity" || supportedEfforts.length === 0}
+              onChange={(event) => onEffortChange(event.target.value as RuntimeProfile["effort"])}
+              aria-label="思考深度"
+              title="选择思考深度"
+              data-testid="effort-selector"
+            >
+              <option value="" disabled>effort</option>
+              {supportedEfforts.map((effort) => <option key={effort} value={effort}>{effort}</option>)}
+            </select>
           </div>
           {running ? (
             <button className="send-button stop" type="button" aria-label="停止" title="停止" onClick={onCancel} data-testid="stop-button">

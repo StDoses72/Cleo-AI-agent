@@ -90,6 +90,8 @@ try {
   await window.screenshot({ path: join(outputDir, "03-runtime-selector.png") });
   await window.getByText("GPT-5.6-Terra", { exact: true }).click();
   await window.getByTestId("runtime-selector").getByText("gpt-5.6-terra", { exact: true }).waitFor();
+  await window.getByTestId("effort-selector").selectOption("low");
+  assert(await window.getByTestId("effort-selector").inputValue() === "low", "Draft effort was not selectable");
   await window.screenshot({ path: join(outputDir, "03-new-thread.png") });
 
   await window.getByTestId("composer-input").fill("检查当前 mock 边界并完成一次可见的运行");
@@ -97,6 +99,7 @@ try {
   await window.getByTestId("stop-button").waitFor();
   await window.getByText("真实后端接入后，这些事件会保持同一结构从 IPC bridge 流入").waitFor({ timeout: 20_000 });
   await window.getByText("2 个文件").waitFor();
+  assert(await window.getByTestId("effort-selector").inputValue() === "low", "Created thread did not keep draft effort");
   await window.screenshot({ path: join(outputDir, "04-completed-turn.png") });
 
   await window.getByRole("button", { name: "上下文", exact: true }).click();

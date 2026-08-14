@@ -82,6 +82,7 @@ class FakeAdapter:
         self.store = store
         self.created_with = None
         self.closed = []
+        self.updated_with = None
 
     @property
     def providers(self):
@@ -118,6 +119,12 @@ class FakeAdapter:
             cwd=project_path,
         )
         return SimpleNamespace(id=session_id, project=project, project_path=project_path)
+
+    async def update_session_options(self, session_id, **changes):
+        self.updated_with = {"session_id": session_id, **changes}
+        manifest = self.store.load_manifest(session_id)
+        current = manifest.get("runtime_options") or {}
+        self.store.update_manifest(session_id, runtime_options={**current, **changes})
 
     async def close(self, session_id: str) -> None:
         self.closed.append(session_id)
@@ -337,6 +344,7 @@ def test_create_productivity_thread_uses_selected_workspace(tmp_path: Path) -> N
             space="productivity",
             project_id_value="",
             project_path=str(selected),
+            effort="low",
         )
 
         assert adapter.created_with == {
@@ -346,6 +354,20 @@ def test_create_productivity_thread_uses_selected_workspace(tmp_path: Path) -> N
             "project": "selected-project",
         }
         assert thread["projectId"] == "productivity:selected-project"
+        assert thread["runtime"]["effort"] == "low"
+        assert adapter.updated_with == {
+            "session_id": thread["id"],
+            "effort": "low",
+        }
+        runtime = await service.update_runtime(
+            thread_id=thread["id"],
+            update={"effort": "high"},
+        )
+        assert runtime["effort"] == "high"
+        assert adapter.updated_with == {
+            "session_id": thread["id"],
+            "effort": "high",
+        }
         assert service.store.load_manifest(thread["id"])["cwd"] == str(selected.resolve())
 
     asyncio.run(scenario())

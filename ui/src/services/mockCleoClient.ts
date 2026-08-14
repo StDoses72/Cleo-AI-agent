@@ -63,7 +63,7 @@ export class MockCleoClient implements CleoClient {
             profileId: selectedProfile,
             provider: "openai",
             model: chatModels[selectedProfile] ?? selectedProfile,
-            effort: "高",
+            effort: "high",
             access: "workspace-write",
             approval: "Cleo 工具策略",
             editable: true,
@@ -71,7 +71,7 @@ export class MockCleoClient implements CleoClient {
         : {
             provider: options.provider ?? "codex",
             model: options.model ?? "gpt-5.6-sol",
-            effort: "高",
+            effort: options.effort ?? "medium",
             access: "workspace-write",
             approval: "auto_review",
             editable: true,

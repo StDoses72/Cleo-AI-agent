@@ -340,6 +340,7 @@ class DesktopService:
         project_id_value: str,
         provider: str | None = None,
         model: str | None = None,
+        effort: str | None = None,
         profile_id: str | None = None,
         project_path: str | None = None,
     ) -> dict[str, Any]:
@@ -387,6 +388,8 @@ class DesktopService:
                 project=project or path_name(project_path, "general"),
             )
             self._productivity_sessions[session.id] = session
+            if effort is not None:
+                await adapter.update_session_options(session.id, effort=effort)
             manifest = self.store.load_manifest(session.id)
         self._activate(manifest)
         return await self._thread(manifest)
@@ -464,7 +467,7 @@ class DesktopService:
         if "model" in update:
             options["model"] = str(update["model"])
         if "effort" in update:
-            options["effort"] = self._effort_backend(str(update["effort"]))
+            options["effort"] = str(update["effort"])
         if "access" in update:
             options["sandbox"] = str(update["access"])
         if "approval" in update:
@@ -829,7 +832,7 @@ class DesktopService:
                     str(getattr(options, field) or "default"),
                 )
             else:
-                update = {field: self._effort_backend(argument) if field == "effort" else argument}
+                update = {field: argument}
                 await adapter.update_session_options(manifest["id"], **update)
                 await self._notice(emit, "运行参数已更新", f"{field} = {argument}", "success")
         elif command == "/cd":
@@ -1046,7 +1049,7 @@ class DesktopService:
                 "provider": profile.provider,
                 "model": profile.model,
                 "models": [item.model for item in self._agent_profiles().values()],
-                "effort": "高",
+                "effort": "high",
                 "access": str(self.settings.active_shell_profile.sandbox_root),
                 "approval": "Cleo 工具策略",
                 "contextWindow": profile.max_tokens,
@@ -1068,7 +1071,7 @@ class DesktopService:
                     [model, provider_settings.model] if provider_settings.model else [model]
                 )
             ),
-            "effort": self._effort_ui(options.get("effort")),
+            "effort": str(options.get("effort") or "medium"),
             "access": str(
                 options.get("sandbox") or getattr(provider_settings.options, "sandbox", "default")
             ),
@@ -1286,14 +1289,6 @@ class DesktopService:
     def _accent(value: str) -> str:
         palette = ("#6be4ed", "#a78bfa", "#f2b36c", "#72d69c", "#ef7ea8")
         return palette[sum(value.encode("utf-8")) % len(palette)]
-
-    @staticmethod
-    def _effort_ui(value: Any) -> str:
-        return {"low": "低", "medium": "中", "high": "高", "xhigh": "高"}.get(str(value), "中")
-
-    @staticmethod
-    def _effort_backend(value: str) -> str:
-        return {"低": "low", "中": "medium", "高": "high"}.get(value, value)
 
     @staticmethod
     def _debug(message: str) -> None:

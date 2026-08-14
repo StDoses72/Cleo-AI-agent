@@ -1555,6 +1555,15 @@ kbd {
   font-size: 9.5px;
 }
 
+select.text-control {
+  border: 0;
+  background: transparent;
+}
+
+select.text-control:hover {
+  background: var(--surface-hover);
+}
+
 .model-menu-wrap {
   position: relative;
 }

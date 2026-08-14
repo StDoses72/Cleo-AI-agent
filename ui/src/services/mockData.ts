@@ -430,7 +430,7 @@ export const snapshot: WorkspaceSnapshot = {
   runtime: {
     provider: "Codex",
     model: "gpt-5.5",
-    effort: "高",
+    effort: "high",
     access: "workspace-write",
     approval: "按需确认",
   },

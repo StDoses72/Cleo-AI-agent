@@ -90,6 +90,16 @@ export interface Attachment {
   base64: string;
 }
 
+export type ReasoningEffort =
+  | "none"
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh"
+  | "max"
+  | "ultra";
+
 export interface MemoryEntry {
   id: string;
   scope: "persona" | "project" | "preference";
@@ -104,7 +114,7 @@ export interface RuntimeProfile {
   provider: string;
   model: string;
   models?: string[];
-  effort: "低" | "中" | "高";
+  effort: ReasoningEffort;
   access: string;
   approval: string;
   contextWindow?: number;
@@ -116,8 +126,8 @@ export interface RuntimeModelOption {
   label: string;
   description: string;
   isDefault: boolean;
-  defaultEffort: string | null;
-  supportedEfforts: string[];
+  defaultEffort: ReasoningEffort | null;
+  supportedEfforts: ReasoningEffort[];
 }
 
 export interface NonProductivityProfileOption {
@@ -154,6 +164,7 @@ export interface CreateThreadOptions {
   projectPath?: string;
   provider?: string;
   model?: string;
+  effort?: ReasoningEffort;
   profileId?: string;
 }
 

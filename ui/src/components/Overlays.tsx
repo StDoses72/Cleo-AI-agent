@@ -149,6 +149,7 @@ interface SettingsModalProps {
   open: boolean;
   theme: "dark" | "light";
   runtime: RuntimeProfile;
+  supportedEfforts: RuntimeProfile["effort"][];
   memoryOverview: MemoryOverview;
   modelSettings: ModelSettings | null;
   modelSettingsLoading: boolean;
@@ -167,6 +168,7 @@ export function SettingsModal({
   open,
   theme,
   runtime,
+  supportedEfforts,
   memoryOverview,
   modelSettings,
   modelSettingsLoading,
@@ -213,7 +215,7 @@ export function SettingsModal({
             <div className="settings-page">
               <SettingsRow title="Provider" description="来自当前 thread 的真实 harness session。"><span className="settings-value">{runtime.provider}</span></SettingsRow>
               <SettingsRow title="默认模型" description={runtime.editable === false ? "Cleo 对话模型来自当前 agent profile。" : "应用到当前 productivity thread。"}><select disabled={runtime.editable === false} value={runtime.model} onChange={(event) => onRuntimeChange({ model: event.target.value })}>{(runtime.models?.length ? runtime.models : [runtime.model]).map((model) => <option key={model}>{model}</option>)}</select></SettingsRow>
-              <SettingsRow title="推理强度" description="更高强度适合复杂代码任务。"><div className="segmented-control">{(["低", "中", "高"] as RuntimeProfile["effort"][]).map((effort) => <button className={runtime.effort === effort ? "active" : ""} type="button" key={effort} onClick={() => onRuntimeChange({ effort })}>{effort}</button>)}</div></SettingsRow>
+              <SettingsRow title="推理强度" description="更高强度适合复杂代码任务。"><div className="segmented-control">{supportedEfforts.length ? supportedEfforts.map((effort) => <button className={runtime.effort === effort ? "active" : ""} type="button" key={effort} onClick={() => onRuntimeChange({ effort })}>{effort}</button>) : <button type="button" disabled>default</button>}</div></SettingsRow>
               <SettingsRow title="文件访问" description="每个 turn 都会明确显示实际 sandbox。"><span className="settings-value mono">{runtime.access}</span></SettingsRow>
             </div>
           ) : page === "models" ? (

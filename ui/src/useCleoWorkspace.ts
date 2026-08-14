@@ -37,6 +37,7 @@ export function useCleoWorkspace() {
   const [draftProfileId, setDraftProfileId] = useState("");
   const [draftProvider, setDraftProvider] = useState("");
   const [draftModel, setDraftModel] = useState("");
+  const [draftEffort, setDraftEffort] = useState<RuntimeProfile["effort"]>("medium");
   const generationRef = useRef(0);
   const selectionRef = useRef(0);
 
@@ -96,7 +97,7 @@ export function useCleoWorkspace() {
         profileId: profile?.id,
         provider: profile?.provider ?? "Cleo",
         model: profile?.model ?? "选择模型",
-        effort: "高",
+        effort: "high",
         access: "workspace-write",
         approval: "Cleo 工具策略",
         contextWindow: profile?.maxTokens,
@@ -109,13 +110,13 @@ export function useCleoWorkspace() {
     return {
       provider: (provider?.id ?? draftProvider) || "选择 SDK / ACP",
       model: draftModel || provider?.defaultModel || "选择模型",
-      effort: "高",
+      effort: draftEffort,
       access: "workspace-write",
       approval: "default",
       contextWindow: 128000,
       editable: false,
     };
-  }, [activeSpace, draftModel, draftProfileId, draftProvider, runtimeCatalog]);
+  }, [activeSpace, draftEffort, draftModel, draftProfileId, draftProvider, runtimeCatalog]);
 
   const updateThread = (threadId: string, update: (thread: Thread) => Thread) => {
     setSnapshot((current) =>
@@ -189,6 +190,7 @@ export function useCleoWorkspace() {
     if (activeThread?.space === "productivity") {
       setDraftProvider(activeThread.runtime?.provider ?? draftProvider);
       setDraftModel(activeThread.runtime?.model ?? draftModel);
+      setDraftEffort(activeThread.runtime?.effort ?? draftEffort);
     }
     setActiveThreadId(null);
   };
@@ -208,6 +210,7 @@ export function useCleoWorkspace() {
             projectPath: activeProject?.path,
             provider: draftProvider || runtimeCatalog?.defaultProductivityProvider,
             model: draftModel || undefined,
+            effort: draftEffort,
           },
     );
     setSnapshot((current) =>
@@ -378,6 +381,9 @@ export function useCleoWorkspace() {
   };
 
   const updateRuntime = (update: Partial<RuntimeProfile>) => {
+    if (activeSpace === "productivity" && update.effort) {
+      setDraftEffort(update.effort);
+    }
     const threadId = activeThreadId;
     if (!threadId) return;
     void cleoClient
@@ -435,6 +441,12 @@ export function useCleoWorkspace() {
   const selectProductivityRuntime = (provider: string, model: string) => {
     setDraftProvider(provider);
     setDraftModel(model);
+    const selectedModel = productivityModels[provider]?.models.find(
+      (candidate) => candidate.id === model,
+    );
+    if (selectedModel && !selectedModel.supportedEfforts.includes(draftEffort)) {
+      setDraftEffort(selectedModel.defaultEffort ?? selectedModel.supportedEfforts[0] ?? "medium");
+    }
     if (
       activeThread?.space === "productivity"
       && activeThread.runtime?.provider === provider
