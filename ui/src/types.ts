@@ -183,6 +183,12 @@ export interface ModelSettings {
   activeDreamAgent: string;
 }
 
+export interface AgentInstructions {
+  path: string;
+  content: string;
+  exists: boolean;
+}
+
 export interface ModelProfileInput {
   name: string;
   provider: string;
@@ -236,6 +242,28 @@ export interface MemoryReviewSource {
   failure_count: number;
   last_error: string | null;
   updated_at: string;
+}
+
+export interface MemoryReviewEvent {
+  id: string;
+  type: string;
+  content: unknown;
+  created_at: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface MemoryReviewDetails {
+  id: string;
+  source_version: number;
+  event_count: number;
+  events: MemoryReviewEvent[];
+  omitted_events: Array<{
+    id: string;
+    seq: number;
+    type: string;
+    actor: string;
+    created_at: string | null;
+  }>;
 }
 
 export type MemoryViewMode = "all" | "projects" | "pending";
@@ -313,10 +341,13 @@ export interface CleoClient {
   copyText(value: string): Promise<void>;
   revealPath(value: string): Promise<void>;
   getConfigTemplates(): Promise<{ cleo: string; harnesses: string }>;
+  getAgentInstructions(): Promise<AgentInstructions>;
   getModelSettings(): Promise<ModelSettings>;
   getRuntimeCatalog(): Promise<RuntimeCatalog>;
   getProductivityModels(provider: string, projectPath?: string): Promise<ProductivityModelCatalog>;
   saveModelProfile(profile: ModelProfileInput): Promise<ModelSettings>;
+  saveAgentInstructions(content: string): Promise<AgentInstructions>;
+  getMemoryReviewDetails(source: MemoryReviewSource): Promise<MemoryReviewDetails>;
   reviewMemorySource(
     source: MemoryReviewSource,
     action: MemoryReviewAction,

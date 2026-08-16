@@ -223,6 +223,9 @@ pip install -e ".[dev]"
 npm install -g agent-browser@0.33.1
 ```
 
+使用 OpenCode harness 前，需要由用户单独安装 OpenCode CLI，并确保 `harnesses.json` 中配置的
+`opencode` 命令位于 PATH。Cleo 桌面端会在选择该 harness 时检测 ACP 连接，但不会下载 CLI。
+
 `agent-browser` 会优先使用本机 Chrome/Edge；桌面发布包已经携带 Node runtime 与固定版本的
 `agent-browser`。Sentence Transformer 模型按配置下载到用户数据目录中的模型缓存；模型暂时
 不可用时 gate 会 fail-open 到 DreamAgent。

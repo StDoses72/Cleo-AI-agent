@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cleoClient } from "./services/cleoClient";
 import type {
+  AgentInstructions,
   Attachment,
   ModelProfileInput,
   ModelSettings,
@@ -30,6 +31,8 @@ export function useCleoWorkspace() {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [modelSettings, setModelSettings] = useState<ModelSettings | null>(null);
   const [modelSettingsLoading, setModelSettingsLoading] = useState(false);
+  const [agentInstructions, setAgentInstructions] = useState<AgentInstructions | null>(null);
+  const [agentInstructionsLoading, setAgentInstructionsLoading] = useState(false);
   const [runtimeCatalog, setRuntimeCatalog] = useState<RuntimeCatalog | null>(null);
   const [productivityModels, setProductivityModels] = useState<Record<string, ProductivityModelCatalog>>({});
   const [runtimeModelsLoading, setRuntimeModelsLoading] = useState<string | null>(null);
@@ -540,6 +543,26 @@ export function useCleoWorkspace() {
       setModelSettingsLoading(false);
     }
   };
+  const loadAgentInstructions = async () => {
+    setAgentInstructionsLoading(true);
+    try {
+      const loaded = await cleoClient.getAgentInstructions();
+      setAgentInstructions(loaded);
+      return loaded;
+    } finally {
+      setAgentInstructionsLoading(false);
+    }
+  };
+  const saveAgentInstructions = async (content: string) => {
+    setAgentInstructionsLoading(true);
+    try {
+      const saved = await cleoClient.saveAgentInstructions(content);
+      setAgentInstructions(saved);
+      return saved;
+    } finally {
+      setAgentInstructionsLoading(false);
+    }
+  };
   const reviewMemorySource = async (
     source: MemoryReviewSource,
     action: MemoryReviewAction,
@@ -548,6 +571,8 @@ export function useCleoWorkspace() {
     setSnapshot(refreshed);
     return refreshed;
   };
+  const loadMemoryReviewDetails = (source: MemoryReviewSource) =>
+    cleoClient.getMemoryReviewDetails(source);
 
   return {
     snapshot,
@@ -562,6 +587,8 @@ export function useCleoWorkspace() {
     attachments,
     modelSettings,
     modelSettingsLoading,
+    agentInstructions,
+    agentInstructionsLoading,
     runtimeCatalog,
     productivityModels,
     runtimeModelsLoading,
@@ -587,6 +614,9 @@ export function useCleoWorkspace() {
     deleteThread,
     loadModelSettings,
     saveModelProfile,
+    loadAgentInstructions,
+    saveAgentInstructions,
+    loadMemoryReviewDetails,
     reviewMemorySource,
   };
 }

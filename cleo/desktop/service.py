@@ -25,7 +25,7 @@ from cleo.desktop.projection import (
 )
 from cleo.harnesses.control import HarnessModel
 from cleo.integrations.git import inspect_git_status, read_git_diff
-from cleo.memory.compaction import load_events
+from cleo.memory.compaction import load_events, load_validated_compact
 from cleo.memory.overview import build_memory_overview
 from cleo.memory.paths import memory_state_path
 from cleo.memory.state import (
@@ -333,6 +333,79 @@ class DesktopService:
 
         return await self.load_workspace()
 
+    async def get_memory_review_details(
+        self,
+        *,
+        space: str,
+        project: str,
+        session_id: str,
+    ) -> dict[str, Any]:
+        """Return the current redacted compact projection for one review source."""
+        source = get_session_source(
+            space,
+            project,
+            session_id,
+            path=memory_state_path(self.settings.MEMORY_DIR, space),
+        )
+        if source is None or source.get("status") not in {"pending", "failed"}:
+            raise ValueError("待确认的记忆来源不存在或已被处理")
+        payload = load_validated_compact(
+            memory_root=self.settings.MEMORY_DIR,
+            space=space,
+            project=project,
+            session_id=session_id,
+        )
+        compact_source = payload.get("source") or {}
+        if compact_source.get("source_content_hash") != source.get("source_hash"):
+            raise ValueError("这个记忆来源已更新，请刷新后重试")
+
+        events = []
+        represented_event_ids: set[str] = set()
+        for event in payload.get("events") or []:
+            if not isinstance(event, dict):
+                continue
+            represented_event_ids.update(
+                str(event_id) for event_id in event.get("source_event_ids") or []
+            )
+            events.append(
+                {
+                    "id": str(event.get("id") or ""),
+                    "type": str(event.get("type") or "unknown"),
+                    "content": event.get("content"),
+                    "created_at": event.get("created_at"),
+                    "metadata": {
+                        key: value
+                        for key, value in event.items()
+                        if key
+                        not in {
+                            "id",
+                            "type",
+                            "content",
+                            "created_at",
+                            "source_event_ids",
+                        }
+                    },
+                }
+            )
+        omitted_events = [
+            {
+                "id": str(event.get("id") or ""),
+                "seq": int(event.get("seq", 0)),
+                "type": str(event.get("type") or "unknown"),
+                "actor": str(event.get("actor") or "unknown"),
+                "created_at": event.get("created_at"),
+            }
+            for event in self.store.read_events(session_id)
+            if str(event.get("id") or "") not in represented_event_ids
+        ]
+        return {
+            "id": f"{space}:{project}:{session_id}",
+            "source_version": int(source.get("source_version", 0)),
+            "event_count": int(compact_source.get("event_count", len(events))),
+            "events": events,
+            "omitted_events": omitted_events,
+        }
+
     async def create_thread(
         self,
         *,
@@ -488,6 +561,14 @@ class DesktopService:
     async def get_model_settings(self) -> dict[str, Any]:
         return read_model_settings(self.settings.PROFILE_DIR)
 
+    async def get_agent_instructions(self) -> dict[str, Any]:
+        path = Path(self.settings.active_directory_profile.root_path) / "AGENTS.md"
+        return {
+            "path": str(path),
+            "content": path.read_text(encoding="utf-8-sig") if path.is_file() else "",
+            "exists": path.is_file(),
+        }
+
     async def get_runtime_catalog(self) -> dict[str, Any]:
         registered = set(self._adapter().providers)
         profiles = [
@@ -535,18 +616,19 @@ class DesktopService:
         dynamic = provider_settings.type == "codex_sdk" or (
             provider_settings.type == "acp" and bool(provider_settings.options.model_config_id)
         )
+        project_root = project_path or str(self.settings.active_directory_profile.root_path)
         if dynamic:
             if provider_settings.type == "acp":
                 control = self._adapter().provider_control(provider)
-                models = await control.list_models(
-                    project_path
-                    or str(self.settings.active_directory_profile.root_path)
-                )
+                models = await control.list_models(project_root)
                 source = "acp"
             else:
                 models = await self._adapter().list_models(provider)
                 source = "sdk"
         else:
+            if provider_settings.type == "acp":
+                control = self._adapter().provider_control(provider)
+                await control.check_connection(project_root)
             identifiers = list(
                 dict.fromkeys(
                     [
@@ -560,6 +642,17 @@ class DesktopService:
                 for identifier in identifiers
             )
             source = "config"
+            if provider_settings.type == "acp" and not models:
+                models = (
+                    HarnessModel(
+                        id="default",
+                        display_name="Harness default",
+                        description="Model selection is managed by the ACP harness",
+                        is_default=True,
+                        default_effort=None,
+                        supported_efforts=(),
+                    ),
+                )
         if not models:
             raise ValueError(f"Provider {provider!r} did not expose any selectable models.")
         return {
@@ -570,6 +663,22 @@ class DesktopService:
 
     async def save_model_profile(self, *, profile: dict[str, Any]) -> dict[str, Any]:
         return save_model_profile(self.settings.PROFILE_DIR, profile)
+
+    async def save_agent_instructions(self, *, content: str) -> dict[str, Any]:
+        if not isinstance(content, str):
+            raise TypeError("Agent instructions must be text.")
+        path = Path(self.settings.active_directory_profile.root_path) / "AGENTS.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = path.with_name(f".{path.name}.tmp")
+        temporary_path.write_text(content, encoding="utf-8", newline="")
+        temporary_path.replace(path)
+        self._chat_agents.clear()
+        self._chat_agents_restored.clear()
+        return {
+            "path": str(path),
+            "content": content,
+            "exists": True,
+        }
 
     async def reset_workspace(self) -> dict[str, Any]:
         from cleo.cli.workspace import reset_workspace_to_main

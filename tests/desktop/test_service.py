@@ -182,6 +182,36 @@ def test_desktop_exposes_every_cli_slash_command() -> None:
     assert PRODUCTIVITY_COMMANDS == _normalized_commands(PRODUCTIVITY_TUI_COMMANDS)
 
 
+def test_agent_instructions_use_active_non_productivity_root(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        service = _service(tmp_path)
+        path = service.settings.active_directory_profile.root_path / "AGENTS.md"
+        path.write_text("# Existing instructions\n", encoding="utf-8")
+
+        loaded = await service.get_agent_instructions()
+        assert loaded == {
+            "path": str(path),
+            "content": "# Existing instructions\n",
+            "exists": True,
+        }
+
+        service._chat_agents["chat-thread"] = object()
+        service._chat_agents_restored.add("chat-thread")
+        saved = await service.save_agent_instructions(content="# Updated instructions\n")
+
+        assert saved == {
+            "path": str(path),
+            "content": "# Updated instructions\n",
+            "exists": True,
+        }
+        assert path.read_bytes() == b"# Updated instructions\n"
+        assert path.read_text(encoding="utf-8") == "# Updated instructions\n"
+        assert service._chat_agents == {}
+        assert service._chat_agents_restored == set()
+
+    asyncio.run(scenario())
+
+
 def test_workspace_snapshot_and_chat_commands_use_real_session_store(tmp_path: Path) -> None:
     async def scenario() -> None:
         service = _service(tmp_path)
@@ -477,6 +507,110 @@ def test_runtime_catalog_and_profile_selection_use_configured_models(tmp_path: P
         assert runtime["profileId"] == "primary"
         assert thread["id"] not in service._chat_agents
         assert thread["id"] not in service._chat_agents_restored
+
+    asyncio.run(scenario())
+
+
+def test_static_acp_models_probe_configured_harness_connection(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        service = _service(tmp_path)
+        checked: list[str] = []
+
+        class Control:
+            async def check_connection(self, project_path: str) -> None:
+                checked.append(project_path)
+
+        class Adapter(FakeAdapter):
+            @property
+            def providers(self):
+                return ("static-acp",)
+
+            def provider_control(self, provider: str):
+                assert provider == "static-acp"
+                return Control()
+
+        service.settings.productivity = SimpleNamespace(
+            default_provider="static-acp",
+            providers={
+                "static-acp": SimpleNamespace(
+                    enabled=True,
+                    type="acp",
+                    model=None,
+                    models=[],
+                    options=SimpleNamespace(model_config_id=None),
+                )
+            },
+            provider=lambda name: service.settings.productivity.providers[name],
+        )
+        service._adapter_instance = Adapter(service.store)
+        selected = tmp_path / "acp-project"
+        selected.mkdir()
+
+        models = await service.get_productivity_models(
+            provider="static-acp",
+            project_path=str(selected),
+        )
+
+        assert models["source"] == "config"
+        assert models["models"][0] == {
+            "id": "default",
+            "label": "Harness default",
+            "description": "Model selection is managed by the ACP harness",
+            "isDefault": True,
+            "defaultEffort": None,
+            "supportedEfforts": [],
+        }
+        assert checked == [str(selected)]
+
+    asyncio.run(scenario())
+
+
+def test_memory_review_details_return_current_redacted_compact_events(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        service = _service(tmp_path)
+        service.store.create_session(
+            session_id="session-details",
+            space="productivity",
+            project="workspace",
+            provider="codex",
+            owner_type="user",
+        )
+        service.store.append_events(
+            space="productivity",
+            project="workspace",
+            session_id="session-details",
+            events=[
+                {
+                    "id": "event-question",
+                    "type": "user_message",
+                    "actor": "user",
+                    "content": "Remember this decision",
+                },
+                {
+                    "id": "event-answer",
+                    "type": "assistant_message",
+                    "actor": "agent",
+                    "content": "Decision captured",
+                },
+            ],
+        )
+        service.store.refresh_compact("session-details")
+
+        details = await service.get_memory_review_details(
+            space="productivity",
+            project="workspace",
+            session_id="session-details",
+        )
+
+        assert details["source_version"] == 1
+        assert details["event_count"] == 3
+        assert [(event["type"], event["content"]) for event in details["events"]] == [
+            ("human", "Remember this decision"),
+            ("ai", "Decision captured"),
+        ]
+        assert [event["type"] for event in details["omitted_events"]] == [
+            "session_created"
+        ]
 
     asyncio.run(scenario())
 

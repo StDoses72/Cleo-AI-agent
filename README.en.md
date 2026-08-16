@@ -231,6 +231,11 @@ Source checkouts also need the browser runtime:
 npm install -g agent-browser@0.33.1
 ```
 
+Before using the OpenCode harness, install the OpenCode CLI separately and make
+the `opencode` command configured in `harnesses.json` available on `PATH`. The
+desktop app checks the ACP connection when the harness is selected; it does not
+download the CLI.
+
 `agent-browser` prefers an installed Chrome or Edge. Desktop releases bundle a
 Node runtime and the pinned `agent-browser` package. Sentence Transformer models
 are downloaded into the user's Cleo model cache according to configuration; an

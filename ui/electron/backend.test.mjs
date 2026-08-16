@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import test from "node:test";
 
 import { BackendBridge } from "./backend.mjs";
@@ -77,4 +77,23 @@ test("desktop home receives user-editable AGENTS guidance without overwriting it
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("Windows desktop backend discovers npm global commands", () => {
+  const root = join(tmpdir(), "cleo-backend-path");
+  const appData = join(root, "roaming");
+  const python = join(root, "python", "python.exe");
+  const systemPath = join(root, "system-bin");
+  const bridge = new BackendBridge({ app: {}, here: "" });
+
+  const runtimePath = bridge.runtimePath(
+    { python, browserRoot: null },
+    { APPDATA: appData, PATH: systemPath },
+    "win32",
+  );
+
+  assert.equal(
+    runtimePath,
+    [join(dirname(python), "Scripts"), join(appData, "npm"), systemPath].join(delimiter),
+  );
 });

@@ -1,5 +1,6 @@
 import type {
   CleoClient,
+  AgentInstructions,
   Attachment,
   CreateThreadOptions,
   ModelProfileInput,
@@ -7,6 +8,7 @@ import type {
   ProductivityModelCatalog,
   RuntimeCatalog,
   MemoryReviewAction,
+  MemoryReviewDetails,
   MemoryReviewSource,
   RuntimeProfile,
   StreamEvent,
@@ -241,6 +243,14 @@ export class MockCleoClient implements CleoClient {
     return { cleo: "{}", harnesses: "{}" };
   }
 
+  async getAgentInstructions(): Promise<AgentInstructions> {
+    return {
+      path: "C:\\Users\\demo\\AppData\\Local\\Cleo\\AGENTS.md",
+      content: "# Cleo Agent Instructions\n\n- Prefer concise answers.\n",
+      exists: true,
+    };
+  }
+
   async getModelSettings(): Promise<ModelSettings> {
     return {
       profiles: [{ name: "demo", provider: "openai", model: "demo-model", baseUrl: null, maxTokens: 128000, hasApiKey: true }],
@@ -291,6 +301,55 @@ export class MockCleoClient implements CleoClient {
       profiles: [{ name: profile.name, provider: profile.provider, model: profile.model, baseUrl: profile.baseUrl || null, maxTokens: profile.maxTokens, hasApiKey: true }],
       activeAgent: profile.activateAgent ? profile.name : "demo",
       activeDreamAgent: profile.activateDreamAgent ? profile.name : "demo",
+    };
+  }
+
+  async saveAgentInstructions(content: string): Promise<AgentInstructions> {
+    return {
+      path: "C:\\Users\\demo\\AppData\\Local\\Cleo\\AGENTS.md",
+      content,
+      exists: true,
+    };
+  }
+
+  async getMemoryReviewDetails(source: MemoryReviewSource): Promise<MemoryReviewDetails> {
+    await delay(240);
+    return {
+      id: source.id,
+      source_version: source.source_version,
+      event_count: 3,
+      events: [
+        {
+          id: "mock-user",
+          type: "human",
+          content: "记住这个项目使用 local-first 的运行方式。",
+          created_at: source.updated_at,
+          metadata: {},
+        },
+        {
+          id: "mock-assistant",
+          type: "ai",
+          content: "已确认，配置、会话和记忆都保存在本地目录。",
+          created_at: source.updated_at,
+          metadata: {},
+        },
+        {
+          id: "mock-tool",
+          type: "tool_event",
+          content: null,
+          created_at: source.updated_at,
+          metadata: { name: "read_file", status: "success", result_omitted: true },
+        },
+      ],
+      omitted_events: [
+        {
+          id: "mock-session-created",
+          seq: 1,
+          type: "session_created",
+          actor: "system",
+          created_at: source.updated_at,
+        },
+      ],
     };
   }
 

@@ -10,6 +10,7 @@ import {
   Database,
   Fingerprint,
   FolderGit2,
+  LoaderCircle,
   MoonStar,
   Search,
   ShieldCheck,
@@ -18,6 +19,7 @@ import type {
   MemoryOverview,
   MemoryOverviewEntry,
   MemoryReviewAction,
+  MemoryReviewDetails,
   MemoryReviewSource,
   MemoryViewMode,
 } from "../types";
@@ -25,6 +27,7 @@ import type {
 interface MemoryViewProps {
   overview: MemoryOverview;
   mode: MemoryViewMode;
+  onLoadReviewDetails: (source: MemoryReviewSource) => Promise<MemoryReviewDetails>;
   onReviewSource: (
     source: MemoryReviewSource,
     action: MemoryReviewAction,
@@ -52,13 +55,22 @@ const viewCopy = {
   },
 } as const;
 
-export function MemoryView({ overview, mode, onReviewSource }: MemoryViewProps) {
+export function MemoryView({
+  overview,
+  mode,
+  onLoadReviewDetails,
+  onReviewSource,
+}: MemoryViewProps) {
   const { summary, gate, dream_agent: dreamAgent } = overview;
   const [query, setQuery] = useState("");
   const [projectKey, setProjectKey] = useState("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [reviewError, setReviewError] = useState<string | null>(null);
+  const [expandedReviewId, setExpandedReviewId] = useState<string | null>(null);
+  const [reviewDetails, setReviewDetails] = useState<Record<string, MemoryReviewDetails>>({});
+  const [reviewDetailsLoadingId, setReviewDetailsLoadingId] = useState<string | null>(null);
+  const [reviewDetailsErrors, setReviewDetailsErrors] = useState<Record<string, string>>({});
   const copy = viewCopy[mode];
   const normalizedQuery = query.trim().toLocaleLowerCase();
 
@@ -93,6 +105,28 @@ export function MemoryView({ overview, mode, onReviewSource }: MemoryViewProps) 
       setReviewError(error instanceof Error ? error.message : "无法处理这个记忆来源");
     } finally {
       setReviewingId(null);
+    }
+  };
+
+  const toggleReviewSource = async (source: MemoryReviewSource) => {
+    if (expandedReviewId === source.id) {
+      setExpandedReviewId(null);
+      return;
+    }
+    setExpandedReviewId(source.id);
+    if (reviewDetails[source.id] || reviewDetailsLoadingId === source.id) return;
+    setReviewDetailsLoadingId(source.id);
+    setReviewDetailsErrors((current) => ({ ...current, [source.id]: "" }));
+    try {
+      const details = await onLoadReviewDetails(source);
+      setReviewDetails((current) => ({ ...current, [source.id]: details }));
+    } catch (error) {
+      setReviewDetailsErrors((current) => ({
+        ...current,
+        [source.id]: error instanceof Error ? error.message : "无法读取这个 session 的内容",
+      }));
+    } finally {
+      setReviewDetailsLoadingId((current) => current === source.id ? null : current);
     }
   };
 
@@ -167,6 +201,11 @@ export function MemoryView({ overview, mode, onReviewSource }: MemoryViewProps) 
           sources={visibleReviewSources}
           reviewingId={reviewingId}
           error={reviewError}
+          expandedId={expandedReviewId}
+          details={reviewDetails}
+          detailsLoadingId={reviewDetailsLoadingId}
+          detailsErrors={reviewDetailsErrors}
+          onToggle={(source) => void toggleReviewSource(source)}
           onReview={review}
         />
       ) : (
@@ -260,11 +299,21 @@ function ReviewQueue({
   sources,
   reviewingId,
   error,
+  expandedId,
+  details,
+  detailsLoadingId,
+  detailsErrors,
+  onToggle,
   onReview,
 }: {
   sources: MemoryReviewSource[];
   reviewingId: string | null;
   error: string | null;
+  expandedId: string | null;
+  details: Record<string, MemoryReviewDetails>;
+  detailsLoadingId: string | null;
+  detailsErrors: Record<string, string>;
+  onToggle: (source: MemoryReviewSource) => void;
   onReview: (source: MemoryReviewSource, action: MemoryReviewAction) => Promise<void>;
 }) {
   return (
@@ -274,13 +323,19 @@ function ReviewQueue({
       <div className="memory-review-list" data-testid="memory-review-list">
         {sources.length ? sources.map((source) => {
           const busy = reviewingId === source.id;
+          const expanded = expandedId === source.id;
           return (
-            <article key={source.id} data-status={source.status}>
+            <article key={source.id} data-status={source.status} className={expanded ? "expanded" : ""}>
               <span className="memory-review-icon">{source.status === "failed" ? <CircleAlert size={16} /> : <FolderGit2 size={16} />}</span>
               <div className="memory-review-copy">
-                <div><strong>{source.project}</strong><span>{source.status === "failed" ? "整理失败" : "等待确认"}</span></div>
-                <p>{source.status === "failed" && source.last_error ? source.last_error : `Session 已更新至第 ${source.source_version} 版，共 ${source.last_event_seq} 个事件。`}</p>
-                <footer><code>{source.session_id}</code><span>{spaceLabel(source.space)}</span><time>{formatRelativeTime(source.updated_at)}</time></footer>
+                <button type="button" className="memory-review-toggle" onClick={() => onToggle(source)} aria-expanded={expanded}>
+                  <span className="memory-review-summary">
+                    <span className="memory-review-title"><strong>{source.project}</strong><span>{source.status === "failed" ? "整理失败" : "等待确认"}</span></span>
+                    <p>{source.status === "failed" && source.last_error ? source.last_error : `Session 已更新至第 ${source.source_version} 版，共 ${source.last_event_seq} 个事件。`}</p>
+                    <footer><code>{source.session_id}</code><span>{spaceLabel(source.space)}</span><time>{formatRelativeTime(source.updated_at)}</time></footer>
+                  </span>
+                  <ChevronDown size={15} />
+                </button>
               </div>
               <div className="memory-review-actions">
                 <button type="button" className="secondary" disabled={busy || reviewingId !== null} onClick={() => void onReview(source, "skip")}>
@@ -290,11 +345,76 @@ function ReviewQueue({
                   <CheckCircle2 size={14} />{busy ? "正在整理…" : source.status === "failed" ? "重新整理" : "确认并整理"}
                 </button>
               </div>
+              {expanded ? (
+                <MemoryReviewDetailsPanel
+                  details={details[source.id]}
+                  loading={detailsLoadingId === source.id}
+                  error={detailsErrors[source.id]}
+                />
+              ) : null}
             </article>
           );
         }) : <EmptyMemoryState icon="review" />}
       </div>
     </section>
+  );
+}
+
+function MemoryReviewDetailsPanel({
+  details,
+  loading,
+  error,
+}: {
+  details?: MemoryReviewDetails;
+  loading: boolean;
+  error?: string;
+}) {
+  if (loading) {
+    return <div className="memory-review-details-status"><LoaderCircle className="spin" size={14} />正在读取 session 内容…</div>;
+  }
+  if (error) {
+    return <div className="memory-review-details-status error"><CircleAlert size={14} />{error}</div>;
+  }
+  if (!details) return null;
+  return (
+    <div className="memory-review-details">
+      <header>
+        <strong>DreamAgent 输入预览</strong>
+        <span>第 {details.source_version} 版 · 源事件 {details.event_count} 个 · 整理内容 {details.events.length} 项</span>
+      </header>
+      <div className="memory-review-events">
+        {details.events.length ? details.events.map((event) => {
+          const content = formatReviewValue(event.content);
+          const metadata = Object.keys(event.metadata).length
+            ? formatReviewValue(event.metadata)
+            : "";
+          return (
+            <div className="memory-review-event" key={event.id}>
+              <header>
+                <strong>{reviewEventLabel(event.type, event.metadata)}</strong>
+                <code>{event.type}</code>
+                {event.created_at ? <time>{formatDateTime(event.created_at)}</time> : null}
+              </header>
+              {content ? <pre>{content}</pre> : null}
+              {metadata ? <pre className="metadata">{metadata}</pre> : null}
+            </div>
+          );
+        }) : <p>这次来源没有可供 DreamAgent 读取的内容事件。</p>}
+      </div>
+      {details.omitted_events.length ? (
+        <div className="memory-review-omitted">
+          <small>未进入整理内容的生命周期事件</small>
+          {details.omitted_events.map((event) => (
+            <div key={event.id}>
+              <code>#{event.seq}</code>
+              <strong>{event.type}</strong>
+              <span>{event.actor}</span>
+              {event.created_at ? <time>{formatDateTime(event.created_at)}</time> : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -320,6 +440,21 @@ function categoryLabel(category: string) {
     artifact: "产物",
     question: "问题",
   }[category] ?? "项目";
+}
+
+function reviewEventLabel(type: string, metadata: Record<string, unknown>) {
+  if (type === "human") return "用户消息";
+  if (type === "ai") return "助手消息";
+  if (type === "tool_event") {
+    const name = typeof metadata.name === "string" ? metadata.name : "工具调用";
+    return `工具 · ${name}`;
+  }
+  return type.replaceAll("_", " ");
+}
+
+function formatReviewValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "";
+  return typeof value === "string" ? value : JSON.stringify(value, null, 2);
 }
 
 function spaceLabel(space: MemoryOverviewEntry["space"] | MemoryReviewSource["space"]) {

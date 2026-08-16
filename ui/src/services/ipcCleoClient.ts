@@ -1,5 +1,6 @@
 import type {
   Attachment,
+  AgentInstructions,
   CleoClient,
   CreateThreadOptions,
   ModelProfileInput,
@@ -7,6 +8,7 @@ import type {
   ProductivityModelCatalog,
   RuntimeCatalog,
   MemoryReviewAction,
+  MemoryReviewDetails,
   MemoryReviewSource,
   RuntimeProfile,
   StreamEvent,
@@ -128,6 +130,10 @@ export class IpcCleoClient implements CleoClient {
     return this.bridge.request("get_config_templates");
   }
 
+  getAgentInstructions(): Promise<AgentInstructions> {
+    return this.bridge.request("get_agent_instructions");
+  }
+
   getModelSettings(): Promise<ModelSettings> {
     return this.bridge.request("get_model_settings");
   }
@@ -148,6 +154,18 @@ export class IpcCleoClient implements CleoClient {
 
   saveModelProfile(profile: ModelProfileInput): Promise<ModelSettings> {
     return this.bridge.request("save_model_profile", { profile });
+  }
+
+  saveAgentInstructions(content: string): Promise<AgentInstructions> {
+    return this.bridge.request("save_agent_instructions", { content });
+  }
+
+  getMemoryReviewDetails(source: MemoryReviewSource): Promise<MemoryReviewDetails> {
+    return this.bridge.request("get_memory_review_details", {
+      space: source.space,
+      project: source.project,
+      session_id: source.session_id,
+    });
   }
 
   reviewMemorySource(

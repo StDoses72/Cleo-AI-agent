@@ -636,7 +636,7 @@ function RuntimeSelector({
               </div>
               <div className="runtime-menu-list">
                 {loadingProvider === providerScreen ? (
-                  <div className="runtime-menu-status"><LoaderCircle className="spin" size={14} />正在读取可用模型…</div>
+                  <div className="runtime-menu-status"><LoaderCircle className="spin" size={14} />正在连接 harness 并读取模型…</div>
                 ) : error && !selectedModels ? (
                   <div className="runtime-menu-status error">{error}</div>
                 ) : (

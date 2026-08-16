@@ -22,6 +22,12 @@ def test_separate_harnesses_config_loads_into_runtime_settings() -> None:
 
     assert settings.productivity.default_provider == "codex"
     assert settings.productivity.provider("codex").type == "codex_sdk"
+    opencode = settings.productivity.provider("opencode")
+    assert opencode.type == "acp"
+    assert not opencode.enabled
+    assert opencode.options.command == "opencode"
+    assert opencode.options.args == ["acp"]
+    assert opencode.options.model_config_id is None
 
 
 def test_factory_builds_configured_provider_types(tmp_path: Path) -> None:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import secrets
+import shutil
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -257,6 +258,12 @@ class AcpProvider:
         self._spec = spec
         self._sessions: dict[str, _AcpRuntime] = {}
 
+    async def check_connection(self, project_path: str) -> None:
+        """Start the configured command and complete a short-lived ACP handshake."""
+        resolved_path = str(Path(project_path).expanduser().resolve())
+        _connection, manager, _host, _initialize = await self._connect(resolved_path)
+        await manager.__aexit__(None, None, None)
+
     async def list_models(self, project_path: str) -> tuple[HarnessModel, ...]:
         """Read the model select option exposed by a short-lived ACP session."""
         if not self._spec.model_config_id:
@@ -462,9 +469,15 @@ class AcpProvider:
         """
         host = _AcpClientHost(self.name, project_path, self._spec.auto_approve)
         environment = {**os.environ, **self._spec.env}
+        command = shutil.which(self._spec.command, path=environment.get("PATH"))
+        if command is None:
+            raise FileNotFoundError(
+                f"ACP provider {self.name!r} command not found: {self._spec.command}. "
+                "Install the CLI separately and make it available on PATH."
+            )
         manager = spawn_agent_process(
             host,
-            self._spec.command,
+            command,
             *self._spec.args,
             env=environment,
             cwd=project_path,

@@ -72,6 +72,21 @@ function Wait-ForClose {
     }
 }
 
+function Get-Sha256 {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $stream = [System.IO.File]::OpenRead($Path)
+    $algorithm = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return [System.BitConverter]::ToString(
+            $algorithm.ComputeHash($stream)
+        ).Replace("-", "")
+    } finally {
+        $algorithm.Dispose()
+        $stream.Dispose()
+    }
+}
+
 function Assert-SafeInstallRoot {
     param([string]$Path)
 
@@ -122,7 +137,7 @@ try {
     if (-not $Sha256 -or $Sha256 -notmatch "^[a-fA-F0-9]{64}$") {
         throw "A valid SHA256 checksum is required before installing Cleo."
     }
-    $actualHash = (Get-FileHash -LiteralPath $downloadedArchive -Algorithm SHA256).Hash
+    $actualHash = Get-Sha256 -Path $downloadedArchive
     if (-not $actualHash.Equals($Sha256, [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "Cleo package checksum mismatch. Expected $Sha256, got $actualHash."
     }

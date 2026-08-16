@@ -940,7 +940,16 @@ def _default_harnesses_config() -> dict[str, Any]:
                     "approval_mode": "deny_all",
                     "sandbox": "workspace-write",
                 },
-            }
+            },
+            "opencode": {
+                "type": "acp",
+                "enabled": False,
+                "options": {
+                    "command": "opencode",
+                    "args": ["acp"],
+                    "auto_approve": False,
+                },
+            },
         },
     }
 

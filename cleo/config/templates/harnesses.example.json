@@ -9,6 +9,15 @@
 				"approval_mode": "deny_all",
 				"sandbox": "workspace-write"
 			}
+		},
+		"opencode": {
+			"type": "acp",
+			"enabled": false,
+			"options": {
+				"command": "opencode",
+				"args": ["acp"],
+				"auto_approve": false
+			}
 		}
 	}
 }

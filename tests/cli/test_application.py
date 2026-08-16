@@ -163,6 +163,53 @@ def test_productivity_cwd_resolution_and_saved_session_resume(tmp_path) -> None:
     }
 
 
+def test_productivity_startup_reports_missing_provider_command(monkeypatch) -> None:
+    class FakeAdapter:
+        providers = ("opencode",)
+
+        async def create_session(self, *_args, **_kwargs):
+            raise FileNotFoundError("ACP provider 'opencode' command not found: opencode")
+
+    productivity = SimpleNamespace(
+        default_provider="opencode",
+        providers={"opencode": SimpleNamespace(enabled=True, model=None)},
+        provider=lambda _name: SimpleNamespace(model=None),
+    )
+    settings = SimpleNamespace(
+        active_directory_profile=SimpleNamespace(root_path="."),
+        productivity=productivity,
+    )
+    args = SimpleNamespace(
+        resume_id=None,
+        provider="opencode",
+        model=None,
+        cwd=".",
+        project=None,
+        message="hello",
+    )
+
+    import cleo.integrations.harnesses.factory as harness_factory
+
+    monkeypatch.setattr(
+        harness_factory,
+        "build_agent_adapter",
+        lambda *_args, **_kwargs: FakeAdapter(),
+    )
+
+    with pytest.raises(
+        productivity_cli.ProductivityStartupError,
+        match="ACP provider 'opencode' command not found: opencode",
+    ):
+        asyncio.run(
+            productivity_cli._run_productivity_mode(
+                args,
+                SimpleNamespace(),
+                SimpleNamespace(),
+                settings,
+            )
+        )
+
+
 def test_productivity_loop_delegates_to_textual_ui(monkeypatch) -> None:
     import cleo.cli.productivity_tui as productivity_tui
 

@@ -17,10 +17,13 @@ const allowedMethods = new Set([
   "cancel_run",
   "update_runtime",
   "get_config_templates",
+  "get_agent_instructions",
   "get_model_settings",
   "get_runtime_catalog",
   "get_productivity_models",
   "save_model_profile",
+  "save_agent_instructions",
+  "get_memory_review_details",
   "review_memory_source",
   "reset_workspace",
 ]);

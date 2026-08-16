@@ -44,12 +44,7 @@ export class BackendBridge {
     const pythonPath = this.app.isPackaged
       ? ""
       : [paths.backendRoot, process.env.PYTHONPATH].filter(Boolean).join(delimiter);
-    const runtimePath = [
-      paths.python ? join(dirname(paths.python), "Scripts") : null,
-      paths.browserRoot,
-      paths.browserRoot ? join(paths.browserRoot, "node_modules", ".bin") : null,
-      process.env.PATH,
-    ].filter(Boolean).join(delimiter);
+    const runtimePath = this.runtimePath(paths);
     this.stderr = "";
     const child = spawn(python, ["-m", "cleo.desktop.server"], {
       cwd: paths.backendRoot,
@@ -89,6 +84,18 @@ export class BackendBridge {
       for (const pending of this.pending.values()) pending.reject(error);
       this.pending.clear();
     });
+  }
+
+  runtimePath(paths, environment = process.env, platform = process.platform) {
+    return [
+      paths.python ? join(dirname(paths.python), "Scripts") : null,
+      paths.browserRoot,
+      paths.browserRoot ? join(paths.browserRoot, "node_modules", ".bin") : null,
+      platform === "win32" && environment.APPDATA
+        ? join(environment.APPDATA, "npm")
+        : null,
+      environment.PATH,
+    ].filter(Boolean).join(delimiter);
   }
 
   handleLine(line) {

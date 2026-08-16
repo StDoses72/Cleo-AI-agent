@@ -173,6 +173,7 @@ export function App() {
         <MemoryView
           overview={workspace.snapshot.memoryOverview}
           mode={memoryView}
+          onLoadReviewDetails={workspace.loadMemoryReviewDetails}
           onReviewSource={workspace.reviewMemorySource}
         />
       ) : (
@@ -240,10 +241,15 @@ export function App() {
         memoryOverview={workspace.snapshot.memoryOverview}
         modelSettings={workspace.modelSettings}
         modelSettingsLoading={workspace.modelSettingsLoading}
+        agentInstructions={workspace.agentInstructions}
+        agentInstructionsLoading={workspace.agentInstructionsLoading}
         onThemeChange={setTheme}
         onRuntimeChange={workspace.updateRuntime}
         onLoadModelSettings={workspace.loadModelSettings}
         onSaveModelProfile={workspace.saveModelProfile}
+        onLoadAgentInstructions={workspace.loadAgentInstructions}
+        onSaveAgentInstructions={workspace.saveAgentInstructions}
+        onRevealPath={(path) => void workspace.revealPath(path)}
         onCopyConfigTemplate={(kind) => {
           void workspace.copyConfigTemplate(kind).then(() => notify("配置模板已复制"));
         }}

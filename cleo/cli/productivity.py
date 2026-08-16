@@ -243,14 +243,14 @@ async def _run_productivity_mode(
         session_store=store,
     )
 
-    if args.resume_id is not None and args.provider is None:
+    if args.resume_id is not None:
         try:
             resume_manifest = store.load_manifest(args.resume_id)
         except FileNotFoundError as exc:
             raise ProductivityStartupError(
                 f"No saved session found for id: {args.resume_id}"
             ) from exc
-        provider = str(resume_manifest["provider"])
+        provider = args.provider or str(resume_manifest["provider"])
     else:
         provider = args.provider or settings.productivity.default_provider
     if provider not in adapter.providers:
@@ -286,11 +286,9 @@ async def _run_productivity_mode(
                 model=model,
                 project=project,
             )
-    except FileNotFoundError as exc:
-        raise ProductivityStartupError(
-            f"No saved session found for id: {args.resume_id}"
-        ) from exc
     except (KeyError, ValueError) as exc:
+        raise ProductivityStartupError(f"Unable to start productivity session: {exc}") from exc
+    except OSError as exc:
         raise ProductivityStartupError(f"Unable to start productivity session: {exc}") from exc
 
     runtime.update_current_space("productivity")

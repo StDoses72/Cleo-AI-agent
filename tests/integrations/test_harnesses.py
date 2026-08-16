@@ -13,7 +13,7 @@ from cleo.harnesses import (
     ProviderTurn,
     SessionOptions,
 )
-from cleo.integrations.harnesses.acp import AcpProvider, _AcpClientHost
+from cleo.integrations.harnesses.acp import AcpAgentSpec, AcpProvider, _AcpClientHost
 from cleo.integrations.harnesses.codex import CodexProvider, _CodexRuntime
 from cleo.memory.compaction import load_validated_compact
 
@@ -88,6 +88,40 @@ def test_acp_model_options_flatten_named_groups() -> None:
         ("fast", "Fast", "Low latency"),
         ("deep", "Deep", ""),
     ]
+
+
+def test_acp_provider_reports_missing_command(tmp_path) -> None:
+    provider = AcpProvider(
+        "missing-acp",
+        AcpAgentSpec(command="cleo-command-that-does-not-exist"),
+    )
+
+    with pytest.raises(
+        FileNotFoundError,
+        match="ACP provider 'missing-acp' command not found",
+    ):
+        asyncio.run(provider.create_session(str(tmp_path)))
+
+
+def test_acp_connection_check_closes_short_lived_process(tmp_path) -> None:
+    provider = AcpProvider("test-acp", AcpAgentSpec(command="test-acp"))
+    connected: list[str] = []
+    closed: list[tuple[object, object, object]] = []
+
+    class Manager:
+        async def __aexit__(self, exc_type, exc, traceback) -> None:
+            closed.append((exc_type, exc, traceback))
+
+    async def connect(project_path: str):
+        connected.append(project_path)
+        return object(), Manager(), object(), object()
+
+    provider._connect = connect
+
+    asyncio.run(provider.check_connection(str(tmp_path)))
+
+    assert connected == [str(tmp_path.resolve())]
+    assert closed == [(None, None, None)]
 
 
 def test_agent_adapter_routes_provider_sessions(tmp_path) -> None:

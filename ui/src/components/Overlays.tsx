@@ -6,11 +6,15 @@ import {
   Code2,
   Command,
   Database,
+  FileText,
+  FolderOpen,
   MessageCircle,
   Moon,
   PanelRight,
   Plus,
   Search,
+  RotateCcw,
+  Save,
   Settings2,
   SlidersHorizontal,
   Sparkles,
@@ -19,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import type {
+  AgentInstructions,
   MemoryOverview,
   ModelProfileInput,
   ModelSettings,
@@ -153,16 +158,21 @@ interface SettingsModalProps {
   memoryOverview: MemoryOverview;
   modelSettings: ModelSettings | null;
   modelSettingsLoading: boolean;
+  agentInstructions: AgentInstructions | null;
+  agentInstructionsLoading: boolean;
   onThemeChange: (theme: "dark" | "light") => void;
   onRuntimeChange: (update: Partial<RuntimeProfile>) => void;
   onLoadModelSettings: () => Promise<ModelSettings>;
   onSaveModelProfile: (profile: ModelProfileInput) => Promise<ModelSettings>;
+  onLoadAgentInstructions: () => Promise<AgentInstructions>;
+  onSaveAgentInstructions: (content: string) => Promise<AgentInstructions>;
+  onRevealPath: (path: string) => void;
   onCopyConfigTemplate: (kind: "cleo" | "harnesses") => void;
   onResetWorkspace: () => void;
   onClose: () => void;
 }
 
-type SettingsPage = "appearance" | "agent" | "models" | "data";
+type SettingsPage = "appearance" | "agent" | "instructions" | "models" | "data";
 
 export function SettingsModal({
   open,
@@ -172,17 +182,25 @@ export function SettingsModal({
   memoryOverview,
   modelSettings,
   modelSettingsLoading,
+  agentInstructions,
+  agentInstructionsLoading,
   onThemeChange,
   onRuntimeChange,
   onLoadModelSettings,
   onSaveModelProfile,
+  onLoadAgentInstructions,
+  onSaveAgentInstructions,
+  onRevealPath,
   onCopyConfigTemplate,
   onResetWorkspace,
   onClose,
 }: SettingsModalProps) {
   const [page, setPage] = useState<SettingsPage>("appearance");
   useEffect(() => {
-    if (open) void onLoadModelSettings();
+    if (open) {
+      void onLoadModelSettings();
+      void onLoadAgentInstructions();
+    }
   }, [open]);
   if (!open) return null;
   return (
@@ -193,13 +211,14 @@ export function SettingsModal({
           <nav>
             <button className={page === "appearance" ? "active" : ""} type="button" onClick={() => setPage("appearance")}><Sparkles size={16} />外观</button>
             <button className={page === "agent" ? "active" : ""} type="button" onClick={() => setPage("agent")}><SlidersHorizontal size={16} />Agent</button>
+            <button className={page === "instructions" ? "active" : ""} type="button" onClick={() => setPage("instructions")}><FileText size={16} />Agent 指令</button>
             <button className={page === "models" ? "active" : ""} type="button" onClick={() => setPage("models")}><Plus size={16} />模型</button>
             <button className={page === "data" ? "active" : ""} type="button" onClick={() => setPage("data")}><Database size={16} />数据与记忆</button>
           </nav>
           <small>Cleo Desktop · Preview</small>
         </aside>
         <section className="settings-content">
-          <header><div><span className="eyebrow">PREFERENCES</span><h2>{page === "appearance" ? "外观" : page === "agent" ? "Agent" : page === "models" ? "模型与 API" : "数据与记忆"}</h2></div><button className="icon-button" type="button" aria-label="关闭" onClick={onClose}><X size={17} /></button></header>
+          <header><div><span className="eyebrow">PREFERENCES</span><h2>{page === "appearance" ? "外观" : page === "agent" ? "Agent" : page === "instructions" ? "Agent 指令" : page === "models" ? "模型与 API" : "数据与记忆"}</h2></div><button className="icon-button" type="button" aria-label="关闭" onClick={onClose}><X size={17} /></button></header>
           {page === "appearance" ? (
             <div className="settings-page">
               <SettingsRow title="主题" description="选择更适合当前环境的界面亮度。">
@@ -218,6 +237,13 @@ export function SettingsModal({
               <SettingsRow title="推理强度" description="更高强度适合复杂代码任务。"><div className="segmented-control">{supportedEfforts.length ? supportedEfforts.map((effort) => <button className={runtime.effort === effort ? "active" : ""} type="button" key={effort} onClick={() => onRuntimeChange({ effort })}>{effort}</button>) : <button type="button" disabled>default</button>}</div></SettingsRow>
               <SettingsRow title="文件访问" description="每个 turn 都会明确显示实际 sandbox。"><span className="settings-value mono">{runtime.access}</span></SettingsRow>
             </div>
+          ) : page === "instructions" ? (
+            <AgentInstructionsPage
+              instructions={agentInstructions}
+              loading={agentInstructionsLoading}
+              onSave={onSaveAgentInstructions}
+              onRevealPath={onRevealPath}
+            />
           ) : page === "models" ? (
             <ModelSettingsPage
               settings={modelSettings}
@@ -240,6 +266,75 @@ export function SettingsModal({
         </section>
       </div>
     </div>
+  );
+}
+
+function AgentInstructionsPage({
+  instructions,
+  loading,
+  onSave,
+  onRevealPath,
+}: {
+  instructions: AgentInstructions | null;
+  loading: boolean;
+  onSave: (content: string) => Promise<AgentInstructions>;
+  onRevealPath: (path: string) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const [baseline, setBaseline] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    if (!instructions) return;
+    setDraft(instructions.content);
+    setBaseline(instructions.content);
+    setError(null);
+  }, [instructions]);
+  const dirty = draft !== baseline;
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!dirty || loading) return;
+    setError(null);
+    try {
+      const result = await onSave(draft);
+      setBaseline(result.content);
+      setSaved(true);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "无法保存 Agent 指令");
+    }
+  };
+  return (
+    <form className="settings-page agent-instructions-page" onSubmit={submit}>
+      <div className="agent-instructions-intro">
+        <div>
+          <strong>Non-productivity 系统指令</strong>
+          <p>供 Cleo 普通对话读取；不会传给 Codex、Claude 或 OpenCode productivity harness。</p>
+        </div>
+        <button type="button" disabled={!instructions?.path} onClick={() => instructions?.path && onRevealPath(instructions.path)}><FolderOpen size={14} />打开位置</button>
+      </div>
+      <code className="agent-instructions-path">{instructions?.path ?? "正在读取 AGENTS.md…"}</code>
+      <textarea
+        aria-label="Non-productivity Agent 指令"
+        spellCheck={false}
+        value={draft}
+        disabled={!instructions && loading}
+        placeholder={loading ? "正在读取…" : "在这里写入 AGENTS.md 指令"}
+        onChange={(event) => { setDraft(event.target.value); setSaved(false); }}
+        onKeyDown={(event) => {
+          if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+            event.preventDefault();
+            event.currentTarget.form?.requestSubmit();
+          }
+        }}
+      />
+      <footer>
+        <span className={error ? "error" : ""}>{error ?? (saved ? "已保存；后续 non-productivity 对话将读取新指令。" : instructions?.exists === false ? "保存后会创建 AGENTS.md。" : dirty ? "有未保存修改" : "未修改")}</span>
+        <div>
+          <button type="button" disabled={!dirty || loading} onClick={() => { setDraft(baseline); setError(null); setSaved(false); }}><RotateCcw size={14} />撤销修改</button>
+          <button className="primary" type="submit" disabled={!dirty || loading}><Save size={14} />{loading ? "保存中…" : "保存"}</button>
+        </div>
+      </footer>
+    </form>
   );
 }
 
