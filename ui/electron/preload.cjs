@@ -13,5 +13,14 @@ if (!process.argv.includes("--cleo-desktop-mock")) {
     pickWorkspace: () => ipcRenderer.invoke("cleo:pick-workspace"),
     copyText: (value) => ipcRenderer.invoke("cleo:copy-text", value),
     revealPath: (value) => ipcRenderer.invoke("cleo:reveal-path", value),
+    getUpdateState: () => ipcRenderer.invoke("cleo:update:get-state"),
+    checkForUpdates: () => ipcRenderer.invoke("cleo:update:check"),
+    downloadUpdate: () => ipcRenderer.invoke("cleo:update:download"),
+    installUpdate: () => ipcRenderer.invoke("cleo:update:install"),
+    onUpdateState: (listener) => {
+      const handler = (_event, state) => listener(state);
+      ipcRenderer.on("cleo:update-state", handler);
+      return () => ipcRenderer.removeListener("cleo:update-state", handler);
+    },
   });
 }

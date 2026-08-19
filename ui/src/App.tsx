@@ -9,13 +9,14 @@ import {
   LoadingScreen,
   SettingsModal,
   Toast,
+  UpdateNotice,
   commandIcons,
   type CommandAction,
 } from "./components/Overlays";
 import { ThreadSidebar } from "./components/ThreadSidebar";
 import { WorkspaceRail } from "./components/WorkspaceRail";
 import { useCleoWorkspace } from "./useCleoWorkspace";
-import type { MemoryViewMode, Thread } from "./types";
+import type { MemoryViewMode, Thread, UpdateState } from "./types";
 
 export function App() {
   const workspace = useCleoWorkspace();
@@ -31,6 +32,14 @@ export function App() {
     localStorage.getItem("cleo-theme") === "light" ? "light" : "dark",
   );
   const [toast, setToast] = useState<string | null>(null);
+  const [updateState, setUpdateState] = useState<UpdateState>({
+    phase: window.cleoDesktop ? "idle" : "unsupported",
+    currentVersion: "dev",
+    latestVersion: null,
+    downloadedBytes: 0,
+    totalBytes: 0,
+    error: null,
+  });
   const toastTimerRef = useRef<number | null>(null);
 
   const notify = (message: string) => {
@@ -43,6 +52,35 @@ export function App() {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("cleo-theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    const desktop = window.cleoDesktop;
+    if (!desktop) return;
+    let active = true;
+    void desktop.getUpdateState().then((state) => {
+      if (active) setUpdateState(state);
+    });
+    const unsubscribe = desktop.onUpdateState((state) => {
+      if (active) setUpdateState(state);
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
+  const runUpdateAction = (action: "check" | "download" | "install") => {
+    const desktop = window.cleoDesktop;
+    if (!desktop) return;
+    const operation = action === "check"
+      ? desktop.checkForUpdates()
+      : action === "download"
+        ? desktop.downloadUpdate()
+        : desktop.installUpdate();
+    void operation.catch((error: unknown) => {
+      notify(error instanceof Error ? error.message : "更新操作失败");
+    });
+  };
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -243,12 +281,16 @@ export function App() {
         modelSettingsLoading={workspace.modelSettingsLoading}
         agentInstructions={workspace.agentInstructions}
         agentInstructionsLoading={workspace.agentInstructionsLoading}
+        updateState={updateState}
         onThemeChange={setTheme}
         onRuntimeChange={workspace.updateRuntime}
         onLoadModelSettings={workspace.loadModelSettings}
         onSaveModelProfile={workspace.saveModelProfile}
         onLoadAgentInstructions={workspace.loadAgentInstructions}
         onSaveAgentInstructions={workspace.saveAgentInstructions}
+        onCheckForUpdates={() => runUpdateAction("check")}
+        onDownloadUpdate={() => runUpdateAction("download")}
+        onInstallUpdate={() => runUpdateAction("install")}
         onRevealPath={(path) => void workspace.revealPath(path)}
         onCopyConfigTemplate={(kind) => {
           void workspace.copyConfigTemplate(kind).then(() => notify("配置模板已复制"));
@@ -276,6 +318,11 @@ export function App() {
             })
             .finally(() => setDeletingThread(false));
         }}
+      />
+      <UpdateNotice
+        state={updateState}
+        onDownload={() => runUpdateAction("download")}
+        onInstall={() => runUpdateAction("install")}
       />
       {toast ? <Toast message={toast} /> : null}
     </div>

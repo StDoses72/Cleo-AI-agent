@@ -2,6 +2,26 @@ export type WorkspaceSpace = "chat" | "productivity" | "memory";
 export type ThreadSpace = Exclude<WorkspaceSpace, "memory">;
 export type ThreadStatus = "idle" | "running" | "completed" | "attention";
 
+export type UpdatePhase =
+  | "unsupported"
+  | "idle"
+  | "checking"
+  | "up-to-date"
+  | "available"
+  | "downloading"
+  | "ready"
+  | "installing"
+  | "error";
+
+export interface UpdateState {
+  phase: UpdatePhase;
+  currentVersion: string;
+  latestVersion: string | null;
+  downloadedBytes: number;
+  totalBytes: number;
+  error: string | null;
+}
+
 export interface Project {
   id: string;
   space?: ThreadSpace;

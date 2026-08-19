@@ -326,6 +326,7 @@ try {
     Copy-Item -LiteralPath (Join-Path $sourceRoot "memory\MEMORY_POLICY.md") -Destination (Join-Path $defaultsPath "memory\MEMORY_POLICY.md")
     Copy-Item -LiteralPath (Join-Path $sourceRoot "AGENTS.md") -Destination (Join-Path $defaultsPath "AGENTS.md")
     Copy-Item -LiteralPath (Join-Path $sourceRoot "PERSONA.md") -Destination (Join-Path $defaultsPath "PERSONA.md")
+    Copy-Item -LiteralPath (Join-Path $sourceRoot "scripts\download.ps1") -Destination (Join-Path $resourcesPath "update.ps1")
     if (Test-Path -LiteralPath (Join-Path $sourceRoot "skills")) {
         Copy-Item -LiteralPath (Join-Path $sourceRoot "skills") -Destination $defaultsPath -Recurse
     }

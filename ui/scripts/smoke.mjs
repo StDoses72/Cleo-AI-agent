@@ -124,6 +124,10 @@ try {
   await window.getByLabel("模型名称").waitFor();
   await window.getByLabel("API Key").waitFor();
   await window.screenshot({ path: join(outputDir, "06c-settings-models.png") });
+  await window.getByRole("button", { name: "更新", exact: true }).click();
+  await window.getByRole("heading", { name: "软件更新", exact: true }).waitFor();
+  await window.getByText("开发模式不会连接发布服务器", { exact: false }).waitFor();
+  await window.screenshot({ path: join(outputDir, "06d-settings-updates.png") });
   await window.keyboard.press("Escape");
 
   await electronApp.evaluate(({ BrowserWindow }) => {

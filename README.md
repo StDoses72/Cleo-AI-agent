@@ -172,7 +172,9 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\download.ps1 -PackagePath .\release\Cleo-windows-x64.zip -Launch
 ```
 
-更新时重复运行同一命令。程序文件位于 `%LOCALAPPDATA%\Programs\Cleo`；配置、会话、
+安装后的桌面应用会在启动时自动检查 GitHub Release；有新版本时可在提示条或“设置 → 更新”
+中下载，SHA-256 校验通过后重启安装。也可以重复运行同一命令手动更新。程序文件位于
+`%LOCALAPPDATA%\Programs\Cleo`；配置、会话、
 记忆、模型缓存和工作状态位于 `%LOCALAPPDATA%\Cleo`，程序替换不会覆盖这些数据。首次启动
 会从旧的 `%APPDATA%\Cleo` 复制并合并已有配置，程序替换不会覆盖这些数据。Codex 登录和
 task 历史仍由 `%USERPROFILE%\.codex` 管理。下载器安装的是包含 UI 与内置 Python 后端的完整
@@ -195,7 +197,8 @@ task 历史仍由 `%USERPROFILE%\.codex` 管理。下载器安装的是包含 UI
 ```
 
 发布构建使用 `scripts/build-release.ps1`。该流程在仓库顶层隔离临时目录执行全新 `npm ci`，
-通过 `uv` 下载独立 Python runtime 并从零安装 Cleo 依赖，然后生成可下载 ZIP 和校验文件：
+通过 `uv` 下载独立 Python runtime 并从零安装 Cleo 依赖，然后生成可下载 ZIP、校验文件和
+自动更新清单：
 
 ```powershell
 cd ui

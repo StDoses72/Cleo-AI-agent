@@ -4,6 +4,8 @@ param(
     [string]$InstallRoot,
     [string]$PackagePath,
     [string]$Sha256,
+    [int]$WaitForProcessId,
+    [switch]$RemovePackage,
     [switch]$Launch,
     [switch]$NoPause
 )
@@ -112,7 +114,11 @@ New-Item -ItemType Directory -Path $temporaryRoot, $extractRoot -Force | Out-Nul
 try {
     if ($PackagePath) {
         $resolvedPackage = (Resolve-Path -LiteralPath $PackagePath).Path
-        Copy-Item -LiteralPath $resolvedPackage -Destination $downloadedArchive
+        if ($RemovePackage) {
+            Move-Item -LiteralPath $resolvedPackage -Destination $downloadedArchive
+        } else {
+            Copy-Item -LiteralPath $resolvedPackage -Destination $downloadedArchive
+        }
         if (-not $Sha256) {
             $localChecksum = [System.IO.Path]::ChangeExtension($resolvedPackage, "sha256")
             if (Test-Path -LiteralPath $localChecksum) {
@@ -187,11 +193,24 @@ try {
         throw "Refusing to replace a directory that is not a Cleo installation: $InstallRoot"
     }
 
+    if ($WaitForProcessId -gt 0) {
+        try {
+            Wait-Process -Id $WaitForProcessId -Timeout 120 -ErrorAction Stop
+        } catch {
+            if (Get-Process -Id $WaitForProcessId -ErrorAction SilentlyContinue) {
+                throw "Cleo did not close in time; the update was not installed."
+            }
+        }
+    }
+
     $runningProcesses = Get-CimInstance Win32_Process | Where-Object {
         $_.ExecutablePath -and $_.ExecutablePath.StartsWith(
             $InstallRoot + "\",
             [System.StringComparison]::OrdinalIgnoreCase
         )
+    }
+    if ($runningProcesses -and $WaitForProcessId -gt 0) {
+        throw "Cleo is still running; the update was not installed."
     }
     $runningProcesses | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 
@@ -233,6 +252,16 @@ try {
     if ($Launch) {
         Start-Process -FilePath $installedExecutable -WorkingDirectory $InstallRoot
     }
+} catch {
+    $failure = $_
+    $waitingProcessStillRuns = $WaitForProcessId -gt 0 -and (
+        Get-Process -Id $WaitForProcessId -ErrorAction SilentlyContinue
+    )
+    $fallbackExecutable = Join-Path $InstallRoot "Cleo.exe"
+    if ($Launch -and -not $waitingProcessStillRuns -and (Test-Path -LiteralPath $fallbackExecutable)) {
+        Start-Process -FilePath $fallbackExecutable -WorkingDirectory $InstallRoot
+    }
+    throw $failure
 } finally {
     $WhatIfPreference = $false
     if (Test-Path -LiteralPath $temporaryRoot) {

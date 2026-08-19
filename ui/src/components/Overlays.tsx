@@ -14,6 +14,7 @@ import {
   Plus,
   Search,
   RotateCcw,
+  RefreshCw,
   Save,
   Settings2,
   SlidersHorizontal,
@@ -28,6 +29,7 @@ import type {
   ModelProfileInput,
   ModelSettings,
   RuntimeProfile,
+  UpdateState,
   WorkspaceSpace,
 } from "../types";
 
@@ -160,19 +162,23 @@ interface SettingsModalProps {
   modelSettingsLoading: boolean;
   agentInstructions: AgentInstructions | null;
   agentInstructionsLoading: boolean;
+  updateState: UpdateState;
   onThemeChange: (theme: "dark" | "light") => void;
   onRuntimeChange: (update: Partial<RuntimeProfile>) => void;
   onLoadModelSettings: () => Promise<ModelSettings>;
   onSaveModelProfile: (profile: ModelProfileInput) => Promise<ModelSettings>;
   onLoadAgentInstructions: () => Promise<AgentInstructions>;
   onSaveAgentInstructions: (content: string) => Promise<AgentInstructions>;
+  onCheckForUpdates: () => void;
+  onDownloadUpdate: () => void;
+  onInstallUpdate: () => void;
   onRevealPath: (path: string) => void;
   onCopyConfigTemplate: (kind: "cleo" | "harnesses") => void;
   onResetWorkspace: () => void;
   onClose: () => void;
 }
 
-type SettingsPage = "appearance" | "agent" | "instructions" | "models" | "data";
+type SettingsPage = "appearance" | "agent" | "instructions" | "models" | "updates" | "data";
 
 export function SettingsModal({
   open,
@@ -184,12 +190,16 @@ export function SettingsModal({
   modelSettingsLoading,
   agentInstructions,
   agentInstructionsLoading,
+  updateState,
   onThemeChange,
   onRuntimeChange,
   onLoadModelSettings,
   onSaveModelProfile,
   onLoadAgentInstructions,
   onSaveAgentInstructions,
+  onCheckForUpdates,
+  onDownloadUpdate,
+  onInstallUpdate,
   onRevealPath,
   onCopyConfigTemplate,
   onResetWorkspace,
@@ -213,12 +223,13 @@ export function SettingsModal({
             <button className={page === "agent" ? "active" : ""} type="button" onClick={() => setPage("agent")}><SlidersHorizontal size={16} />Agent</button>
             <button className={page === "instructions" ? "active" : ""} type="button" onClick={() => setPage("instructions")}><FileText size={16} />Agent 指令</button>
             <button className={page === "models" ? "active" : ""} type="button" onClick={() => setPage("models")}><Plus size={16} />模型</button>
+            <button className={page === "updates" ? "active" : ""} type="button" onClick={() => setPage("updates")}><RefreshCw size={16} />更新</button>
             <button className={page === "data" ? "active" : ""} type="button" onClick={() => setPage("data")}><Database size={16} />数据与记忆</button>
           </nav>
           <small>Cleo Desktop · Preview</small>
         </aside>
         <section className="settings-content">
-          <header><div><span className="eyebrow">PREFERENCES</span><h2>{page === "appearance" ? "外观" : page === "agent" ? "Agent" : page === "instructions" ? "Agent 指令" : page === "models" ? "模型与 API" : "数据与记忆"}</h2></div><button className="icon-button" type="button" aria-label="关闭" onClick={onClose}><X size={17} /></button></header>
+          <header><div><span className="eyebrow">PREFERENCES</span><h2>{page === "appearance" ? "外观" : page === "agent" ? "Agent" : page === "instructions" ? "Agent 指令" : page === "models" ? "模型与 API" : page === "updates" ? "软件更新" : "数据与记忆"}</h2></div><button className="icon-button" type="button" aria-label="关闭" onClick={onClose}><X size={17} /></button></header>
           {page === "appearance" ? (
             <div className="settings-page">
               <SettingsRow title="主题" description="选择更适合当前环境的界面亮度。">
@@ -250,6 +261,13 @@ export function SettingsModal({
               loading={modelSettingsLoading}
               onSave={onSaveModelProfile}
             />
+          ) : page === "updates" ? (
+            <UpdateSettingsPage
+              state={updateState}
+              onCheck={onCheckForUpdates}
+              onDownload={onDownloadUpdate}
+              onInstall={onInstallUpdate}
+            />
           ) : (
             <div className="settings-page">
               <SettingsRow title="本地优先" description="会话、配置和记忆只保存在 Cleo 数据目录。"><span className="status-good">已启用</span></SettingsRow>
@@ -266,6 +284,86 @@ export function SettingsModal({
         </section>
       </div>
     </div>
+  );
+}
+
+function formatBytes(value: number) {
+  if (!value) return "0 MB";
+  return `${(value / (1024 * 1024)).toFixed(value >= 1024 * 1024 * 100 ? 0 : 1)} MB`;
+}
+
+function updateDescription(state: UpdateState) {
+  switch (state.phase) {
+    case "unsupported": return "开发模式不会连接发布服务器；安装后的 Cleo 会自动检查。";
+    case "idle": return "尚未检查更新。";
+    case "checking": return "正在检查 GitHub Release…";
+    case "up-to-date": return state.latestVersion ? `已是最新版本（${state.latestVersion}）。` : "已是最新版本。";
+    case "available": return `发现 Cleo ${state.latestVersion}，下载后会校验 SHA-256。`;
+    case "downloading": return `正在下载 ${formatBytes(state.downloadedBytes)} / ${formatBytes(state.totalBytes)}。中断后重试会续传。`;
+    case "ready": return `Cleo ${state.latestVersion} 已下载并通过校验。`;
+    case "installing": return "正在退出并安装更新，完成后会自动重新打开。";
+    case "error": return state.error || "检查或下载更新失败。";
+  }
+}
+
+function UpdateSettingsPage({
+  state,
+  onCheck,
+  onDownload,
+  onInstall,
+}: {
+  state: UpdateState;
+  onCheck: () => void;
+  onDownload: () => void;
+  onInstall: () => void;
+}) {
+  const percent = state.totalBytes
+    ? Math.min(100, Math.round((state.downloadedBytes / state.totalBytes) * 100))
+    : 0;
+  const busy = state.phase === "checking" || state.phase === "downloading" || state.phase === "installing";
+  const action = state.phase === "available"
+    ? { label: "下载更新", run: onDownload }
+    : state.phase === "ready"
+      ? { label: "重启并安装", run: onInstall }
+      : { label: state.phase === "checking" ? "检查中…" : "检查更新", run: onCheck };
+  return (
+    <div className="settings-page update-settings-page">
+      <div className="update-hero">
+        <span className="update-mark"><RefreshCw size={22} /></span>
+        <div><span className="eyebrow">CLEO DESKTOP</span><h3>版本 {state.currentVersion}</h3><p>{updateDescription(state)}</p></div>
+      </div>
+      {state.phase === "downloading" ? <div className="update-progress" aria-label={`更新下载进度 ${percent}%`}><i style={{ width: `${percent}%` }} /></div> : null}
+      <div className="update-actions">
+        <button type="button" disabled={busy || state.phase === "unsupported"} onClick={state.phase === "up-to-date" ? onCheck : action.run}>{state.phase === "up-to-date" ? "重新检查" : action.label}</button>
+      </div>
+      <div className="settings-note"><Brain size={17} /><p>更新只替换程序目录。配置、会话、记忆和模型缓存仍保存在 Cleo 数据目录中；安装失败时会恢复旧版本。</p></div>
+    </div>
+  );
+}
+
+export function UpdateNotice({
+  state,
+  onDownload,
+  onInstall,
+}: {
+  state: UpdateState;
+  onDownload: () => void;
+  onInstall: () => void;
+}) {
+  if (!(["available", "downloading", "ready"] as UpdateState["phase"][]).includes(state.phase)) return null;
+  const percent = state.totalBytes
+    ? Math.min(100, Math.round((state.downloadedBytes / state.totalBytes) * 100))
+    : 0;
+  return (
+    <aside className="update-notice" role="status">
+      <span className="update-notice-icon"><RefreshCw size={16} /></span>
+      <div>
+        <strong>{state.phase === "available" ? `Cleo ${state.latestVersion} 可用` : state.phase === "ready" ? "更新已准备好" : `正在下载更新 · ${percent}%`}</strong>
+        <small>{state.phase === "available" ? "完整包会在后台下载并校验" : state.phase === "ready" ? "重启后自动替换并保留本地数据" : `${formatBytes(state.downloadedBytes)} / ${formatBytes(state.totalBytes)}`}</small>
+      </div>
+      {state.phase === "available" ? <button type="button" onClick={onDownload}>下载</button> : null}
+      {state.phase === "ready" ? <button type="button" onClick={onInstall}>重启安装</button> : null}
+    </aside>
   );
 }
 

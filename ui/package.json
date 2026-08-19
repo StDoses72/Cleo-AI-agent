@@ -1,7 +1,7 @@
 {
   "name": "cleo-desktop",
   "productName": "Cleo",
-  "version": "0.1.3-alpha",
+  "version": "0.1.3",
   "private": true,
   "type": "module",
   "main": "electron/main.mjs",
@@ -9,7 +9,7 @@
     "start": "npm run build && electron .",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
-    "test:backend": "node --test electron/backend.test.mjs",
+    "test:backend": "node --test electron/backend.test.mjs electron/updater.test.mjs",
     "package:portable": "powershell -ExecutionPolicy Bypass -File ../scripts/build-release.ps1",
     "smoke": "npm run build && node scripts/smoke.mjs",
     "smoke:real": "npm run build && node scripts/smoke-real.mjs",

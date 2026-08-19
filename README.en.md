@@ -176,7 +176,10 @@ Install the complete desktop package just built in this checkout:
 .\scripts\download.ps1 -PackagePath .\release\Cleo-windows-x64.zip -Launch
 ```
 
-Run the same command to update. Program files live under
+The installed desktop app checks GitHub Releases automatically at startup. When an update
+is available, download it from the notice or **Settings → Updates**; Cleo verifies SHA-256
+before restarting into the update. You can also rerun the downloader for a manual update.
+Program files live under
 `%LOCALAPPDATA%\Programs\Cleo`; configuration, sessions, memory, model cache, and
 runtime state live under `%APPDATA%\Cleo` and are not replaced by an update. The
 downloader installs the complete UI plus bundled Python backend to the program directory;
@@ -203,7 +206,7 @@ should be permanently removed:
 
 Release builds use `scripts/build-release.ps1`. It runs a fresh `npm ci` in a
 isolated temporary directory, downloads a standalone Python runtime with `uv`,
-installs Cleo dependencies from scratch, then creates the ZIP and checksum:
+installs Cleo dependencies from scratch, then creates the ZIP, checksum, and update manifest:
 
 ```powershell
 cd ui
