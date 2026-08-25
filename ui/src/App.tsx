@@ -163,11 +163,15 @@ export function App() {
   if (!workspace.snapshot) return <LoadingScreen error={workspace.loadingError} />;
 
   const activeRuntime = workspace.activeThread?.runtime ?? workspace.draftRuntime;
-  const supportedEfforts = workspace.activeSpace === "productivity"
+  const selectedRuntimeModel = workspace.activeSpace === "productivity"
     ? workspace.productivityModels[activeRuntime.provider]?.models.find(
         (model) => model.id === activeRuntime.model,
-      )?.supportedEfforts ?? []
-    : [];
+      )
+    : undefined;
+  const supportedEfforts = selectedRuntimeModel?.supportedEfforts ?? [];
+  const settingsRuntime = activeRuntime.effort || !selectedRuntimeModel?.defaultEffort
+    ? activeRuntime
+    : { ...activeRuntime, effort: selectedRuntimeModel.defaultEffort };
   const showInspector = inspectorOpen && workspace.activeSpace !== "memory";
   const appClasses = [
     "app-shell",
@@ -274,7 +278,7 @@ export function App() {
       <SettingsModal
         open={settingsOpen}
         theme={theme}
-        runtime={activeRuntime}
+        runtime={settingsRuntime}
         supportedEfforts={supportedEfforts}
         memoryOverview={workspace.snapshot.memoryOverview}
         modelSettings={workspace.modelSettings}

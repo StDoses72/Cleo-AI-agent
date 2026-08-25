@@ -269,7 +269,7 @@ export class MockCleoClient implements CleoClient {
       ],
       productivityProviders: [
         { id: "codex", type: "codex_sdk", defaultModel: "gpt-5.6-sol", modelSource: "dynamic" },
-        { id: "claude", type: "claude_sdk", defaultModel: "claude-sonnet-4-5", modelSource: "config" },
+        { id: "claude", type: "claude_sdk", defaultModel: "claude-opus-5", modelSource: "config" },
       ],
       defaultNonProductivityProfile: "deepseek-flash",
       defaultProductivityProvider: "codex",
@@ -283,15 +283,15 @@ export class MockCleoClient implements CleoClient {
           provider,
           source: "config",
           models: [
-            { id: "claude-sonnet-4-5", label: "Claude Sonnet 4.5", description: "Configured model", isDefault: true, defaultEffort: null, supportedEfforts: [] },
+            { id: "claude-opus-5", label: "Claude Opus 5", description: "Configured model", isDefault: true, defaultEffort: "high", supportedEfforts: ["low", "medium", "high", "xhigh", "max"] },
           ],
         }
       : {
           provider,
           source: "sdk",
           models: [
-            { id: "gpt-5.6-sol", label: "GPT-5.6-Sol", description: "Frontier coding model", isDefault: true, defaultEffort: "medium", supportedEfforts: ["low", "medium", "high"] },
-            { id: "gpt-5.6-terra", label: "GPT-5.6-Terra", description: "Balanced coding model", isDefault: false, defaultEffort: "medium", supportedEfforts: ["low", "medium", "high"] },
+            { id: "gpt-5.6-sol", label: "GPT-5.6-Sol", description: "Frontier coding model", isDefault: true, defaultEffort: "low", supportedEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"] },
+            { id: "gpt-5.6-terra", label: "GPT-5.6-Terra", description: "Balanced coding model", isDefault: false, defaultEffort: "medium", supportedEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"] },
           ],
         };
   }

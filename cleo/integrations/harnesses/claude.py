@@ -16,6 +16,7 @@ from claude_agent_sdk import (
     ToolUseBlock,
 )
 
+from cleo.harnesses.control import HarnessModel, SessionOptions
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 from cleo.harnesses.provider import ProviderSession, ProviderTurn
 
@@ -29,6 +30,9 @@ ClaudePermissionMode = Literal[
 ]
 """Claude Agent SDK 支持的 permission mode 取值集合。"""
 
+CLAUDE_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+"""Claude Agent SDK 公开的 effort 档位。"""
+
 
 @dataclass(slots=True)
 class _ClaudeRuntime:
@@ -39,6 +43,8 @@ class _ClaudeRuntime:
     """
 
     client: ClaudeSDKClient
+    options: SessionOptions
+    cwd: str
     native_session_id: str | None = None
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     active: bool = False
@@ -59,6 +65,7 @@ class ClaudeProvider:
         permission_mode: ClaudePermissionMode = "acceptEdits",
         *,
         name: str = "claude",
+        models: tuple[str, ...] = (),
     ) -> None:
         """初始化 provider。
 
@@ -70,6 +77,7 @@ class ClaudeProvider:
         """
         self.name = name
         self._default_model = default_model
+        self._models = tuple(dict.fromkeys([*([default_model] if default_model else []), *models]))
         self._permission_mode = permission_mode
         self._sessions: dict[str, _ClaudeRuntime] = {}
 
@@ -116,6 +124,69 @@ class ClaudeProvider:
         session_id = f"claude_{secrets.token_hex(6)}"
         self._sessions[session_id] = runtime
         return ProviderSession(id=session_id, native_id=native_session_id)
+
+    def session_options(self, session_id: str) -> SessionOptions:
+        """Return the model and effort currently applied to a Claude session."""
+        return self._sessions[session_id].options
+
+    async def update_session_options(
+        self,
+        session_id: str,
+        *,
+        model: str | None = None,
+        effort: str | None = None,
+        approval_mode: str | None = None,
+        sandbox: str | None = None,
+    ) -> SessionOptions:
+        """Apply Claude model, effort, and permission changes to later turns."""
+        runtime = self._sessions[session_id]
+        if effort is not None and effort not in CLAUDE_EFFORTS:
+            raise ValueError(f"Unsupported Claude effort: {effort}")
+        if sandbox is not None:
+            raise ValueError("Claude Agent SDK does not expose a sandbox option.")
+
+        current = runtime.options
+        next_model = current.model if model is None else model
+        next_effort = current.effort if effort is None else effort
+        next_permission = current.approval_mode if approval_mode is None else approval_mode
+        if next_permission is not None and next_permission not in ClaudePermissionMode.__args__:
+            raise ValueError(f"Unsupported Claude permission mode: {next_permission}")
+
+        async with runtime.lock:
+            if effort is not None and effort != current.effort:
+                replacement = await self._connect(
+                    runtime.cwd,
+                    next_model,
+                    effort=next_effort,
+                    resume=runtime.native_session_id,
+                    permission_mode=next_permission,
+                )
+                await runtime.client.disconnect()
+                runtime.client = replacement.client
+            elif model is not None and model != current.model:
+                await runtime.client.set_model(model)
+            if approval_mode is not None and approval_mode != current.approval_mode:
+                await runtime.client.set_permission_mode(approval_mode)
+            runtime.options = SessionOptions(
+                model=next_model,
+                effort=next_effort,
+                approval_mode=next_permission,
+            )
+        return runtime.options
+
+    async def list_models(self) -> tuple[HarnessModel, ...]:
+        """Expose the configured Claude model with SDK-supported effort levels."""
+        return tuple(
+            HarnessModel(
+                id=model,
+                display_name=model,
+                description="Configured in harnesses.json",
+                is_default=model == self._default_model,
+                default_effort="high",
+                supported_efforts=CLAUDE_EFFORTS,
+            )
+            for model in self._models
+        )
 
     async def prompt(
         self,
@@ -210,7 +281,9 @@ class ClaudeProvider:
         self,
         project_path: str,
         model: str | None,
+        effort: str | None = None,
         resume: str | None = None,
+        permission_mode: ClaudePermissionMode | None = None,
     ) -> _ClaudeRuntime:
         """创建并连接一个 ``ClaudeSDKClient``。
 
@@ -225,12 +298,21 @@ class ClaudeProvider:
         options = ClaudeAgentOptions(
             cwd=project_path,
             model=model or self._default_model,
-            permission_mode=self._permission_mode,
+            effort=effort,
+            permission_mode=permission_mode or self._permission_mode,
             resume=resume,
         )
         client = ClaudeSDKClient(options=options)
         await client.connect()
-        return _ClaudeRuntime(client=client)
+        return _ClaudeRuntime(
+            client=client,
+            options=SessionOptions(
+                model=model or self._default_model,
+                effort=effort,
+                approval_mode=permission_mode or self._permission_mode,
+            ),
+            cwd=project_path,
+        )
 
     def _block_event(self, block: object) -> AgentEvent | None:
         """把 SDK 消息 block 映射为统一的 ``AgentEvent``。

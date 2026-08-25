@@ -134,7 +134,7 @@ export interface RuntimeProfile {
   provider: string;
   model: string;
   models?: string[];
-  effort: ReasoningEffort;
+  effort: ReasoningEffort | null;
   access: string;
   approval: string;
   contextWindow?: number;

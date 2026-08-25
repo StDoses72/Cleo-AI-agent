@@ -25,7 +25,7 @@ from acp.schema import (
     Implementation,
 )
 
-from cleo.harnesses.control import HarnessModel
+from cleo.harnesses.control import HarnessModel, SessionOptions
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 from cleo.harnesses.provider import ProviderSession, ProviderTurn
 
@@ -235,6 +235,8 @@ class _AcpRuntime:
     connection: Any
     manager: AbstractAsyncContextManager[Any]
     host: _AcpClientHost
+    config_options: tuple[Any, ...] = ()
+    options: SessionOptions = field(default_factory=SessionOptions)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     active: bool = False
 
@@ -265,41 +267,137 @@ class AcpProvider:
         await manager.__aexit__(None, None, None)
 
     async def list_models(self, project_path: str) -> tuple[HarnessModel, ...]:
-        """Read the model select option exposed by a short-lived ACP session."""
-        if not self._spec.model_config_id:
-            return ()
+        """Read model-specific effort levels from a short-lived ACP session."""
         resolved_path = str(Path(project_path).expanduser().resolve())
         connection, manager, _host, _initialize = await self._connect(resolved_path)
         try:
             created = await connection.new_session(cwd=resolved_path, mcp_servers=[])
-            target = next(
-                (
-                    option
-                    for option in (created.config_options or [])
-                    if str(getattr(option, "id", "")) == self._spec.model_config_id
-                ),
-                None,
+            config_options = tuple(created.config_options or ())
+            target = self._config_option(
+                config_options,
+                option_id=self._spec.model_config_id,
+                category="model",
+                fallback_id="model",
             )
             if target is None:
-                raise ValueError(
-                    f"ACP provider {self.name!r} did not expose config option "
-                    f"{self._spec.model_config_id!r}."
-                )
-            payload = target.model_dump(mode="json", by_alias=True, exclude_none=True)
+                if self._spec.model_config_id:
+                    raise ValueError(
+                        f"ACP provider {self.name!r} did not expose config option "
+                        f"{self._spec.model_config_id!r}."
+                    )
+                return ()
+            payload = self._config_payload(target)
             current = str(payload.get("currentValue") or payload.get("current_value") or "")
-            return tuple(
-                HarnessModel(
+            model_config_id = str(payload.get("id") or "")
+            models = []
+            for value, label, description in self._select_options(payload.get("options", [])):
+                model_options = config_options
+                if value != current:
+                    response = await connection.set_config_option(
+                        model_config_id,
+                        created.session_id,
+                        value,
+                    )
+                    model_options = tuple(response.config_options or ())
+                effort = self._config_option(
+                    model_options,
+                    category="thought_level",
+                    fallback_id="effort",
+                )
+                effort_payload = self._config_payload(effort) if effort is not None else {}
+                supported_efforts = tuple(
+                    option_value
+                    for option_value, _name, _description in self._select_options(
+                        effort_payload.get("options", [])
+                    )
+                )
+                default_effort = str(
+                    effort_payload.get("currentValue")
+                    or effort_payload.get("current_value")
+                    or ""
+                ) or None
+                models.append(HarnessModel(
                     id=value,
                     display_name=label,
                     description=description,
                     is_default=value == current,
-                    default_effort=None,
-                    supported_efforts=(),
-                )
-                for value, label, description in self._select_options(payload.get("options", []))
-            )
+                    default_effort=default_effort,
+                    supported_efforts=supported_efforts,
+                ))
+            return tuple(models)
         finally:
             await manager.__aexit__(None, None, None)
+
+    @staticmethod
+    def _config_payload(option: Any) -> dict[str, Any]:
+        if isinstance(option, dict):
+            return option
+        return option.model_dump(mode="json", by_alias=True, exclude_none=True)
+
+    @classmethod
+    def _config_option(
+        cls,
+        options: tuple[Any, ...],
+        *,
+        option_id: str | None = None,
+        category: str,
+        fallback_id: str,
+    ) -> Any | None:
+        payloads = [(option, cls._config_payload(option)) for option in options]
+        if option_id:
+            return next(
+                (
+                    option
+                    for option, payload in payloads
+                    if str(payload.get("id") or "") == option_id
+                ),
+                None,
+            )
+        return next(
+            (
+                option
+                for option, payload in payloads
+                if str(payload.get("category") or "") == category
+                or str(payload.get("id") or "") == fallback_id
+            ),
+            None,
+        )
+
+    @classmethod
+    def _session_options(
+        cls,
+        config_options: tuple[Any, ...],
+        fallback: SessionOptions | None = None,
+        model_config_id: str | None = None,
+    ) -> SessionOptions:
+        current = fallback or SessionOptions()
+        model = cls._config_option(
+            config_options,
+            option_id=model_config_id,
+            category="model",
+            fallback_id="model",
+        )
+        effort = cls._config_option(
+            config_options,
+            category="thought_level",
+            fallback_id="effort",
+        )
+        model_payload = cls._config_payload(model) if model is not None else {}
+        effort_payload = cls._config_payload(effort) if effort is not None else {}
+        return SessionOptions(
+            model=str(
+                model_payload.get("currentValue")
+                or model_payload.get("current_value")
+                or current.model
+                or ""
+            ) or None,
+            effort=str(
+                effort_payload.get("currentValue")
+                or effort_payload.get("current_value")
+                or current.effort
+                or ""
+            ) or None,
+        )
 
     @classmethod
     def _select_options(cls, options: list[Any]) -> list[tuple[str, str, str]]:
@@ -343,17 +441,35 @@ class AcpProvider:
         connection, manager, host, _initialize = await self._connect(project_path)
         try:
             created = await connection.new_session(cwd=project_path, mcp_servers=[])
-            if model and self._spec.model_config_id:
-                await connection.set_config_option(
-                    self._spec.model_config_id,
+            config_options = tuple(created.config_options or ())
+            model_option = self._config_option(
+                config_options,
+                option_id=self._spec.model_config_id,
+                category="model",
+                fallback_id="model",
+            )
+            if model and model_option is not None:
+                response = await connection.set_config_option(
+                    str(self._config_payload(model_option).get("id") or ""),
                     created.session_id,
                     model,
                 )
+                config_options = tuple(response.config_options or ())
         except Exception:
             await manager.__aexit__(None, None, None)
             raise
 
-        self._sessions[created.session_id] = _AcpRuntime(connection, manager, host)
+        self._sessions[created.session_id] = _AcpRuntime(
+            connection,
+            manager,
+            host,
+            config_options,
+            self._session_options(
+                config_options,
+                SessionOptions(model=model),
+                self._spec.model_config_id,
+            ),
+        )
         return ProviderSession(id=created.session_id, native_id=created.session_id)
 
     async def resume_session(
@@ -380,7 +496,7 @@ class AcpProvider:
             await manager.__aexit__(None, None, None)
             raise ValueError(f"ACP provider {self.name} does not support session/load")
         try:
-            await connection.load_session(
+            loaded = await connection.load_session(
                 cwd=project_path,
                 session_id=native_session_id,
                 mcp_servers=[],
@@ -389,8 +505,77 @@ class AcpProvider:
             await manager.__aexit__(None, None, None)
             raise
 
-        self._sessions[native_session_id] = _AcpRuntime(connection, manager, host)
+        config_options = tuple(loaded.config_options or ())
+        self._sessions[native_session_id] = _AcpRuntime(
+            connection,
+            manager,
+            host,
+            config_options,
+            self._session_options(
+                config_options,
+                SessionOptions(model=model),
+                self._spec.model_config_id,
+            ),
+        )
         return ProviderSession(id=native_session_id, native_id=native_session_id)
+
+    def session_options(self, session_id: str) -> SessionOptions:
+        """Return the model and effort exposed by the ACP session."""
+        return self._sessions[session_id].options
+
+    async def update_session_options(
+        self,
+        session_id: str,
+        *,
+        model: str | None = None,
+        effort: str | None = None,
+        approval_mode: str | None = None,
+        sandbox: str | None = None,
+    ) -> SessionOptions:
+        """Update model or effort only when the ACP agent exposes that control."""
+        if approval_mode is not None or sandbox is not None:
+            raise ValueError("This ACP harness does not expose approval or sandbox controls.")
+        runtime = self._sessions[session_id]
+        async with runtime.lock:
+            for value, category, fallback_id, configured_id in (
+                (model, "model", "model", self._spec.model_config_id),
+                (effort, "thought_level", "effort", None),
+            ):
+                if value is None:
+                    continue
+                option = self._config_option(
+                    runtime.config_options,
+                    option_id=configured_id,
+                    category=category,
+                    fallback_id=fallback_id,
+                )
+                if option is None:
+                    raise ValueError(
+                        f"ACP provider {self.name!r} does not expose a {fallback_id} control."
+                    )
+                payload = self._config_payload(option)
+                supported = {
+                    option_value
+                    for option_value, _label, _description in self._select_options(
+                        payload.get("options", [])
+                    )
+                }
+                if value not in supported:
+                    raise ValueError(
+                        f"ACP provider {self.name!r} does not support {fallback_id} {value!r}."
+                    )
+                response = await runtime.connection.set_config_option(
+                    str(payload.get("id") or ""),
+                    session_id,
+                    value,
+                )
+                runtime.config_options = tuple(response.config_options or ())
+            runtime.options = self._session_options(
+                runtime.config_options,
+                runtime.options,
+                self._spec.model_config_id,
+            )
+            return runtime.options
 
     async def prompt(
         self,
@@ -490,7 +675,7 @@ class AcpProvider:
                     fs=FileSystemCapabilities(read_text_file=True, write_text_file=True),
                     terminal=False,
                 ),
-                client_info=Implementation(name="cleo", title="Cleo", version="0.1.0"),
+                client_info=Implementation(name="cleo", title="Cleo", version="0.1.4"),
             )
             if self._spec.auth_method:
                 await connection.authenticate(self._spec.auth_method)

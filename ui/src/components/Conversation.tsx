@@ -52,7 +52,7 @@ interface ConversationProps {
   onSelectNonProductivityProfile: (profileId: string) => void;
   onLoadProductivityModels: (provider: string) => Promise<ProductivityModelCatalog>;
   onSelectProductivityRuntime: (provider: string, model: string) => void;
-  onEffortChange: (effort: RuntimeProfile["effort"]) => void;
+  onEffortChange: (effort: NonNullable<RuntimeProfile["effort"]>) => void;
   attachments: Attachment[];
   onPickAttachments: () => void;
   onRemoveAttachment: (path: string) => void;
@@ -419,7 +419,9 @@ function Composer({
     (model) => model.id === runtime.model,
   );
   const supportedEfforts = selectedModel?.supportedEfforts ?? [];
-  const selectedEffort = supportedEfforts.includes(runtime.effort) ? runtime.effort : "";
+  const selectedEffort = runtime.effort && supportedEfforts.includes(runtime.effort)
+    ? runtime.effort
+    : selectedModel?.defaultEffort ?? "";
 
   useEffect(() => {
     if (
@@ -500,12 +502,14 @@ function Composer({
               className="text-control effort-selector"
               value={selectedEffort}
               disabled={running || space !== "productivity" || supportedEfforts.length === 0}
-              onChange={(event) => onEffortChange(event.target.value as RuntimeProfile["effort"])}
+              onChange={(event) => onEffortChange(
+                event.target.value as NonNullable<RuntimeProfile["effort"]>,
+              )}
               aria-label="思考深度"
               title="选择思考深度"
               data-testid="effort-selector"
             >
-              <option value="" disabled>effort</option>
+              <option value="" disabled>由 harness 管理</option>
               {supportedEfforts.map((effort) => <option key={effort} value={effort}>{effort}</option>)}
             </select>
           </div>

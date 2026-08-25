@@ -517,8 +517,9 @@ def test_static_acp_models_probe_configured_harness_connection(tmp_path: Path) -
         checked: list[str] = []
 
         class Control:
-            async def check_connection(self, project_path: str) -> None:
+            async def list_models(self, project_path: str):
                 checked.append(project_path)
+                return ()
 
         class Adapter(FakeAdapter):
             @property
@@ -561,6 +562,48 @@ def test_static_acp_models_probe_configured_harness_connection(tmp_path: Path) -
             "supportedEfforts": [],
         }
         assert checked == [str(selected)]
+
+    asyncio.run(scenario())
+
+
+def test_claude_models_expose_sdk_effort_levels(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        service = _service(tmp_path)
+
+        class Adapter(FakeAdapter):
+            @property
+            def providers(self):
+                return ("claude",)
+
+        service.settings.productivity = SimpleNamespace(
+            default_provider="claude",
+            providers={
+                "claude": SimpleNamespace(
+                    enabled=True,
+                    type="claude_sdk",
+                    model="claude-opus-test",
+                    models=["claude-sonnet-test"],
+                    options=SimpleNamespace(permission_mode="acceptEdits"),
+                )
+            },
+            provider=lambda name: service.settings.productivity.providers[name],
+        )
+        service._adapter_instance = Adapter(service.store)
+
+        models = await service.get_productivity_models(provider="claude")
+
+        assert [model["id"] for model in models["models"]] == [
+            "claude-opus-test",
+            "claude-sonnet-test",
+        ]
+        assert models["models"][0]["defaultEffort"] == "high"
+        assert models["models"][0]["supportedEfforts"] == [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+        ]
 
     asyncio.run(scenario())
 

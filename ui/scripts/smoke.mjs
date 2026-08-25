@@ -85,6 +85,15 @@ try {
   await window.getByTestId("new-thread").click();
   await window.getByText("从一个清晰的目标开始。").waitFor();
   await window.getByTestId("runtime-selector").click();
+  await window.getByText("claude", { exact: true }).click();
+  await window.getByText("Claude Opus 5", { exact: true }).waitFor();
+  await window.getByText("Claude Opus 5", { exact: true }).click();
+  assert(
+    JSON.stringify(await window.getByTestId("effort-selector").locator("option").allTextContents())
+      === JSON.stringify(["由 harness 管理", "low", "medium", "high", "xhigh", "max"]),
+    "Claude effort options did not match the harness catalog",
+  );
+  await window.getByTestId("runtime-selector").click();
   await window.getByText("codex", { exact: true }).click();
   await window.getByText("GPT-5.6-Terra", { exact: true }).waitFor();
   await window.screenshot({ path: join(outputDir, "03-runtime-selector.png") });

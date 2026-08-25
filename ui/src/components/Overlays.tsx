@@ -156,7 +156,7 @@ interface SettingsModalProps {
   open: boolean;
   theme: "dark" | "light";
   runtime: RuntimeProfile;
-  supportedEfforts: RuntimeProfile["effort"][];
+  supportedEfforts: NonNullable<RuntimeProfile["effort"]>[];
   memoryOverview: MemoryOverview;
   modelSettings: ModelSettings | null;
   modelSettingsLoading: boolean;

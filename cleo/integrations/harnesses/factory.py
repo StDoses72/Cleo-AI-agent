@@ -46,6 +46,7 @@ def create_provider(
             default_model=settings.model,
             permission_mode=settings.options.permission_mode,
             name=name,
+            models=tuple(settings.models),
         )
     if settings.type == "acp":
         options = settings.options

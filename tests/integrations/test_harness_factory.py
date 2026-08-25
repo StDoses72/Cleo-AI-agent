@@ -77,6 +77,7 @@ def test_factory_builds_configured_provider_types(tmp_path: Path) -> None:
     assert codex._sandbox is Sandbox.read_only
     assert isinstance(claude, ClaudeProvider)
     assert claude._default_model == "claude-test"
+    assert claude._models == ("claude-test", "claude-other")
     assert claude._permission_mode == "plan"
     assert productivity.provider("claude").models == ["claude-test", "claude-other"]
     assert isinstance(acp, AcpProvider)

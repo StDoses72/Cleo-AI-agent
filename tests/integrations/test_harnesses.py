@@ -14,6 +14,7 @@ from cleo.harnesses import (
     SessionOptions,
 )
 from cleo.integrations.harnesses.acp import AcpAgentSpec, AcpProvider, _AcpClientHost
+from cleo.integrations.harnesses.claude import ClaudeProvider, _ClaudeRuntime
 from cleo.integrations.harnesses.codex import CodexProvider, _CodexRuntime
 from cleo.memory.compaction import load_validated_compact
 
@@ -122,6 +123,139 @@ def test_acp_connection_check_closes_short_lived_process(tmp_path) -> None:
 
     assert connected == [str(tmp_path.resolve())]
     assert closed == [(None, None, None)]
+
+
+def test_acp_provider_uses_model_specific_effort_controls(tmp_path) -> None:
+    provider = AcpProvider("test-acp", AcpAgentSpec(command="test-acp"))
+    calls: list[tuple[str, str]] = []
+
+    def config_options(model: str, effort: str | None = None) -> list[dict]:
+        options = [
+            {
+                "id": "model",
+                "category": "model",
+                "currentValue": model,
+                "options": [
+                    {"value": "fast", "name": "Fast"},
+                    {"value": "deep", "name": "Deep"},
+                ],
+            }
+        ]
+        if model == "deep":
+            options.append(
+                {
+                    "id": "reasoning",
+                    "category": "thought_level",
+                    "currentValue": effort or "high",
+                    "options": [
+                        {"value": "high", "name": "High"},
+                        {"value": "xhigh", "name": "Extra high"},
+                    ],
+                }
+            )
+        return options
+
+    class Connection:
+        async def new_session(self, **_kwargs):
+            return SimpleNamespace(session_id="acp-session", config_options=config_options("fast"))
+
+        async def set_config_option(self, option_id, _session_id, value):
+            calls.append((option_id, value))
+            if option_id == "model":
+                return SimpleNamespace(config_options=config_options(value))
+            return SimpleNamespace(config_options=config_options("deep", value))
+
+    class Manager:
+        async def __aexit__(self, _exc_type, _exc, _traceback) -> None:
+            return None
+
+    connection = Connection()
+
+    async def connect(_project_path: str):
+        return connection, Manager(), object(), object()
+
+    provider._connect = connect
+
+    async def scenario() -> None:
+        models = await provider.list_models(str(tmp_path))
+        assert models[0].id == "fast"
+        assert models[0].supported_efforts == ()
+        assert models[1].id == "deep"
+        assert models[1].default_effort == "high"
+        assert models[1].supported_efforts == ("high", "xhigh")
+
+        session = await provider.create_session(str(tmp_path), model="deep")
+        assert provider.session_options(session.id) == SessionOptions(model="deep", effort="high")
+        options = await provider.update_session_options(session.id, effort="xhigh")
+        assert options == SessionOptions(model="deep", effort="xhigh")
+
+    asyncio.run(scenario())
+    assert ("model", "deep") in calls
+    assert ("reasoning", "xhigh") in calls
+
+
+def test_claude_provider_reconnects_with_selected_effort(tmp_path) -> None:
+    provider = ClaudeProvider(default_model="claude-test")
+
+    class Client:
+        def __init__(self) -> None:
+            self.disconnected = False
+
+        async def disconnect(self) -> None:
+            self.disconnected = True
+
+        async def set_model(self, _model) -> None:
+            return None
+
+        async def set_permission_mode(self, _mode) -> None:
+            return None
+
+    original = Client()
+    replacement = Client()
+    provider._sessions["claude-session"] = _ClaudeRuntime(
+        client=original,
+        options=SessionOptions(
+            model="claude-test",
+            effort="high",
+            approval_mode="acceptEdits",
+        ),
+        cwd=str(tmp_path),
+        native_session_id="native-session",
+    )
+    connected: list[dict] = []
+
+    async def connect(project_path, model, effort=None, resume=None, permission_mode=None):
+        connected.append(
+            {
+                "project_path": project_path,
+                "model": model,
+                "effort": effort,
+                "resume": resume,
+                "permission_mode": permission_mode,
+            }
+        )
+        return _ClaudeRuntime(
+            client=replacement,
+            options=SessionOptions(model=model, effort=effort, approval_mode=permission_mode),
+            cwd=project_path,
+            native_session_id=resume,
+        )
+
+    provider._connect = connect
+
+    options = asyncio.run(provider.update_session_options("claude-session", effort="max"))
+
+    assert original.disconnected
+    assert options.effort == "max"
+    assert connected == [
+        {
+            "project_path": str(tmp_path),
+            "model": "claude-test",
+            "effort": "max",
+            "resume": "native-session",
+            "permission_mode": "acceptEdits",
+        }
+    ]
 
 
 def test_agent_adapter_routes_provider_sessions(tmp_path) -> None:

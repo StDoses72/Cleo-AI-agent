@@ -25,6 +25,7 @@ from cleo.desktop.projection import (
 )
 from cleo.harnesses.control import HarnessModel
 from cleo.integrations.git import inspect_git_status, read_git_diff
+from cleo.integrations.harnesses.claude import CLAUDE_EFFORTS
 from cleo.memory.compaction import load_events, load_validated_compact
 from cleo.memory.overview import build_memory_overview
 from cleo.memory.paths import memory_state_path
@@ -585,9 +586,7 @@ class DesktopService:
         for name, provider in self.settings.productivity.providers.items():
             if not provider.enabled or name not in registered:
                 continue
-            dynamic = provider.type == "codex_sdk" or (
-                provider.type == "acp" and bool(provider.options.model_config_id)
-            )
+            dynamic = provider.type in {"codex_sdk", "acp"}
             providers.append(
                 {
                     "id": name,
@@ -613,9 +612,7 @@ class DesktopService:
         if not provider_settings.enabled or provider not in self._adapter().providers:
             raise ValueError(f"Productivity provider is not available: {provider}")
 
-        dynamic = provider_settings.type == "codex_sdk" or (
-            provider_settings.type == "acp" and bool(provider_settings.options.model_config_id)
-        )
+        dynamic = provider_settings.type in {"codex_sdk", "acp"}
         project_root = project_path or str(self.settings.active_directory_profile.root_path)
         if dynamic:
             if provider_settings.type == "acp":
@@ -625,10 +622,32 @@ class DesktopService:
             else:
                 models = await self._adapter().list_models(provider)
                 source = "sdk"
+            if provider_settings.type == "acp" and not models:
+                identifiers = list(
+                    dict.fromkeys(
+                        [
+                            *([provider_settings.model] if provider_settings.model else []),
+                            *provider_settings.models,
+                        ]
+                    )
+                )
+                models = tuple(
+                    self._configured_harness_model(identifier, provider_settings.model)
+                    for identifier in identifiers
+                )
+                source = "config"
+                if not models:
+                    models = (
+                        HarnessModel(
+                            id="default",
+                            display_name="Harness default",
+                            description="Model selection is managed by the ACP harness",
+                            is_default=True,
+                            default_effort=None,
+                            supported_efforts=(),
+                        ),
+                    )
         else:
-            if provider_settings.type == "acp":
-                control = self._adapter().provider_control(provider)
-                await control.check_connection(project_root)
             identifiers = list(
                 dict.fromkeys(
                     [
@@ -638,21 +657,17 @@ class DesktopService:
                 )
             )
             models = tuple(
-                self._configured_harness_model(identifier, provider_settings.model)
+                self._configured_harness_model(
+                    identifier,
+                    provider_settings.model,
+                    default_effort="high" if provider_settings.type == "claude_sdk" else None,
+                    supported_efforts=(
+                        CLAUDE_EFFORTS if provider_settings.type == "claude_sdk" else ()
+                    ),
+                )
                 for identifier in identifiers
             )
             source = "config"
-            if provider_settings.type == "acp" and not models:
-                models = (
-                    HarnessModel(
-                        id="default",
-                        display_name="Harness default",
-                        description="Model selection is managed by the ACP harness",
-                        is_default=True,
-                        default_effort=None,
-                        supported_efforts=(),
-                    ),
-                )
         if not models:
             raise ValueError(f"Provider {provider!r} did not expose any selectable models.")
         return {
@@ -1180,7 +1195,7 @@ class DesktopService:
                     [model, provider_settings.model] if provider_settings.model else [model]
                 )
             ),
-            "effort": str(options.get("effort") or "medium"),
+            "effort": str(options["effort"]) if options.get("effort") else None,
             "access": str(
                 options.get("sandbox") or getattr(provider_settings.options, "sandbox", "default")
             ),
@@ -1219,14 +1234,20 @@ class DesktopService:
         )
 
     @staticmethod
-    def _configured_harness_model(identifier: str, default_model: str | None) -> HarnessModel:
+    def _configured_harness_model(
+        identifier: str,
+        default_model: str | None,
+        *,
+        default_effort: str | None = None,
+        supported_efforts: tuple[str, ...] = (),
+    ) -> HarnessModel:
         return HarnessModel(
             id=identifier,
             display_name=identifier,
             description="Configured in harnesses.json",
             is_default=identifier == default_model,
-            default_effort=None,
-            supported_efforts=(),
+            default_effort=default_effort,
+            supported_efforts=supported_efforts,
         )
 
     @staticmethod

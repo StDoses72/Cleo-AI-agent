@@ -40,7 +40,7 @@ export function useCleoWorkspace() {
   const [draftProfileId, setDraftProfileId] = useState("");
   const [draftProvider, setDraftProvider] = useState("");
   const [draftModel, setDraftModel] = useState("");
-  const [draftEffort, setDraftEffort] = useState<RuntimeProfile["effort"]>("medium");
+  const [draftEffort, setDraftEffort] = useState<RuntimeProfile["effort"]>(null);
   const generationRef = useRef(0);
   const selectionRef = useRef(0);
 
@@ -213,7 +213,7 @@ export function useCleoWorkspace() {
             projectPath: activeProject?.path,
             provider: draftProvider || runtimeCatalog?.defaultProductivityProvider,
             model: draftModel || undefined,
-            effort: draftEffort,
+            effort: draftEffort ?? undefined,
           },
     );
     setSnapshot((current) =>
@@ -431,6 +431,16 @@ export function useCleoWorkspace() {
     try {
       const loaded = await cleoClient.getProductivityModels(provider, activeProject?.path);
       setProductivityModels((current) => ({ ...current, [provider]: loaded }));
+      if (provider === draftProvider) {
+        const selectedModel = loaded.models.find((candidate) => candidate.id === draftModel);
+        if (selectedModel) {
+          setDraftEffort((current) =>
+            current && selectedModel.supportedEfforts.includes(current)
+              ? current
+              : selectedModel.defaultEffort ?? selectedModel.supportedEfforts[0] ?? null,
+          );
+        }
+      }
       return loaded;
     } catch (error) {
       const message = error instanceof Error ? error.message : "无法读取模型列表";
@@ -447,8 +457,10 @@ export function useCleoWorkspace() {
     const selectedModel = productivityModels[provider]?.models.find(
       (candidate) => candidate.id === model,
     );
-    if (selectedModel && !selectedModel.supportedEfforts.includes(draftEffort)) {
-      setDraftEffort(selectedModel.defaultEffort ?? selectedModel.supportedEfforts[0] ?? "medium");
+    if (selectedModel && (
+      draftEffort === null || !selectedModel.supportedEfforts.includes(draftEffort)
+    )) {
+      setDraftEffort(selectedModel.defaultEffort ?? selectedModel.supportedEfforts[0] ?? null);
     }
     if (
       activeThread?.space === "productivity"
