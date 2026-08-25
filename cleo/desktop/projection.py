@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,7 @@ from cleo.cli.productivity_renderer import event_payload
 from cleo.harnesses.models import AgentEvent
 
 _DIFF_HEADER = re.compile(r"^diff --git a/(.+?) b/(.+)$")
+_INCOMPLETE_TOOL_OUTPUT = "任务已结束，但没有收到该工具的完成事件。"
 
 
 def relative_time(value: str | None) -> str:
@@ -34,6 +36,8 @@ def timeline_from_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Translate durable session events into renderer timeline items."""
     items: list[dict[str, Any]] = []
     tools: dict[str, dict[str, Any]] = {}
+    plans: dict[str, dict[str, Any]] = {}
+    current_turn_key = "initial"
     for event in events[-500:]:
         event_type = str(event.get("type") or "")
         event_id = str(event.get("id") or f"event-{len(items)}")
@@ -41,6 +45,7 @@ def timeline_from_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         data = event.get("data") if isinstance(event.get("data"), dict) else {}
         payload = data.get("payload") if isinstance(data.get("payload"), dict) else data
         if event_type in {"user_message", "human"} and content:
+            current_turn_key = event_id
             items.append(_message(event_id, "user", content, event.get("created_at")))
         elif event_type in {"assistant_message", "ai"} and content:
             items.append(_message(event_id, "assistant", content, event.get("created_at")))
@@ -51,7 +56,19 @@ def timeline_from_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
             steps = [_plan_step(step) for step in plan] if isinstance(plan, list) else []
             steps = [step for step in steps if step is not None]
             if steps:
-                items.append({"id": event_id, "type": "plan", "title": "执行计划", "steps": steps})
+                plan_key = str(payload.get("turnId") or payload.get("turn_id") or current_turn_key)
+                plan_item = plans.get(plan_key)
+                if plan_item is None:
+                    plan_item = {
+                        "id": f"plan-{plan_key}",
+                        "type": "plan",
+                        "title": "执行计划",
+                        "steps": steps,
+                    }
+                    plans[plan_key] = plan_item
+                    items.append(plan_item)
+                else:
+                    plan_item["steps"] = steps
         elif event_type == "tool_call":
             source = payload.get("item") if isinstance(payload, dict) else None
             source = source if isinstance(source, dict) else payload
@@ -83,7 +100,25 @@ def timeline_from_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
             output = _content_text(source.get("output") or content)
             if output:
                 item["output"] = output
-        elif event_type in {"session_failed", "error"}:
+        elif event_type in {
+            "session_completed",
+            "session_failed",
+            "session_cancelled",
+            "session_closed",
+        }:
+            _finalize_running_tools(tools.values())
+            if event_type == "session_completed":
+                continue
+            items.append(
+                {
+                    "id": event_id,
+                    "type": "notice",
+                    "tone": "warning",
+                    "title": "运行需要查看",
+                    "detail": content or "任务在工具完成前结束。",
+                }
+            )
+        elif event_type == "error":
             items.append(
                 {
                     "id": event_id,
@@ -167,11 +202,21 @@ def stream_event_item(event: AgentEvent, state: dict[str, Any]) -> list[dict[str
         steps = [_plan_step(step) for step in plan] if isinstance(plan, list) else []
         steps = [step for step in steps if step is not None]
         if steps:
+            plan_id = state.get("plan:id")
+            if not isinstance(plan_id, str):
+                plan_key = (
+                    payload.get("turnId")
+                    or payload.get("turn_id")
+                    or state.get("run_id")
+                    or "current"
+                )
+                plan_id = f"live-plan-{plan_key}"
+                state["plan:id"] = plan_id
             output.append(
                 {
                     "type": "upsert-item",
                     "item": {
-                        "id": "live-plan",
+                        "id": plan_id,
                         "type": "plan",
                         "title": "执行计划",
                         "steps": steps,
@@ -214,6 +259,26 @@ def stream_event_item(event: AgentEvent, state: dict[str, Any]) -> list[dict[str
     elif event.type == "error":
         output.append({"type": "error", "message": event.text or "Provider reported an error."})
     return output
+
+
+def finalize_stream_tools(state: dict[str, Any]) -> list[dict[str, Any]]:
+    """Close tool calls that never received a terminal provider event."""
+    tools = [
+        value for key, value in state.items() if key.startswith("tool:") and isinstance(value, dict)
+    ]
+    finalized = _finalize_running_tools(tools)
+    return [{"type": "upsert-item", "item": tool} for tool in finalized]
+
+
+def _finalize_running_tools(tools: Iterable[Any]) -> list[dict[str, Any]]:
+    finalized: list[dict[str, Any]] = []
+    for tool in tools:
+        if not isinstance(tool, dict) or tool.get("status") != "running":
+            continue
+        tool["status"] = "error"
+        tool.setdefault("output", _INCOMPLETE_TOOL_OUTPUT)
+        finalized.append(tool)
+    return finalized
 
 
 def _message(event_id: str, role: str, content: str, created_at: Any) -> dict[str, Any]:

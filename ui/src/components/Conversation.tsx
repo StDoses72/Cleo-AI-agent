@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   ArrowLeft,
   ArrowUp,
@@ -100,12 +102,35 @@ export function Conversation({
   commands,
 }: ConversationProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
+  const previousThreadIdRef = useRef<string | null>(null);
+  const timelineItems = useMemo(
+    () => groupTimelineItems(thread?.items ?? []),
+    [thread?.items],
+  );
 
   useEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
-    viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" });
-  }, [thread?.items.length, thread?.id]);
+    const switchedThread = previousThreadIdRef.current !== (thread?.id ?? null);
+    previousThreadIdRef.current = thread?.id ?? null;
+    if (switchedThread) stickToBottomRef.current = true;
+    if (!stickToBottomRef.current) return;
+    const frame = requestAnimationFrame(() => {
+      viewport.scrollTo({
+        top: viewport.scrollHeight,
+        behavior: running || switchedThread ? "auto" : "smooth",
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [running, thread?.id, thread?.items]);
+
+  const trackScrollPosition = () => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+    stickToBottomRef.current = distanceFromBottom < 96;
+  };
 
   return (
     <main className="conversation-shell" data-testid="conversation">
@@ -122,10 +147,10 @@ export function Conversation({
         onThreadCommand={onThreadCommand}
       />
 
-      <div className="conversation-viewport" ref={viewportRef}>
+      <div className="conversation-viewport" ref={viewportRef} onScroll={trackScrollPosition}>
         {thread?.items.length ? (
           <div className="timeline" key={thread.id} data-testid="timeline">
-            {thread.items.map((item) => (
+            {timelineItems.map((item) => (
               <TimelineEntry key={item.id} item={item} />
             ))}
             {running ? (
@@ -261,7 +286,57 @@ function ConversationHeader({
   );
 }
 
-function TimelineEntry({ item }: { item: TimelineItem }) {
+type ToolTimelineItem = Extract<TimelineItem, { type: "tool" }>;
+type TimelineBlock = Exclude<TimelineItem, { type: "tool" }> | {
+  id: string;
+  type: "tool-group";
+  tools: ToolTimelineItem[];
+};
+
+function groupTimelineItems(items: TimelineItem[]): TimelineBlock[] {
+  const blocks: TimelineBlock[] = [];
+  let turn: TimelineItem[] = [];
+
+  const flushTurn = () => {
+    if (!turn.length) return;
+    const assistants = turn.filter(
+      (item): item is Extract<TimelineItem, { type: "message" }> =>
+        item.type === "message" && item.role === "assistant",
+    );
+    const process = turn.filter(
+      (item) => item.type !== "message" || item.role !== "assistant",
+    );
+    const tools = process.filter(
+      (item): item is ToolTimelineItem => item.type === "tool",
+    );
+    let addedToolGroup = false;
+
+    for (const item of process) {
+      if (item.type !== "tool") {
+        blocks.push(item);
+      } else if (!addedToolGroup) {
+        blocks.push({
+          id: `tool-group-${tools[0].id}`,
+          type: "tool-group",
+          tools,
+        });
+        addedToolGroup = true;
+      }
+    }
+    blocks.push(...assistants);
+    turn = [];
+  };
+
+  for (const item of items) {
+    if (item.type === "message" && item.role === "user" && turn.length) flushTurn();
+    turn.push(item);
+  }
+  flushTurn();
+  return blocks;
+}
+
+function TimelineEntry({ item }: { item: TimelineBlock }) {
+  if (item.type === "tool-group") return <ToolGroupEntry item={item} />;
   if (item.type === "message") {
     return (
       <article className={`message-entry ${item.role}`}>
@@ -270,9 +345,17 @@ function TimelineEntry({ item }: { item: TimelineItem }) {
           <time>{item.time}</time>
         </div>
         <div className="message-copy">
-          {item.content.split("\n").map((paragraph) => (
-            <p key={paragraph}>{paragraph}</p>
-          ))}
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            skipHtml
+            components={{
+              a: ({ node: _node, ...props }) => (
+                <a {...props} target="_blank" rel="noreferrer" />
+              ),
+            }}
+          >
+            {item.content}
+          </ReactMarkdown>
         </div>
       </article>
     );
@@ -290,7 +373,6 @@ function TimelineEntry({ item }: { item: TimelineItem }) {
     );
   }
   if (item.type === "plan") return <PlanEntry item={item} />;
-  if (item.type === "tool") return <ToolEntry item={item} />;
   return (
     <div className={`notice-entry ${item.tone}`}>
       <span className="notice-icon">
@@ -332,23 +414,68 @@ function PlanEntry({ item }: { item: Extract<TimelineItem, { type: "plan" }> }) 
   );
 }
 
-function ToolEntry({ item }: { item: Extract<TimelineItem, { type: "tool" }> }) {
+function ToolGroupEntry({ item }: { item: Extract<TimelineBlock, { type: "tool-group" }> }) {
   const [expanded, setExpanded] = useState(false);
+  const runningCount = item.tools.filter((tool) => tool.status === "running").length;
+  const errorCount = item.tools.filter((tool) => tool.status === "error").length;
+  const status = runningCount ? "running" : errorCount ? "error" : "done";
+  const summary = runningCount
+    ? `${item.tools.length} 次调用 · ${runningCount} 个运行中`
+    : errorCount
+      ? `${item.tools.length} 次调用 · ${errorCount} 个失败`
+      : `${item.tools.length} 次调用 · 已完成`;
   return (
-    <section className={`tool-entry ${item.status}`}>
-      <button type="button" onClick={() => setExpanded((value) => !value)}>
+    <section className={`tool-group ${status}`} data-testid="tool-group">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((value) => !value)}
+      >
         <span className="tool-icon"><Wrench size={14} /></span>
+        <span className="tool-group-copy">
+          <strong>工具过程</strong>
+          <small>{summary}</small>
+        </span>
+        <span className="tool-group-actions">
+          {status === "running" ? <LoaderCircle className="spin" size={15} /> : null}
+          <ChevronDown className={expanded ? "rotated" : ""} size={15} />
+        </span>
+      </button>
+      {expanded ? (
+        <div className="tool-process-list">
+          {item.tools.map((tool, index) => (
+            <ToolProcess key={tool.id} tool={tool} index={index} />
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function ToolProcess({ tool, index }: { tool: ToolTimelineItem; index: number }) {
+  return (
+    <details className={`tool-process ${tool.status}`} data-testid="tool-process">
+      <summary>
+        <span className="tool-process-index">{String(index + 1).padStart(2, "0")}</span>
         <span className="tool-main">
           <span>
-            <strong>{item.name}</strong>
-            <small>{item.status === "running" ? "运行中" : item.status === "error" ? "失败" : "完成"}</small>
+            <strong>{tool.name}</strong>
+            <small>{tool.status === "running" ? "运行中" : tool.status === "error" ? "失败" : "完成"}</small>
           </span>
-          <code>{item.command}</code>
+          <code>{tool.command || "等待工具输入"}</code>
         </span>
-        {item.status === "running" ? <LoaderCircle className="spin" size={15} /> : <ChevronDown className={expanded ? "rotated" : ""} size={15} />}
-      </button>
-      {expanded && item.output ? <pre>{item.output}</pre> : null}
-    </section>
+        {tool.status === "running" ? (
+          <LoaderCircle className="spin" size={14} />
+        ) : tool.status === "error" ? (
+          <X size={14} />
+        ) : tool.output ? (
+          <ChevronRight className="tool-process-chevron" size={14} />
+        ) : (
+          <Check size={14} />
+        )}
+      </summary>
+      {tool.output ? <pre>{tool.output}</pre> : null}
+    </details>
   );
 }
 

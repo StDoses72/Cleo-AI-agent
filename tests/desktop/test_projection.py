@@ -1,4 +1,10 @@
-from cleo.desktop.projection import changes_from_diff, timeline_from_events
+from cleo.desktop.projection import (
+    changes_from_diff,
+    finalize_stream_tools,
+    stream_event_item,
+    timeline_from_events,
+)
+from cleo.harnesses.models import AgentEvent
 
 
 def test_changes_from_diff_splits_files_and_counts_lines() -> None:
@@ -64,3 +70,91 @@ def test_timeline_from_events_projects_messages_and_tools() -> None:
     assert [item["type"] for item in items] == ["message", "tool", "message"]
     assert items[1]["status"] == "done"
     assert items[1]["output"] == "clean"
+
+
+def test_timeline_from_events_updates_one_plan_per_turn() -> None:
+    events = [
+        {"id": "u1", "type": "user_message", "content": "inspect"},
+        {
+            "id": "p1",
+            "type": "plan_update",
+            "data": {
+                "payload": {
+                    "turnId": "turn-1",
+                    "plan": [
+                        {"step": "inspect", "status": "in_progress"},
+                        {"step": "verify", "status": "pending"},
+                    ],
+                }
+            },
+        },
+        {
+            "id": "p2",
+            "type": "plan_update",
+            "data": {
+                "payload": {
+                    "turnId": "turn-1",
+                    "plan": [
+                        {"step": "inspect", "status": "completed"},
+                        {"step": "verify", "status": "in_progress"},
+                    ],
+                }
+            },
+        },
+    ]
+
+    items = timeline_from_events(events)
+
+    plans = [item for item in items if item["type"] == "plan"]
+    assert len(plans) == 1
+    assert plans[0]["id"] == "plan-turn-1"
+    assert [step["status"] for step in plans[0]["steps"]] == ["done", "running"]
+
+
+def test_timeline_from_events_closes_orphaned_tools_at_session_end() -> None:
+    events = [
+        {
+            "id": "t1",
+            "type": "tool_call",
+            "data": {"payload": {"item": {"id": "call-1", "tool": "shell"}}},
+        },
+        {"id": "done", "type": "session_completed"},
+    ]
+
+    items = timeline_from_events(events)
+
+    assert items[0]["status"] == "error"
+    assert items[0]["output"] == "任务已结束，但没有收到该工具的完成事件。"
+
+
+def test_live_plan_updates_share_an_id_and_orphaned_tools_are_closed() -> None:
+    state: dict[str, object] = {"run_id": "run-1"}
+    first = stream_event_item(
+        AgentEvent(
+            provider="codex",
+            type="plan_update",
+            data={"payload": {"plan": [{"step": "inspect", "status": "pending"}]}},
+        ),
+        state,
+    )
+    second = stream_event_item(
+        AgentEvent(
+            provider="codex",
+            type="plan_update",
+            data={"payload": {"plan": [{"step": "inspect", "status": "completed"}]}},
+        ),
+        state,
+    )
+    stream_event_item(
+        AgentEvent(
+            provider="codex",
+            type="tool_call",
+            data={"payload": {"item": {"id": "call-1", "tool": "shell"}}},
+        ),
+        state,
+    )
+
+    finalized = finalize_stream_tools(state)
+
+    assert first[0]["item"]["id"] == second[0]["item"]["id"] == "live-plan-run-1"
+    assert finalized[0]["item"]["status"] == "error"

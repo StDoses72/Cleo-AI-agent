@@ -16,6 +16,7 @@ from cleo.cli.productivity import _resolve_productivity_cwd
 from cleo.desktop.configuration import read_model_settings, save_model_profile
 from cleo.desktop.projection import (
     changes_from_diff,
+    finalize_stream_tools,
     path_name,
     project_id,
     project_name_from_id,
@@ -778,7 +779,7 @@ class DesktopService:
                 prompt = f"{prompt}\n\nAttached local files:\n" + "\n".join(
                     f"- {path}" for path in paths
                 )
-        state: dict[str, Any] = {}
+        state: dict[str, Any] = {"run_id": secrets.token_hex(6)}
         usage = ContextWindowUsage(
             window_tokens=self._runtime_profile(manifest)["contextWindow"],
         )
@@ -792,7 +793,11 @@ class DesktopService:
             if usage.used_tokens is not None:
                 await emit({"type": "usage", "usage": self._usage_dict(usage)})
 
-        result = await self._adapter().prompt(manifest["id"], prompt, on_event=on_event)
+        try:
+            result = await self._adapter().prompt(manifest["id"], prompt, on_event=on_event)
+        finally:
+            for projected in finalize_stream_tools(state):
+                await emit(projected)
         if result.response and not state.get("assistant"):
             await emit(
                 {

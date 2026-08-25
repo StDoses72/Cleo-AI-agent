@@ -1083,18 +1083,134 @@ kbd {
 }
 
 .message-copy {
+  min-width: 0;
   color: var(--text-soft);
   font-size: 12.5px;
   line-height: 1.75;
   user-select: text;
 }
 
-.message-copy p {
+.message-copy > :first-child {
+  margin-top: 0;
+}
+
+.message-copy > :last-child {
+  margin-bottom: 0;
+}
+
+.message-copy p,
+.message-copy ul,
+.message-copy ol,
+.message-copy blockquote,
+.message-copy pre,
+.message-copy table {
   margin: 0 0 10px;
 }
 
-.message-copy p:last-child {
-  margin-bottom: 0;
+.message-copy h1,
+.message-copy h2,
+.message-copy h3,
+.message-copy h4 {
+  margin: 22px 0 9px;
+  color: var(--text);
+  line-height: 1.35;
+  letter-spacing: -0.015em;
+}
+
+.message-copy h1 { font-size: 18px; }
+.message-copy h2 { font-size: 15.5px; }
+.message-copy h3 { font-size: 13.5px; }
+.message-copy h4 { font-size: 12.5px; }
+
+.message-copy ul,
+.message-copy ol {
+  padding-left: 22px;
+}
+
+.message-copy li + li {
+  margin-top: 4px;
+}
+
+.message-copy li::marker {
+  color: var(--muted-2);
+}
+
+.message-copy strong {
+  color: var(--text);
+  font-weight: 660;
+}
+
+.message-copy a {
+  color: var(--accent);
+  text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  text-underline-offset: 3px;
+}
+
+.message-copy a:hover {
+  text-decoration-color: var(--accent);
+}
+
+.message-copy blockquote {
+  padding: 2px 0 2px 13px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 52%, var(--border));
+  color: var(--muted);
+}
+
+.message-copy code {
+  padding: 2px 5px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-soft);
+  background: color-mix(in srgb, var(--chrome) 78%, transparent);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.88em;
+}
+
+.message-copy pre {
+  overflow-x: auto;
+  padding: 13px 15px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--chrome) 88%, transparent);
+  line-height: 1.65;
+}
+
+.message-copy pre code {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 10.5px;
+}
+
+.message-copy table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+
+.message-copy th,
+.message-copy td {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.message-copy th {
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  font-size: 10.5px;
+}
+
+.message-copy hr {
+  margin: 20px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.message-copy input[type="checkbox"] {
+  margin: 0 7px 0 -18px;
+  accent-color: var(--accent);
 }
 
 .message-entry.user {
@@ -1139,7 +1255,7 @@ kbd {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .plan-entry,
-.tool-entry {
+.tool-group {
   margin: 0 0 24px;
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -1213,11 +1329,11 @@ kbd {
   color: var(--muted-2);
 }
 
-.tool-entry {
+.tool-group {
   overflow: hidden;
 }
 
-.tool-entry > button {
+.tool-group > button {
   display: flex;
   width: 100%;
   align-items: center;
@@ -1226,22 +1342,27 @@ kbd {
   text-align: left;
 }
 
-.tool-entry > button > svg {
+.tool-group-actions {
+  display: flex;
   flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
   color: var(--muted);
+}
+
+.tool-group-actions svg {
   transition: transform 140ms ease;
 }
 
-.tool-entry > button > svg.rotated {
+.tool-group-actions svg.rotated {
   transform: rotate(180deg);
 }
 
-.tool-entry.running > button > svg {
+.tool-group.running .tool-group-actions .spin {
   color: var(--accent);
 }
 
-.tool-entry.error > button > svg,
-.tool-entry.error .tool-icon {
+.tool-group.error .tool-icon {
   color: var(--danger);
 }
 
@@ -1256,12 +1377,28 @@ kbd {
   background: color-mix(in srgb, var(--warning) 10%, transparent);
 }
 
+.tool-group-copy,
 .tool-main {
   display: flex;
   min-width: 0;
   flex: 1;
   flex-direction: column;
   gap: 5px;
+}
+
+.tool-group-copy {
+  gap: 3px;
+}
+
+.tool-group-copy strong {
+  color: var(--text-soft);
+  font-size: 10.5px;
+  font-weight: 630;
+}
+
+.tool-group-copy small {
+  color: var(--muted);
+  font-size: 9.5px;
 }
 
 .tool-main > span {
@@ -1289,7 +1426,60 @@ kbd {
   white-space: nowrap;
 }
 
-.tool-entry pre {
+.tool-process-list {
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--chrome) 70%, transparent);
+}
+
+.tool-process {
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+}
+
+.tool-process:last-child {
+  border-bottom: 0;
+}
+
+.tool-process summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.tool-process summary::-webkit-details-marker {
+  display: none;
+}
+
+.tool-process summary > svg {
+  flex: 0 0 auto;
+  color: var(--success);
+}
+
+.tool-process.running summary > svg {
+  color: var(--accent);
+}
+
+.tool-process.error summary > svg {
+  color: var(--danger);
+}
+
+.tool-process-index {
+  color: var(--muted-2);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 8.5px;
+}
+
+.tool-process-chevron {
+  transition: transform 140ms ease;
+}
+
+.tool-process[open] .tool-process-chevron {
+  transform: rotate(90deg);
+}
+
+.tool-process pre {
   margin: 0;
   padding: 10px 13px;
   border-top: 1px solid var(--border);

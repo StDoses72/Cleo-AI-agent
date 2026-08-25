@@ -196,6 +196,55 @@ export class MockCleoClient implements CleoClient {
       },
     };
 
+    await delay(260);
+    const responseId = `${runId}-assistant`;
+    yield {
+      type: "upsert-item",
+      item: {
+        id: responseId,
+        type: "message",
+        role: "assistant",
+        content: "## 正在整理\n\n已完成第一轮检查，正在整理最后的验证结果。",
+        time: "",
+      },
+    };
+
+    await delay(260);
+    yield {
+      type: "upsert-item",
+      item: {
+        id: `${runId}-verify-tool`,
+        type: "tool",
+        name: "verify",
+        command: "npm run build && npm run smoke",
+        status: "running",
+      },
+    };
+
+    await delay(900);
+    yield {
+      type: "upsert-item",
+      item: {
+        id: `${runId}-verify-tool`,
+        type: "tool",
+        name: "verify",
+        command: "npm run build && npm run smoke",
+        status: "done",
+        output: "build passed · smoke passed",
+      },
+    };
+    yield {
+      type: "upsert-item",
+      item: {
+        id: `${runId}-summary-tool`,
+        type: "tool",
+        name: "summary",
+        command: "git diff --stat",
+        status: "done",
+        output: "3 files changed",
+      },
+    };
+
     await delay(680);
     yield { type: "changes", changes: clone(uiChanges.slice(0, 2)) };
     yield {
@@ -204,12 +253,25 @@ export class MockCleoClient implements CleoClient {
     };
 
     await delay(540);
+    yield {
+      type: "upsert-item",
+      item: {
+        id: `${runId}-plan`,
+        type: "plan",
+        title: "执行计划",
+        steps: [
+          { label: "确认目标与改动边界", status: "done" },
+          { label: "检查相关文件与调用关系", status: "done" },
+          { label: "实现并验证最小改动", status: "done" },
+        ],
+      },
+    };
     const response: TimelineItem = {
-      id: `${runId}-assistant`,
+      id: responseId,
       type: "message",
       role: "assistant",
       content:
-        "这个体验流程已经由 mock runtime 完成：我读取了上下文、更新了计划、执行了工具并产生可查看的文件变更。真实后端接入后，这些事件会保持同一结构从 IPC bridge 流入，所以界面不需要重写。",
+        "## 运行完成\n\n这个体验流程已经由 **mock runtime** 完成：\n\n- Markdown 已按结构渲染\n- 多次工具调用已归入一个折叠过程\n- 最新流式正文保持在操作记录下方\n\n真实后端接入后，这些事件会保持同一结构从 `IPC bridge` 流入，所以界面不需要重写。查看 [渲染说明](https://example.com/cleo-markdown)。",
       time: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
     };
     yield { type: "upsert-item", item: response };

@@ -106,8 +106,48 @@ try {
   await window.getByTestId("composer-input").fill("检查当前 mock 边界并完成一次可见的运行");
   await window.getByTestId("send-button").click();
   await window.getByTestId("stop-button").waitFor();
+  await window.getByRole("heading", { name: "正在整理", exact: true }).waitFor({ timeout: 20_000 });
+  await window.getByText("2 次调用 · 1 个运行中", { exact: true }).waitFor({ timeout: 5_000 });
+  const streamingLayout = await window.evaluate(() => {
+    const timeline = document.querySelector('[data-testid="timeline"]');
+    const toolGroup = timeline?.querySelector('[data-testid="tool-group"]');
+    const assistant = timeline?.querySelector(".message-entry.assistant");
+    const viewport = document.querySelector(".conversation-viewport");
+    const children = timeline ? Array.from(timeline.children) : [];
+    return {
+      toolIndex: toolGroup ? children.indexOf(toolGroup) : -1,
+      assistantIndex: assistant ? children.indexOf(assistant) : -1,
+      distanceFromBottom: viewport
+        ? viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight
+        : Number.POSITIVE_INFINITY,
+    };
+  });
+  assert(
+    streamingLayout.toolIndex >= 0 && streamingLayout.toolIndex < streamingLayout.assistantIndex,
+    "Streaming assistant text was not kept after the tool process",
+  );
+  assert(streamingLayout.distanceFromBottom < 24, "Streaming timeline did not follow the latest text");
+  await window.getByRole("heading", { name: "运行完成", exact: true }).waitFor({ timeout: 20_000 });
   await window.getByText("真实后端接入后，这些事件会保持同一结构从 IPC bridge 流入").waitFor({ timeout: 20_000 });
   await window.getByText("2 个文件").waitFor();
+  assert(await window.locator(".plan-entry").count() === 1, "Plan updates created duplicate cards");
+  assert(
+    await window.locator('.plan-entry li[data-status="done"]').count() === 3,
+    "Plan card did not receive the latest incremental step state",
+  );
+  assert(await window.getByTestId("tool-group").count() === 1, "Tool calls were not grouped");
+  const toolGroupButton = window.getByTestId("tool-group").getByRole("button");
+  assert(
+    await toolGroupButton.getAttribute("aria-expanded") === "false",
+    "Completed tool group was not collapsed by default",
+  );
+  await toolGroupButton.click();
+  assert(await window.getByTestId("tool-process").count() === 3, "Tool group did not retain every process");
+  assert(await window.locator(".message-entry.assistant li").count() === 3, "Markdown list did not render");
+  assert(
+    await window.getByRole("link", { name: "渲染说明" }).getAttribute("target") === "_blank",
+    "Markdown link did not use the external-link policy",
+  );
   assert(await window.getByTestId("effort-selector").inputValue() === "low", "Created thread did not keep draft effort");
   await window.screenshot({ path: join(outputDir, "04-completed-turn.png") });
 
