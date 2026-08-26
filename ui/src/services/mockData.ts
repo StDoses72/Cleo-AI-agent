@@ -86,22 +86,27 @@ const uiChanges: ChangeFile[] = [
 export const projects: Project[] = [
   {
     id: "cleo-agent",
+    space: "productivity",
     name: "Cleo AI agent",
     path: "C:\\Projects\\Cleo-AI-agent",
     branch: "main",
     dirtyFiles: 5,
     accent: "#6be4ed",
+    removable: true,
   },
   {
     id: "orbit-notes",
+    space: "productivity",
     name: "Orbit Notes",
     path: "D:\\projects\\orbit-notes",
     branch: "feat/sync-engine",
     dirtyFiles: 0,
     accent: "#a78bfa",
+    removable: true,
   },
   {
     id: "general",
+    space: "chat",
     name: "General",
     path: "memory://general",
     accent: "#f3b768",

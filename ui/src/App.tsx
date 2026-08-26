@@ -7,6 +7,7 @@ import {
   CommandPalette,
   DeleteThreadDialog,
   LoadingScreen,
+  RemoveProjectDialog,
   SettingsModal,
   Toast,
   UpdateNotice,
@@ -16,7 +17,7 @@ import {
 import { ThreadSidebar } from "./components/ThreadSidebar";
 import { WorkspaceRail } from "./components/WorkspaceRail";
 import { useCleoWorkspace } from "./useCleoWorkspace";
-import type { MemoryViewMode, Thread, UpdateState } from "./types";
+import type { MemoryViewMode, Project, Thread, UpdateState } from "./types";
 
 export function App() {
   const workspace = useCleoWorkspace();
@@ -27,6 +28,8 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [threadPendingDeletion, setThreadPendingDeletion] = useState<Thread | null>(null);
   const [deletingThread, setDeletingThread] = useState(false);
+  const [projectPendingRemoval, setProjectPendingRemoval] = useState<Project | null>(null);
+  const [removingProject, setRemovingProject] = useState(false);
   const [memoryView, setMemoryView] = useState<MemoryViewMode>("all");
   const [theme, setTheme] = useState<"dark" | "light">(() =>
     localStorage.getItem("cleo-theme") === "light" ? "light" : "dark",
@@ -88,6 +91,7 @@ export function App() {
         setCommandOpen(false);
         setSettingsOpen(false);
         if (!deletingThread) setThreadPendingDeletion(null);
+        if (!removingProject) setProjectPendingRemoval(null);
         return;
       }
       if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === "k") {
@@ -102,7 +106,7 @@ export function App() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [deletingThread, workspace.activeSpace, workspace.createThread, workspace.selectSpace]);
+  }, [deletingThread, removingProject, workspace.activeSpace, workspace.createThread, workspace.selectSpace]);
 
   const commandActions = useMemo<CommandAction[]>(
     () => [
@@ -199,6 +203,7 @@ export function App() {
         activeProjectId={workspace.activeProjectId}
         activeThreadId={workspace.activeThreadId}
         onSelectProject={workspace.selectProject}
+        onRemoveProject={setProjectPendingRemoval}
         onSelectThread={workspace.selectThread}
         onDeleteThread={setThreadPendingDeletion}
         onCreateThread={() => void workspace.createThread()}
@@ -321,6 +326,24 @@ export function App() {
               notify(error instanceof Error ? error.message : "无法删除 thread");
             })
             .finally(() => setDeletingThread(false));
+        }}
+      />
+      <RemoveProjectDialog
+        project={projectPendingRemoval}
+        removing={removingProject}
+        onCancel={() => setProjectPendingRemoval(null)}
+        onConfirm={() => {
+          if (!projectPendingRemoval) return;
+          setRemovingProject(true);
+          void workspace.removeProject(projectPendingRemoval.id)
+            .then(() => {
+              setProjectPendingRemoval(null);
+              notify("项目已从侧边栏移除");
+            })
+            .catch((error: unknown) => {
+              notify(error instanceof Error ? error.message : "无法移除项目");
+            })
+            .finally(() => setRemovingProject(false));
         }}
       />
       <UpdateNotice

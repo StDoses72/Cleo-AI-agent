@@ -30,6 +30,7 @@ export interface Project {
   branch?: string;
   dirtyFiles?: number;
   accent: string;
+  removable?: boolean;
 }
 
 export interface PlanStep {
@@ -352,6 +353,8 @@ export interface CleoClient {
   loadThread(threadId: string): Promise<Thread>;
   createThread(space: ThreadSpace, projectId: string, options?: CreateThreadOptions): Promise<Thread>;
   deleteThread(threadId: string): Promise<WorkspaceSnapshot>;
+  addProject(space: ThreadSpace, projectPath: string): Promise<WorkspaceSnapshot>;
+  removeProject(projectId: string): Promise<WorkspaceSnapshot>;
   restoreChatBackups(): Promise<WorkspaceSnapshot>;
   streamTurn(threadId: string, prompt: string, attachments?: Attachment[]): AsyncGenerator<StreamEvent>;
   cancelRun(threadId: string): Promise<void>;

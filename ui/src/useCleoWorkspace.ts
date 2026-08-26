@@ -201,16 +201,20 @@ export function useCleoWorkspace() {
   const createThread = async () => {
     selectionRef.current += 1;
     const space: ThreadSpace = activeSpace === "chat" ? "chat" : "productivity";
-    const projectId =
-      snapshot?.projects.find((project) => project.id === activeProjectId && project.space === space)
-        ?.id ?? snapshot?.projects.find((project) => project.space === space)?.id ?? activeProjectId;
+    const project = snapshot?.projects.find(
+      (candidate) => candidate.id === activeProjectId && candidate.space === space,
+    ) ?? snapshot?.projects.find((candidate) => candidate.space === space);
+    if (!project) throw new Error("请先打开一个工作目录。");
     const thread = await cleoClient.createThread(
       space,
-      projectId,
+      project.id,
       space === "chat"
-        ? { profileId: draftProfileId || runtimeCatalog?.defaultNonProductivityProfile }
+        ? {
+            projectPath: project.path,
+            profileId: draftProfileId || runtimeCatalog?.defaultNonProductivityProfile,
+          }
         : {
-            projectPath: activeProject?.path,
+            projectPath: project.path,
             provider: draftProvider || runtimeCatalog?.defaultProductivityProvider,
             model: draftModel || undefined,
             effort: draftEffort ?? undefined,
@@ -226,22 +230,12 @@ export function useCleoWorkspace() {
   const chooseWorkspace = async () => {
     const projectPath = await cleoClient.pickWorkspace();
     if (!projectPath) return null;
+    const space: ThreadSpace = activeSpace === "chat" ? "chat" : "productivity";
     const name = projectPath.split(/[\\/]/).filter(Boolean).at(-1) ?? "workspace";
-    const projectId = `productivity:${name}`;
-    setSnapshot((current) => current
-      ? {
-          ...current,
-          projects: current.projects.some((project) => project.id === projectId)
-            ? current.projects.map((project) =>
-                project.id === projectId ? { ...project, name, path: projectPath } : project,
-              )
-            : [
-                ...current.projects,
-                { id: projectId, space: "productivity", name, path: projectPath, accent: "#75c9d6" },
-              ],
-        }
-      : current);
-    setActiveSpace("productivity");
+    const projectId = `${space}:${name}`;
+    const refreshed = await cleoClient.addProject(space, projectPath);
+    setSnapshot(refreshed);
+    setActiveSpace(space);
     setActiveProjectId(projectId);
     setActiveThreadId(null);
     return projectPath;
@@ -529,6 +523,25 @@ export function useCleoWorkspace() {
     }
     return refreshed;
   };
+  const removeProject = async (projectId: string) => {
+    const removed = snapshot?.projects.find((project) => project.id === projectId);
+    if (!removed) throw new Error("找不到要移除的项目。");
+    const refreshed = await cleoClient.removeProject(projectId);
+    setSnapshot(refreshed);
+    const preservedProject = refreshed.projects.find(
+      (project) => project.id === activeProjectId,
+    );
+    if (preservedProject && activeProjectId !== projectId) return refreshed;
+    const replacementProject = refreshed.projects.find(
+      (project) => project.space === removed.space,
+    );
+    const replacementThread = replacementProject
+      ? refreshed.threads.find((thread) => thread.projectId === replacementProject.id)
+      : undefined;
+    setActiveProjectId(replacementProject?.id ?? "");
+    setActiveThreadId(replacementThread?.id ?? null);
+    return refreshed;
+  };
   const loadModelSettings = async () => {
     setModelSettingsLoading(true);
     try {
@@ -624,6 +637,7 @@ export function useCleoWorkspace() {
     resetWorkspace,
     restoreChatHistory,
     deleteThread,
+    removeProject,
     loadModelSettings,
     saveModelProfile,
     loadAgentInstructions,

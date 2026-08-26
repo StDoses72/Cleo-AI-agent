@@ -9,7 +9,7 @@ from cleo.memory.paths import DEFAULT_MEMORY_SPACE, MEMORY_SPACES, projects_dire
 
 DEFAULT_PROJECT = "general"
 MAX_RECENT_THREADS = 5
-RUNTIME_SCHEMA_VERSION = 2
+RUNTIME_SCHEMA_VERSION = 3
 
 
 def _clean_string(value: Any) -> str | None:
@@ -71,6 +71,14 @@ def _default_recent_threads() -> dict[str, list[str]]:
     return {space: [] for space in MEMORY_SPACES}
 
 
+def _default_project_paths() -> dict[str, dict[str, str]]:
+    return {space: {} for space in MEMORY_SPACES}
+
+
+def _default_removed_projects() -> dict[str, list[str]]:
+    return {space: [] for space in MEMORY_SPACES}
+
+
 class RuntimeState(BaseModel):
     """runtime.json 的 Pydantic schema: 描述并校验磁盘上的运行时状态。
 
@@ -87,6 +95,8 @@ class RuntimeState(BaseModel):
     current_thread_id: str | None = None
     projects: dict[str, list[str]] = Field(default_factory=_default_projects)
     recent_threads: dict[str, list[str]] = Field(default_factory=_default_recent_threads)
+    project_paths: dict[str, dict[str, str]] = Field(default_factory=_default_project_paths)
+    removed_projects: dict[str, list[str]] = Field(default_factory=_default_removed_projects)
 
     @field_validator("current_project", "current_thread_id", mode="before")
     @classmethod
@@ -115,7 +125,20 @@ class RuntimeState(BaseModel):
 
         normalized_projects = _default_projects()
         normalized_recent = _default_recent_threads()
+        normalized_paths = _default_project_paths()
+        normalized_removed = _default_removed_projects()
         for space in MEMORY_SPACES:
+            configured_removed = self.removed_projects.get(space, [])
+            removed_projects = _dedupe_keep_last(
+                configured_removed if isinstance(configured_removed, list) else []
+            )
+            if space == DEFAULT_MEMORY_SPACE:
+                removed_projects = [
+                    project for project in removed_projects if project != DEFAULT_PROJECT
+                ]
+            removed = set(removed_projects)
+            normalized_removed[space] = removed_projects
+
             configured_projects = self.projects.get(space, [])
             projects = _dedupe_keep_last(
                 configured_projects if isinstance(configured_projects, list) else []
@@ -123,6 +146,7 @@ class RuntimeState(BaseModel):
             if space == DEFAULT_MEMORY_SPACE:
                 projects = [project for project in projects if project != DEFAULT_PROJECT]
                 projects.insert(0, DEFAULT_PROJECT)
+            projects = [project for project in projects if project not in removed]
             normalized_projects[space] = projects
 
             configured_recent = self.recent_threads.get(space, [])
@@ -131,6 +155,16 @@ class RuntimeState(BaseModel):
             )
             normalized_recent[space] = recent[-MAX_RECENT_THREADS:]
 
+            configured_paths = self.project_paths.get(space, {})
+            if isinstance(configured_paths, dict):
+                for raw_name, raw_path in configured_paths.items():
+                    name = _clean_string(raw_name)
+                    path = _clean_string(raw_path)
+                    if name is not None and path is not None and name not in removed:
+                        normalized_paths[space][name] = path
+
+        if self.current_project in normalized_removed[self.current_space]:
+            self.current_project = None
         if self.current_project is not None:
             active_projects = normalized_projects[self.current_space]
             if self.current_project not in active_projects:
@@ -139,6 +173,8 @@ class RuntimeState(BaseModel):
         self.schema_version = RUNTIME_SCHEMA_VERSION
         self.projects = normalized_projects
         self.recent_threads = normalized_recent
+        self.project_paths = normalized_paths
+        self.removed_projects = normalized_removed
         return self
 
 
@@ -171,6 +207,8 @@ class Runtime:
         self.current_thread_id = state.current_thread_id
         self.projects = state.projects
         self.recent_threads = state.recent_threads
+        self.project_paths = state.project_paths
+        self.removed_projects = state.removed_projects
         self.sync_projects_from_disk()
 
     def ensure_runtime_json(self) -> None:
@@ -257,9 +295,63 @@ class Runtime:
         """
         self.current_project = project_name
         active_projects = self.projects[self.current_space]
+        if project_name is not None:
+            self.removed_projects[self.current_space] = [
+                project
+                for project in self.removed_projects[self.current_space]
+                if project != project_name
+            ]
         if project_name is not None and project_name not in active_projects:
             active_projects.append(project_name)
         self.update_runtime_json()
+
+    def register_project(self, space: str, project_name: str, project_path: str) -> None:
+        """Persist the local directory used by one project in either memory space."""
+        if space not in MEMORY_SPACES:
+            raise ValueError(f"unsupported memory space: {space}")
+        name = _clean_string(project_name)
+        path = _clean_string(project_path)
+        if name is None or path is None:
+            raise ValueError("project name and path must not be empty")
+        if name not in self.projects[space]:
+            self.projects[space].append(name)
+        self.project_paths[space][name] = path
+        self.removed_projects[space] = [
+            project for project in self.removed_projects[space] if project != name
+        ]
+        self.update_runtime_json()
+
+    def remove_project(self, space: str, project_name: str) -> None:
+        """Hide a project without deleting its directory or saved sessions."""
+        if space not in MEMORY_SPACES:
+            raise ValueError(f"unsupported memory space: {space}")
+        name = _clean_string(project_name)
+        if name is None:
+            raise ValueError("project name must not be empty")
+        if space == DEFAULT_MEMORY_SPACE and name == DEFAULT_PROJECT:
+            raise ValueError("the default general project cannot be removed")
+        self.projects[space] = [
+            project for project in self.projects[space] if project != name
+        ]
+        self.project_paths[space].pop(name, None)
+        if name not in self.removed_projects[space]:
+            self.removed_projects[space].append(name)
+        if self.current_space == space and self.current_project == name:
+            self.current_project = None
+            self.current_thread_id = None
+        self.update_runtime_json()
+
+    def project_path(self, space: str, project_name: str) -> str | None:
+        """Return the registered local directory for a project."""
+        if space not in MEMORY_SPACES:
+            raise ValueError(f"unsupported memory space: {space}")
+        return self.project_paths[space].get(project_name)
+
+    def is_project_removed(self, space: str, project_name: str) -> bool:
+        """Return whether a project was explicitly removed from desktop navigation."""
+        if space not in MEMORY_SPACES:
+            raise ValueError(f"unsupported memory space: {space}")
+        return project_name in self.removed_projects[space]
 
     def append_recent_threads(self, thread_id: str, space: str | None = None) -> None:
         """把 thread id 追加到指定 space 的最近线程列表(去重、截断)并落盘。
@@ -335,10 +427,14 @@ class Runtime:
             current_thread_id=self.current_thread_id,
             projects=self.projects,
             recent_threads=self.recent_threads,
+            project_paths=self.project_paths,
+            removed_projects=self.removed_projects,
         )
         self.current_space = state.current_space
         self.current_project = state.current_project
         self.current_thread_id = state.current_thread_id
         self.projects = state.projects
         self.recent_threads = state.recent_threads
+        self.project_paths = state.project_paths
+        self.removed_projects = state.removed_projects
         self._write_runtime_state(state)

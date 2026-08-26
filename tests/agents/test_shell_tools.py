@@ -51,3 +51,14 @@ def test_virtual_path_translation_preserves_original_spacing(tmp_path, monkeypat
     assert shell_tools._translate_virtual_paths_in_command(command) == (
         f"Get-Content   '{root}/a.txt'  |  Select-String foo"
     )
+
+
+def test_project_bound_shell_paths_resolve_from_selected_project(tmp_path) -> None:
+    project_root = (tmp_path / "selected-project").resolve()
+    project_root.mkdir()
+
+    assert shell_tools._resolve_cwd("", project_root) == project_root
+    assert shell_tools._resolve_cwd("src", project_root) == project_root / "src"
+    assert shell_tools._translate_virtual_paths_in_command(
+        "Get-Content /workspace/README.md", project_root
+    ) == f"Get-Content {project_root}/README.md"

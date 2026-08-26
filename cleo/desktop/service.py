@@ -122,6 +122,8 @@ class DesktopService:
                 break
             try:
                 manifest = self.store.load_manifest(str(row["id"]))
+                if self._is_removed_project(manifest):
+                    continue
                 events = self.store.read_events(manifest["id"])
             except (FileNotFoundError, OSError, ValueError):
                 continue
@@ -222,6 +224,72 @@ class DesktopService:
             )
             if replacement is not None:
                 self._activate(replacement)
+        return await self.load_workspace()
+
+    async def add_project(self, *, space: str, project_path: str) -> dict[str, Any]:
+        """Register a local project directory and return the refreshed workspace."""
+        memory_space = "non_productivity" if space == "chat" else "productivity"
+        if space not in {"chat", "productivity"}:
+            raise ValueError(f"不支持的项目空间：{space}")
+        path = Path(project_path).expanduser().resolve()
+        if not path.is_dir():
+            raise ValueError(f"工作目录不存在或不是文件夹：{path}")
+        name = path_name(str(path), "workspace")
+        existing = self.runtime.project_path(memory_space, name)
+        if existing is not None and os.path.normcase(existing) != os.path.normcase(str(path)):
+            raise ValueError(f"已有同名项目“{name}”映射到：{existing}")
+        self.runtime.register_project(memory_space, name, str(path))
+        self._project_paths[project_id(memory_space, name)] = str(path)
+        return await self.load_workspace()
+
+    async def remove_project(self, *, project_id_value: str) -> dict[str, Any]:
+        """Remove a project from navigation without deleting local data."""
+        if project_id_value.startswith("chat:"):
+            memory_space = "non_productivity"
+            ui_space = "chat"
+        elif project_id_value.startswith("productivity:"):
+            memory_space = "productivity"
+            ui_space = "productivity"
+        else:
+            raise ValueError("无效的项目 ID。")
+        name = project_name_from_id(project_id_value)
+        if memory_space == "non_productivity" and name == "general":
+            raise ValueError("默认的 general 项目不能移除。")
+        manifests = []
+        for row in self.store.list_sessions(space=memory_space):
+            try:
+                manifest = self.store.load_manifest(str(row["id"]))
+            except (FileNotFoundError, OSError, ValueError):
+                continue
+            if not self._is_removed_project(manifest):
+                manifests.append(manifest)
+        visible_projects = [
+            project
+            for project in await self._projects(manifests)
+            if project["space"] == ui_space
+        ]
+        if project_id_value not in {project["id"] for project in visible_projects}:
+            raise ValueError(f"找不到项目：{name}")
+        if len(visible_projects) <= 1:
+            raise ValueError("至少需要保留一个项目。请先打开另一个工作目录。")
+        for thread_id in self._run_tasks:
+            try:
+                manifest = self.store.load_manifest(thread_id)
+            except (FileNotFoundError, OSError, ValueError):
+                continue
+            if manifest["space"] == memory_space and manifest["project"] == name:
+                raise ValueError("该项目中有正在运行的任务，请先停止运行。")
+        for manifest in manifests:
+            if manifest["project"] != name:
+                continue
+            thread_id = str(manifest["id"])
+            if memory_space == "productivity" and thread_id in self._productivity_sessions:
+                await self._adapter().close(thread_id)
+                self._productivity_sessions.pop(thread_id, None)
+            self._chat_agents.pop(thread_id, None)
+            self._chat_agents_restored.discard(thread_id)
+        self.runtime.remove_project(memory_space, name)
+        self._project_paths.pop(project_id_value, None)
         return await self.load_workspace()
 
     async def restore_chat_backups(self) -> dict[str, Any]:
@@ -419,20 +487,31 @@ class DesktopService:
         profile_id: str | None = None,
         project_path: str | None = None,
     ) -> dict[str, Any]:
+        memory_space = "non_productivity" if space == "chat" else "productivity"
+        if space not in {"chat", "productivity"}:
+            raise ValueError(f"不支持的项目空间：{space}")
+        project = project_name_from_id(project_id_value)
         selected_path: str | None = None
         if project_path is not None:
             path = Path(project_path).expanduser().resolve()
             if not path.is_dir():
                 raise ValueError(f"工作目录不存在或不是文件夹：{path}")
             selected_path = str(path)
-            project = path_name(selected_path, "workspace")
-            project_id_value = project_id("productivity", project)
+            project = project or path_name(selected_path, "workspace")
+            project_id_value = project_id(memory_space, project)
+            self.runtime.register_project(memory_space, project, selected_path)
             self._project_paths[project_id_value] = selected_path
-        else:
-            project = project_name_from_id(project_id_value)
         if space == "chat":
-            if selected_path is not None:
-                raise ValueError("Cleo 对话不接受代码工作目录。")
+            root_path = str(self.settings.active_directory_profile.root_path)
+            project_path = self._project_paths.get(project_id_value)
+            if project_path is None:
+                project_path = self.runtime.project_path("non_productivity", project)
+            if project_path is None and project == "general":
+                project_path = root_path
+            if project_path is None:
+                raise ValueError(f"项目“{project}”没有有效的工作目录，请重新打开该目录。")
+            if not Path(project_path).is_dir():
+                raise ValueError(f"工作目录不存在或不是文件夹：{project_path}")
             thread_id = f"cleo_{secrets.token_hex(6)}"
             manifest = self.store.create_session(
                 session_id=thread_id,
@@ -440,7 +519,7 @@ class DesktopService:
                 project=project or "general",
                 provider="cleo",
                 owner_type="user",
-                cwd=str(self.settings.active_directory_profile.root_path),
+                cwd=project_path,
             )
             selected_profile = profile_id or self._active_agent_profile_id()
             self._agent_profile(selected_profile)
@@ -451,10 +530,17 @@ class DesktopService:
         else:
             adapter = self._adapter()
             provider_name = provider or self.settings.productivity.default_provider
-            project_path = self._project_paths.get(
-                project_id_value,
-                selected_path or str(self.settings.active_directory_profile.root_path),
-            )
+            root_path = str(self.settings.active_directory_profile.root_path)
+            root_name = path_name(root_path, "workspace")
+            project_path = self._project_paths.get(project_id_value)
+            if project_path is None:
+                project_path = self.runtime.project_path("productivity", project)
+            if project_path is None and project == root_name:
+                project_path = root_path
+            if project_path is None:
+                raise ValueError(f"项目“{project}”没有有效的工作目录，请重新打开该目录。")
+            if not Path(project_path).is_dir():
+                raise ValueError(f"工作目录不存在或不是文件夹：{project_path}")
             selected_model = model or self.settings.productivity.provider(provider_name).model
             session = await adapter.create_session(
                 provider_name,
@@ -734,6 +820,7 @@ class DesktopService:
                 project=manifest["project"],
                 space=manifest["space"],
                 profile=self._chat_profile(manifest),
+                project_path=self._manifest_project_path(manifest),
             )
             self._chat_agents[manifest["id"]] = agent
         loaded = None
@@ -1039,20 +1126,51 @@ class DesktopService:
         candidates: dict[str, tuple[str, str, str]] = {}
         root_path = str(self.settings.active_directory_profile.root_path)
         root_name = path_name(root_path, "workspace")
-        candidates[project_id("productivity", root_name)] = ("productivity", root_name, root_path)
-        for space in ("non_productivity", "productivity"):
-            for name in self.runtime.projects_for(space):
-                fallback_path = f"memory://{name}" if space == "non_productivity" else root_path
-                candidates[project_id(space, name)] = (self._ui_space(space), name, fallback_path)
         for manifest in manifests:
+            if self._is_removed_project(manifest):
+                continue
             space = self._ui_space(manifest["space"])
             name = str(manifest["project"])
-            path = str(
-                manifest.get("cwd") or (f"memory://{name}" if space == "chat" else root_path)
-            )
+            raw_path = manifest.get("cwd")
+            if not raw_path:
+                continue
+            path = str(raw_path)
             candidates[project_id(manifest["space"], name)] = (space, name, path)
 
+        if not self.runtime.is_project_removed("non_productivity", "general"):
+            candidates[project_id("non_productivity", "general")] = (
+                "chat",
+                "general",
+                root_path,
+            )
+        if not self.runtime.is_project_removed("productivity", root_name):
+            candidates[project_id("productivity", root_name)] = (
+                "productivity",
+                root_name,
+                root_path,
+            )
+        for memory_space in ("non_productivity", "productivity"):
+            for name in self.runtime.projects_for(memory_space):
+                if self.runtime.is_project_removed(memory_space, name):
+                    continue
+                path = self.runtime.project_path(memory_space, name)
+                if path is not None:
+                    candidates[project_id(memory_space, name)] = (
+                        self._ui_space(memory_space),
+                        name,
+                        path,
+                    )
+
         projects = []
+        project_counts = {
+            space: sum(
+                1
+                for candidate_space, _name, _path in candidates.values()
+                if candidate_space == space
+            )
+            for space in ("chat", "productivity")
+        }
+        self._project_paths = {}
         for identifier, (space, name, path) in candidates.items():
             git = inspect_git_status(path) if space == "productivity" else None
             self._project_paths[identifier] = path
@@ -1065,6 +1183,8 @@ class DesktopService:
                     "branch": git.branch if git else None,
                     "dirtyFiles": git.dirty_count if git else 0,
                     "accent": self._accent(identifier),
+                    "removable": project_counts[space] > 1
+                    and not (space == "chat" and name == "general"),
                 }
             )
         return sorted(projects, key=lambda item: (item["space"], item["name"].casefold()))
@@ -1303,9 +1423,36 @@ class DesktopService:
 
     def _activate(self, manifest: dict[str, Any]) -> None:
         self.runtime.update_current_space(str(manifest["space"]))
-        self.runtime.update_current_project(str(manifest["project"]))
+        if manifest.get("cwd"):
+            self.runtime.register_project(
+                str(manifest["space"]), str(manifest["project"]), str(manifest["cwd"])
+            )
+        else:
+            self.runtime.update_current_project(str(manifest["project"]))
         self.runtime.update_current_thread_id(str(manifest["id"]))
         self.runtime.append_recent_threads(str(manifest["id"]), str(manifest["space"]))
+
+    def _is_removed_project(self, manifest: dict[str, Any]) -> bool:
+        space = str(manifest.get("space") or "")
+        return space in {"non_productivity", "productivity"} and self.runtime.is_project_removed(
+            space, str(manifest.get("project") or "")
+        )
+
+    def _manifest_project_path(self, manifest: dict[str, Any]) -> str:
+        path = manifest.get("cwd") or self.runtime.project_path(
+            str(manifest["space"]), str(manifest["project"])
+        )
+        if (
+            path is None
+            and manifest["space"] == "non_productivity"
+            and manifest["project"] == "general"
+        ):
+            path = str(self.settings.active_directory_profile.root_path)
+        if path is None or not Path(path).is_dir():
+            raise ValueError(
+                f"项目“{manifest['project']}”没有有效的工作目录，请重新打开该目录。"
+            )
+        return str(Path(path).resolve())
 
     async def _session_list(self, space: str, emit: Emit) -> None:
         rows = self.store.list_sessions(space=space)

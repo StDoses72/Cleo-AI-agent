@@ -22,6 +22,8 @@ const allowedMethods = new Set([
   "load_thread",
   "create_thread",
   "delete_thread",
+  "add_project",
+  "remove_project",
   "restore_chat_backups",
   "stream_turn",
   "cancel_run",

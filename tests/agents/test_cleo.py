@@ -96,3 +96,56 @@ def test_agent_backend_uses_configured_application_root(tmp_path, monkeypatch) -
     assert agent.model_name == "selected-model"
     assert captured_model["model"] == "selected-model"
     assert captured_model["api_key"] == "secret"
+
+
+def test_agent_backend_uses_selected_project_and_mounts_cleo_context(tmp_path, monkeypatch) -> None:
+    import cleo.agents.cleo as agent_module
+
+    cleo_root = tmp_path / "cleo"
+    project_root = tmp_path / "selected-project"
+    (cleo_root / "skills" / "demo").mkdir(parents=True)
+    (cleo_root / "memory").mkdir()
+    (cleo_root / "memory" / "MEMORY_POLICY.md").write_text("# Policy\n", encoding="utf-8")
+    (cleo_root / "AGENTS.md").write_text("# Shared guidance\n", encoding="utf-8")
+    project_root.mkdir()
+    (project_root / "AGENTS.md").write_text("# Project guidance\n", encoding="utf-8")
+    (project_root / "project.txt").write_text("selected\n", encoding="utf-8")
+    captured_options = {}
+    monkeypatch.setattr(
+        agent_module,
+        "settings",
+        SimpleNamespace(
+            active_directory_profile=SimpleNamespace(root_path=cleo_root),
+            PERSONA_PATH=cleo_root / "PERSONA.md",
+            MEMORY_DIR=cleo_root / "memory",
+        ),
+    )
+    monkeypatch.setattr(agent_module, "init_chat_model", lambda **_kwargs: object())
+    monkeypatch.setattr(
+        agent_module,
+        "create_deep_agent",
+        lambda **kwargs: captured_options.update(kwargs) or SimpleNamespace(),
+    )
+
+    agent = agent_module.Agent(
+        project_path=project_root,
+        profile=SimpleNamespace(
+            provider="openai",
+            model="selected-model",
+            api_key=SecretStr("secret"),
+            temperature=0.2,
+            base_url=None,
+            max_tokens=42_000,
+        ),
+    )
+
+    assert agent.root_dir == project_root.resolve()
+    assert agent.backend.read("/project.txt").file_data["content"] == "selected\n"
+    assert agent.backend.read("/.cleo/memory/MEMORY_POLICY.md").error is None
+    assert captured_options["memory"] == [
+        "/AGENTS.md",
+        "/.cleo/AGENTS.md",
+        "/.cleo/memory/MEMORY_POLICY.md",
+        "/.cleo/PERSONA.md",
+    ]
+    assert captured_options["skills"] == ["/.cleo/skills"]

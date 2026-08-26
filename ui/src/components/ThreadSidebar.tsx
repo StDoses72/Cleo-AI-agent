@@ -21,6 +21,7 @@ interface ThreadSidebarProps {
   activeProjectId: string;
   activeThreadId: string | null;
   onSelectProject: (projectId: string) => void;
+  onRemoveProject: (project: Project) => void;
   onSelectThread: (threadId: string) => void;
   onDeleteThread: (thread: Thread) => void;
   onCreateThread: () => void;
@@ -48,6 +49,7 @@ export function ThreadSidebar({
   activeProjectId,
   activeThreadId,
   onSelectProject,
+  onRemoveProject,
   onSelectThread,
   onDeleteThread,
   onCreateThread,
@@ -143,20 +145,18 @@ export function ThreadSidebar({
             </button>
             {projectMenuOpen ? (
               <div className="project-menu surface-popover">
-                {space === "productivity" ? (
-                  <button
-                    className="project-menu-action"
-                    type="button"
-                    onClick={() => {
-                      setProjectMenuOpen(false);
-                      onChooseWorkspace();
-                    }}
-                    data-testid="choose-workspace"
-                  >
-                    <span className="project-glyph compact"><FolderOpen size={14} /></span>
-                    <span><strong>打开工作目录</strong><small>选择任意本地文件夹</small></span>
-                  </button>
-                ) : null}
+                <button
+                  className="project-menu-action"
+                  type="button"
+                  onClick={() => {
+                    setProjectMenuOpen(false);
+                    onChooseWorkspace();
+                  }}
+                  data-testid="choose-workspace"
+                >
+                  <span className="project-glyph compact"><FolderOpen size={14} /></span>
+                  <span><strong>打开工作目录</strong><small>选择任意本地文件夹</small></span>
+                </button>
                 {projects
                   .filter((project) =>
                     project.space
@@ -166,22 +166,38 @@ export function ThreadSidebar({
                         : project.id !== "general",
                   )
                   .map((project) => (
-                    <button
-                      type="button"
-                      key={project.id}
-                      onClick={() => {
-                        onSelectProject(project.id);
-                        setProjectMenuOpen(false);
-                      }}
-                    >
-                      <span className="project-glyph compact" style={{ "--project-accent": project.accent } as CSSProperties}>
-                        {project.name.slice(0, 1)}
-                      </span>
-                      <span>
-                        <strong>{project.name}</strong>
-                        <small>{project.path}</small>
-                      </span>
-                    </button>
+                    <div className="project-menu-row" key={project.id}>
+                      <button
+                        className="project-menu-select"
+                        type="button"
+                        onClick={() => {
+                          onSelectProject(project.id);
+                          setProjectMenuOpen(false);
+                        }}
+                      >
+                        <span className="project-glyph compact" style={{ "--project-accent": project.accent } as CSSProperties}>
+                          {project.name.slice(0, 1)}
+                        </span>
+                        <span>
+                          <strong>{project.name}</strong>
+                          <small>{project.path}</small>
+                        </span>
+                      </button>
+                      {project.removable ? (
+                        <button
+                          className="project-menu-remove"
+                          type="button"
+                          aria-label={`移除项目 ${project.name}`}
+                          title="移除项目"
+                          onClick={() => {
+                            setProjectMenuOpen(false);
+                            onRemoveProject(project);
+                          }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      ) : null}
+                    </div>
                   ))}
               </div>
             ) : null}

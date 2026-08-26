@@ -32,6 +32,14 @@ class FakeRuntime:
             "non_productivity": [],
             "productivity": [],
         }
+        self.project_paths = {
+            "non_productivity": {},
+            "productivity": {},
+        }
+        self.removed_projects = {
+            "non_productivity": [],
+            "productivity": [],
+        }
 
     def projects_for(self, space: str) -> list[str]:
         return list(self.projects[space])
@@ -58,6 +66,29 @@ class FakeRuntime:
         ]
         if self.current_thread_id == thread_id:
             self.current_thread_id = None
+
+    def register_project(self, space: str, name: str, path: str) -> None:
+        if name not in self.projects[space]:
+            self.projects[space].append(name)
+        self.project_paths[space][name] = path
+        self.removed_projects[space] = [
+            project for project in self.removed_projects[space] if project != name
+        ]
+
+    def remove_project(self, space: str, name: str) -> None:
+        self.projects[space] = [project for project in self.projects[space] if project != name]
+        self.project_paths[space].pop(name, None)
+        if name not in self.removed_projects[space]:
+            self.removed_projects[space].append(name)
+        if self.current_space == space and self.current_project == name:
+            self.current_project = None
+            self.current_thread_id = None
+
+    def project_path(self, space: str, name: str) -> str | None:
+        return self.project_paths[space].get(name)
+
+    def is_project_removed(self, space: str, name: str) -> bool:
+        return name in self.removed_projects[space]
 
 
 class FakeProductivity:
@@ -399,6 +430,124 @@ def test_create_productivity_thread_uses_selected_workspace(tmp_path: Path) -> N
             "effort": "high",
         }
         assert service.store.load_manifest(thread["id"])["cwd"] == str(selected.resolve())
+
+    asyncio.run(scenario())
+
+
+def test_registered_project_directories_drive_both_agent_spaces(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        service = _service(tmp_path)
+        productivity_path = tmp_path / "mapped-productivity"
+        chat_path = tmp_path / "mapped-chat"
+        productivity_path.mkdir()
+        chat_path.mkdir()
+
+        productivity_snapshot = await service.add_project(
+            space="productivity", project_path=str(productivity_path)
+        )
+        chat_snapshot = await service.add_project(space="chat", project_path=str(chat_path))
+
+        assert next(
+            project
+            for project in productivity_snapshot["projects"]
+            if project["id"] == "productivity:mapped-productivity"
+        )["path"] == str(productivity_path.resolve())
+        assert next(
+            project
+            for project in chat_snapshot["projects"]
+            if project["id"] == "chat:mapped-chat"
+        )["path"] == str(chat_path.resolve())
+
+        adapter = FakeAdapter(service.store)
+        service._adapter_instance = adapter
+        productivity_thread = await service.create_thread(
+            space="productivity",
+            project_id_value="productivity:mapped-productivity",
+        )
+        chat_thread = await service.create_thread(
+            space="chat",
+            project_id_value="chat:mapped-chat",
+        )
+
+        assert adapter.created_with["project_path"] == str(productivity_path.resolve())
+        assert service.store.load_manifest(productivity_thread["id"])["cwd"] == str(
+            productivity_path.resolve()
+        )
+        assert service.store.load_manifest(chat_thread["id"])["cwd"] == str(
+            chat_path.resolve()
+        )
+
+        captured_agent_options = {}
+
+        class FakeGraph:
+            async def aget_state(self, _config):
+                return SimpleNamespace(values={"messages": []})
+
+        class FakeChatAgent:
+            deepagent = FakeGraph()
+            context_usage = SimpleNamespace(
+                used_tokens=0,
+                window_tokens=64_000,
+                input_tokens=0,
+                output_tokens=0,
+            )
+
+            async def stream_text(self, *_args, **_kwargs):
+                yield "done"
+
+        def create_chat_agent(**options):
+            captured_agent_options.update(options)
+            return FakeChatAgent()
+
+        service._agent_factory = create_chat_agent
+
+        async def emit(_event):
+            return None
+
+        await service.stream_turn(
+            thread_id=chat_thread["id"],
+            prompt="work in this project",
+            attachments=[],
+            emit=emit,
+        )
+
+        assert captured_agent_options["project_path"] == str(chat_path.resolve())
+
+    asyncio.run(scenario())
+
+
+def test_remove_project_hides_history_without_deleting_it_and_reopen_restores_it(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        service = _service(tmp_path)
+        adapter = FakeAdapter(service.store)
+        service._adapter_instance = adapter
+        selected = tmp_path / "removable-project"
+        selected.mkdir()
+        await service.add_project(space="productivity", project_path=str(selected))
+        thread = await service.create_thread(
+            space="productivity",
+            project_id_value="productivity:removable-project",
+        )
+
+        removed = await service.remove_project(
+            project_id_value="productivity:removable-project"
+        )
+
+        assert "productivity:removable-project" not in {
+            project["id"] for project in removed["projects"]
+        }
+        assert thread["id"] not in {item["id"] for item in removed["threads"]}
+        assert service.store.load_manifest(thread["id"])["cwd"] == str(selected.resolve())
+        assert selected.is_dir()
+
+        restored = await service.add_project(space="productivity", project_path=str(selected))
+
+        assert "productivity:removable-project" in {
+            project["id"] for project in restored["projects"]
+        }
+        assert thread["id"] in {item["id"] for item in restored["threads"]}
 
     asyncio.run(scenario())
 

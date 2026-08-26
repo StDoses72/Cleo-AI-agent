@@ -91,6 +91,32 @@ export class MockCleoClient implements CleoClient {
     return clone(snapshot);
   }
 
+  async addProject(space: ThreadSpace, projectPath: string): Promise<WorkspaceSnapshot> {
+    const name = projectPath.split(/[\\/]/).filter(Boolean).at(-1) ?? "workspace";
+    const id = `${space}:${name}`;
+    const existing = snapshot.projects.find((project) => project.id === id);
+    if (existing) {
+      existing.path = projectPath;
+    } else {
+      snapshot.projects.push({
+        id,
+        space,
+        name,
+        path: projectPath,
+        accent: "#75c9d6",
+        removable: true,
+      });
+    }
+    return clone(snapshot);
+  }
+
+  async removeProject(projectId: string): Promise<WorkspaceSnapshot> {
+    const index = snapshot.projects.findIndex((project) => project.id === projectId);
+    if (index >= 0) snapshot.projects.splice(index, 1);
+    snapshot.threads = snapshot.threads.filter((thread) => thread.projectId !== projectId);
+    return clone(snapshot);
+  }
+
   async restoreChatBackups(): Promise<WorkspaceSnapshot> {
     await delay(180);
     return clone(snapshot);

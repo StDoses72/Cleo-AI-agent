@@ -543,6 +543,30 @@ kbd {
   background: var(--surface-hover);
 }
 
+.project-menu-row {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.project-menu .project-menu-select {
+  min-width: 0;
+  flex: 1;
+}
+
+.project-menu .project-menu-remove {
+  width: 32px;
+  flex: 0 0 32px;
+  justify-content: center;
+  padding: 0;
+  color: var(--muted-2);
+}
+
+.project-menu .project-menu-remove:hover {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
 .project-menu .project-menu-action {
   margin-bottom: 5px;
   padding-bottom: 10px;

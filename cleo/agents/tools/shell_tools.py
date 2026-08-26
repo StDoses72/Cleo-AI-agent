@@ -37,7 +37,7 @@ _VIRTUAL_PATH_RIGHT_BOUNDARIES = frozenset(
 )
 
 
-def _virtual_path_mappings() -> tuple[tuple[str, Path], ...]:
+def _virtual_path_mappings(project_root: Path | None = None) -> tuple[tuple[str, Path], ...]:
     """构造虚拟路径前缀到当前 shell sandbox 实际路径的映射。
 
     无参数。路径根在每次调用时从 ``settings.SHELL_SANDBOX_ROOT`` 读取,
@@ -48,10 +48,11 @@ def _virtual_path_mappings() -> tuple[tuple[str, Path], ...]:
         :func:`_translate_virtual_path` 与
         :func:`_translate_virtual_paths_in_command` 共用。
     """
+    root = project_root or settings.SHELL_SANDBOX_ROOT
     return (
-        (VIRTUAL_WORKSPACE_PREFIX, settings.SHELL_SANDBOX_ROOT),
+        (VIRTUAL_WORKSPACE_PREFIX, root),
         *(
-            (virtual_prefix, settings.SHELL_SANDBOX_ROOT / real_child)
+            (virtual_prefix, root / real_child)
             for virtual_prefix, real_child in VIRTUAL_PROJECT_PREFIXES.items()
         ),
     )
@@ -110,7 +111,7 @@ def _strip_matching_quotes(value: str) -> str:
     return value
 
 
-def _translate_virtual_path(value: str) -> str:
+def _translate_virtual_path(value: str, project_root: Path | None = None) -> str:
     """Translate one complete virtual path argument into a project-local path.
 
     中文说明: 将 Deep Agents 虚拟路径 (如 /workspace、/skills) 翻译为
@@ -128,7 +129,7 @@ def _translate_virtual_path(value: str) -> str:
         return value
 
     normalized = value.replace("\\", "/")
-    for virtual_prefix, real_base in _virtual_path_mappings():
+    for virtual_prefix, real_base in _virtual_path_mappings(project_root):
         if normalized == virtual_prefix:
             return str(real_base)
         if normalized.startswith(f"{virtual_prefix}/"):
@@ -137,7 +138,9 @@ def _translate_virtual_path(value: str) -> str:
     return value
 
 
-def _translate_virtual_paths_in_command(command: str) -> str:
+def _translate_virtual_paths_in_command(
+    command: str, project_root: Path | None = None
+) -> str:
     """按词法边界替换命令中的虚拟路径,不拆分或重组 shell 文本。
 
     仅被 `run_shell_command` 调用。替换支持普通参数、带引号路径、
@@ -152,7 +155,7 @@ def _translate_virtual_paths_in_command(command: str) -> str:
     Returns:
         保持原命令结构的翻译后 str,供策略检查与 subprocess 执行。
     """
-    mappings = _virtual_path_mappings()
+    mappings = _virtual_path_mappings(project_root)
     pieces: list[str] = []
     copied_until = 0
     search_from = 0
@@ -230,7 +233,7 @@ def _extract_primary_command(command: str) -> str:
         return Path((command or "").strip().split(" ")[0].strip().strip('"').strip("'")).name
 
 
-def _resolve_cwd(working_directory: str) -> Path:
+def _resolve_cwd(working_directory: str, project_root: Path | None = None) -> Path:
     """解析工作目录: 空值回退到 SHELL_SANDBOX_ROOT, 相对路径基于 sandbox。
 
     仅被 `run_shell_command` 调用。
@@ -241,13 +244,16 @@ def _resolve_cwd(working_directory: str) -> Path:
     Returns:
         解析后的绝对 Path, 供沙箱检查与 subprocess 的 cwd 使用。
     """
-    working_directory = _translate_virtual_path(_strip_matching_quotes(working_directory))
+    root = project_root or settings.SHELL_SANDBOX_ROOT
+    working_directory = _translate_virtual_path(
+        _strip_matching_quotes(working_directory), root
+    )
     if not working_directory:
-        return settings.SHELL_SANDBOX_ROOT
+        return root
 
     candidate = Path(working_directory)
     if not candidate.is_absolute():
-        candidate = settings.SHELL_SANDBOX_ROOT / candidate
+        candidate = root / candidate
     return candidate.resolve()
 
 
@@ -370,6 +376,23 @@ def _blocked_shell_result(audit: dict, start: float, reason: str) -> str:
 
 @tool
 def run_shell_command(command: str, working_directory: str = "") -> str:
+    """Run a local shell command from the configured project root."""
+    return _execute_shell_command(command, working_directory, settings.SHELL_SANDBOX_ROOT)
+
+
+def create_shell_command_tool(project_root: str | Path):
+    """Create a shell tool whose default cwd and virtual workspace are project-bound."""
+    root = Path(project_root).expanduser().resolve()
+
+    @tool("run_shell_command")
+    def project_shell_command(command: str, working_directory: str = "") -> str:
+        """Run a local shell command inside the currently selected project."""
+        return _execute_shell_command(command, working_directory, root)
+
+    return project_shell_command
+
+
+def _execute_shell_command(command: str, working_directory: str, project_root: Path) -> str:
     """
     Run a local shell command for the user.
 
@@ -406,9 +429,9 @@ def run_shell_command(command: str, working_directory: str = "") -> str:
     if not command or not command.strip():
         return "Error: command cannot be empty."
 
-    translated_command = _translate_virtual_paths_in_command(command)
-    sandbox_root = settings.SHELL_SANDBOX_ROOT
-    cwd = _resolve_cwd(working_directory)
+    translated_command = _translate_virtual_paths_in_command(command, project_root)
+    sandbox_root = project_root
+    cwd = _resolve_cwd(working_directory, project_root)
     primary = _extract_primary_command(translated_command)
 
     audit = {

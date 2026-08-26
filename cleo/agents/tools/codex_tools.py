@@ -4,6 +4,8 @@
 Agent.tool_list), 由 deepagents 框架按 LLM 的 tool call 调用。
 """
 
+from pathlib import Path
+
 from langchain.tools import tool
 
 from cleo.config.settings import settings
@@ -65,3 +67,31 @@ async def codex_reply_tool(
         message 回传给 LLM, 供其组织最终回复。
     """
     return (await _adapter.reply(thread_id, prompt, project_path)).model_dump()
+
+
+def create_codex_tools(project_root: str | Path):
+    """Create Codex tools whose relative project paths resolve from the selected project."""
+    adapter = CodexAdapter(
+        default_model=settings.active_tools_profile.codex_model,
+        project_root=Path(project_root).expanduser().resolve(),
+    )
+
+    @tool("codex")
+    async def project_codex_tool(
+        prompt: str,
+        project_path: str = ".",
+        model: str | None = None,
+    ) -> dict[str, str | None]:
+        """Delegate a coding task in the currently selected project."""
+        return (await adapter.start(prompt, project_path, model)).model_dump()
+
+    @tool("codex_reply")
+    async def project_codex_reply_tool(
+        thread_id: str,
+        prompt: str,
+        project_path: str = ".",
+    ) -> dict[str, str | None]:
+        """Continue a Codex thread in the currently selected project."""
+        return (await adapter.reply(thread_id, prompt, project_path)).model_dump()
+
+    return project_codex_tool, project_codex_reply_tool

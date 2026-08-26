@@ -48,6 +48,14 @@ export class IpcCleoClient implements CleoClient {
     return this.bridge.request("delete_thread", { thread_id: threadId });
   }
 
+  async addProject(space: ThreadSpace, projectPath: string): Promise<WorkspaceSnapshot> {
+    return this.bridge.request("add_project", { space, project_path: projectPath });
+  }
+
+  async removeProject(projectId: string): Promise<WorkspaceSnapshot> {
+    return this.bridge.request("remove_project", { project_id_value: projectId });
+  }
+
   async restoreChatBackups(): Promise<WorkspaceSnapshot> {
     return this.bridge.request("restore_chat_backups");
   }

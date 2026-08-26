@@ -28,6 +28,7 @@ import type {
   MemoryOverview,
   ModelProfileInput,
   ModelSettings,
+  Project,
   RuntimeProfile,
   UpdateState,
   WorkspaceSpace,
@@ -145,6 +146,54 @@ export function DeleteThreadDialog({
           <button ref={cancelRef} type="button" onClick={onCancel} disabled={deleting}>取消</button>
           <button className="danger" type="button" onClick={onConfirm} disabled={deleting}>
             {deleting ? "删除中…" : "永久删除"}
+          </button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+interface RemoveProjectDialogProps {
+  project: Project | null;
+  removing: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}
+
+export function RemoveProjectDialog({
+  project,
+  removing,
+  onCancel,
+  onConfirm,
+}: RemoveProjectDialogProps) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (project) window.setTimeout(() => cancelRef.current?.focus(), 30);
+  }, [project]);
+  if (!project) return null;
+  return (
+    <div className="overlay-backdrop delete-thread-backdrop" role="presentation" onMouseDown={removing ? undefined : onCancel}>
+      <div
+        className="delete-thread-dialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="remove-project-title"
+        aria-describedby="remove-project-detail"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <span className="delete-thread-icon"><Trash2 size={18} /></span>
+        <div>
+          <span className="eyebrow">REMOVE PROJECT</span>
+          <h2 id="remove-project-title">移除“{project.name}”？</h2>
+          <p id="remove-project-detail">
+            项目会从侧边栏移除，但不会删除本地文件或 Cleo 保存的历史任务。
+            以后重新打开此目录即可恢复。
+          </p>
+        </div>
+        <footer>
+          <button ref={cancelRef} type="button" onClick={onCancel} disabled={removing}>取消</button>
+          <button className="danger" type="button" onClick={onConfirm} disabled={removing}>
+            {removing ? "移除中…" : "移除项目"}
           </button>
         </footer>
       </div>
