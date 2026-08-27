@@ -15,6 +15,7 @@ from cleo.images.startup import (
 
 
 def test_cli_renders_startup_portrait_once_on_a_color_terminal(monkeypatch) -> None:
+    monkeypatch.setenv("TERM", "xterm-256color")
     output = StringIO()
     console = Console(
         file=output,
