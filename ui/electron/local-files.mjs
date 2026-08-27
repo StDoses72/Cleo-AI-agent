@@ -37,7 +37,7 @@ export function resolveLocalHref(href, workspacePath) {
   } catch {
     throw new Error("链接中的文件路径格式无效");
   }
-  if (decodedHref.startsWith("file:")) decodedHref = fileURLToPath(decodedHref);
+  if (/^file:/i.test(decodedHref)) decodedHref = fileURLToPath(decodedHref);
   if (/^[a-z][a-z\d+.-]*:/i.test(decodedHref) && !/^[a-z]:[\\/]/i.test(decodedHref)) {
     throw new Error("这个链接不是可打开的本地文件");
   }
@@ -46,10 +46,16 @@ export function resolveLocalHref(href, workspacePath) {
   const candidate = isAbsolute(decodedHref)
     ? resolve(decodedHref)
     : resolve(workspace, decodedHref);
-  if (!insideWorkspace(workspace, candidate)) {
-    throw new Error("只能打开当前项目目录中的文件");
+  const sourcePath = /^(.*?):\d+(?::\d+)?$/.exec(decodedHref)?.[1] || null;
+  const sourceCandidate = sourcePath
+    ? (isAbsolute(sourcePath) ? resolve(sourcePath) : resolve(workspace, sourcePath))
+    : null;
+  for (const path of [candidate, sourceCandidate].filter(Boolean)) {
+    if (!insideWorkspace(workspace, path)) {
+      throw new Error("只能打开当前项目目录中的文件");
+    }
   }
-  return { candidate, workspace };
+  return { candidate, sourceCandidate, workspace };
 }
 
 export async function openLocalHref({ href, workspacePath, shellAdapter }) {
@@ -57,15 +63,22 @@ export async function openLocalHref({ href, workspacePath, shellAdapter }) {
   let workspace;
   let target;
   try {
-    [workspace, target] = await Promise.all([
-      realpath(resolved.workspace),
-      realpath(resolved.candidate),
-    ]);
+    workspace = await realpath(resolved.workspace);
+    target = await realpath(resolved.candidate);
   } catch (error) {
-    if (error?.code === "ENOENT") {
+    if (error?.code !== "ENOENT" || !resolved.sourceCandidate) {
+      if (error?.code === "ENOENT") {
+        throw new Error(`找不到文件：${String(href).split(/[?#]/, 1)[0]}`);
+      }
+      throw error;
+    }
+    try {
+      workspace ||= await realpath(resolved.workspace);
+      target = await realpath(resolved.sourceCandidate);
+    } catch (fallbackError) {
+      if (fallbackError?.code !== "ENOENT") throw fallbackError;
       throw new Error(`找不到文件：${String(href).split(/[?#]/, 1)[0]}`);
     }
-    throw error;
   }
   if (!insideWorkspace(workspace, target)) {
     throw new Error("只能打开当前项目目录中的文件");

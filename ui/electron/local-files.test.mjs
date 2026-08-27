@@ -27,6 +27,31 @@ test("relative Markdown links resolve inside the active workspace", async () => 
   }
 });
 
+test("Codex file links ignore trailing line and column numbers", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cleo-local-link-location-"));
+  const page = join(root, "index.html");
+  const opened = [];
+  try {
+    await writeFile(page, "<!doctype html>", "utf8");
+    const lineResult = await openLocalHref({
+      href: `${page}:82`,
+      workspacePath: root,
+      shellAdapter: { openPath: async (path) => { opened.push(path); return ""; } },
+    });
+    const columnResult = await openLocalHref({
+      href: `${page}:82:4`,
+      workspacePath: root,
+      shellAdapter: { openPath: async (path) => { opened.push(path); return ""; } },
+    });
+
+    assert.equal(lineResult.path, page);
+    assert.equal(columnResult.path, page);
+    assert.deepEqual(opened, [page, page]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("local links cannot escape the active workspace", () => {
   const workspace = join(tmpdir(), "cleo-workspace");
   assert.throws(

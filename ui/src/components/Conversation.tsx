@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   ArrowLeft,
@@ -421,6 +421,7 @@ function MarkdownContent({
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       skipHtml
+      urlTransform={markdownUrlTransform}
       components={{
         a: ({ node: _node, href, children, ...props }) => {
           if (!href) return <span>{children}</span>;
@@ -435,7 +436,7 @@ function MarkdownContent({
           if (href.startsWith("#")) return <a {...props} href={href}>{children}</a>;
           const hasUnsupportedScheme = /^[a-z][a-z\d+.-]*:/i.test(href)
             && !/^[a-z]:[\\/]/i.test(href)
-            && !href.startsWith("file:");
+            && !/^file:/i.test(href);
           if (hasUnsupportedScheme || !projectPath) {
             return (
               <span
@@ -468,6 +469,13 @@ function MarkdownContent({
       {content}
     </ReactMarkdown>
   );
+}
+
+function markdownUrlTransform(value: string, key: string): string {
+  if (key === "href" && (/^[a-z]:[\\/]/i.test(value) || /^file:/i.test(value))) {
+    return value;
+  }
+  return defaultUrlTransform(value);
 }
 
 function ThoughtGroupEntry({
