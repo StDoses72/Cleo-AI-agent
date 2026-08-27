@@ -363,6 +363,7 @@ export interface CleoClient {
   pickWorkspace(): Promise<string | null>;
   copyText(value: string): Promise<void>;
   revealPath(value: string): Promise<void>;
+  openLocalPath(href: string, workspacePath: string): Promise<void>;
   getConfigTemplates(): Promise<{ cleo: string; harnesses: string }>;
   getAgentInstructions(): Promise<AgentInstructions>;
   getModelSettings(): Promise<ModelSettings>;

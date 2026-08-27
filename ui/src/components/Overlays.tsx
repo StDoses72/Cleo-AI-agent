@@ -3,6 +3,7 @@ import {
   ArrowRight,
   Brain,
   Check,
+  CircleAlert,
   Code2,
   Command,
   Database,
@@ -587,8 +588,13 @@ export function LoadingScreen({ error }: { error: string | null }) {
   );
 }
 
-export function Toast({ message }: { message: string }) {
-  return <div className="toast" role="status"><Check size={14} /><span>{message}</span></div>;
+export function Toast({ message, tone = "success" }: { message: string; tone?: "success" | "error" }) {
+  return (
+    <div className={`toast ${tone}`} role={tone === "error" ? "alert" : "status"}>
+      {tone === "error" ? <CircleAlert size={14} /> : <Check size={14} />}
+      <span>{message}</span>
+    </div>
+  );
 }
 
 export const commandIcons = {

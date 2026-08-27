@@ -13,6 +13,10 @@ if (!process.argv.includes("--cleo-desktop-mock")) {
     pickWorkspace: () => ipcRenderer.invoke("cleo:pick-workspace"),
     copyText: (value) => ipcRenderer.invoke("cleo:copy-text", value),
     revealPath: (value) => ipcRenderer.invoke("cleo:reveal-path", value),
+    openLocalPath: async (href, workspacePath) => {
+      const result = await ipcRenderer.invoke("cleo:open-local-path", { href, workspacePath });
+      if (!result?.ok) throw new Error(result?.error || "无法打开本地文件");
+    },
     getUpdateState: () => ipcRenderer.invoke("cleo:update:get-state"),
     checkForUpdates: () => ipcRenderer.invoke("cleo:update:check"),
     downloadUpdate: () => ipcRenderer.invoke("cleo:update:download"),

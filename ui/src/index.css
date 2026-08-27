@@ -1178,6 +1178,58 @@ kbd {
   text-decoration-color: var(--accent);
 }
 
+.markdown-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border-radius: 3px;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: none;
+  vertical-align: baseline;
+}
+
+.markdown-link > span {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  text-underline-offset: 3px;
+}
+
+.markdown-link svg {
+  flex: 0 0 auto;
+  opacity: 0.58;
+  transform: translateY(1px);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.markdown-link:hover > span {
+  text-decoration-color: var(--accent);
+}
+
+.markdown-link:hover svg {
+  opacity: 1;
+  transform: translate(1px, 0);
+}
+
+.markdown-link.local-file-link > span {
+  text-decoration-style: dotted;
+}
+
+.markdown-link.local-file-link:hover svg {
+  transform: translateY(0);
+}
+
+.markdown-link:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 62%, transparent);
+  outline-offset: 2px;
+}
+
+.markdown-link.disabled {
+  color: var(--muted-2);
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
 .message-copy blockquote {
   padding: 2px 0 2px 13px;
   border-left: 2px solid color-mix(in srgb, var(--accent) 52%, var(--border));
@@ -3074,6 +3126,10 @@ select.text-control:hover {
 .update-notice + .toast { bottom: 90px; }
 
 .toast svg { color: var(--success); }
+.toast.error {
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--border-strong));
+}
+.toast.error svg { color: var(--danger); }
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
 .loading-screen {

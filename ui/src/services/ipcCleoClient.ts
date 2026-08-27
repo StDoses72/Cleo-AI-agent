@@ -134,6 +134,10 @@ export class IpcCleoClient implements CleoClient {
     await this.bridge.revealPath(value);
   }
 
+  async openLocalPath(href: string, workspacePath: string): Promise<void> {
+    await this.bridge.openLocalPath(href, workspacePath);
+  }
+
   getConfigTemplates(): Promise<{ cleo: string; harnesses: string }> {
     return this.bridge.request("get_config_templates");
   }

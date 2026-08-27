@@ -161,6 +161,15 @@ try {
     await window.getByRole("link", { name: "渲染说明" }).getAttribute("target") === "_blank",
     "Markdown link did not use the external-link policy",
   );
+  const localFileLink = window.getByRole("link", { name: "项目入口" });
+  assert(
+    await localFileLink.getAttribute("target") === null,
+    "Local Markdown link unexpectedly opened as a web URL",
+  );
+  assert(
+    (await localFileLink.getAttribute("class"))?.includes("local-file-link"),
+    "Local Markdown link did not receive the native-file affordance",
+  );
   assert(await window.getByTestId("effort-selector").inputValue() === "low", "Created thread did not keep draft effort");
   await window.screenshot({ path: join(outputDir, "04a-process-expanded.png") });
   await thoughtGroupButton.click();

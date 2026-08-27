@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BackendBridge } from "./backend.mjs";
+import { openLocalHref } from "./local-files.mjs";
 import { DesktopUpdater } from "./updater.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -125,6 +126,21 @@ app.whenReady().then(() => {
   });
   ipcMain.handle("cleo:copy-text", (_event, value) => clipboard.writeText(String(value || "")));
   ipcMain.handle("cleo:reveal-path", (_event, value) => shell.showItemInFolder(String(value || "")));
+  ipcMain.handle("cleo:open-local-path", async (_event, payload) => {
+    try {
+      const result = await openLocalHref({
+        href: payload?.href,
+        workspacePath: payload?.workspacePath,
+        shellAdapter: shell,
+      });
+      return { ok: true, ...result };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : "无法打开本地文件",
+      };
+    }
+  });
   ipcMain.handle("cleo:update:get-state", () => updater.getState());
   ipcMain.handle("cleo:update:check", () => updater.check());
   ipcMain.handle("cleo:update:download", () => updater.download());

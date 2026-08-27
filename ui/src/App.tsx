@@ -34,7 +34,7 @@ export function App() {
   const [theme, setTheme] = useState<"dark" | "light">(() =>
     localStorage.getItem("cleo-theme") === "light" ? "light" : "dark",
   );
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
   const [updateState, setUpdateState] = useState<UpdateState>({
     phase: window.cleoDesktop ? "idle" : "unsupported",
     currentVersion: "dev",
@@ -45,8 +45,8 @@ export function App() {
   });
   const toastTimerRef = useRef<number | null>(null);
 
-  const notify = (message: string) => {
-    setToast(message);
+  const notify = (message: string, tone: "success" | "error" = "success") => {
+    setToast({ message, tone });
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
     toastTimerRef.current = window.setTimeout(() => setToast(null), 2600);
   };
@@ -91,7 +91,7 @@ export function App() {
         ? desktop.downloadUpdate()
         : desktop.installUpdate();
     void operation.catch((error: unknown) => {
-      notify(error instanceof Error ? error.message : "更新操作失败");
+      notify(error instanceof Error ? error.message : "更新操作失败", "error");
     });
   };
 
@@ -133,7 +133,7 @@ export function App() {
         label: "打开工作目录",
         hint: "选择本地文件夹并创建开发任务",
         icon: commandIcons.code,
-        run: () => void workspace.chooseWorkspace().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法打开工作目录")),
+        run: () => void workspace.chooseWorkspace().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法打开工作目录", "error")),
       },
       {
         id: "chat",
@@ -217,10 +217,10 @@ export function App() {
         onSelectThread={workspace.selectThread}
         onDeleteThread={setThreadPendingDeletion}
         onCreateThread={() => void workspace.createThread()}
-        onChooseWorkspace={() => void workspace.chooseWorkspace().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法打开工作目录"))}
+        onChooseWorkspace={() => void workspace.chooseWorkspace().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法打开工作目录", "error"))}
         onOpenCommand={() => setCommandOpen(true)}
         recoverableChatBackups={workspace.snapshot.backend?.recoverableChatBackups ?? 0}
-        onRestoreChatHistory={() => void workspace.restoreChatHistory().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法恢复旧对话"))}
+        onRestoreChatHistory={() => void workspace.restoreChatHistory().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法恢复旧对话", "error"))}
         memoryOverview={workspace.snapshot.memoryOverview}
         memoryView={memoryView}
         onMemoryViewChange={setMemoryView}
@@ -253,7 +253,7 @@ export function App() {
           onCancel={workspace.cancelRun}
           onSelectNonProductivityProfile={(profileId) => {
             void workspace.selectNonProductivityProfile(profileId).catch(
-              (error: unknown) => notify(error instanceof Error ? error.message : "无法切换模型"),
+              (error: unknown) => notify(error instanceof Error ? error.message : "无法切换模型", "error"),
             );
           }}
           onLoadProductivityModels={workspace.loadProductivityModels}
@@ -271,6 +271,11 @@ export function App() {
             setInspectorOpen(true);
           }}
           onRevealPath={(path) => void workspace.revealPath(path)}
+          onOpenPath={(href, workspacePath) => {
+            void workspace.openLocalPath(href, workspacePath).catch((error: unknown) => {
+              notify(error instanceof Error ? error.message : "无法打开本地文件", "error");
+            });
+          }}
           onThreadCommand={(command) => void workspace.sendPrompt(command)}
           commands={workspace.snapshot.backend?.commands[workspace.activeSpace === "chat" ? "chat" : "productivity"] ?? []}
         />
@@ -333,7 +338,7 @@ export function App() {
               notify("Thread 已删除");
             })
             .catch((error: unknown) => {
-              notify(error instanceof Error ? error.message : "无法删除 thread");
+              notify(error instanceof Error ? error.message : "无法删除 thread", "error");
             })
             .finally(() => setDeletingThread(false));
         }}
@@ -351,7 +356,7 @@ export function App() {
               notify("项目已从侧边栏移除");
             })
             .catch((error: unknown) => {
-              notify(error instanceof Error ? error.message : "无法移除项目");
+              notify(error instanceof Error ? error.message : "无法移除项目", "error");
             })
             .finally(() => setRemovingProject(false));
         }}
@@ -361,7 +366,7 @@ export function App() {
         onDownload={() => runUpdateAction("download")}
         onInstall={() => runUpdateAction("install")}
       />
-      {toast ? <Toast message={toast} /> : null}
+      {toast ? <Toast message={toast.message} tone={toast.tone} /> : null}
     </div>
   );
 }

@@ -476,6 +476,9 @@ export function useCleoWorkspace() {
 
   const copyText = (value: string) => cleoClient.copyText(value);
   const revealPath = (value: string) => cleoClient.revealPath(value);
+  const openLocalPath = (href: string, workspacePath: string) => (
+    cleoClient.openLocalPath(href, workspacePath)
+  );
   const copyConfigTemplate = async (kind: "cleo" | "harnesses") => {
     const templates = await cleoClient.getConfigTemplates();
     await cleoClient.copyText(templates[kind]);
@@ -633,6 +636,7 @@ export function useCleoWorkspace() {
     removeAttachment,
     copyText,
     revealPath,
+    openLocalPath,
     copyConfigTemplate,
     resetWorkspace,
     restoreChatHistory,

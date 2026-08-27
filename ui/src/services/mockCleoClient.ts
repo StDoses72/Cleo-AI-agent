@@ -297,7 +297,7 @@ export class MockCleoClient implements CleoClient {
       type: "message",
       role: "assistant",
       content:
-        "## 运行完成\n\n这个体验流程已经由 **mock runtime** 完成：\n\n- Markdown 已按结构渲染\n- 多次工具调用已归入一个折叠过程\n- 最新流式正文保持在操作记录下方\n\n真实后端接入后，这些事件会保持同一结构从 `IPC bridge` 流入，所以界面不需要重写。查看 [渲染说明](https://example.com/cleo-markdown)。",
+        "## 运行完成\n\n这个体验流程已经由 **mock runtime** 完成：\n\n- Markdown 已按结构渲染\n- 多次工具调用已归入一个折叠过程\n- 最新流式正文保持在操作记录下方\n\n真实后端接入后，这些事件会保持同一结构从 `IPC bridge` 流入，所以界面不需要重写。查看 [渲染说明](https://example.com/cleo-markdown)，或打开本地的 [项目入口](index.html)。",
       time: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
     };
     yield { type: "upsert-item", item: response };
@@ -326,6 +326,8 @@ export class MockCleoClient implements CleoClient {
   }
 
   async revealPath(_value: string): Promise<void> {}
+
+  async openLocalPath(_href: string, _workspacePath: string): Promise<void> {}
 
   async getConfigTemplates(): Promise<{ cleo: string; harnesses: string }> {
     return { cleo: "{}", harnesses: "{}" };

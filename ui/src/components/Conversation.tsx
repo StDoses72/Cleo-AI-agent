@@ -11,6 +11,8 @@ import {
   Circle,
   CircleCheck,
   Command,
+  ExternalLink,
+  FileCode2,
   GitBranch,
   LoaderCircle,
   MoreHorizontal,
@@ -61,6 +63,7 @@ interface ConversationProps {
   onShowRun: () => void;
   onShowContext: () => void;
   onRevealPath: (path: string) => void;
+  onOpenPath: (href: string, workspacePath: string) => void;
   onThreadCommand: (command: string) => void;
   commands: string[];
 }
@@ -98,6 +101,7 @@ export function Conversation({
   onShowRun,
   onShowContext,
   onRevealPath,
+  onOpenPath,
   onThreadCommand,
   commands,
 }: ConversationProps) {
@@ -151,7 +155,12 @@ export function Conversation({
         {thread?.items.length ? (
           <div className="timeline" key={thread.id} data-testid="timeline">
             {timelineItems.map((item) => (
-              <TimelineEntry key={item.id} item={item} />
+              <TimelineEntry
+                key={item.id}
+                item={item}
+                projectPath={project?.path ?? null}
+                onOpenPath={onOpenPath}
+              />
             ))}
             {running ? (
               <div className="streaming-indicator" aria-label="Cleo 正在工作">
@@ -355,8 +364,18 @@ function groupTimelineItems(items: TimelineItem[]): TimelineBlock[] {
   return blocks;
 }
 
-function TimelineEntry({ item }: { item: TimelineBlock }) {
-  if (item.type === "thought-group") return <ThoughtGroupEntry item={item} />;
+function TimelineEntry({
+  item,
+  projectPath,
+  onOpenPath,
+}: {
+  item: TimelineBlock;
+  projectPath: string | null;
+  onOpenPath: ConversationProps["onOpenPath"];
+}) {
+  if (item.type === "thought-group") {
+    return <ThoughtGroupEntry item={item} projectPath={projectPath} onOpenPath={onOpenPath} />;
+  }
   if (item.type === "tool-group") return <ToolGroupEntry item={item} />;
   if (item.type === "plan") return <PlanEntry item={item} />;
   if (item.type === "message") {
@@ -367,17 +386,11 @@ function TimelineEntry({ item }: { item: TimelineBlock }) {
           <time>{item.time}</time>
         </div>
         <div className="message-copy">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            skipHtml
-            components={{
-              a: ({ node: _node, ...props }) => (
-                <a {...props} target="_blank" rel="noreferrer" />
-              ),
-            }}
-          >
-            {item.content}
-          </ReactMarkdown>
+          <MarkdownContent
+            content={item.content}
+            projectPath={projectPath}
+            onOpenPath={onOpenPath}
+          />
         </div>
       </article>
     );
@@ -395,7 +408,77 @@ function TimelineEntry({ item }: { item: TimelineBlock }) {
   );
 }
 
-function ThoughtGroupEntry({ item }: { item: ThoughtGroupBlock }) {
+function MarkdownContent({
+  content,
+  projectPath,
+  onOpenPath,
+}: {
+  content: string;
+  projectPath: string | null;
+  onOpenPath: ConversationProps["onOpenPath"];
+}) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      skipHtml
+      components={{
+        a: ({ node: _node, href, children, ...props }) => {
+          if (!href) return <span>{children}</span>;
+          if (/^(https?:|mailto:)/i.test(href)) {
+            return (
+              <a {...props} className="markdown-link external-link" href={href} target="_blank" rel="noreferrer">
+                <span>{children}</span>
+                <ExternalLink aria-hidden="true" size={11} />
+              </a>
+            );
+          }
+          if (href.startsWith("#")) return <a {...props} href={href}>{children}</a>;
+          const hasUnsupportedScheme = /^[a-z][a-z\d+.-]*:/i.test(href)
+            && !/^[a-z]:[\\/]/i.test(href)
+            && !href.startsWith("file:");
+          if (hasUnsupportedScheme || !projectPath) {
+            return (
+              <span
+                className="markdown-link local-file-link disabled"
+                title={hasUnsupportedScheme ? "不支持这个链接类型" : "当前任务没有关联工作目录"}
+              >
+                <span>{children}</span>
+                <FileCode2 aria-hidden="true" size={11} />
+              </span>
+            );
+          }
+          return (
+            <a
+              {...props}
+              className="markdown-link local-file-link"
+              href={href}
+              title={`在系统默认应用中打开 · ${href}`}
+              onClick={(event) => {
+                event.preventDefault();
+                onOpenPath(href, projectPath);
+              }}
+            >
+              <span>{children}</span>
+              <FileCode2 aria-hidden="true" size={11} />
+            </a>
+          );
+        },
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+}
+
+function ThoughtGroupEntry({
+  item,
+  projectPath,
+  onOpenPath,
+}: {
+  item: ThoughtGroupBlock;
+  projectPath: string | null;
+  onOpenPath: ConversationProps["onOpenPath"];
+}) {
   const [expanded, setExpanded] = useState(false);
   const running = item.thoughts.some((thought) => thought.status === "running");
   const summary = running
@@ -424,7 +507,12 @@ function ThoughtGroupEntry({ item }: { item: ThoughtGroupBlock }) {
       {expanded ? (
         <div className="thought-process-list">
           {item.thoughts.map((thought) => (
-            <ThoughtEntry key={thought.id} item={thought} />
+            <ThoughtEntry
+              key={thought.id}
+              item={thought}
+              projectPath={projectPath}
+              onOpenPath={onOpenPath}
+            />
           ))}
         </div>
       ) : null}
@@ -432,7 +520,15 @@ function ThoughtGroupEntry({ item }: { item: ThoughtGroupBlock }) {
   );
 }
 
-function ThoughtEntry({ item }: { item: ThoughtTimelineItem }) {
+function ThoughtEntry({
+  item,
+  projectPath,
+  onOpenPath,
+}: {
+  item: ThoughtTimelineItem;
+  projectPath: string | null;
+  onOpenPath: ConversationProps["onOpenPath"];
+}) {
   return (
     <div className={`thought-entry ${item.status}`}>
       {item.status === "running" ? (
@@ -441,7 +537,7 @@ function ThoughtEntry({ item }: { item: ThoughtTimelineItem }) {
         <Sparkles size={15} />
       )}
       <div className="thought-copy">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>{item.content}</ReactMarkdown>
+        <MarkdownContent content={item.content} projectPath={projectPath} onOpenPath={onOpenPath} />
       </div>
     </div>
   );
