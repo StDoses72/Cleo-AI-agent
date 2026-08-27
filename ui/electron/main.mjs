@@ -1,7 +1,14 @@
+import { randomUUID } from "node:crypto";
+import { rmSync } from "node:fs";
 import { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, shell } from "electron";
-import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  ATTACHMENT_FILTERS,
+  MAX_ATTACHMENT_COUNT,
+  attachmentsFromPaths,
+  materializeInlineAttachments,
+} from "./attachments.mjs";
 import { BackendBridge } from "./backend.mjs";
 import { openLocalHref } from "./local-files.mjs";
 import { DesktopUpdater } from "./updater.mjs";
@@ -83,6 +90,14 @@ function createWindow() {
 
 app.setAppUserModelId("ai.cleo.desktop");
 app.whenReady().then(() => {
+  const attachmentTempRoot = join(app.getPath("temp"), "Cleo", "attachments", randomUUID());
+  app.once("will-quit", () => {
+    try {
+      rmSync(attachmentTempRoot, { recursive: true, force: true });
+    } catch {
+      // Best-effort cleanup of app-owned clipboard attachment files.
+    }
+  });
   Menu.setApplicationMenu(null);
   ipcMain.handle("cleo:request", async (event, payload) => {
     const method = String(payload?.method || "");
@@ -98,23 +113,25 @@ app.whenReady().then(() => {
   });
   ipcMain.handle("cleo:pick-attachments", async () => {
     const result = await dialog.showOpenDialog({
-      title: "添加图片",
+      title: "添加附件",
+      buttonLabel: "添加",
       properties: ["openFile", "multiSelections"],
-      filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
+      filters: ATTACHMENT_FILTERS,
     });
     if (result.canceled) return [];
-    return Promise.all(
-      result.filePaths.map(async (path) => {
-        const extension = path.split(".").at(-1)?.toLowerCase();
-        const mimeType = extension === "png" ? "image/png" : extension === "webp" ? "image/webp" : extension === "gif" ? "image/gif" : "image/jpeg";
-        return {
-          name: path.split(/[\\/]/).at(-1) || "image",
-          path,
-          mimeType,
-          base64: (await readFile(path)).toString("base64"),
-        };
-      }),
-    );
+    return attachmentsFromPaths(result.filePaths);
+  });
+  ipcMain.handle("cleo:prepare-attachments", async (_event, payload) => {
+    const paths = Array.isArray(payload?.paths) ? payload.paths : [];
+    const inline = Array.isArray(payload?.inline) ? payload.inline : [];
+    if (paths.length + inline.length > MAX_ATTACHMENT_COUNT) {
+      throw new Error(`一次最多添加 ${MAX_ATTACHMENT_COUNT} 个附件`);
+    }
+    const [pathAttachments, inlineAttachments] = await Promise.all([
+      attachmentsFromPaths(paths),
+      materializeInlineAttachments(inline, attachmentTempRoot),
+    ]);
+    return [...pathAttachments, ...inlineAttachments];
   });
   ipcMain.handle("cleo:pick-workspace", async () => {
     const result = await dialog.showOpenDialog({

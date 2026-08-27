@@ -282,34 +282,49 @@ class Agent:
         )
 
 
-def _build_user_content(message: str, images: list[dict[str, str]]) -> str | list[dict[str, str]]:
-    """构造发给模型的 user message content, 支持多模态图片附件。
+def _build_user_content(
+    message: str,
+    attachments: list[dict[str, str]],
+) -> str | list[dict[str, str]]:
+    """构造发给模型的 user message content, 支持图片与文件附件。
 
     仅被 `Agent.stream_text` 调用 (本文件)。
 
     Args:
         message: 用户文本; 来自 `stream_text` 的同名参数。
-        images: 图片附件 dict 列表 (name/base64/mime_type);
-            来自 `stream_text` 的 images 参数 (CLI 附件)。
+        attachments: 附件 dict 列表 (name/base64/mime_type);
+            来自 `stream_text` 的 images 参数 (CLI/桌面附件)。
 
     Returns:
-        无图片时返回纯文本 str; 有图片时返回 OpenAI 风格的 content block
+        无附件时返回纯文本 str; 有附件时返回 LangChain 标准 content block
         list, 供 `deepagent.astream` 的 messages 使用。
     """
-    if not images:
+    if not attachments:
         return message
 
     content: list[dict[str, str]] = [{"type": "text", "text": message}]
-    for index, image in enumerate(images, start=1):
-        name = image.get("name") or f"image-{index}"
-        content.append({"type": "text", "text": f"Image {index}: {name}"})
-        content.append(
-            {
-                "type": "image",
-                "base64": image["base64"],
-                "mime_type": image.get("mime_type", "image/jpeg"),
-            }
-        )
+    image_mime_types = {"image/gif", "image/jpeg", "image/png", "image/webp"}
+    for index, attachment in enumerate(attachments, start=1):
+        name = attachment.get("name") or f"attachment-{index}"
+        mime_type = attachment.get("mime_type", "application/octet-stream")
+        content.append({"type": "text", "text": f"Attachment {index}: {name}"})
+        if mime_type in image_mime_types:
+            content.append(
+                {
+                    "type": "image",
+                    "base64": attachment["base64"],
+                    "mime_type": mime_type,
+                }
+            )
+        else:
+            content.append(
+                {
+                    "type": "file",
+                    "base64": attachment["base64"],
+                    "mime_type": mime_type,
+                    "filename": name,
+                }
+            )
     return content
 
 

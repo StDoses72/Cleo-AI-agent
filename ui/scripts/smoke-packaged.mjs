@@ -30,6 +30,19 @@ window.on("console", (message) => {
 
 try {
   await window.getByText("connected", { exact: true }).waitFor({ timeout: 20_000 });
+  await window.getByTestId("composer-input").waitFor();
+  await window.evaluate(() => {
+    const input = document.querySelector('[data-testid="composer-input"]');
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(["%PDF-packaged-test"], "clipboard.pdf", {
+      type: "application/pdf",
+    }));
+    const paste = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(paste, "clipboardData", { value: transfer });
+    input?.dispatchEvent(paste);
+  });
+  await window.getByText("clipboard.pdf", { exact: true }).waitFor();
+  await window.getByRole("button", { name: "移除 clipboard.pdf", exact: true }).click();
   await window.getByRole("button", { name: "记忆", exact: true }).click();
   await window.getByText("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2").waitFor();
   await window.getByRole("button", { name: "设置", exact: true }).click();

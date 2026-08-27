@@ -103,8 +103,47 @@ try {
   assert(await window.getByTestId("effort-selector").inputValue() === "low", "Draft effort was not selectable");
   await window.screenshot({ path: join(outputDir, "03-new-thread.png") });
 
+  await window.evaluate(() => {
+    const composer = document.querySelector('[data-testid="composer"]');
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(["%PDF-test"], "brief.pdf", { type: "application/pdf" }));
+    composer?.dispatchEvent(new DragEvent("dragenter", {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer: transfer,
+    }));
+  });
+  await window.getByText("松开以添加文件", { exact: true }).waitFor();
+  await window.evaluate(() => {
+    const composer = document.querySelector('[data-testid="composer"]');
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(["%PDF-test"], "brief.pdf", { type: "application/pdf" }));
+    composer?.dispatchEvent(new DragEvent("drop", {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer: transfer,
+    }));
+  });
+  await window.getByText("brief.pdf", { exact: true }).waitFor();
+  await window.evaluate(() => {
+    const input = document.querySelector('[data-testid="composer-input"]');
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(
+      ["PK-docx-test"],
+      "proposal.docx",
+      { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
+    ));
+    const paste = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(paste, "clipboardData", { value: transfer });
+    input?.dispatchEvent(paste);
+  });
+  await window.getByText("proposal.docx", { exact: true }).waitFor();
+  assert(await window.locator(".attachment-chip").count() === 2, "Drag and paste did not add both attachments");
+  await window.screenshot({ path: join(outputDir, "03b-attachments.png") });
+
   await window.getByTestId("composer-input").fill("检查当前 mock 边界并完成一次可见的运行");
   await window.getByTestId("send-button").click();
+  await window.waitForFunction(() => document.querySelectorAll(".attachment-chip").length === 0);
   await window.getByTestId("stop-button").waitFor();
   await window.getByRole("heading", { name: "正在整理", exact: true }).waitFor({ timeout: 20_000 });
   await window.getByTestId("thought-group").waitFor({ timeout: 5_000 });

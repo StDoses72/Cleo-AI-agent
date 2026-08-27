@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 if (!process.argv.includes("--cleo-desktop-mock")) {
   contextBridge.exposeInMainWorld("cleoDesktop", {
@@ -10,6 +10,28 @@ if (!process.argv.includes("--cleo-desktop-mock")) {
       return () => ipcRenderer.removeListener("cleo:stream-event", handler);
     },
     pickAttachments: () => ipcRenderer.invoke("cleo:pick-attachments"),
+    prepareAttachments: async (files) => {
+      const paths = [];
+      const inline = [];
+      for (const file of Array.from(files || [])) {
+        let path = "";
+        try {
+          path = webUtils.getPathForFile(file);
+        } catch {
+          // In-memory clipboard files do not have an operating-system path.
+        }
+        if (path) {
+          paths.push(path);
+          continue;
+        }
+        inline.push({
+          name: file.name,
+          mimeType: file.type,
+          base64: Buffer.from(await file.arrayBuffer()).toString("base64"),
+        });
+      }
+      return ipcRenderer.invoke("cleo:prepare-attachments", { paths, inline });
+    },
     pickWorkspace: () => ipcRenderer.invoke("cleo:pick-workspace"),
     copyText: (value) => ipcRenderer.invoke("cleo:copy-text", value),
     revealPath: (value) => ipcRenderer.invoke("cleo:reveal-path", value),

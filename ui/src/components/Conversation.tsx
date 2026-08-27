@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type DragEvent,
+  type KeyboardEvent,
+} from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -13,6 +21,8 @@ import {
   Command,
   ExternalLink,
   FileCode2,
+  FileImage,
+  FileText,
   GitBranch,
   LoaderCircle,
   MoreHorizontal,
@@ -58,7 +68,8 @@ interface ConversationProps {
   onSelectProductivityRuntime: (provider: string, model: string) => void;
   onEffortChange: (effort: NonNullable<RuntimeProfile["effort"]>) => void;
   attachments: Attachment[];
-  onPickAttachments: () => void;
+  onPickAttachments: () => Promise<void>;
+  onPrepareAttachments: (files: File[]) => Promise<void>;
   onRemoveAttachment: (path: string) => void;
   onShowRun: () => void;
   onShowContext: () => void;
@@ -97,6 +108,7 @@ export function Conversation({
   onEffortChange,
   attachments,
   onPickAttachments,
+  onPrepareAttachments,
   onRemoveAttachment,
   onShowRun,
   onShowContext,
@@ -191,6 +203,7 @@ export function Conversation({
         onEffortChange={onEffortChange}
         attachments={attachments}
         onPickAttachments={onPickAttachments}
+        onPrepareAttachments={onPrepareAttachments}
         onRemoveAttachment={onRemoveAttachment}
         onShowContext={onShowContext}
         commands={commands}
@@ -681,6 +694,7 @@ function Composer({
   onEffortChange,
   attachments,
   onPickAttachments,
+  onPrepareAttachments,
   onRemoveAttachment,
   onShowContext,
   commands,
@@ -701,12 +715,16 @@ function Composer({
   | "onEffortChange"
   | "attachments"
   | "onPickAttachments"
+  | "onPrepareAttachments"
   | "onRemoveAttachment"
   | "onShowContext"
   | "commands"
 >) {
   const [prompt, setPrompt] = useState("");
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [draggingFiles, setDraggingFiles] = useState(false);
   const effortProviderRequest = useRef<string | null>(null);
+  const dragDepth = useRef(0);
   const selectedModel = productivityModels[runtime.provider]?.models.find(
     (model) => model.id === runtime.model,
   );
@@ -726,8 +744,9 @@ function Composer({
   }, [onLoadProductivityModels, productivityModels, runtime.provider, space]);
 
   const submit = () => {
-    if (!prompt.trim() || running) return;
-    onSend(prompt);
+    const content = prompt.trim() || (attachments.length ? "请分析这些附件。" : "");
+    if (!content || running) return;
+    onSend(content);
     setPrompt("");
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -736,13 +755,76 @@ function Composer({
       submit();
     }
   };
+  const addFiles = async (files: File[]) => {
+    if (!files.length || running) return;
+    setAttachmentError(null);
+    try {
+      await onPrepareAttachments(files);
+    } catch (error) {
+      setAttachmentError(error instanceof Error ? error.message : "无法添加附件");
+    }
+  };
+  const pickFiles = async () => {
+    setAttachmentError(null);
+    try {
+      await onPickAttachments();
+    } catch (error) {
+      setAttachmentError(error instanceof Error ? error.message : "无法添加附件");
+    }
+  };
+  const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = Array.from(event.clipboardData.items)
+      .filter((item) => item.kind === "file")
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null);
+    if (!files.length) return;
+    event.preventDefault();
+    void addFiles(files);
+  };
+  const onDragEnter = (event: DragEvent<HTMLDivElement>) => {
+    if (!event.dataTransfer.types.includes("Files") || running) return;
+    event.preventDefault();
+    dragDepth.current += 1;
+    setDraggingFiles(true);
+  };
+  const onDragOver = (event: DragEvent<HTMLDivElement>) => {
+    if (!event.dataTransfer.types.includes("Files") || running) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  };
+  const onDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    if (dragDepth.current === 0) return;
+    event.preventDefault();
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDraggingFiles(false);
+  };
+  const onDrop = (event: DragEvent<HTMLDivElement>) => {
+    if (!event.dataTransfer.types.includes("Files") || running) return;
+    event.preventDefault();
+    dragDepth.current = 0;
+    setDraggingFiles(false);
+    void addFiles(Array.from(event.dataTransfer.files));
+  };
   const matchingCommands = prompt.startsWith("/")
     ? commands.filter((command) => command.startsWith(prompt.trim())).slice(0, 8)
     : [];
 
   return (
     <div className="composer-dock">
-      <div className={`composer ${running ? "running" : ""}`}>
+      <div
+        className={`composer ${running ? "running" : ""} ${draggingFiles ? "dragging-files" : ""}`}
+        data-testid="composer"
+        onDragEnter={onDragEnter}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+      >
+        {draggingFiles ? (
+          <div className="composer-drop-overlay" aria-hidden="true">
+            <Paperclip size={18} />
+            <span>松开以添加文件</span>
+          </div>
+        ) : null}
         {matchingCommands.length ? (
           <div className="slash-menu surface-popover" data-testid="slash-menu">
             <span>可用命令</span>
@@ -755,15 +837,25 @@ function Composer({
         ) : null}
         {attachments.length ? (
           <div className="attachment-row">
-            {attachments.map((attachment) => (
-              <span key={attachment.path}><Paperclip size={12} /><span>{attachment.name}</span><button type="button" aria-label={`移除 ${attachment.name}`} onClick={() => onRemoveAttachment(attachment.path)}><X size={12} /></button></span>
-            ))}
+            {attachments.map((attachment) => {
+              const AttachmentIcon = attachment.mimeType.startsWith("image/") ? FileImage : FileText;
+              return (
+                <span className="attachment-chip" key={attachment.path} title={`${attachment.name} · ${formatAttachmentSize(attachment.size)}`}>
+                  <AttachmentIcon size={12} />
+                  <span>{attachment.name}</span>
+                  <small>{formatAttachmentSize(attachment.size)}</small>
+                  <button type="button" aria-label={`移除 ${attachment.name}`} onClick={() => onRemoveAttachment(attachment.path)}><X size={12} /></button>
+                </span>
+              );
+            })}
           </div>
         ) : null}
+        {attachmentError ? <div className="attachment-error" role="alert">{attachmentError}</div> : null}
         <textarea
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
           onKeyDown={onKeyDown}
+          onPaste={onPaste}
           rows={1}
           placeholder={running ? "Cleo 正在执行任务…" : "描述你想完成的事情"}
           disabled={running}
@@ -771,7 +863,7 @@ function Composer({
         />
         <div className="composer-footer">
           <div className="composer-tools">
-            <button type="button" aria-label="添加附件" title="添加附件" onClick={onPickAttachments}> 
+            <button type="button" aria-label="添加附件" title="添加 PDF、Office、图片或代码文件" disabled={running} onClick={() => void pickFiles()}>
               <Paperclip size={16} />
             </button>
             <button type="button" aria-label="添加上下文" title="查看已附加上下文" onClick={onShowContext}> 
@@ -815,7 +907,7 @@ function Composer({
               type="button"
               aria-label="发送"
               title="发送 · Enter"
-              disabled={!prompt.trim()}
+              disabled={!prompt.trim() && attachments.length === 0}
               onClick={submit}
               data-testid="send-button"
             >
@@ -824,9 +916,15 @@ function Composer({
           )}
         </div>
       </div>
-      <div className="composer-hint">Enter 发送 · Shift Enter 换行 · 内容仅保存在本地</div>
+      <div className="composer-hint">Enter 发送 · Shift Enter 换行 · 支持拖拽或粘贴文件 · 附件将交给当前运行时</div>
     </div>
   );
+}
+
+function formatAttachmentSize(size: number) {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function RuntimeSelector({

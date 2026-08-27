@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
+import mimetypes
 import os
 import secrets
 import sys
@@ -38,6 +40,9 @@ from cleo.memory.state import (
 from cleo.runtime.usage import ContextWindowUsage
 
 Emit = Callable[[dict[str, Any]], Awaitable[None]]
+
+MAX_CHAT_ATTACHMENT_BYTES = 50 * 1024 * 1024
+MAX_CHAT_ATTACHMENT_COUNT = 20
 
 CHAT_COMMANDS = (
     "/help",
@@ -827,12 +832,17 @@ class DesktopService:
         if manifest["id"] not in self._chat_agents_restored:
             loaded = self.store.load_langchain_messages(manifest["id"])
             self._chat_agents_restored.add(manifest["id"])
+        if len(attachments) > MAX_CHAT_ATTACHMENT_COUNT:
+            raise ValueError(f"A message can include at most {MAX_CHAT_ATTACHMENT_COUNT} files.")
+        chat_attachments = await asyncio.gather(
+            *(self._chat_attachment(item) for item in attachments)
+        )
         text = ""
         async for chunk in agent.stream_text(
             prompt,
             manifest["id"],
             loaded_info=loaded or None,
-            images=[self._chat_attachment(item) for item in attachments],
+            images=chat_attachments,
         ):
             text += chunk
             await emit(
@@ -1545,11 +1555,30 @@ class DesktopService:
         return output
 
     @staticmethod
-    def _chat_attachment(item: dict[str, Any]) -> dict[str, str]:
+    async def _chat_attachment(item: dict[str, Any]) -> dict[str, str]:
+        path = Path(str(item.get("path") or "")).expanduser()
+        if not path.is_absolute():
+            raise ValueError("Desktop attachments require an absolute local file path.")
+
+        def read_attachment() -> tuple[Path, bytes]:
+            resolved = path.resolve(strict=True)
+            if not resolved.is_file():
+                raise ValueError(f"Attachment is not a file: {resolved.name}")
+            size = resolved.stat().st_size
+            if size > MAX_CHAT_ATTACHMENT_BYTES:
+                raise ValueError(f"Attachment exceeds 50 MB: {resolved.name}")
+            return resolved, resolved.read_bytes()
+
+        resolved, data = await asyncio.to_thread(read_attachment)
+        mime_type = str(
+            item.get("mimeType")
+            or mimetypes.guess_type(resolved.name)[0]
+            or "application/octet-stream"
+        )
         return {
-            "name": str(item.get("name") or "image"),
-            "base64": str(item.get("base64") or ""),
-            "mime_type": str(item.get("mimeType") or "application/octet-stream"),
+            "name": str(item.get("name") or resolved.name),
+            "base64": base64.b64encode(data).decode("ascii"),
+            "mime_type": mime_type,
         }
 
     @staticmethod

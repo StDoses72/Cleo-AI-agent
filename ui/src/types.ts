@@ -108,7 +108,8 @@ export interface Attachment {
   name: string;
   path: string;
   mimeType: string;
-  base64: string;
+  size: number;
+  base64?: string;
 }
 
 export type ReasoningEffort =
@@ -360,6 +361,7 @@ export interface CleoClient {
   cancelRun(threadId: string): Promise<void>;
   updateRuntime(threadId: string, update: Partial<RuntimeProfile>): Promise<RuntimeProfile>;
   pickAttachments(): Promise<Attachment[]>;
+  prepareAttachments(files: File[]): Promise<Attachment[]>;
   pickWorkspace(): Promise<string | null>;
   copyText(value: string): Promise<void>;
   revealPath(value: string): Promise<void>;

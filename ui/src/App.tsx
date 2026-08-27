@@ -260,7 +260,8 @@ export function App() {
           onSelectProductivityRuntime={workspace.selectProductivityRuntime}
           onEffortChange={(effort) => workspace.updateRuntime({ effort })}
           attachments={workspace.attachments}
-          onPickAttachments={() => void workspace.pickAttachments()}
+          onPickAttachments={workspace.pickAttachments}
+          onPrepareAttachments={workspace.prepareAttachments}
           onRemoveAttachment={workspace.removeAttachment}
           onShowRun={() => {
             setInspectorTab("run");

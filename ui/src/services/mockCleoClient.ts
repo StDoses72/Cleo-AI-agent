@@ -317,6 +317,15 @@ export class MockCleoClient implements CleoClient {
     return [];
   }
 
+  async prepareAttachments(files: File[]): Promise<Attachment[]> {
+    return files.map((file, index) => ({
+      name: file.name,
+      path: `mock-attachment://${index}/${encodeURIComponent(file.name)}`,
+      mimeType: file.type || "application/octet-stream",
+      size: file.size,
+    }));
+  }
+
   async pickWorkspace(): Promise<string | null> {
     return null;
   }

@@ -122,6 +122,10 @@ export class IpcCleoClient implements CleoClient {
     return this.bridge.pickAttachments();
   }
 
+  prepareAttachments(files: File[]): Promise<Attachment[]> {
+    return this.bridge.prepareAttachments(files);
+  }
+
   pickWorkspace(): Promise<string | null> {
     return this.bridge.pickWorkspace();
   }

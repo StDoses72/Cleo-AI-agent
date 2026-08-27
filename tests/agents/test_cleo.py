@@ -5,6 +5,7 @@ from langchain_core.messages import AIMessageChunk
 from pydantic import SecretStr
 
 from cleo.agents import Agent
+from cleo.agents.cleo import _build_user_content
 from cleo.runtime.usage import ContextWindowUsage
 
 
@@ -35,6 +36,47 @@ def test_agent_stream_text_uses_async_graph_streaming() -> None:
     assert asyncio.run(collect()) == ["hello", " world"]
     assert agent.context_usage.used_tokens == 150
     assert agent.context_usage.ratio == 0.15
+
+
+def test_user_content_distinguishes_images_from_common_documents() -> None:
+    content = _build_user_content(
+        "Review these files",
+        [
+            {"name": "screen.png", "base64": "image-data", "mime_type": "image/png"},
+            {
+                "name": "brief.pdf",
+                "base64": "pdf-data",
+                "mime_type": "application/pdf",
+            },
+            {
+                "name": "proposal.docx",
+                "base64": "docx-data",
+                "mime_type": (
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                ),
+            },
+        ],
+    )
+
+    assert content == [
+        {"type": "text", "text": "Review these files"},
+        {"type": "text", "text": "Attachment 1: screen.png"},
+        {"type": "image", "base64": "image-data", "mime_type": "image/png"},
+        {"type": "text", "text": "Attachment 2: brief.pdf"},
+        {
+            "type": "file",
+            "base64": "pdf-data",
+            "mime_type": "application/pdf",
+            "filename": "brief.pdf",
+        },
+        {"type": "text", "text": "Attachment 3: proposal.docx"},
+        {
+            "type": "file",
+            "base64": "docx-data",
+            "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "filename": "proposal.docx",
+        },
+    ]
 
 
 def test_agent_backend_uses_configured_application_root(tmp_path, monkeypatch) -> None:

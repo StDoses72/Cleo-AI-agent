@@ -21,6 +21,15 @@ function currentTime() {
   return new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
 }
 
+function mergeAttachments(current: Attachment[], selected: Attachment[]) {
+  const paths = new Set(current.map((attachment) => attachment.path));
+  return [...current, ...selected.filter((attachment) => {
+    if (paths.has(attachment.path)) return false;
+    paths.add(attachment.path);
+    return true;
+  })];
+}
+
 export function useCleoWorkspace() {
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
   const [loadingError, setLoadingError] = useState<string | null>(null);
@@ -43,6 +52,9 @@ export function useCleoWorkspace() {
   const [draftEffort, setDraftEffort] = useState<RuntimeProfile["effort"]>(null);
   const generationRef = useRef(0);
   const selectionRef = useRef(0);
+  const appendAttachments = (selected: Attachment[]) => {
+    setAttachments((current) => mergeAttachments(current, selected));
+  };
 
   useEffect(() => {
     let active = true;
@@ -302,7 +314,7 @@ export function useCleoWorkspace() {
           selectSpace(event.space);
         } else if (event.type === "request-attachment") {
           const selected = await cleoClient.pickAttachments();
-          setAttachments((current) => [...current, ...selected]);
+          appendAttachments(selected);
         } else if (event.type === "done") {
           updateThread(threadId, (current) => ({
             ...current,
@@ -467,7 +479,12 @@ export function useCleoWorkspace() {
 
   const pickAttachments = async () => {
     const selected = await cleoClient.pickAttachments();
-    setAttachments((current) => [...current, ...selected]);
+    appendAttachments(selected);
+  };
+
+  const prepareAttachments = async (files: File[]) => {
+    const selected = await cleoClient.prepareAttachments(files);
+    appendAttachments(selected);
   };
 
   const removeAttachment = (path: string) => {
@@ -633,6 +650,7 @@ export function useCleoWorkspace() {
     loadProductivityModels,
     selectProductivityRuntime,
     pickAttachments,
+    prepareAttachments,
     removeAttachment,
     copyText,
     revealPath,

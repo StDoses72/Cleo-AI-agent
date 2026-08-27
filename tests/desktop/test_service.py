@@ -1,4 +1,5 @@
 import asyncio
+import base64
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -17,6 +18,27 @@ from cleo.memory.state import (
     touch_session_source,
 )
 from cleo.sessions.store import SessionStore
+
+
+def test_chat_attachment_reads_document_from_local_path(tmp_path) -> None:
+    document = tmp_path / "brief.pdf"
+    document.write_bytes(b"%PDF-test")
+
+    attachment = asyncio.run(
+        DesktopService._chat_attachment(
+            {
+                "name": "brief.pdf",
+                "path": str(document),
+                "mimeType": "application/pdf",
+            }
+        )
+    )
+
+    assert attachment == {
+        "name": "brief.pdf",
+        "base64": base64.b64encode(b"%PDF-test").decode("ascii"),
+        "mime_type": "application/pdf",
+    }
 
 
 class FakeRuntime:
