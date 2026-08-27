@@ -609,22 +609,21 @@ class CodexProvider:
             data: ``_notification_data`` 归一化后的 payload dict。
         返回:
             对应的 ``AgentEvent``(原始 payload 保存在 ``data.payload``,
-            schema_version=2); turn 边界及最终 agentMessage 等不产生事件时
-            返回 None(调用方跳过)。
+            schema_version=2); turn 边界等不产生事件时返回 None(调用方跳过)。
         """
         if method in {"turn/started", "turn/completed"}:
             return None
 
         item = data.get("item")
         item_type = item.get("type") if isinstance(item, dict) else None
-        if method == "item/completed" and item_type == "agentMessage":
-            return None
-
         event_type: str
         text: str | None = None
         if method == "item/agentMessage/delta":
             event_type = "assistant_message_chunk"
             text = str(data.get("delta") or "") or None
+        elif method == "item/completed" and item_type == "agentMessage":
+            event_type = "assistant_message_completed"
+            text = str(item.get("text") or "") or None
         elif method in {
             "item/reasoning/summaryTextDelta",
             "item/reasoning/textDelta",

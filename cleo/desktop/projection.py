@@ -176,23 +176,82 @@ def stream_event_item(event: AgentEvent, state: dict[str, Any]) -> list[dict[str
     output: list[dict[str, Any]] = []
     payload = event_payload(event)
     item = payload.get("item") if isinstance(payload.get("item"), dict) else payload
-    event_key = str(item.get("id") or item.get("toolCallId") or len(state))
+    event_key = str(
+        item.get("id")
+        or payload.get("itemId")
+        or item.get("toolCallId")
+        or payload.get("turnId")
+        or len(state)
+    )
     if event.type == "assistant_message_chunk" and event.text:
-        state["assistant"] = str(state.get("assistant") or "") + event.text
+        active_id = state.get("assistant:active_id")
+        if not isinstance(active_id, str):
+            active_id = (
+                "live-assistant"
+                if event.provider != "codex"
+                else f"live-assistant-{event_key}"
+            )
+            state["assistant:active_id"] = active_id
+        content_key = f"assistant:content:{active_id}"
+        content = str(state.get(content_key) or "") + event.text
+        state[content_key] = content
+        phase = str(item.get("phase") or payload.get("phase") or "")
+        if event.provider != "codex" or phase in {"final_answer", "final"}:
+            state["assistant"] = content
         output.append(
             {
                 "type": "upsert-item",
-                "item": _message("live-assistant", "assistant", state["assistant"], None),
+                "item": (
+                    {
+                        "id": active_id,
+                        "type": "thought",
+                        "content": content,
+                        "status": "running",
+                    }
+                    if phase == "commentary"
+                    else _message(active_id, "assistant", content, None)
+                ),
             }
         )
+    elif event.type == "assistant_message_completed":
+        active_id = state.pop("assistant:active_id", None)
+        if not isinstance(active_id, str):
+            active_id = f"live-assistant-{event_key}"
+        content_key = f"assistant:content:{active_id}"
+        content = event.text or str(state.get(content_key) or "")
+        state.pop(content_key, None)
+        phase = str(item.get("phase") or payload.get("phase") or "")
+        if phase == "commentary":
+            output.append(
+                {
+                    "type": "upsert-item",
+                    "item": {
+                        "id": active_id,
+                        "type": "thought",
+                        "content": content,
+                        "status": "done",
+                    },
+                }
+            )
+        elif content:
+            state["assistant"] = content
+            output.append(
+                {
+                    "type": "upsert-item",
+                    "item": _message(active_id, "assistant", content, None),
+                }
+            )
     elif event.type == "thought" and event.text:
+        thought_key = f"thought:content:{event_key}"
+        content = str(state.get(thought_key) or "") + event.text
+        state[thought_key] = content
         output.append(
             {
                 "type": "upsert-item",
                 "item": {
                     "id": f"thought-{event_key}",
                     "type": "thought",
-                    "content": event.text,
+                    "content": content,
                     "status": "done",
                 },
             }

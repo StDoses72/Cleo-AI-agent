@@ -631,11 +631,18 @@ class AgentAdapter:
     @staticmethod
     def _stored_provider_event(event) -> dict[str, Any] | None:
         event_type = event.type
-        if event_type in {
+        if event_type == "assistant_message_completed":
+            payload = event.data.get("payload")
+            payload = payload if isinstance(payload, dict) else event.data
+            item = payload.get("item")
+            item = item if isinstance(item, dict) else payload
+            if item.get("phase") != "commentary" or not event.text:
+                return None
+            event_type = "thought"
+        if event.type == "thought" or event_type in {
             "agent_message",
             "agent_message_chunk",
             "assistant_message_chunk",
-            "thought",
         }:
             return None
         canonical_type = {
@@ -650,6 +657,7 @@ class AgentAdapter:
             "file_change",
             "terminal_output",
             "plan_update",
+            "thought",
             "status",
             "error",
         }

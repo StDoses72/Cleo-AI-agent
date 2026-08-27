@@ -57,6 +57,16 @@ export function App() {
   }, [theme]);
 
   useEffect(() => {
+    const compactLayout = window.matchMedia("(max-width: 1180px)");
+    const closeInspectorForCompactLayout = (event: MediaQueryListEvent | MediaQueryList) => {
+      if (event.matches) setInspectorOpen(false);
+    };
+    closeInspectorForCompactLayout(compactLayout);
+    compactLayout.addEventListener("change", closeInspectorForCompactLayout);
+    return () => compactLayout.removeEventListener("change", closeInspectorForCompactLayout);
+  }, []);
+
+  useEffect(() => {
     const desktop = window.cleoDesktop;
     if (!desktop) return;
     let active = true;

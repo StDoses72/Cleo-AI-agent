@@ -438,6 +438,49 @@ def test_codex_provider_streams_new_sdk_notifications() -> None:
     assert received[1].data["provider_event_type"] == "item/started"
     assert received[2].type == "status"
     assert received[2].data["provider_event_type"] == "thread/tokenUsage/updated"
+    assert received[3].type == "assistant_message_completed"
+    assert received[3].data["payload"]["item"]["phase"] == "final_answer"
+
+
+def test_agent_adapter_persists_visible_codex_commentary_as_thought() -> None:
+    commentary = AgentEvent(
+        provider="codex",
+        type="assistant_message_completed",
+        text="Checking the repository before the final answer.",
+        data={
+            "provider_event_type": "item/completed",
+            "schema_version": 2,
+            "payload": {
+                "item": {
+                    "id": "message-1",
+                    "type": "agentMessage",
+                    "phase": "commentary",
+                }
+            },
+        },
+    )
+    final = commentary.model_copy(
+        update={
+            "data": {
+                **commentary.data,
+                "payload": {
+                    "item": {
+                        "id": "message-2",
+                        "type": "agentMessage",
+                        "phase": "final_answer",
+                    }
+                },
+            }
+        }
+    )
+
+    stored = AgentAdapter._stored_provider_event(commentary)
+
+    assert stored is not None
+    assert stored["type"] == "thought"
+    assert stored["content"] == commentary.text
+    assert stored["data"]["payload"]["item"]["id"] == "message-1"
+    assert AgentAdapter._stored_provider_event(final) is None
 
 
 def test_codex_provider_reads_account_rate_limit_windows() -> None:

@@ -287,11 +287,20 @@ function ConversationHeader({
 }
 
 type ToolTimelineItem = Extract<TimelineItem, { type: "tool" }>;
-type TimelineBlock = Exclude<TimelineItem, { type: "tool" }> | {
+type ThoughtTimelineItem = Extract<TimelineItem, { type: "thought" }>;
+type ToolGroupBlock = {
   id: string;
   type: "tool-group";
   tools: ToolTimelineItem[];
 };
+type ThoughtGroupBlock = {
+  id: string;
+  type: "thought-group";
+  thoughts: ThoughtTimelineItem[];
+};
+type TimelineBlock = Exclude<TimelineItem, { type: "thought" | "tool" }>
+  | ThoughtGroupBlock
+  | ToolGroupBlock;
 
 function groupTimelineItems(items: TimelineItem[]): TimelineBlock[] {
   const blocks: TimelineBlock[] = [];
@@ -306,21 +315,32 @@ function groupTimelineItems(items: TimelineItem[]): TimelineBlock[] {
     const process = turn.filter(
       (item) => item.type !== "message" || item.role !== "assistant",
     );
+    const thoughts = process.filter(
+      (item): item is ThoughtTimelineItem => item.type === "thought",
+    );
     const tools = process.filter(
       (item): item is ToolTimelineItem => item.type === "tool",
     );
+    let addedThoughtGroup = false;
     let addedToolGroup = false;
 
     for (const item of process) {
-      if (item.type !== "tool") {
-        blocks.push(item);
-      } else if (!addedToolGroup) {
+      if (item.type === "thought" && !addedThoughtGroup) {
+        blocks.push({
+          id: `thought-group-${thoughts[0].id}`,
+          type: "thought-group",
+          thoughts,
+        });
+        addedThoughtGroup = true;
+      } else if (item.type === "tool" && !addedToolGroup) {
         blocks.push({
           id: `tool-group-${tools[0].id}`,
           type: "tool-group",
           tools,
         });
         addedToolGroup = true;
+      } else if (item.type !== "thought" && item.type !== "tool") {
+        blocks.push(item);
       }
     }
     blocks.push(...assistants);
@@ -336,7 +356,9 @@ function groupTimelineItems(items: TimelineItem[]): TimelineBlock[] {
 }
 
 function TimelineEntry({ item }: { item: TimelineBlock }) {
+  if (item.type === "thought-group") return <ThoughtGroupEntry item={item} />;
   if (item.type === "tool-group") return <ToolGroupEntry item={item} />;
+  if (item.type === "plan") return <PlanEntry item={item} />;
   if (item.type === "message") {
     return (
       <article className={`message-entry ${item.role}`}>
@@ -360,19 +382,6 @@ function TimelineEntry({ item }: { item: TimelineBlock }) {
       </article>
     );
   }
-  if (item.type === "thought") {
-    return (
-      <div className={`thought-entry ${item.status}`}>
-        {item.status === "running" ? (
-          <LoaderCircle className="spin" size={15} />
-        ) : (
-          <Sparkles size={15} />
-        )}
-        <span>{item.content}</span>
-      </div>
-    );
-  }
-  if (item.type === "plan") return <PlanEntry item={item} />;
   return (
     <div className={`notice-entry ${item.tone}`}>
       <span className="notice-icon">
@@ -381,6 +390,58 @@ function TimelineEntry({ item }: { item: TimelineBlock }) {
       <div>
         <strong>{item.title}</strong>
         <p>{item.detail}</p>
+      </div>
+    </div>
+  );
+}
+
+function ThoughtGroupEntry({ item }: { item: ThoughtGroupBlock }) {
+  const [expanded, setExpanded] = useState(false);
+  const running = item.thoughts.some((thought) => thought.status === "running");
+  const summary = running
+    ? `${item.thoughts.length} 条记录 · 正在更新`
+    : `${item.thoughts.length} 条记录 · 已完成 · 点击展开查看`;
+
+  return (
+    <section className={`thought-group ${running ? "running" : "done"}`} data-testid="thought-group">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((value) => !value)}
+      >
+        <span className="thought-icon">
+          {running ? <LoaderCircle className="spin" size={15} /> : <Sparkles size={15} />}
+        </span>
+        <span className="tool-group-copy">
+          <strong>思考过程</strong>
+          <small>{summary}</small>
+        </span>
+        <span className="tool-group-actions">
+          {running ? <LoaderCircle className="spin" size={15} /> : null}
+          <ChevronDown className={expanded ? "rotated" : ""} size={15} />
+        </span>
+      </button>
+      {expanded ? (
+        <div className="thought-process-list">
+          {item.thoughts.map((thought) => (
+            <ThoughtEntry key={thought.id} item={thought} />
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function ThoughtEntry({ item }: { item: ThoughtTimelineItem }) {
+  return (
+    <div className={`thought-entry ${item.status}`}>
+      {item.status === "running" ? (
+        <LoaderCircle className="spin" size={15} />
+      ) : (
+        <Sparkles size={15} />
+      )}
+      <div className="thought-copy">
+        <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>{item.content}</ReactMarkdown>
       </div>
     </div>
   );
@@ -414,7 +475,7 @@ function PlanEntry({ item }: { item: Extract<TimelineItem, { type: "plan" }> }) 
   );
 }
 
-function ToolGroupEntry({ item }: { item: Extract<TimelineBlock, { type: "tool-group" }> }) {
+function ToolGroupEntry({ item }: { item: ToolGroupBlock }) {
   const [expanded, setExpanded] = useState(false);
   const runningCount = item.tools.filter((tool) => tool.status === "running").length;
   const errorCount = item.tools.filter((tool) => tool.status === "error").length;

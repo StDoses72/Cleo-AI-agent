@@ -107,14 +107,17 @@ try {
   await window.getByTestId("send-button").click();
   await window.getByTestId("stop-button").waitFor();
   await window.getByRole("heading", { name: "正在整理", exact: true }).waitFor({ timeout: 20_000 });
-  await window.getByText("2 次调用 · 1 个运行中", { exact: true }).waitFor({ timeout: 5_000 });
+  await window.getByTestId("thought-group").waitFor({ timeout: 5_000 });
+  await window.getByTestId("tool-group").getByText("2 次调用", { exact: false }).waitFor({ timeout: 5_000 });
   const streamingLayout = await window.evaluate(() => {
     const timeline = document.querySelector('[data-testid="timeline"]');
+    const thoughtGroup = timeline?.querySelector('[data-testid="thought-group"]');
     const toolGroup = timeline?.querySelector('[data-testid="tool-group"]');
     const assistant = timeline?.querySelector(".message-entry.assistant");
     const viewport = document.querySelector(".conversation-viewport");
     const children = timeline ? Array.from(timeline.children) : [];
     return {
+      thoughtIndex: thoughtGroup ? children.indexOf(thoughtGroup) : -1,
       toolIndex: toolGroup ? children.indexOf(toolGroup) : -1,
       assistantIndex: assistant ? children.indexOf(assistant) : -1,
       distanceFromBottom: viewport
@@ -123,13 +126,23 @@ try {
     };
   });
   assert(
-    streamingLayout.toolIndex >= 0 && streamingLayout.toolIndex < streamingLayout.assistantIndex,
-    "Streaming assistant text was not kept after the tool process",
+    streamingLayout.thoughtIndex >= 0
+      && streamingLayout.toolIndex >= 0
+      && streamingLayout.thoughtIndex < streamingLayout.assistantIndex
+      && streamingLayout.toolIndex < streamingLayout.assistantIndex,
+    "Streaming assistant text was not kept after the visible process groups",
   );
   assert(streamingLayout.distanceFromBottom < 24, "Streaming timeline did not follow the latest text");
   await window.getByRole("heading", { name: "运行完成", exact: true }).waitFor({ timeout: 20_000 });
   await window.getByText("真实后端接入后，这些事件会保持同一结构从 IPC bridge 流入").waitFor({ timeout: 20_000 });
   await window.getByText("2 个文件").waitFor();
+  const thoughtGroupButton = window.getByTestId("thought-group").getByRole("button").first();
+  assert(
+    await thoughtGroupButton.getAttribute("aria-expanded") === "false",
+    "Completed thought group was not collapsed by default",
+  );
+  await thoughtGroupButton.click();
+  assert(await window.locator(".thought-entry").count() === 1, "Thought group did not retain visible commentary");
   assert(await window.locator(".plan-entry").count() === 1, "Plan updates created duplicate cards");
   assert(
     await window.locator('.plan-entry li[data-status="done"]').count() === 3,
@@ -149,6 +162,9 @@ try {
     "Markdown link did not use the external-link policy",
   );
   assert(await window.getByTestId("effort-selector").inputValue() === "low", "Created thread did not keep draft effort");
+  await window.screenshot({ path: join(outputDir, "04a-process-expanded.png") });
+  await thoughtGroupButton.click();
+  await toolGroupButton.click();
   await window.screenshot({ path: join(outputDir, "04-completed-turn.png") });
 
   await window.getByRole("button", { name: "上下文", exact: true }).click();
@@ -190,11 +206,22 @@ try {
       height: document.documentElement.scrollHeight,
     },
     composer: document.querySelector(".composer")?.getBoundingClientRect().toJSON(),
+    composerDock: document.querySelector(".composer-dock")?.getBoundingClientRect().toJSON(),
+    composerHint: document.querySelector(".composer-hint")?.getBoundingClientRect().toJSON(),
     header: document.querySelector(".conversation-header")?.getBoundingClientRect().toJSON(),
+    threadRow: document.querySelector(".thread-row")?.getBoundingClientRect().toJSON(),
+    threadSelect: document.querySelector(".thread-row-select")?.getBoundingClientRect().toJSON(),
+    inspector: document.querySelector(".inspector")?.getBoundingClientRect().toJSON(),
   }));
   assert(compactFit.document.width === compactFit.viewport.width, "Compact view scrolls horizontally");
   assert(compactFit.document.height === compactFit.viewport.height, "Compact view scrolls vertically");
   assert(compactFit.composer?.bottom <= compactFit.viewport.height, "Composer is clipped in compact view");
+  assert(compactFit.composerHint?.bottom <= compactFit.composerDock?.bottom, "Composer hint overlaps the window edge");
+  assert(compactFit.threadSelect?.right <= compactFit.threadRow?.right, "Thread controls overflow their row");
+  assert(
+    !compactFit.inspector || compactFit.inspector.right <= compactFit.viewport.width,
+    "Inspector drawer is clipped in compact view",
+  );
   await window.screenshot({ path: join(outputDir, "07-compact-window.png") });
 
   await window.getByTestId("new-thread").click();

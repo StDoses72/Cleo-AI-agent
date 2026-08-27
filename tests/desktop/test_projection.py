@@ -158,3 +158,67 @@ def test_live_plan_updates_share_an_id_and_orphaned_tools_are_closed() -> None:
 
     assert first[0]["item"]["id"] == second[0]["item"]["id"] == "live-plan-run-1"
     assert finalized[0]["item"]["status"] == "error"
+
+
+def test_codex_commentary_is_replaced_by_thought_before_final_answer() -> None:
+    state: dict[str, object] = {"run_id": "run-1"}
+    streamed = stream_event_item(
+        AgentEvent(
+            provider="codex",
+            type="assistant_message_chunk",
+            text="checking",
+            data={"payload": {"itemId": "message-1", "turnId": "turn-1"}},
+        ),
+        state,
+    )
+    commentary = stream_event_item(
+        AgentEvent(
+            provider="codex",
+            type="assistant_message_completed",
+            text="checking the workspace",
+            data={
+                "payload": {
+                    "item": {
+                        "id": "message-1",
+                        "type": "agentMessage",
+                        "phase": "commentary",
+                        "text": "checking the workspace",
+                    }
+                }
+            },
+        ),
+        state,
+    )
+    stream_event_item(
+        AgentEvent(
+            provider="codex",
+            type="assistant_message_chunk",
+            text="done",
+            data={"payload": {"itemId": "message-2", "turnId": "turn-1"}},
+        ),
+        state,
+    )
+    final = stream_event_item(
+        AgentEvent(
+            provider="codex",
+            type="assistant_message_completed",
+            text="done",
+            data={
+                "payload": {
+                    "item": {
+                        "id": "message-2",
+                        "type": "agentMessage",
+                        "phase": "final_answer",
+                        "text": "done",
+                    }
+                }
+            },
+        ),
+        state,
+    )
+
+    assert streamed[0]["item"]["id"] == commentary[0]["item"]["id"]
+    assert commentary[0]["item"]["type"] == "thought"
+    assert commentary[0]["item"]["status"] == "done"
+    assert final[0]["item"]["type"] == "message"
+    assert state["assistant"] == "done"
