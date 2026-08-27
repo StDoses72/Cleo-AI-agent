@@ -1,8 +1,28 @@
-# Current Cleo Architecture
+# Cleo Product Architecture
 
-This document describes the implemented runtime, harness adapters, session
-storage, and memory pipeline. It does not present an unimplemented standalone
-SessionHub service as completed work.
+This document is for integrators and contributors. It describes Cleo's implemented product boundaries, runtime, harness adapters, session storage, and memory pipeline. After reading it, you should be able to identify which entry point owns a request, where its data is written, how providers extend the system, and which projections can be rebuilt safely.
+
+Cleo is designed around local data control, a consistent experience across agents, resumable sessions, and evidence-backed long-term memory. Planned capabilities are not presented as shipped behavior.
+
+## Product Context
+
+```text
+User
+ ├── Cleo Desktop ── Electron/React ── JSONL IPC ─┐
+ ├── Cleo CLI/TUI ────────────────────────────────┤
+ └── MCP client ── stdio ─────────────────────────┤
+                                                   ▼
+                                         Python application core
+                                           ├── Cleo Chat → LLM API
+                                           └── Productivity → external harness
+                                                   │
+                                                   ▼
+                                         local session + memory data
+```
+
+- Desktop and CLI are presentation layers over the same product core; they do not maintain separate business data.
+- Cleo Chat uses a configured chat model. Productivity connects to Codex, Claude SDK, or ACP agents through adapters.
+- Cleo does not provide hosted accounts, a remote database, or an HTTP service. External network traffic comes from user-selected model, search, browser, or harness providers.
 
 ## Component Boundaries
 
@@ -292,3 +312,27 @@ remain movable under the unconsolidated-thread rule.
 `data/runtime.json` only stores the active CLI space, project, thread, and
 space-partitioned project/recent-thread lists. It contains no transcript and is
 not the session registry.
+
+## Extension Points
+
+### Adding a Productivity provider
+
+Implement the `AgentProvider` create/resume/prompt/cancel/close contract, translate native output into canonical events inside the provider, and register its configuration through the factory. Only capabilities shared by every provider belong in `AgentAdapter`; history, model enumeration, and thread operations remain optional control-plane features.
+
+### Adding a product surface
+
+A new surface should reuse `Runtime`, `SessionStore`, Agent/Adapter, and the memory lifecycle rather than duplicate persistence or consolidation logic. Its protocol must define streaming events, cancellation, errors, shutdown, and secret-safe DTOs.
+
+### Adding a memory projection
+
+Projections must be derived from a validated compact view or the authoritative event log and bound to space/project/session plus source hash. A projection failure must never rewrite or damage the raw event log.
+
+## Current Deployment Boundaries
+
+- The packaged desktop application currently targets Windows x64; the Python core can run from source on other platforms.
+- The application follows a local single-user model and has no multi-tenant identity, remote sync, or server-side authorization layer.
+- `events.jsonl` assumes one append writer per session; external tools must not edit live runtime files concurrently.
+- Provider capabilities differ. UI and CLI features must degrade by capability rather than assume every harness behaves like Codex.
+- Automatic memory is auditable supporting context, not a replacement for raw sessions or user confirmation.
+
+The deeper deployment guides are currently maintained in Chinese: see [configuration and security](CONFIGURATION.md) and [development and releases](DEVELOPMENT.md).

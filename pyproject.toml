@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cleo-ai-agent"
 version = "0.1.5"
-description = "A local personal AI agent runtime built on Deep Agents and LangChain."
+description = "A local-first AI workspace for chat, developer agents, resumable sessions, and scoped memory."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

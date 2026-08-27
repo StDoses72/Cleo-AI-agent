@@ -1,21 +1,18 @@
-# CastMind 记忆系统复盘与 Cleo 迁移决策
+# ADR：Cleo 分层记忆架构的来源与取舍
 
-日期：2026-07-20
+- 状态：已采纳
+- 决策日期：2026-07-20
+- 当前实现基线：按 space/project 分区的 append-only session event log
 
-2026-07-22 更新：Cleo 已将原始 snapshot 架构升级为按 space/project 分区的
-append-only session event log。下面的迁移取舍仍然有效，数据流以更新后的章节为准。
+本文是架构决策记录，不是安装或使用教程。它说明 Cleo 为什么选择 event log、compact projection、SQLite evidence 和 DreamAgent consolidation，以及为什么暂不引入外部向量数据库。当前产品行为以[架构文档](ARCHITECTURE.md)和代码为准。
 
-## 证据边界
+## 历史证据边界
 
-本次复盘基于本机 `D:\Supremium\castmind-backend-python-master` 的 2026-07-17
-交接副本、背景设计稿、实现、测试和运行数据。该副本没有 `.git` 目录，因此无法可靠
-重建 commit、作者和精确 diff；下面的演进顺序以文档日期、交接记录和实际代码为准。
+决策依据来自 2026-07-17 的 CastMind 交接快照、设计稿、实现、测试与少量演示数据。该快照没有完整 Git 历史，因此本文记录的是可验证的架构能力与取舍，不归因具体 commit 或作者。
 
-交接数据中只有两个默认 workspace 演示线程（“1+1是多少”和“请帮我提交模温计算”）。
-SQLite 中 `memory_entries`、`memory_evidence`、`memory_consolidations` 均为 0；两个线程
-已建立 RAG 索引，但尚未由 DreamAgent 整理。因此不把这批演示业务数据导入 Cleo。
+交接数据不包含可复用的长期记忆：原子 memory/evidence/consolidation 表为空，已有 thread 仅完成历史索引。因此 Cleo 迁移了设计原则和经过验证的工程机制，没有导入演示对话或个人业务数据。Cleo 当前运行不依赖 CastMind 仓库或其服务。
 
-## CastMind 做成了什么
+## 被复用的工程经验
 
 ### 2026-07-13：从全量重喂转向分层记忆
 
@@ -50,7 +47,7 @@ SQLite 中 `memory_entries`、`memory_evidence`、`memory_consolidations` 均为
 chunk 索引、孤立 point 回收、混合检索、消息级 Dream 游标、lease、运行审计表和
 preview/dry-run API。
 
-## 迁移取舍
+## Cleo 的产品决策
 
 | CastMind 能力 | Cleo 决策 | 原因 |
 |---|---|---|
@@ -67,7 +64,7 @@ preview/dry-run API。
 | CastMind 工程脚本白名单 | 不迁移 | Cleo 保留任意结构化 JSON；未知文本有界截断 |
 | message 游标、lease、多 Dream chunk | 暂缓 | 交接时仍是设计稿；当前 Cleo 线程规模尚无证据需要这套复杂度 |
 
-## Cleo 融合后的数据流
+## 当前数据流
 
 ```text
 LangChain / harness events
@@ -95,7 +92,7 @@ DreamAgent 不再获得 raw reader，只能读取 hash 校验通过的 compact s
 记忆时 evidence event ID 必须在该 source 中存在；写完 Markdown 后还必须显式调用
 完成工具，否则本次运行视为失败。
 
-## 后续升级条件
+## 暂缓能力与升级条件
 
 只有当本地词法检索在真实 Cleo 历史上出现稳定的同义改写漏召回时，再引入 embedding。
 届时先建立带正样本、普通负样本和困难负样本的校准集，记录 Top-1 分数及 Top-1/Top-2
@@ -104,3 +101,9 @@ DreamAgent 不再获得 raw reader，只能读取 hash 校验通过的 compact s
 当单个 compact thread 经常超过模型输入预算，或中断恢复造成明显重复成本时，再实现
 消息级游标、overlap、多 chunk Dream 协议与 lease。升级时应继续维持三个不变量：原始
 记录不被压缩器修改、证据 ID 可回查、失败不推进游标。
+
+## 决策影响
+
+这套方案让 Cleo 在不依赖常驻数据库服务的前提下提供可恢复会话、历史检索和有证据的长期记忆，适合本地桌面与 CLI 产品。代价是词法历史检索对同义改写不如向量检索，DreamAgent 仍有模型成本，且自动提取不能替代用户对关键结论的确认。
+
+任何替换存储或引入 embedding 的方案都必须保留 scope 隔离、原始事实源、source hash、evidence 可回查与失败可重试这五个不变量。

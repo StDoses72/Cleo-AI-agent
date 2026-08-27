@@ -1,7 +1,28 @@
-# Cleo 当前架构
+# Cleo 产品架构
 
-本文描述仓库中已经实现的运行时、harness adapter、session storage 和 memory
-pipeline，不把尚未实现的独立 SessionHub 服务写成已完成能力。
+本文面向集成方和贡献者，描述 Cleo 已实现的产品边界、运行时、harness adapter、session storage 与 memory pipeline。阅读后应能够判断一个请求由哪个入口处理、数据写到哪里、provider 如何扩展，以及哪些投影可以安全重建。
+
+Cleo 的架构目标是：本地数据可控、不同 agent 体验一致、会话可以恢复、长期记忆可以回查证据。本文不把规划能力写成已完成能力。
+
+## 产品上下文
+
+```text
+User
+ ├── Cleo Desktop ── Electron/React ── JSONL IPC ─┐
+ ├── Cleo CLI/TUI ────────────────────────────────┤
+ └── MCP client ── stdio ─────────────────────────┤
+                                                   ▼
+                                         Python application core
+                                           ├── Cleo Chat → LLM API
+                                           └── Productivity → external harness
+                                                   │
+                                                   ▼
+                                         local session + memory data
+```
+
+- Desktop 和 CLI 是同一产品核心的两个呈现层，不维护两套业务数据。
+- Cleo Chat 使用配置的 chat model；Productivity 通过 adapter 连接 Codex、Claude SDK 或 ACP agent。
+- Cleo 不提供托管账户、远程数据库或 HTTP 服务。外部网络流量来自用户选择的模型、搜索、浏览器或 harness provider。
 
 ## 组件边界
 
@@ -289,3 +310,27 @@ gate 只读取 validated compact 中有界的 human text，并在实际 consolid
 - 按 space 分区的 recent threads
 
 它不保存对话正文，也不是 session registry。
+
+## 扩展点
+
+### 新增 Productivity provider
+
+实现 `AgentProvider` 的 create/resume/prompt/cancel/close 契约，在 provider 内完成 native event 到 canonical event 的转换，再通过 factory 注册配置类型。只有真正跨 provider 共有的能力才进入 `AgentAdapter`；历史、模型枚举或 thread 管理等专属能力应放在可选 control plane。
+
+### 新增产品入口
+
+新入口应复用 `Runtime`、`SessionStore`、Agent/Adapter 与 memory lifecycle，不复制保存或 consolidation 逻辑。对外协议必须明确流式事件、取消、错误、shutdown 和 secret DTO 的边界。
+
+### 新增记忆投影
+
+投影只能从 validated compact 或权威 event log 构建，必须绑定 space/project/session 与 source hash。投影失败不得回写或修改原始 event log。
+
+## 当前部署边界
+
+- 桌面发布包当前面向 Windows x64；Python 核心可以从源码运行在其他平台。
+- 应用按本地单用户模型设计，没有多租户身份、远程同步或服务端授权层。
+- `events.jsonl` 只有单 session append writer 的假设；外部工具不应并发直接修改运行文件。
+- provider 能力存在差异，UI 与 CLI 必须根据 capability 降级，而不是假设所有 harness 等同于 Codex。
+- 自动记忆是可审计的辅助信息，不替代原始会话或用户确认。
+
+部署与安全默认值见[配置与安全边界](CONFIGURATION.md)，开发验证见[开发与发布](DEVELOPMENT.md)。

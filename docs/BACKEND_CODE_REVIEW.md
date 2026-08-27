@@ -1,28 +1,23 @@
-# Cleo 后端离线 Code Review 路线
+# Cleo 后端贡献者导读与 Code Review 清单
 
-这份路线用于在没有网络的环境中熟悉 Cleo 后端。目标不是逐行读完所有 Python，而是在
-review 结束时能够独立回答三个问题：一次普通聊天如何落盘、一次 productivity 请求如何
-穿过 provider、一次会话如何变成长期记忆。
+这份文档面向准备修改 Cleo core、接入新 provider 或进行完整 review 的开发者。目标不是机械地逐行阅读 Python，而是建立可验证的系统模型，并能够回答三个问题：一次普通聊天如何落盘、一次 Productivity 请求如何穿过 provider、一次会话如何变成 evidence-backed 长期记忆。
 
-前端不在主路线中。Desktop 只读 Python 的协议边界和 service；`ui/` 可以最后再看。
+前端不在主阅读路线中。理解 Desktop 时先读 Python 的协议边界与 service，再读 Electron bridge 和 React renderer。
 
-## 起飞前基线
+## Review 基线
 
-仓库已经保留 `.venv`、`ui/node_modules` 和 `release/Cleo` 打包版 App，因此下面的 Python 检查都不需要
-联网。PowerShell 中从仓库根目录执行：
+先按[开发指南](DEVELOPMENT.md)准备环境，再从仓库根目录记录可复现基线：
 
 ```powershell
 Set-Location C:\path\to\Cleo-AI-agent
 git status --short
 git diff --stat
-.\.venv\Scripts\ruff.exe check cleo tests
-.\.venv\Scripts\python.exe -m pytest -q --basetemp "$env:TEMP\cleo-review-pytest"
+ruff check cleo tests
+pytest -q
 git diff --check
 ```
 
-当前工作树包含未跟踪的新文件；`git diff` 不显示这些文件。每次 review 都同时看
-`git status --short`，不要把“diff 看完”误认为“改动看完”。不要在 review 途中运行
-`git reset`、`git clean` 或 `main.py --reset-to-main`。
+`git diff` 不显示 untracked 文件，因此 review 必须同时检查 `git status --short`。不要在 review 中运行会丢失用户状态的 `git reset --hard`、`git clean` 或 `--reset-to-main`；`config/`、`data/`、`memory/` 中的本地文件也不得作为测试 fixture 直接修改。
 
 ## 先记住五条架构规则
 
@@ -54,7 +49,7 @@ CLI / Desktop request
 
 ## 90 分钟快速路线
 
-如果飞机上的时间有限，严格按下面顺序，不要先钻进 UI 或 SDK 类型。
+需要快速建立全局模型时，按下面顺序阅读，不要先钻进 UI 细节或单个 SDK 类型。
 
 ### 0–10 分钟：建立地图
 
@@ -242,9 +237,9 @@ validated compact
 推荐使用“先生产代码、后测试、再回生产代码”的顺序。测试通过只证明已覆盖的契约，不等于
 异常、取消、并发和恢复路径完整。
 
-## 本轮改动的后端 review 清单
+## 跨端变更的重点文件
 
-当前最值得先看的新增/修改文件：
+当变更涉及 Desktop、memory 或 provider 接入时，重点检查：
 
 - `cleo/desktop/server.py`：JSONL 并发请求与 shutdown。
 - `cleo/desktop/service.py`：CLI 能力到 App use case 的映射。
@@ -254,7 +249,7 @@ validated compact
 - `cleo/memory/store.py`、`state.py`：overview 与 consolidation 状态支持。
 - `cleo/config/settings.py`：源码/打包数据根目录边界。
 - `cleo/integrations/git.py`：工作目录的只读 Git 状态。
-- `tests/desktop/` 与 `tests/memory/test_overview.py`：新增契约的回归覆盖。
+- `tests/desktop/` 与 `tests/memory/test_overview.py`：跨层契约的回归覆盖。
 
 前端可以只确认 `ui/electron/backend.mjs` 如何启动 Python；React 组件不影响后端 review。
 
@@ -280,6 +275,8 @@ correctness，最后才是命名和风格。不要在 review 过程中顺手重�
 - 能解释 event log、manifest、compact、session SQLite、memory SQLite、persona SQLite 的权威级别。
 - 能解释 non-productivity 与 productivity 为什么不能自动共享项目记忆。
 - 能指出 provider-neutral API 与 Codex 专属控制面的边界。
-- 已检查本轮所有新增后端文件；没有只看 tracked diff。
+- 已检查 scope 内所有新增、修改、删除和 untracked 文件；没有只看 tracked diff。
 - 已运行 Ruff、完整 pytest 和 `git diff --check`，或明确记录未运行原因。
 - finding 包含触发条件和证据，而不只是个人偏好。
+
+完整 code review 还应按 [AGENTS.md](../AGENTS.md) 的要求维护 coverage manifest，检查每个仓库自有 source、test、config、script 与 documentation 文件，并把发现按严重性、文件和行号报告。
