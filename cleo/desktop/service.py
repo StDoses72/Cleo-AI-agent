@@ -18,7 +18,9 @@ from cleo.cli.productivity import _resolve_productivity_cwd
 from cleo.desktop.configuration import read_model_settings, save_model_profile
 from cleo.desktop.projection import (
     changes_from_diff,
+    final_changes_from_diff,
     finalize_stream_tools,
+    latest_turn_changes,
     path_name,
     project_id,
     project_name_from_id,
@@ -991,7 +993,7 @@ class DesktopService:
                 }
             )
         diff = await asyncio.to_thread(read_git_diff, manifest.get("cwd") or ".")
-        await emit({"type": "changes", "changes": changes_from_diff(diff)})
+        await emit({"type": "changes", "changes": final_changes_from_diff(diff, state)})
         if result.status == "completed":
             await emit({"type": "done", "summary": (result.response or prompt)[:80]})
         else:
@@ -1357,7 +1359,11 @@ class DesktopService:
         changes = []
         if manifest["space"] == "productivity" and manifest.get("cwd"):
             diff = read_git_diff(manifest["cwd"])
-            changes = changes_from_diff(diff)
+            changes = (
+                latest_turn_changes(events)
+                if diff is None
+                else changes_from_diff(diff)
+            )
         usage = self._usage_from_events(events, self._runtime_profile(manifest)["contextWindow"])
         return {
             "id": manifest["id"],

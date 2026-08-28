@@ -1,6 +1,8 @@
 from cleo.desktop.projection import (
     changes_from_diff,
+    final_changes_from_diff,
     finalize_stream_tools,
+    latest_turn_changes,
     stream_event_item,
     timeline_from_events,
 )
@@ -200,6 +202,65 @@ def test_live_approval_events_project_to_desktop_protocol() -> None:
             "response": {"id": "approval-1", "decision": "accept"},
         }
     ]
+
+
+def test_nested_repo_final_refresh_preserves_latest_streamed_diff() -> None:
+    state: dict[str, object] = {}
+    diff = """diff --git a/nested/file.txt b/nested/file.txt
+--- a/nested/file.txt
++++ b/nested/file.txt
+@@ -1 +1 @@
+-before
++after
+"""
+    streamed = stream_event_item(
+        AgentEvent(
+            provider="codex",
+            type="file_change",
+            text=diff,
+            data={"provider_event_type": "turn/diff/updated", "payload": {"diff": diff}},
+        ),
+        state,
+    )
+
+    final = final_changes_from_diff(None, state)
+
+    assert streamed == [{"type": "changes", "changes": final}]
+    assert final[0]["path"] == "nested/file.txt"
+
+
+def test_latest_turn_changes_rebuilds_persisted_nested_repo_diff() -> None:
+    diff = """diff --git a/nested/file.txt b/nested/file.txt
+--- a/nested/file.txt
++++ b/nested/file.txt
+@@ -1 +1 @@
+-before
++after
+"""
+    events = [
+        {"id": "user-old", "type": "user_message", "content": "old"},
+        {
+            "id": "diff-old",
+            "type": "file_change",
+            "content": "diff --git a/old.txt b/old.txt\n--- a/old.txt\n+++ b/old.txt",
+            "data": {"provider_event_type": "turn/diff/updated", "payload": {}},
+        },
+        {"id": "user-new", "type": "user_message", "content": "new"},
+        {
+            "id": "diff-new",
+            "type": "file_change",
+            "content": diff,
+            "data": {
+                "provider_event_type": "turn/diff/updated",
+                "payload": {"diff": diff},
+            },
+        },
+        {"id": "done", "type": "session_completed"},
+    ]
+
+    changes = latest_turn_changes(events)
+
+    assert [change["path"] for change in changes] == ["nested/file.txt"]
 
 
 def test_codex_commentary_is_replaced_by_thought_before_final_answer() -> None:

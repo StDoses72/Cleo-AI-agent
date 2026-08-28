@@ -171,6 +171,36 @@ def changes_from_diff(diff: str | None) -> list[dict[str, Any]]:
     return files
 
 
+def final_changes_from_diff(
+    diff: str | None,
+    state: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Prefer the final Git diff, falling back to the latest streamed turn diff."""
+    if diff is not None:
+        return changes_from_diff(diff)
+    streamed = state.get("changes:latest")
+    if not isinstance(streamed, list):
+        return []
+    return [dict(change) for change in streamed if isinstance(change, dict)]
+
+
+def latest_turn_changes(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Rebuild the latest turn's provider diff when the session cwd is not a Git repo."""
+    for event in reversed(events):
+        event_type = str(event.get("type") or "")
+        if event_type in {"user_message", "human"}:
+            break
+        if event_type != "file_change":
+            continue
+        data = event.get("data") if isinstance(event.get("data"), dict) else {}
+        if data.get("provider_event_type") != "turn/diff/updated":
+            continue
+        payload = data.get("payload") if isinstance(data.get("payload"), dict) else data
+        diff = event.get("content") or payload.get("diff")
+        return changes_from_diff(diff if isinstance(diff, str) else None)
+    return []
+
+
 def stream_event_item(event: AgentEvent, state: dict[str, Any]) -> list[dict[str, Any]]:
     """Translate one live productivity event into zero or more UI events."""
     output: list[dict[str, Any]] = []
@@ -313,7 +343,9 @@ def stream_event_item(event: AgentEvent, state: dict[str, Any]) -> list[dict[str
     elif event.type == "file_change":
         diff = event.text or payload.get("diff")
         changes = changes_from_diff(diff if isinstance(diff, str) else None)
-        if changes:
+        authoritative = event.data.get("provider_event_type") == "turn/diff/updated"
+        if authoritative or changes:
+            state["changes:latest"] = changes
             output.append({"type": "changes", "changes": changes})
     elif event.type == "permission_request":
         output.append({"type": "approval-request", "request": payload})

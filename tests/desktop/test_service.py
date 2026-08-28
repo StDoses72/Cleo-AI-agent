@@ -373,6 +373,52 @@ def test_workspace_hides_empty_chat_sessions_and_loads_saved_history(tmp_path: P
     asyncio.run(scenario())
 
 
+def test_productivity_thread_restores_nested_repo_diff_from_latest_turn(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        service = _service(tmp_path)
+        session_id = "nested-repo-diff"
+        service.store.create_session(
+            session_id=session_id,
+            space="productivity",
+            project="workspace",
+            provider="codex",
+            owner_type="user",
+            native_session_id="native-nested",
+            cwd=str(tmp_path / "workspace"),
+        )
+        diff = """diff --git a/nested/file.txt b/nested/file.txt
+--- a/nested/file.txt
++++ b/nested/file.txt
+@@ -1 +1 @@
+-before
++after
+"""
+        service.store.append_events(
+            space="productivity",
+            project="workspace",
+            session_id=session_id,
+            events=[
+                {"type": "user_message", "actor": "user", "content": "edit nested repo"},
+                {
+                    "type": "file_change",
+                    "actor": "codex",
+                    "content": diff,
+                    "data": {
+                        "provider_event_type": "turn/diff/updated",
+                        "payload": {"diff": diff},
+                    },
+                },
+                {"type": "session_completed", "actor": "system"},
+            ],
+        )
+
+        thread = await service._thread(service.store.load_manifest(session_id))
+
+        assert [change["path"] for change in thread["changes"]] == ["nested/file.txt"]
+
+    asyncio.run(scenario())
+
+
 def test_restore_chat_backups_copies_recoverable_history_without_deleting_backup(
     tmp_path: Path,
 ) -> None:
