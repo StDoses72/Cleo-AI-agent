@@ -20,7 +20,10 @@ from cleo.harnesses.control import (
 )
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 from cleo.harnesses.provider import ProviderSession, ProviderTurn
+from cleo.integrations.harnesses.codex_approvals import CodexApprovalBroker
 from cleo.runtime.usage import RateLimitWindowUsage
+
+CODEX_APPROVAL_MODES = {"deny_all", "auto_review", "user"}
 
 
 @dataclass(slots=True)
@@ -37,6 +40,8 @@ class _CodexRuntime:
     cwd: str = ""
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     active_turn: AsyncTurnHandle | None = None
+    approvals: CodexApprovalBroker = field(default_factory=CodexApprovalBroker)
+    user_approvals_enabled: bool = False
 
 
 class CodexProvider:
@@ -54,7 +59,7 @@ class CodexProvider:
         default_model: str | None,
         *,
         name: str = "codex",
-        approval_mode: ApprovalMode = ApprovalMode.deny_all,
+        approval_mode: str | ApprovalMode = ApprovalMode.deny_all,
         sandbox: Sandbox = Sandbox.workspace_write,
     ) -> None:
         """初始化 provider。
@@ -68,7 +73,11 @@ class CodexProvider:
         """
         self.name = name
         self._default_model = default_model
-        self._approval_mode = approval_mode
+        self._approval_mode = (
+            approval_mode.value if isinstance(approval_mode, ApprovalMode) else approval_mode
+        )
+        if self._approval_mode not in CODEX_APPROVAL_MODES:
+            raise ValueError(f"Unsupported Codex approval mode: {self._approval_mode}")
         self._sandbox = sandbox
         self._sessions: dict[str, _CodexRuntime] = {}
 
@@ -89,16 +98,17 @@ class CodexProvider:
             AgentAdapter 记录并用于后续 ``prompt`` 路由。启动失败时关闭
             client 并向上抛出异常。
         """
-        client = AsyncCodex()
+        approvals = CodexApprovalBroker(self.name)
+        client = self._client_with_approvals(approvals)
         await client.__aenter__()
         try:
             options = SessionOptions(
                 model=model or self._default_model,
-                approval_mode=self._approval_mode.value,
+                approval_mode=self._approval_mode,
                 sandbox=self._sandbox.value,
             )
             thread = await client.thread_start(
-                approval_mode=self._approval_mode,
+                approval_mode=self._sdk_approval_mode(self._approval_mode),
                 cwd=project_path,
                 model=options.model,
                 sandbox=self._sandbox,
@@ -106,7 +116,9 @@ class CodexProvider:
         except Exception:
             await client.close()
             raise
-        self._sessions[thread.id] = _CodexRuntime(client, thread, options, project_path)
+        self._sessions[thread.id] = _CodexRuntime(
+            client, thread, options, project_path, approvals=approvals
+        )
         return ProviderSession(id=thread.id, native_id=thread.id)
 
     async def resume_session(
@@ -127,17 +139,18 @@ class CodexProvider:
         返回:
             ``ProviderSession``(id == 恢复后的 thread id), 由 AgentAdapter 消费。
         """
-        client = AsyncCodex()
+        approvals = CodexApprovalBroker(self.name)
+        client = self._client_with_approvals(approvals)
         await client.__aenter__()
         try:
             options = SessionOptions(
                 model=model or self._default_model,
-                approval_mode=self._approval_mode.value,
+                approval_mode=self._approval_mode,
                 sandbox=self._sandbox.value,
             )
             thread = await client.thread_resume(
                 native_session_id,
-                approval_mode=self._approval_mode,
+                approval_mode=self._sdk_approval_mode(self._approval_mode),
                 cwd=project_path,
                 model=options.model,
                 sandbox=self._sandbox,
@@ -145,7 +158,9 @@ class CodexProvider:
         except Exception:
             await client.close()
             raise
-        self._sessions[thread.id] = _CodexRuntime(client, thread, options, project_path)
+        self._sessions[thread.id] = _CodexRuntime(
+            client, thread, options, project_path, approvals=approvals
+        )
         return ProviderSession(id=thread.id, native_id=thread.id)
 
     async def prompt(
@@ -175,20 +190,17 @@ class CodexProvider:
         status = "failed"
         error: str | None = None
         async with runtime.lock:
-            options = runtime.options
-            turn = await runtime.thread.turn(
-                prompt,
-                approval_mode=(
-                    ApprovalMode(options.approval_mode)
-                    if options.approval_mode
-                    else None
-                ),
-                effort=ReasoningEffort(options.effort) if options.effort else None,
-                model=options.model,
-                sandbox=Sandbox(options.sandbox) if options.sandbox else None,
+            async def approval_event(event: AgentEvent) -> None:
+                events.append(event)
+                await emit_event(on_event, event)
+
+            runtime.approvals.bind(
+                asyncio.get_running_loop(),
+                approval_event if runtime.user_approvals_enabled else None,
             )
-            runtime.active_turn = turn
             try:
+                turn = await self._start_turn(runtime, prompt)
+                runtime.active_turn = turn
                 async for notification in turn.stream():
                     data = self._notification_data(notification.payload)
                     if notification.method == "item/completed":
@@ -215,6 +227,8 @@ class CodexProvider:
                     await emit_event(on_event, event)
             finally:
                 runtime.active_turn = None
+                runtime.approvals.cancel_all()
+                runtime.approvals.unbind()
 
         response = final_response or "".join(response_parts) or None
         return ProviderTurn(
@@ -262,7 +276,8 @@ class CodexProvider:
         if effort is not None:
             ReasoningEffort(effort)
         if approval_mode is not None:
-            ApprovalMode(approval_mode)
+            if approval_mode not in CODEX_APPROVAL_MODES:
+                raise ValueError(f"Unsupported Codex approval mode: {approval_mode}")
         if sandbox is not None:
             Sandbox(sandbox)
         runtime.options = SessionOptions(
@@ -274,6 +289,18 @@ class CodexProvider:
             sandbox=current.sandbox if sandbox is None else sandbox,
         )
         return runtime.options
+
+    async def resolve_approval(
+        self,
+        session_id: str,
+        approval_id: str,
+        decision: str,
+    ) -> dict[str, Any]:
+        runtime = self._sessions[session_id]
+        return await runtime.approvals.resolve(approval_id, decision)
+
+    async def enable_user_approvals(self, session_id: str) -> None:
+        self._sessions[session_id].user_approvals_enabled = True
 
     async def list_models(self) -> tuple[HarnessModel, ...]:
         """查询 Codex 账号可用的模型列表。
@@ -420,13 +447,14 @@ class CodexProvider:
         """
         source = self._sessions[session_id]
         options = source.options
-        client = AsyncCodex()
+        approvals = CodexApprovalBroker(self.name)
+        client = self._client_with_approvals(approvals)
         await client.__aenter__()
         try:
             thread = await client.thread_fork(
                 source.thread.id,
                 approval_mode=(
-                    ApprovalMode(options.approval_mode)
+                    self._sdk_approval_mode(options.approval_mode)
                     if options.approval_mode
                     else None
                 ),
@@ -437,7 +465,9 @@ class CodexProvider:
         except Exception:
             await client.close()
             raise
-        self._sessions[thread.id] = _CodexRuntime(client, thread, options, source.cwd)
+        self._sessions[thread.id] = _CodexRuntime(
+            client, thread, options, source.cwd, approvals=approvals
+        )
         return ProviderSession(id=thread.id, native_id=thread.id)
 
     async def rename_session(self, session_id: str, name: str) -> None:
@@ -476,6 +506,7 @@ class CodexProvider:
         """
         runtime = self._sessions.pop(session_id)
         try:
+            runtime.approvals.cancel_all()
             async with runtime.lock:
                 if runtime.active_turn is not None:
                     await runtime.active_turn.interrupt()
@@ -492,6 +523,7 @@ class CodexProvider:
                 ``interrupt``。
         """
         runtime = self._sessions[session_id]
+        runtime.approvals.cancel_all()
         if runtime.active_turn is not None:
             await runtime.active_turn.interrupt()
 
@@ -505,9 +537,68 @@ class CodexProvider:
         runtime = self._sessions.pop(session_id, None)
         if runtime is None:
             return
+        runtime.approvals.cancel_all()
         if runtime.active_turn is not None:
             await runtime.active_turn.interrupt()
         await runtime.client.close()
+
+    async def _start_turn(
+        self,
+        runtime: _CodexRuntime,
+        prompt: str,
+    ) -> AsyncTurnHandle:
+        options = runtime.options
+        if options.approval_mode != "user":
+            return await runtime.thread.turn(
+                prompt,
+                approval_mode=(
+                    self._sdk_approval_mode(options.approval_mode)
+                    if options.approval_mode
+                    else None
+                ),
+                effort=ReasoningEffort(options.effort) if options.effort else None,
+                model=options.model,
+                sandbox=Sandbox(options.sandbox) if options.sandbox else None,
+            )
+        started = await runtime.client._client.turn_start(
+            runtime.thread.id,
+            prompt,
+            params={
+                "approvalPolicy": "on-request",
+                "approvalsReviewer": "user",
+                "effort": options.effort,
+                "model": options.model,
+                "sandboxPolicy": self._sandbox_policy(options.sandbox),
+            },
+        )
+        return AsyncTurnHandle(runtime.client, runtime.thread.id, started.turn.id)
+
+    @staticmethod
+    def _client_with_approvals(approvals: CodexApprovalBroker) -> AsyncCodex:
+        client = AsyncCodex()
+        async_client = getattr(client, "_client", None)
+        sync_client = getattr(async_client, "_sync", None)
+        if sync_client is None or not hasattr(sync_client, "_approval_handler"):
+            raise RuntimeError("Installed openai-codex SDK does not expose approval callbacks.")
+        sync_client._approval_handler = approvals.handle
+        return client
+
+    @staticmethod
+    def _sdk_approval_mode(value: str) -> ApprovalMode:
+        if value == "user":
+            # User review is applied with the raw turn override in _start_turn.
+            return ApprovalMode.deny_all
+        return ApprovalMode(value)
+
+    @staticmethod
+    def _sandbox_policy(value: str | None) -> dict[str, Any] | None:
+        if value == "read-only":
+            return {"type": "readOnly"}
+        if value == "workspace-write":
+            return {"type": "workspaceWrite"}
+        if value == "full-access":
+            return {"type": "dangerFullAccess"}
+        return None
 
     @classmethod
     def _native_session(cls, thread: Any) -> NativeSession:

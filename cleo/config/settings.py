@@ -422,15 +422,15 @@ class CodexHarnessOptions(BaseModel):
     """codex_sdk harness 的专有选项(harnesses.json providers.<name>.options)。
 
     字段(来自 config/harnesses.json):
-        approval_mode: 审批模式("deny_all"/"auto_review");消费方:
-            cleo/integrations/harnesses/factory.py:29 映射为 ApprovalMode。
+        approval_mode: 审批模式("deny_all"/"auto_review"/"user");消费方:
+            cleo/integrations/harnesses/factory.py:29 传给 CodexProvider。
         sandbox: 沙箱级别("read-only"/"workspace-write"/"full-access");
             消费方: factory.py:30 映射为 Sandbox。
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    approval_mode: Literal["deny_all", "auto_review"] = "deny_all"
+    approval_mode: Literal["deny_all", "auto_review", "user"] = "deny_all"
     sandbox: Literal["read-only", "workspace-write", "full-access"] = "workspace-write"
 
 

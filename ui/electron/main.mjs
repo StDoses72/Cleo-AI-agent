@@ -35,6 +35,7 @@ const allowedMethods = new Set([
   "restore_chat_backups",
   "stream_turn",
   "cancel_run",
+  "resolve_approval",
   "update_runtime",
   "get_config_templates",
   "get_agent_instructions",

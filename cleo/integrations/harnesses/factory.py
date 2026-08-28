@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from openai_codex import ApprovalMode, Sandbox
+from openai_codex import Sandbox
 
 from cleo.harnesses.adapter import AgentAdapter
 from cleo.harnesses.provider import AgentProvider
@@ -38,7 +38,7 @@ def create_provider(
         return CodexProvider(
             default_model=settings.model,
             name=name,
-            approval_mode=ApprovalMode(options.approval_mode),
+            approval_mode=options.approval_mode,
             sandbox=Sandbox(options.sandbox),
         )
     if settings.type == "claude_sdk":

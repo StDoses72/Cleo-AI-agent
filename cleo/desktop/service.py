@@ -568,6 +568,7 @@ class DesktopService:
                 project=project or path_name(project_path, "general"),
             )
             self._productivity_sessions[session.id] = session
+            await self._enable_desktop_approvals(session.id, provider_name)
             if effort is not None:
                 await adapter.update_session_options(session.id, effort=effort)
             manifest = self.store.load_manifest(session.id)
@@ -617,6 +618,19 @@ class DesktopService:
         if task is not None:
             task.cancel()
         return {"cancelled": task is not None}
+
+    async def resolve_approval(
+        self,
+        *,
+        thread_id: str,
+        approval_id: str,
+        decision: str,
+    ) -> dict[str, Any]:
+        manifest = self.store.load_manifest(thread_id)
+        if manifest["space"] != "productivity":
+            raise ValueError("Only productivity tasks can request tool approval.")
+        await self._ensure_productivity_session(manifest)
+        return await self._adapter().resolve_approval(thread_id, approval_id, decision)
 
     async def update_runtime(
         self,
@@ -1479,7 +1493,20 @@ class DesktopService:
             project=str(manifest["project"]),
         )
         self._productivity_sessions[manifest["id"]] = session
+        await self._enable_desktop_approvals(manifest["id"], str(manifest["provider"]))
         return session
+
+    async def _enable_desktop_approvals(self, session_id: str, provider: str) -> None:
+        settings = self.settings.productivity.provider(provider)
+        options = self._adapter().session_options(session_id)
+        if settings.type != "codex_sdk" or options.approval_mode == "deny_all":
+            return
+        if options.approval_mode == "auto_review":
+            await self._adapter().update_session_options(
+                session_id,
+                approval_mode="user",
+            )
+        await self._adapter().enable_user_approvals(session_id)
 
     def _adapter(self) -> Any:
         if self._adapter_instance is None:

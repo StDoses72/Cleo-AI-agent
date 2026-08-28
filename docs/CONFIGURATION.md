@@ -149,6 +149,11 @@ Browser 子配置的重要边界：
 | `claude_sdk` | `model`、`permission_mode` | 通过 Claude Agent SDK 运行；能力按 SDK 暴露 |
 | `acp` | `command`、`args`、`env`、`auto_approve` | 启动任意兼容 Agent Client Protocol 的本地进程 |
 
+Codex 的 `approval_mode` 支持 `deny_all`、`auto_review` 和 `user`。`user` 会把
+app-server 的命令、文件修改和额外权限请求交给调用端决定。Cleo Desktop 会把
+`auto_review` 切换成可交互的 `user` 模式并在输入区上方显示审批面板；显式配置的
+`deny_all` 仍保持拒绝。CLI 继续遵循 `harnesses.json` 中配置的模式。
+
 只有 `enabled: true` 的 provider 会注册。`default_provider` 必须存在且启用，否则配置校验失败。
 
 ACP 的 `env` 可能包含 secret；不要把含真实 token 的 `harnesses.json` 提交到版本库。`auto_approve` 会扩大外部 agent 的权限，只有在可信工作区和明确 sandbox 下使用。

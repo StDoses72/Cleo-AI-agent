@@ -45,7 +45,10 @@ import type {
   Thread,
   ThreadSpace,
   TimelineItem,
+  ApprovalDecision,
+  ApprovalRequest,
 } from "../types";
+import { ApprovalPrompt } from "./ApprovalPrompt";
 
 interface ConversationProps {
   thread: Thread | null;
@@ -80,6 +83,10 @@ interface ConversationProps {
   onOpenPath: (href: string, workspacePath: string) => void;
   onThreadCommand: (command: string) => void;
   commands: string[];
+  approvalRequest: ApprovalRequest | null;
+  approvalPending: boolean;
+  approvalError: string | null;
+  onResolveApproval: (decision: ApprovalDecision) => void;
 }
 
 const suggestions = [
@@ -121,6 +128,10 @@ export function Conversation({
   onOpenPath,
   onThreadCommand,
   commands,
+  approvalRequest,
+  approvalPending,
+  approvalError,
+  onResolveApproval,
 }: ConversationProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
@@ -216,6 +227,10 @@ export function Conversation({
         onRemoveAttachment={onRemoveAttachment}
         onShowContext={onShowContext}
         commands={commands}
+        approvalRequest={approvalRequest}
+        approvalPending={approvalPending}
+        approvalError={approvalError}
+        onResolveApproval={onResolveApproval}
       />
     </main>
   );
@@ -728,6 +743,10 @@ function Composer({
   onRemoveAttachment,
   onShowContext,
   commands,
+  approvalRequest,
+  approvalPending,
+  approvalError,
+  onResolveApproval,
 }: Pick<
   ConversationProps,
   | "runtime"
@@ -749,6 +768,10 @@ function Composer({
   | "onRemoveAttachment"
   | "onShowContext"
   | "commands"
+  | "approvalRequest"
+  | "approvalPending"
+  | "approvalError"
+  | "onResolveApproval"
 >) {
   const [prompt, setPrompt] = useState("");
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
@@ -841,6 +864,12 @@ function Composer({
 
   return (
     <div className="composer-dock">
+      <ApprovalPrompt
+        request={space === "productivity" ? approvalRequest : null}
+        pending={approvalPending}
+        error={approvalError}
+        onResolve={onResolveApproval}
+      />
       <div
         className={`composer ${running ? "running" : ""} ${draggingFiles ? "dragging-files" : ""}`}
         data-testid="composer"

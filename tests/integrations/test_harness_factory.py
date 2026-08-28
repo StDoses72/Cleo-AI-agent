@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import pytest
-from openai_codex import ApprovalMode, Sandbox
+from openai_codex import Sandbox
 from pydantic import ValidationError
 
 from cleo.config.settings import ProductivitySettings, load_settings
@@ -73,7 +73,7 @@ def test_factory_builds_configured_provider_types(tmp_path: Path) -> None:
     acp = create_provider("acp-test", productivity.provider("acp-test"))
     assert isinstance(codex, CodexProvider)
     assert codex._default_model == "gpt-test"
-    assert codex._approval_mode is ApprovalMode.auto_review
+    assert codex._approval_mode == "auto_review"
     assert codex._sandbox is Sandbox.read_only
     assert isinstance(claude, ClaudeProvider)
     assert claude._default_model == "claude-test"

@@ -112,6 +112,25 @@ export interface Attachment {
   base64?: string;
 }
 
+export type ApprovalDecision = "accept" | "acceptForSession" | "decline" | "cancel";
+
+export interface ApprovalRequest {
+  id: string;
+  kind: "command" | "file_change" | "permissions";
+  method: string;
+  threadId: string;
+  turnId: string;
+  itemId: string;
+  command: string;
+  cwd: string;
+  reason: string;
+  availableDecisions: ApprovalDecision[];
+  commandActions: Array<Record<string, unknown>>;
+  permissions: Record<string, unknown> | null;
+  grantRoot: string | null;
+  startedAtMs: number | null;
+}
+
 export type ReasoningEffort =
   | "none"
   | "minimal"
@@ -351,6 +370,8 @@ export type StreamEvent =
   | { type: "refresh"; activeThreadId: string; space: ThreadSpace }
   | { type: "navigate-space"; space: ThreadSpace }
   | { type: "request-attachment" }
+  | { type: "approval-request"; request: ApprovalRequest }
+  | { type: "approval-resolved"; response: { id: string; decision: ApprovalDecision } }
   | { type: "done"; summary: string }
   | { type: "error"; message: string };
 
@@ -364,6 +385,7 @@ export interface CleoClient {
   restoreChatBackups(): Promise<WorkspaceSnapshot>;
   streamTurn(threadId: string, prompt: string, attachments?: Attachment[]): AsyncGenerator<StreamEvent>;
   cancelRun(threadId: string): Promise<void>;
+  resolveApproval(threadId: string, approvalId: string, decision: ApprovalDecision): Promise<void>;
   updateRuntime(threadId: string, update: Partial<RuntimeProfile>): Promise<RuntimeProfile>;
   pickAttachments(): Promise<Attachment[]>;
   prepareAttachments(files: File[]): Promise<Attachment[]>;

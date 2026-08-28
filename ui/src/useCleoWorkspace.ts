@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { cleoClient } from "./services/cleoClient";
 import type {
   AgentInstructions,
+  ApprovalDecision,
+  ApprovalRequest,
   Attachment,
   ModelProfileInput,
   ModelSettings,
@@ -46,6 +48,9 @@ export function useCleoWorkspace() {
   const [productivityModels, setProductivityModels] = useState<Record<string, ProductivityModelCatalog>>({});
   const [runtimeModelsLoading, setRuntimeModelsLoading] = useState<string | null>(null);
   const [runtimeModelsError, setRuntimeModelsError] = useState<string | null>(null);
+  const [pendingApprovals, setPendingApprovals] = useState<ApprovalRequest[]>([]);
+  const [approvalPendingId, setApprovalPendingId] = useState<string | null>(null);
+  const [approvalError, setApprovalError] = useState<string | null>(null);
   const [draftProfileId, setDraftProfileId] = useState("");
   const [draftProvider, setDraftProvider] = useState("");
   const [draftModel, setDraftModel] = useState("");
@@ -315,6 +320,17 @@ export function useCleoWorkspace() {
         } else if (event.type === "request-attachment") {
           const selected = await cleoClient.pickAttachments();
           appendAttachments(selected);
+        } else if (event.type === "approval-request") {
+          const request = { ...event.request, threadId };
+          setPendingApprovals((current) => [
+            ...current.filter((candidate) => candidate.id !== request.id),
+            request,
+          ]);
+          setApprovalError(null);
+        } else if (event.type === "approval-resolved") {
+          setPendingApprovals((current) => current.filter(
+            (candidate) => candidate.id !== event.response.id,
+          ));
         } else if (event.type === "done") {
           updateThread(threadId, (current) => ({
             ...current,
@@ -363,6 +379,9 @@ export function useCleoWorkspace() {
           );
         }
         setRunningThreadId(null);
+        setPendingApprovals((current) => current.filter(
+          (candidate) => candidate.threadId !== threadId,
+        ));
       }
     }
   };
@@ -373,6 +392,9 @@ export function useCleoWorkspace() {
     generationRef.current += 1;
     setRunningThreadId(null);
     void cleoClient.cancelRun(threadId);
+    setPendingApprovals((current) => current.filter(
+      (candidate) => candidate.threadId !== threadId,
+    ));
     updateThread(threadId, (current) => ({
       ...current,
       status: "attention",
@@ -387,6 +409,23 @@ export function useCleoWorkspace() {
         },
       ],
     }));
+  };
+
+  const resolveApproval = async (decision: ApprovalDecision) => {
+    const request = pendingApprovals[0];
+    if (!request || approvalPendingId) return;
+    setApprovalPendingId(request.id);
+    setApprovalError(null);
+    try {
+      await cleoClient.resolveApproval(request.threadId, request.id, decision);
+      setPendingApprovals((current) => current.filter(
+        (candidate) => candidate.id !== request.id,
+      ));
+    } catch (error) {
+      setApprovalError(error instanceof Error ? error.message : "无法提交审批决定");
+    } finally {
+      setApprovalPendingId(null);
+    }
   };
 
   const updateRuntime = (update: Partial<RuntimeProfile>) => {
@@ -649,6 +688,9 @@ export function useCleoWorkspace() {
     productivityModels,
     runtimeModelsLoading,
     runtimeModelsError,
+    pendingApprovals,
+    approvalPendingId,
+    approvalError,
     selectSpace,
     selectProject,
     selectThread,
@@ -656,6 +698,7 @@ export function useCleoWorkspace() {
     chooseWorkspace,
     sendPrompt,
     cancelRun,
+    resolveApproval,
     updateRuntime,
     selectNonProductivityProfile,
     loadProductivityModels,

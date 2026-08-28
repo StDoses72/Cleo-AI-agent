@@ -453,6 +453,21 @@ class AgentAdapter:
         self._store.update_manifest(session_id, runtime_options=options.as_dict())
         return options
 
+    async def resolve_approval(
+        self,
+        session_id: str,
+        approval_id: str,
+        decision: str,
+    ) -> dict[str, Any]:
+        route = self._route(session_id)
+        method = self._capability(route.provider, "resolve_approval")
+        return await method(route.provider_session_id, approval_id, decision)
+
+    async def enable_user_approvals(self, session_id: str) -> None:
+        route = self._route(session_id)
+        method = self._capability(route.provider, "enable_user_approvals")
+        await method(route.provider_session_id)
+
     async def fork_session(self, session_id: str) -> AgentSession:
         """分叉现有会话,新会话记录 parent_session_id。
 

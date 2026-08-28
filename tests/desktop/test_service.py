@@ -136,6 +136,8 @@ class FakeAdapter:
         self.created_with = None
         self.closed = []
         self.updated_with = None
+        self.resolved = []
+        self.approvals_enabled = []
 
     @property
     def providers(self):
@@ -179,8 +181,18 @@ class FakeAdapter:
         current = manifest.get("runtime_options") or {}
         self.store.update_manifest(session_id, runtime_options={**current, **changes})
 
+    def session_options(self, _session_id):
+        return SimpleNamespace(approval_mode="auto_review")
+
     async def close(self, session_id: str) -> None:
         self.closed.append(session_id)
+
+    async def resolve_approval(self, session_id, approval_id, decision):
+        self.resolved.append((session_id, approval_id, decision))
+        return {"id": approval_id, "decision": decision}
+
+    async def enable_user_approvals(self, session_id):
+        self.approvals_enabled.append(session_id)
 
     async def aclose(self) -> None:
         pass
@@ -438,6 +450,8 @@ def test_create_productivity_thread_uses_selected_workspace(tmp_path: Path) -> N
         }
         assert thread["projectId"] == "productivity:selected-project"
         assert thread["runtime"]["effort"] == "low"
+        assert thread["runtime"]["approval"] == "user"
+        assert adapter.approvals_enabled == [thread["id"]]
         assert adapter.updated_with == {
             "session_id": thread["id"],
             "effort": "low",
@@ -452,6 +466,31 @@ def test_create_productivity_thread_uses_selected_workspace(tmp_path: Path) -> N
             "effort": "high",
         }
         assert service.store.load_manifest(thread["id"])["cwd"] == str(selected.resolve())
+
+    asyncio.run(scenario())
+
+
+def test_desktop_forwards_approval_decisions_to_active_codex_session(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        service = _service(tmp_path)
+        adapter = FakeAdapter(service.store)
+        service._adapter_instance = adapter
+        selected = tmp_path / "approval-project"
+        selected.mkdir()
+        thread = await service.create_thread(
+            space="productivity",
+            project_id_value="",
+            project_path=str(selected),
+        )
+
+        result = await service.resolve_approval(
+            thread_id=thread["id"],
+            approval_id="approval-1",
+            decision="accept",
+        )
+
+        assert result == {"id": "approval-1", "decision": "accept"}
+        assert adapter.resolved == [(thread["id"], "approval-1", "accept")]
 
     asyncio.run(scenario())
 

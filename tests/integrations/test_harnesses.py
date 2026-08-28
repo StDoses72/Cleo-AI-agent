@@ -16,6 +16,7 @@ from cleo.harnesses import (
 from cleo.integrations.harnesses.acp import AcpAgentSpec, AcpProvider, _AcpClientHost
 from cleo.integrations.harnesses.claude import ClaudeProvider, _ClaudeRuntime
 from cleo.integrations.harnesses.codex import CodexProvider, _CodexRuntime
+from cleo.integrations.harnesses.codex_approvals import CodexApprovalBroker
 from cleo.memory.compaction import load_validated_compact
 
 
@@ -570,6 +571,121 @@ def test_codex_provider_applies_runtime_options_to_next_turn() -> None:
     assert str(received_kwargs["effort"].value) == "high"
     assert str(received_kwargs["approval_mode"].value) == "auto_review"
     assert str(received_kwargs["sandbox"].value) == "full-access"
+
+
+def test_codex_provider_routes_user_approval_to_app_server_client() -> None:
+    received: dict[str, object] = {}
+
+    class LowLevelClient:
+        async def turn_start(self, thread_id, prompt, params):
+            received.update(thread_id=thread_id, prompt=prompt, params=params)
+            return SimpleNamespace(turn=SimpleNamespace(id="turn-user"))
+
+    provider = CodexProvider(default_model="gpt-default")
+    runtime = _CodexRuntime(
+        client=SimpleNamespace(_client=LowLevelClient()),
+        thread=SimpleNamespace(id="thread-user"),
+        options=SessionOptions(
+            model="gpt-user",
+            effort="high",
+            approval_mode="user",
+            sandbox="workspace-write",
+        ),
+    )
+
+    turn = asyncio.run(provider._start_turn(runtime, "commit these changes"))
+
+    assert turn.id == "turn-user"
+    assert received["thread_id"] == "thread-user"
+    assert received["prompt"] == "commit these changes"
+    assert received["params"] == {
+        "approvalPolicy": "on-request",
+        "approvalsReviewer": "user",
+        "effort": "high",
+        "model": "gpt-user",
+        "sandboxPolicy": {"type": "workspaceWrite"},
+    }
+
+
+def test_codex_approval_broker_waits_for_user_decision() -> None:
+    async def scenario() -> None:
+        broker = CodexApprovalBroker()
+        received: list[AgentEvent] = []
+        ready = asyncio.Event()
+
+        async def on_event(event: AgentEvent) -> None:
+            received.append(event)
+            if event.type == "permission_request":
+                ready.set()
+
+        broker.bind(asyncio.get_running_loop(), on_event)
+        response_task = asyncio.create_task(
+            asyncio.to_thread(
+                broker.handle,
+                "item/commandExecution/requestApproval",
+                {
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "itemId": "item-1",
+                    "command": "git commit -m test",
+                    "cwd": "D:/repo",
+                    "availableDecisions": ["accept", "acceptForSession", "decline"],
+                },
+            )
+        )
+        await asyncio.wait_for(ready.wait(), timeout=1)
+        request = received[0].data["payload"]
+
+        result = await broker.resolve(request["id"], "acceptForSession")
+        response = await asyncio.wait_for(response_task, timeout=1)
+
+        assert result["decision"] == "acceptForSession"
+        assert response == {"decision": "acceptForSession"}
+        assert [event.type for event in received] == [
+            "permission_request",
+            "permission_response",
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_codex_approval_broker_rejects_when_no_ui_is_bound() -> None:
+    broker = CodexApprovalBroker()
+
+    assert broker.handle(
+        "item/fileChange/requestApproval",
+        {"threadId": "thread-1", "turnId": "turn-1", "itemId": "item-1"},
+    ) == {"decision": "decline"}
+
+
+def test_codex_approval_broker_cancel_unblocks_pending_request() -> None:
+    async def scenario() -> None:
+        broker = CodexApprovalBroker()
+        ready = asyncio.Event()
+
+        async def on_event(event: AgentEvent) -> None:
+            if event.type == "permission_request":
+                ready.set()
+
+        broker.bind(asyncio.get_running_loop(), on_event)
+        response_task = asyncio.create_task(
+            asyncio.to_thread(
+                broker.handle,
+                "item/fileChange/requestApproval",
+                {
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "itemId": "item-1",
+                },
+            )
+        )
+        await asyncio.wait_for(ready.wait(), timeout=1)
+
+        broker.cancel_all()
+
+        assert await asyncio.wait_for(response_task, timeout=1) == {"decision": "cancel"}
+
+    asyncio.run(scenario())
 
 
 def test_agent_adapter_persists_rich_session_controls(tmp_path) -> None:

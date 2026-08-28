@@ -315,6 +315,10 @@ def stream_event_item(event: AgentEvent, state: dict[str, Any]) -> list[dict[str
         changes = changes_from_diff(diff if isinstance(diff, str) else None)
         if changes:
             output.append({"type": "changes", "changes": changes})
+    elif event.type == "permission_request":
+        output.append({"type": "approval-request", "request": payload})
+    elif event.type == "permission_response":
+        output.append({"type": "approval-resolved", "response": payload})
     elif event.type == "error":
         output.append({"type": "error", "message": event.text or "Provider reported an error."})
     return output

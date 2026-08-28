@@ -215,6 +215,23 @@ try {
   await toolGroupButton.click();
   await window.screenshot({ path: join(outputDir, "04-completed-turn.png") });
 
+  await window.getByTestId("composer-input").fill("请运行需要审批的 git commit");
+  await window.getByTestId("send-button").click();
+  await window.getByTestId("approval-prompt").waitFor({ timeout: 10_000 });
+  await window.screenshot({ path: join(outputDir, "04b-approval-request.png") });
+  await window.getByTestId("approval-session").click();
+  await window.getByTestId("approval-prompt").waitFor({ state: "detached" });
+  await window.getByTestId("composer-input").waitFor({ state: "visible", timeout: 20_000 });
+  await window.waitForFunction(() => !document.querySelector('[data-testid="stop-button"]'));
+
+  await window.getByTestId("composer-input").fill("再次运行需要审批的 git commit");
+  await window.getByTestId("send-button").click();
+  await window.getByTestId("approval-prompt").waitFor({ timeout: 10_000 });
+  await window.getByTestId("approval-deny").click();
+  await window.getByText("命令已拒绝", { exact: true }).waitFor({ timeout: 10_000 });
+  await window.getByTestId("approval-prompt").waitFor({ state: "detached" });
+  await window.screenshot({ path: join(outputDir, "04c-approval-denied.png") });
+
   await window.getByRole("button", { name: "上下文", exact: true }).click();
   await window.getByTestId("inspector").getByText("运行参数", { exact: true }).waitFor();
   await window.getByRole("button", { name: "运行", exact: true }).click();

@@ -1,5 +1,6 @@
 import type {
   Attachment,
+  ApprovalDecision,
   AgentInstructions,
   CleoClient,
   CreateThreadOptions,
@@ -110,6 +111,18 @@ export class IpcCleoClient implements CleoClient {
 
   async cancelRun(threadId: string): Promise<void> {
     await this.bridge.request("cancel_run", { thread_id: threadId });
+  }
+
+  async resolveApproval(
+    threadId: string,
+    approvalId: string,
+    decision: ApprovalDecision,
+  ): Promise<void> {
+    await this.bridge.request("resolve_approval", {
+      thread_id: threadId,
+      approval_id: approvalId,
+      decision,
+    });
   }
 
   async updateRuntime(

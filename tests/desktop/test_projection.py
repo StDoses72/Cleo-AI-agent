@@ -160,6 +160,48 @@ def test_live_plan_updates_share_an_id_and_orphaned_tools_are_closed() -> None:
     assert finalized[0]["item"]["status"] == "error"
 
 
+def test_live_approval_events_project_to_desktop_protocol() -> None:
+    request = stream_event_item(
+        AgentEvent(
+            provider="codex",
+            type="permission_request",
+            data={
+                "payload": {
+                    "id": "approval-1",
+                    "kind": "command",
+                    "availableDecisions": ["accept", "decline"],
+                }
+            },
+        ),
+        {},
+    )
+    response = stream_event_item(
+        AgentEvent(
+            provider="codex",
+            type="permission_response",
+            data={"payload": {"id": "approval-1", "decision": "accept"}},
+        ),
+        {},
+    )
+
+    assert request == [
+        {
+            "type": "approval-request",
+            "request": {
+                "id": "approval-1",
+                "kind": "command",
+                "availableDecisions": ["accept", "decline"],
+            },
+        }
+    ]
+    assert response == [
+        {
+            "type": "approval-resolved",
+            "response": {"id": "approval-1", "decision": "accept"},
+        }
+    ]
+
+
 def test_codex_commentary_is_replaced_by_thought_before_final_answer() -> None:
     state: dict[str, object] = {"run_id": "run-1"}
     streamed = stream_event_item(

@@ -2,6 +2,7 @@ import type {
   CleoClient,
   AgentInstructions,
   Attachment,
+  ApprovalDecision,
   CreateThreadOptions,
   ModelProfileInput,
   ModelSettings,
@@ -26,6 +27,8 @@ const delay = (milliseconds: number) =>
 const clone = <T,>(value: T): T => structuredClone(value);
 
 export class MockCleoClient implements CleoClient {
+  private readonly approvalResolvers = new Map<string, (decision: ApprovalDecision) => void>();
+
   async loadWorkspace(): Promise<WorkspaceSnapshot> {
     await delay(520);
     return clone(snapshot);
@@ -76,7 +79,7 @@ export class MockCleoClient implements CleoClient {
             model: options.model ?? "gpt-5.6-sol",
             effort: options.effort ?? "medium",
             access: "workspace-write",
-            approval: "auto_review",
+            approval: "user",
             editable: true,
           },
     };
@@ -130,6 +133,7 @@ export class MockCleoClient implements CleoClient {
   ): AsyncGenerator<StreamEvent> {
     const runId = `${threadId}-${Date.now()}`;
     const isFailureDemo = /失败|error|fail/i.test(prompt);
+    const needsApproval = /审批|approval|git commit/i.test(prompt);
 
     await delay(380);
     yield {
@@ -141,6 +145,48 @@ export class MockCleoClient implements CleoClient {
         status: "running",
       },
     };
+
+    if (needsApproval) {
+      const approvalId = `${runId}-approval`;
+      yield {
+        type: "approval-request",
+        request: {
+          id: approvalId,
+          kind: "command",
+          method: "item/commandExecution/requestApproval",
+          threadId,
+          turnId: runId,
+          itemId: `${runId}-tool`,
+          command: "git add README.md && git commit -m \"Document agent tool and model\"",
+          cwd: "D:\\Projects\\Cleo-AI-agent",
+          reason: "This command writes protected Git metadata on the current branch.",
+          availableDecisions: ["accept", "acceptForSession", "decline", "cancel"],
+          commandActions: [],
+          permissions: null,
+          grantRoot: null,
+          startedAtMs: Date.now(),
+        },
+      };
+      const decision = await new Promise<ApprovalDecision>((resolve) => {
+        this.approvalResolvers.set(approvalId, resolve);
+      });
+      this.approvalResolvers.delete(approvalId);
+      yield { type: "approval-resolved", response: { id: approvalId, decision } };
+      if (decision === "decline" || decision === "cancel") {
+        yield {
+          type: "upsert-item",
+          item: {
+            id: `${runId}-denied`,
+            type: "notice",
+            tone: "info",
+            title: "命令已拒绝",
+            detail: "Cleo 已收到你的决定，并停止了这次命令执行。",
+          },
+        };
+        yield { type: "done", summary: "命令已由用户拒绝" };
+        return;
+      }
+    }
 
     await delay(620);
     yield {
@@ -305,7 +351,20 @@ export class MockCleoClient implements CleoClient {
     yield { type: "done", summary: prompt.slice(0, 54) };
   }
 
-  async cancelRun(_threadId: string): Promise<void> {}
+  async cancelRun(_threadId: string): Promise<void> {
+    for (const resolve of this.approvalResolvers.values()) resolve("cancel");
+    this.approvalResolvers.clear();
+  }
+
+  async resolveApproval(
+    _threadId: string,
+    approvalId: string,
+    decision: ApprovalDecision,
+  ): Promise<void> {
+    const resolve = this.approvalResolvers.get(approvalId);
+    if (!resolve) throw new Error("This approval request is no longer pending.");
+    resolve(decision);
+  }
 
   async updateRuntime(
     _threadId: string,

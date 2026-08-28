@@ -299,6 +299,10 @@ export function App() {
           }}
           onThreadCommand={(command) => void workspace.sendPrompt(command)}
           commands={workspace.snapshot.backend?.commands[workspace.activeSpace === "chat" ? "chat" : "productivity"] ?? []}
+          approvalRequest={workspace.pendingApprovals[0] ?? null}
+          approvalPending={workspace.approvalPendingId !== null}
+          approvalError={workspace.approvalError}
+          onResolveApproval={(decision) => void workspace.resolveApproval(decision)}
         />
       )}
       {showInspector ? (
