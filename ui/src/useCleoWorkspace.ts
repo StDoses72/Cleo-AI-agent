@@ -505,6 +505,17 @@ export function useCleoWorkspace() {
     const refreshed = await cleoClient.loadWorkspace();
     setSnapshot(refreshed);
   };
+  const undoChanges = async () => {
+    if (!activeThread || activeThread.space !== "productivity") {
+      throw new Error("只有开发任务可以回退 Git 改动。");
+    }
+    if (runningThreadId === activeThread.id) {
+      throw new Error("任务正在运行，请先停止后再回退。");
+    }
+    const result = await cleoClient.undoChanges(activeThread.id);
+    setSnapshot(result.workspace);
+    return result;
+  };
   const restoreChatHistory = async () => {
     const refreshed = await cleoClient.restoreChatBackups();
     setSnapshot(refreshed);
@@ -656,6 +667,7 @@ export function useCleoWorkspace() {
     revealPath,
     openLocalPath,
     copyConfigTemplate,
+    undoChanges,
     resetWorkspace,
     restoreChatHistory,
     deleteThread,

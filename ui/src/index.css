@@ -983,7 +983,8 @@ kbd {
 .header-left,
 .header-actions,
 .breadcrumb,
-.branch-button {
+.branch-button,
+.undo-button {
   display: flex;
   min-width: 0;
   align-items: center;
@@ -1020,6 +1021,25 @@ kbd {
 .header-actions {
   flex: 0 0 auto;
   gap: 3px;
+}
+
+.undo-button {
+  height: 28px;
+  gap: 6px;
+  padding: 0 8px;
+  border-radius: 7px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.undo-button:hover:not(:disabled) {
+  color: var(--text-soft);
+  background: var(--surface-hover);
+}
+
+.undo-button:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 
 .thread-actions-wrap { position: relative; }

@@ -30,6 +30,7 @@ export function App() {
   const [deletingThread, setDeletingThread] = useState(false);
   const [projectPendingRemoval, setProjectPendingRemoval] = useState<Project | null>(null);
   const [removingProject, setRemovingProject] = useState(false);
+  const [undoingChanges, setUndoingChanges] = useState(false);
   const [memoryView, setMemoryView] = useState<MemoryViewMode>("all");
   const [theme, setTheme] = useState<"dark" | "light">(() =>
     localStorage.getItem("cleo-theme") === "light" ? "light" : "dark",
@@ -244,6 +245,7 @@ export function App() {
           runtimeModelsLoading={workspace.runtimeModelsLoading}
           runtimeModelsError={workspace.runtimeModelsError}
           running={workspace.runningThreadId !== null && workspace.runningThreadId === workspace.activeThreadId}
+          undoing={undoingChanges}
           sidebarCollapsed={sidebarCollapsed}
           inspectorOpen={showInspector}
           onToggleSidebar={() => setSidebarCollapsed((collapsed) => !collapsed)}
@@ -251,6 +253,24 @@ export function App() {
           onOpenCommand={() => setCommandOpen(true)}
           onSend={(prompt) => void workspace.sendPrompt(prompt)}
           onCancel={workspace.cancelRun}
+          onUndo={() => {
+            if (!workspace.activeProject?.branch) {
+              notify("当前工作目录不是 Git 仓库，无法回退。", "error");
+              return;
+            }
+            if (!window.confirm("将回退最近一次回答产生的文件改动，并保留回答前已有的改动。是否继续？")) return;
+            setUndoingChanges(true);
+            void workspace.undoChanges()
+              .then((result) => {
+                notify(result.restoredFiles > 0
+                  ? `已回退本次回答对 ${result.restoredFiles} 个文件的改动`
+                  : "最近一次回答没有产生文件改动");
+              })
+              .catch((error: unknown) => {
+                notify(error instanceof Error ? error.message : "无法回退 Git 改动", "error");
+              })
+              .finally(() => setUndoingChanges(false));
+          }}
           onSelectNonProductivityProfile={(profileId) => {
             void workspace.selectNonProductivityProfile(profileId).catch(
               (error: unknown) => notify(error instanceof Error ? error.message : "无法切换模型", "error"),

@@ -338,6 +338,11 @@ export interface WorkspaceSnapshot {
   };
 }
 
+export interface UndoChangesResult {
+  restoredFiles: number;
+  workspace: WorkspaceSnapshot;
+}
+
 export type StreamEvent =
   | { type: "upsert-item"; item: TimelineItem }
   | { type: "changes"; changes: ChangeFile[] }
@@ -378,5 +383,6 @@ export interface CleoClient {
     source: MemoryReviewSource,
     action: MemoryReviewAction,
   ): Promise<WorkspaceSnapshot>;
+  undoChanges(threadId: string): Promise<UndoChangesResult>;
   resetWorkspace(): Promise<void>;
 }

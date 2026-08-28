@@ -27,7 +27,14 @@ from cleo.desktop.projection import (
     timeline_from_events,
 )
 from cleo.harnesses.control import HarnessModel
-from cleo.integrations.git import inspect_git_status, read_git_diff
+from cleo.integrations.git import (
+    create_git_checkpoint,
+    discard_git_checkpoint,
+    finalize_git_checkpoint,
+    inspect_git_status,
+    read_git_diff,
+    undo_git_checkpoint,
+)
 from cleo.integrations.harnesses.claude import CLAUDE_EFFORTS
 from cleo.memory.compaction import load_events, load_validated_compact
 from cleo.memory.overview import build_memory_overview
@@ -196,6 +203,13 @@ class DesktopService:
             self._productivity_sessions.pop(thread_id, None)
         self._chat_agents.pop(thread_id, None)
         self._chat_agents_restored.discard(thread_id)
+        checkpoint = manifest.get("undo_checkpoint")
+        if isinstance(checkpoint, dict):
+            try:
+                await asyncio.to_thread(discard_git_checkpoint, checkpoint)
+            except (OSError, RuntimeError, ValueError):
+                # A stale private ref must not prevent deletion of the owning thread.
+                pass
         self.store.delete_session(thread_id)
         self.runtime.forget_thread(thread_id, str(manifest["space"]))
 
@@ -795,6 +809,29 @@ class DesktopService:
         )
         return {"reset": True}
 
+    async def undo_changes(self, *, thread_id: str) -> dict[str, Any]:
+        """Undo only the changes made by the latest productivity turn."""
+        manifest = self.store.load_manifest(thread_id)
+        if manifest["space"] != "productivity":
+            raise ValueError("只有开发任务可以回退 Git 改动。")
+        if thread_id in self._run_tasks:
+            raise ValueError("任务正在运行，请先停止后再回退。")
+        cwd = manifest.get("cwd")
+        if not cwd:
+            raise ValueError("当前任务没有工作目录，无法回退。")
+        if inspect_git_status(cwd) is None:
+            raise ValueError("当前工作目录不是 Git 仓库，无法回退。")
+        checkpoint = manifest.get("undo_checkpoint")
+        if not isinstance(checkpoint, dict):
+            raise ValueError("最近一次回答没有可回退的 Git 改动记录。")
+
+        result = await asyncio.to_thread(undo_git_checkpoint, checkpoint)
+        self.store.update_manifest(thread_id, undo_checkpoint=None)
+        return {
+            "restoredFiles": result.restored_count,
+            "workspace": await self.load_workspace(),
+        }
+
     async def shutdown(self) -> None:
         jobs = []
         for thread_id, agent in self._chat_agents.items():
@@ -870,6 +907,23 @@ class DesktopService:
         emit: Emit,
     ) -> None:
         await self._ensure_productivity_session(manifest)
+        checkpoint = None
+        previous_checkpoint = manifest.get("undo_checkpoint")
+        if isinstance(previous_checkpoint, dict):
+            try:
+                await asyncio.to_thread(discard_git_checkpoint, previous_checkpoint)
+            except (OSError, RuntimeError, ValueError):
+                # A stale private ref does not affect the working tree or the new turn.
+                pass
+        self.store.update_manifest(manifest["id"], undo_checkpoint=None)
+        try:
+            checkpoint = await asyncio.to_thread(
+                create_git_checkpoint,
+                manifest.get("cwd") or ".",
+                manifest["id"],
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            self._debug(f"Git checkpoint unavailable for {manifest['id']}: {exc}")
         if attachments:
             paths = [str(item.get("path") or "") for item in attachments if item.get("path")]
             if paths:
@@ -895,6 +949,20 @@ class DesktopService:
         finally:
             for projected in finalize_stream_tools(state):
                 await emit(projected)
+            if checkpoint is not None:
+                try:
+                    completed_checkpoint = await asyncio.to_thread(
+                        finalize_git_checkpoint,
+                        checkpoint,
+                    )
+                    self.store.update_manifest(
+                        manifest["id"],
+                        undo_checkpoint=completed_checkpoint.to_dict(),
+                    )
+                except (OSError, RuntimeError, ValueError) as exc:
+                    await asyncio.to_thread(discard_git_checkpoint, checkpoint)
+                    self.store.update_manifest(manifest["id"], undo_checkpoint=None)
+                    self._debug(f"Git checkpoint finalization failed for {manifest['id']}: {exc}")
         if result.response and not state.get("assistant"):
             await emit(
                 {

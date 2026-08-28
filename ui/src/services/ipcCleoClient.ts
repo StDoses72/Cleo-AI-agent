@@ -14,6 +14,7 @@ import type {
   StreamEvent,
   Thread,
   ThreadSpace,
+  UndoChangesResult,
   WorkspaceSnapshot,
 } from "../types";
 
@@ -194,6 +195,10 @@ export class IpcCleoClient implements CleoClient {
       session_id: source.session_id,
       action,
     });
+  }
+
+  undoChanges(threadId: string): Promise<UndoChangesResult> {
+    return this.bridge.request("undo_changes", { thread_id: threadId });
   }
 
   async resetWorkspace(): Promise<void> {

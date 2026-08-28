@@ -29,6 +29,7 @@ import {
   Paperclip,
   PanelLeftClose,
   PanelRightClose,
+  RotateCcw,
   Sparkles,
   Square,
   Terminal,
@@ -56,6 +57,7 @@ interface ConversationProps {
   runtimeModelsLoading: string | null;
   runtimeModelsError: string | null;
   running: boolean;
+  undoing: boolean;
   sidebarCollapsed: boolean;
   inspectorOpen: boolean;
   onToggleSidebar: () => void;
@@ -63,6 +65,7 @@ interface ConversationProps {
   onOpenCommand: () => void;
   onSend: (prompt: string) => void;
   onCancel: () => void;
+  onUndo: () => void;
   onSelectNonProductivityProfile: (profileId: string) => void;
   onLoadProductivityModels: (provider: string) => Promise<ProductivityModelCatalog>;
   onSelectProductivityRuntime: (provider: string, model: string) => void;
@@ -95,6 +98,7 @@ export function Conversation({
   runtimeModelsLoading,
   runtimeModelsError,
   running,
+  undoing,
   sidebarCollapsed,
   inspectorOpen,
   onToggleSidebar,
@@ -102,6 +106,7 @@ export function Conversation({
   onOpenCommand,
   onSend,
   onCancel,
+  onUndo,
   onSelectNonProductivityProfile,
   onLoadProductivityModels,
   onSelectProductivityRuntime,
@@ -153,12 +158,16 @@ export function Conversation({
       <ConversationHeader
         thread={thread}
         project={project}
+        space={space}
+        running={running}
+        undoing={undoing}
         sidebarCollapsed={sidebarCollapsed}
         inspectorOpen={inspectorOpen}
         onToggleSidebar={onToggleSidebar}
         onToggleInspector={onToggleInspector}
         onOpenCommand={onOpenCommand}
         onShowRun={onShowRun}
+        onUndo={onUndo}
         onRevealPath={onRevealPath}
         onThreadCommand={onThreadCommand}
       />
@@ -215,24 +224,32 @@ export function Conversation({
 function ConversationHeader({
   thread,
   project,
+  space,
+  running,
+  undoing,
   sidebarCollapsed,
   inspectorOpen,
   onToggleSidebar,
   onToggleInspector,
   onOpenCommand,
   onShowRun,
+  onUndo,
   onRevealPath,
   onThreadCommand,
 }: Pick<
   ConversationProps,
   | "thread"
   | "project"
+  | "space"
+  | "running"
+  | "undoing"
   | "sidebarCollapsed"
   | "inspectorOpen"
   | "onToggleSidebar"
   | "onToggleInspector"
   | "onOpenCommand"
   | "onShowRun"
+  | "onUndo"
   | "onRevealPath"
   | "onThreadCommand"
 >) {
@@ -260,6 +277,19 @@ function ConversationHeader({
         </div>
       </div>
       <div className="header-actions">
+        {space === "productivity" ? (
+          <button
+            className="undo-button"
+            type="button"
+            disabled={!thread || running || undoing}
+            aria-label="回退 Git 改动"
+            title="回退最近一次回答产生的 Git 改动"
+            onClick={onUndo}
+          >
+            <RotateCcw className={undoing ? "spin" : ""} size={14} />
+            <span>{undoing ? "回退中" : "Undo"}</span>
+          </button>
+        ) : null}
         {project?.branch ? (
           <button className="branch-button" type="button" onClick={() => onRevealPath(project.path)}> 
             <GitBranch size={14} />

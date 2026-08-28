@@ -15,6 +15,7 @@ import type {
   Thread,
   ThreadSpace,
   TimelineItem,
+  UndoChangesResult,
   WorkspaceSnapshot,
 } from "../types";
 import { snapshot, uiChanges } from "./mockData";
@@ -470,6 +471,19 @@ export class MockCleoClient implements CleoClient {
     snapshot.memoryOverview.dream_agent.status = snapshot.memoryOverview.dream_agent.failed_count ? "attention" : "idle";
     snapshot.memoryOverview.dream_agent.last_processed_at = new Date().toISOString();
     return clone(snapshot);
+  }
+
+  async undoChanges(threadId: string): Promise<UndoChangesResult> {
+    await delay(220);
+    const thread = snapshot.threads.find((candidate) => candidate.id === threadId);
+    if (!thread || thread.space !== "productivity") {
+      throw new Error("只有开发任务可以回退 Git 改动。");
+    }
+    const restoredFiles = thread.changes.length;
+    thread.changes = [];
+    const project = snapshot.projects.find((candidate) => candidate.id === thread.projectId);
+    if (project) project.dirtyFiles = 0;
+    return { restoredFiles, workspace: clone(snapshot) };
   }
 
   async resetWorkspace(): Promise<void> {}

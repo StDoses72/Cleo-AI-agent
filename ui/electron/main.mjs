@@ -45,6 +45,7 @@ const allowedMethods = new Set([
   "save_agent_instructions",
   "get_memory_review_details",
   "review_memory_source",
+  "undo_changes",
   "reset_workspace",
 ]);
 
