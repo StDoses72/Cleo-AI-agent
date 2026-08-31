@@ -194,19 +194,51 @@ class AgentAdapter:
         stored_handle = (stored or {}).get("id")
         if stored_handle in self._sessions:
             raise ValueError(f"Session {stored_handle} is already active.")
+        saved_options = self._saved_session_options(stored_handle)
+        selected_model = model
+        if selected_model is None and saved_options is not None:
+            selected_model = saved_options.model
         session = await implementation.resume_session(
             self._required_text(native_session_id, "native_session_id"),
             resolved_path,
-            model,
+            selected_model,
         )
-        return self._add_route(
+        restored = self._add_route(
             implementation,
             session.id,
             resolved_path,
             session.native_id,
             project=project or (stored or {}).get("project"),
             handle=(stored or {}).get("id"),
+            persist_runtime_options=saved_options is None,
         )
+        if saved_options is None:
+            return restored
+
+        update_options = getattr(implementation, "update_session_options", None)
+        if not callable(update_options):
+            return restored
+        desired = SessionOptions(
+            model=selected_model,
+            effort=saved_options.effort,
+            approval_mode=saved_options.approval_mode,
+            sandbox=saved_options.sandbox,
+        )
+        try:
+            options = await update_options(
+                session.id,
+                model=desired.model,
+                effort=desired.effort,
+                approval_mode=desired.approval_mode,
+                sandbox=desired.sandbox,
+            )
+        except Exception:
+            self._sessions.pop(restored.id, None)
+            await implementation.close(session.id)
+            raise
+        if isinstance(options, SessionOptions):
+            self._store.update_manifest(restored.id, runtime_options=options.as_dict())
+        return restored
 
     async def prompt(
         self,
@@ -599,6 +631,7 @@ class AgentAdapter:
         project: str | None = None,
         handle: str | None = None,
         parent_session_id: str | None = None,
+        persist_runtime_options: bool = True,
     ) -> AgentSession:
         handle = handle or f"agent_{secrets.token_hex(6)}"
         project = project or Path(project_path).name
@@ -630,7 +663,7 @@ class AgentAdapter:
                 cwd=project_path,
             )
         options_method = getattr(provider, "session_options", None)
-        if callable(options_method):
+        if persist_runtime_options and callable(options_method):
             options = options_method(provider_session_id)
             if isinstance(options, SessionOptions):
                 self._store.update_manifest(handle, runtime_options=options.as_dict())
@@ -641,6 +674,28 @@ class AgentAdapter:
             native_session_id=native_session_id,
             space=self._space,
             project=project,
+        )
+
+    def _saved_session_options(self, handle: Any) -> SessionOptions | None:
+        if not isinstance(handle, str) or not handle:
+            return None
+        try:
+            manifest = self._store.load_manifest(handle)
+        except FileNotFoundError:
+            return None
+        raw = manifest.get("runtime_options")
+        if not isinstance(raw, dict):
+            return None
+
+        def optional_text(key: str) -> str | None:
+            value = raw.get(key)
+            return str(value) if value is not None else None
+
+        return SessionOptions(
+            model=optional_text("model"),
+            effort=optional_text("effort"),
+            approval_mode=optional_text("approval_mode"),
+            sandbox=optional_text("sandbox"),
         )
 
     @staticmethod

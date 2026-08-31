@@ -312,6 +312,87 @@ def test_agent_adapter_can_resume_native_session(tmp_path) -> None:
     asyncio.run(exercise())
 
 
+def test_agent_adapter_restores_saved_runtime_options(tmp_path) -> None:
+    class StatefulProvider(FakeProvider):
+        name = "stateful"
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.options: dict[str, SessionOptions] = {}
+            self.resumed_model: str | None = None
+
+        async def create_session(self, project_path, model=None):
+            self.options["stateful-session"] = SessionOptions(
+                model=model,
+                effort="medium",
+                approval_mode="auto_review",
+                sandbox="workspace-write",
+            )
+            return ProviderSession(id="stateful-session", native_id="stateful-native")
+
+        async def resume_session(self, native_session_id, project_path, model=None):
+            self.resumed_model = model
+            self.options["stateful-resumed"] = SessionOptions(
+                model=model,
+                effort="low",
+                approval_mode="auto_review",
+                sandbox="workspace-write",
+            )
+            return ProviderSession(id="stateful-resumed", native_id=native_session_id)
+
+        def session_options(self, session_id):
+            return self.options[session_id]
+
+        async def update_session_options(self, session_id, **changes):
+            current = self.options[session_id]
+            self.options[session_id] = SessionOptions(
+                model=changes.get("model") or current.model,
+                effort=changes.get("effort") or current.effort,
+                approval_mode=changes.get("approval_mode") or current.approval_mode,
+                sandbox=changes.get("sandbox") or current.sandbox,
+            )
+            return self.options[session_id]
+
+    first_provider = StatefulProvider()
+    first = AgentAdapter(tmp_path)
+    first.register(first_provider)
+
+    async def create_and_select() -> str:
+        session = await first.create_session("stateful", model="model-a")
+        await first.update_session_options(
+            session.id,
+            model="model-b",
+            effort="xhigh",
+            approval_mode="user",
+            sandbox="full-access",
+        )
+        return session.id
+
+    handle = asyncio.run(create_and_select())
+    second_provider = StatefulProvider()
+    second = AgentAdapter(tmp_path, session_store=first._store)
+    second.register(second_provider)
+
+    resumed = asyncio.run(second.resume_session("stateful", "stateful-native"))
+
+    assert resumed.id == handle
+    assert resumed.provider == "stateful"
+    assert second_provider.resumed_model == "model-b"
+    assert second_provider.session_options("stateful-resumed") == SessionOptions(
+        model="model-b",
+        effort="xhigh",
+        approval_mode="user",
+        sandbox="full-access",
+    )
+    assert second._store.load_manifest(handle)["runtime_options"] == {
+        "model": "model-b",
+        "effort": "xhigh",
+        "approval_mode": "user",
+        "sandbox": "full-access",
+    }
+    assert second._store.load_manifest(handle)["provider"] == "stateful"
+
+
 def test_acp_host_streams_events_and_scopes_file_access(tmp_path) -> None:
     host = _AcpClientHost("native-acp", str(tmp_path), auto_approve=False)
     received: list[AgentEvent] = []

@@ -257,6 +257,11 @@ notification 实时输出到终端。productivity 内的 `/resume` 使用相同�
 查询工作目录，`/cd` 创建绑定到目标目录的新 session。`--cwd` 控制 harness 工作目录，
 `--project` 只控制 Cleo 的 memory scope。
 
+每个 managed productivity thread 在 manifest 顶层保存 provider/harness，并在
+`runtime_options` 中保存 model、reasoning effort、sandbox 与 approval mode。恢复 native
+session 时，`AgentAdapter` 会把这些选项重新应用到 provider runtime；只有用户显式修改
+运行参数时才更新该 thread 的已保存档位。
+
 Codex 的 `thread/tokenUsage/updated` 会归一化为 `status` event，同时驱动 CLI context
 状态栏；展示值来自 SDK 的 `totalTokens` 与 `modelContextWindow`。第二条状态栏显示当前
 reasoning effort、sandbox、approval mode 与 Cleo 只读计算的 Git branch/dirty count。

@@ -255,6 +255,11 @@ directory and `/cd` creates a new session bound to the target directory. `--cwd`
 controls the harness working directory; `--project` controls only Cleo's memory
 scope.
 
+Each managed productivity thread stores its provider/harness on the manifest and
+its model, reasoning effort, sandbox, and approval behavior in `runtime_options`.
+When a native session is resumed, `AgentAdapter` reapplies those values to the
+provider runtime; the saved settings change only after an explicit user update.
+
 Codex `thread/tokenUsage/updated` notifications are normalized as `status` events
 and drive the CLI context bar using the SDK's `totalTokens` and
 `modelContextWindow` values. A second status bar shows reasoning effort, sandbox,
