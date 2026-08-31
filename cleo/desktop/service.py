@@ -45,6 +45,7 @@ from cleo.memory.state import (
     get_session_source,
     mark_consolidation_failed,
     mark_consolidation_skipped,
+    mark_consolidation_started,
 )
 from cleo.runtime.usage import ContextWindowUsage
 
@@ -90,6 +91,13 @@ PRODUCTIVITY_COMMANDS = (
     "/back",
     "/quit",
 )
+
+
+def _create_default_dream_agent():
+    """Import and construct DreamAgent outside the desktop event-loop thread."""
+    from cleo.agents.dream import DreamAgent
+
+    return DreamAgent()
 
 
 class DesktopService:
@@ -403,23 +411,29 @@ class DesktopService:
                 path=state_path,
             )
         else:
-            if self._dream_agent_factory is None:
-                from cleo.agents.dream import DreamAgent
-
-                dream_agent = DreamAgent()
-            else:
-                dream_agent = self._dream_agent_factory()
+            mark_consolidation_started(
+                space,
+                project,
+                session_id,
+                str(source["source_hash"]),
+                phase="initializing",
+                path=state_path,
+            )
             try:
+                factory = self._dream_agent_factory or _create_default_dream_agent
+                dream_agent = await asyncio.to_thread(factory)
                 await dream_agent.invoke(space=space, project=project, session_id=session_id)
             except Exception as exc:
-                mark_consolidation_failed(
-                    space,
-                    project,
-                    session_id,
-                    str(source["source_hash"]),
-                    str(exc),
-                    path=state_path,
-                )
+                current = get_session_source(space, project, session_id, path=state_path)
+                if current is None or current.get("status") != "failed":
+                    mark_consolidation_failed(
+                        space,
+                        project,
+                        session_id,
+                        str(source["source_hash"]),
+                        str(exc),
+                        path=state_path,
+                    )
                 raise
 
         return await self.load_workspace()

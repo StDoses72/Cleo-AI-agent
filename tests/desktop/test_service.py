@@ -1,6 +1,7 @@
 import asyncio
 import base64
 from pathlib import Path
+from threading import Event, Timer
 from types import SimpleNamespace
 
 import pytest
@@ -992,5 +993,111 @@ def test_review_memory_source_can_run_dream_agent(tmp_path: Path) -> None:
             }
         ]
         assert snapshot["memoryOverview"]["review_sources"] == []
+
+    asyncio.run(scenario())
+
+
+def test_review_memory_source_constructs_dream_agent_off_the_event_loop(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        service = _service(tmp_path)
+        state_path = memory_state_path(service.settings.MEMORY_DIR, "productivity")
+        touch_session_source(
+            space="productivity",
+            project="workspace",
+            session_id="session-slow-constructor",
+            source_hash="hash-slow-constructor",
+            last_event_seq=3,
+            path=state_path,
+        )
+        constructor_started = Event()
+        release_constructor = Event()
+
+        class FakeDreamAgent:
+            async def invoke(self, **_kwargs):
+                reason = "Test DreamAgent completed the review."
+                mark_consolidation_skipped(
+                    "productivity",
+                    "workspace",
+                    "session-slow-constructor",
+                    "hash-slow-constructor",
+                    reason=reason,
+                    gate_result={"provider": "test", "decision": "skip"},
+                    path=state_path,
+                )
+
+        def slow_factory():
+            constructor_started.set()
+            release_constructor.wait(timeout=1)
+            return FakeDreamAgent()
+
+        service._dream_agent_factory = slow_factory
+        safety_release = Timer(1, release_constructor.set)
+        safety_release.start()
+        review_task = asyncio.create_task(
+            service.review_memory_source(
+                space="productivity",
+                project="workspace",
+                session_id="session-slow-constructor",
+                action="consolidate",
+            )
+        )
+        while not constructor_started.is_set():
+            await asyncio.sleep(0)
+
+        released_before_observation = release_constructor.is_set()
+        source = get_session_source(
+            "productivity",
+            "workspace",
+            "session-slow-constructor",
+            path=state_path,
+        )
+        release_constructor.set()
+        safety_release.cancel()
+        await review_task
+
+        assert not released_before_observation
+        assert source is not None
+        assert source["status"] == "running"
+        assert source["processing_phase"] == "initializing"
+
+    asyncio.run(scenario())
+
+
+def test_review_memory_source_records_constructor_failures(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        service = _service(tmp_path)
+        state_path = memory_state_path(service.settings.MEMORY_DIR, "productivity")
+        touch_session_source(
+            space="productivity",
+            project="workspace",
+            session_id="session-constructor-failure",
+            source_hash="hash-constructor-failure",
+            last_event_seq=2,
+            path=state_path,
+        )
+
+        def failing_factory():
+            raise RuntimeError("DreamAgent import failed")
+
+        service._dream_agent_factory = failing_factory
+        with pytest.raises(RuntimeError, match="DreamAgent import failed"):
+            await service.review_memory_source(
+                space="productivity",
+                project="workspace",
+                session_id="session-constructor-failure",
+                action="consolidate",
+            )
+
+        source = get_session_source(
+            "productivity",
+            "workspace",
+            "session-constructor-failure",
+            path=state_path,
+        )
+        assert source is not None
+        assert source["status"] == "failed"
+        assert source["processing_phase"] == "initializing"
+        assert source["failure_count"] == 1
+        assert source["last_error"] == "DreamAgent import failed"
 
     asyncio.run(scenario())

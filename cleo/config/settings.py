@@ -189,6 +189,7 @@ class MemoryGateSettings(BaseModel):
     enabled: bool = True
     model: str = Field(default=DEFAULT_MEMORY_GATE_MODEL, min_length=1)
     local_files_only: bool = False
+    timeout_seconds: float = Field(default=30.0, gt=0, le=600)
     minimum_similarity: float = Field(default=0.42, ge=-1, le=1)
     run_margin: float = Field(default=0.08, ge=0, le=2)
     skip_margin: float = Field(default=0.10, ge=0, le=2)

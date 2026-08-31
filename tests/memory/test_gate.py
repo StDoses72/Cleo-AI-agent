@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+from threading import Event, Timer
 from typing import Any
 
 from cleo.config.settings import MemoryGateSettings
@@ -83,3 +85,30 @@ def test_prefetch_downloads_and_warms_up_the_model(monkeypatch) -> None:
     result = gate.prefetch_memory_gate_model("fake-model")
 
     assert result == {"model": "fake-model", "embedding_dimension": 2}
+
+
+def test_async_gate_timeout_fails_open_without_blocking_the_event_loop(monkeypatch) -> None:
+    release = Event()
+
+    def blocked_gate(*_args: Any) -> gate.MemoryGateResult:
+        release.wait(timeout=0.5)
+        return gate.MemoryGateResult(
+            decision="run",
+            reason="late result",
+            model="fake-model",
+            message_count=1,
+        )
+
+    monkeypatch.setattr(gate, "evaluate_memory_gate", blocked_gate)
+    config = _config().model_copy(update={"timeout_seconds": 0.01})
+    safety_release = Timer(1, release.set)
+    safety_release.start()
+
+    result = asyncio.run(gate.evaluate_memory_gate_async(_payload("thanks"), config))
+    released_before_return = release.is_set()
+    release.set()
+    safety_release.cancel()
+
+    assert not released_before_return
+    assert result.decision == "uncertain"
+    assert "timed out" in result.reason
