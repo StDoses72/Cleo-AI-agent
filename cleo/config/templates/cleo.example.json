@@ -87,6 +87,7 @@
 		"enabled": true,
 		"model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
 		"local_files_only": false,
+		"timeout_seconds": 30,
 		"minimum_similarity": 0.42,
 		"run_margin": 0.08,
 		"skip_margin": 0.1,

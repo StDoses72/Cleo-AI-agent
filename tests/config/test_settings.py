@@ -93,6 +93,7 @@ def test_memory_gate_has_safe_multilingual_defaults() -> None:
 
     assert settings.memory_gate.enabled is True
     assert "multilingual" in settings.memory_gate.model
+    assert settings.memory_gate.timeout_seconds == 30
     assert settings.memory_gate.skip_margin > settings.memory_gate.run_margin
     assert any("用户" in item for item in settings.memory_gate.positive_prototypes)
 

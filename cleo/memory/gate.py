@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import asdict, dataclass
 from functools import lru_cache
+from threading import Thread
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
@@ -174,3 +176,53 @@ def evaluate_memory_gate(
         margin=round(selected[2], 6),
         message_count=len(messages),
     )
+
+
+async def evaluate_memory_gate_async(
+    payload: dict[str, Any],
+    config: MemoryGateSettings,
+) -> MemoryGateResult:
+    """Run the optional local gate without blocking the caller's event loop.
+
+    SentenceTransformer imports and model initialization can be slow on Windows.
+    The work therefore runs on a daemon thread. A timeout fails open so memory
+    consolidation can continue while the model finishes warming in the
+    background, and the daemon cannot prevent a detached worker from exiting.
+    """
+    if not config.enabled:
+        return evaluate_memory_gate(payload, config)
+
+    loop = asyncio.get_running_loop()
+    result_future: asyncio.Future[MemoryGateResult] = loop.create_future()
+
+    def evaluate() -> None:
+        result = evaluate_memory_gate(payload, config)
+        try:
+            loop.call_soon_threadsafe(_complete_gate_future, result_future, result)
+        except RuntimeError:
+            # The owning loop may close after a timeout in a detached worker.
+            pass
+
+    Thread(target=evaluate, name="cleo-memory-gate", daemon=True).start()
+    try:
+        return await asyncio.wait_for(result_future, timeout=config.timeout_seconds)
+    except TimeoutError:
+        messages = user_messages_from_compact(
+            payload,
+            max_messages=config.max_messages,
+            max_characters_per_message=config.max_characters_per_message,
+        )
+        return MemoryGateResult(
+            decision="uncertain",
+            reason=f"memory gate timed out after {config.timeout_seconds:g} seconds",
+            model=config.model,
+            message_count=len(messages),
+        )
+
+
+def _complete_gate_future(
+    future: asyncio.Future[MemoryGateResult],
+    result: MemoryGateResult,
+) -> None:
+    if not future.done():
+        future.set_result(result)

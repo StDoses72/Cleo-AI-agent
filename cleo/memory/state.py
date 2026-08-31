@@ -158,6 +158,7 @@ def touch_session_source(
                 "processed_hash": None,
                 "processing_decision": None,
                 "processing_reason": None,
+                "processing_phase": None,
                 "status": "pending",
                 "failure_count": 0,
                 "last_error": None,
@@ -175,6 +176,7 @@ def touch_session_source(
             entry["status"] = "pending"
             entry["processing_decision"] = None
             entry["processing_reason"] = None
+            entry["processing_phase"] = None
             entry["gate_result"] = None
             entry["last_error"] = None
             entry["last_updated_at"] = now
@@ -302,6 +304,7 @@ def mark_consolidation_skipped(
         entry["processed_version"] = int(entry.get("source_version", 0))
         entry["processing_decision"] = "skipped"
         entry["processing_reason"] = reason.strip()
+        entry["processing_phase"] = "complete"
         entry["gate_result"] = dict(gate_result)
         entry["status"] = "skipped"
         entry["last_processed_at"] = now
@@ -316,6 +319,7 @@ def mark_consolidation_started(
     session_id: str,
     source_hash: str,
     *,
+    phase: str = "consolidating",
     gate_result: dict[str, Any] | None = None,
     path: Path | None = None,
 ) -> dict[str, Any]:
@@ -341,10 +345,39 @@ def mark_consolidation_started(
         if entry is None or entry.get("source_hash") != source_hash:
             raise ValueError("memory source changed before consolidation started")
         entry["status"] = "running"
+        entry["processing_phase"] = phase.strip() or "consolidating"
         if gate_result is not None:
             entry["gate_result"] = dict(gate_result)
         entry["last_started_at"] = _now_iso()
         entry["last_error"] = None
+        _save_unlocked(state_path, state)
+        return dict(entry)
+
+
+def mark_consolidation_phase(
+    space: str,
+    project: str,
+    session_id: str,
+    source_hash: str,
+    *,
+    phase: str,
+    gate_result: dict[str, Any] | None = None,
+    path: Path | None = None,
+) -> dict[str, Any]:
+    """Update the observable stage of an in-progress consolidation."""
+    if not phase.strip():
+        raise ValueError("a consolidation phase must be non-empty")
+    state_path = _state_path(space, path)
+    with _STATE_LOCK:
+        state = _load_unlocked(state_path)
+        entry = state["sources"].get(_source_id(space, project, session_id))
+        if entry is None or entry.get("source_hash") != source_hash:
+            raise ValueError("memory source changed before consolidation phase update")
+        entry["status"] = "running"
+        entry["processing_phase"] = phase.strip()
+        if gate_result is not None:
+            entry["gate_result"] = dict(gate_result)
+        entry["last_phase_at"] = _now_iso()
         _save_unlocked(state_path, state)
         return dict(entry)
 
@@ -438,6 +471,7 @@ def mark_consolidated(
         entry["processed_version"] = int(entry.get("source_version", 0))
         entry["processing_decision"] = "consolidated"
         entry["processing_reason"] = None
+        entry["processing_phase"] = "complete"
         entry["status"] = "complete"
         entry["failure_count"] = 0
         entry["last_error"] = None

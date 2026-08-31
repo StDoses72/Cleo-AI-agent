@@ -60,17 +60,16 @@ def test_dream_agent_gate_skips_without_invoking_the_llm(tmp_path, monkeypatch) 
     fake_settings = SimpleNamespace(MEMORY_DIR=memory_root, memory_gate=object())
     monkeypatch.setattr(dream_module, "settings", fake_settings)
     monkeypatch.setattr(state_module, "settings", fake_settings)
-    monkeypatch.setattr(
-        dream_module,
-        "evaluate_memory_gate",
-        lambda *_args: MemoryGateResult(
+    async def skip_gate(*_args):
+        return MemoryGateResult(
             decision="skip",
             reason="transient acknowledgement",
             model="fake-model",
             negative_score=0.9,
             message_count=1,
-        ),
-    )
+        )
+
+    monkeypatch.setattr(dream_module, "evaluate_memory_gate_async", skip_gate)
     agent = object.__new__(dream_module.DreamAgent)
 
     result = asyncio.run(
@@ -91,3 +90,58 @@ def test_dream_agent_gate_skips_without_invoking_the_llm(tmp_path, monkeypatch) 
     assert source is not None
     assert source["processed_hash"] == source["source_hash"]
     assert source["consolidated_hash"] is None
+
+
+def test_dream_agent_uncertain_gate_continues_to_llm(tmp_path, monkeypatch) -> None:
+    memory_root = tmp_path / "memory"
+    store = SessionStore(memory_root, memory_root / "sessions.sqlite3")
+    store.sync_langchain_messages(
+        session_id="session-timeout",
+        space="productivity",
+        project="cleo",
+        messages=[HumanMessage(content="Remember this decision", id="human-1")],
+        status="completed",
+    )
+    fake_settings = SimpleNamespace(MEMORY_DIR=memory_root, memory_gate=object())
+    monkeypatch.setattr(dream_module, "settings", fake_settings)
+    monkeypatch.setattr(state_module, "settings", fake_settings)
+
+    async def uncertain_gate(*_args):
+        return MemoryGateResult(
+            decision="uncertain",
+            reason="memory gate timed out after 30 seconds",
+            model="fake-model",
+            message_count=1,
+        )
+
+    observed_phases = []
+
+    class FakeGraph:
+        async def ainvoke(self, *_args, **_kwargs):
+            source = get_session_source("productivity", "cleo", "session-timeout")
+            assert source is not None
+            observed_phases.append(source["processing_phase"])
+            state_module.mark_consolidated(
+                "productivity",
+                "cleo",
+                "session-timeout",
+                source["source_hash"],
+                durable_memory_count=0,
+                no_durable_memory_reason="No durable information in this test source.",
+            )
+            return {"status": "done"}
+
+    monkeypatch.setattr(dream_module, "evaluate_memory_gate_async", uncertain_gate)
+    agent = object.__new__(dream_module.DreamAgent)
+    agent.dreamagent = FakeGraph()
+
+    result = asyncio.run(
+        agent.invoke(
+            session_id="session-timeout",
+            project="cleo",
+            space="productivity",
+        )
+    )
+
+    assert result == {"status": "done"}
+    assert observed_phases == ["llm"]

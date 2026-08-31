@@ -168,6 +168,6 @@ docker compose run --rm cleo "总结当前工作区"
 
 ### 首次记忆整理较慢
 
-本地 memory gate 可能首次下载 Sentence Transformer 模型。模型不可用时 gate 会 fail-open，让 DreamAgent 继续处理，而不会把下载失败误判为“不需要记忆”。
+本地 memory gate 可能首次下载 Sentence Transformer 模型。初始化和推理不会阻塞桌面协议服务；模型不可用或超过配置的超时时间时 gate 会 fail-open，让 DreamAgent 继续处理，而不会把失败误判为“不需要记忆”。
 
 下一步：阅读[配置与安全边界](CONFIGURATION.md)或[架构说明](ARCHITECTURE.md)。
