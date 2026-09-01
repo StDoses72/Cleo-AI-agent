@@ -2849,30 +2849,6 @@ select.text-control:hover {
 .memory-overview strong { color: var(--text); font-size: 17px; font-weight: 600; letter-spacing: -0.03em; }
 .memory-overview small { color: var(--muted); font-size: 9px; }
 
-.memory-model-line {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.memory-model-icon {
-  display: grid;
-  width: 30px;
-  height: 30px;
-  flex: 0 0 auto;
-  place-items: center;
-  border-radius: 8px;
-  color: var(--purple);
-  background: color-mix(in srgb, var(--purple) 10%, transparent);
-}
-
-.memory-model-line > div { display: flex; flex: 0 0 auto; flex-direction: column; gap: 3px; }
-.memory-model-line > div small { color: var(--muted-2); font-size: 7.5px; font-weight: 700; letter-spacing: .09em; }
-.memory-model-line > div strong { color: var(--text-soft); font-size: 9.5px; font-weight: 600; }
-.memory-model-line code { min-width: 0; overflow: hidden; flex: 1; color: var(--muted); font-family: "SFMono-Regular", Consolas, monospace; font-size: 8.5px; text-overflow: ellipsis; white-space: nowrap; }
 .status-muted { color: var(--muted-2); font-size: 9px; }
 
 .memory-project-filter {
@@ -3226,9 +3202,6 @@ select.text-control:hover {
 .status-good { color: var(--text-soft); font-size: 9.5px; }
 .status-good { color: var(--success); }
 .settings-control select { min-width: 150px; height: 31px; padding: 0 8px; border: 1px solid var(--border); border-radius: 7px; outline: 0; color: var(--text-soft); background: var(--surface); font-size: 9.5px; }
-.memory-model-setting { display: flex; width: 280px; align-items: flex-end; flex-direction: column; gap: 5px; text-align: right; }
-.memory-model-setting span { color: var(--text-soft); font-size: 9px; }
-.memory-model-setting code { max-width: 100%; color: var(--muted); font-family: "SFMono-Regular", Consolas, monospace; font-size: 8px; overflow-wrap: anywhere; }
 .theme-options { display: flex; gap: 7px; }
 .theme-options > button { position: relative; display: grid; width: 78px; grid-template-columns: 32px 1fr; align-items: center; gap: 7px; padding: 5px; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); font-size: 9px; text-align: left; }
 .theme-options > button.active { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); color: var(--text-soft); }

@@ -280,9 +280,6 @@ Cleo handle ↔ native thread ID 映射。已完成内容只留在 SessionStore�
 ```text
 validated compact
   → space/project/session/source hash 校验
-  → Sentence Transformer 对比 durable/transient prototypes
-      → 明确 transient：记录 processed_hash + skipped，不启动 DreamAgent
-      → durable 或不确定：继续 DreamAgent（fail-open）
   → DreamAgent 读取同 scope 的项目记忆与全局 PERSONA.md
   → atomic memory + evidence_event_ids
   → 可选写入 project-independent persona trait + evidence
@@ -300,9 +297,9 @@ DreamAgent 使用 `active_profiles.dream_agent` 独立选择 `profiles.agents` �
 自动 consolidation 不会修改 `AGENTS.md`，也不会创建或更新 skill。人格层只能描述
 交流、表达、关系连续性、适应方式和互动边界；不能包含项目事实、权限、政策或工具指令。
 
-gate 只读取 validated compact 中有界的 human text，并在实际 consolidation 进程中懒加载模型。
-`processed_hash` 表示该 source 已经完成 gate/整理流程；`consolidated_hash` 只表示确实进入过
-项目记忆协议，因此被 gate 跳过的 thread 仍可按未 consolidation 的规则迁移 project。
+用户确认整理后，DreamAgent 直接处理 validated compact；手动忽略则只记录 `processed_hash`
+和 skipped 状态。`consolidated_hash` 只表示 source 已完成项目记忆协议，因此被手动忽略的
+thread 仍可按未 consolidation 的规则迁移 project。
 
 ## Runtime State
 

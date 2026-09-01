@@ -64,7 +64,6 @@ try {
 
   await window.getByRole("button", { name: "记忆", exact: true }).click();
   await window.getByTestId("memory-view").waitFor();
-  await window.getByText("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2").waitFor();
   await window.getByTestId("memory-nav-projects").click();
   await window.getByRole("heading", { name: "项目记忆", exact: true }).waitFor();
   await window.getByRole("button", { name: /Cleo-AI-agent/ }).click();
@@ -254,8 +253,7 @@ try {
   await window.getByRole("button", { name: /雾白/ }).click();
   await window.screenshot({ path: join(outputDir, "06-settings-light.png") });
   await window.getByRole("button", { name: "数据与记忆", exact: true }).click();
-  await window.getByText("memory_gate.model", { exact: false }).waitFor();
-  await window.getByText("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2").waitFor();
+  await window.getByText("thread 完成后在后台整理可持久化知识。", { exact: true }).waitFor();
   await window.screenshot({ path: join(outputDir, "06b-settings-memory.png") });
   await window.getByRole("button", { name: "模型", exact: true }).click();
   await window.getByLabel("模型名称").waitFor();

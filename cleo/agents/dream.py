@@ -18,13 +18,10 @@ from cleo.agents.tools.dream_agent_tools import (
 )
 from cleo.config.settings import settings
 from cleo.memory.compaction import load_validated_compact
-from cleo.memory.gate import evaluate_memory_gate_async
 from cleo.memory.paths import DEFAULT_MEMORY_SPACE
 from cleo.memory.state import (
     get_session_source,
     mark_consolidation_failed,
-    mark_consolidation_phase,
-    mark_consolidation_skipped,
     mark_consolidation_started,
     needs_consolidation,
 )
@@ -156,33 +153,9 @@ class DreamAgent:
             project,
             session_id,
             source_hash,
-            phase="gate",
+            phase="llm",
         )
         try:
-            gate_result = await evaluate_memory_gate_async(payload, settings.memory_gate)
-            if gate_result.decision == "skip":
-                mark_consolidation_skipped(
-                    space,
-                    project,
-                    session_id,
-                    source_hash,
-                    reason=gate_result.reason,
-                    gate_result=gate_result.to_dict(),
-                )
-                return {
-                    "status": "skipped",
-                    "reason": gate_result.reason,
-                    "source_hash": source_hash,
-                    "gate": gate_result.to_dict(),
-                }
-            mark_consolidation_phase(
-                space,
-                project,
-                session_id,
-                source_hash,
-                phase="llm",
-                gate_result=gate_result.to_dict(),
-            )
             focus = (
                 "Extract user preferences, goals, relationships, corrections, "
                 "plans, and durable facts."

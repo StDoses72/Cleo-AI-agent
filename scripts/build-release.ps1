@@ -258,12 +258,6 @@ try {
     $claudeWheel = Download-LockedWindowsWheel -PackageName "claude-agent-sdk" `
         -Version (Get-LockedRequirementVersion -PackageName "claude-agent-sdk") `
         -DestinationRoot $wheelhouse
-    $torchWheel = Download-LockedWindowsWheel -PackageName "torch" `
-        -Version (Get-LockedRequirementVersion -PackageName "torch") `
-        -DestinationRoot $wheelhouse -WheelTag "cp312-cp312"
-    $scipyWheel = Download-LockedWindowsWheel -PackageName "scipy" `
-        -Version (Get-LockedRequirementVersion -PackageName "scipy") `
-        -DestinationRoot $wheelhouse -WheelTag "cp312-cp312"
     $previousUvConcurrency = $env:UV_CONCURRENT_DOWNLOADS
     $previousUvTimeout = $env:UV_HTTP_TIMEOUT
     try {
@@ -278,9 +272,7 @@ try {
             "--compile-bytecode",
             $pythonSourceRoot,
             $codexWheel,
-            $claudeWheel,
-            $torchWheel,
-            $scipyWheel
+            $claudeWheel
         )
     } finally {
         if ($null -eq $previousUvConcurrency) {

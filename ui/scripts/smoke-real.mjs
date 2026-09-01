@@ -43,7 +43,6 @@ try {
   await composer.fill("");
   await window.getByText("从一个清晰的目标开始。").waitFor();
   await window.getByRole("button", { name: "记忆", exact: true }).click();
-  await window.getByText("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2").waitFor();
   await window.getByTestId("memory-nav-projects").click();
   await window.getByRole("heading", { name: "项目记忆", exact: true }).waitFor();
   await window.getByTestId("memory-nav-pending").click();

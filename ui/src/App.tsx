@@ -325,7 +325,6 @@ export function App() {
         theme={theme}
         runtime={settingsRuntime}
         supportedEfforts={supportedEfforts}
-        memoryOverview={workspace.snapshot.memoryOverview}
         modelSettings={workspace.modelSettings}
         modelSettingsLoading={workspace.modelSettingsLoading}
         agentInstructions={workspace.agentInstructions}

@@ -6,7 +6,6 @@ import {
   ChevronDown,
   CircleAlert,
   Clock3,
-  Cpu,
   Database,
   Fingerprint,
   FolderGit2,
@@ -61,7 +60,7 @@ export function MemoryView({
   onLoadReviewDetails,
   onReviewSource,
 }: MemoryViewProps) {
-  const { summary, gate, dream_agent: dreamAgent } = overview;
+  const { summary, dream_agent: dreamAgent } = overview;
   const [query, setQuery] = useState("");
   const [projectKey, setProjectKey] = useState("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -170,13 +169,6 @@ export function MemoryView({
         <div><Fingerprint size={17} /><span><strong>{summary.persona_traits}</strong><small>人格倾向</small></span></div>
         <div><Clock3 size={17} /><span><strong>{formatRelativeTime(dreamAgent.last_processed_at)}</strong><small>上次整理</small></span></div>
       </div>
-
-      <section className="memory-model-line" aria-label="语义记忆筛选模型">
-        <span className="memory-model-icon"><Cpu size={16} /></span>
-        <div><small>SEMANTIC MEMORY GATE</small><strong>Sentence Transformer</strong></div>
-        <code>{gate.model}</code>
-        <span className={gate.enabled ? "status-good" : "status-muted"}>{gate.enabled ? "已启用" : "未启用"}</span>
-      </section>
 
       {mode === "projects" ? (
         <nav className="memory-project-filter" aria-label="筛选记忆项目">

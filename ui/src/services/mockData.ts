@@ -316,16 +316,6 @@ export const memoryOverview: MemoryOverview = {
     persona_traits: 1,
     pending_sources: 2,
   },
-  gate: {
-    enabled: true,
-    provider: "sentence-transformers",
-    model: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-    configuration_key: "memory_gate.model",
-    local_files_only: false,
-    minimum_similarity: 0.42,
-    run_margin: 0.08,
-    skip_margin: 0.1,
-  },
   dream_agent: {
     status: "attention",
     last_processed_at: new Date(Date.now() - 8 * 60 * 1000).toISOString(),

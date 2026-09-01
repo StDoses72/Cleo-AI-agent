@@ -44,7 +44,6 @@ try {
   await window.getByText("clipboard.pdf", { exact: true }).waitFor();
   await window.getByRole("button", { name: "移除 clipboard.pdf", exact: true }).click();
   await window.getByRole("button", { name: "记忆", exact: true }).click();
-  await window.getByText("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2").waitFor();
   await window.getByRole("button", { name: "设置", exact: true }).click();
   await window.getByRole("button", { name: "模型", exact: true }).click();
   await window.getByLabel("模型名称").waitFor();

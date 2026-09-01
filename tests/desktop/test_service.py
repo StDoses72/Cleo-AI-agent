@@ -9,7 +9,6 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from cleo.cli.chat_tui import COMMANDS as CHAT_TUI_COMMANDS
 from cleo.cli.productivity_tui import COMMANDS as PRODUCTIVITY_TUI_COMMANDS
-from cleo.config.settings import MemoryGateSettings
 from cleo.desktop.service import CHAT_COMMANDS, PRODUCTIVITY_COMMANDS, DesktopService
 from cleo.harnesses.control import HarnessModel
 from cleo.memory.paths import memory_state_path
@@ -216,7 +215,6 @@ def _service(tmp_path: Path) -> DesktopService:
     settings = SimpleNamespace(
         MEMORY_DIR=memory_root,
         SESSION_INDEX_PATH=memory_root / "sessions.sqlite3",
-        memory_gate=MemoryGateSettings(),
         active_directory_profile=SimpleNamespace(root_path=workspace),
         active_agent_profile=primary_profile,
         active_profiles=SimpleNamespace(agent="primary"),
@@ -973,7 +971,7 @@ def test_review_memory_source_can_run_dream_agent(tmp_path: Path) -> None:
                     "session-confirm",
                     "hash-confirm",
                     reason=reason,
-                    gate_result={"provider": "test", "decision": "skip"},
+                    review_result={"provider": "test", "decision": "skip"},
                     path=state_path,
                 )
 
@@ -1021,7 +1019,7 @@ def test_review_memory_source_constructs_dream_agent_off_the_event_loop(tmp_path
                     "session-slow-constructor",
                     "hash-slow-constructor",
                     reason=reason,
-                    gate_result={"provider": "test", "decision": "skip"},
+                    review_result={"provider": "test", "decision": "skip"},
                     path=state_path,
                 )
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -88,14 +89,21 @@ def test_dream_agent_profile_falls_back_to_foreground_for_legacy_config() -> Non
     assert settings.active_dream_agent_profile is settings.active_agent_profile
 
 
-def test_memory_gate_has_safe_multilingual_defaults() -> None:
-    settings = SettingsModel.model_validate(_settings_payload(dream_agent=None))
+def test_load_settings_ignores_removed_memory_gate_configuration(tmp_path: Path) -> None:
+    config_path = tmp_path / "cleo.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                **_settings_payload(dream_agent=None),
+                "memory_gate": {"enabled": True, "model": "legacy-model"},
+            }
+        ),
+        encoding="utf-8",
+    )
 
-    assert settings.memory_gate.enabled is True
-    assert "multilingual" in settings.memory_gate.model
-    assert settings.memory_gate.timeout_seconds == 30
-    assert settings.memory_gate.skip_margin > settings.memory_gate.run_margin
-    assert any("用户" in item for item in settings.memory_gate.positive_prototypes)
+    settings = settings_module.load_settings(config_path, tmp_path / "harnesses.json")
+
+    assert not hasattr(settings, "memory_gate")
 
 
 def test_missing_dream_agent_profile_is_rejected() -> None:

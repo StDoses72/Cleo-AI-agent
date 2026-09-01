@@ -4,21 +4,17 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from cleo.memory.paths import MEMORY_SPACES, memory_database_path, memory_state_path
 from cleo.memory.persona import list_persona_traits
 from cleo.memory.state import list_session_sources
 from cleo.memory.store import get_memory_inventory
 
-if TYPE_CHECKING:
-    from cleo.config.settings import MemoryGateSettings
-
 
 def build_memory_overview(
     *,
     memory_root: Path,
-    memory_gate: MemoryGateSettings,
     space: str | None = None,
     project: str | None = None,
     limit: int = 100,
@@ -82,16 +78,6 @@ def build_memory_overview(
             "project_scopes": project_scope_count,
             "persona_traits": len(persona_traits),
             "pending_sources": len(review_sources),
-        },
-        "gate": {
-            "enabled": memory_gate.enabled,
-            "provider": "sentence-transformers",
-            "model": memory_gate.model,
-            "configuration_key": "memory_gate.model",
-            "local_files_only": memory_gate.local_files_only,
-            "minimum_similarity": memory_gate.minimum_similarity,
-            "run_margin": memory_gate.run_margin,
-            "skip_margin": memory_gate.skip_margin,
         },
         "dream_agent": {
             "status": dream_status,
