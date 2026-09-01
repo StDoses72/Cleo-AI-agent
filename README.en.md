@@ -33,7 +33,7 @@ General assistants and coding agents usually keep separate histories, permission
 - A provider-neutral coding-harness data plane plus optional Codex-specific controls.
 - An append-only `events.jsonl` source of truth, atomic manifests, and rebuildable SQLite indexes.
 - Separate `non_productivity` and `productivity` memory spaces.
-- Deterministic compaction, secret redaction, a local Sentence Transformer gate, and DreamAgent consolidation.
+- Deterministic compaction, secret redaction, and evidence-backed DreamAgent consolidation.
 - Project-scoped long-term memory, history retrieval, and a global persona limited to interaction tendencies.
 - Local shell controls for allowlists, path boundaries, timeouts, output limits, and audit logging.
 - Per-thread browser sessions with public/private-network and domain boundaries.
@@ -118,7 +118,7 @@ Desktop / CLI / TUI / MCP
                                       │
                        compact projection + local indexes
                                       │
-                     memory gate → DreamAgent consolidation
+                         DreamAgent consolidation
                                       │
                     project memory + evidence + persona
 ```

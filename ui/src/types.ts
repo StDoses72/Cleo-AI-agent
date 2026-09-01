@@ -319,16 +319,6 @@ export interface MemoryOverview {
     persona_traits: number;
     pending_sources: number;
   };
-  gate: {
-    enabled: boolean;
-    provider: "sentence-transformers";
-    model: string;
-    configuration_key: "memory_gate.model";
-    local_files_only: boolean;
-    minimum_similarity: number;
-    run_margin: number;
-    skip_margin: number;
-  };
   dream_agent: {
     status: "idle" | "running" | "attention";
     last_processed_at: string | null;

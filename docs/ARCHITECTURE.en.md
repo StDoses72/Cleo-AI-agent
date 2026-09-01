@@ -282,9 +282,6 @@ SessionStore after provider connections close.
 ```text
 validated compact
   → validate space/project/session/source hash
-  → Sentence Transformer comparison against durable/transient prototypes
-      → clearly transient: record processed_hash + skipped; do not start DreamAgent
-      → durable or uncertain: continue to DreamAgent (fail open)
   → read project memory in the same scope and global PERSONA.md
   → atomic memory + evidence_event_ids
   → optionally store project-independent persona trait + evidence
@@ -306,11 +303,10 @@ skill. Persona may describe only communication, expression, relationship
 continuity, adaptation, and interaction boundaries; it cannot contain project
 facts, permissions, policy, or tool instructions.
 
-The gate reads only bounded human text from the validated compact projection and
-lazily loads its model inside the active consolidation process. `processed_hash` means the
-source completed gating/processing; `consolidated_hash` remains reserved for a
-source that actually entered the project-memory protocol, so gate-skipped threads
-remain movable under the unconsolidated-thread rule.
+After the user confirms consolidation, DreamAgent processes the validated compact
+directly. Manual skip records `processed_hash` and a skipped state.
+`consolidated_hash` remains reserved for a source that completed the project-memory
+protocol, so manually skipped threads remain movable under the unconsolidated-thread rule.
 
 ## Runtime State
 

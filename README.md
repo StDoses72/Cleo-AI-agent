@@ -33,7 +33,7 @@ Cleo 是一套本地优先的 AI 工作空间：它把通用对话、开发者�
 - 面向代码工作的统一 harness adapter，包含 provider-neutral 数据面和可选的 Codex 控制面。
 - append-only `events.jsonl` 会话事实源、原子 manifest 和可重建 SQLite 索引。
 - `non_productivity` 与 `productivity` 两个独立 memory space，避免通用上下文与工程上下文串流。
-- 规则压缩、敏感信息清理、本地 Sentence Transformer gate 和 DreamAgent 记忆整理。
+- 规则压缩、敏感信息清理和带证据引用的 DreamAgent 记忆整理。
 - 项目级长期记忆、历史片段检索，以及仅承载交互倾向的全局 persona。
 - 带 allowlist、路径边界、超时、输出上限和审计日志的本地 shell 工具。
 - 每个 thread 独立的浏览器会话，以及公网/私网和域名访问边界。
@@ -118,7 +118,7 @@ Desktop / CLI / TUI / MCP
                                       │
                        compact projection + local indexes
                                       │
-                     memory gate → DreamAgent consolidation
+                         DreamAgent consolidation
                                       │
                     project memory + evidence + persona
 ```

@@ -30,8 +30,7 @@ Cleo 使用两个经过 Pydantic 校验的 JSON 文件：`cleo.json` 管理通�
     "directories": {},
     "shell": {},
     "tools": {}
-  },
-  "memory_gate": {}
+  }
 }
 ```
 
@@ -111,18 +110,6 @@ Browser 子配置的重要边界：
 - `timeout_seconds`、`operation_timeout_ms`、`idle_timeout_seconds` 和 `max_output_chars` 控制进程与输出生命周期。
 
 每个 Cleo thread 使用独立 browser session。截图和被截断的完整结果写入 `session_artifacts_dir/browser/`，其中可能包含敏感页面内容。
-
-### Memory gate
-
-`memory_gate` 使用本地 Sentence Transformer 将有界的用户文本与 durable/transient prototypes 比较：
-
-- 明确只有寒暄、确认或临时噪声时跳过 DreamAgent。
-- durable 或结果不确定时继续 DreamAgent。
-- 模型缺失、下载失败或推理异常时 fail-open，不会静默丢失可能的长期信息。
-- 模型初始化和推理在后台执行；超过 `timeout_seconds`（默认 30 秒）时
-  fail-open，避免阻塞桌面协议服务。
-
-阈值、prototype、超时、最大消息数和单条字符数都可以配置。修改这些参数会改变记忆整理成本与召回边界，应通过真实会话样本验证。
 
 ## `harnesses.json` 结构
 

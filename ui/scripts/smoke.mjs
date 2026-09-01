@@ -64,7 +64,6 @@ try {
 
   await window.getByRole("button", { name: "记忆", exact: true }).click();
   await window.getByTestId("memory-view").waitFor();
-  await window.getByText("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2").waitFor();
   await window.getByTestId("memory-nav-projects").click();
   await window.getByRole("heading", { name: "项目记忆", exact: true }).waitFor();
   await window.getByRole("button", { name: /Cleo-AI-agent/ }).click();
@@ -73,10 +72,17 @@ try {
   await window.getByTestId("memory-nav-pending").click();
   await window.getByRole("heading", { name: "待确认", exact: true }).waitFor();
   const reviewRowsBefore = await window.getByTestId("memory-review-list").locator("article").count();
-  await window.getByTestId("memory-review-confirm").first().click();
+  const firstReviewRow = window.getByTestId("memory-review-list").locator("article").first();
+  await firstReviewRow.locator(".memory-review-toggle").click();
+  await firstReviewRow.getByTestId("memory-review-confirm").dblclick();
   await window.waitForFunction(
     (count) => document.querySelectorAll('[data-testid="memory-review-list"] article').length === count - 1,
     reviewRowsBefore,
+  );
+  assert(await window.locator(".memory-review-error").count() === 0, "Double-click submitted memory review twice");
+  await window.getByTestId("memory-review-confirm").first().click();
+  await window.waitForFunction(
+    () => document.querySelectorAll('[data-testid="memory-review-list"] article').length === 0,
   );
   await window.screenshot({ path: join(outputDir, "02-memory.png") });
 
@@ -247,8 +253,7 @@ try {
   await window.getByRole("button", { name: /雾白/ }).click();
   await window.screenshot({ path: join(outputDir, "06-settings-light.png") });
   await window.getByRole("button", { name: "数据与记忆", exact: true }).click();
-  await window.getByText("memory_gate.model", { exact: false }).waitFor();
-  await window.getByText("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2").waitFor();
+  await window.getByText("thread 完成后在后台整理可持久化知识。", { exact: true }).waitFor();
   await window.screenshot({ path: join(outputDir, "06b-settings-memory.png") });
   await window.getByRole("button", { name: "模型", exact: true }).click();
   await window.getByLabel("模型名称").waitFor();

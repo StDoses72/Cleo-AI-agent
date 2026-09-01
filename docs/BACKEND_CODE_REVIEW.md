@@ -25,8 +25,7 @@ git diff --check
 2. 每条 session/memory 数据都属于 `space + project + session_id`；两个 space 不能串数据。
 3. `AgentAdapter` 只暴露 provider-neutral 数据面；Codex 特有控制面是可选能力。
 4. CLI 和 Desktop 是两个入口，但共享 Agent、SessionStore、Runtime、Adapter 与 memory 流程。
-5. DreamAgent 只能从经过校验的 compact 提取持久知识；Sentence Transformer gate 是前置筛选，
-   不是真实记忆库。
+5. DreamAgent 只能从经过校验的 compact 提取持久知识，并用 evidence event ID 保持可追溯。
 
 整体路径：
 
@@ -42,7 +41,7 @@ CLI / Desktop request
                                       │
                        compact + SQLite projections
                                       │
-                 Sentence Transformer gate → DreamAgent
+                            DreamAgent
                                       │
                        durable memory + evidence
 ```
@@ -97,14 +96,13 @@ SQLite 失败是否会损坏事实源、resume 如何从事件恢复消息。
 
 - `cleo/memory/compaction.py::compact_events`
 - `cleo/memory/compaction.py::load_validated_compact`
-- `cleo/memory/gate.py::evaluate_memory_gate`
 - `cleo/memory/state.py::needs_consolidation`
 - `cleo/cli/lifecycle.py::_run_dream_agent`
 - `cleo/agents/dream.py`
-- `tests/memory/test_pipeline.py` 与 `tests/memory/test_gate.py`
+- `tests/memory/test_pipeline.py` 与 `tests/agents/test_dream.py`
 
 确认 compact 的 source hash、evidence event ID 和 processed/consolidated hash 各自表达什么。
-特别区分“gate 已处理但跳过”与“DreamAgent 已写入持久记忆”。
+特别区分“用户手动忽略”与“DreamAgent 已写入持久记忆”。
 
 ### 75–90 分钟：理解 App 接入
 
@@ -212,8 +210,7 @@ productivity CLI or DesktopService
 
 ```text
 validated compact
-  → memory gate
-  → skipped state OR DreamAgent
+  → manual skip OR DreamAgent
   → atomic memories + evidence
   → MEMORY.md / PERSONA.md
   → completed consolidation state

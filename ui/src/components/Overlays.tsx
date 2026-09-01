@@ -26,7 +26,6 @@ import {
 } from "lucide-react";
 import type {
   AgentInstructions,
-  MemoryOverview,
   ModelProfileInput,
   ModelSettings,
   Project,
@@ -207,7 +206,6 @@ interface SettingsModalProps {
   theme: "dark" | "light";
   runtime: RuntimeProfile;
   supportedEfforts: NonNullable<RuntimeProfile["effort"]>[];
-  memoryOverview: MemoryOverview;
   modelSettings: ModelSettings | null;
   modelSettingsLoading: boolean;
   agentInstructions: AgentInstructions | null;
@@ -235,7 +233,6 @@ export function SettingsModal({
   theme,
   runtime,
   supportedEfforts,
-  memoryOverview,
   modelSettings,
   modelSettingsLoading,
   agentInstructions,
@@ -323,9 +320,6 @@ export function SettingsModal({
               <SettingsRow title="本地优先" description="会话、配置和记忆只保存在 Cleo 数据目录。"><span className="status-good">已启用</span></SettingsRow>
               <SettingsRow title="DreamAgent" description="thread 完成后在后台整理可持久化知识。"><label className="switch"><input type="checkbox" defaultChecked /><span /></label></SettingsRow>
               <SettingsRow title="记忆作用域" description="普通对话与开发任务严格分区。"><span className="settings-value">已隔离</span></SettingsRow>
-              <SettingsRow title="语义筛选模型" description={`配置项 ${memoryOverview.gate.configuration_key}；接入配置编辑后可直接替换。`}>
-                <div className="memory-model-setting"><span>Sentence Transformer</span><code>{memoryOverview.gate.model}</code></div>
-              </SettingsRow>
               <SettingsRow title="配置模板" description="复制与 CLI --print-config-template 相同的模板。"><div className="settings-actions"><button type="button" onClick={() => onCopyConfigTemplate("cleo")}>复制 Cleo</button><button type="button" onClick={() => onCopyConfigTemplate("harnesses")}>复制 Harness</button></div></SettingsRow>
               <SettingsRow title="重置工作区" description="对应 CLI --reset-to-main；保留 Cleo 配置。"><button className="settings-action danger" type="button" onClick={() => { if (window.confirm("将仓库重置到本地 main 并清理未跟踪文件？此操作不可撤销。")) onResetWorkspace(); }}>重置到 main</button></SettingsRow>
               <div className="settings-note"><Brain size={17} /><p>当前页面直接读取本地 Cleo backend；会话、记忆、模型与运行参数均来自持久化状态。</p></div>

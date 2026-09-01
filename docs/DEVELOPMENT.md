@@ -45,7 +45,7 @@ cleo/config/                  Pydantic 配置模型、加载器和模板
 cleo/desktop/                 JSONL stdio 协议、use case service 和 UI projection
 cleo/harnesses/               provider-neutral model、data plane 与 control plane
 cleo/integrations/harnesses/  Codex、Claude 与 ACP provider 实现
-cleo/memory/                  compaction、gate、store、persona、state 与路径
+cleo/memory/                  compaction、store、persona、state 与路径
 cleo/sessions/                session 事实源、registry 与 managed/native 聚合
 cleo/runtime/                 当前交互状态与 context usage
 ui/                           Electron main/preload、React renderer 和 smoke tests
@@ -148,12 +148,8 @@ docker compose run --rm cleo --help
 docker compose run --rm cleo "运行一次 smoke task"
 ```
 
-镜像通过 `requirements.txt` 安装依赖，并默认缓存 memory gate 模型。可用 build arg 覆盖：
-
-```powershell
-docker build --build-arg CLEO_MEMORY_GATE_MODEL=<model> -t cleo-ai-agent:local .
-docker build --build-arg CLEO_SKIP_MEMORY_MODEL_DOWNLOAD=1 -t cleo-ai-agent:local .
-```
+镜像通过 `requirements.txt` 安装依赖。DreamAgent 使用 `cleo.json` 中选择的模型，
+不再下载或常驻本地 embedding 模型。
 
 Compose 使用 bind mount 读取配置与 workspace，用 named volume 保存 data、memory 和 Codex home。测试后不要把 volume 中的用户数据复制回仓库。
 

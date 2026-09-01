@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   ArchiveX,
   Brain,
@@ -6,7 +6,6 @@ import {
   ChevronDown,
   CircleAlert,
   Clock3,
-  Cpu,
   Database,
   Fingerprint,
   FolderGit2,
@@ -61,7 +60,7 @@ export function MemoryView({
   onLoadReviewDetails,
   onReviewSource,
 }: MemoryViewProps) {
-  const { summary, gate, dream_agent: dreamAgent } = overview;
+  const { summary, dream_agent: dreamAgent } = overview;
   const [query, setQuery] = useState("");
   const [projectKey, setProjectKey] = useState("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -71,6 +70,7 @@ export function MemoryView({
   const [reviewDetails, setReviewDetails] = useState<Record<string, MemoryReviewDetails>>({});
   const [reviewDetailsLoadingId, setReviewDetailsLoadingId] = useState<string | null>(null);
   const [reviewDetailsErrors, setReviewDetailsErrors] = useState<Record<string, string>>({});
+  const reviewingRef = useRef<string | null>(null);
   const copy = viewCopy[mode];
   const normalizedQuery = query.trim().toLocaleLowerCase();
 
@@ -97,18 +97,23 @@ export function MemoryView({
   );
 
   const review = async (source: MemoryReviewSource, action: MemoryReviewAction) => {
+    if (reviewingRef.current !== null) return;
+    reviewingRef.current = source.id;
     setReviewError(null);
     setReviewingId(source.id);
+    setExpandedReviewId((current) => current === source.id ? null : current);
     try {
       await onReviewSource(source, action);
     } catch (error) {
       setReviewError(error instanceof Error ? error.message : "无法处理这个记忆来源");
     } finally {
-      setReviewingId(null);
+      reviewingRef.current = null;
+      setReviewingId((current) => current === source.id ? null : current);
     }
   };
 
   const toggleReviewSource = async (source: MemoryReviewSource) => {
+    if (reviewingRef.current === source.id) return;
     if (expandedReviewId === source.id) {
       setExpandedReviewId(null);
       return;
@@ -121,10 +126,12 @@ export function MemoryView({
       const details = await onLoadReviewDetails(source);
       setReviewDetails((current) => ({ ...current, [source.id]: details }));
     } catch (error) {
-      setReviewDetailsErrors((current) => ({
-        ...current,
-        [source.id]: error instanceof Error ? error.message : "无法读取这个 session 的内容",
-      }));
+      if (reviewingRef.current !== source.id) {
+        setReviewDetailsErrors((current) => ({
+          ...current,
+          [source.id]: error instanceof Error ? error.message : "无法读取这个 session 的内容",
+        }));
+      }
     } finally {
       setReviewDetailsLoadingId((current) => current === source.id ? null : current);
     }
@@ -162,13 +169,6 @@ export function MemoryView({
         <div><Fingerprint size={17} /><span><strong>{summary.persona_traits}</strong><small>人格倾向</small></span></div>
         <div><Clock3 size={17} /><span><strong>{formatRelativeTime(dreamAgent.last_processed_at)}</strong><small>上次整理</small></span></div>
       </div>
-
-      <section className="memory-model-line" aria-label="语义记忆筛选模型">
-        <span className="memory-model-icon"><Cpu size={16} /></span>
-        <div><small>SEMANTIC MEMORY GATE</small><strong>Sentence Transformer</strong></div>
-        <code>{gate.model}</code>
-        <span className={gate.enabled ? "status-good" : "status-muted"}>{gate.enabled ? "已启用" : "未启用"}</span>
-      </section>
 
       {mode === "projects" ? (
         <nav className="memory-project-filter" aria-label="筛选记忆项目">

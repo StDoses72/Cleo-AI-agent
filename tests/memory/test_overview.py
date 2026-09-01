@@ -1,6 +1,5 @@
 from pathlib import Path
 
-from cleo.config.settings import MemoryGateSettings
 from cleo.memory.overview import build_memory_overview
 from cleo.memory.paths import memory_database_path, memory_state_path
 from cleo.memory.persona import upsert_persona_trait
@@ -10,9 +9,6 @@ from cleo.memory.store import upsert_memory
 
 def test_memory_overview_matches_desktop_contract(tmp_path: Path) -> None:
     memory_root = tmp_path / "memory"
-    model = "sentence-transformers/custom-memory-model"
-    gate = MemoryGateSettings(model=model, local_files_only=True)
-
     for space, project in (
         ("non_productivity", "general"),
         ("productivity", "cleo"),
@@ -56,7 +52,7 @@ def test_memory_overview_matches_desktop_contract(tmp_path: Path) -> None:
         "session-general",
         "hash-general",
         reason="No new durable facts.",
-        gate_result={"model": model, "decision": "skip"},
+        review_result={"provider": "manual", "decision": "skip"},
         path=non_productivity_state,
     )
     touch_session_source(
@@ -68,7 +64,7 @@ def test_memory_overview_matches_desktop_contract(tmp_path: Path) -> None:
         path=memory_state_path(memory_root, "productivity"),
     )
 
-    overview = build_memory_overview(memory_root=memory_root, memory_gate=gate)
+    overview = build_memory_overview(memory_root=memory_root)
 
     assert overview["schema_version"] == 1
     assert overview["summary"] == {
@@ -77,16 +73,6 @@ def test_memory_overview_matches_desktop_contract(tmp_path: Path) -> None:
         "project_scopes": 2,
         "persona_traits": 1,
         "pending_sources": 1,
-    }
-    assert overview["gate"] == {
-        "enabled": True,
-        "provider": "sentence-transformers",
-        "model": model,
-        "configuration_key": "memory_gate.model",
-        "local_files_only": True,
-        "minimum_similarity": 0.42,
-        "run_margin": 0.08,
-        "skip_margin": 0.1,
     }
     assert overview["dream_agent"]["status"] == "idle"
     assert overview["dream_agent"]["pending_count"] == 1
@@ -120,14 +106,10 @@ def test_memory_overview_matches_desktop_contract(tmp_path: Path) -> None:
     assert persona["evidence"] == []
 
 
-def test_memory_overview_is_empty_but_still_exposes_gate_model(tmp_path: Path) -> None:
-    gate = MemoryGateSettings()
-
-    overview = build_memory_overview(memory_root=tmp_path / "memory", memory_gate=gate)
+def test_memory_overview_is_empty(tmp_path: Path) -> None:
+    overview = build_memory_overview(memory_root=tmp_path / "memory")
 
     assert overview["summary"]["active_memories"] == 0
     assert overview["entries"] == []
     assert overview["project_summaries"] == []
     assert overview["review_sources"] == []
-    assert overview["gate"]["model"] == gate.model
-    assert overview["gate"]["configuration_key"] == "memory_gate.model"

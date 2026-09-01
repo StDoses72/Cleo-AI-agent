@@ -6,8 +6,6 @@ from typing import Annotated, Any, Literal
 from platformdirs import user_data_dir
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
-from cleo.memory.gate import DEFAULT_MEMORY_GATE_MODEL
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -179,48 +177,6 @@ class AgentProfile(BaseModel):
     base_url: str | None = None
     max_tokens: int = Field(default=100000, gt=0)
     temperature: float = Field(default=0.7, ge=0, le=2)
-
-
-class MemoryGateSettings(BaseModel):
-    """Local Sentence Transformer gate used before DreamAgent consolidation."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    enabled: bool = True
-    model: str = Field(default=DEFAULT_MEMORY_GATE_MODEL, min_length=1)
-    local_files_only: bool = False
-    timeout_seconds: float = Field(default=30.0, gt=0, le=600)
-    minimum_similarity: float = Field(default=0.42, ge=-1, le=1)
-    run_margin: float = Field(default=0.08, ge=0, le=2)
-    skip_margin: float = Field(default=0.10, ge=0, le=2)
-    max_messages: int = Field(default=24, gt=0, le=256)
-    max_characters_per_message: int = Field(default=1200, gt=0, le=20_000)
-    positive_prototypes: list[str] = Field(
-        default_factory=lambda: [
-            "The user stated a durable preference that should apply in future conversations.",
-            "The user corrected an important fact or a previous misunderstanding.",
-            "The conversation established or accepted a lasting technical decision.",
-            "The user introduced a durable constraint, plan, open question, or next action.",
-            "The interaction revealed a stable project-independent communication preference.",
-            "用户表达了今后也应当遵循的长期偏好。",
-            "用户纠正了一个重要事实或之前的误解。",
-            "对话确认了需要长期保留的技术决定、约束、计划或下一步行动。",
-            "交互体现了稳定且跨项目的沟通或相处偏好。",
-        ],
-        min_length=1,
-    )
-    negative_prototypes: list[str] = Field(
-        default_factory=lambda: [
-            "The conversation only contains a greeting, thanks, or acknowledgement.",
-            "The user made casual small talk with no lasting preference or decision.",
-            "The exchange contains only transient status chatter or repeated noise.",
-            "The user ended or cancelled the interaction without creating durable information.",
-            "对话只有问候、感谢、确认或告别，没有值得长期保存的信息。",
-            "用户只是随意闲聊，没有形成长期偏好、决定、约束或后续行动。",
-            "内容只是临时状态、重复信息或调试噪声。",
-        ],
-        min_length=1,
-    )
 
 
 class DirectoryProfile(BaseModel):
@@ -646,7 +602,6 @@ class SettingsModel(BaseModel):
     active_profiles: ActiveProfiles
     profiles: ProfileRegistry
     productivity: ProductivitySettings = Field(default_factory=ProductivitySettings)
-    memory_gate: MemoryGateSettings = Field(default_factory=MemoryGateSettings)
 
     @model_validator(mode="after")
     def validate_active_profiles(self) -> "SettingsModel":
@@ -1015,6 +970,9 @@ def load_settings(
 
     with open(config_path, encoding="utf-8") as f:
         raw_config = json.load(f)
+
+    # Older Cleo configs may still contain the removed local semantic gate.
+    raw_config.pop("memory_gate", None)
 
     if "productivity" in raw_config:
         raise ValueError(

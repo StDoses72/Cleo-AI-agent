@@ -162,7 +162,6 @@ class DesktopService:
         self._debug("load overview")
         overview = build_memory_overview(
             memory_root=self.settings.MEMORY_DIR,
-            memory_gate=self.settings.memory_gate,
         )
         memories = [self._memory_entry(entry) for entry in overview["entries"]]
         self._debug("load result")
@@ -407,7 +406,7 @@ class DesktopService:
                 session_id,
                 str(source["source_hash"]),
                 reason=reason,
-                gate_result={"provider": "manual", "decision": "skip", "reason": reason},
+                review_result={"provider": "manual", "decision": "skip", "reason": reason},
                 path=state_path,
             )
         else:

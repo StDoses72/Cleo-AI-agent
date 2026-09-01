@@ -9,7 +9,6 @@ from cleo.memory.paths import project_directory
 from cleo.memory.state import (
     get_session_source,
     mark_consolidated,
-    mark_consolidation_phase,
     mark_consolidation_skipped,
     mark_consolidation_started,
     needs_consolidation,
@@ -158,7 +157,7 @@ def test_skipped_source_is_processed_without_becoming_consolidated(tmp_path: Pat
         "session-skip",
         "sha256:small-talk",
         reason="Only thanks and acknowledgement.",
-        gate_result={"decision": "skip", "negative_score": 0.91},
+        review_result={"provider": "manual", "decision": "skip"},
         path=state_path,
     )
 
@@ -174,7 +173,7 @@ def test_skipped_source_is_processed_without_becoming_consolidated(tmp_path: Pat
     )
 
 
-def test_consolidation_phase_tracks_gate_and_llm_progress(tmp_path: Path) -> None:
+def test_consolidation_start_tracks_llm_progress(tmp_path: Path) -> None:
     state_path = tmp_path / "memory-state.json"
     touch_session_source(
         space="productivity",
@@ -190,23 +189,12 @@ def test_consolidation_phase_tracks_gate_and_llm_progress(tmp_path: Path) -> Non
         "cleo",
         "session-phase",
         "sha256:phase",
-        phase="gate",
-        path=state_path,
-    )
-    llm = mark_consolidation_phase(
-        "productivity",
-        "cleo",
-        "session-phase",
-        "sha256:phase",
         phase="llm",
-        gate_result={"decision": "uncertain", "reason": "gate timeout"},
         path=state_path,
     )
 
     assert started["status"] == "running"
-    assert started["processing_phase"] == "gate"
-    assert llm["processing_phase"] == "llm"
-    assert llm["gate_result"]["reason"] == "gate timeout"
+    assert started["processing_phase"] == "llm"
 
 
 def test_atomic_memory_is_idempotent_and_space_scoped(tmp_path: Path) -> None:
