@@ -28,6 +28,7 @@ const clone = <T,>(value: T): T => structuredClone(value);
 
 export class MockCleoClient implements CleoClient {
   private readonly approvalResolvers = new Map<string, (decision: ApprovalDecision) => void>();
+  private readonly reviewingMemorySourceIds = new Set<string>();
 
   async loadWorkspace(): Promise<WorkspaceSnapshot> {
     await delay(520);
@@ -473,6 +474,9 @@ export class MockCleoClient implements CleoClient {
 
   async getMemoryReviewDetails(source: MemoryReviewSource): Promise<MemoryReviewDetails> {
     await delay(240);
+    if (this.reviewingMemorySourceIds.has(source.id)) {
+      throw new Error("待确认的记忆来源不存在或已被处理");
+    }
     return {
       id: source.id,
       source_version: source.source_version,
@@ -516,20 +520,28 @@ export class MockCleoClient implements CleoClient {
     source: MemoryReviewSource,
     _action: MemoryReviewAction,
   ): Promise<WorkspaceSnapshot> {
-    await delay(520);
-    snapshot.memoryOverview.review_sources = snapshot.memoryOverview.review_sources.filter(
-      (candidate) => candidate.id !== source.id,
-    );
-    snapshot.memoryOverview.summary.pending_sources = snapshot.memoryOverview.review_sources.length;
-    snapshot.memoryOverview.dream_agent.pending_count = snapshot.memoryOverview.review_sources.filter(
-      (candidate) => candidate.status === "pending",
-    ).length;
-    snapshot.memoryOverview.dream_agent.failed_count = snapshot.memoryOverview.review_sources.filter(
-      (candidate) => candidate.status === "failed",
-    ).length;
-    snapshot.memoryOverview.dream_agent.status = snapshot.memoryOverview.dream_agent.failed_count ? "attention" : "idle";
-    snapshot.memoryOverview.dream_agent.last_processed_at = new Date().toISOString();
-    return clone(snapshot);
+    if (this.reviewingMemorySourceIds.has(source.id)) {
+      throw new Error("这个记忆来源已被处理，请刷新后重试");
+    }
+    this.reviewingMemorySourceIds.add(source.id);
+    try {
+      await delay(520);
+      snapshot.memoryOverview.review_sources = snapshot.memoryOverview.review_sources.filter(
+        (candidate) => candidate.id !== source.id,
+      );
+      snapshot.memoryOverview.summary.pending_sources = snapshot.memoryOverview.review_sources.length;
+      snapshot.memoryOverview.dream_agent.pending_count = snapshot.memoryOverview.review_sources.filter(
+        (candidate) => candidate.status === "pending",
+      ).length;
+      snapshot.memoryOverview.dream_agent.failed_count = snapshot.memoryOverview.review_sources.filter(
+        (candidate) => candidate.status === "failed",
+      ).length;
+      snapshot.memoryOverview.dream_agent.status = snapshot.memoryOverview.dream_agent.failed_count ? "attention" : "idle";
+      snapshot.memoryOverview.dream_agent.last_processed_at = new Date().toISOString();
+      return clone(snapshot);
+    } finally {
+      this.reviewingMemorySourceIds.delete(source.id);
+    }
   }
 
   async undoChanges(threadId: string): Promise<UndoChangesResult> {

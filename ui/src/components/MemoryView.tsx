@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   ArchiveX,
   Brain,
@@ -71,6 +71,7 @@ export function MemoryView({
   const [reviewDetails, setReviewDetails] = useState<Record<string, MemoryReviewDetails>>({});
   const [reviewDetailsLoadingId, setReviewDetailsLoadingId] = useState<string | null>(null);
   const [reviewDetailsErrors, setReviewDetailsErrors] = useState<Record<string, string>>({});
+  const reviewingRef = useRef<string | null>(null);
   const copy = viewCopy[mode];
   const normalizedQuery = query.trim().toLocaleLowerCase();
 
@@ -97,18 +98,23 @@ export function MemoryView({
   );
 
   const review = async (source: MemoryReviewSource, action: MemoryReviewAction) => {
+    if (reviewingRef.current !== null) return;
+    reviewingRef.current = source.id;
     setReviewError(null);
     setReviewingId(source.id);
+    setExpandedReviewId((current) => current === source.id ? null : current);
     try {
       await onReviewSource(source, action);
     } catch (error) {
       setReviewError(error instanceof Error ? error.message : "无法处理这个记忆来源");
     } finally {
-      setReviewingId(null);
+      reviewingRef.current = null;
+      setReviewingId((current) => current === source.id ? null : current);
     }
   };
 
   const toggleReviewSource = async (source: MemoryReviewSource) => {
+    if (reviewingRef.current === source.id) return;
     if (expandedReviewId === source.id) {
       setExpandedReviewId(null);
       return;
@@ -121,10 +127,12 @@ export function MemoryView({
       const details = await onLoadReviewDetails(source);
       setReviewDetails((current) => ({ ...current, [source.id]: details }));
     } catch (error) {
-      setReviewDetailsErrors((current) => ({
-        ...current,
-        [source.id]: error instanceof Error ? error.message : "无法读取这个 session 的内容",
-      }));
+      if (reviewingRef.current !== source.id) {
+        setReviewDetailsErrors((current) => ({
+          ...current,
+          [source.id]: error instanceof Error ? error.message : "无法读取这个 session 的内容",
+        }));
+      }
     } finally {
       setReviewDetailsLoadingId((current) => current === source.id ? null : current);
     }

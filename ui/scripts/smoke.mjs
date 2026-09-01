@@ -73,10 +73,17 @@ try {
   await window.getByTestId("memory-nav-pending").click();
   await window.getByRole("heading", { name: "待确认", exact: true }).waitFor();
   const reviewRowsBefore = await window.getByTestId("memory-review-list").locator("article").count();
-  await window.getByTestId("memory-review-confirm").first().click();
+  const firstReviewRow = window.getByTestId("memory-review-list").locator("article").first();
+  await firstReviewRow.locator(".memory-review-toggle").click();
+  await firstReviewRow.getByTestId("memory-review-confirm").dblclick();
   await window.waitForFunction(
     (count) => document.querySelectorAll('[data-testid="memory-review-list"] article').length === count - 1,
     reviewRowsBefore,
+  );
+  assert(await window.locator(".memory-review-error").count() === 0, "Double-click submitted memory review twice");
+  await window.getByTestId("memory-review-confirm").first().click();
+  await window.waitForFunction(
+    () => document.querySelectorAll('[data-testid="memory-review-list"] article').length === 0,
   );
   await window.screenshot({ path: join(outputDir, "02-memory.png") });
 
