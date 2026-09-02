@@ -86,14 +86,20 @@ export function App() {
   const runUpdateAction = (action: "check" | "download" | "install") => {
     const desktop = window.cleoDesktop;
     if (!desktop) return;
-    const operation = action === "check"
+    const operation: Promise<UpdateState | boolean> = action === "check"
       ? desktop.checkForUpdates()
       : action === "download"
         ? desktop.downloadUpdate()
         : desktop.installUpdate();
-    void operation.catch((error: unknown) => {
-      notify(error instanceof Error ? error.message : "更新操作失败", "error");
-    });
+    void operation
+      .then((result) => {
+        if (typeof result !== "boolean" && result.phase === "error") {
+          notify(result.error || "更新操作失败", "error");
+        }
+      })
+      .catch((error: unknown) => {
+        notify(error instanceof Error ? error.message : "更新操作失败", "error");
+      });
   };
 
   useEffect(() => {
