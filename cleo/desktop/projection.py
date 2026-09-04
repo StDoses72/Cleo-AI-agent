@@ -206,13 +206,15 @@ def stream_event_item(event: AgentEvent, state: dict[str, Any]) -> list[dict[str
     output: list[dict[str, Any]] = []
     payload = event_payload(event)
     item = payload.get("item") if isinstance(payload.get("item"), dict) else payload
-    event_key = str(
+    event_identifier = (
         item.get("id")
         or payload.get("itemId")
         or item.get("toolCallId")
         or payload.get("turnId")
-        or len(state)
     )
+    event_key = str(event_identifier or len(state))
+    if event.type != "thought":
+        state.pop("thought:active_id", None)
     if event.type == "assistant_message_chunk" and event.text:
         active_id = state.get("assistant:active_id")
         if not isinstance(active_id, str):
@@ -272,14 +274,23 @@ def stream_event_item(event: AgentEvent, state: dict[str, Any]) -> list[dict[str
                 }
             )
     elif event.type == "thought" and event.text:
-        thought_key = f"thought:content:{event_key}"
+        thought_id = f"thought-{event_key}"
+        if event_identifier is None:
+            active_id = state.get("thought:active_id")
+            if not isinstance(active_id, str):
+                counter = int(state.get("thought:counter") or 0) + 1
+                state["thought:counter"] = counter
+                active_id = f"live-thought-{state.get('run_id') or 'current'}-{counter}"
+                state["thought:active_id"] = active_id
+            thought_id = active_id
+        thought_key = f"thought:content:{thought_id}"
         content = str(state.get(thought_key) or "") + event.text
         state[thought_key] = content
         output.append(
             {
                 "type": "upsert-item",
                 "item": {
-                    "id": f"thought-{event_key}",
+                    "id": thought_id,
                     "type": "thought",
                     "content": content,
                     "status": "done",
