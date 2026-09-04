@@ -11,6 +11,7 @@ from cleo.cli.chat_tui import COMMANDS as CHAT_TUI_COMMANDS
 from cleo.cli.productivity_tui import COMMANDS as PRODUCTIVITY_TUI_COMMANDS
 from cleo.desktop.service import CHAT_COMMANDS, PRODUCTIVITY_COMMANDS, DesktopService
 from cleo.harnesses.control import HarnessModel
+from cleo.harnesses.models import AgentEvent
 from cleo.memory.paths import memory_state_path
 from cleo.memory.state import (
     get_session_source,
@@ -476,6 +477,64 @@ def test_productivity_turn_persists_and_emits_exact_change_history(
         assert turn_diff["data"]["title"] == "review this exact turn"
         assert history_event["changeSet"]["id"] == turn_diff["id"]
         assert history_event["changeSet"]["changes"][0]["path"] == "history.py"
+
+    asyncio.run(scenario())
+
+
+def test_productivity_turn_emits_streamed_history_without_git_checkpoint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def scenario() -> None:
+        service = _service(tmp_path)
+        session_id = "streamed-turn-history"
+        service.store.create_session(
+            session_id=session_id,
+            space="productivity",
+            project="workspace",
+            provider="codex",
+            owner_type="user",
+            native_session_id="native-streamed-history",
+            cwd=str(tmp_path / "workspace"),
+        )
+        service._productivity_sessions[session_id] = object()
+        diff = """diff --git a/fallback.py b/fallback.py
+--- a/fallback.py
++++ b/fallback.py
+@@ -1 +1 @@
+-before
++after
+"""
+        monkeypatch.setattr("cleo.desktop.service.create_git_checkpoint", lambda *_args: None)
+        monkeypatch.setattr("cleo.desktop.service.read_git_diff", lambda _cwd: None)
+
+        class Adapter:
+            async def prompt(self, _session_id, _prompt, *, on_event):
+                await on_event(
+                    AgentEvent(
+                        provider="codex",
+                        type="file_change",
+                        text=diff,
+                        data={"provider_event_type": "turn/diff/updated"},
+                    )
+                )
+                return SimpleNamespace(response="done", status="completed", error=None)
+
+        service._adapter_instance = Adapter()
+        emitted: list[dict] = []
+
+        async def emit(event):
+            emitted.append(event)
+
+        await service._stream_productivity(
+            service.store.load_manifest(session_id),
+            "review the fallback turn",
+            [],
+            emit,
+        )
+
+        history_event = next(event for event in emitted if event["type"] == "change-history")
+        assert history_event["changeSet"]["title"] == "review the fallback turn"
+        assert history_event["changeSet"]["changes"][0]["path"] == "fallback.py"
 
     asyncio.run(scenario())
 

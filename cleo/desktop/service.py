@@ -982,6 +982,7 @@ class DesktopService:
             for projected in finalize_stream_tools(state):
                 await emit(projected)
             change_set = None
+            exact_history_available = False
             if checkpoint is not None:
                 try:
                     completed_checkpoint = await asyncio.to_thread(
@@ -1014,8 +1015,20 @@ class DesktopService:
                             )
                             history = change_history_from_events([persisted])
                             change_set = history[0] if history else None
+                        exact_history_available = True
                     except (OSError, RuntimeError, ValueError) as exc:
                         self._debug(f"Git change history unavailable for {manifest['id']}: {exc}")
+            if not exact_history_available:
+                streamed_changes = state.get("changes:latest")
+                if isinstance(streamed_changes, list) and streamed_changes:
+                    change_set = {
+                        "id": f"live-turn-{state['run_id']}",
+                        "title": turn_title or "Agent 修改",
+                        "createdAt": "刚刚",
+                        "changes": [
+                            dict(change) for change in streamed_changes if isinstance(change, dict)
+                        ],
+                    }
             if change_set is not None:
                 await emit({"type": "change-history", "changeSet": change_set})
         if result.response and not state.get("assistant"):
