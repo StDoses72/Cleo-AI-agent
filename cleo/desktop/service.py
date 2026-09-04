@@ -982,7 +982,10 @@ class DesktopService:
                     state["changes:emitted"] = projected.get("changes")
                 await emit(projected)
             if provider_settings.type == "acp" and event.type == "tool_result":
-                await refresh_changes()
+                payload = event.data.get("payload")
+                status = payload.get("status") if isinstance(payload, dict) else None
+                if status in {"completed", "failed"}:
+                    await refresh_changes()
             if usage.used_tokens is not None:
                 await emit({"type": "usage", "usage": self._usage_dict(usage)})
 

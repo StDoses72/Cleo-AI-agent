@@ -465,6 +465,16 @@ def test_acp_completed_tool_refreshes_changes_before_turn_finishes(
                         type="tool_result",
                         data={
                             "provider_event_type": "tool_call_update",
+                            "payload": {"toolCallId": "call-1", "status": "in_progress"},
+                        },
+                    )
+                )
+                await on_event(
+                    AgentEvent(
+                        provider="opencode",
+                        type="tool_result",
+                        data={
+                            "provider_event_type": "tool_call_update",
                             "payload": {"toolCallId": "call-1", "status": "completed"},
                         },
                     )
@@ -473,7 +483,12 @@ def test_acp_completed_tool_refreshes_changes_before_turn_finishes(
                 return SimpleNamespace(response="done", status="completed", error=None)
 
         service._adapter_instance = Adapter()
-        monkeypatch.setattr("cleo.desktop.service.read_git_diff", lambda _cwd: diff)
+
+        def read_diff(_cwd):
+            order.append("git-scan")
+            return diff
+
+        monkeypatch.setattr("cleo.desktop.service.read_git_diff", read_diff)
 
         async def emit(event):
             order.append(event["type"])
@@ -486,6 +501,7 @@ def test_acp_completed_tool_refreshes_changes_before_turn_finishes(
         )
 
         assert order.index("changes") < order.index("prompt-return")
+        assert order.count("git-scan") == 2
 
     asyncio.run(scenario())
 
