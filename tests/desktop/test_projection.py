@@ -1,4 +1,5 @@
 from cleo.desktop.projection import (
+    change_history_from_events,
     changes_from_diff,
     final_changes_from_diff,
     finalize_stream_tools,
@@ -261,6 +262,72 @@ def test_latest_turn_changes_rebuilds_persisted_nested_repo_diff() -> None:
     changes = latest_turn_changes(events)
 
     assert [change["path"] for change in changes] == ["nested/file.txt"]
+
+
+def test_change_history_keeps_one_exact_diff_per_user_turn() -> None:
+    first_diff = """diff --git a/first.py b/first.py
+--- a/first.py
++++ b/first.py
+@@ -1 +1 @@
+-before
++first
+"""
+    streamed_second_diff = """diff --git a/cumulative.py b/cumulative.py
+--- a/cumulative.py
++++ b/cumulative.py
+@@ -1 +1 @@
+-before
++cumulative
+"""
+    exact_second_diff = """diff --git a/second.py b/second.py
+--- a/second.py
++++ b/second.py
+@@ -1 +1 @@
+-before
++second
+"""
+    events = [
+        {
+            "id": "user-1",
+            "type": "user_message",
+            "content": "make the first change",
+            "created_at": "2026-09-04T12:00:00+00:00",
+        },
+        {
+            "id": "stream-1",
+            "type": "file_change",
+            "content": first_diff,
+            "data": {"provider_event_type": "turn/diff/updated"},
+        },
+        {
+            "id": "user-2",
+            "type": "user_message",
+            "content": "make the second change",
+            "created_at": "2026-09-04T12:05:00+00:00",
+        },
+        {
+            "id": "stream-2",
+            "type": "file_change",
+            "content": streamed_second_diff,
+            "data": {"provider_event_type": "turn/diff/updated"},
+        },
+        {
+            "id": "exact-2",
+            "type": "turn_diff",
+            "content": exact_second_diff,
+            "created_at": "2026-09-04T12:06:00+00:00",
+            "data": {"title": "make the second change"},
+        },
+    ]
+
+    history = change_history_from_events(events)
+
+    assert [entry["id"] for entry in history] == ["exact-2", "stream-1"]
+    assert [entry["title"] for entry in history] == [
+        "make the second change",
+        "make the first change",
+    ]
+    assert [entry["changes"][0]["path"] for entry in history] == ["second.py", "first.py"]
 
 
 def test_codex_commentary_is_replaced_by_thought_before_final_answer() -> None:

@@ -301,6 +301,16 @@ export function useCleoWorkspace() {
           });
         } else if (event.type === "changes") {
           updateThread(threadId, (current) => ({ ...current, changes: event.changes }));
+        } else if (event.type === "change-history") {
+          updateThread(threadId, (current) => ({
+            ...current,
+            changeHistory: [
+              event.changeSet,
+              ...(current.changeHistory ?? []).filter(
+                (changeSet) => changeSet.id !== event.changeSet.id,
+              ),
+            ],
+          }));
         } else if (event.type === "usage") {
           updateThread(threadId, (current) => ({ ...current, usage: event.usage }));
         } else if (event.type === "terminal") {

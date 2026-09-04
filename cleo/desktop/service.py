@@ -17,6 +17,7 @@ from cleo.cli.lifecycle import _launch_dream_agent_worker
 from cleo.cli.productivity import _resolve_productivity_cwd
 from cleo.desktop.configuration import read_model_settings, save_model_profile
 from cleo.desktop.projection import (
+    change_history_from_events,
     changes_from_diff,
     final_changes_from_diff,
     finalize_stream_tools,
@@ -34,6 +35,7 @@ from cleo.integrations.git import (
     discard_git_checkpoint,
     finalize_git_checkpoint,
     inspect_git_status,
+    read_git_checkpoint_diff,
     read_git_diff,
     undo_git_checkpoint,
 )
@@ -936,6 +938,7 @@ class DesktopService:
         emit: Emit,
     ) -> None:
         await self._ensure_productivity_session(manifest)
+        turn_title = " ".join(prompt.split())[:80]
         checkpoint = None
         previous_checkpoint = manifest.get("undo_checkpoint")
         if isinstance(previous_checkpoint, dict):
@@ -978,6 +981,7 @@ class DesktopService:
         finally:
             for projected in finalize_stream_tools(state):
                 await emit(projected)
+            change_set = None
             if checkpoint is not None:
                 try:
                     completed_checkpoint = await asyncio.to_thread(
@@ -992,6 +996,28 @@ class DesktopService:
                     await asyncio.to_thread(discard_git_checkpoint, checkpoint)
                     self.store.update_manifest(manifest["id"], undo_checkpoint=None)
                     self._debug(f"Git checkpoint finalization failed for {manifest['id']}: {exc}")
+                else:
+                    try:
+                        turn_diff = await asyncio.to_thread(
+                            read_git_checkpoint_diff,
+                            completed_checkpoint,
+                        )
+                        if turn_diff:
+                            persisted = self.store.append_event(
+                                space=str(manifest["space"]),
+                                project=str(manifest["project"]),
+                                session_id=str(manifest["id"]),
+                                event_type="turn_diff",
+                                actor=str(manifest["provider"]),
+                                content=turn_diff,
+                                data={"title": turn_title},
+                            )
+                            history = change_history_from_events([persisted])
+                            change_set = history[0] if history else None
+                    except (OSError, RuntimeError, ValueError) as exc:
+                        self._debug(f"Git change history unavailable for {manifest['id']}: {exc}")
+            if change_set is not None:
+                await emit({"type": "change-history", "changeSet": change_set})
         if result.response and not state.get("assistant"):
             await emit(
                 {
@@ -1390,6 +1416,7 @@ class DesktopService:
             "status": self._thread_status(manifest.get("status")),
             "items": items,
             "changes": changes,
+            "changeHistory": change_history_from_events(events),
             "usage": usage,
             "runtime": self._runtime_profile(manifest),
             "terminal": self._terminal_from_events(events),

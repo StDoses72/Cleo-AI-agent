@@ -2397,6 +2397,33 @@ select.text-control:hover {
   overflow-y: auto;
 }
 
+.change-history-picker {
+  display: flex;
+  height: 42px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px 0 13px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.change-history-picker select {
+  min-width: 0;
+  height: 28px;
+  flex: 1;
+  padding: 0 26px 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-soft);
+  background: var(--surface-raised);
+  font-size: 9px;
+  text-overflow: ellipsis;
+}
+
+.change-snapshot-empty {
+  min-height: 180px;
+}
+
 .change-summary {
   height: 42px;
   justify-content: space-between;

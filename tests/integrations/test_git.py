@@ -7,6 +7,7 @@ import pytest
 from cleo.integrations.git import (
     create_git_checkpoint,
     finalize_git_checkpoint,
+    read_git_checkpoint_diff,
     read_git_diff,
     undo_git_checkpoint,
 )
@@ -96,6 +97,37 @@ def test_turn_checkpoint_undo_preserves_changes_that_existed_before_the_answer(
     assert _git_output(tmp_path, "status", "--porcelain=v1", "-uall") == status_before
     assert _git_output(tmp_path, "diff", "--cached") == staged_before
     assert _git_output(tmp_path, "diff") == unstaged_before
+
+
+def test_turn_checkpoint_diff_contains_only_changes_from_that_turn(tmp_path) -> None:
+    _git(tmp_path, "init")
+    tracked = tmp_path / "tracked.txt"
+    tracked.write_text("committed\n", encoding="utf-8")
+    _git(tmp_path, "add", "tracked.txt")
+    _git(
+        tmp_path,
+        "-c",
+        "user.email=test@example.com",
+        "-c",
+        "user.name=Test User",
+        "commit",
+        "-m",
+        "initial",
+    )
+    tracked.write_text("user change\n", encoding="utf-8")
+    checkpoint = create_git_checkpoint(str(tmp_path), "thread-history")
+    assert checkpoint is not None
+
+    tracked.write_text("agent change\n", encoding="utf-8")
+    (tmp_path / "created.txt").write_text("new file\n", encoding="utf-8")
+    completed = finalize_git_checkpoint(checkpoint)
+
+    diff = read_git_checkpoint_diff(completed)
+
+    assert "-user change" in diff
+    assert "+agent change" in diff
+    assert "created.txt" in diff
+    assert "-committed" not in diff
 
 
 def test_turn_checkpoint_rejects_changes_made_after_the_answer(tmp_path) -> None:

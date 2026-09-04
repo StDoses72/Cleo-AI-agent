@@ -418,6 +418,68 @@ def test_productivity_thread_restores_nested_repo_diff_from_latest_turn(tmp_path
     asyncio.run(scenario())
 
 
+def test_productivity_turn_persists_and_emits_exact_change_history(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def scenario() -> None:
+        service = _service(tmp_path)
+        session_id = "turn-history"
+        service.store.create_session(
+            session_id=session_id,
+            space="productivity",
+            project="workspace",
+            provider="codex",
+            owner_type="user",
+            native_session_id="native-history",
+            cwd=str(tmp_path / "workspace"),
+        )
+        service._productivity_sessions[session_id] = object()
+        diff = """diff --git a/history.py b/history.py
+--- a/history.py
++++ b/history.py
+@@ -1 +1 @@
+-before
++after
+"""
+
+        class Checkpoint:
+            def to_dict(self):
+                return {"checkpoint": "saved"}
+
+        checkpoint = Checkpoint()
+        monkeypatch.setattr("cleo.desktop.service.create_git_checkpoint", lambda *_args: checkpoint)
+        monkeypatch.setattr("cleo.desktop.service.finalize_git_checkpoint", lambda value: value)
+        monkeypatch.setattr("cleo.desktop.service.read_git_checkpoint_diff", lambda _value: diff)
+        monkeypatch.setattr("cleo.desktop.service.read_git_diff", lambda _cwd: "")
+
+        class Adapter:
+            async def prompt(self, _session_id, _prompt, *, on_event):
+                return SimpleNamespace(response="done", status="completed", error=None)
+
+        service._adapter_instance = Adapter()
+        emitted: list[dict] = []
+
+        async def emit(event):
+            emitted.append(event)
+
+        await service._stream_productivity(
+            service.store.load_manifest(session_id),
+            "review this exact turn",
+            [],
+            emit,
+        )
+
+        stored = service.store.read_events(session_id)
+        turn_diff = next(event for event in stored if event["type"] == "turn_diff")
+        history_event = next(event for event in emitted if event["type"] == "change-history")
+        assert turn_diff["content"] == diff
+        assert turn_diff["data"]["title"] == "review this exact turn"
+        assert history_event["changeSet"]["id"] == turn_diff["id"]
+        assert history_event["changeSet"]["changes"][0]["path"] == "history.py"
+
+    asyncio.run(scenario())
+
+
 def test_restore_chat_backups_copies_recoverable_history_without_deleting_backup(
     tmp_path: Path,
 ) -> None:
