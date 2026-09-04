@@ -130,6 +130,30 @@ def test_turn_checkpoint_diff_contains_only_changes_from_that_turn(tmp_path) -> 
     assert "-committed" not in diff
 
 
+def test_turn_checkpoint_diff_preserves_trailing_spaces(tmp_path) -> None:
+    _git(tmp_path, "init")
+    tracked = tmp_path / "tracked.txt"
+    tracked.write_text("before\n", encoding="utf-8")
+    _git(tmp_path, "add", "tracked.txt")
+    _git(
+        tmp_path,
+        "-c",
+        "user.email=test@example.com",
+        "-c",
+        "user.name=Test User",
+        "commit",
+        "-m",
+        "initial",
+    )
+    checkpoint = create_git_checkpoint(str(tmp_path), "thread-spaces")
+    assert checkpoint is not None
+
+    tracked.write_text("after  \n", encoding="utf-8")
+    completed = finalize_git_checkpoint(checkpoint)
+
+    assert "+after  " in read_git_checkpoint_diff(completed)
+
+
 def test_turn_checkpoint_rejects_changes_made_after_the_answer(tmp_path) -> None:
     _git(tmp_path, "init")
     tracked = tmp_path / "tracked.txt"

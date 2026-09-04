@@ -271,7 +271,7 @@ def read_git_checkpoint_diff(value: dict[str, Any] | GitCheckpoint) -> str:
     )
     if result.returncode != 0:
         raise RuntimeError(_git_error(result, "Git 无法读取本轮变更。"))
-    return result.stdout.rstrip()
+    return result.stdout.removesuffix("\n")
 
 
 def undo_git_checkpoint(value: dict[str, Any] | GitCheckpoint) -> GitUndoResult:
