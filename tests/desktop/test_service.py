@@ -539,6 +539,93 @@ def test_productivity_turn_emits_streamed_history_without_git_checkpoint(
     asyncio.run(scenario())
 
 
+def test_acp_completed_tool_refreshes_changes_before_turn_finishes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def scenario() -> None:
+        service = _service(tmp_path)
+        service.settings.productivity = SimpleNamespace(
+            default_provider="opencode",
+            providers={
+                "opencode": SimpleNamespace(
+                    enabled=True,
+                    type="acp",
+                    model=None,
+                    models=[],
+                    options=SimpleNamespace(),
+                )
+            },
+            provider=lambda name: service.settings.productivity.providers[name],
+        )
+        session_id = "acp-live-changes"
+        service.store.create_session(
+            session_id=session_id,
+            space="productivity",
+            project="workspace",
+            provider="opencode",
+            owner_type="user",
+            native_session_id="native-acp",
+            cwd=str(tmp_path / "workspace"),
+        )
+        service._productivity_sessions[session_id] = object()
+        order: list[str] = []
+        diff = """diff --git a/app.py b/app.py
+--- a/app.py
++++ b/app.py
+@@ -1 +1 @@
+-before
++after
+"""
+
+        class Adapter:
+            async def prompt(self, _session_id, _prompt, *, on_event):
+                await on_event(
+                    AgentEvent(
+                        provider="opencode",
+                        type="tool_result",
+                        data={
+                            "provider_event_type": "tool_call_update",
+                            "payload": {"toolCallId": "call-1", "status": "in_progress"},
+                        },
+                    )
+                )
+                await on_event(
+                    AgentEvent(
+                        provider="opencode",
+                        type="tool_result",
+                        data={
+                            "provider_event_type": "tool_call_update",
+                            "payload": {"toolCallId": "call-1", "status": "completed"},
+                        },
+                    )
+                )
+                order.append("prompt-return")
+                return SimpleNamespace(response="done", status="completed", error=None)
+
+        service._adapter_instance = Adapter()
+
+        def read_diff(_cwd):
+            order.append("git-scan")
+            return diff
+
+        monkeypatch.setattr("cleo.desktop.service.read_git_diff", read_diff)
+
+        async def emit(event):
+            order.append(event["type"])
+
+        await service._stream_productivity(
+            service.store.load_manifest(session_id),
+            "edit app.py",
+            [],
+            emit,
+        )
+
+        assert order.index("changes") < order.index("prompt-return")
+        assert order.count("git-scan") == 2
+
+    asyncio.run(scenario())
+
+
 def test_restore_chat_backups_copies_recoverable_history_without_deleting_backup(
     tmp_path: Path,
 ) -> None:

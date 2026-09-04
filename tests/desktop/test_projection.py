@@ -163,6 +163,50 @@ def test_live_plan_updates_share_an_id_and_orphaned_tools_are_closed() -> None:
     assert finalized[0]["item"]["status"] == "error"
 
 
+def test_acp_thought_chunks_share_one_item_until_the_next_event() -> None:
+    state: dict[str, object] = {"run_id": "run-1"}
+    first = stream_event_item(
+        AgentEvent(
+            provider="opencode",
+            type="thought",
+            text="逐",
+            data={"provider_event_type": "agent_thought_chunk", "payload": {}},
+        ),
+        state,
+    )
+    second = stream_event_item(
+        AgentEvent(
+            provider="opencode",
+            type="thought",
+            text="字",
+            data={"provider_event_type": "agent_thought_chunk", "payload": {}},
+        ),
+        state,
+    )
+    stream_event_item(
+        AgentEvent(
+            provider="opencode",
+            type="tool_call",
+            data={"payload": {"toolCallId": "call-1"}},
+        ),
+        state,
+    )
+    third = stream_event_item(
+        AgentEvent(
+            provider="opencode",
+            type="thought",
+            text="新",
+            data={"provider_event_type": "agent_thought_chunk", "payload": {}},
+        ),
+        state,
+    )
+
+    assert first[0]["item"]["id"] == second[0]["item"]["id"]
+    assert second[0]["item"]["content"] == "逐字"
+    assert third[0]["item"]["id"] != second[0]["item"]["id"]
+    assert third[0]["item"]["content"] == "新"
+
+
 def test_live_approval_events_project_to_desktop_protocol() -> None:
     request = stream_event_item(
         AgentEvent(
