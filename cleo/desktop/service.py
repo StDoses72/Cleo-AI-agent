@@ -963,13 +963,26 @@ class DesktopService:
         usage = ContextWindowUsage(
             window_tokens=self._runtime_profile(manifest)["contextWindow"],
         )
+        provider_settings = self.settings.productivity.provider(str(manifest["provider"]))
+
+        async def refresh_changes(*, force: bool = False) -> None:
+            diff = await asyncio.to_thread(read_git_diff, manifest.get("cwd") or ".")
+            changes = final_changes_from_diff(diff, state)
+            if not force and changes == state.get("changes:emitted"):
+                return
+            state["changes:emitted"] = changes
+            await emit({"type": "changes", "changes": changes})
 
         async def on_event(event: Any) -> None:
             from cleo.cli.productivity_renderer import capture_context_usage
 
             capture_context_usage(event, usage)
             for projected in stream_event_item(event, state):
+                if projected.get("type") == "changes":
+                    state["changes:emitted"] = projected.get("changes")
                 await emit(projected)
+            if provider_settings.type == "acp" and event.type == "tool_result":
+                await refresh_changes()
             if usage.used_tokens is not None:
                 await emit({"type": "usage", "usage": self._usage_dict(usage)})
 
@@ -1005,8 +1018,7 @@ class DesktopService:
                     },
                 }
             )
-        diff = await asyncio.to_thread(read_git_diff, manifest.get("cwd") or ".")
-        await emit({"type": "changes", "changes": final_changes_from_diff(diff, state)})
+        await refresh_changes(force=True)
         if result.status == "completed":
             await emit({"type": "done", "summary": (result.response or prompt)[:80]})
         else:
