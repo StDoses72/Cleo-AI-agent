@@ -254,6 +254,26 @@ def finalize_git_checkpoint(checkpoint: GitCheckpoint) -> GitCheckpoint:
     )
 
 
+def read_git_checkpoint_diff(value: dict[str, Any] | GitCheckpoint) -> str:
+    """Return the exact worktree diff captured by one completed agent turn."""
+    checkpoint = value if isinstance(value, GitCheckpoint) else GitCheckpoint.from_dict(value)
+    if checkpoint.after_worktree is None:
+        raise ValueError("最近一次回答的 Git 回退记录尚未完成。")
+    result = _git(
+        checkpoint.repo_root,
+        "diff",
+        "--no-ext-diff",
+        "--no-color",
+        checkpoint.before_worktree,
+        checkpoint.after_worktree,
+        "--",
+        timeout=30,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(_git_error(result, "Git 无法读取本轮变更。"))
+    return result.stdout.removesuffix("\n")
+
+
 def undo_git_checkpoint(value: dict[str, Any] | GitCheckpoint) -> GitUndoResult:
     """Restore the state before one turn without discarding earlier changes."""
     checkpoint = value if isinstance(value, GitCheckpoint) else GitCheckpoint.from_dict(value)

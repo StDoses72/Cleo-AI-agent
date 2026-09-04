@@ -123,6 +123,14 @@ export const threads: Thread[] = [
     updatedAt: "刚刚",
     status: "completed",
     changes: uiChanges,
+    changeHistory: [
+      {
+        id: "desktop-ui-foundation",
+        title: "建立桌面 UI 骨架",
+        createdAt: "12 分钟前",
+        changes: uiChanges.slice(0, 2),
+      },
+    ],
     usage: { used: 38420, limit: 128000, input: 6320, output: 4418 },
     items: [
       {

@@ -195,10 +195,51 @@ def latest_turn_changes(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         data = event.get("data") if isinstance(event.get("data"), dict) else {}
         if data.get("provider_event_type") != "turn/diff/updated":
             continue
-        payload = data.get("payload") if isinstance(data.get("payload"), dict) else data
-        diff = event.get("content") or payload.get("diff")
-        return changes_from_diff(diff if isinstance(diff, str) else None)
+        return changes_from_diff(_event_diff(event))
     return []
+
+
+def change_history_from_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return the latest exact diff for each persisted user turn, newest first."""
+    history: list[dict[str, Any]] = []
+    title = ""
+    streamed: dict[str, Any] | None = None
+    exact: dict[str, Any] | None = None
+
+    def finish_turn() -> None:
+        selected = exact or streamed
+        if selected is None:
+            return
+        changes = changes_from_diff(_event_diff(selected))
+        if not changes:
+            return
+        data = selected.get("data") if isinstance(selected.get("data"), dict) else {}
+        event_title = " ".join(str(data.get("title") or title or "Agent 修改").split())
+        history.append(
+            {
+                "id": str(selected.get("id") or f"turn-change-{len(history)}"),
+                "title": event_title[:80],
+                "createdAt": relative_time(
+                    str(selected["created_at"]) if selected.get("created_at") else None
+                ),
+                "changes": changes,
+            }
+        )
+
+    for event in events:
+        event_type = str(event.get("type") or "")
+        if event_type in {"user_message", "human"}:
+            finish_turn()
+            title = _content_text(event.get("content"))
+            streamed = None
+            exact = None
+        elif event_type == "file_change" and _event_diff(event):
+            streamed = event
+        elif event_type == "turn_diff" and _event_diff(event):
+            exact = event
+    finish_turn()
+    history.reverse()
+    return history
 
 
 def stream_event_item(event: AgentEvent, state: dict[str, Any]) -> list[dict[str, Any]]:
@@ -429,6 +470,13 @@ def _content_text(value: Any) -> str:
             "",
         )
     return ""
+
+
+def _event_diff(event: dict[str, Any]) -> str | None:
+    data = event.get("data") if isinstance(event.get("data"), dict) else {}
+    payload = data.get("payload") if isinstance(data.get("payload"), dict) else data
+    diff = event.get("content") or payload.get("diff")
+    return diff if isinstance(diff, str) else None
 
 
 def project_id(space: str, project: str) -> str:

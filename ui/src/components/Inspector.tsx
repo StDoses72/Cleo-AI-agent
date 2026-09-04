@@ -66,13 +66,22 @@ export function Inspector({
 }
 
 function ChangesPanel({ thread, onNotify, onCopyText }: { thread: Thread | null; onNotify: (message: string) => void; onCopyText: (value: string) => void }) {
-  const [selectedPath, setSelectedPath] = useState(thread?.changes[0]?.path ?? "");
+  const [selectedSetId, setSelectedSetId] = useState("workspace");
+  const history = thread?.changeHistory ?? [];
+  const selectedSet = history.find((changeSet) => changeSet.id === selectedSetId);
+  const changes = selectedSet?.changes ?? thread?.changes ?? [];
+  const [selectedPath, setSelectedPath] = useState(changes[0]?.path ?? "");
   useEffect(() => {
-    setSelectedPath(thread?.changes[0]?.path ?? "");
-  }, [thread?.id, thread?.changes]);
-  const selected = thread?.changes.find((file) => file.path === selectedPath) ?? thread?.changes[0];
+    setSelectedSetId("workspace");
+  }, [thread?.id]);
+  useEffect(() => {
+    setSelectedPath((current) => (
+      changes.some((file) => file.path === current) ? current : changes[0]?.path ?? ""
+    ));
+  }, [changes, selectedSetId]);
+  const selected = changes.find((file) => file.path === selectedPath) ?? changes[0];
 
-  if (!thread?.changes.length) {
+  if (!thread?.changes.length && !history.length) {
     return (
       <div className="inspector-empty">
         <GitBranch size={22} />
@@ -84,37 +93,63 @@ function ChangesPanel({ thread, onNotify, onCopyText }: { thread: Thread | null;
 
   return (
     <div className="changes-panel">
-      <div className="change-summary">
-        <span>{thread.changes.length} 个文件</span>
-        <div><strong>+{thread.changes.reduce((total, file) => total + file.additions, 0)}</strong><em>-{thread.changes.reduce((total, file) => total + file.deletions, 0)}</em></div>
+      <div className="change-history-picker">
+        <Clock3 size={14} />
+        <select
+          aria-label="选择变更快照"
+          data-testid="change-history-picker"
+          value={selectedSetId}
+          onChange={(event) => setSelectedSetId(event.target.value)}
+        >
+          <option value="workspace">当前工作区 · {thread?.changes.length ?? 0} 个文件</option>
+          {history.map((changeSet) => (
+            <option value={changeSet.id} key={changeSet.id}>
+              {changeSet.title} · {changeSet.createdAt} · {changeSet.changes.length} 个文件
+            </option>
+          ))}
+        </select>
       </div>
-      <div className="changed-files">
-        {thread.changes.map((file) => (
-          <button className={file.path === selected?.path ? "active" : ""} type="button" key={file.path} onClick={() => setSelectedPath(file.path)}>
-            <FileCode2 size={14} />
-            <span>{file.path}</span>
-            <small className={file.status}>{file.status.slice(0, 1).toUpperCase()}</small>
-          </button>
-        ))}
-      </div>
-      {selected ? (
-        <div className="diff-viewer">
-          <header>
-            <div><Braces size={14} /><span>{selected.path.split("/").at(-1)}</span></div>
-            <button type="button" title="复制路径" onClick={() => {
-              onCopyText(selected.path);
-              onNotify("文件路径已复制");
-            }}><Copy size={14} /></button>
-          </header>
-          <pre>
-            {selected.diff.split("\n").map((line, index) => (
-              <span className={line.startsWith("+") ? "added" : line.startsWith("-") ? "deleted" : line.startsWith("@@") ? "hunk" : ""} key={`${index}-${line}`}>
-                <i>{index + 1}</i><code>{line || " "}</code>
-              </span>
-            ))}
-          </pre>
+      {!changes.length ? (
+        <div className="inspector-empty change-snapshot-empty">
+          <GitBranch size={22} />
+          <strong>当前工作区没有变更</strong>
+          <span>可从上方选择之前的 Agent 修改继续审查。</span>
         </div>
-      ) : null}
+      ) : (
+        <>
+          <div className="change-summary">
+            <span>{changes.length} 个文件</span>
+            <div><strong>+{changes.reduce((total, file) => total + file.additions, 0)}</strong><em>-{changes.reduce((total, file) => total + file.deletions, 0)}</em></div>
+          </div>
+          <div className="changed-files">
+            {changes.map((file) => (
+              <button className={file.path === selected?.path ? "active" : ""} type="button" key={file.path} onClick={() => setSelectedPath(file.path)}>
+                <FileCode2 size={14} />
+                <span>{file.path}</span>
+                <small className={file.status}>{file.status.slice(0, 1).toUpperCase()}</small>
+              </button>
+            ))}
+          </div>
+          {selected ? (
+            <div className="diff-viewer">
+              <header>
+                <div><Braces size={14} /><span>{selected.path.split("/").at(-1)}</span></div>
+                <button type="button" title="复制路径" onClick={() => {
+                  onCopyText(selected.path);
+                  onNotify("文件路径已复制");
+                }}><Copy size={14} /></button>
+              </header>
+              <pre>
+                {selected.diff.split("\n").map((line, index) => (
+                  <span className={line.startsWith("+") ? "added" : line.startsWith("-") ? "deleted" : line.startsWith("@@") ? "hunk" : ""} key={`${index}-${line}`}>
+                    <i>{index + 1}</i><code>{line || " "}</code>
+                  </span>
+                ))}
+              </pre>
+            </div>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }

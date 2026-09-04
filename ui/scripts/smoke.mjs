@@ -49,6 +49,11 @@ try {
   assert(initialFit.document.width === initialFit.viewport.width, "Initial view scrolls horizontally");
   assert(initialFit.document.height === initialFit.viewport.height, "Initial view scrolls vertically");
   await window.screenshot({ path: join(outputDir, "01-initial.png") });
+  const historyPicker = window.getByTestId("change-history-picker");
+  await historyPicker.selectOption("desktop-ui-foundation");
+  assert(await window.locator(".changed-files button").count() === 2, "Historical diff was not selectable");
+  await window.screenshot({ path: join(outputDir, "01b-change-history.png") });
+  await historyPicker.selectOption("workspace");
 
   await window.locator(".project-picker").click();
   await window.getByTestId("choose-workspace").waitFor();
@@ -180,7 +185,7 @@ try {
   assert(streamingLayout.distanceFromBottom < 24, "Streaming timeline did not follow the latest text");
   await window.getByRole("heading", { name: "运行完成", exact: true }).waitFor({ timeout: 20_000 });
   await window.getByText("真实后端接入后，这些事件会保持同一结构从 IPC bridge 流入").waitFor({ timeout: 20_000 });
-  await window.getByText("2 个文件").waitFor();
+  await window.locator(".change-summary").getByText("2 个文件", { exact: true }).waitFor();
   const thoughtGroupButton = window.getByTestId("thought-group").getByRole("button").first();
   assert(
     await thoughtGroupButton.getAttribute("aria-expanded") === "false",

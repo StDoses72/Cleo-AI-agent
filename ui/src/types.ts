@@ -82,6 +82,13 @@ export interface ChangeFile {
   diff: string;
 }
 
+export interface ChangeSet {
+  id: string;
+  title: string;
+  createdAt: string;
+  changes: ChangeFile[];
+}
+
 export interface Usage {
   used: number;
   limit: number;
@@ -99,6 +106,7 @@ export interface Thread {
   status: ThreadStatus;
   items: TimelineItem[];
   changes: ChangeFile[];
+  changeHistory?: ChangeSet[];
   usage: Usage;
   runtime?: RuntimeProfile;
   terminal?: string[];
@@ -355,6 +363,7 @@ export interface UndoChangesResult {
 export type StreamEvent =
   | { type: "upsert-item"; item: TimelineItem }
   | { type: "changes"; changes: ChangeFile[] }
+  | { type: "change-history"; changeSet: ChangeSet }
   | { type: "usage"; usage: Usage }
   | { type: "terminal"; chunk: string }
   | { type: "refresh"; activeThreadId: string; space: ThreadSpace }
