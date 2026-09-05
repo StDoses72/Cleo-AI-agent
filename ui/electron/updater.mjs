@@ -9,6 +9,7 @@ import {
 } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 
 export const RELEASE_MANIFEST_URL =
   "https://github.com/StDoses72/Cleo-AI-agent/releases/latest/download/release.json";
@@ -89,6 +90,10 @@ async function sha256(path) {
 
 function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function powershellLiteral(value) {
+  return `'${value.replaceAll("'", "''")}'`;
 }
 
 export class DesktopUpdater {
@@ -285,6 +290,21 @@ export class DesktopUpdater {
     if (!this.app.isPackaged || this.state.phase !== "ready" || !this.manifest || !this.archivePath) {
       return false;
     }
+    this.setState({ phase: "installing", error: null });
+    try {
+      await this.launchInstaller();
+    } catch (error) {
+      this.setState({
+        phase: "ready",
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+    setImmediate(() => this.app.quit());
+    return true;
+  }
+
+  async launchInstaller() {
     const scriptSource = join(this.resourcesPath, "update.ps1");
     const scriptPath = join(dirname(this.archivePath), "update.ps1");
     await copyFile(scriptSource, scriptPath);
@@ -300,33 +320,60 @@ export class DesktopUpdater {
       "v1.0",
       "powershell.exe",
     );
+    const installerArguments = [
+      "-NoLogo",
+      "-NoProfile",
+      "-NonInteractive",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      scriptPath,
+      "-PackagePath",
+      this.archivePath,
+      "-Sha256",
+      this.manifest.sha256,
+      "-InstallRoot",
+      installRoot,
+      "-WaitForProcessId",
+      String(this.processId),
+      "-RemovePackage",
+      "-Launch",
+      "-NoPause",
+    ].map((argument) => `"${argument}"`).join(" ");
+    const stagingRoot = dirname(scriptPath);
+    // Windows PowerShell can exit without running its script under Node's
+    // detached flag. Start-Process gives the installer an independent lifetime.
+    // Both processes must run outside the installation to avoid locking it.
+    const launchCommand = [
+      "$ErrorActionPreference = 'Stop'",
+      `Start-Process -FilePath ${powershellLiteral(powershell)}`
+        + ` -ArgumentList ${powershellLiteral(installerArguments)}`
+        + ` -WorkingDirectory ${powershellLiteral(stagingRoot)}`
+        + ` -RedirectStandardOutput ${powershellLiteral(join(stagingRoot, "install.log"))}`
+        + ` -RedirectStandardError ${powershellLiteral(join(stagingRoot, "install-error.log"))}`
+        + " -WindowStyle Hidden",
+    ].join("; ");
     const child = this.spawnImpl(
       powershell,
       [
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        scriptPath,
-        "-PackagePath",
-        this.archivePath,
-        "-Sha256",
-        this.manifest.sha256,
-        "-InstallRoot",
-        installRoot,
-        "-WaitForProcessId",
-        String(this.processId),
-        "-RemovePackage",
-        "-Launch",
-        "-NoPause",
+        "-NoLogo", "-NoProfile", "-NonInteractive", "-OutputFormat", "Text",
+        "-EncodedCommand", Buffer.from(launchCommand, "utf16le").toString("base64"),
       ],
-      { detached: true, stdio: "ignore", windowsHide: true },
+      { cwd: stagingRoot, stdio: ["ignore", "ignore", "pipe"], windowsHide: true },
     );
-    child.unref();
-    this.setState({ phase: "installing", error: null });
-    setImmediate(() => this.app.quit());
-    return true;
+    let launchError = "";
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk) => { launchError = `${launchError}${chunk}`.slice(-8000); });
+    let code;
+    try {
+      [code] = await once(child, "exit");
+    } finally {
+      // The independent installer may inherit a pipe handle; do not wait for
+      // that pipe to close while the installer is waiting for Cleo to exit.
+      child.stderr.destroy();
+    }
+    if (code !== 0) {
+      throw new Error(launchError.trim() || `Unable to start the Cleo installer (exit code ${code}).`);
+    }
   }
 }
