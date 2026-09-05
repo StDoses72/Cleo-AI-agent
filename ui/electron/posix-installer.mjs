@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
 import { createReadStream, constants } from "node:fs";
-import { access, lstat, mkdir, mkdtemp, readFile, readlink, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { access, lstat, mkdir, mkdtemp, readFile, readlink, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { execFile, spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { desktopPlatform } from "./platform.mjs";
 
@@ -123,7 +123,13 @@ export async function installUpdate(request, {
   }
 }
 
-if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
+let entryPath;
+if (process.argv[1]) {
+  try { entryPath = await realpath(process.argv[1]); } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+}
+if (entryPath === await realpath(fileURLToPath(import.meta.url))) {
   let announced = false;
   try {
     const request = JSON.parse(await readFile(process.argv[2], "utf8"));

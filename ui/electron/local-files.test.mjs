@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -44,8 +44,8 @@ test("relative Markdown links resolve inside the active workspace", async () => 
       shellAdapter: { openPath: async (path) => { opened.push(path); return ""; } },
     });
 
-    assert.equal(result.path, page);
-    assert.deepEqual(opened, [page]);
+    assert.equal(result.path, await realpath(page));
+    assert.deepEqual(opened, [await realpath(page)]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

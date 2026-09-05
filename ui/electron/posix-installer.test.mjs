@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
-import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -34,7 +34,7 @@ test("native POSIX update validates before quitting and preserves user data", {
 }, async () => {
   const run = promisify(execFile);
   const target = desktopPlatform();
-  const root = await mkdtemp(join(tmpdir(), "cleo-posix-update-"));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "cleo-posix-update-")));
   const installRoot = join(root, "installed", target.bundle);
   const packageRoot = join(root, "package", target.bundle);
   const metadata = (where) => target.platform === "darwin"
