@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import {
   copyFile,
@@ -10,6 +10,7 @@ import {
 import { basename, dirname, join } from "node:path";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { installationPaths, processStartTime, readInstallation, writeInstallation } from "./install-state.mjs";
 
 export const RELEASE_MANIFEST_URL =
   "https://github.com/StDoses72/Cleo-AI-agent/releases/latest/download/release.json";
@@ -107,6 +108,7 @@ export class DesktopUpdater {
     resourcesPath,
     executablePath = process.execPath,
     processId = process.pid,
+    processIdentity = processStartTime,
   }) {
     this.app = app;
     this.onState = onState;
@@ -117,6 +119,7 @@ export class DesktopUpdater {
     this.resourcesPath = resourcesPath;
     this.executablePath = executablePath;
     this.processId = processId;
+    this.processIdentity = processIdentity;
     this.manifest = null;
     this.archivePath = null;
     this.busy = null;
@@ -134,6 +137,21 @@ export class DesktopUpdater {
     return { ...this.state };
   }
 
+  async restoreInstallationResult() {
+    if (!this.app.isPackaged) return false;
+    const paths = installationPaths(this.app.getPath("temp"), this.executablePath);
+    const result = await readInstallation(paths.status);
+    if (!result || result.acknowledged || !["completed", "failed"].includes(result.phase)) return false;
+    const succeeded = result.phase === "completed" && result.version === this.app.getVersion();
+    this.setState({
+      phase: succeeded ? "updated" : "install-failed",
+      latestVersion: result.version || null,
+      error: succeeded ? null : result.error || "更新未完成，请重新检查更新。",
+    });
+    await writeInstallation(paths.status, { ...result, acknowledged: true });
+    return true;
+  }
+
   setState(update) {
     this.state = { ...this.state, ...update };
     this.onState(this.getState());
@@ -142,6 +160,7 @@ export class DesktopUpdater {
 
   async check() {
     if (!this.app.isPackaged) return this.getState();
+    if (this.state.phase === "installing") return this.getState();
     if (this.busy) return this.busy;
     this.busy = this.checkInternal();
     try {
@@ -179,6 +198,7 @@ export class DesktopUpdater {
 
   async download() {
     if (!this.app.isPackaged) return this.getState();
+    if (this.state.phase === "installing") return this.getState();
     if (this.busy) return this.busy;
     this.busy = this.downloadInternal();
     try {
@@ -308,6 +328,8 @@ export class DesktopUpdater {
     const scriptSource = join(this.resourcesPath, "update.ps1");
     const scriptPath = join(dirname(this.archivePath), "update.ps1");
     await copyFile(scriptSource, scriptPath);
+    const progressPath = join(dirname(this.archivePath), "update-progress.ps1");
+    await copyFile(join(this.resourcesPath, "update-progress.ps1"), progressPath);
     const installRoot = dirname(this.executablePath);
     if (basename(this.executablePath).toLowerCase() !== "cleo.exe") {
       throw new Error("Cleo can only update a packaged Cleo.exe installation.");
@@ -320,6 +342,8 @@ export class DesktopUpdater {
       "v1.0",
       "powershell.exe",
     );
+    const paths = installationPaths(this.app.getPath("temp"), this.executablePath);
+    const operationId = randomUUID();
     const installerArguments = [
       "-NoLogo",
       "-NoProfile",
@@ -339,8 +363,23 @@ export class DesktopUpdater {
       "-RemovePackage",
       "-Launch",
       "-NoPause",
+      "-Version",
+      this.manifest.version,
+      "-StatusPath",
+      paths.status,
+      "-OperationId",
+      operationId,
+      "-ProgressScript",
+      progressPath,
     ].map((argument) => `"${argument}"`).join(" ");
     const stagingRoot = dirname(scriptPath);
+    const starting = {
+      operationId, phase: "starting", pid: this.processId,
+      version: this.manifest.version, installRoot, error: null,
+      processStartTime: await this.processIdentity(this.processId),
+    };
+    if (!starting.processStartTime) throw new Error("无法确认 Cleo 进程身份，请重试更新。");
+    await writeInstallation(paths.status, starting);
     // Windows PowerShell can exit without running its script under Node's
     // detached flag. Start-Process gives the installer an independent lifetime.
     // Both processes must run outside the installation to avoid locking it.
@@ -353,27 +392,42 @@ export class DesktopUpdater {
         + ` -RedirectStandardError ${powershellLiteral(join(stagingRoot, "install-error.log"))}`
         + " -WindowStyle Hidden",
     ].join("; ");
-    const child = this.spawnImpl(
-      powershell,
-      [
-        "-NoLogo", "-NoProfile", "-NonInteractive", "-OutputFormat", "Text",
-        "-EncodedCommand", Buffer.from(launchCommand, "utf16le").toString("base64"),
-      ],
-      { cwd: stagingRoot, stdio: ["ignore", "ignore", "pipe"], windowsHide: true },
-    );
-    let launchError = "";
-    child.stderr.setEncoding("utf8");
-    child.stderr.on("data", (chunk) => { launchError = `${launchError}${chunk}`.slice(-8000); });
-    let code;
     try {
-      [code] = await once(child, "exit");
-    } finally {
-      // The independent installer may inherit a pipe handle; do not wait for
-      // that pipe to close while the installer is waiting for Cleo to exit.
-      child.stderr.destroy();
-    }
-    if (code !== 0) {
-      throw new Error(launchError.trim() || `Unable to start the Cleo installer (exit code ${code}).`);
+      const child = this.spawnImpl(
+        powershell,
+        [
+          "-NoLogo", "-NoProfile", "-NonInteractive", "-OutputFormat", "Text",
+          "-EncodedCommand", Buffer.from(launchCommand, "utf16le").toString("base64"),
+        ],
+        { cwd: stagingRoot, stdio: ["ignore", "ignore", "pipe"], windowsHide: true },
+      );
+      let launchError = "";
+      child.stderr.setEncoding("utf8");
+      child.stderr.on("data", (chunk) => { launchError = `${launchError}${chunk}`.slice(-8000); });
+      let code;
+      try {
+        [code] = await once(child, "exit");
+      } finally {
+        // The independent installer may inherit a pipe handle; do not wait for
+        // that pipe to close while the installer is waiting for Cleo to exit.
+        child.stderr.destroy();
+      }
+      if (code !== 0) {
+        throw new Error(launchError.trim() || `Unable to start the Cleo installer (exit code ${code}).`);
+      }
+      const deadline = Date.now() + 15_000;
+      while (Date.now() < deadline) {
+        const status = await readInstallation(paths.status);
+        if (status?.operationId === operationId && status.phase !== "starting") {
+          if (status.phase === "failed") throw new Error(status.error || "更新程序启动失败。");
+          if (status.pid !== this.processId) return;
+        }
+        await delay(100);
+      }
+      throw new Error("更新程序未确认启动，Cleo 将保持打开。请重试。");
+    } catch (error) {
+      await writeInstallation(paths.status, { ...starting, phase: "failed", error: error.message });
+      throw error;
     }
   }
 }

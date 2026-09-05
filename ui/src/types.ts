@@ -11,6 +11,8 @@ export type UpdatePhase =
   | "downloading"
   | "ready"
   | "installing"
+  | "updated"
+  | "install-failed"
   | "error";
 
 export interface UpdateState {

@@ -12,9 +12,17 @@ import {
 import { BackendBridge } from "./backend.mjs";
 import { openLocalHref } from "./local-files.mjs";
 import { DesktopUpdater } from "./updater.mjs";
+import {
+  acquireSingleInstance, installationPaths, interceptUpdateStartup,
+} from "./install-state.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 app.setName("Cleo");
+if (app.isPackaged) {
+  const paths = installationPaths(app.getPath("temp"), process.execPath);
+  if (await interceptUpdateStartup(paths)) app.exit(0);
+  if (!acquireSingleInstance(app, () => BrowserWindow.getAllWindows())) app.exit(0);
+}
 const backend = new BackendBridge({ app, here });
 const updater = new DesktopUpdater({
   app,
@@ -91,7 +99,7 @@ function createWindow() {
 }
 
 app.setAppUserModelId("ai.cleo.desktop");
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   const attachmentTempRoot = join(app.getPath("temp"), "Cleo", "attachments", randomUUID());
   app.once("will-quit", () => {
     try {
@@ -174,8 +182,9 @@ app.whenReady().then(() => {
   ipcMain.handle("cleo:update:check", () => updater.check());
   ipcMain.handle("cleo:update:download", () => updater.download());
   ipcMain.handle("cleo:update:install", () => updater.install());
+  const hasInstallResult = await updater.restoreInstallationResult();
   createWindow();
-  setTimeout(() => void updater.check(), 1500);
+  if (!hasInstallResult) setTimeout(() => void updater.check(), 1500);
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
