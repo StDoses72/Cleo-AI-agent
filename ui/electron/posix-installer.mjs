@@ -68,6 +68,7 @@ export async function installUpdate(request, {
   let staging;
   let backup;
   let promoted = false;
+  let launched = false;
   const result = async (status, error = null) => {
     await mkdir(dirname(request.resultPath), { recursive: true });
     const temporary = `${request.resultPath}.tmp`;
@@ -107,19 +108,25 @@ export async function installUpdate(request, {
     try {
       await rename(replacement, request.installRoot);
       promoted = true;
+      await result("installed");
+      await launch(join(request.installRoot, target.executable), request.installRoot);
+      launched = true;
     } catch (error) {
-      await rename(backup, request.installRoot);
+      try {
+        if (promoted) await rename(request.installRoot, join(staging, "rejected"));
+        await rename(backup, request.installRoot);
+      } catch (restoreError) {
+        throw new Error(`${error.message}; rollback failed: ${restoreError.message}. Previous installation retained at ${backup}`, { cause: error });
+      }
       backup = null;
       throw error;
     }
-    await result("installed");
-    await launch(join(request.installRoot, target.executable), request.installRoot);
   } catch (error) {
-    await result("failed", `${promoted ? "New version installed, but launch failed: " : ""}${error.message}`);
+    await result("failed", error.message);
     throw error;
   } finally {
     // Only remove our staging area when no previous installation needs recovery.
-    if (staging && (!backup || promoted)) await rm(staging, { recursive: true, force: true }).catch(() => {});
+    if (staging && (!backup || launched)) await rm(staging, { recursive: true, force: true }).catch(() => {});
   }
 }
 

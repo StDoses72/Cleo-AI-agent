@@ -199,6 +199,14 @@ On the target OS and architecture, run `npm run package:portable` from `ui/` to 
 
 ## Contributing
 
+Task completion includes cleanup. Keep test, debug, and build scratch files in one designated
+temporary directory, never scattered alongside repositories or in the workspace's parent.
+After verification and delivery, remove temporary test data, throwaway applications, logs,
+screenshots, PR drafts, patch/archive copies, and obsolete build/review/backup directories.
+Retain only requested deliverables; use Git for versioning and review instead of extra backups.
+Verify deletion targets and preserve user data, real repositories, development dependencies,
+and active resources. Recheck Git status and directories; explicitly report any blocked cleanup.
+
 Issues and pull requests are welcome. Before changing the code, read [AGENTS.md](AGENTS.md), the [development guide](docs/DEVELOPMENT.md), and the relevant tests. Changes to session, memory, or provider protocols should include focused regression tests and documentation updates.
 
 Licensed under the [MIT License](LICENSE).

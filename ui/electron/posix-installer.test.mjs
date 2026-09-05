@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
-import { chmod, copyFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -62,6 +62,14 @@ test("native POSIX update validates before quitting and preserves user data", {
       bytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex"), resultPath: join(root, "result.json") };
     await assert.rejects(installUpdate({ ...request, sha256: "0".repeat(64) }), /checksum/);
     assert.equal(await readFile(join(installRoot, "obsolete.txt"), "utf8"), "old");
+    await assert.rejects(installUpdate(request, { waitForParent: async () => {}, launch: async () => {
+      throw new Error("launch rejected");
+    } }), /launch rejected/);
+    assert.equal(JSON.parse(await readFile(metadata(installRoot), "utf8")).version, "0.1.0");
+    assert.equal(await readFile(join(installRoot, "obsolete.txt"), "utf8"), "old");
+    assert.equal(await readFile(join(root, "user-data.json"), "utf8"), "keep");
+    assert.equal(JSON.parse(await readFile(request.resultPath, "utf8")).status, "failed");
+    assert.deepEqual(await readdir(dirname(installRoot)), [target.bundle]);
     let launched = false;
     await installUpdate(request, { ready: async () => {
       assert.equal(JSON.parse(await readFile(metadata(installRoot), "utf8")).version, "0.1.0");
