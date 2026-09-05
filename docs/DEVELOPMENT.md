@@ -8,7 +8,7 @@
 - Deep Agents、LangChain/LangGraph：通用聊天 agent runtime。
 - Textual 与 Rich：终端交互和一次性输出。
 - FastMCP：stdio MCP server。
-- React 19、TypeScript、Vite、Electron：Windows 桌面客户端。
+- React 19、TypeScript、Vite、Electron：Windows、macOS、Linux 桌面客户端。
 - Pytest、Ruff、Node test runner、Playwright smoke scripts：回归验证。
 
 ## 本地环境
@@ -154,6 +154,9 @@ docker compose run --rm cleo "运行一次 smoke task"
 Compose 使用 bind mount 读取配置与 workspace，用 named volume 保存 data、memory 和 Codex home。测试后不要把 volume 中的用户数据复制回仓库。
 
 ## Windows 桌面发布
+
+macOS/Linux 的原生构建、安装格式、签名边界与四目标 CI 见[平台支持](PLATFORMS.md)。
+`npm run package:portable` 会按当前操作系统选择构建器；下面保留 Windows 发布步骤。
 
 从 `ui/` 运行：
 

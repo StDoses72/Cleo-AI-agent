@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("cleoWindow", {
+  platform: process.platform,
   setTheme: (theme) => ipcRenderer.send("cleo:window-theme", theme),
 });
 

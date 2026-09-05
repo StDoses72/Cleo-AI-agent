@@ -4,7 +4,7 @@
 
 Cleo is a local-first AI workspace that brings general chat, developer agents, resumable sessions, and evidence-backed memory into one desktop and CLI experience. Teams can supply their own models, tools, harnesses, and data boundaries.
 
-The project currently ships a Windows desktop app, a Python CLI, Textual TUIs, and a stdio MCP entry point. User data stays on the local device by default; inference is provided by the API provider or external agent harness selected by the user.
+The project supports native desktop builds for Windows, macOS and Linux, plus a Python CLI, Textual TUIs, and a stdio MCP entry point. User data stays on the local device by default; inference is provided by the API provider or external agent harness selected by the user.
 
 > Current version: `0.2.6`. Cleo is still pre-1.0 and is best suited to evaluation, internal-tool integration, and active development. Pin a version and validate it before deployments that require stable data formats or extension contracts.
 
@@ -37,7 +37,7 @@ General assistants and coding agents usually keep separate histories, permission
 - Project-scoped long-term memory, history retrieval, and a global persona limited to interaction tendencies.
 - Local shell controls for allowlists, path boundaries, timeouts, output limits, and audit logging.
 - Per-thread browser sessions with public/private-network and domain boundaries.
-- A self-contained Windows package with SHA-256 verified updates and data-preserving uninstall behavior.
+- Self-contained platform-specific desktop packages with verified updates and separate user data.
 
 ## Start in five minutes
 
@@ -77,7 +77,7 @@ cleo "Summarize this repository's architecture."
 cleo --productivity --cwd .
 ```
 
-Linux and macOS source runs use the same Python package and JSON formats. The prebuilt desktop package and installer currently support Windows only.
+Linux and macOS use the same Python package and JSON formats. See [platform support](docs/PLATFORMS.md) for native builds, installation formats and signing boundaries. Available prebuilt assets depend on the current GitHub Release.
 
 ## Common workflows
 
@@ -187,11 +187,11 @@ npm run test:backend
 npm run smoke
 ```
 
-On Windows, run `npm run package:portable` from `ui/` to build the full release into the repository-level `release/` directory. See the [development guide](docs/DEVELOPMENT.md) and [desktop subsystem guide](ui/README.md).
+On the target OS and architecture, run `npm run package:portable` from `ui/` to build the full release into the repository-level `release/` directory. See the [development guide](docs/DEVELOPMENT.md) and [desktop subsystem guide](ui/README.md).
 
 ## Current boundaries
 
-- The prebuilt desktop application currently targets Windows x64; other platforms run from source.
+- Desktop targets are Windows x64, macOS ARM64/x64 and Linux x64. Default macOS artifacts are development builds; public distribution requires signing and notarization. See [platform support](docs/PLATFORMS.md).
 - Cleo is a local single-user application and stdio tool, not a multi-tenant web service or HTTP API.
 - General chat primarily targets OpenAI-compatible chat models; compatibility depends on provider behavior.
 - Productivity providers do not expose identical capabilities; Claude and ACP do not emulate Codex-only controls.

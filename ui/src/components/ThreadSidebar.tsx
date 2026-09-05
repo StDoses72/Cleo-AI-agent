@@ -1,3 +1,4 @@
+import { modifierKey } from "../platform";
 import { useMemo, useState, type CSSProperties } from "react";
 import {
   Brain,
@@ -206,7 +207,7 @@ export function ThreadSidebar({
           <button className="new-thread-button" type="button" onClick={onCreateThread} data-testid="new-thread">
             <Plus size={16} />
             <span>{space === "chat" ? "新对话" : "新任务"}</span>
-            <kbd>Ctrl N</kbd>
+            <kbd>{modifierKey} N</kbd>
           </button>
 
           <label className="sidebar-search">
@@ -218,7 +219,7 @@ export function ThreadSidebar({
               aria-label="搜索 thread"
             />
             <button type="button" onClick={onOpenCommand} title="命令面板">
-              <kbd>Ctrl K</kbd>
+              <kbd>{modifierKey} K</kbd>
             </button>
           </label>
 

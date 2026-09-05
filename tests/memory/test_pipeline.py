@@ -300,9 +300,9 @@ def test_event_to_dream_completion_protocol(tmp_path: Path, monkeypatch) -> None
         MEMORY_DIR=memory_root,
         PERSONA_PATH=tmp_path / "PERSONA.md",
     )
-    monkeypatch.setattr(state, "settings", fake_settings)
     monkeypatch.setattr(memory_store, "settings", fake_settings)
     monkeypatch.setattr(dream_agent_tools, "settings", fake_settings)
+    monkeypatch.setattr("cleo.config.settings.settings", fake_settings)
     session_store = SessionStore(memory_root)
     session_store.sync_langchain_messages(
         session_id="session-dream",

@@ -1,10 +1,34 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import { openLocalHref, resolveLocalHref } from "./local-files.mjs";
+
+test("application bundles and Linux desktop launchers are not opened as documents", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cleo-platform-links-"));
+  try {
+    await mkdir(join(root, "Example.app"));
+    await writeFile(join(root, "example.desktop"), "[Desktop Entry]\n");
+    for (const href of ["Example.app", "example.desktop"]) {
+      await assert.rejects(openLocalHref({ href, workspacePath: root,
+        shellAdapter: { openPath: async () => assert.fail("must not launch") } }), /不能直接运行/);
+    }
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("POSIX executable files without extensions cannot launch from a message link", {
+  skip: process.platform === "win32",
+}, async () => {
+  const root = await mkdtemp(join(tmpdir(), "cleo-executable-link-"));
+  try {
+    await writeFile(join(root, "program"), "#!/bin/sh\nexit 0\n");
+    await chmod(join(root, "program"), 0o755);
+    await assert.rejects(openLocalHref({ href: "program", workspacePath: root,
+      shellAdapter: { openPath: async () => assert.fail("must not launch") } }), /不能直接运行/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
 
 test("relative Markdown links resolve inside the active workspace", async () => {
   const root = await mkdtemp(join(tmpdir(), "cleo-local-link-"));

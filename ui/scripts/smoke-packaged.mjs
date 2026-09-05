@@ -2,10 +2,12 @@ import { _electron as electron } from "playwright";
 import { mkdir, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { desktopPlatform } from "../electron/platform.mjs";
 
 const appDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 const sourceRoot = resolve(appDir, "..");
-const executablePath = join(sourceRoot, "release", "Cleo", "Cleo.exe");
+const target = desktopPlatform();
+const executablePath = process.env.CLEO_EXECUTABLE || join(sourceRoot, "release", target.bundle, target.executable);
 const testHome = join(sourceRoot, ".codex-test-tmp-desktop-packaged");
 const screenshotPath = join(appDir, "output", "playwright", "packaged-memory.png");
 await rm(testHome, { recursive: true, force: true });

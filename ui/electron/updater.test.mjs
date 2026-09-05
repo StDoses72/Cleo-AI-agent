@@ -9,7 +9,9 @@ import { PassThrough } from "node:stream";
 import test from "node:test";
 import { promisify } from "node:util";
 
-import { compareVersions, DesktopUpdater, validateManifest } from "./updater.mjs";
+import { compareVersions, DesktopUpdater, validateManifest as validatePlatformManifest } from "./updater.mjs";
+
+const validateManifest = (value) => validatePlatformManifest(value, { id: "windows-x64", archive: "Cleo-windows-x64.zip" });
 
 const manifest = {
   schema_version: 1,
@@ -43,6 +45,7 @@ test("release manifests must describe the expected verified Windows archive", ()
 test("packaged updater reports a newer release", async () => {
   const states = [];
   const updater = new DesktopUpdater({
+    platform: "win32", arch: "x64",
     app: {
       isPackaged: true,
       getVersion: () => "0.1.3-alpha",
@@ -68,6 +71,7 @@ test("packaged updater reports a newer release", async () => {
 test("development builds do not contact the release server", async () => {
   let fetched = false;
   const updater = new DesktopUpdater({
+    platform: "win32", arch: "x64",
     app: { isPackaged: false, getVersion: () => "0.1.3-alpha" },
     resourcesPath: "",
     fetchImpl: async () => {
@@ -92,6 +96,7 @@ test("downloaded updates reach ready only after size and SHA-256 verification", 
   let archiveUrl = "";
   try {
     const updater = new DesktopUpdater({
+    platform: "win32", arch: "x64",
       app: {
         isPackaged: true,
         getVersion: () => "0.1.3-alpha",
@@ -124,6 +129,7 @@ async function readyUpdater(root, spawnImpl, quit) {
   await mkdir(stagingRoot, { recursive: true });
   await writeFile(join(resourcesPath, "update.ps1"), "# installer fixture\n");
   const updater = new DesktopUpdater({
+    platform: "win32", arch: "x64",
     app: { isPackaged: true, getVersion: () => "0.1.0", quit },
     resourcesPath,
     executablePath: join(root, "Installed Cleo", "Cleo.exe"),
@@ -256,6 +262,7 @@ Compress-Archive -LiteralPath $package -DestinationPath $Archive
     await writeFile(harnessPath, `
 import { DesktopUpdater, validateManifest } from ${JSON.stringify(new URL("./updater.mjs", import.meta.url).href)};
 const updater = new DesktopUpdater({
+    platform: "win32", arch: "x64",
   app: { isPackaged: true, getVersion: () => "0.1.0", quit: () => process.exit(0) },
   resourcesPath: ${JSON.stringify(resourcesPath)},
   executablePath: ${JSON.stringify(join(installRoot, "Cleo.exe"))},

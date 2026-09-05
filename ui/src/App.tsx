@@ -1,3 +1,4 @@
+import { modifierKey } from "./platform";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Command, Minus } from "lucide-react";
 import { Conversation } from "./components/Conversation";
@@ -148,7 +149,7 @@ export function App() {
         label: "新建任务",
         hint: "在当前项目中创建一个空 thread",
         icon: commandIcons.plus,
-        shortcut: "Ctrl N",
+        shortcut: `${modifierKey} N`,
         run: () => void workspace.createThread(),
       },
       {

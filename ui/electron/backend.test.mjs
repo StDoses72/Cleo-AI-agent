@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { delimiter, dirname, join } from "node:path";
+import { dirname, join, win32 } from "node:path";
 import test from "node:test";
 
 import { BackendBridge } from "./backend.mjs";
@@ -94,6 +94,6 @@ test("Windows desktop backend discovers npm global commands", () => {
 
   assert.equal(
     runtimePath,
-    [join(dirname(python), "Scripts"), join(appData, "npm"), systemPath].join(delimiter),
+    [win32.join(dirname(python), "Scripts"), win32.join(appData, "npm"), systemPath].join(";"),
   );
 });

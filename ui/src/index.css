@@ -171,6 +171,11 @@ kbd {
   background: var(--chrome);
 }
 
+html[data-platform="darwin"] .titlebar {
+  padding-left: 88px;
+  padding-right: 14px;
+}
+
 .titlebar-brand,
 .titlebar-context,
 .titlebar-runtime {

@@ -9,8 +9,9 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createInterface } from "node:readline";
-import { delimiter, dirname, join, resolve } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
+import { bundledPython, desktopDataHome, harnessPath } from "./platform.mjs";
 
 export class BackendBridge {
   constructor({ app, here }) {
@@ -40,7 +41,7 @@ export class BackendBridge {
     if (this.process && !this.process.killed) return;
     const paths = this.runtimePaths();
     this.prepareHome(paths);
-    const python = process.env.CLEO_PYTHON || paths.python || "python";
+    const python = process.env.CLEO_PYTHON || paths.python || (process.platform === "win32" ? "python" : "python3");
     const pythonPath = this.app.isPackaged
       ? ""
       : [paths.backendRoot, process.env.PYTHONPATH].filter(Boolean).join(delimiter);
@@ -87,15 +88,7 @@ export class BackendBridge {
   }
 
   runtimePath(paths, environment = process.env, platform = process.platform) {
-    return [
-      paths.python ? join(dirname(paths.python), "Scripts") : null,
-      paths.browserRoot,
-      paths.browserRoot ? join(paths.browserRoot, "node_modules", ".bin") : null,
-      platform === "win32" && environment.APPDATA
-        ? join(environment.APPDATA, "npm")
-        : null,
-      environment.PATH,
-    ].filter(Boolean).join(delimiter);
+    return harnessPath(paths, environment, platform, environment.HOME || environment.USERPROFILE);
   }
 
   handleLine(line) {
@@ -126,13 +119,15 @@ export class BackendBridge {
       return { backendRoot: sourceRoot, cleoHome: sourceRoot };
     }
     const electronUserData = this.app.getPath("userData");
-    const cleoHome = process.env.CLEO_HOME
-      || (process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, "Cleo") : electronUserData);
+    const cleoHome = desktopDataHome({
+      platform: process.platform, environment: process.env,
+      home: this.app.getPath("home"), userData: electronUserData,
+    });
     return {
       backendRoot: process.resourcesPath,
       cleoHome,
       legacyCleoHome: process.env.CLEO_HOME ? null : electronUserData,
-      python: join(process.resourcesPath, "python", "python.exe"),
+      python: bundledPython(process.resourcesPath),
       defaultsRoot: join(process.resourcesPath, "defaults"),
       browserRoot: join(process.resourcesPath, "browser"),
       configPath: join(cleoHome, "config", "cleo.json"),

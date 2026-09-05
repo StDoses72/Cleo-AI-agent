@@ -1,23 +1,26 @@
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
 import {
   copyFile,
+  chmod,
   mkdir,
   open,
+  readFile,
   rm,
   stat,
+  writeFile,
 } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { createInterface } from "node:readline";
+import { desktopPlatform, installationRoot } from "./platform.mjs";
 
 export const RELEASE_MANIFEST_URL =
   "https://github.com/StDoses72/Cleo-AI-agent/releases/latest/download/release.json";
 export const RELEASE_ASSET_BASE_URL =
   "https://github.com/StDoses72/Cleo-AI-agent/releases/download/";
 
-const UPDATE_ARCHIVE = "Cleo-windows-x64.zip";
-const UPDATE_PLATFORM = "windows-x64";
 const DOWNLOAD_ATTEMPTS = 5;
 
 function parseVersion(value) {
@@ -56,7 +59,7 @@ export function compareVersions(left, right) {
   return 0;
 }
 
-export function validateManifest(value) {
+export function validateManifest(value, target = desktopPlatform()) {
   if (!value || typeof value !== "object") throw new Error("The update manifest is invalid.");
   const manifest = {
     schemaVersion: Number(value.schema_version),
@@ -71,8 +74,8 @@ export function validateManifest(value) {
   if (
     manifest.schemaVersion !== 1 ||
     manifest.app !== "Cleo" ||
-    manifest.platform !== UPDATE_PLATFORM ||
-    manifest.archive !== UPDATE_ARCHIVE ||
+    manifest.platform !== target.id ||
+    manifest.archive !== target.archive ||
     !/^[a-f0-9]{64}$/.test(manifest.sha256) ||
     !Number.isSafeInteger(manifest.bytes) ||
     manifest.bytes <= 0
@@ -102,17 +105,20 @@ export class DesktopUpdater {
     onState = () => {},
     fetchImpl = globalThis.fetch,
     spawnImpl = spawn,
-    manifestUrl = RELEASE_MANIFEST_URL,
+    manifestUrl,
     assetBaseUrl = RELEASE_ASSET_BASE_URL,
     resourcesPath,
     executablePath = process.execPath,
     processId = process.pid,
+    platform = process.platform,
+    arch = process.arch,
   }) {
     this.app = app;
     this.onState = onState;
     this.fetchImpl = fetchImpl;
     this.spawnImpl = spawnImpl;
-    this.manifestUrl = manifestUrl;
+    this.target = desktopPlatform(platform, arch);
+    this.manifestUrl = manifestUrl || new URL(this.target.manifest, RELEASE_MANIFEST_URL).href;
     this.assetBaseUrl = assetBaseUrl;
     this.resourcesPath = resourcesPath;
     this.executablePath = executablePath;
@@ -120,18 +126,38 @@ export class DesktopUpdater {
     this.manifest = null;
     this.archivePath = null;
     this.busy = null;
+    this.packageManaged = platform === "linux" && resourcesPath
+      && existsSync(join(resourcesPath, "package-manager"));
     this.state = {
-      phase: app.isPackaged ? "idle" : "unsupported",
+      phase: app.isPackaged && !this.packageManaged ? "idle" : "unsupported",
       currentVersion: app.getVersion(),
       latestVersion: null,
       downloadedBytes: 0,
       totalBytes: 0,
-      error: null,
+      error: this.packageManaged ? "此 Linux 安装由系统软件包管理器维护，请安装新版 .deb 软件包更新。" : null,
     };
   }
 
   getState() {
     return { ...this.state };
+  }
+
+  posixResultPath() {
+    const key = createHash("sha256").update(installationRoot(this.executablePath, this.target)).digest("hex").slice(0, 24);
+    return join(this.app.getPath("userData"), `update-result-${key}.json`);
+  }
+
+  async takeInstallResult() {
+    if (!this.app.isPackaged || this.target.platform === "win32") return null;
+    const path = this.posixResultPath();
+    try {
+      const value = JSON.parse(await readFile(path, "utf8"));
+      await rm(path);
+      return value;
+    } catch (error) {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    }
   }
 
   setState(update) {
@@ -141,7 +167,7 @@ export class DesktopUpdater {
   }
 
   async check() {
-    if (!this.app.isPackaged) return this.getState();
+    if (!this.app.isPackaged || this.packageManaged) return this.getState();
     if (this.busy) return this.busy;
     this.busy = this.checkInternal();
     try {
@@ -159,7 +185,7 @@ export class DesktopUpdater {
         redirect: "follow",
       });
       if (!response.ok) throw new Error(`Update server returned HTTP ${response.status}.`);
-      const manifest = validateManifest(await response.json());
+      const manifest = validateManifest(await response.json(), this.target);
       this.manifest = manifest;
       const available = compareVersions(manifest.version, this.state.currentVersion) > 0;
       return this.setState({
@@ -178,7 +204,7 @@ export class DesktopUpdater {
   }
 
   async download() {
-    if (!this.app.isPackaged) return this.getState();
+    if (!this.app.isPackaged || this.packageManaged) return this.getState();
     if (this.busy) return this.busy;
     this.busy = this.downloadInternal();
     try {
@@ -195,7 +221,8 @@ export class DesktopUpdater {
     if (!this.manifest || this.state.phase !== "available") return this.getState();
 
     const manifest = this.manifest;
-    const stagingRoot = join(this.app.getPath("temp"), `cleo-update-${manifest.version}`);
+    const suffix = this.target.platform === "win32" ? "" : `-${this.target.id}`;
+    const stagingRoot = join(this.app.getPath("temp"), `cleo-update-${manifest.version}${suffix}`);
     const archivePath = join(stagingRoot, manifest.archive);
     await mkdir(stagingRoot, { recursive: true });
     this.setState({
@@ -305,6 +332,7 @@ export class DesktopUpdater {
   }
 
   async launchInstaller() {
+    if (this.target.platform !== "win32") return this.launchPosixInstaller();
     const scriptSource = join(this.resourcesPath, "update.ps1");
     const scriptPath = join(dirname(this.archivePath), "update.ps1");
     await copyFile(scriptSource, scriptPath);
@@ -375,5 +403,47 @@ export class DesktopUpdater {
     if (code !== 0) {
       throw new Error(launchError.trim() || `Unable to start the Cleo installer (exit code ${code}).`);
     }
+  }
+
+  async launchPosixInstaller() {
+    const staging = dirname(this.archivePath);
+    for (const file of ["posix-installer.mjs", "platform.mjs"]) {
+      await copyFile(join(this.resourcesPath, "update", file), join(staging, file));
+    }
+    const node = join(staging, "node");
+    await copyFile(join(this.resourcesPath, "browser", "node"), node);
+    await chmod(node, 0o755);
+    const requestPath = join(staging, "install-request.json");
+    await writeFile(requestPath, JSON.stringify({
+      platform: this.target.id, version: this.manifest.version,
+      sha256: this.manifest.sha256, bytes: this.manifest.bytes,
+      archive: this.archivePath, parentPid: this.processId,
+      installRoot: installationRoot(this.executablePath, this.target), resultPath: this.posixResultPath(),
+    }));
+    const log = await open(join(staging, "install-error.log"), "w");
+    let child;
+    try {
+      child = this.spawnImpl(node, [join(staging, "posix-installer.mjs"), requestPath], {
+        cwd: staging, detached: true, stdio: ["ignore", "pipe", log.fd],
+      });
+    } finally {
+      await log.close();
+    }
+    await new Promise((done, reject) => {
+      const lines = createInterface({ input: child.stdout });
+      const failed = (error) => { lines.close(); reject(error); };
+      child.once("error", failed);
+      child.once("exit", (code) => failed(new Error(`Update preparation failed (exit ${code}).`)));
+      lines.on("line", (line) => {
+        let event;
+        try { event = JSON.parse(line); } catch { return; }
+        if (event.type === "ready") {
+          lines.close();
+          child.stdout.destroy();
+          child.unref();
+          done();
+        } else if (event.type === "error") failed(new Error(event.error));
+      });
+    });
   }
 }
