@@ -64,6 +64,7 @@ export function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("cleo-theme", theme);
+    window.cleoWindow?.setTheme(theme);
   }, [theme]);
 
   useEffect(() => {

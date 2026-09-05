@@ -28,6 +28,37 @@ async function check(name, run) {
 }
 
 try {
+  await check("native-titlebar-theme", async () => {
+    await app.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      const applyOverlay = window.setTitleBarOverlay.bind(window);
+      window.setTitleBarOverlay = (options) => {
+        applyOverlay(options);
+        globalThis.uxTitleBarOverlay = options;
+      };
+    });
+    await page.evaluate(() => localStorage.setItem("cleo-theme", "dark"));
+    await page.reload();
+    await page.getByTestId("conversation").waitFor();
+    await rail("设置").click();
+    for (const [label, color, symbolColor] of [
+      ["雾白", "#e9e9e6", "#59636f"],
+      ["夜色", "#0b0e12", "#848c98"],
+      ["雾白", "#e9e9e6", "#59636f"],
+    ]) {
+      await rail(label).click();
+      await page.waitForFunction(() => window.cleoWindow !== undefined);
+      await app.evaluate(() => new Promise((resolve) => setImmediate(resolve)));
+      assert.deepEqual(await app.evaluate(() => globalThis.uxTitleBarOverlay), { color, symbolColor });
+    }
+    await app.evaluate(() => { globalThis.uxTitleBarOverlay = null; });
+    await page.reload();
+    await page.getByTestId("conversation").waitFor();
+    assert.equal((await app.evaluate(() => globalThis.uxTitleBarOverlay))?.color, "#e9e9e6", "Saved light theme must restore native controls");
+    await rail("设置").click();
+    await rail("夜色").click();
+    await page.keyboard.press("Escape");
+  });
   await check("chat-welcome", async () => {
     await rail("对话").click();
     await page.getByTestId("new-thread").click();

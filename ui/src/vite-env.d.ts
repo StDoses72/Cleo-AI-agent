@@ -1,6 +1,9 @@
 /// <reference types="vite/client" />
 
 interface Window {
+  cleoWindow?: {
+    setTheme(theme: "dark" | "light"): void;
+  };
   cleoDesktop?: {
     request<T = unknown>(method: string, params?: Record<string, unknown>, streamId?: string | null): Promise<T>;
     onStreamEvent(listener: (payload: { streamId: string; event: unknown }) => void): () => void;

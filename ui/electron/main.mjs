@@ -66,8 +66,8 @@ function createWindow() {
     backgroundColor: "#0b0d10",
     titleBarStyle: "hidden",
     titleBarOverlay: {
-      color: "#0b0d10",
-      symbolColor: "#8c939d",
+      color: "#0b0e12",
+      symbolColor: "#848c98",
       height: 44,
     },
     webPreferences: {
@@ -101,6 +101,16 @@ app.whenReady().then(() => {
     }
   });
   Menu.setApplicationMenu(null);
+  ipcMain.on("cleo:window-theme", (event, theme) => {
+    if (theme !== "light" && theme !== "dark") return;
+    if (process.platform !== "win32" && process.platform !== "linux") return;
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (!window || window.isDestroyed()) return;
+    window.setTitleBarOverlay({
+      color: theme === "light" ? "#e9e9e6" : "#0b0e12",
+      symbolColor: theme === "light" ? "#59636f" : "#848c98",
+    });
+  });
   ipcMain.handle("cleo:request", async (event, payload) => {
     const method = String(payload?.method || "");
     if (!allowedMethods.has(method)) throw new Error(`Unsupported desktop method: ${method}`);
