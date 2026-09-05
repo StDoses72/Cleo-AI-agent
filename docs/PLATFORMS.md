@@ -1,6 +1,6 @@
 # 桌面平台支持
 
-本分支提供以下原生构建目标。各平台必须在对应系统和 CPU 架构上构建；源码支持不代表
+v0.3.0 提供以下原生构建目标。各平台必须在对应系统和 CPU 架构上构建；源码支持不代表
 当前 GitHub Release 已上传了全部平台的预构建附件。
 
 | 目标 | 程序 | 发布文件 | 用户数据 |
@@ -46,7 +46,8 @@ Windows 委派现有 `build-release.ps1`；macOS/Linux 使用 `build-release.py`
 `tar`、`dpkg-deb`。若 `release/Cleo` 或 `release/Cleo.app` 已存在，先将上次产物移走再构建。
 
 macOS 当前构建产物采用 ad-hoc 签名，用于本地运行和 CI 验证，**不等同于 Developer ID 签名
-及 Apple 公证的正式分发包**。正式对外发布前，需要发行者配置 Apple 凭据、签名和公证流程，
+及 Apple 公证的正式分发包**。v0.3.0 的 macOS 附件以开发签名构建提供；要生成经过公证的
+分发包，需要发行者配置 Apple 凭据、签名和公证流程，
 并对最终签名后的 ZIP 重新生成校验清单；脚本不会移除 Gatekeeper 隔离属性或关闭验证。
 参见 [Electron 签名说明](https://www.electronjs.org/docs/latest/tutorial/code-signing)。
 
@@ -63,7 +64,8 @@ macOS 当前构建产物采用 ad-hoc 签名，用于本地运行和 CI 验证�
 
 macOS/Linux 便携包通过各自的 manifest 选择更新，校验平台、架构、长度和 SHA-256 后，
 使用临时目录中的独立 Node 安装器准备文件。准备失败时不退出应用；准备完成后等待旧进程
-退出，以同卷目录重命名替换并启动新版本。用户数据不在替换目录中，安装结果在下次启动时提示。
+退出，以同卷目录重命名替换并启动新版本。启动失败会恢复旧版本；如果恢复也失败，则保留
+旧安装并报告其位置。用户数据不在替换目录中，安装结果在下次启动时提示。
 macOS 还会验证包内代码签名。`.deb` 安装不会尝试自更新系统目录。
 
 发布附件须成组上传：
@@ -81,7 +83,8 @@ macOS 还会验证包内代码签名。`.deb` 安装不会尝试自更新系统�
 ## 验证
 
 `Desktop platforms` CI 分别在 Windows x64、macOS ARM64、macOS Intel、Ubuntu x64 上运行
-Python、Node 与 Electron smoke。macOS/Linux 还会构建原生包并运行最终包 smoke，产物与截图
+Python、Node 与 Electron smoke。macOS/Linux 还会构建原生包并运行最终包 smoke；手动运行
+工作流时同样构建并验证 Windows 发布包。Windows 还验证更新进度与重复启动保护。产物与截图
 作为 Actions artifacts 保存，不自动发布 Release。macOS runner 标签来自
 [GitHub 官方 runner 列表](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)。
 

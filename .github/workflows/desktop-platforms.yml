@@ -37,6 +37,7 @@ jobs:
           cache: npm
           cache-dependency-path: ui/package-lock.json
       - uses: actions/setup-python@v5
+        id: python
         with:
           python-version: '3.12'
       - uses: astral-sh/setup-uv@v6
@@ -65,11 +66,19 @@ jobs:
       - name: Linux desktop smoke
         if: runner.os == 'Linux'
         run: xvfb-run -a node ui/scripts/smoke.mjs
+      - name: Windows update smoke
+        if: runner.os == 'Windows'
+        env:
+          CLEO_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: node ui/scripts/smoke-update.mjs
       - name: Build native POSIX package
         if: runner.os != 'Windows'
         run: npm --prefix ui run package:portable
-      - name: macOS packaged smoke
-        if: runner.os == 'macOS'
+      - name: Build native Windows package
+        if: runner.os == 'Windows' && github.event_name == 'workflow_dispatch'
+        run: ./scripts/build-release.ps1 -ElectronMirror '' -PythonIndex 'https://pypi.org/simple/'
+      - name: Native packaged smoke
+        if: runner.os == 'macOS' || (runner.os == 'Windows' && github.event_name == 'workflow_dispatch')
         run: npm --prefix ui run smoke:packaged
       - name: Linux installed package smoke
         if: runner.os == 'Linux'
