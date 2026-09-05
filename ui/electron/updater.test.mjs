@@ -8,8 +8,10 @@ import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import test from "node:test";
 import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 
 import { compareVersions, DesktopUpdater, validateManifest as validatePlatformManifest } from "./updater.mjs";
+import { installationPaths, readInstallation, writeInstallation } from "./install-state.mjs";
 
 const validateManifest = (value) => validatePlatformManifest(value, { id: "windows-x64", archive: "Cleo-windows-x64.zip" });
 
@@ -128,12 +130,14 @@ async function readyUpdater(root, spawnImpl, quit) {
   await mkdir(resourcesPath, { recursive: true });
   await mkdir(stagingRoot, { recursive: true });
   await writeFile(join(resourcesPath, "update.ps1"), "# installer fixture\n");
+  await writeFile(join(resourcesPath, "update-progress.ps1"), "# progress fixture\n");
   const updater = new DesktopUpdater({
     platform: "win32", arch: "x64",
-    app: { isPackaged: true, getVersion: () => "0.1.0", quit },
+    app: { isPackaged: true, getVersion: () => "0.1.0", getPath: () => root, quit },
     resourcesPath,
     executablePath: join(root, "Installed Cleo", "Cleo.exe"),
     spawnImpl,
+    processIdentity: async () => "test-start",
   });
   updater.manifest = validateManifest(manifest);
   updater.archivePath = join(stagingRoot, manifest.archive);
@@ -167,6 +171,11 @@ test("install waits for the launcher to succeed and prevents duplicate launches"
     assert.equal(await updater.install(), false);
     assert.equal(launches, 1);
     child.emit("exit", 0);
+    await new Promise(setImmediate);
+    assert.equal(quits, 0, "launcher exit alone does not acknowledge installer startup");
+    const paths = installationPaths(root, updater.executablePath);
+    const starting = await readInstallation(paths.status);
+    await writeInstallation(paths.status, { ...starting, phase: "verifying", pid: process.pid + 1 });
     assert.equal(await installing, true);
     await new Promise(setImmediate);
     assert.equal(quits, 1);
@@ -191,6 +200,7 @@ test("installer spawn failures keep Cleo open and allow retry", async () => {
     assert.equal(quits, 0);
     assert.equal(updater.getState().phase, "ready");
     assert.match(updater.getState().error, /installer launch denied/);
+    assert.equal((await readInstallation(installationPaths(root, updater.executablePath).status)).phase, "failed");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -237,6 +247,7 @@ test("Windows restart-install replaces an existing installation and launches the
     await writeFile(join(installRoot, "obsolete.txt"), "old release file");
     await writeFile(join(root, "user-data.json"), "preserve local data");
     await copyFile(new URL("../../scripts/download.ps1", import.meta.url), join(resourcesPath, "update.ps1"));
+    await writeFile(join(resourcesPath, "update-progress.ps1"), 'param($StatusPath)\n[System.IO.File]::WriteAllText("$StatusPath.window", [string]$PID)\nStart-Sleep -Seconds 1\n' );
     const fixtureScript = join(root, "package.ps1");
     await writeFile(fixtureScript, `
 param($Root, $Archive)
@@ -262,8 +273,8 @@ Compress-Archive -LiteralPath $package -DestinationPath $Archive
     await writeFile(harnessPath, `
 import { DesktopUpdater, validateManifest } from ${JSON.stringify(new URL("./updater.mjs", import.meta.url).href)};
 const updater = new DesktopUpdater({
-    platform: "win32", arch: "x64",
-  app: { isPackaged: true, getVersion: () => "0.1.0", quit: () => process.exit(0) },
+  platform: "win32", arch: "x64",
+  app: { isPackaged: true, getVersion: () => "0.1.0", getPath: () => ${JSON.stringify(root)}, quit: () => process.exit(0) },
   resourcesPath: ${JSON.stringify(resourcesPath)},
   executablePath: ${JSON.stringify(join(installRoot, "Cleo.exe"))},
 });
@@ -272,7 +283,12 @@ updater.archivePath = ${JSON.stringify(archivePath)};
 updater.setState({ phase: "ready" });
 await updater.install();
 `);
-    await run(process.execPath, [harnessPath], { cwd: installRoot, windowsHide: true, timeout: 15_000 });
+    try {
+      await run(process.execPath, [harnessPath], { cwd: installRoot, windowsHide: true, timeout: 25_000 });
+    } catch (error) {
+      error.message += `\nInstaller stderr: ${await readFile(join(stagingRoot, "install-error.log"), "utf8").catch(() => "unavailable")}`;
+      throw error;
+    }
     let launched;
     let log = "";
     let errors = "";
@@ -293,10 +309,86 @@ await updater.install();
     assert.equal(installed.version, "0.2.0");
     assert.equal(installed.sha256, release.sha256);
     assert.equal(launched, "0.2.0", errors || log);
+    const status = await readInstallation(installationPaths(root, join(installRoot, "Cleo.exe")).status);
+    assert.equal(status.phase, "completed");
+    assert.equal(status.version, "0.2.0");
     await assert.rejects(readFile(join(installRoot, "obsolete.txt")), { code: "ENOENT" });
     await assert.rejects(readFile(archivePath), { code: "ENOENT" });
     assert.equal(await readFile(join(root, "user-data.json"), "utf8"), "preserve local data");
   } finally {
     await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+  }
+});
+
+test("the next startup reports installation success or failure once", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cleo-updater-result-"));
+  try {
+    const exe = join(root, "Cleo.exe");
+    const paths = installationPaths(root, exe);
+    const updater = new DesktopUpdater({
+      platform: "win32", arch: "x64",
+      app: { isPackaged: true, getVersion: () => "0.2.0", getPath: () => root },
+      executablePath: exe, resourcesPath: root,
+    });
+    await writeInstallation(paths.status, { phase: "completed", version: "0.2.0" });
+    assert.equal(await updater.restoreInstallationResult(), true);
+    assert.equal(updater.getState().phase, "updated");
+    assert.equal(await updater.restoreInstallationResult(), false);
+    await writeInstallation(paths.status, { phase: "failed", version: "0.2.0", error: "Replacement failed" });
+    assert.equal(await updater.restoreInstallationResult(), true);
+    assert.equal(updater.getState().phase, "install-failed");
+    assert.equal(updater.getState().error, "Replacement failed");
+    await writeInstallation(paths.status, { phase: "completed", version: "0.3.0" });
+    assert.equal(await updater.restoreInstallationResult(), true);
+    assert.equal(updater.getState().phase, "install-failed", "a still-old binary must not claim success");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("failed Windows verification keeps the old program and cache without relaunching it", {
+  skip: process.platform !== "win32", timeout: 30_000,
+}, async () => {
+  const root = await mkdtemp(join(tmpdir(), "cleo-updater-failure-"));
+  const run = promisify(execFile);
+  const powershell = join(process.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+  const psArgs = ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass"];
+  const installRoot = join(root, "Cleo");
+  const exe = join(installRoot, "Cleo.exe");
+  const paths = installationPaths(root, exe);
+  const operationId = "failure-test";
+  try {
+    await mkdir(installRoot);
+    const compile = join(root, "old.ps1");
+    await writeFile(compile, `param($Exe)
+Add-Type -OutputAssembly $Exe -OutputType WindowsApplication -TypeDefinition @'
+using System;
+using System.IO;
+public class OldCleo {
+    public static void Main() {
+        File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "old-launched.txt"), "old");
+    }
+}
+'@
+`);
+    await run(powershell, [...psArgs, "-File", compile, exe], { windowsHide: true });
+    const original = await readFile(exe);
+    const archive = join(root, "update.zip");
+    await writeFile(archive, "unverified archive");
+    const viewer = join(root, "progress.ps1");
+    await writeFile(viewer, 'param($StatusPath)\n[System.IO.File]::WriteAllText("$StatusPath.window", [string]$PID)\nStart-Sleep -Seconds 1\n');
+    await writeInstallation(paths.status, { operationId, phase: "starting", pid: process.pid });
+    await assert.rejects(run(powershell, [...psArgs, "-File",
+      fileURLToPath(new URL("../../scripts/download.ps1", import.meta.url)),
+      "-PackagePath", archive, "-Sha256", "a".repeat(64), "-InstallRoot", installRoot,
+      "-StatusPath", paths.status, "-OperationId", operationId, "-ProgressScript", viewer,
+      "-WaitForProcessId", String(process.pid), "-RemovePackage", "-Launch", "-NoPause",
+    ], { windowsHide: true, timeout: 15_000 }), /checksum mismatch/);
+    assert.equal((await readInstallation(paths.status)).phase, "failed");
+    assert.deepEqual(await readFile(exe), original);
+    assert.equal(await readFile(archive, "utf8"), "unverified archive");
+    await assert.rejects(readFile(join(installRoot, "old-launched.txt")), { code: "ENOENT" });
+  } finally {
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });

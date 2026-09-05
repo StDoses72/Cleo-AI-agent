@@ -1,4 +1,4 @@
-[CmdletBinding(SupportsShouldProcess = $true)]
+﻿[CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [string]$Version = "latest",
     [string]$InstallRoot,
@@ -7,7 +7,10 @@ param(
     [int]$WaitForProcessId,
     [switch]$RemovePackage,
     [switch]$Launch,
-    [switch]$NoPause
+    [switch]$NoPause,
+    [string]$StatusPath,
+    [string]$OperationId,
+    [string]$ProgressScript
 )
 
 $ErrorActionPreference = "Stop"
@@ -28,8 +31,44 @@ $temporaryRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
 )
 $downloadedArchive = Join-Path $temporaryRoot "Cleo-windows-x64.zip"
 $downloadedChecksum = Join-Path $temporaryRoot "Cleo-windows-x64.sha256"
-$extractRoot = Join-Path $temporaryRoot "extract"
+$extractRoot = Join-Path $installParent (".cleo-extract-" + [guid]::NewGuid().ToString("N"))
 $backupRoot = Join-Path $installParent (".cleo-backup-" + [guid]::NewGuid().ToString("N"))
+$statusOwned = $false
+
+function Set-InstallStatus {
+    param([string]$Phase, [string]$FailureMessage = "")
+    if (-not $StatusPath) { return }
+    $current = [System.IO.File]::ReadAllText($StatusPath) | ConvertFrom-Json
+    if ($current.operationId -ne $OperationId) { throw "This update attempt has been superseded." }
+    $state = @{
+        operationId = $OperationId
+        phase = $Phase
+        pid = $PID
+        processStartTime = [System.Diagnostics.Process]::GetCurrentProcess().StartTime.ToUniversalTime().Ticks.ToString()
+        version = if ($installedVersion) { $installedVersion } else { $Version }
+        installRoot = $InstallRoot
+        error = $FailureMessage
+        acknowledged = $false
+    }
+    $statusTemporary = "$StatusPath.$PID.tmp"
+    [System.IO.File]::WriteAllText($statusTemporary, ($state | ConvertTo-Json),
+        (New-Object System.Text.UTF8Encoding($false)))
+    [System.IO.File]::Replace($statusTemporary, $StatusPath, [NullString]::Value)
+}
+
+function Move-InstallDirectory {
+    param([string]$Source, [string]$Destination)
+    for ($attempt = 0; $attempt -lt 20; $attempt++) {
+        try {
+            Move-Item -LiteralPath $Source -Destination $Destination -ErrorAction Stop
+            return
+        } catch [System.IO.IOException], [System.UnauthorizedAccessException] {
+            if ($attempt -eq 19) { throw }
+            # A launch intercepted by Cleo may briefly hold directory handles.
+            Start-Sleep -Milliseconds 250
+        }
+    }
+}
 
 function Invoke-VerifiedDownload {
     param(
@@ -105,6 +144,12 @@ function Assert-SafeInstallRoot {
 }
 
 Assert-SafeInstallRoot -Path $InstallRoot
+foreach ($ownedPath in @($extractRoot, $backupRoot)) {
+    $parentPrefix = [System.IO.Path]::GetFullPath($installParent).TrimEnd("\") + "\"
+    if (-not [System.IO.Path]::GetFullPath($ownedPath).StartsWith(
+        $parentPrefix, [System.StringComparison]::OrdinalIgnoreCase
+    )) { throw "Refusing a staging path outside the installation parent." }
+}
 $requestedWhatIf = [bool]$WhatIfPreference
 # Verification happens in an owned temporary directory even for -WhatIf. The
 # installation decision below still honors the caller's original preference.
@@ -112,13 +157,38 @@ $WhatIfPreference = $false
 New-Item -ItemType Directory -Path $temporaryRoot, $extractRoot -Force | Out-Null
 
 try {
+    if ($StatusPath) {
+        $StatusPath = [System.IO.Path]::GetFullPath($StatusPath)
+        if ($StatusPath.StartsWith($InstallRoot + "\", [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Update status must be stored outside the installation."
+        }
+        $initialStatus = [System.IO.File]::ReadAllText($StatusPath) | ConvertFrom-Json
+        if ($initialStatus.operationId -ne $OperationId -or $initialStatus.phase -ne "starting") {
+            throw "This update attempt is no longer active."
+        }
+        $statusOwned = $true
+        Set-InstallStatus "starting"
+        if (-not $ProgressScript -or -not (Test-Path -LiteralPath $ProgressScript)) {
+            throw "The update progress window is missing."
+        }
+        $progressArguments = '-NoProfile -STA -ExecutionPolicy Bypass -File "{0}" -StatusPath "{1}"' -f $ProgressScript, $StatusPath
+        $progressProcess = Start-Process -FilePath (Join-Path $PSHOME "powershell.exe") -ArgumentList $progressArguments `
+            -WorkingDirectory (Split-Path -Parent $StatusPath) -WindowStyle Hidden -PassThru
+        $progressDeadline = [DateTime]::UtcNow.AddSeconds(10)
+        $progressReady = $false
+        do {
+            if (Test-Path -LiteralPath "$StatusPath.window") {
+                $progressReady = [System.IO.File]::ReadAllText("$StatusPath.window") -eq [string]$progressProcess.Id
+            }
+            if ($progressReady -or $progressProcess.HasExited) { break }
+            Start-Sleep -Milliseconds 100
+        } while ([DateTime]::UtcNow -lt $progressDeadline)
+        if (-not $progressReady) { throw "The update progress window could not be opened." }
+        Set-InstallStatus "verifying"
+    }
     if ($PackagePath) {
         $resolvedPackage = (Resolve-Path -LiteralPath $PackagePath).Path
-        if ($RemovePackage) {
-            Move-Item -LiteralPath $resolvedPackage -Destination $downloadedArchive
-        } else {
-            Copy-Item -LiteralPath $resolvedPackage -Destination $downloadedArchive
-        }
+        Copy-Item -LiteralPath $resolvedPackage -Destination $downloadedArchive
         if (-not $Sha256) {
             $localChecksum = [System.IO.Path]::ChangeExtension($resolvedPackage, "sha256")
             if (Test-Path -LiteralPath $localChecksum) {
@@ -149,6 +219,7 @@ try {
     }
 
     $tar = Join-Path $env:SystemRoot "System32\tar.exe"
+    Set-InstallStatus "extracting"
     & $tar -x -f $downloadedArchive -C $extractRoot
     if ($LASTEXITCODE -ne 0) {
         throw "Unable to extract the verified Cleo package."
@@ -193,6 +264,7 @@ try {
         throw "Refusing to replace a directory that is not a Cleo installation: $InstallRoot"
     }
 
+    Set-InstallStatus "waiting"
     if ($WaitForProcessId -gt 0) {
         try {
             Wait-Process -Id $WaitForProcessId -Timeout 120 -ErrorAction Stop
@@ -203,23 +275,30 @@ try {
         }
     }
 
-    $runningProcesses = Get-CimInstance Win32_Process | Where-Object {
-        $_.ExecutablePath -and $_.ExecutablePath.StartsWith(
-            $InstallRoot + "\",
-            [System.StringComparison]::OrdinalIgnoreCase
-        )
-    }
+    # A manually attempted launch exits through the startup guard. Give it and
+    # the original backend time to release their handles before replacement.
+    $closeDeadline = [DateTime]::UtcNow.AddSeconds(10)
+    do {
+        $runningProcesses = Get-CimInstance Win32_Process | Where-Object {
+            $_.ExecutablePath -and $_.ExecutablePath.StartsWith(
+                $InstallRoot + "\", [System.StringComparison]::OrdinalIgnoreCase
+            )
+        }
+        if (-not $runningProcesses -or $WaitForProcessId -le 0) { break }
+        Start-Sleep -Milliseconds 250
+    } while ([DateTime]::UtcNow -lt $closeDeadline)
     if ($runningProcesses -and $WaitForProcessId -gt 0) {
         throw "Cleo is still running; the update was not installed."
     }
     $runningProcesses | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 
+    Set-InstallStatus "replacing"
     New-Item -ItemType Directory -Path $installParent -Force | Out-Null
     if (Test-Path -LiteralPath $InstallRoot) {
-        Move-Item -LiteralPath $InstallRoot -Destination $backupRoot
+        Move-InstallDirectory $InstallRoot $backupRoot
     }
     try {
-        Move-Item -LiteralPath $packageRoot -Destination $InstallRoot
+        Move-InstallDirectory $packageRoot $InstallRoot
         if (-not (Test-Path -LiteralPath (Join-Path $InstallRoot "Cleo.exe"))) {
             throw "Cleo.exe is missing after package promotion."
         }
@@ -230,17 +309,19 @@ try {
             installed_at = [DateTimeOffset]::UtcNow.ToString("o")
             sha256 = $actualHash.ToLowerInvariant()
         } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $InstallRoot "install.json") -Encoding UTF8
-        if (Test-Path -LiteralPath $backupRoot) {
-            Remove-Item -LiteralPath $backupRoot -Recurse -Force
-        }
     } catch {
         if (Test-Path -LiteralPath $InstallRoot) {
             Remove-Item -LiteralPath $InstallRoot -Recurse -Force
         }
         if (Test-Path -LiteralPath $backupRoot) {
-            Move-Item -LiteralPath $backupRoot -Destination $InstallRoot
+            Move-InstallDirectory $backupRoot $InstallRoot
         }
         throw
+    }
+    if (Test-Path -LiteralPath $backupRoot) {
+        try { Remove-Item -LiteralPath $backupRoot -Recurse -Force } catch {
+            Write-Warning "The update succeeded, but the old backup could not be removed: $backupRoot"
+        }
     }
 
     $installedExecutable = Join-Path $InstallRoot "Cleo.exe"
@@ -249,21 +330,24 @@ try {
     Write-Host "Version: $installedVersion"
     Write-Host "Program: $installedExecutable"
     Write-Host "Data:    $env:LOCALAPPDATA\Cleo"
+    Set-InstallStatus "completed"
     if ($Launch) {
         Start-Process -FilePath $installedExecutable -WorkingDirectory $InstallRoot
     }
+    if ($RemovePackage -and $resolvedPackage) {
+        try { Remove-Item -LiteralPath $resolvedPackage -Force } catch {
+            Write-Warning "The update succeeded, but its cached archive could not be removed."
+        }
+    }
 } catch {
     $failure = $_
-    $waitingProcessStillRuns = $WaitForProcessId -gt 0 -and (
-        Get-Process -Id $WaitForProcessId -ErrorAction SilentlyContinue
-    )
-    $fallbackExecutable = Join-Path $InstallRoot "Cleo.exe"
-    if ($Launch -and -not $waitingProcessStillRuns -and (Test-Path -LiteralPath $fallbackExecutable)) {
-        Start-Process -FilePath $fallbackExecutable -WorkingDirectory $InstallRoot
-    }
+    if ($statusOwned) { Set-InstallStatus "failed" $failure.Exception.Message }
     throw $failure
 } finally {
     $WhatIfPreference = $false
+    if (Test-Path -LiteralPath $extractRoot) {
+        Remove-Item -LiteralPath $extractRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
     if (Test-Path -LiteralPath $temporaryRoot) {
         Remove-Item -LiteralPath $temporaryRoot -Recurse -Force -ErrorAction SilentlyContinue
     }

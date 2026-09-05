@@ -433,7 +433,9 @@ function updateDescription(state: UpdateState) {
     case "available": return `发现 Cleo ${state.latestVersion}，下载后会校验 SHA-256。`;
     case "downloading": return `正在下载 ${formatBytes(state.downloadedBytes)} / ${formatBytes(state.totalBytes)}。中断后重试会续传。`;
     case "ready": return `Cleo ${state.latestVersion} 已下载并通过校验。`;
-    case "installing": return "正在退出并安装更新，完成后会自动重新打开。";
+    case "installing": return "正在启动独立更新窗口。安装进度会持续显示，完成后自动打开 Cleo。";
+    case "updated": return `Cleo ${state.currentVersion} 更新成功。`;
+    case "install-failed": return state.error || "安装未完成，请重新检查更新。";
     case "error": return state.error || "检查或下载更新失败。";
   }
 }
@@ -482,19 +484,28 @@ export function UpdateNotice({
   onDownload: () => void;
   onInstall: () => void;
 }) {
-  if (!(["available", "downloading", "ready"] as UpdateState["phase"][]).includes(state.phase)) return null;
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  const result = state.phase === "updated" || state.phase === "install-failed";
+  const resultKey = `${state.phase}:${state.latestVersion}:${state.error}`;
+  if (result && dismissed === resultKey) return null;
+  if (!(["available", "downloading", "ready", "installing", "updated", "install-failed"] as UpdateState["phase"][]).includes(state.phase)) return null;
   const percent = state.totalBytes
     ? Math.min(100, Math.round((state.downloadedBytes / state.totalBytes) * 100))
     : 0;
+  const titles: Partial<Record<UpdateState["phase"], string>> = {
+    available: `Cleo ${state.latestVersion} 可用`, ready: "更新已准备好",
+    installing: "正在准备安装", updated: "更新成功", "install-failed": "更新未完成",
+  };
   return (
     <aside className="update-notice" role="status">
       <span className="update-notice-icon"><RefreshCw size={16} /></span>
       <div>
-        <strong>{state.phase === "available" ? `Cleo ${state.latestVersion} 可用` : state.phase === "ready" ? "更新已准备好" : `正在下载更新 · ${percent}%`}</strong>
-        <small>{state.phase === "available" ? "完整包会在后台下载并校验" : state.phase === "ready" ? "重启后自动替换并保留本地数据" : `${formatBytes(state.downloadedBytes)} / ${formatBytes(state.totalBytes)}`}</small>
+        <strong>{titles[state.phase] ?? `正在下载更新 · ${percent}%`}</strong>
+        <small>{result || state.phase === "installing" ? updateDescription(state) : state.phase === "available" ? "完整包会在后台下载并校验" : state.phase === "ready" ? "点击后显示安装进度，完成后自动打开新版本" : `${formatBytes(state.downloadedBytes)} / ${formatBytes(state.totalBytes)}`}</small>
       </div>
       {state.phase === "available" ? <button type="button" onClick={onDownload}>下载</button> : null}
       {state.phase === "ready" ? <button type="button" onClick={onInstall}>重启安装</button> : null}
+      {result ? <button type="button" onClick={() => setDismissed(resultKey)}>关闭</button> : null}
     </aside>
   );
 }

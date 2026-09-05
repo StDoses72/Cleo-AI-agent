@@ -90,11 +90,13 @@ Set-Location ui
 npm run typecheck
 npm run test:backend
 npm run smoke
+npm run smoke:update
 ```
 
 - `typecheck`：TypeScript project build check。
 - `test:backend`：Electron backend/updater 的 Node 单元测试。
 - `smoke`：使用确定性 mock 验证 renderer 主流程。
+- `smoke:update`：使用隔离目录验证更新期间的启动拦截、普通单实例，以及安装成功／失败提示。
 - `smoke:real`：验证源码模式的真实 JSONL IPC。
 - `smoke:packaged`：验证带独立 Python runtime 的最终发布包。
 
@@ -194,6 +196,18 @@ Set-Location ..
 ```
 
 下载器会校验 checksum 并原子替换程序目录。自动更新依赖 GitHub Release 中同时存在 ZIP、SHA256 和 `release.json`，三者版本与内容必须一致。
+
+点击“重启并安装”后，独立的 Windows 更新窗口显示校验、解压、等待退出、替换和完成状态。
+只有安装器及进度窗口确认启动后主程序才退出；此时重复打开相同安装目录的 Cleo 会立即退出
+并唤起更新窗口。安装状态保存在临时目录下按安装路径区分的 `cleo-install-*/status.json`，
+通过 PID 和进程启动时间判断安装器是否仍然存活，避免异常退出或 PID 重用造成永久拦截。
+安装包在安装目录同一磁盘的专属临时目录中解压，再以目录重命名替换；被拦截的启动若短暂
+占用目录句柄，安装器会进行有限重试。新的更新尝试会关闭上一次的进度窗口。
+
+安装失败会保留下载缓存并明确提示原因，不自动重复启动旧版；用户可以从进度窗口打开 Cleo
+后重新检查更新。新版启动时显示一次安装结果。打包时必须同时包含 `update.ps1` 和
+`update-progress.ps1`。这些保护需要发起更新的旧版本已包含本实现；此前发布的版本不会因
+下载新 ZIP 而提前获得启动拦截能力。
 
 ## 变更契约
 
