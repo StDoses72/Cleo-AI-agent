@@ -14,6 +14,7 @@ from cleo.integrations import CodexAdapter
 _adapter = CodexAdapter(
     default_model=settings.active_tools_profile.codex_model,
     project_root=settings.active_directory_profile.root_path,
+    memory_root=settings.MEMORY_DIR,
 )
 
 
@@ -74,6 +75,7 @@ def create_codex_tools(project_root: str | Path):
     adapter = CodexAdapter(
         default_model=settings.active_tools_profile.codex_model,
         project_root=Path(project_root).expanduser().resolve(),
+        memory_root=settings.MEMORY_DIR,
     )
 
     @tool("codex")

@@ -35,6 +35,7 @@ dev = [
 [project.scripts]
 cleo = "cleo.cli.application:main"
 cleo-codex-mcp = "cleo.mcp.codex_server:main"
+cleo-memory-mcp = "cleo.mcp.memory_server:main"
 
 [tool.setuptools]
 py-modules = ["main"]

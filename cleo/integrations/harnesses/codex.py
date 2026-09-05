@@ -21,6 +21,7 @@ from cleo.harnesses.control import (
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 from cleo.harnesses.provider import ProviderSession, ProviderTurn
 from cleo.integrations.harnesses.codex_approvals import CodexApprovalBroker
+from cleo.integrations.harnesses.memory import MemoryMcp
 from cleo.runtime.usage import RateLimitWindowUsage
 
 CODEX_APPROVAL_MODES = {"deny_all", "auto_review", "user"}
@@ -61,6 +62,7 @@ class CodexProvider:
         name: str = "codex",
         approval_mode: str | ApprovalMode = ApprovalMode.deny_all,
         sandbox: Sandbox = Sandbox.workspace_write,
+        memory_mcp: MemoryMcp | None = None,
     ) -> None:
         """初始化 provider。
 
@@ -72,6 +74,7 @@ class CodexProvider:
             sandbox: 沙箱模式, 来自配置 ``options.sandbox``。
         """
         self.name = name
+        self._memory_mcp = memory_mcp
         self._default_model = default_model
         self._approval_mode = (
             approval_mode.value if isinstance(approval_mode, ApprovalMode) else approval_mode
@@ -573,9 +576,11 @@ class CodexProvider:
         )
         return AsyncTurnHandle(runtime.client, runtime.thread.id, started.turn.id)
 
-    @staticmethod
-    def _client_with_approvals(approvals: CodexApprovalBroker) -> AsyncCodex:
-        client = AsyncCodex()
+    def _client_with_approvals(self, approvals: CodexApprovalBroker) -> AsyncCodex:
+        client = (
+            AsyncCodex(config=self._memory_mcp.codex_config())
+            if self._memory_mcp else AsyncCodex()
+        )
         async_client = getattr(client, "_client", None)
         sync_client = getattr(async_client, "_sync", None)
         if sync_client is None or not hasattr(sync_client, "_approval_handler"):

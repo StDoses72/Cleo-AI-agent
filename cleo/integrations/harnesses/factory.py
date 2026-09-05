@@ -10,6 +10,7 @@ from cleo.harnesses.provider import AgentProvider
 from cleo.integrations.harnesses.acp import AcpAgentSpec, AcpProvider
 from cleo.integrations.harnesses.claude import ClaudeProvider
 from cleo.integrations.harnesses.codex import CodexProvider
+from cleo.integrations.harnesses.memory import MemoryMcp
 from cleo.sessions.store import SessionStore
 
 if TYPE_CHECKING:
@@ -19,6 +20,8 @@ if TYPE_CHECKING:
 def create_provider(
     name: str,
     settings: ProductivityProviderSettings,
+    *,
+    memory_mcp: MemoryMcp | None = None,
 ) -> AgentProvider:
     """Create one harness provider from its validated configuration.
 
@@ -37,6 +40,7 @@ def create_provider(
         options = settings.options
         return CodexProvider(
             default_model=settings.model,
+            memory_mcp=memory_mcp,
             name=name,
             approval_mode=options.approval_mode,
             sandbox=Sandbox(options.sandbox),
@@ -44,6 +48,7 @@ def create_provider(
     if settings.type == "claude_sdk":
         return ClaudeProvider(
             default_model=settings.model,
+            memory_mcp=memory_mcp,
             permission_mode=settings.options.permission_mode,
             name=name,
             models=tuple(settings.models),
@@ -51,6 +56,7 @@ def create_provider(
     if settings.type == "acp":
         options = settings.options
         return AcpProvider(
+            memory_mcp=memory_mcp,
             name=name,
             spec=AcpAgentSpec(
                 command=options.command,
@@ -90,7 +96,10 @@ def build_agent_adapter(
         space=space,
         owner_type=owner_type,
     )
+    memory_mcp = MemoryMcp(
+        session_store.memory_root if session_store is not None else Path(project_root) / "memory"
+    )
     for name, provider_settings in productivity.providers.items():
         if provider_settings.enabled:
-            adapter.register(create_provider(name, provider_settings))
+            adapter.register(create_provider(name, provider_settings, memory_mcp=memory_mcp))
     return adapter

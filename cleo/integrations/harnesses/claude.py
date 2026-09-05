@@ -19,6 +19,7 @@ from claude_agent_sdk import (
 from cleo.harnesses.control import HarnessModel, SessionOptions
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 from cleo.harnesses.provider import ProviderSession, ProviderTurn
+from cleo.integrations.harnesses.memory import MemoryMcp
 
 ClaudePermissionMode = Literal[
     "default",
@@ -66,6 +67,7 @@ class ClaudeProvider:
         *,
         name: str = "claude",
         models: tuple[str, ...] = (),
+        memory_mcp: MemoryMcp | None = None,
     ) -> None:
         """初始化 provider。
 
@@ -76,6 +78,7 @@ class ClaudeProvider:
             name: provider 名称, 来自 settings providers 字典的 key。
         """
         self.name = name
+        self._memory_mcp = memory_mcp
         self._default_model = default_model
         self._models = tuple(dict.fromkeys([*([default_model] if default_model else []), *models]))
         self._permission_mode = permission_mode
@@ -301,9 +304,29 @@ class ClaudeProvider:
             effort=effort,
             permission_mode=permission_mode or self._permission_mode,
             resume=resume,
+            mcp_servers=self._memory_mcp.claude_servers() if self._memory_mcp else {},
         )
         client = ClaudeSDKClient(options=options)
         await client.connect()
+        if self._memory_mcp:
+            try:
+                async with asyncio.timeout(30):
+                    while True:
+                        status = await client.get_mcp_status()
+                        server = next(
+                            (s for s in status["mcpServers"] if s["name"] == "cleo_memory"),
+                            None,
+                        )
+                        if server and server["status"] == "connected":
+                            break
+                        if server and server["status"] != "pending":
+                            raise RuntimeError(
+                                f"Cleo memory MCP failed to connect: {server['status']}"
+                            )
+                        await asyncio.sleep(0.1)
+            except BaseException:
+                await client.disconnect()
+                raise
         return _ClaudeRuntime(
             client=client,
             options=SessionOptions(

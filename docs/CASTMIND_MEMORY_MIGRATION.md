@@ -83,7 +83,8 @@ LangChain / harness events
 `memory/<space>/memory_state.json` 单独记录 source version、hash、Dream 状态、失败次数和
 最后成功版本。相同 source hash 再次退出时会跳过 Dream；失败不会推进完成状态。
 
-主 Agent 获得两个 space/project-bound 工具：
+最初主 Agent 获得两个 space/project-bound 工具（当前已扩展为
+[chat 与 productivity 双向读取](MEMORY_READING.md)，存储和 Dream 写入仍按项目归属）：
 
 - `search_long_term_memory`：查询稳定事实、决策、约束、纠错和行动项；
 - `search_conversation_history`：查询未必值得长期保存的历史讨论细节。
