@@ -6,7 +6,7 @@ Cleo is a local-first AI workspace that brings general chat, developer agents, r
 
 The project currently ships a Windows desktop app, a Python CLI, Textual TUIs, and a stdio MCP entry point. User data stays on the local device by default; inference is provided by the API provider or external agent harness selected by the user.
 
-> Current version: `0.2.5`. Cleo is still pre-1.0 and is best suited to evaluation, internal-tool integration, and active development. Pin a version and validate it before deployments that require stable data formats or extension contracts.
+> Current version: `0.2.6`. Cleo is still pre-1.0 and is best suited to evaluation, internal-tool integration, and active development. Pin a version and validate it before deployments that require stable data formats or extension contracts.
 
 ## What Cleo solves
 
