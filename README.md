@@ -170,6 +170,7 @@ Cleo-AI-agent/
 - [后端代码导读](docs/BACKEND_CODE_REVIEW.md)：面向贡献者的阅读顺序与 review 清单。
 - [运行时与数据维护指南](docs/Cleo_Runtime_State_Maintenance_Guide.docx)：变更 runtime、session 或 memory 时的操作手册。
 - [记忆系统设计记录](docs/CASTMIND_MEMORY_MIGRATION.md)：分层记忆方案的来源与取舍。
+- [双向记忆读取](docs/MEMORY_READING.md)：跨空间检索、会话续读和仅限 SDK 子进程的 MCP 接入。
 
 ## 开发与验证
 

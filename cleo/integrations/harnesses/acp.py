@@ -28,6 +28,7 @@ from acp.schema import (
 from cleo.harnesses.control import HarnessModel, SessionOptions
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 from cleo.harnesses.provider import ProviderSession, ProviderTurn
+from cleo.integrations.harnesses.memory import MemoryMcp
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,7 +249,9 @@ class AcpProvider:
     ``AgentAdapter``; 上层通过 ``AgentAdapter`` 调用其 create/prompt/close 等方法。
     """
 
-    def __init__(self, name: str, spec: AcpAgentSpec) -> None:
+    def __init__(
+        self, name: str, spec: AcpAgentSpec, *, memory_mcp: MemoryMcp | None = None,
+    ) -> None:
         """初始化 provider。
 
         参数:
@@ -258,6 +261,7 @@ class AcpProvider:
         """
         self.name = name
         self._spec = spec
+        self._memory_mcp = memory_mcp
         self._sessions: dict[str, _AcpRuntime] = {}
 
     async def check_connection(self, project_path: str) -> None:
@@ -440,7 +444,10 @@ class AcpProvider:
         """
         connection, manager, host, _initialize = await self._connect(project_path)
         try:
-            created = await connection.new_session(cwd=project_path, mcp_servers=[])
+            created = await connection.new_session(
+                cwd=project_path,
+                mcp_servers=self._memory_mcp.acp_servers() if self._memory_mcp else [],
+            )
             config_options = tuple(created.config_options or ())
             model_option = self._config_option(
                 config_options,
@@ -499,7 +506,7 @@ class AcpProvider:
             loaded = await connection.load_session(
                 cwd=project_path,
                 session_id=native_session_id,
-                mcp_servers=[],
+                mcp_servers=self._memory_mcp.acp_servers() if self._memory_mcp else [],
             )
         except Exception:
             await manager.__aexit__(None, None, None)

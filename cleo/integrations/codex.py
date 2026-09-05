@@ -9,6 +9,8 @@ from pydantic import BaseModel, ConfigDict
 
 from cleo.harnesses import AgentAdapter, AgentResult
 from cleo.integrations.harnesses.codex import CodexProvider
+from cleo.integrations.harnesses.memory import MemoryMcp
+from cleo.sessions.store import SessionStore
 
 
 class CodexResult(BaseModel):
@@ -31,7 +33,11 @@ class CodexResult(BaseModel):
 class CodexAdapter:
     """Backward-compatible Codex facade backed by the unified agent adapter."""
 
-    def __init__(self, default_model: str, project_root: str | Path) -> None:
+    def __init__(
+        self, default_model: str, project_root: str | Path,
+        *, memory_root: str | Path | None = None,
+        session_index_path: str | Path | None = None,
+    ) -> None:
         """初始化门面: 自建 ``AgentAdapter`` 并注册默认 ``CodexProvider``。
 
         参数:
@@ -41,8 +47,12 @@ class CodexAdapter:
             project_root: 项目根目录, 来自
                 ``settings.active_directory_profile.root_path``。
         """
-        self._adapter = AgentAdapter(project_root)
-        self._adapter.register(CodexProvider(default_model=default_model))
+        root = Path(memory_root) if memory_root is not None else Path(project_root) / "memory"
+        store = SessionStore(root, session_index_path)
+        self._adapter = AgentAdapter(project_root, session_store=store)
+        self._adapter.register(CodexProvider(
+            default_model=default_model, memory_mcp=MemoryMcp(store.memory_root, store.index_path),
+        ))
         self._thread_locks: dict[str, tuple[asyncio.Lock, int]] = {}
 
     async def start(
