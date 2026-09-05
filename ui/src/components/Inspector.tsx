@@ -133,13 +133,13 @@ function ChangesPanel({ thread, onNotify, onCopyText }: { thread: Thread | null;
           {selected ? (
             <div className="diff-viewer">
               <header>
-                <div><Braces size={14} /><span>{selected.path.split("/").at(-1)}</span></div>
+                <div><Braces size={14} /><span title={selected.path}>{selected.path.split("/").at(-1)}</span></div>
                 <button type="button" title="复制路径" onClick={() => {
                   onCopyText(selected.path);
                   onNotify("文件路径已复制");
                 }}><Copy size={14} /></button>
               </header>
-              <pre>
+              <pre tabIndex={0} role="region" aria-label="代码差异">
                 {selected.diff.split("\n").map((line, index) => (
                   <span className={line.startsWith("+") ? "added" : line.startsWith("-") ? "deleted" : line.startsWith("@@") ? "hunk" : ""} key={`${index}-${line}`}>
                     <i>{index + 1}</i><code>{line || " "}</code>
@@ -211,7 +211,7 @@ function RunPanel({ thread, project }: { thread: Thread | null; project: Project
         <div><strong>{running ? "Agent 正在执行" : hasIssue ? "上次运行需要查看" : completed ? "上次运行已完成" : "尚未运行"}</strong><small>{running || hasIssue || completed ? thread?.updatedAt : "发送第一条消息后，可在这里查看进度。"}</small></div>
       </section>
       <div className="terminal-head"><Terminal size={14} /><span>cleo · {project?.name ?? "workspace"}</span></div>
-      <pre className="terminal-output"><span className="prompt">PS {project?.path ?? "D:\\workspace"}&gt;</span>{"\n"}{thread?.terminal?.length ? thread.terminal.join("") : <span className="muted">终端输出会在 Agent 执行命令时实时显示。</span>}{"\n\n"}<span className="cursor">▋</span></pre>
+      <pre className="terminal-output" tabIndex={0} role="region" aria-label="终端输出"><span className="prompt">PS {project?.path ?? "D:\\workspace"}&gt;</span>{"\n"}{thread?.terminal?.length ? thread.terminal.join("") : <span className="muted">终端输出会在 Agent 执行命令时实时显示。</span>}{"\n\n"}<span className="cursor">▋</span></pre>
       <div className="run-events">
         {thread?.items.filter((item) => item.type === "tool").slice(-8).map((item) => item.type === "tool" ? <div className={item.status === "error" ? "issue" : ""} key={item.id}>{item.status === "error" ? <CircleAlert size={14} /> : item.status === "running" ? <Circle size={14} /> : <CircleCheck size={14} />}<span>{item.name}</span><time>{item.status === "running" ? "running" : item.status}</time></div> : null)}
         {!thread?.items.some((item) => item.type === "tool") ? <div><Clock3 size={14} /><span>尚无工具运行</span><time>—</time></div> : null}

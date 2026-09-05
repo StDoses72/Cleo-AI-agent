@@ -2391,14 +2391,23 @@ select.text-control:hover {
 .changes-panel,
 .context-panel,
 .run-panel {
+  min-width: 0;
   min-height: 0;
   flex: 1;
+  overflow-x: hidden;
   overflow-y: auto;
+}
+
+.changes-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .change-history-picker {
   display: flex;
   height: 42px;
+  flex-shrink: 0;
   align-items: center;
   gap: 8px;
   padding: 0 10px 0 13px;
@@ -2425,6 +2434,7 @@ select.text-control:hover {
 
 .change-summary {
   height: 42px;
+  flex-shrink: 0;
   justify-content: space-between;
   padding: 0 13px;
   border-bottom: 1px solid var(--border);
@@ -2450,7 +2460,10 @@ select.text-control:hover {
 }
 
 .changed-files {
+  max-height: 30%;
+  flex-shrink: 0;
   padding: 6px;
+  overflow-y: auto;
   border-bottom: 1px solid var(--border);
 }
 
@@ -2493,9 +2506,17 @@ select.text-control:hover {
 .changed-files small.modified { color: var(--warning); }
 .changed-files small.deleted { color: var(--danger); }
 
+.diff-viewer {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
 .diff-viewer header {
   display: flex;
   height: 38px;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   padding: 0 10px 0 13px;
@@ -2504,10 +2525,22 @@ select.text-control:hover {
 
 .diff-viewer header > div {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 7px;
   color: var(--text-soft);
   font-size: 9.5px;
+}
+
+.diff-viewer header > div span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-viewer header svg,
+.diff-viewer header button {
+  flex-shrink: 0;
 }
 
 .diff-viewer header button {
@@ -2525,9 +2558,13 @@ select.text-control:hover {
 }
 
 .diff-viewer pre {
-  min-width: max-content;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
   margin: 0;
   padding: 8px 0 18px;
+  overflow: auto;
+  overscroll-behavior: contain;
   color: var(--muted);
   font-size: 8.5px;
   line-height: 1.65;
@@ -2536,6 +2573,8 @@ select.text-control:hover {
 
 .diff-viewer pre > span {
   display: flex;
+  width: max-content;
+  min-width: 100%;
   min-height: 15px;
 }
 
@@ -2768,8 +2807,11 @@ select.text-control:hover {
 
 .terminal-output {
   min-height: 230px;
+  max-height: 50vh;
   margin: 0;
   padding: 13px;
+  overflow: auto;
+  overscroll-behavior: contain;
   border: 1px solid var(--border);
   border-radius: 0 0 8px 8px;
   color: var(--text-soft);
@@ -2777,8 +2819,11 @@ select.text-control:hover {
   font-size: 8.5px;
   line-height: 1.65;
   user-select: text;
-  white-space: pre-wrap;
+  white-space: pre;
 }
+
+.terminal-head svg { flex-shrink: 0; }
+.terminal-head span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 :root[data-theme="light"] .terminal-output {
   color: #d9dee5;
@@ -2806,10 +2851,10 @@ select.text-control:hover {
   font-size: 9.5px;
 }
 
-.run-events svg { color: var(--success); }
+.run-events svg { flex-shrink: 0; color: var(--success); }
 .run-events div.issue svg { color: var(--warning); }
-.run-events span { flex: 1; }
-.run-events time { color: var(--muted-2); font-family: "SFMono-Regular", Consolas, monospace; font-size: 8px; }
+.run-events span { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.run-events time { flex-shrink: 0; color: var(--muted-2); font-family: "SFMono-Regular", Consolas, monospace; font-size: 8px; }
 
 .memory-view {
   grid-column: 3 / 5;

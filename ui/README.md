@@ -74,6 +74,7 @@ python -m cleo.desktop.server
 npm run typecheck
 npm run test:backend
 npm run smoke
+npm run smoke:inspector
 npm run smoke:real
 npm run smoke:packaged
 ```
@@ -83,6 +84,7 @@ npm run smoke:packaged
 | `typecheck` | TypeScript project 与 renderer build contract |
 | `test:backend` | backend 进程管理和 updater 单元测试 |
 | `smoke` | 确定性 mock 下的主要界面流程 |
+| `smoke:inspector` | 普通/窄窗口中的 diff、历史文件列表与终端独立滚动，长内容不撑宽侧栏 |
 | `smoke:real` | 源码模式真实 Python JSONL IPC |
 | `smoke:packaged` | 最终独立 runtime、路径和应用启动 |
 
