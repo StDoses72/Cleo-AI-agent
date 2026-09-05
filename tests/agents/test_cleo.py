@@ -99,6 +99,7 @@ def test_agent_backend_uses_configured_application_root(tmp_path, monkeypatch) -
             active_directory_profile=SimpleNamespace(root_path=tmp_path),
             PERSONA_PATH=tmp_path / "PERSONA.md",
             MEMORY_DIR=tmp_path / "memory",
+            SESSION_INDEX_PATH=tmp_path / "data" / "sessions.sqlite3",
         ),
     )
     captured_model = {}
@@ -160,6 +161,7 @@ def test_agent_backend_uses_selected_project_and_mounts_cleo_context(tmp_path, m
             active_directory_profile=SimpleNamespace(root_path=cleo_root),
             PERSONA_PATH=cleo_root / "PERSONA.md",
             MEMORY_DIR=cleo_root / "memory",
+            SESSION_INDEX_PATH=cleo_root / "data" / "sessions.sqlite3",
         ),
     )
     monkeypatch.setattr(agent_module, "init_chat_model", lambda **_kwargs: object())

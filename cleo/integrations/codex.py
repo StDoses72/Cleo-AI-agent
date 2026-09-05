@@ -36,6 +36,7 @@ class CodexAdapter:
     def __init__(
         self, default_model: str, project_root: str | Path,
         *, memory_root: str | Path | None = None,
+        session_index_path: str | Path | None = None,
     ) -> None:
         """初始化门面: 自建 ``AgentAdapter`` 并注册默认 ``CodexProvider``。
 
@@ -47,9 +48,10 @@ class CodexAdapter:
                 ``settings.active_directory_profile.root_path``。
         """
         root = Path(memory_root) if memory_root is not None else Path(project_root) / "memory"
-        self._adapter = AgentAdapter(project_root, session_store=SessionStore(root))
+        store = SessionStore(root, session_index_path)
+        self._adapter = AgentAdapter(project_root, session_store=store)
         self._adapter.register(CodexProvider(
-            default_model=default_model, memory_mcp=MemoryMcp(root),
+            default_model=default_model, memory_mcp=MemoryMcp(store.memory_root, store.index_path),
         ))
         self._thread_locks: dict[str, tuple[asyncio.Lock, int]] = {}
 

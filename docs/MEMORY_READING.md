@@ -50,6 +50,8 @@ Chat 使用 LangChain 封装；productivity 使用同一组方法的 stdio MCP �
 
 不调用 MCP 注册命令，不写全局／项目配置文件，不修改用户的 `AGENTS.md`。
 工作目录可以是其他仓库，服务仍通过绝对路径和显式 `--memory-root` 读取 Cleo 存储。
+配置的 `session_index_path` 通过临时 `--session-index-path` 参数一并传入；chat 使用
+相同索引。会话发现遇到缺失或空索引时，从已保存的 manifest 恢复，不把已有历史误判为空。
 新建、恢复、Codex fork 和 Claude 重连会重新使用临时配置；进程生命周期交由 SDK 管理。
 
 ACP 的实际加载能力取决于所配置的 agent；协议请求失败会正常向上传播，不会回退到修改

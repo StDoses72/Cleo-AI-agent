@@ -85,16 +85,24 @@ def _source(manifest: dict) -> dict:
 
 
 class MemoryReader:
-    def __init__(self, memory_root: str | Path):
+    def __init__(self, memory_root: str | Path, index_path: str | Path | None = None):
         self.root = Path(memory_root).expanduser().resolve()
-        self.store = SessionStore(self.root)
+        self.store = SessionStore(self.root, index_path)
 
     def _threads(self, space: str | None, project: str | None) -> list[dict]:
         if space is not None:
             validate_space(space)
         if project is not None:
             validate_name(project, "project")
-        return sorted(self.store.list_sessions(space=space, project=project), key=lambda r: r["id"])
+        if not self.store.index_path.exists():
+            self.store.rebuild_index()
+        rows = self.store.list_sessions(space=space, project=project)
+        # A newly recreated index has a schema but no rows. Recover from the
+        # file-first manifests, without rebuilding for an ordinary filter miss.
+        if not rows and not self.store.list_sessions():
+            self.store.rebuild_index()
+            rows = self.store.list_sessions(space=space, project=project)
+        return sorted(rows, key=lambda r: r["id"])
 
     def list_threads(
         self,

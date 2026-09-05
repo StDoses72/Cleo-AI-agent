@@ -175,3 +175,25 @@ def test_valid_summary_and_read_cursor_survive_project_move(tmp_path):
     rest = reader.read_thread("a", cursor=first["next_cursor"])
     assert rest["status"] == "ok" and rest["project"] == "moved"
     assert first["results"][0]["content"] + rest["results"][0]["content"] == "x" * 8000
+
+
+def test_reader_discovers_threads_in_custom_index(tmp_path):
+    root = tmp_path / "memory"
+    index = tmp_path / "data" / "sessions.sqlite3"
+    store = SessionStore(root, index)
+    add_thread(store, "chat", "non_productivity", "general", "custom index history")
+    reader = MemoryReader(root, index_path=index)
+    assert reader.list_threads()["results"][0]["session_id"] == "chat"
+    assert reader.search_conversation_history("custom index")["results"]
+    assert not (root / "sessions.sqlite3").exists()
+
+
+@pytest.mark.parametrize("delete_after_reader", [False, True])
+def test_reader_recovers_deleted_index(tmp_path, delete_after_reader):
+    store = SessionStore(tmp_path)
+    add_thread(store, "chat", "non_productivity", "general", "recover history")
+    reader = MemoryReader(tmp_path) if delete_after_reader else None
+    store.index_path.unlink()
+    reader = reader or MemoryReader(tmp_path)
+    assert reader.list_threads()["results"][0]["session_id"] == "chat"
+    assert reader.search_conversation_history("recover")["results"]

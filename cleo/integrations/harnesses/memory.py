@@ -14,6 +14,7 @@ from openai_codex import CodexConfig
 @dataclass(frozen=True)
 class MemoryMcp:
     root: Path
+    index_path: Path | None = None
 
     @property
     def args(self) -> list[str]:
@@ -23,7 +24,10 @@ class MemoryMcp:
             f"import sys; sys.path.insert(0, {source_root!r}); "
             "from cleo.mcp.memory_server import main; main()"
         )
-        return ["-c", bootstrap, "--memory-root", str(self.root.resolve())]
+        args = ["-c", bootstrap, "--memory-root", str(self.root.expanduser().resolve())]
+        if self.index_path is not None:
+            args.extend(["--session-index-path", str(self.index_path.expanduser().resolve())])
+        return args
 
     def codex_config(self) -> CodexConfig:
         prefix = "mcp_servers.cleo_memory"

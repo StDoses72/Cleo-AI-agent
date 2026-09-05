@@ -164,7 +164,7 @@ class Agent:
             *codex_tools,
             *get_web_search_tools(),
             *get_browser_tools(),
-            *create_memory_tools(settings.MEMORY_DIR),
+            *create_memory_tools(settings.MEMORY_DIR, settings.SESSION_INDEX_PATH),
         ]
         memory_paths = [
             f"{cleo_prefix}/AGENTS.md",

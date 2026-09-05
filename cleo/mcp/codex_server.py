@@ -10,6 +10,7 @@ _adapter = CodexAdapter(
     default_model=settings.active_tools_profile.codex_model,
     project_root=settings.active_directory_profile.root_path,
     memory_root=settings.MEMORY_DIR,
+    session_index_path=settings.SESSION_INDEX_PATH,
 )
 
 

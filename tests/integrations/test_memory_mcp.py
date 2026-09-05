@@ -16,14 +16,16 @@ from cleo.memory.reader import TOOL_NAMES
 from cleo.sessions.store import SessionStore
 
 
-def test_stdio_tools_work_from_unrelated_cwd_without_configuration_writes(tmp_path):
+@pytest.mark.parametrize("custom_index", [False, True])
+def test_stdio_tools_work_from_unrelated_cwd_without_configuration_writes(tmp_path, custom_index):
     root = tmp_path / "cleo memory"
     cwd = tmp_path / "another project"
     cwd.mkdir()
     config = cwd / ".mcp.json"
     config.write_text('{"mcpServers": {"existing": {}}}', encoding="utf-8")
     before = config.read_bytes()
-    store = SessionStore(root)
+    index = tmp_path / "data" / "sessions.sqlite3" if custom_index else None
+    store = SessionStore(root, index)
     store.create_session(
         session_id="chat",
         space="non_productivity",
@@ -39,7 +41,7 @@ def test_stdio_tools_work_from_unrelated_cwd_without_configuration_writes(tmp_pa
         actor="user",
         content="shared requirements",
     )
-    mcp = MemoryMcp(root)
+    mcp = MemoryMcp(root, index)
     transport = StdioTransport(
         command=sys.executable, args=mcp.args, cwd=str(cwd), keep_alive=False
     )
@@ -55,13 +57,15 @@ def test_stdio_tools_work_from_unrelated_cwd_without_configuration_writes(tmp_pa
                 "search_conversation_history", {"query": "requirements"}
             )
             assert search.data["results"][0]["session_id"] == "chat"
-            local_tools = {t.name: t for t in create_memory_tools(root)}
+            local_tools = {t.name: t for t in create_memory_tools(root, index)}
             assert local_tools["read_thread"].invoke({"session_id": "chat"}) == result.data
 
     asyncio.run(exercise())
     assert transport._connect_task is None
     assert config.read_bytes() == before
     assert set(p.name for p in cwd.iterdir()) == {".mcp.json"}
+    if custom_index:
+        assert not (root / "sessions.sqlite3").exists()
 
 
 def test_codex_override_is_client_local_and_valid_toml(tmp_path):
@@ -225,10 +229,15 @@ def test_factory_and_codex_facade_share_explicit_store(tmp_path):
     project = tmp_path / "other project"
     project.mkdir()
     root = tmp_path / "cleo memory"
-    store = SessionStore(root)
+    index = tmp_path / "data" / "sessions.sqlite3"
+    store = SessionStore(root, index)
     adapter = build_agent_adapter(project, ProductivitySettings(), session_store=store)
     assert adapter.provider_control("codex")._memory_mcp.root == root
-    facade = CodexAdapter("test", project, memory_root=root)
+    assert adapter.provider_control("codex")._memory_mcp.index_path == index
+    facade = CodexAdapter("test", project, memory_root=root, session_index_path=index)
     assert facade._adapter._store.memory_root == root
     assert facade._adapter.provider_control("codex")._memory_mcp.root == root
+    assert facade._adapter._store.index_path == index
+    assert facade._adapter.provider_control("codex")._memory_mcp.index_path == index
+    assert not (root / "sessions.sqlite3").exists()
     assert not (project / "memory").exists()
