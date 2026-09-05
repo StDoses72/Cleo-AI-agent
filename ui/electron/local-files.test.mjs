@@ -68,9 +68,10 @@ test("Codex file links ignore trailing line and column numbers", async () => {
       shellAdapter: { openPath: async (path) => { opened.push(path); return ""; } },
     });
 
-    assert.equal(lineResult.path, page);
-    assert.equal(columnResult.path, page);
-    assert.deepEqual(opened, [page, page]);
+    const canonical = await realpath(page);
+    assert.equal(lineResult.path, canonical);
+    assert.equal(columnResult.path, canonical);
+    assert.deepEqual(opened, [canonical, canonical]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
