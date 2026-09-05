@@ -28,6 +28,7 @@ import type {
   AgentInstructions,
   ModelProfileInput,
   ModelSettings,
+  MemoryOverview,
   Project,
   RuntimeProfile,
   UpdateState,
@@ -51,10 +52,12 @@ interface CommandPaletteProps {
 
 export function CommandPalette({ open, actions, onClose }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (open) {
       setQuery("");
+      setSelectedIndex(0);
       window.setTimeout(() => inputRef.current?.focus(), 30);
     }
   }, [open]);
@@ -75,14 +78,42 @@ export function CommandPalette({ open, actions, onClose }: CommandPaletteProps) 
       <div className="command-palette" role="dialog" aria-label="命令面板" onMouseDown={(event) => event.stopPropagation()}>
         <label className="command-search">
           <Search size={18} />
-          <input ref={inputRef} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="输入命令或搜索…" />
+          <input
+            ref={inputRef}
+            value={query}
+            aria-label="搜索命令"
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="command-results"
+            aria-activedescendant={filtered[selectedIndex] ? `command-${filtered[selectedIndex].id}` : undefined}
+            onChange={(event) => { setQuery(event.target.value); setSelectedIndex(0); }}
+            onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                event.preventDefault();
+                if (!filtered.length) return;
+                const next = (selectedIndex + (event.key === "ArrowDown" ? 1 : -1) + filtered.length) % filtered.length;
+                setSelectedIndex(next);
+                document.getElementById(`command-${filtered[next].id}`)?.scrollIntoView({ block: "nearest" });
+              } else if (event.key === "Enter" && filtered[selectedIndex]) {
+                event.preventDefault();
+                filtered[selectedIndex].run();
+                onClose();
+              }
+            }}
+            placeholder="输入命令或搜索…"
+          />
           <kbd>Esc</kbd>
         </label>
-        <div className="command-results">
+        <div className="command-results" id="command-results" role="listbox" aria-label="命令">
           <span className="command-section-label">建议</span>
           {filtered.map(({ id, label, hint, icon: Icon, shortcut, run }, index) => (
             <button
-              className={index === 0 ? "focused" : ""}
+              className={index === selectedIndex ? "focused" : ""}
+              id={`command-${id}`}
+              role="option"
+              aria-selected={index === selectedIndex}
+              onMouseMove={() => setSelectedIndex(index)}
               type="button"
               key={id}
               onClick={() => {
@@ -100,6 +131,57 @@ export function CommandPalette({ open, actions, onClose }: CommandPaletteProps) 
         <footer><span><kbd>↑↓</kbd> 选择</span><span><kbd>↵</kbd> 打开</span></footer>
       </div>
     </div>
+  );
+}
+
+export function RenameThreadDialog({ title, onSave, onClose }: {
+  title: string;
+  onSave: (name: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const savingRef = useRef(false);
+  const [name, setName] = useState(title);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    dialogRef.current?.showModal();
+    inputRef.current?.select();
+  }, []);
+  return (
+    <dialog ref={dialogRef} className="rename-dialog" aria-labelledby="rename-title" onCancel={(event) => {
+      event.preventDefault();
+      if (!savingRef.current) onClose();
+    }}>
+      <form onSubmit={async (event) => {
+        event.preventDefault();
+        if (!name.trim() || savingRef.current) return;
+        savingRef.current = true;
+        setSaving(true);
+        setError(null);
+        try {
+          await onSave(name.trim());
+          onClose();
+        } catch (reason) {
+          setError(reason instanceof Error ? reason.message : "无法重命名，请重试。");
+        } finally {
+          savingRef.current = false;
+          setSaving(false);
+        }
+      }}>
+        <h2 id="rename-title">重命名任务</h2>
+        <label htmlFor="rename-input">名称</label>
+        <input ref={inputRef} id="rename-input" autoFocus value={name} disabled={saving} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => {
+          if (event.key === "Enter" && (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229)) event.preventDefault();
+        }} />
+        {error ? <p role="alert">{error}</p> : null}
+        <footer>
+          <button type="button" disabled={saving} onClick={onClose}>取消</button>
+          <button className="primary" type="submit" disabled={saving || !name.trim()}>{saving ? "保存中…" : "保存"}</button>
+        </footer>
+      </form>
+    </dialog>
   );
 }
 
@@ -204,6 +286,9 @@ export function RemoveProjectDialog({
 interface SettingsModalProps {
   open: boolean;
   theme: "dark" | "light";
+  motionEnabled: boolean;
+  onMotionChange: (enabled: boolean) => void;
+  dreamAgent: MemoryOverview["dream_agent"];
   runtime: RuntimeProfile;
   supportedEfforts: NonNullable<RuntimeProfile["effort"]>[];
   modelSettings: ModelSettings | null;
@@ -231,6 +316,9 @@ type SettingsPage = "appearance" | "agent" | "instructions" | "models" | "update
 export function SettingsModal({
   open,
   theme,
+  motionEnabled,
+  onMotionChange,
+  dreamAgent,
   runtime,
   supportedEfforts,
   modelSettings,
@@ -286,7 +374,7 @@ export function SettingsModal({
                 </div>
               </SettingsRow>
               <SettingsRow title="信息密度" description="当前使用适合桌面工作区的紧凑布局。"><span className="settings-value">紧凑</span></SettingsRow>
-              <SettingsRow title="动态效果" description="保留 thread 切换、面板展开与状态反馈。"><label className="switch"><input type="checkbox" defaultChecked /><span /></label></SettingsRow>
+              <SettingsRow title="动态效果" description="控制面板切换与动画；同时遵循系统的减少动态效果偏好。"><label className="switch"><input type="checkbox" aria-label="动态效果" checked={motionEnabled} onChange={(event) => onMotionChange(event.target.checked)} /><span /></label></SettingsRow>
             </div>
           ) : page === "agent" ? (
             <div className="settings-page">
@@ -318,7 +406,7 @@ export function SettingsModal({
           ) : (
             <div className="settings-page">
               <SettingsRow title="本地优先" description="会话、配置和记忆只保存在 Cleo 数据目录。"><span className="status-good">已启用</span></SettingsRow>
-              <SettingsRow title="DreamAgent" description="thread 完成后在后台整理可持久化知识。"><label className="switch"><input type="checkbox" defaultChecked /><span /></label></SettingsRow>
+              <SettingsRow title="DreamAgent" description="在记忆页查看整理结果和待确认来源。"><span className="settings-value">{dreamAgent.status === "running" ? "正在整理" : dreamAgent.status === "attention" ? "有来源需要查看" : dreamAgent.last_processed_at ? "已完成最近整理" : "等待首次整理"}</span></SettingsRow>
               <SettingsRow title="记忆作用域" description="普通对话与开发任务严格分区。"><span className="settings-value">已隔离</span></SettingsRow>
               <SettingsRow title="配置模板" description="复制与 CLI --print-config-template 相同的模板。"><div className="settings-actions"><button type="button" onClick={() => onCopyConfigTemplate("cleo")}>复制 Cleo</button><button type="button" onClick={() => onCopyConfigTemplate("harnesses")}>复制 Harness</button></div></SettingsRow>
               <SettingsRow title="重置工作区" description="对应 CLI --reset-to-main；保留 Cleo 配置。"><button className="settings-action danger" type="button" onClick={() => { if (window.confirm("将仓库重置到本地 main 并清理未跟踪文件？此操作不可撤销。")) onResetWorkspace(); }}>重置到 main</button></SettingsRow>

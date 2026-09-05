@@ -49,6 +49,7 @@ import type {
   ApprovalRequest,
 } from "../types";
 import { ApprovalPrompt } from "./ApprovalPrompt";
+import { RenameThreadDialog } from "./Overlays";
 
 interface ConversationProps {
   thread: Thread | null;
@@ -60,6 +61,11 @@ interface ConversationProps {
   runtimeModelsLoading: string | null;
   runtimeModelsError: string | null;
   running: boolean;
+  sendBlocked: string | null;
+  sendError?: string;
+  prompt: string;
+  onPromptChange: (prompt: string) => void;
+  onRename: (name: string) => Promise<void>;
   undoing: boolean;
   sidebarCollapsed: boolean;
   inspectorOpen: boolean;
@@ -89,11 +95,10 @@ interface ConversationProps {
   onResolveApproval: (decision: ApprovalDecision) => void;
 }
 
-const suggestions = [
-  "检查当前改动并给出下一步",
-  "为这个仓库做一次聚焦的代码审查",
-  "解释 session 与 memory 的数据流",
-];
+const suggestions = {
+  chat: ["帮我想一个轻松有趣的周末计划", "把一个复杂概念讲得简单易懂", "帮我把零散想法整理成清晰的文字"],
+  productivity: ["检查当前改动并给出下一步", "为这个仓库做一次聚焦的代码审查", "解释这个项目的结构和运行方式"],
+};
 
 export function Conversation({
   thread,
@@ -105,6 +110,11 @@ export function Conversation({
   runtimeModelsLoading,
   runtimeModelsError,
   running,
+  sendBlocked,
+  sendError,
+  prompt,
+  onPromptChange,
+  onRename,
   undoing,
   sidebarCollapsed,
   inspectorOpen,
@@ -181,6 +191,8 @@ export function Conversation({
         onUndo={onUndo}
         onRevealPath={onRevealPath}
         onThreadCommand={onThreadCommand}
+        onRename={onRename}
+        busy={running || Boolean(sendBlocked)}
       />
 
       <div className="conversation-viewport" ref={viewportRef} onScroll={trackScrollPosition}>
@@ -203,11 +215,16 @@ export function Conversation({
             ) : null}
           </div>
         ) : (
-          <WelcomeState project={project} onUseSuggestion={onSend} />
+          <WelcomeState project={project} space={space} onUseSuggestion={onPromptChange} />
         )}
       </div>
 
       <Composer
+        key={thread?.id ?? `new:${space}:${project?.id}`}
+        prompt={prompt}
+        onPromptChange={onPromptChange}
+        sendBlocked={sendBlocked}
+        sendError={sendError}
         space={space}
         runtime={runtime}
         runtimeCatalog={runtimeCatalog}
@@ -251,6 +268,8 @@ function ConversationHeader({
   onUndo,
   onRevealPath,
   onThreadCommand,
+  onRename,
+  busy,
 }: Pick<
   ConversationProps,
   | "thread"
@@ -267,8 +286,30 @@ function ConversationHeader({
   | "onUndo"
   | "onRevealPath"
   | "onThreadCommand"
->) {
+  | "onRename"
+> & { busy: boolean }) {
   const [threadMenuOpen, setThreadMenuOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    setThreadMenuOpen(false);
+    setRenameOpen(false);
+  }, [thread?.id]);
+  useEffect(() => {
+    if (!threadMenuOpen) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setThreadMenuOpen(false);
+    };
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setThreadMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [threadMenuOpen]);
   const runThreadCommand = (command: string) => {
     setThreadMenuOpen(false);
     onThreadCommand(command);
@@ -288,7 +329,7 @@ function ConversationHeader({
         <div className="breadcrumb">
           <span className="breadcrumb-project">{project?.name ?? "Cleo"}</span>
           <ChevronRight size={13} />
-          <strong>{thread?.title ?? "新任务"}</strong>
+          <strong>{thread?.title ?? (space === "chat" ? "新对话" : "新任务")}</strong>
         </div>
       </div>
       <div className="header-actions">
@@ -312,21 +353,21 @@ function ConversationHeader({
             {project.dirtyFiles ? <small>{project.dirtyFiles}</small> : null}
           </button>
         ) : null}
-        <button className="icon-button" type="button" aria-label="终端" title="终端" onClick={onShowRun}> 
+        <button className="icon-button" type="button" aria-label="运行记录" title="查看运行记录" onClick={onShowRun}>
           <Terminal size={16} />
         </button>
         <button className="icon-button" type="button" aria-label="命令面板" title="命令面板 · Ctrl K" onClick={onOpenCommand}>
           <Command size={16} />
         </button>
-        <div className="thread-actions-wrap">
-          <button className="icon-button" type="button" aria-label="更多" title="Thread 操作" onClick={() => setThreadMenuOpen((open) => !open)}> 
+        <div className="thread-actions-wrap" ref={menuRef}>
+          <button className="icon-button" type="button" aria-label="更多" title="会话操作" disabled={!thread || busy} aria-expanded={threadMenuOpen} onClick={() => setThreadMenuOpen((open) => !open)}>
             <MoreHorizontal size={17} />
           </button>
           {threadMenuOpen ? (
             <div className="thread-actions-menu surface-popover">
               <button type="button" onClick={() => {
-                const name = window.prompt("新的 thread 名称", thread?.title ?? "");
-                if (name?.trim()) runThreadCommand(`/rename ${name.trim()}`);
+                setThreadMenuOpen(false);
+                setRenameOpen(true);
               }}>重命名</button>
               {thread?.space === "productivity" ? <>
                 <button type="button" onClick={() => runThreadCommand("/fork")}>Fork thread</button>
@@ -349,6 +390,9 @@ function ConversationHeader({
           <PanelRightClose size={17} />
         </button>
       </div>
+      {renameOpen && thread ? (
+        <RenameThreadDialog title={thread.title} onSave={onRename} onClose={() => setRenameOpen(false)} />
+      ) : null}
     </header>
   );
 }
@@ -702,18 +746,21 @@ function ToolProcess({ tool, index }: { tool: ToolTimelineItem; index: number })
   );
 }
 
-function WelcomeState({ project, onUseSuggestion }: { project: Project | null; onUseSuggestion: (prompt: string) => void }) {
+function WelcomeState({ project, space, onUseSuggestion }: { project: Project | null; space: ThreadSpace; onUseSuggestion: (prompt: string) => void }) {
   return (
     <div className="welcome-state">
       <div className="welcome-portrait-wrap">
         <img src="./cleo.png" alt="Cleo" />
       </div>
       <span className="eyebrow">{project?.name ?? "CLEO"}</span>
-      <h2>从一个清晰的目标开始。</h2>
-      <p>我会先理解工作区，再决定需要读取、修改和验证什么。</p>
+      <h2>{space === "chat" ? "今天想聊些什么？" : "从一个清晰的目标开始。"}</h2>
+      <p>{space === "chat" ? "聊聊想法、学习新知，或一起解决生活中的小问题。" : "我会先理解工作区，再决定需要读取、修改和验证什么。"}</p>
       <div className="suggestion-list">
-        {suggestions.map((suggestion) => (
-          <button type="button" key={suggestion} onClick={() => onUseSuggestion(suggestion)}>
+        {suggestions[space].map((suggestion) => (
+          <button type="button" key={suggestion} onClick={() => {
+            onUseSuggestion(suggestion);
+            document.querySelector<HTMLTextAreaElement>('[data-testid="composer-input"]')?.focus();
+          }}>
             <span>{suggestion}</span>
             <ArrowUp size={14} />
           </button>
@@ -724,6 +771,10 @@ function WelcomeState({ project, onUseSuggestion }: { project: Project | null; o
 }
 
 function Composer({
+  prompt,
+  onPromptChange: setPrompt,
+  sendBlocked,
+  sendError,
   space,
   runtime,
   runtimeCatalog,
@@ -749,6 +800,10 @@ function Composer({
   onResolveApproval,
 }: Pick<
   ConversationProps,
+  | "prompt"
+  | "onPromptChange"
+  | "sendBlocked"
+  | "sendError"
   | "runtime"
   | "space"
   | "runtimeCatalog"
@@ -773,7 +828,6 @@ function Composer({
   | "approvalError"
   | "onResolveApproval"
 >) {
-  const [prompt, setPrompt] = useState("");
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [draggingFiles, setDraggingFiles] = useState(false);
   const effortProviderRequest = useRef<string | null>(null);
@@ -798,11 +852,11 @@ function Composer({
 
   const submit = () => {
     const content = prompt.trim() || (attachments.length ? "请分析这些附件。" : "");
-    if (!content || running) return;
+    if (!content || running || sendBlocked) return;
     onSend(content);
-    setPrompt("");
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       submit();
@@ -910,13 +964,15 @@ function Composer({
           </div>
         ) : null}
         {attachmentError ? <div className="attachment-error" role="alert">{attachmentError}</div> : null}
+        {sendError ? <div className="attachment-error" role="alert">{sendError}</div> : null}
         <textarea
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
           rows={1}
-          placeholder={running ? "Cleo 正在执行任务…" : "描述你想完成的事情"}
+          aria-label={space === "chat" ? "消息" : "任务描述"}
+          placeholder={running ? "Cleo 正在回复…" : space === "chat" ? "向 Cleo 发送消息…" : "描述你想完成的事情"}
           disabled={running}
           data-testid="composer-input"
         />
@@ -941,7 +997,7 @@ function Composer({
               onLoadModels={onLoadProductivityModels}
               onSelectProductivityRuntime={onSelectProductivityRuntime}
             />
-            <select
+            {space === "productivity" ? <select
               className="text-control effort-selector"
               value={selectedEffort}
               disabled={running || space !== "productivity" || supportedEfforts.length === 0}
@@ -954,7 +1010,7 @@ function Composer({
             >
               <option value="" disabled>由 harness 管理</option>
               {supportedEfforts.map((effort) => <option key={effort} value={effort}>{effort}</option>)}
-            </select>
+            </select> : null}
           </div>
           {running ? (
             <button className="send-button stop" type="button" aria-label="停止" title="停止" onClick={onCancel} data-testid="stop-button">
@@ -966,7 +1022,7 @@ function Composer({
               type="button"
               aria-label="发送"
               title="发送 · Enter"
-              disabled={!prompt.trim() && attachments.length === 0}
+              disabled={Boolean(sendBlocked) || (!prompt.trim() && attachments.length === 0)}
               onClick={submit}
               data-testid="send-button"
             >
@@ -975,7 +1031,7 @@ function Composer({
           )}
         </div>
       </div>
-      <div className="composer-hint">Enter 发送 · Shift Enter 换行 · 支持拖拽或粘贴文件 · 附件将交给当前运行时</div>
+      <div className="composer-hint" role={sendBlocked ? "status" : undefined}>{sendBlocked ?? "Enter 发送 · Shift Enter 换行 · 支持拖拽或粘贴文件"}</div>
     </div>
   );
 }

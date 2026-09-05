@@ -62,7 +62,7 @@ try {
   await window.getByRole("button", { name: "对话", exact: true }).click();
   await window.getByRole("heading", { name: "对话", exact: true }).waitFor();
   await window.getByTestId("new-thread").click();
-  await window.getByText("从一个清晰的目标开始。").waitFor();
+  await window.getByText("今天想聊些什么？").waitFor();
   await window.getByTestId("runtime-selector").click();
   await window.getByText("gpt-5.4-mini", { exact: true }).click();
   await window.getByTestId("runtime-selector").getByText("gpt-5.4-mini", { exact: true }).waitFor();
@@ -243,6 +243,7 @@ try {
   await window.getByTestId("approval-prompt").waitFor({ state: "detached" });
   await window.screenshot({ path: join(outputDir, "04c-approval-denied.png") });
 
+  await window.getByRole("button", { name: "运行记录", exact: true }).click();
   await window.getByRole("button", { name: "上下文", exact: true }).click();
   await window.getByTestId("inspector").getByText("运行参数", { exact: true }).waitFor();
   await window.getByRole("button", { name: "运行", exact: true }).click();
@@ -258,7 +259,7 @@ try {
   await window.getByRole("button", { name: /雾白/ }).click();
   await window.screenshot({ path: join(outputDir, "06-settings-light.png") });
   await window.getByRole("button", { name: "数据与记忆", exact: true }).click();
-  await window.getByText("thread 完成后在后台整理可持久化知识。", { exact: true }).waitFor();
+  await window.getByText("在记忆页查看整理结果和待确认来源。", { exact: true }).waitFor();
   await window.screenshot({ path: join(outputDir, "06b-settings-memory.png") });
   await window.getByRole("button", { name: "模型", exact: true }).click();
   await window.getByLabel("模型名称").waitFor();

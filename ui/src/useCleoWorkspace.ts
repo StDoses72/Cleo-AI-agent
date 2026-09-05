@@ -32,6 +32,14 @@ function mergeAttachments(current: Attachment[], selected: Attachment[]) {
   })];
 }
 
+interface ComposerDraft {
+  prompt: string;
+  attachments: Attachment[];
+  error?: string;
+}
+
+const emptyDraft: ComposerDraft = { prompt: "", attachments: [] };
+
 export function useCleoWorkspace() {
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
   const [loadingError, setLoadingError] = useState<string | null>(null);
@@ -39,7 +47,9 @@ export function useCleoWorkspace() {
   const [activeProjectId, setActiveProjectId] = useState("cleo-agent");
   const [activeThreadId, setActiveThreadId] = useState<string | null>("desktop-ui");
   const [runningThreadId, setRunningThreadId] = useState<string | null>(null);
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [drafts, setDrafts] = useState<Record<string, ComposerDraft>>({});
+  const [startingRun, setStartingRun] = useState(false);
+  const runLockRef = useRef(false);
   const [modelSettings, setModelSettings] = useState<ModelSettings | null>(null);
   const [modelSettingsLoading, setModelSettingsLoading] = useState(false);
   const [agentInstructions, setAgentInstructions] = useState<AgentInstructions | null>(null);
@@ -57,8 +67,16 @@ export function useCleoWorkspace() {
   const [draftEffort, setDraftEffort] = useState<RuntimeProfile["effort"]>(null);
   const generationRef = useRef(0);
   const selectionRef = useRef(0);
-  const appendAttachments = (selected: Attachment[]) => {
-    setAttachments((current) => mergeAttachments(current, selected));
+  const draftKey = activeThreadId ?? `new:${activeSpace}:${activeProjectId}`;
+  const draft = drafts[draftKey] ?? emptyDraft;
+  const updateDraft = (key: string, update: (draft: ComposerDraft) => ComposerDraft) => {
+    setDrafts((current) => ({ ...current, [key]: update(current[key] ?? emptyDraft) }));
+  };
+  const setPrompt = (prompt: string) => {
+    updateDraft(draftKey, (current) => ({ ...current, prompt, error: undefined }));
+  };
+  const appendAttachments = (selected: Attachment[], key = draftKey) => {
+    updateDraft(key, (current) => ({ ...current, attachments: mergeAttachments(current.attachments, selected) }));
   };
 
   useEffect(() => {
@@ -216,7 +234,7 @@ export function useCleoWorkspace() {
   };
 
   const createThread = async () => {
-    selectionRef.current += 1;
+    const selection = ++selectionRef.current;
     const space: ThreadSpace = activeSpace === "chat" ? "chat" : "productivity";
     const project = snapshot?.projects.find(
       (candidate) => candidate.id === activeProjectId && candidate.space === space,
@@ -240,7 +258,7 @@ export function useCleoWorkspace() {
     setSnapshot((current) =>
       current ? { ...current, threads: [thread, ...current.threads] } : current,
     );
-    setActiveThreadId(thread.id);
+    if (selectionRef.current === selection) setActiveThreadId(thread.id);
     return thread;
   };
 
@@ -260,11 +278,26 @@ export function useCleoWorkspace() {
 
   const sendPrompt = async (rawPrompt: string) => {
     const prompt = rawPrompt.trim();
-    if (!prompt || runningThreadId !== null) return;
+    if (!prompt || runLockRef.current) return;
+
+    runLockRef.current = true;
+    setStartingRun(true);
+    const sourceDraftKey = draftKey;
+    const pendingAttachments = draft.attachments;
+    updateDraft(sourceDraftKey, (current) => ({ ...current, error: undefined }));
 
     let thread = activeThread;
-    if (!thread) thread = await createThread();
-    if (!thread) return;
+    try {
+      if (!thread) thread = await createThread();
+    } catch (error) {
+      updateDraft(sourceDraftKey, (current) => ({
+        ...current,
+        error: error instanceof Error ? error.message : "无法创建对话，请重试。",
+      }));
+      runLockRef.current = false;
+      setStartingRun(false);
+      return;
+    }
 
     const threadId = thread.id;
     const generation = ++generationRef.current;
@@ -276,6 +309,11 @@ export function useCleoWorkspace() {
       time: currentTime(),
     };
     setRunningThreadId(threadId);
+    setStartingRun(false);
+    updateDraft(sourceDraftKey, (current) => ({
+      prompt: current.prompt === draft.prompt ? "" : current.prompt,
+      attachments: current.attachments.filter((item) => !pendingAttachments.some((sent) => sent.path === item.path)),
+    }));
     updateThread(threadId, (current) => ({
       ...current,
       title: current.items.length === 0 ? prompt.slice(0, 26) : current.title,
@@ -287,8 +325,6 @@ export function useCleoWorkspace() {
 
     let failed = false;
     try {
-      const pendingAttachments = attachments;
-      setAttachments([]);
       for await (const event of cleoClient.streamTurn(threadId, prompt, pendingAttachments)) {
         if (generationRef.current !== generation) return;
         if (event.type === "upsert-item") {
@@ -329,7 +365,7 @@ export function useCleoWorkspace() {
           selectSpace(event.space);
         } else if (event.type === "request-attachment") {
           const selected = await cleoClient.pickAttachments();
-          appendAttachments(selected);
+          appendAttachments(selected, threadId);
         } else if (event.type === "approval-request") {
           const request = { ...event.request, threadId };
           setPendingApprovals((current) => [
@@ -389,6 +425,7 @@ export function useCleoWorkspace() {
           );
         }
         setRunningThreadId(null);
+        runLockRef.current = false;
         setPendingApprovals((current) => current.filter(
           (candidate) => candidate.threadId !== threadId,
         ));
@@ -400,6 +437,7 @@ export function useCleoWorkspace() {
     const threadId = runningThreadId;
     if (!threadId) return;
     generationRef.current += 1;
+    runLockRef.current = false;
     setRunningThreadId(null);
     void cleoClient.cancelRun(threadId);
     setPendingApprovals((current) => current.filter(
@@ -435,6 +473,24 @@ export function useCleoWorkspace() {
       setApprovalError(error instanceof Error ? error.message : "无法提交审批决定");
     } finally {
       setApprovalPendingId(null);
+    }
+  };
+
+  const renameThread = async (title: string) => {
+    const threadId = activeThreadId;
+    if (!threadId || !title.trim()) throw new Error("请输入会话名称。");
+    if (runLockRef.current) throw new Error("请等待当前运行完成后重命名。");
+    runLockRef.current = true;
+    setStartingRun(true);
+    try {
+      for await (const event of cleoClient.streamTurn(threadId, `/rename ${title.trim()}`)) {
+        if (event.type === "error") throw new Error(event.message);
+      }
+      const renamed = await cleoClient.loadThread(threadId);
+      updateThread(threadId, () => renamed);
+    } finally {
+      runLockRef.current = false;
+      setStartingRun(false);
     }
   };
 
@@ -537,7 +593,10 @@ export function useCleoWorkspace() {
   };
 
   const removeAttachment = (path: string) => {
-    setAttachments((current) => current.filter((item) => item.path !== path));
+    updateDraft(draftKey, (current) => ({
+      ...current,
+      attachments: current.attachments.filter((item) => item.path !== path),
+    }));
   };
 
   const copyText = (value: string) => cleoClient.copyText(value);
@@ -689,7 +748,11 @@ export function useCleoWorkspace() {
     activeThreadId,
     runningThreadId,
     draftRuntime,
-    attachments,
+    attachments: draft.attachments,
+    prompt: draft.prompt,
+    setPrompt,
+    sendError: draft.error,
+    startingRun,
     modelSettings,
     modelSettingsLoading,
     agentInstructions,
@@ -707,6 +770,7 @@ export function useCleoWorkspace() {
     createThread: startNewThread,
     chooseWorkspace,
     sendPrompt,
+    renameThread,
     cancelRun,
     resolveApproval,
     updateRuntime,

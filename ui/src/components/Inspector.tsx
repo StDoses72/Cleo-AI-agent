@@ -203,11 +203,12 @@ function ContextPanel({
 function RunPanel({ thread, project }: { thread: Thread | null; project: Project | null }) {
   const running = thread?.status === "running";
   const hasIssue = thread?.status === "attention";
+  const completed = thread?.status === "completed";
   return (
     <div className="run-panel">
       <section className="run-status">
-        <span className={running ? "running" : hasIssue ? "issue" : "complete"}>{running ? <Circle size={12} /> : hasIssue ? <CircleAlert size={12} /> : <Check size={12} />}</span>
-        <div><strong>{running ? "Agent 正在执行" : hasIssue ? "上次运行需要查看" : "上次运行已完成"}</strong><small>{thread?.updatedAt ?? "尚未运行"}</small></div>
+        <span className={running ? "running" : hasIssue ? "issue" : completed ? "complete" : "idle"}>{running ? <Circle size={12} /> : hasIssue ? <CircleAlert size={12} /> : completed ? <Check size={12} /> : <Clock3 size={12} />}</span>
+        <div><strong>{running ? "Agent 正在执行" : hasIssue ? "上次运行需要查看" : completed ? "上次运行已完成" : "尚未运行"}</strong><small>{running || hasIssue || completed ? thread?.updatedAt : "发送第一条消息后，可在这里查看进度。"}</small></div>
       </section>
       <div className="terminal-head"><Terminal size={14} /><span>cleo · {project?.name ?? "workspace"}</span></div>
       <pre className="terminal-output"><span className="prompt">PS {project?.path ?? "D:\\workspace"}&gt;</span>{"\n"}{thread?.terminal?.length ? thread.terminal.join("") : <span className="muted">终端输出会在 Agent 执行命令时实时显示。</span>}{"\n\n"}<span className="cursor">▋</span></pre>

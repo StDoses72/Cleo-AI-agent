@@ -1,4 +1,5 @@
 import { _electron as electron } from "playwright";
+import { execFileSync } from "node:child_process";
 import { mkdir, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +9,14 @@ const sourceRoot = resolve(appDir, "..");
 const testHome = join(sourceRoot, ".codex-test-tmp-desktop-real");
 await rm(testHome, { recursive: true, force: true });
 await mkdir(testHome, { recursive: true });
+execFileSync(process.env.CLEO_PYTHON || "python", ["-c", `
+import sys
+from pathlib import Path
+from cleo.sessions.store import SessionStore
+store = SessionStore(Path(sys.argv[1]) / "memory")
+store.create_session(session_id="ux-saved-chat", space="non_productivity", project="general", provider="cleo", owner_type="user")
+store.append_event(space="non_productivity", project="general", session_id="ux-saved-chat", event_type="user_message", actor="user", content="UX rename fixture")
+`, testHome], { cwd: sourceRoot });
 
 const electronApp = await electron.launch({
   args: ["."],
@@ -41,7 +50,17 @@ try {
   await composer.fill("/");
   await window.getByTestId("slash-menu").waitFor();
   await composer.fill("");
-  await window.getByText("从一个清晰的目标开始。").waitFor();
+  await window.getByText("今天想聊些什么？").waitFor();
+  await window.locator(".thread-row-select").filter({ hasText: "UX rename fixture" }).click();
+  await window.locator(".thread-actions-wrap > button").click();
+  await window.getByRole("button", { name: "重命名", exact: true }).click();
+  const renameDialog = window.getByRole("dialog", { name: "重命名任务" });
+  await renameDialog.getByRole("textbox").fill("周末小游戏");
+  await renameDialog.getByRole("textbox").press("Enter");
+  await renameDialog.waitFor({ state: "hidden" });
+  await window.locator(".breadcrumb strong").filter({ hasText: /^周末小游戏$/ }).waitFor();
+  await window.reload();
+  await window.locator(".breadcrumb strong").filter({ hasText: /^周末小游戏$/ }).waitFor({ timeout: 20000 });
   await window.getByRole("button", { name: "记忆", exact: true }).click();
   await window.getByTestId("memory-nav-projects").click();
   await window.getByRole("heading", { name: "项目记忆", exact: true }).waitFor();

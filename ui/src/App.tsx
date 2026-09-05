@@ -22,7 +22,15 @@ import type { MemoryViewMode, Project, Thread, UpdateState } from "./types";
 export function App() {
   const workspace = useCleoWorkspace();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [inspectorBySpace, setInspectorBySpace] = useState({ chat: false, productivity: true });
+  const inspectorSpace = workspace.activeSpace === "chat" ? "chat" : "productivity";
+  const inspectorOpen = inspectorBySpace[inspectorSpace];
+  const setInspectorOpen = (value: boolean | ((open: boolean) => boolean)) => {
+    setInspectorBySpace((current) => ({
+      ...current,
+      [inspectorSpace]: typeof value === "function" ? value(current[inspectorSpace]) : value,
+    }));
+  };
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("changes");
   const [commandOpen, setCommandOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -35,6 +43,7 @@ export function App() {
   const [theme, setTheme] = useState<"dark" | "light">(() =>
     localStorage.getItem("cleo-theme") === "light" ? "light" : "dark",
   );
+  const [motionEnabled, setMotionEnabled] = useState(() => localStorage.getItem("cleo-motion") !== "reduced");
   const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
   const [updateState, setUpdateState] = useState<UpdateState>({
     phase: window.cleoDesktop ? "idle" : "unsupported",
@@ -58,9 +67,15 @@ export function App() {
   }, [theme]);
 
   useEffect(() => {
+    const motion = motionEnabled ? "full" : "reduced";
+    document.documentElement.dataset.motion = motion;
+    localStorage.setItem("cleo-motion", motion);
+  }, [motionEnabled]);
+
+  useEffect(() => {
     const compactLayout = window.matchMedia("(max-width: 1180px)");
     const closeInspectorForCompactLayout = (event: MediaQueryListEvent | MediaQueryList) => {
-      if (event.matches) setInspectorOpen(false);
+      if (event.matches) setInspectorBySpace({ chat: false, productivity: false });
     };
     closeInspectorForCompactLayout(compactLayout);
     compactLayout.addEventListener("change", closeInspectorForCompactLayout);
@@ -242,6 +257,11 @@ export function App() {
         />
       ) : (
         <Conversation
+          prompt={workspace.prompt}
+          onPromptChange={workspace.setPrompt}
+          sendError={workspace.sendError}
+          sendBlocked={workspace.startingRun ? "正在提交，请稍候…" : workspace.runningThreadId && workspace.runningThreadId !== workspace.activeThreadId ? "另一个任务正在运行，完成或停止后即可发送。" : null}
+          onRename={workspace.renameThread}
           thread={workspace.activeThread}
           project={workspace.activeProject}
           space={workspace.activeSpace === "chat" ? "chat" : "productivity"}
@@ -329,6 +349,9 @@ export function App() {
       <SettingsModal
         open={settingsOpen}
         theme={theme}
+        motionEnabled={motionEnabled}
+        onMotionChange={setMotionEnabled}
+        dreamAgent={workspace.snapshot.memoryOverview.dream_agent}
         runtime={settingsRuntime}
         supportedEfforts={supportedEfforts}
         modelSettings={workspace.modelSettings}
