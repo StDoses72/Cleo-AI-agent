@@ -189,8 +189,12 @@ try {
     Invoke-Checked -FilePath $npm.Source -WorkingDirectory $freshUiRoot -Arguments @("run", "build")
 
     $electronArchiveName = "electron-v$electronVersion-win32-x64.zip"
-    $electronReleaseBase = "$($ElectronMirror.TrimEnd('/'))/$electronVersion"
     $electronChecksumBase = "https://github.com/electron/electron/releases/download/v$electronVersion"
+    $electronReleaseBase = if ($ElectronMirror) {
+        "$($ElectronMirror.TrimEnd('/'))/$electronVersion"
+    } else {
+        $electronChecksumBase
+    }
     $electronArchive = Join-Path $scratchRoot $electronArchiveName
     $electronChecksums = Join-Path $scratchRoot "electron-SHASUMS256.txt"
     Invoke-Checked -FilePath $curl.Source -WorkingDirectory $scratchRoot -Arguments @(

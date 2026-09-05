@@ -1,4 +1,4 @@
-import { realpath, stat } from "node:fs/promises";
+import { open, realpath, stat } from "node:fs/promises";
 import { extname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -13,6 +13,13 @@ const blockedExtensions = new Set([
   ".scr",
   ".sh",
   ".url",
+  ".app",
+  ".appimage",
+  ".command",
+  ".desktop",
+  ".deb",
+  ".pkg",
+  ".rpm",
 ]);
 
 function insideWorkspace(workspacePath, candidatePath) {
@@ -88,7 +95,18 @@ export async function openLocalHref({ href, workspacePath, shellAdapter }) {
   if (!targetStat.isFile() && !targetStat.isDirectory()) {
     throw new Error("这个链接不是普通文件或目录");
   }
-  if (targetStat.isFile() && blockedExtensions.has(extname(target).toLowerCase())) {
+  let executable = false;
+  if (process.platform !== "win32" && targetStat.isFile() && (targetStat.mode & 0o111)) {
+    const file = await open(target, "r");
+    try {
+      const header = Buffer.alloc(4);
+      await file.read(header, 0, 4, 0);
+      executable = header.subarray(0, 2).toString() === "#!"
+        || ["7f454c46", "feedface", "feedfacf", "cefaedfe", "cffaedfe", "cafebabe"]
+          .includes(header.toString("hex"));
+    } finally { await file.close(); }
+  }
+  if (blockedExtensions.has(extname(target).toLowerCase()) || executable) {
     throw new Error("为安全起见，消息中的链接不能直接运行程序或脚本");
   }
 

@@ -19,8 +19,10 @@ import {
 const here = dirname(fileURLToPath(import.meta.url));
 app.setName("Cleo");
 if (app.isPackaged) {
-  const paths = installationPaths(app.getPath("temp"), process.execPath);
-  if (await interceptUpdateStartup(paths)) app.exit(0);
+  if (process.platform === "win32") {
+    const paths = installationPaths(app.getPath("temp"), process.execPath);
+    if (await interceptUpdateStartup(paths)) app.exit(0);
+  }
   if (!acquireSingleInstance(app, () => BrowserWindow.getAllWindows())) app.exit(0);
 }
 const backend = new BackendBridge({ app, here });
@@ -73,7 +75,8 @@ function createWindow() {
     icon: iconPath,
     backgroundColor: "#0b0d10",
     titleBarStyle: "hidden",
-    titleBarOverlay: {
+    ...(process.platform === "darwin" ? { trafficLightPosition: { x: 14, y: 14 } } : {}),
+    titleBarOverlay: process.platform === "darwin" ? false : {
       color: "#0b0e12",
       symbolColor: "#848c98",
       height: 44,
@@ -108,7 +111,9 @@ app.whenReady().then(async () => {
       // Best-effort cleanup of app-owned clipboard attachment files.
     }
   });
-  Menu.setApplicationMenu(null);
+  Menu.setApplicationMenu(process.platform === "darwin" ? Menu.buildFromTemplate([
+    { role: "appMenu" }, { role: "editMenu" }, { role: "viewMenu" }, { role: "windowMenu" },
+  ]) : null);
   ipcMain.on("cleo:window-theme", (event, theme) => {
     if (theme !== "light" && theme !== "dark") return;
     if (process.platform !== "win32" && process.platform !== "linux") return;
@@ -184,6 +189,14 @@ app.whenReady().then(async () => {
   ipcMain.handle("cleo:update:install", () => updater.install());
   const hasInstallResult = await updater.restoreInstallationResult();
   createWindow();
+  const installResult = await updater.takeInstallResult();
+  if (installResult) {
+    void dialog.showMessageBox({
+      type: installResult.status === "installed" ? "info" : "error",
+      message: installResult.status === "installed" ? `Cleo 已更新至 ${installResult.version}` : "Cleo 更新未完成",
+      detail: installResult.error || "新版本已安装完成。",
+    });
+  }
   if (!hasInstallResult) setTimeout(() => void updater.check(), 1500);
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

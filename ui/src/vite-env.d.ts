@@ -2,6 +2,7 @@
 
 interface Window {
   cleoWindow?: {
+    platform?: string;
     setTheme(theme: "dark" | "light"): void;
   };
   cleoDesktop?: {

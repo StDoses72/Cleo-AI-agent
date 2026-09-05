@@ -1,6 +1,6 @@
 # Cleo Desktop
 
-Cleo Desktop 是 Cleo 的 Windows 图形客户端，由 Electron、React、TypeScript 和 Vite 构建。它不是独立实现的第二套 agent：renderer 通过受控 IPC 调用随应用运行的 Python product core，因此 Desktop、CLI 与 TUI 共用 session、memory、harness 和配置语义。
+Cleo Desktop 是 Cleo 的 Windows、macOS 和 Linux 图形客户端，由 Electron、React、TypeScript 和 Vite 构建。它不是独立实现的第二套 agent：renderer 通过受控 IPC 调用随应用运行的 Python product core，因此 Desktop、CLI 与 TUI 共用 session、memory、harness 和配置语义。
 
 ## 子系统边界
 
@@ -88,7 +88,7 @@ npm run smoke:packaged
 | `smoke:real` | 源码模式真实 Python JSONL IPC |
 | `smoke:packaged` | 最终独立 runtime、路径和应用启动 |
 
-`smoke:packaged` 依赖已经生成的 `release/Cleo`。涉及 Python protocol、数据目录、preload 或 package layout 的改动必须运行 real/packaged smoke。
+`smoke:packaged` 按平台查找 `release/Cleo` 或 `release/Cleo.app`，也可用 `CLEO_EXECUTABLE` 指定安装后的程序。涉及 Python protocol、数据目录、preload 或 package layout 的改动必须运行 real/packaged smoke。
 
 ## 构建发布包
 
@@ -96,7 +96,7 @@ npm run smoke:packaged
 npm run package:portable
 ```
 
-该命令调用仓库顶层 `scripts/build-release.ps1`。构建器会：
+该命令按系统选择 Windows 的 `scripts/build-release.ps1` 或 macOS/Linux 的 `scripts/build-release.py`。平台、架构、数据目录与签名要求见[平台支持](../docs/PLATFORMS.md)。构建器会：
 
 1. 在隔离临时目录执行全新 `npm ci`；
 2. 下载独立 Python 3.12 runtime；
@@ -126,7 +126,7 @@ Set-Location ..
 
 程序文件位于 `%LOCALAPPDATA%\Programs\Cleo`，用户数据位于 `%LOCALAPPDATA%\Cleo`。安装器与 updater 只在 checksum 和 manifest 校验通过后替换程序目录，不覆盖配置、session、memory 或模型缓存。
 
-发布到 GitHub Release 时，必须同时上传版本一致的 ZIP、SHA256 与 `release.json`。应用内 updater 依赖这些固定文件名。
+上表为 Windows 产物。macOS/Linux 产物及各自的 manifest 命名见[平台支持](../docs/PLATFORMS.md)。发布时须成组上传对应平台的安装包、SHA256 和 manifest；Linux .deb 通过包管理器更新。
 
 ## 贡献检查清单
 

@@ -1,3 +1,4 @@
+import { modifierKey } from "../platform";
 import {
   useEffect,
   useMemo,
@@ -356,7 +357,7 @@ function ConversationHeader({
         <button className="icon-button" type="button" aria-label="运行记录" title="查看运行记录" onClick={onShowRun}>
           <Terminal size={16} />
         </button>
-        <button className="icon-button" type="button" aria-label="命令面板" title="命令面板 · Ctrl K" onClick={onOpenCommand}>
+        <button className="icon-button" type="button" aria-label="命令面板" title={`命令面板 · ${modifierKey} K`} onClick={onOpenCommand}>
           <Command size={16} />
         </button>
         <div className="thread-actions-wrap" ref={menuRef}>

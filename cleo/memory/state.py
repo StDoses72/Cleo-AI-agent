@@ -8,7 +8,6 @@ from pathlib import Path
 from threading import RLock
 from typing import Any
 
-from cleo.config.settings import settings
 from cleo.memory.paths import memory_state_path, validate_name, validate_space
 
 SCHEMA_VERSION = 2
@@ -31,7 +30,11 @@ def _state_path(space: str, path: Path | None) -> Path:
     返回:
         memory_state.json 的 Path, 供 _load_unlocked/_save_unlocked 读写。
     """
-    return path or memory_state_path(settings.MEMORY_DIR, validate_space(space))
+    if path is not None:
+        return path
+    from cleo.config.settings import settings
+
+    return memory_state_path(settings.MEMORY_DIR, validate_space(space))
 
 
 def _empty_state() -> dict[str, Any]:

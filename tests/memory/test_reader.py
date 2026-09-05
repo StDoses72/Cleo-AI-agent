@@ -1,4 +1,7 @@
 import json
+import os
+import subprocess
+import sys
 
 import pytest
 
@@ -6,6 +9,27 @@ from cleo.memory.paths import events_path, memory_database_path
 from cleo.memory.reader import MemoryReader
 from cleo.memory.store import upsert_memory
 from cleo.sessions.store import SessionStore
+
+
+def test_explicit_memory_reader_starts_without_agent_configuration(tmp_path):
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from cleo.memory.reader import MemoryReader; "
+            "import sys; MemoryReader(sys.argv[1]).list_threads()",
+            str(tmp_path / "memory"),
+        ],
+        env={
+            **os.environ,
+            "CLEO_HOME": str(tmp_path),
+            "CLEO_CONFIG_PATH": str(tmp_path / "config/cleo.json"),
+        },
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert not (tmp_path / "config/cleo.json").exists()
 
 
 def add_thread(store, session_id, space, project, text):

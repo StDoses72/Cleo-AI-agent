@@ -8,6 +8,8 @@ Cleo 使用两个经过 Pydantic 校验的 JSON 文件：`cleo.json` 管理通�
 | --- | --- | --- | --- |
 | 源码运行 | `config/cleo.json` | `config/harnesses.json` | 仓库根目录下的 `data/`、`memory/` 等 |
 | Windows 桌面版 | `%LOCALAPPDATA%\Cleo\config\cleo.json` | `%LOCALAPPDATA%\Cleo\config\harnesses.json` | `%LOCALAPPDATA%\Cleo` |
+| macOS 桌面版 | `~/Library/Application Support/Cleo/config/cleo.json` | 同目录 `harnesses.json` | `~/Library/Application Support/Cleo` |
+| Linux 桌面版 | `~/.local/share/Cleo/config/cleo.json` | 同目录 `harnesses.json` | `$XDG_DATA_HOME/Cleo`，默认 `~/.local/share/Cleo` |
 | Docker Compose | `/config/cleo.json` | `/config/harnesses.json` | `/app`，相关目录由 volume 持久化 |
 
 可用 `CLEO_CONFIG_PATH` 与 `CLEO_HARNESSES_CONFIG_PATH` 指定配置文件。打包应用由 Electron 显式设置 `CLEO_HOME`；源码 checkout 会以仓库为相对路径根。

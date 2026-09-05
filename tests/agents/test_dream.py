@@ -58,7 +58,7 @@ def test_dream_agent_runs_llm_directly(tmp_path, monkeypatch) -> None:
     )
     fake_settings = SimpleNamespace(MEMORY_DIR=memory_root)
     monkeypatch.setattr(dream_module, "settings", fake_settings)
-    monkeypatch.setattr(state_module, "settings", fake_settings)
+    monkeypatch.setattr("cleo.config.settings.settings", fake_settings)
 
     observed_phases = []
 

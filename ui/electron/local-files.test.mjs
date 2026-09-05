@@ -1,10 +1,34 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import { openLocalHref, resolveLocalHref } from "./local-files.mjs";
+
+test("application bundles and Linux desktop launchers are not opened as documents", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cleo-platform-links-"));
+  try {
+    await mkdir(join(root, "Example.app"));
+    await writeFile(join(root, "example.desktop"), "[Desktop Entry]\n");
+    for (const href of ["Example.app", "example.desktop"]) {
+      await assert.rejects(openLocalHref({ href, workspacePath: root,
+        shellAdapter: { openPath: async () => assert.fail("must not launch") } }), /不能直接运行/);
+    }
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("POSIX executable files without extensions cannot launch from a message link", {
+  skip: process.platform === "win32",
+}, async () => {
+  const root = await mkdtemp(join(tmpdir(), "cleo-executable-link-"));
+  try {
+    await writeFile(join(root, "program"), "#!/bin/sh\nexit 0\n");
+    await chmod(join(root, "program"), 0o755);
+    await assert.rejects(openLocalHref({ href: "program", workspacePath: root,
+      shellAdapter: { openPath: async () => assert.fail("must not launch") } }), /不能直接运行/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
 
 test("relative Markdown links resolve inside the active workspace", async () => {
   const root = await mkdtemp(join(tmpdir(), "cleo-local-link-"));
@@ -20,8 +44,8 @@ test("relative Markdown links resolve inside the active workspace", async () => 
       shellAdapter: { openPath: async (path) => { opened.push(path); return ""; } },
     });
 
-    assert.equal(result.path, page);
-    assert.deepEqual(opened, [page]);
+    assert.equal(result.path, await realpath(page));
+    assert.deepEqual(opened, [await realpath(page)]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -44,9 +68,10 @@ test("Codex file links ignore trailing line and column numbers", async () => {
       shellAdapter: { openPath: async (path) => { opened.push(path); return ""; } },
     });
 
-    assert.equal(lineResult.path, page);
-    assert.equal(columnResult.path, page);
-    assert.deepEqual(opened, [page, page]);
+    const canonical = await realpath(page);
+    assert.equal(lineResult.path, canonical);
+    assert.equal(columnResult.path, canonical);
+    assert.deepEqual(opened, [canonical, canonical]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

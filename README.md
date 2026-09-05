@@ -4,9 +4,9 @@
 
 Cleo 是一套本地优先的 AI 工作空间：它把通用对话、开发者代理、会话恢复和可追溯记忆统一在一个桌面端与 CLI 中，同时允许团队按自己的模型、工具和数据边界部署。
 
-项目当前提供 Windows 桌面应用、Python CLI、Textual TUI 和 stdio MCP 入口。用户数据默认保存在本机；模型推理由用户配置的 API provider 或外部 agent harness 提供。
+项目提供 Windows、macOS、Linux 桌面构建支持，以及 Python CLI、Textual TUI 和 stdio MCP 入口。用户数据默认保存在本机；模型推理由用户配置的 API provider 或外部 agent harness 提供。
 
-> 当前版本：`0.2.6`。Cleo 仍处于 pre-1.0 阶段，适合试用、内部工具集成和参与开发；对数据格式或扩展接口有稳定性要求的生产部署应固定版本并先完成验证。
+> 当前版本：`0.3.0`。Cleo 仍处于 pre-1.0 阶段，适合试用、内部工具集成和参与开发；对数据格式或扩展接口有稳定性要求的生产部署应固定版本并先完成验证。
 
 ## Cleo 解决什么问题
 
@@ -37,7 +37,7 @@ Cleo 是一套本地优先的 AI 工作空间：它把通用对话、开发者�
 - 项目级长期记忆、历史片段检索，以及仅承载交互倾向的全局 persona。
 - 带 allowlist、路径边界、超时、输出上限和审计日志的本地 shell 工具。
 - 每个 thread 独立的浏览器会话，以及公网/私网和域名访问边界。
-- Windows 独立桌面包、SHA-256 校验更新和默认保留用户数据的卸载流程。
+- Windows、macOS 与 Linux 原生桌面包，按平台校验更新并保留用户数据。
 
 ## 5 分钟开始
 
@@ -77,7 +77,7 @@ cleo "总结这个项目的架构"
 cleo --productivity --cwd .
 ```
 
-Linux/macOS 源码运行使用相同的 Python 包和 JSON 配置；当前预构建桌面包与安装脚本仅支持 Windows。完整步骤见[快速开始](docs/GETTING_STARTED.md)。
+Linux/macOS 使用相同的 Python 包和 JSON 配置。原生桌面构建、安装格式与签名边界见[平台支持](docs/PLATFORMS.md)；预构建附件以当前 GitHub Release 为准。
 
 ## 常用工作流
 
@@ -186,17 +186,23 @@ npm run test:backend
 npm run smoke
 ```
 
-完整发布包需要在 Windows 的 `ui/` 目录运行 `npm run package:portable`，产物生成到仓库根目录 `release/`。参见[开发与发布](docs/DEVELOPMENT.md)和 [Desktop 子系统说明](ui/README.md)。
+在目标操作系统和架构的 `ui/` 目录运行 `npm run package:portable`，产物生成到仓库根目录 `release/`。参见[开发与发布](docs/DEVELOPMENT.md)和 [Desktop 子系统说明](ui/README.md)。
 
 ## 当前边界
 
-- 预构建桌面应用目前只支持 Windows x64；其他平台需从源码运行。
+- 桌面目标为 Windows x64、macOS ARM64/x64、Linux x64。macOS 默认构建为开发签名包，正式分发还需签名和公证；详见[平台支持](docs/PLATFORMS.md)。
 - Cleo 当前是本地单用户应用与 stdio 工具，不是多租户 Web 服务，也不开放 HTTP API。
 - 通用聊天的模型接入以 OpenAI-compatible chat model 为主；provider 兼容性取决于其 API 行为。
 - Productivity provider 的能力不完全对等；Codex 专属历史和控制面不会由 Claude/ACP 伪造。
 - 长期记忆来自自动提取，仍应通过 evidence 与原始 event log 复核关键事实。
 
 ## 参与项目
+
+完成任务也包括清理临时产物：测试、调试和构建文件应集中在一个明确的临时目录，不得散落在
+项目父目录或其他仓库旁。验证通过并生成目标交付物后，删除临时测试数据、运行程序副本、
+日志、截图、PR 草稿、补丁／归档副本和过时的 build/review/backup 目录；仅保留用户要求的
+正式产物。版本与审查使用 Git 管理，不另存“保险备份”。清理前核对路径并保护用户数据、
+真实仓库、开发依赖和正在使用的资源，结束前复查 Git 状态与目录；无法删除的项目必须明确报告。
 
 欢迎提交 issue 和 pull request。开始改动前请先阅读 [AGENTS.md](AGENTS.md)、[开发文档](docs/DEVELOPMENT.md)和相关测试；变更 session、memory 或 provider 协议时，应同时更新对应文档与回归测试。
 

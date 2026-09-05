@@ -426,7 +426,7 @@ function formatBytes(value: number) {
 
 function updateDescription(state: UpdateState) {
   switch (state.phase) {
-    case "unsupported": return "开发模式不会连接发布服务器；安装后的 Cleo 会自动检查。";
+    case "unsupported": return state.error || "开发模式不会连接发布服务器；安装后的 Cleo 会自动检查。";
     case "idle": return "尚未检查更新。";
     case "checking": return "正在检查 GitHub Release…";
     case "up-to-date": return state.latestVersion ? `已是最新版本（${state.latestVersion}）。` : "已是最新版本。";
