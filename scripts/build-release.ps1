@@ -148,8 +148,6 @@ if (-not $LockedDependencies) {
         (Join-Path $PSScriptRoot "update_project.py"), "--local-resolver", "--skip-build"
     )
 }
-$electronVersion = (Get-Content -LiteralPath (Join-Path $uiRoot "package-lock.json") -Raw |
-    ConvertFrom-Json).packages.'node_modules/electron'.version
 Assert-ChildPath -Path $scratchRoot -Parent $scratchParent
 Assert-ChildPath -Path $finalAppPath -Parent $releaseRoot
 Assert-ChildPath -Path $archivePath -Parent $releaseRoot
@@ -189,6 +187,9 @@ try {
     }
     Invoke-Checked -FilePath $npm.Source -WorkingDirectory $freshUiRoot -Arguments @("run", "build")
 
+    $electronVersion = (Get-Content -LiteralPath (
+        Join-Path $freshUiRoot "node_modules\electron\package.json"
+    ) -Raw | ConvertFrom-Json).version
     $electronArchiveName = "electron-v$electronVersion-win32-x64.zip"
     $electronChecksumBase = "https://github.com/electron/electron/releases/download/v$electronVersion"
     $electronReleaseBase = if ($ElectronMirror) {
