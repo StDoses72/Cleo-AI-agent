@@ -5,8 +5,12 @@ $ErrorActionPreference = 'Stop'
 
 function Get-CleoDownloadTarget {
     if ($env:OS -ne 'Windows_NT') { throw 'Use download.sh on macOS or Linux.' }
-    $architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
-    if ($architecture -ne 'X64') { throw "Only Windows x64 is supported (detected $architecture)." }
+    # .NET Framework may report the emulated x64 architecture on ARM Windows.
+    $architecture = Get-CimInstance -ClassName Win32_Processor -Property Architecture |
+        Select-Object -First 1 -ExpandProperty Architecture
+    if (-not [Environment]::Is64BitOperatingSystem -or $architecture -ne 9) {
+        throw 'Only Windows x64 is supported; this system uses a different native architecture.'
+    }
     return 'windows-x64'
 }
 

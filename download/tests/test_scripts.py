@@ -43,6 +43,9 @@ class DownloaderTests(unittest.TestCase):
 param($Source, $Config, $OutputDirectory, $Log)
 $ErrorActionPreference = 'Stop'
 $fixture = Get-Content -LiteralPath $Config -Raw | ConvertFrom-Json
+if ($fixture.unsupported_windows) {
+    function Get-CimInstance { param($ClassName, $Property); return [pscustomobject]@{ Architecture = 12 } }
+}
 function Invoke-RestMethod {
     param($Uri, $TimeoutSec)
     return @{ tag_name = $fixture.version; draft = $false; prerelease = $false }
@@ -205,6 +208,13 @@ else:
         self.fixture["version"] = "v0.3.0/../../other"
         self.run_script(False)
         self.assertEqual(list(self.output.iterdir()), [])
+
+    @unittest.skipUnless(os.name == "nt", "Windows processor detection")
+    def test_windows_arm_stops_before_network(self):
+        self.fixture["unsupported_windows"] = True
+        result = self.run_script(False)
+        self.assertIn("Only Windows x64 is supported", result.stderr)
+        self.assertFalse(self.log.exists())
 
 
 if __name__ == "__main__":
