@@ -30,6 +30,14 @@ window.on("console", (message) => {
 
 try {
   await window.getByTestId("conversation").waitFor({ timeout: 15_000 });
+  // Hosted Windows desktops may initially clamp the app to a 1024px display.
+  // Exercise the wide layout explicitly before the compact-layout checks below.
+  await electronApp.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()[0].setContentSize(1440, 920);
+  });
+  await window.waitForFunction(() => innerWidth >= 1440);
+  const openInspector = window.getByRole("button", { name: "打开检查器", exact: true });
+  if (await openInspector.isVisible()) await openInspector.click();
   const initialFit = await window.evaluate(() => {
     const required = [".workspace-rail", ".thread-sidebar", ".conversation-shell", ".inspector"];
     return {
