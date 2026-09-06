@@ -120,7 +120,7 @@ def build(*, locked_dependencies: bool = False) -> None:
     release = ROOT / "release"
     release.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="cleo-release-") as temporary:
-        scratch = Path(temporary)
+        scratch = Path(temporary).resolve()
         ui = scratch / "ui"
         ui.mkdir()
         for name in (
