@@ -1,7 +1,7 @@
 # 桌面平台支持
 
-v0.3.0 提供以下原生构建目标。各平台必须在对应系统和 CPU 架构上构建；源码支持不代表
-当前 GitHub Release 已上传了全部平台的预构建附件。
+v0.3.0 提供以下原生安装包，可从 [Cleo 统一下载页](https://stdoses72.github.io/Cleo-AI-agent/)
+选择下载。各平台必须在对应系统和 CPU 架构上构建。
 
 | 目标 | 程序 | 发布文件 | 用户数据 |
 | --- | --- | --- | --- |
@@ -52,6 +52,17 @@ macOS 当前构建产物采用 ad-hoc 签名，用于本地运行和 CI 验证�
 参见 [Electron 签名说明](https://www.electronjs.org/docs/latest/tutorial/code-signing)。
 
 ## 安装与更新
+
+统一下载页优先使用浏览器提供的系统、架构和位数信息，无法确认时保留手动选择。
+Safari 的 `Intel Mac` 字样不能证明电脑使用 Intel 芯片；浏览器未提供架构时不会默认下载 Intel 包。
+相关 API 的可用性与权限限制见 [MDN](https://developer.mozilla.org/en-US/docs/Web/API/NavigatorUAData/getHighEntropyValues)。
+
+下载页同时提供 Windows PowerShell 和 macOS/Linux shell 下载命令：直接读取系统架构、
+固定到同一 Release 版本、验证对应的 SHA-256，然后保存安装包；不解压、安装或启动应用。
+macOS 脚本会识别 Rosetta，选择原生 Apple Silicon 包。Windows ARM64、Linux ARM64 和 32 位
+系统会停止并提示，不退回到 x64。已有不同内容的同名文件不会被覆盖，失败下载会清理。
+源码中的入口为 `download/site/download.ps1`（`-OutputDirectory` 可指定目录）及
+`download/site/download.sh`（第一个参数可指定目录），默认保存到用户主目录下的 `Downloads`。
 
 - macOS：将 `Cleo.app` 放入可写的 `~/Applications` 或 `/Applications`。只读磁盘映像、
   App Translocation 或无写权限的位置会拒绝更新，原程序保持打开；需要先移动应用。
