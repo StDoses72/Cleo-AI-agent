@@ -82,6 +82,38 @@ directory boundaries change source ownership only: the CLI still constructs the
 same Agent, adapter, SessionStore, and Runtime through the same entry points,
 configuration formats, and persistence protocols.
 
+## Domain, Application, And Infrastructure
+
+Feature packages remain in place; individual modules have distinct responsibilities:
+
+| Layer | Modules | Responsibility |
+| --- | --- | --- |
+| Domain / contracts | `harnesses/{models,control,provider}.py`, `sessions/{ports,policy}.py` | Session/event types, provider and repository contracts, pure content rules |
+| Application | `harnesses/service.py::AgentService` | Coordinate session creation, resume, turns, cancellation and close through ports |
+| Infrastructure | `integrations/harnesses/`, `sessions/store.py`, `integrations/{background,workspace}.py` | SDKs, JSONL/SQLite, detached processes, filesystem and Git |
+| Presentation | `cli/`, `desktop/projection.py`, `ui/src/components/` | Terminal and desktop rendering |
+| Composition / compatibility | `harnesses/adapter.py`, `integrations/harnesses/factory.py`, entry points | Construct and connect concrete implementations |
+
+`AgentService` depends on `AgentProvider` and `SessionRepository` protocols. Python protocols
+are structural interfaces: implementations supply the declared methods without inheriting a
+framework base class. The repository port contains only persistence operations used by harness
+orchestration; paths, database connections and projection storage stay with `SessionStore`.
+Optional provider controls remain capability-based.
+
+The existing `AgentAdapter(project_root, ...)` constructor supplies local storage defaults and
+retains `register_acp`. Existing callers keep using that compatibility entry point; new use-case
+logic belongs in `AgentService`, and provider construction belongs in the factory. Directory
+validation remains an application input boundary.
+
+Desktop no longer imports CLI modules. Shared payload and usage projections live in
+`harnesses/events.py`; process and workspace operations live in `integrations/`. CLI compatibility
+imports remain available. The renderer composition point explicitly returns the `CleoClient`
+interface implemented by IPC and mock clients.
+
+This separation covers harness orchestration and shared entry-point dependencies. Agent graph
+construction, memory persistence and runtime JSON storage retain their existing implementations;
+the entire Python package is not a pure domain layer.
+
 ## Installation And Runtime Paths
 
 A source checkout keeps the existing behavior: when `cleo/config/settings.py` can

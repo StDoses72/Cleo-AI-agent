@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import cleo.agents as agents_module
 import cleo.cli.lifecycle as lifecycle
 import cleo.config.settings as settings_module
+import cleo.integrations.background as background
 from cleo.cli.dream_worker import _parse_jobs
 from cleo.sessions.store import SessionStore
 
@@ -93,7 +94,7 @@ def test_detached_dream_worker_deduplicates_and_serializes_jobs(monkeypatch) -> 
         calls.append((command, kwargs))
         return object()
 
-    monkeypatch.setattr(lifecycle.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(background.subprocess, "Popen", fake_popen)
     launched = lifecycle._launch_dream_agent_worker(
         [
             ("agent-one", "cleo", "productivity"),
@@ -111,9 +112,9 @@ def test_detached_dream_worker_deduplicates_and_serializes_jobs(monkeypatch) -> 
         ["agent-one", "cleo", "productivity"],
         ["agent-two", "site", "productivity"],
     ]
-    assert kwargs["stdin"] is lifecycle.subprocess.DEVNULL
-    assert kwargs["stdout"] is lifecycle.subprocess.DEVNULL
-    assert kwargs["stderr"] is lifecycle.subprocess.DEVNULL
+    assert kwargs["stdin"] is background.subprocess.DEVNULL
+    assert kwargs["stdout"] is background.subprocess.DEVNULL
+    assert kwargs["stderr"] is background.subprocess.DEVNULL
     assert _parse_jobs(command[3]) == [
         ("agent-one", "cleo", "productivity"),
         ("agent-two", "site", "productivity"),
@@ -129,7 +130,7 @@ def test_detached_dream_worker_is_not_started_for_empty_session(
     def unexpected_popen(*_args, **_kwargs):
         raise AssertionError("an empty session must not start a worker process")
 
-    monkeypatch.setattr(lifecycle.subprocess, "Popen", unexpected_popen)
+    monkeypatch.setattr(background.subprocess, "Popen", unexpected_popen)
 
     launched = lifecycle._launch_dream_agent_worker(
         [("session-test", "cleo", "non_productivity")],

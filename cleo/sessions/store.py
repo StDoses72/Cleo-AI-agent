@@ -226,7 +226,7 @@ class SessionStore:
         self._index_ready = False
         self._event_id_cache: dict[
             str,
-            tuple[tuple[int, int, int] | None, set[str]],
+            tuple[tuple[int, int, int] | None, set[str], int],
         ] = {}
         self._ensure_index()
 
@@ -443,7 +443,7 @@ class SessionStore:
     ) -> list[dict[str, Any]]:
         """批量追加事件到 events.jsonl(按 id 幂等去重), 并同步 manifest 与索引。
 
-        已持久化事件的 id 集合经 _cached_event_ids 按 events 文件元数据
+        已持久化事件的 id 和末尾序号经 _cached_event_state 按文件元数据
         签名缓存复用,避免每次追加都全量重读 events.jsonl;文件被外部写入
         导致 mtime/ctime/size 变化时自动重读。
 
@@ -471,8 +471,9 @@ class SessionStore:
                 raise ValueError("session event binding does not match its manifest")
             output_path = events_path(self.memory_root, space, project, session_id)
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            existing_ids = self._cached_event_ids(session_id, output_path)
-            next_seq = int(manifest.get("last_event_seq", 0))
+            existing_ids, last_written_seq = self._cached_event_state(session_id, output_path)
+            # The event log may be ahead of a manifest whose atomic write failed.
+            next_seq = max(int(manifest.get("last_event_seq", 0)), last_written_seq)
             appended: list[dict[str, Any]] = []
             for item in events:
                 event_type = validate_name(str(item.get("type") or ""), "event_type")
@@ -512,8 +513,8 @@ class SessionStore:
                         output_stat.st_size,
                     ),
                     set(existing_ids),
+                    next_seq,
                 )
-                manifest["last_event_seq"] = appended[-1]["seq"]
                 if not manifest.get("title"):
                     for event in appended:
                         if (
@@ -524,6 +525,7 @@ class SessionStore:
                             if title:
                                 manifest["title"] = title
                                 break
+            manifest["last_event_seq"] = next_seq
             if manifest_updates:
                 manifest.update(manifest_updates)
             manifest["updated_at"] = _now_iso()
@@ -552,17 +554,11 @@ class SessionStore:
         )
         return load_events(path) if path.exists() else []
 
-    def _cached_event_ids(self, session_id: str, path: Path) -> set[str]:
-        """返回会话已持久化事件 id 的隔离副本(按文件元数据缓存失效)。
+    def _cached_event_state(self, session_id: str, path: Path) -> tuple[set[str], int]:
+        """Return committed event IDs and the last sequence, invalidated by file metadata.
 
-        参数:
-            session_id / path: 会话 id 与其 events.jsonl 路径, 来自
-                append_events(事件 id 去重)。
-        返回:
-            id 集合副本,供 append_events 安全地加入待写事件 id;写入失败
-            不会污染缓存。仅当文件 mtime_ns、ctime_ns 与 size 均和缓存一致
-            时复用缓存,多进程/跨实例写入后自动全量重读;文件不存在时以
-            None 签名缓存空集合。
+        Copy the ID set so a failed append cannot contaminate the cache. Sequence
+        recovery uses the authoritative log, including after a process restart.
         """
         stat = path.stat() if path.exists() else None
         signature = (
@@ -572,14 +568,16 @@ class SessionStore:
         )
         cached = self._event_id_cache.get(session_id)
         if cached is not None and cached[0] == signature:
-            return set(cached[1])
+            return set(cached[1]), cached[2]
+        events = load_events(path) if path.exists() else []
         ids = {
             str(event.get("id"))
-            for event in (load_events(path) if path.exists() else [])
+            for event in events
             if event.get("id")
         }
-        self._event_id_cache[session_id] = (signature, ids)
-        return set(ids)
+        last_seq = int(events[-1]["seq"]) if events else 0
+        self._event_id_cache[session_id] = (signature, ids, last_seq)
+        return set(ids), last_seq
 
     def sync_langchain_messages(
         self,
@@ -806,7 +804,8 @@ class SessionStore:
             moved_at = _now_iso()
             for event in events:
                 event["project"] = target_project
-            next_seq = int(manifest.get("last_event_seq", 0)) + 1
+            last_written_seq = int(events[-1]["seq"]) if events else 0
+            next_seq = max(int(manifest.get("last_event_seq", 0)), last_written_seq) + 1
             events.append(
                 {
                     "schema_version": EVENT_SCHEMA_VERSION,
@@ -875,36 +874,39 @@ class SessionStore:
             replace_conversation_chunks 写入 memory 数据库);
             返回值供 sync_langchain_messages 透传, adapter 未消费。
         """
-        manifest = self.load_manifest(session_id)
-        events = self.read_events(session_id)
-        source_hash = event_content_hash(events)
-        source_state = touch_session_source(
-            space=manifest["space"],
-            project=manifest["project"],
-            session_id=session_id,
-            source_hash=source_hash,
-            last_event_seq=int(manifest.get("last_event_seq", 0)),
-            path=memory_state_path(self.memory_root, manifest["space"]),
-        )
-        _, payload = write_compact_events(
-            memory_root=self.memory_root,
-            space=manifest["space"],
-            project=manifest["project"],
-            session_id=session_id,
-            events=events,
-            source_version=int(source_state["source_version"]),
-        )
-        replace_conversation_chunks(
-            payload,
-            path=memory_database_path(self.memory_root, manifest["space"]),
-        )
-        self.update_manifest(
-            session_id,
-            last_compacted_seq=int(manifest.get("last_event_seq", 0)),
-            source_hash=source_hash,
-            source_version=int(source_state["source_version"]),
-        )
-        return payload
+        with self._lock:
+            manifest = self.load_manifest(session_id)
+            events = self.read_events(session_id)
+            last_event_seq = int(events[-1]["seq"]) if events else 0
+            source_hash = event_content_hash(events)
+            source_state = touch_session_source(
+                space=manifest["space"],
+                project=manifest["project"],
+                session_id=session_id,
+                source_hash=source_hash,
+                last_event_seq=last_event_seq,
+                path=memory_state_path(self.memory_root, manifest["space"]),
+            )
+            _, payload = write_compact_events(
+                memory_root=self.memory_root,
+                space=manifest["space"],
+                project=manifest["project"],
+                session_id=session_id,
+                events=events,
+                source_version=int(source_state["source_version"]),
+            )
+            replace_conversation_chunks(
+                payload,
+                path=memory_database_path(self.memory_root, manifest["space"]),
+            )
+            self.update_manifest(
+                session_id,
+                last_event_seq=last_event_seq,
+                last_compacted_seq=last_event_seq,
+                source_hash=source_hash,
+                source_version=int(source_state["source_version"]),
+            )
+            return payload
 
     def find_by_native_session(
         self,

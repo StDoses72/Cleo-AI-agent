@@ -73,6 +73,44 @@ SessionStore
 运行流：CLI 仍构造相同的 Agent、adapter、SessionStore 和 Runtime，并沿用原有入口、
 配置格式与持久化协议。
 
+## Domain、application 与 infrastructure
+
+保留按功能组织的目录，在模块层面区分职责：
+
+| 层 | 模块 | 职责 |
+| --- | --- | --- |
+| Domain / contracts | `harnesses/models.py`、`control.py`、`provider.py`；`sessions/ports.py`、`policy.py` | 会话与事件类型、provider / repository 接口、无 I/O 的会话内容规则 |
+| Application | `harnesses/service.py::AgentService` | 创建、恢复、执行、取消和关闭会话；接收 provider 与持久化接口 |
+| Infrastructure | `integrations/harnesses/`、`sessions/store.py`、`integrations/background.py`、`integrations/workspace.py` | SDK、JSONL / SQLite、后台进程、文件系统与 Git |
+| Presentation | `cli/`、`desktop/projection.py`、`ui/src/components/` | 终端与桌面呈现 |
+| Composition / compatibility | `harnesses/adapter.py`、`integrations/harnesses/factory.py`、Desktop / CLI 入口 | 构造具体实现并接入应用服务 |
+
+```mermaid
+flowchart LR
+    Entry[CLI / Desktop / MCP] --> Adapter[AgentAdapter 兼容入口]
+    Adapter --> Service[AgentService]
+    Service --> Provider[AgentProvider Protocol]
+    Service --> Repository[SessionRepository Protocol]
+    SDK[Codex / Claude / ACP] -.实现.-> Provider
+    Store[SessionStore: JSONL + SQLite] -.实现.-> Repository
+```
+
+这里的 `Protocol` 就是 Python 的接口契约：实现方只需提供约定的方法签名，不要求继承
+某个框架基类。`SessionRepository` 只包含 harness 用例实际使用的持久化操作，不暴露
+数据库连接或存储目录；`SessionStore` 继续负责现有磁盘格式和派生投影。可选的 provider
+控制能力仍按需探测，不要求所有 provider 实现 Codex 专属功能。
+
+`AgentService` 不构造存储或 SDK。原有 `AgentAdapter(project_root, ...)` 保留默认本地
+存储和 `register_acp` 便捷方法，因此已有调用方无需迁移。新增核心逻辑应写进 service，
+新增具体 provider 的装配写进 factory。工作目录验证仍是应用服务的输入边界。
+
+Desktop 不再导入 CLI：共享的事件 payload / usage 投影位于 `harnesses/events.py`，后台
+进程和工作目录操作位于 `integrations/`。CLI 保留原导入入口。前端的装配点显式返回
+`CleoClient` 接口，由 IPC 和 mock 两个实现满足同一契约。
+
+这次分层聚焦 harness 与跨入口共享边界；`agents/` 的 LangGraph 装配、memory persistence
+和 `Runtime` 的 JSON 读写仍是现有实现，不能把整个 Python 包视为纯 domain。
+
 ## 安装与运行目录
 
 源码 checkout 保持现有行为：当 `cleo/config/settings.py` 能在源码根目录看到

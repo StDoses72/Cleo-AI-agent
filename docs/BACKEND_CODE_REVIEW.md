@@ -82,7 +82,9 @@ SQLite 失败是否会损坏事实源、resume 如何从事件恢复消息。
 
 - `cleo/harnesses/provider.py`
 - `cleo/harnesses/models.py`
-- `cleo/harnesses/adapter.py::AgentAdapter`
+- `cleo/sessions/ports.py::SessionRepository`
+- `cleo/harnesses/service.py::AgentService`
+- `cleo/harnesses/adapter.py::AgentAdapter`（兼容构造与基础设施默认值）
 - `cleo/integrations/harnesses/factory.py`
 - `cleo/integrations/harnesses/codex.py`
 - `tests/integrations/test_harnesses.py`

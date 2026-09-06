@@ -10,6 +10,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from cleo.harnesses.events import capture_context_usage, event_payload
 from cleo.runtime.usage import ContextWindowUsage
 
 if TYPE_CHECKING:
@@ -131,23 +132,6 @@ class ProductivityEventRenderer:
         """
         capture_context_usage(event, self.context_usage)
 
-    @staticmethod
-    def _token_int(payload: dict[str, Any], *keys: str) -> int | None:
-        """在 payload 中按候选 key 顺序取第一个 int 类型的 token 数值。
-
-        参数:
-            payload: tokenUsage 的子字典(total/last/顶层), 来自 _capture_context_usage。
-            keys: 兼容 camelCase 与 snake_case 的候选字段名。
-
-        返回:
-            int | None: 匹配到的 token 数; 全部缺失时返回 None,
-            由 _capture_context_usage 传给 ContextWindowUsage.update 表示该字段未知。
-        """
-        for key in keys:
-            value = payload.get(key)
-            if isinstance(value, int):
-                return value
-        return None
 
     def _ensure_newline(self) -> None:
         """若上一次输出是未换行的流式 chunk, 先补一个换行, 并重置 assistant 流状态。
@@ -244,8 +228,7 @@ class ProductivityEventRenderer:
             dict[str, Any]: 事件 payload; 被 _event_summary / _capture_context_usage
             用于读取 item、tokenUsage、diff 等字段。
         """
-        payload = event.data.get("payload")
-        return payload if isinstance(payload, dict) else event.data
+        return event_payload(event)
 
     @staticmethod
     def _file_change_summary(item: dict[str, Any], payload: dict[str, Any]) -> str:
@@ -282,41 +265,6 @@ class ProductivityEventRenderer:
         )
         file_label = f"{files} file(s)" if files else "working tree"
         return f"{file_label} · +{additions} -{deletions} · /diff to expand"
-
-
-def capture_context_usage(event: AgentEvent, usage: ContextWindowUsage) -> None:
-    """Project a token-usage event into shared runtime usage state."""
-    if event.data.get("provider_event_type") != "thread/tokenUsage/updated":
-        return
-    payload = ProductivityEventRenderer._payload(event)
-    token_usage = payload.get("tokenUsage")
-    if not isinstance(token_usage, dict):
-        return
-    total = token_usage.get("total")
-    last = token_usage.get("last")
-    total = total if isinstance(total, dict) else {}
-    last = last if isinstance(last, dict) else {}
-    token_int = ProductivityEventRenderer._token_int
-    usage.update(
-        used_tokens=token_int(total, "totalTokens", "total_tokens"),
-        window_tokens=token_int(
-            token_usage,
-            "modelContextWindow",
-            "model_context_window",
-        ),
-        input_tokens=token_int(last, "inputTokens", "input_tokens"),
-        output_tokens=token_int(last, "outputTokens", "output_tokens"),
-        cached_input_tokens=token_int(
-            last,
-            "cachedInputTokens",
-            "cached_input_tokens",
-        ),
-    )
-
-
-def event_payload(event: AgentEvent) -> dict[str, Any]:
-    """Return the normalized payload carried by a harness event."""
-    return ProductivityEventRenderer._payload(event)
 
 
 def summarize_productivity_event(

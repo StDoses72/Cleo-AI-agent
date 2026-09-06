@@ -13,8 +13,6 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
-from cleo.cli.lifecycle import _launch_dream_agent_worker
-from cleo.cli.productivity import _resolve_productivity_cwd
 from cleo.desktop.configuration import read_model_settings, save_model_profile
 from cleo.desktop.projection import (
     change_history_from_events,
@@ -30,6 +28,7 @@ from cleo.desktop.projection import (
     timeline_from_events,
 )
 from cleo.harnesses.control import HarnessModel
+from cleo.integrations.background import launch_dream_agent_worker
 from cleo.integrations.git import (
     create_git_checkpoint,
     discard_git_checkpoint,
@@ -40,6 +39,7 @@ from cleo.integrations.git import (
     undo_git_checkpoint,
 )
 from cleo.integrations.harnesses.claude import CLAUDE_EFFORTS
+from cleo.integrations.workspace import resolve_productivity_cwd
 from cleo.memory.compaction import load_events, load_validated_compact
 from cleo.memory.overview import build_memory_overview
 from cleo.memory.paths import memory_state_path
@@ -833,7 +833,7 @@ class DesktopService:
         }
 
     async def reset_workspace(self) -> dict[str, Any]:
-        from cleo.cli.workspace import reset_workspace_to_main
+        from cleo.integrations.workspace import reset_workspace_to_main
 
         await asyncio.to_thread(
             reset_workspace_to_main, self.settings.active_directory_profile.root_path
@@ -873,7 +873,7 @@ class DesktopService:
                 continue
             jobs.append((thread_id, manifest["project"], manifest["space"]))
         if jobs:
-            _launch_dream_agent_worker(jobs, store=self.store)
+            launch_dream_agent_worker(jobs, store=self.store)
         if self._adapter_instance is not None:
             try:
                 await self._adapter_instance.aclose()
@@ -977,7 +977,7 @@ class DesktopService:
             await emit({"type": "changes", "changes": changes})
 
         async def on_event(event: Any) -> None:
-            from cleo.cli.productivity_renderer import capture_context_usage
+            from cleo.harnesses.events import capture_context_usage
 
             capture_context_usage(event, usage)
             for projected in stream_event_item(event, state):
@@ -1213,7 +1213,7 @@ class DesktopService:
                 await adapter.update_session_options(manifest["id"], **update)
                 await self._notice(emit, "运行参数已更新", f"{field} = {argument}", "success")
         elif command == "/cd":
-            target = _resolve_productivity_cwd(argument, session.project_path)
+            target = resolve_productivity_cwd(argument, session.project_path)
             next_session = await adapter.create_session(
                 manifest["provider"],
                 project_path=target,

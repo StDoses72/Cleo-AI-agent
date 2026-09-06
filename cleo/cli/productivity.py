@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import os
 from collections.abc import Mapping
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from cleo.cli.context import cli
 from cleo.cli.lifecycle import _run_dream_agent
+from cleo.integrations.workspace import resolve_productivity_cwd as _resolve_productivity_cwd
 from cleo.runtime.usage import ContextWindowUsage
+
+__all__ = ["_resolve_productivity_cwd"]
 
 if TYPE_CHECKING:
     from cleo.config.settings import SettingsModel
@@ -101,17 +102,6 @@ def _slash_command_argument(prompt: str, command: str) -> str:
         return argument[1:-1]
     return argument
 
-
-def _resolve_productivity_cwd(argument: str, current_cwd: str) -> str:
-    """Resolve a /cd argument to an existing absolute directory."""
-    if not argument:
-        raise ValueError("Usage: /cd <directory>")
-    expanded = Path(os.path.expandvars(argument)).expanduser()
-    path = expanded if expanded.is_absolute() else Path(current_cwd) / expanded
-    path = path.resolve()
-    if not path.is_dir():
-        raise ValueError(f"Directory does not exist: {path}")
-    return os.path.normcase(str(path))
 
 
 async def _resume_productivity_session(

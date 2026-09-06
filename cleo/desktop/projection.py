@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from cleo.cli.productivity_renderer import event_payload
+from cleo.harnesses.events import event_payload
 from cleo.harnesses.models import AgentEvent
 
 _DIFF_HEADER = re.compile(r"^diff --git a/(.+?) b/(.+)$")

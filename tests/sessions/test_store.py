@@ -3,10 +3,76 @@ from pathlib import Path
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
+import cleo.sessions.store as store_module
 from cleo.memory.paths import compact_path, events_path, manifest_path
 from cleo.memory.state import get_session_source, mark_consolidated
 from cleo.memory.store import search_conversation_history
 from cleo.sessions.store import SessionStore
+
+
+@pytest.mark.parametrize("reopen", [False, True])
+@pytest.mark.parametrize("retry_same_event", [False, True])
+def test_append_recovers_after_event_write_outlives_manifest(
+    tmp_path, monkeypatch, reopen, retry_same_event,
+) -> None:
+    store = SessionStore(tmp_path / "memory")
+    scope = {"session_id": "recover", "space": "productivity", "project": "cleo"}
+    store.create_session(**scope, provider="fake", owner_type="user")
+    event = {"type": "user_message", "actor": "user", "content": "hello", "id": "first"}
+
+    def fail_manifest(*_args):
+        raise OSError("manifest write failed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(store_module, "_atomic_write_json", fail_manifest)
+        with pytest.raises(OSError, match="manifest write failed"):
+            store.append_events(**scope, events=[event])
+
+    persisted = store.read_events("recover")
+    assert [item["seq"] for item in persisted] == [1, 2]
+    assert store.load_manifest("recover")["last_event_seq"] == 1
+    if reopen:
+        store = SessionStore(tmp_path / "memory")
+    retried = event if retry_same_event else {**event, "id": "second"}
+    appended = store.append_events(**scope, events=[retried])
+    events = store.read_events("recover")
+
+    assert events[:len(persisted)] == persisted
+    assert [item["seq"] for item in events] == ([1, 2] if retry_same_event else [1, 2, 3])
+    assert len(appended) == (0 if retry_same_event else 1)
+    assert store.load_manifest("recover")["last_event_seq"] == events[-1]["seq"]
+    store.refresh_compact("recover")
+    assert store.load_manifest("recover")["last_compacted_seq"] == events[-1]["seq"]
+
+
+@pytest.mark.parametrize("operation", ["move", "compact"])
+def test_projections_recover_sequence_from_event_log(tmp_path, monkeypatch, operation) -> None:
+    store = SessionStore(tmp_path / "memory")
+    scope = {"session_id": "recover", "space": "non_productivity", "project": "general"}
+    store.create_session(**scope, provider="cleo", owner_type="user")
+
+    def fail_manifest(*_args):
+        raise OSError("manifest write failed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(store_module, "_atomic_write_json", fail_manifest)
+        with pytest.raises(OSError, match="manifest write failed"):
+            store.append_event(
+                **scope, event_type="user_message", actor="user", content="hello",
+            )
+    if operation == "move":
+        store.move_session("recover", "research")
+    else:
+        store.refresh_compact("recover")
+    events = store.read_events("recover")
+    manifest = store.load_manifest("recover")
+    assert [event["seq"] for event in events] == list(range(1, len(events) + 1))
+    assert manifest["last_event_seq"] == manifest["last_compacted_seq"] == events[-1]["seq"]
+    source = get_session_source(
+        manifest["space"], manifest["project"], "recover",
+        path=tmp_path / "memory/non_productivity/memory_state.json",
+    )
+    assert source["last_event_seq"] == events[-1]["seq"]
 
 
 def test_session_store_appends_events_and_updates_manifest(tmp_path: Path) -> None:
