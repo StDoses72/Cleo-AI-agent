@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import os
@@ -78,7 +79,7 @@ def package_macos(bundle: Path, version: str, icon: Path, scratch: Path) -> None
     run("codesign", "--verify", "--deep", "--strict", bundle, cwd=scratch)
 
 
-def build() -> None:
+def build(*, locked_dependencies: bool = False) -> None:
     if sys.platform not in {"darwin", "linux"}:
         raise SystemExit("Use build-release.ps1 on Windows.")
     node = shutil.which("node")
@@ -109,14 +110,16 @@ def build() -> None:
         raise ValueError(
             "Node and Python must use the same architecture; cross-building is not supported."
         )
+    if not locked_dependencies:
+        run(sys.executable, ROOT / "scripts/update_project.py",
+            "--local-resolver", "--skip-build", cwd=ROOT)
     source_package = json.loads((ROOT / "ui/package.json").read_text())
     version = source_package["version"]
-    electron = source_package["devDependencies"]["electron"]
+    ui_lock = json.loads((ROOT / "ui/package-lock.json").read_text())
+    electron = ui_lock["packages"]["node_modules/electron"]["version"]
     release = ROOT / "release"
     release.mkdir(exist_ok=True)
-    scratch_parent = ROOT / ".release-build"
-    scratch_parent.mkdir(exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="native-", dir=scratch_parent) as temporary:
+    with tempfile.TemporaryDirectory(prefix="cleo-release-") as temporary:
         scratch = Path(temporary)
         ui = scratch / "ui"
         ui.mkdir()
@@ -215,6 +218,7 @@ def build() -> None:
             python,
             "--break-system-packages",
             "--compile-bytecode",
+            "--constraint", ROOT / "requirements.txt",
             python_source,
             f"claude-agent-sdk=={locked_version('claude-agent-sdk')}",
             f"openai-codex-cli-bin=={locked_version('openai-codex-cli-bin')}",
@@ -230,16 +234,17 @@ def build() -> None:
                 script.write_bytes(b"#!/usr/bin/env python3\n" + data.split(b"\n", 1)[1])
         browser = resources / "browser"
         browser.mkdir()
+        for name in ("package.json", "package-lock.json"):
+            shutil.copy2(ROOT / "ui/runtime" / name, browser / name)
         run(
             "npm",
-            "install",
+            "ci",
             "--prefix",
             browser,
             "--no-audit",
             "--no-fund",
             "--omit",
             "dev",
-            "agent-browser@0.33.1",
             cwd=scratch,
         )
         shutil.copy2(Path(node).resolve(), browser / "node")
@@ -267,7 +272,9 @@ def build() -> None:
             "version": version,
             "platform": target["id"],
             "python": "3.12",
-            "agent_browser": "0.33.1",
+            "agent_browser": json.loads(
+                (browser / "node_modules/agent-browser/package.json").read_text()
+            )["version"],
             "created_at": datetime.now(UTC).isoformat(),
         }
         metadata_file = (
@@ -283,7 +290,7 @@ def build() -> None:
             raise FileExistsError(
                 f"Move the previous build out of the way before building: {final}"
             )
-        staged_bundle.rename(final)
+        shutil.move(str(staged_bundle), str(final))
         archive = release / target["archive"]
         if sys.platform == "darwin":
             run("ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", final, archive, cwd=release)
@@ -338,4 +345,6 @@ def build() -> None:
 
 
 if __name__ == "__main__":
-    build()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--locked-dependencies", action="store_true")
+    build(locked_dependencies=parser.parse_args().locked_dependencies)

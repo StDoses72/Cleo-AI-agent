@@ -432,7 +432,7 @@ function updateDescription(state: UpdateState) {
     case "up-to-date": return state.latestVersion ? `已是最新版本（${state.latestVersion}）。` : "已是最新版本。";
     case "available": return `发现 Cleo ${state.latestVersion}，下载后会校验 SHA-256。`;
     case "downloading": return `正在下载 ${formatBytes(state.downloadedBytes)} / ${formatBytes(state.totalBytes)}。中断后重试会续传。`;
-    case "ready": return `Cleo ${state.latestVersion} 已下载并通过校验。`;
+    case "ready": return `Cleo ${state.latestVersion} 已下载并通过校验，下次启动自动安装。`;
     case "installing": return "正在启动独立更新窗口。安装进度会持续显示，完成后自动打开 Cleo。";
     case "updated": return `Cleo ${state.currentVersion} 更新成功。`;
     case "install-failed": return state.error || "安装未完成，请重新检查更新。";
@@ -471,6 +471,12 @@ function UpdateSettingsPage({
         <button type="button" disabled={busy || state.phase === "unsupported"} onClick={state.phase === "up-to-date" ? onCheck : action.run}>{state.phase === "up-to-date" ? "重新检查" : action.label}</button>
       </div>
       <div className="settings-note"><Brain size={17} /><p>更新只替换程序目录。配置、会话、记忆和模型缓存仍保存在 Cleo 数据目录中；安装失败时会恢复旧版本。</p></div>
+      {state.dependencies ? <div className="settings-note"><RefreshCw size={17} /><p>{
+        state.dependencies.phase === "ready" ? "运行依赖已更新并通过检查，下次启动自动生效。"
+          : state.dependencies.phase === "error" ? `依赖更新未完成，继续使用当前版本。${state.dependencies.error || ""}`
+            : ["checking", "updating"].includes(state.dependencies.phase) ? "正在后台检查并更新 SDK 和浏览器工具…"
+              : "每天自动检查 SDK 和浏览器工具更新；界面与 Electron 随 Cleo 更新。"
+      }</p></div> : null}
     </div>
   );
 }

@@ -21,6 +21,7 @@ export class BackendBridge {
     this.pending = new Map();
     this.stderr = "";
     this.closing = false;
+    this.runtime = null;
   }
 
   request(method, params = {}, onEvent = null) {
@@ -61,6 +62,7 @@ export class BackendBridge {
         CLEO_CONFIG_PATH: process.env.CLEO_CONFIG_PATH || paths.configPath,
         CLEO_HARNESSES_CONFIG_PATH: process.env.CLEO_HARNESSES_CONFIG_PATH || paths.harnessesPath,
         HF_HOME: process.env.HF_HOME || paths.modelsRoot,
+        ...(paths.codexBin ? { CLEO_CODEX_BIN: paths.codexBin } : {}),
       },
     });
     this.process = child;
@@ -133,6 +135,7 @@ export class BackendBridge {
       configPath: join(cleoHome, "config", "cleo.json"),
       harnessesPath: join(cleoHome, "config", "harnesses.json"),
       modelsRoot: join(cleoHome, "models"),
+      ...this.runtime,
     };
   }
 

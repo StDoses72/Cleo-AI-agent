@@ -1,7 +1,7 @@
 {
   "name": "cleo-desktop",
   "productName": "Cleo",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "type": "module",
   "main": "electron/main.mjs",
@@ -9,7 +9,7 @@
     "start": "npm run build && electron .",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
-    "test:backend": "node --test electron/platform.test.mjs electron/posix-installer.test.mjs electron/install-state.test.mjs electron/attachments.test.mjs electron/backend.test.mjs electron/local-files.test.mjs electron/updater.test.mjs",
+    "test:backend": "node --test electron/platform.test.mjs electron/posix-installer.test.mjs electron/install-state.test.mjs electron/attachments.test.mjs electron/backend.test.mjs electron/dependencies.test.mjs electron/local-files.test.mjs electron/updater.test.mjs",
     "package:portable": "node ../scripts/build-release.mjs",
     "smoke": "npm run build && node scripts/smoke.mjs",
     "smoke:update": "npm run build && node scripts/smoke-update.mjs",
@@ -19,21 +19,21 @@
     "smoke:packaged": "node scripts/smoke-packaged.mjs"
   },
   "dependencies": {
-    "lucide-react": "1.31.0",
-    "react": "19.2.8",
-    "react-dom": "19.2.8",
-    "react-markdown": "10.1.0",
-    "remark-gfm": "4.0.1"
+    "lucide-react": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "react-markdown": "latest",
+    "remark-gfm": "latest"
   },
   "devDependencies": {
-    "@types/node": "26.2.0",
-    "@types/react": "19.2.18",
-    "@types/react-dom": "19.2.4",
-    "@vitejs/plugin-react": "6.0.5",
-    "electron": "41.5.0",
-    "@electron/asar": "3.4.1",
-    "playwright": "1.62.1",
-    "typescript": "7.0.2",
-    "vite": "8.2.1"
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@vitejs/plugin-react": "latest",
+    "electron": "latest",
+    "@electron/asar": "latest",
+    "playwright": "latest",
+    "typescript": "latest",
+    "vite": "latest"
   }
 }

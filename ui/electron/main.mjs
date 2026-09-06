@@ -12,6 +12,7 @@ import {
 import { BackendBridge } from "./backend.mjs";
 import { openLocalHref } from "./local-files.mjs";
 import { DesktopUpdater } from "./updater.mjs";
+import { DependencyUpdater } from "./dependencies.mjs";
 import {
   acquireSingleInstance, installationPaths, interceptUpdateStartup,
 } from "./install-state.mjs";
@@ -34,6 +35,11 @@ const updater = new DesktopUpdater({
       if (!window.isDestroyed()) window.webContents.send("cleo:update-state", state);
     }
   },
+});
+const dependencies = new DependencyUpdater({
+  app, resourcesPath: process.resourcesPath,
+  cleoHome: backend.runtimePaths().cleoHome,
+  onState: (state) => updater.setState({ dependencies: state }),
 });
 const allowedMethods = new Set([
   "load_workspace",
@@ -184,9 +190,14 @@ app.whenReady().then(async () => {
     }
   });
   ipcMain.handle("cleo:update:get-state", () => updater.getState());
-  ipcMain.handle("cleo:update:check", () => updater.check());
+  ipcMain.handle("cleo:update:check", () => {
+    void dependencies.check();
+    return updater.check();
+  });
   ipcMain.handle("cleo:update:download", () => updater.download());
   ipcMain.handle("cleo:update:install", () => updater.install());
+  if (await updater.installPending()) return;
+  backend.runtime = await dependencies.prepare();
   const hasInstallResult = await updater.restoreInstallationResult();
   createWindow();
   const installResult = await updater.takeInstallResult();
@@ -197,7 +208,15 @@ app.whenReady().then(async () => {
       detail: installResult.error || "新版本已安装完成。",
     });
   }
-  if (!hasInstallResult) setTimeout(() => void updater.check(), 1500);
+  const refresh = async () => {
+    void dependencies.check();
+    const state = await updater.check();
+    if (state.phase === "available") await updater.download();
+  };
+  if (!hasInstallResult) setTimeout(() => void refresh(), 1500);
+  else void dependencies.check();
+  const refreshTimer = setInterval(() => void refresh(), 6 * 60 * 60 * 1000);
+  app.once("will-quit", () => clearInterval(refreshTimer));
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -212,5 +231,7 @@ app.on("before-quit", (event) => {
   if (shutdownStarted) return;
   event.preventDefault();
   shutdownStarted = true;
-  void backend.close().finally(() => app.quit());
+  void Promise.all([backend.close(), dependencies.close()])
+    .catch((error) => console.error("Cleo shutdown failed:", error))
+    .finally(() => app.quit());
 });

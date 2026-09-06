@@ -112,7 +112,12 @@ git diff --stat
 
 ## 依赖管理
 
-`pyproject.toml` 是 Python 直接依赖的唯一手工维护入口。`requirements.txt` 是面向 Python 3.12/Linux 容器生成的精确锁文件，不应手工编辑。
+`pyproject.toml` 是 Python 直接依赖入口，保留最低版本，不限制旧的上限。
+`ui/package.json` 和 `ui/runtime/package.json` 中的应用依赖跟随 npm 的 `latest` 稳定版标签。
+运行工具中的 npm 保留 11.x，以兼容内置 Node 24；Python/Node 本身仍使用发布流程指定的运行时。
+Codex Python SDK 使用官方配套依赖，桌面版通过 `CLEO_CODEX_BIN` 调用单独更新的官方 `@openai/codex` CLI，避免模型列表受 Python SDK 发版速度限制。
+
+`requirements.txt` 是面向 Python 3.12/Linux 容器生成的精确锁文件；两个 `package-lock.json` 记录对应的 npm 解析结果。这些文件由更新命令生成，不应手工编辑。仓库忽略的 `uv.lock` 仅供本地使用；使用 uv 开发环境时，运行 `uv sync --upgrade --extra dev` 同步升级。
 
 更新锁文件并构建镜像：
 
@@ -120,7 +125,7 @@ git diff --stat
 python scripts\update_project.py
 ```
 
-只更新锁文件：
+只更新 Python 和两个 npm 锁文件（需要 Node/npm）：
 
 ```powershell
 python scripts\update_project.py --skip-build
@@ -140,7 +145,11 @@ python scripts\update_project.py `
   --extra-index-url https://pypi.org/simple
 ```
 
-更新后运行完整 Python 测试，并检查锁文件是否只发生预期变化。
+更新后运行完整 Python 测试、`npm --prefix ui run test:backend` 和前端构建，并检查锁文件变化。桌面构建默认先运行相同更新流程；CI 在测试前更新一次，打包传入 `--locked-dependencies`（Windows 为 `-LockedDependencies`）复用已测试的版本。
+
+安装后的 Cleo 每天后台检查 Python 依赖、Codex CLI 和 agent-browser。更新安装在 Cleo 数据目录的独立 `runtimes/` 目录中，导入检查、依赖一致性和工具启动检查通过后才发布切换指针，下次启动生效。当前任务始终使用启动时选定的版本。检查或安装失败保留当前版本，启动检查失败回退到随应用安装的运行时。后续检查会清理不用的旧运行时和中断的更新目录。
+
+React 和 Electron 等已构建的依赖随 Cleo 整包升级：安装版每六小时检查发布服务器，自动下载并校验，下次启动再次校验后安装。Linux `.deb` 安装仍由系统包管理器更新应用；其 Python/工具依赖也支持上述后台更新。此机制需要先安装包含该功能的 Cleo 版本，不会改写旧安装版的代码。
 
 ## Docker 开发
 

@@ -6,7 +6,7 @@ Cleo is a local-first AI workspace that brings general chat, developer agents, r
 
 The project supports native desktop builds for Windows, macOS and Linux, plus a Python CLI, Textual TUIs, and a stdio MCP entry point. User data stays on the local device by default; inference is provided by the API provider or external agent harness selected by the user.
 
-> Current version: `0.3.0`. Cleo is still pre-1.0 and is best suited to evaluation, internal-tool integration, and active development. Pin a version and validate it before deployments that require stable data formats or extension contracts.
+> Current version: `0.3.1`. Cleo is still pre-1.0 and is best suited to evaluation, internal-tool integration, and active development. Pin a version and validate it before deployments that require stable data formats or extension contracts.
 
 ## What Cleo solves
 
@@ -38,6 +38,7 @@ General assistants and coding agents usually keep separate histories, permission
 - Local shell controls for allowlists, path boundaries, timeouts, output limits, and audit logging.
 - Per-thread browser sessions with public/private-network and domain boundaries.
 - Self-contained platform-specific desktop packages with verified updates and separate user data.
+- Daily background SDK and browser-tool updates, validated before activation on the next launch; UI and Electron updates arrive with new Cleo releases. See [dependency management](docs/DEVELOPMENT.md#依赖管理).
 
 ## Start in five minutes
 

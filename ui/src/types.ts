@@ -22,6 +22,7 @@ export interface UpdateState {
   downloadedBytes: number;
   totalBytes: number;
   error: string | null;
+  dependencies?: { phase: string; error: string | null };
 }
 
 export interface Project {

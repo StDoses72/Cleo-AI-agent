@@ -145,6 +145,38 @@ export class DesktopUpdater {
     return { ...this.state };
   }
 
+  pendingPath() {
+    const key = createHash("sha256").update(this.executablePath).digest("hex").slice(0, 24);
+    return join(this.app.getPath("userData"), `pending-update-${key}.json`);
+  }
+
+  archiveFor(manifest) {
+    const suffix = this.target.platform === "win32" ? "" : `-${this.target.id}`;
+    return join(this.app.getPath("temp"), `cleo-update-${manifest.version}${suffix}`, manifest.archive);
+  }
+
+  async installPending() {
+    if (!this.app.isPackaged || this.packageManaged) return false;
+    try {
+      const value = JSON.parse(await readFile(this.pendingPath(), "utf8"));
+      const manifest = validateManifest(value, this.target);
+      // Consume the pending request before trying: a failed install must not loop on startup.
+      await rm(this.pendingPath());
+      if (compareVersions(manifest.version, this.state.currentVersion) <= 0) return false;
+      const archive = this.archiveFor(manifest);
+      if ((await stat(archive)).size !== manifest.bytes || await sha256(archive) !== manifest.sha256) {
+        throw new Error("The pending update failed verification; continuing with the installed version.");
+      }
+      this.manifest = manifest;
+      this.archivePath = archive;
+      this.setState({ phase: "ready", latestVersion: manifest.version, totalBytes: manifest.bytes });
+      return await this.install();
+    } catch (error) {
+      if (error.code !== "ENOENT") this.setState({ phase: "error", error: error.message });
+      return false;
+    }
+  }
+
   posixResultPath() {
     const key = createHash("sha256").update(installationRoot(this.executablePath, this.target)).digest("hex").slice(0, 24);
     return join(this.app.getPath("userData"), `update-result-${key}.json`);
@@ -241,9 +273,8 @@ export class DesktopUpdater {
     if (!this.manifest || this.state.phase !== "available") return this.getState();
 
     const manifest = this.manifest;
-    const suffix = this.target.platform === "win32" ? "" : `-${this.target.id}`;
-    const stagingRoot = join(this.app.getPath("temp"), `cleo-update-${manifest.version}${suffix}`);
-    const archivePath = join(stagingRoot, manifest.archive);
+    const archivePath = this.archiveFor(manifest);
+    const stagingRoot = dirname(archivePath);
     await mkdir(stagingRoot, { recursive: true });
     this.setState({
       phase: "downloading",
@@ -263,6 +294,12 @@ export class DesktopUpdater {
         throw new Error("The downloaded update failed its SHA-256 verification.");
       }
       this.archivePath = archivePath;
+      await mkdir(this.app.getPath("userData"), { recursive: true });
+      await writeFile(this.pendingPath(), JSON.stringify({
+        schema_version: manifest.schemaVersion, app: manifest.app, version: manifest.version,
+        platform: manifest.platform, archive: manifest.archive,
+        sha256: manifest.sha256, bytes: manifest.bytes,
+      }));
       return this.setState({
         phase: "ready",
         downloadedBytes: manifest.bytes,

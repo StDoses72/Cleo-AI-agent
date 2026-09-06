@@ -1,9 +1,9 @@
 [CmdletBinding()]
 param(
     [string]$PythonVersion = "3.12",
-    [string]$AgentBrowserVersion = "0.33.1",
+    [switch]$LockedDependencies,
     [string]$ElectronMirror = "https://registry.npmmirror.com/-/binary/electron",
-    [string]$PythonIndex = "https://mirrors.aliyun.com/pypi/simple/"
+    [string]$PythonIndex = "https://pypi.org/simple/"
 )
 
 $ErrorActionPreference = "Stop"
@@ -15,8 +15,8 @@ if ($env:OS -ne "Windows_NT") {
 $sourceRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $uiRoot = Join-Path $sourceRoot "ui"
 $releaseRoot = Join-Path $sourceRoot "release"
-$scratchParent = Join-Path $sourceRoot ".release-build"
-$scratchRoot = Join-Path $scratchParent ([guid]::NewGuid().ToString("N"))
+$scratchParent = [System.IO.Path]::GetTempPath()
+$scratchRoot = Join-Path $scratchParent ("cleo-release-" + [guid]::NewGuid().ToString("N"))
 $freshUiRoot = Join-Path $scratchRoot "ui"
 $pythonSourceRoot = Join-Path $scratchRoot "python-source"
 $pythonInstallRoot = Join-Path $scratchRoot "python-install"
@@ -29,10 +29,6 @@ $finalAppPath = Join-Path $releaseRoot "Cleo"
 $archivePath = Join-Path $releaseRoot "Cleo-windows-x64.zip"
 $checksumPath = Join-Path $releaseRoot "Cleo-windows-x64.sha256"
 $manifestPath = Join-Path $releaseRoot "release.json"
-$electronVersion = (
-    (Get-Content -LiteralPath (Join-Path $uiRoot "package.json") -Raw | ConvertFrom-Json).
-        devDependencies.electron
-).TrimStart("^", "~")
 
 function Assert-ChildPath {
     param(
@@ -146,13 +142,18 @@ if (-not $curl) {
     throw "curl.exe is required to download and verify the Electron runtime."
 }
 
-Assert-ChildPath -Path $scratchParent -Parent $sourceRoot
+if (-not $LockedDependencies) {
+    Invoke-Checked -FilePath $uv.Source -WorkingDirectory $sourceRoot -Arguments @(
+        "run", "--no-project", "--python", $PythonVersion,
+        (Join-Path $PSScriptRoot "update_project.py"), "--local-resolver", "--skip-build"
+    )
+}
+$electronVersion = (Get-Content -LiteralPath (Join-Path $uiRoot "package-lock.json") -Raw |
+    ConvertFrom-Json).packages.'node_modules/electron'.version
+Assert-ChildPath -Path $scratchRoot -Parent $scratchParent
 Assert-ChildPath -Path $finalAppPath -Parent $releaseRoot
 Assert-ChildPath -Path $archivePath -Parent $releaseRoot
 
-if (Test-Path -LiteralPath $scratchParent) {
-    Remove-Item -LiteralPath $scratchParent -Recurse -Force
-}
 New-Item -ItemType Directory -Path $freshUiRoot, $pythonSourceRoot, $releaseRoot -Force | Out-Null
 
 try {
@@ -274,6 +275,7 @@ try {
             "--default-index", $PythonIndex,
             "--no-cache",
             "--compile-bytecode",
+            "--constraint", (Join-Path $sourceRoot "requirements.txt"),
             $pythonSourceRoot,
             $codexWheel,
             $claudeWheel
@@ -292,15 +294,16 @@ try {
     }
 
     New-Item -ItemType Directory -Path $browserRoot | Out-Null
+    Copy-Item -LiteralPath (Join-Path $uiRoot "runtime\package.json") -Destination $browserRoot
+    Copy-Item -LiteralPath (Join-Path $uiRoot "runtime\package-lock.json") -Destination $browserRoot
     Invoke-Checked -FilePath $npm.Source -WorkingDirectory $browserRoot -Arguments @(
-        "install",
+        "ci",
         "--prefix", $browserRoot,
         "--cache", $npmCache,
         "--prefer-online",
         "--no-audit",
         "--no-fund",
-        "--omit", "dev",
-        "agent-browser@$AgentBrowserVersion"
+        "--omit", "dev"
     )
     Copy-Item -LiteralPath $node.Source -Destination (Join-Path $browserRoot "node.exe")
 
@@ -346,7 +349,7 @@ try {
         version = $version
         platform = "windows-x64"
         python = $PythonVersion
-        agent_browser = $AgentBrowserVersion
+        agent_browser = (Get-Content -LiteralPath (Join-Path $browserRoot "node_modules\agent-browser\package.json") -Raw | ConvertFrom-Json).version
         created_at = [DateTimeOffset]::UtcNow.ToString("o")
     }
     $releaseMetadata | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $appBuildPath "release.json") -Encoding UTF8
@@ -372,7 +375,7 @@ try {
             Remove-Item -LiteralPath $path -Recurse -Force
         }
     }
-    Move-Item -LiteralPath $appBuildPath -Destination $finalAppPath
+    Copy-Item -LiteralPath $appBuildPath -Destination $finalAppPath -Recurse
     Invoke-Checked -FilePath "$env:SystemRoot\System32\tar.exe" -WorkingDirectory $releaseRoot -Arguments @(
         "-a", "-c", "-f", $archivePath, "Cleo"
     )
@@ -389,7 +392,8 @@ try {
     Write-Host "Archive: $archivePath"
     Write-Host "SHA256:  $hash"
 } finally {
-    if (Test-Path -LiteralPath $scratchParent) {
-        Remove-Item -LiteralPath $scratchParent -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $scratchRoot) {
+        Assert-ChildPath -Path $scratchRoot -Parent $scratchParent
+        Remove-Item -LiteralPath $scratchRoot -Recurse -Force
     }
 }

@@ -53,9 +53,11 @@ jobs:
           mkdir -p config
           cp cleo/config/templates/cleo.example.json config/cleo.json
           cp cleo/config/templates/harnesses.example.json config/harnesses.json
-      - run: uv pip install --system -e ".[dev]"
+      - run: python scripts/update_project.py --local-resolver --skip-build
+      - run: uv pip install --system -e ".[dev]" --constraint requirements.txt
       - run: npm ci --prefix ui
-      - run: ruff check cleo tests scripts/build-release.py
+      - run: node ui/node_modules/electron/install.js
+      - run: ruff check cleo tests scripts/build-release.py scripts/update_project.py
       - run: pytest -q
       - run: npm --prefix ui run test:backend
       - run: npm --prefix ui run build
@@ -79,10 +81,10 @@ jobs:
         run: node ui/scripts/smoke-update.mjs
       - name: Build native POSIX package
         if: runner.os != 'Windows'
-        run: npm --prefix ui run package:portable
+        run: npm --prefix ui run package:portable -- --locked-dependencies
       - name: Build native Windows package
         if: runner.os == 'Windows' && github.event_name == 'workflow_dispatch'
-        run: ./scripts/build-release.ps1 -ElectronMirror '' -PythonIndex 'https://pypi.org/simple/'
+        run: ./scripts/build-release.ps1 -LockedDependencies -ElectronMirror '' -PythonIndex 'https://pypi.org/simple/'
       - name: Native packaged smoke
         if: runner.os == 'macOS' || (runner.os == 'Windows' && github.event_name == 'workflow_dispatch')
         run: npm --prefix ui run smoke:packaged

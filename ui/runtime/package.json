@@ -1,0 +1,10 @@
+{
+  "name": "cleo-runtime-tools",
+  "private": true,
+  "allowScripts": { "agent-browser": true },
+  "dependencies": {
+    "@openai/codex": "latest",
+    "agent-browser": "latest",
+    "npm": "^11.19.0"
+  }
+}

@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
-from openai_codex import ApprovalMode, AsyncCodex, AsyncThread, AsyncTurnHandle, Sandbox
+from openai_codex import (
+    ApprovalMode,
+    AsyncCodex,
+    AsyncThread,
+    AsyncTurnHandle,
+    CodexConfig,
+    Sandbox,
+)
 from openai_codex.api import ReasoningEffort
 from openai_codex.generated.v2_all import GetAccountRateLimitsResponse
 
@@ -313,7 +321,7 @@ class CodexProvider:
             ``HarnessModel`` 元组, 含 display name、默认/支持的
             reasoning effort 等; 使用临时 client, 不依赖活动 session。
         """
-        async with AsyncCodex() as client:
+        async with self._client() as client:
             response = await client.models()
         return tuple(
             HarnessModel(
@@ -350,7 +358,7 @@ class CodexProvider:
             ``NativeSessionPage``, 含本页 ``NativeSession`` 元组与
             ``next_cursor`` 翻页游标。
         """
-        async with AsyncCodex() as client:
+        async with self._client() as client:
             response = await client.thread_list(
                 archived=archived,
                 cursor=cursor,
@@ -377,7 +385,7 @@ class CodexProvider:
             ``NativeSessionDetail``, 含归一化的 session 信息与按 JSON
             序列化的 turns 元组。
         """
-        async with AsyncCodex() as client:
+        async with self._client() as client:
             thread = await client.thread_resume(native_session_id)
             response = await thread.read(include_turns=True)
         native = self._native_session(response.thread)
@@ -395,7 +403,7 @@ class CodexProvider:
         返回:
             ``HarnessAccount``; 未认证时仅 ``authenticated=False``。
         """
-        async with AsyncCodex() as client:
+        async with self._client() as client:
             response = await client.account()
         if response.account is None:
             return HarnessAccount(authenticated=False)
@@ -576,11 +584,16 @@ class CodexProvider:
         )
         return AsyncTurnHandle(runtime.client, runtime.thread.id, started.turn.id)
 
+    @staticmethod
+    def _client(config: CodexConfig | None = None) -> AsyncCodex:
+        # Desktop maintains its own current CLI, independently of the SDK release cadence.
+        if codex_bin := os.environ.get("CLEO_CODEX_BIN"):
+            config = config or CodexConfig()
+            config.codex_bin = codex_bin
+        return AsyncCodex(config=config) if config is not None else AsyncCodex()
+
     def _client_with_approvals(self, approvals: CodexApprovalBroker) -> AsyncCodex:
-        client = (
-            AsyncCodex(config=self._memory_mcp.codex_config())
-            if self._memory_mcp else AsyncCodex()
-        )
+        client = self._client(self._memory_mcp.codex_config() if self._memory_mcp else None)
         async_client = getattr(client, "_client", None)
         sync_client = getattr(async_client, "_sync", None)
         if sync_client is None or not hasattr(sync_client, "_approval_handler"):

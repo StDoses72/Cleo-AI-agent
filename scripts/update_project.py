@@ -199,6 +199,31 @@ def _apply_requirements(generated: str, *, check_only: bool) -> bool:
     return False
 
 
+def _update_node_dependencies(*, check_only: bool) -> bool:
+    npm = shutil.which("npm.cmd" if os.name == "nt" else "npm")
+    if npm is None:
+        raise RuntimeError("npm was not found on PATH")
+    stale = False
+    with tempfile.TemporaryDirectory(prefix="cleo-node-dependencies-") as temporary:
+        for relative in ("ui", "ui/runtime"):
+            source = PROJECT_ROOT / relative
+            staging = Path(temporary) / relative
+            staging.mkdir(parents=True)
+            for name in ("package.json", "package-lock.json"):
+                shutil.copy2(source / name, staging / name)
+            _run([npm, "update", "--prefix", str(staging), "--package-lock-only",
+                  "--ignore-scripts", "--no-audit", "--no-fund", "--prefer-online"])
+            generated = (staging / "package-lock.json").read_text(encoding="utf-8")
+            target = source / "package-lock.json"
+            if generated != target.read_text(encoding="utf-8"):
+                stale = True
+                if not check_only:
+                    target.write_text(generated, encoding="utf-8", newline="\n")
+                status = "is out of date" if check_only else "updated"
+                print(f"{relative}/package-lock.json {status}.")
+    return stale
+
+
 def _build_image(index_url: str, extra_index_url: str, *, pull: bool) -> None:
     command = [
         "docker",
@@ -216,14 +241,14 @@ def _build_image(index_url: str, extra_index_url: str, *, pull: bool) -> None:
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Regenerate requirements.txt from pyproject.toml in a Python 3.12 "
-            "Linux container and rebuild the Cleo Docker image."
+            "Refresh Python and desktop npm locks to the latest stable dependencies "
+            "and rebuild the Cleo Docker image."
         )
     )
     parser.add_argument(
         "--skip-build",
         action="store_true",
-        help="Update requirements.txt without rebuilding the Docker image.",
+        help="Update dependency locks without rebuilding the Docker image.",
     )
     parser.add_argument(
         "--local-resolver",
@@ -236,7 +261,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--check",
         action="store_true",
-        help="Exit with status 1 when requirements.txt is stale; do not modify files or build.",
+        help="Exit with status 1 when dependency locks are stale; do not modify files or build.",
     )
     parser.add_argument(
         "--pull",
@@ -280,8 +305,9 @@ def main() -> int:
                 index_url=args.index_url,
                 extra_index_url=args.extra_index_url,
             )
+        node_stale = _update_node_dependencies(check_only=args.check)
         if args.check:
-            return 1 if stale else 0
+            return 1 if stale or node_stale else 0
         if not args.skip_build:
             if args.local_resolver:
                 _check_docker()

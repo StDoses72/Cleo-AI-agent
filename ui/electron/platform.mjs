@@ -44,7 +44,9 @@ export function harnessPath(paths, environment, platform, home) {
   const path = platform === "win32" ? win32 : posix;
   return [...new Set([
     paths.python ? (platform === "win32"
-      ? path.join(path.dirname(paths.python), "Scripts") : path.dirname(paths.python)) : null,
+      ? (path.basename(path.dirname(paths.python)).toLowerCase() === "scripts"
+        ? path.dirname(paths.python) : path.join(path.dirname(paths.python), "Scripts"))
+      : path.dirname(paths.python)) : null,
     paths.browserRoot,
     paths.browserRoot ? path.join(paths.browserRoot, "node_modules", ".bin") : null,
     platform === "win32" && environment.APPDATA ? path.join(environment.APPDATA, "npm") : null,

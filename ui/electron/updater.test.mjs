@@ -124,6 +124,53 @@ test("downloaded updates reach ready only after size and SHA-256 verification", 
   }
 });
 
+test("a verified background download installs once on the next launch", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cleo-auto-update-"));
+  const archive = Buffer.from("new application");
+  const release = { ...manifest, bytes: archive.length,
+    sha256: createHash("sha256").update(archive).digest("hex") };
+  const app = { isPackaged: true, getVersion: () => "0.1.0", getPath: () => root };
+  const options = { app, platform: "win32", arch: "x64", resourcesPath: root,
+    executablePath: join(root, "Cleo.exe") };
+  try {
+    const downloading = new DesktopUpdater({ ...options,
+      fetchImpl: async (url) => String(url).endsWith(".zip")
+        ? new Response(archive) : { ok: true, json: async () => release },
+    });
+    assert.equal((await downloading.download()).phase, "ready");
+    const next = new DesktopUpdater(options);
+    let installed = 0;
+    next.install = async () => { installed += 1; return true; };
+    assert.equal(await next.installPending(), true);
+    assert.equal(installed, 1);
+    assert.equal(await next.installPending(), false);
+    assert.equal(installed, 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a changed pending archive cannot trigger automatic installation", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cleo-auto-update-invalid-"));
+  try {
+    const updater = new DesktopUpdater({
+      app: { isPackaged: true, getVersion: () => "0.1.0", getPath: () => root },
+      platform: "win32", arch: "x64", resourcesPath: root,
+      executablePath: join(root, "Cleo.exe"),
+    });
+    await writeFile(updater.pendingPath(), JSON.stringify(manifest));
+    const archive = updater.archiveFor(validateManifest(manifest));
+    await mkdir(join(root, "cleo-update-0.2.0"));
+    await writeFile(archive, "tampered");
+    updater.install = async () => { throw new Error("must not install"); };
+    assert.equal(await updater.installPending(), false);
+    assert.match(updater.getState().error, /verification/);
+    assert.equal(await updater.installPending(), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 async function readyUpdater(root, spawnImpl, quit) {
   const resourcesPath = join(root, "Installed Cleo", "resources");
   const stagingRoot = join(root, "Downloaded update");
