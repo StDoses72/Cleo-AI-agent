@@ -109,9 +109,17 @@ jobs:
           temporary = Path(os.environ['RUNNER_TEMP'])
           files = sorted((temporary / 'release-files').iterdir())
           tag = os.environ['RELEASE_TAG']
-          subprocess.run(['gh', 'release', 'create', tag, *map(str, files), '--draft', '--verify-tag',
-                          '--title', f'Cleo {tag}', '--notes-file', str(temporary / 'release-notes.md')], check=True)
-          release = json.loads(subprocess.check_output(['gh', 'api', f"repos/{os.environ['GH_REPO']}/releases/tags/{tag}"]))
+          def draft_release():
+              releases = json.loads(subprocess.check_output([
+                  'gh', 'api', f"repos/{os.environ['GH_REPO']}/releases?per_page=100",
+              ]))
+              return next((release for release in releases if release['tag_name'] == tag), None)
+          release = draft_release()
+          if release is None:
+              subprocess.run(['gh', 'release', 'create', tag, *map(str, files), '--draft', '--verify-tag',
+                              '--title', f'Cleo {tag}', '--notes-file', str(temporary / 'release-notes.md')], check=True)
+              release = draft_release()
+          assert release is not None and release['draft'], 'Refusing to overwrite a published release'
           assets = {asset['name']: asset for asset in release['assets']}
           assert set(assets) == {path.name for path in files}
           for path in files:
