@@ -207,7 +207,9 @@ def _update_node_dependencies(*, check_only: bool) -> bool:
     with tempfile.TemporaryDirectory(prefix="cleo-node-dependencies-") as temporary:
         for relative in ("ui", "ui/runtime"):
             source = PROJECT_ROOT / relative
-            staging = Path(temporary) / relative
+            # npm records non-portable package paths when --prefix traverses a symlink
+            # (including macOS /var -> /private/var temporary directories).
+            staging = Path(temporary).resolve() / relative
             staging.mkdir(parents=True)
             for name in ("package.json", "package-lock.json"):
                 shutil.copy2(source / name, staging / name)
