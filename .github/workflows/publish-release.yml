@@ -1,0 +1,134 @@
+name: Publish verified release
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful Desktop platforms workflow run ID
+        required: true
+        type: string
+      tag:
+        description: Existing release tag matching the build commit
+        required: true
+        type: string
+      notes:
+        description: Release notes
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: publish-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      BUILD_RUN: ${{ inputs.run_id }}
+      RELEASE_TAG: ${{ inputs.tag }}
+      RELEASE_NOTES: ${{ inputs.notes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify successful build and matching tag
+        run: |
+          python - <<'PY'
+          import json, os, re, subprocess, tomllib
+          tag, run = os.environ['RELEASE_TAG'], os.environ['BUILD_RUN']
+          assert re.fullmatch(r'v\d+\.\d+\.\d+', tag) and run.isdecimal()
+          build = json.loads(subprocess.check_output(['gh', 'api', f"repos/{os.environ['GH_REPO']}/actions/runs/{run}"]))
+          commit = subprocess.check_output(['git', 'rev-parse', f'{tag}^{{commit}}'], text=True).strip()
+          assert build['name'] == 'Desktop platforms' and build['conclusion'] == 'success'
+          assert build['head_sha'] == commit
+          project = subprocess.check_output(['git', 'show', f'{tag}:pyproject.toml'], text=True)
+          assert tomllib.loads(project)['project']['version'] == tag[1:]
+          print(f'Publishing verified build {run} from {commit}')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          pattern: desktop-*
+          path: ${{ runner.temp }}/release-artifacts
+      - name: Verify complete packages and checksums
+        run: |
+          python - <<'PY'
+          import hashlib, json, os, shutil, tarfile, zipfile
+          from pathlib import Path
+          temporary = Path(os.environ['RUNNER_TEMP'])
+          output = temporary / 'release-files'
+          output.mkdir()
+          for source in (temporary / 'release-artifacts').glob('desktop-*/release/*'):
+              assert source.is_file() and not (output / source.name).exists()
+              shutil.copy2(source, output / source.name)
+          version = os.environ['RELEASE_TAG'][1:]
+          for target in ('windows-x64', 'macos-arm64', 'macos-x64', 'linux-x64'):
+              manifest = 'release.json' if target == 'windows-x64' else f'release-{target}.json'
+              metadata = json.loads((output / manifest).read_text(encoding='utf-8-sig'))
+              assert metadata['version'] == version and metadata['platform'] == target
+              filename = f'Cleo-{target}' + ('.tar.gz' if target == 'linux-x64' else '.zip')
+              assert metadata['archive'] == filename
+              archive = output / filename
+              assert archive.stat().st_size == metadata['bytes']
+              with archive.open('rb') as stream:
+                  digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+              assert digest == metadata['sha256']
+              assert (output / f'Cleo-{target}.sha256').read_text(encoding='utf-8-sig').split() == [digest, filename]
+              prefix = 'Cleo.app/Contents/Resources' if target.startswith('macos') else 'Cleo'
+              if archive.suffix == '.zip':
+                  with zipfile.ZipFile(archive) as bundle:
+                      packaged = json.loads(bundle.read(f'{prefix}/release.json').decode('utf-8-sig'))
+              else:
+                  with tarfile.open(archive, 'r:gz') as bundle:
+                      packaged = json.load(bundle.extractfile('Cleo/release.json'))
+              assert packaged['version'] == version and packaged['platform'] == target
+              print(f'Verified {target}: {digest}')
+          deb = output / 'Cleo-linux-x64.deb'
+          with deb.open('rb') as stream:
+              digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+          assert (output / 'Cleo-linux-x64.deb.sha256').read_text().split() == [digest, deb.name]
+          assert len(list(output.iterdir())) == 14
+          (temporary / 'release-notes.md').write_text(os.environ['RELEASE_NOTES'], encoding='utf-8')
+          PY
+      - name: Upload draft, verify uploaded assets, and publish
+        run: |
+          python - <<'PY'
+          import hashlib, json, os, subprocess
+          from pathlib import Path
+          temporary = Path(os.environ['RUNNER_TEMP'])
+          files = sorted((temporary / 'release-files').iterdir())
+          tag = os.environ['RELEASE_TAG']
+          subprocess.run(['gh', 'release', 'create', tag, *map(str, files), '--draft', '--verify-tag',
+                          '--title', f'Cleo {tag}', '--notes-file', str(temporary / 'release-notes.md')], check=True)
+          release = json.loads(subprocess.check_output(['gh', 'release', 'view', tag, '--json', 'assets']))
+          assets = {asset['name']: asset for asset in release['assets']}
+          assert set(assets) == {path.name for path in files}
+          for path in files:
+              assert assets[path.name]['size'] == path.stat().st_size
+              with path.open('rb') as stream:
+                  digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+              assert assets[path.name]['digest'] == f'sha256:{digest}'
+          subprocess.run(['gh', 'release', 'edit', tag, '--draft=false', '--latest'], check=True)
+          PY
+      - name: Remove temporary release files
+        if: always()
+        run: |
+          python - <<'PY'
+          import os, shutil
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']).resolve()
+          for name in ('release-artifacts', 'release-files'):
+              path = root / name
+              if path.is_dir():
+                  assert path.resolve().parent == root
+                  shutil.rmtree(path)
+          (root / 'release-notes.md').unlink(missing_ok=True)
+          PY
