@@ -2,6 +2,12 @@ name: Desktop platforms
 
 on:
   pull_request:
+    paths-ignore:
+      - 'download/**'
+      - '.github/workflows/download-page.yml'
+      - 'README.md'
+      - 'README.en.md'
+      - 'docs/**'
   workflow_dispatch:
 
 permissions:

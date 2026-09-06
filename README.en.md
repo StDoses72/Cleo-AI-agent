@@ -41,16 +41,20 @@ General assistants and coding agents usually keep separate histories, permission
 
 ## Start in five minutes
 
-### Windows desktop
+### Download the desktop app
 
-Download `Cleo-windows-x64.zip` from [GitHub Releases](https://github.com/StDoses72/Cleo-AI-agent/releases), or run the verified installer from a source checkout:
+Open the **[Cleo download page](https://stdoses72.github.io/Cleo-AI-agent/)** to select a package using the system and architecture information available to your browser. You can also choose Windows x64, macOS Apple Silicon / Intel, Linux x64, or the Debian / Ubuntu deb package manually.
+
+When a browser cannot identify a Mac's chip, the page asks you to select it and offers a native detection script. The scripts need no Python or Node.js; they download the matching package to your Downloads directory, verify SHA-256, and leave installation to you. macOS packages currently use development signing without Apple notarization. See [platform and installation details](docs/PLATFORMS.md).
+
+Direct downloads remain available on [GitHub Releases](https://github.com/StDoses72/Cleo-AI-agent/releases/latest). Windows users can also run the existing verified installer from a source checkout:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\download.ps1 -Launch
 ```
 
-Program files are installed under `%LOCALAPPDATA%\Programs\Cleo`. Configuration, sessions, memory, and model caches live under `%LOCALAPPDATA%\Cleo`; updates replace the program directory without overwriting user data.
+This Windows installer places program files under `%LOCALAPPDATA%\Programs\Cleo`. Configuration, sessions, memory, and model caches live under `%LOCALAPPDATA%\Cleo`; updates replace the program directory without overwriting user data.
 
 On first launch, open **Settings → Models**, configure a provider, model, API key, and optional base URL, then select profiles for Cleo and DreamAgent. API keys are written only to local configuration and are never returned in plaintext by the desktop read API.
 

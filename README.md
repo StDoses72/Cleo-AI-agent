@@ -41,16 +41,20 @@ Cleo 是一套本地优先的 AI 工作空间：它把通用对话、开发者�
 
 ## 5 分钟开始
 
-### 使用 Windows 桌面版
+### 下载桌面版
 
-从 [GitHub Releases](https://github.com/StDoses72/Cleo-AI-agent/releases) 下载最新的 `Cleo-windows-x64.zip`。也可以在源码仓库中运行带校验的安装器：
+打开 **[Cleo 统一下载页](https://stdoses72.github.io/Cleo-AI-agent/)**，根据浏览器提供的系统与架构信息选择安装包，也可手动切换 Windows x64、macOS Apple Silicon / Intel、Linux x64 或 Debian / Ubuntu deb。
+
+浏览器无法判断 Mac 芯片时，下载页会提示选择，并提供直接读取系统架构的下载脚本。脚本无需 Python 或 Node.js，将匹配当前系统的包下载到「下载」目录、校验 SHA-256 后交付，不自动安装。macOS 包目前采用开发签名，尚未通过 Apple 公证。详见[安装与平台说明](docs/PLATFORMS.md)。
+
+也可以从 [GitHub Releases](https://github.com/StDoses72/Cleo-AI-agent/releases/latest) 手动下载。Windows 用户还可以在源码仓库中运行原有的带校验安装器：
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\download.ps1 -Launch
 ```
 
-程序安装到 `%LOCALAPPDATA%\Programs\Cleo`，配置、会话、记忆和模型缓存保存在 `%LOCALAPPDATA%\Cleo`。升级只替换程序目录，不覆盖用户数据。
+该 Windows 安装器将程序安装到 `%LOCALAPPDATA%\Programs\Cleo`，配置、会话、记忆和模型缓存保存在 `%LOCALAPPDATA%\Cleo`。升级只替换程序目录，不覆盖用户数据。
 
 首次进入应用后，在“设置 → 模型”中配置 provider、模型、API Key 和可选 Base URL，再分别选择 Cleo 与 DreamAgent 使用的 profile。API Key 只写入本地配置，桌面读取接口不会回传明文。
 
