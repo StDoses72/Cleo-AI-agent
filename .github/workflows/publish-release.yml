@@ -86,11 +86,14 @@ jobs:
               if archive.suffix == '.zip':
                   with zipfile.ZipFile(archive) as bundle:
                       packaged = json.loads(bundle.read(f'{prefix}/release.json').decode('utf-8-sig'))
+                      resources = prefix if target.startswith('macos') else prefix + '/resources'
+                      codex = json.loads(bundle.read(f'{resources}/browser/node_modules/@openai/codex/package.json'))
               else:
                   with tarfile.open(archive, 'r:gz') as bundle:
                       packaged = json.load(bundle.extractfile('Cleo/release.json'))
+                      codex = json.load(bundle.extractfile('Cleo/resources/browser/node_modules/@openai/codex/package.json'))
               assert packaged['version'] == version and packaged['platform'] == target
-              print(f'Verified {target}: {digest}')
+              print(f"Verified {target}: {digest}, Codex CLI {codex['version']}")
           deb = output / 'Cleo-linux-x64.deb'
           with deb.open('rb') as stream:
               digest = hashlib.file_digest(stream, 'sha256').hexdigest()
@@ -108,7 +111,7 @@ jobs:
           tag = os.environ['RELEASE_TAG']
           subprocess.run(['gh', 'release', 'create', tag, *map(str, files), '--draft', '--verify-tag',
                           '--title', f'Cleo {tag}', '--notes-file', str(temporary / 'release-notes.md')], check=True)
-          release = json.loads(subprocess.check_output(['gh', 'release', 'view', tag, '--json', 'assets']))
+          release = json.loads(subprocess.check_output(['gh', 'api', f"repos/{os.environ['GH_REPO']}/releases/tags/{tag}"]))
           assets = {asset['name']: asset for asset in release['assets']}
           assert set(assets) == {path.name for path in files}
           for path in files:
