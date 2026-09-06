@@ -44,7 +44,10 @@ param($Source, $Config, $OutputDirectory, $Log)
 $ErrorActionPreference = 'Stop'
 $fixture = Get-Content -LiteralPath $Config -Raw | ConvertFrom-Json
 if ($fixture.unsupported_windows) {
-    function Get-CimInstance { param($ClassName, $Property); return [pscustomobject]@{ Architecture = 12 } }
+    function Get-CimInstance {
+        param($ClassName, $Property)
+        return [pscustomobject]@{ Architecture = 12 }
+    }
 }
 function Invoke-RestMethod {
     param($Uri, $TimeoutSec)
