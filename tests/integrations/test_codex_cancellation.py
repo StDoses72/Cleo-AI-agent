@@ -1,5 +1,10 @@
 import asyncio
+from threading import Event
 from types import SimpleNamespace
+
+from openai_codex import AsyncTurnHandle
+from openai_codex.async_client import AsyncCodexClient
+from openai_codex.generated.v2_all import TurnCompletedNotification
 
 from cleo.desktop.service import DesktopService
 from cleo.integrations.harnesses.codex import CodexProvider, _CodexRuntime
@@ -84,6 +89,7 @@ def test_cancel_releases_pending_approval_before_interrupt_and_allows_next_turn(
     async def scenario():
         provider = CodexProvider(None)
         approval_ready = asyncio.Event()
+        interrupted = asyncio.Event()
         approval_task = None
         calls = []
 
@@ -102,6 +108,8 @@ def test_cancel_releases_pending_approval_before_interrupt_and_allows_next_turn(
                     {"command": "test", "threadId": "thread"},
                 ))
                 await asyncio.shield(approval_task)
+                if runtime.user_approvals_enabled:
+                    await interrupted.wait()
                 yield SimpleNamespace(method="turn/completed", payload=SimpleNamespace(
                     model_dump=lambda **_: {
                         "turn": {"id": self.id, "status": "completed"},
@@ -113,6 +121,7 @@ def test_cancel_releases_pending_approval_before_interrupt_and_allows_next_turn(
                 # The SDK's reader cannot deliver the interrupt reply until
                 # its synchronous approval callback returns.
                 await asyncio.shield(approval_task)
+                interrupted.set()
 
         class Thread:
             id = "thread"
@@ -138,5 +147,113 @@ def test_cancel_releases_pending_approval_before_interrupt_and_allows_next_turn(
         finally:
             runtime.approvals.cancel_all()
             await asyncio.gather(task, return_exceptions=True)
+
+    asyncio.run(scenario())
+
+
+def test_cancellation_drains_the_real_sdk_notification_worker():
+    async def scenario():
+        low_level = AsyncCodexClient()
+        reader_ready = asyncio.Event()
+        reader_exited = Event()
+        loop = asyncio.get_running_loop()
+        original_register = low_level._sync.register_turn_notifications
+        original_queue = None
+        completion = SimpleNamespace(
+            method="turn/completed",
+            payload=TurnCompletedNotification.model_validate({
+                "threadId": "thread",
+                "turn": {
+                    "id": "turn", "status": "interrupted", "items": [], "error": None,
+                    "itemsView": "full",
+                },
+            }),
+        )
+
+        def register_notifications(turn_id):
+            nonlocal original_queue
+            original_register(turn_id)
+            original_queue = low_level._sync._router._turn_notifications[turn_id]
+            original_get = original_queue.get
+
+            def get():
+                loop.call_soon_threadsafe(reader_ready.set)
+                try:
+                    return original_get()
+                finally:
+                    reader_exited.set()
+
+            original_queue.get = get
+
+        low_level._sync.register_turn_notifications = register_notifications
+
+        async def initialized():
+            pass
+
+        async def interrupt(*_args):
+            low_level._sync._router.route_notification(completion)
+
+        low_level.turn_interrupt = interrupt
+        client = SimpleNamespace(_client=low_level, _ensure_initialized=initialized)
+        turn = AsyncTurnHandle(client, "thread", "turn")
+
+        async def start(*_args, **_kwargs):
+            return turn
+
+        provider = CodexProvider(None)
+        runtime = _CodexRuntime(client, SimpleNamespace(id="thread", turn=start))
+        provider._sessions["thread"] = runtime
+        task = asyncio.create_task(provider.prompt("thread", "hello"))
+        try:
+            await asyncio.wait_for(reader_ready.wait(), 1)
+            task.cancel()
+            done, _ = await asyncio.wait({task}, timeout=1)
+            assert task in done
+            assert task.cancelled()
+            assert reader_exited.is_set(), "SDK notification worker was orphaned"
+            assert not runtime.lock.locked()
+        finally:
+            if original_queue is not None:
+                original_queue.put(completion)
+            await asyncio.gather(task, return_exceptions=True)
+
+    asyncio.run(scenario())
+
+
+def test_cancel_during_turn_start_interrupts_the_started_turn():
+    async def scenario():
+        started = asyncio.Event()
+        release_start = asyncio.Event()
+        interrupted = asyncio.Event()
+
+        class Turn:
+            id = "turn"
+
+            async def stream(self):
+                await interrupted.wait()
+                yield SimpleNamespace(method="turn/completed", payload=SimpleNamespace(
+                    model_dump=lambda **_: {"turn": {"id": "turn", "status": "interrupted"}},
+                ))
+
+            async def interrupt(self):
+                interrupted.set()
+
+        async def start(*_args, **_kwargs):
+            started.set()
+            await release_start.wait()
+            return Turn()
+
+        provider = CodexProvider(None)
+        runtime = _CodexRuntime(SimpleNamespace(), SimpleNamespace(id="thread", turn=start))
+        provider._sessions["thread"] = runtime
+        task = asyncio.create_task(provider.prompt("thread", "hello"))
+        await started.wait()
+        task.cancel()
+        release_start.set()
+        done, _ = await asyncio.wait({task}, timeout=1)
+        assert task in done
+        assert task.cancelled()
+        assert interrupted.is_set()
+        assert not runtime.lock.locked()
 
     asyncio.run(scenario())
