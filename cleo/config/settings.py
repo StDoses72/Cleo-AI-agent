@@ -169,14 +169,30 @@ class AgentProfile(BaseModel):
         temperature: 采样温度 [0, 2];同上消费。
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     provider: str = Field(..., min_length=1)
     model: str = Field(..., min_length=1)
-    api_key: SecretStr
+    display_name: str | None = Field(default=None, min_length=1, max_length=80)
+    models: list[Annotated[str, Field(min_length=1)]] = Field(default_factory=list)
+    api_key: SecretStr = SecretStr("")
+    backend: Literal["api", "codex", "gemini", "copilot", "grok", "claude_code"] = "api"
+    executable: str | None = None
     base_url: str | None = None
     max_tokens: int = Field(default=100000, gt=0)
     temperature: float = Field(default=0.7, ge=0, le=2)
+
+    @model_validator(mode="after")
+    def validate_connection(self) -> "AgentProfile":
+        if self.backend == "api" and not self.api_key.get_secret_value().strip():
+            raise ValueError("API Key is required for API profiles")
+        if self.backend != "api" and (self.api_key.get_secret_value() or self.base_url):
+            raise ValueError("Runtime profiles use the official CLI login, not API credentials")
+        return self
+
+    @property
+    def available_models(self) -> list[str]:
+        return list(dict.fromkeys([self.model, *self.models]))
 
 
 class DirectoryProfile(BaseModel):
@@ -558,6 +574,8 @@ class ActiveProfiles(BaseModel):
 
     agent: str
     dream_agent: str | None = None
+    dream_model: str | None = Field(default=None, min_length=1)
+    dream_enabled: bool = True
     directory: str = "default"
     shell: str = "default"
     tools: str = "default"
@@ -631,6 +649,12 @@ class SettingsModel(BaseModel):
             missing.append(f"tools:{self.active_profiles.tools}")
         if missing:
             raise ValueError(f"Active profile(s) not found: {', '.join(missing)}")
+        if self.active_profiles.dream_model is not None:
+            if self.active_profiles.dream_agent is None:
+                raise ValueError("dream_model requires an explicit dream_agent profile")
+            profile = self.profiles.agents[self.active_profiles.dream_agent]
+            if self.active_profiles.dream_model not in profile.available_models:
+                raise ValueError("dream_model must belong to the selected connection")
         return self
 
     @property
@@ -648,7 +672,9 @@ class SettingsModel(BaseModel):
         消费方: cleo/agents/dream.py:62。
         """
         profile_name = self.active_profiles.dream_agent or self.active_profiles.agent
-        return self.profiles.agents[profile_name]
+        profile = self.profiles.agents[profile_name]
+        model = self.active_profiles.dream_model
+        return profile.model_copy(update={"model": model}) if model else profile
 
     @property
     def active_directory_profile(self) -> DirectoryProfile:
@@ -811,7 +837,7 @@ def _default_config() -> dict[str, Any]:
     return {
         "active_profiles": {
             "agent": "moonshot_openai_compatible",
-            "dream_agent": "moonshot_openai_compatible",
+            "dream_agent": None,
             "directory": "default",
             "shell": "default",
             "tools": "default",

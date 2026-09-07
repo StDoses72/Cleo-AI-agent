@@ -10,7 +10,7 @@ from cleo.memory.state import get_session_source
 from cleo.sessions.store import SessionStore
 
 
-def test_dream_agent_uses_independent_active_profile(monkeypatch) -> None:
+def test_dream_agent_defers_model_until_source_profile_is_known(monkeypatch) -> None:
     captured_model_options = {}
     dream_profile = SimpleNamespace(
         model="dream-model",
@@ -35,7 +35,9 @@ def test_dream_agent_uses_independent_active_profile(monkeypatch) -> None:
         lambda **_options: SimpleNamespace(),
     )
 
-    dream_module.DreamAgent()
+    agent = dream_module.DreamAgent()
+    assert captured_model_options == {}
+    agent._configure(dream_profile)
 
     assert captured_model_options == {
         "model": "dream-model",
@@ -56,7 +58,17 @@ def test_dream_agent_runs_llm_directly(tmp_path, monkeypatch) -> None:
         messages=[HumanMessage(content="Remember this decision", id="human-1")],
         status="completed",
     )
-    fake_settings = SimpleNamespace(MEMORY_DIR=memory_root)
+    from cleo.config.settings import SettingsModel
+
+    fake_settings = SettingsModel.model_validate({
+        "active_profiles": {"agent": "primary", "dream_agent": "primary"},
+        "profiles": {
+            "agents": {"primary": {
+                "provider": "openai", "model": "test-model", "api_key": "test-key",
+            }},
+            "directories": {"default": {"root_dir": str(tmp_path)}},
+        },
+    })
     monkeypatch.setattr(dream_module, "settings", fake_settings)
     monkeypatch.setattr("cleo.config.settings.settings", fake_settings)
 
@@ -77,8 +89,9 @@ def test_dream_agent_runs_llm_directly(tmp_path, monkeypatch) -> None:
             )
             return {"status": "done"}
 
-    agent = object.__new__(dream_module.DreamAgent)
-    agent.dreamagent = FakeGraph()
+    monkeypatch.setattr(dream_module, "init_chat_model", lambda **_: object())
+    monkeypatch.setattr(dream_module, "create_agent", lambda **_: FakeGraph())
+    agent = dream_module.DreamAgent()
 
     result = asyncio.run(
         agent.invoke(

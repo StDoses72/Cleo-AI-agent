@@ -203,15 +203,19 @@ def _service(tmp_path: Path) -> DesktopService:
     memory_root = tmp_path / "memory"
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    primary_profile = SimpleNamespace(
+    from cleo.config.settings import AgentProfile
+
+    primary_profile = AgentProfile(
         provider="openai",
         model="chat-test",
         max_tokens=64_000,
+        api_key="test-key",
     )
-    secondary_profile = SimpleNamespace(
+    secondary_profile = AgentProfile(
         provider="openai",
         model="chat-secondary",
         max_tokens=32_000,
+        api_key="test-key",
     )
     settings = SimpleNamespace(
         MEMORY_DIR=memory_root,
@@ -236,6 +240,46 @@ def _service(tmp_path: Path) -> DesktopService:
 
 async def _async_none() -> None:
     pass
+
+
+def test_deleted_connection_does_not_hide_saved_conversation(tmp_path):
+    service = _service(tmp_path)
+    snapshot = {"provider": "openai", "model": "original-model", "max_tokens": 64000}
+    runtime = service._runtime_profile({
+        "space": "non_productivity",
+        "runtime_options": {"agent_profile": "removed", "chat_profile": snapshot},
+    })
+    assert runtime["model"] == "original-model"
+    assert runtime["provider"] == "openai"
+
+
+def test_model_connection_mutations_refuse_to_restart_an_active_task(tmp_path):
+    service = _service(tmp_path)
+    service._run_tasks["active"] = object()
+
+    async def exercise():
+        with pytest.raises(ValueError, match="任务完成"):
+            await service.remove_model_connection(profile_id="secondary")
+        with pytest.raises(ValueError, match="任务完成"):
+            await service.select_chat_model(profile_id="secondary", model="chat-secondary")
+
+    asyncio.run(exercise())
+
+
+def test_remove_connection_blocks_the_current_conversation(tmp_path):
+    service = _service(tmp_path)
+    service.store.create_session(
+        session_id="current-chat", space="non_productivity", project="general",
+        provider="cleo", owner_type="user",
+    )
+    service.store.update_manifest("current-chat", runtime_options={"agent_profile": "secondary"})
+    service.runtime.current_thread_id = "current-chat"
+
+    async def exercise():
+        with pytest.raises(ValueError, match="当前对话"):
+            await service.remove_model_connection(profile_id="secondary")
+
+    asyncio.run(exercise())
 
 
 def _normalized_commands(commands: tuple[str, ...]) -> tuple[str, ...]:
@@ -1196,6 +1240,7 @@ def test_review_memory_source_can_run_dream_agent(tmp_path: Path) -> None:
                 "space": "productivity",
                 "project": "workspace",
                 "session_id": "session-confirm",
+                "force": True,
             }
         ]
         assert snapshot["memoryOverview"]["review_sources"] == []

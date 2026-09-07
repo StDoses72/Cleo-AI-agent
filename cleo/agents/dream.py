@@ -82,7 +82,7 @@ class DreamAgent:
             system_prompt: 系统提示词; 调用方均使用默认值
                 DREAM_AGENT_SYSTEM_PROMPT (本文件顶部定义)。
         """
-        active_profile = settings.active_dream_agent_profile
+        self.system_prompt = system_prompt
         self.toolist = [
             read_compact_memory,
             list_all_session_ids,
@@ -94,14 +94,19 @@ class DreamAgent:
             write_memory_to_markdown,
             complete_memory_consolidation,
         ]
+
+    def _configure(self, profile) -> None:
+        self.profile = profile
+        if getattr(profile, "backend", "api") != "api":
+            self.dreamagent = None
+            return
         self.model = init_chat_model(
-            model=active_profile.model,
-            model_provider=active_profile.provider,
-            api_key=active_profile.api_key.get_secret_value(),
-            temperature=active_profile.temperature,
-            base_url=active_profile.base_url,
+            model=profile.model,
+            model_provider=profile.provider,
+            api_key=profile.api_key.get_secret_value(),
+            temperature=profile.temperature,
+            base_url=profile.base_url,
         )
-        self.system_prompt = system_prompt
         self.dreamagent = create_agent(
             model=self.model,
             tools=self.toolist,
@@ -113,6 +118,8 @@ class DreamAgent:
         session_id: str,
         project: str = "general",
         space: str = DEFAULT_MEMORY_SPACE,
+        *,
+        force: bool = False,
     ) -> Any:
         """对单个 session 执行一次记忆整理 (consolidation) 流程。
 
@@ -135,6 +142,10 @@ class DreamAgent:
             agent 未完成 consolidation 协议时抛 RuntimeError, 异常由
             lifecycle.py:64 捕获并记录 `mark_consolidation_failed`。
         """
+        if not force and not getattr(
+            getattr(settings, "active_profiles", None), "dream_enabled", True,
+        ):
+            return {"status": "skipped", "reason": "automatic memory consolidation is disabled"}
         payload = load_validated_compact(
             memory_root=settings.MEMORY_DIR,
             space=space,
@@ -156,6 +167,19 @@ class DreamAgent:
             phase="llm",
         )
         try:
+            from cleo.agents.profiles import dream_profile
+            from cleo.agents.runtime import RuntimeGraph
+            from cleo.sessions.store import SessionStore
+
+            store = SessionStore(settings.MEMORY_DIR, settings.SESSION_INDEX_PATH)
+            profile = dream_profile(settings, store.load_manifest(session_id))
+            self._configure(profile)
+            if profile.backend != "api":
+                self.dreamagent = RuntimeGraph(
+                    profile, settings.active_directory_profile.root_path,
+                    self.system_prompt, mode="dream",
+                    scope={"space": space, "project": project},
+                )
             focus = (
                 "Extract user preferences, goals, relationships, corrections, "
                 "plans, and durable facts."

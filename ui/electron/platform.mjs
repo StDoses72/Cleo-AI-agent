@@ -49,13 +49,13 @@ export function harnessPath(paths, environment, platform, home) {
       : path.dirname(paths.python)) : null,
     paths.browserRoot,
     paths.browserRoot ? path.join(paths.browserRoot, "node_modules", ".bin") : null,
+    environment.PATH,
     platform === "win32" && environment.APPDATA ? path.join(environment.APPDATA, "npm") : null,
     environment.NVM_BIN,
     platform !== "win32" && home ? path.join(home, ".local", "bin") : null,
     platform !== "win32" && home ? path.join(home, ".npm-global", "bin") : null,
     platform === "darwin" ? "/opt/homebrew/bin" : null,
     platform !== "win32" ? "/usr/local/bin" : null,
-    environment.PATH,
   ].filter(Boolean))].join(platform === "win32" ? ";" : ":");
 }
 

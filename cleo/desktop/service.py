@@ -13,7 +13,15 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
-from cleo.desktop.configuration import read_model_settings, save_model_profile
+from cleo.desktop.configuration import (
+    create_model_connection,
+    read_model_settings,
+    remove_model_connection,
+    rename_model_connection,
+    save_dream_settings,
+    save_model_profile,
+    select_chat_model,
+)
 from cleo.desktop.projection import (
     change_history_from_events,
     changes_from_diff,
@@ -133,6 +141,9 @@ class DesktopService:
         self._adapter_instance = adapter
         self._chat_agents: dict[str, Any] = {}
         self._chat_agents_restored: set[str] = set()
+        from cleo.desktop.subscription_login import SubscriptionLogins
+
+        self._subscription_logins = SubscriptionLogins()
         self._productivity_sessions: dict[str, Any] = {}
         self._run_tasks: dict[str, asyncio.Task[Any]] = {}
         self._project_paths: dict[str, str] = {}
@@ -423,7 +434,9 @@ class DesktopService:
             try:
                 factory = self._dream_agent_factory or _create_default_dream_agent
                 dream_agent = await asyncio.to_thread(factory)
-                await dream_agent.invoke(space=space, project=project, session_id=session_id)
+                await dream_agent.invoke(
+                    space=space, project=project, session_id=session_id, force=True,
+                )
             except Exception as exc:
                 current = get_session_source(space, project, session_id, path=state_path)
                 if current is None or current.get("status") != "failed":
@@ -548,6 +561,8 @@ class DesktopService:
                 raise ValueError(f"项目“{project}”没有有效的工作目录，请重新打开该目录。")
             if not Path(project_path).is_dir():
                 raise ValueError(f"工作目录不存在或不是文件夹：{project_path}")
+            selected_profile = profile_id or self._active_agent_profile_id()
+            selected = self._agent_profile(selected_profile)
             thread_id = f"cleo_{secrets.token_hex(6)}"
             manifest = self.store.create_session(
                 session_id=thread_id,
@@ -557,11 +572,12 @@ class DesktopService:
                 owner_type="user",
                 cwd=project_path,
             )
-            selected_profile = profile_id or self._active_agent_profile_id()
-            self._agent_profile(selected_profile)
+            from cleo.agents.profiles import profile_snapshot
             manifest = self.store.update_manifest(
                 thread_id,
-                runtime_options={"agent_profile": selected_profile},
+                runtime_options={
+                    "agent_profile": selected_profile, "chat_profile": profile_snapshot(selected),
+                },
             )
         else:
             adapter = self._adapter()
@@ -660,7 +676,16 @@ class DesktopService:
             if "profileId" not in update:
                 return self._runtime_profile(manifest)
             profile_id = str(update["profileId"])
-            self._agent_profile(profile_id)
+            selected = self._agent_profile(profile_id)
+            if thread_id in self._run_tasks:
+                raise ValueError("请先停止当前运行。")
+            previous = self._chat_profile(manifest)
+            if (
+                getattr(previous, "backend", "api") != getattr(selected, "backend", "api")
+                and self._has_chat_history(self.store.read_events(thread_id))
+            ):
+                raise ValueError("切换连接类型需要新建对话，现有对话将保留原连接。")
+            from cleo.agents.profiles import profile_snapshot
             current = (
                 manifest.get("runtime_options")
                 if isinstance(manifest.get("runtime_options"), dict)
@@ -668,7 +693,10 @@ class DesktopService:
             )
             self.store.update_manifest(
                 thread_id,
-                runtime_options={**current, "agent_profile": profile_id},
+                runtime_options={
+                    **current, "agent_profile": profile_id,
+                    "chat_profile": profile_snapshot(selected), "chat_native_id": None,
+                },
             )
             self._chat_agents.pop(thread_id, None)
             self._chat_agents_restored.discard(thread_id)
@@ -814,7 +842,114 @@ class DesktopService:
         }
 
     async def save_model_profile(self, *, profile: dict[str, Any]) -> dict[str, Any]:
+        if self._run_tasks:
+            raise ValueError("请等待当前任务完成后再修改模型连接。")
+        if profile.get("backend", "api") != "api":
+            await self.check_subscription(profile=profile)
+            if self._run_tasks:
+                raise ValueError("请等待当前任务完成后再修改模型连接。")
         return save_model_profile(self.settings.PROFILE_DIR, profile)
+
+    async def save_dream_settings(
+        self, *, selection: str, model: str | None = None,
+    ) -> dict[str, Any]:
+        if self._run_tasks:
+            raise ValueError("请等待当前任务完成后再修改 DreamAgent 设置。")
+        return save_dream_settings(self.settings.PROFILE_DIR, selection, model)
+
+    def _require_idle_configuration(self) -> None:
+        if self._run_tasks:
+            raise ValueError("请等待当前任务完成后再修改模型连接。")
+
+    async def check_model_connection(self, *, connection: dict[str, Any]) -> dict[str, Any]:
+        from cleo.config.settings import AgentProfile
+        from cleo.integrations.model_catalog import list_api_models
+        from cleo.integrations.subscriptions import inspect_connection
+
+        if connection.get("profileId"):
+            profile = self._agent_profile(str(connection["profileId"]))
+        else:
+            profile = AgentProfile(
+                backend=connection.get("backend", "api"), provider=connection["provider"],
+                model="default", api_key=connection.get("apiKey") or "",
+                base_url=connection.get("baseUrl") or None,
+                executable=connection.get("executable") or None,
+            )
+        try:
+            async with asyncio.timeout(60):
+                return await (
+                    list_api_models(profile) if profile.backend == "api"
+                    else inspect_connection(profile)
+                )
+        except TimeoutError as exc:
+            raise ValueError("连接验证超时，请检查登录状态及网络。") from exc
+
+    async def create_model_connection(self, *, connection: dict[str, Any]) -> dict[str, Any]:
+        self._require_idle_configuration()
+        if connection.get("backend", "api") != "api":
+            await self.check_model_connection(connection=connection)
+            self._require_idle_configuration()
+        return create_model_connection(self.settings.PROFILE_DIR, connection)
+
+    async def select_chat_model(self, *, profile_id: str, model: str) -> dict[str, Any]:
+        self._require_idle_configuration()
+        return select_chat_model(self.settings.PROFILE_DIR, profile_id, model)
+
+    async def rename_model_connection(self, *, profile_id: str, label: str) -> dict[str, Any]:
+        self._require_idle_configuration()
+        return rename_model_connection(self.settings.PROFILE_DIR, profile_id, label)
+
+    async def remove_model_connection(self, *, profile_id: str) -> dict[str, Any]:
+        self._require_idle_configuration()
+        if self.runtime.current_thread_id:
+            try:
+                manifest = self.store.load_manifest(self.runtime.current_thread_id)
+            except FileNotFoundError:
+                manifest = {}
+            if manifest.get("space") == "non_productivity" and (
+                manifest.get("runtime_options") or {}
+            ).get("agent_profile") == profile_id:
+                raise ValueError("当前对话正在使用这个连接。切换所用模型后，才可移除。")
+        return remove_model_connection(self.settings.PROFILE_DIR, profile_id)
+
+    async def get_subscription_catalog(self) -> list[dict[str, Any]]:
+        from cleo.integrations.subscriptions import RUNTIMES
+
+        return [{"backend": key, **value} for key, value in RUNTIMES.items()]
+
+    async def start_subscription_login(self, *, profile: dict[str, Any]) -> dict[str, Any]:
+        from cleo.config.settings import AgentProfile
+        from cleo.integrations.subscriptions import RUNTIMES
+
+        if profile.get("backend") not in RUNTIMES:
+            raise ValueError("Unsupported subscription runtime")
+        candidate = AgentProfile(
+            backend=profile["backend"], provider=profile["backend"], model="default",
+            executable=profile.get("executable") or None,
+        )
+        return self._subscription_logins.start(
+            candidate, self.settings.active_directory_profile.root_path,
+        )
+
+    async def read_subscription_login(self, *, login_id: str) -> dict[str, Any]:
+        return self._subscription_logins.read(login_id)
+
+    async def cancel_subscription_login(self, *, login_id: str) -> dict[str, Any]:
+        return await self._subscription_logins.cancel(login_id)
+
+    async def check_subscription(self, *, profile: dict[str, Any]) -> dict[str, Any]:
+        from cleo.config.settings import AgentProfile
+        from cleo.integrations.subscriptions import inspect_connection
+
+        candidate = AgentProfile(
+            backend=profile["backend"], provider=profile["backend"],
+            model=profile.get("model") or "default", executable=profile.get("executable") or None,
+        )
+        try:
+            async with asyncio.timeout(60):
+                return await inspect_connection(candidate)
+        except TimeoutError as exc:
+            raise ValueError("连接验证超时，请检查官方 CLI 的登录状态及网络连接。") from exc
 
     async def save_agent_instructions(self, *, content: str) -> dict[str, Any]:
         if not isinstance(content, str):
@@ -864,6 +999,7 @@ class DesktopService:
         }
 
     async def shutdown(self) -> None:
+        await self._subscription_logins.close()
         jobs = []
         for thread_id, agent in self._chat_agents.items():
             try:
@@ -906,26 +1042,31 @@ class DesktopService:
             *(self._chat_attachment(item) for item in attachments)
         )
         text = ""
-        async for chunk in agent.stream_text(
-            prompt,
-            manifest["id"],
-            loaded_info=loaded or None,
-            images=chat_attachments,
-        ):
-            text += chunk
-            await emit(
-                {
-                    "type": "upsert-item",
-                    "item": {
-                        "id": "live-assistant",
-                        "type": "message",
-                        "role": "assistant",
-                        "content": text,
-                        "time": "",
-                    },
-                }
-            )
-        await self._sync_chat(agent, manifest, "completed")
+        try:
+            async for chunk in agent.stream_text(
+                prompt,
+                manifest["id"],
+                loaded_info=loaded or None,
+                images=chat_attachments,
+            ):
+                text += chunk
+                await emit(
+                    {
+                        "type": "upsert-item",
+                        "item": {
+                            "id": "live-assistant",
+                            "type": "message",
+                            "role": "assistant",
+                            "content": text,
+                            "time": "",
+                        },
+                    }
+                )
+        except BaseException:
+            await self._sync_chat(agent, manifest, "interrupted")
+            raise
+        else:
+            await self._sync_chat(agent, manifest, "completed")
         usage = agent.context_usage
         await emit({"type": "usage", "usage": self._usage_dict(usage)})
         await emit({"type": "done", "summary": (text or prompt)[:80]})
@@ -1458,16 +1599,25 @@ class DesktopService:
                 else {}
             )
             profile_id = str(options.get("agent_profile") or self._active_agent_profile_id())
-            profile = self._agent_profile(profile_id)
+            profile = self._agent_profiles().get(profile_id)
+            snapshot = options.get("chat_profile") or {
+                "provider": getattr(profile, "provider", "cleo"),
+                "model": getattr(profile, "model", "连接已移除"),
+                "backend": getattr(profile, "backend", "api"),
+                "max_tokens": getattr(profile, "max_tokens", 0),
+            }
             return {
                 "profileId": profile_id,
-                "provider": profile.provider,
-                "model": profile.model,
+                "provider": snapshot["provider"],
+                "model": snapshot["model"],
                 "models": [item.model for item in self._agent_profiles().values()],
                 "effort": "high",
                 "access": str(self.settings.active_shell_profile.sandbox_root),
-                "approval": "Cleo 工具策略",
-                "contextWindow": profile.max_tokens,
+                "approval": (
+                    "官方运行时及 Cleo 工具策略"
+                    if snapshot.get("backend", "api") != "api" else "Cleo 工具策略"
+                ),
+                "contextWindow": snapshot["max_tokens"],
                 "editable": False,
             }
         provider = str(manifest.get("provider") or self.settings.productivity.default_provider)
@@ -1515,6 +1665,10 @@ class DesktopService:
         return profile
 
     def _chat_profile(self, manifest: dict[str, Any]) -> Any:
+        if (manifest.get("runtime_options") or {}).get("chat_profile"):
+            from cleo.agents.profiles import session_profile
+
+            return session_profile(self.settings, manifest)
         options = (
             manifest.get("runtime_options")
             if isinstance(manifest.get("runtime_options"), dict)
