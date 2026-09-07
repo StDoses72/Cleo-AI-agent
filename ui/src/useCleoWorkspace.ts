@@ -439,11 +439,9 @@ export function useCleoWorkspace() {
     if (!threadId || cancellingRunRef.current) return;
     cancellingRunRef.current = true;
     const previousGeneration = generationRef.current;
-    generationRef.current += 1;
     try {
       await cleoClient.cancelRun(threadId);
     } catch (error) {
-      generationRef.current = previousGeneration;
       updateThread(threadId, (current) => ({
         ...current,
         items: [...current.items, {
@@ -458,6 +456,9 @@ export function useCleoWorkspace() {
     } finally {
       cancellingRunRef.current = false;
     }
+    // A completed stream may already have allowed a newer run to start.
+    if (generationRef.current !== previousGeneration) return;
+    generationRef.current += 1;
     runLockRef.current = false;
     setRunningThreadId(null);
     setPendingApprovals((current) => current.filter(
