@@ -625,6 +625,9 @@ class DesktopService:
             await self._run_command(manifest, prompt, emit)
             return
 
+        active = self._run_tasks.get(thread_id)
+        if active is not None and not active.done():
+            raise RuntimeError("当前运行尚未结束，请等待停止操作完成后重试。")
         task = asyncio.current_task()
         if task is not None:
             self._run_tasks[thread_id] = task
@@ -641,15 +644,15 @@ class DesktopService:
             self._run_tasks.pop(thread_id, None)
 
     async def cancel_run(self, *, thread_id: str) -> dict[str, Any]:
-        manifest = self.store.load_manifest(thread_id)
-        if manifest["space"] == "productivity" and thread_id in self._productivity_sessions:
-            try:
-                await self._adapter().cancel(thread_id)
-            except (KeyError, RuntimeError):
-                pass
         task = self._run_tasks.get(thread_id)
         if task is not None:
-            task.cancel()
+            # The stream owns provider interruption and cleanup. Interrupting
+            # here as well races turn/completed and can strand the next request.
+            if not task.cancelling():
+                task.cancel()
+            result, = await asyncio.gather(task, return_exceptions=True)
+            if isinstance(result, Exception):
+                raise result
         return {"cancelled": task is not None}
 
     async def resolve_approval(

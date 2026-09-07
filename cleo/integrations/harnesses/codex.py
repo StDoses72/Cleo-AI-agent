@@ -209,8 +209,14 @@ class CodexProvider:
                 asyncio.get_running_loop(),
                 approval_event if runtime.user_approvals_enabled else None,
             )
-            try:
-                turn = await self._start_turn(runtime, prompt)
+            turn_started = asyncio.Event()
+
+            async def run_turn() -> AsyncTurnHandle:
+                nonlocal final_response, status, error
+                try:
+                    turn = await self._start_turn(runtime, prompt)
+                finally:
+                    turn_started.set()
                 runtime.active_turn = turn
                 async for notification in turn.stream():
                     data = self._notification_data(notification.payload)
@@ -236,11 +242,25 @@ class CodexProvider:
                     if event.type == "assistant_message_chunk" and event.text:
                         response_parts.append(event.text)
                     await emit_event(on_event, event)
+                return turn
+
+            turn_task = asyncio.create_task(run_turn())
+            try:
+                # SDK reads use blocking worker threads. Keep the reader alive
+                # until interruption delivers turn/completed and drains it.
+                turn = await asyncio.shield(turn_task)
             except asyncio.CancelledError:
-                if runtime.active_turn is not None:
+                runtime.approvals.cancel_all()
+                await turn_started.wait()
+                if not turn_task.done() and runtime.active_turn is not None:
                     await runtime.active_turn.interrupt()
+                await turn_task
                 raise
             finally:
+                if not turn_task.done():
+                    runtime.approvals.cancel_all()
+                    await runtime.client.close()
+                    await asyncio.gather(turn_task, return_exceptions=True)
                 runtime.active_turn = None
                 runtime.approvals.cancel_all()
                 runtime.approvals.unbind()

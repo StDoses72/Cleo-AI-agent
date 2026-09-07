@@ -70,10 +70,14 @@ jobs:
           sudo chmod 4755 ui/node_modules/electron/dist/chrome-sandbox
       - name: Desktop smoke
         if: runner.os != 'Linux'
-        run: node ui/scripts/smoke.mjs
+        run: |
+          node ui/scripts/smoke.mjs
+          node ui/scripts/smoke-approvals.mjs
       - name: Linux desktop smoke
         if: runner.os == 'Linux'
-        run: xvfb-run -a node ui/scripts/smoke.mjs
+        run: |
+          xvfb-run -a node ui/scripts/smoke.mjs
+          xvfb-run -a node ui/scripts/smoke-approvals.mjs
       - name: Windows update smoke
         if: runner.os == 'Windows'
         env:

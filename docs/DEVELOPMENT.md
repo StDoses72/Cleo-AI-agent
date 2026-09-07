@@ -99,6 +99,25 @@ npm run smoke:update
 - `smoke:update`：使用隔离目录验证更新期间的启动拦截、普通单实例，以及安装成功／失败提示。
 - `smoke:real`：验证源码模式的真实 JSONL IPC。
 - `smoke:packaged`：验证带独立 Python runtime 的最终发布包。
+- `smoke:approvals`：隔离的 mock 窗口验证浏览器确认、拒绝、取消与连续停止后重发。
+
+### 浏览器授权排查
+
+Codex 的 `mcpServer/elicitation/request` 与命令、文件审批是不同协议。
+Cleo 支持无需填写字段的标准确认表单和 HTTP(S) 链接授权；需要填写字段或扩展格式的请求会显示限制并提供取消，不能用空响应假装用户拒绝。
+链接授权必须由用户打开链接并完成后再确认。参见 [App Server 授权协议](https://learn.chatgpt.com/docs/app-server)。
+
+浏览器工具按自身策略保存决定，不能把 MCP 的一次 `accept` 承诺为不保存规则。
+取消或关闭确认应返回 `action: cancel`，而非 `decline`。取消不会授予访问，也不会创建拒绝记录。
+若旧版已错误保存某个任务的拒绝，更新 Cleo 不会自动删除它：需要在浏览器工具所属客户端的权限管理中明确撤销该拒绝后再重试。
+如果该客户端没有提供恢复入口，应报告工具宿主限制；不要改 Edge 全局安全设置、直接编辑权限文件或换地址绕过。
+
+可选的真实协议测试不调用模型或浏览器，也不使用用户登录和历史：
+
+```powershell
+$env:CLEO_TEST_CODEX_BIN = "<要验证的 codex.exe 绝对路径>"
+pytest -q tests/integrations/test_codex_elicitation_protocol.py
+```
 
 ### Diff 完整性
 
