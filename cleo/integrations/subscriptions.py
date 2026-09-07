@@ -19,7 +19,7 @@ from cleo.integrations.harnesses.codex import CodexProvider
 
 RUNTIMES = {
     "codex": {
-        "label": "ChatGPT · Codex",
+        "label": "Codex（ChatGPT 登录，使用 Codex 额度）",
         "command": "codex",
         "args": [],
         "login": "codex login",

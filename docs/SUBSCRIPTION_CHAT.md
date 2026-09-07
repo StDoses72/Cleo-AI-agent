@@ -4,6 +4,10 @@ Cleo Chat 可以使用 API Profile，也可以运行用户本机安装的官方 
 订阅连接使用官方 CLI 的账号存储；Cleo 不读取、复制或保存 OAuth token，也不提供
 网页 Cookie 代理。各 CLI 的模型、订阅额度及计费仍由服务商决定。
 
+Codex 连接使用 ChatGPT 订阅中的 **Codex 额度**，跟随此连接的 DreamAgent 也消耗
+同一类额度。普通 ChatGPT Chat 的聊天额度未接入；通过 ChatGPT 账号登录不改变
+实际请求使用的服务与计费规则。
+
 ## 支持的连接
 
 | 连接 | 官方运行接口 | 登录方式 |

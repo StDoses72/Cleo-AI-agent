@@ -94,6 +94,6 @@ test("Windows desktop backend discovers npm global commands", () => {
 
   assert.equal(
     runtimePath,
-    [win32.join(dirname(python), "Scripts"), win32.join(appData, "npm"), systemPath].join(";"),
+    [win32.join(dirname(python), "Scripts"), systemPath, win32.join(appData, "npm")].join(";"),
   );
 });
