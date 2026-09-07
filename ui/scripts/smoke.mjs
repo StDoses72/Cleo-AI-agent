@@ -2,6 +2,7 @@ import { _electron as electron } from "playwright";
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { checkSettingsLayout } from "./settings-layout.mjs";
 
 const appDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 const outputDir = join(appDir, "output", "playwright");
@@ -264,6 +265,7 @@ try {
 
   await window.getByRole("button", { name: "设置", exact: true }).click();
   await window.getByRole("dialog", { name: "设置" }).waitFor();
+  await checkSettingsLayout(window);
   await window.getByRole("button", { name: /雾白/ }).click();
   await window.screenshot({ path: join(outputDir, "06-settings-light.png") });
   await window.getByRole("button", { name: "数据与记忆", exact: true }).click();
@@ -310,6 +312,10 @@ try {
     "Inspector drawer is clipped in compact view",
   );
   await window.screenshot({ path: join(outputDir, "07-compact-window.png") });
+
+  await window.getByRole("button", { name: "设置", exact: true }).click();
+  await checkSettingsLayout(window);
+  await window.keyboard.press("Escape");
 
   await window.getByTestId("new-thread").click();
   await window.getByText("从一个清晰的目标开始。").waitFor();

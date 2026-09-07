@@ -3,6 +3,7 @@ import {
   ArrowRight,
   Brain,
   Check,
+  ChevronRight,
   CircleAlert,
   Code2,
   Command,
@@ -313,6 +314,10 @@ interface SettingsModalProps {
 }
 
 type SettingsPage = "appearance" | "agent" | "instructions" | "models" | "models-add" | "models-dream" | "updates" | "data";
+const settingsTitles: Record<SettingsPage, string> = {
+  appearance: "外观", agent: "Agent", instructions: "Agent 指令", models: "当前配置",
+  "models-add": "新增连接", "models-dream": "DreamAgent", updates: "软件更新", data: "数据与记忆",
+};
 
 export function SettingsModal({
   open,
@@ -342,6 +347,8 @@ export function SettingsModal({
   onClose,
 }: SettingsModalProps) {
   const [page, setPage] = useState<SettingsPage>("appearance");
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { scrollRef.current?.scrollTo(0, 0); }, [open, page]);
   useEffect(() => {
     if (open) {
       void onLoadModelSettings();
@@ -353,27 +360,31 @@ export function SettingsModal({
   const modelPage: ModelsPage = page === "models-add" ? "add" : page === "models-dream" ? "dream" : "current";
   return (
     <div className="overlay-backdrop settings-backdrop" role="presentation" onMouseDown={onClose}>
-      <div className={`settings-modal ${isModels ? "settings-models" : ""}`} role="dialog" aria-label="设置" onMouseDown={(event) => event.stopPropagation()}>
-        {isModels && <button className="icon-button model-settings-close" aria-label="关闭设置" onClick={onClose}><X size={17} /></button>}
+      <div className="settings-modal" role="dialog" aria-modal="true" aria-label="设置" onMouseDown={(event) => event.stopPropagation()}>
+        <button className="icon-button settings-close" aria-label="关闭设置" onClick={onClose}><X size={17} /></button>
         <aside>
           <div className="settings-brand"><span>C</span><strong>设置</strong></div>
-          <nav>
-            <button className={page === "appearance" ? "active" : ""} type="button" onClick={() => setPage("appearance")}><Sparkles size={16} />外观</button>
-            <button className={page === "agent" ? "active" : ""} type="button" onClick={() => setPage("agent")}><SlidersHorizontal size={16} />Agent</button>
-            <button className={page === "instructions" ? "active" : ""} type="button" onClick={() => setPage("instructions")}><FileText size={16} />Agent 指令</button>
-            <button className={isModels ? "active" : ""} type="button" onClick={() => setPage("models")}><Plus size={16} />模型</button>
-            {isModels && <div className="settings-model-subnav">
-              <button className={page === "models" ? "active" : ""} onClick={() => setPage("models")}><SlidersHorizontal size={15} />当前配置</button>
-              <button className={page === "models-add" ? "active" : ""} onClick={() => setPage("models-add")}><Plus size={15} />新增连接</button>
-              <button className={page === "models-dream" ? "active" : ""} onClick={() => setPage("models-dream")}><Moon size={15} />DreamAgent</button>
-            </div>}
-            <button className={page === "updates" ? "active" : ""} type="button" onClick={() => setPage("updates")}><RefreshCw size={16} />更新</button>
-            <button className={page === "data" ? "active" : ""} type="button" onClick={() => setPage("data")}><Database size={16} />数据与记忆</button>
+          <nav aria-label="设置导航">
+            <button className={page === "appearance" ? "active" : ""} aria-current={page === "appearance" ? "page" : undefined} type="button" onClick={() => setPage("appearance")}><Sparkles size={16} />外观</button>
+            <button className={page === "agent" ? "active" : ""} aria-current={page === "agent" ? "page" : undefined} type="button" onClick={() => setPage("agent")}><SlidersHorizontal size={16} />Agent</button>
+            <button className={page === "instructions" ? "active" : ""} aria-current={page === "instructions" ? "page" : undefined} type="button" onClick={() => setPage("instructions")}><FileText size={16} />Agent 指令</button>
+            <button className="settings-model-group" type="button" onClick={() => setPage("models")}><Plus size={16} />模型</button>
+            <div className="settings-model-subnav">
+              <button className={page === "models" ? "active" : ""} aria-current={page === "models" ? "page" : undefined} onClick={() => setPage("models")}><SlidersHorizontal size={15} />当前配置</button>
+              <button className={page === "models-add" ? "active" : ""} aria-current={page === "models-add" ? "page" : undefined} onClick={() => setPage("models-add")}><Plus size={15} />新增连接</button>
+              <button className={page === "models-dream" ? "active" : ""} aria-current={page === "models-dream" ? "page" : undefined} onClick={() => setPage("models-dream")}><Moon size={15} />DreamAgent</button>
+            </div>
+            <button className={page === "updates" ? "active" : ""} aria-current={page === "updates" ? "page" : undefined} type="button" onClick={() => setPage("updates")}><RefreshCw size={16} />更新</button>
+            <button className={page === "data" ? "active" : ""} aria-current={page === "data" ? "page" : undefined} type="button" onClick={() => setPage("data")}><Database size={16} />数据与记忆</button>
           </nav>
           <small>Cleo Desktop · Preview</small>
         </aside>
         <section className="settings-content">
-          <header><div><span className="eyebrow">PREFERENCES</span><h2>{page === "appearance" ? "外观" : page === "agent" ? "Agent" : page === "instructions" ? "Agent 指令" : page === "models" ? "模型与 API" : page === "updates" ? "软件更新" : "数据与记忆"}</h2></div><button className="icon-button" type="button" aria-label="关闭" onClick={onClose}><X size={17} /></button></header>
+          <header className="settings-header">
+            <div className="settings-breadcrumb">设置<ChevronRight size={12} />{isModels && <>模型<ChevronRight size={12} /></>}<span>{settingsTitles[page]}</span></div>
+            <div className="settings-heading"><h2>{settingsTitles[page]}</h2>{page === "models" && <button className="settings-primary" onClick={() => setPage("models-add")}><Plus size={15} />新增连接</button>}</div>
+          </header>
+          <div className="settings-scroll" ref={scrollRef}>
           {page === "appearance" ? (
             <div className="settings-page">
               <SettingsRow title="主题" description="选择更适合当前环境的界面亮度。">
@@ -421,6 +432,7 @@ export function SettingsModal({
               <div className="settings-note"><Brain size={17} /><p>当前页面直接读取本地 Cleo backend；会话、记忆、模型与运行参数均来自持久化状态。</p></div>
             </div>
           )}
+          </div>
         </section>
       </div>
     </div>
