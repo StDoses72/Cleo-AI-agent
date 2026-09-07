@@ -5,9 +5,10 @@ import asyncio
 import json
 from pathlib import Path
 
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
-from mcp.types import TextContent, Tool
+from fastmcp import FastMCP
+from fastmcp.tools import Tool, ToolResult
+from langchain_core.tools import BaseTool
+from pydantic import Field
 
 
 def agent_tools(mode: str, project_path: str):
@@ -45,28 +46,17 @@ def agent_tools(mode: str, project_path: str):
     return [*chat_tools(Path(project_path)), read_file]
 
 
-def create_server(mode: str, project_path: str, scope: dict[str, str]) -> Server:
-    tools = {item.name: item for item in agent_tools(mode, project_path)}
-    server = Server("cleo-tools")
+class AgentTool(Tool):
+    agent_tool: BaseTool = Field(exclude=True)
+    mode: str = Field(exclude=True)
+    scope: dict[str, str] = Field(exclude=True)
 
-    @server.list_tools()
-    async def list_tools():
-        return [
-            Tool(
-                name=item.name,
-                description=item.description,
-                inputSchema=item.tool_call_schema.model_json_schema(),
-            )
-            for item in tools.values()
-        ]
-
-    @server.call_tool()
-    async def call_tool(name: str, arguments: dict):
-        if mode == "dream":
-            for key, value in scope.items():
+    async def run(self, arguments: dict) -> ToolResult:
+        if self.mode == "dream":
+            for key, value in self.scope.items():
                 if key in arguments and arguments[key] != value:
                     raise ValueError(f"DreamAgent cannot change its {key}")
-        item = tools[name]
+        item = self.agent_tool
         arguments = dict(arguments)
         if "runtime" in item.get_input_schema().model_fields:
             from langchain.tools import ToolRuntime
@@ -74,28 +64,34 @@ def create_server(mode: str, project_path: str, scope: dict[str, str]) -> Server
             arguments["runtime"] = ToolRuntime(
                 state={},
                 context=None,
-                config={"configurable": {"thread_id": scope.get("session_id", "local")}},
+                config={"configurable": {"thread_id": self.scope.get("session_id", "local")}},
                 stream_writer=lambda _event: None,
                 tool_call_id=None,
                 store=None,
             )
         result = await item.ainvoke(arguments)
-        return [
-            TextContent(
-                type="text",
-                text=(
-                    result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)
-                ),
-            )
-        ]
+        return ToolResult(
+            content=result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)
+        )
 
+
+def create_server(mode: str, project_path: str, scope: dict[str, str]) -> FastMCP:
+    server = FastMCP("cleo-tools")
+    for item in agent_tools(mode, project_path):
+        server.add_tool(AgentTool(
+            name=item.name,
+            description=item.description,
+            parameters=item.tool_call_schema.model_json_schema(),
+            agent_tool=item,
+            mode=mode,
+            scope=scope,
+        ))
     return server
 
 
 async def run(args) -> None:
     server = create_server(args.mode, args.project_path, json.loads(args.scope))
-    async with stdio_server() as (reader, writer):
-        await server.run(reader, writer, server.create_initialization_options())
+    await server.run_async(transport="stdio", show_banner=False)
 
 
 def main() -> None:
