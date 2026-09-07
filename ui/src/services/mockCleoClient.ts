@@ -6,6 +6,8 @@ import type {
   CreateThreadOptions,
   ModelProfileInput,
   ModelSettings,
+  SubscriptionRuntime,
+  SubscriptionLogin,
   ProductivityModelCatalog,
   RuntimeCatalog,
   MemoryReviewAction,
@@ -27,6 +29,10 @@ const delay = (milliseconds: number) =>
 const clone = <T,>(value: T): T => structuredClone(value);
 
 export class MockCleoClient implements CleoClient {
+  private modelSettings: ModelSettings = {
+    profiles: [{ name: "demo", provider: "openai", model: "demo-model", baseUrl: null, maxTokens: 128000, hasApiKey: true }],
+    activeAgent: "demo", activeDreamAgent: "", dreamEnabled: true,
+  };
   private readonly approvalResolvers = new Map<string, (decision: ApprovalDecision) => void>();
   private readonly reviewingMemorySourceIds = new Set<string>();
 
@@ -412,11 +418,7 @@ export class MockCleoClient implements CleoClient {
   }
 
   async getModelSettings(): Promise<ModelSettings> {
-    return {
-      profiles: [{ name: "demo", provider: "openai", model: "demo-model", baseUrl: null, maxTokens: 128000, hasApiKey: true }],
-      activeAgent: "demo",
-      activeDreamAgent: "demo",
-    };
+    return clone(this.modelSettings);
   }
 
   async getRuntimeCatalog(): Promise<RuntimeCatalog> {
@@ -457,11 +459,32 @@ export class MockCleoClient implements CleoClient {
   }
 
   async saveModelProfile(profile: ModelProfileInput): Promise<ModelSettings> {
-    return {
-      profiles: [{ name: profile.name, provider: profile.provider, model: profile.model, baseUrl: profile.baseUrl || null, maxTokens: profile.maxTokens, hasApiKey: true }],
-      activeAgent: profile.activateAgent ? profile.name : "demo",
-      activeDreamAgent: profile.activateDreamAgent ? profile.name : "demo",
-    };
+    const saved = { name: profile.name, provider: profile.provider, model: profile.model, baseUrl: profile.baseUrl || null, maxTokens: profile.maxTokens, hasApiKey: !profile.backend || profile.backend === "api", backend: profile.backend || "api", executable: profile.executable };
+    this.modelSettings.profiles = [...this.modelSettings.profiles.filter((item) => item.name !== profile.name), saved];
+    if (profile.activateAgent) this.modelSettings.activeAgent = profile.name;
+    if (profile.activateDreamAgent) this.modelSettings.activeDreamAgent = profile.name;
+    return this.getModelSettings();
+  }
+
+  async saveDreamSettings(selection: string): Promise<ModelSettings> {
+    this.modelSettings.activeDreamAgent = ["mode:follow", "mode:disabled"].includes(selection) ? "" : selection;
+    this.modelSettings.dreamEnabled = selection !== "mode:disabled";
+    return this.getModelSettings();
+  }
+  async getSubscriptionCatalog(): Promise<SubscriptionRuntime[]> {
+    return ["codex", "gemini", "copilot", "grok", "claude_code"].map((backend) => ({ backend, label: backend, login: `${backend} login`, docs: "https://example.com" }));
+  }
+  async checkSubscription(_profile: ModelProfileInput): Promise<{ status: string; models: string[] }> {
+    return { status: "connected", models: ["demo-model"] };
+  }
+  async startSubscriptionLogin(_profile: ModelProfileInput): Promise<SubscriptionLogin> {
+    return { id: "demo", status: "completed", output: "演示登录", url: null };
+  }
+  async readSubscriptionLogin(_loginId: string): Promise<SubscriptionLogin> {
+    return { id: "demo", status: "completed", output: "演示登录", url: null };
+  }
+  async cancelSubscriptionLogin(_loginId: string): Promise<SubscriptionLogin> {
+    return { id: "demo", status: "cancelled", output: "", url: null };
   }
 
   async saveAgentInstructions(content: string): Promise<AgentInstructions> {

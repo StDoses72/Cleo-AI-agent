@@ -27,12 +27,15 @@ def read_model_settings(config_path: Path | str) -> dict[str, Any]:
                 "baseUrl": profile.get("base_url"),
                 "maxTokens": int(profile.get("max_tokens") or 100_000),
                 "hasApiKey": bool(str(profile.get("api_key") or "").strip()),
+                "backend": profile.get("backend", "api"),
+                "executable": profile.get("executable") or "",
             }
             for name, profile in sorted(agents.items())
             if isinstance(profile, dict)
         ],
         "activeAgent": str(active.get("agent") or ""),
-        "activeDreamAgent": str(active.get("dream_agent") or active.get("agent") or ""),
+        "activeDreamAgent": str(active.get("dream_agent") or ""),
+        "dreamEnabled": active.get("dream_enabled", True),
     }
 
 
@@ -46,7 +49,10 @@ def save_model_profile(config_path: Path | str, profile: dict[str, Any]) -> dict
     agents = raw.setdefault("profiles", {}).setdefault("agents", {})
     existing = agents.get(name) if isinstance(agents.get(name), dict) else {}
     api_key = str(profile.get("apiKey") or "").strip() or str(existing.get("api_key") or "").strip()
-    if not api_key:
+    backend = str(profile.get("backend") or "api")
+    if backend != "api":
+        api_key = ""
+    if backend == "api" and not api_key:
         raise ValueError("新增模型 Profile 时必须提供 API Key。")
 
     candidate = {
@@ -56,6 +62,8 @@ def save_model_profile(config_path: Path | str, profile: dict[str, Any]) -> dict
         "base_url": str(profile.get("baseUrl") or "").strip() or None,
         "max_tokens": int(profile.get("maxTokens") or 100_000),
         "temperature": float(existing.get("temperature", 0.7)),
+        "backend": backend,
+        "executable": str(profile.get("executable") or "").strip() or None,
     }
     validated = AgentProfile.model_validate(candidate)
     agents[name] = {
@@ -65,12 +73,28 @@ def save_model_profile(config_path: Path | str, profile: dict[str, Any]) -> dict
         "base_url": validated.base_url,
         "max_tokens": validated.max_tokens,
         "temperature": validated.temperature,
+        "backend": validated.backend,
+        "executable": validated.executable,
     }
     active = raw.setdefault("active_profiles", {})
     if bool(profile.get("activateAgent")):
         active["agent"] = name
     if bool(profile.get("activateDreamAgent")):
         active["dream_agent"] = name
+        active["dream_enabled"] = True
+    _atomic_write(path, raw)
+    return read_model_settings(path)
+
+
+def save_dream_settings(config_path: Path | str, selection: str) -> dict[str, Any]:
+    path = Path(config_path).expanduser().resolve()
+    raw = _read_config(path)
+    modes = {"mode:follow", "mode:disabled"}
+    if selection not in modes and selection not in raw["profiles"]["agents"]:
+        raise ValueError("Unknown DreamAgent profile")
+    active = raw.setdefault("active_profiles", {})
+    active["dream_enabled"] = selection != "mode:disabled"
+    active["dream_agent"] = None if selection in modes else selection
     _atomic_write(path, raw)
     return read_model_settings(path)
 

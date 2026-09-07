@@ -59,6 +59,12 @@ const allowedMethods = new Set([
   "get_runtime_catalog",
   "get_productivity_models",
   "save_model_profile",
+  "save_dream_settings",
+  "get_subscription_catalog",
+  "check_subscription",
+  "start_subscription_login",
+  "read_subscription_login",
+  "cancel_subscription_login",
   "save_agent_instructions",
   "get_memory_review_details",
   "review_memory_source",
@@ -139,7 +145,7 @@ app.whenReady().then(async () => {
         event.sender.send("cleo:stream-event", { streamId, event: streamEvent });
       }
     });
-    if (method === "save_model_profile") await backend.restart();
+    if (method === "save_model_profile" || method === "save_dream_settings") await backend.restart();
     return result;
   });
   ipcMain.handle("cleo:pick-attachments", async () => {

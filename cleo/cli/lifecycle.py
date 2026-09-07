@@ -72,9 +72,23 @@ async def _sync_session_events(
         messages=thread_messages,
         provider="cleo",
         owner_type="user",
-        cwd=str(settings.active_directory_profile.root_path),
+        cwd=str(getattr(agent, "root_dir", settings.active_directory_profile.root_path)),
         status=status,
     )
+    if hasattr(agent, "profile"):
+        from cleo.agents.profiles import profile_snapshot
+
+        manifest = store.load_manifest(thread_id)
+        options = manifest.get("runtime_options") or {}
+        if "chat_profile" not in options:
+            name = next(
+                (name for name, profile in settings.profiles.agents.items()
+                 if profile == agent.profile),
+                settings.active_profiles.agent,
+            )
+            store.update_manifest(thread_id, runtime_options={
+                **options, "agent_profile": name, "chat_profile": profile_snapshot(agent.profile),
+            })
     runtime.append_recent_threads(thread_id, runtime.current_space)
 
 

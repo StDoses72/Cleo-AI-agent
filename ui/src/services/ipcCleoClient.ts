@@ -6,6 +6,8 @@ import type {
   CreateThreadOptions,
   ModelProfileInput,
   ModelSettings,
+  SubscriptionRuntime,
+  SubscriptionLogin,
   ProductivityModelCatalog,
   RuntimeCatalog,
   MemoryReviewAction,
@@ -184,6 +186,25 @@ export class IpcCleoClient implements CleoClient {
 
   saveModelProfile(profile: ModelProfileInput): Promise<ModelSettings> {
     return this.bridge.request("save_model_profile", { profile });
+  }
+
+  saveDreamSettings(selection: string): Promise<ModelSettings> {
+    return this.bridge.request("save_dream_settings", { selection });
+  }
+  getSubscriptionCatalog(): Promise<SubscriptionRuntime[]> {
+    return this.bridge.request("get_subscription_catalog");
+  }
+  checkSubscription(profile: ModelProfileInput): Promise<{ status: string; models: string[] }> {
+    return this.bridge.request("check_subscription", { profile });
+  }
+  startSubscriptionLogin(profile: ModelProfileInput): Promise<SubscriptionLogin> {
+    return this.bridge.request("start_subscription_login", { profile });
+  }
+  readSubscriptionLogin(loginId: string): Promise<SubscriptionLogin> {
+    return this.bridge.request("read_subscription_login", { login_id: loginId });
+  }
+  cancelSubscriptionLogin(loginId: string): Promise<SubscriptionLogin> {
+    return this.bridge.request("cancel_subscription_login", { login_id: loginId });
   }
 
   saveAgentInstructions(content: string): Promise<AgentInstructions> {

@@ -221,6 +221,8 @@ export interface CreateThreadOptions {
 }
 
 export interface ModelProfileSummary {
+  backend?: string;
+  executable?: string;
   name: string;
   provider: string;
   model: string;
@@ -230,6 +232,7 @@ export interface ModelProfileSummary {
 }
 
 export interface ModelSettings {
+  dreamEnabled?: boolean;
   profiles: ModelProfileSummary[];
   activeAgent: string;
   activeDreamAgent: string;
@@ -242,6 +245,8 @@ export interface AgentInstructions {
 }
 
 export interface ModelProfileInput {
+  backend?: string;
+  executable?: string;
   name: string;
   provider: string;
   model: string;
@@ -250,6 +255,20 @@ export interface ModelProfileInput {
   maxTokens: number;
   activateAgent: boolean;
   activateDreamAgent: boolean;
+}
+
+export interface SubscriptionRuntime {
+  backend: string;
+  label: string;
+  login: string;
+  docs: string;
+}
+
+export interface SubscriptionLogin {
+  id: string;
+  status: "pending" | "completed" | "failed" | "cancelled";
+  output: string;
+  url: string | null;
 }
 
 export interface MemoryOverviewEntry {
@@ -401,6 +420,12 @@ export interface CleoClient {
   getRuntimeCatalog(): Promise<RuntimeCatalog>;
   getProductivityModels(provider: string, projectPath?: string): Promise<ProductivityModelCatalog>;
   saveModelProfile(profile: ModelProfileInput): Promise<ModelSettings>;
+  saveDreamSettings(selection: string): Promise<ModelSettings>;
+  getSubscriptionCatalog(): Promise<SubscriptionRuntime[]>;
+  checkSubscription(profile: ModelProfileInput): Promise<{ status: string; models: string[] }>;
+  startSubscriptionLogin(profile: ModelProfileInput): Promise<SubscriptionLogin>;
+  readSubscriptionLogin(loginId: string): Promise<SubscriptionLogin>;
+  cancelSubscriptionLogin(loginId: string): Promise<SubscriptionLogin>;
   saveAgentInstructions(content: string): Promise<AgentInstructions>;
   getMemoryReviewDetails(source: MemoryReviewSource): Promise<MemoryReviewDetails>;
   reviewMemorySource(

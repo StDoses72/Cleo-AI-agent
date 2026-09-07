@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from cleo.desktop.configuration import read_model_settings, save_model_profile
+from cleo.desktop.configuration import read_model_settings, save_dream_settings, save_model_profile
 
 
 def _config(path: Path) -> None:
@@ -83,3 +83,24 @@ def test_new_model_profile_requires_api_key(tmp_path: Path) -> None:
                 "model": "custom-model",
             },
         )
+
+
+def test_subscription_profile_and_dream_selection(tmp_path):
+    path = tmp_path / "cleo.json"
+    _config(path)
+    result = save_model_profile(path, {
+        "name": "subscription", "backend": "grok", "provider": "grok", "model": "default",
+        "activateAgent": True,
+    })
+    assert result["activeDreamAgent"] == "current"
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    assert not raw["profiles"]["agents"]["subscription"]["api_key"]
+    assert save_dream_settings(path, "mode:follow")["activeDreamAgent"] == ""
+    assert save_dream_settings(path, "mode:disabled")["dreamEnabled"] is False
+    assert save_dream_settings(path, "subscription")["dreamEnabled"] is True
+    with pytest.raises(ValueError, match="Unknown"):
+        save_dream_settings(path, "missing")
+    save_model_profile(path, {
+        "name": "follow", "backend": "codex", "provider": "codex", "model": "default",
+    })
+    assert save_dream_settings(path, "follow")["activeDreamAgent"] == "follow"

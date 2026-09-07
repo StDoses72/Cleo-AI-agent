@@ -124,7 +124,7 @@ class CodexProvider:
                 model=options.model,
                 sandbox=self._sandbox,
             )
-        except Exception:
+        except BaseException:
             await client.close()
             raise
         self._sessions[thread.id] = _CodexRuntime(
@@ -166,7 +166,7 @@ class CodexProvider:
                 model=options.model,
                 sandbox=self._sandbox,
             )
-        except Exception:
+        except BaseException:
             await client.close()
             raise
         self._sessions[thread.id] = _CodexRuntime(
@@ -236,6 +236,10 @@ class CodexProvider:
                     if event.type == "assistant_message_chunk" and event.text:
                         response_parts.append(event.text)
                     await emit_event(on_event, event)
+            except asyncio.CancelledError:
+                if runtime.active_turn is not None:
+                    await runtime.active_turn.interrupt()
+                raise
             finally:
                 runtime.active_turn = None
                 runtime.approvals.cancel_all()
@@ -473,7 +477,7 @@ class CodexProvider:
                 model=options.model,
                 sandbox=Sandbox(options.sandbox) if options.sandbox else None,
             )
-        except Exception:
+        except BaseException:
             await client.close()
             raise
         self._sessions[thread.id] = _CodexRuntime(
@@ -587,7 +591,9 @@ class CodexProvider:
     @staticmethod
     def _client(config: CodexConfig | None = None) -> AsyncCodex:
         # Desktop maintains its own current CLI, independently of the SDK release cadence.
-        if codex_bin := os.environ.get("CLEO_CODEX_BIN"):
+        if (codex_bin := os.environ.get("CLEO_CODEX_BIN")) and not (
+            config is not None and config.codex_bin
+        ):
             config = config or CodexConfig()
             config.codex_bin = codex_bin
         return AsyncCodex(config=config) if config is not None else AsyncCodex()

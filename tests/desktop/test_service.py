@@ -203,15 +203,19 @@ def _service(tmp_path: Path) -> DesktopService:
     memory_root = tmp_path / "memory"
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    primary_profile = SimpleNamespace(
+    from cleo.config.settings import AgentProfile
+
+    primary_profile = AgentProfile(
         provider="openai",
         model="chat-test",
         max_tokens=64_000,
+        api_key="test-key",
     )
-    secondary_profile = SimpleNamespace(
+    secondary_profile = AgentProfile(
         provider="openai",
         model="chat-secondary",
         max_tokens=32_000,
+        api_key="test-key",
     )
     settings = SimpleNamespace(
         MEMORY_DIR=memory_root,
@@ -1196,6 +1200,7 @@ def test_review_memory_source_can_run_dream_agent(tmp_path: Path) -> None:
                 "space": "productivity",
                 "project": "workspace",
                 "session_id": "session-confirm",
+                "force": True,
             }
         ]
         assert snapshot["memoryOverview"]["review_sources"] == []

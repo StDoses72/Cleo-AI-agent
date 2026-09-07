@@ -173,10 +173,20 @@ class AgentProfile(BaseModel):
 
     provider: str = Field(..., min_length=1)
     model: str = Field(..., min_length=1)
-    api_key: SecretStr
+    api_key: SecretStr = SecretStr("")
+    backend: Literal["api", "codex", "gemini", "copilot", "grok", "claude_code"] = "api"
+    executable: str | None = None
     base_url: str | None = None
     max_tokens: int = Field(default=100000, gt=0)
     temperature: float = Field(default=0.7, ge=0, le=2)
+
+    @model_validator(mode="after")
+    def validate_connection(self) -> "AgentProfile":
+        if self.backend == "api" and not self.api_key.get_secret_value().strip():
+            raise ValueError("API Key is required for API profiles")
+        if self.backend != "api" and (self.api_key.get_secret_value() or self.base_url):
+            raise ValueError("Runtime profiles use the official CLI login, not API credentials")
+        return self
 
 
 class DirectoryProfile(BaseModel):
@@ -558,6 +568,7 @@ class ActiveProfiles(BaseModel):
 
     agent: str
     dream_agent: str | None = None
+    dream_enabled: bool = True
     directory: str = "default"
     shell: str = "default"
     tools: str = "default"
@@ -811,7 +822,7 @@ def _default_config() -> dict[str, Any]:
     return {
         "active_profiles": {
             "agent": "moonshot_openai_compatible",
-            "dream_agent": "moonshot_openai_compatible",
+            "dream_agent": None,
             "directory": "default",
             "shell": "default",
             "tools": "default",

@@ -3354,11 +3354,20 @@ select.text-control:hover {
 .agent-instructions-page footer button.primary { border-color: transparent; color: #071012; background: var(--accent); font-weight: 650; }
 
 .model-settings-page { padding-top: 18px; }
+.subscription-connection { grid-column: 1 / -1; padding: 12px 0; color: var(--muted); font-size: 11px; }
+.subscription-connection p { margin: 8px 0; line-height: 1.6; }
+.subscription-connection a { color: var(--accent); }
+.subscription-connection pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow: auto; }
+.subscription-connection select { display: block; width: 100%; margin-top: 8px; }
+.subscription-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.subscription-actions button { padding: 7px 12px; border: 1px solid var(--border); border-radius: 6px; }
 .model-profile-toolbar { display: flex; align-items: flex-end; gap: 8px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
 .model-profile-toolbar label { display: grid; min-width: 0; flex: 1; gap: 6px; }
 .model-profile-toolbar label > span,
 .model-profile-form label > span { color: var(--muted); font-size: 8.5px; font-weight: 600; }
 .model-profile-toolbar select,
+.subscription-connection select,
+.model-profile-form select,
 .model-profile-form input:not([type="checkbox"]) { width: 100%; height: 34px; padding: 0 9px; border: 1px solid var(--border); border-radius: 7px; outline: none; color: var(--text-soft); background: var(--surface); font-size: 9.5px; }
 .model-profile-toolbar select:focus,
 .model-profile-form input:focus { border-color: color-mix(in srgb, var(--accent) 48%, var(--border)); box-shadow: 0 0 0 2px var(--accent-soft); }

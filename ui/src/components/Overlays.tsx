@@ -34,6 +34,7 @@ import type {
   UpdateState,
   WorkspaceSpace,
 } from "../types";
+import { DreamSettings, SubscriptionSettings } from "./SubscriptionSettings";
 
 export interface CommandAction {
   id: string;
@@ -622,7 +623,9 @@ function ModelSettingsPage({
       baseUrl: profile.baseUrl ?? "",
       maxTokens: profile.maxTokens,
       activateAgent: settings?.activeAgent === profile.name,
-      activateDreamAgent: settings?.activeDreamAgent === profile.name,
+      activateDreamAgent: false,
+      backend: profile.backend || "api",
+      executable: profile.executable || "",
     });
     setError(null);
     setSaved(false);
@@ -650,6 +653,7 @@ function ModelSettingsPage({
   const selectedIsSaved = settings?.profiles.some((item) => item.name === draft.name) ?? false;
   return (
     <div className="settings-page model-settings-page">
+      <DreamSettings settings={settings} />
       <div className="model-profile-toolbar">
         <label>
           <span>已保存 Profile</span>
@@ -661,13 +665,14 @@ function ModelSettingsPage({
         <button type="button" onClick={() => { setDraft(emptyModelProfile); setError(null); setSaved(false); }}><Plus size={14} />新增</button>
       </div>
       <form className="model-profile-form" onSubmit={submit}>
+        <SubscriptionSettings profile={draft} onChange={(patch) => { setDraft((current) => ({ ...current, ...patch })); setSaved(false); }} />
         <label><span>Profile 名称</span><input required value={draft.name} onChange={(event) => update("name", event.target.value)} placeholder="例如 moonshot" /></label>
         <label><span>Provider</span><input required list="cleo-provider-options" value={draft.provider} onChange={(event) => update("provider", event.target.value)} placeholder="openai" /><datalist id="cleo-provider-options"><option value="openai" /><option value="anthropic" /><option value="google_genai" /></datalist></label>
         <label className="wide"><span>模型名称</span><input required value={draft.model} onChange={(event) => update("model", event.target.value)} placeholder="例如 gpt-5.6" /></label>
-        <label className="wide"><span>API Key</span><input type="password" autoComplete="new-password" value={draft.apiKey} onChange={(event) => update("apiKey", event.target.value)} placeholder={selectedIsSaved ? "已配置；留空则保持不变" : "必填，只保存在本地"} /></label>
-        <label className="wide"><span>Base URL（可选）</span><input type="url" value={draft.baseUrl} onChange={(event) => update("baseUrl", event.target.value)} placeholder="https://api.example.com/v1" /></label>
+        {(!draft.backend || draft.backend === "api") && <><label className="wide"><span>API Key</span><input type="password" autoComplete="new-password" value={draft.apiKey} onChange={(event) => update("apiKey", event.target.value)} placeholder={selectedIsSaved ? "已配置；留空则保持不变" : "必填，只保存在本地"} /></label>
+        <label className="wide"><span>Base URL（可选）</span><input type="url" value={draft.baseUrl} onChange={(event) => update("baseUrl", event.target.value)} placeholder="https://api.example.com/v1" /></label></>}
         <label><span>上下文长度</span><input type="number" min={1} value={draft.maxTokens} onChange={(event) => update("maxTokens", Number(event.target.value))} /></label>
-        <div className="model-profile-roles"><label><input type="checkbox" checked={draft.activateAgent} onChange={(event) => update("activateAgent", event.target.checked)} />设为 Cleo 当前模型</label><label><input type="checkbox" checked={draft.activateDreamAgent} onChange={(event) => update("activateDreamAgent", event.target.checked)} />设为 DreamAgent 模型</label></div>
+        <div className="model-profile-roles"><label><input type="checkbox" checked={draft.activateAgent} onChange={(event) => update("activateAgent", event.target.checked)} />设为 Cleo 当前模型</label></div>
         <div className="model-profile-submit"><span>{error ? <em>{error}</em> : saved ? "已保存并重新加载后端" : "API Key 不会返回到界面或日志"}</span><button type="submit" disabled={loading}>{loading ? "保存中…" : "保存并应用"}</button></div>
       </form>
     </div>
