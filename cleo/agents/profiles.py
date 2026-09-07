@@ -25,7 +25,9 @@ def session_profile(settings: Any, manifest: dict[str, Any]) -> AgentProfile:
         profile.base_url,
     ):
         raise ValueError("This session's connection changed. Restore it or create a new chat.")
-    return AgentProfile.model_validate({**snapshot, "api_key": profile.api_key})
+    return AgentProfile.model_validate({
+        **snapshot, "api_key": profile.api_key, "executable": profile.executable,
+    })
 
 
 def dream_profile(settings: Any, manifest: dict[str, Any]) -> AgentProfile:

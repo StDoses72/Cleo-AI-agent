@@ -167,7 +167,8 @@ function ContextPanel({
   memories: MemoryEntry[];
   onRevealPath: (value: string) => void;
 }) {
-  const ratio = thread ? Math.round((thread.usage.used / thread.usage.limit) * 100) : 0;
+  const ratio = thread?.usage.used != null
+    ? Math.round((thread.usage.used / thread.usage.limit) * 100) : 0;
   const relevantMemories = useMemo(() => memories.slice(0, 3), [memories]);
   return (
     <div className="context-panel">
@@ -184,7 +185,7 @@ function ContextPanel({
       <section className="inspector-section">
         <div className="section-kicker"><Clock3 size={14} /><span>上下文窗口</span><small>{ratio}%</small></div>
         <div className="usage-track"><span style={{ width: `${ratio}%` }} /></div>
-        <div className="usage-copy"><span>{((thread?.usage.used ?? 0) / 1000).toFixed(1)}k / {((thread?.usage.limit ?? 128000) / 1000).toFixed(0)}k</span><small>in {thread?.usage.input ?? 0} · out {thread?.usage.output ?? 0}</small></div>
+        <div className="usage-copy"><span>{thread?.usage.used == null ? "上下文用量未知" : `${(thread.usage.used / 1000).toFixed(1)}k / ${(thread.usage.limit / 1000).toFixed(0)}k`}</span><small>in {thread?.usage.input ?? "—"} · out {thread?.usage.output ?? "—"}</small></div>
       </section>
       <section className="inspector-section">
         <div className="section-kicker"><ShieldCheck size={14} /><span>工作区</span></div>

@@ -93,10 +93,10 @@ export interface ChangeSet {
 }
 
 export interface Usage {
-  used: number;
+  used: number | null;
   limit: number;
-  input: number;
-  output: number;
+  input: number | null;
+  output: number | null;
 }
 
 export interface Thread {

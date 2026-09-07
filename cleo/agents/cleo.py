@@ -295,6 +295,7 @@ class Agent:
             total_tokens = (input_tokens or 0) + (output_tokens or 0)
         self.context_usage.update(
             used_tokens=total_tokens,
+            window_tokens=_usage_int(usage, "context_window"),
             input_tokens=input_tokens,
             output_tokens=output_tokens,
         )

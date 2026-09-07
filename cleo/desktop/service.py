@@ -1841,8 +1841,8 @@ class DesktopService:
         }
 
     @staticmethod
-    def _usage_from_events(events: list[dict[str, Any]], limit: int) -> dict[str, int]:
-        usage = {"used": 0, "limit": limit, "input": 0, "output": 0}
+    def _usage_from_events(events: list[dict[str, Any]], limit: int) -> dict[str, int | None]:
+        usage = {"used": None, "limit": limit, "input": None, "output": None}
         for event in events:
             data = event.get("data") if isinstance(event.get("data"), dict) else {}
             payload = data.get("payload") if isinstance(data.get("payload"), dict) else data
@@ -1851,19 +1851,23 @@ class DesktopService:
                 continue
             total = token_usage.get("total") if isinstance(token_usage.get("total"), dict) else {}
             last = token_usage.get("last") if isinstance(token_usage.get("last"), dict) else {}
-            usage["used"] = int(total.get("totalTokens") or usage["used"])
-            usage["limit"] = int(token_usage.get("modelContextWindow") or usage["limit"])
-            usage["input"] = int(last.get("inputTokens") or usage["input"])
-            usage["output"] = int(last.get("outputTokens") or usage["output"])
+            for key, value in {
+                "used": total.get("totalTokens"),
+                "limit": token_usage.get("modelContextWindow"),
+                "input": last.get("inputTokens"),
+                "output": last.get("outputTokens"),
+            }.items():
+                if isinstance(value, int):
+                    usage[key] = value
         return usage
 
     @staticmethod
-    def _usage_dict(usage: ContextWindowUsage) -> dict[str, int]:
+    def _usage_dict(usage: ContextWindowUsage) -> dict[str, int | None]:
         return {
-            "used": usage.used_tokens or 0,
+            "used": usage.used_tokens,
             "limit": usage.window_tokens or 128_000,
-            "input": usage.input_tokens or 0,
-            "output": usage.output_tokens or 0,
+            "input": usage.input_tokens,
+            "output": usage.output_tokens,
         }
 
     @staticmethod

@@ -1352,3 +1352,17 @@ def test_review_memory_source_records_constructor_failures(tmp_path: Path) -> No
         assert source["last_error"] == "DreamAgent import failed"
 
     asyncio.run(scenario())
+def test_unreported_usage_remains_unknown_and_reported_zero_is_preserved():
+    from cleo.runtime.usage import ContextWindowUsage
+
+    expected = {"used": None, "limit": 100000, "input": None, "output": None}
+    assert DesktopService._usage_dict(ContextWindowUsage(window_tokens=100000)) == expected
+    assert DesktopService._usage_from_events([], 100000) == expected
+    events = [{"data": {"tokenUsage": {
+        "total": {"totalTokens": 50}, "last": {"inputTokens": 40, "outputTokens": 10},
+    }}}, {"data": {"tokenUsage": {
+        "total": {"totalTokens": 0}, "last": {"inputTokens": 0, "outputTokens": 0},
+    }}}]
+    assert DesktopService._usage_from_events(events, 100000) == {
+        "used": 0, "limit": 100000, "input": 0, "output": 0,
+    }

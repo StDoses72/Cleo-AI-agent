@@ -13,7 +13,9 @@ from uuid import uuid4
 from langchain_core.messages import AIMessage, AIMessageChunk, convert_to_messages
 
 from cleo.config.settings import AgentProfile, settings
+from cleo.harnesses.events import capture_context_usage
 from cleo.integrations.subscriptions import AgentMcp, create_runtime
+from cleo.runtime.usage import ContextWindowUsage
 from cleo.sessions.store import SessionStore
 
 
@@ -65,8 +67,9 @@ class RuntimeGraph:
                     )
             user.id = user.id or str(uuid4())
             messages.append(user)
-            queue: asyncio.Queue = asyncio.Queue()
+            queue: asyncio.Queue[AIMessageChunk | None] = asyncio.Queue()
             parts: list[str] = []
+            usage = ContextWindowUsage(window_tokens=self.profile.max_tokens)
 
             async def execute():
                 store = SessionStore(settings.MEMORY_DIR, settings.SESSION_INDEX_PATH)
@@ -155,9 +158,22 @@ class RuntimeGraph:
                         )
 
                     async def on_event(event):
+                        is_usage = (
+                            event.data.get("provider_event_type") == "thread/tokenUsage/updated"
+                        )
                         if event.type == "assistant_message_chunk" and event.text:
-                            await queue.put(event.text)
-                        elif manifest and event.type in {"tool_call", "tool_result"}:
+                            await queue.put(AIMessageChunk(content=event.text))
+                        if is_usage:
+                            capture_context_usage(event, usage)
+                            await queue.put(AIMessageChunk(content="", response_metadata={
+                                "token_usage": {
+                                    "total_tokens": usage.used_tokens,
+                                    "input_tokens": usage.input_tokens,
+                                    "output_tokens": usage.output_tokens,
+                                    "context_window": usage.window_tokens,
+                                },
+                            }))
+                        if manifest and (is_usage or event.type in {"tool_call", "tool_result"}):
                             store.append_event(
                                 session_id=thread_id,
                                 space=manifest["space"],
@@ -191,8 +207,9 @@ class RuntimeGraph:
                     item = await queue.get()
                     if item is None:
                         break
-                    parts.append(item)
-                    yield AIMessageChunk(content=item), {}
+                    if item.content:
+                        parts.append(item.content)
+                    yield item, {}
                 result = await task
                 if not parts and result.response:
                     parts.append(result.response)
