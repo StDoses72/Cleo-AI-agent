@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 
 export async function checkSettingsLayout(page) {
   const settings = page.getByRole("dialog", { name: "设置", exact: true });
+  await settings.evaluate(async element => {
+    await Promise.all(element.getAnimations().map(animation => animation.finished));
+  });
   const navigation = settings.getByRole("navigation", { name: "设置导航" });
   const pages = [
     ["外观", "外观"], ["Agent", "Agent"], ["Agent 指令", "Agent 指令"],
