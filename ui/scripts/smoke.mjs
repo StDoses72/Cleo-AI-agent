@@ -72,8 +72,8 @@ try {
   await window.getByTestId("new-thread").click();
   await window.getByText("今天想聊些什么？").waitFor();
   await window.getByTestId("runtime-selector").click();
-  await window.getByText("gpt-5.4-mini", { exact: true }).click();
-  await window.getByTestId("runtime-selector").getByText("gpt-5.4-mini", { exact: true }).waitFor();
+  await window.getByText("gpt-5.6-sol", { exact: true }).click();
+  await window.getByTestId("runtime-selector").getByText("gpt-5.6-sol", { exact: true }).waitFor();
 
   await window.getByRole("button", { name: "记忆", exact: true }).click();
   await window.getByTestId("memory-view").waitFor();

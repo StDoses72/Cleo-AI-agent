@@ -60,12 +60,9 @@ export class MockCleoClient implements CleoClient {
     options: CreateThreadOptions = {},
   ): Promise<Thread> {
     await delay(180);
-    const selectedProfile = options.profileId ?? "deepseek-flash";
-    const chatModels: Record<string, string> = {
-      "deepseek-flash": "deepseek-v4-flash",
-      kimi: "kimi-k3",
-      chatgpt: "gpt-5.4-mini",
-    };
+    const selectedProfile = options.profileId ?? this.modelSettings.activeAgent;
+    const profile = this.modelSettings.profiles.find(item => item.name === selectedProfile);
+    if (space === "chat" && !profile) throw new Error("模型连接不存在。");
     return {
       id: `draft-${Date.now()}`,
       space,
@@ -80,8 +77,8 @@ export class MockCleoClient implements CleoClient {
       runtime: space === "chat"
         ? {
             profileId: selectedProfile,
-            provider: "openai",
-            model: chatModels[selectedProfile] ?? selectedProfile,
+            provider: profile!.provider,
+            model: profile!.model,
             effort: "high",
             access: "workspace-write",
             approval: "Cleo 工具策略",
