@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cleo-ai-agent"
-version = "0.3.1"
+version = "0.3.2"
 description = "A local-first AI workspace for chat, developer agents, resumable sessions, and scoped memory."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -15,7 +15,10 @@ dependencies = [
   "fastmcp>=3.4",
   "langchain",
   "langchain-core",
+  "langchain-anthropic",
+  "langchain-google-genai",
   "langchain-openai",
+  "httpx",
   "langgraph",
   "openai-codex>=0.147",
   "platformdirs>=4.4",

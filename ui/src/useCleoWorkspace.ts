@@ -5,7 +5,7 @@ import type {
   ApprovalDecision,
   ApprovalRequest,
   Attachment,
-  ModelProfileInput,
+  ApplyModelSettings,
   ModelSettings,
   MemoryReviewAction,
   MemoryReviewSource,
@@ -222,8 +222,8 @@ export function useCleoWorkspace() {
 
   const startNewThread = () => {
     selectionRef.current += 1;
-    if (activeThread?.space === "chat" && activeThread.runtime?.profileId) {
-      setDraftProfileId(activeThread.runtime.profileId);
+    if (activeSpace === "chat" && runtimeCatalog?.defaultNonProductivityProfile) {
+      setDraftProfileId(runtimeCatalog.defaultNonProductivityProfile);
     }
     if (activeThread?.space === "productivity") {
       setDraftProvider(activeThread.runtime?.provider ?? draftProvider);
@@ -691,17 +691,22 @@ export function useCleoWorkspace() {
       setModelSettingsLoading(false);
     }
   };
-  const saveModelProfile = async (profile: ModelProfileInput) => {
+  const applyModelSettings: ApplyModelSettings = async (operation) => {
     setModelSettingsLoading(true);
     try {
-      const saved = await cleoClient.saveModelProfile(profile);
+      const saved = await operation();
       setModelSettings(saved);
-      const [refreshed, catalog] = await Promise.all([
-        cleoClient.loadWorkspace(),
-        cleoClient.getRuntimeCatalog(),
-      ]);
-      setSnapshot(refreshed);
-      setRuntimeCatalog(catalog);
+      setRuntimeCatalog(current => current && ({
+        ...current,
+        nonProductivityProfiles: saved.profiles.map(profile => ({
+          id: profile.name, provider: profile.provider, model: profile.model,
+          maxTokens: profile.maxTokens, active: profile.name === saved.activeAgent,
+        })),
+        defaultNonProductivityProfile: saved.activeAgent,
+      }));
+      setDraftProfileId(current => !saved.profiles.some(profile => profile.name === current)
+        || (!activeThreadId && saved.activeAgent !== modelSettings?.activeAgent)
+        ? saved.activeAgent : current);
       return saved;
     } finally {
       setModelSettingsLoading(false);
@@ -790,7 +795,7 @@ export function useCleoWorkspace() {
     deleteThread,
     removeProject,
     loadModelSettings,
-    saveModelProfile,
+    applyModelSettings,
     loadAgentInstructions,
     saveAgentInstructions,
     loadMemoryReviewDetails,

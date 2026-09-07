@@ -31,6 +31,10 @@ from cleo.harnesses.provider import ProviderSession, ProviderTurn
 from cleo.integrations.harnesses.memory import MemoryMcp
 
 
+class SessionResumeUnsupported(ValueError):
+    """The agent does not implement session/load; no prompt has been sent."""
+
+
 @dataclass(frozen=True, slots=True)
 class AcpAgentSpec:
     """一个 ACP(agent-client-protocol) agent 的启动规格描述。
@@ -45,6 +49,7 @@ class AcpAgentSpec:
     auth_method: str | None = None
     auto_approve: bool = False
     model_config_id: str | None = None
+    replace_env: bool = False
 
 
 class _AcpClientHost:
@@ -462,7 +467,7 @@ class AcpProvider:
                     model,
                 )
                 config_options = tuple(response.config_options or ())
-        except Exception:
+        except BaseException:
             await manager.__aexit__(None, None, None)
             raise
 
@@ -501,14 +506,16 @@ class AcpProvider:
         capabilities = initialize.agent_capabilities
         if capabilities is None or not capabilities.load_session:
             await manager.__aexit__(None, None, None)
-            raise ValueError(f"ACP provider {self.name} does not support session/load")
+            raise SessionResumeUnsupported(
+                f"ACP provider {self.name} does not support session/load"
+            )
         try:
             loaded = await connection.load_session(
                 cwd=project_path,
                 session_id=native_session_id,
                 mcp_servers=self._memory_mcp.acp_servers() if self._memory_mcp else [],
             )
-        except Exception:
+        except BaseException:
             await manager.__aexit__(None, None, None)
             raise
 
@@ -608,6 +615,9 @@ class AcpProvider:
             runtime.active = True
             try:
                 result = await runtime.connection.prompt(session_id, [text_block(prompt)])
+            except asyncio.CancelledError:
+                await runtime.connection.cancel(session_id)
+                raise
             finally:
                 runtime.active = False
 
@@ -660,7 +670,9 @@ class AcpProvider:
             capabilities); 任一阶段失败时清理子进程并向上抛出异常。
         """
         host = _AcpClientHost(self.name, project_path, self._spec.auto_approve)
-        environment = {**os.environ, **self._spec.env}
+        environment = (
+            self._spec.env if self._spec.replace_env else {**os.environ, **self._spec.env}
+        )
         command = shutil.which(self._spec.command, path=environment.get("PATH"))
         if command is None:
             raise FileNotFoundError(
@@ -686,7 +698,7 @@ class AcpProvider:
             )
             if self._spec.auth_method:
                 await connection.authenticate(self._spec.auth_method)
-        except Exception:
+        except BaseException:
             await manager.__aexit__(None, None, None)
             raise
         return connection, manager, host, initialized

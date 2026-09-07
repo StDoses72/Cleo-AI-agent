@@ -52,9 +52,12 @@ Cleo 使用两个经过 Pydantic 校验的 JSON 文件：`cleo.json` 管理通�
 ```
 
 - `agent` 用于前台 Cleo。
-- `dream_agent` 用于后台记忆整理；省略时回退到 `agent`。
+- `dream_agent` 用于后台记忆整理；省略或设为 `null` 时跟随来源 Chat 会话的模型。
 - `api_key` 在内存中使用 secret 类型，但配置文件本身仍是明文，必须保护文件权限。
 - `max_tokens` 既传给模型，也用于 context 状态展示；应填写 provider 实际支持的值。
+
+Chat 也支持通过官方 CLI 登录的订阅连接，DreamAgent 可跟随会话或指定已配置的模型。
+连接配置、登录步骤和各家限制见 [订阅登录与 DreamAgent](SUBSCRIPTION_CHAT.md)。
 
 ### Directory profile
 

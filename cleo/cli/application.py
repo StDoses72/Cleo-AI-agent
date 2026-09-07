@@ -226,9 +226,20 @@ async def amain() -> None:
 
     from cleo.agents import Agent
 
+    saved_profile = None
+    saved_path = None
+    if args.resume_id is not None or loaded_messages:
+        from cleo.agents.profiles import session_profile
+
+        saved_manifest = store.load_manifest(thread_id)
+        saved_profile = session_profile(settings, saved_manifest)
+        saved_path = saved_manifest.get("cwd")
+
     agent = Agent(
         project=runtime.current_project or "general",
         space=runtime.current_space,
+        profile=saved_profile,
+        project_path=saved_path,
     )
     if args.message is not None:
         _render_chat_header(agent, runtime, thread_id)

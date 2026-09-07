@@ -6,6 +6,10 @@ import type {
   CreateThreadOptions,
   ModelProfileInput,
   ModelSettings,
+  ModelConnectionInput,
+  ModelConnectionProbe,
+  SubscriptionRuntime,
+  SubscriptionLogin,
   ProductivityModelCatalog,
   RuntimeCatalog,
   MemoryReviewAction,
@@ -184,6 +188,40 @@ export class IpcCleoClient implements CleoClient {
 
   saveModelProfile(profile: ModelProfileInput): Promise<ModelSettings> {
     return this.bridge.request("save_model_profile", { profile });
+  }
+
+  saveDreamSettings(selection: string, model?: string): Promise<ModelSettings> {
+    return this.bridge.request("save_dream_settings", { selection, model });
+  }
+  checkModelConnection(connection: Partial<ModelConnectionInput> & { profileId?: string }): Promise<ModelConnectionProbe> {
+    return this.bridge.request("check_model_connection", { connection });
+  }
+  createModelConnection(connection: ModelConnectionInput): Promise<ModelSettings> {
+    return this.bridge.request("create_model_connection", { connection });
+  }
+  selectChatModel(profileId: string, model: string): Promise<ModelSettings> {
+    return this.bridge.request("select_chat_model", { profile_id: profileId, model });
+  }
+  renameModelConnection(profileId: string, label: string): Promise<ModelSettings> {
+    return this.bridge.request("rename_model_connection", { profile_id: profileId, label });
+  }
+  removeModelConnection(profileId: string): Promise<ModelSettings> {
+    return this.bridge.request("remove_model_connection", { profile_id: profileId });
+  }
+  getSubscriptionCatalog(): Promise<SubscriptionRuntime[]> {
+    return this.bridge.request("get_subscription_catalog");
+  }
+  checkSubscription(profile: ModelProfileInput): Promise<{ status: string; models: string[] }> {
+    return this.bridge.request("check_subscription", { profile });
+  }
+  startSubscriptionLogin(profile: ModelProfileInput): Promise<SubscriptionLogin> {
+    return this.bridge.request("start_subscription_login", { profile });
+  }
+  readSubscriptionLogin(loginId: string): Promise<SubscriptionLogin> {
+    return this.bridge.request("read_subscription_login", { login_id: loginId });
+  }
+  cancelSubscriptionLogin(loginId: string): Promise<SubscriptionLogin> {
+    return this.bridge.request("cancel_subscription_login", { login_id: loginId });
   }
 
   saveAgentInstructions(content: string): Promise<AgentInstructions> {

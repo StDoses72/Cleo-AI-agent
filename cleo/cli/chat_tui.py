@@ -669,8 +669,13 @@ class CleoChatApp(App[None]):
         messages = self.store.load_langchain_messages(session_id)
         project = str(manifest["project"])
         from cleo.agents import Agent
+        from cleo.agents.profiles import session_profile
+        from cleo.config.settings import settings
 
-        resumed_agent = Agent(project=project, space=DEFAULT_MEMORY_SPACE)
+        resumed_agent = Agent(
+            project=project, space=DEFAULT_MEMORY_SPACE,
+            profile=session_profile(settings, manifest), project_path=manifest.get("cwd"),
+        )
         await self._complete_current()
         self.agent = resumed_agent
         self.thread_id = session_id

@@ -1,7 +1,7 @@
 {
 	"active_profiles": {
 		"agent": "moonshot_openai_compatible",
-		"dream_agent": "moonshot_openai_compatible",
+		"dream_agent": null,
 		"directory": "default",
 		"shell": "default",
 		"tools": "default"

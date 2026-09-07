@@ -2,6 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { bundledPython, desktopDataHome, desktopPlatform, harnessPath, installationRoot } from "./platform.mjs";
 
+test("inherited CLI paths take precedence over fallback npm installations", () => {
+  const currentCodex = "C:\\Apps\\Codex\\bin";
+  const appData = "C:\\Users\\test\\AppData\\Roaming";
+  const entries = harnessPath({}, { PATH: currentCodex, APPDATA: appData }, "win32", "C:\\Users\\test").split(";");
+  assert.ok(entries.indexOf(currentCodex) < entries.indexOf(`${appData}\\npm`));
+});
+
 test("release names and application layouts are specific to OS and architecture", () => {
   const mac = desktopPlatform("darwin", "arm64");
   assert.equal(mac.archive, "Cleo-macos-arm64.zip");

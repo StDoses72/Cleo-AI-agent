@@ -57,7 +57,9 @@ class FakeStore:
 class StreamingAgent:
     model_name = "cleo-test"
 
-    def __init__(self, *, project="general", space="non_productivity") -> None:
+    def __init__(
+        self, *, project="general", space="non_productivity", profile=None, project_path=None,
+    ) -> None:
         self.project = project
         self.space = space
         self.context_usage = ContextWindowUsage(window_tokens=100_000)
