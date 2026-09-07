@@ -131,10 +131,15 @@ try {
     assert.equal(await input.inputValue(), "还在选字");
     assert.equal(await page.getByTestId("stop-button").count(), 0);
   });
-  await check("model-checkbox-layout", async () => {
+  await check("model-connection-checkbox-layout", async () => {
     await rail("设置").click();
     await rail("模型").click();
-    const box = await page.locator(".model-profile-roles input").first().boundingBox();
+    await page.locator(".settings-model-subnav").getByRole("button", { name: "新增连接", exact: true }).click();
+    await page.getByRole("button", { name: "O OpenAI", exact: true }).click();
+    await page.getByLabel("API Key").fill("test-only-api-key");
+    await page.getByRole("button", { name: "验证并继续", exact: true }).click();
+    await page.locator(".ms-check-models input").first().waitFor();
+    const box = await page.locator(".ms-check-models input").first().boundingBox();
     assert.ok(box && box.width <= 20 && box.height <= 20, `Checkbox is oversized: ${JSON.stringify(box)}`);
   });
   await check("motion-setting", async () => {

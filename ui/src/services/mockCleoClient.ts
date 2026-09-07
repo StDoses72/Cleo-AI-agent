@@ -6,6 +6,8 @@ import type {
   CreateThreadOptions,
   ModelProfileInput,
   ModelSettings,
+  ModelConnectionInput,
+  ModelConnectionProbe,
   SubscriptionRuntime,
   SubscriptionLogin,
   ProductivityModelCatalog,
@@ -30,8 +32,12 @@ const clone = <T,>(value: T): T => structuredClone(value);
 
 export class MockCleoClient implements CleoClient {
   private modelSettings: ModelSettings = {
-    profiles: [{ name: "demo", provider: "openai", model: "demo-model", baseUrl: null, maxTokens: 128000, hasApiKey: true }],
-    activeAgent: "demo", activeDreamAgent: "", dreamEnabled: true,
+    profiles: [
+      { name: "deepseek-flash", displayName: "DeepSeek · 日常", provider: "openai", model: "deepseek-v4-flash", models: ["deepseek-v4-flash", "deepseek-reasoner"], baseUrl: "https://api.deepseek.com", maxTokens: 100000, hasApiKey: true },
+      { name: "kimi", displayName: "Moonshot · 个人", provider: "openai", model: "kimi-k2.6", models: ["kimi-k2.6"], baseUrl: "https://api.moonshot.cn/v1", maxTokens: 100000, hasApiKey: true },
+      { name: "chatgpt", displayName: "Codex · 个人", provider: "codex", backend: "codex", model: "gpt-5.6-sol", models: ["gpt-6-astra", "gpt-5.6-sol", "gpt-5.5"], baseUrl: null, maxTokens: 100000, hasApiKey: false },
+    ],
+    activeAgent: "deepseek-flash", activeDreamAgent: "", dreamEnabled: true,
   };
   private readonly approvalResolvers = new Map<string, (decision: ApprovalDecision) => void>();
   private readonly reviewingMemorySourceIds = new Set<string>();
@@ -424,16 +430,12 @@ export class MockCleoClient implements CleoClient {
   async getRuntimeCatalog(): Promise<RuntimeCatalog> {
     await delay(120);
     return {
-      nonProductivityProfiles: [
-        { id: "deepseek-flash", provider: "openai", model: "deepseek-v4-flash", maxTokens: 100000, active: true },
-        { id: "kimi", provider: "openai", model: "kimi-k3", maxTokens: 100000, active: false },
-        { id: "chatgpt", provider: "openai", model: "gpt-5.4-mini", maxTokens: 100000, active: false },
-      ],
+      nonProductivityProfiles: this.modelSettings.profiles.map(p => ({ id: p.name, provider: p.provider, model: p.model, maxTokens: p.maxTokens, active: p.name === this.modelSettings.activeAgent })),
       productivityProviders: [
         { id: "codex", type: "codex_sdk", defaultModel: "gpt-5.6-sol", modelSource: "dynamic" },
         { id: "claude", type: "claude_sdk", defaultModel: "claude-opus-5", modelSource: "config" },
       ],
-      defaultNonProductivityProfile: "deepseek-flash",
+      defaultNonProductivityProfile: this.modelSettings.activeAgent,
       defaultProductivityProvider: "codex",
     };
   }
@@ -459,16 +461,52 @@ export class MockCleoClient implements CleoClient {
   }
 
   async saveModelProfile(profile: ModelProfileInput): Promise<ModelSettings> {
-    const saved = { name: profile.name, provider: profile.provider, model: profile.model, baseUrl: profile.baseUrl || null, maxTokens: profile.maxTokens, hasApiKey: !profile.backend || profile.backend === "api", backend: profile.backend || "api", executable: profile.executable };
+    const existing = this.modelSettings.profiles.find(p => p.name === profile.name);
+    const saved = { name: profile.name, displayName: profile.displayName || existing?.displayName, models: profile.models || existing?.models, provider: profile.provider, model: profile.model, baseUrl: profile.baseUrl || null, maxTokens: profile.maxTokens, hasApiKey: !profile.backend || profile.backend === "api", backend: profile.backend || "api", executable: profile.executable };
     this.modelSettings.profiles = [...this.modelSettings.profiles.filter((item) => item.name !== profile.name), saved];
     if (profile.activateAgent) this.modelSettings.activeAgent = profile.name;
-    if (profile.activateDreamAgent) this.modelSettings.activeDreamAgent = profile.name;
+    if (profile.activateDreamAgent) { this.modelSettings.activeDreamAgent = profile.name; this.modelSettings.activeDreamModel = profile.model; this.modelSettings.dreamEnabled = true; }
     return this.getModelSettings();
   }
 
-  async saveDreamSettings(selection: string): Promise<ModelSettings> {
+  async saveDreamSettings(selection: string, model?: string): Promise<ModelSettings> {
     this.modelSettings.activeDreamAgent = ["mode:follow", "mode:disabled"].includes(selection) ? "" : selection;
     this.modelSettings.dreamEnabled = selection !== "mode:disabled";
+    this.modelSettings.activeDreamModel = this.modelSettings.activeDreamAgent ? model || this.modelSettings.profiles.find(p => p.name === selection)?.model : "";
+    return this.getModelSettings();
+  }
+  async checkModelConnection(connection: Partial<ModelConnectionInput> & { profileId?: string }): Promise<ModelConnectionProbe> {
+    await delay(350);
+    const stored = this.modelSettings.profiles.find(p => p.name === connection.profileId);
+    if (stored) return { status: "connected", models: stored.models || [stored.model] };
+    if (connection.profileId) throw new Error("模型连接不存在。");
+    if (connection.backend === "api" && !connection.apiKey) throw new Error("请输入 API Key。");
+    return { status: "connected", models: connection.provider === "anthropic" ? ["claude-sonnet", "claude-opus"] : ["gpt-6-astra", "gpt-5.6-sol", "gpt-5.5"] };
+  }
+  async createModelConnection(connection: ModelConnectionInput): Promise<ModelSettings> {
+    if (!connection.models.length) throw new Error("请至少选择一个模型。");
+    if (this.modelSettings.profiles.some(p => (p.displayName || p.name) === connection.displayName)) throw new Error("这个连接名称已被使用。");
+    this.modelSettings.profiles.push({ name: `connection_${Date.now()}`, displayName: connection.displayName, provider: connection.provider, backend: connection.backend, model: connection.models[0], models: connection.models, baseUrl: connection.baseUrl || null, executable: connection.executable, maxTokens: 100000, hasApiKey: connection.backend === "api" });
+    return this.getModelSettings();
+  }
+  async selectChatModel(profileId: string, model: string): Promise<ModelSettings> {
+    const profile = this.modelSettings.profiles.find(p => p.name === profileId);
+    if (!profile || ![profile.model, ...(profile.models || [])].includes(model)) throw new Error("模型不属于所选连接。");
+    if (this.modelSettings.activeDreamAgent === profileId && !this.modelSettings.activeDreamModel) this.modelSettings.activeDreamModel = profile.model;
+    profile.models = [...new Set([profile.model, ...(profile.models || [])])];
+    profile.model = model;
+    this.modelSettings.activeAgent = profileId;
+    return this.getModelSettings();
+  }
+  async renameModelConnection(profileId: string, label: string): Promise<ModelSettings> {
+    const profile = this.modelSettings.profiles.find(p => p.name === profileId);
+    if (!profile || !label.trim()) throw new Error("请填写连接名称。");
+    profile.displayName = label.trim();
+    return this.getModelSettings();
+  }
+  async removeModelConnection(profileId: string): Promise<ModelSettings> {
+    if ([this.modelSettings.activeAgent, this.modelSettings.activeDreamAgent].includes(profileId)) throw new Error("这个连接正在被使用。切换所用模型后，才可移除。");
+    this.modelSettings.profiles = this.modelSettings.profiles.filter(p => p.name !== profileId);
     return this.getModelSettings();
   }
   async getSubscriptionCatalog(): Promise<SubscriptionRuntime[]> {

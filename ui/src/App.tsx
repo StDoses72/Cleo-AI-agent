@@ -122,6 +122,7 @@ export function App() {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        if (document.querySelector(".model-dialog[open]")) return;
         setCommandOpen(false);
         setSettingsOpen(false);
         if (!deletingThread) setThreadPendingDeletion(null);
@@ -364,7 +365,7 @@ export function App() {
         onThemeChange={setTheme}
         onRuntimeChange={workspace.updateRuntime}
         onLoadModelSettings={workspace.loadModelSettings}
-        onSaveModelProfile={workspace.saveModelProfile}
+        onApplyModelSettings={workspace.applyModelSettings}
         onLoadAgentInstructions={workspace.loadAgentInstructions}
         onSaveAgentInstructions={workspace.saveAgentInstructions}
         onCheckForUpdates={() => runUpdateAction("check")}

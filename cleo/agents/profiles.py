@@ -31,7 +31,7 @@ def session_profile(settings: Any, manifest: dict[str, Any]) -> AgentProfile:
 def dream_profile(settings: Any, manifest: dict[str, Any]) -> AgentProfile:
     name = settings.active_profiles.dream_agent
     if name:
-        return settings.profiles.agents[name]
+        return settings.active_dream_agent_profile
     if manifest.get("space") == "productivity" and not (manifest.get("runtime_options") or {}).get(
         "agent_profile"
     ):

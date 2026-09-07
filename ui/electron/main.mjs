@@ -60,6 +60,11 @@ const allowedMethods = new Set([
   "get_productivity_models",
   "save_model_profile",
   "save_dream_settings",
+  "check_model_connection",
+  "create_model_connection",
+  "select_chat_model",
+  "rename_model_connection",
+  "remove_model_connection",
   "get_subscription_catalog",
   "check_subscription",
   "start_subscription_login",
@@ -145,7 +150,10 @@ app.whenReady().then(async () => {
         event.sender.send("cleo:stream-event", { streamId, event: streamEvent });
       }
     });
-    if (method === "save_model_profile" || method === "save_dream_settings") await backend.restart();
+    if (["save_model_profile", "save_dream_settings", "create_model_connection",
+      "select_chat_model", "rename_model_connection", "remove_model_connection"].includes(method)) {
+      await backend.restart();
+    }
     return result;
   });
   ipcMain.handle("cleo:pick-attachments", async () => {

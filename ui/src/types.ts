@@ -221,6 +221,8 @@ export interface CreateThreadOptions {
 }
 
 export interface ModelProfileSummary {
+  displayName?: string;
+  models?: string[];
   backend?: string;
   executable?: string;
   name: string;
@@ -232,6 +234,7 @@ export interface ModelProfileSummary {
 }
 
 export interface ModelSettings {
+  activeDreamModel?: string;
   dreamEnabled?: boolean;
   profiles: ModelProfileSummary[];
   activeAgent: string;
@@ -245,6 +248,8 @@ export interface AgentInstructions {
 }
 
 export interface ModelProfileInput {
+  displayName?: string;
+  models?: string[];
   backend?: string;
   executable?: string;
   name: string;
@@ -270,6 +275,24 @@ export interface SubscriptionLogin {
   output: string;
   url: string | null;
 }
+
+export interface ModelConnectionInput {
+  displayName: string;
+  backend: string;
+  provider: string;
+  apiKey: string;
+  baseUrl: string;
+  executable: string;
+  models: string[];
+}
+
+export interface ModelConnectionProbe {
+  status: "connected" | "manual";
+  models: string[];
+  message?: string;
+}
+
+export type ApplyModelSettings = (operation: () => Promise<ModelSettings>) => Promise<ModelSettings>;
 
 export interface MemoryOverviewEntry {
   id: string;
@@ -420,7 +443,12 @@ export interface CleoClient {
   getRuntimeCatalog(): Promise<RuntimeCatalog>;
   getProductivityModels(provider: string, projectPath?: string): Promise<ProductivityModelCatalog>;
   saveModelProfile(profile: ModelProfileInput): Promise<ModelSettings>;
-  saveDreamSettings(selection: string): Promise<ModelSettings>;
+  saveDreamSettings(selection: string, model?: string): Promise<ModelSettings>;
+  checkModelConnection(connection: Partial<ModelConnectionInput> & { profileId?: string }): Promise<ModelConnectionProbe>;
+  createModelConnection(connection: ModelConnectionInput): Promise<ModelSettings>;
+  selectChatModel(profileId: string, model: string): Promise<ModelSettings>;
+  renameModelConnection(profileId: string, label: string): Promise<ModelSettings>;
+  removeModelConnection(profileId: string): Promise<ModelSettings>;
   getSubscriptionCatalog(): Promise<SubscriptionRuntime[]>;
   checkSubscription(profile: ModelProfileInput): Promise<{ status: string; models: string[] }>;
   startSubscriptionLogin(profile: ModelProfileInput): Promise<SubscriptionLogin>;

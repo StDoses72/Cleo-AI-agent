@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import type {
   AgentInstructions,
-  ModelProfileInput,
+  ApplyModelSettings,
   ModelSettings,
   MemoryOverview,
   Project,
@@ -34,7 +34,7 @@ import type {
   UpdateState,
   WorkspaceSpace,
 } from "../types";
-import { DreamSettings, SubscriptionSettings } from "./SubscriptionSettings";
+import { ModelSettingsPanel, type ModelsPage } from "./model-settings/ModelSettingsPanel";
 
 export interface CommandAction {
   id: string;
@@ -300,7 +300,7 @@ interface SettingsModalProps {
   onThemeChange: (theme: "dark" | "light") => void;
   onRuntimeChange: (update: Partial<RuntimeProfile>) => void;
   onLoadModelSettings: () => Promise<ModelSettings>;
-  onSaveModelProfile: (profile: ModelProfileInput) => Promise<ModelSettings>;
+  onApplyModelSettings: ApplyModelSettings;
   onLoadAgentInstructions: () => Promise<AgentInstructions>;
   onSaveAgentInstructions: (content: string) => Promise<AgentInstructions>;
   onCheckForUpdates: () => void;
@@ -312,7 +312,7 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-type SettingsPage = "appearance" | "agent" | "instructions" | "models" | "updates" | "data";
+type SettingsPage = "appearance" | "agent" | "instructions" | "models" | "models-add" | "models-dream" | "updates" | "data";
 
 export function SettingsModal({
   open,
@@ -330,7 +330,7 @@ export function SettingsModal({
   onThemeChange,
   onRuntimeChange,
   onLoadModelSettings,
-  onSaveModelProfile,
+  onApplyModelSettings,
   onLoadAgentInstructions,
   onSaveAgentInstructions,
   onCheckForUpdates,
@@ -349,16 +349,24 @@ export function SettingsModal({
     }
   }, [open]);
   if (!open) return null;
+  const isModels = page === "models" || page === "models-add" || page === "models-dream";
+  const modelPage: ModelsPage = page === "models-add" ? "add" : page === "models-dream" ? "dream" : "current";
   return (
     <div className="overlay-backdrop settings-backdrop" role="presentation" onMouseDown={onClose}>
-      <div className="settings-modal" role="dialog" aria-label="设置" onMouseDown={(event) => event.stopPropagation()}>
+      <div className={`settings-modal ${isModels ? "settings-models" : ""}`} role="dialog" aria-label="设置" onMouseDown={(event) => event.stopPropagation()}>
+        {isModels && <button className="icon-button model-settings-close" aria-label="关闭设置" onClick={onClose}><X size={17} /></button>}
         <aside>
           <div className="settings-brand"><span>C</span><strong>设置</strong></div>
           <nav>
             <button className={page === "appearance" ? "active" : ""} type="button" onClick={() => setPage("appearance")}><Sparkles size={16} />外观</button>
             <button className={page === "agent" ? "active" : ""} type="button" onClick={() => setPage("agent")}><SlidersHorizontal size={16} />Agent</button>
             <button className={page === "instructions" ? "active" : ""} type="button" onClick={() => setPage("instructions")}><FileText size={16} />Agent 指令</button>
-            <button className={page === "models" ? "active" : ""} type="button" onClick={() => setPage("models")}><Plus size={16} />模型</button>
+            <button className={isModels ? "active" : ""} type="button" onClick={() => setPage("models")}><Plus size={16} />模型</button>
+            {isModels && <div className="settings-model-subnav">
+              <button className={page === "models" ? "active" : ""} onClick={() => setPage("models")}><SlidersHorizontal size={15} />当前配置</button>
+              <button className={page === "models-add" ? "active" : ""} onClick={() => setPage("models-add")}><Plus size={15} />新增连接</button>
+              <button className={page === "models-dream" ? "active" : ""} onClick={() => setPage("models-dream")}><Moon size={15} />DreamAgent</button>
+            </div>}
             <button className={page === "updates" ? "active" : ""} type="button" onClick={() => setPage("updates")}><RefreshCw size={16} />更新</button>
             <button className={page === "data" ? "active" : ""} type="button" onClick={() => setPage("data")}><Database size={16} />数据与记忆</button>
           </nav>
@@ -391,12 +399,11 @@ export function SettingsModal({
               onSave={onSaveAgentInstructions}
               onRevealPath={onRevealPath}
             />
-          ) : page === "models" ? (
-            <ModelSettingsPage
-              settings={modelSettings}
-              loading={modelSettingsLoading}
-              onSave={onSaveModelProfile}
-            />
+          ) : isModels ? (
+            <ModelSettingsPanel page={modelPage} settings={modelSettings} busy={modelSettingsLoading}
+              activeProfileId={runtime.profileId}
+              onApply={onApplyModelSettings}
+              onNavigate={next => setPage(next === "current" ? "models" : next === "add" ? "models-add" : "models-dream")} />
           ) : page === "updates" ? (
             <UpdateSettingsPage
               state={updateState}
@@ -583,99 +590,6 @@ function AgentInstructionsPage({
         </div>
       </footer>
     </form>
-  );
-}
-
-const emptyModelProfile: ModelProfileInput = {
-  name: "",
-  provider: "openai",
-  model: "",
-  apiKey: "",
-  baseUrl: "",
-  maxTokens: 128000,
-  activateAgent: true,
-  activateDreamAgent: false,
-};
-
-function ModelSettingsPage({
-  settings,
-  loading,
-  onSave,
-}: {
-  settings: ModelSettings | null;
-  loading: boolean;
-  onSave: (profile: ModelProfileInput) => Promise<ModelSettings>;
-}) {
-  const [draft, setDraft] = useState<ModelProfileInput>(emptyModelProfile);
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
-  const selectProfile = (name: string) => {
-    const profile = settings?.profiles.find((item) => item.name === name);
-    if (!profile) {
-      setDraft(emptyModelProfile);
-      return;
-    }
-    setDraft({
-      name: profile.name,
-      provider: profile.provider,
-      model: profile.model,
-      apiKey: "",
-      baseUrl: profile.baseUrl ?? "",
-      maxTokens: profile.maxTokens,
-      activateAgent: settings?.activeAgent === profile.name,
-      activateDreamAgent: false,
-      backend: profile.backend || "api",
-      executable: profile.executable || "",
-    });
-    setError(null);
-    setSaved(false);
-  };
-  useEffect(() => {
-    if (settings?.profiles.length && !draft.name) {
-      selectProfile(settings.activeAgent || settings.profiles[0].name);
-    }
-  }, [settings]);
-  const update = <K extends keyof ModelProfileInput>(key: K, value: ModelProfileInput[K]) => {
-    setDraft((current) => ({ ...current, [key]: value }));
-    setSaved(false);
-  };
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setError(null);
-    try {
-      await onSave(draft);
-      setDraft((current) => ({ ...current, apiKey: "" }));
-      setSaved(true);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "无法保存模型配置");
-    }
-  };
-  const selectedIsSaved = settings?.profiles.some((item) => item.name === draft.name) ?? false;
-  return (
-    <div className="settings-page model-settings-page">
-      <DreamSettings settings={settings} />
-      <div className="model-profile-toolbar">
-        <label>
-          <span>已保存 Profile</span>
-          <select value={selectedIsSaved ? draft.name : ""} onChange={(event) => selectProfile(event.target.value)}>
-            <option value="">新建 Profile</option>
-            {settings?.profiles.map((profile) => <option value={profile.name} key={profile.name}>{profile.name} · {profile.model}</option>)}
-          </select>
-        </label>
-        <button type="button" onClick={() => { setDraft(emptyModelProfile); setError(null); setSaved(false); }}><Plus size={14} />新增</button>
-      </div>
-      <form className="model-profile-form" onSubmit={submit}>
-        <SubscriptionSettings profile={draft} onChange={(patch) => { setDraft((current) => ({ ...current, ...patch })); setSaved(false); }} />
-        <label><span>Profile 名称</span><input required value={draft.name} onChange={(event) => update("name", event.target.value)} placeholder="例如 moonshot" /></label>
-        <label><span>Provider</span><input required list="cleo-provider-options" value={draft.provider} onChange={(event) => update("provider", event.target.value)} placeholder="openai" /><datalist id="cleo-provider-options"><option value="openai" /><option value="anthropic" /><option value="google_genai" /></datalist></label>
-        <label className="wide"><span>模型名称</span><input required value={draft.model} onChange={(event) => update("model", event.target.value)} placeholder="例如 gpt-5.6" /></label>
-        {(!draft.backend || draft.backend === "api") && <><label className="wide"><span>API Key</span><input type="password" autoComplete="new-password" value={draft.apiKey} onChange={(event) => update("apiKey", event.target.value)} placeholder={selectedIsSaved ? "已配置；留空则保持不变" : "必填，只保存在本地"} /></label>
-        <label className="wide"><span>Base URL（可选）</span><input type="url" value={draft.baseUrl} onChange={(event) => update("baseUrl", event.target.value)} placeholder="https://api.example.com/v1" /></label></>}
-        <label><span>上下文长度</span><input type="number" min={1} value={draft.maxTokens} onChange={(event) => update("maxTokens", Number(event.target.value))} /></label>
-        <div className="model-profile-roles"><label><input type="checkbox" checked={draft.activateAgent} onChange={(event) => update("activateAgent", event.target.checked)} />设为 Cleo 当前模型</label></div>
-        <div className="model-profile-submit"><span>{error ? <em>{error}</em> : saved ? "已保存并重新加载后端" : "API Key 不会返回到界面或日志"}</span><button type="submit" disabled={loading}>{loading ? "保存中…" : "保存并应用"}</button></div>
-      </form>
-    </div>
   );
 }
 

@@ -270,7 +270,10 @@ try {
   await window.getByText("在记忆页查看整理结果和待确认来源。", { exact: true }).waitFor();
   await window.screenshot({ path: join(outputDir, "06b-settings-memory.png") });
   await window.getByRole("button", { name: "模型", exact: true }).click();
-  await window.getByLabel("模型名称").waitFor();
+  await window.getByRole("button", { name: "切换模型", exact: true }).waitFor();
+  await window.locator(".settings-model-subnav").getByRole("button", { name: "新增连接", exact: true }).click();
+  await window.getByRole("tab", { name: "API 密钥", exact: true }).waitFor();
+  await window.getByRole("button", { name: "O OpenAI", exact: true }).click();
   await window.getByLabel("API Key").waitFor();
   await window.screenshot({ path: join(outputDir, "06c-settings-models.png") });
   await window.getByRole("button", { name: "更新", exact: true }).click();

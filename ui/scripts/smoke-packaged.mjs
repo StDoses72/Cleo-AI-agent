@@ -48,7 +48,7 @@ try {
   await window.getByRole("button", { name: "记忆", exact: true }).click();
   await window.getByRole("button", { name: "设置", exact: true }).click();
   await window.getByRole("button", { name: "模型", exact: true }).click();
-  await window.getByLabel("模型名称").waitFor();
+  await window.getByRole("button", { name: "切换模型", exact: true }).waitFor();
   await window.screenshot({ path: screenshotPath });
   if (consoleErrors.length) throw new Error(`Console errors: ${consoleErrors.join(" | ")}`);
   console.log(JSON.stringify({ status: "passed", backend: "real-packaged", executablePath, screenshotPath }, null, 2));
