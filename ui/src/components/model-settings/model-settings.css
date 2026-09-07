@@ -1,27 +1,9 @@
-.settings-modal.settings-models { position:relative; width:min(1240px,calc(100vw - 56px)); height:min(820px,calc(100vh - 70px)); grid-template-columns:226px minmax(0,1fr); }
-.model-settings-close { position:absolute; right:17px; top:17px; z-index:1; }
-.settings-models > aside { padding:28px 17px 18px; }
-.settings-models .settings-brand { padding-bottom:26px; }
-.settings-models .settings-brand strong { font-size:14px; }
-.settings-models nav > button { height:42px; font-size:13px; gap:11px; }
-.settings-models .settings-model-subnav { display:grid; gap:4px; margin:7px 0 20px 16px; padding-left:17px; border-left:1px solid var(--border-strong); }
-.settings-models .settings-model-subnav button { position:relative; height:37px; font-size:12px; padding-left:11px; }
-.settings-models .settings-model-subnav button svg { width:15px; height:15px; }
-.settings-models .settings-model-subnav button.active { color:var(--accent); background:var(--accent-soft); }
-.settings-models .settings-model-subnav button.active::before { content:""; position:absolute; left:-19px; height:18px; width:3px; border-radius:2px; background:var(--accent); }
-.settings-models > .settings-content > header { display:none; }
 .model-settings { font-size:13px; color:var(--text); --ms-line:var(--border-strong); --ms-ink:#092f2c; --ms-amber:var(--warning); }
 :root[data-theme="light"] .model-settings { --ms-ink:#fff; }
-.settings-content > .model-settings { padding:28px 46px 30px; }
 .model-settings button { cursor:pointer; }
 .model-settings button:disabled { cursor:default; opacity:.45; }
 .model-settings button:focus-visible,.model-settings a:focus-visible,.model-settings summary:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
 .model-settings svg { width:17px; height:17px; flex-shrink:0; stroke-width:1.6; }
-.ms-breadcrumb { display:flex; align-items:center; gap:10px; color:var(--muted); font-size:11px; margin-bottom:28px; }
-.ms-breadcrumb svg { width:12px; height:12px; }
-.ms-breadcrumb strong { font-weight:400; color:var(--text-soft); }
-.ms-heading { display:flex; align-items:center; justify-content:space-between; gap:18px; margin-bottom:31px; }
-.model-settings .ms-heading h2 { margin:0; font-size:25px; font-weight:590; letter-spacing:-.6px; }
 .model-settings p,.model-settings h3 { margin:0; }
 .ms-primary,.ms-secondary,.ms-quiet,.ms-link { display:inline-flex; align-items:center; justify-content:center; gap:8px; font:inherit; font-size:12px; white-space:nowrap; transition:background .15s,color .15s,transform .15s; }
 .ms-primary { color:var(--ms-ink); background:var(--accent); border:1px solid transparent; padding:10px 15px; border-radius:7px; font-weight:550; }
@@ -181,7 +163,7 @@
 .ms-loading { padding:40px; color:var(--muted); }
 @keyframes ms-spin { to { transform:rotate(360deg); } }
 @keyframes ms-dialog-in { from { opacity:.7; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
-@media (max-width:1100px) { .settings-modal.settings-models { grid-template-columns:200px minmax(0,1fr); } .settings-content > .model-settings { padding:25px 27px 30px; } .ms-connect-layout { grid-template-columns:160px minmax(0,1fr); } .ms-providers { padding-right:13px; } .ms-connect-pane { padding-left:22px; } }
-@media (max-width:800px) { .settings-modal.settings-models { width:calc(100vw - 24px); grid-template-columns:172px minmax(0,1fr); } .settings-models > aside { padding:20px 11px; } .settings-content > .model-settings { padding:22px 20px; } .ms-heading { align-items:flex-start; flex-wrap:wrap; } .ms-summary { flex-wrap:wrap; padding:18px; } .ms-summary > button { margin:5px 0 0; width:100%; } .ms-connection-row { flex-wrap:wrap; gap:10px; } .ms-connection-status { display:none; } .ms-connect-layout { display:block; } .ms-providers { display:flex; flex-wrap:wrap; gap:7px; padding:0 0 19px; border-right:0; border-bottom:1px solid var(--ms-line); } .ms-list-label { display:none; } .ms-provider-option { width:auto; padding:8px 10px; margin:0; border:1px solid var(--ms-line); } .ms-provider-option .ms-mark { display:none; } .ms-connect-pane { padding:24px 0 0; } .ms-save-footer { flex-wrap:wrap; } .ms-save-footer > span { width:100%; } }
-@media (max-width:540px) { .settings-modal.settings-models { display:flex; flex-direction:column; height:calc(100dvh - 24px); } .settings-models > aside { padding:12px; border-right:0; border-bottom:1px solid var(--border); } .settings-models .settings-brand,.settings-models nav > button,.settings-models > aside > small { display:none; } .settings-models .settings-model-subnav { display:flex; border:0; margin:0; padding:0; gap:3px; } .settings-models .settings-model-subnav button { flex:1; justify-content:center; font-size:11px; padding:6px; } .settings-models .settings-model-subnav button.active::before { display:none; } .settings-content > .model-settings { padding:20px; } .settings-models > .settings-content { flex:1; } .ms-heading h2 { font-size:23px!important; } .ms-dream-options button { padding:16px 8px; } .ms-dream-options strong { font-size:12px; } .ms-dream-options small { font-size:10px; } .ms-dialog-footer { flex-wrap:wrap; } .ms-footer-actions { margin-left:auto; } .ms-steps { gap:13px; } }
+@media (max-width:1100px) { .ms-connect-layout { grid-template-columns:160px minmax(0,1fr); } .ms-providers { padding-right:13px; } .ms-connect-pane { padding-left:22px; } }
+@media (max-width:800px) { .ms-summary { flex-wrap:wrap; padding:18px; } .ms-summary > button { margin:5px 0 0; width:100%; } .ms-connection-row { flex-wrap:wrap; gap:10px; } .ms-connection-status { display:none; } .ms-connect-layout { display:block; } .ms-providers { display:flex; flex-wrap:wrap; gap:7px; padding:0 0 19px; border-right:0; border-bottom:1px solid var(--ms-line); } .ms-list-label { display:none; } .ms-provider-option { width:auto; padding:8px 10px; margin:0; border:1px solid var(--ms-line); } .ms-provider-option .ms-mark { display:none; } .ms-connect-pane { padding:24px 0 0; } .ms-save-footer { flex-wrap:wrap; } .ms-save-footer > span { width:100%; } }
+@media (max-width:540px) { .ms-dream-options button { padding:16px 8px; } .ms-dream-options strong { font-size:12px; } .ms-dream-options small { font-size:10px; } .ms-dialog-footer { flex-wrap:wrap; } .ms-footer-actions { margin-left:auto; } .ms-steps { gap:13px; } }
 @media (prefers-reduced-motion:reduce) { .model-settings * { animation:none!important; transition:none!important; } }

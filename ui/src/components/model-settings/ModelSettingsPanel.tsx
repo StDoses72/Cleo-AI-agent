@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Check, ChevronRight, Layers, Moon, MoreHorizontal, Pause, Plus, SlidersHorizontal } from "lucide-react";
+import { Check, ChevronRight, Layers, Moon, MoreHorizontal, Pause, SlidersHorizontal } from "lucide-react";
 import { cleoClient } from "../../services/cleoClient";
 import type { ApplyModelSettings, ModelProfileSummary, ModelSettings } from "../../types";
 import { billingLabel, modelLabel, profileLabel, profileModels, providerInfo } from "./catalog";
@@ -9,7 +9,6 @@ import { ModelPicker, type ModelChoice } from "./ModelPicker";
 import "./model-settings.css";
 
 export type ModelsPage = "current" | "add" | "dream";
-const titles: Record<ModelsPage, string> = { current: "当前配置", add: "新增连接", dream: "DreamAgent" };
 const dreamChoice = (settings: ModelSettings) => ({ mode: settings.dreamEnabled === false ? "off" : settings.activeDreamAgent ? "fixed" : "follow", profileId: settings.activeDreamAgent, model: settings.activeDreamModel || settings.profiles.find(p => p.name === settings.activeDreamAgent)?.model || "" });
 
 function Summary({ profile, model, children }: { profile?: ModelProfileSummary; model?: string; children?: ReactNode }) {
@@ -53,8 +52,6 @@ export function ModelSettingsPanel({ page, settings, busy, activeProfileId, onAp
     } catch (error) { setError(error instanceof Error ? error.message : "保存失败。"); }
   };
   return <div className="model-settings" data-testid="model-settings">
-    <div className="ms-breadcrumb">设置<ChevronRight />模型<ChevronRight /><strong>{titles[page]}</strong></div>
-    <div className="ms-heading"><h2>{titles[page]}</h2>{page === "current" && <button className="ms-primary" onClick={() => { setReconnect(null); onNavigate("add"); }}><Plus />新增连接</button>}</div>
     {page === "current" && <>
       <div className="ms-section-label">默认对话模型</div>
       <Summary profile={chat} model={chat?.model}><button className="ms-secondary" disabled={busy} onClick={() => setPicker({ target: "chat" })}>切换模型<ChevronRight /></button></Summary>
