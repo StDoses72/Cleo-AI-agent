@@ -5,18 +5,21 @@ import secrets
 import threading
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlsplit
 
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 
 _COMMAND_METHOD = "item/commandExecution/requestApproval"
 _FILE_METHOD = "item/fileChange/requestApproval"
 _PERMISSIONS_METHOD = "item/permissions/requestApproval"
+_ELICITATION_METHOD = "mcpServer/elicitation/request"
 _LEGACY_COMMAND_METHOD = "execCommandApproval"
 _LEGACY_PATCH_METHOD = "applyPatchApproval"
 _SUPPORTED_METHODS = {
     _COMMAND_METHOD,
     _FILE_METHOD,
     _PERMISSIONS_METHOD,
+    _ELICITATION_METHOD,
     _LEGACY_COMMAND_METHOD,
     _LEGACY_PATCH_METHOD,
 }
@@ -129,6 +132,7 @@ class CodexApprovalBroker:
             _COMMAND_METHOD: "command",
             _FILE_METHOD: "file_change",
             _PERMISSIONS_METHOD: "permissions",
+            _ELICITATION_METHOD: "elicitation",
             _LEGACY_COMMAND_METHOD: "command",
             _LEGACY_PATCH_METHOD: "file_change",
         }[method]
@@ -145,7 +149,7 @@ class CodexApprovalBroker:
             command = " ".join(str(part) for part in command)
         if not command and isinstance(params.get("fileChanges"), dict):
             command = ", ".join(str(path) for path in params["fileChanges"])
-        return {
+        request = {
             "id": f"approval-{secrets.token_hex(8)}",
             "kind": kind,
             "method": method,
@@ -161,6 +165,48 @@ class CodexApprovalBroker:
             "grantRoot": params.get("grantRoot"),
             "startedAtMs": params.get("startedAtMs"),
         }
+        if method == _ELICITATION_METHOD:
+            unsupported = self._unsupported_elicitation(params)
+            request.update(
+                command=str(params.get("serverName") or "MCP"),
+                reason=str(params.get("message") or "工具请求你的确认。"),
+                mode=params.get("mode"),
+                url=params.get("url") if params.get("mode") == "url" else None,
+                unsupportedReason=unsupported,
+                availableDecisions=(
+                    ["cancel"] if unsupported else ["accept", "decline", "cancel"]
+                ),
+            )
+        return request
+
+    @staticmethod
+    def _unsupported_elicitation(params: dict[str, Any]) -> str | None:
+        mode = params.get("mode")
+        if mode == "url":
+            try:
+                url = urlsplit(str(params.get("url") or ""))
+                if url.scheme in {"https", "http"} and url.hostname:
+                    return None
+            except ValueError:
+                pass
+            return "此授权链接无效或使用了不支持的协议。请取消请求并联系工具提供方。"
+        if mode == "form":
+            schema = params.get("requestedSchema")
+            if (
+                isinstance(schema, dict)
+                and schema.get("type") == "object"
+                and not schema.get("properties")
+                and not schema.get("required")
+                and set(schema) <= {
+                    "type", "properties", "required", "additionalProperties",
+                    "$schema", "title", "description",
+                }
+            ):
+                return None
+        return (
+            "此工具需要填写表单或使用尚未支持的授权格式。"
+            "Cleo 目前仅支持确认和链接授权，请取消此请求。"
+        )
 
     def _response(
         self,
@@ -168,6 +214,11 @@ class CodexApprovalBroker:
         params: dict[str, Any],
         decision: str,
     ) -> dict[str, Any]:
+        if method == _ELICITATION_METHOD:
+            return {
+                "action": decision,
+                "content": {} if decision == "accept" and params.get("mode") == "form" else None,
+            }
         if method in {_COMMAND_METHOD, _FILE_METHOD}:
             return {"decision": decision}
         if method == _PERMISSIONS_METHOD:
@@ -185,7 +236,9 @@ class CodexApprovalBroker:
         return {"decision": legacy}
 
     def _safe_rejection(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
-        return self._response(method, params, "decline")
+        # A missing UI or a broken callback is not a user's decision to deny.
+        decision = "cancel" if method == _ELICITATION_METHOD else "decline"
+        return self._response(method, params, decision)
 
     def _event(
         self,

@@ -144,6 +144,7 @@ export class MockCleoClient implements CleoClient {
     const runId = `${threadId}-${Date.now()}`;
     const isFailureDemo = /失败|error|fail/i.test(prompt);
     const needsApproval = /审批|approval|git commit/i.test(prompt);
+    const browserApproval = /browser approval/i.test(prompt);
 
     await delay(380);
     yield {
@@ -162,15 +163,16 @@ export class MockCleoClient implements CleoClient {
         type: "approval-request",
         request: {
           id: approvalId,
-          kind: "command",
-          method: "item/commandExecution/requestApproval",
+          kind: browserApproval ? "elicitation" : "command",
+          method: browserApproval ? "mcpServer/elicitation/request" : "item/commandExecution/requestApproval",
           threadId,
           turnId: runId,
           itemId: `${runId}-tool`,
-          command: "git add README.md && git commit -m \"Document agent tool and model\"",
+          command: browserApproval ? "cua_repl" : "git add README.md && git commit -m \"Document agent tool and model\"",
           cwd: "D:\\Projects\\Cleo-AI-agent",
-          reason: "This command writes protected Git metadata on the current branch.",
-          availableDecisions: ["accept", "acceptForSession", "decline", "cancel"],
+          reason: browserApproval ? "Allow Browser use to access http://localhost:5173?" : "This command writes protected Git metadata on the current branch.",
+          availableDecisions: browserApproval ? ["accept", "decline", "cancel"] : ["accept", "acceptForSession", "decline", "cancel"],
+          mode: browserApproval ? "form" : undefined,
           commandActions: [],
           permissions: null,
           grantRoot: null,
@@ -189,7 +191,7 @@ export class MockCleoClient implements CleoClient {
             id: `${runId}-denied`,
             type: "notice",
             tone: "info",
-            title: "命令已拒绝",
+            title: decision === "cancel" ? "请求已取消" : "命令已拒绝",
             detail: "Cleo 已收到你的决定，并停止了这次命令执行。",
           },
         };
@@ -362,6 +364,7 @@ export class MockCleoClient implements CleoClient {
   }
 
   async cancelRun(_threadId: string): Promise<void> {
+    await delay(250);
     for (const resolve of this.approvalResolvers.values()) resolve("cancel");
     this.approvalResolvers.clear();
   }

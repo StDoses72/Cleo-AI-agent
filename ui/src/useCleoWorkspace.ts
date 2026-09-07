@@ -66,6 +66,7 @@ export function useCleoWorkspace() {
   const [draftModel, setDraftModel] = useState("");
   const [draftEffort, setDraftEffort] = useState<RuntimeProfile["effort"]>(null);
   const generationRef = useRef(0);
+  const cancellingRunRef = useRef(false);
   const selectionRef = useRef(0);
   const draftKey = activeThreadId ?? `new:${activeSpace}:${activeProjectId}`;
   const draft = drafts[draftKey] ?? emptyDraft;
@@ -433,13 +434,32 @@ export function useCleoWorkspace() {
     }
   };
 
-  const cancelRun = () => {
+  const cancelRun = async () => {
     const threadId = runningThreadId;
-    if (!threadId) return;
+    if (!threadId || cancellingRunRef.current) return;
+    cancellingRunRef.current = true;
+    const previousGeneration = generationRef.current;
     generationRef.current += 1;
+    try {
+      await cleoClient.cancelRun(threadId);
+    } catch (error) {
+      generationRef.current = previousGeneration;
+      updateThread(threadId, (current) => ({
+        ...current,
+        items: [...current.items, {
+          id: `${threadId}-cancel-error-${Date.now()}`,
+          type: "notice",
+          tone: "warning",
+          title: "停止失败",
+          detail: error instanceof Error ? error.message : "请重试停止操作。",
+        }],
+      }));
+      return;
+    } finally {
+      cancellingRunRef.current = false;
+    }
     runLockRef.current = false;
     setRunningThreadId(null);
-    void cleoClient.cancelRun(threadId);
     setPendingApprovals((current) => current.filter(
       (candidate) => candidate.threadId !== threadId,
     ));

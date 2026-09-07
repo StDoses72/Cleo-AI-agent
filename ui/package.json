@@ -12,6 +12,7 @@
     "test:backend": "node --test electron/platform.test.mjs electron/posix-installer.test.mjs electron/install-state.test.mjs electron/attachments.test.mjs electron/backend.test.mjs electron/dependencies.test.mjs electron/local-files.test.mjs electron/updater.test.mjs",
     "package:portable": "node ../scripts/build-release.mjs",
     "smoke": "npm run build && node scripts/smoke.mjs",
+    "smoke:approvals": "npm run build && node scripts/smoke-approvals.mjs",
     "smoke:update": "npm run build && node scripts/smoke-update.mjs",
     "smoke:ux": "npm run build && node scripts/smoke-ux.mjs",
     "smoke:inspector": "npm run build && node scripts/smoke-inspector.mjs",

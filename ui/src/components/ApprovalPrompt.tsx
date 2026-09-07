@@ -13,6 +13,7 @@ const titleByKind: Record<ApprovalRequest["kind"], string> = {
   command: "Cleo 想要执行受保护的命令",
   file_change: "Cleo 想要修改受保护的文件",
   permissions: "Cleo 请求额外权限",
+  elicitation: "工具请求你的授权",
 };
 
 export function ApprovalPrompt({ request, pending, error, onResolve }: ApprovalPromptProps) {
@@ -31,7 +32,10 @@ export function ApprovalPrompt({ request, pending, error, onResolve }: ApprovalP
       if (event.key === "2" && decisions.has("acceptForSession")) {
         onResolve("acceptForSession");
       }
-      if (event.key === "Escape" && denyDecision) onResolve(denyDecision);
+      if (event.key === "Escape") {
+        if (decisions.has("cancel")) onResolve("cancel");
+        else if (denyDecision) onResolve(denyDecision);
+      }
     };
     window.addEventListener("keydown", decideFromKeyboard);
     return () => window.removeEventListener("keydown", decideFromKeyboard);
@@ -74,11 +78,23 @@ export function ApprovalPrompt({ request, pending, error, onResolve }: ApprovalP
       </div>
 
       <p className="approval-reason">{reason}</p>
+      {request.kind === "elicitation" && request.mode === "url" && !request.unsupportedReason ? (
+        <p className="approval-reason">
+          请先打开 <a href={request.url!} target="_blank" rel="noreferrer">{request.url}</a>，
+          完成授权后再确认。
+        </p>
+      ) : null}
+      {request.unsupportedReason ? (
+        <p className="approval-error" role="alert">{request.unsupportedReason}</p>
+      ) : null}
 
       <div className="approval-options">
         {decisions.has("accept") ? (
           <button className="approval-option primary" type="button" disabled={pending} onClick={() => onResolve("accept")} data-testid="approval-once">
-            <span><strong>仅允许这一次</strong><small>继续当前操作，不保存规则</small></span>
+            <span>
+              <strong>{request.mode === "url" ? "已完成授权" : request.kind === "elicitation" ? "允许" : "仅允许这一次"}</strong>
+              <small>{request.kind === "elicitation" ? "继续此工具请求" : "继续当前操作，不保存规则"}</small>
+            </span>
             {pending ? <LoaderCircle className="approval-spinner" size={13} /> : <kbd>1</kbd>}
           </button>
         ) : null}
@@ -91,11 +107,16 @@ export function ApprovalPrompt({ request, pending, error, onResolve }: ApprovalP
       </div>
 
       <footer className="approval-footer">
-        {denyDecision ? (
-          <button type="button" disabled={pending} onClick={() => onResolve(denyDecision)} data-testid="approval-deny">
+        {decisions.has("decline") ? (
+          <button type="button" disabled={pending} onClick={() => onResolve("decline")} data-testid="approval-deny">
             <X size={13} />拒绝
           </button>
         ) : <span />}
+        {decisions.has("cancel") ? (
+          <button type="button" disabled={pending} onClick={() => onResolve("cancel")} data-testid="approval-cancel">
+            取消此次请求
+          </button>
+        ) : null}
         <span className={error ? "approval-error" : ""}>
           {error || (request.cwd ? request.cwd : "请求暂停中")} {!error ? <kbd>Esc</kbd> : null}
         </span>

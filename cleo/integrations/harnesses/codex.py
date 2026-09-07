@@ -237,6 +237,7 @@ class CodexProvider:
                         response_parts.append(event.text)
                     await emit_event(on_event, event)
             except asyncio.CancelledError:
+                runtime.approvals.cancel_all()
                 if runtime.active_turn is not None:
                     await runtime.active_turn.interrupt()
                 raise

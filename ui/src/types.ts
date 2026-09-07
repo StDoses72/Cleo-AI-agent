@@ -127,7 +127,7 @@ export type ApprovalDecision = "accept" | "acceptForSession" | "decline" | "canc
 
 export interface ApprovalRequest {
   id: string;
-  kind: "command" | "file_change" | "permissions";
+  kind: "command" | "file_change" | "permissions" | "elicitation";
   method: string;
   threadId: string;
   turnId: string;
@@ -140,6 +140,9 @@ export interface ApprovalRequest {
   permissions: Record<string, unknown> | null;
   grantRoot: string | null;
   startedAtMs: number | null;
+  mode?: string;
+  url?: string | null;
+  unsupportedReason?: string | null;
 }
 
 export type ReasoningEffort =
