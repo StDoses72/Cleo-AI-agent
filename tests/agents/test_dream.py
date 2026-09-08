@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
 import cleo.agents.dream as dream_module
 from cleo.config.settings import SettingsModel
@@ -201,6 +201,41 @@ def test_extractor_has_no_tools_or_accumulating_messages():
     asyncio.run(agent._extract("second"))
     assert [len(messages) for messages in calls] == [2, 2]
     assert calls[1][-1].content == "second"
+
+
+def test_extractor_ignores_batch_scores_without_changing_item_scores(tmp_path, monkeypatch):
+    setup(tmp_path, monkeypatch)
+
+    class Model:
+        async def ainvoke(self, messages):
+            payload = extracted(messages[-1].content).model_dump()
+            payload.update(confidence=1.0, importance=5)
+            payload["memories"][0].update(confidence=0.6, importance=2)
+            return AIMessage(content=json.dumps(payload))
+
+    agent = dream_module.DreamAgent()
+    agent.model = Model()
+    assert invoke(agent)["status"] == "complete"
+    memory = search_memories(space="productivity", project="cleo")[0]
+    assert memory["confidence"] == 0.6
+    assert memory["importance"] == 2
+
+
+@pytest.mark.parametrize("payload", [
+    {"confidence": 1.0, "importance": 5},
+    {"memories": [], "unexpected": "must not be silently ignored"},
+    {"memories": [{"category": "fact", "subject": "x", "content": "y",
+                   "evidence_refs": ["E1"], "confidence": 2}], "importance": 5},
+])
+def test_batch_score_compatibility_keeps_malformed_responses_invalid(payload):
+    class Model:
+        async def ainvoke(self, messages):
+            return AIMessage(content=json.dumps(payload))
+
+    agent = dream_module.DreamAgent()
+    agent.model = Model()
+    with pytest.raises(ValidationError):
+        asyncio.run(agent._extract("source"))
 
 
 def test_runtime_extraction_exposes_no_memory_write_tools(tmp_path):

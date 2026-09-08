@@ -27,6 +27,8 @@ Chat 使用 LangChain 封装；productivity 使用同一组方法的 stdio MCP �
 
 每个模型调用使用独立上下文，输入包含一个块、有限既有记忆和前块摘要。模型只返回
 JSON；程序校验结构和来源引用，再负责存储及完成状态。没有额外的语义复核模型。
+对于包含 `memories` 或 `persona` 集合的模型结果，顶层多余的 `confidence`、
+`importance` 会被忽略，不会作为单条记忆的默认评分；条目分值和其余结构仍严格校验。
 API 使用配置中的整理模型；订阅 runtime 每块新建会话，`dream_extract` MCP 不提供
 记忆写入或读取整份会话的工具。
 
