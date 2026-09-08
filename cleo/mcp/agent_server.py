@@ -12,6 +12,8 @@ from pydantic import Field
 
 
 def agent_tools(mode: str, project_path: str):
+    if mode == "dream_extract":
+        return []
     if mode == "dream":
         from cleo.agents.tools import dream_agent_tools as dream
 
@@ -96,7 +98,7 @@ async def run(args) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=["chat", "dream"], required=True)
+    parser.add_argument("--mode", choices=["chat", "dream", "dream_extract"], required=True)
     parser.add_argument("--project-path", required=True)
     parser.add_argument("--scope", default="{}")
     asyncio.run(run(parser.parse_args()))

@@ -133,6 +133,8 @@ async def _run_dream_agent(
             )
         if isinstance(result, dict) and result.get("status") == "skipped":
             cli.info(f"Memory consolidation skipped: {result.get('reason', 'not needed')}")
+        elif isinstance(result, dict) and result.get("status") == "pending":
+            cli.info("Snapshot consolidated; new session events are waiting for consolidation.")
         else:
             cli.success("DreamAgent memory consolidation finished.")
     except Exception as exc:

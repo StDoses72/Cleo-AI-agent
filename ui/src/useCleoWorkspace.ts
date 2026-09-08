@@ -757,9 +757,19 @@ export function useCleoWorkspace() {
     source: MemoryReviewSource,
     action: MemoryReviewAction,
   ) => {
-    const refreshed = await cleoClient.reviewMemorySource(source, action);
-    setSnapshot(refreshed);
-    return refreshed;
+    try {
+      const refreshed = await cleoClient.reviewMemorySource(source, action);
+      setSnapshot(refreshed);
+      return refreshed;
+    } catch (error) {
+      // Show the persisted failure/checkpoint state while preserving the original error.
+      try {
+        setSnapshot(await cleoClient.loadWorkspace());
+      } catch (refreshError) {
+        setLoadingError(refreshError instanceof Error ? refreshError.message : "无法刷新记忆状态");
+      }
+      throw error;
+    }
   };
   const loadMemoryReviewDetails = (source: MemoryReviewSource) =>
     cleoClient.getMemoryReviewDetails(source);

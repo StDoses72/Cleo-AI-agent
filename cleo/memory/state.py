@@ -457,3 +457,18 @@ def mark_consolidated(
         entry["no_durable_memory_reason"] = no_durable_memory_reason.strip() or None
         _save_unlocked(state_path, state)
         return dict(entry)
+
+
+def mark_consolidation_pending(
+    space: str, project: str, session_id: str, source_hash: str,
+) -> None:
+    """Leave a newer revision queued after finishing an older fixed snapshot."""
+    path = _state_path(space, None)
+    with _STATE_LOCK:
+        state = _load_unlocked(path)
+        entry = state["sources"].get(_source_id(space, project, session_id))
+        if entry and entry.get("source_hash") == source_hash:
+            entry["status"] = "pending"
+            entry["processing_phase"] = None
+            entry["last_error"] = None
+            _save_unlocked(path, state)

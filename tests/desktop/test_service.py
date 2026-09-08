@@ -1199,6 +1199,28 @@ def test_review_memory_source_can_skip_pending_revision(tmp_path: Path) -> None:
     asyncio.run(scenario())
 
 
+def test_memory_review_preserves_full_tool_output(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        service = _service(tmp_path)
+        service.store.create_session(
+            session_id="full-tool", space="productivity", project="workspace",
+            provider="codex", owner_type="user",
+        )
+        body = "complete output line\n" * 1000
+        service.store.append_event(
+            session_id="full-tool", space="productivity", project="workspace",
+            event_type="tool_result", actor="tool", content=body,
+        )
+        service.store.refresh_compact("full-tool")
+        details = await service.get_memory_review_details(
+            session_id="full-tool", space="productivity", project="workspace",
+        )
+        tool = next(e for e in details["events"] if e["type"] == "tool_result")
+        assert tool["content"]["content"] == body
+
+    asyncio.run(scenario())
+
+
 def test_review_memory_source_can_run_dream_agent(tmp_path: Path) -> None:
     async def scenario() -> None:
         service = _service(tmp_path)

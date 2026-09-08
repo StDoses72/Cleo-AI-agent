@@ -1,4 +1,5 @@
 import { modifierKey } from "../platform";
+import { dreamStatusLabel } from "../memoryStatus";
 import { useMemo, useState, type CSSProperties } from "react";
 import {
   Brain,
@@ -331,7 +332,7 @@ function MemorySidebar({
         <span className="dream-orbit" />
         <div>
           <strong>DreamAgent</strong>
-          <small>{overview.dream_agent.last_processed_at ? "已完成最近整理" : "等待首次整理"}</small>
+          <small>{dreamStatusLabel(overview.dream_agent)}</small>
         </div>
       </div>
     </div>

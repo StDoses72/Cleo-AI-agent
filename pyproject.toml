@@ -26,6 +26,7 @@ dependencies = [
   "rich",
   "textual>=7",
   "textual-image>=0.8.5",
+  "tiktoken",
   "uv>=0.11",
 ]
 

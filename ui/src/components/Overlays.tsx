@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { dreamStatusLabel } from "../memoryStatus";
 import {
   ArrowRight,
   Brain,
@@ -425,7 +426,7 @@ export function SettingsModal({
           ) : (
             <div className="settings-page">
               <SettingsRow title="本地优先" description="会话、配置和记忆只保存在 Cleo 数据目录。"><span className="status-good">已启用</span></SettingsRow>
-              <SettingsRow title="DreamAgent" description="在记忆页查看整理结果和待确认来源。"><span className="settings-value">{dreamAgent.status === "running" ? "正在整理" : dreamAgent.status === "attention" ? "有来源需要查看" : dreamAgent.last_processed_at ? "已完成最近整理" : "等待首次整理"}</span></SettingsRow>
+              <SettingsRow title="DreamAgent" description="在记忆页查看整理结果和待确认来源。"><span className="settings-value">{dreamStatusLabel(dreamAgent)}</span></SettingsRow>
               <SettingsRow title="记忆作用域" description="普通对话与开发任务严格分区。"><span className="settings-value">已隔离</span></SettingsRow>
               <SettingsRow title="配置模板" description="复制与 CLI --print-config-template 相同的模板。"><div className="settings-actions"><button type="button" onClick={() => onCopyConfigTemplate("cleo")}>复制 Cleo</button><button type="button" onClick={() => onCopyConfigTemplate("harnesses")}>复制 Harness</button></div></SettingsRow>
               <SettingsRow title="重置工作区" description="对应 CLI --reset-to-main；保留 Cleo 配置。"><button className="settings-action danger" type="button" onClick={() => { if (window.confirm("将仓库重置到本地 main 并清理未跟踪文件？此操作不可撤销。")) onResetWorkspace(); }}>重置到 main</button></SettingsRow>

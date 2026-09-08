@@ -459,7 +459,7 @@ class DesktopService:
         project: str,
         session_id: str,
     ) -> dict[str, Any]:
-        """Return the current redacted compact projection for one review source."""
+        """Preview the full-text projection used by DreamAgent for this source."""
         source = get_session_source(
             space,
             project,
@@ -478,31 +478,37 @@ class DesktopService:
         if compact_source.get("source_content_hash") != source.get("source_hash"):
             raise ValueError("这个记忆来源已更新，请刷新后重试")
 
+        from cleo.memory.compaction import event_content_hash
+        from cleo.memory.dream_projection import project_events
+
+        raw_events = self.store.read_events(session_id)
+        if event_content_hash(raw_events) != compact_source.get("source_content_hash"):
+            raise ValueError("这个记忆来源已更新，请刷新后重试")
+        records = await asyncio.to_thread(project_events, raw_events)
         events = []
         represented_event_ids: set[str] = set()
-        for event in payload.get("events") or []:
-            if not isinstance(event, dict):
+        for record in records:
+            if record.kind.startswith("session_"):
                 continue
-            represented_event_ids.update(
-                str(event_id) for event_id in event.get("source_event_ids") or []
+            represented_event_ids.update(record.event_ids)
+            kind = {"user_message": "human", "assistant_message": "ai"}.get(
+                record.kind, record.kind,
+            )
+            message = record.body.get("message") or {}
+            message_data = message.get("data") or message
+            content = (
+                record.body.get("content", message_data.get("content"))
+                if kind in {"human", "ai"} else record.body
             )
             events.append(
                 {
-                    "id": str(event.get("id") or ""),
-                    "type": str(event.get("type") or "unknown"),
-                    "content": event.get("content"),
-                    "created_at": event.get("created_at"),
+                    "id": record.event_ids[0],
+                    "type": kind,
+                    "content": content,
+                    "created_at": record.created_at,
                     "metadata": {
-                        key: value
-                        for key, value in event.items()
-                        if key
-                        not in {
-                            "id",
-                            "type",
-                            "content",
-                            "created_at",
-                            "source_event_ids",
-                        }
+                        "from_seq": record.seq, "to_seq": record.end_seq,
+                        "method": record.method,
                     },
                 }
             )
@@ -514,7 +520,7 @@ class DesktopService:
                 "actor": str(event.get("actor") or "unknown"),
                 "created_at": event.get("created_at"),
             }
-            for event in self.store.read_events(session_id)
+            for event in raw_events
             if str(event.get("id") or "") not in represented_event_ids
         ]
         return {

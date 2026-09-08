@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { dreamStatusLabel } from "../memoryStatus";
 import {
   ArchiveX,
   Brain,
@@ -137,12 +138,8 @@ export function MemoryView({
     }
   };
 
-  const dreamStatus =
-    dreamAgent.status === "attention"
-      ? "需要留意"
-      : dreamAgent.status === "running"
-        ? "正在整理"
-        : "运行正常";
+  const dreamStatus = reviewingId ? "正在整理"
+    : reviewError ? "整理失败，可继续重试" : dreamStatusLabel(dreamAgent);
 
   return (
     <main className="memory-view" data-testid="memory-view" data-mode={mode}>
@@ -220,7 +217,7 @@ export function MemoryView({
       <aside className="dream-strip">
         <span className="dream-visual"><MoonStar size={18} /></span>
         <div>
-          <strong>{dreamAgent.status === "running" ? "DreamAgent 正在整理记忆" : "DreamAgent 已完成最近一次整理"}</strong>
+          <strong>DreamAgent · {dreamStatus}</strong>
           <p>{dreamAgent.failed_count ? `${dreamAgent.failed_count} 个来源整理失败，需要检查。` : dreamAgent.pending_count ? `${dreamAgent.pending_count} 个来源等待确认。` : "当前没有等待处理的记忆来源。"}</p>
         </div>
         <small data-status={dreamAgent.status}>{dreamStatus}</small>
@@ -342,7 +339,7 @@ function ReviewQueue({
                   <ArchiveX size={14} />忽略本次
                 </button>
                 <button type="button" className="primary" disabled={busy || reviewingId !== null} onClick={() => void onReview(source, "consolidate")} data-testid="memory-review-confirm">
-                  <CheckCircle2 size={14} />{busy ? "正在整理…" : source.status === "failed" ? "重新整理" : "确认并整理"}
+                  <CheckCircle2 size={14} />{busy ? "正在整理…" : source.status === "failed" ? "继续整理" : "确认并整理"}
                 </button>
               </div>
               {expanded ? (
@@ -403,7 +400,7 @@ function MemoryReviewDetailsPanel({
       </div>
       {details.omitted_events.length ? (
         <div className="memory-review-omitted">
-          <small>未进入整理内容的生命周期事件</small>
+          <small>未在此预览展开的生命周期或用量事件</small>
           {details.omitted_events.map((event) => (
             <div key={event.id}>
               <code>#{event.seq}</code>
