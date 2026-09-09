@@ -6,10 +6,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from cleo.memory.paths import MEMORY_SPACES, memory_database_path, memory_state_path
+from cleo.memory.paths import MEMORY_SPACES, memory_state_path
 from cleo.memory.persona import list_persona_traits
+from cleo.memory.reader import MemoryReader
+from cleo.memory.repository import MemoryRepository
 from cleo.memory.state import list_session_sources
-from cleo.memory.store import get_memory_inventory
 
 
 def build_memory_overview(
@@ -26,26 +27,24 @@ def build_memory_overview(
     sources: list[dict[str, Any]] = []
     project_memory_count = 0
     project_scope_count = 0
+    issues = []
 
     for selected_space in spaces:
-        inventory = get_memory_inventory(
-            space=selected_space,
-            project=project,
-            limit=limit,
-            path=memory_database_path(memory_root, selected_space),
+        result = MemoryReader(memory_root).search_long_term_memory(
+            space=selected_space, project=project, limit=100,
         )
-        project_memory_count += inventory["active_memory_count"]
-        project_scope_count += inventory["project_count"]
-        project_entries.extend(_project_entry(entry) for entry in inventory["entries"])
-        project_summaries.extend(
-            {
-                "space": selected_space,
-                "project": entry["project"],
-                "memory_count": entry["memory_count"],
-                "updated_at": entry["updated_at"],
-            }
-            for entry in inventory["projects"]
-        )
+        items = result["results"]
+        issues.extend(result['errors'])
+        project_memory_count += result['total']
+        project_entries.extend(_project_entry(entry) for entry in items)
+        names = [item['project'] for item in result['projects']]
+        histories = {name: MemoryRepository(memory_root).history(selected_space, name, 5)
+                     for name in names}
+        for entry in project_entries:
+            if entry['space'] == selected_space:
+                entry['history'] = histories.get(entry['project'], [])
+        project_scope_count += len(names)
+        project_summaries.extend(result['projects'])
         selected_sources = list_session_sources(
             selected_space,
             path=memory_state_path(memory_root, selected_space),
@@ -68,10 +67,11 @@ def build_memory_overview(
     project_summaries.sort(key=lambda entry: entry["updated_at"] or "", reverse=True)
     processed_times = [entry.get("last_processed_at") for entry in sources]
     last_processed_at = max((value for value in processed_times if value), default=None)
-    dream_status = "attention" if failed_count else "running" if running_count else "idle"
+    dream_status = "attention" if failed_count or issues else "running" if running_count else "idle"
 
     return {
         "schema_version": 1,
+        "issues": issues,
         "summary": {
             "active_memories": project_memory_count + len(persona_traits),
             "project_memories": project_memory_count,

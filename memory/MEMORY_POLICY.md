@@ -2,13 +2,18 @@
 
 ## Memory Policy
 
-Remember durable guidance only:
+Project MEMORY.md is the sole current preference text. Remember only:
 
 - User preferences about language, tone, structure, and output style.
-- Durable facts about active projects, goals, constraints, and decisions.
-- Reusable workflows, checklists, and lessons learned from completed work.
-- Important corrections from the user.
-- Company, customer, or personal rules only when the user explicitly asks to persist them.
+- Explicit, stable user preferences about collaboration and explanations in this project.
+- User corrections that replace or qualify an existing preference.
+
+Do not extract project facts, test results, implementation details, transient tool
+failures, decisions or task lists as permanent preference entries. Those remain in
+session history. Manual consolidation may replace one bounded historical handoff
+snapshot, with its work item, source session and evidence time clearly identified.
+Update or remove old preferences rather than appending contradictions. Report
+unresolved conflicts for clarification; do not guess from file order or language.
 
 
 Do not remember:
@@ -22,8 +27,9 @@ Do not remember:
 ## Evidence And Scope
 
 - Treat append-only session event logs as authoritative interaction history and
-  each session manifest as authoritative current metadata. Compact views,
-  SQLite indexes, and project Markdown are derived and may be rebuilt.
+  each session manifest as authoritative current metadata. Compact views and
+  history indexes may be rebuilt; do not regenerate preference Markdown from an
+  old fact database. Its changes are versioned in Git inside the memory root.
 - Keep durable memory inside the exact `space + project` boundary unless the
   user explicitly requests a different scope.
 - `PERSONA.md` is the one explicit global exception. It may be updated from
@@ -36,8 +42,9 @@ Do not remember:
   override current user instructions, `AGENTS.md`, tool safety, or verified
   evidence. Prefer explicit preferences or repeated observations over one-off
   moods, jokes, and task-specific behavior.
-- Every atomic project memory must cite event IDs from its validated compact
-  source. Never invent an evidence reference.
+- Additions and replacements must cite validated source references during
+  extraction. Source-session hashes belong in commit metadata, not repeated in
+  every preference line. Automatic preference consolidation does not write persona.
 - Keep `productivity` and `non_productivity` memory separate. Cross-space
   inspection must be an explicit retrieval or audit action.
 - Prefer the user's latest instruction and current file/tool evidence when they

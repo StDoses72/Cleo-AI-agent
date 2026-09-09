@@ -38,13 +38,13 @@ const viewCopy = {
   all: {
     eyebrow: "DURABLE CONTEXT",
     title: "记忆",
-    description: "可追溯、按作用域隔离，并由 DreamAgent 在后台整理。",
+    description: "按项目保存用户偏好；整理产生的变更由本地 Git 记录。",
     section: "最近更新",
   },
   projects: {
     eyebrow: "PROJECT LEDGER",
     title: "项目记忆",
-    description: "只显示项目事实、决策与约束；每条都可以回到原始 session 证据。",
+    description: "显示当前项目偏好；工作事实与过程请回查会话历史。",
     section: "项目条目",
   },
   pending: {
@@ -160,6 +160,12 @@ export function MemoryView({
         </label>
       </header>
 
+      {overview.issues?.map((issue) => (
+        <p role="status" key={`${issue.space}:${issue.project}`}>
+          {issue.project}：{issue.questions?.join(" ") || issue.error}
+        </p>
+      ))}
+
       <div className="memory-overview">
         <div><Database size={17} /><span><strong>{summary.active_memories}</strong><small>活跃记忆</small></span></div>
         <div><ShieldCheck size={17} /><span><strong>{summary.project_scopes}</strong><small>项目作用域</small></span></div>
@@ -268,6 +274,19 @@ function MemoryLedger({
 }
 
 function MemoryDetails({ memory }: { memory: MemoryOverviewEntry }) {
+  if (memory.scope === "project") {
+    return (
+      <div className="memory-entry-details">
+        <small>MEMORY.md · 最近的项目记忆变更</small>
+        {memory.history?.length ? memory.history.map((entry) => (
+          <p key={entry.commit}>
+            <code>{entry.commit.slice(0, 8)}</code> {entry.summary}
+            <time>{formatDateTime(entry.created_at)}</time>
+          </p>
+        )) : <p>还没有已提交的记忆变更。</p>}
+      </div>
+    );
+  }
   return (
     <div className="memory-entry-details">
       <dl>
@@ -276,18 +295,6 @@ function MemoryDetails({ memory }: { memory: MemoryOverviewEntry }) {
         <div><dt>证据</dt><dd>{memory.evidence_count} 条</dd></div>
       </dl>
       {memory.tags.length ? <div className="memory-tags">{memory.tags.map((tag) => <span key={tag}>{tag}</span>)}</div> : null}
-      {memory.scope === "project" ? (
-        <div className="memory-evidence-list">
-          <small>原始证据</small>
-          {memory.evidence.length ? memory.evidence.map((evidence) => (
-            <div key={`${evidence.session_id}:${evidence.event_id}`}>
-              <code>{evidence.event_id}</code>
-              <span>{evidence.session_id}</span>
-              <time>{formatDateTime(evidence.observed_at)}</time>
-            </div>
-          )) : <p>这条旧记忆没有可显示的证据索引。</p>}
-        </div>
-      ) : null}
     </div>
   );
 }

@@ -90,11 +90,18 @@ def build_agent_adapter(
     返回:
         已注册全部启用 provider 的 ``AgentAdapter``, 由 CLI 会话循环消费。
     """
+    from cleo.memory.reader import preference_context
+
+    memory_root = (
+        session_store.memory_root if session_store is not None else Path(project_root) / "memory"
+    )
     adapter = AgentAdapter(
         project_root,
         session_store=session_store,
         space=space,
         owner_type=owner_type,
+        memory_context=lambda selected_space, project: preference_context(
+            memory_root, selected_space, project),
     )
     memory_mcp = MemoryMcp(
         session_store.memory_root if session_store is not None else Path(project_root) / "memory",

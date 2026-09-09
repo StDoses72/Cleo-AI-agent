@@ -135,6 +135,8 @@ async def _run_dream_agent(
             cli.info(f"Memory consolidation skipped: {result.get('reason', 'not needed')}")
         elif isinstance(result, dict) and result.get("status") == "pending":
             cli.info("Snapshot consolidated; new session events are waiting for consolidation.")
+        elif isinstance(result, dict) and result.get("status") == "needs_clarification":
+            cli.info("Memory conflict: " + " ".join(result["questions"]))
         else:
             cli.success("DreamAgent memory consolidation finished.")
     except Exception as exc:

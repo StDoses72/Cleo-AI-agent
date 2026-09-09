@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -22,6 +23,7 @@ class AgentAdapter(AgentService):
         session_store: SessionRepository | None = None,
         space: str = "productivity",
         owner_type: str = "agent",
+        memory_context: Callable[[str, str], str] | None = None,
     ) -> None:
         root = Path(project_root).expanduser().resolve()
         if not root.is_dir():
@@ -32,6 +34,7 @@ class AgentAdapter(AgentService):
             session_store = SessionStore(root / "memory")
         super().__init__(
             root, session_store=session_store, space=space, owner_type=owner_type,
+            memory_context=memory_context,
         )
 
     def register_acp(self, name: str, spec: AcpAgentSpec) -> None:
