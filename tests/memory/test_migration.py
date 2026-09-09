@@ -1,4 +1,6 @@
 import asyncio
+import importlib.util
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -8,7 +10,12 @@ from cleo.config.settings import SettingsModel
 from cleo.memory.consolidation import Extraction
 from cleo.memory.repository import MemoryRepository, digest
 from cleo.sessions.store import SessionStore
-from scripts.migrate_memory import preview
+
+_script = Path(__file__).resolve().parents[2] / 'scripts/migrate_memory.py'
+_spec = importlib.util.spec_from_file_location('cleo_migration_script', _script)
+_migration = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_migration)
+preview = _migration.preview
 
 
 def test_preview_isolated_and_reviewed_apply_preserves_legacy_in_git(tmp_path, monkeypatch):
