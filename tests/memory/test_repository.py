@@ -7,6 +7,17 @@ from cleo.memory.repository import MemoryRepository
 TEXT = "# 用户偏好\n- 默认中文解释。\n"
 
 
+@pytest.mark.parametrize("input_text", [None, "payload"])
+def test_git_does_not_inherit_desktop_protocol_input(tmp_path, monkeypatch, input_text):
+    def run(command, **kwargs):
+        assert kwargs["stdin"] == (subprocess.DEVNULL if input_text is None else None)
+        assert kwargs["input"] == (input_text.encode() if input_text is not None else None)
+        return subprocess.CompletedProcess(command, 0, b"", b"")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    MemoryRepository(tmp_path)._git("status", input=input_text)
+
+
 def test_nested_git_allowlist_noop_and_manual_edit(tmp_path):
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     root = tmp_path / "memory"

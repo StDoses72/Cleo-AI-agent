@@ -105,6 +105,7 @@ class MemoryRepository:
                 "core.autocrlf=false",
                 *args,
             ],
+            stdin=subprocess.DEVNULL if input is None else None,
             input=input.encode("utf-8") if input is not None else None,
             capture_output=True,
             timeout=30,
