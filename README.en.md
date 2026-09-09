@@ -6,7 +6,9 @@ Cleo is a local-first AI workspace that brings general chat, developer agents, r
 
 The project supports native desktop builds for Windows, macOS and Linux, plus a Python CLI, Textual TUIs, and a stdio MCP entry point. User data stays on the local device by default; inference is provided by the API provider or external agent harness selected by the user.
 
-> Current version: `0.3.6`. Cleo is still pre-1.0 and is best suited to evaluation, internal-tool integration, and active development. Pin a version and validate it before deployments that require stable data formats or extension contracts.
+> Current version: `0.3.7`. Cleo is still pre-1.0 and is best suited to evaluation, internal-tool integration, and active development. Pin a version and validate it before deployments that require stable data formats or extension contracts.
+
+0.3.7 stores bounded project preferences in Markdown, with an independent Git repository inside the memory directory. Consolidation requires Git on PATH. Legacy fact-based memory requires a [reviewed migration preview](docs/MEMORY_MARKDOWN_GIT.md#旧格式迁移); upgrading does not automatically overwrite old files or delete history.
 
 ## What Cleo solves
 
@@ -14,7 +16,7 @@ General assistants and coding agents usually keep separate histories, permission
 
 - **One workspace** for general chat and Productivity development workflows.
 - **Resumable sessions** with normalized provider events, projects, titles, history, and recovery.
-- **Scoped memory** partitioned by `space + project + session`, with evidence for durable conclusions.
+- **Scoped memory** with current preferences in Markdown per `space + project`, changes recorded in embedded Git, and work facts retrieved from original sessions.
 - **Replaceable models and harnesses** for foreground Cleo, DreamAgent, Codex, Claude SDK, and ACP agents.
 - **Local auditability** for configuration, sessions, tool logs, and memory without a Cleo-hosted account service.
 
@@ -32,9 +34,9 @@ General assistants and coding agents usually keep separate histories, permission
 - Streaming chat and one-shot tasks with JPEG, PNG, WebP, and GIF attachments.
 - A provider-neutral coding-harness data plane plus optional Codex-specific controls.
 - An append-only `events.jsonl` source of truth, atomic manifests, and rebuildable SQLite indexes.
-- Separate `non_productivity` and `productivity` memory spaces.
-- Deterministic compaction, secret redaction, and evidence-backed DreamAgent consolidation.
-- Project-scoped long-term memory, history retrieval, and a global persona limited to interaction tendencies.
+- `non_productivity` and `productivity` memory spaces, with explicit project filters for applicable preferences.
+- Deterministic compaction, secret redaction, and DreamAgent preference edits with evidence validation and conflict handling.
+- Project preferences, one replaceable handoff snapshot on manual consolidation, and history retrieval; existing persona remains compatible, with no new automatic persona extraction.
 - Local shell controls for allowlists, path boundaries, timeouts, output limits, and audit logging.
 - Per-thread browser sessions with public/private-network and domain boundaries.
 - Self-contained platform-specific desktop packages with verified updates and separate user data.

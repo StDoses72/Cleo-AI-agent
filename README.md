@@ -6,7 +6,9 @@ Cleo 是一套本地优先的 AI 工作空间：它把通用对话、开发者�
 
 项目提供 Windows、macOS、Linux 桌面构建支持，以及 Python CLI、Textual TUI 和 stdio MCP 入口。用户数据默认保存在本机；模型推理由用户配置的 API provider 或外部 agent harness 提供。
 
-> 当前版本：`0.3.6`。Cleo 仍处于 pre-1.0 阶段，适合试用、内部工具集成和参与开发；对数据格式或扩展接口有稳定性要求的生产部署应固定版本并先完成验证。
+> 当前版本：`0.3.7`。Cleo 仍处于 pre-1.0 阶段，适合试用、内部工具集成和参与开发；对数据格式或扩展接口有稳定性要求的生产部署应固定版本并先完成验证。
+
+0.3.7 将项目记忆改为有容量上限的用户偏好 Markdown，并在 memory 目录内用独立 Git 记录变更。整理需要系统安装 Git 且可从 PATH 调用；旧事实型记忆需要[预览并审查迁移](docs/MEMORY_MARKDOWN_GIT.md#旧格式迁移)，升级不会自动覆盖旧文件或删除历史。
 
 ## Cleo 解决什么问题
 
@@ -14,7 +16,7 @@ Cleo 是一套本地优先的 AI 工作空间：它把通用对话、开发者�
 
 - **一个工作入口**：在桌面端或终端中切换通用聊天与 Productivity 开发工作流。
 - **可恢复的会话**：把不同 provider 的输出归一化为本地事件，支持项目、标题、历史与恢复。
-- **有边界的长期记忆**：记忆按 `space + project + session` 隔离，长期结论保留事件证据。
+- **有边界的长期记忆**：当前偏好按 `space + project` 保存为 Markdown，变更由内嵌 Git 记录；工作事实回查原始会话。
 - **可替换的模型与 harness**：前台 Cleo、DreamAgent、Codex、Claude SDK 与 ACP agent 可独立配置。
 - **本地可审计**：配置、会话、工具日志和记忆留在用户设备，不依赖 Cleo 自建的云端账户系统。
 
@@ -32,9 +34,9 @@ Cleo 是一套本地优先的 AI 工作空间：它把通用对话、开发者�
 - 流式通用对话与一次性任务，支持 JPEG、PNG、WebP 和 GIF 附件。
 - 面向代码工作的统一 harness adapter，包含 provider-neutral 数据面和可选的 Codex 控制面。
 - append-only `events.jsonl` 会话事实源、原子 manifest 和可重建 SQLite 索引。
-- `non_productivity` 与 `productivity` 两个独立 memory space，避免通用上下文与工程上下文串流。
-- 规则压缩、敏感信息清理和带证据引用的 DreamAgent 记忆整理。
-- 项目级长期记忆、历史片段检索，以及仅承载交互倾向的全局 persona。
+- `non_productivity` 与 `productivity` 两个 memory space；读取偏好时显式限定项目范围。
+- 规则压缩、敏感信息清理，以及校验证据、处理冲突并发布偏好编辑的 DreamAgent。
+- 项目偏好、手动整理时可替换的单个交接快照与历史片段检索；兼容现有 persona，停止自动提取新 persona。
 - 带 allowlist、路径边界、超时、输出上限和审计日志的本地 shell 工具。
 - 每个 thread 独立的浏览器会话，以及公网/私网和域名访问边界。
 - Windows、macOS 与 Linux 原生桌面包，按平台校验更新并保留用户数据。
