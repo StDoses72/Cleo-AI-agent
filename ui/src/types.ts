@@ -298,6 +298,7 @@ export interface ModelConnectionProbe {
 export type ApplyModelSettings = (operation: () => Promise<ModelSettings>) => Promise<ModelSettings>;
 
 export interface MemoryOverviewEntry {
+  history?: Array<{ commit: string; created_at: string; summary: string }>;
   id: string;
   scope: "project" | "persona";
   space: "non_productivity" | "productivity" | null;
@@ -368,6 +369,7 @@ export type MemoryReviewAction = "consolidate" | "skip";
 
 export interface MemoryOverview {
   schema_version: 1;
+  issues?: Array<{ space: string; project: string; error: string; questions?: string[] }>;
   summary: {
     active_memories: number;
     project_memories: number;

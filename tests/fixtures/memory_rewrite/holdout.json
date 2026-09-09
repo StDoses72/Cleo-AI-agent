@@ -1,0 +1,217 @@
+{
+  "version": 1,
+  "description": "Held-out scenarios authored after freezing the first implementation prompt. Expectations are never sent to DreamAgent.",
+  "cases": [
+    {
+      "id": "H01",
+      "title": "默认详略的同义重述",
+      "initial_memory": "# 用户偏好\n- 工作汇报先给简短结论，需要时再展开细节。\n",
+      "rounds": [
+        {
+          "scope": {
+            "space": "productivity",
+            "project": "holdout",
+            "work_item": "report"
+          },
+          "refresh_snapshot": false,
+          "messages": [
+            {
+              "id": "h01-1",
+              "role": "user",
+              "content": "工作汇报还是照旧，先简短说结论，有需要再讲细节。"
+            }
+          ],
+          "expectations": {
+            "change": "unchanged",
+            "snapshot": "off",
+            "must_keep": [
+              "原有先简短结论的偏好原文"
+            ],
+            "must_not": [
+              "重复或无谓改写"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "H02",
+      "title": "冲突旧值不是最后一条",
+      "initial_memory": "# 用户偏好\n- 工作汇报默认逐项详细展开。\n- 工作汇报默认只给简短结论。\n- 文件路径要可点击。\n",
+      "rounds": [
+        {
+          "scope": {
+            "space": "productivity",
+            "project": "holdout",
+            "work_item": "report"
+          },
+          "refresh_snapshot": false,
+          "messages": [
+            {
+              "id": "h02-1",
+              "role": "user",
+              "content": "以前确实要求工作汇报默认只给简短结论。现在改为默认逐项详细展开，以新的要求为准。"
+            }
+          ],
+          "expectations": {
+            "change": "changed",
+            "snapshot": "off",
+            "conflict_status": "resolved",
+            "must_keep": [
+              "仅保留默认逐项详细展开",
+              "文件路径可点击不变"
+            ],
+            "must_not": [
+              "保留默认只给简短结论",
+              "新增第三条代替删除旧条目"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "H03",
+      "title": "助手猜测不是用户偏好",
+      "initial_memory": "",
+      "rounds": [
+        {
+          "scope": {
+            "space": "non_productivity",
+            "project": "holdout",
+            "work_item": "chat"
+          },
+          "refresh_snapshot": false,
+          "messages": [
+            {
+              "id": "h03-1",
+              "role": "user",
+              "content": "今天这个界面看起来挺舒服。"
+            },
+            {
+              "id": "h03-2",
+              "role": "assistant",
+              "content": "看来你总是喜欢暗色极简风，以后所有界面都应该做成黑色。"
+            }
+          ],
+          "expectations": {
+            "change": "unchanged",
+            "snapshot": "off",
+            "must_keep": [],
+            "must_not": [
+              "暗色或极简的长期偏好",
+              "把助手猜测当用户确认"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "H04",
+      "title": "启动不是完成",
+      "initial_memory": "# 用户偏好\n- 错误报告包含复现步骤。\n",
+      "rounds": [
+        {
+          "scope": {
+            "space": "productivity",
+            "project": "holdout",
+            "work_item": "verification"
+          },
+          "refresh_snapshot": true,
+          "messages": [
+            {
+              "id": "h04-1",
+              "role": "user",
+              "content": "开始跑最后一次验证。"
+            },
+            {
+              "id": "h04-2",
+              "role": "tool",
+              "content": "Test process started. Still running. Session ID 77."
+            }
+          ],
+          "expectations": {
+            "change": "changed",
+            "snapshot": "present",
+            "must_keep": [
+              "复现步骤偏好",
+              "验证已启动但没有完成结果"
+            ],
+            "must_not": [
+              "测试已通过",
+              "所有工作已完成",
+              "把进程号保存为偏好"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "H05",
+      "title": "中英文用途不同",
+      "initial_memory": "# 用户偏好\n- 给我的项目解释默认用中文。\n- 对外发布的 README 默认用英文。\n",
+      "rounds": [
+        {
+          "scope": {
+            "space": "productivity",
+            "project": "holdout",
+            "work_item": "docs"
+          },
+          "refresh_snapshot": false,
+          "messages": [
+            {
+              "id": "h05-1",
+              "role": "user",
+              "content": "整理现有偏好。"
+            }
+          ],
+          "expectations": {
+            "change": "unchanged",
+            "snapshot": "off",
+            "conflict_status": "none",
+            "must_keep": [
+              "两个不同用途的语言偏好原样保留"
+            ],
+            "must_not": [
+              "误报为默认语言冲突",
+              "删掉任意一条",
+              "要求不必要的澄清"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "H06",
+      "title": "显式删除一条偏好",
+      "initial_memory": "# 用户偏好\n- 示例代码默认使用 TypeScript。\n- 汇报使用简短段落。\n",
+      "rounds": [
+        {
+          "scope": {
+            "space": "productivity",
+            "project": "holdout",
+            "work_item": "cleanup"
+          },
+          "refresh_snapshot": false,
+          "messages": [
+            {
+              "id": "h06-1",
+              "role": "user",
+              "content": "把示例代码默认 TypeScript 这一条偏好删掉，不要替换成其他语言。简短段落那条保留。"
+            }
+          ],
+          "expectations": {
+            "change": "changed",
+            "snapshot": "off",
+            "must_keep": [
+              "简短段落原样保留"
+            ],
+            "must_not": [
+              "TypeScript 默认偏好仍有效",
+              "新建无依据的默认语言"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

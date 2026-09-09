@@ -166,26 +166,22 @@ def test_search_hit_limit_and_corrupt_source(tmp_path):
     assert error["partial"] and error["errors"]
 
 
-def test_durable_memory_uses_explicit_root_and_preserves_evidence(tmp_path):
+def test_markdown_preferences_replace_legacy_fact_retrieval(tmp_path):
+    from cleo.memory.repository import MemoryRepository
+
+    repository = MemoryRepository(tmp_path)
     for space, project in [("non_productivity", "general"), ("productivity", "code")]:
-        upsert_memory(
-            space=space,
-            project=project,
-            session_id="source",
-            source_hash="sha256:test",
-            category="decision",
-            subject="shared requirement",
-            content="Use shared memory",
-            evidence_event_ids=["event-1"],
-            tags=["memory"],
-            path=memory_database_path(tmp_path, space),
-        )
+        upsert_memory(space=space, project=project, session_id="old", source_hash="old-hash",
+                      category="fact", subject="obsolete", content="shared obsolete fact",
+                      evidence_event_ids=["old-event"], path=memory_database_path(tmp_path, space))
+        repository.publish(
+            space, project, "", "# User Preferences\n- Prefer shared explanations.\n", "test")
     reader = MemoryReader(tmp_path)
     results = reader.search_long_term_memory("shared")["results"]
     assert {r["space"] for r in results} == {"non_productivity", "productivity"}
-    assert all(r["evidence"][0]["event_id"] == "event-1" for r in results)
-    assert len(reader.search_long_term_memory("shared", project="code")["results"]) == 1
-    assert reader.search_long_term_memory("shared", tags=["missing"])["results"] == []
+    assert all(r["category"] == "preference" for r in results)
+    assert reader.search_long_term_memory("obsolete")["results"] == []
+    assert len(reader.memory_history("productivity", "code")["results"]) == 1
 
 
 def test_valid_summary_and_read_cursor_survive_project_move(tmp_path):

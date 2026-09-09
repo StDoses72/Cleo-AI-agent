@@ -9,8 +9,9 @@ from pydantic import SecretStr, ValidationError
 import cleo.agents.dream as dream_module
 from cleo.config.settings import SettingsModel
 from cleo.memory.consolidation import Extraction
+from cleo.memory.reader import MemoryReader
+from cleo.memory.repository import MemoryRepository
 from cleo.memory.state import get_session_source
-from cleo.memory.store import search_memories
 from cleo.sessions.store import SessionStore
 
 
@@ -39,12 +40,16 @@ def invoke(agent):
     return asyncio.run(agent.invoke("session-dream", "cleo", "productivity"))
 
 
-def extracted(prompt, *, subject="Stored decision"):
+def memories():
+    return MemoryReader(dream_module.settings.MEMORY_DIR).search_long_term_memory(
+        space="productivity", project="cleo")["results"]
+
+
+def extracted(prompt, *, subject="Prefer concise answers."):
     line = prompt.split("Evidence records:\n", 1)[1].splitlines()[0]
     row = json.loads(line)
     return Extraction.model_validate({
-        "memories": [{"category": "decision", "subject": subject,
-                      "content": "Use the accepted approach.",
+        "edits": [{"new": subject,
                       "evidence_refs": [row.get("ref", row["record"])]}],
         "summary": "Keep the accepted approach.",
     })
@@ -79,10 +84,10 @@ def test_completion_publishes_and_skips_unchanged_source(tmp_path, monkeypatch):
     assert len(prompts) == 1
     source = get_session_source("productivity", "cleo", "session-dream")
     assert source["consolidated_hash"] == source["source_hash"]
-    memory = search_memories(space="productivity", project="cleo")
-    assert len(memory) == 1 and memory[0]["evidence_count"] >= 1
+    memory = memories()
+    assert len(memory) == 1 and memory[0]["category"] == "preference"
     memory_path = config.MEMORY_DIR / "productivity/projects/cleo/MEMORY.md"
-    assert "Stored decision" in memory_path.read_text()
+    assert "Prefer concise answers." in memory_path.read_text()
 
 
 def test_retry_reuses_completed_blocks_and_stages_before_publication(tmp_path, monkeypatch):
@@ -102,7 +107,7 @@ def test_retry_reuses_completed_blocks_and_stages_before_publication(tmp_path, m
     monkeypatch.setattr(dream_module.DreamAgent, "_extract", extract)
     with pytest.raises(RuntimeError, match="provider unavailable"):
         invoke(dream_module.DreamAgent())
-    assert search_memories(space="productivity", project="cleo") == []
+    assert memories() == []
     state = get_session_source("productivity", "cleo", "session-dream")
     assert state["status"] == "failed" and "1/" in state["last_error"]
     path = config.MEMORY_DIR / "productivity/projects/cleo/sessions/session-dream/dream.json"
@@ -153,13 +158,13 @@ def test_unknown_evidence_never_publishes_or_completes(tmp_path, monkeypatch):
 
     async def extract(self, prompt):
         result = extracted(prompt)
-        result.memories[0].evidence_refs = ["invented"]
+        result.edits[0].evidence_refs = ["invented"]
         return result
 
     monkeypatch.setattr(dream_module.DreamAgent, "_extract", extract)
     with pytest.raises(ValueError, match="unknown evidence"):
         invoke(dream_module.DreamAgent())
-    assert search_memories(space="productivity", project="cleo") == []
+    assert memories() == []
     assert get_session_source("productivity", "cleo", "session-dream")["status"] == "failed"
 
 
@@ -171,20 +176,20 @@ def test_publication_failure_retry_does_not_call_model_again(tmp_path, monkeypat
         calls.append(prompt)
         return extracted(prompt)
 
-    original = dream_module.publish
+    original = MemoryRepository.publish
 
-    def fail_once(**kwargs):
-        original(**kwargs)
+    def fail_once(self, *args, **kwargs):
+        original(self, *args, **kwargs)
         raise OSError("publication interrupted")
 
     monkeypatch.setattr(dream_module.DreamAgent, "_extract", extract)
-    monkeypatch.setattr(dream_module, "publish", fail_once)
+    monkeypatch.setattr(MemoryRepository, "publish", fail_once)
     with pytest.raises(OSError):
         invoke(dream_module.DreamAgent())
-    monkeypatch.setattr(dream_module, "publish", original)
+    monkeypatch.setattr(MemoryRepository, "publish", original)
     assert invoke(dream_module.DreamAgent())["status"] == "complete"
     assert len(calls) == 1
-    assert len(search_memories(space="productivity", project="cleo")) == 1
+    assert len(memories()) == 1
 
 
 def test_extractor_has_no_tools_or_accumulating_messages():
@@ -193,7 +198,7 @@ def test_extractor_has_no_tools_or_accumulating_messages():
     class Model:
         async def ainvoke(self, messages):
             calls.append(messages)
-            return AIMessage(content='{"memories": [], "summary": "none"}')
+            return AIMessage(content='{"edits": [], "summary": "none"}')
 
     agent = dream_module.DreamAgent()
     agent.model = Model()
@@ -203,22 +208,15 @@ def test_extractor_has_no_tools_or_accumulating_messages():
     assert calls[1][-1].content == "second"
 
 
-def test_extractor_ignores_batch_scores_without_changing_item_scores(tmp_path, monkeypatch):
-    setup(tmp_path, monkeypatch)
-
+def test_extractor_rejects_fact_schema_and_batch_scores():
     class Model:
         async def ainvoke(self, messages):
-            payload = extracted(messages[-1].content).model_dump()
-            payload.update(confidence=1.0, importance=5)
-            payload["memories"][0].update(confidence=0.6, importance=2)
-            return AIMessage(content=json.dumps(payload))
+            return AIMessage(content='{"edits": [], "confidence": 1}')
 
     agent = dream_module.DreamAgent()
     agent.model = Model()
-    assert invoke(agent)["status"] == "complete"
-    memory = search_memories(space="productivity", project="cleo")[0]
-    assert memory["confidence"] == 0.6
-    assert memory["importance"] == 2
+    with pytest.raises(ValidationError):
+        asyncio.run(agent._extract("source"))
 
 
 @pytest.mark.parametrize("payload", [
@@ -263,7 +261,7 @@ def test_cancellation_retains_checkpoint_and_releases_publisher_lock(tmp_path, m
     assert invoke(dream_module.DreamAgent())["status"] == "complete"
 
 
-def test_existing_narrative_survives_publication_and_retry(tmp_path, monkeypatch):
+def test_legacy_narrative_requires_migration_without_overwriting(tmp_path, monkeypatch):
     config, _ = setup(tmp_path, monkeypatch)
     path = config.MEMORY_DIR / "productivity/projects/cleo/MEMORY.md"
     path.write_text("# Human-reviewed context\nKeep this exact decision.\n", encoding="utf-8")
@@ -272,7 +270,8 @@ def test_existing_narrative_survives_publication_and_retry(tmp_path, monkeypatch
         return extracted(prompt)
 
     monkeypatch.setattr(dream_module.DreamAgent, "_extract", extract)
-    invoke(dream_module.DreamAgent())
+    with pytest.raises(ValueError, match="migration"):
+        invoke(dream_module.DreamAgent())
     assert path.read_text().startswith("# Human-reviewed context\nKeep this exact decision.")
 
 
@@ -322,19 +321,19 @@ def test_cancel_during_publication_waits_for_writer_before_retry(tmp_path, monke
     entered = threading.Event()
     release = threading.Event()
     calls = []
-    original = dream_module.publish
+    original = MemoryRepository.publish
 
     async def extract(self, prompt):
         calls.append(prompt)
         return extracted(prompt)
 
-    def slow_publish(**kwargs):
+    def slow_publish(self, *args, **kwargs):
         entered.set()
         assert release.wait(10)
-        return original(**kwargs)
+        return original(self, *args, **kwargs)
 
     monkeypatch.setattr(dream_module.DreamAgent, "_extract", extract)
-    monkeypatch.setattr(dream_module, "publish", slow_publish)
+    monkeypatch.setattr(MemoryRepository, "publish", slow_publish)
 
     async def scenario():
         task = asyncio.create_task(dream_module.DreamAgent().invoke(

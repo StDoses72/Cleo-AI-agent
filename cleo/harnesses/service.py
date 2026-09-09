@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -46,6 +47,7 @@ class AgentService:
         session_store: SessionRepository,
         space: str = "productivity",
         owner_type: str = "agent",
+        memory_context: Callable[[str, str], str] | None = None,
     ) -> None:
         """Use caller-supplied persistence; never construct infrastructure here."""
         self._project_root = Path(project_root).expanduser().resolve()
@@ -56,6 +58,7 @@ class AgentService:
         self._store = session_store
         self._space = space
         self._owner_type = owner_type
+        self._memory_context = memory_context
 
     @property
     def providers(self) -> tuple[str, ...]:
@@ -180,9 +183,11 @@ class AgentService:
             manifest_updates={"status": "running"},
         )
         try:
+            context = (self._memory_context(self._space, route.project)
+                       if self._memory_context else '')
             turn = await route.provider.prompt(
                 route.provider_session_id,
-                prompt,
+                context + '\n\nCurrent user request:\n' + prompt if context else prompt,
                 on_event,
             )
         except Exception as exc:

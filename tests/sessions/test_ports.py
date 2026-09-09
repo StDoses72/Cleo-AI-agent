@@ -68,3 +68,28 @@ def test_local_store_matches_repository_signatures() -> None:
         if name.startswith("_") or not callable(method):
             continue
         assert inspect.signature(getattr(SessionStore, name)) == inspect.signature(method), name
+
+
+def test_preference_context_is_not_saved_as_user_evidence(tmp_path):
+    repository = create_autospec(SessionRepository, instance=True, spec_set=True)
+    repository.load_manifest.side_effect = FileNotFoundError('new session')
+    provider = create_autospec(AgentProvider, instance=True)
+    provider.name = 'test-provider'
+    provider.create_session.return_value = ProviderSession('native', 'native')
+    provider.prompt.return_value = ProviderTurn(
+        native_session_id='native', turn_id='t', status='completed', response='done', events=(),
+    )
+    seen = []
+
+    def context(space, project):
+        seen.append((space, project))
+        return 'Scoped preference: explain concisely.'
+
+    service = AgentService(tmp_path, session_store=repository, memory_context=context)
+    service.register(provider)
+    asyncio.run(service.run(provider.name, 'Actual user request', project='course'))
+    assert seen == [('productivity', 'course')]
+    assert 'Scoped preference' in provider.prompt.call_args.args[1]
+    assert repository.append_events.call_args_list[0].kwargs['events'][0]['content'] == (
+        'Actual user request'
+    )

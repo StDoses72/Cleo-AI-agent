@@ -1,10 +1,10 @@
 from pathlib import Path
 
 from cleo.memory.overview import build_memory_overview
-from cleo.memory.paths import memory_database_path, memory_state_path
+from cleo.memory.paths import memory_state_path
 from cleo.memory.persona import upsert_persona_trait
+from cleo.memory.repository import MemoryRepository
 from cleo.memory.state import mark_consolidation_skipped, touch_session_source
-from cleo.memory.store import upsert_memory
 
 
 def test_memory_overview_matches_desktop_contract(tmp_path: Path) -> None:
@@ -13,16 +13,8 @@ def test_memory_overview_matches_desktop_contract(tmp_path: Path) -> None:
         ("non_productivity", "general"),
         ("productivity", "cleo"),
     ):
-        upsert_memory(
-            space=space,
-            project=project,
-            session_id=f"session-{project}",
-            source_hash=f"hash-{project}",
-            category="preference" if project == "general" else "decision",
-            subject=f"Memory for {project}",
-            content="Durable content.",
-            evidence_event_ids=[f"event-{project}"],
-            path=memory_database_path(memory_root, space),
+        MemoryRepository(memory_root).publish(
+            space, project, "", "# User Preferences\n- Prefer concise answers.\n", "initial",
         )
 
     upsert_persona_trait(
@@ -100,7 +92,8 @@ def test_memory_overview_matches_desktop_contract(tmp_path: Path) -> None:
     ]
     assert {entry["scope"] for entry in overview["entries"]} == {"project", "persona"}
     project_memory = next(entry for entry in overview["entries"] if entry["scope"] == "project")
-    assert project_memory["evidence"][0]["event_id"].startswith("event-")
+    assert project_memory["category"] == "preference"
+    assert project_memory["evidence"] == []
     persona = next(entry for entry in overview["entries"] if entry["scope"] == "persona")
     assert persona["tags"] == ["style"]
     assert persona["evidence"] == []
@@ -113,3 +106,16 @@ def test_memory_overview_is_empty(tmp_path: Path) -> None:
     assert overview["entries"] == []
     assert overview["project_summaries"] == []
     assert overview["review_sources"] == []
+
+
+def test_overview_counts_are_not_truncated_with_display_limit(tmp_path):
+    root = tmp_path / 'memory'
+    for number in range(5):
+        path = root / 'productivity/projects' / str(number) / 'MEMORY.md'
+        path.parent.mkdir(parents=True)
+        path.write_text('# User Preferences\n' + ''.join(f'- Preference {i}\n' for i in range(30)),
+                        encoding='utf-8')
+    result = build_memory_overview(memory_root=root, limit=10)
+    assert result['summary']['project_memories'] == 150
+    assert result['summary']['project_scopes'] == 5
+    assert len(result['entries']) == 10
