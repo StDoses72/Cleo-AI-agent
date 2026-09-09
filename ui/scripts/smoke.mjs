@@ -4,8 +4,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkSettingsLayout } from "./settings-layout.mjs";
 
-const appDir = join(dirname(fileURLToPath(import.meta.url)), "..");
-const outputDir = join(appDir, "output", "playwright");
+const appDir = process.env.CLEO_SMOKE_APP_DIR ?? join(dirname(fileURLToPath(import.meta.url)), "..");
+const outputDir = process.env.CLEO_SMOKE_OUTPUT ?? join(appDir, "output", "playwright");
 const packagedExecutable = process.env.CLEO_EXECUTABLE;
 
 function assert(condition, message) {
@@ -81,8 +81,11 @@ try {
   await window.getByTestId("memory-nav-projects").click();
   await window.getByRole("heading", { name: "项目记忆", exact: true }).waitFor();
   await window.getByRole("button", { name: /Cleo-AI-agent/ }).click();
-  await window.getByText("Cleo 是 local-first runtime", { exact: true }).click();
-  await window.getByText("原始证据", { exact: true }).waitFor();
+  await window.getByText("修改后列出变更文件", { exact: true }).click();
+  await window.getByText("MEMORY.md · 最近的项目记忆变更", { exact: true }).waitFor();
+  await window.getByText("01234567", { exact: true }).waitFor();
+  assert(await window.getByText("置信度", { exact: true }).count() === 0,
+    "Project preferences still show synthetic confidence scores");
   await window.getByTestId("memory-nav-pending").click();
   await window.getByRole("heading", { name: "待确认", exact: true }).waitFor();
   const reviewRowsBefore = await window.getByTestId("memory-review-list").locator("article").count();
