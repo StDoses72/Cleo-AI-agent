@@ -232,6 +232,61 @@
           "expectations": {"change": "changed", "snapshot": "off", "must_keep": ["课程复杂代码默认先解释", "用户明确要求速查时可直接简答的条件例外"], "must_not": ["默认取消解释", "例外扩大为所有短问题", "普通解释与速查例外被误判为不可并存"]}
         }
       ]
+    },
+    {
+      "id": "P13",
+      "title": "文件已有显性冲突，依来源纠正而非按条目顺序选择",
+      "initial_memory": "# 用户偏好\n- 本课程默认使用中文解释。\n- 每次修改后列出变更文件。\n- 本课程默认使用英文解释。\n",
+      "rounds": [
+        {
+          "scope": {"space": "productivity", "project": "course", "work_item": "memory-review"},
+          "refresh_snapshot": false,
+          "messages": [
+            {"id": "p13-1", "role": "user", "content": "以后本课程默认用英文解释。"},
+            {"id": "p13-2", "role": "user", "content": "修改以前的语言偏好：从现在起本课程默认用中文解释，不再默认英文。"},
+            {"id": "p13-3", "role": "user", "content": "整理一下记忆。"}
+          ],
+          "expectations": {"change": "changed", "snapshot": "off", "conflict_status": "resolved", "must_keep": ["主动发现文件内相同范围的中英文默认语言冲突", "根据 p13-2 的明确纠正只保留一条默认中文偏好", "每次修改后列出变更文件的无关偏好保持原文不变", "修复通过明确替换或删除旧条目完成，并说明依据"], "must_not": ["因为英文条目在文件最后就选择英文", "中文和英文继续同时作为有效默认值", "再追加第三条语言偏好而不清理旧条目", "把语言规则改成无依据的随机或双语默认", "删除无关偏好或清空文件"]}
+        },
+        {
+          "scope": {"space": "productivity", "project": "course", "work_item": "memory-review"},
+          "refresh_snapshot": false,
+          "messages": [{"id": "p13-4", "role": "user", "content": "没有新增偏好，再检查一次现有记忆。"}],
+          "expectations": {"change": "unchanged", "snapshot": "off", "conflict_status": "none", "must_keep": ["唯一的中文默认偏好", "列出变更文件的偏好"], "must_not": ["英文偏好复活", "重复条目或空 Git 提交", "无冲突仍反复改写"]}
+        }
+      ]
+    },
+    {
+      "id": "P14",
+      "title": "显性冲突无依据时报告待澄清，获得澄清后修复",
+      "initial_memory": "# 用户偏好\n- 本课程默认使用英文解释。\n- 每次修改后列出变更文件。\n- 本课程默认使用中文解释。\n",
+      "rounds": [
+        {
+          "scope": {"space": "productivity", "project": "course", "work_item": "memory-review"},
+          "refresh_snapshot": false,
+          "messages": [{"id": "p14-1", "role": "user", "content": "整理一下已有记忆。"}],
+          "expectations": {"change": "unchanged", "snapshot": "off", "conflict_status": "unresolved", "must_keep": ["原文件保持不变，明确报告中英文默认语言存在未解决冲突并请求澄清", "无关的列出变更文件偏好保留", "本轮不得标为冲突已经修复"], "must_not": ["凭文件顺序选择最后一条", "因当前用户说中文就推断永久中文偏好", "自行假设英语与中文的适用条件", "伪造来源或时间顺序", "默默删除一方、删除双方或新增折中偏好", "未解决冲突仍声明整理完全成功"]}
+        },
+        {
+          "scope": {"space": "productivity", "project": "course", "work_item": "memory-review"},
+          "refresh_snapshot": false,
+          "messages": [{"id": "p14-2", "role": "user", "content": "默认英文才是我的要求。把中文默认那条删掉，列变更文件的偏好保持不动。"}],
+          "expectations": {"change": "changed", "snapshot": "off", "conflict_status": "resolved", "must_keep": ["仅保留一条默认英文偏好", "列出变更文件的偏好保持原文不变", "依据 p14-2 解决冲突"], "must_not": ["中文默认仍有效", "再次要求已经给出的澄清", "无依据改变其他偏好"]}
+        }
+      ]
+    },
+    {
+      "id": "P15",
+      "title": "表面相反但范围不同的偏好不应误修复",
+      "initial_memory": "# 用户偏好\n- 本课程的 Java 练习默认用普通循环。\n- 本课程专门学习 stream 的演示使用 stream 写法。\n- 每次修改后列出变更文件。\n",
+      "rounds": [
+        {
+          "scope": {"space": "productivity", "project": "course", "work_item": "memory-review"},
+          "refresh_snapshot": false,
+          "messages": [{"id": "p15-1", "role": "user", "content": "整理一下已有记忆。"}],
+          "expectations": {"change": "unchanged", "snapshot": "off", "conflict_status": "none", "must_keep": ["普通 Java 练习与专门 stream 演示的不同范围原样保留", "列出变更文件的偏好原样保留"], "must_not": ["把不同范围的写法误判为同范围冲突", "丢掉任意一条合理偏好", "删除限定后变成一律循环或一律 stream", "无理由请求用户澄清或产生提交"]}
+        }
+      ]
     }
   ]
 }
