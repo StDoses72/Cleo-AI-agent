@@ -68,6 +68,10 @@ export function useCleoWorkspace() {
   const generationRef = useRef(0);
   const cancellingRunRef = useRef(false);
   const selectionRef = useRef(0);
+  const selectionBySpaceRef = useRef<Partial<Record<ThreadSpace, {
+    projectId: string;
+    threadId: string | null;
+  }>>>({});
   const draftKey = activeThreadId ?? `new:${activeSpace}:${activeProjectId}`;
   const draft = drafts[draftKey] ?? emptyDraft;
   const updateDraft = (key: string, update: (draft: ComposerDraft) => ComposerDraft) => {
@@ -127,6 +131,14 @@ export function useCleoWorkspace() {
     () => snapshot?.projects.find((project) => project.id === activeProjectId) ?? null,
     [activeProjectId, snapshot],
   );
+  useEffect(() => {
+    if (activeSpace === "memory" || activeProject?.space !== activeSpace) return;
+    selectionBySpaceRef.current[activeSpace] = {
+      projectId: activeProjectId,
+      threadId: activeThreadId,
+    };
+  }, [activeSpace, activeProject, activeProjectId, activeThreadId]);
+
   const draftRuntime = useMemo<RuntimeProfile>(() => {
     if (activeSpace === "chat") {
       const profile = runtimeCatalog?.nonProductivityProfiles.find(
@@ -171,9 +183,26 @@ export function useCleoWorkspace() {
   };
 
   const selectSpace = (space: WorkspaceSpace) => {
+    if (space === activeSpace) return;
     selectionRef.current += 1;
     setActiveSpace(space);
     if (space === "memory" || !snapshot) return;
+    const saved = selectionBySpaceRef.current[space];
+    const savedProject = snapshot.projects.find(
+      (project) => project.id === saved?.projectId && project.space === space,
+    );
+    if (saved && savedProject) {
+      const savedThread = snapshot.threads.find(
+        (thread) => thread.id === saved.threadId && thread.projectId === savedProject.id
+          && thread.space === space,
+      );
+      const next = savedThread ?? (saved.threadId === null ? null : snapshot.threads.find(
+        (thread) => thread.projectId === savedProject.id && thread.space === space,
+      ));
+      setActiveProjectId(savedProject.id);
+      setActiveThreadId(next?.id ?? null);
+      return;
+    }
     const projectForSpace = snapshot.projects.find((project) => project.space === space);
     const preferredProjectId =
       activeProject?.space === space ? activeProjectId : projectForSpace?.id ?? activeProjectId;

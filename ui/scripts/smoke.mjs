@@ -68,6 +68,50 @@ try {
   await window.getByTestId("choose-workspace").waitFor();
   await window.locator(".project-picker").click();
 
+  // Returning from another space must preserve the selected thread, not pick the first row.
+  await window.getByRole("button", { name: /^统一 managed 与 native sessions/ }).click();
+  for (const space of ["记忆", "对话"]) {
+    await window.getByRole("button", { name: space, exact: true }).click();
+    await window.getByRole("button", { name: "开发", exact: true }).click();
+    assert(await window.locator(".thread-row.active").innerText().then((text) => text.includes("统一 managed")),
+      `Returning from ${space} lost the selected productivity thread`);
+  }
+  await window.getByRole("button", { name: "开发", exact: true }).click();
+  assert((await window.locator(".thread-row.active").innerText()).includes("统一 managed"),
+    "Clicking the current space changed the selected thread");
+  await window.getByRole("button", { name: "对话", exact: true }).click();
+  await window.getByRole("button", { name: /^Cleo 的产品语气/ }).click();
+  await window.getByRole("button", { name: "开发", exact: true }).click();
+  await window.getByRole("button", { name: "对话", exact: true }).click();
+  assert((await window.locator(".thread-row.active").innerText()).includes("Cleo 的产品语气"),
+    "Returning to chat lost its selected thread");
+  await window.getByRole("button", { name: "开发", exact: true }).click();
+  await window.locator(".project-picker").click();
+  await window.locator(".project-menu").getByRole("button", { name: /Orbit Notes.*orbit-notes/ }).click();
+  await window.getByTestId("composer-input").fill("Keep this workspace draft");
+  for (const space of ["记忆", "对话"]) {
+    await window.getByRole("button", { name: space, exact: true }).click();
+    await window.getByRole("button", { name: "开发", exact: true }).click();
+    assert((await window.locator(".project-picker").innerText()).includes("Orbit Notes"),
+      `Returning from ${space} lost the selected empty workspace`);
+    assert(await window.getByTestId("composer-input").inputValue() === "Keep this workspace draft",
+      "Returning to an empty workspace lost its draft");
+    assert(await window.locator(".thread-row.active").count() === 0,
+      "Returning to an empty workspace selected an unrelated thread");
+  }
+  await window.locator(".project-picker").click();
+  await window.locator(".project-menu").getByRole("button", { name: /Cleo AI agent.*Cleo-AI-agent/ }).click();
+  await window.getByTestId("new-thread").click();
+  await window.getByTestId("composer-input").fill("Unsent new task");
+  await window.getByRole("button", { name: "记忆", exact: true }).click();
+  await window.getByRole("button", { name: "开发", exact: true }).click();
+  assert(await window.locator(".thread-row.active").count() === 0,
+    "Returning to a new task selected an existing thread");
+  assert(await window.getByTestId("composer-input").inputValue() === "Unsent new task",
+    "Returning to a new task lost its draft");
+  await window.getByTestId("composer-input").fill("");
+  await window.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
+
   await window.getByRole("button", { name: "对话", exact: true }).click();
   await window.getByRole("heading", { name: "对话", exact: true }).waitFor();
   await window.getByTestId("new-thread").click();
