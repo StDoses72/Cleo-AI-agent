@@ -12,6 +12,7 @@ from cleo.cli.productivity_tui import COMMANDS as PRODUCTIVITY_TUI_COMMANDS
 from cleo.desktop.service import CHAT_COMMANDS, PRODUCTIVITY_COMMANDS, DesktopService
 from cleo.harnesses.control import HarnessModel
 from cleo.harnesses.models import AgentEvent
+from cleo.memory.compaction import load_validated_compact
 from cleo.memory.paths import memory_state_path
 from cleo.memory.state import (
     get_session_source,
@@ -499,6 +500,7 @@ def test_productivity_turn_persists_and_emits_exact_change_history(
 
         class Adapter:
             async def prompt(self, _session_id, _prompt, *, on_event):
+                service.store.refresh_compact(session_id)
                 return SimpleNamespace(response="done", status="completed", error=None)
 
         service._adapter_instance = Adapter()
@@ -517,6 +519,11 @@ def test_productivity_turn_persists_and_emits_exact_change_history(
         stored = service.store.read_events(session_id)
         turn_diff = next(event for event in stored if event["type"] == "turn_diff")
         history_event = next(event for event in emitted if event["type"] == "change-history")
+        compact = load_validated_compact(
+            memory_root=service.store.memory_root,
+            space="productivity", project="workspace", session_id=session_id,
+        )
+        assert compact["source"]["to_seq"] == stored[-1]["seq"]
         assert turn_diff["content"] == diff
         assert turn_diff["data"]["title"] == "review this exact turn"
         assert history_event["changeSet"]["id"] == turn_diff["id"]
