@@ -46,6 +46,7 @@ const dependencies = new DependencyUpdater({
 });
 const evolution = new EvolutionManager({
   app, root: join(app.getPath("userData"), "evolution"), dataHome: backend.runtimePaths().cleoHome,
+  openExternal: (url) => shell.openExternal(url),
   onState: () => {
     void evolution.status().then((state) => {
       for (const window of BrowserWindow.getAllWindows()) {
@@ -288,6 +289,8 @@ app.whenReady().then(async () => {
       download: () => evolution.downloadRelease(params.tag),
       merge: () => evolution.mergeRelease(params.tag),
       login: () => evolution.login(),
+      openGithubLogin: () => evolution.openGithubLogin(),
+      cancelLogin: () => evolution.cancelLogin(),
       submit: () => evolution.submitPullRequest(params.title, params.body),
       pullRequest: () => evolution.refreshPullRequest(),
       apply: () => applyEvolution(params.id),
@@ -332,7 +335,7 @@ app.on("before-quit", (event) => {
   if (shutdownStarted) return;
   event.preventDefault();
   shutdownStarted = true;
-  void Promise.all([backend.close(), dependencies.close()])
+  void Promise.all([backend.close(), dependencies.close(), evolution.cancelLogin()])
     .catch((error) => console.error("Cleo shutdown failed:", error))
     .finally(() => app.quit());
 });

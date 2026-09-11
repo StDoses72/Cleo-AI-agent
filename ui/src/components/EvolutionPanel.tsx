@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, GitBranch, MoreHorizontal, ShieldCheck, PanelRightOpen, X, LoaderCircle, Save, Play, RotateCcw } from "lucide-react";
+import { ChevronDown, GitBranch, GitPullRequest, ShieldCheck, PanelRightOpen, X, LoaderCircle, Save, Play, RotateCcw } from "lucide-react";
 import type { EvolutionBuild, EvolutionState } from "../evolution-types";
+import { GithubLogin } from "./GithubLogin";
 
 interface Props {
   state: EvolutionState | null;
@@ -46,6 +47,8 @@ export function EvolutionPanel({ state, error, busy, running, inspectorOpen, onT
   const active = state?.builds.find((build) => build.id === state.active);
   const base = state?.builds.find((build) => build.id === (state.iteration?.base || state.active));
   const candidate = state?.builds.find((build) => build.id === state.candidate);
+  const contribution = candidate || active;
+  const hasContribution = contribution?.kind === "local" && Boolean(contribution.sourceHash);
   const versions = state?.builds.filter((build) => build.kind === "official" || build.savedAt) || [];
   const blocked = busy || running || Boolean(state?.transaction);
   const validation = state?.validation;
@@ -71,7 +74,7 @@ export function EvolutionPanel({ state, error, busy, running, inspectorOpen, onT
       <div className="evolution-top-actions">
         <button aria-label="独立版本恢复" title="独立版本恢复" disabled={blocked || !state?.baseline} onClick={() => onAction("recovery")}><ShieldCheck size={18} /></button>
         <button aria-label="查看代码变更" aria-pressed={inspectorOpen} title="查看代码变更" onClick={onToggleInspector}><PanelRightOpen size={18} /></button>
-        <button aria-label="贡献与发布" title="贡献与发布" onClick={() => setSheet("contribute")}><MoreHorizontal size={19} /></button>
+        <button aria-label="贡献与发布" title="贡献与发布" onClick={() => setSheet("contribute")}><GitPullRequest size={17} />提交 PR</button>
       </div>
     </div>
     <div className="evolution-actionbar" role="region" aria-label="修改操作">
@@ -86,6 +89,7 @@ export function EvolutionPanel({ state, error, busy, running, inspectorOpen, onT
         <button disabled={blocked || !state?.iteration} onClick={() => setSheet("discard")}><RotateCcw size={14} />放弃修改</button>
       </div>
     </div>
+    <GithubLogin auth={state?.githubAuth} busy={blocked} onAction={onAction} onContribute={() => setSheet("contribute")} />
     {failure && <div className="evolution-error" role="alert"><span>{failure}</span>
       {checkFailed && validation.repairable && <button disabled={blocked} onClick={onRepair}>让 Cleo 修复</button>}
       <button disabled={blocked} onClick={checkFailed ? () => onAction("build") : onRetry}>{checkFailed ? "重新检查" : "重试"}</button>
@@ -114,11 +118,19 @@ export function EvolutionPanel({ state, error, busy, running, inspectorOpen, onT
       {sheet === "discard" && <><p>放弃本轮修改，回到「{versionLabel(base)}」。聊天、记忆和配置不变。{active?.id !== base?.id ? "Cleo 会自动重启。" : ""}</p><button className="evolution-primary" disabled={blocked} onClick={() => act("discard")}>确认放弃</button></>}
       {sheet === "contribute" && <><p>本地保存不会发布正式版本。普通用户提交 PR，维护者在 GitHub 决定合并与发布 Release。</p>
         {state?.pullRequest && <a href={state.pullRequest.url} target="_blank" rel="noreferrer">查看已有 PR</a>}
-        <button disabled={blocked} onClick={() => onAction("login")}>连接 GitHub</button>
-        <form onSubmit={(event) => { event.preventDefault(); act("submit", { title, body }); }}>
-          <input aria-label="PR 标题" placeholder="贡献标题" value={title} onChange={(event) => setTitle(event.target.value)} required />
-          <textarea aria-label="PR 说明" placeholder="修改内容和验证结果" value={body} onChange={(event) => setBody(event.target.value)} required />
-          <button className="evolution-primary" disabled={blocked || !state?.prepared || !title.trim() || !body.trim()}>提交 PR</button>
+        {state?.githubAuth?.status === "connected" ? <p>GitHub 已连接。</p>
+          : <button disabled={blocked} onClick={() => act("login")}>连接 GitHub</button>}
+        <p>提交版本：{versionLabel(contribution)}</p>
+        <p>源码基于 {contribution?.baseTag || state?.baseTag || "所选正式版本"}。将该版本包含的改动提交到 StDoses72/Cleo-AI-agent，供维护者审查。</p>
+        {!hasContribution ? <p>当前没有经过构建检查的本地版本。请先完成修改和检查。</p>
+          : !state?.prepared ? <><p>先恢复这个版本的源码，再提交。准备源码不会发布改动。</p>
+            <button disabled={blocked} onClick={() => onAction("prepare")}>{busy && state?.phase === "preparing" ? "正在准备源码…" : "准备当前版本源码"}</button></>
+          : <p>源码已准备，可以填写说明并提交。</p>}
+        {failure && <p role="alert">{failure}</p>}
+        <form onSubmit={(event) => { event.preventDefault(); onAction("submit", { title, body }); }}>
+          <label>PR 标题<input aria-label="PR 标题" placeholder="贡献标题" value={title} onChange={(event) => setTitle(event.target.value)} required /></label>
+          <label>PR 说明<textarea aria-label="PR 说明" placeholder="修改内容和验证结果" value={body} onChange={(event) => setBody(event.target.value)} required /></label>
+          <button className="evolution-primary" disabled={blocked || !hasContribution || !state?.prepared || !title.trim() || !body.trim()}>{state?.pullRequest?.state === "OPEN" ? "更新 PR" : "提交 PR"}</button>
         </form></>}
     </dialog>}
   </header>;

@@ -6,7 +6,8 @@ import { exists, fileHash, readJson, writeJson } from "./evolution-store.mjs";
 const GITHUB = "https://api.github.com";
 
 /** Purpose: Run an argument array without a shell. Input: executable, args, process options. Output: bounded output. */
-export async function run(command, args, { cwd, env = process.env, log = () => {}, timeout = 1_800_000, successCodes = [0] } = {}) {
+export async function run(command, args, { cwd, env = process.env, log = () => {}, timeout = 1_800_000, successCodes = [0], signal } = {}) {
+  signal?.throwIfAborted();
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd, env, detached: process.platform !== "win32", windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
     let output = "";
@@ -20,18 +21,22 @@ export async function run(command, args, { cwd, env = process.env, log = () => {
     };
     child.stdout.on("data", collect);
     child.stderr.on("data", collect);
-    const timer = setTimeout(() => {
-      timedOut = true;
+    // Both cancellation and timeout stop descendants before releasing the operation.
+    const stop = () => {
       if (process.platform === "win32" && child.pid) {
         const killer = spawn("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
         killer.on("error", () => child.kill());
       } else if (child.pid) {
         try { process.kill(-child.pid, "SIGKILL"); } catch { child.kill(); }
       }
-    }, timeout);
-    child.once("error", (error) => { clearTimeout(timer); reject(error); });
+    };
+    const timer = setTimeout(() => { timedOut = true; stop(); }, timeout);
+    signal?.addEventListener("abort", stop, { once: true });
+    const cleanup = () => { clearTimeout(timer); signal?.removeEventListener("abort", stop); };
+    child.once("error", (error) => { cleanup(); reject(error); });
     child.once("close", (code) => {
-      clearTimeout(timer);
+      cleanup();
+      if (signal?.aborted) { reject(signal.reason); return; }
       if (timedOut) { reject(new Error("操作超时，已停止进程。请检查日志后重试。")); return; }
       if (oversized) { reject(new Error("操作输出超过限制，已停止使用不完整的结果。")); return; }
       if (!successCodes.includes(code)) reject(new Error(`${command.split(/[\\/]/).at(-1)} 执行失败 (${code})\n${output.slice(-3000)}`));

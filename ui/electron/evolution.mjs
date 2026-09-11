@@ -2,6 +2,7 @@ import { randomUUID, createHash } from "node:crypto";
 import { cp, mkdir, readFile, writeFile, rename, readdir, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { createRequire } from "node:module";
+import { stripVTControlCharacters } from "node:util";
 import { EvolutionStore, exists, fileHash, readJson, writeJson, ownedPath } from "./evolution-store.mjs";
 import { EvolutionTools, run, fetchRelease, downloadVerified, extract } from "./evolution-tools.mjs";
 import { desktopPlatform, installationRoot } from "./platform.mjs";
@@ -10,6 +11,7 @@ import { validateManifest } from "./updater.mjs";
 const REPOSITORY = "StDoses72/Cleo-AI-agent";
 const REPO_URL = `https://github.com/${REPOSITORY}.git`;
 const API = `https://api.github.com/repos/${REPOSITORY}`;
+const GITHUB_DEVICE_URL = "https://github.com/login/device";
 const PROTECTED = ["bootstrap.mjs", "evolution.mjs", "evolution-store.mjs", "evolution-tools.mjs", "evolution-recovery.mjs", "evolution-launch.mjs", "evolution-progress.mjs", "evolution-handoff.mjs"];
 
 /** Purpose: Retain an installation as physical files without Electron expanding ASAR archives.
@@ -31,7 +33,8 @@ async function copyProgramBundle(source, destination) {
 
 /** Purpose: Coordinate local evolution; only explicit UI actions build, activate, or publish contributions. */
 export class EvolutionManager {
-  constructor({ app, root, dataHome, onState = () => {}, packaged = app.isPackaged, executable = process.execPath, sourceRepository = REPO_URL }) {
+  constructor({ app, root, dataHome, onState = () => {}, packaged = app.isPackaged, executable = process.execPath, sourceRepository = REPO_URL,
+    openExternal = async () => { throw new Error("Browser opener unavailable."); } }) {
     this.app = app;
     this.store = new EvolutionStore(root, dataHome);
     this.source = join(root, "source");
@@ -44,6 +47,10 @@ export class EvolutionManager {
     this.error = null;
     this.logs = "";
     this.runCommand = run;
+    this.openExternal = openExternal;
+    this.githubAuth = null;
+    this.githubLogin = null;
+    this.githubAbort = null;
     this.tools = new EvolutionTools(join(root, "tools"), (message) => this.log(message));
   }
 
@@ -73,7 +80,7 @@ export class EvolutionManager {
       validation = { ...validation, status: "interrupted", repairable: false,
         message: "上次检查中断，当前修改尚未验证。请重新检查。" };
     }
-    return { ...state, phase: this.phase, error: this.error, logs: this.logs, source: state.prepared ? this.source : null,
+    return { ...state, phase: this.phase, error: this.error, logs: this.logs, githubAuth: this.githubAuth, source: state.prepared ? this.source : null,
       validation,
       supported: this.packaged, currentVersion: this.app.getVersion(),
       releases: await readJson(join(this.store.root, "releases.json"), []),
@@ -444,58 +451,134 @@ export class EvolutionManager {
     return this.selectVersion(state.iteration.base, true);
   }
 
-  /** Input: none. Output: web/device authorization owned by GitHub CLI; no tokens enter app state. */
-  async login() {
-    return this.operation("authenticating", async () => {
-      const tools = await this.tools.prepare(true);
-      await run(tools.gh, ["auth", "login", "--hostname", "github.com", "--git-protocol", "https", "--web"],
-        { env: tools.env, log: (text) => this.log(text), timeout: 900000 });
-    });
+  /** Purpose: Publish transient GitHub authorization progress without persisting codes or tokens.
+   * Input: complete public login state. Output: a renderer notification.
+   */
+  setGithubAuth(state) {
+    this.githubAuth = state;
+    this.onState();
   }
 
-  /** Input: toolchain. Output: local checkpoint with no public version number. */
+  /** Purpose: Open the official device page for the current pending authorization.
+   * Input: none; CLI output cannot choose the URL. Output: browser launch or a recoverable manual-open hint.
+   */
+  async openGithubLogin() {
+    const attempt = this.githubAuth;
+    if (attempt?.status !== "waiting") return;
+    try {
+      await this.openExternal(GITHUB_DEVICE_URL);
+      if (this.githubAuth === attempt) this.setGithubAuth({ ...attempt, browserError: null });
+    } catch {
+      if (this.githubAuth === attempt) this.setGithubAuth({ ...attempt,
+        browserError: "未能自动打开浏览器。可手动访问 github.com/login/device，输入上面的验证码。" });
+    }
+  }
+
+  /** Purpose: Cancel device polling, including during application shutdown.
+   * Input: none. Output: completion after the login command exits; existing credentials remain intact.
+   */
+  async cancelLogin() {
+    this.githubAbort?.abort();
+    await this.githubLogin;
+  }
+
+  /** Purpose: Guide a cancellable GitHub CLI device login with live instructions and distinct failures.
+   * Input: none. Output: transient login result; credentials stay with gh and build validation is untouched.
+   */
+  login() {
+    if (this.githubLogin) return this.githubLogin;
+    this.githubLogin = this.operation("authenticating", async () => {
+      const controller = new AbortController();
+      this.githubAbort = controller;
+      const { signal } = controller;
+      this.setGithubAuth({ status: "starting", message: "正在准备 GitHub 登录…" });
+      let output = "";
+      try {
+        const tools = await this.tools.prepare(true);
+        signal.throwIfAborted();
+        const options = { env: tools.env, signal };
+        try {
+          await this.runCommand(tools.gh, ["auth", "status", "--hostname", "github.com", "--active"], { ...options, timeout: 30000 });
+          signal.throwIfAborted();
+        } catch {
+          signal.throwIfAborted();
+          await this.runCommand(tools.gh, ["auth", "login", "--hostname", "github.com", "--git-protocol", "https", "--web"], {
+            ...options, timeout: 900000,
+            log: (chunk) => {
+              if (signal.aborted) return;
+              output = (output + chunk).slice(-8000);
+              const code = stripVTControlCharacters(output).match(/one-time code:\s*([A-Z0-9]{4}-[A-Z0-9]{4})\b/i)?.[1].toUpperCase();
+              if (code && this.githubAuth?.status === "starting") {
+                this.setGithubAuth({ status: "waiting", code, message: "请在 GitHub 页面输入验证码并完成授权。" });
+                void this.openGithubLogin();
+              }
+            },
+          });
+          signal.throwIfAborted();
+        }
+        this.setGithubAuth({ status: "connected", message: "GitHub 已连接，可以继续提交 PR。" });
+      } catch (error) {
+        const message = signal.aborted ? "已取消 GitHub 登录。"
+          : /deadline exceeded|timed?\s*out|expired|超时/i.test(error.message || "")
+            ? "GitHub 授权等待超时，请重新连接并使用新的验证码。"
+            : "GitHub 连接未完成，请检查网络后重新连接。";
+        this.setGithubAuth({ status: signal.aborted ? "cancelled" : "failed", message });
+      } finally {
+        this.githubAbort = null;
+      }
+      return this.githubAuth;
+    }).finally(() => { this.githubLogin = null; });
+    return this.githubLogin;
+  }
+
+  /** Purpose: Checkpoint source before contribution or release merging.
+   * Input: toolchain. Output: local commit with no public version number.
+   */
   async commit(tools) {
     const options = { cwd: this.source, env: tools.env };
-    await run(tools.git, ["add", "--all"], options);
-    if (!await run(tools.git, ["diff", "--cached", "--name-only"], options)) return;
-    await run(tools.git, ["-c", "user.name=Cleo Local", "-c", "user.email=cleo-local@users.noreply.github.com",
+    await this.runCommand(tools.git, ["add", "--all"], options);
+    if (!await this.runCommand(tools.git, ["diff", "--cached", "--name-only"], options)) return;
+    await this.runCommand(tools.git, ["-c", "user.name=Cleo Local", "-c", "user.email=cleo-local@users.noreply.github.com",
       "commit", "-m", "Apply local Cleo improvements"], options);
   }
 
-  /** Input: explicit user-approved title/body. Output: user's fork PR; never a release or upstream push. */
+  /** Purpose: Publish an explicitly requested contribution from the verified managed source.
+   * Input: user-approved title/body. Output: user's fork PR; never a release or upstream push.
+   */
   async submitPullRequest(title, body) {
     return this.operation("submitting", async () => {
       if (!title?.trim() || !body?.trim()) throw new Error("请填写 PR 标题和改动说明。");
       await this.checkProtection();
       const tools = await this.tools.prepare(true);
-      await run(tools.gh, ["auth", "status"], { env: tools.env });
+      await this.runCommand(tools.gh, ["auth", "status"], { env: tools.env });
       const state = await this.store.read();
       const candidate = state.builds.find((item) => item.id === (state.candidate || state.active));
       if (!candidate?.sourceHash || candidate.sourceHash !== await this.sourceHash(tools)) {
         throw new Error("请先对当前修改完成检查和构建，再提交 PR。");
       }
-      const user = JSON.parse(await run(tools.gh, ["api", "user"], { env: tools.env }));
+      const user = JSON.parse(await this.runCommand(tools.gh, ["api", "user"], { env: tools.env }));
       if (!/^[a-zA-Z0-9-]+$/.test(user.login)) throw new Error("GitHub 用户名无效。");
-      await run(tools.gh, ["repo", "fork", REPOSITORY, "--clone=false", "--remote=false"], { cwd: this.source, env: tools.env });
+      // With an explicit repository, --clone=false skips local setup; gh rejects any --remote flag.
+      await this.runCommand(tools.gh, ["repo", "fork", REPOSITORY, "--clone=false"], { cwd: this.source, env: tools.env });
       await this.commit(tools);
       if (state.pullRequest?.merged || state.pullRequest?.state === "CLOSED") {
-        await run(tools.git, ["switch", "-c", `cleo/local-${randomUUID().slice(0, 8)}`],
+        await this.runCommand(tools.git, ["switch", "-c", `cleo/local-${randomUUID().slice(0, 8)}`],
           { cwd: this.source, env: tools.env });
       }
-      const branch = await run(tools.git, ["branch", "--show-current"], { cwd: this.source, env: tools.env });
+      const branch = await this.runCommand(tools.git, ["branch", "--show-current"], { cwd: this.source, env: tools.env });
       if (!/^cleo\/[a-zA-Z0-9-]+$/.test(branch)) throw new Error("只能提交 Cleo 管理的本地分支。");
       // git invokes credential helpers through sh; quote the trusted executable as a shell literal.
       const helper = `!'${tools.gh.replaceAll("\\", "/").replaceAll("'", "'\\''")}' auth git-credential`;
-      await run(tools.git, ["-c", "credential.helper=", "-c", `credential.helper=${helper}`, "push",
+      await this.runCommand(tools.git, ["-c", "credential.helper=", "-c", `credential.helper=${helper}`, "push",
         `https://github.com/${user.login}/Cleo-AI-agent.git`, `HEAD:refs/heads/${branch}`], { cwd: this.source, env: tools.env });
       const bodyFile = join(this.store.root, "pr-body.md");
       await writeFile(bodyFile, body, "utf8");
       let url = state.pullRequest?.state === "OPEN" ? state.pullRequest.url : null;
       if (url) {
-        await run(tools.gh, ["pr", "edit", url, "--repo", REPOSITORY,
+        await this.runCommand(tools.gh, ["pr", "edit", url, "--repo", REPOSITORY,
           "--title", title.trim(), "--body-file", bodyFile], { cwd: this.source, env: tools.env });
       } else {
-        url = await run(tools.gh, ["pr", "create", "--repo", REPOSITORY, "--head", `${user.login}:${branch}`,
+        url = await this.runCommand(tools.gh, ["pr", "create", "--repo", REPOSITORY, "--head", `${user.login}:${branch}`,
           "--title", title.trim(), "--body-file", bodyFile], { cwd: this.source, env: tools.env });
       }
       await this.store.update({ pullRequest: { url, state: "OPEN", merged: false } });

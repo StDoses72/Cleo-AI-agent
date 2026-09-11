@@ -20,6 +20,13 @@ export interface EvolutionValidation {
   repairable?: boolean;
 }
 
+export interface EvolutionGithubAuth {
+  status: "starting" | "waiting" | "connected" | "failed" | "cancelled";
+  message: string;
+  code?: string;
+  browserError?: string | null;
+}
+
 export interface EvolutionState {
   phase: string;
   supported: boolean;
@@ -41,6 +48,7 @@ export interface EvolutionState {
   error: string | null;
   logs: string;
   validation?: EvolutionValidation | null;
+  githubAuth?: EvolutionGithubAuth | null;
   builds: EvolutionBuild[];
   lastApplication?: { from: string | null; backup: string };
   transaction?: { phase: string } | null;

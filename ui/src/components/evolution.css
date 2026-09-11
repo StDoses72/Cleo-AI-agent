@@ -31,6 +31,14 @@
 .evolution-log { margin:0 24px 12px; color:var(--muted); font-size:11px; }
 .evolution-log summary { cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .evolution-log pre { max-height:150px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; user-select:text; }
+.evolution-github { margin:0 24px 14px; padding:16px; border:1px solid var(--border-strong); border-radius:10px; background:var(--surface); font-size:12px; }
+.evolution-github-heading { display:flex; align-items:center; gap:8px; color:var(--text); }
+.evolution-github p { margin:9px 0; line-height:1.7; color:var(--muted); }
+.evolution-github-code { display:flex; align-items:center; flex-wrap:wrap; gap:14px; margin:12px 0; }
+.evolution-github-code code { font-size:22px; letter-spacing:3px; font-weight:650; color:var(--text); user-select:text; }
+.evolution-github button { border:1px solid var(--border-strong); padding:8px 11px; }
+.evolution-github-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.evolution-github .evolution-github-hint { color:var(--danger); }
 .evolution-dialog { color:var(--text); background:var(--surface-raised); border:1px solid var(--border-strong); border-radius:14px; padding:24px; width:min(460px,calc(100vw - 48px)); max-height:80vh; overflow:auto; box-shadow:0 24px 90px #0006; }
 .evolution-dialog::backdrop { background:#0007; backdrop-filter:blur(3px); }
 .evolution-dialog-title { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:18px; }
@@ -56,5 +64,5 @@
  .evolution-version-trigger b { max-width:180px; }
  .evolution-actionbar { padding:8px 14px 12px; flex-wrap:wrap; gap:12px; }
  .evolution-actions { margin-left:auto; }
- .evolution-error,.evolution-notice,.evolution-log { margin-left:14px; margin-right:14px; }
+ .evolution-error,.evolution-notice,.evolution-log,.evolution-github { margin-left:14px; margin-right:14px; }
 }
