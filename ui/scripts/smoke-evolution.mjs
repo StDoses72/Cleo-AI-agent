@@ -25,8 +25,9 @@ try {
       baseline: "baseline", baseTag: "v0.3.9", candidate: "candidate", source: "fixture", threadId: null,
       error: null, logs: "", builds: [
         { id: "baseline", kind: "official", version: "0.3.9", baseTag: "v0.3.9", baseline: true },
-        { id: "candidate", kind: "local", version: null, baseTag: "v0.3.9" },
+        { id: "candidate", kind: "local", version: null, baseTag: "v0.3.9", sourceHash: "fixture-source" },
       ], iteration: { base: "baseline" }, pullRequest: null,
+      validation: { status: "passed", sourceHash: "fixture-source", candidate: "candidate", message: "检查通过，可以应用。" },
       releases: [], recoveryPath: "fixture",
     };
     window.evolutionActions = [];
@@ -44,8 +45,15 @@ try {
         window.evolutionActions.push({ action, params });
         if (action === "prepare") state.prepared = true;
         if (action === "thread") state.threadId = params.id;
-        if (action === "begin") { state.iteration = { base: state.active }; state.draftDirty = true; }
-        if (action === "build") { state.candidate = "candidate"; state.draftDirty = false; }
+        if (action === "begin") {
+          state.iteration = { base: state.active }; state.draftDirty = true;
+          state.validation = { status: "pending", message: "待检查" };
+        }
+        if (action === "build") {
+          state.candidate = "candidate"; state.draftDirty = false;
+          state.validation = { status: "passed", sourceHash: "fixture-source", candidate: "candidate", message: "检查通过，可以应用。" };
+        }
+        if (action === "repairPrompt") return "修复桌面检查错误：TS17001，重复 JSX 属性。";
         if (action === "apply") state.active = params.id;
         if (action === "save") {
           const build = state.builds.find((item) => item.id === state.active);
@@ -106,6 +114,35 @@ try {
   assert.ok(automatic.indexOf("prepare") < automatic.indexOf("thread"));
   assert.ok(automatic.indexOf("thread") < automatic.indexOf("begin"));
   assert.ok(automatic.indexOf("begin") < automatic.indexOf("build"));
+  await page.evaluate(() => window.patchEvolution({
+    active: "baseline", candidate: "candidate", draftDirty: false, logs: "",
+    validation: { status: "failed", stage: "typecheck", sourceHash: "fixture-source", repairable: true,
+      message: "前端类型检查未通过。当前修改尚不可应用。请让 Cleo 修复后重新检查。",
+      details: "src/components/Conversation.tsx(228,9): error TS17001: JSX elements cannot have multiple attributes with the same name." },
+  }));
+  await page.getByRole("button", { name: "进化", exact: true }).click();
+  await page.getByRole("button", { name: "让 Cleo 修复", exact: true }).waitFor();
+  assert.ok(await page.getByRole("button", { name: "应用", exact: true }).isDisabled());
+  assert.ok(await page.getByRole("button", { name: "保存", exact: true }).isDisabled());
+  assert.ok(!(await page.getByRole("alert").textContent()).includes("TS17001"), "Compiler logs belong in the disclosure, not the error banner.");
+  assert.equal(await page.locator(".evolution-log").getAttribute("open"), null);
+  await page.screenshot({ path: join(output, "04-evolution-validation-failed.png") });
+  await page.getByTestId("composer-input").fill("保留我的下一条需求草稿");
+  const buildCount = automatic.filter((action) => action === "build").length;
+  await page.getByRole("button", { name: "让 Cleo 修复", exact: true }).click();
+  await page.waitForFunction((before) => window.evolutionActions.filter((item) => item.action === "build").length > before, buildCount);
+  assert.equal(await page.getByTestId("composer-input").inputValue(), "保留我的下一条需求草稿");
+  assert.ok(await page.getByRole("button", { name: "应用", exact: true }).isEnabled());
+  const repaired = await page.evaluate(() => window.evolutionActions.map((item) => item.action));
+  assert.deepEqual(repaired.slice(repaired.lastIndexOf("repairPrompt")), ["repairPrompt", "begin", "build"]);
+  await page.evaluate(() => window.patchEvolution({
+    draftDirty: true, validation: { status: "failed", stage: "dependencies", repairable: false, message: "依赖准备未完成。" },
+  }));
+  await page.getByRole("button", { name: "进化", exact: true }).click();
+  assert.equal(await page.getByRole("button", { name: "让 Cleo 修复", exact: true }).count(), 0);
+  assert.ok(await page.getByRole("button", { name: "重新检查", exact: true }).isEnabled());
+  await page.getByRole("button", { name: "重新检查", exact: true }).click();
+  await page.waitForFunction(() => [...document.querySelectorAll("button")].some((button) => button.textContent === "应用" && !button.disabled));
   await page.evaluate(() => window.patchEvolution({ active: "candidate", candidate: "candidate", draftDirty: true }));
   await page.getByRole("button", { name: "进化", exact: true }).click();
   assert.ok(await page.getByRole("button", { name: "保存", exact: true }).isDisabled());

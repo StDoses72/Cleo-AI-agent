@@ -336,14 +336,18 @@ export function useCleoWorkspace() {
     return projectPath;
   };
 
-  const sendPrompt = async (rawPrompt: string, targetThread?: Thread) => {
+  /** Purpose: Stream a user turn or diagnostic follow-up into a task.
+   * Input: prompt, optional task, and draft preservation for controller-generated diagnostics.
+   * Output: updated task timeline; diagnostic follow-ups leave draft text and attachments untouched.
+   */
+  const sendPrompt = async (rawPrompt: string, targetThread?: Thread, { preserveDraft = false } = {}) => {
     const prompt = rawPrompt.trim();
     if (!prompt || runLockRef.current) return;
 
     runLockRef.current = true;
     setStartingRun(true);
     const sourceDraftKey = draftKey;
-    const pendingAttachments = draft.attachments;
+    const pendingAttachments = preserveDraft ? [] : draft.attachments;
     updateDraft(sourceDraftKey, (current) => ({ ...current, error: undefined }));
 
     let thread = targetThread ?? activeThread;
@@ -370,7 +374,7 @@ export function useCleoWorkspace() {
     };
     setRunningThreadId(threadId);
     setStartingRun(false);
-    updateDraft(sourceDraftKey, (current) => ({
+    if (!preserveDraft) updateDraft(sourceDraftKey, (current) => ({
       prompt: current.prompt === draft.prompt ? "" : current.prompt,
       attachments: current.attachments.filter((item) => !pendingAttachments.some((sent) => sent.path === item.path)),
     }));

@@ -30,6 +30,30 @@ $archivePath = Join-Path $releaseRoot "Cleo-windows-x64.zip"
 $checksumPath = Join-Path $releaseRoot "Cleo-windows-x64.sha256"
 $manifestPath = Join-Path $releaseRoot "release.json"
 
+function Get-ReleaseFileHash {
+    <#
+    Purpose: Verify package files without relying on inherited PowerShell module paths.
+    Input: Literal file path, including large archives.
+    Output: Lowercase SHA-256 digest; missing or unreadable files fail the build.
+    #>
+    param([Parameter(Mandatory = $true)][string]$LiteralPath)
+
+    # PowerShell 7 module paths can shadow Windows PowerShell's Get-FileHash.
+    $algorithm = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $stream = [System.IO.File]::OpenRead($LiteralPath)
+        try {
+            return [System.BitConverter]::ToString(
+                $algorithm.ComputeHash($stream)
+            ).Replace("-", "").ToLowerInvariant()
+        } finally {
+            $stream.Dispose()
+        }
+    } finally {
+        $algorithm.Dispose()
+    }
+}
+
 function Assert-ChildPath {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -118,7 +142,7 @@ function Download-LockedWindowsWheel {
         "--fail", "--location", "--retry", "3", "--retry-all-errors",
         "--output", $wheelPath, $wheelUrl
     )
-    $actualHash = (Get-FileHash -LiteralPath $wheelPath -Algorithm SHA256).Hash
+    $actualHash = Get-ReleaseFileHash -LiteralPath $wheelPath
     if (-not $actualHash.Equals($wheelMatch.Groups[2].Value, [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "Python wheel checksum mismatch for $PackageName==$Version."
     }
@@ -226,7 +250,7 @@ try {
     if ($expectedElectronHash -notmatch "^[a-fA-F0-9]{64}$") {
         throw "The Electron checksum manifest does not contain $electronArchiveName."
     }
-    $actualElectronHash = (Get-FileHash -LiteralPath $electronArchive -Algorithm SHA256).Hash
+    $actualElectronHash = Get-ReleaseFileHash -LiteralPath $electronArchive
     if (-not $actualElectronHash.Equals($expectedElectronHash, [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "Electron package checksum mismatch."
     }
@@ -384,7 +408,7 @@ try {
     Invoke-Checked -FilePath "$env:SystemRoot\System32\tar.exe" -WorkingDirectory $releaseRoot -Arguments @(
         "-a", "-c", "-f", $archivePath, "Cleo"
     )
-    $hash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $hash = Get-ReleaseFileHash -LiteralPath $archivePath
     "$hash  Cleo-windows-x64.zip" | Set-Content -LiteralPath $checksumPath -Encoding ASCII
     $releaseMetadata.archive = "Cleo-windows-x64.zip"
     $releaseMetadata.sha256 = $hash

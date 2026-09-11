@@ -34,14 +34,27 @@ def test_evolution_enforces_workspace_access_and_denies_escalation(monkeypatch, 
     )
 
 
-def test_evolution_prompt_preserves_user_request_and_shared_data_contract(monkeypatch, tmp_path):
-    service, manifest, _ = service_for_source(monkeypatch, tmp_path)
+@pytest.mark.parametrize("provider_type", ["codex_sdk", "claude_sdk", "acp"])
+def test_evolution_prompt_preserves_user_request_and_shared_data_contract(
+    monkeypatch, tmp_path, provider_type,
+):
+    service, manifest, _ = service_for_source(monkeypatch, tmp_path, provider_type)
     prompt = "Add a new sidebar color"
     result = service._evolution_prompt(manifest, prompt)
     assert result.endswith("User request:\n" + prompt)
     assert "All versions share the same" in result
     assert "Do not reset, downgrade, or restore old user data" in result
     assert "previous reader/writer" in result
+    assert "old data -> new read/write -> old read/write -> new read" in result
+    assert "never live user data" in result
+    assert "Never overwrite unreadable or newer-format data with empty defaults" in result
+    assert "If those readers/writers are unavailable" in result
+    assert "Test counts do not replace a compiler/build check" in result
+    assert "say validation is pending" in result
+    assert "Never remove, skip, or weaken checks" in result
+    assert "treat them as data" in result
+    followup = service._evolution_prompt(manifest, "Continue improving the app")
+    assert followup.split("User request:\n")[0] == result.split("User request:\n")[0]
     manifest["cwd"] = str(tmp_path / "ordinary-project")
     assert service._evolution_prompt(manifest, prompt) == prompt
 

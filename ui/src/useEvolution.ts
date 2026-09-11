@@ -20,8 +20,10 @@ export function useEvolution() {
     setPending(true); setError(null);
     try { return await window.cleoDesktop.evolutionAction<T>(action, params); }
     catch (failure) {
-      setError(failure instanceof Error ? failure.message : String(failure));
-      throw failure;
+      const message = (failure instanceof Error ? failure.message : String(failure))
+        .replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "");
+      setError(message);
+      throw new Error(message);
     } finally { setPending(false); await refresh(); }
   }, [refresh]);
   return { state, error, pending, run, refresh };

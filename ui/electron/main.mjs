@@ -273,16 +273,17 @@ app.whenReady().then(async () => {
   ipcMain.handle("cleo:evolution:state", () => evolution.status());
   ipcMain.handle("cleo:evolution:action", async (_event, payload) => {
     const { action, ...params } = payload || {};
-    if (backend.pending.size && ["prepare", "build", "merge", "submit", "apply", "recovery", "select", "discard", "save", "begin"].includes(action)) {
+    if (backend.pending.size && ["prepare", "build", "merge", "submit", "apply", "recovery", "select", "discard", "save", "begin", "repairPrompt"].includes(action)) {
       throw new Error("请先等待当前任务完成或停止任务。");
     }
     const actions = {
       prepare: () => evolution.prepare(),
-      begin: () => evolution.operation("preparing", () => evolution.store.beginIteration()),
+      begin: () => evolution.begin(),
       save: () => evolution.saveVersion(params.name),
       select: () => changeEvolutionBase(params.id),
       discard: () => changeEvolutionBase(null, true),
       build: () => evolution.build(),
+      repairPrompt: () => evolution.repairPrompt(),
       releases: () => evolution.releases(),
       download: () => evolution.downloadRelease(params.tag),
       merge: () => evolution.mergeRelease(params.tag),

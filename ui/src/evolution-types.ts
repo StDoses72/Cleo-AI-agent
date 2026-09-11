@@ -7,6 +7,17 @@ export interface EvolutionBuild {
   createdAt: string;
   name?: string;
   savedAt?: string;
+  sourceHash?: string;
+}
+
+export interface EvolutionValidation {
+  status: "pending" | "running" | "passed" | "failed" | "interrupted" | "unchanged";
+  stage?: string;
+  sourceHash?: string | null;
+  candidate?: string;
+  message: string;
+  details?: string;
+  repairable?: boolean;
 }
 
 export interface EvolutionState {
@@ -29,6 +40,7 @@ export interface EvolutionState {
   threadId: string | null;
   error: string | null;
   logs: string;
+  validation?: EvolutionValidation | null;
   builds: EvolutionBuild[];
   lastApplication?: { from: string | null; backup: string };
   transaction?: { phase: string } | null;

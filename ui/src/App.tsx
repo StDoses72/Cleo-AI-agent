@@ -53,16 +53,40 @@ export function App() {
       setOpeningEvolutionUi(false);
     }
   };
-  const sendEvolutionPrompt = async (prompt: string) => {
+  /** Purpose: Start an editing turn and invalidate the previous build before any source changes.
+   * Input: prompt and whether it is a diagnostic follow-up. Output: turn in the managed evolution task.
+   */
+  const sendEvolutionPrompt = async (prompt: string, preserveDraft = false) => {
     if (!prompt.trim()) return;
-    retryEvolution.current = () => { void sendEvolutionPrompt(prompt); };
+    retryEvolution.current = () => { void sendEvolutionPrompt(prompt, preserveDraft); };
+    setEvolutionIssue(null);
     try {
       const thread = evolutionThread ? workspace.activeThread : await startEvolution(true);
       if (!thread) return;
       await evolution.run("begin");
-      await workspace.sendPrompt(prompt, thread);
+      await workspace.sendPrompt(prompt, thread, { preserveDraft });
     } catch (error) {
       setEvolutionIssue(error instanceof Error ? error.message : "无法开始修改");
+    }
+  };
+  /** Purpose: Give the original editing task current controller diagnostics without consuming the user's draft.
+   * Input: none. Output: repair turn followed by the ordinary automatic validation flow.
+   */
+  const repairEvolution = async () => {
+    retryEvolution.current = () => { void repairEvolution(); };
+    setEvolutionIssue(null);
+    try {
+      const prompt = await evolution.run<string>("repairPrompt");
+      if (!evolutionThread) {
+        const thread = await startEvolution();
+        if (!thread) return;
+        await evolution.run("begin");
+        await workspace.sendPrompt(prompt, thread, { preserveDraft: true });
+      } else {
+        await sendEvolutionPrompt(prompt, true);
+      }
+    } catch (error) {
+      setEvolutionIssue(error instanceof Error ? error.message : "无法开始修复");
     }
   };
   const evolutionAction = (action: string, params: Record<string, unknown> = {}) => {
@@ -315,7 +339,7 @@ export function App() {
         onSelectSpace={(space) => {
           setEvolutionOpen(space === "evolution");
           if (space === "evolution") {
-            workspace.beginEvolutionDraft();
+            if (!evolutionOpen) workspace.beginEvolutionDraft();
             void evolution.refresh().catch(() => {});
           }
           if (space !== "evolution") workspace.selectSpace(space);
@@ -354,7 +378,7 @@ export function App() {
           header={evolutionOpen ? <EvolutionPanel state={evolution.state} error={evolutionIssue || evolution.error}
             busy={openingEvolutionUi || evolution.pending || Boolean(evolution.state && evolution.state.phase !== "idle")}
             running={Boolean(workspace.runningThreadId)} inspectorOpen={showInspector} onToggleInspector={() => setInspectorOpen((open) => !open)}
-            onAction={evolutionAction} onRetry={() => retryEvolution.current()} /> : undefined}
+            onAction={evolutionAction} onRetry={() => retryEvolution.current()} onRepair={() => { void repairEvolution(); }} /> : undefined}
           prompt={workspace.prompt}
           onPromptChange={workspace.setPrompt}
           sendError={workspace.sendError}

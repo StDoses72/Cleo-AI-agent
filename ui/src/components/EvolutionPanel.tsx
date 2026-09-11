@@ -11,6 +11,7 @@ interface Props {
   onToggleInspector: () => void;
   onAction: (action: string, params?: Record<string, unknown>) => void;
   onRetry: () => void;
+  onRepair: () => void;
 }
 const phases: Record<string, string> = {
   preparing: "正在准备", building: "正在检查并构建", applying: "正在重启",
@@ -32,7 +33,7 @@ export function versionLabel(build?: EvolutionBuild) {
 /** Purpose: Present only version identity and the next useful actions above the normal conversation.
  * Input: evolution state and commands. Output: persistent toolbar with contextual version and contribution dialogs.
  */
-export function EvolutionPanel({ state, error, busy, running, inspectorOpen, onToggleInspector, onAction, onRetry }: Props) {
+export function EvolutionPanel({ state, error, busy, running, inspectorOpen, onToggleInspector, onAction, onRetry, onRepair }: Props) {
   const [sheet, setSheet] = useState<"versions" | "contribute" | "save" | "discard" | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const [name, setName] = useState("");
@@ -47,14 +48,20 @@ export function EvolutionPanel({ state, error, busy, running, inspectorOpen, onT
   const candidate = state?.builds.find((build) => build.id === state.candidate);
   const versions = state?.builds.filter((build) => build.kind === "official" || build.savedAt) || [];
   const blocked = busy || running || Boolean(state?.transaction);
-  const canApply = Boolean(candidate?.kind === "local" && candidate.id !== state?.active && !state?.draftDirty);
+  const validation = state?.validation;
+  const verified = Boolean(validation?.status === "passed" && validation.sourceHash
+    && validation.candidate === candidate?.id && validation.sourceHash === candidate?.sourceHash && !state?.draftDirty);
+  const canApply = Boolean(verified && candidate?.kind === "local" && candidate.id !== state?.active);
   const canSave = Boolean(state?.iteration && active?.kind === "local" && active.id !== state.iteration.base
-    && state.candidate === state.active && !state.draftDirty);
-  const failure = error || state?.error;
-  const status = running ? "正在修改" : busy ? phases[state?.phase || ""] || "正在准备"
-    : state?.transaction ? "正在重启" : failure ? "操作未完成"
+    && state.candidate === state.active && verified);
+  const checkFailed = validation?.status === "failed" || validation?.status === "interrupted";
+  const failure = error || state?.error || (checkFailed ? validation.message : null);
+  const needsCheck = Boolean(state?.iteration && !verified && validation?.status !== "unchanged");
+  const details = state?.logs || validation?.details;
+  const status = running ? "正在修改，完成后检查" : busy ? (validation?.status === "running" ? validation.message : phases[state?.phase || ""] || "正在准备")
+    : state?.transaction ? "正在重启" : checkFailed ? "检查未通过，修改尚不可应用" : failure ? "操作未完成"
     : canApply ? "检查通过，可以应用" : canSave ? "修改已应用，尚未保存"
-    : state?.iteration && !state.draftDirty && !candidate ? "检查完成，暂无程序改动" : state?.iteration ? "修改尚未应用" : "直接描述你想改进的地方";
+    : validation?.status === "unchanged" ? "检查完成，暂无程序改动" : state?.iteration ? "修改待检查" : "直接描述你想改进的地方";
   return <header className="evolution-toolbar" aria-label="进化操作">
     <div className="evolution-topline">
       <GitBranch size={19} className="evolution-accent" /><strong>进化</strong>
@@ -73,14 +80,18 @@ export function EvolutionPanel({ state, error, busy, running, inspectorOpen, onT
         <div><strong>{status}</strong>{state?.iteration && <small>本轮起点：{versionLabel(base)}</small>}</div>
       </div>
       <div className="evolution-actions">
+        {needsCheck && !checkFailed && <button disabled={blocked} onClick={() => onAction("build")}>重新检查</button>}
         <button className={canApply ? "evolution-primary" : ""} disabled={blocked || !canApply} onClick={() => onAction("apply", { id: candidate?.id })}><Play size={14} />应用</button>
         <button className={canSave ? "evolution-primary" : ""} disabled={blocked || !canSave} onClick={() => { setName(""); setSheet("save"); }}><Save size={14} />保存</button>
         <button disabled={blocked || !state?.iteration} onClick={() => setSheet("discard")}><RotateCcw size={14} />放弃修改</button>
       </div>
     </div>
-    {failure && <div className="evolution-error" role="alert"><span>{failure}</span><button disabled={blocked} onClick={onRetry}>重试</button></div>}
+    {failure && <div className="evolution-error" role="alert"><span>{failure}</span>
+      {checkFailed && validation.repairable && <button disabled={blocked} onClick={onRepair}>让 Cleo 修复</button>}
+      <button disabled={blocked} onClick={checkFailed ? () => onAction("build") : onRetry}>{checkFailed ? "重新检查" : "重试"}</button>
+    </div>}
     {state?.lastRestartError && !failure && <p className="evolution-notice">{state.lastRestartError}</p>}
-    {state?.logs && (busy || failure || canApply) && <details className="evolution-log"><summary>{busy ? state.logs.trim().split("\n").at(-1) : "查看检查详情"}</summary><pre>{state.logs}</pre></details>}
+    {details && (busy || failure || canApply) && <details className="evolution-log"><summary>查看检查详情</summary><pre>{details}</pre></details>}
     {sheet && <dialog ref={dialog} className="evolution-dialog" onCancel={close} onClick={(event) => { if (event.target === dialog.current) close(); }}>
       <div className="evolution-dialog-title"><h2>{sheet === "versions" ? "版本" : sheet === "contribute" ? "贡献与发布" : sheet === "save" ? "保存本地版本" : "放弃本轮修改"}</h2><button aria-label="关闭" onClick={close}><X size={18} /></button></div>
       {sheet === "versions" && <>
