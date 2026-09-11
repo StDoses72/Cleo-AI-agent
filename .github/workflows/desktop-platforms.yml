@@ -60,6 +60,7 @@ jobs:
       - run: ruff check cleo tests scripts/build-release.py scripts/update_project.py
       - run: pytest -q
       - run: npm --prefix ui run test:backend
+      - run: npm --prefix ui run test:evolution
       - run: npm --prefix ui run build
       - name: Linux desktop libraries
         if: runner.os == 'Linux'
@@ -73,11 +74,16 @@ jobs:
         run: |
           node ui/scripts/smoke.mjs
           node ui/scripts/smoke-approvals.mjs
+          node ui/scripts/smoke-evolution.mjs
       - name: Linux desktop smoke
         if: runner.os == 'Linux'
         run: |
           xvfb-run -a node ui/scripts/smoke.mjs
           xvfb-run -a node ui/scripts/smoke-approvals.mjs
+          xvfb-run -a node ui/scripts/smoke-evolution.mjs
+      - name: Independent recovery smoke
+        if: runner.os == 'Windows'
+        run: npm --prefix ui run smoke:evolution-recovery
       - name: Windows update smoke
         if: runner.os == 'Windows'
         env:
@@ -91,12 +97,16 @@ jobs:
         run: ./scripts/build-release.ps1 -LockedDependencies -ElectronMirror '' -PythonIndex 'https://pypi.org/simple/'
       - name: Native packaged smoke
         if: runner.os == 'macOS' || (runner.os == 'Windows' && github.event_name == 'workflow_dispatch')
-        run: npm --prefix ui run smoke:packaged
+        run: |
+          npm --prefix ui run smoke:packaged
+          npm --prefix ui run smoke:evolution-baseline
+          python tests/integrations/smoke_packaged_memory.py ${{ runner.os == 'Windows' && 'release/Cleo/resources/python/python.exe' || 'release/Cleo.app/Contents/Resources/python/bin/python3' }}
       - name: Linux installed package smoke
         if: runner.os == 'Linux'
         run: |
           sudo apt-get install -y ./release/Cleo-linux-x64.deb
           CLEO_EXECUTABLE=/opt/Cleo/Cleo xvfb-run -a npm --prefix ui run smoke:packaged
+          xvfb-run -a npm --prefix ui run smoke:evolution-baseline
       - uses: actions/upload-artifact@v4
         if: always()
         with:

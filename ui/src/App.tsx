@@ -1,4 +1,7 @@
 import { modifierKey } from "./platform";
+import { EvolutionPanel } from "./components/EvolutionPanel";
+import { useEvolution } from "./useEvolution";
+import "./components/evolution.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Command, Minus } from "lucide-react";
 import { Conversation } from "./components/Conversation";
@@ -22,9 +25,84 @@ import type { MemoryViewMode, Project, Thread, UpdateState } from "./types";
 
 export function App() {
   const workspace = useCleoWorkspace();
+  const evolution = useEvolution();
+  const [evolutionOpen, setEvolutionOpen] = useState(() => localStorage.getItem("cleo-view") === "evolution");
+  const openingEvolution = useRef(false);
+  const [openingEvolutionUi, setOpeningEvolutionUi] = useState(false);
+  const [evolutionIssue, setEvolutionIssue] = useState<string | null>(null);
+  const pendingEvolutionBuild = useRef<string | null>(null);
+  const retryEvolution = useRef<() => void>(() => {});
+  const evolutionThread = evolutionOpen && Boolean(evolution.state?.threadId)
+    && workspace.activeThreadId === evolution.state?.threadId;
+
+  const startEvolution = async (newThread = false): Promise<Thread | null> => {
+    if (openingEvolution.current) return null;
+    openingEvolution.current = true;
+    setOpeningEvolutionUi(true);
+    setEvolutionIssue(null);
+    try {
+      if (!evolution.state?.prepared) await evolution.run("prepare");
+      const thread = await workspace.openEvolutionThread(newThread ? null : evolution.state?.threadId);
+      await evolution.run("thread", { id: thread.id });
+      return thread;
+    } catch (error) {
+      setEvolutionIssue(error instanceof Error ? error.message : "无法打开进化对话");
+      return null;
+    } finally {
+      openingEvolution.current = false;
+      setOpeningEvolutionUi(false);
+    }
+  };
+  const sendEvolutionPrompt = async (prompt: string) => {
+    if (!prompt.trim()) return;
+    retryEvolution.current = () => { void sendEvolutionPrompt(prompt); };
+    try {
+      const thread = evolutionThread ? workspace.activeThread : await startEvolution(true);
+      if (!thread) return;
+      await evolution.run("begin");
+      await workspace.sendPrompt(prompt, thread);
+    } catch (error) {
+      setEvolutionIssue(error instanceof Error ? error.message : "无法开始修改");
+    }
+  };
+  const evolutionAction = (action: string, params: Record<string, unknown> = {}) => {
+    retryEvolution.current = () => evolutionAction(action, params);
+    setEvolutionIssue(null);
+    void evolution.run(action, params).then(() => {
+      if (action === "discard" || action === "select") workspace.beginEvolutionDraft();
+    }).catch((error: unknown) =>
+      setEvolutionIssue(error instanceof Error ? error.message : "操作失败"));
+  };
+
+  useEffect(() => {
+    localStorage.setItem("cleo-view", evolutionOpen ? "evolution" : "workspace");
+  }, [evolutionOpen]);
+  useEffect(() => {
+    if (evolutionOpen && workspace.snapshot && !evolution.state?.threadId) workspace.beginEvolutionDraft();
+  }, [evolutionOpen, Boolean(workspace.snapshot)]);
+  useEffect(() => {
+    if (workspace.snapshot) void window.cleoDesktop?.confirmHealthy().then(() => evolution.refresh()).catch(() => {});
+  }, [Boolean(workspace.snapshot)]);
+  useEffect(() => {
+    if (evolutionOpen && workspace.snapshot && evolution.state?.prepared && evolution.state.threadId && !evolutionThread
+        && !openingEvolution.current && !workspace.runningThreadId) {
+      void startEvolution();
+    }
+  }, [evolutionOpen, Boolean(workspace.snapshot), evolution.state?.prepared]);
+  useEffect(() => {
+    if (workspace.runningThreadId === evolution.state?.threadId && workspace.runningThreadId) {
+      pendingEvolutionBuild.current = workspace.runningThreadId;
+    }
+    if (workspace.runningThreadId || !pendingEvolutionBuild.current) return;
+    const finished = workspace.snapshot?.threads.find((thread) => thread.id === pendingEvolutionBuild.current);
+    if (!finished || finished.status === "running") return;
+    pendingEvolutionBuild.current = null;
+    if (finished.status === "completed") evolutionAction("build");
+  }, [workspace.runningThreadId, workspace.snapshot?.threads, evolution.state?.threadId]);
+
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [inspectorBySpace, setInspectorBySpace] = useState({ chat: false, productivity: true });
-  const inspectorSpace = workspace.activeSpace === "chat" ? "chat" : "productivity";
+  const [inspectorBySpace, setInspectorBySpace] = useState({ chat: false, productivity: true, evolution: false });
+  const inspectorSpace = evolutionOpen ? "evolution" : workspace.activeSpace === "chat" ? "chat" : "productivity";
   const inspectorOpen = inspectorBySpace[inspectorSpace];
   const setInspectorOpen = (value: boolean | ((open: boolean) => boolean)) => {
     setInspectorBySpace((current) => ({
@@ -77,7 +155,7 @@ export function App() {
   useEffect(() => {
     const compactLayout = window.matchMedia("(max-width: 1180px)");
     const closeInspectorForCompactLayout = (event: MediaQueryListEvent | MediaQueryList) => {
-      if (event.matches) setInspectorBySpace({ chat: false, productivity: false });
+      if (event.matches) setInspectorBySpace({ chat: false, productivity: false, evolution: false });
     };
     closeInspectorForCompactLayout(compactLayout);
     compactLayout.addEventListener("change", closeInspectorForCompactLayout);
@@ -135,6 +213,7 @@ export function App() {
       }
       if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === "n") {
         event.preventDefault();
+        if (evolutionOpen) { event.preventDefault(); return; }
         if (workspace.activeSpace === "memory") workspace.selectSpace("productivity");
         void workspace.createThread();
       }
@@ -201,7 +280,11 @@ export function App() {
 
   if (!workspace.snapshot) return <LoadingScreen error={workspace.loadingError} />;
 
-  const activeRuntime = workspace.activeThread?.runtime ?? workspace.draftRuntime;
+  const activeRuntime = evolutionOpen && !evolutionThread ? workspace.draftRuntime : workspace.activeThread?.runtime ?? workspace.draftRuntime;
+  const conversationThread = evolutionOpen && !evolutionThread ? null : workspace.activeThread;
+  const conversationProject: Project | null = evolutionOpen
+    ? { id: "productivity:cleo-evolution", space: "productivity", name: "Cleo", path: evolution.state?.source || "", accent: "cyan" }
+    : workspace.activeProject;
   const selectedRuntimeModel = workspace.activeSpace === "productivity"
     ? workspace.productivityModels[activeRuntime.provider]?.models.find(
         (model) => model.id === activeRuntime.model,
@@ -211,10 +294,11 @@ export function App() {
   const settingsRuntime = activeRuntime.effort || !selectedRuntimeModel?.defaultEffort
     ? activeRuntime
     : { ...activeRuntime, effort: selectedRuntimeModel.defaultEffort };
-  const showInspector = inspectorOpen && workspace.activeSpace !== "memory";
+  const showInspector = inspectorOpen && (evolutionOpen || workspace.activeSpace !== "memory");
   const appClasses = [
     "app-shell",
-    sidebarCollapsed ? "sidebar-collapsed" : "",
+    evolutionOpen ? "evolution-open" : "",
+    sidebarCollapsed && !evolutionOpen ? "sidebar-collapsed" : "",
     showInspector ? "inspector-open" : "inspector-closed",
   ]
     .filter(Boolean)
@@ -223,18 +307,25 @@ export function App() {
   return (
     <div className={appClasses} data-theme={theme}>
       <TitleBar
-        projectName={workspace.activeSpace === "memory" ? "记忆" : workspace.activeProject?.name ?? "Cleo"}
-        mode={workspace.activeSpace === "productivity" ? "Productivity" : workspace.activeSpace === "chat" ? "Chat" : "Memory"}
+        projectName={evolutionOpen ? "Cleo 进化" : workspace.activeSpace === "memory" ? "记忆" : workspace.activeProject?.name ?? "Cleo"}
+        mode={evolutionOpen ? "Evolution" : workspace.activeSpace === "productivity" ? "Productivity" : workspace.activeSpace === "chat" ? "Chat" : "Memory"}
       />
       <WorkspaceRail
-        activeSpace={workspace.activeSpace}
-        onSelectSpace={workspace.selectSpace}
+        activeSpace={evolutionOpen ? "evolution" : workspace.activeSpace}
+        onSelectSpace={(space) => {
+          setEvolutionOpen(space === "evolution");
+          if (space === "evolution") {
+            workspace.beginEvolutionDraft();
+            void evolution.refresh().catch(() => {});
+          }
+          if (space !== "evolution") workspace.selectSpace(space);
+        }}
         onOpenSettings={() => setSettingsOpen(true)}
       />
-      <ThreadSidebar
+      {!evolutionOpen && <ThreadSidebar
         space={workspace.activeSpace}
-        projects={workspace.snapshot.projects}
-        threads={workspace.snapshot.threads}
+        projects={workspace.snapshot.projects.filter((project) => project.id !== "productivity:cleo-evolution")}
+        threads={workspace.snapshot.threads.filter((thread) => thread.projectId !== "productivity:cleo-evolution")}
         activeProjectId={workspace.activeProjectId}
         activeThreadId={workspace.activeThreadId}
         onSelectProject={workspace.selectProject}
@@ -250,8 +341,8 @@ export function App() {
         memoryView={memoryView}
         onMemoryViewChange={setMemoryView}
         backendMode={workspace.snapshot.backend?.mode ?? "mock"}
-      />
-      {workspace.activeSpace === "memory" ? (
+      />}
+      {!evolutionOpen && workspace.activeSpace === "memory" ? (
         <MemoryView
           overview={workspace.snapshot.memoryOverview}
           mode={memoryView}
@@ -260,14 +351,18 @@ export function App() {
         />
       ) : (
         <Conversation
+          header={evolutionOpen ? <EvolutionPanel state={evolution.state} error={evolutionIssue || evolution.error}
+            busy={openingEvolutionUi || evolution.pending || Boolean(evolution.state && evolution.state.phase !== "idle")}
+            running={Boolean(workspace.runningThreadId)} inspectorOpen={showInspector} onToggleInspector={() => setInspectorOpen((open) => !open)}
+            onAction={evolutionAction} onRetry={() => retryEvolution.current()} /> : undefined}
           prompt={workspace.prompt}
           onPromptChange={workspace.setPrompt}
           sendError={workspace.sendError}
-          sendBlocked={workspace.startingRun ? "正在提交，请稍候…" : workspace.runningThreadId && workspace.runningThreadId !== workspace.activeThreadId ? "另一个任务正在运行，完成或停止后即可发送。" : null}
+          sendBlocked={evolutionOpen && (openingEvolutionUi || evolution.pending || !evolution.state?.supported || evolution.state?.phase !== "idle") ? "正在处理本地改动，请稍候…" : workspace.startingRun ? "正在提交，请稍候…" : workspace.runningThreadId && workspace.runningThreadId !== workspace.activeThreadId ? "另一个任务正在运行，完成或停止后即可发送。" : null}
           onRename={workspace.renameThread}
-          thread={workspace.activeThread}
-          project={workspace.activeProject}
-          space={workspace.activeSpace === "chat" ? "chat" : "productivity"}
+          thread={conversationThread}
+          project={conversationProject}
+          space={!evolutionOpen && workspace.activeSpace === "chat" ? "chat" : "productivity"}
           runtime={activeRuntime}
           runtimeCatalog={workspace.runtimeCatalog}
           productivityModels={workspace.productivityModels}
@@ -280,7 +375,7 @@ export function App() {
           onToggleSidebar={() => setSidebarCollapsed((collapsed) => !collapsed)}
           onToggleInspector={() => setInspectorOpen((open) => !open)}
           onOpenCommand={() => setCommandOpen(true)}
-          onSend={(prompt) => void workspace.sendPrompt(prompt)}
+          onSend={(prompt) => void (evolutionOpen ? sendEvolutionPrompt(prompt) : workspace.sendPrompt(prompt))}
           onCancel={workspace.cancelRun}
           onUndo={() => {
             if (!workspace.activeProject?.branch) {
@@ -306,7 +401,13 @@ export function App() {
             );
           }}
           onLoadProductivityModels={workspace.loadProductivityModels}
-          onSelectProductivityRuntime={workspace.selectProductivityRuntime}
+          onSelectProductivityRuntime={(provider, model) => {
+            workspace.selectProductivityRuntime(provider, model);
+            if (evolutionOpen) {
+              workspace.beginEvolutionDraft();
+              void evolution.run("thread", { id: "" });
+            }
+          }}
           onEffortChange={(effort) => workspace.updateRuntime({ effort })}
           attachments={workspace.attachments}
           onPickAttachments={workspace.pickAttachments}
@@ -336,8 +437,8 @@ export function App() {
       )}
       {showInspector ? (
         <Inspector
-          thread={workspace.activeThread}
-          project={workspace.activeProject}
+          thread={conversationThread}
+          project={conversationProject}
           runtime={activeRuntime}
           memories={workspace.snapshot.memories}
           activeTab={inspectorTab}

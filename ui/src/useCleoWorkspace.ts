@@ -132,7 +132,8 @@ export function useCleoWorkspace() {
     [activeProjectId, snapshot],
   );
   useEffect(() => {
-    if (activeSpace === "memory" || activeProject?.space !== activeSpace) return;
+    if (activeSpace === "memory" || activeProject?.space !== activeSpace
+        || activeProject.id === "productivity:cleo-evolution") return;
     selectionBySpaceRef.current[activeSpace] = {
       projectId: activeProjectId,
       threadId: activeThreadId,
@@ -183,7 +184,7 @@ export function useCleoWorkspace() {
   };
 
   const selectSpace = (space: WorkspaceSpace) => {
-    if (space === activeSpace) return;
+    if (space === activeSpace && activeProject?.id !== "productivity:cleo-evolution") return;
     selectionRef.current += 1;
     setActiveSpace(space);
     if (space === "memory" || !snapshot) return;
@@ -203,9 +204,11 @@ export function useCleoWorkspace() {
       setActiveThreadId(next?.id ?? null);
       return;
     }
-    const projectForSpace = snapshot.projects.find((project) => project.space === space);
+    const projectForSpace = snapshot.projects.find((project) => project.space === space
+      && project.id !== "productivity:cleo-evolution");
     const preferredProjectId =
-      activeProject?.space === space ? activeProjectId : projectForSpace?.id ?? activeProjectId;
+      activeProject?.space === space && activeProject.id !== "productivity:cleo-evolution"
+        ? activeProjectId : projectForSpace?.id ?? activeProjectId;
     const next =
       snapshot.threads.find(
         (thread) => thread.space === space && thread.projectId === preferredProjectId,
@@ -292,6 +295,33 @@ export function useCleoWorkspace() {
     return thread;
   };
 
+  /** Purpose: Show an empty evolution composer with the ordinary harness picker.
+   * Input: none. Output: a separate draft; existing conversations remain saved.
+   */
+  const beginEvolutionDraft = () => {
+    selectionRef.current += 1;
+    setActiveSpace("productivity");
+    setActiveProjectId("productivity:cleo-evolution");
+    setActiveThreadId(null);
+  };
+
+  /** Purpose: Select a managed evolution thread atomically. Input: saved id. Output: selected thread id. */
+  const openEvolutionThread = async (threadId: string | null = null) => {
+    if (runLockRef.current) throw new Error("请先等待当前任务完成。");
+    if (!window.cleoDesktop) throw new Error("本地迭代需要在桌面应用中运行。");
+    const selected = ++selectionRef.current;
+    const result = await window.cleoDesktop.request<{ thread: Thread; workspace: WorkspaceSnapshot }>(
+      "open_evolution_thread", { thread_id: threadId, provider: draftProvider || undefined,
+        model: draftModel || undefined, effort: draftEffort ?? undefined },
+    );
+    if (selectionRef.current !== selected) return result.thread;
+    setSnapshot(result.workspace);
+    setActiveSpace("productivity");
+    setActiveProjectId(result.thread.projectId);
+    setActiveThreadId(result.thread.id);
+    return result.thread;
+  };
+
   const chooseWorkspace = async () => {
     const projectPath = await cleoClient.pickWorkspace();
     if (!projectPath) return null;
@@ -306,7 +336,7 @@ export function useCleoWorkspace() {
     return projectPath;
   };
 
-  const sendPrompt = async (rawPrompt: string) => {
+  const sendPrompt = async (rawPrompt: string, targetThread?: Thread) => {
     const prompt = rawPrompt.trim();
     if (!prompt || runLockRef.current) return;
 
@@ -316,7 +346,7 @@ export function useCleoWorkspace() {
     const pendingAttachments = draft.attachments;
     updateDraft(sourceDraftKey, (current) => ({ ...current, error: undefined }));
 
-    let thread = activeThread;
+    let thread = targetThread ?? activeThread;
     try {
       if (!thread) thread = await createThread();
     } catch (error) {
@@ -834,6 +864,8 @@ export function useCleoWorkspace() {
     selectThread,
     createThread: startNewThread,
     chooseWorkspace,
+    openEvolutionThread,
+    beginEvolutionDraft,
     sendPrompt,
     renameThread,
     cancelRun,

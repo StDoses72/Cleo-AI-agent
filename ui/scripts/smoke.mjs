@@ -1,12 +1,14 @@
 import { _electron as electron } from "playwright";
-import { mkdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkSettingsLayout } from "./settings-layout.mjs";
 
 const appDir = process.env.CLEO_SMOKE_APP_DIR ?? join(dirname(fileURLToPath(import.meta.url)), "..");
 const outputDir = process.env.CLEO_SMOKE_OUTPUT ?? join(appDir, "output", "playwright");
 const packagedExecutable = process.env.CLEO_EXECUTABLE;
+const profile = await mkdtemp(join(tmpdir(), "cleo-workspace-smoke-"));
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -16,10 +18,11 @@ await mkdir(outputDir, { recursive: true });
 const electronApp = packagedExecutable
   ? await electron.launch({
       executablePath: packagedExecutable,
+      args: [`--user-data-dir=${profile}`],
       env: { ...process.env, CLEO_DESKTOP_MOCK: "1" },
     })
   : await electron.launch({
-      args: ["."],
+      args: [".", `--user-data-dir=${profile}`],
       cwd: appDir,
       env: { ...process.env, CLEO_DESKTOP_MOCK: "1" },
     });
@@ -414,4 +417,6 @@ try {
 } finally {
   await window.evaluate(() => localStorage.setItem("cleo-theme", "dark")).catch(() => {});
   await electronApp.close();
+  assert(dirname(resolve(profile)) === resolve(tmpdir()) && profile.includes("cleo-workspace-smoke-"), "Unexpected test profile");
+  await rm(profile, { recursive: true, force: true });
 }

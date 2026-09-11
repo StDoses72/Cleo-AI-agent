@@ -1,0 +1,60 @@
+.app-shell.evolution-open { --sidebar-width:0px; }
+.evolution-open .conversation-shell { grid-template-rows:auto minmax(0,1fr) auto; }
+.evolution-toolbar { flex-shrink:0; border-bottom:1px solid var(--border); background:var(--canvas); }
+.evolution-topline { display:flex; align-items:center; gap:12px; min-height:60px; padding:12px 24px; }
+.evolution-topline>strong { font-size:14px; }
+.evolution-accent { color:var(--accent); }
+.evolution-toolbar button { display:inline-flex; align-items:center; justify-content:center; gap:7px; border-radius:7px; font-size:12px; }
+.evolution-toolbar button:disabled { opacity:.35; cursor:not-allowed; }
+.evolution-version-trigger { min-width:0; padding:8px 10px; border:1px solid var(--border); background:var(--surface); }
+.evolution-version-trigger span { color:var(--muted); font-size:10px; }
+.evolution-version-trigger b { font-weight:550; max-width:250px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.evolution-top-actions { display:flex; gap:5px; margin-left:auto; }
+.evolution-top-actions button { padding:8px; color:var(--muted); }
+.evolution-top-actions button:hover,.evolution-top-actions button[aria-pressed=true] { color:var(--accent); background:var(--accent-soft); }
+.evolution-actionbar { display:flex; justify-content:space-between; align-items:center; gap:20px; padding:10px 24px 14px; }
+.evolution-status { display:flex; align-items:center; gap:9px; min-width:0; color:var(--muted); font-size:12px; }
+.evolution-status strong { font-size:12px; font-weight:500; color:var(--text-soft); }
+.evolution-status small { display:block; margin-top:4px; font-size:10px; }
+.evolution-status-dot { flex-shrink:0; width:6px; height:6px; border-radius:50%; background:var(--accent); }
+.evolution-status-dot.error { background:var(--danger); }
+.evolution-actions { display:flex; gap:8px; flex-shrink:0; }
+.evolution-actions button { padding:8px 13px; border:1px solid var(--border-strong); background:var(--surface); white-space:nowrap; }
+.evolution-toolbar .evolution-primary { background:var(--accent); color:var(--canvas); border:1px solid transparent; font-weight:600; }
+.evolution-toolbar .evolution-primary:hover:not(:disabled) { background:var(--accent-strong); }
+.evolution-spin { animation:evolution-spin 1.3s linear infinite; color:var(--accent); }
+@keyframes evolution-spin { to { transform:rotate(360deg); } }
+.evolution-error { display:flex; align-items:flex-start; gap:12px; margin:0 24px 12px; padding:10px 12px; background:color-mix(in srgb,var(--danger) 7%,transparent); color:var(--danger); border-radius:7px; font-size:12px; overflow-wrap:anywhere; }
+.evolution-error span { flex:1; white-space:pre-wrap; }
+.evolution-error button { padding:3px 8px; flex-shrink:0; border:1px solid var(--border); }
+.evolution-notice { margin:0 24px 12px; color:var(--muted); font-size:12px; line-height:1.7; }
+.evolution-log { margin:0 24px 12px; color:var(--muted); font-size:11px; }
+.evolution-log summary { cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.evolution-log pre { max-height:150px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; user-select:text; }
+.evolution-dialog { color:var(--text); background:var(--surface-raised); border:1px solid var(--border-strong); border-radius:14px; padding:24px; width:min(460px,calc(100vw - 48px)); max-height:80vh; overflow:auto; box-shadow:0 24px 90px #0006; }
+.evolution-dialog::backdrop { background:#0007; backdrop-filter:blur(3px); }
+.evolution-dialog-title { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:18px; }
+.evolution-dialog-title h2 { margin:0; font-size:18px; font-weight:550; }
+.evolution-dialog-title button { padding:6px; }
+.evolution-dialog p { font-size:12px; color:var(--muted); line-height:1.8; margin:12px 0; }
+.evolution-dialog form { display:grid; gap:14px; }
+.evolution-dialog label { display:grid; gap:8px; font-size:12px; color:var(--muted); }
+.evolution-dialog input,.evolution-dialog select,.evolution-dialog textarea { background:var(--surface); border:1px solid var(--border-strong); border-radius:7px; width:100%; padding:10px 12px; font-size:13px; min-width:0; }
+.evolution-dialog textarea { min-height:95px; resize:vertical; }
+.evolution-dialog button:not(.evolution-dialog-title button) { padding:10px 13px; border:1px solid var(--border); }
+.evolution-dialog a { display:block; font-size:12px; color:var(--accent); margin:12px 0; }
+.evolution-version-list { display:grid; gap:6px; margin:18px 0; }
+.evolution-version-list button { justify-content:space-between; text-align:left; }
+.evolution-version-list button>span { display:grid; gap:5px; }
+.evolution-version-list small { color:var(--muted); font-size:10px; }
+.evolution-release { border-top:1px solid var(--border); padding-top:15px; font-size:12px; }
+.evolution-release summary { cursor:pointer; color:var(--muted); }
+.evolution-release>button,.evolution-release>select { margin-top:12px; }
+@media(max-width:850px) {
+ .evolution-topline { padding:10px 14px; gap:8px; flex-wrap:wrap; }
+ .evolution-version-trigger span { display:none; }
+ .evolution-version-trigger b { max-width:180px; }
+ .evolution-actionbar { padding:8px 14px 12px; flex-wrap:wrap; gap:12px; }
+ .evolution-actions { margin-left:auto; }
+ .evolution-error,.evolution-notice,.evolution-log { margin-left:14px; margin-right:14px; }
+}

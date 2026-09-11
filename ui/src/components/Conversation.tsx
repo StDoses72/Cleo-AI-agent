@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
   type ClipboardEvent,
   type DragEvent,
   type KeyboardEvent,
@@ -53,6 +54,7 @@ import { ApprovalPrompt } from "./ApprovalPrompt";
 import { RenameThreadDialog } from "./Overlays";
 
 interface ConversationProps {
+  header?: ReactNode;
   thread: Thread | null;
   project: Project | null;
   space: ThreadSpace;
@@ -102,6 +104,7 @@ const suggestions = {
 };
 
 export function Conversation({
+  header,
   thread,
   project,
   space,
@@ -177,7 +180,7 @@ export function Conversation({
 
   return (
     <main className="conversation-shell" data-testid="conversation">
-      <ConversationHeader
+      {header ?? <ConversationHeader
         thread={thread}
         project={project}
         space={space}
@@ -194,7 +197,7 @@ export function Conversation({
         onThreadCommand={onThreadCommand}
         onRename={onRename}
         busy={running || Boolean(sendBlocked)}
-      />
+      />}
 
       <div className="conversation-viewport" ref={viewportRef} onScroll={trackScrollPosition}>
         {thread?.items.length ? (
@@ -747,17 +750,20 @@ function ToolProcess({ tool, index }: { tool: ToolTimelineItem; index: number })
   );
 }
 
+/** Purpose: Keep the shared composer welcome focused on the current task. Input: project/space. Output: relevant example requests. */
 function WelcomeState({ project, space, onUseSuggestion }: { project: Project | null; space: ThreadSpace; onUseSuggestion: (prompt: string) => void }) {
+  const evolving = project?.id === "productivity:cleo-evolution";
+  const prompts = evolving ? ["让 Cleo 的界面更清晰一些", "为 Cleo 增加一个我需要的功能", "帮我改善 Cleo 的使用体验"] : suggestions[space];
   return (
     <div className="welcome-state">
       <div className="welcome-portrait-wrap">
         <img src="./cleo.png" alt="Cleo" />
       </div>
       <span className="eyebrow">{project?.name ?? "CLEO"}</span>
-      <h2>{space === "chat" ? "今天想聊些什么？" : "从一个清晰的目标开始。"}</h2>
-      <p>{space === "chat" ? "聊聊想法、学习新知，或一起解决生活中的小问题。" : "我会先理解工作区，再决定需要读取、修改和验证什么。"}</p>
+      <h2>{evolving ? "你想让 Cleo 怎样改变？" : space === "chat" ? "今天想聊些什么？" : "从一个清晰的目标开始。"}</h2>
+      <p>{evolving ? "直接描述需求，我会完成修改和检查。应用后，你再决定是否保存。" : space === "chat" ? "聊聊想法、学习新知，或一起解决生活中的小问题。" : "我会先理解工作区，再决定需要读取、修改和验证什么。"}</p>
       <div className="suggestion-list">
-        {suggestions[space].map((suggestion) => (
+        {prompts.map((suggestion) => (
           <button type="button" key={suggestion} onClick={() => {
             onUseSuggestion(suggestion);
             document.querySelector<HTMLTextAreaElement>('[data-testid="composer-input"]')?.focus();

@@ -343,9 +343,13 @@ try {
     }
     Move-Item -LiteralPath $electronExecutable -Destination (Join-Path $appBuildPath "Cleo.exe")
 
+    Invoke-Checked -FilePath $node.Source -WorkingDirectory $sourceRoot -Arguments @(
+        (Join-Path $sourceRoot "scripts\bundle-evolution-source.mjs"), $resourcesPath
+    )
     $version = (Get-Content -LiteralPath (Join-Path $uiRoot "package.json") -Raw | ConvertFrom-Json).version
     $releaseMetadata = [ordered]@{
         schema_version = 1
+        evolution_protocol = 2
         app = "Cleo"
         version = $version
         platform = "windows-x64"
