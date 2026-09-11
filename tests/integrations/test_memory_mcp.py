@@ -77,6 +77,7 @@ def test_codex_override_is_client_local_and_valid_toml(tmp_path):
     server = parsed["mcp_servers"]["cleo_memory"]
     assert server["command"] == sys.executable
     assert server["args"] == memory.args
+    assert server["args"][:2] == ["-I", "-c"]
     assert server["required"] is True
     independent = CodexProvider(None)._client_with_approvals(CodexApprovalBroker("codex"))
     assert independent._client._sync.config.config_overrides == ()

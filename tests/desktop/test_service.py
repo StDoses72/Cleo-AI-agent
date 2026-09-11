@@ -1082,6 +1082,21 @@ def test_claude_models_expose_sdk_effort_levels(tmp_path: Path) -> None:
             def providers(self):
                 return ("claude",)
 
+            def provider_control(self, provider):
+                assert provider == "claude"
+                return self
+
+            async def list_models(self, project_path):
+                assert project_path == str(service.settings.active_directory_profile.root_path)
+                return tuple(
+                    HarnessModel(
+                        id=identifier, display_name=identifier, description="Live SDK model",
+                        is_default=index == 0, default_effort="high",
+                        supported_efforts=("low", "medium", "high", "xhigh", "max"),
+                    )
+                    for index, identifier in enumerate(("claude-opus-test", "claude-sonnet-test"))
+                )
+
         service.settings.productivity = SimpleNamespace(
             default_provider="claude",
             providers={
@@ -1099,6 +1114,7 @@ def test_claude_models_expose_sdk_effort_levels(tmp_path: Path) -> None:
 
         models = await service.get_productivity_models(provider="claude")
 
+        assert models["source"] == "sdk"
         assert [model["id"] for model in models["models"]] == [
             "claude-opus-test",
             "claude-sonnet-test",

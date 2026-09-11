@@ -433,7 +433,7 @@ export class MockCleoClient implements CleoClient {
       nonProductivityProfiles: this.modelSettings.profiles.map(p => ({ id: p.name, provider: p.provider, model: p.model, maxTokens: p.maxTokens, active: p.name === this.modelSettings.activeAgent })),
       productivityProviders: [
         { id: "codex", type: "codex_sdk", defaultModel: "gpt-5.6-sol", modelSource: "dynamic" },
-        { id: "claude", type: "claude_sdk", defaultModel: "claude-opus-5", modelSource: "config" },
+        { id: "claude", type: "claude_sdk", defaultModel: "claude-opus-5", modelSource: "dynamic" },
       ],
       defaultNonProductivityProfile: this.modelSettings.activeAgent,
       defaultProductivityProvider: "codex",
@@ -445,9 +445,10 @@ export class MockCleoClient implements CleoClient {
     return provider === "claude"
       ? {
           provider,
-          source: "config",
+          source: "sdk",
           models: [
             { id: "claude-opus-5", label: "Claude Opus 5", description: "Configured model", isDefault: true, defaultEffort: "high", supportedEfforts: ["low", "medium", "high", "xhigh", "max"] },
+            { id: "claude-sonnet-demo", label: "Claude Sonnet (demo)", description: "Mock harness choice", isDefault: false, defaultEffort: null, supportedEfforts: [] },
           ],
         }
       : {

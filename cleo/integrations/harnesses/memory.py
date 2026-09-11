@@ -24,7 +24,7 @@ class MemoryMcp:
             f"import sys; sys.path.insert(0, {source_root!r}); "
             "from cleo.mcp.memory_server import main; main()"
         )
-        args = ["-c", bootstrap, "--memory-root", str(self.root.expanduser().resolve())]
+        args = ["-I", "-c", bootstrap, "--memory-root", str(self.root.expanduser().resolve())]
         if self.index_path is not None:
             args.extend(["--session-index-path", str(self.index_path.expanduser().resolve())])
         return args

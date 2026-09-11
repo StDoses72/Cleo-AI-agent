@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { launchDesktop } from "./evolution-launch.mjs";
+import { waitForControllerReady, showRecovery } from "./evolution-recovery.mjs";
+import { EvolutionManager } from "./evolution.mjs";
 import { rmSync } from "node:fs";
 import { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, shell } from "electron";
 import { dirname, join } from "node:path";
@@ -41,8 +44,61 @@ const dependencies = new DependencyUpdater({
   cleoHome: backend.runtimePaths().cleoHome,
   onState: (state) => updater.setState({ dependencies: state }),
 });
+const evolution = new EvolutionManager({
+  app, root: join(app.getPath("userData"), "evolution"), dataHome: backend.runtimePaths().cleoHome,
+  openExternal: (url) => shell.openExternal(url),
+  onState: () => {
+    void evolution.status().then((state) => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) window.webContents.send("cleo:evolution:state", state);
+      }
+    }).catch((error) => console.error("Evolution status:", error.message));
+  },
+});
+process.env.CLEO_EVOLUTION_WORKSPACE = evolution.source;
+
+/** Purpose: Hand off activation after explicit consent. Input: build id; current user data is always retained. Output: app restart. */
+async function applyEvolution(id) {
+  if (backend.pending.size) throw new Error("请先等待当前任务完成或停止任务，再应用改动。");
+  const state = await evolution.store.read();
+  if (state.active === id) return true;
+  const tx = await evolution.stage(id);
+  try {
+    const controller = await launchDesktop(process.execPath,
+      [`--cleo-apply-parent=${process.pid}`, `--user-data-dir=${app.getPath("userData")}`],
+      { ...process.env, CLEO_HOME: evolution.store.dataHome });
+    await waitForControllerReady(evolution.store, tx.id, controller);
+    await backend.close();
+  } catch (error) {
+    await evolution.store.update({ transaction: null });
+    await backend.restart();
+    throw error;
+  }
+  app.quit();
+  return Boolean(tx);
+}
+
+/** Purpose: Release harness processes before archiving their source workspace.
+ * Input: chosen version or discard intent. Output: restart into the chosen program, or a resumed backend on failure.
+ */
+async function changeEvolutionBase(id, discard = false) {
+  await backend.close();
+  try {
+    const target = discard ? await evolution.discardIteration() : await evolution.selectVersion(id);
+    if ((await evolution.store.read()).active === target) {
+      await backend.restart();
+      return true;
+    }
+    return await applyEvolution(target);
+  } catch (error) {
+    await backend.restart();
+    throw error;
+  }
+}
+
 const allowedMethods = new Set([
   "load_workspace",
+  "open_evolution_thread",
   "load_thread",
   "create_thread",
   "delete_thread",
@@ -145,6 +201,9 @@ app.whenReady().then(async () => {
     const method = String(payload?.method || "");
     if (!allowedMethods.has(method)) throw new Error(`Unsupported desktop method: ${method}`);
     const streamId = payload?.streamId ? String(payload.streamId) : null;
+    if (method === "stream_turn" && evolution.phase !== "idle") {
+      throw new Error("请等待进化操作完成后再修改代码。");
+    }
     const result = await backend.request(method, payload?.params || {}, (streamEvent) => {
       if (streamId && !event.sender.isDestroyed()) {
         event.sender.send("cleo:stream-event", { streamId, event: streamEvent });
@@ -204,13 +263,49 @@ app.whenReady().then(async () => {
     }
   });
   ipcMain.handle("cleo:update:get-state", () => updater.getState());
-  ipcMain.handle("cleo:update:check", () => {
-    void dependencies.check();
-    return updater.check();
-  });
+  ipcMain.handle("cleo:update:check", () => updater.check());
   ipcMain.handle("cleo:update:download", () => updater.download());
-  ipcMain.handle("cleo:update:install", () => updater.install());
-  if (await updater.installPending()) return;
+  ipcMain.handle("cleo:update:install", async () => {
+    const releases = await evolution.releases();
+    const release = releases.find((item) => item.tag.replace(/^v/, "") === updater.getState().latestVersion);
+    if (!release) throw new Error("请重新检查正式版本。");
+    return applyEvolution(await evolution.downloadRelease(release.tag));
+  });
+  ipcMain.handle("cleo:evolution:state", () => evolution.status());
+  ipcMain.handle("cleo:evolution:action", async (_event, payload) => {
+    const { action, ...params } = payload || {};
+    if (backend.pending.size && ["prepare", "build", "merge", "submit", "apply", "recovery", "select", "discard", "save", "begin", "repairPrompt"].includes(action)) {
+      throw new Error("请先等待当前任务完成或停止任务。");
+    }
+    const actions = {
+      prepare: () => evolution.prepare(),
+      begin: () => evolution.begin(),
+      save: () => evolution.saveVersion(params.name),
+      select: () => changeEvolutionBase(params.id),
+      discard: () => changeEvolutionBase(null, true),
+      build: () => evolution.build(),
+      repairPrompt: () => evolution.repairPrompt(),
+      releases: () => evolution.releases(),
+      download: () => evolution.downloadRelease(params.tag),
+      merge: () => evolution.mergeRelease(params.tag),
+      login: () => evolution.login(),
+      openGithubLogin: () => evolution.openGithubLogin(),
+      cancelLogin: () => evolution.cancelLogin(),
+      submit: () => evolution.submitPullRequest(params.title, params.body),
+      pullRequest: () => evolution.refreshPullRequest(),
+      apply: () => applyEvolution(params.id),
+      thread: () => evolution.operation("preparing", () => evolution.store.update({ threadId: String(params.id || "") })),
+      recovery: async () => {
+        await evolution.ensureBaseline();
+        const selected = await showRecovery(evolution.store, { selectOnly: true, parentWindow: BrowserWindow.fromWebContents(_event.sender) });
+        if (selected) return applyEvolution(selected);
+      },
+    };
+    if (!Object.hasOwn(actions, action)) throw new Error("不支持的进化操作。");
+    return actions[action]();
+  });
+  if (!app.isPackaged) ipcMain.handle("cleo:evolution:healthy", () => {});
+  // Downloaded updates never authorize installation. Selection is explicit and recoverable.
   backend.runtime = await dependencies.prepare();
   const hasInstallResult = await updater.restoreInstallationResult();
   createWindow();
@@ -222,13 +317,8 @@ app.whenReady().then(async () => {
       detail: installResult.error || "新版本已安装完成。",
     });
   }
-  const refresh = async () => {
-    void dependencies.check();
-    const state = await updater.check();
-    if (state.phase === "available") await updater.download();
-  };
+  const refresh = () => updater.check().catch((error) => console.error("Update check:", error.message));
   if (!hasInstallResult) setTimeout(() => void refresh(), 1500);
-  else void dependencies.check();
   const refreshTimer = setInterval(() => void refresh(), 6 * 60 * 60 * 1000);
   app.once("will-quit", () => clearInterval(refreshTimer));
   app.on("activate", () => {
@@ -245,7 +335,7 @@ app.on("before-quit", (event) => {
   if (shutdownStarted) return;
   event.preventDefault();
   shutdownStarted = true;
-  void Promise.all([backend.close(), dependencies.close()])
+  void Promise.all([backend.close(), dependencies.close(), evolution.cancelLogin()])
     .catch((error) => console.error("Cleo shutdown failed:", error))
     .finally(() => app.quit());
 });

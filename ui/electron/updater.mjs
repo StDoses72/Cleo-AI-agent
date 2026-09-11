@@ -155,26 +155,10 @@ export class DesktopUpdater {
     return join(this.app.getPath("temp"), `cleo-update-${manifest.version}${suffix}`, manifest.archive);
   }
 
+  /** Purpose: Discard legacy auto-install intent. Input: none. Output: never installs on launch. */
   async installPending() {
-    if (!this.app.isPackaged || this.packageManaged) return false;
-    try {
-      const value = JSON.parse(await readFile(this.pendingPath(), "utf8"));
-      const manifest = validateManifest(value, this.target);
-      // Consume the pending request before trying: a failed install must not loop on startup.
-      await rm(this.pendingPath());
-      if (compareVersions(manifest.version, this.state.currentVersion) <= 0) return false;
-      const archive = this.archiveFor(manifest);
-      if ((await stat(archive)).size !== manifest.bytes || await sha256(archive) !== manifest.sha256) {
-        throw new Error("The pending update failed verification; continuing with the installed version.");
-      }
-      this.manifest = manifest;
-      this.archivePath = archive;
-      this.setState({ phase: "ready", latestVersion: manifest.version, totalBytes: manifest.bytes });
-      return await this.install();
-    } catch (error) {
-      if (error.code !== "ENOENT") this.setState({ phase: "error", error: error.message });
-      return false;
-    }
+    await rm(this.pendingPath(), { force: true });
+    return false;
   }
 
   posixResultPath() {
@@ -294,12 +278,7 @@ export class DesktopUpdater {
         throw new Error("The downloaded update failed its SHA-256 verification.");
       }
       this.archivePath = archivePath;
-      await mkdir(this.app.getPath("userData"), { recursive: true });
-      await writeFile(this.pendingPath(), JSON.stringify({
-        schema_version: manifest.schemaVersion, app: manifest.app, version: manifest.version,
-        platform: manifest.platform, archive: manifest.archive,
-        sha256: manifest.sha256, bytes: manifest.bytes,
-      }));
+      // A verified download is available, but does not authorize installation on a later launch.
       return this.setState({
         phase: "ready",
         downloadedBytes: manifest.bytes,

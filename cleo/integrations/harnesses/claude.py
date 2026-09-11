@@ -177,9 +177,17 @@ class ClaudeProvider:
             )
         return runtime.options
 
-    async def list_models(self) -> tuple[HarnessModel, ...]:
-        """Expose the configured Claude model with SDK-supported effort levels."""
-        return tuple(
+    async def list_models(self, project_path: str = ".") -> tuple[HarnessModel, ...]:
+        """Purpose: Combine live Claude choices with explicitly configured model IDs.
+
+        Input: Project directory used by the discovery session.
+        Output: Selectable models; connection errors remain visible to the caller.
+        """
+        from cleo.integrations.harnesses.claude_models import discover_claude_models
+
+        discovered = await discover_claude_models(project_path)
+        models = {model.id: model for model in discovered}
+        configured = tuple(
             HarnessModel(
                 id=model,
                 display_name=model,
@@ -190,6 +198,15 @@ class ClaudeProvider:
             )
             for model in self._models
         )
+        for model in configured:
+            models.setdefault(model.id, model)
+        if not models:
+            models["default"] = HarnessModel(
+                id="default", display_name="Claude 默认模型", is_default=True,
+                description="当前 Claude 未提供模型目录，使用其默认模型",
+                default_effort=None, supported_efforts=(),
+            )
+        return tuple(models.values())
 
     async def prompt(
         self,

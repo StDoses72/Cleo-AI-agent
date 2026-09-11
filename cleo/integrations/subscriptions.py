@@ -203,8 +203,14 @@ async def inspect_connection(profile: AgentProfile) -> dict:
             return {"status": "connected", "models": [m.id for m in result.data]}
     if profile.backend == "claude_code":
         from cleo.integrations.claude_cli import auth_status
+        from cleo.integrations.harnesses.claude_models import discover_claude_models
 
-        return await auth_status(profile)
+        result = await auth_status(profile)
+        models = await discover_claude_models(
+            str(settings.active_directory_profile.root_path),
+            cli_path=executable(profile), env=runtime_environment(),
+        )
+        return {**result, "models": [model.id for model in models]}
     # session/new verifies authentication, whereas initialize alone need not do so.
     provider = create_runtime(profile, AgentMcp(profile, Path.cwd(), ""))
     async with asyncio.timeout(45):

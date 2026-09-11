@@ -1,15 +1,16 @@
-import { Brain, Code2, MessageCircle, Settings2 } from "lucide-react";
+import { Brain, Code2, GitBranch, MessageCircle, Settings2 } from "lucide-react";
 import type { WorkspaceSpace } from "../types";
 
 interface WorkspaceRailProps {
-  activeSpace: WorkspaceSpace;
-  onSelectSpace: (space: WorkspaceSpace) => void;
+  activeSpace: WorkspaceSpace | "evolution";
+  onSelectSpace: (space: WorkspaceSpace | "evolution") => void;
   onOpenSettings: () => void;
 }
 
 const spaces = [
   { id: "chat" as const, label: "对话", icon: MessageCircle },
   { id: "productivity" as const, label: "开发", icon: Code2 },
+  { id: "evolution" as const, label: "进化", icon: GitBranch },
   { id: "memory" as const, label: "记忆", icon: Brain },
 ];
 
