@@ -248,7 +248,10 @@ try {
       return { bounds: window.getContentBounds(), zoom: window.webContents.getZoomFactor() };
     }, scenario);
     console.log(JSON.stringify({ scenario: scenario.name, ...size }));
-    await page.waitForFunction(({ width, height, zoom }) => Math.abs(innerWidth - width / zoom) <= 4 && Math.abs(innerHeight - height / zoom) <= 4, scenario);
+    assert(size.bounds.width >= scenario.width - 4 && size.bounds.height >= scenario.height - 60,
+      `Runner reduced the requested test window too far: ${JSON.stringify(size)}`);
+    await page.waitForFunction(({ bounds, zoom }) => Math.abs(innerWidth - bounds.width / zoom) <= 4
+      && Math.abs(innerHeight - bounds.height / zoom) <= 4, size);
     if (scenario.name === "compact-zoom") {
       await page.getByRole("button", { name: "收起侧栏", exact: true }).click();
     }
