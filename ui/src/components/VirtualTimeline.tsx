@@ -2,8 +2,9 @@ import { useCallback, useLayoutEffect, useRef, useState, type ReactNode, type Re
 
 interface Row { id: string }
 
-export function VirtualTimeline<T extends Row>({ rows, viewport, follow, threadId, render, onScroll }: {
+export function VirtualTimeline<T extends Row>({ rows, viewport, follow, bottomInset = 0, threadId, render, onScroll }: {
   rows: T[]; viewport: RefObject<HTMLDivElement | null>; follow: RefObject<boolean>;
+  bottomInset?: number;
   threadId: string; render: (row: T) => ReactNode; onScroll: () => void;
 }) {
   const container = useRef<HTMLDivElement>(null);
@@ -69,7 +70,7 @@ export function VirtualTimeline<T extends Row>({ rows, viewport, follow, threadI
   const offsets = [0];
   for (const row of rows) offsets.push(offsets.at(-1)! + (heights.current.get(row.id) ?? 120));
   const view = viewport.current;
-  const height = view?.clientHeight ?? 700;
+  const height = Math.max(1, (view?.clientHeight ?? 700) - bottomInset);
   const containerTop = view && container.current
     ? container.current.getBoundingClientRect().top - view.getBoundingClientRect().top + view.scrollTop : 0;
   let scrollTop = Math.max(0, (view?.scrollTop ?? 0) - containerTop);

@@ -498,7 +498,7 @@ export function App() {
           onThreadCommand={(command) => void workspace.sendPrompt(command)}
           commands={workspace.snapshot.backend?.commands[workspace.activeSpace === "chat" ? "chat" : "productivity"] ?? []}
           history={workspace.history}
-          questionUI={<QuestionDialog questions={workspace.questions} textOnly={activeRuntime.supportsQuestions === false} />}
+          questionUI={<QuestionDialog questions={workspace.questions} />}
           approvalRequest={workspace.pendingApprovals.find(q => q.threadId === workspace.activeThreadId) ?? null}
           approvalPending={workspace.approvalPendingId !== null}
           approvalError={workspace.approvalError}

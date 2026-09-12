@@ -1,5 +1,4 @@
 .app-shell.evolution-open { --sidebar-width:0px; }
-.evolution-open .conversation-shell { grid-template-rows:auto minmax(0,1fr) auto; }
 .evolution-toolbar { flex-shrink:0; border-bottom:1px solid var(--border); background:var(--canvas); }
 .evolution-topline { display:flex; align-items:center; gap:12px; min-height:60px; padding:12px 24px; }
 .evolution-topline>strong { font-size:14px; }

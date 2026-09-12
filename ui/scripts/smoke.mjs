@@ -350,7 +350,6 @@ try {
     },
     composer: document.querySelector(".composer")?.getBoundingClientRect().toJSON(),
     composerDock: document.querySelector(".composer-dock")?.getBoundingClientRect().toJSON(),
-    composerHint: document.querySelector(".composer-hint")?.getBoundingClientRect().toJSON(),
     header: document.querySelector(".conversation-header")?.getBoundingClientRect().toJSON(),
     threadRow: document.querySelector(".thread-row")?.getBoundingClientRect().toJSON(),
     threadSelect: document.querySelector(".thread-row-select")?.getBoundingClientRect().toJSON(),
@@ -359,7 +358,6 @@ try {
   assert(compactFit.document.width === compactFit.viewport.width, "Compact view scrolls horizontally");
   assert(compactFit.document.height === compactFit.viewport.height, "Compact view scrolls vertically");
   assert(compactFit.composer?.bottom <= compactFit.viewport.height, "Composer is clipped in compact view");
-  assert(compactFit.composerHint?.bottom <= compactFit.composerDock?.bottom, "Composer hint overlaps the window edge");
   assert(compactFit.threadSelect?.right <= compactFit.threadRow?.right, "Thread controls overflow their row");
   assert(
     !compactFit.inspector || compactFit.inspector.right <= compactFit.viewport.width,

@@ -2,14 +2,13 @@ import { useEffect, useRef } from "react";
 import { MessageCircleQuestion, X } from "lucide-react";
 import type { useQuestions } from "../useQuestions";
 
-export function QuestionDialog({ questions, textOnly = false }: { questions: ReturnType<typeof useQuestions>; textOnly?: boolean }) {
+export function QuestionDialog({ questions }: { questions: ReturnType<typeof useQuestions> }) {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     if (questions.open) dialog.current?.showModal(); else dialog.current?.close();
   }, [questions.open, questions.current?.id]);
   const request = questions.current;
   return <>
-    {textOnly && <p className="question-text-fallback">此连接通过普通对话提问和回答。</p>}
     {request && <div className="question-banner" role="status">
       <MessageCircleQuestion size={16} /><span>Agent 正在等待你的回答</span>
       <button onClick={questions.reopen}>回答问题</button>

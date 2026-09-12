@@ -15,17 +15,16 @@ export function useInspectorResize(layoutKey: string, visible: boolean) {
   useLayoutEffect(() => {
     if (!shell) return;
     const measure = () => {
-      // Match the existing overlay breakpoint, leaving usable conversation space in either layout.
-      const sidebar = window.innerWidth <= 1180 ? 0 : parseFloat(getComputedStyle(shell).getPropertyValue("--sidebar-width")) || 0;
+      const sidebar = parseFloat(getComputedStyle(shell).getPropertyValue("--sidebar-width")) || 0;
       const available = Math.max(0, shell.clientWidth - 56 - sidebar);
-      const max = Math.max(0, Math.floor(available - Math.min(360, available / 2)));
+      const max = Math.floor(available >= 280 + 360 ? available - 360 : available / 2);
       setBounds({ min: Math.min(280, max), max });
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(shell);
     return () => observer.disconnect();
-  }, [shell, layoutKey]);
+  }, [shell, layoutKey, visible]);
 
   /** Purpose: End capture on release, cancellation, focus loss, or panel closure. */
   const stop = () => {
