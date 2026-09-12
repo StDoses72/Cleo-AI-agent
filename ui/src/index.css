@@ -972,11 +972,12 @@ html[data-platform="darwin"] .titlebar {
 
 .conversation-shell {
   display: grid;
+  container-type: inline-size;
   grid-column: 3;
   grid-row: 2;
   min-width: 0;
   min-height: 0;
-  grid-template-rows: 53px minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
   background: var(--canvas);
 }
@@ -984,6 +985,7 @@ html[data-platform="darwin"] .titlebar {
 .conversation-header {
   display: flex;
   min-width: 0;
+  min-height: 53px;
   align-items: center;
   justify-content: space-between;
   gap: 18px;
@@ -1824,8 +1826,8 @@ html[data-platform="darwin"] .titlebar {
   position: relative;
   z-index: 10;
   padding: 12px 34px max(16px, env(safe-area-inset-bottom));
-  border-top: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
-  background: color-mix(in srgb, var(--canvas) 96%, transparent);
+  background: transparent;
+  pointer-events: none;
 }
 
 .approval-prompt {
@@ -2012,7 +2014,8 @@ html[data-platform="darwin"] .titlebar {
   border: 1px solid var(--border-strong);
   border-radius: 13px;
   background: var(--surface-raised);
-  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  pointer-events: auto;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.1);
   transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
@@ -2028,7 +2031,7 @@ html[data-platform="darwin"] .titlebar {
 
 .composer:focus-within {
   border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.2), 0 0 0 3px var(--accent-soft);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.1);
 }
 
 .composer.running {
@@ -2306,13 +2309,11 @@ select.text-control:hover {
   background: color-mix(in srgb, var(--danger) 22%, var(--surface-active));
 }
 
-.composer-hint {
-  width: min(100%, 850px);
-  margin: 7px auto 0;
+.composer-status {
+  margin: 0 0 8px;
   color: var(--muted-2);
   font-size: 8.5px;
   line-height: 1.4;
-  text-align: center;
 }
 
 .app-shell.inspector-resizing { transition: none; cursor: col-resize; user-select: none; }
@@ -2352,6 +2353,7 @@ select.text-control:hover {
 .inspector-tabs {
   min-width: 0;
   overflow-x: auto;
+  overflow-y: hidden;
   display: flex;
   height: 100%;
   align-items: center;
@@ -2362,11 +2364,13 @@ select.text-control:hover {
   position: relative;
   display: flex;
   height: 100%;
+  flex-shrink: 0;
   align-items: center;
   gap: 5px;
   padding: 0 8px;
   color: var(--muted);
   font-size: 10px;
+  white-space: nowrap;
 }
 
 .inspector-tabs button:hover,
@@ -2377,7 +2381,7 @@ select.text-control:hover {
 .inspector-tabs button.active::after {
   position: absolute;
   right: 8px;
-  bottom: -1px;
+  bottom: 0;
   left: 8px;
   height: 2px;
   border-radius: 2px 2px 0 0;
@@ -3494,17 +3498,6 @@ select.text-control:hover {
 
 @media (max-width: 1180px) {
   .app-shell { --sidebar-width: 252px; }
-  .app-shell.inspector-open { --inspector-width: 0px; }
-  .app-shell.inspector-open .inspector {
-    position: fixed;
-    z-index: 60;
-    top: 44px;
-    right: 0;
-    bottom: 0;
-    width: min(var(--inspector-preferred-width, 326px), calc(100vw - 80px));
-    border-radius: 10px 0 0;
-    box-shadow: -18px 0 48px rgba(0, 0, 0, 0.32);
-  }
   .timeline { padding-right: 34px; padding-left: 34px; }
   .composer-dock { padding-right: 24px; padding-left: 24px; }
   .branch-button span { max-width: 80px; }

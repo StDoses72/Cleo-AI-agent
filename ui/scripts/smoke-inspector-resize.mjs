@@ -6,8 +6,8 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const ui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const dist = joinDist("");
-function joinDist(name) { return resolve(ui, "dist", name); }
+const dist = resolve(process.env.CLEO_SMOKE_DIST || resolve(ui, "dist"));
+function joinDist(name) { return resolve(dist, name); }
 const server = createServer(async (req, res) => {
   const name = decodeURIComponent(new URL(req.url, "http://localhost").pathname);
   const path = joinDist(name === "/" ? "index.html" : `.${name}`);
@@ -26,6 +26,21 @@ page.on("pageerror", (error) => errors.push(error.message));
 const inspector = page.getByTestId("inspector");
 const handle = page.getByRole("separator", { name: "调整检查器宽度" });
 const width = async () => (await inspector.boundingBox()).width;
+async function verifySideBySide(minConversationWidth = 0) {
+  const chat = await page.getByTestId("conversation").boundingBox();
+  const panel = await inspector.boundingBox();
+  assert.ok(chat.x + chat.width <= panel.x + 1, "Inspector overlaps the conversation");
+  assert.ok(chat.width >= minConversationWidth - 1, `Conversation narrowed to ${chat.width}px`);
+  assert.ok(panel.x + panel.width <= page.viewportSize().width + 1, "Inspector exceeds the viewport");
+  assert.equal(await inspector.evaluate((el) => getComputedStyle(el).position), "relative");
+}
+async function verifyTabs() {
+  const dimensions = await inspector.locator(".inspector-tabs").evaluate((el) => ({
+    height: el.clientHeight, contentHeight: el.scrollHeight, overflowY: getComputedStyle(el).overflowY,
+  }));
+  assert.equal(dimensions.contentHeight, dimensions.height, "Tab underline creates a vertical scrollbar");
+  assert.equal(dimensions.overflowY, "hidden");
+}
 /** Purpose: Exercise real pointer capture outside the handle. Input: horizontal delta. Output: resulting width. */
 async function dragBy(delta) {
   const rect = await handle.boundingBox();
@@ -40,6 +55,8 @@ try {
   await page.getByRole("button", { name: "开发", exact: true }).click();
   await inspector.waitFor();
   await page.waitForFunction(() => document.querySelector('.inspector').getBoundingClientRect().width >= 280);
+  await verifySideBySide(360);
+  await verifyTabs();
   assert.equal(await handle.evaluate((el) => getComputedStyle(el).cursor), "col-resize");
   const original = await width();
   const conversation = await page.getByTestId("conversation").boundingBox();
@@ -54,6 +71,7 @@ try {
   for (const name of ["上下文", "运行", "变更"]) {
     const before = await width();
     await inspector.locator(".inspector-tabs button").filter({ hasText: name }).click();
+    await verifyTabs();
     assert.equal(await width(), before, "Tab change reset the width");
     assert.ok(Math.abs(await dragBy(-15) - before - 15) < 2);
   }
@@ -71,13 +89,23 @@ try {
   await inspector.waitFor();
   await page.waitForFunction((expected) => Math.abs(document.querySelector('.inspector').getBoundingClientRect().width - expected) < 1, selected);
 
-  await page.setViewportSize({ width: 800, height: 760 });
-  await handle.waitFor();
+  for (const viewportWidth of [1180, 1000, 980, 800, 720]) {
+    await page.setViewportSize({ width: viewportWidth, height: 760 });
+    await handle.waitFor();
+    await dragBy(-1000);
+    await verifySideBySide(viewportWidth >= 980 ? 360 : viewportWidth >= 800 ? 240 : 200);
+    await verifyTabs();
+  }
+  await page.getByRole("button", { name: "收起侧栏", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('.thread-sidebar').getBoundingClientRect().width <= 1);
   await dragBy(-1000);
-  const narrow = await inspector.boundingBox();
-  assert.ok(narrow.x >= 320 && narrow.x + narrow.width <= 801, "Narrow overlay exceeds available space");
+  await verifySideBySide(360);
+  assert.ok(await width() >= 280, "Collapsing the sidebar did not restore inspector space");
   await inspector.getByRole("button", { name: "关闭检查器", exact: true }).click({ trial: true });
-  for (const name of ["上下文", "运行", "变更"]) await inspector.locator(".inspector-tabs button").filter({ hasText: name }).click();
+  for (const name of ["上下文", "运行", "变更"]) {
+    await inspector.locator(".inspector-tabs button").filter({ hasText: name }).click();
+    await verifyTabs();
+  }
   const rect = await handle.boundingBox();
   await page.mouse.move(rect.x + 2, rect.y + 100); await page.mouse.down();
   await page.mouse.move(rect.x - 20, rect.y + 100);
@@ -87,7 +115,7 @@ try {
   const dimensions = await page.evaluate(() => [innerWidth, document.documentElement.scrollWidth]);
   assert.equal(dimensions[0], dimensions[1]);
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ status: "passed", scenarios: ["continuous drag and synchronized layout", "release and repeated drag", "all three tabs", "bounds and viewport shrink", "keyboard and reopen", "focus-loss cleanup"] }));
+  console.log(JSON.stringify({ status: "passed", scenarios: ["continuous drag and synchronized layout", "release and repeated drag", "all three tabs without vertical overflow", "side-by-side layout at 1440/1180/1000/980/800/720px", "sidebar collapse reclaims space", "keyboard and reopen", "focus-loss cleanup"] }));
 } catch (error) {
   console.error(JSON.stringify({ errors, body: await page.locator("body").innerText() }));
   throw error;

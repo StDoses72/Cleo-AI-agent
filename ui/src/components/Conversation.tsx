@@ -10,6 +10,7 @@ import {
   useState,
   useLayoutEffect,
   type ReactNode,
+  type CSSProperties,
   type ClipboardEvent,
   type DragEvent,
   type KeyboardEvent,
@@ -18,6 +19,7 @@ import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   ArrowLeft,
+  ArrowDown,
   ArrowUp,
   AtSign,
   Check,
@@ -161,8 +163,19 @@ export function Conversation({
   onResolveApproval,
 }: ConversationProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const [bottomInset, setBottomInset] = useState(140);
   const stickToBottomRef = useRef(true);
   useLayoutEffect(() => { stickToBottomRef.current = true; }, [thread?.id]);
+  useLayoutEffect(() => {
+    const bottom = bottomRef.current;
+    if (!bottom) return;
+    const measure = () => setBottomInset(Math.ceil(bottom.getBoundingClientRect().height) + 12);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(bottom);
+    return () => observer.disconnect();
+  }, []);
   const timelineItems = useMemo(
     () => groupTimelineItems(thread?.items ?? []),
     [thread?.items],
@@ -239,7 +252,7 @@ export function Conversation({
 
   return (
     <main className="conversation-shell" data-testid="conversation" data-cache-count={thread?.items.length ?? 0} data-cache-first={thread?.items[0]?.id ?? ""}>
-      <div>{header ?? <ConversationHeader
+      <div className="conversation-chrome">{header ?? <ConversationHeader
         thread={thread}
         project={project}
         space={space}
@@ -258,6 +271,7 @@ export function Conversation({
         busy={running || Boolean(sendBlocked)}
       />}{improvement}</div>
 
+      <div className="conversation-body" style={{ "--composer-clearance": `${bottomInset}px` } as CSSProperties}>
         <div className="conversation-viewport" ref={viewportRef} tabIndex={0} aria-label="对话历史" onWheel={event => {
           if (event.deltaY < 0) { stickToBottomRef.current = false; history?.follow(false); }
           if (!history?.busy && !history?.error) {
@@ -274,7 +288,7 @@ export function Conversation({
         {history?.busy && <div className="history-loading" role="status">正在加载历史…</div>}
         {thread?.items.length ? (
           <>
-            <VirtualTimeline rows={rows} viewport={viewportRef} follow={stickToBottomRef} threadId={thread.id} render={renderRow} onScroll={trackScrollPosition} />
+            <VirtualTimeline rows={rows} viewport={viewportRef} follow={stickToBottomRef} bottomInset={bottomInset} threadId={thread.id} render={renderRow} onScroll={trackScrollPosition} />
             {running ? (
               <div className="streaming-indicator" aria-label="Cleo 正在工作">
                 <span />
@@ -289,14 +303,11 @@ export function Conversation({
         {thread?.history?.hasAfter && <button className="history-page-control" disabled={Boolean(history?.busy)} onClick={() => void history?.load("after")}>加载较新历史</button>}
       </div>
 
-      <div className="conversation-bottom">
-      {(history?.unread || thread?.history?.hasAfter || (history && !history.following)) && <button className="history-latest" onClick={() => {
+      <div className="conversation-bottom" ref={bottomRef}>
+      {(history?.unread || thread?.history?.hasAfter || (history && !history.following)) && <button className="history-latest" aria-label="回到最新" title={history?.unread ? "有新消息 · 回到最新" : "回到最新"} data-unread={history?.unread || undefined} onClick={() => {
         void history?.load("latest", () => { stickToBottomRef.current = true; });
-      }}>{history?.unread ? "有新消息 · " : ""}回到最新</button>}
+      }}><ArrowDown size={17} aria-hidden="true" /></button>}
       {questionUI}
-      {thread?.history && thread.history.total > 80 && <details className="history-help"><summary>历史浏览说明</summary>
-        <p>历史会按需加载，页面查找和跨屏文字选择仅覆盖当前显示的内容。长正文可打开完整阅读窗口，逐段查看；历史记录不会被删除。</p>
-      </details>}
       {readerError && <p className="history-error" role="alert">{readerError}</p>}
       <dialog ref={readerDialog} className="history-reader" data-content-kind={reader?.item.type} aria-label="完整历史正文"
         onKeyDown={event => event.stopPropagation()} onCancel={() => { readerGeneration.current++; setReader(null); }}>
@@ -336,6 +347,7 @@ export function Conversation({
         approvalError={approvalError}
         onResolveApproval={onResolveApproval}
       />
+      </div>
       </div>
     </main>
   );
@@ -1043,6 +1055,7 @@ function Composer({
         onDragLeave={onDragLeave}
         onDrop={onDrop}
       >
+        {sendBlocked && <p className="composer-status" role="status">{sendBlocked}</p>}
         {draggingFiles ? (
           <div className="composer-drop-overlay" aria-hidden="true">
             <Paperclip size={18} />
@@ -1142,7 +1155,6 @@ function Composer({
           )}
         </div>
       </div>
-      <div className="composer-hint" role={sendBlocked ? "status" : undefined}>{sendBlocked ?? "Enter 发送 · Shift Enter 换行 · 支持拖拽或粘贴文件"}</div>
     </div>
   );
 }
