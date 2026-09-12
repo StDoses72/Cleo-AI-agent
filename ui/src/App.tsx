@@ -4,6 +4,7 @@ import { EvolutionCases } from "./components/EvolutionCases";
 import { EvolutionPreparation } from "./components/EvolutionPreparation";
 import type { EvolutionRequest } from "./evolution-types";
 import { useEvolution } from "./useEvolution";
+import { useInspectorResize } from "./useInspectorResize";
 import "./components/evolution.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Command, Minus } from "lucide-react";
@@ -151,6 +152,8 @@ export function App() {
     }));
   };
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("changes");
+  const showInspector = inspectorOpen && (evolutionOpen || workspace.activeSpace !== "memory");
+  const inspectorResize = useInspectorResize(`${sidebarCollapsed}:${evolutionOpen}`, showInspector);
   const [commandOpen, setCommandOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [threadPendingDeletion, setThreadPendingDeletion] = useState<Thread | null>(null);
@@ -193,13 +196,10 @@ export function App() {
   }, [motionEnabled]);
 
   useEffect(() => {
-    const compactLayout = window.matchMedia("(max-width: 1180px)");
-    const closeInspectorForCompactLayout = (event: MediaQueryListEvent | MediaQueryList) => {
-      if (event.matches) setInspectorBySpace({ chat: false, productivity: false, evolution: false });
-    };
-    closeInspectorForCompactLayout(compactLayout);
-    compactLayout.addEventListener("change", closeInspectorForCompactLayout);
-    return () => compactLayout.removeEventListener("change", closeInspectorForCompactLayout);
+    // Start compact windows with space for the conversation, but let an opened
+    // inspector stay available when resizing the window or dragging its boundary.
+    if (window.matchMedia("(max-width: 1180px)").matches)
+      setInspectorBySpace({ chat: false, productivity: false, evolution: false });
   }, []);
 
   useEffect(() => {
@@ -344,18 +344,18 @@ export function App() {
   const settingsRuntime = activeRuntime.effort || !selectedRuntimeModel?.defaultEffort
     ? activeRuntime
     : { ...activeRuntime, effort: selectedRuntimeModel.defaultEffort };
-  const showInspector = inspectorOpen && (evolutionOpen || workspace.activeSpace !== "memory");
   const appClasses = [
     "app-shell",
     evolutionOpen ? "evolution-open" : "",
     sidebarCollapsed && !evolutionOpen ? "sidebar-collapsed" : "",
     showInspector ? "inspector-open" : "inspector-closed",
+    inspectorResize.dragging ? "inspector-resizing" : "",
   ]
     .filter(Boolean)
     .join(" ");
 
   return (
-    <div className={appClasses} data-theme={theme}>
+    <div ref={inspectorResize.setShell} className={appClasses} style={inspectorResize.style} data-theme={theme}>
       <TitleBar
         projectName={evolutionOpen ? "Cleo 进化" : workspace.activeSpace === "memory" ? "记忆" : workspace.activeProject?.name ?? "Cleo"}
         mode={evolutionOpen ? "Evolution" : workspace.activeSpace === "productivity" ? "Productivity" : workspace.activeSpace === "chat" ? "Chat" : "Memory"}
@@ -503,6 +503,7 @@ export function App() {
       )}
       {showInspector ? (
         <Inspector
+          resizeHandle={<div className="inspector-resize-handle" {...inspectorResize.handleProps} />}
           thread={conversationThread}
           project={conversationProject}
           runtime={activeRuntime}

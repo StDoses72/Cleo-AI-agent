@@ -132,7 +132,7 @@ kbd {
 
 .app-shell {
   --sidebar-width: 286px;
-  --inspector-width: 370px;
+  --inspector-width: var(--inspector-preferred-width, 370px);
   display: grid;
   grid-template-columns: 56px var(--sidebar-width) minmax(0, 1fr) var(--inspector-width);
   grid-template-rows: 44px minmax(0, 1fr);
@@ -2308,7 +2308,17 @@ select.text-control:hover {
   text-align: center;
 }
 
+.app-shell.inspector-resizing { transition: none; cursor: col-resize; user-select: none; }
+.app-shell.inspector-resizing * { cursor: col-resize !important; }
+.inspector-resize-handle {
+  position: absolute; z-index: 3; inset: 0 auto 0 0; width: 7px;
+  cursor: col-resize; touch-action: none; outline: none;
+}
+.inspector-resize-handle:hover, .inspector-resize-handle:focus-visible,
+.inspector-resizing .inspector-resize-handle { background: var(--accent); opacity: .65; }
+
 .inspector {
+  position: relative;
   display: flex;
   grid-column: 4;
   grid-row: 2;
@@ -2330,7 +2340,11 @@ select.text-control:hover {
   border-bottom: 1px solid var(--border);
 }
 
+.inspector-header > .icon-button { flex-shrink: 0; }
+
 .inspector-tabs {
+  min-width: 0;
+  overflow-x: auto;
   display: flex;
   height: 100%;
   align-items: center;
@@ -3480,7 +3494,7 @@ select.text-control:hover {
     top: 44px;
     right: 0;
     bottom: 0;
-    width: min(326px, calc(100vw - 80px));
+    width: min(var(--inspector-preferred-width, 326px), calc(100vw - 80px));
     border-radius: 10px 0 0;
     box-shadow: -18px 0 48px rgba(0, 0, 0, 0.32);
   }
