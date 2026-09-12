@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
   type ClipboardEvent,
   type DragEvent,
   type KeyboardEvent,
@@ -53,6 +54,9 @@ import { ApprovalPrompt } from "./ApprovalPrompt";
 import { RenameThreadDialog } from "./Overlays";
 
 interface ConversationProps {
+  preparation?: ReactNode;
+  improvement?: ReactNode;
+  header?: ReactNode;
   thread: Thread | null;
   project: Project | null;
   space: ThreadSpace;
@@ -77,7 +81,7 @@ interface ConversationProps {
   onCancel: () => void;
   onUndo: () => void;
   onSelectNonProductivityProfile: (profileId: string) => void;
-  onLoadProductivityModels: (provider: string) => Promise<ProductivityModelCatalog>;
+  onLoadProductivityModels: (provider: string, refresh?: boolean) => Promise<ProductivityModelCatalog>;
   onSelectProductivityRuntime: (provider: string, model: string) => void;
   onEffortChange: (effort: NonNullable<RuntimeProfile["effort"]>) => void;
   attachments: Attachment[];
@@ -102,6 +106,9 @@ const suggestions = {
 };
 
 export function Conversation({
+  preparation,
+  improvement,
+  header,
   thread,
   project,
   space,
@@ -177,7 +184,7 @@ export function Conversation({
 
   return (
     <main className="conversation-shell" data-testid="conversation">
-      <ConversationHeader
+      <div>{header ?? <ConversationHeader
         thread={thread}
         project={project}
         space={space}
@@ -194,9 +201,10 @@ export function Conversation({
         onThreadCommand={onThreadCommand}
         onRename={onRename}
         busy={running || Boolean(sendBlocked)}
-      />
+      />}{improvement}</div>
 
-      <div className="conversation-viewport" ref={viewportRef} onScroll={trackScrollPosition}>
+        <div className="conversation-viewport" ref={viewportRef} onScroll={trackScrollPosition}>
+          {preparation}
         {thread?.items.length ? (
           <div className="timeline" key={thread.id} data-testid="timeline">
             {timelineItems.map((item) => (
@@ -747,17 +755,20 @@ function ToolProcess({ tool, index }: { tool: ToolTimelineItem; index: number })
   );
 }
 
+/** Purpose: Keep the shared composer welcome focused on the current task. Input: project/space. Output: relevant example requests. */
 function WelcomeState({ project, space, onUseSuggestion }: { project: Project | null; space: ThreadSpace; onUseSuggestion: (prompt: string) => void }) {
+  const evolving = project?.id === "productivity:cleo-evolution";
+  const prompts = evolving ? ["让 Cleo 的界面更清晰一些", "为 Cleo 增加一个我需要的功能", "帮我改善 Cleo 的使用体验"] : suggestions[space];
   return (
     <div className="welcome-state">
       <div className="welcome-portrait-wrap">
         <img src="./cleo.png" alt="Cleo" />
       </div>
       <span className="eyebrow">{project?.name ?? "CLEO"}</span>
-      <h2>{space === "chat" ? "今天想聊些什么？" : "从一个清晰的目标开始。"}</h2>
-      <p>{space === "chat" ? "聊聊想法、学习新知，或一起解决生活中的小问题。" : "我会先理解工作区，再决定需要读取、修改和验证什么。"}</p>
+      <h2>{evolving ? "你想让 Cleo 怎样改变？" : space === "chat" ? "今天想聊些什么？" : "从一个清晰的目标开始。"}</h2>
+      <p>{evolving ? "直接描述需求，我会完成修改和检查。应用后，你再决定是否保存。" : space === "chat" ? "聊聊想法、学习新知，或一起解决生活中的小问题。" : "我会先理解工作区，再决定需要读取、修改和验证什么。"}</p>
       <div className="suggestion-list">
-        {suggestions[space].map((suggestion) => (
+        {prompts.map((suggestion) => (
           <button type="button" key={suggestion} onClick={() => {
             onUseSuggestion(suggestion);
             document.querySelector<HTMLTextAreaElement>('[data-testid="composer-input"]')?.focus();
@@ -844,7 +855,6 @@ function Composer({
   useEffect(() => {
     if (
       space !== "productivity"
-      || productivityModels[runtime.provider]
       || effortProviderRequest.current === runtime.provider
     ) return;
     effortProviderRequest.current = runtime.provider;
@@ -1043,6 +1053,9 @@ function formatAttachmentSize(size: number) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/** Purpose: Share harness/model selection across development and evolution.
+ * Input: live catalogs and selection callbacks. Output: accessible picker with retry.
+ */
 function RuntimeSelector({
   space,
   runtime,
@@ -1063,7 +1076,7 @@ function RuntimeSelector({
   error: string | null;
   running: boolean;
   onSelectProfile: (profileId: string) => void;
-  onLoadModels: (provider: string) => Promise<ProductivityModelCatalog>;
+  onLoadModels: (provider: string, refresh?: boolean) => Promise<ProductivityModelCatalog>;
   onSelectProductivityRuntime: (provider: string, model: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -1091,7 +1104,7 @@ function RuntimeSelector({
   };
   const openProvider = (provider: string) => {
     setProviderScreen(provider);
-    void onLoadModels(provider).catch(() => undefined);
+    void onLoadModels(provider, true).catch(() => undefined);
   };
 
   return (
@@ -1100,11 +1113,12 @@ function RuntimeSelector({
         className="text-control runtime-selector-trigger"
         type="button"
         disabled={running || !catalog}
+        aria-label={space === "productivity" ? "选择 Harness 和模型" : "选择对话模型"}
         aria-expanded={open}
         onClick={toggleMenu}
         data-testid="runtime-selector"
       >
-        <span>{runtime.model}</span>
+        <span>{space === "productivity" ? `${runtime.provider} · ` : ""}{runtime.model}</span>
         <ChevronDown size={13} />
       </button>
       {open ? (
@@ -1147,8 +1161,11 @@ function RuntimeSelector({
               <div className="runtime-menu-list">
                 {loadingProvider === providerScreen ? (
                   <div className="runtime-menu-status"><LoaderCircle className="spin" size={14} />正在连接 harness 并读取模型…</div>
-                ) : error && !selectedModels ? (
-                  <div className="runtime-menu-status error">{error}</div>
+                ) : error ? (
+                  <div className="runtime-menu-status error" role="alert">
+                    <span>{error}</span>
+                    <button type="button" onClick={() => openProvider(providerScreen)}>重试读取模型</button>
+                  </div>
                 ) : (
                   selectedModels?.map((model) => (
                     <button
@@ -1174,8 +1191,8 @@ function RuntimeSelector({
           ) : (
             <>
               <div className="runtime-menu-heading">
-                <span>运行方式</span>
-                <small>新任务生效</small>
+                <span>选择 Harness</span>
+                <small>新任务生效 · 历史保留</small>
               </div>
               <div className="runtime-menu-list">
                 {providers.map((provider) => (

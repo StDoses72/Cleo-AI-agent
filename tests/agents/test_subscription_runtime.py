@@ -46,6 +46,37 @@ def test_dream_follows_source_and_explicit_override(tmp_path):
     assert "secret" not in str(profile_snapshot(settings.profiles.agents["other"]))
 
 
+def test_dream_follows_development_session_model_without_a_chat_profile(tmp_path):
+    settings = configuration(tmp_path)
+    settings.active_profiles.agent = "other"
+    manifest = {"space": "productivity", "provider": "codex",
+                "runtime_options": {"model": "original-task-model", "future": ["keep"]}}
+    before = repr(manifest)
+    profile = dream_profile(settings, manifest)
+    assert profile.backend == "codex"
+    assert profile.model == "original-task-model"
+    assert not profile.api_key.get_secret_value()
+    assert repr(manifest) == before
+    settings.active_profiles.dream_agent = "other"
+    assert dream_profile(settings, manifest).model == "model-b"
+
+
+def test_dream_follows_claude_task_and_rejects_unsupported_or_disabled_harness(tmp_path):
+    from cleo.config.settings import ClaudeHarnessSettings
+
+    settings = configuration(tmp_path)
+    settings.productivity.providers["custom-claude"] = ClaudeHarnessSettings(model="fallback-model")
+    manifest = {"space": "productivity", "provider": "custom-claude"}
+    profile = dream_profile(settings, manifest)
+    assert (profile.backend, profile.model) == ("claude_code", "fallback-model")
+    settings.productivity.providers["custom-claude"].enabled = False
+    with pytest.raises(ValueError, match="独立模型"):
+        dream_profile(settings, manifest)
+    manifest["provider"] = "unknown-harness"
+    with pytest.raises(ValueError, match="独立模型"):
+        dream_profile(settings, manifest)
+
+
 def test_changed_or_removed_connection_never_falls_back(tmp_path):
     settings = configuration(tmp_path)
     manifest = {

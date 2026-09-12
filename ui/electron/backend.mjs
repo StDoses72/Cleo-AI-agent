@@ -238,7 +238,16 @@ export class BackendBridge {
     } catch {
       // The process may exit before the final protocol response is read.
     }
-    if (active && !active.killed) active.kill();
+    if (active && active.exitCode === null && active.signalCode === null) {
+      const exited = new Promise((done) => active.once("exit", done));
+      active.kill();
+      let timer;
+      try {
+        await Promise.race([exited, new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error("后端未能退出，已停止应用改动。")), 10000);
+        })]);
+      } finally { clearTimeout(timer); }
+    }
   }
 
   async restart() {

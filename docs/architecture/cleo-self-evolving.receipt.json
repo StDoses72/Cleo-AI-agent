@@ -1,0 +1,16 @@
+{
+  "diagram_type": "architecture",
+  "output": "D:/study/Carleton/CS/research/Cleo-AI-agent/docs/architecture/cleo-self-evolving.html",
+  "specification_sha256": "32544ed244066ecfde73c7617dfa6e3554bf55221739b20305d3846387337ac5",
+  "specification_bytes": 7385,
+  "artifact_sha256": "98d268fbb53b257be26a558eb0e4f5d3c817e4da0fbcbdb276ad9d082ddcbb34",
+  "artifact_bytes": 815806,
+  "validation": "9/9 showcase, 0 errors, 0 warnings",
+  "browser_evidence": "passed",
+  "visual_review": "passed",
+  "correction_rounds": 1,
+  "source_scope": "2026-09-10 local working tree including uncommitted evolution implementation; not the HEAD commit alone",
+  "git_head_context": "f140500c587fed865fac3228b3a4731dc410ff0a",
+  "automated_receipt": "cleo-self-evolving.visual-check.json",
+  "visual_review_scope": "Image-capable review of delivered READ/Still screenshots at 1440x900 light and 2048x1320 dark: checked node/card fit, labels, routes, theme contrast and vertical composition. Other viewport measurements are automated; search/focus/export interactions were not manually tested."
+}

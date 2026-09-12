@@ -31,11 +31,23 @@ def session_profile(settings: Any, manifest: dict[str, Any]) -> AgentProfile:
 
 
 def dream_profile(settings: Any, manifest: dict[str, Any]) -> AgentProfile:
+    """Purpose: Follow a source session's model unless an explicit DreamAgent overrides it.
+    Input: Current settings and saved manifest. Output: Transient profile; no configuration writes.
+    """
     name = settings.active_profiles.dream_agent
     if name:
         return settings.active_dream_agent_profile
     if manifest.get("space") == "productivity" and not (manifest.get("runtime_options") or {}).get(
         "agent_profile"
     ):
-        raise ValueError("Select a DreamAgent profile to consolidate a Productivity session.")
+        provider = settings.productivity.providers.get(manifest.get("provider"))
+        backend = {"codex_sdk": "codex", "claude_sdk": "claude_code"}.get(
+            getattr(provider, "type", None)
+        )
+        if backend is None or not provider.enabled:
+            raise ValueError("无法跟随此开发会话的模型，请在设置 → DreamAgent 中选择独立模型。")
+        options = manifest.get("runtime_options") or {}
+        return AgentProfile(
+            backend=backend, provider=backend, model=options.get("model") or provider.model or "default",
+        )
     return session_profile(settings, manifest)

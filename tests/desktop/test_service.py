@@ -1082,6 +1082,21 @@ def test_claude_models_expose_sdk_effort_levels(tmp_path: Path) -> None:
             def providers(self):
                 return ("claude",)
 
+            def provider_control(self, provider):
+                assert provider == "claude"
+                return self
+
+            async def list_models(self, project_path):
+                assert project_path == str(service.settings.active_directory_profile.root_path)
+                return tuple(
+                    HarnessModel(
+                        id=identifier, display_name=identifier, description="Live SDK model",
+                        is_default=index == 0, default_effort="high",
+                        supported_efforts=("low", "medium", "high", "xhigh", "max"),
+                    )
+                    for index, identifier in enumerate(("claude-opus-test", "claude-sonnet-test"))
+                )
+
         service.settings.productivity = SimpleNamespace(
             default_provider="claude",
             providers={
@@ -1099,6 +1114,7 @@ def test_claude_models_expose_sdk_effort_levels(tmp_path: Path) -> None:
 
         models = await service.get_productivity_models(provider="claude")
 
+        assert models["source"] == "sdk"
         assert [model["id"] for model in models["models"]] == [
             "claude-opus-test",
             "claude-sonnet-test",
@@ -1219,6 +1235,28 @@ def test_memory_review_preserves_full_tool_output(tmp_path: Path) -> None:
         assert tool["content"]["content"] == body
 
     asyncio.run(scenario())
+
+
+def test_memory_review_reads_late_events_without_rewriting_cache_or_queue(tmp_path):
+    service = _service(tmp_path)
+    from cleo.memory.paths import compact_path
+
+    service.store.create_session(session_id="late-diff", space="productivity", project="workspace",
+                                 provider="codex", owner_type="user")
+    service.store.append_event(session_id="late-diff", space="productivity", project="workspace",
+                              event_type="user_message", actor="user", content="Keep original content")
+    service.store.refresh_compact("late-diff")
+    cache = compact_path(service.settings.MEMORY_DIR, "productivity", "workspace", "late-diff")
+    state = memory_state_path(service.settings.MEMORY_DIR, "productivity")
+    before = (cache.read_bytes(), state.read_bytes())
+    service.store.append_event(session_id="late-diff", space="productivity", project="workspace",
+                              event_type="turn_diff", actor="codex", content="late changes")
+    details = asyncio.run(service.get_memory_review_details(
+        session_id="late-diff", space="productivity", project="workspace",
+    ))
+    assert details["event_count"] == 3
+    assert any(event["type"] == "turn_diff" for event in details["events"])
+    assert (cache.read_bytes(), state.read_bytes()) == before
 
 
 def test_review_memory_source_can_run_dream_agent(tmp_path: Path) -> None:

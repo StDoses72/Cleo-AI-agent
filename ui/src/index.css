@@ -2268,6 +2268,8 @@ select.text-control:hover {
 
 .runtime-menu-status.error {
   color: var(--warning);
+  flex-direction: column;
+  overflow-wrap: anywhere;
 }
 
 .send-button {

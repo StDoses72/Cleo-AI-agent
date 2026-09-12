@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { execFile, spawn } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
-import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { bundledPython } from "./platform.mjs";
@@ -113,13 +113,7 @@ export class DependencyUpdater {
 
   async checkInternal() {
     await mkdir(this.root, { recursive: true });
-    for (const entry of await readdir(this.installationRoot, { withFileTypes: true })) {
-      const path = join(this.installationRoot, entry.name);
-      if (path !== this.root && entry.isDirectory() && /^[a-f0-9]{24}$/.test(entry.name)
-          && dirname(realpathSync(path)) === realpathSync(this.installationRoot)) {
-        await rm(path, { recursive: true });
-      }
-    }
+    // Other versions retain their runtime snapshots so explicit rollback remains reproducible.
     if (this.closed) return;
     const args = ["-I", "-m", "cleo.desktop.dependencies", "--root", this.root,
       "--python-root", join(this.resourcesPath, "python"),
