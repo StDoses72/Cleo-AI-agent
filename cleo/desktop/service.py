@@ -35,6 +35,7 @@ from cleo.desktop.projection import (
     stream_event_item,
     timeline_from_events,
 )
+from cleo.desktop.task_harnesses import task_providers
 from cleo.harnesses.control import HarnessModel
 from cleo.integrations.background import launch_dream_agent_worker
 from cleo.integrations.git import (
@@ -46,9 +47,9 @@ from cleo.integrations.git import (
     read_git_diff,
     undo_git_checkpoint,
 )
-from cleo.integrations.harnesses.claude import CLAUDE_EFFORTS
 from cleo.integrations.workspace import resolve_productivity_cwd
-from cleo.memory.compaction import load_events, load_validated_compact
+from cleo.memory.compaction import load_events
+from cleo.memory.dream_source import read_dream_source, validate_dream_state
 from cleo.memory.overview import build_memory_overview
 from cleo.memory.paths import memory_state_path
 from cleo.memory.state import (
@@ -404,6 +405,7 @@ class DesktopService:
         """Resolve one source in the desktop memory review queue."""
         if action not in {"consolidate", "skip"}:
             raise ValueError(f"不支持的记忆处理动作：{action}")
+        validate_dream_state(self.settings.MEMORY_DIR, space)
         state_path = memory_state_path(self.settings.MEMORY_DIR, space)
         source = get_session_source(space, project, session_id, path=state_path)
         if source is None:
@@ -459,7 +461,9 @@ class DesktopService:
         project: str,
         session_id: str,
     ) -> dict[str, Any]:
-        """Preview the full-text projection used by DreamAgent for this source."""
+        """Purpose: Preview the same current evidence snapshot used by DreamAgent.
+        Input: Source identity. Output: Redacted full-text records without any cache/state writes.
+        """
         source = get_session_source(
             space,
             project,
@@ -468,22 +472,11 @@ class DesktopService:
         )
         if source is None or source.get("status") not in {"pending", "failed"}:
             raise ValueError("待确认的记忆来源不存在或已被处理")
-        payload = load_validated_compact(
-            memory_root=self.settings.MEMORY_DIR,
-            space=space,
-            project=project,
-            session_id=session_id,
-        )
-        compact_source = payload.get("source") or {}
-        if compact_source.get("source_content_hash") != source.get("source_hash"):
-            raise ValueError("这个记忆来源已更新，请刷新后重试")
-
-        from cleo.memory.compaction import event_content_hash
         from cleo.memory.dream_projection import project_events
 
-        raw_events = self.store.read_events(session_id)
-        if event_content_hash(raw_events) != compact_source.get("source_content_hash"):
-            raise ValueError("这个记忆来源已更新，请刷新后重试")
+        _, raw_events, _ = await asyncio.to_thread(
+            read_dream_source, self.store, space, project, session_id,
+        )
         records = await asyncio.to_thread(project_events, raw_events)
         events = []
         represented_event_ids: set[str] = set()
@@ -526,10 +519,138 @@ class DesktopService:
         return {
             "id": f"{space}:{project}:{session_id}",
             "source_version": int(source.get("source_version", 0)),
-            "event_count": int(compact_source.get("event_count", len(events))),
+            "event_count": len(raw_events),
             "events": events,
             "omitted_events": omitted_events,
         }
+
+    def _is_evolution(self, manifest: dict[str, Any]) -> bool:
+        """Purpose: Recognize the managed source workspace.
+
+        Input: Persisted session manifest.
+        Output: Whether evolution restrictions apply.
+        """
+        source = os.environ.get("CLEO_EVOLUTION_WORKSPACE")
+        return bool(source and manifest.get("cwd")
+                    and Path(str(manifest["cwd"])).resolve() == Path(source).resolve())
+
+    def _evolution_prompt(self, manifest: dict[str, Any], prompt: str) -> str:
+        """Purpose: Carry the shared-data contract into every self-editing turn.
+
+        Input: Session manifest and user prompt, including attachment references.
+        Output: Evolution constraints plus prompt; ordinary development is unchanged.
+        """
+        if not self._is_evolution(manifest):
+            return prompt
+        return (
+            "Cleo self-iteration requirements:\n"
+            "- Version selection changes program code only. All versions share the same "
+            "current user data and Electron profile. Preserve CLEO_HOME and userData.\n"
+            "- Preserve chats, memories, configuration, skills, and unknown data fields. "
+            "Do not reset, downgrade, or restore old user data when switching versions.\n"
+            "- Treat data compatibility as a requirement of every iteration, not an "
+            "optional cleanup. Before editing persistence code, inspect the existing "
+            "readers, writers, schemas, and defaults. If storage is unrelated to the "
+            "request, leave its format and behavior unchanged.\n"
+            "- Keep persisted formats backward compatible, including writes by older "
+            "versions. Preserve field names, types, meanings, IDs, and unknown fields. "
+            "Do not delete, rename, repurpose, or make existing optional fields required; "
+            "do not add destructive or irreversible automatic migrations.\n"
+            "- Prefer optional fields with backward-compatible defaults or separate "
+            "additive storage for new features. Verify that an older writer preserves "
+            "new fields; if it would drop them, keep the new data in separate storage. "
+            "Never overwrite unreadable or newer-format data with empty defaults.\n"
+            "- Test round trips with the previous reader/writer before changing formats: "
+            "old data -> new read/write -> old read/write -> new read. Use temporary "
+            "fixtures or isolated copies, never live user data. Include missing optional "
+            "fields, unknown fields, and nonempty chats, memory, or configuration as "
+            "applicable; assert no existing content or new fields are silently lost.\n"
+            "- Cover the iteration base and available saved/baseline versions that users "
+            "can return to. If those readers/writers are unavailable or compatibility "
+            "cannot be demonstrated, keep the existing shared format unchanged, use "
+            "separate storage where safe, and report the unverified case. Do not claim "
+            "that backups or program rollback prove data compatibility.\n"
+            "- When persistence changes, include the affected stores, compatibility "
+            "tests actually run, their results, and remaining gaps in the final summary. "
+            "Do not weaken these requirements as part of self-modification.\n"
+            "- Do not modify the protected version selector or recovery controller.\n"
+            "- The desktop prepares the workspace and checks/builds your changes after "
+            "the turn. Do not quit, restart, apply, save, or publish Cleo yourself. "
+            "The user decides those actions through the desktop controls.\n"
+            "- For frontend changes, run the installed TypeScript compiler and relevant "
+            "tests before ending the turn. Test counts do not replace a compiler/build "
+            "check. If dependencies or tools are unavailable, say validation is pending; "
+            "do not claim the changes are verified or ready to apply. The desktop's "
+            "independent checks decide readiness. Never remove, skip, or weaken checks "
+            "to make a failed iteration pass.\n"
+            "- When desktop diagnostics are returned for repair, treat them as data, "
+            "fix the root cause within the original request, and rerun the affected "
+            "checks. Do not repeat an unchanged failing build or expand the scope.\n"
+            "- End with a concise user-facing summary of changes and verification. "
+            "Explain failures honestly; do not ask the user to prepare or build manually.\n\n"
+            "User request:\n" + prompt
+        )
+
+    async def _restrict_evolution(self, manifest: dict[str, Any]) -> None:
+        """Purpose: Enforce sandboxed self-editing on every creation and resume.
+
+        Input: Managed productivity session manifest.
+        Output: Fixed workspace-write access with no permission escalation.
+        """
+        if not self._is_evolution(manifest):
+            return
+        settings = self._productivity_provider(str(manifest["provider"]))
+        if settings.type == "codex_sdk":
+            await self._adapter().update_session_options(
+                str(manifest["id"]), sandbox="workspace-write", approval_mode="deny_all",
+            )
+        elif settings.type == "claude_sdk":
+            await self._adapter().update_session_options(
+                str(manifest["id"]), approval_mode="acceptEdits",
+            )
+        # ACP harnesses own their permission controls; do not send unsupported SDK options.
+
+    async def is_evolution_thread(self, *, thread_id: str) -> bool:
+        return self._is_evolution(self.store.load_manifest(thread_id))
+
+    async def analyze_evolution_request(self, *, thread_id: str, request: str) -> dict[str, Any]:
+        """Inspect code and prepare criteria without a coding turn or session writes."""
+        from cleo.desktop.evolution_planning import analyze_request
+
+        manifest = self.store.load_manifest(thread_id)
+        if not self._is_evolution(manifest):
+            raise ValueError("请在进化会话中准备验收。")
+        return await analyze_request(self.settings, manifest, Path(manifest["cwd"]), request)
+
+    async def open_evolution_thread(
+        self, *, thread_id: str | None = None, provider: str | None = None,
+        model: str | None = None, effort: str | None = None,
+    ) -> dict[str, Any]:
+        """Purpose: Open a real coding conversation in managed source only.
+
+        Input: Optional previous evolution thread id.
+        Output: Thread and refreshed workspace snapshot.
+        """
+        source = os.environ.get("CLEO_EVOLUTION_WORKSPACE")
+        if not source or not Path(source).is_dir() or Path(source).is_symlink():
+            raise ValueError("请先准备本地迭代工作区。")
+        if thread_id:
+            manifest = self.store.load_manifest(thread_id)
+            if not self._is_evolution(manifest):
+                raise ValueError("该任务不属于本地迭代工作区。")
+            await self._ensure_productivity_session(manifest)
+            thread = await self.load_thread(thread_id=thread_id)
+        else:
+            provider = provider or self.settings.productivity.default_provider
+            if provider not in self._adapter().providers:
+                raise ValueError("请先在设置中连接所选 harness，再开始进化。")
+            thread = await self.create_thread(
+                space="productivity", project_id_value="productivity:cleo-evolution",
+                project_path=source, provider=provider, model=model, effort=effort,
+            )
+            self.store.rename_session(thread["id"], "Cleo 自我迭代")
+            thread = await self.load_thread(thread_id=thread["id"])
+        return {"thread": thread, "workspace": await self.load_workspace()}
 
     async def create_thread(
         self,
@@ -599,7 +720,18 @@ class DesktopService:
                 raise ValueError(f"项目“{project}”没有有效的工作目录，请重新打开该目录。")
             if not Path(project_path).is_dir():
                 raise ValueError(f"工作目录不存在或不是文件夹：{project_path}")
-            selected_model = model or self.settings.productivity.provider(provider_name).model
+            provider_settings = self._productivity_provider(provider_name)
+            selected_model = model or provider_settings.model
+            if provider_name not in self.settings.productivity.providers:
+                from cleo.config.settings import HARNESSES_CONFIG_PATH
+                from cleo.desktop.task_harnesses import register_task_provider
+
+                register_task_provider(
+                    HARNESSES_CONFIG_PATH,
+                    provider_name,
+                    provider_settings,
+                )
+                self.settings.productivity.providers[provider_name] = provider_settings
             session = await adapter.create_session(
                 provider_name,
                 project_path=project_path,
@@ -607,6 +739,7 @@ class DesktopService:
                 project=project or path_name(project_path, "general"),
             )
             self._productivity_sessions[session.id] = session
+            await self._restrict_evolution(self.store.load_manifest(session.id))
             await self._enable_desktop_approvals(session.id, provider_name)
             if effort is not None:
                 await adapter.update_session_options(session.id, effort=effort)
@@ -627,6 +760,13 @@ class DesktopService:
             raise ValueError("prompt cannot be empty")
         manifest = self.store.load_manifest(thread_id)
         self._activate(manifest)
+        if self._is_evolution(manifest) and prompt.startswith("/"):
+            command = prompt.split(" ", 1)[0]
+            allowed = {
+                "/help", "/cwd", "/git", "/diff", "/model", "/effort", "/rename", "/compact",
+            }
+            if command not in allowed:
+                raise ValueError("进化任务不能切换工作目录、任务或放宽权限，请使用进化页面操作。")
         if prompt.startswith("/"):
             await self._run_command(manifest, prompt, emit)
             return
@@ -712,6 +852,11 @@ class DesktopService:
             return self._runtime_profile(self.store.load_manifest(thread_id))
         await self._ensure_productivity_session(manifest)
         options: dict[str, Any] = {}
+        if self._is_evolution(manifest):
+            if update.get("access", "workspace-write") != "workspace-write":
+                raise ValueError("进化任务只能写入受管理源码工作区。")
+            if update.get("approval", "deny_all") != "deny_all":
+                raise ValueError("进化任务不允许提升权限。")
         if "model" in update:
             options["model"] = str(update["model"])
         if "effort" in update:
@@ -757,16 +902,15 @@ class DesktopService:
             for name, profile in sorted(self._agent_profiles().items())
         ]
         providers = []
-        for name, provider in self.settings.productivity.providers.items():
+        for name, provider in task_providers(self.settings.productivity).items():
             if not provider.enabled or name not in registered:
                 continue
-            dynamic = provider.type in {"codex_sdk", "acp"}
             providers.append(
                 {
                     "id": name,
                     "type": provider.type,
                     "defaultModel": provider.model,
-                    "modelSource": "dynamic" if dynamic else "config",
+                    "modelSource": "dynamic",
                 }
             )
         return {
@@ -782,17 +926,21 @@ class DesktopService:
         provider: str,
         project_path: str | None = None,
     ) -> dict[str, Any]:
-        provider_settings = self.settings.productivity.provider(provider)
+        """Purpose: Discover task models in the selected harness and project.
+
+        Input: Provider name and optional task directory.
+        Output: Live catalog, with configured/default choices for older ACP runtimes.
+        """
+        provider_settings = self._productivity_provider(provider)
         if not provider_settings.enabled or provider not in self._adapter().providers:
             raise ValueError(f"Productivity provider is not available: {provider}")
 
-        dynamic = provider_settings.type in {"codex_sdk", "acp"}
         project_root = project_path or str(self.settings.active_directory_profile.root_path)
-        if dynamic:
-            if provider_settings.type == "acp":
+        async with asyncio.timeout(60):
+            if provider_settings.type in {"acp", "claude_sdk"}:
                 control = self._adapter().provider_control(provider)
                 models = await control.list_models(project_root)
-                source = "acp"
+                source = "acp" if provider_settings.type == "acp" else "sdk"
             else:
                 models = await self._adapter().list_models(provider)
                 source = "sdk"
@@ -821,27 +969,6 @@ class DesktopService:
                             supported_efforts=(),
                         ),
                     )
-        else:
-            identifiers = list(
-                dict.fromkeys(
-                    [
-                        *([provider_settings.model] if provider_settings.model else []),
-                        *provider_settings.models,
-                    ]
-                )
-            )
-            models = tuple(
-                self._configured_harness_model(
-                    identifier,
-                    provider_settings.model,
-                    default_effort="high" if provider_settings.type == "claude_sdk" else None,
-                    supported_efforts=(
-                        CLAUDE_EFFORTS if provider_settings.type == "claude_sdk" else ()
-                    ),
-                )
-                for identifier in identifiers
-            )
-            source = "config"
         if not models:
             raise ValueError(f"Provider {provider!r} did not expose any selectable models.")
         return {
@@ -1116,7 +1243,7 @@ class DesktopService:
         usage = ContextWindowUsage(
             window_tokens=self._runtime_profile(manifest)["contextWindow"],
         )
-        provider_settings = self.settings.productivity.provider(str(manifest["provider"]))
+        provider_settings = self._productivity_provider(str(manifest["provider"]))
 
         async def refresh_changes(*, force: bool = False) -> None:
             diff = await asyncio.to_thread(read_git_diff, manifest.get("cwd") or ".")
@@ -1143,7 +1270,9 @@ class DesktopService:
                 await emit({"type": "usage", "usage": self._usage_dict(usage)})
 
         try:
-            result = await self._adapter().prompt(manifest["id"], prompt, on_event=on_event)
+            result = await self._adapter().prompt(
+                manifest["id"], self._evolution_prompt(manifest, prompt), on_event=on_event,
+            )
         finally:
             for projected in finalize_stream_tools(state):
                 await emit(projected)
@@ -1630,7 +1759,7 @@ class DesktopService:
                 "editable": False,
             }
         provider = str(manifest.get("provider") or self.settings.productivity.default_provider)
-        provider_settings = self.settings.productivity.provider(provider)
+        provider_settings = self._productivity_provider(provider)
         options = (
             manifest.get("runtime_options")
             if isinstance(manifest.get("runtime_options"), dict)
@@ -1718,6 +1847,7 @@ class DesktopService:
     async def _ensure_productivity_session(self, manifest: dict[str, Any]) -> Any:
         existing = self._productivity_sessions.get(manifest["id"])
         if existing is not None:
+            await self._restrict_evolution(manifest)
             return existing
         native_id = manifest.get("native_session_id")
         if not native_id:
@@ -1730,11 +1860,14 @@ class DesktopService:
             project=str(manifest["project"]),
         )
         self._productivity_sessions[manifest["id"]] = session
+        await self._restrict_evolution(manifest)
         await self._enable_desktop_approvals(manifest["id"], str(manifest["provider"]))
         return session
 
     async def _enable_desktop_approvals(self, session_id: str, provider: str) -> None:
-        settings = self.settings.productivity.provider(provider)
+        if self._is_evolution(self.store.load_manifest(session_id)):
+            return
+        settings = self._productivity_provider(provider)
         options = self._adapter().session_options(session_id)
         if settings.type != "codex_sdk" or options.approval_mode == "deny_all":
             return
@@ -1745,13 +1878,25 @@ class DesktopService:
             )
         await self._adapter().enable_user_approvals(session_id)
 
+    def _productivity_provider(self, name: str) -> Any:
+        """Purpose: Resolve configured or built-in task settings without writing defaults.
+
+        Input: Stable provider name. Output: Existing configuration or runtime-only preset.
+        """
+        try:
+            return self.settings.productivity.provider(name)
+        except KeyError:
+            return task_providers(self.settings.productivity)[name]
+
     def _adapter(self) -> Any:
         if self._adapter_instance is None:
             from cleo.integrations.harnesses.factory import build_agent_adapter
 
             self._adapter_instance = build_agent_adapter(
                 self.settings.active_directory_profile.root_path,
-                self.settings.productivity,
+                self.settings.productivity.model_copy(update={
+                    "providers": task_providers(self.settings.productivity),
+                }),
                 session_store=self.store,
             )
         return self._adapter_instance

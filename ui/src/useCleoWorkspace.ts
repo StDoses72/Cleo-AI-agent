@@ -58,6 +58,8 @@ export function useCleoWorkspace() {
   const [productivityModels, setProductivityModels] = useState<Record<string, ProductivityModelCatalog>>({});
   const [runtimeModelsLoading, setRuntimeModelsLoading] = useState<string | null>(null);
   const [runtimeModelsError, setRuntimeModelsError] = useState<string | null>(null);
+  const modelRequestRef = useRef(0);
+  const modelCacheRef = useRef(new Map<string, ProductivityModelCatalog>());
   const [pendingApprovals, setPendingApprovals] = useState<ApprovalRequest[]>([]);
   const [approvalPendingId, setApprovalPendingId] = useState<string | null>(null);
   const [approvalError, setApprovalError] = useState<string | null>(null);
@@ -132,7 +134,8 @@ export function useCleoWorkspace() {
     [activeProjectId, snapshot],
   );
   useEffect(() => {
-    if (activeSpace === "memory" || activeProject?.space !== activeSpace) return;
+    if (activeSpace === "memory" || activeProject?.space !== activeSpace
+        || activeProject.id === "productivity:cleo-evolution") return;
     selectionBySpaceRef.current[activeSpace] = {
       projectId: activeProjectId,
       threadId: activeThreadId,
@@ -183,7 +186,7 @@ export function useCleoWorkspace() {
   };
 
   const selectSpace = (space: WorkspaceSpace) => {
-    if (space === activeSpace) return;
+    if (space === activeSpace && activeProject?.id !== "productivity:cleo-evolution") return;
     selectionRef.current += 1;
     setActiveSpace(space);
     if (space === "memory" || !snapshot) return;
@@ -203,9 +206,11 @@ export function useCleoWorkspace() {
       setActiveThreadId(next?.id ?? null);
       return;
     }
-    const projectForSpace = snapshot.projects.find((project) => project.space === space);
+    const projectForSpace = snapshot.projects.find((project) => project.space === space
+      && project.id !== "productivity:cleo-evolution");
     const preferredProjectId =
-      activeProject?.space === space ? activeProjectId : projectForSpace?.id ?? activeProjectId;
+      activeProject?.space === space && activeProject.id !== "productivity:cleo-evolution"
+        ? activeProjectId : projectForSpace?.id ?? activeProjectId;
     const next =
       snapshot.threads.find(
         (thread) => thread.space === space && thread.projectId === preferredProjectId,
@@ -292,6 +297,33 @@ export function useCleoWorkspace() {
     return thread;
   };
 
+  /** Purpose: Show an empty evolution composer with the ordinary harness picker.
+   * Input: none. Output: a separate draft; existing conversations remain saved.
+   */
+  const beginEvolutionDraft = () => {
+    selectionRef.current += 1;
+    setActiveSpace("productivity");
+    setActiveProjectId("productivity:cleo-evolution");
+    setActiveThreadId(null);
+  };
+
+  /** Purpose: Select a managed evolution thread atomically. Input: saved id. Output: selected thread id. */
+  const openEvolutionThread = async (threadId: string | null = null) => {
+    if (runLockRef.current) throw new Error("请先等待当前任务完成。");
+    if (!window.cleoDesktop) throw new Error("本地迭代需要在桌面应用中运行。");
+    const selected = ++selectionRef.current;
+    const result = await window.cleoDesktop.request<{ thread: Thread; workspace: WorkspaceSnapshot }>(
+      "open_evolution_thread", { thread_id: threadId, provider: draftProvider || undefined,
+        model: draftModel || undefined, effort: draftEffort ?? undefined },
+    );
+    if (selectionRef.current !== selected) return result.thread;
+    setSnapshot(result.workspace);
+    setActiveSpace("productivity");
+    setActiveProjectId(result.thread.projectId);
+    setActiveThreadId(result.thread.id);
+    return result.thread;
+  };
+
   const chooseWorkspace = async () => {
     const projectPath = await cleoClient.pickWorkspace();
     if (!projectPath) return null;
@@ -306,17 +338,21 @@ export function useCleoWorkspace() {
     return projectPath;
   };
 
-  const sendPrompt = async (rawPrompt: string) => {
+  /** Purpose: Stream a user turn or diagnostic follow-up into a task.
+   * Input: prompt, optional task, and draft preservation for controller-generated diagnostics.
+   * Output: updated task timeline; diagnostic follow-ups leave draft text and attachments untouched.
+   */
+  const sendPrompt = async (rawPrompt: string, targetThread?: Thread, { preserveDraft = false } = {}) => {
     const prompt = rawPrompt.trim();
     if (!prompt || runLockRef.current) return;
 
     runLockRef.current = true;
     setStartingRun(true);
     const sourceDraftKey = draftKey;
-    const pendingAttachments = draft.attachments;
+    const pendingAttachments = preserveDraft ? [] : draft.attachments;
     updateDraft(sourceDraftKey, (current) => ({ ...current, error: undefined }));
 
-    let thread = activeThread;
+    let thread = targetThread ?? activeThread;
     try {
       if (!thread) thread = await createThread();
     } catch (error) {
@@ -340,7 +376,7 @@ export function useCleoWorkspace() {
     };
     setRunningThreadId(threadId);
     setStartingRun(false);
-    updateDraft(sourceDraftKey, (current) => ({
+    if (!preserveDraft) updateDraft(sourceDraftKey, (current) => ({
       prompt: current.prompt === draft.prompt ? "" : current.prompt,
       attachments: current.attachments.filter((item) => !pendingAttachments.some((sent) => sent.path === item.path)),
     }));
@@ -584,13 +620,27 @@ export function useCleoWorkspace() {
       : current);
   };
 
-  const loadProductivityModels = async (provider: string) => {
-    const cached = productivityModels[provider];
-    if (cached) return cached;
+  /** Purpose: Discover models in the task directory without mixing provider responses.
+   * Input: harness, project path and explicit refresh. Output: catalog or visible error.
+   */
+  const loadProductivityModels = async (
+    provider: string, projectPath = activeProject?.path, refresh = false,
+  ) => {
+    const request = ++modelRequestRef.current;
+    const cacheKey = JSON.stringify([provider, projectPath]);
+    const cached = refresh ? undefined : modelCacheRef.current.get(cacheKey);
+    if (cached) {
+      setProductivityModels((current) => ({ ...current, [provider]: cached }));
+      setRuntimeModelsError(null);
+      setRuntimeModelsLoading(null);
+      return cached;
+    }
     setRuntimeModelsLoading(provider);
     setRuntimeModelsError(null);
     try {
-      const loaded = await cleoClient.getProductivityModels(provider, activeProject?.path);
+      const loaded = await cleoClient.getProductivityModels(provider, projectPath);
+      modelCacheRef.current.set(cacheKey, loaded);
+      if (modelRequestRef.current !== request) return loaded;
       setProductivityModels((current) => ({ ...current, [provider]: loaded }));
       if (provider === draftProvider) {
         const selectedModel = loaded.models.find((candidate) => candidate.id === draftModel);
@@ -604,30 +654,30 @@ export function useCleoWorkspace() {
       }
       return loaded;
     } catch (error) {
-      const message = error instanceof Error ? error.message : "无法读取模型列表";
-      setRuntimeModelsError(message);
+      const message = error instanceof Error && error.message ? error.message : "无法读取模型列表，请重试";
+      if (modelRequestRef.current === request) setRuntimeModelsError(message);
       throw error;
     } finally {
-      setRuntimeModelsLoading(null);
+      if (modelRequestRef.current === request) setRuntimeModelsLoading(null);
     }
   };
 
+  /** Purpose: Start a task with the chosen harness while retaining its unsent draft.
+   * Input: harness and model IDs. Output: updated draft selection; history stays intact.
+   */
   const selectProductivityRuntime = (provider: string, model: string) => {
     setDraftProvider(provider);
     setDraftModel(model);
     const selectedModel = productivityModels[provider]?.models.find(
       (candidate) => candidate.id === model,
     );
-    if (selectedModel && (
-      draftEffort === null || !selectedModel.supportedEfforts.includes(draftEffort)
-    )) {
-      setDraftEffort(selectedModel.defaultEffort ?? selectedModel.supportedEfforts[0] ?? null);
-    }
+    setDraftEffort(selectedModel?.defaultEffort ?? null);
     if (
       activeThread?.space === "productivity"
       && activeThread.runtime?.provider === provider
       && activeThread.runtime?.model === model
     ) return;
+    updateDraft(`new:productivity:${activeProjectId}`, () => draft);
     setActiveSpace("productivity");
     setActiveThreadId(null);
   };
@@ -834,6 +884,8 @@ export function useCleoWorkspace() {
     selectThread,
     createThread: startNewThread,
     chooseWorkspace,
+    openEvolutionThread,
+    beginEvolutionDraft,
     sendPrompt,
     renameThread,
     cancelRun,

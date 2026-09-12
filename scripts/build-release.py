@@ -266,8 +266,10 @@ def build(*, locked_dependencies: bool = False) -> None:
             shutil.copy2(ROOT / source, defaults / destination)
         if (ROOT / "skills").exists():
             shutil.copytree(ROOT / "skills", defaults / "skills")
+        run(node, ROOT / "scripts/bundle-evolution-source.mjs", resources, cwd=ROOT)
         metadata = {
             "schema_version": 1,
+            "evolution_protocol": 2,
             "app": "Cleo",
             "version": version,
             "platform": target["id"],

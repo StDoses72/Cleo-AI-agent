@@ -655,9 +655,11 @@ def test_codex_provider_applies_runtime_options_to_next_turn() -> None:
 
 
 def test_codex_provider_routes_user_approval_to_app_server_client() -> None:
+    from openai_codex.async_client import AsyncCodexClient
+
     received: dict[str, object] = {}
 
-    class LowLevelClient:
+    class LowLevelClient(AsyncCodexClient):
         async def turn_start(self, thread_id, prompt, params):
             received.update(thread_id=thread_id, prompt=prompt, params=params)
             return SimpleNamespace(turn=SimpleNamespace(id="turn-user"))

@@ -10,6 +10,8 @@ const target = desktopPlatform();
 const executablePath = process.env.CLEO_EXECUTABLE || join(sourceRoot, "release", target.bundle, target.executable);
 const testHome = join(sourceRoot, ".codex-test-tmp-desktop-packaged");
 const screenshotPath = join(appDir, "output", "playwright", "packaged-memory.png");
+if (!resolve(testHome).startsWith(sourceRoot + (process.platform === "win32" ? "\\" : "/"))
+    || !testHome.includes(".codex-test-tmp-")) throw new Error("Invalid packaged test directory.");
 await rm(testHome, { recursive: true, force: true });
 await mkdir(testHome, { recursive: true });
 await mkdir(dirname(screenshotPath), { recursive: true });
@@ -17,6 +19,7 @@ await mkdir(dirname(screenshotPath), { recursive: true });
 const electronApp = await electron.launch({
   executablePath,
   cwd: dirname(executablePath),
+  args: [`--user-data-dir=${join(testHome, "electron-profile")}`],
   env: {
     ...process.env,
     CLEO_HOME: testHome,
@@ -33,6 +36,11 @@ window.on("console", (message) => {
 try {
   await window.getByText("connected", { exact: true }).waitFor({ timeout: 20_000 });
   await window.getByTestId("composer-input").waitFor();
+  await window.getByRole("button", { name: "进化", exact: true }).click();
+  await window.getByRole("region", { name: "修改操作", exact: true }).waitFor();
+  const evolution = await window.evaluate(() => window.cleoDesktop.getEvolutionState());
+  if (!evolution.supported || evolution.phase !== "idle") throw new Error("Packaged evolution controller is unavailable.");
+  await window.getByRole("button", { name: "开发", exact: true }).click();
   await window.evaluate(() => {
     const input = document.querySelector('[data-testid="composer-input"]');
     const transfer = new DataTransfer();
