@@ -314,15 +314,18 @@ test("discard returns to the original base and archives source without touching 
 
 test("explicit bundle import preserves the baseline and does not override later selections on repeat", async (t) => {
   const { manager, root } = await fixture(t);
-  const incoming = join(root, "incoming");
-  await mkdir(join(incoming, "resources"), { recursive: true });
-  await writeFile(join(incoming, "Cleo.exe"), "fixture");
-  await writeFile(join(incoming, "resources/app.asar"), "current package");
-  manager.executable = join(incoming, "Cleo.exe");
-  const oldExe = join(manager.store.root, "builds/old/Cleo/Cleo.exe");
+  const incoming = join(root, "incoming", manager.target.bundle);
+  const resources = join(incoming, manager.target.resources);
+  manager.executable = join(incoming, manager.target.executable);
+  await mkdir(resources, { recursive: true });
+  await mkdir(dirname(manager.executable), { recursive: true });
+  await writeFile(manager.executable, "fixture");
+  await writeFile(join(resources, "app.asar"), "current package");
+  const executable = `${manager.target.bundle}/${manager.target.executable}`;
+  const oldExe = join(manager.store.root, "builds/old", executable);
   await mkdir(dirname(oldExe), { recursive: true });
   await writeFile(oldExe, "old");
-  await manager.store.update({ baseline: "old", active: "old", builds: [{ id: "old", executable: "Cleo/Cleo.exe" }] });
+  await manager.store.update({ baseline: "old", active: "old", builds: [{ id: "old", executable }] });
   const imported = await manager.importBundle();
   assert.ok(imported.savedAt);
   assert.equal((await manager.store.read()).baseline, "old");
@@ -348,16 +351,19 @@ test("preparation restores the selected local version's embedded source", async 
   const repository = join(root, "origin");
   await cp(manager.source, repository, { recursive: true });
   manager.sourceRepository = repository;
-  const resources = join(manager.store.root, "builds/saved/Cleo/resources");
+  const executable = `${manager.target.bundle}/${manager.target.executable}`;
+  const resources = join(manager.store.root, "builds/saved", manager.target.bundle, manager.target.resources);
   await mkdir(resources, { recursive: true });
-  await writeFile(join(resources, "../Cleo.exe"), "fixture");
+  const savedExe = join(manager.store.root, "builds/saved", executable);
+  await mkdir(dirname(savedExe), { recursive: true });
+  await writeFile(savedExe, "fixture");
   const embedded = join(root, "embedded");
   await mkdir(embedded);
   await writeFile(join(embedded, "feature.txt"), "saved local version source");
   await writeJson(join(embedded, "evolution-source.json"), { deleted: [] });
   await run("tar", ["-czf", join(resources, "evolution-source.tar.gz"), "-C", embedded, "."]);
   await manager.store.update({ active: "saved", baseline: "saved", prepared: false,
-    builds: [{ id: "saved", kind: "local", savedAt: "today", baseTag: "v0.3.9", executable: "Cleo/Cleo.exe" }] });
+    builds: [{ id: "saved", kind: "local", savedAt: "today", baseTag: "v0.3.9", executable }] });
   manager.tools.prepare = async () => ({ git: "git", env: process.env });
   await manager.prepare();
   assert.equal(await readFile(join(manager.source, "feature.txt"), "utf8"), "saved local version source");
