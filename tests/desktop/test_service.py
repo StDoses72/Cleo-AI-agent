@@ -185,6 +185,9 @@ class FakeAdapter:
     def session_options(self, _session_id):
         return SimpleNamespace(approval_mode="auto_review")
 
+    def pending_questions(self, _session_id):
+        return []
+
     async def close(self, session_id: str) -> None:
         self.closed.append(session_id)
 

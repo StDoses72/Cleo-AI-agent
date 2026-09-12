@@ -54,6 +54,18 @@ tests/                        与上述 Python 责任域对应的测试
 
 依赖方向应保持清晰：入口可以组合 core service；session 与 memory 不应反向依赖 CLI；provider SDK 类型不应泄漏到 `SessionStore` 或 UI renderer。
 
+### 桌面历史与交互提问
+
+`load_timeline` 按逻辑条目提供 `latest` / `before` / `after` 游标分页，默认每页 80 条。会话目录中的 `.desktop-timeline-v1.sqlite3` 是可重建索引；`events.jsonl` 仍是事实源。索引只增量读取追加事件，工具结果、计划、提问和回答按稳定 ID 更新原条目。索引重建会使旧游标失效，界面可通过“回到最新”恢复。
+
+Renderer 最多缓存 500 条、约 4 MiB 的预览内容，动态高度虚拟列表只挂载可见行和缓冲行。长正文通过 `read_timeline_content` 分段读取。浏览历史时不会自动跳到新消息；页面查找和跨屏选择只覆盖挂载的内容。这些限制不改变模型上下文或删除持久历史。过程文字在同一轮首次出现非空最终回答时自动收起一次，随后保留用户的展开选择。
+
+Codex `item/tool/requestUserInput` 与 Claude `AskUserQuestion` 接入独立的 `QuestionBroker`，通过 `question_request` / `question_response` 持久化，桌面端使用 `get_pending_questions` / `resolve_question`。必须显式提交所有问题；权限自动批准策略、弹窗收起和超时都不会代答。取消运行会释放等待，重启后旧问题显示连接失效；不支持原生提问的入口继续使用文本对话。Claude 支持原生多选，Codex 使用其当前单选/文本协议。
+
+UI 沿用 `index.css` 的 `--font-ui` 与 `--font-code`，正文、控件、说明和弹窗标题使用统一字号变量，避免新面板自行覆盖字体栈。
+
+`npm --prefix ui run smoke:history` 在系统临时目录构建并清理独立测试应用，覆盖万条记录翻页、虚拟列表、滚动锚点、提问和过程折叠。设置 `CLEO_SMOKE_REGRESSION=1` 可同时运行原有桌面、审批和自我迭代 smoke；设置 `TEMP` / `TMP` 可将全部临时内容集中到指定测试目录。
+
 ## 配置开发环境
 
 从模板创建私有配置：

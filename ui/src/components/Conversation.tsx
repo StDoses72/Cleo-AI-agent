@@ -1,9 +1,14 @@
 import { modifierKey } from "../platform";
+import { VirtualTimeline } from "./VirtualTimeline";
+import { cleoClient } from "../services/cleoClient";
+import type { useTimelineHistory } from "../useTimelineHistory";
+import "./timeline.css";
 import {
   useEffect,
   useMemo,
   useRef,
   useState,
+  useLayoutEffect,
   type ReactNode,
   type ClipboardEvent,
   type DragEvent,
@@ -54,6 +59,8 @@ import { ApprovalPrompt } from "./ApprovalPrompt";
 import { RenameThreadDialog } from "./Overlays";
 
 interface ConversationProps {
+  history?: ReturnType<typeof useTimelineHistory>;
+  questionUI?: ReactNode;
   preparation?: ReactNode;
   improvement?: ReactNode;
   header?: ReactNode;
@@ -106,6 +113,8 @@ const suggestions = {
 };
 
 export function Conversation({
+  history,
+  questionUI,
   preparation,
   improvement,
   header,
@@ -153,37 +162,83 @@ export function Conversation({
 }: ConversationProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
-  const previousThreadIdRef = useRef<string | null>(null);
+  useLayoutEffect(() => { stickToBottomRef.current = true; }, [thread?.id]);
   const timelineItems = useMemo(
     () => groupTimelineItems(thread?.items ?? []),
     [thread?.items],
   );
 
-  useEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-    const switchedThread = previousThreadIdRef.current !== (thread?.id ?? null);
-    previousThreadIdRef.current = thread?.id ?? null;
-    if (switchedThread) stickToBottomRef.current = true;
-    if (!stickToBottomRef.current) return;
-    const frame = requestAnimationFrame(() => {
-      viewport.scrollTo({
-        top: viewport.scrollHeight,
-        behavior: running || switchedThread ? "auto" : "smooth",
-      });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [running, thread?.id, thread?.items]);
+  const [expansion, setExpansion] = useState<Record<string, { open: boolean; answered: boolean }>>({});
+  const stateKey = (id: string) => `${thread?.id}:${id}`;
+  const isOpen = (block: TimelineBlock) => {
+    const saved = expansion[stateKey(block.id)];
+    if (block.type === "thought-group") return block.hasAnswer && !saved?.answered ? false : saved?.open ?? !block.hasAnswer;
+    return saved?.open ?? false;
+  };
+  const toggle = (id: string, open: boolean, answered = false) => setExpansion(current => {
+    if (current[stateKey(id)]?.open === open && current[stateKey(id)]?.answered === answered) return current;
+    const next = { ...current, [stateKey(id)]: { open, answered } };
+    return Object.fromEntries(Object.entries(next).slice(-1000));
+  });
+  useLayoutEffect(() => {
+    const changed = timelineItems.filter((block): block is ThoughtGroupBlock => block.type === "thought-group" && block.hasAnswer && !expansion[stateKey(block.id)]?.answered);
+    if (!changed.length) return;
+    setExpansion(current => Object.fromEntries(Object.entries({ ...current, ...Object.fromEntries(changed.map(block => [stateKey(block.id), { open: false, answered: true }])) }).slice(-1000)));
+  }, [timelineItems, thread?.id, expansion]);
+  const rows: TimelineRow[] = [];
+  for (const block of timelineItems) {
+    rows.push(block);
+    if (!isOpen(block)) continue;
+    if (block.type === "thought-group") rows.push(...block.thoughts.map(item => ({ id: item.id, type: "thought-row" as const, item })));
+    if (block.type === "tool-group") rows.push(...block.tools.map((item, index) => ({ id: item.id, type: "tool-row" as const, item, index })));
+  }
+  const [reader, setReader] = useState<{ item: TimelineItem; field: string; offset: number; text: string; next: number; total: number } | null>(null);
+  const [readerError, setReaderError] = useState("");
+  const readerDialog = useRef<HTMLDialogElement>(null);
+  const readerGeneration = useRef(0);
+  useEffect(() => { readerGeneration.current++; setReader(null); }, [thread?.id]);
+  useEffect(() => { if (reader) readerDialog.current?.showModal(); else readerDialog.current?.close(); }, [Boolean(reader)]);
+  const readContent = async (item: TimelineItem, field: string, offset = 0) => {
+    if (!thread) return;
+    const generation = ++readerGeneration.current;
+    setReaderError("");
+    try {
+      const content = await cleoClient.readTimelineContent(thread.id, item.id, field, offset);
+      if (generation === readerGeneration.current) setReader({ item, field, ...content });
+    } catch (error) { if (generation === readerGeneration.current) setReaderError(error instanceof Error ? error.message : "正文读取失败"); }
+  };
 
   const trackScrollPosition = () => {
     const viewport = viewportRef.current;
     if (!viewport) return;
     const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
-    stickToBottomRef.current = distanceFromBottom < 96;
+    stickToBottomRef.current = distanceFromBottom < 96 && !thread?.history?.hasAfter;
+    history?.follow(stickToBottomRef.current);
+    if (history?.busy || history?.error) return;
+    if (viewport.scrollTop < 160 && thread?.history?.hasBefore) void history?.load("before");
+    else if (distanceFromBottom < 160 && thread?.history?.hasAfter) void history?.load("after");
+  };
+
+  const renderRow = (row: TimelineRow) => {
+    let item: TimelineItem | undefined;
+    let content: ReactNode;
+    if (row.type === "thought-group") content = <ThoughtGroupEntry item={row} projectPath={project?.path ?? null} onOpenPath={onOpenPath}
+      expanded={isOpen(row)} onToggle={() => toggle(row.id, !isOpen(row), row.hasAnswer)} headerOnly />;
+    else if (row.type === "tool-group") content = <ToolGroupEntry item={row} expanded={isOpen(row)} onToggle={() => toggle(row.id, !isOpen(row))} headerOnly />;
+    else if (row.type === "thought-row") {
+      item = row.item;
+      content = <div className="thought-process-list virtual-process-row"><ThoughtEntry item={row.item} projectPath={project?.path ?? null} onOpenPath={onOpenPath} /></div>;
+    } else if (row.type === "tool-row") {
+      item = row.item;
+      content = <div className="tool-process-list virtual-process-row"><ToolProcess tool={row.item} index={row.index}
+        open={expansion[stateKey(row.id)]?.open ?? false} onToggle={open => toggle(row.id, open)} /></div>;
+    } else { item = row; content = <TimelineEntry item={row} projectPath={project?.path ?? null} onOpenPath={onOpenPath} />; }
+    return <>{content}{item?.more && Object.keys(item.more).map(field => <button className="history-content-link" key={field}
+      onClick={() => void readContent(item!, field)}>查看完整{field === "output" ? "输出" : "正文"}（{item!.more![field]} 字符）</button>)}</>;
   };
 
   return (
-    <main className="conversation-shell" data-testid="conversation">
+    <main className="conversation-shell" data-testid="conversation" data-cache-count={thread?.items.length ?? 0} data-cache-first={thread?.items[0]?.id ?? ""}>
       <div>{header ?? <ConversationHeader
         thread={thread}
         project={project}
@@ -203,18 +258,23 @@ export function Conversation({
         busy={running || Boolean(sendBlocked)}
       />}{improvement}</div>
 
-        <div className="conversation-viewport" ref={viewportRef} onScroll={trackScrollPosition}>
+        <div className="conversation-viewport" ref={viewportRef} tabIndex={0} aria-label="对话历史" onWheel={event => {
+          if (event.deltaY < 0) { stickToBottomRef.current = false; history?.follow(false); }
+          if (!history?.busy && !history?.error) {
+            const view = event.currentTarget;
+            if (event.deltaY < 0 && view.scrollTop < 160 && thread?.history?.hasBefore) void history?.load("before");
+            if (event.deltaY > 0 && view.scrollHeight - view.clientHeight - view.scrollTop < 160 && thread?.history?.hasAfter) void history?.load("after");
+          }
+        }}>
           {preparation}
+        {thread?.history?.hasBefore && <button className="history-page-control" disabled={Boolean(history?.busy)} onClick={() => {
+          stickToBottomRef.current = false; history?.follow(false); void history?.load("before");
+        }}>加载更早历史</button>}
+        {history?.error && <div className="history-error" role="alert">{history.error}<button onClick={() => void history.retry()}>重试加载</button></div>}
+        {history?.busy && <div className="history-loading" role="status">正在加载历史…</div>}
         {thread?.items.length ? (
-          <div className="timeline" key={thread.id} data-testid="timeline">
-            {timelineItems.map((item) => (
-              <TimelineEntry
-                key={item.id}
-                item={item}
-                projectPath={project?.path ?? null}
-                onOpenPath={onOpenPath}
-              />
-            ))}
+          <>
+            <VirtualTimeline rows={rows} viewport={viewportRef} follow={stickToBottomRef} threadId={thread.id} render={renderRow} onScroll={trackScrollPosition} />
             {running ? (
               <div className="streaming-indicator" aria-label="Cleo 正在工作">
                 <span />
@@ -222,11 +282,29 @@ export function Conversation({
                 <span />
               </div>
             ) : null}
-          </div>
+          </>
         ) : (
           <WelcomeState project={project} space={space} onUseSuggestion={onPromptChange} />
         )}
+        {thread?.history?.hasAfter && <button className="history-page-control" disabled={Boolean(history?.busy)} onClick={() => void history?.load("after")}>加载较新历史</button>}
       </div>
+
+      <div className="conversation-bottom">
+      {(history?.unread || thread?.history?.hasAfter || (history && !history.following)) && <button className="history-latest" onClick={() => {
+        void history?.load("latest", () => { stickToBottomRef.current = true; });
+      }}>{history?.unread ? "有新消息 · " : ""}回到最新</button>}
+      {questionUI}
+      {thread?.history && thread.history.total > 80 && <details className="history-help"><summary>历史浏览说明</summary>
+        <p>历史会按需加载，页面查找和跨屏文字选择仅覆盖当前显示的内容。长正文可打开完整阅读窗口，逐段查看；历史记录不会被删除。</p>
+      </details>}
+      {readerError && <p className="history-error" role="alert">{readerError}</p>}
+      <dialog ref={readerDialog} className="history-reader" data-content-kind={reader?.item.type} aria-label="完整历史正文"
+        onKeyDown={event => event.stopPropagation()} onCancel={() => { readerGeneration.current++; setReader(null); }}>
+        {reader && <><header><strong>完整历史正文</strong><button onClick={() => { readerGeneration.current++; setReader(null); }}>关闭正文</button></header>
+          <p>{reader.offset + 1}–{reader.next} / {reader.total} 字符</p><pre>{reader.text}</pre>
+          <footer><button disabled={!reader.offset} onClick={() => void readContent(reader.item, reader.field, Math.max(0, reader.offset - 16384))}>上一段</button>
+            <button disabled={reader.next >= reader.total} onClick={() => void readContent(reader.item, reader.field, reader.next)}>下一段</button></footer></>}
+      </dialog>
 
       <Composer
         key={thread?.id ?? `new:${space}:${project?.id}`}
@@ -258,6 +336,7 @@ export function Conversation({
         approvalError={approvalError}
         onResolveApproval={onResolveApproval}
       />
+      </div>
     </main>
   );
 }
@@ -417,14 +496,18 @@ type ThoughtGroupBlock = {
   id: string;
   type: "thought-group";
   thoughts: ThoughtTimelineItem[];
+  hasAnswer: boolean;
 };
 type TimelineBlock = Exclude<TimelineItem, { type: "thought" | "tool" }>
   | ThoughtGroupBlock
   | ToolGroupBlock;
+type TimelineRow = TimelineBlock | { id: string; type: "thought-row"; item: ThoughtTimelineItem }
+  | { id: string; type: "tool-row"; item: ToolTimelineItem; index: number };
 
 function groupTimelineItems(items: TimelineItem[]): TimelineBlock[] {
   const blocks: TimelineBlock[] = [];
   let turn: TimelineItem[] = [];
+  let turnId = "initial";
 
   const flushTurn = () => {
     if (!turn.length) return;
@@ -447,14 +530,15 @@ function groupTimelineItems(items: TimelineItem[]): TimelineBlock[] {
     for (const item of process) {
       if (item.type === "thought" && !addedThoughtGroup) {
         blocks.push({
-          id: `thought-group-${thoughts[0].id}`,
+          id: `thought-group-${turnId}`,
           type: "thought-group",
           thoughts,
+          hasAnswer: assistants.some(item => item.content.trim()) || turn.some(item => item.turnHasAnswer),
         });
         addedThoughtGroup = true;
       } else if (item.type === "tool" && !addedToolGroup) {
         blocks.push({
-          id: `tool-group-${tools[0].id}`,
+          id: `tool-group-${turnId}`,
           type: "tool-group",
           tools,
         });
@@ -468,7 +552,9 @@ function groupTimelineItems(items: TimelineItem[]): TimelineBlock[] {
   };
 
   for (const item of items) {
-    if (item.type === "message" && item.role === "user" && turn.length) flushTurn();
+    const next = item.turnId ?? (item.type === "message" && item.role === "user" ? item.id : turnId);
+    if (next !== turnId && turn.length) flushTurn();
+    turnId = next;
     turn.push(item);
   }
   flushTurn();
@@ -489,6 +575,11 @@ function TimelineEntry({
   }
   if (item.type === "tool-group") return <ToolGroupEntry item={item} />;
   if (item.type === "plan") return <PlanEntry item={item} />;
+  if (item.type === "question") return <section className="question-history" data-testid="question-history">
+    <strong>{item.request.status === "answered" ? "已回答 Agent 提问" : item.request.status === "pending" ? "等待回答" : item.request.status === "cancelled" ? "提问已取消" : "旧提问已失效，请让 Agent 重新提问"}</strong>
+    {item.request.questions.map(question => <div key={question.id}><p>{question.question}</p>
+      {item.request.answers?.[question.id] && <p className="question-history-answer">{question.secret ? "（已隐藏）" : item.request.answers[question.id].join("、")}</p>}</div>)}
+  </section>;
   if (item.type === "message") {
     return (
       <article className={`message-entry ${item.role}`}>
@@ -534,6 +625,7 @@ function MarkdownContent({
       skipHtml
       urlTransform={markdownUrlTransform}
       components={{
+        img: ({ node: _node, ...props }) => <img {...props} loading="lazy" decoding="async" className="timeline-image" />,
         a: ({ node: _node, href, children, ...props }) => {
           if (!href) return <span>{children}</span>;
           if (/^(https?:|mailto:)/i.test(href)) {
@@ -593,23 +685,30 @@ function ThoughtGroupEntry({
   item,
   projectPath,
   onOpenPath,
+  expanded: controlled,
+  onToggle,
+  headerOnly = false,
 }: {
   item: ThoughtGroupBlock;
   projectPath: string | null;
   onOpenPath: ConversationProps["onOpenPath"];
+  expanded?: boolean;
+  onToggle?: () => void;
+  headerOnly?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [localExpanded, setExpanded] = useState(!item.hasAnswer);
+  const expanded = controlled ?? localExpanded;
   const running = item.thoughts.some((thought) => thought.status === "running");
   const summary = running
     ? `${item.thoughts.length} 条记录 · 正在更新`
-    : `${item.thoughts.length} 条记录 · 已完成 · 点击展开查看`;
+    : `${item.thoughts.length} 条记录 · ${item.hasAnswer ? "已有最终回答" : "尚无最终回答"}`;
 
   return (
     <section className={`thought-group ${running ? "running" : "done"}`} data-testid="thought-group">
       <button
         type="button"
         aria-expanded={expanded}
-        onClick={() => setExpanded((value) => !value)}
+        onClick={onToggle ?? (() => setExpanded((value) => !value))}
       >
         <span className="thought-icon">
           {running ? <LoaderCircle className="spin" size={15} /> : <Sparkles size={15} />}
@@ -623,7 +722,7 @@ function ThoughtGroupEntry({
           <ChevronDown className={expanded ? "rotated" : ""} size={15} />
         </span>
       </button>
-      {expanded ? (
+      {expanded && !headerOnly ? (
         <div className="thought-process-list">
           {item.thoughts.map((thought) => (
             <ThoughtEntry
@@ -690,8 +789,9 @@ function PlanEntry({ item }: { item: Extract<TimelineItem, { type: "plan" }> }) 
   );
 }
 
-function ToolGroupEntry({ item }: { item: ToolGroupBlock }) {
-  const [expanded, setExpanded] = useState(false);
+function ToolGroupEntry({ item, expanded: controlled, onToggle, headerOnly = false }: { item: ToolGroupBlock; expanded?: boolean; onToggle?: () => void; headerOnly?: boolean }) {
+  const [localExpanded, setExpanded] = useState(false);
+  const expanded = controlled ?? localExpanded;
   const runningCount = item.tools.filter((tool) => tool.status === "running").length;
   const errorCount = item.tools.filter((tool) => tool.status === "error").length;
   const status = runningCount ? "running" : errorCount ? "error" : "done";
@@ -705,7 +805,7 @@ function ToolGroupEntry({ item }: { item: ToolGroupBlock }) {
       <button
         type="button"
         aria-expanded={expanded}
-        onClick={() => setExpanded((value) => !value)}
+        onClick={onToggle ?? (() => setExpanded((value) => !value))}
       >
         <span className="tool-icon"><Wrench size={14} /></span>
         <span className="tool-group-copy">
@@ -717,7 +817,7 @@ function ToolGroupEntry({ item }: { item: ToolGroupBlock }) {
           <ChevronDown className={expanded ? "rotated" : ""} size={15} />
         </span>
       </button>
-      {expanded ? (
+      {expanded && !headerOnly ? (
         <div className="tool-process-list">
           {item.tools.map((tool, index) => (
             <ToolProcess key={tool.id} tool={tool} index={index} />
@@ -728,9 +828,9 @@ function ToolGroupEntry({ item }: { item: ToolGroupBlock }) {
   );
 }
 
-function ToolProcess({ tool, index }: { tool: ToolTimelineItem; index: number }) {
+function ToolProcess({ tool, index, open, onToggle }: { tool: ToolTimelineItem; index: number; open?: boolean; onToggle?: (open: boolean) => void }) {
   return (
-    <details className={`tool-process ${tool.status}`} data-testid="tool-process">
+    <details className={`tool-process ${tool.status}`} data-testid="tool-process" open={open} onToggle={event => onToggle?.(event.currentTarget.open)}>
       <summary>
         <span className="tool-process-index">{String(index + 1).padStart(2, "0")}</span>
         <span className="tool-main">

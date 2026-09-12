@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import secrets
 from collections.abc import Callable
@@ -16,10 +17,13 @@ from cleo.harnesses.control import (
     NativeSessionPage,
     SessionOptions,
 )
+from cleo.harnesses.events import event_payload
 from cleo.harnesses.models import (
+    AgentEvent,
     AgentResult,
     AgentSession,
     EventCallback,
+    emit_event,
 )
 from cleo.harnesses.provider import AgentProvider
 from cleo.runtime.usage import RateLimitWindowUsage
@@ -172,24 +176,68 @@ class AgentService:
             raise KeyError(f"Unknown agent session: {session_id}")
 
         prompt = self._required_text(prompt, "prompt")
+        turn_key = f"turn-{secrets.token_hex(12)}"
         self._store.append_events(
             space=self._space,
             project=route.project,
             session_id=session_id,
             events=[
-                {"type": "user_message", "actor": "agent", "content": prompt},
+                {"id": turn_key, "type": "user_message", "actor": "agent", "content": prompt},
                 {"type": "session_running", "actor": "system"},
             ],
             manifest_updates={"status": "running"},
         )
+        await emit_event(on_event, AgentEvent(provider=route.provider.name, type="turn_started",
+                                             text=prompt, data={"turnId": turn_key}))
+        thought_number = 0
+        previous_type = ""
+        live_events: set[int] = set()
+
+        async def relay(event: AgentEvent) -> None:
+            nonlocal thought_number, previous_type
+            payload = event_payload(event)
+            source = payload.get("item") if isinstance(payload.get("item"), dict) else payload
+            key = source.get("id") or payload.get("itemId") or source.get("toolCallId") \
+                or source.get("tool_use_id")
+            data = {**event.data, "turn_id": turn_key}
+            phase = source.get("phase") or payload.get("phase")
+            if event.type in {"thought", "agent_message"} or phase == "commentary":
+                if previous_type != "thought":
+                    thought_number += 1
+                data["timeline_id"] = f"{turn_key}:thought:{key or thought_number}"
+                previous_type = "thought"
+            else:
+                previous_type = event.type
+                if event.type in {"tool_call", "tool_result", "tool_call_update"}:
+                    data["timeline_id"] = f"{turn_key}:tool:{key or secrets.token_hex(6)}"
+                elif event.type == "plan_update":
+                    data["timeline_id"] = f"{turn_key}:plan"
+                elif event.type == "assistant_message_chunk" and phase in {"final_answer", "final"}:
+                    data["timeline_id"] = f"{turn_key}:answer"
+            projected = event.model_copy(update={"data": data})
+            stored = self._stored_provider_event(projected)
+            if stored is not None:
+                await asyncio.to_thread(self._store.append_events, space=self._space,
+                                        project=route.project, session_id=session_id,
+                                        events=[stored])
+                live_events.add(id(event))
+            try:
+                await emit_event(on_event, projected)
+            except Exception:
+                # A durable answer is final even if its UI notification connection closes.
+                if event.type != "question_response" or stored is None:
+                    raise
         try:
             context = (self._memory_context(self._space, route.project)
                        if self._memory_context else '')
             turn = await route.provider.prompt(
                 route.provider_session_id,
                 context + '\n\nCurrent user request:\n' + prompt if context else prompt,
-                on_event,
+                relay if on_event is not None else None,
             )
+        except asyncio.CancelledError:
+            self._store.set_status(session_id, "cancelled")
+            raise
         except Exception as exc:
             self._store.set_status(session_id, "failed", error=str(exc))
             raise
@@ -197,11 +245,13 @@ class AgentService:
         stored_events = [
             translated
             for event in turn.events
+            if id(event) not in live_events
             if (translated := self._stored_provider_event(event)) is not None
         ]
         if turn.response:
             stored_events.append(
                 {
+                    "id": f"{turn_key}:answer",
                     "type": "assistant_message",
                     "actor": route.provider.name,
                     "content": turn.response,
@@ -346,6 +396,22 @@ class AgentService:
         route = self._route(session_id)
         method = self._capability(route.provider, "enable_user_approvals")
         await method(route.provider_session_id)
+
+    async def resolve_question(self, session_id: str, question_id: str, answers: dict) -> dict:
+        route = self._route(session_id)
+        method = self._capability(route.provider, "resolve_question")
+        return await method(route.provider_session_id, question_id, answers)
+
+    def pending_questions(self, session_id: str) -> list[dict]:
+        route = self._route(session_id)
+        method = getattr(route.provider, "pending_questions", None)
+        return method(route.provider_session_id) if method else []
+
+    async def enable_questions(self, session_id: str) -> None:
+        route = self._route(session_id)
+        method = getattr(route.provider, "enable_questions", None)
+        if method is not None:
+            await method(route.provider_session_id)
 
     async def fork_session(self, session_id: str) -> AgentSession:
         """分叉现有会话,新会话记录 parent_session_id。"""
@@ -510,8 +576,15 @@ class AgentService:
             if item.get("phase") != "commentary" or not event.text:
                 return None
             event_type = "thought"
-        if event.type == "thought" or event_type in {
-            "agent_message",
+        if event_type == "agent_message":
+            event_type = "thought"
+        if (event_type == "assistant_message_chunk"
+                and event_payload(event).get("phase") == "commentary"):
+            event_type = "thought"
+        elif (event_type == "assistant_message_chunk"
+              and event_payload(event).get("phase") in {"final_answer", "final"}):
+            event_type = "assistant_fragment"
+        if event_type in {
             "agent_message_chunk",
             "assistant_message_chunk",
         }:
@@ -531,10 +604,13 @@ class AgentService:
             "thought",
             "status",
             "error",
+            "question_request",
+            "question_response",
+            "assistant_fragment",
         }
         if canonical_type not in known_types:
             canonical_type = "provider_event"
-        return {
+        result = {
             "type": canonical_type,
             "actor": event.provider,
             "content": event.text,
@@ -545,8 +621,13 @@ class AgentService:
                     "provider_event_type", event.type
                 ),
                 "payload": event.data.get("payload", event.data),
+                "turn_id": event.data.get("turn_id"),
+                "timeline_id": event.data.get("timeline_id"),
             },
         }
+        if event_type in {"question_request", "question_response"}:
+            result["id"] = f"{event_payload(event)['id']}:{event_type}"
+        return result
 
     def _provider(self, name: str) -> AgentProvider:
         name = self._required_text(name, "provider")

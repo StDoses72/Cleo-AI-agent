@@ -75,12 +75,14 @@ jobs:
           node ui/scripts/smoke.mjs
           node ui/scripts/smoke-approvals.mjs
           node ui/scripts/smoke-evolution.mjs
+          node ui/scripts/smoke-history.mjs
       - name: Linux desktop smoke
         if: runner.os == 'Linux'
         run: |
           xvfb-run -a node ui/scripts/smoke.mjs
           xvfb-run -a node ui/scripts/smoke-approvals.mjs
           xvfb-run -a node ui/scripts/smoke-evolution.mjs
+          xvfb-run -a node ui/scripts/smoke-history.mjs
       - name: Independent recovery smoke
         if: runner.os == 'Windows'
         run: npm --prefix ui run smoke:evolution-recovery

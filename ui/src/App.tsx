@@ -1,4 +1,5 @@
 import { modifierKey } from "./platform";
+import { QuestionDialog } from "./components/QuestionDialog";
 import { EvolutionPanel } from "./components/EvolutionPanel";
 import { EvolutionCases } from "./components/EvolutionCases";
 import { EvolutionPreparation } from "./components/EvolutionPreparation";
@@ -496,7 +497,9 @@ export function App() {
           }}
           onThreadCommand={(command) => void workspace.sendPrompt(command)}
           commands={workspace.snapshot.backend?.commands[workspace.activeSpace === "chat" ? "chat" : "productivity"] ?? []}
-          approvalRequest={workspace.pendingApprovals[0] ?? null}
+          history={workspace.history}
+          questionUI={<QuestionDialog questions={workspace.questions} textOnly={activeRuntime.supportsQuestions === false} />}
+          approvalRequest={workspace.pendingApprovals.find(q => q.threadId === workspace.activeThreadId) ?? null}
           approvalPending={workspace.approvalPendingId !== null}
           approvalError={workspace.approvalError}
           onResolveApproval={(decision) => void workspace.resolveApproval(decision)}

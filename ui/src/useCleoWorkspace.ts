@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cleoClient } from "./services/cleoClient";
+import { boundTimeline } from "./timeline-cache";
+import { useTimelineHistory } from "./useTimelineHistory";
+import { useQuestions } from "./useQuestions";
 import type {
   AgentInstructions,
   ApprovalDecision,
@@ -178,12 +181,29 @@ export function useCleoWorkspace() {
         ? {
             ...current,
             threads: current.threads.map((thread) =>
-              thread.id === threadId ? update(thread) : thread,
+              thread.id === threadId ? (() => {
+                const next = update(thread);
+                const items = boundTimeline(next.items);
+                return { ...next, items, history: next.history && {
+                  ...next.history,
+                  before: items.find(i => i.cursor)?.cursor ?? next.history.before,
+                  after: [...items].reverse().find(i => i.cursor)?.cursor ?? next.history.after,
+                  hasBefore: next.history.hasBefore || items.length < next.items.length,
+                } };
+              })() : thread,
             ),
           }
         : current,
     );
   };
+
+  const history = useTimelineHistory(activeThread, updateThread);
+  const questions = useQuestions(activeThread, updateThread);
+  useEffect(() => {
+    setSnapshot(current => current && { ...current, threads: current.threads.map(thread =>
+      thread.id === activeThreadId ? thread : { ...thread, items: [] }) });
+    if (activeThread?.history?.total && !activeThread.items.length) void history.load("latest");
+  }, [activeThreadId]);
 
   const selectSpace = (space: WorkspaceSpace) => {
     if (space === activeSpace && activeProject?.id !== "productivity:cleo-evolution") return;
@@ -374,6 +394,8 @@ export function useCleoWorkspace() {
       content: prompt,
       time: currentTime(),
     };
+    let turnId = userItem.id;
+    userItem.turnId = turnId;
     setRunningThreadId(threadId);
     setStartingRun(false);
     if (!preserveDraft) updateDraft(sourceDraftKey, (current) => ({
@@ -386,21 +408,38 @@ export function useCleoWorkspace() {
       summary: prompt.slice(0, 64),
       status: "running",
       updatedAt: "刚刚",
-      items: [...current.items, userItem],
+      items: history.isFollowing(threadId) ? [...current.items, userItem] : current.items,
     }));
 
     let failed = false;
     try {
       for await (const event of cleoClient.streamTurn(threadId, prompt, pendingAttachments)) {
         if (generationRef.current !== generation) return;
-        if (event.type === "upsert-item") {
+        if (event.type === "turn-started") {
+          turnId = event.item.turnId ?? event.item.id;
+          updateThread(threadId, current => ({ ...current, items: current.items.map(item => item.id === userItem.id ? event.item : item) }));
+        } else if (event.type === "upsert-item") {
+          const projected = { ...event.item, turnId: event.item.turnId ?? turnId };
+          const following = history.isFollowing(threadId);
+          if (!following) history.notify(threadId);
           updateThread(threadId, (current) => {
-            const index = current.items.findIndex((item) => item.id === event.item.id);
+            const index = current.items.findIndex((item) => item.id === projected.id);
             const items = [...current.items];
-            if (index >= 0) items[index] = event.item;
-            else items.push(event.item);
-            return { ...current, items };
+            if (index >= 0) items[index] = projected;
+            else if (following && (projected.order === undefined || items[0]?.order === undefined || projected.order >= items[0].order)) items.push(projected);
+            items.sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER));
+            const answered = projected.type === "message" && projected.role === "assistant" && projected.content.trim();
+            return { ...current, items: answered ? items.map(item => item.turnId === projected.turnId ? { ...item, turnHasAnswer: true } : item) : items,
+              history: current.history && { ...current.history, hasAfter: current.history.hasAfter || !following } };
           });
+        } else if (event.type === "question-request") {
+          if (!history.isFollowing(threadId)) {
+            history.notify(threadId);
+            updateThread(threadId, current => ({ ...current, history: current.history && { ...current.history, hasAfter: true } }));
+          }
+          questions.receive({ ...event.request, threadId }, turnId, history.isFollowing(threadId));
+        } else if (event.type === "question-resolved") {
+          questions.resolve(threadId, event.request);
         } else if (event.type === "changes") {
           updateThread(threadId, (current) => ({ ...current, changes: event.changes }));
         } else if (event.type === "change-history") {
@@ -495,6 +534,8 @@ export function useCleoWorkspace() {
         setPendingApprovals((current) => current.filter(
           (candidate) => candidate.threadId !== threadId,
         ));
+        questions.finish(threadId);
+        if (history.isFollowing(threadId) && thread.history) await history.load("latest");
       }
     }
   };
@@ -526,6 +567,7 @@ export function useCleoWorkspace() {
     generationRef.current += 1;
     runLockRef.current = false;
     setRunningThreadId(null);
+    questions.finish(threadId);
     setPendingApprovals((current) => current.filter(
       (candidate) => candidate.threadId !== threadId,
     ));
@@ -543,10 +585,11 @@ export function useCleoWorkspace() {
         },
       ],
     }));
+    if (history.isFollowing(threadId)) await history.load("latest");
   };
 
   const resolveApproval = async (decision: ApprovalDecision) => {
-    const request = pendingApprovals[0];
+    const request = pendingApprovals.find(candidate => candidate.threadId === activeThreadId);
     if (!request || approvalPendingId) return;
     setApprovalPendingId(request.id);
     setApprovalError(null);
@@ -854,6 +897,8 @@ export function useCleoWorkspace() {
     cleoClient.getMemoryReviewDetails(source);
 
   return {
+    history,
+    questions,
     snapshot,
     loadingError,
     activeSpace,

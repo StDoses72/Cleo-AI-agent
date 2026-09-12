@@ -36,6 +36,7 @@ from cleo.desktop.projection import (
     timeline_from_events,
 )
 from cleo.desktop.task_harnesses import task_providers
+from cleo.desktop.timeline import TimelineIndex
 from cleo.harnesses.control import HarnessModel
 from cleo.integrations.background import launch_dream_agent_worker
 from cleo.integrations.git import (
@@ -152,7 +153,7 @@ class DesktopService:
     async def load_workspace(self) -> dict[str, Any]:
         self._debug("load rows")
         rows = self.store.list_sessions()
-        records: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
+        records: list[dict[str, Any]] = []
         for row in rows:
             if len(records) >= 100:
                 break
@@ -160,19 +161,19 @@ class DesktopService:
                 manifest = self.store.load_manifest(str(row["id"]))
                 if self._is_removed_project(manifest):
                     continue
-                events = self.store.read_events(manifest["id"])
+                page = await asyncio.to_thread(TimelineIndex(self.store, manifest).page, limit=1)
             except (FileNotFoundError, OSError, ValueError):
                 continue
-            if manifest["space"] == "non_productivity" and not self._has_chat_history(events):
+            if manifest["space"] == "non_productivity" and not page["total"]:
                 continue
-            records.append((manifest, events))
-        manifests = [manifest for manifest, _events in records]
+            records.append(manifest)
+        manifests = records
         self._debug("load projects")
         projects = await self._projects(manifests)
         self._debug("load threads")
-        threads = [
-            await self._thread(manifest, events=events) for manifest, events in records
-        ]
+        selected = next((m["id"] for m in manifests if m["id"] == self.runtime.current_thread_id),
+                        manifests[0]["id"] if manifests else None)
+        threads = [await self._thread(m, include_history=m["id"] == selected) for m in manifests]
         self._debug("load overview")
         overview = build_memory_overview(
             memory_root=self.settings.MEMORY_DIR,
@@ -213,6 +214,25 @@ class DesktopService:
         manifest = self.store.load_manifest(thread_id)
         self._activate(manifest)
         return await self._thread(manifest)
+
+    async def load_timeline(self, *, thread_id: str, cursor: str | None = None,
+                            direction: str = "latest", limit: int = 80) -> dict:
+        manifest = self.store.load_manifest(thread_id)
+        page = await asyncio.to_thread(TimelineIndex(self.store, manifest).page,
+                                       cursor=cursor, direction=direction, limit=limit)
+        pending = {q["id"] for q in await self.get_pending_questions(thread_id=thread_id)}
+        for item in page["items"]:
+            if item["type"] == "question":
+                item["request"]["threadId"] = thread_id
+                if item["request"]["status"] == "pending" and item["id"] not in pending:
+                    item["request"]["status"] = "unavailable"
+        return page
+
+    async def read_timeline_content(self, *, thread_id: str, item_id: str, field: str,
+                                    offset: int = 0) -> dict:
+        manifest = self.store.load_manifest(thread_id)
+        return await asyncio.to_thread(TimelineIndex(self.store, manifest).content,
+                                       item_id, field, offset)
 
     async def delete_thread(self, *, thread_id: str) -> dict[str, Any]:
         """Delete one local thread after releasing any resident provider session."""
@@ -814,6 +834,18 @@ class DesktopService:
         await self._ensure_productivity_session(manifest)
         return await self._adapter().resolve_approval(thread_id, approval_id, decision)
 
+    async def get_pending_questions(self, *, thread_id: str) -> list[dict]:
+        self.store.load_manifest(thread_id)
+        if thread_id not in self._productivity_sessions:
+            return []
+        return [{**q, "threadId": thread_id} for q in self._adapter().pending_questions(thread_id)]
+
+    async def resolve_question(self, *, thread_id: str, question_id: str, answers: dict) -> dict:
+        self.store.load_manifest(thread_id)
+        if thread_id not in self._productivity_sessions:
+            raise ValueError("连接已失效，旧问题不能继续作答。请让 Agent 重新提问。")
+        return await self._adapter().resolve_question(thread_id, question_id, answers)
+
     async def update_runtime(
         self,
         *,
@@ -1260,6 +1292,20 @@ class DesktopService:
             for projected in stream_event_item(event, state):
                 if projected.get("type") == "changes":
                     state["changes:emitted"] = projected.get("changes")
+                visible = (projected.get("item")
+                           if projected["type"] in {"upsert-item", "turn-started"}
+                           else projected.get("request")
+                           if projected["type"] == "question-request" else None)
+                if visible is not None and (
+                    event.data.get("turn_id") or projected["type"] == "turn-started"
+                ):
+                    key = f"cursor:{visible['id']}"
+                    if key not in state:
+                        state[key] = await asyncio.to_thread(
+                            TimelineIndex(self.store, manifest).location_for, visible["id"],
+                        )
+                    if state[key]:
+                        visible.update(state[key])
                 await emit(projected)
             if provider_settings.type == "acp" and event.type == "tool_result":
                 payload = event.data.get("payload")
@@ -1331,11 +1377,12 @@ class DesktopService:
                 {
                     "type": "upsert-item",
                     "item": {
-                        "id": "live-assistant",
+                        "id": f"{state['run_id']}:answer",
                         "type": "message",
                         "role": "assistant",
                         "content": result.response,
                         "time": "",
+                        "turnId": state["run_id"],
                     },
                 }
             )
@@ -1690,20 +1737,25 @@ class DesktopService:
         manifest: dict[str, Any],
         *,
         events: list[dict[str, Any]] | None = None,
+        include_history: bool = True,
     ) -> dict[str, Any]:
         if events is None:
-            events = self.store.read_events(manifest["id"])
-        items = timeline_from_events(events)
+            events = (await asyncio.to_thread(TimelineIndex(self.store, manifest).recent_events)
+                      if include_history else [])
+        page = await self.load_timeline(
+            thread_id=manifest["id"], limit=80 if include_history else 1,
+        )
+        items = page["items"]
         summary = next(
             (
                 item["content"][:100]
                 for item in reversed(items)
                 if item["type"] == "message" and item["content"]
             ),
-            "等待第一条消息",
+            manifest.get("title") or "等待第一条消息",
         )
         changes = []
-        if manifest["space"] == "productivity" and manifest.get("cwd"):
+        if include_history and manifest["space"] == "productivity" and manifest.get("cwd"):
             diff = read_git_diff(manifest["cwd"])
             changes = (
                 latest_turn_changes(events)
@@ -1721,7 +1773,9 @@ class DesktopService:
             "summary": summary,
             "updatedAt": relative_time(manifest.get("updated_at")),
             "status": self._thread_status(manifest.get("status")),
-            "items": items,
+            "items": items if include_history else [],
+            "history": {key: value for key, value in page.items() if key != "items"},
+            "pendingQuestions": await self.get_pending_questions(thread_id=manifest["id"]),
             "changes": changes,
             "changeHistory": change_history_from_events(events),
             "usage": usage,
@@ -1757,6 +1811,7 @@ class DesktopService:
                 ),
                 "contextWindow": snapshot["max_tokens"],
                 "editable": False,
+                "supportsQuestions": False,
             }
         provider = str(manifest.get("provider") or self.settings.productivity.default_provider)
         provider_settings = self._productivity_provider(provider)
@@ -1784,6 +1839,9 @@ class DesktopService:
             ),
             "contextWindow": 128_000,
             "editable": True,
+            "supportsQuestions": getattr(provider_settings, "type", None) in {
+                "codex_sdk", "claude_sdk",
+            },
         }
 
     def _agent_profiles(self) -> dict[str, Any]:
@@ -1865,6 +1923,9 @@ class DesktopService:
         return session
 
     async def _enable_desktop_approvals(self, session_id: str, provider: str) -> None:
+        enable_questions = getattr(self._adapter(), "enable_questions", None)
+        if enable_questions is not None:
+            await enable_questions(session_id)
         if self._is_evolution(self.store.load_manifest(session_id)):
             return
         settings = self._productivity_provider(provider)

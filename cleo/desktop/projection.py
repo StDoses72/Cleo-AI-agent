@@ -32,25 +32,51 @@ def relative_time(value: str | None) -> str:
     return f"{elapsed // 86_400} 天前"
 
 
-def timeline_from_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def timeline_from_events(
+    events: list[dict[str, Any]], *, state: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     """Translate durable session events into renderer timeline items."""
-    items: list[dict[str, Any]] = []
-    tools: dict[str, dict[str, Any]] = {}
-    plans: dict[str, dict[str, Any]] = {}
-    current_turn_key = "initial"
-    for event in events[-500:]:
+    state = state if state is not None else {}
+    items: list[dict[str, Any]] = state.get("changed", [])
+    tools = state.get("tools", {})
+    plans = state.get("plans", {})
+    current_turn_key = state.get("turn_id", "initial")
+    questions = state.get("questions", {})
+    thoughts = state.get("thoughts", {})
+    answers = state.get("answers", {})
+    for event in events:
         event_type = str(event.get("type") or "")
         event_id = str(event.get("id") or f"event-{len(items)}")
         content = _content_text(event.get("content"))
+        if (event_type in {"thought", "assistant_fragment"}
+                and isinstance(event.get("content"), str)):
+            content = event["content"]
         data = event.get("data") if isinstance(event.get("data"), dict) else {}
         payload = data.get("payload") if isinstance(data.get("payload"), dict) else data
         if event_type in {"user_message", "human"} and content:
             current_turn_key = event_id
             items.append(_message(event_id, "user", content, event.get("created_at")))
-        elif event_type in {"assistant_message", "ai"} and content:
-            items.append(_message(event_id, "assistant", content, event.get("created_at")))
+        elif event_type in {"assistant_message", "assistant_fragment", "ai"} and content:
+            identifier = data.get("timeline_id") or event_id
+            answer = answers.get(identifier)
+            if answer is None:
+                answer = _message(identifier, "assistant", "", event.get("created_at"))
+                answers[identifier] = answer
+                items.append(answer)
+            answer["content"] = (
+                answer["content"] + content if event_type == "assistant_fragment" else content
+            )
         elif event_type == "thought" and content:
-            items.append({"id": event_id, "type": "thought", "content": content, "status": "done"})
+            identifier = data.get("timeline_id") or event_id
+            thought = thoughts.get(identifier)
+            if thought is None:
+                thought = {"id": identifier, "type": "thought", "content": "", "status": "done"}
+                thoughts[identifier] = thought
+                items.append(thought)
+            if data.get("provider_event_type") == "item/completed":
+                thought["content"] = content
+            else:
+                thought["content"] += content
         elif event_type == "plan_update":
             plan = payload.get("plan") if isinstance(payload, dict) else None
             steps = [_plan_step(step) for step in plan] if isinstance(plan, list) else []
@@ -60,7 +86,7 @@ def timeline_from_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 plan_item = plans.get(plan_key)
                 if plan_item is None:
                     plan_item = {
-                        "id": f"plan-{plan_key}",
+                        "id": data.get("timeline_id") or f"plan-{plan_key}",
                         "type": "plan",
                         "title": "执行计划",
                         "steps": steps,
@@ -72,21 +98,22 @@ def timeline_from_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         elif event_type == "tool_call":
             source = payload.get("item") if isinstance(payload, dict) else None
             source = source if isinstance(source, dict) else payload
-            tool_id = str(source.get("id") or event_id)
+            tool_id = str(source.get("id") or source.get("tool_use_id") or event_id)
             item = {
-                "id": f"tool-{tool_id}",
+                "id": data.get("timeline_id") or f"tool-{tool_id}",
                 "type": "tool",
                 "name": str(source.get("tool") or source.get("name") or "tool"),
                 "command": str(source.get("command") or source.get("input") or ""),
                 "status": "running",
             }
-            tools[tool_id] = item
+            tools[f"{current_turn_key}:{tool_id}"] = item
             items.append(item)
         elif event_type == "tool_result":
             source = payload.get("item") if isinstance(payload, dict) else None
             source = source if isinstance(source, dict) else payload
-            tool_id = str(source.get("id") or source.get("toolCallId") or "")
-            item = tools.get(tool_id)
+            tool_id = str(source.get("id") or source.get("toolCallId")
+                          or source.get("tool_use_id") or "")
+            item = tools.get(f"{current_turn_key}:{tool_id}")
             if item is None:
                 item = {
                     "id": f"tool-result-{event_id}",
@@ -95,11 +122,19 @@ def timeline_from_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     "command": "",
                     "status": "done",
                 }
+                if tool_id:
+                    tools[f"{current_turn_key}:{tool_id}"] = item
                 items.append(item)
             item["status"] = "error" if source.get("status") == "failed" else "done"
             output = _content_text(source.get("output") or content)
             if output:
                 item["output"] = output
+        elif event_type == "question_request":
+            question = {"id": payload["id"], "type": "question", "request": dict(payload)}
+            questions[payload["id"]] = question
+            items.append(question)
+        elif event_type == "question_response" and payload.get("id") in questions:
+            questions[payload["id"]]["request"].update(payload)
         elif event_type in {
             "session_completed",
             "session_failed",
@@ -128,6 +163,14 @@ def timeline_from_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     "detail": content or "后端报告了一个错误。",
                 }
             )
+        for projected in items[-1:]:
+            projected.setdefault("turnId", current_turn_key)
+    final_turns = {item["turnId"] for item in items
+                   if item["type"] == "message" and item["role"] == "assistant"
+                   and item["content"].strip()}
+    for item in items:
+        item["turnHasAnswer"] = item.get("turnId") in final_turns
+    state["turn_id"] = current_turn_key
     return items
 
 
@@ -246,6 +289,12 @@ def stream_event_item(event: AgentEvent, state: dict[str, Any]) -> list[dict[str
     """Translate one live productivity event into zero or more UI events."""
     output: list[dict[str, Any]] = []
     payload = event_payload(event)
+    if event.type == "turn_started":
+        state["run_id"] = payload["turnId"]
+        return [{"type": "turn-started", "item": {
+            **_message(payload["turnId"], "user", event.text or "", None),
+            "turnId": payload["turnId"],
+        }}]
     item = payload.get("item") if isinstance(payload.get("item"), dict) else payload
     event_identifier = (
         item.get("id")
@@ -281,7 +330,7 @@ def stream_event_item(event: AgentEvent, state: dict[str, Any]) -> list[dict[str
                         "content": content,
                         "status": "running",
                     }
-                    if phase == "commentary"
+                    if phase == "commentary" or (event.provider == "codex" and not phase)
                     else _message(active_id, "assistant", content, None)
                 ),
             }
@@ -314,7 +363,7 @@ def stream_event_item(event: AgentEvent, state: dict[str, Any]) -> list[dict[str
                     "item": _message(active_id, "assistant", content, None),
                 }
             )
-    elif event.type == "thought" and event.text:
+    elif event.type in {"thought", "agent_message"} and event.text:
         thought_id = f"thought-{event_key}"
         if event_identifier is None:
             active_id = state.get("thought:active_id")
@@ -403,8 +452,20 @@ def stream_event_item(event: AgentEvent, state: dict[str, Any]) -> list[dict[str
         output.append({"type": "approval-request", "request": payload})
     elif event.type == "permission_response":
         output.append({"type": "approval-resolved", "response": payload})
+    elif event.type in {"question_request", "question_response"}:
+        output.append({"type": "question-request" if event.type == "question_request"
+                       else "question-resolved", "request": payload})
     elif event.type == "error":
         output.append({"type": "error", "message": event.text or "Provider reported an error."})
+    for projected in output:
+        if projected["type"] == "upsert-item":
+            item = projected["item"]
+            if event.data.get("turn_id"):
+                item["turnId"] = event.data["turn_id"]
+                if item["type"] == "message" and item.get("role") == "assistant":
+                    item["id"] = f"{item['turnId']}:answer"
+                elif event.data.get("timeline_id"):
+                    item["id"] = event.data["timeline_id"]
     return output
 
 

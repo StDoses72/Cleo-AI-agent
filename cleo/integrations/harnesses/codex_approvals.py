@@ -8,6 +8,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
+from cleo.harnesses.questions import QuestionBroker, normalize_questions
 
 _COMMAND_METHOD = "item/commandExecution/requestApproval"
 _FILE_METHOD = "item/fileChange/requestApproval"
@@ -40,6 +41,7 @@ class CodexApprovalBroker:
 
     def __init__(self, provider: str = "codex") -> None:
         self.provider = provider
+        self.questions = QuestionBroker(provider)
         self._loop: asyncio.AbstractEventLoop | None = None
         self._callback: EventCallback | None = None
         self._pending: dict[str, _PendingApproval] = {}
@@ -61,6 +63,13 @@ class CodexApprovalBroker:
 
     def handle(self, method: str, params: dict[str, Any] | None) -> dict[str, Any]:
         params = dict(params or {})
+        if method == "item/tool/requestUserInput":
+            try:
+                questions = normalize_questions(params.get("questions"))
+            except ValueError:
+                return {"answers": {}}
+            answers = self.questions.ask_sync(questions, native_id=str(params.get("itemId") or ""))
+            return {"answers": {key: {"answers": value} for key, value in (answers or {}).items()}}
         if method not in _SUPPORTED_METHODS:
             return {}
         with self._lock:
