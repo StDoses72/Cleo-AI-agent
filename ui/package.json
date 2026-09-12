@@ -1,7 +1,7 @@
 {
   "name": "cleo-desktop",
   "productName": "Cleo",
-  "version": "0.3.9",
+  "version": "0.3.10",
   "private": true,
   "type": "module",
   "main": "electron/bootstrap.mjs",
