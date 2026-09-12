@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, GitBranch, GitPullRequest, ShieldCheck, PanelRightOpen, X, LoaderCircle, Save, Play, RotateCcw } from "lucide-react";
 import type { EvolutionBuild, EvolutionState } from "../evolution-types";
 import { GithubLogin } from "./GithubLogin";
 
 interface Props {
+  children?: ReactNode;
   state: EvolutionState | null;
   error: string | null;
   busy: boolean;
@@ -34,7 +35,7 @@ export function versionLabel(build?: EvolutionBuild) {
 /** Purpose: Present only version identity and the next useful actions above the normal conversation.
  * Input: evolution state and commands. Output: persistent toolbar with contextual version and contribution dialogs.
  */
-export function EvolutionPanel({ state, error, busy, running, inspectorOpen, onToggleInspector, onAction, onRetry, onRepair }: Props) {
+export function EvolutionPanel({ children, state, error, busy, running, inspectorOpen, onToggleInspector, onAction, onRetry, onRepair }: Props) {
   const [sheet, setSheet] = useState<"versions" | "contribute" | "save" | "discard" | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const [name, setName] = useState("");
@@ -54,16 +55,21 @@ export function EvolutionPanel({ state, error, busy, running, inspectorOpen, onT
   const validation = state?.validation;
   const verified = Boolean(validation?.status === "passed" && validation.sourceHash
     && validation.candidate === candidate?.id && validation.sourceHash === candidate?.sourceHash && !state?.draftDirty);
-  const canApply = Boolean(verified && candidate?.kind === "local" && candidate.id !== state?.active);
+  const cases = state?.acceptance?.cases.filter((item) => item.enabled) || [];
+  const behaviorPassed = !cases.length || Boolean(state?.acceptance?.fresh && cases.every((item) => {
+    const result = state.acceptance?.report?.results.find((entry) => entry.id === item.id);
+    return result?.after.status === "passed" && result.before.status !== "error";
+  }));
+  const canApply = Boolean(verified && behaviorPassed && candidate?.kind === "local" && candidate.id !== state?.active);
   const canSave = Boolean(state?.iteration && active?.kind === "local" && active.id !== state.iteration.base
-    && state.candidate === state.active && verified);
+    && state.candidate === state.active && verified && behaviorPassed);
   const checkFailed = validation?.status === "failed" || validation?.status === "interrupted";
   const failure = error || state?.error || (checkFailed ? validation.message : null);
   const needsCheck = Boolean(state?.iteration && !verified && validation?.status !== "unchanged");
   const details = state?.logs || validation?.details;
   const status = running ? "正在修改，完成后检查" : busy ? (validation?.status === "running" ? validation.message : phases[state?.phase || ""] || "正在准备")
     : state?.transaction ? "正在重启" : checkFailed ? "检查未通过，修改尚不可应用" : failure ? "操作未完成"
-    : canApply ? "检查通过，可以应用" : canSave ? "修改已应用，尚未保存"
+    : verified && !behaviorPassed ? "构建通过，行为验收待完成" : canApply ? "检查通过，可以应用" : canSave ? "修改已应用，尚未保存"
     : validation?.status === "unchanged" ? "检查完成，暂无程序改动" : state?.iteration ? "修改待检查" : "直接描述你想改进的地方";
   return <header className="evolution-toolbar" aria-label="进化操作">
     <div className="evolution-topline">
@@ -96,6 +102,7 @@ export function EvolutionPanel({ state, error, busy, running, inspectorOpen, onT
     </div>}
     {state?.lastRestartError && !failure && <p className="evolution-notice">{state.lastRestartError}</p>}
     {details && (busy || failure || canApply) && <details className="evolution-log"><summary>查看检查详情</summary><pre>{details}</pre></details>}
+    {children}
     {sheet && <dialog ref={dialog} className="evolution-dialog" onCancel={close} onClick={(event) => { if (event.target === dialog.current) close(); }}>
       <div className="evolution-dialog-title"><h2>{sheet === "versions" ? "版本" : sheet === "contribute" ? "贡献与发布" : sheet === "save" ? "保存本地版本" : "放弃本轮修改"}</h2><button aria-label="关闭" onClick={close}><X size={18} /></button></div>
       {sheet === "versions" && <>

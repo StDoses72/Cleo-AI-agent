@@ -54,6 +54,7 @@ import { ApprovalPrompt } from "./ApprovalPrompt";
 import { RenameThreadDialog } from "./Overlays";
 
 interface ConversationProps {
+  improvement?: ReactNode;
   header?: ReactNode;
   thread: Thread | null;
   project: Project | null;
@@ -104,6 +105,7 @@ const suggestions = {
 };
 
 export function Conversation({
+  improvement,
   header,
   thread,
   project,
@@ -180,7 +182,7 @@ export function Conversation({
 
   return (
     <main className="conversation-shell" data-testid="conversation">
-      {header ?? <ConversationHeader
+      <div>{header ?? <ConversationHeader
         thread={thread}
         project={project}
         space={space}
@@ -197,7 +199,7 @@ export function Conversation({
         onThreadCommand={onThreadCommand}
         onRename={onRename}
         busy={running || Boolean(sendBlocked)}
-      />}
+      />}{improvement}</div>
 
       <div className="conversation-viewport" ref={viewportRef} onScroll={trackScrollPosition}>
         {thread?.items.length ? (

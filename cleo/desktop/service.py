@@ -1310,6 +1310,8 @@ class DesktopService:
                                 content=turn_diff,
                                 data={"title": turn_title},
                             )
+                            # The adapter compacted before this final diff was appended.
+                            await asyncio.to_thread(self.store.refresh_compact, manifest["id"])
                             history = change_history_from_events([persisted])
                             change_set = history[0] if history else None
                         exact_history_available = True

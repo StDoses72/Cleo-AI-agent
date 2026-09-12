@@ -1,5 +1,6 @@
 import { modifierKey } from "./platform";
 import { EvolutionPanel } from "./components/EvolutionPanel";
+import { EvolutionCases } from "./components/EvolutionCases";
 import { useEvolution } from "./useEvolution";
 import "./components/evolution.css";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -96,6 +97,18 @@ export function App() {
       if (action === "discard" || action === "select") workspace.beginEvolutionDraft();
     }).catch((error: unknown) =>
       setEvolutionIssue(error instanceof Error ? error.message : "操作失败"));
+  };
+
+  const createEvolutionCase = async (input: Record<string, unknown>) => {
+    if (!evolution.state?.prepared) await evolution.run("prepare");
+    await evolution.run("createCase", input);
+    setEvolutionOpen(true);
+  };
+  const improveFromCase = (id: string) => {
+    void evolution.run<string>("casePrompt", { id }).then((prompt) => {
+      setEvolutionOpen(true);
+      return sendEvolutionPrompt(prompt);
+    }).catch((error: unknown) => setEvolutionIssue(error instanceof Error ? error.message : "无法打开改进案例"));
   };
 
   useEffect(() => {
@@ -378,7 +391,13 @@ export function App() {
           header={evolutionOpen ? <EvolutionPanel state={evolution.state} error={evolutionIssue || evolution.error}
             busy={openingEvolutionUi || evolution.pending || Boolean(evolution.state && evolution.state.phase !== "idle")}
             running={Boolean(workspace.runningThreadId)} inspectorOpen={showInspector} onToggleInspector={() => setInspectorOpen((open) => !open)}
-            onAction={evolutionAction} onRetry={() => retryEvolution.current()} onRepair={() => { void repairEvolution(); }} /> : undefined}
+            onAction={evolutionAction} onRetry={() => retryEvolution.current()} onRepair={() => { void repairEvolution(); }}>
+              <EvolutionCases state={evolution.state?.acceptance} busy={evolution.pending || Boolean(workspace.runningThreadId) || evolution.state?.phase !== "idle"}
+                canCompare={evolution.state?.validation?.status === "passed" && !evolution.state.draftDirty}
+                onAction={evolutionAction} onImprove={improveFromCase} onCreate={createEvolutionCase} />
+            </EvolutionPanel> : undefined}
+          improvement={!evolutionOpen && conversationThread && window.cleoDesktop && <EvolutionCases thread={conversationThread}
+            busy={Boolean(workspace.runningThreadId) || evolution.pending} onAction={evolutionAction} onImprove={improveFromCase} onCreate={createEvolutionCase} />}
           prompt={workspace.prompt}
           onPromptChange={workspace.setPrompt}
           sendError={workspace.sendError}

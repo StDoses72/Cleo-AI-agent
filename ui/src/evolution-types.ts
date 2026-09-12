@@ -28,6 +28,7 @@ export interface EvolutionGithubAuth {
 }
 
 export interface EvolutionState {
+  acceptance?: EvolutionAcceptanceState;
   phase: string;
   supported: boolean;
   prepared: boolean;
@@ -55,4 +56,27 @@ export interface EvolutionState {
   pullRequest: { url: string; state: string; merged: boolean } | null;
   releases: { tag: string; title: string; publishedAt: string; url: string }[];
   recoveryPath: string | null;
+}
+
+export interface EvolutionCase {
+  id: string;
+  title: string;
+  expectation: string;
+  evidence: string;
+  sourceThread: string;
+  kind: "manual" | "dream-format";
+  baseline: string;
+  enabled: boolean;
+  createdAt: string;
+}
+export interface BehaviorResult {
+  status: "manual" | "passed" | "failed" | "error";
+  detail: string;
+  manual?: boolean;
+}
+export interface EvolutionAcceptanceState {
+  cases: EvolutionCase[];
+  fresh: boolean;
+  report: { candidate: string; sourceHash: string; createdAt: string;
+    results: { id: string; before: BehaviorResult; after: BehaviorResult }[] } | null;
 }

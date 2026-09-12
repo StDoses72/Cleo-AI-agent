@@ -7,6 +7,7 @@ import json
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Annotated
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -25,20 +26,24 @@ class Extraction(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     edits: list[Edit] = Field(default_factory=list, max_length=30)
     conflicts: list[Conflict] = Field(default_factory=list, max_length=5)
-    snapshot: list[str] | None = Field(default=None, max_length=5)
+    snapshot: list[Annotated[str, Field(max_length=200, pattern=r"^[^\r\n]*$")]] | None = Field(
+        default=None, max_length=5,
+    )
     work_item: str = Field(default="", max_length=150)
     summary: str = Field(default="", max_length=2000)
 
     def validate_evidence(self, block: Block) -> None:
+        """Purpose: Reject preferences that refer to evidence outside this block.
+
+        Input: The source block referenced by this schema-validated extraction.
+        Output: Raises ValueError for missing or unknown evidence references.
+        """
         for edit in self.edits:
             if edit.new and not edit.evidence_refs:
                 raise ValueError("new preferences need source evidence")
             missing = set(edit.evidence_refs) - block.evidence.keys()
             if missing:
                 raise ValueError(f"unknown evidence refs: {', '.join(sorted(missing))}")
-        for line in self.snapshot or []:
-            if len(line) > 200 or "\n" in line or "\r" in line:
-                raise ValueError("snapshot requires at most five short lines")
 
 
 def save_checkpoint(path: Path, checkpoint: dict) -> None:

@@ -148,3 +148,29 @@ Release manifest 的 evolution_protocol: 2 表示程序切换保留当前数据�
 每轮自迭代都注入数据兼容规则：修改存储前检查读写器；保留字段名、类型、语义、ID 和未知字段；避免破坏性自动迁移。新增字段若会被旧版写入器丢弃，改用独立存储；不能把读取失败的数据覆盖为空默认值。
 涉及存储时，要求在临时数据上验证「旧数据 → 新版读写 → 旧版读写 → 新版读取」，覆盖本轮起点及可用的保存版/保底版，并报告实际测试与未验证范围。缺少旧读写器或无法证明兼容时，保持共享格式不变。
 这些是每轮 prompt 约束，不是自动执行的跨版本测试或系统级写入拦截；任意自改代码的数据格式兼容性仍不能自动证明。版本切换本身不执行数据降级或格式转换。
+# Behavior acceptance
+
+The evolution view now keeps frozen acceptance cases under the desktop evolution
+directory in `acceptance/suite.json`, outside the editable source workspace. From
+an ordinary conversation, choose **从此对话创建改进案例**, record the expected
+behavior, then use **让 Cleo 按此案例改进**. Only the currently loaded conversation
+records are captured; large traces are rejected explicitly rather than truncated.
+
+After building, **比较行为** compares the current package with each case's original
+version. Dream format cases use captured invalid output followed by a fixed valid
+response. Both versions run their actual extractor in separate temporary homes,
+using packaged default configuration and a mocked model. This measures format
+recovery and evidence preservation, not model quality, relevance, retrieval accuracy,
+or successful publication of real memories. Network connections are blocked during
+replay. This is test-data isolation, not an operating-system security sandbox.
+
+Ordinary conversation cases require explicit manual observations; they are never
+automatically marked passed. Application and saving require results matching the
+candidate id, source hash and current case set. A new build or case change invalidates
+old results. Archive and recreate a case to change its expected behavior. Rollback to
+an already saved version remains available independently of current acceptance.
+
+The initial automated adapter is `dream-format`; other behaviors use manual review
+until a dedicated deterministic adapter is implemented. Full test results and build
+checks remain separate gates. The acceptance module adds a product workflow; it does
+not claim tamper resistance against an agent with unrestricted filesystem access.

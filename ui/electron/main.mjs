@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { launchDesktop } from "./evolution-launch.mjs";
 import { waitForControllerReady, showRecovery } from "./evolution-recovery.mjs";
 import { EvolutionManager } from "./evolution.mjs";
+import { EvolutionAcceptance } from "./evolution-acceptance.mjs";
 import { rmSync } from "node:fs";
 import { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, shell } from "electron";
 import { dirname, join } from "node:path";
@@ -48,7 +49,7 @@ const evolution = new EvolutionManager({
   app, root: join(app.getPath("userData"), "evolution"), dataHome: backend.runtimePaths().cleoHome,
   openExternal: (url) => shell.openExternal(url),
   onState: () => {
-    void evolution.status().then((state) => {
+    void evolutionState().then((state) => {
       for (const window of BrowserWindow.getAllWindows()) {
         if (!window.isDestroyed()) window.webContents.send("cleo:evolution:state", state);
       }
@@ -56,12 +57,19 @@ const evolution = new EvolutionManager({
   },
 });
 process.env.CLEO_EVOLUTION_WORKSPACE = evolution.source;
+const acceptance = new EvolutionAcceptance(evolution.store);
+
+async function evolutionState() {
+  const state = await evolution.status();
+  return { ...state, acceptance: await acceptance.status(state) };
+}
 
 /** Purpose: Hand off activation after explicit consent. Input: build id; current user data is always retained. Output: app restart. */
 async function applyEvolution(id) {
   if (backend.pending.size) throw new Error("请先等待当前任务完成或停止任务，再应用改动。");
   const state = await evolution.store.read();
   if (state.active === id) return true;
+  await acceptance.requirePassed(id);
   const tx = await evolution.stage(id);
   try {
     const controller = await launchDesktop(process.execPath,
@@ -271,19 +279,28 @@ app.whenReady().then(async () => {
     if (!release) throw new Error("请重新检查正式版本。");
     return applyEvolution(await evolution.downloadRelease(release.tag));
   });
-  ipcMain.handle("cleo:evolution:state", () => evolution.status());
+  ipcMain.handle("cleo:evolution:state", () => evolutionState());
   ipcMain.handle("cleo:evolution:action", async (_event, payload) => {
     const { action, ...params } = payload || {};
-    if (backend.pending.size && ["prepare", "build", "merge", "submit", "apply", "recovery", "select", "discard", "save", "begin", "repairPrompt"].includes(action)) {
+    if (backend.pending.size && ["prepare", "build", "merge", "submit", "apply", "recovery", "select", "discard", "save", "begin", "repairPrompt", "createCase", "archiveCase", "compareCases", "reviewCase"].includes(action)) {
       throw new Error("请先等待当前任务完成或停止任务。");
     }
     const actions = {
       prepare: () => evolution.prepare(),
       begin: () => evolution.begin(),
-      save: () => evolution.saveVersion(params.name),
+      save: async () => { await acceptance.requirePassed((await evolution.store.read()).active); return evolution.saveVersion(params.name); },
       select: () => changeEvolutionBase(params.id),
       discard: () => changeEvolutionBase(null, true),
-      build: () => evolution.build(),
+      build: async () => {
+        const id = await evolution.build();
+        if (id) await evolution.operation("checking", () => acceptance.compare(id));
+        return id;
+      },
+      createCase: () => evolution.operation("checking", () => acceptance.create(params)),
+      archiveCase: () => evolution.operation("checking", () => acceptance.archive(params.id)),
+      compareCases: () => evolution.operation("checking", async () => acceptance.compare((await evolution.store.read()).candidate)),
+      reviewCase: () => evolution.operation("checking", () => acceptance.review(params.id, params.note)),
+      casePrompt: () => acceptance.prompt(params.id),
       repairPrompt: () => evolution.repairPrompt(),
       releases: () => evolution.releases(),
       download: () => evolution.downloadRelease(params.tag),
