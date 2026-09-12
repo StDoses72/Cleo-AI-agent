@@ -34,7 +34,7 @@ async function validationFixture(t, fail = () => {}) {
       : args[0]?.endsWith("typescript/bin/tsc") ? "typecheck"
       : args[0]?.endsWith("vite/bin/vite.js") ? "frontend"
       : args[0] === "--test" ? "tests" : args.includes("pytest") ? "python-tests"
-      : command === "fixture-uv" ? "lint" : "package";
+      : args[0] === "tool" ? "lint" : "package";
     calls.push(stage);
     fail(stage);
     if (stage === "typecheck") {
