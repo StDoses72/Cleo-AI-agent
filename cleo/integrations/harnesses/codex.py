@@ -209,6 +209,9 @@ class CodexProvider:
                 asyncio.get_running_loop(),
                 approval_event if runtime.user_approvals_enabled else None,
             )
+            runtime.approvals.questions.bind(
+                approval_event if runtime.approvals.questions.enabled and on_event else None,
+            )
             turn_started = asyncio.Event()
 
             async def run_turn() -> AsyncTurnHandle:
@@ -218,8 +221,17 @@ class CodexProvider:
                 finally:
                     turn_started.set()
                 runtime.active_turn = turn
+                message_phases: dict[str, str] = {}
                 async for notification in turn.stream():
                     data = self._notification_data(notification.payload)
+                    started_item = data.get("item")
+                    if (isinstance(started_item, dict)
+                            and started_item.get("type") == "agentMessage"):
+                        message_phases[str(started_item.get("id"))] = str(
+                            started_item.get("phase") or "",
+                        )
+                    if notification.method == "item/agentMessage/delta":
+                        data["phase"] = message_phases.get(str(data.get("itemId")), "")
                     if notification.method == "item/completed":
                         item = data.get("item")
                         if isinstance(item, dict) and item.get("type") == "agentMessage":
@@ -250,6 +262,7 @@ class CodexProvider:
                 # until interruption delivers turn/completed and drains it.
                 turn = await asyncio.shield(turn_task)
             except asyncio.CancelledError:
+                await runtime.approvals.questions.cancel_all()
                 runtime.approvals.cancel_all()
                 await turn_started.wait()
                 if not turn_task.done() and runtime.active_turn is not None:
@@ -262,6 +275,8 @@ class CodexProvider:
                     await runtime.client.close()
                     await asyncio.gather(turn_task, return_exceptions=True)
                 runtime.active_turn = None
+                await runtime.approvals.questions.cancel_all()
+                runtime.approvals.questions.callback = None
                 runtime.approvals.cancel_all()
                 runtime.approvals.unbind()
 
@@ -336,6 +351,15 @@ class CodexProvider:
 
     async def enable_user_approvals(self, session_id: str) -> None:
         self._sessions[session_id].user_approvals_enabled = True
+
+    async def resolve_question(self, session_id: str, question_id: str, answers: dict) -> dict:
+        return await self._sessions[session_id].approvals.questions.resolve(question_id, answers)
+
+    def pending_questions(self, session_id: str) -> list[dict]:
+        return self._sessions[session_id].approvals.questions.list_pending()
+
+    async def enable_questions(self, session_id: str) -> None:
+        self._sessions[session_id].approvals.questions.enabled = True
 
     async def list_models(self) -> tuple[HarnessModel, ...]:
         """查询 Codex 账号可用的模型列表。
@@ -558,6 +582,7 @@ class CodexProvider:
                 ``interrupt``。
         """
         runtime = self._sessions[session_id]
+        await runtime.approvals.questions.cancel_all()
         runtime.approvals.cancel_all()
         if runtime.active_turn is not None:
             await runtime.active_turn.interrupt()
@@ -572,6 +597,7 @@ class CodexProvider:
         runtime = self._sessions.pop(session_id, None)
         if runtime is None:
             return
+        await runtime.approvals.questions.cancel_all()
         runtime.approvals.cancel_all()
         if runtime.active_turn is not None:
             await runtime.active_turn.interrupt()
@@ -625,6 +651,9 @@ class CodexProvider:
         if sync_client is None or not hasattr(sync_client, "_approval_handler"):
             raise RuntimeError("Installed openai-codex SDK does not expose approval callbacks.")
         sync_client._approval_handler = approvals.handle
+        approvals.questions.transport_alive = lambda: (
+            getattr(sync_client, "_proc", None) is None or sync_client._proc.poll() is None
+        )
         return client
 
     @staticmethod

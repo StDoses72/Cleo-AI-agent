@@ -9,6 +9,9 @@ from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
     ClaudeSDKClient,
+    HookMatcher,
+    PermissionResultAllow,
+    PermissionResultDeny,
     ResultMessage,
     TextBlock,
     ThinkingBlock,
@@ -19,6 +22,7 @@ from claude_agent_sdk import (
 from cleo.harnesses.control import HarnessModel, SessionOptions
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 from cleo.harnesses.provider import ProviderSession, ProviderTurn
+from cleo.harnesses.questions import QuestionBroker, normalize_questions
 from cleo.integrations.harnesses.memory import MemoryMcp
 
 ClaudePermissionMode = Literal[
@@ -49,6 +53,7 @@ class _ClaudeRuntime:
     native_session_id: str | None = None
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     active: bool = False
+    questions: QuestionBroker = field(default_factory=lambda: QuestionBroker("claude"))
 
 
 class ClaudeProvider:
@@ -166,6 +171,8 @@ class ClaudeProvider:
                 )
                 await runtime.client.disconnect()
                 runtime.client = replacement.client
+                replacement.questions.enabled = runtime.questions.enabled
+                runtime.questions = replacement.questions
             elif model is not None and model != current.model:
                 await runtime.client.set_model(model)
             if approval_mode is not None and approval_mode != current.approval_mode:
@@ -234,6 +241,12 @@ class ClaudeProvider:
 
         async with runtime.lock:
             runtime.active = True
+            async def question_event(event):
+                events.append(event)
+                await emit_event(on_event, event)
+            runtime.questions.bind(
+                question_event if runtime.questions.enabled and on_event else None,
+            )
             try:
                 await runtime.client.query(prompt)
                 async for message in runtime.client.receive_response():
@@ -250,6 +263,8 @@ class ClaudeProvider:
                         result_message = message
                         runtime.native_session_id = message.session_id
             finally:
+                await runtime.questions.cancel_all()
+                runtime.questions.callback = None
                 runtime.active = False
 
         if result_message is None:
@@ -279,6 +294,7 @@ class ClaudeProvider:
                 SDK 的 ``interrupt``。
         """
         runtime = self._sessions[session_id]
+        await runtime.questions.cancel_all()
         if runtime.active:
             await runtime.client.interrupt()
 
@@ -293,9 +309,19 @@ class ClaudeProvider:
         runtime = self._sessions.pop(session_id, None)
         if runtime is None:
             return
+        await runtime.questions.cancel_all()
         if runtime.active:
             await runtime.client.interrupt()
         await runtime.client.disconnect()
+
+    async def resolve_question(self, session_id: str, question_id: str, answers: dict) -> dict:
+        return await self._sessions[session_id].questions.resolve(question_id, answers)
+
+    def pending_questions(self, session_id: str) -> list[dict]:
+        return self._sessions[session_id].questions.list_pending()
+
+    async def enable_questions(self, session_id: str) -> None:
+        self._sessions[session_id].questions.enabled = True
 
     async def _connect(
         self,
@@ -315,6 +341,29 @@ class ClaudeProvider:
         返回:
             ``_ClaudeRuntime``, 由调用方登记进 ``_sessions``。
         """
+        questions = QuestionBroker(self.name)
+
+        async def ask_hook(input_data, _tool_use_id, _context):
+            # AskUserQuestion must reach the callback even under permissive tool policies.
+            return {"hookSpecificOutput": {"hookEventName": "PreToolUse",
+                                           "permissionDecision": "ask"}}
+
+        async def can_use_tool(tool_name, input_data, context):
+            if tool_name != "AskUserQuestion":
+                return PermissionResultDeny(message="此工具需要权限确认；请使用支持的审批入口。")
+            try:
+                normalized = normalize_questions(input_data.get("questions"), claude=True)
+            except ValueError as exc:
+                return PermissionResultDeny(message=str(exc))
+            answers = await questions.ask(
+                normalized, native_id=str(getattr(context, "tool_use_id", "") or ""),
+            )
+            if answers is None:
+                return PermissionResultDeny(message="用户未提交答案。请在对话中重新询问。")
+            return PermissionResultAllow(updated_input={**input_data, "answers": {
+                q["question"]: ", ".join(answers[q["id"]]) for q in normalized
+            }})
+
         options = ClaudeAgentOptions(
             cwd=project_path,
             model=model or self._default_model,
@@ -322,6 +371,8 @@ class ClaudeProvider:
             permission_mode=permission_mode or self._permission_mode,
             resume=resume,
             mcp_servers=self._memory_mcp.claude_servers() if self._memory_mcp else {},
+            can_use_tool=can_use_tool,
+            hooks={"PreToolUse": [HookMatcher(matcher="AskUserQuestion", hooks=[ask_hook])]},
         )
         client = ClaudeSDKClient(options=options)
         await client.connect()
@@ -352,6 +403,7 @@ class ClaudeProvider:
                 approval_mode=permission_mode or self._permission_mode,
             ),
             cwd=project_path,
+            questions=questions,
         )
 
     def _block_event(self, block: object) -> AgentEvent | None:

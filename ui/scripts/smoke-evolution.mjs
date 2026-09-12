@@ -5,9 +5,9 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 
-const ui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const ui = process.env.CLEO_SMOKE_APP_DIR ?? resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const profile = await mkdtemp(join(tmpdir(), "cleo-evolution-ui-"));
-const output = join(ui, "output/playwright/evolution");
+const output = process.env.CLEO_SMOKE_OUTPUT ?? join(ui, "output/playwright/evolution");
 await mkdir(output, { recursive: true });
 const application = await electron.launch({
   args: [".", `--user-data-dir=${profile}`], cwd: ui, env: { ...process.env, CLEO_DESKTOP_MOCK: "1" },

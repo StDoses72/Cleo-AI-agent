@@ -328,7 +328,7 @@ export class EvolutionManager {
           .filter((name) => name.endsWith(".test.mjs")).map((name) => join(this.source, "ui/electron", name));
         const extraTests = join(this.source, "ui/tests");
         if (await exists(extraTests)) tests.push(...(await readdir(extraTests))
-          .filter((name) => name.startsWith("evolution-") && name.endsWith(".test.mjs"))
+          .filter((name) => name.endsWith(".test.mjs"))
           .map((name) => join(extraTests, name)));
         if (!tests.length) throw new Error("未找到回归测试，不能将缺失的检查视为通过。");
         await this.runCommand(tools.node, ["--test", ...tests], options);

@@ -21,6 +21,9 @@ import type {
   ThreadSpace,
   UndoChangesResult,
   WorkspaceSnapshot,
+  TimelinePage,
+  TimelineContent,
+  QuestionRequest,
 } from "../types";
 
 export class IpcCleoClient implements CleoClient {
@@ -32,6 +35,22 @@ export class IpcCleoClient implements CleoClient {
 
   async loadThread(threadId: string): Promise<Thread> {
     return this.bridge.request("load_thread", { thread_id: threadId });
+  }
+
+  loadTimeline(threadId: string, direction = "latest" as "latest" | "before" | "after", cursor?: string): Promise<TimelinePage> {
+    return this.bridge.request("load_timeline", { thread_id: threadId, direction, cursor });
+  }
+
+  readTimelineContent(threadId: string, itemId: string, field: string, offset: number): Promise<TimelineContent> {
+    return this.bridge.request("read_timeline_content", { thread_id: threadId, item_id: itemId, field, offset });
+  }
+
+  getPendingQuestions(threadId: string): Promise<QuestionRequest[]> {
+    return this.bridge.request("get_pending_questions", { thread_id: threadId });
+  }
+
+  async resolveQuestion(threadId: string, questionId: string, answers: Record<string, string[]>): Promise<void> {
+    await this.bridge.request("resolve_question", { thread_id: threadId, question_id: questionId, answers });
   }
 
   async createThread(

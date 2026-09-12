@@ -64,12 +64,12 @@
 .evolution-dialog { color:var(--text); background:var(--surface-raised); border:1px solid var(--border-strong); border-radius:14px; padding:24px; width:min(460px,calc(100vw - 48px)); max-height:80vh; overflow:auto; box-shadow:0 24px 90px #0006; }
 .evolution-dialog::backdrop { background:#0007; backdrop-filter:blur(3px); }
 .evolution-dialog-title { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:18px; }
-.evolution-dialog-title h2 { margin:0; font-size:18px; font-weight:550; }
+.evolution-dialog-title h2 { margin:0; font-size:var(--font-size-dialog-title); font-weight:550; }
 .evolution-dialog-title button { padding:6px; }
 .evolution-dialog p { font-size:12px; color:var(--muted); line-height:1.8; margin:12px 0; }
 .evolution-dialog form { display:grid; gap:14px; }
 .evolution-dialog label { display:grid; gap:8px; font-size:12px; color:var(--muted); }
-.evolution-dialog input,.evolution-dialog select,.evolution-dialog textarea { background:var(--surface); border:1px solid var(--border-strong); border-radius:7px; width:100%; padding:10px 12px; font-size:13px; min-width:0; }
+.evolution-dialog input,.evolution-dialog select,.evolution-dialog textarea { background:var(--surface); border:1px solid var(--border-strong); border-radius:7px; width:100%; padding:10px 12px; font-size:var(--font-size-control); min-width:0; }
 .evolution-dialog textarea { min-height:95px; resize:vertical; }
 .evolution-dialog button:not(.evolution-dialog-title button) { padding:10px 13px; border:1px solid var(--border); }
 .evolution-dialog a { display:block; font-size:12px; color:var(--accent); margin:12px 0; }
@@ -88,7 +88,7 @@
  .evolution-actions { margin-left:auto; }
  .evolution-error,.evolution-notice,.evolution-log,.evolution-github { margin-left:14px; margin-right:14px; }
 }
-.evolution-preparation { max-width: 860px; margin: 16px auto; padding: 0 24px; font: 13px/1.65 "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif; }
+.evolution-preparation { max-width: 860px; margin: 16px auto; padding: 0 24px; font-family:var(--font-ui); font-size:var(--font-size-body); line-height:var(--line-height-body); }
 .evolution-preparation:empty { display: none; }
 .evolution-request { padding: 18px; margin-bottom: 16px; border: 1px solid var(--border-subtle, #68758240); border-radius: 12px; }
 .evolution-request-heading { display: flex; justify-content: space-between; gap: 12px; }

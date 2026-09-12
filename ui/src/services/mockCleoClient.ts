@@ -22,6 +22,9 @@ import type {
   TimelineItem,
   UndoChangesResult,
   WorkspaceSnapshot,
+  TimelinePage,
+  TimelineContent,
+  QuestionRequest,
 } from "../types";
 import { snapshot, uiChanges } from "./mockData";
 
@@ -41,17 +44,64 @@ export class MockCleoClient implements CleoClient {
   };
   private readonly approvalResolvers = new Map<string, (decision: ApprovalDecision) => void>();
   private readonly reviewingMemorySourceIds = new Set<string>();
+  private readonly histories = new Map<string, TimelineItem[]>();
+  private readonly runVersions = new Map<string, number>();
+  private readonly questions = new Map<string, { request: QuestionRequest; resolve: (answers: Record<string, string[]> | null) => void }>();
 
   async loadWorkspace(): Promise<WorkspaceSnapshot> {
     await delay(520);
-    return clone(snapshot);
+    const result = clone(snapshot);
+    for (const thread of result.threads) {
+      const { items, ...history } = await this.loadTimeline(thread.id);
+      thread.items = items;
+      thread.history = history;
+    }
+    return result;
   }
 
   async loadThread(threadId: string): Promise<Thread> {
     await delay(120);
     const thread = snapshot.threads.find((candidate) => candidate.id === threadId);
     if (!thread) throw new Error(`Unknown thread: ${threadId}`);
-    return clone(thread);
+    const { items, ...history } = await this.loadTimeline(threadId);
+    return { ...clone(thread), items, history };
+  }
+
+  async loadTimeline(threadId: string, direction: "latest" | "before" | "after" = "latest", cursor?: string): Promise<TimelinePage> {
+    await delay(30);
+    const stored = this.histories.get(threadId) ?? snapshot.threads.find(t => t.id === threadId)?.items ?? [];
+    let turn = "initial";
+    const all = stored.map((original, index) => {
+      if (original.type === "message" && original.role === "user") turn = original.id;
+      return { ...original, turnId: original.turnId ?? turn, cursor: String(index), order: index };
+    });
+    const finalTurns = new Set(all.filter(item => item.type === "message" && item.role === "assistant" && item.content.trim()).map(item => item.turnId));
+    const pivot = cursor === undefined ? all.length : Number(cursor);
+    const start = direction === "latest" ? Math.max(0, all.length - 80)
+      : direction === "before" ? Math.max(0, pivot - 80) : pivot + 1;
+    const end = direction === "before" ? pivot : Math.min(all.length, start + 80);
+    return { items: clone(all.slice(start, end).map(item => ({ ...item, turnHasAnswer: finalTurns.has(item.turnId) }))),
+      total: all.length, before: String(start), after: String(end - 1), hasBefore: start > 0,
+      hasAfter: end < all.length, revision: String(all.length) };
+  }
+
+  async readTimelineContent(threadId: string, itemId: string, field: string, offset: number): Promise<TimelineContent> {
+    const item = (this.histories.get(threadId) ?? snapshot.threads.find(t => t.id === threadId)?.items ?? []).find(i => i.id === itemId);
+    const value = item && (item as unknown as Record<string, unknown>)[field];
+    if (typeof value !== "string") throw new Error("内容不可用");
+    const text = value.slice(offset, offset + 16384);
+    return { text, offset, next: offset + text.length, total: value.length };
+  }
+
+  async getPendingQuestions(threadId: string): Promise<QuestionRequest[]> {
+    return [...this.questions.values()].filter(q => q.request.threadId === threadId).map(q => clone(q.request));
+  }
+
+  async resolveQuestion(threadId: string, questionId: string, answers: Record<string, string[]>): Promise<void> {
+    const question = this.questions.get(questionId);
+    if (!question || question.request.threadId !== threadId) throw new Error("问题已结束");
+    question.resolve(answers);
+    this.questions.delete(questionId);
   }
 
   async createThread(
@@ -63,7 +113,7 @@ export class MockCleoClient implements CleoClient {
     const selectedProfile = options.profileId ?? this.modelSettings.activeAgent;
     const profile = this.modelSettings.profiles.find(item => item.name === selectedProfile);
     if (space === "chat" && !profile) throw new Error("模型连接不存在。");
-    return {
+    const created: Thread = {
       id: `draft-${Date.now()}`,
       space,
       projectId,
@@ -93,6 +143,10 @@ export class MockCleoClient implements CleoClient {
             editable: true,
           },
     };
+    snapshot.threads.unshift(clone(created));
+    this.histories.set(created.id, []);
+    const { items, ...history } = await this.loadTimeline(created.id);
+    return { ...created, items, history };
   }
 
   async deleteThread(threadId: string): Promise<WorkspaceSnapshot> {
@@ -136,7 +190,46 @@ export class MockCleoClient implements CleoClient {
     return clone(snapshot);
   }
 
-  async *streamTurn(
+  async *streamTurn(threadId: string, prompt: string, attachments: Attachment[] = []): AsyncGenerator<StreamEvent> {
+    const version = (this.runVersions.get(threadId) ?? 0) + 1;
+    this.runVersions.set(threadId, version);
+    const turnId = `mock-turn-${Date.now()}`;
+    const items = this.histories.get(threadId) ?? clone(snapshot.threads.find(t => t.id === threadId)?.items ?? []);
+    this.histories.set(threadId, items);
+    const user: TimelineItem = { id: turnId, turnId, cursor: String(items.length), order: items.length, type: "message", role: "user", content: prompt, time: "" };
+    items.push(user);
+    yield { type: "turn-started", item: user };
+    if (/提问测试|question demo/i.test(prompt)) {
+      const request: QuestionRequest = { id: `question-${turnId}`, threadId, provider: "claude", status: "pending", questions: [
+        { id: "choice", header: "方向", question: "希望如何实现？", multiple: false, options: [{ label: "最小改动", description: "保留现有流程" }, { label: "重新设计", description: "调整交互方式" }] },
+        { id: "sections", header: "范围", question: "需要哪些部分？", multiple: true, options: [{ label: "前端", description: "用户界面" }, { label: "后端", description: "运行服务" }] },
+        { id: "text", header: "说明", question: "还有哪些补充要求？", multiple: false, options: [] },
+      ] };
+      const answer = new Promise<Record<string, string[]> | null>(resolve => this.questions.set(request.id, { request, resolve }));
+      const questionItem: TimelineItem = { id: request.id, turnId, type: "question", request };
+      items.push(questionItem);
+      yield { type: "question-request", request: clone(request) };
+      const answers = await answer;
+      questionItem.request = { ...request, status: answers ? "answered" : "cancelled", answers: answers ?? undefined };
+      yield { type: "question-resolved", request: clone(questionItem.request) };
+      if (!answers) return;
+    }
+    for await (const event of this.mockTurn(threadId, prompt, attachments)) {
+      if (this.runVersions.get(threadId) !== version) return;
+      if (event.type === "upsert-item") {
+        event.item = { ...event.item, turnId };
+        const at = items.findIndex(i => i.id === event.item.id);
+        event.item.cursor = String(at >= 0 ? at : items.length);
+        event.item.order = at >= 0 ? at : items.length;
+        if (at >= 0) items[at] = clone(event.item); else items.push(clone(event.item));
+      } else if (event.type === "error") {
+        items.push({ id: `${turnId}:error`, turnId, type: "notice", tone: "warning", title: "任务已暂停", detail: event.message });
+      }
+      yield event;
+    }
+  }
+
+  private async *mockTurn(
     threadId: string,
     prompt: string,
     _attachments: Attachment[] = [],
@@ -286,11 +379,10 @@ export class MockCleoClient implements CleoClient {
     yield {
       type: "upsert-item",
       item: {
-        id: responseId,
-        type: "message",
-        role: "assistant",
+        id: `${runId}-progress`,
+        type: "thought",
+        status: "running",
         content: "## 正在整理\n\n已完成第一轮检查，正在整理最后的验证结果。",
-        time: "",
       },
     };
 
@@ -364,9 +456,14 @@ export class MockCleoClient implements CleoClient {
   }
 
   async cancelRun(_threadId: string): Promise<void> {
+    this.runVersions.set(_threadId, (this.runVersions.get(_threadId) ?? 0) + 1);
     await delay(250);
     for (const resolve of this.approvalResolvers.values()) resolve("cancel");
     this.approvalResolvers.clear();
+    this.histories.get(_threadId)?.push({ id: `cancel-${Date.now()}`, type: "notice", tone: "info", title: "已停止当前运行", detail: "可以继续发送新请求。" });
+    for (const [id, question] of this.questions) {
+      if (question.request.threadId === _threadId) { question.resolve(null); this.questions.delete(id); }
+    }
   }
 
   async resolveApproval(

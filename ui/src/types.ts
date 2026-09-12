@@ -41,7 +41,45 @@ export interface PlanStep {
   status: "pending" | "running" | "done";
 }
 
-export type TimelineItem =
+export interface UserQuestion {
+  id: string;
+  header: string;
+  question: string;
+  multiple: boolean;
+  secret?: boolean;
+  options: { label: string; description: string }[];
+}
+
+export interface QuestionRequest {
+  order?: number;
+  cursor?: string;
+  id: string;
+  threadId: string;
+  provider: string;
+  nativeId?: string;
+  questions: UserQuestion[];
+  status: "pending" | "answered" | "cancelled" | "unavailable";
+  answers?: Record<string, string[]>;
+}
+
+export interface TimelinePageInfo {
+  before: string;
+  after: string;
+  hasBefore: boolean;
+  hasAfter: boolean;
+  total: number;
+  revision: string;
+}
+export interface TimelinePage extends TimelinePageInfo { items: TimelineItem[] }
+export interface TimelineContent { text: string; offset: number; next: number; total: number }
+
+export type TimelineItem = {
+  order?: number;
+  turnId?: string;
+  turnHasAnswer?: boolean;
+  cursor?: string;
+  more?: Record<string, number>;
+} & (
   | {
       id: string;
       type: "message";
@@ -75,7 +113,9 @@ export type TimelineItem =
       tone: "info" | "success" | "warning";
       title: string;
       detail: string;
-    };
+    }
+  | { id: string; type: "question"; request: QuestionRequest }
+);
 
 export interface ChangeFile {
   path: string;
@@ -108,6 +148,8 @@ export interface Thread {
   updatedAt: string;
   status: ThreadStatus;
   items: TimelineItem[];
+  history?: TimelinePageInfo;
+  pendingQuestions?: QuestionRequest[];
   changes: ChangeFile[];
   changeHistory?: ChangeSet[];
   usage: Usage;
@@ -165,6 +207,7 @@ export interface MemoryEntry {
 }
 
 export interface RuntimeProfile {
+  supportsQuestions?: boolean;
   profileId?: string;
   provider: string;
   model: string;
@@ -412,6 +455,9 @@ export interface UndoChangesResult {
 
 export type StreamEvent =
   | { type: "upsert-item"; item: TimelineItem }
+  | { type: "turn-started"; item: TimelineItem }
+  | { type: "question-request"; request: QuestionRequest }
+  | { type: "question-resolved"; request: Pick<QuestionRequest, "id" | "status" | "answers"> }
   | { type: "changes"; changes: ChangeFile[] }
   | { type: "change-history"; changeSet: ChangeSet }
   | { type: "usage"; usage: Usage }
@@ -427,6 +473,10 @@ export type StreamEvent =
 export interface CleoClient {
   loadWorkspace(): Promise<WorkspaceSnapshot>;
   loadThread(threadId: string): Promise<Thread>;
+  loadTimeline(threadId: string, direction?: "latest" | "before" | "after", cursor?: string): Promise<TimelinePage>;
+  readTimelineContent(threadId: string, itemId: string, field: string, offset: number): Promise<TimelineContent>;
+  getPendingQuestions(threadId: string): Promise<QuestionRequest[]>;
+  resolveQuestion(threadId: string, questionId: string, answers: Record<string, string[]>): Promise<void>;
   createThread(space: ThreadSpace, projectId: string, options?: CreateThreadOptions): Promise<Thread>;
   deleteThread(threadId: string): Promise<WorkspaceSnapshot>;
   addProject(space: ThreadSpace, projectPath: string): Promise<WorkspaceSnapshot>;

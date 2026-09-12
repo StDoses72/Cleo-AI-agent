@@ -226,9 +226,10 @@ try {
     const viewport = document.querySelector(".conversation-viewport");
     const children = timeline ? Array.from(timeline.children) : [];
     return {
-      thoughtIndex: thoughtGroup ? children.indexOf(thoughtGroup) : -1,
-      toolIndex: toolGroup ? children.indexOf(toolGroup) : -1,
-      assistantIndex: assistant ? children.indexOf(assistant) : -1,
+      thoughtIndex: thoughtGroup ? children.indexOf(thoughtGroup.closest("[data-row-id]")) : -1,
+      toolIndex: toolGroup ? children.indexOf(toolGroup.closest("[data-row-id]")) : -1,
+      assistantIndex: assistant ? children.indexOf(assistant.closest("[data-row-id]")) : -1,
+      thoughtExpanded: thoughtGroup?.querySelector("button")?.getAttribute("aria-expanded"),
       distanceFromBottom: viewport
         ? viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight
         : Number.POSITIVE_INFINITY,
@@ -237,9 +238,9 @@ try {
   assert(
     streamingLayout.thoughtIndex >= 0
       && streamingLayout.toolIndex >= 0
-      && streamingLayout.thoughtIndex < streamingLayout.assistantIndex
-      && streamingLayout.toolIndex < streamingLayout.assistantIndex,
-    "Streaming assistant text was not kept after the visible process groups",
+      && streamingLayout.assistantIndex === -1
+      && streamingLayout.thoughtExpanded === "true",
+    "Process text was hidden before a final answer arrived",
   );
   assert(streamingLayout.distanceFromBottom < 24, "Streaming timeline did not follow the latest text");
   await window.getByRole("heading", { name: "运行完成", exact: true }).waitFor({ timeout: 20_000 });
@@ -251,7 +252,7 @@ try {
     "Completed thought group was not collapsed by default",
   );
   await thoughtGroupButton.click();
-  assert(await window.locator(".thought-entry").count() === 1, "Thought group did not retain visible commentary");
+  assert(await window.locator(".thought-entry").count() === 2, "Thought group did not retain all progress text");
   assert(await window.locator(".plan-entry").count() === 1, "Plan updates created duplicate cards");
   assert(
     await window.locator('.plan-entry li[data-status="done"]').count() === 3,

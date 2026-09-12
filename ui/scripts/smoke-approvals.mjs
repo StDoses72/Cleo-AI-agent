@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { _electron as electron } from "playwright";
 
-const appDir = join(dirname(fileURLToPath(import.meta.url)), "..");
+const appDir = process.env.CLEO_SMOKE_APP_DIR ?? join(dirname(fileURLToPath(import.meta.url)), "..");
 const scratch = await mkdtemp(join(process.env.CLEO_TEST_TMP || tmpdir(), "cleo-approvals-"));
 let app;
 try {
