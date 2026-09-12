@@ -524,6 +524,33 @@ def test_codex_provider_streams_new_sdk_notifications() -> None:
     assert received[3].data["payload"]["item"]["phase"] == "final_answer"
 
 
+@pytest.mark.parametrize("phase", ["commentary", "final_answer"])
+def test_codex_incomplete_turn_does_not_promote_commentary_to_final_answer(phase):
+    class Turn:
+        id = "turn"
+
+        async def stream(self):
+            for method, data in [
+                ("item/started", {"item": {"type": "agentMessage", "id": "m", "phase": phase}}),
+                ("item/agentMessage/delta", {"itemId": "m", "delta": "Working"}),
+                ("turn/completed", {"turn": {"id": "turn", "status": "failed"}}),
+            ]:
+                payload = SimpleNamespace(model_dump=lambda value=data, **_: value)
+                yield SimpleNamespace(method=method, payload=payload)
+
+    class Thread:
+        id = "thread"
+
+        async def turn(self, *_args, **_kwargs):
+            return Turn()
+
+    provider = CodexProvider(default_model="test")
+    provider._sessions["s"] = _CodexRuntime(client=SimpleNamespace(), thread=Thread())
+    result = asyncio.run(provider.prompt("s", "work", lambda _: None))
+    assert result.response == ("Working" if phase == "final_answer" else None)
+    assert result.status == "failed"
+
+
 def test_agent_adapter_persists_visible_codex_commentary_as_thought() -> None:
     commentary = AgentEvent(
         provider="codex",

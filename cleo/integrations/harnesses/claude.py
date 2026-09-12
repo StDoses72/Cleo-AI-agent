@@ -276,6 +276,8 @@ class ClaudeProvider:
         status = "failed" if result_message.is_error else "completed"
         if result_message.stop_reason == "cancelled":
             status = "cancelled"
+        if status != "completed":
+            response = None
         return ProviderTurn(
             native_session_id=result_message.session_id,
             turn_id=result_message.uuid or f"claude_turn_{secrets.token_hex(6)}",

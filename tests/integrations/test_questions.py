@@ -230,3 +230,31 @@ def test_disconnected_transport_releases_question_without_fabricating_an_answer(
         assert "answers" not in events[-1].data
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("cancelled", [False, True])
+def test_claude_terminal_failure_preserves_progress_without_a_final_answer(cancelled):
+    from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
+
+    from cleo.harnesses.control import SessionOptions
+    from cleo.integrations.harnesses.claude import ClaudeProvider, _ClaudeRuntime
+
+    class Client:
+        async def query(self, _prompt):
+            pass
+
+        async def receive_response(self):
+            yield AssistantMessage(content=[TextBlock(text="Checking files")], model="test")
+            yield ResultMessage(
+                subtype="error_during_execution", duration_ms=1, duration_api_ms=1,
+                is_error=True, num_turns=1, session_id="native", result="Stopped",
+                stop_reason="cancelled" if cancelled else None,
+            )
+
+    provider = ClaudeProvider()
+    provider._sessions["s"] = _ClaudeRuntime(client=Client(), options=SessionOptions(), cwd=".")
+    events = []
+    result = asyncio.run(provider.prompt("s", "work", events.append))
+    assert result.response is None
+    assert result.status == ("cancelled" if cancelled else "failed")
+    assert events[0].text == "Checking files"

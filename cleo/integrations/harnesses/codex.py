@@ -251,7 +251,8 @@ class CodexProvider:
                     if event is None:
                         continue
                     events.append(event)
-                    if event.type == "assistant_message_chunk" and event.text:
+                    if (event.type == "assistant_message_chunk" and event.text
+                            and data.get("phase") in {"final_answer", "final"}):
                         response_parts.append(event.text)
                     await emit_event(on_event, event)
                 return turn

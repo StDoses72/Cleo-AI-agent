@@ -299,6 +299,9 @@ try {
   await window.getByTestId("send-button").click();
   await window.getByTestId("approval-prompt").waitFor({ timeout: 10_000 });
   await window.getByTestId("approval-deny").click();
+  await window.getByTestId("stop-button").waitFor({ state: "detached" });
+  const latestAfterDenial = window.getByRole("button", { name: /回到最新/ });
+  if (await latestAfterDenial.count()) await latestAfterDenial.click();
   await window.getByText("命令已拒绝", { exact: true }).waitFor({ timeout: 10_000 });
   await window.getByTestId("approval-prompt").waitFor({ state: "detached" });
   await window.screenshot({ path: join(outputDir, "04c-approval-denied.png") });

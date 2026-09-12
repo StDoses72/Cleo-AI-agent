@@ -17,6 +17,7 @@ try {
   await cp(join(ui, "package.json"), join(appDir, "package.json"));
   const build = spawnSync(process.execPath, [join(ui, "node_modules/vite/bin/vite.js"), "build", "--outDir", join(appDir, "dist")], { cwd: ui, stdio: "pipe", windowsHide: true });
   assert.equal(build.status, 0, build.stderr?.toString());
+  if (!process.argv.includes("--regression-only")) {
   application = await electron.launch({ args: [appDir, `--user-data-dir=${join(scratch, "profile")}`],
     env: { ...process.env, CLEO_DESKTOP_MOCK: "1", CLEO_HOME: join(scratch, "home") } });
   const page = await application.firstWindow();
@@ -228,6 +229,7 @@ try {
   assert.deepEqual(errors, []);
   await application.close();
   application = undefined;
+  }
   if (process.env.CLEO_SMOKE_REGRESSION === "1") {
     for (const script of ["smoke.mjs", "smoke-approvals.mjs", "smoke-evolution.mjs"]) {
       const result = spawnSync(process.execPath, [join(ui, "scripts", script)], {
@@ -237,7 +239,7 @@ try {
       assert.equal(result.status, 0, `${script} failed`);
     }
   }
-  console.log(JSON.stringify({ status: "passed", historyItems: 10000, cacheLimit: 500, virtualDom: true, questions: true, thoughtLifecycle: true }));
+  console.log(JSON.stringify({ status: "passed", history: !process.argv.includes("--regression-only"), regression: process.env.CLEO_SMOKE_REGRESSION === "1" }));
 } finally {
   if (application) await application.close();
   await rm(scratch, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
