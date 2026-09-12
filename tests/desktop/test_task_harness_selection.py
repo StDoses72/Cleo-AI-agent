@@ -125,7 +125,11 @@ class TaskHarnessTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["models"][0]["id"], "opus")
 
     async def test_development_registers_harness_before_creating_its_session(self):
+        from cleo.agents.profiles import dream_profile
+        from cleo.desktop.evolution_planning import analyze_request
+
         service = self.service()
+        service.settings.active_profiles = SimpleNamespace(dream_agent=None)
         service._project_paths = {"productivity:project": fixture.name}
         service._productivity_sessions = {}
         service._restrict_evolution = AsyncMock()
@@ -148,6 +152,20 @@ class TaskHarnessTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(
                 json.loads(path.read_text())["providers"]["claude"]["type"], "claude_sdk"
             )
+            manifest = {"space": "productivity", "provider": "claude",
+                        "runtime_options": {"model": "opus"}}
+            profile = dream_profile(service.settings, manifest)
+            self.assertEqual((profile.backend, profile.model), ("claude_code", "opus"))
+            async def prepare(root, request, complete):
+                await complete("instructions", "prompt")
+                return {"intent": "question", "answer": "read only"}
+
+            with patch("cleo.desktop.evolution_planning.plan_request", prepare), patch(
+                "cleo.desktop.evolution_planning.subscription_text", AsyncMock(return_value="{}")
+            ) as complete:
+                await analyze_request(service.settings, manifest, Path(temporary), "explain")
+                selected = complete.call_args.args[0]
+                self.assertEqual((selected.backend, selected.model), ("claude_code", "opus"))
         create_session.assert_awaited_once_with(
             "claude", project_path=fixture.name, model="opus", project="project",
         )

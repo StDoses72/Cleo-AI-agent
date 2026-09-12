@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { cp, mkdir, writeFile, lstat, mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdir, readFile, writeFile, lstat, mkdtemp, rm } from "node:fs/promises";
 import { join, resolve, dirname, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -17,7 +17,16 @@ function git(args) {
 }
 
 try {
-  const files = [...new Set(git(["ls-files", "--cached", "--others", "--exclude-standard", "-z"]).split("\0").filter(Boolean))];
+  const version = JSON.parse(await readFile(join(root, "ui/package.json"), "utf8")).version;
+  const versionTag = `v${version}`;
+  // An unpublished release has no tag yet; local iterations explicitly supply their selected base.
+  const base = process.env.CLEO_EVOLUTION_BASE_TAG
+    || (git(["tag", "--list", versionTag]).trim() ? versionTag : "HEAD");
+  const files = [...new Set([
+    ...git(["ls-files", "--cached", "--others", "--exclude-standard", "-z"]).split("\0"),
+    // Include files removed from the index or committed away since the source we restore over.
+    ...git(["ls-tree", "-r", "--name-only", "-z", base]).split("\0"),
+  ].filter(Boolean))];
   const copied = [];
   const deleted = [];
   for (const name of files) {

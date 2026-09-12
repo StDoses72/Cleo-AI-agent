@@ -1,6 +1,7 @@
 import { randomUUID, createHash } from "node:crypto";
-import { cp, mkdir, readFile, writeFile, rename, readdir, rm } from "node:fs/promises";
+import { cp, copyFile, mkdir, mkdtemp, readFile, writeFile, rename, readdir, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { stripVTControlCharacters } from "node:util";
 import { EvolutionStore, exists, fileHash, readJson, writeJson, ownedPath } from "./evolution-store.mjs";
@@ -331,12 +332,32 @@ export class EvolutionManager {
           .map((name) => join(extraTests, name)));
         if (!tests.length) throw new Error("未找到回归测试，不能将缺失的检查视为通过。");
         await this.runCommand(tools.node, ["--test", ...tests], options);
+        const testHome = await mkdtemp(join(tmpdir(), "cleo-python-tests-"));
+        try {
+          const temporary = join(testHome, "tmp");
+          await mkdir(temporary);
+          for (const name of ["cleo", "harnesses"]) {
+            await copyFile(join(this.source, `cleo/config/templates/${name}.example.json`),
+              join(testHome, `${name}.json`));
+          }
+          const env = { ...tools.env, CLEO_HOME: testHome,
+            CLEO_CONFIG_PATH: join(testHome, "cleo.json"),
+            CLEO_HARNESSES_CONFIG_PATH: join(testHome, "harnesses.json"),
+            TEMP: temporary, TMP: temporary, TMPDIR: temporary,
+            PYTHONUTF8: "1", PYTHONDONTWRITEBYTECODE: "1" };
+          delete env.PYTHONPATH;
+          delete env.PYTHONHOME;
+          await this.runCommand(tools.uv, ["run", "--no-project", "--isolated", "--python", "3.12",
+            "--with-editable", ".[dev]", "--with-requirements", "requirements.txt",
+            "python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "--basetemp", join(testHome, "pytest")],
+          { ...options, cwd: this.source, env });
+        } finally { await rm(testHome, { recursive: true, force: true }); }
       }, digest);
       const args = process.platform === "win32"
         ? ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", join(this.source, "scripts/build-release.ps1"), "-LockedDependencies"]
         : ["run", "--no-project", "--python", "3.12", join(this.source, "scripts/build-release.py"), "--locked-dependencies"];
       await this.validationStep("package", "程序打包", () => this.runCommand(process.platform === "win32" ? "powershell.exe" : tools.uv,
-        args, { ...options, cwd: this.source, timeout: 3_600_000 }), digest);
+        args, { ...options, cwd: this.source, env: { ...tools.env, CLEO_EVOLUTION_BASE_TAG: saved.baseTag }, timeout: 3_600_000 }), digest);
       return this.validationStep("verify", "构建一致性检查", async () => {
         await this.checkProtection();
         if (digest !== await this.sourceHash(tools)) throw new Error("构建期间源码发生变化，请重新构建。");

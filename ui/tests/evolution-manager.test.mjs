@@ -33,7 +33,8 @@ async function validationFixture(t, fail = () => {}) {
     const stage = args[0] === "fixture-npm-cli.js" ? "dependencies"
       : args[0]?.endsWith("typescript/bin/tsc") ? "typecheck"
       : args[0]?.endsWith("vite/bin/vite.js") ? "frontend"
-      : args[0] === "--test" ? "tests" : command === "fixture-uv" ? "lint" : "package";
+      : args[0] === "--test" ? "tests" : args.includes("pytest") ? "python-tests"
+      : command === "fixture-uv" ? "lint" : "package";
     calls.push(stage);
     fail(stage);
     if (stage === "typecheck") {
@@ -69,7 +70,7 @@ test("duplicate JSX attributes fail preflight before packaging and remain repair
   assert.equal(passed.validation.status, "passed");
   assert.equal(passed.validation.candidate, id);
   assert.equal(passed.draftDirty, false);
-  assert.deepEqual(calls.slice(2), ["dependencies", "typecheck", "frontend", "lint", "tests", "package"]);
+  assert.deepEqual(calls.slice(2), ["dependencies", "typecheck", "frontend", "lint", "tests", "python-tests", "package"]);
 });
 
 test("Python lint errors fail locally before packaging instead of first failing in PR CI", async (t) => {
@@ -189,8 +190,39 @@ async function fixture(t) {
   }
   await writeFile(join(manager.source, "ui/package.json"), '{"main":"electron/bootstrap.mjs"}');
   await manager.saveProtection();
+  await mkdir(join(manager.source, "cleo/config/templates"), { recursive: true });
+  for (const name of ["cleo", "harnesses"]) {
+    await cp(new URL(`../../cleo/config/templates/${name}.example.json`, import.meta.url),
+      join(manager.source, `cleo/config/templates/${name}.example.json`));
+  }
   return { root, manager };
 }
+
+test("Python test failures block packaging and use an isolated data home", async (t) => {
+  const { manager, calls } = await validationFixture(t);
+  const execute = manager.runCommand;
+  let testHome;
+  manager.runCommand = async (command, args, options) => {
+    if (args.includes("pytest")) {
+      assert.equal(options.cwd, manager.source);
+      testHome = options.env.CLEO_HOME;
+      assert.notEqual(testHome, manager.store.dataHome);
+      assert.notEqual(testHome, process.env.CLEO_HOME);
+      assert.equal(JSON.parse(await readFile(options.env.CLEO_CONFIG_PATH, "utf8")).active_profiles.dream_agent, null);
+      assert.ok(await readFile(options.env.CLEO_HARNESSES_CONFIG_PATH));
+      throw new Error("AssertionError: Python behavior regressed");
+    }
+    return execute(command, args, options);
+  };
+  await assert.rejects(manager.build(), /回归测试未通过/);
+  const state = await manager.status();
+  assert.equal(state.validation.repairable, true);
+  assert.equal(state.validation.status, "failed");
+  assert.equal(state.candidate, undefined);
+  assert.ok(!calls.includes("package"));
+  assert.ok(testHome);
+  await assert.rejects(readFile(join(testHome, "cleo.json")), { code: "ENOENT" });
+});
 
 test("changing recovery code or replacing its entry point blocks application", async (t) => {
   const { manager } = await fixture(t);

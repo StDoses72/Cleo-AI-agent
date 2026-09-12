@@ -720,7 +720,8 @@ class DesktopService:
                 raise ValueError(f"项目“{project}”没有有效的工作目录，请重新打开该目录。")
             if not Path(project_path).is_dir():
                 raise ValueError(f"工作目录不存在或不是文件夹：{project_path}")
-            selected_model = model or self._productivity_provider(provider_name).model
+            provider_settings = self._productivity_provider(provider_name)
+            selected_model = model or provider_settings.model
             if provider_name not in self.settings.productivity.providers:
                 from cleo.config.settings import HARNESSES_CONFIG_PATH
                 from cleo.desktop.task_harnesses import register_task_provider
@@ -728,8 +729,9 @@ class DesktopService:
                 register_task_provider(
                     HARNESSES_CONFIG_PATH,
                     provider_name,
-                    self._productivity_provider(provider_name),
+                    provider_settings,
                 )
+                self.settings.productivity.providers[provider_name] = provider_settings
             session = await adapter.create_session(
                 provider_name,
                 project_path=project_path,
