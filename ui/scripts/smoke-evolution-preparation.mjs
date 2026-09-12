@@ -33,8 +33,10 @@ if (process.env.CLEO_TEST_BROWSER) {
   application = await chromium.launch({ executablePath: process.env.CLEO_TEST_BROWSER, headless: true });
   page = await application.newPage({ viewport: { width: 1280, height: 900 } });
 } else {
-  application = await electron.launch({ args: [".", `--user-data-dir=${join(root, "profile")}`], cwd: ui,
-    env: { ...process.env, CLEO_DESKTOP_MOCK: "1" } });
+  application = await electron.launch({
+    executablePath: process.env.CLEO_TEST_EXECUTABLE,
+    args: [...(process.env.CLEO_TEST_EXECUTABLE ? [] : ["."]), `--user-data-dir=${join(root, "profile")}`], cwd: ui,
+    env: { ...process.env, CLEO_DESKTOP_MOCK: "1", CLEO_HOME: join(root, "data") } });
   page = await application.firstWindow();
 }
 const errors = [];
@@ -43,6 +45,7 @@ const actions = [];
 let modelFails = false;
 let releaseAnalysis;
 let holdAnalysis = false;
+let missingEvidence = false;
 const workspace = structuredClone(fixtureWorkspace);
 const runtime = { provider: "codex", model: "test", effort: "low", access: "workspace-write", approval: "deny_all", editable: true };
 const thread = { ...workspace.threads[0], id: "evolution-test", projectId: "productivity:cleo-evolution",
@@ -60,6 +63,7 @@ const acceptance = new EvolutionAcceptance(store);
 const requests = new EvolutionRequests(acceptance, async (_thread, prompt) => {
   if (holdAnalysis) await new Promise((resolve) => { releaseAnalysis = resolve; });
   if (modelFails) throw new Error("测试连接暂不可用；原需求已保留");
+  if (missingEvidence) return { intent: "clarification", answer: "请提供 CI 日志和提交 SHA。" };
   if (prompt.includes("解释")) return { intent: "question", answer: "这个按钮打开侧栏，没有启动代码修改。", cases: [] };
   return { intent: "change", cases: [{ title: "侧栏显示文字", requirement: prompt,
     current: "尚未验证（静态分析）：当前显示图标", trigger: "打开侧栏", expectation: "看到按钮文字",
@@ -79,7 +83,11 @@ try {
     actions.push(action);
     try {
       if (action === "thread") { state.threadId = params.id; return; }
-      if (action === "prepareRequest") return await store.exclusive(() => requests.prepare(params));
+      if (action === "prepareRequest") {
+        state.phase = "planning"; await publish();
+        try { return await store.exclusive(() => requests.prepare(params)); }
+        finally { state.phase = "idle"; }
+      }
       if (action === "reviseRequest") return await store.exclusive(() => requests.revise(params));
       if (action === "requestPrompt") return requests.editingPrompt(params.id);
       throw new Error("Unexpected evolution action: " + action);
@@ -125,6 +133,8 @@ try {
   await page.getByTestId("composer-input").fill("给侧栏按钮显示文字");
   await page.getByTestId("composer-input").press("Enter");
   await page.getByText("正在分析需求并准备验收…", { exact: true }).waitFor();
+  await page.getByRole("region", { name: "修改操作" }).getByText("正在分析需求并准备验收", { exact: true }).waitFor();
+  assert.equal(await page.getByText("正在检查版本", { exact: true }).count(), 0);
   assert.ok(!actions.includes("begin"));
   await page.waitForFunction(() => document.querySelector('[aria-label="本轮验收准备"]'));
   while (!releaseAnalysis) await new Promise((done) => setTimeout(done, 10));
@@ -173,10 +183,24 @@ try {
   await page.locator(".evolution-request dd").filter({ hasText: /^文字加粗且保留标签$/ }).waitFor();
   assert.equal((await requests.suite()).length, 3);
   assert.equal((await acceptance.status(state)).fresh, false);
+  missingEvidence = true;
+  await page.getByTestId("composer-input").fill("调查 PR 检查失败并修复");
+  await page.getByTestId("composer-input").press("Enter");
+  await page.getByRole("button", { name: "重新分析原需求", exact: true }).waitFor();
+  const blocked = (await requests.read()).requests.at(-1);
+  const editsBeforeRetry = actions.filter((a) => a === "stream_turn").length;
+  await page.reload();
+  await page.getByRole("button", { name: "重新分析原需求", exact: true }).waitFor();
+  assert.equal(actions.filter((a) => a === "stream_turn").length, editsBeforeRetry);
+  missingEvidence = false;
+  await page.getByRole("button", { name: "重新分析原需求", exact: true }).click();
+  await page.waitForFunction(() => [...document.querySelectorAll('.evolution-request')].at(-1)?.textContent.includes("实现任务已结束"));
+  assert.equal((await requests.read()).requests.at(-1).id, blocked.id);
+  assert.equal(actions.filter((a) => a === "stream_turn").length, editsBeforeRetry + 1);
   await mkdir(output, { recursive: true });
   await page.screenshot({ path: join(output, "automatic-acceptance.png"), fullPage: true });
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ status: "passed", scenarios: 6, checks: "prepare-before-edit, manual-gate, reload, question, failure-retry, revision", output }));
+  console.log(JSON.stringify({ status: "passed", scenarios: 8, checks: "prepare-before-edit, manual-gate, reload, question, failure-retry, revision, planning-label, blocked-request-retry", output }));
 } catch (error) {
   console.error(JSON.stringify({ errors, body: await page.locator("body").innerText().catch(() => "unavailable"), actions }));
   throw error;

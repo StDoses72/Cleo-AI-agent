@@ -307,17 +307,17 @@ app.whenReady().then(async () => {
       discard: () => changeEvolutionBase(null, true),
       build: async () => {
         const id = await evolution.build();
-        if (id) await evolution.operation("checking", () => acceptance.compare(id));
+        if (id) await evolution.operation("comparing", () => acceptance.compare(id));
         return id;
       },
-      createCase: () => evolution.operation("checking", () => acceptance.create(params)),
-      prepareRequest: () => evolution.operation("checking", () => acceptanceRequests.prepare(params)),
-      repairRequest: () => evolution.operation("checking", () => acceptanceRequests.repair(params)),
-      reviseRequest: () => evolution.operation("checking", () => acceptanceRequests.revise(params)),
+      createCase: () => evolution.operation("recording", () => acceptance.create(params)),
+      prepareRequest: () => evolution.operation("planning", () => acceptanceRequests.prepare(params)),
+      repairRequest: () => evolution.operation("planning", () => acceptanceRequests.repair(params)),
+      reviseRequest: () => evolution.operation("planning", () => acceptanceRequests.revise(params)),
       requestPrompt: () => acceptanceRequests.editingPrompt(params.id),
-      archiveCase: () => evolution.operation("checking", () => acceptance.archive(params.id)),
-      compareCases: () => evolution.operation("checking", async () => acceptance.compare((await evolution.store.read()).candidate)),
-      reviewCase: () => evolution.operation("checking", () => acceptance.review(params.id, params.note)),
+      archiveCase: () => evolution.operation("recording", () => acceptance.archive(params.id)),
+      compareCases: () => evolution.operation("comparing", async () => acceptance.compare((await evolution.store.read()).candidate)),
+      reviewCase: () => evolution.operation("recording", () => acceptance.review(params.id, params.note)),
       casePrompt: () => acceptance.prompt(params.id),
       repairPrompt: () => evolution.repairPrompt(),
       releases: () => evolution.releases(),

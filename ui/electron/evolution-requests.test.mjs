@@ -106,6 +106,27 @@ test("ambiguity waits for a recorded clarification; clear requests do not reques
   assert.equal(request.status, "frozen"); assert.equal(request.clarifications[0].answer, "仅侧栏");
 });
 
+test("reconsidering a request blocked on missing CI logs dispatches the same request once", async (t) => {
+  let attempts = 0;
+  const f = await setup(t, async () => ++attempts === 1
+    ? { intent: "clarification", answer: "请提供 CI 日志和提交 SHA。" }
+    : { intent: "change", cases: [{ ...plan.cases[0], current: "尚未验证（待调查）：缺少 CI 日志",
+      evidence: "用户需求：调查 CI 失败并修复；尚未验证根因。" }] });
+  assert.equal((await f.prepare()).status, "clarification");
+  await f.prepare();
+  assert.equal(attempts, 1, "Reload alone must not start analysis or editing.");
+  const recovered = await f.prepare({ ...input, reanalyze: true });
+  assert.equal(recovered.id, input.id);
+  assert.equal(recovered.status, "frozen");
+  assert.equal(recovered.answer, undefined);
+  assert.equal((await f.requests.read()).requests.length, 1);
+  await f.run({ thread_id: input.threadId, prompt: await f.requests.editingPrompt(input.id) });
+  assert.deepEqual(f.calls, ["begin", "edit", "build"]);
+  assert.equal((await f.acceptance.status(f.state)).report.results[0].after.status, "manual");
+  await f.prepare({ ...input, reanalyze: true });
+  assert.equal(attempts, 2, "Frozen goals must not be regenerated.");
+});
+
 test("interrupted freeze replays journaled IDs without duplicate cases or a new model call", async (t) => {
   const f = await setup(t);
   const original = f.requests.save.bind(f.requests);

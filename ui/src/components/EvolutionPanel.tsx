@@ -19,6 +19,8 @@ const phases: Record<string, string> = {
   preparing: "正在准备", building: "正在检查并构建", applying: "正在重启",
   downloading: "正在下载正式版", authenticating: "正在连接 GitHub", submitting: "正在提交 PR",
   checking: "正在检查版本", selecting: "正在切换版本", saving: "正在保存",
+  planning: "正在分析需求并准备验收", validating: "正在核对验收记录",
+  comparing: "正在比较行为", recording: "正在保存验收记录",
 };
 /** Purpose: Keep formal releases distinct from dated local saves. Input: build. Output: display label. */
 export function versionLabel(build?: EvolutionBuild) {

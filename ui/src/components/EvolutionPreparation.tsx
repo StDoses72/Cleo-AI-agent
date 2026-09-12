@@ -30,6 +30,7 @@ export function EvolutionPreparation({ requests, acceptance, preparing, busy, on
       {request.error && <p role="alert">{request.error}</p>}
       {(request.status === "failed" || request.interrupted) && <button disabled={busy} onClick={() => onResume(request)}>重试准备原需求</button>}
       {request.status === "clarification" && <div className="evolution-manual-review">
+        <button disabled={busy} onClick={() => onResume(request)}>重新分析原需求</button>
         <label>补充需求<textarea aria-label="补充需求" value={answers[request.id] || ""} maxLength={5000}
           onChange={(event) => setAnswers({ ...answers, [request.id]: event.target.value })} /></label>
         <button disabled={busy || !answers[request.id]?.trim()} onClick={() => onResume(request, answers[request.id])}>补充并继续准备</button>

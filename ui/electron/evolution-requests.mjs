@@ -54,8 +54,10 @@ export class EvolutionRequests {
     return cases;
   }
 
-  /** Persist original input before calling any model. A frozen request is never regenerated. */
-  async prepare({ id, threadId, prompt, clarification }) {
+  /** Purpose: Persist intent before analysis, allowing explicit reconsideration of a blocked request.
+   * Input: Original identity, optional clarification or reanalyze flag. Output: durable preparation; frozen goals stay immutable.
+   */
+  async prepare({ id, threadId, prompt, clarification, reanalyze = false }) {
     text(id, 100, "请求标识"); text(threadId, 150, "会话标识"); text(prompt, 30000, "需求");
     const data = await this.read();
     let request = data.requests.find((r) => r.id === id);
@@ -67,14 +69,14 @@ export class EvolutionRequests {
     }
     if (request.status === "freezing") return this.freeze(data, request);
     if (["frozen", "answered"].includes(request.status)) return request;
-    if (request.status === "clarification" && !clarification) return request;
+    if (request.status === "clarification" && !clarification && !reanalyze) return request;
     if (clarification) {
       if (request.status !== "clarification") throw new Error("当前需求不在等待澄清。请使用修正案例保留变更原因。");
       request.clarifications.push({ question: request.answer, answer: text(clarification, 5000, "补充说明"), at: now() });
     }
     this.running.add(id);
     try {
-      request.status = "analyzing"; delete request.error;
+      request.status = "analyzing"; delete request.error; delete request.answer;
       await this.save(data);
       const analysis = await this.analyze(threadId, prompt + request.clarifications.map((c) =>
         `\n澄清问题：${c.question}\n用户补充：${c.answer}`).join(""));

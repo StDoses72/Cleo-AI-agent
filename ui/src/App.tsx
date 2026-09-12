@@ -72,7 +72,8 @@ export function App() {
       if (!thread) return;
       if (restored) await evolution.run("thread", { id: thread.id });
       const request = await evolution.run<EvolutionRequest>(repair ? "repairRequest" : "prepareRequest", {
-        id, threadId: thread.id, prompt, clarification, ...(repair && restored?.id ? { parent: restored.id } : {}),
+        id, threadId: thread.id, prompt, clarification, reanalyze: Boolean(restored && !clarification),
+        ...(repair && restored?.id ? { parent: restored.id } : {}),
       });
       setPreparingAcceptance(false);
       if (request.status === "frozen" && !request.execution) {

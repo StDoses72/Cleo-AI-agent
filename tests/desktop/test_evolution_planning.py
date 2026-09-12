@@ -48,6 +48,44 @@ def test_reads_related_code_before_preparing_grounded_manual_cases(tmp_path):
     assert "fixture" not in case
 
 
+def test_investigation_can_reach_editing_without_ci_logs_or_source_references(tmp_path):
+    """Purpose: Prepare a clear repair request before its agent fetches missing CI evidence.
+
+    Input: A PR repair request and a planner that has not accessed its logs.
+    Output: Manual criteria suitable for dispatch, without invented source evidence.
+    """
+    request = "https://github.com/example/repo/pull/40/checks 查明四个检查失败的原因并修复"
+    replies = iter([
+        {"paths": []},
+        {"intent": "investigate", "cases": [{
+            "title": "调查并修复 CI", "requirement": "查明四个检查失败的原因并修复",
+            "current": "尚未获取检查日志，失败原因待调查", "trigger": request,
+            "expectation": "获取检查日志，报告根因并修复；运行相关测试并报告实际结果",
+            "references": [],
+        }]},
+    ])
+
+    async def complete(_instructions, _prompt):
+        return json.dumps(next(replies))
+
+    result = asyncio.run(plan_request(tmp_path, request, complete))
+    assert result["intent"] == "change"
+    assert result["cases"][0]["current"].startswith("尚未验证（待调查）")
+    assert "用户需求" in result["cases"][0]["evidence"]
+    assert result["cases"][0]["method"] == "manual"
+
+
+def test_inventory_includes_ci_configuration_and_regression_tests(tmp_path):
+    fixture(tmp_path)
+    for name in [".github/workflows/checks.yml", "tests/desktop/test_ci.py", "ui/package.json"]:
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}", encoding="utf-8")
+    assert {
+        ".github/workflows/checks.yml", "tests/desktop/test_ci.py", "ui/package.json"
+    } <= set(source_inventory(tmp_path))
+
+
 @pytest.mark.parametrize("intent", ["question", "clarification"])
 def test_nonediting_intents_return_no_cases(tmp_path, intent):
     fixture(tmp_path)
