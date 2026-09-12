@@ -298,7 +298,8 @@ export function Conversation({
         <p>历史会按需加载，页面查找和跨屏文字选择仅覆盖当前显示的内容。长正文可打开完整阅读窗口，逐段查看；历史记录不会被删除。</p>
       </details>}
       {readerError && <p className="history-error" role="alert">{readerError}</p>}
-      <dialog ref={readerDialog} className="history-reader" data-content-kind={reader?.item.type} aria-label="完整历史正文" onCancel={() => { readerGeneration.current++; setReader(null); }}>
+      <dialog ref={readerDialog} className="history-reader" data-content-kind={reader?.item.type} aria-label="完整历史正文"
+        onKeyDown={event => event.stopPropagation()} onCancel={() => { readerGeneration.current++; setReader(null); }}>
         {reader && <><header><strong>完整历史正文</strong><button onClick={() => { readerGeneration.current++; setReader(null); }}>关闭正文</button></header>
           <p>{reader.offset + 1}–{reader.next} / {reader.total} 字符</p><pre>{reader.text}</pre>
           <footer><button disabled={!reader.offset} onClick={() => void readContent(reader.item, reader.field, Math.max(0, reader.offset - 16384))}>上一段</button>
@@ -624,6 +625,7 @@ function MarkdownContent({
       skipHtml
       urlTransform={markdownUrlTransform}
       components={{
+        img: ({ node: _node, ...props }) => <img {...props} loading="lazy" decoding="async" className="timeline-image" />,
         a: ({ node: _node, href, children, ...props }) => {
           if (!href) return <span>{children}</span>;
           if (/^(https?:|mailto:)/i.test(href)) {

@@ -185,6 +185,22 @@ try {
   await page.evaluate(() => window.askTest("claude"));
   const dialog = page.getByRole("dialog", { name: "Agent 提问" });
   await dialog.waitFor();
+  await page.evaluate(() => {
+    window.questionKeyLeaks = [];
+    window.addEventListener("keydown", event => window.questionKeyLeaks.push(event.key));
+  });
+  await dialog.getByRole("button", { name: "收起提问" }).focus();
+  await page.keyboard.press("1");
+  await page.keyboard.press("Escape");
+  await dialog.waitFor({ state: "hidden" });
+  assert.deepEqual(await page.evaluate(() => window.questionKeyLeaks), [], "Modal keys reached underlying app shortcuts");
+  await page.getByRole("button", { name: "回答问题", exact: true }).click();
+  await dialog.waitFor();
+  assert.equal(await dialog.locator("textarea").first().evaluate(element => {
+    const event = new KeyboardEvent("keydown", { key: "Enter", isComposing: true, bubbles: true, cancelable: true });
+    element.dispatchEvent(event);
+    return event.defaultPrevented;
+  }), true, "IME composition must not submit the question");
   const fonts = await page.evaluate(() => {
     const family = getComputedStyle(document.documentElement).fontFamily;
     return [".question-dialog", ".question-dialog textarea", ".question-dialog button"].every(selector => getComputedStyle(document.querySelector(selector)).fontFamily === family);
