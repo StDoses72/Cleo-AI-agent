@@ -50,3 +50,7 @@ data/session_artifacts/
 # Clean desktop release workspace and final distributables.
 /.release-build/
 /release/
+
+# Generated architecture validation reports and screenshots.
+/docs/architecture/*.visual-check.*
+/docs/architecture/*.receipt.json
