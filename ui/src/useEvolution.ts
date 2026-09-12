@@ -24,7 +24,11 @@ export function useEvolution() {
         .replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "");
       setError(message);
       throw new Error(message);
-    } finally { setPending(false); await refresh(); }
+    } finally {
+      setPending(false);
+      // A failed status refresh must not turn an accepted PR into a failed submission.
+      await refresh().catch((failure: unknown) => setError(`状态刷新失败：${String(failure)}`));
+    }
   }, [refresh]);
   return { state, error, pending, run, refresh };
 }

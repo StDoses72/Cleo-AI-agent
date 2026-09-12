@@ -27,6 +27,13 @@ export interface EvolutionGithubAuth {
   browserError?: string | null;
 }
 
+export interface EvolutionPullRequest {
+  url: string; state: string; merged: boolean; number?: number; title?: string;
+  headRefName?: string; owner?: string; submittedAt?: string; outcome?: "created" | "updated";
+  submissionId?: string; sourceHash?: string;
+  checks?: "failed" | "pending" | "passed" | "none"; mergeable?: string; checkedAt?: string;
+}
+
 export interface EvolutionState {
   acceptanceRequests?: EvolutionRequest[];
   acceptance?: EvolutionAcceptanceState;
@@ -51,10 +58,12 @@ export interface EvolutionState {
   logs: string;
   validation?: EvolutionValidation | null;
   githubAuth?: EvolutionGithubAuth | null;
+  submission?: { status: "running" | "success" | "failed"; message: string; url?: string } | null;
   builds: EvolutionBuild[];
   lastApplication?: { from: string | null; backup: string };
   transaction?: { phase: string } | null;
-  pullRequest: { url: string; state: string; merged: boolean } | null;
+  pullRequest: EvolutionPullRequest | null;
+  pullRequests?: EvolutionPullRequest[];
   releases: { tag: string; title: string; publishedAt: string; url: string }[];
   recoveryPath: string | null;
 }

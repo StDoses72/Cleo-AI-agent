@@ -726,7 +726,9 @@ class DesktopService:
                 from cleo.desktop.task_harnesses import register_task_provider
 
                 register_task_provider(
-                    HARNESSES_CONFIG_PATH, provider_name, self._productivity_provider(provider_name),
+                    HARNESSES_CONFIG_PATH,
+                    provider_name,
+                    self._productivity_provider(provider_name),
                 )
             session = await adapter.create_session(
                 provider_name,

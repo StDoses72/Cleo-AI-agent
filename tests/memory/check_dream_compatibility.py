@@ -13,7 +13,6 @@ import tempfile
 import types
 from pathlib import Path
 
-
 FILES = ("cleo/memory/state.py", "cleo/memory/consolidation.py", "cleo/sessions/store.py")
 
 
@@ -25,7 +24,9 @@ def previous_sources(source):
         name: subprocess.check_output(["git", "show", f"HEAD:{name}"], cwd=source).decode("utf-8")
         for name in FILES
     }
-    for archive in sorted((source.parent / "builds").glob("*/Cleo/resources/evolution-source.tar.gz")):
+    for archive in sorted(
+        (source.parent / "builds").glob("*/Cleo/resources/evolution-source.tar.gz")
+    ):
         with tarfile.open(archive, "r:gz") as bundle:
             files = {member.name.removeprefix("./"): member for member in bundle.getmembers()}
             missing = set(FILES) - files.keys()
@@ -49,7 +50,8 @@ def old_module(name, text):
 
 def round_trip(root, previous, index):
     """Purpose: Verify old → new → old → new preserves data with real storage methods.
-    Input: Temporary root and old code. Output: Assertions for events, manifest, queue and checkpoint.
+    Input: Temporary root and old code.
+    Output: Assertions for events, manifest, queue and checkpoint.
     """
     from cleo.memory import consolidation, state
     from cleo.memory.dream_source import read_dream_source, register_dream_source
@@ -64,10 +66,20 @@ def round_trip(root, previous, index):
     before_store = old_store.SessionStore(memory)
     before_store.create_session(session_id="existing", space="productivity", project="project",
                                 provider="codex", owner_type="user")
-    before_store.append_events(session_id="existing", space="productivity", project="project", events=[{
-        "id": "existing-message", "type": "user_message", "actor": "user",
-        "content": "Preserve nonempty chat", "data": {"future_field": {"keep": [1, 2]}},
-    }])
+    before_store.append_events(
+        session_id="existing",
+        space="productivity",
+        project="project",
+        events=[
+            {
+                "id": "existing-message",
+                "type": "user_message",
+                "actor": "user",
+                "content": "Preserve nonempty chat",
+                "data": {"future_field": {"keep": [1, 2]}},
+            }
+        ],
+    )
     before_store.update_manifest("existing", future_manifest={"keep": [3]},
                                  runtime_options={"model": "source-model", "future_option": [4]})
     before_store.refresh_compact("existing")
@@ -94,8 +106,14 @@ def round_trip(root, previous, index):
     event_snapshot = json.loads(json.dumps(events))
     registered = register_dream_source(current, "productivity", "project", "existing", events)
     assert registered["source_hash"] == digest
-    old_state.touch_session_source(space="productivity", project="project", session_id="existing",
-                                  source_hash=digest, last_event_seq=events[-1]["seq"], path=state_path)
+    old_state.touch_session_source(
+        space="productivity",
+        project="project",
+        session_id="existing",
+        source_hash=digest,
+        last_event_seq=events[-1]["seq"],
+        path=state_path,
+    )
     old_writer = old_store.SessionStore(memory)
     old_writer.update_manifest("existing", title="Renamed by old version")
     assert old_writer.read_events("existing") == event_snapshot

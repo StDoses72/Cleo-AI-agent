@@ -149,6 +149,7 @@ try {
   }));
   await page.getByRole("button", { name: "进化", exact: true }).click();
   assert.equal(await page.getByRole("button", { name: "让 Cleo 修复", exact: true }).count(), 0);
+  await page.waitForFunction(() => [...document.querySelectorAll("button")].some((button) => button.textContent === "重新检查" && !button.disabled));
   assert.ok(await page.getByRole("button", { name: "重新检查", exact: true }).isEnabled());
   await page.getByRole("button", { name: "重新检查", exact: true }).click();
   await page.waitForFunction(() => [...document.querySelectorAll("button")].some((button) => button.textContent === "应用" && !button.disabled));

@@ -51,6 +51,7 @@ export class EvolutionManager {
     this.githubAuth = null;
     this.githubLogin = null;
     this.githubAbort = null;
+    this.submission = null;
     this.tools = new EvolutionTools(join(root, "tools"), (message) => this.log(message));
   }
 
@@ -80,7 +81,7 @@ export class EvolutionManager {
       validation = { ...validation, status: "interrupted", repairable: false,
         message: "上次检查中断，当前修改尚未验证。请重新检查。" };
     }
-    return { ...state, phase: this.phase, error: this.error, logs: this.logs, githubAuth: this.githubAuth, source: state.prepared ? this.source : null,
+    return { ...state, phase: this.phase, error: this.error, logs: this.logs, githubAuth: this.githubAuth, submission: this.submission, source: state.prepared ? this.source : null,
       validation,
       supported: this.packaged, currentVersion: this.app.getVersion(),
       releases: await readJson(join(this.store.root, "releases.json"), []),
@@ -115,7 +116,7 @@ export class EvolutionManager {
     try { return await action(); }
     catch (error) {
       const details = String(error.message || error).slice(-16000);
-      const repairable = ["typecheck", "frontend", "tests"].includes(stage)
+      const repairable = ["typecheck", "frontend", "lint", "tests"].includes(stage)
         && !/ENOENT|ECONN|ENOTFOUND|ETIMEDOUT|EAI_AGAIN|MODULE_NOT_FOUND|Cannot find module/.test(details);
       const message = `${label}${["tools", "dependencies"].includes(stage) ? "未完成" : "未通过"}。当前修改尚不可应用。${repairable ? "请让 Cleo 修复后重新检查。" : "请查看检查详情后重试。"}`;
       await this.recordValidation({ status: "failed", stage, sourceHash, message, details, repairable });
@@ -318,6 +319,9 @@ export class EvolutionManager {
         ["node_modules/typescript/bin/tsc", "-b", "--force", "--pretty", "false"], options), digest);
       await this.validationStep("frontend", "前端构建", () => this.runCommand(tools.node,
         ["node_modules/vite/bin/vite.js", "build"], options), digest);
+      await this.validationStep("lint", "Python 代码规范检查", () => this.runCommand(tools.uv,
+        ["tool", "run", "--from", "ruff==0.16.6", "ruff", "check", "cleo", "tests", "scripts/build-release.py", "scripts/update_project.py"],
+        { ...options, cwd: this.source }), digest);
       await this.validationStep("tests", "回归测试", async () => {
         const tests = (await readdir(join(this.source, "ui/electron")))
           .filter((name) => name.endsWith(".test.mjs")).map((name) => join(this.source, "ui/electron", name));
@@ -542,59 +546,134 @@ export class EvolutionManager {
       "commit", "-m", "Apply local Cleo improvements"], options);
   }
 
-  /** Purpose: Publish an explicitly requested contribution from the verified managed source.
-   * Input: user-approved title/body. Output: user's fork PR; never a release or upstream push.
+  /** Purpose: Create an independent PR for each user intent, with safe retries of that intent only.
+   * Input: approved title/body and stable submission UUID. Output: a new fork branch and PR receipt.
    */
-  async submitPullRequest(title, body) {
+  async submitPullRequest(title, body, submissionId = randomUUID()) {
     return this.operation("submitting", async () => {
-      if (!title?.trim() || !body?.trim()) throw new Error("请填写 PR 标题和改动说明。");
-      await this.checkProtection();
-      const tools = await this.tools.prepare(true);
-      await this.runCommand(tools.gh, ["auth", "status"], { env: tools.env });
-      const state = await this.store.read();
-      const candidate = state.builds.find((item) => item.id === (state.candidate || state.active));
-      if (!candidate?.sourceHash || candidate.sourceHash !== await this.sourceHash(tools)) {
-        throw new Error("请先对当前修改完成检查和构建，再提交 PR。");
+      this.submission = { status: "running", message: "正在检查登录和提交版本…" }; this.onState();
+      try {
+        if (!title?.trim() || !body?.trim()) throw new Error("请填写 PR 标题和改动说明。");
+        if (!/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(submissionId)) throw new Error("提交标识无效，请重新发起 PR。");
+        const contentHash = createHash("sha256").update(JSON.stringify([title.trim(), body])).digest("hex");
+        const state = await this.store.read();
+        const completed = state.pullRequests?.find((pr) => pr.submissionId === submissionId);
+        if (completed) {
+          if (completed.contentHash !== contentHash) throw new Error("提交内容已变化，请重新发起 PR。");
+          this.submission = { status: "success", message: "PR 提交成功", url: completed.url }; this.onState();
+          return completed.url;
+        }
+        await this.checkProtection();
+        const tools = await this.tools.prepare(true);
+        await this.runCommand(tools.gh, ["auth", "status"], { env: tools.env });
+        const candidate = state.builds.find((item) => item.id === (state.candidate || state.active));
+        if (!candidate?.sourceHash || candidate.sourceHash !== await this.sourceHash(tools)) {
+          throw new Error("请先对当前修改完成检查和构建，再提交 PR。");
+        }
+        const user = JSON.parse(await this.runCommand(tools.gh, ["api", "user"], { env: tools.env }));
+        if (!/^[a-zA-Z0-9-]+$/.test(user.login)) throw new Error("GitHub 用户名无效。");
+        const options = { cwd: this.source, env: tools.env };
+        const workspaceBranch = await this.runCommand(tools.git, ["branch", "--show-current"], options);
+        if (!/^(cleo|codex)\/[a-zA-Z0-9-]+$/.test(workspaceBranch)) throw new Error("只能提交 Cleo 管理的本地分支。");
+        let attempt = state.pendingPullRequests?.find((item) => item.id === submissionId);
+        if (attempt && (attempt.contentHash !== contentHash || attempt.sourceHash !== candidate.sourceHash || attempt.owner !== user.login)) {
+          throw new Error("提交内容、版本或账号已变化，请重新发起 PR。");
+        }
+        if (!attempt) {
+          attempt = { id: submissionId, branch: `codex/pr-${submissionId}`, owner: user.login,
+            sourceHash: candidate.sourceHash, contentHash, createdAt: new Date().toISOString() };
+          // Persist the identity before any remote mutation so response loss and restarts can reconcile it.
+          await this.store.update({ pendingPullRequests: [...(state.pendingPullRequests || []), attempt] });
+        }
+        const branch = attempt.branch;
+        let existing = (await this.findBranchPullRequests(tools, user.login, branch))[0];
+        let url = existing?.url;
+        if (!existing) {
+          this.submission = { status: "running", message: "正在将当前版本推送到本次 PR 的独立分支…" }; this.onState();
+          // With an explicit repository, --clone=false skips local setup; gh rejects any --remote flag.
+          await this.runCommand(tools.gh, ["repo", "fork", REPOSITORY, "--clone=false"], options);
+          if (!attempt.commit) {
+            await this.commit(tools);
+            attempt = { ...attempt, commit: await this.runCommand(tools.git, ["rev-parse", "HEAD"], options) };
+            const current = await this.store.read();
+            await this.store.update({ pendingPullRequests: current.pendingPullRequests.map((item) => item.id === submissionId ? attempt : item) });
+          }
+          // Push a pinned snapshot to a unique remote ref; never advance any earlier PR's branch.
+          const helper = `!'${tools.gh.replaceAll("\\", "/").replaceAll("'", "'\\''")}' auth git-credential`;
+          await this.runCommand(tools.git, ["-c", "credential.helper=", "-c", `credential.helper=${helper}`, "push",
+            `https://github.com/${user.login}/Cleo-AI-agent.git`, `${attempt.commit}:refs/heads/${branch}`], options);
+          const bodyFile = join(this.store.root, `pr-body-${randomUUID()}.md`);
+          try {
+            await writeFile(bodyFile, body, "utf8");
+            this.submission = { status: "running", message: "正在创建新的 PR…" }; this.onState();
+            try {
+              url = await this.runCommand(tools.gh, ["pr", "create", "--repo", REPOSITORY, "--base", "main", "--head", `${user.login}:${branch}`,
+                "--title", title.trim(), "--body-file", bodyFile], options);
+            } catch (error) {
+              // GitHub may have accepted creation before a response was lost. Reconcile before retrying.
+              existing = (await this.findBranchPullRequests(tools, user.login, branch))[0];
+              if (!existing) throw error;
+              url = existing.url;
+            }
+          } finally { await rm(bodyFile, { force: true }); }
+        }
+        if (!new RegExp(`^https://github\\.com/${REPOSITORY}/pull/\\d+$`, "i").test(url)) throw new Error("GitHub 未返回有效的 PR 地址，请重试以确认提交结果。");
+        const receipt = { url, state: existing?.state || "OPEN", merged: existing?.state === "MERGED", number: Number(url.split("/").at(-1)),
+          title: title.trim(), headRefName: branch, owner: user.login, submittedAt: new Date().toISOString(),
+          submissionId, contentHash, sourceHash: candidate.sourceHash, outcome: "created", checks: "pending" };
+        try { await this.savePullRequestReceipt(receipt); }
+        catch (error) { throw new Error(`GitHub 已接收 PR：${url}。本地回执保存失败，请重试确认；不会重复创建。${error.message}`); }
+        this.submission = { status: "success", message: "PR 提交成功", url }; this.onState();
+        return url;
+      } catch (error) {
+        this.submission = { status: "failed", message: error.message }; this.onState();
+        throw error;
       }
-      const user = JSON.parse(await this.runCommand(tools.gh, ["api", "user"], { env: tools.env }));
-      if (!/^[a-zA-Z0-9-]+$/.test(user.login)) throw new Error("GitHub 用户名无效。");
-      // With an explicit repository, --clone=false skips local setup; gh rejects any --remote flag.
-      await this.runCommand(tools.gh, ["repo", "fork", REPOSITORY, "--clone=false"], { cwd: this.source, env: tools.env });
-      await this.commit(tools);
-      if (state.pullRequest?.merged || state.pullRequest?.state === "CLOSED") {
-        await this.runCommand(tools.git, ["switch", "-c", `cleo/local-${randomUUID().slice(0, 8)}`],
-          { cwd: this.source, env: tools.env });
-      }
-      const branch = await this.runCommand(tools.git, ["branch", "--show-current"], { cwd: this.source, env: tools.env });
-      if (!/^cleo\/[a-zA-Z0-9-]+$/.test(branch)) throw new Error("只能提交 Cleo 管理的本地分支。");
-      // git invokes credential helpers through sh; quote the trusted executable as a shell literal.
-      const helper = `!'${tools.gh.replaceAll("\\", "/").replaceAll("'", "'\\''")}' auth git-credential`;
-      await this.runCommand(tools.git, ["-c", "credential.helper=", "-c", `credential.helper=${helper}`, "push",
-        `https://github.com/${user.login}/Cleo-AI-agent.git`, `HEAD:refs/heads/${branch}`], { cwd: this.source, env: tools.env });
-      const bodyFile = join(this.store.root, "pr-body.md");
-      await writeFile(bodyFile, body, "utf8");
-      let url = state.pullRequest?.state === "OPEN" ? state.pullRequest.url : null;
-      if (url) {
-        await this.runCommand(tools.gh, ["pr", "edit", url, "--repo", REPOSITORY,
-          "--title", title.trim(), "--body-file", bodyFile], { cwd: this.source, env: tools.env });
-      } else {
-        url = await this.runCommand(tools.gh, ["pr", "create", "--repo", REPOSITORY, "--head", `${user.login}:${branch}`,
-          "--title", title.trim(), "--body-file", bodyFile], { cwd: this.source, env: tools.env });
-      }
-      await this.store.update({ pullRequest: { url, state: "OPEN", merged: false } });
-      return url;
     });
   }
 
-  /** Input: none. Output: PR acceptance status independent from release availability. */
-  async refreshPullRequest() {
+  /** Purpose: Preserve submission history while migrating the legacy single-PR record.
+   * Input: confirmed receipt and whether this is a new submission. Output: deduplicated durable history.
+   */
+  async savePullRequestReceipt(receipt, makeLatest = true) {
+    const state = await this.store.read();
+    const history = [...(state.pullRequests || []), ...(state.pullRequest ? [state.pullRequest] : [])];
+    const unique = [...new Map(history.map((pr) => [pr.url, pr])).values()];
+    return this.store.update({
+      pullRequest: makeLatest || state.pullRequest?.url === receipt.url ? receipt : state.pullRequest,
+      pullRequests: makeLatest ? [receipt, ...unique.filter((pr) => pr.url !== receipt.url)]
+        : unique.map((pr) => pr.url === receipt.url ? receipt : pr),
+      pendingPullRequests: (state.pendingPullRequests || []).filter((item) => item.id !== receipt.submissionId),
+    });
+  }
+
+  /** Purpose: Match remote contributions to the actual workspace, never a stale local URL.
+   * Input: toolchain, authenticated owner and branch. Output: this owner's matching PRs.
+   */
+  async findBranchPullRequests(tools, owner, branch) {
+    const prs = JSON.parse(await this.runCommand(tools.gh, ["pr", "list", "--repo", REPOSITORY,
+      "--state", "all", "--head", branch, "--limit", "100", "--json", "url,state,headRefName,headRepositoryOwner"], { env: tools.env }));
+    return prs.filter((pr) => pr.headRefName === branch && pr.headRepositoryOwner?.login?.toLowerCase() === owner.toLowerCase());
+  }
+
+  /** Purpose: Refresh one historical PR without replacing the latest submission.
+   * Input: optional known receipt URL. Output: updated review and CI status, never a GitHub mutation.
+   */
+  async refreshPullRequest(url) {
     return this.operation("checking", async () => {
       const state = await this.store.read();
-      if (!state.pullRequest) return null;
+      const receipt = [...(state.pullRequests || []), ...(state.pullRequest ? [state.pullRequest] : [])]
+        .find((pr) => pr.url === (url || state.pullRequest?.url));
+      if (!receipt) return null;
       const tools = await this.tools.prepare(true);
-      const pr = JSON.parse(await run(tools.gh, ["pr", "view", state.pullRequest.url, "--repo", REPOSITORY,
-        "--json", "url,state,mergedAt"], { env: tools.env }));
-      return this.store.update({ pullRequest: { url: pr.url, state: pr.state, merged: Boolean(pr.mergedAt) } });
+      const pr = JSON.parse(await this.runCommand(tools.gh, ["pr", "view", receipt.url, "--repo", REPOSITORY,
+        "--json", "url,number,title,state,mergedAt,headRefName,mergeable,statusCheckRollup"], { env: tools.env }));
+      const checks = pr.statusCheckRollup || [];
+      const failed = checks.some((check) => ["FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED"].includes(check.conclusion || check.state));
+      const pending = checks.some((check) => check.status ? check.status !== "COMPLETED" : ["PENDING", "EXPECTED"].includes(check.state));
+      return this.savePullRequestReceipt({ ...receipt, url: pr.url, number: pr.number, title: pr.title,
+        headRefName: pr.headRefName, state: pr.state, merged: Boolean(pr.mergedAt), mergeable: pr.mergeable,
+        checks: failed ? "failed" : pending ? "pending" : checks.length ? "passed" : "none", checkedAt: new Date().toISOString() }, false);
     });
   }
 

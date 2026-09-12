@@ -1243,8 +1243,14 @@ def test_memory_review_reads_late_events_without_rewriting_cache_or_queue(tmp_pa
 
     service.store.create_session(session_id="late-diff", space="productivity", project="workspace",
                                  provider="codex", owner_type="user")
-    service.store.append_event(session_id="late-diff", space="productivity", project="workspace",
-                              event_type="user_message", actor="user", content="Keep original content")
+    service.store.append_event(
+        session_id="late-diff",
+        space="productivity",
+        project="workspace",
+        event_type="user_message",
+        actor="user",
+        content="Keep original content",
+    )
     service.store.refresh_compact("late-diff")
     cache = compact_path(service.settings.MEMORY_DIR, "productivity", "workspace", "late-diff")
     state = memory_state_path(service.settings.MEMORY_DIR, "productivity")

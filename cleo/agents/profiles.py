@@ -48,6 +48,8 @@ def dream_profile(settings: Any, manifest: dict[str, Any]) -> AgentProfile:
             raise ValueError("无法跟随此开发会话的模型，请在设置 → DreamAgent 中选择独立模型。")
         options = manifest.get("runtime_options") or {}
         return AgentProfile(
-            backend=backend, provider=backend, model=options.get("model") or provider.model or "default",
+            backend=backend,
+            provider=backend,
+            model=options.get("model") or provider.model or "default",
         )
     return session_profile(settings, manifest)

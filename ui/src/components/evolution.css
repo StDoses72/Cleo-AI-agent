@@ -99,3 +99,13 @@
 .evolution-preparation button { margin: 8px 8px 0 0; border: 1px solid var(--border); background: var(--surface); border-radius: 7px; padding: 6px 10px; font-size: 12px; }
 .evolution-preparation button:disabled { opacity: .45; cursor: not-allowed; }
 .evolution-preparation summary { cursor: pointer; }
+.evolution-pr-notice { display:flex; align-items:center; gap:10px; padding:8px 24px 12px; font-size:12px; color:var(--accent); }
+.evolution-pr-notice button { margin-left:auto; padding:4px; color:var(--muted); }
+.evolution-pr-notice a,.evolution-pr-history a { color:var(--accent); }
+.evolution-pr-history { display:grid; gap:0; margin:18px 0; }
+.evolution-pr-history article { display:flex; align-items:center; gap:16px; padding:16px 0; border-top:1px solid var(--border); }
+.evolution-pr-history article>div { flex:1; min-width:0; overflow-wrap:anywhere; }
+.evolution-pr-history article p { margin:6px 0; font-size:12px; }
+.evolution-pr-history small { color:var(--muted); font-size:11px; }
+.evolution-pr-history article button { flex-shrink:0; }
+.evolution-contribution-hint { font-size: 12px; color: var(--text-muted, #a0a9b4); line-height: 1.6; }

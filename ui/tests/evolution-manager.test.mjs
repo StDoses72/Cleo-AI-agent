@@ -28,12 +28,12 @@ async function validationFixture(t, fail = () => {}) {
   });
   const component = join(manager.source, "ui/Conversation.tsx");
   await writeFile(component, 'declare function Composer(props: {key: string}): null;\nconst view = <Composer key="thread" />;\n');
-  manager.tools.prepare = async () => ({ git: "git", node: process.execPath, npm: "fixture-npm-cli.js", env: process.env });
+  manager.tools.prepare = async () => ({ git: "git", node: process.execPath, npm: "fixture-npm-cli.js", uv: "fixture-uv", env: process.env });
   manager.runCommand = async (command, args, options) => {
     const stage = args[0] === "fixture-npm-cli.js" ? "dependencies"
       : args[0]?.endsWith("typescript/bin/tsc") ? "typecheck"
       : args[0]?.endsWith("vite/bin/vite.js") ? "frontend"
-      : args[0] === "--test" ? "tests" : "package";
+      : args[0] === "--test" ? "tests" : command === "fixture-uv" ? "lint" : "package";
     calls.push(stage);
     fail(stage);
     if (stage === "typecheck") {
@@ -69,7 +69,16 @@ test("duplicate JSX attributes fail preflight before packaging and remain repair
   assert.equal(passed.validation.status, "passed");
   assert.equal(passed.validation.candidate, id);
   assert.equal(passed.draftDirty, false);
-  assert.deepEqual(calls.slice(2), ["dependencies", "typecheck", "frontend", "tests", "package"]);
+  assert.deepEqual(calls.slice(2), ["dependencies", "typecheck", "frontend", "lint", "tests", "package"]);
+});
+
+test("Python lint errors fail locally before packaging instead of first failing in PR CI", async (t) => {
+  const { manager, calls } = await validationFixture(t, (stage) => {
+    if (stage === "lint") throw new Error("E501 Line too long");
+  });
+  await assert.rejects(manager.build(), /Python 代码规范检查未通过/);
+  assert.equal((await manager.status()).validation.stage, "lint");
+  assert.ok(!calls.includes("package"));
 });
 
 test("missing dependencies are unverified, never a code repair or a passing check", async (t) => {

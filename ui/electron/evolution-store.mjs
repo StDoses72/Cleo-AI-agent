@@ -1,28 +1,62 @@
 import { randomUUID, createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import * as nativeFs from "node:fs/promises";
+import fs from "node:fs/promises";
+import { setTimeout as delay } from "node:timers/promises";
 import { createRequire } from "node:module";
-import { cp, mkdir, readFile, rename, lstat, readdir, open, rm } from "node:fs/promises";
+import { cp, mkdir, readFile, lstat, readdir, open, rm } from "node:fs/promises";
 import { join, resolve, relative, isAbsolute, dirname } from "node:path";
 
 const mutationQueues = new Map();
+const jsonQueues = new Map();
+
+/** Purpose: Keep our readers from competing with atomic replacements.
+ * Input: file and I/O action. Output: ordered completion; failures do not block the queue.
+ * Read-modify-write transactions still belong inside EvolutionStore.exclusive.
+ */
+async function withJsonFile(path, action) {
+  const absolute = resolve(path);
+  const key = process.platform === "win32" ? absolute.toLowerCase() : absolute;
+  const pending = (jsonQueues.get(key) || Promise.resolve()).catch(() => {}).then(action);
+  jsonQueues.set(key, pending);
+  try { return await pending; }
+  finally { if (jsonQueues.get(key) === pending) jsonQueues.delete(key); }
+}
 
 export const DATA_ENTRIES = ["config", "data", "memory", "skills", "PERSONA.md", "AGENTS.md"];
 
 /** Purpose: Read optional JSON state. Input: file and fallback. Output: parsed state; corruption is not hidden. */
 export async function readJson(path, fallback = null) {
-  try { return JSON.parse((await readFile(path, "utf8")).replace(/^\uFEFF/, "")); }
-  catch (error) { if (error.code === "ENOENT") return fallback; throw error; }
+  return withJsonFile(path, async () => {
+    try { return JSON.parse((await readFile(path, "utf8")).replace(/^\uFEFF/, "")); }
+    catch (error) { if (error.code === "ENOENT") return fallback; throw error; }
+  });
 }
 
 /** Purpose: Persist a complete record atomically. Input: path and JSON value. Output: durable replaced file. */
 export async function writeJson(path, value) {
-  await mkdir(dirname(path), { recursive: true });
-  const temporary = `${path}.${randomUUID()}.tmp`;
-  const file = await open(temporary, "wx", 0o600);
-  try { await file.writeFile(`${JSON.stringify(value, null, 2)}\n`); await file.sync(); }
-  finally { await file.close(); }
-  await rename(temporary, path);
+  // Snapshot now: callers may mutate their object while another write is queued.
+  const content = `${JSON.stringify(value, null, 2)}\n`;
+  return withJsonFile(path, async () => {
+    await mkdir(dirname(path), { recursive: true });
+    const temporary = `${path}.${randomUUID()}.tmp`;
+    try {
+      const file = await open(temporary, "wx", 0o600);
+      try { await file.writeFile(content); await file.sync(); }
+      finally { await file.close(); }
+      for (let attempt = 0; ; attempt++) {
+        try { await fs.rename(temporary, path); break; }
+        catch (error) {
+          // Windows readers/scanners can briefly deny replacement despite valid ACLs.
+          // Never unlink the destination: a failed save must retain the old record.
+          if (!["EPERM", "EACCES", "EBUSY"].includes(error.code) || attempt >= 7) throw error;
+          await delay(Math.min(25 * 2 ** attempt, 500));
+        }
+      }
+    } finally {
+      await rm(temporary, { force: true }).catch(() => {});
+    }
+  });
 }
 
 /** Purpose: Reject unsafe managed paths. Input: root and relative segments. Output: absolute child path. */

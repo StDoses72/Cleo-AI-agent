@@ -107,8 +107,9 @@ export function App() {
   const evolutionAction = (action: string, params: Record<string, unknown> = {}) => {
     retryEvolution.current = () => evolutionAction(action, params);
     setEvolutionIssue(null);
-    void evolution.run(action, params).then(() => {
+    return evolution.run(action, params).then((result) => {
       if (action === "discard" || action === "select") workspace.beginEvolutionDraft();
+      return result;
     }).catch((error: unknown) =>
       setEvolutionIssue(error instanceof Error ? error.message : "操作失败"));
   };

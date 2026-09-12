@@ -22,8 +22,13 @@ def previous_sources(root):
         if directory.resolve() == root or not directory.is_dir():
             continue
         if all((directory / name).is_file() for name in FILES):
-            yield directory.name, {name: (directory / name).read_text(encoding="utf-8") for name in FILES}
-    for archive in sorted((root.parent / "builds").glob("*/Cleo/resources/evolution-source.tar.gz")):
+            yield (
+                directory.name,
+                {name: (directory / name).read_text(encoding="utf-8") for name in FILES},
+            )
+    for archive in sorted(
+        (root.parent / "builds").glob("*/Cleo/resources/evolution-source.tar.gz")
+    ):
         with tarfile.open(archive, "r:gz") as bundle:
             found = {}
             for member in bundle.getmembers():
@@ -60,10 +65,17 @@ def round_trip(label, sources, index):
     harness = root / "harnesses.json"
     original = {"providers": {"codex": {"type": "codex_sdk", "model": "original-model"}}}
     old_config._atomic_write(harness, original)
-    assert old_settings.load_settings(config, harness).productivity.provider("codex").model == "original-model"
-    register_task_provider(harness, "claude", ClaudeHarnessSettings(model="opus", models=["sonnet"]))
+    assert (
+        old_settings.load_settings(config, harness).productivity.provider("codex").model
+        == "original-model"
+    )
+    register_task_provider(
+        harness, "claude", ClaudeHarnessSettings(model="opus", models=["sonnet"])
+    )
     expected = json.loads(harness.read_text(encoding="utf-8"))
-    assert old_settings.load_settings(config, harness).productivity.provider("claude").model == "opus"
+    assert (
+        old_settings.load_settings(config, harness).productivity.provider("claude").model == "opus"
+    )
     # Older releases have no harness-edit UI. Exercise their actual shared JSON
     # configuration reader/writer, never their first-run default-file creator.
     old_config._atomic_write(harness, old_config._read_config(harness))

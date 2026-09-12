@@ -6,8 +6,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from cleo.desktop.evolution_planning import INSTRUCTIONS, plan_request, source_inventory, analyze_request
-
+from cleo.desktop.evolution_planning import (
+    INSTRUCTIONS,
+    analyze_request,
+    plan_request,
+    source_inventory,
+)
 
 REQUEST = "给侧栏按钮显示文字"
 
@@ -15,7 +19,9 @@ REQUEST = "给侧栏按钮显示文字"
 def fixture(tmp_path):
     source = tmp_path / "ui" / "src"
     source.mkdir(parents=True)
-    (source / "Button.tsx").write_text("<button aria-label='侧栏'><Icon /></button>\n", encoding="utf-8")
+    (source / "Button.tsx").write_text(
+        "<button aria-label='侧栏'><Icon /></button>\n", encoding="utf-8"
+    )
     return {"intent": "change", "cases": [{"title": "显示标签", "requirement": REQUEST,
         "current": "按钮只有图标", "trigger": "打开侧栏", "expectation": "文字标签可见",
         "references": [{"path": "ui/src/Button.tsx", "line": 1}]}]}
@@ -45,12 +51,16 @@ def test_reads_related_code_before_preparing_grounded_manual_cases(tmp_path):
 @pytest.mark.parametrize("intent", ["question", "clarification"])
 def test_nonediting_intents_return_no_cases(tmp_path, intent):
     fixture(tmp_path)
-    result, _ = run_plan(tmp_path, {"intent": intent, "answer": "解释或澄清问题", "cases": ["ignored"]})
+    result, _ = run_plan(
+        tmp_path, {"intent": intent, "answer": "解释或澄清问题", "cases": ["ignored"]}
+    )
     assert result["intent"] == intent
     assert result["cases"] == []
 
 
-@pytest.mark.parametrize("change", ["line", "path", "requirement", "missing-trigger", "empty-cases"])
+@pytest.mark.parametrize(
+    "change", ["line", "path", "requirement", "missing-trigger", "empty-cases"]
+)
 def test_rejects_fabricated_evidence_and_incomplete_cases(tmp_path, change):
     result = fixture(tmp_path)
     if change == "line":
@@ -127,11 +137,17 @@ def test_unsupported_readonly_connection_fails_before_any_runtime(tmp_path):
 
 def test_subscription_failure_closes_transport_without_creating_history(monkeypatch, tmp_path):
     from cleo.desktop.evolution_planning import subscription_text
-    provider = SimpleNamespace(create_session=AsyncMock(return_value=SimpleNamespace(id="temporary")),
-        prompt=AsyncMock(return_value=SimpleNamespace(status="failed", error="connection lost")), close=AsyncMock())
+
+    provider = SimpleNamespace(
+        create_session=AsyncMock(return_value=SimpleNamespace(id="temporary")),
+        prompt=AsyncMock(return_value=SimpleNamespace(status="failed", error="connection lost")),
+        close=AsyncMock(),
+    )
     monkeypatch.setattr("cleo.integrations.subscriptions.create_runtime", lambda *_: provider)
     with pytest.raises(ValueError, match="connection lost"):
-        asyncio.run(subscription_text(SimpleNamespace(model="default"), tmp_path, "instructions", "request"))
+        asyncio.run(
+            subscription_text(SimpleNamespace(model="default"), tmp_path, "instructions", "request")
+        )
     provider.close.assert_awaited_once_with("temporary")
 
 
@@ -139,7 +155,9 @@ def test_timeout_has_a_recoverable_reason(monkeypatch, tmp_path):
     fixture(tmp_path)
     settings = SimpleNamespace(productivity=SimpleNamespace(providers={"task": SimpleNamespace(
         type="codex_sdk", enabled=True, model="default")}))
-    monkeypatch.setattr("cleo.desktop.evolution_planning.subscription_text", AsyncMock(side_effect=TimeoutError))
+    monkeypatch.setattr(
+        "cleo.desktop.evolution_planning.subscription_text", AsyncMock(side_effect=TimeoutError)
+    )
     with pytest.raises(ValueError, match="180 秒.*原需求已保留"):
         asyncio.run(analyze_request(settings, {"provider": "task"}, tmp_path, REQUEST))
 

@@ -139,9 +139,15 @@ class TaskHarnessTests(unittest.IsolatedAsyncioTestCase):
             path = Path(temporary) / "harnesses.json"
             path.write_text('{}', encoding="utf-8")
             with patch("cleo.config.settings.HARNESSES_CONFIG_PATH", path):
-                await service.create_thread(space="productivity", project_id_value="productivity:project",
-                                            provider="claude", model="opus")
-            self.assertEqual(json.loads(path.read_text())["providers"]["claude"]["type"], "claude_sdk")
+                await service.create_thread(
+                    space="productivity",
+                    project_id_value="productivity:project",
+                    provider="claude",
+                    model="opus",
+                )
+            self.assertEqual(
+                json.loads(path.read_text())["providers"]["claude"]["type"], "claude_sdk"
+            )
         create_session.assert_awaited_once_with(
             "claude", project_path=fixture.name, model="opus", project="project",
         )
@@ -166,7 +172,9 @@ class TaskHarnessTests(unittest.IsolatedAsyncioTestCase):
                 service._adapter_instance = SimpleNamespace(providers=(name,))
                 service.load_thread = AsyncMock(return_value={"id": "fixture"})
                 service.load_workspace = AsyncMock(return_value={})
-                await service.open_evolution_thread(provider=name, model="vendor-model", effort="high")
+                await service.open_evolution_thread(
+                    provider=name, model="vendor-model", effort="high"
+                )
                 service.create_thread.assert_awaited_once_with(
                     space="productivity", project_id_value="productivity:cleo-evolution",
                     project_path=fixture.name, provider=name, model="vendor-model", effort="high",
@@ -178,7 +186,9 @@ class ClaudeCatalogTests(unittest.IsolatedAsyncioTestCase):
         from cleo.integrations.harnesses.claude import ClaudeProvider
 
         client = SimpleNamespace(connect=AsyncMock(), disconnect=AsyncMock())
-        with patch("cleo.integrations.harnesses.claude.ClaudeSDKClient", return_value=client) as sdk:
+        with patch(
+            "cleo.integrations.harnesses.claude.ClaudeSDKClient", return_value=client
+        ) as sdk:
             provider = ClaudeProvider()
             session = await provider.create_session(fixture.name, model="opus")
             self.assertEqual(sdk.call_args.kwargs["options"].model, "opus")
@@ -189,14 +199,31 @@ class ClaudeCatalogTests(unittest.IsolatedAsyncioTestCase):
         from cleo.integrations.harnesses.claude_models import discover_claude_models
 
         client = SimpleNamespace(
-            connect=AsyncMock(), disconnect=AsyncMock(), query=AsyncMock(),
-            get_server_info=AsyncMock(return_value={"models": [
-                {"value": "fable", "displayName": "Vendor Fable", "supportedEffortLevels": ["high"]},
-                {"value": "opus", "displayName": "Opus", "description": "Vendor description"},
-                {"value": ""}, {"unknown": True},
-            ]}),
+            connect=AsyncMock(),
+            disconnect=AsyncMock(),
+            query=AsyncMock(),
+            get_server_info=AsyncMock(
+                return_value={
+                    "models": [
+                        {
+                            "value": "fable",
+                            "displayName": "Vendor Fable",
+                            "supportedEffortLevels": ["high"],
+                        },
+                        {
+                            "value": "opus",
+                            "displayName": "Opus",
+                            "description": "Vendor description",
+                        },
+                        {"value": ""},
+                        {"unknown": True},
+                    ]
+                }
+            ),
         )
-        with patch("cleo.integrations.harnesses.claude_models.ClaudeSDKClient", return_value=client):
+        with patch(
+            "cleo.integrations.harnesses.claude_models.ClaudeSDKClient", return_value=client
+        ):
             models = await discover_claude_models(fixture.name)
         self.assertEqual([model.id for model in models], ["fable", "opus"])
         self.assertEqual(models[0].display_name, "Vendor Fable")
@@ -210,7 +237,9 @@ class ClaudeCatalogTests(unittest.IsolatedAsyncioTestCase):
 
         client = SimpleNamespace(connect=AsyncMock(side_effect=RuntimeError("CLI failure")),
                                  disconnect=AsyncMock())
-        with patch("cleo.integrations.harnesses.claude_models.ClaudeSDKClient", return_value=client):
+        with patch(
+            "cleo.integrations.harnesses.claude_models.ClaudeSDKClient", return_value=client
+        ):
             with self.assertRaisesRegex(RuntimeError, "CLI failure"):
                 await discover_claude_models(fixture.name)
         client.disconnect.assert_awaited_once()

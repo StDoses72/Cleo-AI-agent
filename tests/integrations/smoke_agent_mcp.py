@@ -41,7 +41,9 @@ async def main():
             },
         }), encoding="utf-8")
         harnesses = home / "harnesses.json"
-        harnesses.write_bytes((source / "cleo/config/templates/harnesses.example.json").read_bytes())
+        harnesses.write_bytes(
+            (source / "cleo/config/templates/harnesses.example.json").read_bytes()
+        )
         (home / "memory.md").write_text("Existing memory\n", encoding="utf-8")
         (home / "chat.json").write_text(
             '{"messages":["existing chat"],"future_field":{"preserve":["nonempty"]}}',

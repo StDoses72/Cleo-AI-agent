@@ -163,12 +163,17 @@ def test_late_turn_diff_does_not_block_dream_or_rewrite_compact(tmp_path, monkey
     assert "late diff evidence" in "\n".join(prompts)
     assert cached.read_bytes() == compact_before
     assert raw.read_bytes() == events_before
-    assert get_session_source("productivity", "cleo", "session-dream")["consolidated_hash"] == result["source_hash"]
+    assert (
+        get_session_source("productivity", "cleo", "session-dream")["consolidated_hash"]
+        == result["source_hash"]
+    )
     assert invoke(dream_module.DreamAgent())["status"] == "skipped"
 
 
 @pytest.mark.parametrize("replacement", ['{broken', '{"schema_version":99,"sources":{"keep":1}}'])
-def test_dream_refuses_unreadable_or_newer_queue_without_writing(tmp_path, monkeypatch, replacement):
+def test_dream_refuses_unreadable_or_newer_queue_without_writing(
+    tmp_path, monkeypatch, replacement
+):
     config, _ = setup(tmp_path, monkeypatch)
     from cleo.memory.paths import memory_state_path
 
@@ -183,8 +188,14 @@ def test_late_events_during_extraction_without_compaction_remain_pending(tmp_pat
     _, store = setup(tmp_path, monkeypatch)
 
     async def extract(self, prompt):
-        store.append_event(session_id="session-dream", space="productivity", project="cleo",
-                           event_type="user_message", actor="user", content="arrived during extraction")
+        store.append_event(
+            session_id="session-dream",
+            space="productivity",
+            project="cleo",
+            event_type="user_message",
+            actor="user",
+            content="arrived during extraction",
+        )
         return extracted(prompt)
 
     monkeypatch.setattr(dream_module.DreamAgent, "_extract", extract)
@@ -196,7 +207,9 @@ def test_late_events_during_extraction_without_compaction_remain_pending(tmp_pat
 
 
 @pytest.mark.parametrize("damage", ["missing", "malformed", "newer-schema", "wrong-project"])
-def test_dream_source_rejects_invalid_raw_evidence_without_repairing_it(tmp_path, monkeypatch, damage):
+def test_dream_source_rejects_invalid_raw_evidence_without_repairing_it(
+    tmp_path, monkeypatch, damage
+):
     config, store = setup(tmp_path, monkeypatch)
     from cleo.memory.paths import events_path
 
@@ -210,7 +223,10 @@ def test_dream_source_rejects_invalid_raw_evidence_without_repairing_it(tmp_path
     before = raw.read_bytes() if raw.exists() else None
     with pytest.raises((FileNotFoundError, ValueError)):
         dream_module.DreamAgent()._read_source(
-            store, "productivity", "other" if damage == "wrong-project" else "cleo", "session-dream",
+            store,
+            "productivity",
+            "other" if damage == "wrong-project" else "cleo",
+            "session-dream",
         )
     assert (raw.read_bytes() if raw.exists() else None) == before
 

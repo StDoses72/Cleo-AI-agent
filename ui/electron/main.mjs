@@ -326,8 +326,8 @@ app.whenReady().then(async () => {
       login: () => evolution.login(),
       openGithubLogin: () => evolution.openGithubLogin(),
       cancelLogin: () => evolution.cancelLogin(),
-      submit: () => evolution.submitPullRequest(params.title, params.body),
-      pullRequest: () => evolution.refreshPullRequest(),
+      submit: () => evolution.submitPullRequest(params.title, params.body, params.submissionId),
+      pullRequest: () => evolution.refreshPullRequest(params.url),
       apply: () => applyEvolution(params.id),
       thread: () => evolution.operation("preparing", () => evolution.store.update({ threadId: String(params.id || "") })),
       recovery: async () => {
