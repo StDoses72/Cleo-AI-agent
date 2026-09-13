@@ -249,7 +249,7 @@ export class EvolutionStore {
   }
 
   /** Input: target build id. Output: program-only switch; shared user data and active selection are unchanged. */
-  async stage(target, { officialSelection = false, restartError = null } = {}) {
+  async stage(target, { officialSelection = false, restartError = null, installedRelease = null } = {}) {
     const build = await this.build(target);
     const state = await this.read();
     if (state.transaction) throw new Error("上一次应用尚未完成，请打开恢复入口。");
@@ -264,7 +264,9 @@ export class EvolutionStore {
       sourceArchive: `source-history-${transaction.id}`,
       originalSelection: Object.fromEntries(SELECTION_FIELDS.map((name) => [name, state[name] ?? null])),
     };
-    await this.update({ transaction });
+    await this.update({ transaction, ...(installedRelease ? {
+      installedReleases: { ...state.installedReleases, [installedRelease.path]: installedRelease.version },
+    } : {}) });
     return transaction;
   }
 

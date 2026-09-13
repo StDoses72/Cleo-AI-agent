@@ -40,7 +40,35 @@ async function boot() {
       const { showRecovery } = await import("./evolution-recovery.mjs");
       await showRecovery(store); app.quit(); return;
     }
-    const selected = await store.build(state.active);
+    const { EvolutionManager } = await import("./evolution.mjs");
+    const manager = new EvolutionManager({ app, root, dataHome });
+    const installed = await manager.installedRelease();
+    if (installed) {
+      await app.whenReady();
+      if (!app.requestSingleInstanceLock()) throw new Error("请先关闭当前 Cleo，再打开新版程序。");
+      let progress;
+      let transaction;
+      try {
+        const { createRestartWindow } = await import("./evolution-progress.mjs");
+        progress = await createRestartWindow();
+        await progress.progress(`正在打开 Cleo ${installed.version}`, "正在准备新版程序…");
+        transaction = await manager.stageInstalledRelease();
+      } catch (error) {
+        progress?.finish();
+        throw error;
+      } finally {
+        await manager.close();
+        app.releaseSingleInstanceLock();
+      }
+      if (transaction) {
+        const { applyFromController } = await import("./evolution-recovery.mjs");
+        try { await applyFromController(store, null, { progress }); }
+        finally { progress.finish(); }
+        app.quit(); return;
+      }
+      progress.finish();
+    }
+    const selected = await store.build((await store.read()).active);
     if (resolve(selected.executable) !== resolve(process.execPath)) {
       const { launchBuild } = await import("./evolution-recovery.mjs");
       await launchBuild(selected, store); app.quit(); return;

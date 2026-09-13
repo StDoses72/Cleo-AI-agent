@@ -76,15 +76,16 @@ async function stopFailedBuild(child) {
 }
 
 /** Purpose: Own restart visibility and automatic rollback outside mutable app code.
- * Input: store and original process id. Output: closes only after a working app is confirmed; failed recovery remains interactive.
+ * Input: store and original process id (null for an installation opened with no old app running).
+ * Output: closes only after a working app is confirmed; failed recovery remains interactive.
  */
-export async function applyFromController(store, parent) {
+export async function applyFromController(store, parent, { progress: existingProgress } = {}) {
   const initial = await store.read();
   if (!initial.transaction) throw new Error("没有待应用的改动。");
-  const progress = await createRestartWindow();
+  const progress = existingProgress || await createRestartWindow();
   const readyPath = ownedPath(store.root, "handoffs", `${initial.transaction.id}.json`);
   await writeJson(readyPath, { id: initial.transaction.id, pid: process.pid });
-  let parentClosed = false;
+  let parentClosed = parent === null;
   const hooks = {
     async withLock(action) {
       if (!app.requestSingleInstanceLock()) throw new Error("另一个 Cleo 仍在运行，请先关闭它后重试。");

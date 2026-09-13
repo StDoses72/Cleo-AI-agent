@@ -89,7 +89,9 @@ jobs:
           xvfb-run -a node ui/scripts/smoke-program-updates.mjs
       - name: Independent recovery smoke
         if: runner.os == 'Windows'
-        run: npm --prefix ui run smoke:evolution-recovery
+        run: |
+          npm --prefix ui run smoke:evolution-recovery
+          npm --prefix ui run smoke:evolution-installed
       - name: Windows update smoke
         if: runner.os == 'Windows'
         env:

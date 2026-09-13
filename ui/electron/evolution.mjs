@@ -1,6 +1,6 @@
 import { randomUUID, createHash } from "node:crypto";
 import { cp, copyFile, mkdir, mkdtemp, readFile, writeFile, rename, readdir, rm } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { stripVTControlCharacters } from "node:util";
@@ -8,7 +8,7 @@ import { EvolutionStore, exists, fileHash, readJson, writeJson, ownedPath } from
 import { EvolutionTools, run, fetchRelease, extract } from "./evolution-tools.mjs";
 import { ReleaseDownloads } from "./release-downloads.mjs";
 import { desktopPlatform, installationRoot } from "./platform.mjs";
-import { validateManifest } from "./updater.mjs";
+import { compareVersions, validateManifest } from "./updater.mjs";
 
 const REPOSITORY = "StDoses72/Cleo-AI-agent";
 const REPO_URL = `https://github.com/${REPOSITORY}.git`;
@@ -207,6 +207,65 @@ export class EvolutionManager {
     });
   }
 
+  /** Detect a newly opened official installation without overriding retained local work or a deliberate rollback. */
+  async installedRelease() {
+    if (!this.packaged) return null;
+    const child = relative(this.store.root, resolve(this.executable));
+    if (child !== ".." && !child.startsWith(`..${sep}`) && !isAbsolute(child)) return null;
+    const state = await this.store.read();
+    const active = state.builds.find(build => build.id === state.active);
+    const candidate = state.builds.find(build => build.id === state.candidate);
+    if (state.transaction || active?.kind !== "official" || state.iteration || state.draftDirty
+        || (candidate?.kind === "local" && !candidate.savedAt)) return null;
+    const source = installationRoot(this.executable, this.target);
+    const resources = join(source, this.target.resources);
+    const metadata = await readJson(join(this.target.platform === "darwin" ? resources : source, "release.json"));
+    if (metadata?.app !== "Cleo" || metadata.platform !== this.target.id || metadata.evolution_protocol !== 2
+        || metadata.version !== this.app.getVersion() || !/^\d+\.\d+\.\d+$/.test(metadata.version)
+        || await exists(join(resources, "evolution-source.tar.gz"))) return null;
+    if (state.builds.some(build => build.id === state.baseline && build.version === metadata.version)) return null;
+    const path = this.target.platform === "win32" ? resolve(this.executable).toLowerCase() : resolve(this.executable);
+    const previous = state.installedReleases?.[path] || active.version;
+    if (!previous || compareVersions(metadata.version, previous) <= 0
+        || compareVersions(metadata.version, active.version) <= 0) return null;
+    return { path, source, version: metadata.version };
+  }
+
+  /** Retain the verified local installation and journal its first activation under the desktop instance lock. */
+  async stageInstalledRelease() {
+    return this.operation("preparing", async (signal) => {
+      const installed = await this.installedRelease();
+      if (!installed) return null;
+      const state = await this.store.read();
+      const filesystem = process.versions.electron ? createRequire(import.meta.url)("original-fs").promises : { readFile, rm };
+      const archiveHash = async source => createHash("sha256").update(await filesystem.readFile(join(source, this.target.resources, "app.asar"))).digest("hex");
+      const hash = await archiveHash(installed.source);
+      let record = state.builds.find(build => build.kind === "official" && build.installSource === installed.path
+        && build.version === installed.version && build.installHash === hash);
+      if (record && !await exists(join(this.store.root, "builds", record.id, record.executable))) record = null;
+      if (!record) {
+        const id = `official-${randomUUID()}`;
+        const directory = ownedPath(this.store.root, "builds", id);
+        try {
+          const bundle = join(directory, this.target.bundle);
+          await copyProgramBundle(installed.source, bundle, { signal });
+          if (await archiveHash(bundle) !== hash || !await exists(join(bundle, this.target.executable))) {
+            throw new Error("新版程序复制校验失败，请重新安装后重试。");
+          }
+          record = { id, kind: "official", version: installed.version, baseTag: `v${installed.version}`,
+            executable: `${this.target.bundle}/${this.target.executable}`, createdAt: new Date().toISOString(),
+            installSource: installed.path, installHash: hash };
+          await this.store.update({ builds: [...state.builds, record] });
+        } catch (error) {
+          await filesystem.rm(directory, { recursive: true, force: true });
+          throw error;
+        }
+      }
+      return this.store.stage(record.id, { officialSelection: true,
+        installedRelease: { path: installed.path, version: installed.version } });
+    }, { prune: false });
+  }
+
   /** Input: none. Output: a retained baseline executable before any mutable app is used. */
   async ensureBaseline() {
     const state = await this.store.read();
@@ -220,7 +279,9 @@ export class EvolutionManager {
     await copyProgramBundle(installationRoot(this.executable, this.target), directory, { signal: this.operationAbort?.signal });
     const record = { id, kind: "official", version: this.app.getVersion(), baseTag: `v${this.app.getVersion()}`,
       executable: `${bundle}/${this.target.executable}`, createdAt: new Date().toISOString(), baseline: true };
-    await this.store.update({ active: id, baseline: id, builds: [...state.builds, record] });
+    const path = this.target.platform === "win32" ? resolve(this.executable).toLowerCase() : resolve(this.executable);
+    await this.store.update({ active: id, baseline: id, builds: [...state.builds, record],
+      installedReleases: { ...state.installedReleases, [path]: this.app.getVersion() } });
     const baseline = await this.store.build(id);
     if (process.platform === "win32") {
       // A separate shortcut remains usable even when the current app's JavaScript cannot load.
