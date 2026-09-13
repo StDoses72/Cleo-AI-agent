@@ -14,23 +14,31 @@ import { randomUUID } from "node:crypto";
 import { bundledPython, desktopDataHome, harnessPath } from "./platform.mjs";
 
 export class BackendBridge {
-  constructor({ app, here }) {
+  constructor({ app, here, spawnImpl = spawn }) {
     this.app = app;
     this.here = here;
     this.process = null;
     this.pending = new Map();
     this.stderr = "";
     this.closing = false;
+    this.stopped = false;
+    this.closePromise = null;
+    this.spawnImpl = spawnImpl;
     this.runtime = null;
   }
 
   request(method, params = {}, onEvent = null) {
+    if (this.stopped || this.closing) return Promise.reject(new Error("Cleo 后端正在退出，不能开始新的请求。"));
     this.start();
+    return this.#send(this.process, method, params, onEvent);
+  }
+
+  #send(child, method, params = {}, onEvent = null) {
     const id = randomUUID();
     this.debug(`request ${method} ${id}`);
     return new Promise((resolveRequest, rejectRequest) => {
       this.pending.set(id, { resolve: resolveRequest, reject: rejectRequest, onEvent });
-      this.process.stdin.write(`${JSON.stringify({ id, method, params })}\n`, "utf8", (error) => {
+      child.stdin.write(`${JSON.stringify({ id, method, params })}\n`, "utf8", (error) => {
         if (!error) return;
         this.pending.delete(id);
         rejectRequest(error);
@@ -39,6 +47,7 @@ export class BackendBridge {
   }
 
   start() {
+    if (this.stopped || this.closing) throw new Error("Cleo 后端正在退出，不能启动新进程。");
     if (this.process && !this.process.killed) return;
     const paths = this.runtimePaths();
     this.prepareHome(paths);
@@ -48,7 +57,7 @@ export class BackendBridge {
       : [paths.backendRoot, process.env.PYTHONPATH].filter(Boolean).join(delimiter);
     const runtimePath = this.runtimePath(paths);
     this.stderr = "";
-    const child = spawn(python, ["-m", "cleo.desktop.server"], {
+    const child = this.spawnImpl(python, ["-m", "cleo.desktop.server"], {
       cwd: paths.backendRoot,
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
@@ -226,33 +235,56 @@ export class BackendBridge {
     }
   }
 
-  async close() {
-    if (this.closing || !this.process) return;
+  close() {
+    if (this.closePromise) return this.closePromise;
     this.closing = true;
+    const completion = Promise.withResolvers();
+    this.closePromise = completion.promise;
     const active = this.process;
+    if (active) void this.#closeProcess(active).then(completion.resolve, error => {
+      this.closePromise = null;
+      completion.reject(error);
+    });
+    else completion.resolve();
+    return this.closePromise;
+  }
+
+  shutdown() {
+    this.stopped = true;
+    return this.close();
+  }
+
+  async #closeProcess(active) {
+    if (active.exitCode !== null || active.signalCode !== null) return;
+    let onExit;
+    const exited = new Promise(done => { onExit = done; active.once("exit", onExit); });
+    let timer;
     try {
-      await Promise.race([
-        this.request("shutdown"),
-        new Promise((resolveClose) => setTimeout(resolveClose, 1800)),
-      ]);
-    } catch {
-      // The process may exit before the final protocol response is read.
-    }
-    if (active && active.exitCode === null && active.signalCode === null) {
-      const exited = new Promise((done) => active.once("exit", done));
-      active.kill();
-      let timer;
       try {
+        await Promise.race([
+          this.#send(active, "shutdown"), exited,
+          new Promise(done => { timer = setTimeout(done, 1800); }),
+        ]);
+      } catch {
+        // The process may exit before the final protocol response is read.
+      } finally { clearTimeout(timer); }
+      if (active.exitCode === null && active.signalCode === null) {
+        active.kill();
         await Promise.race([exited, new Promise((_, reject) => {
           timer = setTimeout(() => reject(new Error("后端未能退出，已停止应用改动。")), 10000);
         })]);
-      } finally { clearTimeout(timer); }
+      }
+    } finally {
+      clearTimeout(timer);
+      active.removeListener("exit", onExit);
     }
   }
 
   async restart() {
     await this.close();
+    if (this.stopped) return;
     this.process = null;
     this.closing = false;
+    this.closePromise = null;
   }
 }

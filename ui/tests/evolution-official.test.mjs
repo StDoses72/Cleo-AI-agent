@@ -111,6 +111,44 @@ test("all unfinished-local-work states block official switching at both entry an
   }
 });
 
+test("legacy official-source mismatch preserves unfinished local work before preparing any tools", async (t) => {
+  const { manager } = await fixture(t, { draft: true });
+  const id = await manager.downloadRelease("v0.4.0");
+  // The older controller changed active, then completed a journal without source-selection metadata.
+  await manager.store.update({ active: id });
+  const before = await manager.store.read();
+  manager.tools.prepare = async () => { assert.fail("Unfinished source must be rejected before tool preparation"); };
+  await assert.rejects(manager.prepare(), /保存或放弃/);
+  assert.deepEqual(await manager.store.read(), before);
+  assert.equal(await readFile(join(manager.source, "original.txt"), "utf8"), "original source and local work");
+  assert.deepEqual((await readdir(manager.store.root)).filter(name => name.startsWith("source-history-")), []);
+});
+
+test("clean legacy official-source mismatch archives the old source and retries from the new tag", async (t) => {
+  const { manager, root } = await fixture(t);
+  const id = await manager.downloadRelease("v0.4.0");
+  await manager.store.update({ active: id });
+  manager.tools.prepare = async () => { throw new Error("fixture tool preparation failure"); };
+  await assert.rejects(manager.prepare(), /tool preparation failure/);
+  const state = await manager.store.read();
+  assert.equal(state.prepared, false);
+  assert.equal(state.baseTag, "v0.4.0");
+  assert.equal(state.selectedBase, id);
+  assert.equal(state.workspaceBase, id);
+  assert.equal(state.threadId, null);
+  assert.equal(state.baseSourceHash, null);
+  assert.equal(await exists(manager.source), false);
+  const archives = (await readdir(manager.store.root)).filter(name => name.startsWith("source-history-"));
+  assert.equal(archives.length, 1);
+  assert.equal(await readFile(join(manager.store.root, archives[0], "original.txt"), "utf8"), "original source and local work");
+  // An absent local executable stops clone before any network access, after the new tag is selected.
+  manager.tools.prepare = async () => ({ git: join(root, "nonexistent-fixture-git"), env: process.env });
+  await assert.rejects(manager.prepare(), { code: "ENOENT" });
+  assert.match(manager.logs, /正在获取 v0\.4\.0 的源码/);
+  assert.deepEqual((await readdir(manager.store.root)).filter(name => name.startsWith("source-history-")), archives);
+  assert.equal((await manager.store.read()).prepared, false);
+});
+
 test("an official switch prepares a recoverable source baseline after the old app stops", async (t) => {
   const { manager } = await fixture(t);
   const id = await manager.downloadRelease("v0.4.0");

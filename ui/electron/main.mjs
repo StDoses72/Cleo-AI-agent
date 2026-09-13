@@ -260,6 +260,7 @@ app.whenReady().then(async () => {
         event.sender.send("cleo:stream-event", { streamId, event: streamEvent });
       }
     };
+    if (programUpdates.closed) throw new Error("Cleo 正在退出，请稍后重试。");
     const isEvolution = method === "stream_turn" && await backend.request("is_evolution_thread", { thread_id: params.thread_id });
     if (programUpdates.closed) throw new Error("Cleo 正在退出，请稍后重试。");
     if (method === "stream_turn" && programUpdates.blocksTasks) throw new Error("请等待当前版本操作完成。");
@@ -400,7 +401,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", createQuitBarrier({
-  close: [() => programUpdates.close(), () => backend.close(), () => dependencies.close(),
+  close: [() => programUpdates.close(), () => backend.shutdown(), () => dependencies.close(),
     () => releaseDownloads.close(), () => evolution.close(), () => evolution.cancelLogin()],
   onError: error => console.error("Cleo shutdown failed:", error),
   quit: () => app.quit(),

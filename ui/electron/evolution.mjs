@@ -251,9 +251,16 @@ export class EvolutionManager {
     return this.operation("preparing", async () => {
       await this.ensureBaseline();
       const state = await this.store.read();
-      if (state.prepared && await exists(join(this.source, ".git"))) return this.source;
-      const tools = await this.prepareTools();
       const selected = await this.store.build(state.active);
+      if (state.prepared && await exists(join(this.source, ".git"))) {
+        if (selected.kind !== "official" || !state.baseTag || !selected.baseTag || state.baseTag === selected.baseTag) return this.source;
+        // Older controllers changed active without advancing the editable source baseline.
+        await this.assertOfficialSwitchAllowed();
+        await this.store.update({ selectedBase: selected.id, workspaceBase: selected.id, baseTag: selected.baseTag,
+          prepared: false, threadId: null, iteration: null, candidate: null, draftDirty: false, baseSourceHash: null, pendingMerge: null });
+        await rename(this.source, join(this.store.root, `source-history-${randomUUID()}`));
+      }
+      const tools = await this.prepareTools();
       const baseTag = selected.baseTag || `v${selected.version || this.app.getVersion()}`;
       if (!/^v\d+\.\d+\.\d+$/.test(baseTag)) throw new Error("当前程序没有正式版本号，无法确定源码基准。");
       const temporary = join(this.store.root, `source-${randomUUID()}`);

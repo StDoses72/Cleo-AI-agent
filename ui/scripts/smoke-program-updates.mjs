@@ -121,9 +121,15 @@ try {
     await settings.getByRole("button", { name: "更新", exact: true }).click();
     await page.locator(".update-settings-page").waitFor();
   }
+  async function assertDisabled(button, disabled, message) {
+    // IPC events schedule a React render; wait for the resulting control state.
+    await button.and(page.locator(disabled ? ":disabled" : ":enabled")).waitFor();
+    assert.equal(await button.isDisabled(), disabled, message);
+  }
   async function assertInstallDisabled(message) {
-    assert.equal(await notice.getByRole("button", { name: "重启安装", exact: true }).isDisabled(), true, message);
-    assert.equal(await updateAction.isDisabled(), true, message);
+    await assertDisabled(notice.getByRole("button", { name: "重启安装", exact: true }), true, message);
+    await assertDisabled(updateAction, true, message);
+    await notice.getByText("请先保存或放弃本轮进化，再安装更新。", { exact: true }).waitFor();
     assert.match(await notice.innerText(), /先保存或放弃本轮进化/);
   }
   async function assertNoEnabledInstall() {
@@ -152,28 +158,31 @@ try {
   await openUpdates();
   assert.doesNotMatch(await settings.innerText(), /下次启动自动安装/);
   assert.match(await settings.innerText(), /点击后重启安装/);
-  assert.equal(await updateAction.isDisabled(), false);
+  await assertDisabled(updateAction, false);
   await setEvolution({ iteration: { base: "official-0.3.11", startedAt: "2026-09-13T12:00:00Z" } });
   await assertInstallDisabled("Unsaved iteration must block both install entries");
   await setEvolution({ iteration: null, draftDirty: true });
   await assertInstallDisabled("Dirty draft must block both install entries");
   await setEvolution({ draftDirty: false, latestSaved: "local-saved" });
-  assert.equal(await updateAction.isDisabled(), false, "Saving the iteration should restore installation");
-  assert.equal(await notice.getByRole("button", { name: "重启安装", exact: true }).isDisabled(), false);
+  await assertDisabled(updateAction, false, "Saving the iteration should restore installation");
+  await assertDisabled(notice.getByRole("button", { name: "重启安装", exact: true }), false);
   console.log("PASS: ready copy, iteration/draft guards, saved-iteration recovery");
 
   await closeSettings();
   await input.fill("下载期间保留的草稿");
   await setUpdate({ phase: "downloading", downloadedBytes: 120 * 1024 * 1024, operationBusy: true, blocksTasks: false });
+  await notice.getByText(/^正在下载更新/).waitFor();
   await input.fill("下载期间仍可编辑这条消息");
-  assert.equal(await send.isDisabled(), false, "Ordinary download blocks sending");
+  await assertDisabled(send, false, "Ordinary download blocks sending");
   await openUpdates();
-  assert(await updateAction.isDisabled(), "A second update action is possible during download");
+  await assertDisabled(updateAction, true, "A second update action is possible during download");
   await setUpdate({ phase: "available", operationBusy: true });
-  assert(await updateAction.isDisabled(), "Settings download action ignores operationBusy");
-  assert(await notice.getByRole("button", { name: "下载", exact: true }).isDisabled(), "Notice download action ignores operationBusy");
+  await settings.getByRole("button", { name: "下载更新", exact: true }).waitFor();
+  await assertDisabled(updateAction, true, "Settings download action ignores operationBusy");
+  await assertDisabled(notice.getByRole("button", { name: "下载", exact: true }), true, "Notice download action ignores operationBusy");
   await setUpdate({ phase: "up-to-date", operationBusy: true });
-  assert(await updateAction.isDisabled(), "Update check ignores operationBusy");
+  await settings.getByRole("button", { name: "重新检查", exact: true }).waitFor();
+  await assertDisabled(updateAction, true, "Update check ignores operationBusy");
   assert.deepEqual(await counts(), { check: 0, download: 0, install: 0, turn: 0 });
   console.log("PASS: one update operation at a time; ordinary downloads preserve the composer");
 
@@ -182,15 +191,15 @@ try {
   await notice.getByRole("button", { name: "重启安装", exact: true }).click();
   await notice.getByText("正在校验并解压更新…", { exact: true }).waitFor();
   await assertNoEnabledInstall();
-  assert(await send.isDisabled(), "Install preparation permits a new turn");
+  await assertDisabled(send, true, "Install preparation permits a new turn");
   await input.press("Enter");
   assert.equal((await counts()).turn, 0, "Enter bypasses the version-switch guard");
   await openUpdates();
-  assert(await updateAction.isDisabled(), "Settings allows another update during preparation");
+  await assertDisabled(updateAction, true, "Settings allows another update during preparation");
   await page.evaluate(() => window.__programUpdatesTest.completeInstall("校验失败，请重试。"));
   await notice.getByText("校验失败，请重试。", { exact: true }).waitFor();
   assert.match(await settings.innerText(), /校验失败，请重试/);
-  assert.equal(await updateAction.isDisabled(), false, "Failed preparation cannot be retried");
+  await assertDisabled(updateAction, false, "Failed preparation cannot be retried");
   await updateAction.click();
   await notice.getByText("正在校验并解压更新…", { exact: true }).waitFor();
   await assertNoEnabledInstall();
@@ -198,12 +207,14 @@ try {
   await setUpdate({ installStage: "restarting" });
   await notice.getByText("正在启动新版本…", { exact: true }).waitFor();
   assert.match(await settings.innerText(), /正在启动新版本/);
-  assert(await updateAction.isDisabled());
+  await assertDisabled(updateAction, true);
   await closeSettings();
-  assert(await send.isDisabled(), "Restarting permits a new turn");
+  await assertDisabled(send, true, "Restarting permits a new turn");
   assert.equal(await input.inputValue(), "下载期间仍可编辑这条消息", "Version operation discarded the draft");
   await page.evaluate(() => window.__programUpdatesTest.completeInstall("启动失败，请重试。"));
-  assert.equal(await send.isDisabled(), false, "Failed installation leaves tasks blocked");
+  await notice.getByText("启动失败，请重试。", { exact: true }).waitFor();
+  await assertDisabled(notice.getByRole("button", { name: "重启安装", exact: true }), false, "Failed installation cannot be retried");
+  await assertDisabled(send, false, "Failed installation leaves tasks blocked");
   console.log("PASS: immediate installing state, blocked sends, preparing/restarting copy, failure and retry");
 
   for (const scenario of [
@@ -231,6 +242,7 @@ try {
       await captureScreenshot(`program-updates-${label}-blocked.png`);
       await setEvolution({ iteration: null });
       await setUpdate({ phase: "installing", operationBusy: true, blocksTasks: true, installStage: "preparing" });
+      await notice.getByText("正在校验并解压更新…", { exact: true }).waitFor();
       await checkGeometry(`${label}-preparing`);
       await closeSettings();
       await checkGeometry(`${label}-notice`);
