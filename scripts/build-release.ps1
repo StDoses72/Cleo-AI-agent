@@ -374,6 +374,7 @@ try {
     $releaseMetadata = [ordered]@{
         schema_version = 1
         evolution_protocol = 2
+        build_kind = if ($env:CLEO_EVOLUTION_BASE_TAG) { "local" } else { "official" }
         app = "Cleo"
         version = $version
         platform = "windows-x64"

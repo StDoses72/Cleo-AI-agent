@@ -222,7 +222,7 @@ export class EvolutionManager {
     const metadata = await readJson(join(this.target.platform === "darwin" ? resources : source, "release.json"));
     if (metadata?.app !== "Cleo" || metadata.platform !== this.target.id || metadata.evolution_protocol !== 2
         || metadata.version !== this.app.getVersion() || !/^\d+\.\d+\.\d+$/.test(metadata.version)
-        || await exists(join(resources, "evolution-source.tar.gz"))) return null;
+        || (metadata.build_kind && metadata.build_kind !== "official")) return null;
     if (state.builds.some(build => build.id === state.baseline && build.version === metadata.version)) return null;
     const path = this.target.platform === "win32" ? resolve(this.executable).toLowerCase() : resolve(this.executable);
     const previous = state.installedReleases?.[path] || active.version;

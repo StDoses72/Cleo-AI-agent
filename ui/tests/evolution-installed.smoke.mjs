@@ -17,6 +17,8 @@ if (process.platform !== "win32") {
     await cp(join(ui, "node_modules/electron/dist"), bundle, { recursive: true });
     await rename(join(bundle, "electron.exe"), join(bundle, "Cleo.exe"));
     await rm(join(bundle, "resources/default_app.asar"));
+    // Match the real builders: every official package also carries its source snapshot.
+    await run(process.execPath, [join(ui, "../scripts/bundle-evolution-source.mjs"), join(bundle, "resources")]);
     const source = join(root, "source");
     await mkdir(source);
     await cp(join(ui, "electron"), join(source, "electron"), { recursive: true });

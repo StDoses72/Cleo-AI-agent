@@ -108,6 +108,7 @@ jobs:
         run: |
           npm --prefix ui run smoke:packaged
           npm --prefix ui run smoke:evolution-baseline
+          npm --prefix ui run smoke:evolution-installed-package
           python tests/integrations/smoke_packaged_memory.py ${{ runner.os == 'Windows' && 'release/Cleo/resources/python/python.exe' || 'release/Cleo.app/Contents/Resources/python/bin/python3' }}
       - name: Linux installed package smoke
         if: runner.os == 'Linux'
@@ -115,6 +116,7 @@ jobs:
           sudo apt-get install -y ./release/Cleo-linux-x64.deb
           CLEO_EXECUTABLE=/opt/Cleo/Cleo xvfb-run -a npm --prefix ui run smoke:packaged
           xvfb-run -a npm --prefix ui run smoke:evolution-baseline
+          CLEO_EXECUTABLE=/opt/Cleo/Cleo npm --prefix ui run smoke:evolution-installed-package
       - uses: actions/upload-artifact@v4
         if: always()
         with:

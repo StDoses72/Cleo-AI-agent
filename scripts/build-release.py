@@ -270,6 +270,7 @@ def build(*, locked_dependencies: bool = False) -> None:
         metadata = {
             "schema_version": 1,
             "evolution_protocol": 2,
+            "build_kind": "local" if os.environ.get("CLEO_EVOLUTION_BASE_TAG") else "official",
             "app": "Cleo",
             "version": version,
             "platform": target["id"],

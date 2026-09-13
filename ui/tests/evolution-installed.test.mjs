@@ -20,6 +20,7 @@ async function fixture(t) {
   await mkdir(dirname(manager.executable), { recursive: true });
   await writeFile(manager.executable, "new executable");
   await writeFile(join(resources, "app.asar"), "new application archive");
+  await writeFile(join(resources, "evolution-source.tar.gz"), "official releases also include source");
   const metadataPath = join(bundle, manager.target.platform === "darwin" ? manager.target.resources : "", "release.json");
   const metadata = { schema_version: 1, app: "Cleo", version: "0.4.0", platform: manager.target.id, evolution_protocol: 2 };
   await writeJson(metadataPath, metadata);
@@ -124,13 +125,14 @@ test("internal retained packages, older installs and development bundles never t
   manager.executable = join(manager.store.root, "builds/another", manager.target.bundle, manager.target.executable);
   assert.equal(await manager.installedRelease(), null);
   manager.executable = external;
-  for (const changes of [{ version: "0.3.9" }, { version: "0.3.10" }, { platform: "other" }, { evolution_protocol: 1 }]) {
+  for (const changes of [{ version: "0.3.9" }, { version: "0.3.10" }, { platform: "other" }, { evolution_protocol: 1 }, { build_kind: "local" }]) {
     await writeJson(metadataPath, { ...metadata, ...changes });
     assert.equal(await manager.installedRelease(), null);
   }
   await writeJson(metadataPath, metadata);
-  await writeFile(join(resources, "evolution-source.tar.gz"), "local source");
-  assert.equal(await manager.installedRelease(), null);
+  assert.equal((await manager.installedRelease()).version, "0.4.0", "Legacy official releases with bundled source must still be recognized");
+  await writeJson(metadataPath, { ...metadata, build_kind: "official" });
+  assert.equal((await manager.installedRelease()).version, "0.4.0");
 });
 
 test("a state change between detection and staging cannot overwrite a new draft", async (t) => {
