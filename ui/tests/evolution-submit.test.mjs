@@ -26,7 +26,7 @@ async function fixture(t) {
   await writeFile(env.GIT_CONFIG_GLOBAL, "");
   const manager = new EvolutionManager({ app: { isPackaged: false, getVersion: () => "0.3.9" }, root: join(root, "controller"), dataHome: join(root, "home") });
   await mkdir(join(manager.source, "ui/electron"), { recursive: true });
-  for (const name of ["bootstrap.mjs", "evolution.mjs", "evolution-store.mjs", "evolution-tools.mjs", "evolution-recovery.mjs", "evolution-launch.mjs", "evolution-progress.mjs", "evolution-handoff.mjs"]) {
+  for (const name of ["bootstrap.mjs", "evolution.mjs", "evolution-store.mjs", "evolution-tools.mjs", "evolution-recovery.mjs", "evolution-launch.mjs", "evolution-progress.mjs", "evolution-handoff.mjs", "release-downloads.mjs", "program-updates.mjs", "updater.mjs", "shutdown.mjs"]) {
     await cp(new URL(`../electron/${name}`, import.meta.url), join(manager.source, "ui/electron", name));
   }
   await writeFile(join(manager.source, "ui/package.json"), '{"main":"electron/bootstrap.mjs"}');

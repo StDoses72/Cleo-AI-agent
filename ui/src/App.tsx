@@ -177,6 +177,13 @@ export function App() {
     totalBytes: 0,
     error: null,
   });
+  const localCandidate = evolution.state?.builds.find(build => build.id === evolution.state?.candidate);
+  const unfinishedEvolution = evolution.state?.iteration || evolution.state?.draftDirty
+    || (localCandidate?.kind === "local" && !localCandidate.savedAt);
+  const displayedUpdateState: UpdateState = { ...updateState,
+    installBlocked: workspace.runningThreadId ? "请先等待当前任务结束。"
+      : unfinishedEvolution ? "请先保存或放弃本轮进化，再安装更新。" : null,
+  };
   const toastTimerRef = useRef<number | null>(null);
 
   const notify = (message: string, tone: "success" | "error" = "success") => {
@@ -406,25 +413,25 @@ export function App() {
             preparation={evolutionOpen && <EvolutionPreparation
               requests={(evolution.state?.acceptanceRequests || []).filter((r) => r.threadId === workspace.activeThreadId)}
               acceptance={evolution.state?.acceptance} preparing={preparingAcceptance}
-              busy={preparingAcceptance || evolution.pending || Boolean(workspace.runningThreadId) || evolution.state?.phase !== "idle"}
+              busy={preparingAcceptance || evolution.pending || updateState.operationBusy || Boolean(workspace.runningThreadId) || evolution.state?.phase !== "idle"}
               onResume={(request, clarification) => { void sendEvolutionPrompt(request.prompt, true,
                 request.execution ? crypto.randomUUID() : request.id, request, clarification, Boolean(request.execution)); }}
               onRevise={(params) => evolution.run("reviseRequest", params)} />}
           header={evolutionOpen ? <EvolutionPanel state={evolution.state} error={evolutionIssue || evolution.error}
-            busy={openingEvolutionUi || evolution.pending || Boolean(evolution.state && evolution.state.phase !== "idle")}
+            busy={openingEvolutionUi || evolution.pending || updateState.operationBusy || Boolean(evolution.state && evolution.state.phase !== "idle")}
             running={Boolean(workspace.runningThreadId)} inspectorOpen={showInspector} onToggleInspector={() => setInspectorOpen((open) => !open)}
             onAction={evolutionAction} onRetry={() => retryEvolution.current()} onRepair={() => { void repairEvolution(); }}>
-              <EvolutionCases state={evolution.state?.acceptance} busy={evolution.pending || Boolean(workspace.runningThreadId) || evolution.state?.phase !== "idle"}
+              <EvolutionCases state={evolution.state?.acceptance} busy={evolution.pending || updateState.operationBusy || Boolean(workspace.runningThreadId) || evolution.state?.phase !== "idle"}
                 currentCaseIds={evolution.state?.acceptanceRequests?.filter((r) => r.threadId === workspace.activeThreadId).at(-1)?.cases.map((c) => c.item.id)}
                 canCompare={evolution.state?.validation?.status === "passed" && !evolution.state.draftDirty}
                 onAction={evolutionAction} onImprove={improveFromCase} onCreate={createEvolutionCase} />
             </EvolutionPanel> : undefined}
           improvement={!evolutionOpen && conversationThread && window.cleoDesktop && <EvolutionCases thread={conversationThread}
-            busy={Boolean(workspace.runningThreadId) || evolution.pending} onAction={evolutionAction} onImprove={improveFromCase} onCreate={createEvolutionCase} />}
+            busy={Boolean(workspace.runningThreadId) || evolution.pending || Boolean(updateState.operationBusy)} onAction={evolutionAction} onImprove={improveFromCase} onCreate={createEvolutionCase} />}
           prompt={workspace.prompt}
           onPromptChange={workspace.setPrompt}
           sendError={workspace.sendError}
-            sendBlocked={evolutionOpen && (preparingAcceptance || openingEvolutionUi || evolution.pending || !evolution.state?.supported || evolution.state?.phase !== "idle") ? "正在处理本地改动，请稍候…" : workspace.startingRun ? "正在提交，请稍候…" : workspace.runningThreadId && workspace.runningThreadId !== workspace.activeThreadId ? "另一个任务正在运行，完成或停止后即可发送。" : null}
+            sendBlocked={updateState.blocksTasks || (evolutionOpen && updateState.operationBusy) ? "正在处理版本，请稍候…" : evolutionOpen && (preparingAcceptance || openingEvolutionUi || evolution.pending || !evolution.state?.supported || evolution.state?.phase !== "idle") ? "正在处理本地改动，请稍候…" : workspace.startingRun ? "正在提交，请稍候…" : workspace.runningThreadId && workspace.runningThreadId !== workspace.activeThreadId ? "另一个任务正在运行，完成或停止后即可发送。" : null}
           onRename={workspace.renameThread}
           thread={conversationThread}
           project={conversationProject}
@@ -533,7 +540,7 @@ export function App() {
         modelSettingsLoading={workspace.modelSettingsLoading}
         agentInstructions={workspace.agentInstructions}
         agentInstructionsLoading={workspace.agentInstructionsLoading}
-        updateState={updateState}
+        updateState={displayedUpdateState}
         onThemeChange={setTheme}
         onRuntimeChange={workspace.updateRuntime}
         onLoadModelSettings={workspace.loadModelSettings}
@@ -590,7 +597,7 @@ export function App() {
         }}
       />
       <UpdateNotice
-        state={updateState}
+        state={displayedUpdateState}
         onDownload={() => runUpdateAction("download")}
         onInstall={() => runUpdateAction("install")}
       />

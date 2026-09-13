@@ -22,6 +22,10 @@ export interface UpdateState {
   downloadedBytes: number;
   totalBytes: number;
   error: string | null;
+  operationBusy?: boolean;
+  blocksTasks?: boolean;
+  installBlocked?: string | null;
+  installStage?: "preparing" | "restarting" | null;
   dependencies?: { phase: string; error: string | null };
 }
 

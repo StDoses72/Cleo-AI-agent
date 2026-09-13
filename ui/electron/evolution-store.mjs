@@ -9,6 +9,8 @@ import { join, resolve, relative, isAbsolute, dirname } from "node:path";
 
 const mutationQueues = new Map();
 const jsonQueues = new Map();
+const SELECTION_FIELDS = ["selectedBase", "workspaceBase", "baseTag", "prepared", "threadId",
+  "iteration", "candidate", "draftDirty", "baseSourceHash", "pendingMerge"];
 
 /** Purpose: Keep our readers from competing with atomic replacements.
  * Input: file and I/O action. Output: ordered completion; failures do not block the queue.
@@ -199,7 +201,7 @@ export class EvolutionStore {
       .sort((a, b) => b.savedAt.localeCompare(a.savedAt));
     const latestSaved = saved.find((build) => build.id === state.latestSaved)?.id || saved[0]?.id || null;
     const keep = new Set([state.baseline, workspaceBase, latestSaved, state.active,
-      state.selectedBase, state.iteration?.base, state.candidate, state.pendingImport?.from].filter(Boolean));
+      state.selectedBase, state.iteration?.base, state.candidate, state.downloadedOfficial, state.pendingImport?.from].filter(Boolean));
     const executingPath = relative(ownedPath(this.root, "builds"), resolve(process.execPath));
     if (!executingPath.startsWith("..") && !isAbsolute(executingPath)) keep.add(executingPath.split(/[\\\\/]/)[0]);
     // Missing recovery dependencies must not turn a damaged registry into destructive cleanup.
@@ -247,13 +249,20 @@ export class EvolutionStore {
   }
 
   /** Input: target build id. Output: program-only switch; shared user data and active selection are unchanged. */
-  async stage(target) {
-    await this.build(target);
+  async stage(target, { officialSelection = false, restartError = null } = {}) {
+    const build = await this.build(target);
     const state = await this.read();
     if (state.transaction) throw new Error("上一次应用尚未完成，请打开恢复入口。");
+    if (officialSelection && build.kind !== "official") throw new Error("只有正式版本可以重置正式源码基准。");
     const transaction = {
       id: randomUUID(), from: state.active, to: target,
-      phase: "staged", backup: null, createdAt: new Date().toISOString(),
+      phase: "staged", backup: null, createdAt: new Date().toISOString(), restartError,
+      previousRestartError: state.lastRestartError || null,
+    };
+    if (officialSelection) transaction.officialSelection = {
+      baseTag: build.baseTag || `v${build.version}`,
+      sourceArchive: `source-history-${transaction.id}`,
+      originalSelection: Object.fromEntries(SELECTION_FIELDS.map((name) => [name, state[name] ?? null])),
     };
     await this.update({ transaction });
     return transaction;
@@ -278,7 +287,21 @@ export class EvolutionStore {
     }
     // Ignore legacy restore requests: switching programs must never replace current user data.
     delete tx.restore;
-    await this.update({ active: tx.to, transaction: { ...tx, phase: "starting" } });
+    const patch = {};
+    if (tx.officialSelection) {
+      const selection = tx.officialSelection;
+      const source = ownedPath(this.root, "source");
+      const archived = ownedPath(this.root, selection.sourceArchive);
+      if (await exists(source)) {
+        if (await exists(archived)) throw new Error("源码归档已存在，不能覆盖；请使用恢复入口。");
+        await fs.rename(source, archived);
+      }
+      Object.assign(patch, { selectedBase: tx.to, workspaceBase: tx.to, baseTag: selection.baseTag,
+        prepared: false, threadId: null, iteration: null, candidate: null, draftDirty: false, baseSourceHash: null, pendingMerge: null });
+    }
+    // Prepare while the old app is stopped and the controller holds the instance lock.
+    // Older protocol-2 targets can complete this journal without knowing selection fields.
+    await this.update({ ...patch, active: tx.to, transaction: { ...tx, phase: "starting" }, lastRestartError: tx.restartError || null });
     return this.build(tx.to);
   }
 
@@ -287,7 +310,19 @@ export class EvolutionStore {
    */
   async recover(target) {
     const build = await this.build(target);
-    await this.update({ active: target, transaction: null });
+    const { transaction } = await this.read();
+    const patch = {};
+    if (transaction?.officialSelection) {
+      const source = ownedPath(this.root, "source");
+      const archived = ownedPath(this.root, transaction.officialSelection.sourceArchive);
+      if (await exists(archived)) {
+        if (await exists(source)) throw new Error("原源码和恢复源码同时存在，请检查后再恢复，不能覆盖现有源码。");
+        await fs.rename(archived, source);
+      }
+      Object.assign(patch, transaction.officialSelection.originalSelection);
+    }
+    if (transaction && Object.hasOwn(transaction, "previousRestartError")) patch.lastRestartError = transaction.previousRestartError;
+    await this.update({ ...patch, active: target, transaction: null });
     return build;
   }
 

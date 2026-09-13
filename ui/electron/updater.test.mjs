@@ -4,7 +4,7 @@ import { execFile } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { copyFile, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { PassThrough } from "node:stream";
 import test from "node:test";
 import { promisify } from "node:util";
@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 
 import { compareVersions, DesktopUpdater, validateManifest as validatePlatformManifest } from "./updater.mjs";
 import { installationPaths, readInstallation, writeInstallation } from "./install-state.mjs";
+import { ReleaseDownloads } from "./release-downloads.mjs";
 
 const validateManifest = (value) => validatePlatformManifest(value, { id: "windows-x64", archive: "Cleo-windows-x64.zip" });
 
@@ -150,6 +151,31 @@ test("a verified download never authorizes installation on the next launch", asy
   }
 });
 
+test("the updater delegates to the shared cache consumed by version activation", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cleo-shared-updater-"));
+  const archive = Buffer.from("one download for update and activation");
+  const raw = { ...manifest, bytes: archive.length, sha256: createHash("sha256").update(archive).digest("hex") };
+  let fetched = 0;
+  try {
+    const downloads = new ReleaseDownloads({ root: join(root, "profile", "evolution", "downloads"),
+      fetchImpl: async () => { fetched++; return new Response(archive); },
+    });
+    const updater = new DesktopUpdater({ app: { isPackaged: true, getVersion: () => "0.1.0", getPath: () => root },
+      platform: "win32", arch: "x64", downloads,
+      fetchImpl: async () => ({ ok: true, json: async () => raw }),
+    });
+    const state = await updater.download();
+    assert.equal(state.phase, "ready");
+    assert.equal(state.downloadedBytes, archive.length);
+    const activeArchive = await downloads.get(validateManifest(raw), { url: "https://example.test/release.zip" });
+    assert.equal(updater.archivePath, activeArchive);
+    assert.equal(updater.archiveFor(validateManifest(raw)), activeArchive);
+    assert.equal(fetched, 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("a changed pending archive cannot trigger automatic installation", async () => {
   const root = await mkdtemp(join(tmpdir(), "cleo-auto-update-invalid-"));
   try {
@@ -160,7 +186,7 @@ test("a changed pending archive cannot trigger automatic installation", async ()
     });
     await writeFile(updater.pendingPath(), JSON.stringify(manifest));
     const archive = updater.archiveFor(validateManifest(manifest));
-    await mkdir(join(root, "cleo-update-0.2.0"));
+    await mkdir(dirname(archive), { recursive: true });
     await writeFile(archive, "tampered");
     updater.install = async () => { throw new Error("must not install"); };
     assert.equal(await updater.installPending(), false);

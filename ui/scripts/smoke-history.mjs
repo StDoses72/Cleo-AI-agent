@@ -113,6 +113,31 @@ try {
   const inspector = page.getByTestId("inspector");
   if (await inspector.count()) await inspector.getByRole("button", { name: "关闭检查器", exact: true }).click();
   const viewport = page.locator(".conversation-viewport");
+  // Deliver wheel intent before the compositor's scroll position, then cause an
+  // unrelated React render before the native scroll event reaches the timeline.
+  for (const frames of [1, 4]) {
+    const before = await page.getByTestId("conversation").getAttribute("data-cache-first");
+    await viewport.evaluate(async (element, frames) => {
+      element.dispatchEvent(new WheelEvent("wheel", { deltaY: -10000000, bubbles: true }));
+      for (let frame = 0; frame < frames; frame++) await new Promise(resolve => requestAnimationFrame(resolve));
+      element.scrollTop = 0;
+      const input = document.querySelector('[data-testid="composer-input"]');
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(input, `Scroll regression ${frames}`);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }, frames);
+    await page.waitForFunction(old => document.querySelector("[data-cache-first]")?.getAttribute("data-cache-first") !== old, before);
+    await page.waitForFunction(() => {
+      const view = document.querySelector(".conversation-viewport");
+      return view.scrollHeight - view.clientHeight - view.scrollTop > 96 && document.querySelector(".history-latest");
+    });
+    assert(await page.evaluate(() => window.historyRequests.some(request => request.direction === "before")),
+      "Delayed native scrolling did not load earlier history");
+    assert.equal(await page.getByTestId("composer-input").inputValue(), `Scroll regression ${frames}`);
+    await page.getByRole("button", { name: "回到最新", exact: true }).click();
+    await page.getByRole("button", { name: "回到最新", exact: true }).waitFor({ state: "hidden" });
+    await page.getByText("History item 9999", { exact: true }).waitFor();
+  }
+  await page.getByTestId("composer-input").fill("");
   await viewport.hover(); await page.mouse.wheel(0, -600);
   await page.waitForFunction(() => document.querySelector(".history-latest"));
   const anchored = await page.evaluate(async () => {
@@ -134,6 +159,7 @@ try {
     return row && Math.abs(row.getBoundingClientRect().top - document.querySelector(".conversation-viewport").getBoundingClientRect().top - top) < 3;
   }, anchored);
   await page.getByRole("button", { name: "回到最新", exact: true }).click();
+  await page.getByRole("button", { name: "回到最新", exact: true }).waitFor({ state: "hidden" });
   await page.getByText("History item 9999", { exact: true }).waitFor();
   for (let i = 0; i < 140; i++) {
     const before = await page.locator("[data-cache-first]").getAttribute("data-cache-first");
@@ -162,6 +188,7 @@ try {
     await page.waitForFunction(old => document.querySelector("[data-cache-first]")?.getAttribute("data-cache-first") !== old, first);
   }
   await page.getByRole("button", { name: "回到最新", exact: true }).click();
+  await page.getByRole("button", { name: "回到最新", exact: true }).waitFor({ state: "hidden" });
   await page.getByText("History item 9999", { exact: true }).waitFor();
   await page.evaluate(() => { window.delayHistory = true; });
   await viewport.hover(); await page.mouse.wheel(0, -10000000);

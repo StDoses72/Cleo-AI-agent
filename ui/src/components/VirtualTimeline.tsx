@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
 interface Row { id: string }
 
@@ -13,8 +13,15 @@ export function VirtualTimeline<T extends Row>({ rows, viewport, follow, bottomI
   const observer = useRef<ResizeObserver | null>(null);
   const anchor = useRef<{ id: string; top: number } | null>(null);
   const previousThread = useRef(threadId);
-  const adjusting = useRef(false);
+  const programmaticScrollTop = useRef<number | null>(null);
+  const observedScrollTop = useRef<number | null>(null);
+  const onScrollRef = useRef(onScroll);
+  onScrollRef.current = onScroll;
   const [, refresh] = useState(0);
+  // Native scrolling can move the viewport before its scroll event reaches React.
+  const unobservedScroll = (top: number) => observedScrollTop.current !== null
+    && Math.abs(top - observedScrollTop.current) > 1
+    && (programmaticScrollTop.current === null || Math.abs(top - programmaticScrollTop.current) > 1);
   const remember = useCallback(() => {
     if (follow.current || !viewport.current) return;
     const top = viewport.current.getBoundingClientRect().top;
@@ -24,10 +31,19 @@ export function VirtualTimeline<T extends Row>({ rows, viewport, follow, bottomI
     anchor.current = node ? { id: node[0], top: node[1].getBoundingClientRect().top - top } : null;
   }, [follow, viewport]);
 
-  useLayoutEffect(() => {
-    const userScroll = () => { adjusting.current = false; anchor.current = null; };
+  // The parent viewport ref is available after the complete layout commit.
+  useEffect(() => {
+    const userScroll = () => {
+      programmaticScrollTop.current = null;
+      anchor.current = null;
+    };
     const scroll = () => {
-      if (!adjusting.current) { onScroll(); remember(); }
+      const top = viewport.current?.scrollTop;
+      if (top === undefined) return;
+      const expected = programmaticScrollTop.current;
+      programmaticScrollTop.current = null;
+      observedScrollTop.current = top;
+      if (expected === null || Math.abs(top - expected) > 1) { onScrollRef.current(); remember(); }
       refresh(value => value + 1);
     };
     const element = viewport.current;
@@ -41,9 +57,9 @@ export function VirtualTimeline<T extends Row>({ rows, viewport, follow, bottomI
       element?.removeEventListener("pointerdown", userScroll);
       element?.removeEventListener("keydown", userScroll);
     };
-  }, [viewport, onScroll, remember]);
+  }, [viewport, remember]);
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     observer.current = new ResizeObserver(entries => {
       let changed = false;
       for (const entry of entries) {
@@ -63,6 +79,7 @@ export function VirtualTimeline<T extends Row>({ rows, viewport, follow, bottomI
 
   if (previousThread.current !== threadId) {
     heights.current.clear(); anchor.current = null; follow.current = true;
+    observedScrollTop.current = null; programmaticScrollTop.current = null;
     previousThread.current = threadId;
   }
   const activeIds = new Set(rows.map(row => row.id));
@@ -75,8 +92,10 @@ export function VirtualTimeline<T extends Row>({ rows, viewport, follow, bottomI
     ? container.current.getBoundingClientRect().top - view.getBoundingClientRect().top + view.scrollTop : 0;
   let scrollTop = Math.max(0, (view?.scrollTop ?? 0) - containerTop);
   const anchorIndex = anchor.current ? rows.findIndex(row => row.id === anchor.current!.id) : -1;
-  if (follow.current) scrollTop = Math.max(0, offsets.at(-1)! - height);
-  else if (anchorIndex >= 0) scrollTop = Math.max(0, offsets[anchorIndex] - anchor.current!.top);
+  if (!unobservedScroll(view?.scrollTop ?? 0)) {
+    if (follow.current) scrollTop = Math.max(0, offsets.at(-1)! - height);
+    else if (anchorIndex >= 0) scrollTop = Math.max(0, offsets[anchorIndex] - anchor.current!.top);
+  }
   let first = 0;
   while (first < rows.length - 1 && offsets[first + 1] < scrollTop) first++;
   let end = first;
@@ -87,16 +106,17 @@ export function VirtualTimeline<T extends Row>({ rows, viewport, follow, bottomI
   useLayoutEffect(() => {
     const element = viewport.current;
     if (!element) return;
-    adjusting.current = true;
+    const previousTop = element.scrollTop;
+    if (unobservedScroll(previousTop)) { anchor.current = null; onScrollRef.current(); }
     if (follow.current) element.scrollTop = element.scrollHeight;
     else if (anchor.current) {
       const node = nodes.current.get(anchor.current.id);
       if (node) element.scrollTop += node.getBoundingClientRect().top
         - element.getBoundingClientRect().top - anchor.current.top;
     }
+    if (element.scrollTop !== previousTop) programmaticScrollTop.current = element.scrollTop;
+    observedScrollTop.current = element.scrollTop;
     if (!follow.current && !anchor.current) remember();
-    const frame = requestAnimationFrame(() => { adjusting.current = false; });
-    return () => cancelAnimationFrame(frame);
   });
 
   return <div className="timeline virtual-timeline" ref={container} data-testid="timeline"
