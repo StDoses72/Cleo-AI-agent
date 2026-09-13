@@ -50,6 +50,7 @@ async function boot() {
   const transactionId = process.env.CLEO_EVOLUTION_TRANSACTION;
   ipcMain.handle("cleo:evolution:healthy", async () => {
     await store.exclusive(() => store.healthy(transactionId));
+    app.emit("cleo:healthy", transactionId);
   });
   await import("./main.mjs");
 }

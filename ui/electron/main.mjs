@@ -18,6 +18,9 @@ import {
 import { BackendBridge } from "./backend.mjs";
 import { openLocalHref } from "./local-files.mjs";
 import { DesktopUpdater } from "./updater.mjs";
+import { ReleaseDownloads } from "./release-downloads.mjs";
+import { ProgramUpdates } from "./program-updates.mjs";
+import { createQuitBarrier } from "./shutdown.mjs";
 import { DependencyUpdater } from "./dependencies.mjs";
 import {
   acquireSingleInstance, installationPaths, interceptUpdateStartup,
@@ -33,8 +36,17 @@ if (app.isPackaged) {
   if (!acquireSingleInstance(app, () => BrowserWindow.getAllWindows())) app.exit(0);
 }
 const backend = new BackendBridge({ app, here });
+const evolutionRoot = join(app.getPath("userData"), "evolution");
+const releaseDownloads = new ReleaseDownloads({
+  root: join(evolutionRoot, "downloads"),
+  legacyPaths: manifest => [
+    join(app.getPath("temp"), `cleo-update-${manifest.version}${process.platform === "win32" ? "" : `-${manifest.platform}`}`, manifest.archive),
+    join(evolutionRoot, "downloads", `v${manifest.version}-${manifest.archive}`),
+  ],
+});
 const updater = new DesktopUpdater({
   app,
+  downloads: releaseDownloads,
   resourcesPath: process.resourcesPath,
   onState: (state) => {
     for (const window of BrowserWindow.getAllWindows()) {
@@ -48,15 +60,29 @@ const dependencies = new DependencyUpdater({
   onState: (state) => updater.setState({ dependencies: state }),
 });
 const evolution = new EvolutionManager({
-  app, root: join(app.getPath("userData"), "evolution"), dataHome: backend.runtimePaths().cleoHome,
+  app, root: evolutionRoot, dataHome: backend.runtimePaths().cleoHome,
+  downloads: releaseDownloads,
   openExternal: (url) => shell.openExternal(url),
   onState: () => {
+    updater.setState({ operationBusy: programUpdates.busy || evolution.phase !== "idle",
+      blocksTasks: programUpdates.blocksTasks || evolution.phase !== "idle" });
     void evolutionState().then((state) => {
       for (const window of BrowserWindow.getAllWindows()) {
         if (!window.isDestroyed()) window.webContents.send("cleo:evolution:state", state);
       }
     }).catch((error) => console.error("Evolution status:", error.message));
   },
+});
+const programUpdates = new ProgramUpdates({ updater, evolution, apply: applyEvolution,
+  hasRunningTask: () => backend.pending.size > 0 });
+app.on("cleo:healthy", (transactionId) => {
+  void evolution.store.read().then(state => {
+    if (!transactionId || state.transaction || state.lastApplication?.id !== transactionId) return;
+    const build = state.builds.find(item => item.id === state.active);
+    if (build?.kind === "official" && state.lastApplication.to === state.active) {
+      updater.setState({ phase: "updated", latestVersion: build.version, installStage: null, error: null });
+    }
+  }).catch(error => console.error("Update result:", error.message));
 });
 process.env.CLEO_EVOLUTION_WORKSPACE = evolution.source;
 const acceptance = new EvolutionAcceptance(evolution.store);
@@ -91,6 +117,7 @@ async function applyEvolution(id) {
     await backend.restart();
     throw error;
   }
+  programUpdates.beginRestart();
   app.quit();
   return Boolean(tx);
 }
@@ -219,10 +246,12 @@ app.whenReady().then(async () => {
     });
   });
   ipcMain.handle("cleo:request", async (event, payload) => {
+    if (programUpdates.closed) throw new Error("Cleo 正在退出，请稍后重试。");
     const method = String(payload?.method || "");
     if (!allowedMethods.has(method)) throw new Error(`Unsupported desktop method: ${method}`);
     const streamId = payload?.streamId ? String(payload.streamId) : null;
-    if (method === "stream_turn" && evolution.phase !== "idle") {
+    if (method === "stream_turn" && (programUpdates.blocksTasks || evolution.phase !== "idle"
+        || (await evolution.store.read()).transaction)) {
       throw new Error("请等待进化操作完成后再修改代码。");
     }
     const params = payload?.params || {};
@@ -232,6 +261,9 @@ app.whenReady().then(async () => {
       }
     };
     const isEvolution = method === "stream_turn" && await backend.request("is_evolution_thread", { thread_id: params.thread_id });
+    if (programUpdates.closed) throw new Error("Cleo 正在退出，请稍后重试。");
+    if (method === "stream_turn" && programUpdates.blocksTasks) throw new Error("请等待当前版本操作完成。");
+    if (isEvolution && programUpdates.busy) throw new Error("请等待当前版本操作完成。");
     const result = isEvolution
       ? await runPreparedEvolutionTurn({ evolution, requests: acceptanceRequests, acceptance, backend, params, onEvent })
       : await backend.request(method, params, onEvent);
@@ -289,14 +321,9 @@ app.whenReady().then(async () => {
     }
   });
   ipcMain.handle("cleo:update:get-state", () => updater.getState());
-  ipcMain.handle("cleo:update:check", () => updater.check());
-  ipcMain.handle("cleo:update:download", () => updater.download());
-  ipcMain.handle("cleo:update:install", async () => {
-    const releases = await evolution.releases();
-    const release = releases.find((item) => item.tag.replace(/^v/, "") === updater.getState().latestVersion);
-    if (!release) throw new Error("请重新检查正式版本。");
-    return applyEvolution(await evolution.downloadRelease(release.tag));
-  });
+  ipcMain.handle("cleo:update:check", () => programUpdates.check());
+  ipcMain.handle("cleo:update:download", () => programUpdates.download());
+  ipcMain.handle("cleo:update:install", () => programUpdates.install());
   ipcMain.handle("cleo:evolution:state", () => evolutionState());
   ipcMain.handle("cleo:evolution:action", async (_event, payload) => {
     const { action, ...params } = payload || {};
@@ -335,13 +362,16 @@ app.whenReady().then(async () => {
       apply: () => applyEvolution(params.id),
       thread: () => evolution.operation("preparing", () => evolution.store.update({ threadId: String(params.id || "") })),
       recovery: async () => {
-        await evolution.ensureBaseline();
+        await evolution.operation("preparing", () => evolution.ensureBaseline());
         const selected = await showRecovery(evolution.store, { selectOnly: true, parentWindow: BrowserWindow.fromWebContents(_event.sender) });
         if (selected) return applyEvolution(selected);
       },
     };
     if (!Object.hasOwn(actions, action)) throw new Error("不支持的进化操作。");
-    return actions[action]();
+    if (["cancelLogin", "openGithubLogin", "requestPrompt", "casePrompt"].includes(action)) return actions[action]();
+    return programUpdates.run(actions[action], {
+      allowRunning: ["releases", "download", "pullRequest"].includes(action),
+    });
   });
   if (!app.isPackaged) ipcMain.handle("cleo:evolution:healthy", () => {});
   // Downloaded updates never authorize installation. Selection is explicit and recoverable.
@@ -356,12 +386,12 @@ app.whenReady().then(async () => {
       detail: installResult.error || "新版本已安装完成。",
     });
   }
-  const refresh = () => updater.check().catch((error) => console.error("Update check:", error.message));
-  if (!hasInstallResult) setTimeout(() => void refresh(), 1500);
+  const refresh = () => programUpdates.check().catch((error) => console.error("Update check:", error.message));
+  if (!hasInstallResult && !process.env.CLEO_EVOLUTION_TRANSACTION) setTimeout(() => void refresh(), 1500);
   const refreshTimer = setInterval(() => void refresh(), 6 * 60 * 60 * 1000);
   app.once("will-quit", () => clearInterval(refreshTimer));
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (!programUpdates.closed && BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
@@ -369,12 +399,9 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-let shutdownStarted = false;
-app.on("before-quit", (event) => {
-  if (shutdownStarted) return;
-  event.preventDefault();
-  shutdownStarted = true;
-  void Promise.all([backend.close(), dependencies.close(), evolution.cancelLogin()])
-    .catch((error) => console.error("Cleo shutdown failed:", error))
-    .finally(() => app.quit());
-});
+app.on("before-quit", createQuitBarrier({
+  close: [() => programUpdates.close(), () => backend.close(), () => dependencies.close(),
+    () => releaseDownloads.close(), () => evolution.close(), () => evolution.cancelLogin()],
+  onError: error => console.error("Cleo shutdown failed:", error),
+  quit: () => app.quit(),
+}));

@@ -13,7 +13,7 @@ export async function runHandoff(store, hooks) {
       const build = await hooks.withLock(async () => {
         if (index) {
           await store.recover(targets[index]);
-          await store.stage(targets[index]);
+          await store.stage(targets[index], { restartError: "上次应用未成功，已自动回到可用版本。可以继续修改或重新应用。" });
         }
         return store.activate();
       });
@@ -22,7 +22,6 @@ export async function runHandoff(store, hooks) {
         index ? "新版本没有成功启动，正在自动回退。你的数据保持不变。" : "确认主界面和后端就绪后，此窗口会自动关闭。");
       child = await hooks.launch(build, transaction.id);
       if (await hooks.waitHealthy(child, transaction.id, build.id)) {
-        await store.update({ lastRestartError: index ? "上次应用未成功，已自动回到可用版本。可以继续修改或重新应用。" : null });
         return { ok: true, recovered: index > 0, active: build.id };
       }
       throw new Error("程序未在规定时间内完成启动检查。");

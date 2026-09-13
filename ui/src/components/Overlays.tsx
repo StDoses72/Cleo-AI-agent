@@ -446,15 +446,18 @@ function formatBytes(value: number) {
 }
 
 function updateDescription(state: UpdateState) {
+  if (state.phase === "ready" && state.installBlocked) return state.installBlocked;
+  if (state.phase === "ready" && state.error) return state.error;
+  if (state.operationBusy && !["downloading", "installing"].includes(state.phase)) return "另一项版本操作正在进行。";
   switch (state.phase) {
     case "unsupported": return state.error || "开发模式不会连接发布服务器；安装后的 Cleo 会自动检查。";
     case "idle": return "尚未检查更新。";
     case "checking": return "正在检查 GitHub Release…";
     case "up-to-date": return state.latestVersion ? `已是最新版本（${state.latestVersion}）。` : "已是最新版本。";
     case "available": return `发现 Cleo ${state.latestVersion}，下载后会校验 SHA-256。`;
-    case "downloading": return `正在下载 ${formatBytes(state.downloadedBytes)} / ${formatBytes(state.totalBytes)}。中断后重试会续传。`;
-    case "ready": return `Cleo ${state.latestVersion} 已下载并通过校验，下次启动自动安装。`;
-    case "installing": return "正在启动独立更新窗口。安装进度会持续显示，完成后自动打开 Cleo。";
+    case "downloading": return `正在下载 ${formatBytes(state.downloadedBytes)} / ${formatBytes(state.totalBytes)}。`;
+    case "ready": return `Cleo ${state.latestVersion} 已准备好，点击后重启安装。`;
+    case "installing": return state.installStage === "restarting" ? "正在启动新版本…" : "正在校验并解压更新…";
     case "updated": return `Cleo ${state.currentVersion} 更新成功。`;
     case "install-failed": return state.error || "安装未完成，请重新检查更新。";
     case "error": return state.error || "检查或下载更新失败。";
@@ -475,7 +478,7 @@ function UpdateSettingsPage({
   const percent = state.totalBytes
     ? Math.min(100, Math.round((state.downloadedBytes / state.totalBytes) * 100))
     : 0;
-  const busy = state.phase === "checking" || state.phase === "downloading" || state.phase === "installing";
+  const busy = state.operationBusy || state.phase === "checking" || state.phase === "downloading" || state.phase === "installing";
   const action = state.phase === "available"
     ? { label: "下载更新", run: onDownload }
     : state.phase === "ready"
@@ -489,14 +492,14 @@ function UpdateSettingsPage({
       </div>
       {state.phase === "downloading" ? <div className="update-progress" aria-label={`更新下载进度 ${percent}%`}><i style={{ width: `${percent}%` }} /></div> : null}
       <div className="update-actions">
-        <button type="button" disabled={busy || state.phase === "unsupported"} onClick={state.phase === "up-to-date" ? onCheck : action.run}>{state.phase === "up-to-date" ? "重新检查" : action.label}</button>
+        <button type="button" disabled={busy || state.phase === "unsupported" || (state.phase === "ready" && Boolean(state.installBlocked))} onClick={state.phase === "up-to-date" ? onCheck : action.run}>{state.phase === "up-to-date" ? "重新检查" : action.label}</button>
       </div>
-      <div className="settings-note"><Brain size={17} /><p>更新只替换程序目录。配置、会话、记忆和模型缓存仍保存在 Cleo 数据目录中；安装失败时会恢复旧版本。</p></div>
+      <div className="settings-note"><Brain size={17} /><p>只切换程序版本，保留聊天、记忆与配置。新版启动失败时自动回退。</p></div>
       {state.dependencies ? <div className="settings-note"><RefreshCw size={17} /><p>{
         state.dependencies.phase === "ready" ? "运行依赖已更新并通过检查，下次启动自动生效。"
           : state.dependencies.phase === "error" ? `依赖更新未完成，继续使用当前版本。${state.dependencies.error || ""}`
             : ["checking", "updating"].includes(state.dependencies.phase) ? "正在后台检查并更新 SDK 和浏览器工具…"
-              : "每天自动检查 SDK 和浏览器工具更新；界面与 Electron 随 Cleo 更新。"
+              : "当前使用已验证的运行依赖。"
       }</p></div> : null}
     </div>
   );
@@ -528,10 +531,10 @@ export function UpdateNotice({
       <span className="update-notice-icon"><RefreshCw size={16} /></span>
       <div>
         <strong>{titles[state.phase] ?? `正在下载更新 · ${percent}%`}</strong>
-        <small>{result || state.phase === "installing" ? updateDescription(state) : state.phase === "available" ? "完整包会在后台下载并校验" : state.phase === "ready" ? "点击后显示安装进度，完成后自动打开新版本" : `${formatBytes(state.downloadedBytes)} / ${formatBytes(state.totalBytes)}`}</small>
+        <small>{result || state.phase === "installing" || state.phase === "ready" || state.operationBusy ? updateDescription(state) : state.phase === "available" ? "下载并校验后可安装" : `${formatBytes(state.downloadedBytes)} / ${formatBytes(state.totalBytes)}`}</small>
       </div>
-      {state.phase === "available" ? <button type="button" onClick={onDownload}>下载</button> : null}
-      {state.phase === "ready" ? <button type="button" onClick={onInstall}>重启安装</button> : null}
+      {state.phase === "available" ? <button type="button" disabled={state.operationBusy} onClick={onDownload}>下载</button> : null}
+      {state.phase === "ready" ? <button type="button" disabled={state.operationBusy || Boolean(state.installBlocked)} onClick={onInstall}>重启安装</button> : null}
       {result ? <button type="button" onClick={() => setDismissed(resultKey)}>关闭</button> : null}
     </aside>
   );

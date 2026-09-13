@@ -185,7 +185,7 @@ async function fixture(t) {
   const manager = new EvolutionManager({ app: { isPackaged: false, getVersion: () => "0.3.9" },
     root: join(root, "controller"), dataHome: join(root, "home") });
   await mkdir(join(manager.source, "ui/electron"), { recursive: true });
-  for (const name of ["bootstrap.mjs", "evolution.mjs", "evolution-store.mjs", "evolution-tools.mjs", "evolution-recovery.mjs", "evolution-launch.mjs", "evolution-progress.mjs", "evolution-handoff.mjs"]) {
+  for (const name of ["bootstrap.mjs", "evolution.mjs", "evolution-store.mjs", "evolution-tools.mjs", "evolution-recovery.mjs", "evolution-launch.mjs", "evolution-progress.mjs", "evolution-handoff.mjs", "release-downloads.mjs", "program-updates.mjs", "updater.mjs", "shutdown.mjs"]) {
     await cp(new URL("../electron/" + name, import.meta.url), join(manager.source, "ui/electron", name));
   }
   await writeFile(join(manager.source, "ui/package.json"), '{"main":"electron/bootstrap.mjs"}');
@@ -234,6 +234,18 @@ test("changing recovery code or replacing its entry point blocks application", a
   await assert.rejects(manager.checkProtection(), /不可自我修改/);
 });
 
+test("shared download and update coordination modules cannot be self-modified", async (t) => {
+  const { manager } = await fixture(t);
+  for (const name of ["release-downloads.mjs", "program-updates.mjs", "updater.mjs", "shutdown.mjs"]) {
+    const path = join(manager.source, "ui/electron", name);
+    const original = await readFile(path);
+    await writeFile(path, "unvalidated local replacement");
+    await assert.rejects(manager.checkProtection(), /不可自我修改/);
+    await writeFile(path, original);
+  }
+  await manager.checkProtection();
+});
+
 test("failed operations retain existing registry and clear busy state for retry", async (t) => {
   const { manager } = await fixture(t);
   await manager.store.update({ active: "working", candidate: "previous" });
@@ -249,7 +261,10 @@ test("failed operations retain existing registry and clear busy state for retry"
 test("controller rejects concurrent operations", async (t) => {
   const { manager } = await fixture(t);
   let finish;
-  const first = manager.operation("building", () => new Promise((done) => { finish = done; }));
+  let started;
+  const ready = new Promise((done) => { started = done; });
+  const first = manager.operation("building", () => new Promise((done) => { finish = done; started(); }));
+  await ready;
   await assert.rejects(manager.operation("submitting", async () => {}), /另一项/);
   finish();
   await first;

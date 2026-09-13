@@ -134,6 +134,7 @@ try {
     return row && Math.abs(row.getBoundingClientRect().top - document.querySelector(".conversation-viewport").getBoundingClientRect().top - top) < 3;
   }, anchored);
   await page.getByRole("button", { name: "回到最新", exact: true }).click();
+  await page.getByRole("button", { name: "回到最新", exact: true }).waitFor({ state: "hidden" });
   await page.getByText("History item 9999", { exact: true }).waitFor();
   for (let i = 0; i < 140; i++) {
     const before = await page.locator("[data-cache-first]").getAttribute("data-cache-first");
@@ -162,6 +163,7 @@ try {
     await page.waitForFunction(old => document.querySelector("[data-cache-first]")?.getAttribute("data-cache-first") !== old, first);
   }
   await page.getByRole("button", { name: "回到最新", exact: true }).click();
+  await page.getByRole("button", { name: "回到最新", exact: true }).waitFor({ state: "hidden" });
   await page.getByText("History item 9999", { exact: true }).waitFor();
   await page.evaluate(() => { window.delayHistory = true; });
   await viewport.hover(); await page.mouse.wheel(0, -10000000);
