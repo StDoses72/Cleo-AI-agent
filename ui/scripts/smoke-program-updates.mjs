@@ -6,6 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { _electron as electron } from "playwright";
 import { snapshot } from "../src/services/mockData.ts";
+import { resizeWindow } from "./window-size.mjs";
 
 const ui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const scratch = await mkdtemp(join(process.env.CLEO_TEST_TMP || tmpdir(), "cleo-program-updates-smoke-"));
@@ -222,15 +223,7 @@ try {
     { name: "compact", width: 1080, height: 760, zoom: 1 },
     { name: "compact-zoom", width: 1080, height: 760, zoom: 1.25 },
   ]) {
-    const size = await application.evaluate(({ BrowserWindow }, { width, height, zoom }) => {
-      const window = BrowserWindow.getAllWindows()[0];
-      if (window.isMaximized()) window.unmaximize();
-      window.setContentSize(width, height);
-      window.webContents.setZoomFactor(zoom);
-      return { bounds: window.getContentBounds(), zoom: window.webContents.getZoomFactor() };
-    }, scenario);
-    await page.waitForFunction(({ bounds, zoom }) => Math.abs(innerWidth - bounds.width / zoom) <= 4
-      && Math.abs(innerHeight - bounds.height / zoom) <= 4, size);
+    await resizeWindow(application, page, scenario);
     for (const theme of ["dark", "light"]) {
       const label = `${scenario.name}-${theme}`;
       await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
