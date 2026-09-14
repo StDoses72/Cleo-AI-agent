@@ -1,6 +1,8 @@
 # 桌面平台支持
 
-v0.3.0 提供以下原生安装包，可从 [Cleo 统一下载页](https://stdoses72.github.io/Cleo-AI-agent/)
+[English](PLATFORMS.en.md)
+
+Cleo 提供以下原生安装包，可从 [Cleo 统一下载页](https://stdoses72.github.io/Cleo-AI-agent/)
 选择下载。各平台必须在对应系统和 CPU 架构上构建。
 
 | 目标 | 程序 | 发布文件 | 用户数据 |
@@ -46,7 +48,7 @@ Windows 委派现有 `build-release.ps1`；macOS/Linux 使用 `build-release.py`
 `tar`、`dpkg-deb`。若 `release/Cleo` 或 `release/Cleo.app` 已存在，先将上次产物移走再构建。
 
 macOS 当前构建产物采用 ad-hoc 签名，用于本地运行和 CI 验证，**不等同于 Developer ID 签名
-及 Apple 公证的正式分发包**。v0.3.0 的 macOS 附件以开发签名构建提供；要生成经过公证的
+及 Apple 公证的正式分发包**。macOS 附件以开发签名构建提供；要生成经过公证的
 分发包，需要发行者配置 Apple 凭据、签名和公证流程，
 并对最终签名后的 ZIP 重新生成校验清单；脚本不会移除 Gatekeeper 隔离属性或关闭验证。
 参见 [Electron 签名说明](https://www.electronjs.org/docs/latest/tutorial/code-signing)。

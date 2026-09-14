@@ -1,42 +1,29 @@
-# Local skills in development sessions
+# 开发会话中的本地 skills
 
-Cleo discovers skills for the selected native Claude or Codex harness when loading a
-development thread or selecting a new task's harness. Type `/gri` to filter by
-skill name, use arrows and Enter/Tab or click to insert the command, then add
-arguments and send. Selection never submits a task; IME composition is guarded.
-Entries show their harness and
-user/project scope, with the exact file path available on hover. `/eli5` and
-`/eli5 explain recursion` load the actual local `SKILL.md`, including its resource
-directory, into the provider request. The existing conversation record contains
-the invocation, source path and loaded instructions for inspection.
+[English](local-skills.en.md)
 
-Supported directories:
+Cleo 在加载开发会话或选择新任务的原生 Claude/Codex harness 时发现本机 skills。
+输入 `/gri` 等名称前缀筛选，用方向键与 Enter/Tab 或鼠标选择命令，再补充参数并发送。
+选择命令只插入输入框，不会直接提交任务；输入法组词期间不会误发送。
 
-- Claude: `$CLAUDE_CONFIG_DIR/skills` (default `~/.claude/skills`) and project
-  `.claude/skills` directories.
-- Codex: `$CODEX_HOME/skills` (default `~/.codex/skills`), `~/.agents/skills`,
-  and project `.codex/skills` and `.agents/skills` directories.
-- Project discovery visits the working directory and its parents up to the Git
-  root. Each skill has its own directory containing `SKILL.md`; `.system` skills
-  are also supported. Symlinked skill directories are resolved and deduplicated.
+条目显示所属 harness 和用户／项目范围，悬停可查看实际路径。
+例如 `/eli5 explain recursion` 会读取对应 `SKILL.md` 及其资源目录信息并加入 provider 请求。
+会话保留调用、来源路径和加载的指令，便于查看。
 
-Built-in commands keep their names. Duplicate or reserved skill names receive
-stable `/skill:name:id` commands, so each source remains selectable. Files with
-`user-invocable: false` are excluded. Missing, empty or unreadable skills cannot
-be invoked; discovery never creates or repairs files.
+## 支持的目录
 
-This first stage supports native Claude/Codex development sessions only. Chat,
-evolution sessions, other ACP harnesses, plugin registry discovery, and
-cross-harness reuse are outside its scope. Reopen a thread to refresh its catalog
-after installing skills. This is instruction loading, not emulation of all
-vendor-specific execution options; existing harness permissions still apply.
+- Claude：`$CLAUDE_CONFIG_DIR/skills`（默认 `~/.claude/skills`）及项目 `.claude/skills`。
+- Codex：`$CODEX_HOME/skills`（默认 `~/.codex/skills`）、`~/.agents/skills`，以及项目 `.codex/skills` 和 `.agents/skills`。
+- 项目发现从工作目录向上直到 Git 根目录。每项 skill 使用包含 `SKILL.md` 的独立目录；支持 `.system` 子目录，并解析、去重符号链接。
 
-No catalog is persisted and no user data schema, profile, or migration changes
-are introduced. Automated regressions use temporary files. The desktop's frozen
-manual acceptance cases still require real harness verification.
+内置命令保留原名；重复或保留名称使用稳定的 `/skill:name:id` 命令。
+菜单排除 `user-invocable: false` 项目；缺失、空白或不可读的文件不能调用，发现过程不会创建或修复文件。
 
-Claude's native connection enables `setting_sources=["user", "project"]` for
-automatic discovery. Codex retains its native skill discovery and trigger rules.
-The explicit menu's user-invocable filter does not disable automatic-only skills
-in the native runtime. Unsupported harnesses are not given an invented catalog
-or a claim that a skill ran. See [validation and compatibility](iteration-interactions.md).
+## 使用范围
+
+菜单支持原生 Claude/Codex 开发会话。安装 skill 后重新打开会话可刷新列表。
+普通聊天、进化会话、其他 ACP harness、插件注册表发现及跨 harness 复用不在菜单范围内。
+加载指令仍遵循当前 harness 权限，不模拟所有厂商专用执行选项。
+
+Claude 原生连接启用 `setting_sources=["user", "project"]`；Codex 保留原生发现与触发规则。
+菜单的可调用过滤不会关闭原生运行时中的自动触发技能。

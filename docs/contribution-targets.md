@@ -1,20 +1,12 @@
-# Cleo contribution targets
+# 源码贡献
 
-The contribution dialog offers two explicit actions:
+[English](contribution-targets.en.md)
 
-- Submit a PR from the signed-in user's fork to an existing upstream branch.
-- Submit a GitHub Issue applying for a target branch. An owner/collaborator creates the named branch from the empty `submission-base` template (Source in GitHub). Refresh verifies its existence; a separate user action then submits the PR.
+贡献窗口可向已有接收分支提交 PR，也可先通过 GitHub Issue 申请新分支。两种操作都固定所选本地版本；提交前校验当前源码与已检查构建一致。切换提交版本时，先在版本入口选择并准备对应源码。
 
-Neither action creates an upstream Git ref or merges a PR. `main` and the reusable `submission-base` template are excluded from the UI and rejected by the backend, including qualified `refs/heads/main`, surrounding whitespace, and case variants. Missing targets have no default. Git validates all requested branch names.
+分支申请不会自动创建分支或提交 PR。`main` 和 `submission-base` 模板不能作为目标。每次提交使用用户 fork 中的独立分支，维护者决定最终合并与发布。
 
-Both actions pin a local build ID. PR submission verifies the live source hash equals that build's hash before exporting and pushing a new snapshot commit; the developer checkout and index are never committed or modified. A branch application retains that version during cleanup so it remains available while waiting. To submit a different saved version, first select it in the version picker and prepare its source.
-
-Branch applications and PRs retain stable IDs across retries, reconcile remote receipts after response loss, and reject changes to an existing attempt's content/target/version. PRs use independent fork branches without forced pushes. GitHub Issues must be enabled and accessible to submit an application; an API or permission error remains visible and does not imply success.
-
-An abandoned evolution request retains its prompt, error, and evidence with `abandonedAt`; further retries are rejected. Its remaining manual cases are cancelled, not passed. The desktop clears the active request and its retry callback so a new request can start independently. Existing code changes are retained; discarding code remains the separate version action.
-
-Validation: `node --test ui/tests/evolution-submit.test.mjs ui/tests/evolution-store.test.mjs ui/electron/evolution-requests.test.mjs`. The submission tests use real local Git repositories and an intercepted GitHub boundary, including a maintainer-created target, version pinning, response loss, and rejected non-fast-forward pushes. `ui/tests/acceptance-retry.smoke.mjs` exercises the built UI, including the original preparation error, abandonment, both contribution paths, and main prohibition. No public Issues or PRs are created by these checks.
-# 提交兼容性与合并辅助
+## 提交与合并辅助
 
 维护者先创建空模板 `submission-base`。收到 Issue 后，使用 **Create a branch → Source: submission-base**，按申请中的名字创建独立接收分支，不添加 README 或任何文件。用户刷新 Cleo 的目标列表后选择这个新分支。
 

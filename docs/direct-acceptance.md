@@ -1,53 +1,13 @@
-# Direct acceptance after application
+# 应用后的直接验收
 
-Users can now click 验收 after applying and experiencing a build, without writing
-an observation or sending feedback. Applying alone does not confirm a case.
-Feedback remains optional and is used when behavior needs further improvement.
-Stale/unapplied builds and superseded cases still cannot be completed.
+[English](direct-acceptance.en.md)
 
-The observation input and its required-state checks were removed. Backend review
-and completion accept omitted/empty notes. Empty notes stay empty; no generated
-text claims a specific observation. A previously written manual observation is
-retained when completing that already-reviewed item without another note.
+应用构建并体验后，可以直接点击「验收」，无需填写观察记录或先发送反馈。
+应用程序与确认验收是两个独立步骤；反馈为可选项，用于继续改进不符合预期的行为。
 
-## Storage compatibility
+- 验收记录绑定实际应用的构建、源码和案例，并保存确认时间。
+- 尚未应用、已经过期的构建或被替代的案例不能直接完成验收。
+- 不填写备注时保持为空，不自动生成观察结论；已有的人工备注予以保留。
+- 需要继续调整时，可反馈或继续修改；不再需要的人工案例可以取消，取消不等于通过。
 
-The affected stores are `acceptance/suite.json`, `acceptance/report.json` and
-`acceptance/interactions-v1.json`. Formats, field names and types remain unchanged.
-`detail` and `note` remain strings, including the empty string. Completion still
-records the real confirmation timestamp and applied build/source identifiers.
-`requests-v1.json`, chats, memories, configuration, skills and Electron profile
-storage were not changed. There is no migration.
-
-The compatibility script ran against isolated fixtures using the pre-edit source
-snapshot and retained program readers/writers:
-
-- Pre-edit iteration source: passed.
-- `local-0db9d67a-ef81-47a3-9c9d-8788910d979d`: passed.
-- `local-f6ab5739-d41d-4599-8be1-1e08e258025a`: passed.
-- `baseline-8f73451a-b184-4ce3-835c-5cab78ff34a9`: unverified; it has no acceptance
-  reader/writer. Existing formats remain unchanged.
-
-The old → new → old → new round trip included omitted optional fields, unknown
-fields, nonempty legacy evidence, empty-note confirmations, old request writes,
-old interaction writes where available, and nonempty chat/memory/configuration
-sentinels. Stable IDs and current data were retained. Temporary source copies
-were removed after the checks; no live user stores were used.
-
-## Verification
-
-- Installed TypeScript: `tsc -b --force --pretty false` passed.
-- Vite production build passed, with its existing large-chunk warning.
-- Acceptance, requests, interactions and behavior-policy suites: 31 passed.
-- Isolated Chrome UI test passed: no observation field, direct confirmation with
-  no feedback, feedback then confirmation of revised criteria, persisted state
-  after reload, and no invented observation text. Existing skill checks also ran.
-
-Tests requiring an empty-note rejection were updated for the explicitly requested
-optional-note behavior. Their build-binding, stale-result and explicit-confirmation
-assertions remain, and note preservation and direct-click coverage were added.
-No check command or frozen human acceptance expectation was removed or weakened.
-
-These are automated fixture results, not passes for the frozen manual cases.
-The desktop still performs its own checks. No apply, restart, save-version or
-publish action was performed.
+完整流程见[本地进化](cleo-evolution.md)和[需求准备与验收](evolution-acceptance-preparation.md)。

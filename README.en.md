@@ -1,6 +1,6 @@
 # Cleo AI Agent
 
-[中文](README.md) | [Documentation](docs/README.md) | [Architecture](docs/ARCHITECTURE.en.md)
+[中文](README.md) | [Documentation](docs/README.en.md) | [Architecture](docs/ARCHITECTURE.en.md)
 
 Cleo is a local-first AI workspace that brings general chat, developer agents, resumable sessions, and evidence-backed memory into one desktop and CLI experience. Teams can supply their own models, tools, harnesses, and data boundaries.
 
@@ -50,7 +50,7 @@ General assistants and coding agents usually keep separate histories, permission
 
 Open the **[Cleo download page](https://stdoses72.github.io/Cleo-AI-agent/)** to select a package using the system and architecture information available to your browser. You can also choose Windows x64, macOS Apple Silicon / Intel, Linux x64, or the Debian / Ubuntu deb package manually.
 
-When a browser cannot identify a Mac's chip, the page asks you to select it and offers a native detection script. The scripts need no Python or Node.js; they download the matching package to your Downloads directory, verify SHA-256, and leave installation to you. macOS packages currently use development signing without Apple notarization. See [platform and installation details](docs/PLATFORMS.md).
+When a browser cannot identify a Mac's chip, the page asks you to select it and offers a native detection script. The scripts need no Python or Node.js; they download the matching package to your Downloads directory, verify SHA-256, and leave installation to you. macOS packages currently use development signing without Apple notarization. See [platform and installation details](docs/PLATFORMS.en.md).
 
 Direct downloads remain available on [GitHub Releases](https://github.com/StDoses72/Cleo-AI-agent/releases/latest). Windows users can also run the existing verified installer from a source checkout:
 
@@ -86,16 +86,16 @@ cleo "Summarize this repository's architecture."
 cleo --productivity --cwd .
 ```
 
-Linux and macOS use the same Python package and JSON formats. See [platform support](docs/PLATFORMS.md) for native builds, installation formats and signing boundaries. Available prebuilt assets depend on the current GitHub Release.
+Linux and macOS use the same Python package and JSON formats. See [platform support](docs/PLATFORMS.en.md) for native builds, installation formats and signing boundaries. Available prebuilt assets depend on the current GitHub Release.
 
 ## Common workflows
 
 ### Desktop
 
-- **Development and skills**: select a working directory and a Claude/Codex harness, type `/` to find a local skill, then select it, add arguments, and send. Reopen the session after installing a skill to refresh the catalog. See [local skills](docs/local-skills.md).
-- **Local evolution**: describe a change in the evolution view, wait for checks and packaging to pass, then apply it. After trying the build, confirm acceptance directly; feedback is optional, and applying alone does not count as acceptance. Save a version you like, continue editing, or discard the current changes. See [local evolution](docs/cleo-evolution.md) and [direct acceptance](docs/direct-acceptance.md).
+- **Development and skills**: select a working directory and a Claude/Codex harness, type `/` to find a local skill, then select it, add arguments, and send. Reopen the session after installing a skill to refresh the catalog. See [local skills](docs/local-skills.en.md).
+- **Local evolution**: describe a change in the evolution view, wait for checks and packaging to pass, then apply it. After trying the build, confirm acceptance directly; feedback is optional, and applying alone does not count as acceptance. Save a version you like, continue editing, or discard the current changes. See [local evolution](docs/cleo-evolution.en.md) and [direct acceptance](docs/direct-acceptance.en.md).
 - **Version updates**: check official releases in Settings → Updates. The evolution version picker also offers official and saved local versions. Switching program versions does not roll chats, memory, or configuration back to an earlier snapshot.
-- **Source contributions**: open the PR dialog and select a checked local build and an empty receiving branch created by a maintainer. Request a branch first if needed. Contributions contain a full source snapshot excluding local configuration, conversations, and runtime data; maintainers decide when to merge and release. See [contribution targets and merge assistance](docs/contribution-targets.md).
+- **Source contributions**: open the PR dialog and select a checked local build and an empty receiving branch created by a maintainer. Request a branch first if needed. Contributions contain a full source snapshot excluding local configuration, conversations, and runtime data; maintainers decide when to merge and release. See [contribution targets and merge assistance](docs/contribution-targets.en.md).
 
 ### Terminal
 
@@ -160,7 +160,7 @@ Local-first does not mean fully offline:
 - Shell and coding harnesses can run commands or modify files according to `cleo.json`, `harnesses.json`, and provider sandbox/approval settings.
 - `config/cleo.json` contains API keys and must not be committed or shared.
 
-Review [configuration and security boundaries](docs/CONFIGURATION.md) before deployment.
+Review [configuration and security boundaries](docs/CONFIGURATION.en.md) before deployment.
 
 ## Repository map
 
@@ -180,19 +180,19 @@ Cleo-AI-agent/
 
 ## Documentation
 
-- [Documentation index](docs/README.md)
-- [Getting started](docs/GETTING_STARTED.md)
-- [Configuration and security](docs/CONFIGURATION.md)
+- [Documentation index](docs/README.en.md)
+- [Getting started](docs/GETTING_STARTED.en.md)
+- [Configuration and security](docs/CONFIGURATION.en.md)
 - [Architecture](docs/ARCHITECTURE.en.md)
 - [Development and releases](docs/DEVELOPMENT.md)
 - [Backend contributor guide](docs/BACKEND_CODE_REVIEW.md)
 - [Runtime and data maintenance guide](docs/Cleo_Runtime_State_Maintenance_Guide.docx)
 - [Memory-system design record](docs/CASTMIND_MEMORY_MIGRATION.md)
-- [Local evolution and recovery](docs/cleo-evolution.md)
-- [Local skills](docs/local-skills.md)
-- [Source contributions and merge assistance](docs/contribution-targets.md)
+- [Local evolution and recovery](docs/cleo-evolution.en.md)
+- [Local skills](docs/local-skills.en.md)
+- [Source contributions and merge assistance](docs/contribution-targets.en.md)
 
-The deep operational guides are currently maintained in Chinese; the root README and architecture reference are bilingual.
+The main usage guides are available in Chinese and English. Internal development references and research notes retain their original language.
 
 ## Development
 

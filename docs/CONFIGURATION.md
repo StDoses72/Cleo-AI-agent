@@ -1,5 +1,7 @@
 # Cleo 配置与安全边界
 
+[English](CONFIGURATION.en.md)
+
 Cleo 使用两个经过 Pydantic 校验的 JSON 文件：`cleo.json` 管理通用 agent、目录和工具，`harnesses.json` 管理 Productivity provider。配置应被视为本机私有数据。
 
 ## 配置位置
@@ -171,7 +173,8 @@ ACP 的 `env` 可能包含 secret；不要把含真实 token 的 `harnesses.json
 | `compact.json` | 脱敏压缩投影 | 是 |
 | `sessions.sqlite3` | 全局 session registry | 是 |
 | space `memory.sqlite3` | 长期记忆、evidence、chunks | 部分内容来自 consolidation，不应随意删除 |
-| `MEMORY.md` / `PERSONA.md` | 人类可读投影 | 是，应由数据库重新渲染 |
+| 项目 `MEMORY.md` | 当前用户偏好，独立 Git 记录历史 | 不应作为数据库缓存删除 |
+| `PERSONA.md` | 兼容保留的 persona 内容 | 保留人工内容，不自动提取新条目 |
 | `runtime.json` | 当前导航状态 | 是，不含对话正文 |
 
 ## 部署前安全清单

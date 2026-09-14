@@ -1,5 +1,7 @@
 # Cleo 本地进化
 
+[English](cleo-evolution.en.md)
+
 ## 使用流程
 
 1. 顶部始终显示当前程序身份；点击版本入口可切换正式 Release 或最近保存的本地版本。
@@ -40,11 +42,6 @@ Windows 打包中的 Electron、Python wheel 和最终压缩包摘要使用 .NET
 该操作保留输入框草稿和附件，修复结束后重新走检查漏斗。源码已变化时拒绝发送过期诊断，
 要求先重新检查。依赖和工具准备问题提供「重新检查」；日志默认折叠，不再把 shell 错误堆栈
 铺满主界面。检查未触发或中断时，待验证状态也保留重新检查入口。
-
-本次排查确认：原流程已在模型结束后自动打包，并非点应用才检查；缺口在于缺少独立预检、
-失败诊断无法交回修改流程，以及检查证据没有持久化。现有状态测试未覆盖真实编译失败。
-新增回归用真实 TypeScript 编译器重现重复 JSX 属性 `TS17001`，覆盖修复重检、依赖失败、
-回归测试失败、过期候选、源码变动和检查中断；桌面 smoke 覆盖修复入口与草稿保留。
 
 此漏斗验证前端编译、所列 Node 测试及打包，不等同于全部 Python 行为测试、真实模型功能验收
 或跨版本数据兼容证明。相关专项验证仍需按修改内容执行。控制器修改应通过新的开发安装包或
@@ -132,19 +129,8 @@ Release manifest 的 evolution_protocol: 2 表示程序切换保留当前数据�
 所有尝试失败后进度窗口转为持续可见的恢复入口，取消版本选择也不会自动退出该窗口。
 保存本地版本不重启。应用内打开恢复选择时也保留原窗口，确认版本后再开始受控重启。
 
-## 验证与边界
+## 数据兼容性
 
-- npm --prefix ui run test:evolution：保存、放弃、连续应用、源码恢复和包导入。
-- npm --prefix ui run smoke:evolution：无侧栏布局、多 harness、三按钮状态、直接发送后自动准备与构建、保存和选择版本。
-- node ui/tests/evolution-handoff.smoke.mjs：真实 Electron 故障注入，验证可见握手、自动回退和所有程序失败后的持续恢复窗口。
-- npm --prefix ui run smoke:evolution-baseline：真实 Electron 中复制 ASAR。
-- npm --prefix ui run smoke:evolution-recovery：破坏主程序后选择可用程序，核对当前数据。
-- node ui/tests/evolution-recovery-window.smoke.mjs：Windows 原生恢复窗口可见，关闭后进程退出。
-- node ui/tests/desktop-close.smoke.mjs：真实打包主窗口关闭后无 Electron/Python 子进程残留。
-- tests/integrations/smoke_packaged_memory.py <bundled-python>：真实打包 MCP 握手。
-- pytest tests/desktop tests/integrations/test_memory_mcp.py：后端会话和 MCP 回归。
-
-测试不创建真实 PR 或 Release；真实模型完整自修改与发布流程仍需实际使用验证。
 每轮自迭代都注入数据兼容规则：修改存储前检查读写器；保留字段名、类型、语义、ID 和未知字段；避免破坏性自动迁移。新增字段若会被旧版写入器丢弃，改用独立存储；不能把读取失败的数据覆盖为空默认值。
 涉及存储时，要求在临时数据上验证「旧数据 → 新版读写 → 旧版读写 → 新版读取」，覆盖本轮起点及可用的保存版/保底版，并报告实际测试与未验证范围。缺少旧读写器或无法证明兼容时，保持共享格式不变。
 这些是每轮 prompt 约束，不是自动执行的跨版本测试或系统级写入拦截；任意自改代码的数据格式兼容性仍不能自动证明。版本切换本身不执行数据降级或格式转换。
@@ -158,5 +144,4 @@ Release manifest 的 evolution_protocol: 2 表示程序切换保留当前数据�
 普通案例保留人工状态：当前流程允许检查通过后先应用体验，由用户明确确认后保存，
 不自动把人工案例标记为通过。已保存版本的恢复不依赖本轮人工验收。
 
-PR 提交检查与合并辅助见 [contribution-targets.md](contribution-targets.md)，
-实际冲突调查见 [pr-49-conflicts.md](pr-49-conflicts.md)。
+PR 提交检查与合并辅助见[源码贡献](contribution-targets.md)。

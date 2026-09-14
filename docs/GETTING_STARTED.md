@@ -1,5 +1,7 @@
 # Cleo 快速开始
 
+[English](GETTING_STARTED.en.md)
+
 本指南面向第一次使用 Cleo 的用户。完成后，你将能够配置模型、运行通用聊天、启动一个开发者 harness，并知道数据保存在哪里。
 
 ## 选择运行方式

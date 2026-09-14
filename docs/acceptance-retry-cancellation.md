@@ -1,29 +1,13 @@
-# Request retries and optional human acceptance
+# 需求重试与取消验收
 
-A preparation failure after opening a new evolution task retained the request ID but
-retried through the original React render's task selection. That could create a
-second task and fail the durable request identity check. The retry callback now
-captures the resolved task before preparing the request. Identity checks remain in place.
+[English](acceptance-retry-cancellation.en.md)
 
-Manual acceptance cases now offer **取消此项验收** without requiring a candidate,
-comparison or successful build. Cancellation archives the original evidence with a
-timestamp, never creates a passing result, and does not cancel automatic regressions.
-Unrelated fresh results are preserved; stale results remain stale.
+准备失败时，点击「重试准备原需求」沿用原任务和请求记录，避免重复创建任务。
 
-**继续修改** accepts optional feedback and reuses the same frozen case and original
-task. It does not run the planner or multiply acceptance cases. Current saved builds
-can also be compared and manually accepted when no candidate exists. Draft source
-changes still prevent comparison until built.
+人工案例提供「取消此项验收」，无需先生成候选构建。取消会保存原证据和取消时间，
+不会把案例标为通过，也不会取消自动回归检查。
 
-Validation from `ui`:
+「继续修改」可以不填写反馈，沿用同一冻结案例和原任务。
+已有保存版本也可以进行比较和人工验收；源码有未构建修改时，需要先完成构建。
 
-```powershell
-node --test electron/evolution-acceptance.test.mjs electron/evolution-requests.test.mjs tests/evolution-interactions.test.mjs tests/evolution-behavior-policy.test.mjs tests/evolution-retry.test.mjs
-npm run build
-$env:CLEO_TEST_BROWSER = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
-node tests/acceptance-retry.smoke.mjs
-```
-
-The browser smoke exercises the real App with an isolated desktop bridge and the
-real acceptance/request stores. It does not contact a model or GitHub, change live
-acceptance records, or establish that any user behavior case has passed.
+需求准备见[需求准备与验收](evolution-acceptance-preparation.md)，应用后的确认见[直接验收](direct-acceptance.md)。
