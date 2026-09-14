@@ -124,7 +124,7 @@ test("downloaded updates reach ready only after size and SHA-256 verification", 
   }
 });
 
-test("a verified background download installs once on the next launch", async () => {
+test("a verified download never authorizes installation on the next launch", async () => {
   const root = await mkdtemp(join(tmpdir(), "cleo-auto-update-"));
   const archive = Buffer.from("new application");
   const release = { ...manifest, bytes: archive.length,
@@ -141,10 +141,10 @@ test("a verified background download installs once on the next launch", async ()
     const next = new DesktopUpdater(options);
     let installed = 0;
     next.install = async () => { installed += 1; return true; };
-    assert.equal(await next.installPending(), true);
-    assert.equal(installed, 1);
     assert.equal(await next.installPending(), false);
-    assert.equal(installed, 1);
+    assert.equal(installed, 0);
+    assert.equal(await next.installPending(), false);
+    assert.equal(installed, 0);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -164,7 +164,7 @@ test("a changed pending archive cannot trigger automatic installation", async ()
     await writeFile(archive, "tampered");
     updater.install = async () => { throw new Error("must not install"); };
     assert.equal(await updater.installPending(), false);
-    assert.match(updater.getState().error, /verification/);
+    assert.equal(updater.getState().error, null);
     assert.equal(await updater.installPending(), false);
   } finally {
     await rm(root, { recursive: true, force: true });

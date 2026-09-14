@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import sys
+import tomllib
 
 import pytest
 from fastmcp import Client
@@ -12,6 +13,31 @@ from langchain.tools import ToolRuntime, tool
 from cleo.config.settings import AgentProfile
 from cleo.integrations.subscriptions import AgentMcp, runtime_environment
 from cleo.mcp import agent_server
+
+
+@pytest.mark.parametrize("mode", ["chat", "dream", "dream_extract"])
+def test_all_runtimes_launch_isolated_tools_without_changing_data_home(tmp_path, monkeypatch, mode):
+    """Purpose: Check every vendor receives the isolated launch and shared data paths.
+    Input: Temporary paths and a supported tool mode. Output: Arguments checked without a login.
+    """
+    monkeypatch.setattr("cleo.integrations.subscriptions.executable", lambda _: "codex")
+    monkeypatch.setenv("CLEO_HOME", str(tmp_path / "shared-home"))
+    monkeypatch.setenv("CLEO_CONFIG_PATH", str(tmp_path / "shared-config.json"))
+    mcp = AgentMcp(
+        AgentProfile(backend="codex", provider="codex", model="default"),
+        tmp_path / "project", "instructions", mode,
+    )
+    config = mcp.codex_config()
+    codex = tomllib.loads("\n".join(config.config_overrides))["mcp_servers"]["cleo-tools"]
+    servers = [codex, mcp.claude_servers()["cleo-tools"], mcp.acp_servers()[0].model_dump()]
+    for server in servers:
+        assert server["command"] == sys.executable
+        assert server["args"] == mcp.args
+        assert server["args"][:2] == ["-I", "-c"]
+        assert server["args"][server["args"].index("--mode") + 1] == mode
+    assert config.env["CLEO_HOME"] == os.environ["CLEO_HOME"]
+    assert config.env["CLEO_CONFIG_PATH"] == os.environ["CLEO_CONFIG_PATH"]
+    assert not list(tmp_path.iterdir())
 
 
 def test_runtime_argument_is_hidden_and_injected(monkeypatch):

@@ -14,6 +14,10 @@ interface Window {
     copyText(value: string): Promise<void>;
     revealPath(value: string): Promise<void>;
     openLocalPath(href: string, workspacePath: string): Promise<void>;
+    getEvolutionState(): Promise<import("./evolution-types").EvolutionState>;
+    evolutionAction<T = unknown>(action: string, params?: Record<string, unknown>): Promise<T>;
+    onEvolutionState(listener: (state: import("./evolution-types").EvolutionState) => void): () => void;
+    confirmHealthy(): Promise<void>;
     getUpdateState(): Promise<import("./types").UpdateState>;
     checkForUpdates(): Promise<import("./types").UpdateState>;
     downloadUpdate(): Promise<import("./types").UpdateState>;

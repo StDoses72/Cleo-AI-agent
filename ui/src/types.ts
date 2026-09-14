@@ -99,7 +99,15 @@ export interface Usage {
   output: number | null;
 }
 
+export interface LocalSkill {
+  name: string;
+  command: string;
+  source: string;
+  path: string;
+}
+
 export interface Thread {
+  skills?: LocalSkill[];
   id: string;
   space: ThreadSpace;
   projectId: string;
@@ -447,6 +455,7 @@ export interface CleoClient {
   getModelSettings(): Promise<ModelSettings>;
   getRuntimeCatalog(): Promise<RuntimeCatalog>;
   getProductivityModels(provider: string, projectPath?: string): Promise<ProductivityModelCatalog>;
+  getLocalSkills(provider: string, projectPath?: string): Promise<LocalSkill[]>;
   saveModelProfile(profile: ModelProfileInput): Promise<ModelSettings>;
   saveDreamSettings(selection: string, model?: string): Promise<ModelSettings>;
   checkModelConnection(connection: Partial<ModelConnectionInput> & { profileId?: string }): Promise<ModelConnectionProbe>;

@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
   type ClipboardEvent,
   type DragEvent,
   type KeyboardEvent,
@@ -38,6 +39,7 @@ import {
   X,
 } from "lucide-react";
 import type {
+  LocalSkill,
   Attachment,
   ProductivityModelCatalog,
   Project,
@@ -53,6 +55,9 @@ import { ApprovalPrompt } from "./ApprovalPrompt";
 import { RenameThreadDialog } from "./Overlays";
 
 interface ConversationProps {
+  preparation?: ReactNode;
+  improvement?: ReactNode;
+  header?: ReactNode;
   thread: Thread | null;
   project: Project | null;
   space: ThreadSpace;
@@ -77,7 +82,7 @@ interface ConversationProps {
   onCancel: () => void;
   onUndo: () => void;
   onSelectNonProductivityProfile: (profileId: string) => void;
-  onLoadProductivityModels: (provider: string) => Promise<ProductivityModelCatalog>;
+  onLoadProductivityModels: (provider: string, refresh?: boolean) => Promise<ProductivityModelCatalog>;
   onSelectProductivityRuntime: (provider: string, model: string) => void;
   onEffortChange: (effort: NonNullable<RuntimeProfile["effort"]>) => void;
   attachments: Attachment[];
@@ -90,6 +95,7 @@ interface ConversationProps {
   onOpenPath: (href: string, workspacePath: string) => void;
   onThreadCommand: (command: string) => void;
   commands: string[];
+  skills?: LocalSkill[];
   approvalRequest: ApprovalRequest | null;
   approvalPending: boolean;
   approvalError: string | null;
@@ -102,6 +108,9 @@ const suggestions = {
 };
 
 export function Conversation({
+  preparation,
+  improvement,
+  header,
   thread,
   project,
   space,
@@ -139,6 +148,7 @@ export function Conversation({
   onOpenPath,
   onThreadCommand,
   commands,
+  skills,
   approvalRequest,
   approvalPending,
   approvalError,
@@ -177,7 +187,7 @@ export function Conversation({
 
   return (
     <main className="conversation-shell" data-testid="conversation">
-      <ConversationHeader
+      <div>{header ?? <ConversationHeader
         thread={thread}
         project={project}
         space={space}
@@ -194,9 +204,10 @@ export function Conversation({
         onThreadCommand={onThreadCommand}
         onRename={onRename}
         busy={running || Boolean(sendBlocked)}
-      />
+      />}{improvement}</div>
 
-      <div className="conversation-viewport" ref={viewportRef} onScroll={trackScrollPosition}>
+        <div className="conversation-viewport" ref={viewportRef} onScroll={trackScrollPosition}>
+          {preparation}
         {thread?.items.length ? (
           <div className="timeline" key={thread.id} data-testid="timeline">
             {timelineItems.map((item) => (
@@ -245,6 +256,7 @@ export function Conversation({
         onRemoveAttachment={onRemoveAttachment}
         onShowContext={onShowContext}
         commands={commands}
+        skills={skills ?? thread?.skills ?? []}
         approvalRequest={approvalRequest}
         approvalPending={approvalPending}
         approvalError={approvalError}
@@ -747,17 +759,20 @@ function ToolProcess({ tool, index }: { tool: ToolTimelineItem; index: number })
   );
 }
 
+/** Purpose: Keep the shared composer welcome focused on the current task. Input: project/space. Output: relevant example requests. */
 function WelcomeState({ project, space, onUseSuggestion }: { project: Project | null; space: ThreadSpace; onUseSuggestion: (prompt: string) => void }) {
+  const evolving = project?.id === "productivity:cleo-evolution";
+  const prompts = evolving ? ["让 Cleo 的界面更清晰一些", "为 Cleo 增加一个我需要的功能", "帮我改善 Cleo 的使用体验"] : suggestions[space];
   return (
     <div className="welcome-state">
       <div className="welcome-portrait-wrap">
         <img src="./cleo.png" alt="Cleo" />
       </div>
       <span className="eyebrow">{project?.name ?? "CLEO"}</span>
-      <h2>{space === "chat" ? "今天想聊些什么？" : "从一个清晰的目标开始。"}</h2>
-      <p>{space === "chat" ? "聊聊想法、学习新知，或一起解决生活中的小问题。" : "我会先理解工作区，再决定需要读取、修改和验证什么。"}</p>
+      <h2>{evolving ? "你想让 Cleo 怎样改变？" : space === "chat" ? "今天想聊些什么？" : "从一个清晰的目标开始。"}</h2>
+      <p>{evolving ? "直接描述需求，我会完成修改和检查。应用后，你再决定是否保存。" : space === "chat" ? "聊聊想法、学习新知，或一起解决生活中的小问题。" : "我会先理解工作区，再决定需要读取、修改和验证什么。"}</p>
       <div className="suggestion-list">
-        {suggestions[space].map((suggestion) => (
+        {prompts.map((suggestion) => (
           <button type="button" key={suggestion} onClick={() => {
             onUseSuggestion(suggestion);
             document.querySelector<HTMLTextAreaElement>('[data-testid="composer-input"]')?.focus();
@@ -795,6 +810,7 @@ function Composer({
   onRemoveAttachment,
   onShowContext,
   commands,
+  skills = [],
   approvalRequest,
   approvalPending,
   approvalError,
@@ -824,6 +840,7 @@ function Composer({
   | "onRemoveAttachment"
   | "onShowContext"
   | "commands"
+  | "skills"
   | "approvalRequest"
   | "approvalPending"
   | "approvalError"
@@ -831,6 +848,10 @@ function Composer({
 >) {
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [draggingFiles, setDraggingFiles] = useState(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const composing = useRef(false);
+  const [selectedCommand, setSelectedCommand] = useState(0);
+  const [dismissedPrefix, setDismissedPrefix] = useState<string | null>(null);
   const effortProviderRequest = useRef<string | null>(null);
   const dragDepth = useRef(0);
   const selectedModel = productivityModels[runtime.provider]?.models.find(
@@ -844,7 +865,6 @@ function Composer({
   useEffect(() => {
     if (
       space !== "productivity"
-      || productivityModels[runtime.provider]
       || effortProviderRequest.current === runtime.provider
     ) return;
     effortProviderRequest.current = runtime.provider;
@@ -857,7 +877,18 @@ function Composer({
     onSend(content);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+    if (composing.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+    if (candidates.length && !event.shiftKey) {
+      if (event.key === "Escape") { event.preventDefault(); setDismissedPrefix(prompt); return; }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        setSelectedCommand((index) => (index + (event.key === "ArrowDown" ? 1 : -1) + candidates.length) % candidates.length);
+        return;
+      }
+      if (event.key === "Enter" || event.key === "Tab") {
+        event.preventDefault(); chooseCommand(candidates[selectedCommand % candidates.length]); return;
+      }
+    }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       submit();
@@ -913,9 +944,27 @@ function Composer({
     setDraggingFiles(false);
     void addFiles(Array.from(event.dataTransfer.files));
   };
-  const matchingCommands = prompt.startsWith("/")
-    ? commands.filter((command) => command.startsWith(prompt.trim())).slice(0, 8)
+  const showCommands = /^\/[^\s]*$/.test(prompt) && dismissedPrefix !== prompt;
+  const matchingCommands = showCommands
+    ? commands.filter((command) => command.startsWith(prompt))
     : [];
+
+  const matchingSkills = showCommands
+    ? skills.filter((skill) => skill.command.startsWith(prompt) || `/${skill.name}`.startsWith(prompt))
+    : [];
+  const candidates = [...matchingSkills.map((skill) => skill.command), ...matchingCommands];
+  const candidateKey = candidates.join("\n");
+  useEffect(() => { setSelectedCommand(0); }, [prompt, candidateKey, runtime.provider]);
+  useEffect(() => { setDismissedPrefix(null); }, [runtime.provider]);
+  useEffect(() => {
+    document.getElementById(`slash-option-${selectedCommand}`)?.scrollIntoView({ block: "nearest" });
+  }, [selectedCommand]);
+  /** Insert the selected command without sending; arguments remain editable. */
+  const chooseCommand = (command: string) => {
+    if (composing.current) return;
+    setPrompt(`${command} `);
+    inputRef.current?.focus();
+  };
 
   return (
     <div className="composer-dock">
@@ -939,11 +988,16 @@ function Composer({
             <span>松开以添加文件</span>
           </div>
         ) : null}
-        {matchingCommands.length ? (
-          <div className="slash-menu surface-popover" data-testid="slash-menu">
-            <span>可用命令</span>
-            {matchingCommands.map((command) => (
-              <button type="button" key={command} onClick={() => setPrompt(`${command} `)}>
+        {matchingCommands.length || matchingSkills.length ? (
+          <div className="slash-menu surface-popover" data-testid="slash-menu" id="slash-options" role="listbox" aria-label="当前 harness 技能与命令">
+            <span>可用命令 · Skills 仅限当前 harness</span>
+            {matchingSkills.map((skill, index) => (
+              <button type="button" role="option" aria-selected={selectedCommand === index} id={`slash-option-${index}`} key={skill.command} title={skill.path} onMouseDown={(event) => event.preventDefault()} onClick={() => chooseCommand(skill.command)}>
+                <code>/{skill.name}</code><small>{skill.source}{skill.command !== `/${skill.name}` ? ` · ${skill.command}` : ""}</small>
+              </button>
+            ))}
+            {matchingCommands.map((command, index) => (
+              <button type="button" role="option" aria-selected={selectedCommand === matchingSkills.length + index} id={`slash-option-${matchingSkills.length + index}`} key={command} onMouseDown={(event) => event.preventDefault()} onClick={() => chooseCommand(command)}>
                 <code>{command}</code>
               </button>
             ))}
@@ -967,8 +1021,16 @@ function Composer({
         {attachmentError ? <div className="attachment-error" role="alert">{attachmentError}</div> : null}
         {sendError ? <div className="attachment-error" role="alert">{sendError}</div> : null}
         <textarea
+          ref={inputRef}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={Boolean(candidates.length)}
+          aria-controls={candidates.length ? "slash-options" : undefined}
+          aria-activedescendant={candidates.length ? `slash-option-${selectedCommand % candidates.length}` : undefined}
+          onCompositionStart={() => { composing.current = true; }}
+          onCompositionEnd={() => { composing.current = false; }}
           value={prompt}
-          onChange={(event) => setPrompt(event.target.value)}
+          onChange={(event) => { setDismissedPrefix(null); setPrompt(event.target.value); }}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
           rows={1}
@@ -1043,6 +1105,9 @@ function formatAttachmentSize(size: number) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/** Purpose: Share harness/model selection across development and evolution.
+ * Input: live catalogs and selection callbacks. Output: accessible picker with retry.
+ */
 function RuntimeSelector({
   space,
   runtime,
@@ -1063,7 +1128,7 @@ function RuntimeSelector({
   error: string | null;
   running: boolean;
   onSelectProfile: (profileId: string) => void;
-  onLoadModels: (provider: string) => Promise<ProductivityModelCatalog>;
+  onLoadModels: (provider: string, refresh?: boolean) => Promise<ProductivityModelCatalog>;
   onSelectProductivityRuntime: (provider: string, model: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -1091,7 +1156,7 @@ function RuntimeSelector({
   };
   const openProvider = (provider: string) => {
     setProviderScreen(provider);
-    void onLoadModels(provider).catch(() => undefined);
+    void onLoadModels(provider, true).catch(() => undefined);
   };
 
   return (
@@ -1100,11 +1165,12 @@ function RuntimeSelector({
         className="text-control runtime-selector-trigger"
         type="button"
         disabled={running || !catalog}
+        aria-label={space === "productivity" ? "选择 Harness 和模型" : "选择对话模型"}
         aria-expanded={open}
         onClick={toggleMenu}
         data-testid="runtime-selector"
       >
-        <span>{runtime.model}</span>
+        <span>{space === "productivity" ? `${runtime.provider} · ` : ""}{runtime.model}</span>
         <ChevronDown size={13} />
       </button>
       {open ? (
@@ -1147,8 +1213,11 @@ function RuntimeSelector({
               <div className="runtime-menu-list">
                 {loadingProvider === providerScreen ? (
                   <div className="runtime-menu-status"><LoaderCircle className="spin" size={14} />正在连接 harness 并读取模型…</div>
-                ) : error && !selectedModels ? (
-                  <div className="runtime-menu-status error">{error}</div>
+                ) : error ? (
+                  <div className="runtime-menu-status error" role="alert">
+                    <span>{error}</span>
+                    <button type="button" onClick={() => openProvider(providerScreen)}>重试读取模型</button>
+                  </div>
                 ) : (
                   selectedModels?.map((model) => (
                     <button
@@ -1174,8 +1243,8 @@ function RuntimeSelector({
           ) : (
             <>
               <div className="runtime-menu-heading">
-                <span>运行方式</span>
-                <small>新任务生效</small>
+                <span>选择 Harness</span>
+                <small>新任务生效 · 历史保留</small>
               </div>
               <div className="runtime-menu-list">
                 {providers.map((provider) => (
