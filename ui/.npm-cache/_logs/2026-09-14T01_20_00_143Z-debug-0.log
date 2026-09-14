@@ -1,0 +1,487 @@
+0 verbose cli C:\Users\29183\AppData\Roaming\Cleo\evolution\builds\local-***\Cleo\resources\browser\node.exe C:\Users\29183\AppData\Roaming\Cleo\evolution\builds\local-***\Cleo\resources\browser\node_modules\npm\bin\npm-cli.js
+1 info using npm@11.19.1
+2 info using node@v24.21.0
+3 silly config load:file:C:\Users\29183\AppData\Roaming\Cleo\evolution\builds\local-***\Cleo\resources\browser\node_modules\npm\npmrc
+4 silly config load:file:C:\Users\29183\AppData\Roaming\Cleo\evolution\source\ui\.npmrc
+5 silly config load:file:C:\Users\29183\.npmrc
+6 silly config load:file:C:\Users\29183\AppData\Roaming\Cleo\evolution\builds\local-***\Cleo\resources\browser\etc\npmrc
+7 verbose title npm ci
+8 verbose argv "ci" "--offline" "--cache" ".npm-cache" "--ignore-scripts"
+9 verbose logfile logs-max:10 dir:C:\Users\29183\AppData\Roaming\Cleo\evolution\source\ui\.npm-cache\_logs\2026-09-14T01_20_00_143Z-
+10 verbose logfile C:\Users\29183\AppData\Roaming\Cleo\evolution\source\ui\.npm-cache\_logs\2026-09-14T01_20_00_143Z-debug-0.log
+11 silly logfile done cleaning log files
+12 silly packumentCache heap:4496293888 maxSize:1124073472 maxEntrySize:562036736
+13 silly packumentCache heap:4496293888 maxSize:1124073472 maxEntrySize:562036736
+14 silly idealTree buildDeps
+15 silly reify moves {}
+16 silly audit report null
+17 http cache zwitch@https://registry.npmjs.org/zwitch/-/zwitch-2.0.4.tgz 0ms (cache hit)
+18 http cache vite@https://registry.npmjs.org/vite/-/vite-8.2.2.tgz 0ms (cache hit)
+19 http cache vfile@https://registry.npmjs.org/vfile/-/vfile-6.0.3.tgz 0ms (cache hit)
+20 http cache vfile-message@https://registry.npmjs.org/vfile-message/-/vfile-message-4.0.3.tgz 0ms (cache hit)
+21 http cache unist-util-visit-parents@https://registry.npmjs.org/unist-util-visit-parents/-/unist-util-visit-parents-6.0.2.tgz 0ms (cache hit)
+22 http cache unist-util-visit@https://registry.npmjs.org/unist-util-visit/-/unist-util-visit-5.1.0.tgz 0ms (cache hit)
+23 http cache unist-util-position@https://registry.npmjs.org/unist-util-position/-/unist-util-position-5.0.0.tgz 0ms (cache hit)
+24 http cache unist-util-stringify-position@https://registry.npmjs.org/unist-util-stringify-position/-/unist-util-stringify-position-4.0.0.tgz 0ms (cache hit)
+25 http cache unist-util-is@https://registry.npmjs.org/unist-util-is/-/unist-util-is-6.0.1.tgz 0ms (cache hit)
+26 http cache undici-types@https://registry.npmjs.org/undici-types/-/undici-types-8.3.0.tgz 0ms (cache hit)
+27 http cache unified@https://registry.npmjs.org/unified/-/unified-11.0.5.tgz 0ms (cache hit)
+28 http cache typescript@https://registry.npmjs.org/typescript/-/typescript-7.0.2.tgz 0ms (cache hit)
+29 http cache trim-lines@https://registry.npmjs.org/trim-lines/-/trim-lines-3.0.1.tgz 0ms (cache hit)
+30 http cache trough@https://registry.npmjs.org/trough/-/trough-2.2.0.tgz 0ms (cache hit)
+31 http cache tinyglobby@https://registry.npmjs.org/tinyglobby/-/tinyglobby-0.2.17.tgz 0ms (cache hit)
+32 http cache undici@https://registry.npmjs.org/undici/-/undici-7.29.1.tgz 0ms (cache hit)
+33 http cache sumchecker@https://registry.npmjs.org/sumchecker/-/sumchecker-3.0.1.tgz 0ms (cache hit)
+34 http cache style-to-object@https://registry.npmjs.org/style-to-object/-/style-to-object-1.0.14.tgz 0ms (cache hit)
+35 http cache style-to-js@https://registry.npmjs.org/style-to-js/-/style-to-js-1.1.21.tgz 0ms (cache hit)
+36 http cache source-map-js@https://registry.npmjs.org/source-map-js/-/source-map-js-1.2.1.tgz 0ms (cache hit)
+37 http cache space-separated-tokens@https://registry.npmjs.org/space-separated-tokens/-/space-separated-tokens-2.0.2.tgz 0ms (cache hit)
+38 http cache semver@https://registry.npmjs.org/semver/-/semver-7.8.5.tgz 0ms (cache hit)
+39 http cache stringify-entities@https://registry.npmjs.org/stringify-entities/-/stringify-entities-4.0.4.tgz 0ms (cache hit)
+40 http cache scheduler@https://registry.npmjs.org/scheduler/-/scheduler-0.27.0.tgz 0ms (cache hit)
+41 http cache rolldown@https://registry.npmjs.org/rolldown/-/rolldown-1.2.7.tgz 0ms (cache hit)
+42 http cache remark-parse@https://registry.npmjs.org/remark-parse/-/remark-parse-11.0.0.tgz 0ms (cache hit)
+43 http cache react-dom@https://registry.npmjs.org/react-dom/-/react-dom-19.2.8.tgz 0ms (cache hit)
+44 http cache react@https://registry.npmjs.org/react/-/react-19.2.8.tgz 0ms (cache hit)
+45 http cache react-markdown@https://registry.npmjs.org/react-markdown/-/react-markdown-10.1.0.tgz 0ms (cache hit)
+46 http cache remark-gfm@https://registry.npmjs.org/remark-gfm/-/remark-gfm-4.0.1.tgz 0ms (cache hit)
+47 http cache remark-stringify@https://registry.npmjs.org/remark-stringify/-/remark-stringify-11.0.0.tgz 0ms (cache hit)
+48 http cache property-information@https://registry.npmjs.org/property-information/-/property-information-7.2.0.tgz 0ms (cache hit)
+49 http cache progress@https://registry.npmjs.org/progress/-/progress-2.0.3.tgz 0ms (cache hit)
+50 http cache postcss@https://registry.npmjs.org/postcss/-/postcss-8.5.28.tgz 0ms (cache hit)
+51 http cache playwright@https://registry.npmjs.org/playwright/-/playwright-1.63.0.tgz 0ms (cache hit)
+52 http cache picomatch@https://registry.npmjs.org/picomatch/-/picomatch-4.0.7.tgz 0ms (cache hit)
+53 http cache picocolors@https://registry.npmjs.org/picocolors/-/picocolors-1.1.1.tgz 0ms (cache hit)
+54 http cache playwright-core@https://registry.npmjs.org/playwright-core/-/playwright-core-1.63.0.tgz 0ms (cache hit)
+55 http cache remark-rehype@https://registry.npmjs.org/remark-rehype/-/remark-rehype-11.1.2.tgz 0ms (cache hit)
+56 http cache path-scurry@https://registry.npmjs.org/path-scurry/-/path-scurry-2.0.2.tgz 0ms (cache hit)
+57 http cache nanoid@https://registry.npmjs.org/nanoid/-/nanoid-3.3.18.tgz 0ms (cache hit)
+58 http cache parse-entities@https://registry.npmjs.org/parse-entities/-/parse-entities-4.0.2.tgz 0ms (cache hit)
+59 http cache minimatch@https://registry.npmjs.org/minimatch/-/minimatch-10.2.6.tgz 0ms (cache hit)
+60 http cache minipass@https://registry.npmjs.org/minipass/-/minipass-7.1.3.tgz 0ms (cache hit)
+61 http cache micromark-util-types@https://registry.npmjs.org/micromark-util-types/-/micromark-util-types-2.0.2.tgz 0ms (cache hit)
+62 http cache micromark-util-symbol@https://registry.npmjs.org/micromark-util-symbol/-/micromark-util-symbol-2.0.1.tgz 0ms (cache hit)
+63 http cache ms@https://registry.npmjs.org/ms/-/ms-2.1.3.tgz 0ms (cache hit)
+64 http cache micromark-util-subtokenize@https://registry.npmjs.org/micromark-util-subtokenize/-/micromark-util-subtokenize-2.1.0.tgz 0ms (cache hit)
+65 http cache micromark-util-sanitize-uri@https://registry.npmjs.org/micromark-util-sanitize-uri/-/micromark-util-sanitize-uri-2.0.1.tgz 0ms (cache hit)
+66 http cache micromark-util-resolve-all@https://registry.npmjs.org/micromark-util-resolve-all/-/micromark-util-resolve-all-2.0.1.tgz 0ms (cache hit)
+67 http cache micromark-util-html-tag-name@https://registry.npmjs.org/micromark-util-html-tag-name/-/micromark-util-html-tag-name-2.0.1.tgz 0ms (cache hit)
+68 http cache micromark-util-encode@https://registry.npmjs.org/micromark-util-encode/-/micromark-util-encode-2.0.1.tgz 0ms (cache hit)
+69 http cache micromark-util-decode-string@https://registry.npmjs.org/micromark-util-decode-string/-/micromark-util-decode-string-2.0.1.tgz 0ms (cache hit)
+70 http cache micromark-util-normalize-identifier@https://registry.npmjs.org/micromark-util-normalize-identifier/-/micromark-util-normalize-identifier-2.0.1.tgz 0ms (cache hit)
+71 http cache micromark-util-decode-numeric-character-reference@https://registry.npmjs.org/micromark-util-decode-numeric-character-reference/-/micromark-util-decode-numeric-character-reference-2.0.2.tgz 0ms (cache hit)
+72 http cache micromark-util-combine-extensions@https://registry.npmjs.org/micromark-util-combine-extensions/-/micromark-util-combine-extensions-2.0.1.tgz 0ms (cache hit)
+73 http cache micromark-util-classify-character@https://registry.npmjs.org/micromark-util-classify-character/-/micromark-util-classify-character-2.0.1.tgz 0ms (cache hit)
+74 http cache micromark-factory-whitespace@https://registry.npmjs.org/micromark-factory-whitespace/-/micromark-factory-whitespace-2.0.1.tgz 0ms (cache hit)
+75 http cache micromark-factory-title@https://registry.npmjs.org/micromark-factory-title/-/micromark-factory-title-2.0.1.tgz 0ms (cache hit)
+76 http cache micromark-util-character@https://registry.npmjs.org/micromark-util-character/-/micromark-util-character-2.1.1.tgz 0ms (cache hit)
+77 http cache micromark-util-chunked@https://registry.npmjs.org/micromark-util-chunked/-/micromark-util-chunked-2.0.1.tgz 0ms (cache hit)
+78 http cache micromark-factory-space@https://registry.npmjs.org/micromark-factory-space/-/micromark-factory-space-2.0.1.tgz 0ms (cache hit)
+79 http cache micromark-factory-label@https://registry.npmjs.org/micromark-factory-label/-/micromark-factory-label-2.0.1.tgz 0ms (cache hit)
+80 http cache micromark-factory-destination@https://registry.npmjs.org/micromark-factory-destination/-/micromark-factory-destination-2.0.1.tgz 0ms (cache hit)
+81 http cache micromark-extension-gfm-tagfilter@https://registry.npmjs.org/micromark-extension-gfm-tagfilter/-/micromark-extension-gfm-tagfilter-2.0.0.tgz 0ms (cache hit)
+82 http cache micromark-extension-gfm-table@https://registry.npmjs.org/micromark-extension-gfm-table/-/micromark-extension-gfm-table-2.1.1.tgz 0ms (cache hit)
+83 http cache micromark-extension-gfm-task-list-item@https://registry.npmjs.org/micromark-extension-gfm-task-list-item/-/micromark-extension-gfm-task-list-item-2.1.0.tgz 0ms (cache hit)
+84 http cache micromark-extension-gfm-strikethrough@https://registry.npmjs.org/micromark-extension-gfm-strikethrough/-/micromark-extension-gfm-strikethrough-2.1.0.tgz 0ms (cache hit)
+85 http cache micromark-extension-gfm-footnote@https://registry.npmjs.org/micromark-extension-gfm-footnote/-/micromark-extension-gfm-footnote-2.1.0.tgz 0ms (cache hit)
+86 http cache micromark-extension-gfm-autolink-literal@https://registry.npmjs.org/micromark-extension-gfm-autolink-literal/-/micromark-extension-gfm-autolink-literal-2.1.0.tgz 0ms (cache hit)
+87 http cache micromark-extension-gfm@https://registry.npmjs.org/micromark-extension-gfm/-/micromark-extension-gfm-3.0.0.tgz 0ms (cache hit)
+88 http cache micromark@https://registry.npmjs.org/micromark/-/micromark-4.0.2.tgz 0ms (cache hit)
+89 http cache mdast-util-to-string@https://registry.npmjs.org/mdast-util-to-string/-/mdast-util-to-string-4.0.0.tgz 0ms (cache hit)
+90 http cache micromark-core-commonmark@https://registry.npmjs.org/micromark-core-commonmark/-/micromark-core-commonmark-2.0.3.tgz 0ms (cache hit)
+91 http cache mdast-util-to-hast@https://registry.npmjs.org/mdast-util-to-hast/-/mdast-util-to-hast-13.2.1.tgz 0ms (cache hit)
+92 http cache mdast-util-phrasing@https://registry.npmjs.org/mdast-util-phrasing/-/mdast-util-phrasing-4.1.0.tgz 0ms (cache hit)
+93 http cache mdast-util-mdx-jsx@https://registry.npmjs.org/mdast-util-mdx-jsx/-/mdast-util-mdx-jsx-3.2.0.tgz 0ms (cache hit)
+94 http cache mdast-util-mdxjs-esm@https://registry.npmjs.org/mdast-util-mdxjs-esm/-/mdast-util-mdxjs-esm-2.0.1.tgz 0ms (cache hit)
+95 http cache mdast-util-mdx-expression@https://registry.npmjs.org/mdast-util-mdx-expression/-/mdast-util-mdx-expression-2.0.1.tgz 0ms (cache hit)
+96 http cache mdast-util-to-markdown@https://registry.npmjs.org/mdast-util-to-markdown/-/mdast-util-to-markdown-2.1.2.tgz 0ms (cache hit)
+97 http cache mdast-util-gfm-task-list-item@https://registry.npmjs.org/mdast-util-gfm-task-list-item/-/mdast-util-gfm-task-list-item-2.0.0.tgz 0ms (cache hit)
+98 http cache mdast-util-gfm-strikethrough@https://registry.npmjs.org/mdast-util-gfm-strikethrough/-/mdast-util-gfm-strikethrough-2.0.0.tgz 0ms (cache hit)
+99 http cache mdast-util-gfm-autolink-literal@https://registry.npmjs.org/mdast-util-gfm-autolink-literal/-/mdast-util-gfm-autolink-literal-2.0.1.tgz 0ms (cache hit)
+100 http cache mdast-util-gfm@https://registry.npmjs.org/mdast-util-gfm/-/mdast-util-gfm-3.1.0.tgz 0ms (cache hit)
+101 http cache mdast-util-gfm-footnote@https://registry.npmjs.org/mdast-util-gfm-footnote/-/mdast-util-gfm-footnote-2.1.0.tgz 0ms (cache hit)
+102 http cache mdast-util-from-markdown@https://registry.npmjs.org/mdast-util-from-markdown/-/mdast-util-from-markdown-2.0.3.tgz 0ms (cache hit)
+103 http cache mdast-util-gfm-table@https://registry.npmjs.org/mdast-util-gfm-table/-/mdast-util-gfm-table-2.0.0.tgz 0ms (cache hit)
+104 http cache mdast-util-find-and-replace@https://registry.npmjs.org/mdast-util-find-and-replace/-/mdast-util-find-and-replace-3.0.2.tgz 0ms (cache hit)
+105 http cache lucide-react@https://registry.npmjs.org/lucide-react/-/lucide-react-1.41.0.tgz 0ms (cache hit)
+106 http cache markdown-table@https://registry.npmjs.org/markdown-table/-/markdown-table-3.0.4.tgz 0ms (cache hit)
+107 http cache longest-streak@https://registry.npmjs.org/longest-streak/-/longest-streak-3.1.0.tgz 0ms (cache hit)
+108 http cache lightningcss-win32-x64-msvc@https://registry.npmjs.org/lightningcss-win32-x64-msvc/-/lightningcss-win32-x64-msvc-1.33.0.tgz 0ms (cache hit)
+109 http cache lru-cache@https://registry.npmjs.org/lru-cache/-/lru-cache-11.5.2.tgz 0ms (cache hit)
+110 http cache is-hexadecimal@https://registry.npmjs.org/is-hexadecimal/-/is-hexadecimal-2.0.1.tgz 0ms (cache hit)
+111 http cache lightningcss@https://registry.npmjs.org/lightningcss/-/lightningcss-1.33.0.tgz 0ms (cache hit)
+112 http cache is-alphanumerical@https://registry.npmjs.org/is-alphanumerical/-/is-alphanumerical-2.0.1.tgz 0ms (cache hit)
+113 http cache is-plain-obj@https://registry.npmjs.org/is-plain-obj/-/is-plain-obj-4.1.0.tgz 0ms (cache hit)
+114 http cache is-alphabetical@https://registry.npmjs.org/is-alphabetical/-/is-alphabetical-2.0.1.tgz 0ms (cache hit)
+115 http cache is-decimal@https://registry.npmjs.org/is-decimal/-/is-decimal-2.0.1.tgz 0ms (cache hit)
+116 http cache hast-util-whitespace@https://registry.npmjs.org/hast-util-whitespace/-/hast-util-whitespace-3.0.0.tgz 0ms (cache hit)
+117 http cache hast-util-to-jsx-runtime@https://registry.npmjs.org/hast-util-to-jsx-runtime/-/hast-util-to-jsx-runtime-2.3.6.tgz 0ms (cache hit)
+118 http cache inline-style-parser@https://registry.npmjs.org/inline-style-parser/-/inline-style-parser-0.2.7.tgz 0ms (cache hit)
+119 http cache glob@https://registry.npmjs.org/glob/-/glob-13.0.6.tgz 0ms (cache hit)
+120 http cache html-url-attributes@https://registry.npmjs.org/html-url-attributes/-/html-url-attributes-3.0.1.tgz 0ms (cache hit)
+121 http cache fdir@https://registry.npmjs.org/fdir/-/fdir-6.5.0.tgz 0ms (cache hit)
+122 http cache graceful-fs@https://registry.npmjs.org/graceful-fs/-/graceful-fs-4.2.11.tgz 0ms (cache hit)
+123 http cache estree-util-is-identifier-name@https://registry.npmjs.org/estree-util-is-identifier-name/-/estree-util-is-identifier-name-3.0.0.tgz 0ms (cache hit)
+124 http cache escape-string-regexp@https://registry.npmjs.org/escape-string-regexp/-/escape-string-regexp-5.0.0.tgz 0ms (cache hit)
+125 http cache extend@https://registry.npmjs.org/extend/-/extend-3.0.2.tgz 0ms (cache hit)
+126 http cache electron@https://registry.npmjs.org/electron/-/electron-44.2.0.tgz 0ms (cache hit)
+127 http cache devlop@https://registry.npmjs.org/devlop/-/devlop-1.1.0.tgz 0ms (cache hit)
+128 http cache dequal@https://registry.npmjs.org/dequal/-/dequal-2.0.3.tgz 0ms (cache hit)
+129 http cache decode-named-character-reference@https://registry.npmjs.org/decode-named-character-reference/-/decode-named-character-reference-1.3.0.tgz 0ms (cache hit)
+130 http cache env-paths@https://registry.npmjs.org/env-paths/-/env-paths-3.0.0.tgz 0ms (cache hit)
+131 http cache detect-libc@https://registry.npmjs.org/detect-libc/-/detect-libc-2.1.2.tgz 0ms (cache hit)
+132 http cache debug@https://registry.npmjs.org/debug/-/debug-4.4.3.tgz 0ms (cache hit)
+133 http cache csstype@https://registry.npmjs.org/csstype/-/csstype-3.2.3.tgz 0ms (cache hit)
+134 http cache character-entities-legacy@https://registry.npmjs.org/character-entities-legacy/-/character-entities-legacy-3.0.0.tgz 0ms (cache hit)
+135 http cache comma-separated-tokens@https://registry.npmjs.org/comma-separated-tokens/-/comma-separated-tokens-2.0.3.tgz 0ms (cache hit)
+136 http cache character-reference-invalid@https://registry.npmjs.org/character-reference-invalid/-/character-reference-invalid-2.0.1.tgz 0ms (cache hit)
+137 http cache character-entities@https://registry.npmjs.org/character-entities/-/character-entities-2.0.2.tgz 0ms (cache hit)
+138 http cache character-entities-html4@https://registry.npmjs.org/character-entities-html4/-/character-entities-html4-2.1.0.tgz 0ms (cache hit)
+139 http cache ccount@https://registry.npmjs.org/ccount/-/ccount-2.0.1.tgz 0ms (cache hit)
+140 http cache balanced-match@https://registry.npmjs.org/balanced-match/-/balanced-match-4.0.4.tgz 0ms (cache hit)
+141 http cache @vitejs/plugin-react@https://registry.npmjs.org/@vitejs/plugin-react/-/plugin-react-6.1.1.tgz 0ms (cache hit)
+142 http cache bail@https://registry.npmjs.org/bail/-/bail-2.0.2.tgz 0ms (cache hit)
+143 http cache @typescript/typescript-win32-x64@https://registry.npmjs.org/@typescript/typescript-win32-x64/-/typescript-win32-x64-7.0.2.tgz 0ms (cache hit)
+144 http cache brace-expansion@https://registry.npmjs.org/brace-expansion/-/brace-expansion-5.0.9.tgz 0ms (cache hit)
+145 http cache @types/unist@https://registry.npmjs.org/@types/unist/-/unist-3.0.3.tgz 0ms (cache hit)
+146 http cache @types/react@https://registry.npmjs.org/@types/react/-/react-19.2.18.tgz 0ms (cache hit)
+147 http cache @types/react-dom@https://registry.npmjs.org/@types/react-dom/-/react-dom-19.2.7.tgz 0ms (cache hit)
+148 http cache @types/node@https://registry.npmjs.org/@types/node/-/node-26.4.1.tgz 0ms (cache hit)
+149 http cache @types/ms@https://registry.npmjs.org/@types/ms/-/ms-2.1.0.tgz 0ms (cache hit)
+150 http cache @types/mdast@https://registry.npmjs.org/@types/mdast/-/mdast-4.0.4.tgz 0ms (cache hit)
+151 http cache @types/estree-jsx@https://registry.npmjs.org/@types/estree-jsx/-/estree-jsx-1.0.5.tgz 0ms (cache hit)
+152 http cache @types/estree@https://registry.npmjs.org/@types/estree/-/estree-1.0.9.tgz 0ms (cache hit)
+153 http cache @types/debug@https://registry.npmjs.org/@types/debug/-/debug-4.1.13.tgz 0ms (cache hit)
+154 http cache @ungap/structured-clone@https://registry.npmjs.org/@ungap/structured-clone/-/structured-clone-1.4.0.tgz 0ms (cache hit)
+155 http cache @types/hast@https://registry.npmjs.org/@types/hast/-/hast-3.0.5.tgz 0ms (cache hit)
+156 http cache @oxc-project/types@https://registry.npmjs.org/@oxc-project/types/-/types-0.148.0.tgz 0ms (cache hit)
+157 http cache @rolldown/binding-win32-x64-msvc@https://registry.npmjs.org/@rolldown/binding-win32-x64-msvc/-/binding-win32-x64-msvc-1.2.7.tgz 0ms (cache hit)
+158 http cache @rolldown/pluginutils@https://registry.npmjs.org/@rolldown/pluginutils/-/pluginutils-1.0.1.tgz 0ms (cache hit)
+159 http cache @electron/asar@https://registry.npmjs.org/@electron/asar/-/asar-4.3.0.tgz 0ms (cache hit)
+160 http cache @types/unist@https://registry.npmjs.org/@types/unist/-/unist-2.0.11.tgz 0ms (cache hit)
+161 http cache undici-types@https://registry.npmjs.org/undici-types/-/undici-types-7.18.2.tgz 0ms (cache hit)
+162 http cache @types/node@https://registry.npmjs.org/@types/node/-/node-24.13.3.tgz 0ms (cache hit)
+163 http cache @electron-internal/extract-zip@https://registry.npmjs.org/@electron-internal/extract-zip/-/extract-zip-1.0.5.tgz 1ms (cache hit)
+164 silly tarball no local data for zwitch@https://registry.npmjs.org/zwitch/-/zwitch-2.0.4.tgz. Extracting by manifest.
+165 silly tarball no local data for vite@https://registry.npmjs.org/vite/-/vite-8.2.2.tgz. Extracting by manifest.
+166 silly tarball no local data for vfile@https://registry.npmjs.org/vfile/-/vfile-6.0.3.tgz. Extracting by manifest.
+167 silly tarball no local data for vfile-message@https://registry.npmjs.org/vfile-message/-/vfile-message-4.0.3.tgz. Extracting by manifest.
+168 silly tarball no local data for unist-util-visit-parents@https://registry.npmjs.org/unist-util-visit-parents/-/unist-util-visit-parents-6.0.2.tgz. Extracting by manifest.
+169 silly tarball no local data for unist-util-visit@https://registry.npmjs.org/unist-util-visit/-/unist-util-visit-5.1.0.tgz. Extracting by manifest.
+170 http cache @electron/get@https://registry.npmjs.org/@electron/get/-/get-5.1.0.tgz 0ms (cache hit)
+171 silly tarball no local data for unist-util-position@https://registry.npmjs.org/unist-util-position/-/unist-util-position-5.0.0.tgz. Extracting by manifest.
+172 silly tarball no local data for unist-util-stringify-position@https://registry.npmjs.org/unist-util-stringify-position/-/unist-util-stringify-position-4.0.0.tgz. Extracting by manifest.
+173 silly tarball no local data for unist-util-is@https://registry.npmjs.org/unist-util-is/-/unist-util-is-6.0.1.tgz. Extracting by manifest.
+174 silly tarball no local data for undici-types@https://registry.npmjs.org/undici-types/-/undici-types-8.3.0.tgz. Extracting by manifest.
+175 silly tarball no local data for unified@https://registry.npmjs.org/unified/-/unified-11.0.5.tgz. Extracting by manifest.
+176 silly tarball no local data for typescript@https://registry.npmjs.org/typescript/-/typescript-7.0.2.tgz. Extracting by manifest.
+177 silly tarball no local data for trim-lines@https://registry.npmjs.org/trim-lines/-/trim-lines-3.0.1.tgz. Extracting by manifest.
+178 silly tarball no local data for trough@https://registry.npmjs.org/trough/-/trough-2.2.0.tgz. Extracting by manifest.
+179 silly tarball no local data for tinyglobby@https://registry.npmjs.org/tinyglobby/-/tinyglobby-0.2.17.tgz. Extracting by manifest.
+180 silly tarball no local data for undici@https://registry.npmjs.org/undici/-/undici-7.29.1.tgz. Extracting by manifest.
+181 silly tarball no local data for sumchecker@https://registry.npmjs.org/sumchecker/-/sumchecker-3.0.1.tgz. Extracting by manifest.
+182 silly tarball no local data for style-to-object@https://registry.npmjs.org/style-to-object/-/style-to-object-1.0.14.tgz. Extracting by manifest.
+183 silly tarball no local data for style-to-js@https://registry.npmjs.org/style-to-js/-/style-to-js-1.1.21.tgz. Extracting by manifest.
+184 silly tarball no local data for source-map-js@https://registry.npmjs.org/source-map-js/-/source-map-js-1.2.1.tgz. Extracting by manifest.
+185 silly tarball no local data for space-separated-tokens@https://registry.npmjs.org/space-separated-tokens/-/space-separated-tokens-2.0.2.tgz. Extracting by manifest.
+186 silly tarball no local data for semver@https://registry.npmjs.org/semver/-/semver-7.8.5.tgz. Extracting by manifest.
+187 silly tarball no local data for stringify-entities@https://registry.npmjs.org/stringify-entities/-/stringify-entities-4.0.4.tgz. Extracting by manifest.
+188 silly tarball no local data for scheduler@https://registry.npmjs.org/scheduler/-/scheduler-0.27.0.tgz. Extracting by manifest.
+189 silly tarball no local data for rolldown@https://registry.npmjs.org/rolldown/-/rolldown-1.2.7.tgz. Extracting by manifest.
+190 silly tarball no local data for remark-parse@https://registry.npmjs.org/remark-parse/-/remark-parse-11.0.0.tgz. Extracting by manifest.
+191 silly tarball no local data for react-dom@https://registry.npmjs.org/react-dom/-/react-dom-19.2.8.tgz. Extracting by manifest.
+192 silly tarball no local data for react@https://registry.npmjs.org/react/-/react-19.2.8.tgz. Extracting by manifest.
+193 silly tarball no local data for react-markdown@https://registry.npmjs.org/react-markdown/-/react-markdown-10.1.0.tgz. Extracting by manifest.
+194 silly tarball no local data for remark-gfm@https://registry.npmjs.org/remark-gfm/-/remark-gfm-4.0.1.tgz. Extracting by manifest.
+195 silly tarball no local data for remark-stringify@https://registry.npmjs.org/remark-stringify/-/remark-stringify-11.0.0.tgz. Extracting by manifest.
+196 silly tarball no local data for property-information@https://registry.npmjs.org/property-information/-/property-information-7.2.0.tgz. Extracting by manifest.
+197 silly tarball no local data for progress@https://registry.npmjs.org/progress/-/progress-2.0.3.tgz. Extracting by manifest.
+198 silly tarball no local data for postcss@https://registry.npmjs.org/postcss/-/postcss-8.5.28.tgz. Extracting by manifest.
+199 silly tarball no local data for playwright@https://registry.npmjs.org/playwright/-/playwright-1.63.0.tgz. Extracting by manifest.
+200 silly tarball no local data for picomatch@https://registry.npmjs.org/picomatch/-/picomatch-4.0.7.tgz. Extracting by manifest.
+201 silly tarball no local data for picocolors@https://registry.npmjs.org/picocolors/-/picocolors-1.1.1.tgz. Extracting by manifest.
+202 silly tarball no local data for playwright-core@https://registry.npmjs.org/playwright-core/-/playwright-core-1.63.0.tgz. Extracting by manifest.
+203 silly tarball no local data for remark-rehype@https://registry.npmjs.org/remark-rehype/-/remark-rehype-11.1.2.tgz. Extracting by manifest.
+204 silly tarball no local data for path-scurry@https://registry.npmjs.org/path-scurry/-/path-scurry-2.0.2.tgz. Extracting by manifest.
+205 silly tarball no local data for nanoid@https://registry.npmjs.org/nanoid/-/nanoid-3.3.18.tgz. Extracting by manifest.
+206 silly tarball no local data for parse-entities@https://registry.npmjs.org/parse-entities/-/parse-entities-4.0.2.tgz. Extracting by manifest.
+207 silly tarball no local data for minimatch@https://registry.npmjs.org/minimatch/-/minimatch-10.2.6.tgz. Extracting by manifest.
+208 silly tarball no local data for minipass@https://registry.npmjs.org/minipass/-/minipass-7.1.3.tgz. Extracting by manifest.
+209 silly tarball no local data for micromark-util-types@https://registry.npmjs.org/micromark-util-types/-/micromark-util-types-2.0.2.tgz. Extracting by manifest.
+210 silly tarball no local data for micromark-util-symbol@https://registry.npmjs.org/micromark-util-symbol/-/micromark-util-symbol-2.0.1.tgz. Extracting by manifest.
+211 silly tarball no local data for ms@https://registry.npmjs.org/ms/-/ms-2.1.3.tgz. Extracting by manifest.
+212 silly tarball no local data for micromark-util-subtokenize@https://registry.npmjs.org/micromark-util-subtokenize/-/micromark-util-subtokenize-2.1.0.tgz. Extracting by manifest.
+213 silly tarball no local data for micromark-util-sanitize-uri@https://registry.npmjs.org/micromark-util-sanitize-uri/-/micromark-util-sanitize-uri-2.0.1.tgz. Extracting by manifest.
+214 silly tarball no local data for micromark-util-resolve-all@https://registry.npmjs.org/micromark-util-resolve-all/-/micromark-util-resolve-all-2.0.1.tgz. Extracting by manifest.
+215 silly tarball no local data for micromark-util-html-tag-name@https://registry.npmjs.org/micromark-util-html-tag-name/-/micromark-util-html-tag-name-2.0.1.tgz. Extracting by manifest.
+216 silly tarball no local data for micromark-util-encode@https://registry.npmjs.org/micromark-util-encode/-/micromark-util-encode-2.0.1.tgz. Extracting by manifest.
+217 silly tarball no local data for micromark-util-decode-string@https://registry.npmjs.org/micromark-util-decode-string/-/micromark-util-decode-string-2.0.1.tgz. Extracting by manifest.
+218 silly tarball no local data for micromark-util-normalize-identifier@https://registry.npmjs.org/micromark-util-normalize-identifier/-/micromark-util-normalize-identifier-2.0.1.tgz. Extracting by manifest.
+219 silly tarball no local data for micromark-util-decode-numeric-character-reference@https://registry.npmjs.org/micromark-util-decode-numeric-character-reference/-/micromark-util-decode-numeric-character-reference-2.0.2.tgz. Extracting by manifest.
+220 silly tarball no local data for micromark-util-combine-extensions@https://registry.npmjs.org/micromark-util-combine-extensions/-/micromark-util-combine-extensions-2.0.1.tgz. Extracting by manifest.
+221 silly tarball no local data for micromark-util-classify-character@https://registry.npmjs.org/micromark-util-classify-character/-/micromark-util-classify-character-2.0.1.tgz. Extracting by manifest.
+222 silly tarball no local data for micromark-factory-whitespace@https://registry.npmjs.org/micromark-factory-whitespace/-/micromark-factory-whitespace-2.0.1.tgz. Extracting by manifest.
+223 silly tarball no local data for micromark-factory-title@https://registry.npmjs.org/micromark-factory-title/-/micromark-factory-title-2.0.1.tgz. Extracting by manifest.
+224 silly tarball no local data for micromark-util-character@https://registry.npmjs.org/micromark-util-character/-/micromark-util-character-2.1.1.tgz. Extracting by manifest.
+225 silly tarball no local data for micromark-util-chunked@https://registry.npmjs.org/micromark-util-chunked/-/micromark-util-chunked-2.0.1.tgz. Extracting by manifest.
+226 silly tarball no local data for micromark-factory-space@https://registry.npmjs.org/micromark-factory-space/-/micromark-factory-space-2.0.1.tgz. Extracting by manifest.
+227 silly tarball no local data for micromark-factory-label@https://registry.npmjs.org/micromark-factory-label/-/micromark-factory-label-2.0.1.tgz. Extracting by manifest.
+228 silly tarball no local data for micromark-factory-destination@https://registry.npmjs.org/micromark-factory-destination/-/micromark-factory-destination-2.0.1.tgz. Extracting by manifest.
+229 silly tarball no local data for micromark-extension-gfm-tagfilter@https://registry.npmjs.org/micromark-extension-gfm-tagfilter/-/micromark-extension-gfm-tagfilter-2.0.0.tgz. Extracting by manifest.
+230 silly tarball no local data for micromark-extension-gfm-table@https://registry.npmjs.org/micromark-extension-gfm-table/-/micromark-extension-gfm-table-2.1.1.tgz. Extracting by manifest.
+231 silly tarball no local data for micromark-extension-gfm-task-list-item@https://registry.npmjs.org/micromark-extension-gfm-task-list-item/-/micromark-extension-gfm-task-list-item-2.1.0.tgz. Extracting by manifest.
+232 silly tarball no local data for micromark-extension-gfm-strikethrough@https://registry.npmjs.org/micromark-extension-gfm-strikethrough/-/micromark-extension-gfm-strikethrough-2.1.0.tgz. Extracting by manifest.
+233 silly tarball no local data for micromark-extension-gfm-footnote@https://registry.npmjs.org/micromark-extension-gfm-footnote/-/micromark-extension-gfm-footnote-2.1.0.tgz. Extracting by manifest.
+234 silly tarball no local data for micromark-extension-gfm-autolink-literal@https://registry.npmjs.org/micromark-extension-gfm-autolink-literal/-/micromark-extension-gfm-autolink-literal-2.1.0.tgz. Extracting by manifest.
+235 silly tarball no local data for micromark-extension-gfm@https://registry.npmjs.org/micromark-extension-gfm/-/micromark-extension-gfm-3.0.0.tgz. Extracting by manifest.
+236 silly tarball no local data for micromark@https://registry.npmjs.org/micromark/-/micromark-4.0.2.tgz. Extracting by manifest.
+237 silly tarball no local data for mdast-util-to-string@https://registry.npmjs.org/mdast-util-to-string/-/mdast-util-to-string-4.0.0.tgz. Extracting by manifest.
+238 silly tarball no local data for micromark-core-commonmark@https://registry.npmjs.org/micromark-core-commonmark/-/micromark-core-commonmark-2.0.3.tgz. Extracting by manifest.
+239 silly tarball no local data for mdast-util-to-hast@https://registry.npmjs.org/mdast-util-to-hast/-/mdast-util-to-hast-13.2.1.tgz. Extracting by manifest.
+240 silly tarball no local data for mdast-util-phrasing@https://registry.npmjs.org/mdast-util-phrasing/-/mdast-util-phrasing-4.1.0.tgz. Extracting by manifest.
+241 silly tarball no local data for mdast-util-mdx-jsx@https://registry.npmjs.org/mdast-util-mdx-jsx/-/mdast-util-mdx-jsx-3.2.0.tgz. Extracting by manifest.
+242 silly tarball no local data for mdast-util-mdxjs-esm@https://registry.npmjs.org/mdast-util-mdxjs-esm/-/mdast-util-mdxjs-esm-2.0.1.tgz. Extracting by manifest.
+243 silly tarball no local data for mdast-util-mdx-expression@https://registry.npmjs.org/mdast-util-mdx-expression/-/mdast-util-mdx-expression-2.0.1.tgz. Extracting by manifest.
+244 silly tarball no local data for mdast-util-to-markdown@https://registry.npmjs.org/mdast-util-to-markdown/-/mdast-util-to-markdown-2.1.2.tgz. Extracting by manifest.
+245 silly tarball no local data for mdast-util-gfm-task-list-item@https://registry.npmjs.org/mdast-util-gfm-task-list-item/-/mdast-util-gfm-task-list-item-2.0.0.tgz. Extracting by manifest.
+246 silly tarball no local data for mdast-util-gfm-strikethrough@https://registry.npmjs.org/mdast-util-gfm-strikethrough/-/mdast-util-gfm-strikethrough-2.0.0.tgz. Extracting by manifest.
+247 silly tarball no local data for mdast-util-gfm-autolink-literal@https://registry.npmjs.org/mdast-util-gfm-autolink-literal/-/mdast-util-gfm-autolink-literal-2.0.1.tgz. Extracting by manifest.
+248 silly tarball no local data for mdast-util-gfm@https://registry.npmjs.org/mdast-util-gfm/-/mdast-util-gfm-3.1.0.tgz. Extracting by manifest.
+249 silly tarball no local data for mdast-util-gfm-footnote@https://registry.npmjs.org/mdast-util-gfm-footnote/-/mdast-util-gfm-footnote-2.1.0.tgz. Extracting by manifest.
+250 silly tarball no local data for mdast-util-from-markdown@https://registry.npmjs.org/mdast-util-from-markdown/-/mdast-util-from-markdown-2.0.3.tgz. Extracting by manifest.
+251 silly tarball no local data for mdast-util-gfm-table@https://registry.npmjs.org/mdast-util-gfm-table/-/mdast-util-gfm-table-2.0.0.tgz. Extracting by manifest.
+252 silly tarball no local data for mdast-util-find-and-replace@https://registry.npmjs.org/mdast-util-find-and-replace/-/mdast-util-find-and-replace-3.0.2.tgz. Extracting by manifest.
+253 silly tarball no local data for lucide-react@https://registry.npmjs.org/lucide-react/-/lucide-react-1.41.0.tgz. Extracting by manifest.
+254 silly tarball no local data for markdown-table@https://registry.npmjs.org/markdown-table/-/markdown-table-3.0.4.tgz. Extracting by manifest.
+255 silly tarball no local data for longest-streak@https://registry.npmjs.org/longest-streak/-/longest-streak-3.1.0.tgz. Extracting by manifest.
+256 silly tarball no local data for lightningcss-win32-x64-msvc@https://registry.npmjs.org/lightningcss-win32-x64-msvc/-/lightningcss-win32-x64-msvc-1.33.0.tgz. Extracting by manifest.
+257 silly tarball no local data for lru-cache@https://registry.npmjs.org/lru-cache/-/lru-cache-11.5.2.tgz. Extracting by manifest.
+258 silly tarball no local data for is-hexadecimal@https://registry.npmjs.org/is-hexadecimal/-/is-hexadecimal-2.0.1.tgz. Extracting by manifest.
+259 silly tarball no local data for lightningcss@https://registry.npmjs.org/lightningcss/-/lightningcss-1.33.0.tgz. Extracting by manifest.
+260 silly tarball no local data for is-alphanumerical@https://registry.npmjs.org/is-alphanumerical/-/is-alphanumerical-2.0.1.tgz. Extracting by manifest.
+261 silly tarball no local data for is-plain-obj@https://registry.npmjs.org/is-plain-obj/-/is-plain-obj-4.1.0.tgz. Extracting by manifest.
+262 silly tarball no local data for is-alphabetical@https://registry.npmjs.org/is-alphabetical/-/is-alphabetical-2.0.1.tgz. Extracting by manifest.
+263 silly tarball no local data for is-decimal@https://registry.npmjs.org/is-decimal/-/is-decimal-2.0.1.tgz. Extracting by manifest.
+264 silly tarball no local data for hast-util-whitespace@https://registry.npmjs.org/hast-util-whitespace/-/hast-util-whitespace-3.0.0.tgz. Extracting by manifest.
+265 silly tarball no local data for hast-util-to-jsx-runtime@https://registry.npmjs.org/hast-util-to-jsx-runtime/-/hast-util-to-jsx-runtime-2.3.6.tgz. Extracting by manifest.
+266 silly tarball no local data for inline-style-parser@https://registry.npmjs.org/inline-style-parser/-/inline-style-parser-0.2.7.tgz. Extracting by manifest.
+267 silly tarball no local data for glob@https://registry.npmjs.org/glob/-/glob-13.0.6.tgz. Extracting by manifest.
+268 silly tarball no local data for html-url-attributes@https://registry.npmjs.org/html-url-attributes/-/html-url-attributes-3.0.1.tgz. Extracting by manifest.
+269 silly tarball no local data for fdir@https://registry.npmjs.org/fdir/-/fdir-6.5.0.tgz. Extracting by manifest.
+270 silly tarball no local data for graceful-fs@https://registry.npmjs.org/graceful-fs/-/graceful-fs-4.2.11.tgz. Extracting by manifest.
+271 silly tarball no local data for estree-util-is-identifier-name@https://registry.npmjs.org/estree-util-is-identifier-name/-/estree-util-is-identifier-name-3.0.0.tgz. Extracting by manifest.
+272 silly tarball no local data for escape-string-regexp@https://registry.npmjs.org/escape-string-regexp/-/escape-string-regexp-5.0.0.tgz. Extracting by manifest.
+273 silly tarball no local data for extend@https://registry.npmjs.org/extend/-/extend-3.0.2.tgz. Extracting by manifest.
+274 silly tarball no local data for electron@https://registry.npmjs.org/electron/-/electron-44.2.0.tgz. Extracting by manifest.
+275 silly tarball no local data for devlop@https://registry.npmjs.org/devlop/-/devlop-1.1.0.tgz. Extracting by manifest.
+276 silly tarball no local data for dequal@https://registry.npmjs.org/dequal/-/dequal-2.0.3.tgz. Extracting by manifest.
+277 silly tarball no local data for decode-named-character-reference@https://registry.npmjs.org/decode-named-character-reference/-/decode-named-character-reference-1.3.0.tgz. Extracting by manifest.
+278 silly tarball no local data for env-paths@https://registry.npmjs.org/env-paths/-/env-paths-3.0.0.tgz. Extracting by manifest.
+279 silly tarball no local data for detect-libc@https://registry.npmjs.org/detect-libc/-/detect-libc-2.1.2.tgz. Extracting by manifest.
+280 silly tarball no local data for debug@https://registry.npmjs.org/debug/-/debug-4.4.3.tgz. Extracting by manifest.
+281 silly tarball no local data for csstype@https://registry.npmjs.org/csstype/-/csstype-3.2.3.tgz. Extracting by manifest.
+282 silly tarball no local data for character-entities-legacy@https://registry.npmjs.org/character-entities-legacy/-/character-entities-legacy-3.0.0.tgz. Extracting by manifest.
+283 silly tarball no local data for comma-separated-tokens@https://registry.npmjs.org/comma-separated-tokens/-/comma-separated-tokens-2.0.3.tgz. Extracting by manifest.
+284 silly tarball no local data for character-reference-invalid@https://registry.npmjs.org/character-reference-invalid/-/character-reference-invalid-2.0.1.tgz. Extracting by manifest.
+285 silly tarball no local data for character-entities@https://registry.npmjs.org/character-entities/-/character-entities-2.0.2.tgz. Extracting by manifest.
+286 silly tarball no local data for character-entities-html4@https://registry.npmjs.org/character-entities-html4/-/character-entities-html4-2.1.0.tgz. Extracting by manifest.
+287 silly tarball no local data for ccount@https://registry.npmjs.org/ccount/-/ccount-2.0.1.tgz. Extracting by manifest.
+288 silly tarball no local data for balanced-match@https://registry.npmjs.org/balanced-match/-/balanced-match-4.0.4.tgz. Extracting by manifest.
+289 silly tarball no local data for @vitejs/plugin-react@https://registry.npmjs.org/@vitejs/plugin-react/-/plugin-react-6.1.1.tgz. Extracting by manifest.
+290 silly tarball no local data for bail@https://registry.npmjs.org/bail/-/bail-2.0.2.tgz. Extracting by manifest.
+291 silly tarball no local data for @typescript/typescript-win32-x64@https://registry.npmjs.org/@typescript/typescript-win32-x64/-/typescript-win32-x64-7.0.2.tgz. Extracting by manifest.
+292 silly tarball no local data for brace-expansion@https://registry.npmjs.org/brace-expansion/-/brace-expansion-5.0.9.tgz. Extracting by manifest.
+293 silly tarball no local data for @types/unist@https://registry.npmjs.org/@types/unist/-/unist-3.0.3.tgz. Extracting by manifest.
+294 silly tarball no local data for @types/react@https://registry.npmjs.org/@types/react/-/react-19.2.18.tgz. Extracting by manifest.
+295 silly tarball no local data for @types/react-dom@https://registry.npmjs.org/@types/react-dom/-/react-dom-19.2.7.tgz. Extracting by manifest.
+296 silly tarball no local data for @types/node@https://registry.npmjs.org/@types/node/-/node-26.4.1.tgz. Extracting by manifest.
+297 silly tarball no local data for @types/ms@https://registry.npmjs.org/@types/ms/-/ms-2.1.0.tgz. Extracting by manifest.
+298 silly tarball no local data for @types/mdast@https://registry.npmjs.org/@types/mdast/-/mdast-4.0.4.tgz. Extracting by manifest.
+299 silly tarball no local data for @types/estree-jsx@https://registry.npmjs.org/@types/estree-jsx/-/estree-jsx-1.0.5.tgz. Extracting by manifest.
+300 silly tarball no local data for @types/estree@https://registry.npmjs.org/@types/estree/-/estree-1.0.9.tgz. Extracting by manifest.
+301 silly tarball no local data for @types/debug@https://registry.npmjs.org/@types/debug/-/debug-4.1.13.tgz. Extracting by manifest.
+302 silly tarball no local data for @ungap/structured-clone@https://registry.npmjs.org/@ungap/structured-clone/-/structured-clone-1.4.0.tgz. Extracting by manifest.
+303 silly tarball no local data for @types/hast@https://registry.npmjs.org/@types/hast/-/hast-3.0.5.tgz. Extracting by manifest.
+304 silly tarball no local data for @oxc-project/types@https://registry.npmjs.org/@oxc-project/types/-/types-0.148.0.tgz. Extracting by manifest.
+305 silly tarball no local data for @rolldown/binding-win32-x64-msvc@https://registry.npmjs.org/@rolldown/binding-win32-x64-msvc/-/binding-win32-x64-msvc-1.2.7.tgz. Extracting by manifest.
+306 silly tarball no local data for @rolldown/pluginutils@https://registry.npmjs.org/@rolldown/pluginutils/-/pluginutils-1.0.1.tgz. Extracting by manifest.
+307 silly tarball no local data for @electron/asar@https://registry.npmjs.org/@electron/asar/-/asar-4.3.0.tgz. Extracting by manifest.
+308 silly tarball no local data for @types/unist@https://registry.npmjs.org/@types/unist/-/unist-2.0.11.tgz. Extracting by manifest.
+309 silly tarball no local data for undici-types@https://registry.npmjs.org/undici-types/-/undici-types-7.18.2.tgz. Extracting by manifest.
+310 silly tarball no local data for @types/node@https://registry.npmjs.org/@types/node/-/node-24.13.3.tgz. Extracting by manifest.
+311 silly tarball no local data for @electron-internal/extract-zip@https://registry.npmjs.org/@electron-internal/extract-zip/-/extract-zip-1.0.5.tgz. Extracting by manifest.
+312 silly tarball no local data for @electron/get@https://registry.npmjs.org/@electron/get/-/get-5.1.0.tgz. Extracting by manifest.
+313 verbose reify failed optional dependency C:\Users\29183\AppData\Roaming\Cleo\evolution\source\ui\node_modules\undici
+314 silly reify mark deleted [
+314 silly reify   'C:\\Users\\29183\\AppData\\Roaming\\Cleo\\evolution\\source\\ui\\node_modules\\undici'
+314 silly reify ]
+315 verbose reify failed optional dependency C:\Users\29183\AppData\Roaming\Cleo\evolution\source\ui\node_modules\lightningcss-win32-x64-msvc
+316 silly reify mark deleted [
+316 silly reify   'C:\\Users\\29183\\AppData\\Roaming\\Cleo\\evolution\\source\\ui\\node_modules\\lightningcss-win32-x64-msvc'
+316 silly reify ]
+317 verbose reify failed optional dependency C:\Users\29183\AppData\Roaming\Cleo\evolution\source\ui\node_modules\@typescript\typescript-win32-x64
+318 silly reify mark deleted [
+318 silly reify   'C:\\Users\\29183\\AppData\\Roaming\\Cleo\\evolution\\source\\ui\\node_modules\\@typescript\\typescript-win32-x64'
+318 silly reify ]
+319 verbose reify failed optional dependency C:\Users\29183\AppData\Roaming\Cleo\evolution\source\ui\node_modules\@rolldown\binding-win32-x64-msvc
+320 silly reify mark deleted [
+320 silly reify   'C:\\Users\\29183\\AppData\\Roaming\\Cleo\\evolution\\source\\ui\\node_modules\\@rolldown\\binding-win32-x64-msvc'
+320 silly reify ]
+321 verbose stack Error: request to https://registry.npmjs.org/zwitch/-/zwitch-2.0.4.tgz failed: cache mode is 'only-if-cached' but no cached response is available.
+321 verbose stack     at cacheFetch (C:\Users\29183\AppData\Roaming\Cleo\evolution\builds\local-***\Cleo\resources\browser\node_modules\npm\node_modules\make-fetch-happen\lib\cache\index.js:12:13)
+321 verbose stack     at async fetch (C:\Users\29183\AppData\Roaming\Cleo\evolution\builds\local-***\Cleo\resources\browser\node_modules\npm\node_modules\make-fetch-happen\lib\fetch.js:98:7)
+322 error code ENOTCACHED
+323 error request to https://registry.npmjs.org/zwitch/-/zwitch-2.0.4.tgz failed: cache mode is 'only-if-cached' but no cached response is available.
+324 silly unfinished npm timer reify 1789348800505
+325 silly unfinished npm timer reify:unpack 1789348800551
+326 silly unfinished npm timer reifyNode:node_modules/zwitch 1789348800551
+327 silly unfinished npm timer reifyNode:node_modules/vite 1789348800551
+328 silly unfinished npm timer reifyNode:node_modules/vfile-message 1789348800551
+329 silly unfinished npm timer reifyNode:node_modules/vfile 1789348800551
+330 silly unfinished npm timer reifyNode:node_modules/unist-util-visit-parents 1789348800551
+331 silly unfinished npm timer reifyNode:node_modules/unist-util-visit 1789348800551
+332 silly unfinished npm timer reifyNode:node_modules/unist-util-stringify-position 1789348800551
+333 silly unfinished npm timer reifyNode:node_modules/unist-util-position 1789348800551
+334 silly unfinished npm timer reifyNode:node_modules/unist-util-is 1789348800551
+335 silly unfinished npm timer reifyNode:node_modules/unified 1789348800551
+336 silly unfinished npm timer reifyNode:node_modules/undici-types 1789348800551
+337 silly unfinished npm timer reifyNode:node_modules/typescript 1789348800551
+338 silly unfinished npm timer reifyNode:node_modules/trough 1789348800551
+339 silly unfinished npm timer reifyNode:node_modules/trim-lines 1789348800551
+340 silly unfinished npm timer reifyNode:node_modules/tinyglobby 1789348800551
+341 silly unfinished npm timer reifyNode:node_modules/sumchecker 1789348800551
+342 silly unfinished npm timer reifyNode:node_modules/style-to-object 1789348800551
+343 silly unfinished npm timer reifyNode:node_modules/style-to-js 1789348800551
+344 silly unfinished npm timer reifyNode:node_modules/stringify-entities 1789348800551
+345 silly unfinished npm timer reifyNode:node_modules/space-separated-tokens 1789348800551
+346 silly unfinished npm timer reifyNode:node_modules/source-map-js 1789348800551
+347 silly unfinished npm timer reifyNode:node_modules/semver 1789348800551
+348 silly unfinished npm timer reifyNode:node_modules/scheduler 1789348800551
+349 silly unfinished npm timer reifyNode:node_modules/rolldown 1789348800551
+350 silly unfinished npm timer reifyNode:node_modules/remark-stringify 1789348800551
+351 silly unfinished npm timer reifyNode:node_modules/remark-rehype 1789348800551
+352 silly unfinished npm timer reifyNode:node_modules/remark-parse 1789348800551
+353 silly unfinished npm timer reifyNode:node_modules/remark-gfm 1789348800551
+354 silly unfinished npm timer reifyNode:node_modules/react-markdown 1789348800551
+355 silly unfinished npm timer reifyNode:node_modules/react-dom 1789348800551
+356 silly unfinished npm timer reifyNode:node_modules/react 1789348800551
+357 silly unfinished npm timer reifyNode:node_modules/property-information 1789348800551
+358 silly unfinished npm timer reifyNode:node_modules/progress 1789348800551
+359 silly unfinished npm timer reifyNode:node_modules/postcss 1789348800551
+360 silly unfinished npm timer reifyNode:node_modules/playwright-core 1789348800551
+361 silly unfinished npm timer reifyNode:node_modules/playwright 1789348800551
+362 silly unfinished npm timer reifyNode:node_modules/picomatch 1789348800551
+363 silly unfinished npm timer reifyNode:node_modules/picocolors 1789348800551
+364 silly unfinished npm timer reifyNode:node_modules/path-scurry 1789348800551
+365 silly unfinished npm timer reifyNode:node_modules/parse-entities 1789348800551
+366 silly unfinished npm timer reifyNode:node_modules/parse-entities/node_modules/@types/unist 1789348800551
+367 silly unfinished npm timer reifyNode:node_modules/nanoid 1789348800551
+368 silly unfinished npm timer reifyNode:node_modules/ms 1789348800551
+369 silly unfinished npm timer reifyNode:node_modules/minipass 1789348800551
+370 silly unfinished npm timer reifyNode:node_modules/minimatch 1789348800551
+371 silly unfinished npm timer reifyNode:node_modules/micromark-util-types 1789348800551
+372 silly unfinished npm timer reifyNode:node_modules/micromark-util-symbol 1789348800551
+373 silly unfinished npm timer reifyNode:node_modules/micromark-util-subtokenize 1789348800551
+374 silly unfinished npm timer reifyNode:node_modules/micromark-util-sanitize-uri 1789348800551
+375 silly unfinished npm timer reifyNode:node_modules/micromark-util-resolve-all 1789348800551
+376 silly unfinished npm timer reifyNode:node_modules/micromark-util-normalize-identifier 1789348800551
+377 silly unfinished npm timer reifyNode:node_modules/micromark-util-html-tag-name 1789348800551
+378 silly unfinished npm timer reifyNode:node_modules/micromark-util-encode 1789348800551
+379 silly unfinished npm timer reifyNode:node_modules/micromark-util-decode-string 1789348800551
+380 silly unfinished npm timer reifyNode:node_modules/micromark-util-decode-numeric-character-reference 1789348800551
+381 silly unfinished npm timer reifyNode:node_modules/micromark-util-combine-extensions 1789348800551
+382 silly unfinished npm timer reifyNode:node_modules/micromark-util-classify-character 1789348800551
+383 silly unfinished npm timer reifyNode:node_modules/micromark-util-chunked 1789348800551
+384 silly unfinished npm timer reifyNode:node_modules/micromark-util-character 1789348800551
+385 silly unfinished npm timer reifyNode:node_modules/micromark-factory-whitespace 1789348800551
+386 silly unfinished npm timer reifyNode:node_modules/micromark-factory-title 1789348800551
+387 silly unfinished npm timer reifyNode:node_modules/micromark-factory-space 1789348800551
+388 silly unfinished npm timer reifyNode:node_modules/micromark-factory-label 1789348800551
+389 silly unfinished npm timer reifyNode:node_modules/micromark-factory-destination 1789348800551
+390 silly unfinished npm timer reifyNode:node_modules/micromark-extension-gfm-task-list-item 1789348800551
+391 silly unfinished npm timer reifyNode:node_modules/micromark-extension-gfm-tagfilter 1789348800551
+392 silly unfinished npm timer reifyNode:node_modules/micromark-extension-gfm-table 1789348800551
+393 silly unfinished npm timer reifyNode:node_modules/micromark-extension-gfm-strikethrough 1789348800551
+394 silly unfinished npm timer reifyNode:node_modules/micromark-extension-gfm-footnote 1789348800551
+395 silly unfinished npm timer reifyNode:node_modules/micromark-extension-gfm-autolink-literal 1789348800551
+396 silly unfinished npm timer reifyNode:node_modules/micromark-extension-gfm 1789348800551
+397 silly unfinished npm timer reifyNode:node_modules/micromark-core-commonmark 1789348800551
+398 silly unfinished npm timer reifyNode:node_modules/micromark 1789348800551
+399 silly unfinished npm timer reifyNode:node_modules/mdast-util-to-string 1789348800551
+400 silly unfinished npm timer reifyNode:node_modules/mdast-util-to-markdown 1789348800551
+401 silly unfinished npm timer reifyNode:node_modules/mdast-util-to-hast 1789348800551
+402 silly unfinished npm timer reifyNode:node_modules/mdast-util-phrasing 1789348800551
+403 silly unfinished npm timer reifyNode:node_modules/mdast-util-mdxjs-esm 1789348800551
+404 silly unfinished npm timer reifyNode:node_modules/mdast-util-mdx-jsx 1789348800551
+405 silly unfinished npm timer reifyNode:node_modules/mdast-util-mdx-expression 1789348800551
+406 silly unfinished npm timer reifyNode:node_modules/mdast-util-gfm-task-list-item 1789348800551
+407 silly unfinished npm timer reifyNode:node_modules/mdast-util-gfm-table 1789348800551
+408 silly unfinished npm timer reifyNode:node_modules/mdast-util-gfm-strikethrough 1789348800551
+409 silly unfinished npm timer reifyNode:node_modules/mdast-util-gfm-footnote 1789348800551
+410 silly unfinished npm timer reifyNode:node_modules/mdast-util-gfm-autolink-literal 1789348800551
+411 silly unfinished npm timer reifyNode:node_modules/mdast-util-gfm 1789348800551
+412 silly unfinished npm timer reifyNode:node_modules/mdast-util-from-markdown 1789348800551
+413 silly unfinished npm timer reifyNode:node_modules/mdast-util-find-and-replace 1789348800551
+414 silly unfinished npm timer reifyNode:node_modules/markdown-table 1789348800551
+415 silly unfinished npm timer reifyNode:node_modules/lucide-react 1789348800551
+416 silly unfinished npm timer reifyNode:node_modules/lru-cache 1789348800551
+417 silly unfinished npm timer reifyNode:node_modules/longest-streak 1789348800551
+418 silly unfinished npm timer reifyNode:node_modules/lightningcss 1789348800551
+419 silly unfinished npm timer reifyNode:node_modules/is-plain-obj 1789348800551
+420 silly unfinished npm timer reifyNode:node_modules/is-hexadecimal 1789348800551
+421 silly unfinished npm timer reifyNode:node_modules/is-decimal 1789348800551
+422 silly unfinished npm timer reifyNode:node_modules/is-alphanumerical 1789348800551
+423 silly unfinished npm timer reifyNode:node_modules/is-alphabetical 1789348800551
+424 silly unfinished npm timer reifyNode:node_modules/inline-style-parser 1789348800551
+425 silly unfinished npm timer reifyNode:node_modules/html-url-attributes 1789348800551
+426 silly unfinished npm timer reifyNode:node_modules/hast-util-whitespace 1789348800551
+427 silly unfinished npm timer reifyNode:node_modules/hast-util-to-jsx-runtime 1789348800551
+428 silly unfinished npm timer reifyNode:node_modules/graceful-fs 1789348800551
+429 silly unfinished npm timer reifyNode:node_modules/glob 1789348800551
+430 silly unfinished npm timer reifyNode:node_modules/fdir 1789348800551
+431 silly unfinished npm timer reifyNode:node_modules/extend 1789348800551
+432 silly unfinished npm timer reifyNode:node_modules/estree-util-is-identifier-name 1789348800551
+433 silly unfinished npm timer reifyNode:node_modules/escape-string-regexp 1789348800551
+434 silly unfinished npm timer reifyNode:node_modules/env-paths 1789348800551
+435 silly unfinished npm timer reifyNode:node_modules/electron 1789348800551
+436 silly unfinished npm timer reifyNode:node_modules/electron/node_modules/undici-types 1789348800551
+437 silly unfinished npm timer reifyNode:node_modules/electron/node_modules/@types/node 1789348800551
+438 silly unfinished npm timer reifyNode:node_modules/devlop 1789348800551
+439 silly unfinished npm timer reifyNode:node_modules/detect-libc 1789348800551
+440 silly unfinished npm timer reifyNode:node_modules/dequal 1789348800551
+441 silly unfinished npm timer reifyNode:node_modules/decode-named-character-reference 1789348800551
+442 silly unfinished npm timer reifyNode:node_modules/debug 1789348800551
+443 silly unfinished npm timer reifyNode:node_modules/csstype 1789348800551
+444 silly unfinished npm timer reifyNode:node_modules/comma-separated-tokens 1789348800551
+445 silly unfinished npm timer reifyNode:node_modules/character-reference-invalid 1789348800551
+446 silly unfinished npm timer reifyNode:node_modules/character-entities-legacy 1789348800551
+447 silly unfinished npm timer reifyNode:node_modules/character-entities-html4 1789348800551
+448 silly unfinished npm timer reifyNode:node_modules/character-entities 1789348800551
+449 silly unfinished npm timer reifyNode:node_modules/ccount 1789348800551
+450 silly unfinished npm timer reifyNode:node_modules/brace-expansion 1789348800551
+451 silly unfinished npm timer reifyNode:node_modules/balanced-match 1789348800551
+452 silly unfinished npm timer reifyNode:node_modules/bail 1789348800551
+453 silly unfinished npm timer reifyNode:node_modules/@vitejs/plugin-react 1789348800551
+454 silly unfinished npm timer reifyNode:node_modules/@ungap/structured-clone 1789348800551
+455 silly unfinished npm timer reifyNode:node_modules/@types/unist 1789348800551
+456 silly unfinished npm timer reifyNode:node_modules/@types/react-dom 1789348800551
+457 silly unfinished npm timer reifyNode:node_modules/@types/react 1789348800551
+458 silly unfinished npm timer reifyNode:node_modules/@types/node 1789348800552
+459 silly unfinished npm timer reifyNode:node_modules/@types/ms 1789348800552
+460 silly unfinished npm timer reifyNode:node_modules/@types/mdast 1789348800552
+461 silly unfinished npm timer reifyNode:node_modules/@types/hast 1789348800552
+462 silly unfinished npm timer reifyNode:node_modules/@types/estree-jsx 1789348800552
+463 silly unfinished npm timer reifyNode:node_modules/@types/estree 1789348800552
+464 silly unfinished npm timer reifyNode:node_modules/@types/debug 1789348800552
+465 silly unfinished npm timer reifyNode:node_modules/@rolldown/pluginutils 1789348800552
+466 silly unfinished npm timer reifyNode:node_modules/@oxc-project/types 1789348800552
+467 silly unfinished npm timer reifyNode:node_modules/@electron/get 1789348800552
+468 silly unfinished npm timer reifyNode:node_modules/@electron/asar 1789348800552
+469 silly unfinished npm timer reifyNode:node_modules/@electron-internal/extract-zip 1789348800552
+470 verbose cwd C:\Users\29183\AppData\Roaming\Cleo\evolution\source\ui
+471 verbose os Windows_NT 10.0.26200
+472 verbose node v24.21.0
+473 verbose npm  v11.19.1
+474 verbose exit 1
+475 verbose code 1
+476 error A complete log of this run can be found in: C:\Users\29183\AppData\Roaming\Cleo\evolution\source\ui\.npm-cache\_logs\2026-09-14T01_20_00_143Z-debug-0.log

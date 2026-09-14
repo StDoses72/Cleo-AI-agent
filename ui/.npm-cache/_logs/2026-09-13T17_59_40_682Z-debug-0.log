@@ -1,0 +1,814 @@
+0 verbose cli C:\Users\29183\AppData\Roaming\Cleo\evolution\builds\local-***\Cleo\resources\browser\node.exe C:\Users\29183\AppData\Roaming\Cleo\evolution\builds\local-***\Cleo\resources\browser\node_modules\npm\bin\npm-cli.js
+1 info using npm@11.19.1
+2 info using node@v24.21.0
+3 silly config load:file:C:\Users\29183\AppData\Roaming\Cleo\evolution\builds\local-***\Cleo\resources\browser\node_modules\npm\npmrc
+4 silly config load:file:C:\Users\29183\appdata\Roaming\Cleo\evolution\source\ui\.npmrc
+5 silly config load:file:C:\Users\29183\.npmrc
+6 silly config load:file:C:\Users\29183\AppData\Roaming\Cleo\evolution\builds\local-***\Cleo\resources\browser\etc\npmrc
+7 verbose title npm ci
+8 verbose argv "ci" "--ignore-scripts" "--cache" ".npm-cache"
+9 verbose logfile logs-max:10 dir:C:\Users\29183\appdata\Roaming\Cleo\evolution\source\ui\.npm-cache\_logs\2026-09-13T17_59_40_682Z-
+10 verbose logfile C:\Users\29183\appdata\Roaming\Cleo\evolution\source\ui\.npm-cache\_logs\2026-09-13T17_59_40_682Z-debug-0.log
+11 silly logfile done cleaning log files
+12 silly packumentCache heap:4496293888 maxSize:1124073472 maxEntrySize:562036736
+13 silly packumentCache heap:4496293888 maxSize:1124073472 maxEntrySize:562036736
+14 silly idealTree buildDeps
+15 http fetch GET https://registry.npmjs.org/npm attempt 1 failed with EACCES
+16 silly reify moves {}
+17 silly audit bulk request {
+17 silly audit   '@electron-internal/extract-zip': [ '1.0.5' ],
+17 silly audit   '@electron/asar': [ '4.3.0' ],
+17 silly audit   '@electron/get': [ '5.1.0' ],
+17 silly audit   '@oxc-project/types': [ '0.148.0' ],
+17 silly audit   '@rolldown/binding-android-arm-eabi': [ '1.2.7' ],
+17 silly audit   '@rolldown/binding-android-arm64': [ '1.2.7' ],
+17 silly audit   '@rolldown/binding-darwin-arm64': [ '1.2.7' ],
+17 silly audit   '@rolldown/binding-darwin-x64': [ '1.2.7' ],
+17 silly audit   '@rolldown/binding-freebsd-x64': [ '1.2.7' ],
+17 silly audit   '@rolldown/binding-linux-arm-gnueabihf': [ '1.2.7' ],
+17 silly audit   '@rolldown/binding-linux-arm64-gnu': [ '1.2.7' ],
+17 silly audit   '@rolldown/binding-linux-arm64-musl': [ '1.2.7' ],
+17 silly audit   '@rolldown/binding-linux-ppc64-gnu': [ '1.2.7' ],
+17 silly audit   '@rolldown/binding-linux-s390x-gnu': [ '1.2.7' ],
+17 silly audit   '@rolldown/binding-linux-x64-gnu': [ '1.2.7' ],
+17 silly audit   '@rolldown/binding-linux-x64-musl': [ '1.2.7' ],
+17 silly audit   '@rolldown/binding-openharmony-arm64': [ '1.2.7' ],
+17 silly audit   '@rolldown/binding-win32-arm64-msvc': [ '1.2.7' ],
+17 silly audit   '@rolldown/binding-win32-x64-msvc': [ '1.2.7' ],
+17 silly audit   '@rolldown/pluginutils': [ '1.0.1' ],
+17 silly audit   '@types/debug': [ '4.1.13' ],
+17 silly audit   '@types/estree': [ '1.0.9' ],
+17 silly audit   '@types/estree-jsx': [ '1.0.5' ],
+17 silly audit   '@types/hast': [ '3.0.5' ],
+17 silly audit   '@types/mdast': [ '4.0.4' ],
+17 silly audit   '@types/ms': [ '2.1.0' ],
+17 silly audit   '@types/node': [ '26.4.1', '24.13.3' ],
+17 silly audit   '@types/react': [ '19.2.18' ],
+17 silly audit   '@types/react-dom': [ '19.2.7' ],
+17 silly audit   '@types/unist': [ '3.0.3', '2.0.11' ],
+17 silly audit   '@typescript/typescript-aix-ppc64': [ '7.0.2' ],
+17 silly audit   '@typescript/typescript-darwin-arm64': [ '7.0.2' ],
+17 silly audit   '@typescript/typescript-darwin-x64': [ '7.0.2' ],
+17 silly audit   '@typescript/typescript-freebsd-arm64': [ '7.0.2' ],
+17 silly audit   '@typescript/typescript-freebsd-x64': [ '7.0.2' ],
+17 silly audit   '@typescript/typescript-linux-arm': [ '7.0.2' ],
+17 silly audit   '@typescript/typescript-linux-arm64': [ '7.0.2' ],
+17 silly audit   '@typescript/typescript-linux-loong64': [ '7.0.2' ],
+17 silly audit   '@typescript/typescript-linux-mips64el': [ '7.0.2' ],
+17 silly audit   '@typescript/typescript-linux-ppc64': [ '7.0.2' ],
+17 silly audit   '@typescript/typescript-linux-riscv64': [ '7.0.2' ],
+17 silly audit   '@typescript/typescript-linux-s390x': [ '7.0.2' ],
+17 silly audit   '@typescript/typescript-linux-x64': [ '7.0.2' ],
+17 silly audit   '@typescript/typescript-netbsd-arm64': [ '7.0.2' ],
+17 silly audit   '@typescript/typescript-netbsd-x64': [ '7.0.2' ],
+17 silly audit   '@typescript/typescript-openbsd-arm64': [ '7.0.2' ],
+17 silly audit   '@typescript/typescript-openbsd-x64': [ '7.0.2' ],
+17 silly audit   '@typescript/typescript-sunos-x64': [ '7.0.2' ],
+17 silly audit   '@typescript/typescript-win32-arm64': [ '7.0.2' ],
+17 silly audit   '@typescript/typescript-win32-x64': [ '7.0.2' ],
+17 silly audit   '@ungap/structured-clone': [ '1.4.0' ],
+17 silly audit   '@vitejs/plugin-react': [ '6.1.1' ],
+17 silly audit   bail: [ '2.0.2' ],
+17 silly audit   'balanced-match': [ '4.0.4' ],
+17 silly audit   'brace-expansion': [ '5.0.9' ],
+17 silly audit   ccount: [ '2.0.1' ],
+17 silly audit   'character-entities': [ '2.0.2' ],
+17 silly audit   'character-entities-html4': [ '2.1.0' ],
+17 silly audit   'character-entities-legacy': [ '3.0.0' ],
+17 silly audit   'character-reference-invalid': [ '2.0.1' ],
+17 silly audit   'comma-separated-tokens': [ '2.0.3' ],
+17 silly audit   csstype: [ '3.2.3' ],
+17 silly audit   debug: [ '4.4.3' ],
+17 silly audit   'decode-named-character-reference': [ '1.3.0' ],
+17 silly audit   dequal: [ '2.0.3' ],
+17 silly audit   'detect-libc': [ '2.1.2' ],
+17 silly audit   devlop: [ '1.1.0' ],
+17 silly audit   electron: [ '44.2.0' ],
+17 silly audit   'undici-types': [ '7.18.2', '8.3.0' ],
+17 silly audit   'env-paths': [ '3.0.0' ],
+17 silly audit   'escape-string-regexp': [ '5.0.0' ],
+17 silly audit   'estree-util-is-identifier-name': [ '3.0.0' ],
+17 silly audit   extend: [ '3.0.2' ],
+17 silly audit   fdir: [ '6.5.0' ],
+17 silly audit   fsevents: [ '2.3.3' ],
+17 silly audit   glob: [ '13.0.6' ],
+17 silly audit   'graceful-fs': [ '4.2.11' ],
+17 silly audit   'hast-util-to-jsx-runtime': [ '2.3.6' ],
+17 silly audit   'hast-util-whitespace': [ '3.0.0' ],
+17 silly audit   'html-url-attributes': [ '3.0.1' ],
+17 silly audit   'inline-style-parser': [ '0.2.7' ],
+17 silly audit   'is-alphabetical': [ '2.0.1' ],
+17 silly audit   'is-alphanumerical': [ '2.0.1' ],
+17 silly audit   'is-decimal': [ '2.0.1' ],
+17 silly audit   'is-hexadecimal': [ '2.0.1' ],
+17 silly audit   'is-plain-obj': [ '4.1.0' ],
+17 silly audit   lightningcss: [ '1.33.0' ],
+17 silly audit   'lightningcss-android-arm64': [ '1.33.0' ],
+17 silly audit   'lightningcss-darwin-arm64': [ '1.33.0' ],
+17 silly audit   'lightningcss-darwin-x64': [ '1.33.0' ],
+17 silly audit   'lightningcss-freebsd-x64': [ '1.33.0' ],
+17 silly audit   'lightningcss-linux-arm-gnueabihf': [ '1.33.0' ],
+17 silly audit   'lightningcss-linux-arm64-gnu': [ '1.33.0' ],
+17 silly audit   'lightningcss-linux-arm64-musl': [ '1.33.0' ],
+17 silly audit   'lightningcss-linux-x64-gnu': [ '1.33.0' ],
+17 silly audit   'lightningcss-linux-x64-musl': [ '1.33.0' ],
+17 silly audit   'lightningcss-win32-arm64-msvc': [ '1.33.0' ],
+17 silly audit   'lightningcss-win32-x64-msvc': [ '1.33.0' ],
+17 silly audit   'longest-streak': [ '3.1.0' ],
+17 silly audit   'lru-cache': [ '11.5.2' ],
+17 silly audit   'lucide-react': [ '1.41.0' ],
+17 silly audit   'markdown-table': [ '3.0.4' ],
+17 silly audit   'mdast-util-find-and-replace': [ '3.0.2' ],
+17 silly audit   'mdast-util-from-markdown': [ '2.0.3' ],
+17 silly audit   'mdast-util-gfm': [ '3.1.0' ],
+17 silly audit   'mdast-util-gfm-autolink-literal': [ '2.0.1' ],
+17 silly audit   'mdast-util-gfm-footnote': [ '2.1.0' ],
+17 silly audit   'mdast-util-gfm-strikethrough': [ '2.0.0' ],
+17 silly audit   'mdast-util-gfm-table': [ '2.0.0' ],
+17 silly audit   'mdast-util-gfm-task-list-item': [ '2.0.0' ],
+17 silly audit   'mdast-util-mdx-expression': [ '2.0.1' ],
+17 silly audit   'mdast-util-mdx-jsx': [ '3.2.0' ],
+17 silly audit   'mdast-util-mdxjs-esm': [ '2.0.1' ],
+17 silly audit   'mdast-util-phrasing': [ '4.1.0' ],
+17 silly audit   'mdast-util-to-hast': [ '13.2.1' ],
+17 silly audit   'mdast-util-to-markdown': [ '2.1.2' ],
+17 silly audit   'mdast-util-to-string': [ '4.0.0' ],
+17 silly audit   micromark: [ '4.0.2' ],
+17 silly audit   'micromark-core-commonmark': [ '2.0.3' ],
+17 silly audit   'micromark-extension-gfm': [ '3.0.0' ],
+17 silly audit   'micromark-extension-gfm-autolink-literal': [ '2.1.0' ],
+17 silly audit   'micromark-extension-gfm-footnote': [ '2.1.0' ],
+17 silly audit   'micromark-extension-gfm-strikethrough': [ '2.1.0' ],
+17 silly audit   'micromark-extension-gfm-table': [ '2.1.1' ],
+17 silly audit   'micromark-extension-gfm-tagfilter': [ '2.0.0' ],
+17 silly audit   'micromark-extension-gfm-task-list-item': [ '2.1.0' ],
+17 silly audit   'micromark-factory-destination': [ '2.0.1' ],
+17 silly audit   'micromark-factory-label': [ '2.0.1' ],
+17 silly audit   'micromark-factory-space': [ '2.0.1' ],
+17 silly audit   'micromark-factory-title': [ '2.0.1' ],
+17 silly audit   'micromark-factory-whitespace': [ '2.0.1' ],
+17 silly audit   'micromark-util-character': [ '2.1.1' ],
+17 silly audit   'micromark-util-chunked': [ '2.0.1' ],
+17 silly audit   'micromark-util-classify-character': [ '2.0.1' ],
+17 silly audit   'micromark-util-combine-extensions': [ '2.0.1' ],
+17 silly audit   'micromark-util-decode-numeric-character-reference': [ '2.0.2' ],
+17 silly audit   'micromark-util-decode-string': [ '2.0.1' ],
+17 silly audit   'micromark-util-encode': [ '2.0.1' ],
+17 silly audit   'micromark-util-html-tag-name': [ '2.0.1' ],
+17 silly audit   'micromark-util-normalize-identifier': [ '2.0.1' ],
+17 silly audit   'micromark-util-resolve-all': [ '2.0.1' ],
+17 silly audit   'micromark-util-sanitize-uri': [ '2.0.1' ],
+17 silly audit   'micromark-util-subtokenize': [ '2.1.0' ],
+17 silly audit   'micromark-util-symbol': [ '2.0.1' ],
+17 silly audit   'micromark-util-types': [ '2.0.2' ],
+17 silly audit   minimatch: [ '10.2.6' ],
+17 silly audit   minipass: [ '7.1.3' ],
+17 silly audit   ms: [ '2.1.3' ],
+17 silly audit   nanoid: [ '3.3.18' ],
+17 silly audit   'parse-entities': [ '4.0.2' ],
+17 silly audit   'path-scurry': [ '2.0.2' ],
+17 silly audit   picocolors: [ '1.1.1' ],
+17 silly audit   picomatch: [ '4.0.7' ],
+17 silly audit   playwright: [ '1.63.0' ],
+17 silly audit   'playwright-core': [ '1.63.0' ],
+17 silly audit   postcss: [ '8.5.28' ],
+17 silly audit   progress: [ '2.0.3' ],
+17 silly audit   'property-information': [ '7.2.0' ],
+17 silly audit   react: [ '19.2.8' ],
+17 silly audit   'react-dom': [ '19.2.8' ],
+17 silly audit   'react-markdown': [ '10.1.0' ],
+17 silly audit   'remark-gfm': [ '4.0.1' ],
+17 silly audit   'remark-parse': [ '11.0.0' ],
+17 silly audit   'remark-rehype': [ '11.1.2' ],
+17 silly audit   'remark-stringify': [ '11.0.0' ],
+17 silly audit   rolldown: [ '1.2.7' ],
+17 silly audit   scheduler: [ '0.27.0' ],
+17 silly audit   semver: [ '7.8.5' ],
+17 silly audit   'source-map-js': [ '1.2.1' ],
+17 silly audit   'space-separated-tokens': [ '2.0.2' ],
+17 silly audit   'stringify-entities': [ '4.0.4' ],
+17 silly audit   'style-to-js': [ '1.1.21' ],
+17 silly audit   'style-to-object': [ '1.0.14' ],
+17 silly audit   sumchecker: [ '3.0.1' ],
+17 silly audit   tinyglobby: [ '0.2.17' ],
+17 silly audit   'trim-lines': [ '3.0.1' ],
+17 silly audit   trough: [ '2.2.0' ],
+17 silly audit   typescript: [ '7.0.2' ],
+17 silly audit   undici: [ '7.29.1' ],
+17 silly audit   unified: [ '11.0.5' ],
+17 silly audit   'unist-util-is': [ '6.0.1' ],
+17 silly audit   'unist-util-position': [ '5.0.0' ],
+17 silly audit   'unist-util-stringify-position': [ '4.0.0' ],
+17 silly audit   'unist-util-visit': [ '5.1.0' ],
+17 silly audit   'unist-util-visit-parents': [ '6.0.2' ],
+17 silly audit   vfile: [ '6.0.3' ],
+17 silly audit   'vfile-message': [ '4.0.3' ],
+17 silly audit   vite: [ '8.2.2' ],
+17 silly audit   zwitch: [ '2.0.4' ]
+17 silly audit }
+18 verbose audit error FetchError: request to https://registry.npmjs.org/-/npm/v1/security/advisories/bulk failed, reason: 
+18 verbose audit error     at ClientRequest.<anonymous> (C:\Users\29183\AppData\Roaming\Cleo\evolution\builds\local-***\Cleo\resources\browser\node_modules\npm\node_modules\minipass-fetch\lib\index.js:130:14)
+18 verbose audit error     at ClientRequest.emit (node:events:514:28)
+18 verbose audit error     at emitErrorEvent (node:_http_client:114:11)
+18 verbose audit error     at _destroy (node:_http_client:1167:9)
+18 verbose audit error     at onSocketNT (node:_http_client:1188:5)
+18 verbose audit error     at process.processTicksAndRejections (node:internal/process/task_queues:91:21) {
+18 verbose audit error   code: 'EACCES',
+18 verbose audit error   errno: 'EACCES',
+18 verbose audit error   type: 'system'
+18 verbose audit error }
+19 silly audit error undefined
+20 silly audit report null
+21 http cache vfile@https://registry.npmjs.org/vfile/-/vfile-6.0.3.tgz 1ms (cache hit)
+22 http cache vite@https://registry.npmjs.org/vite/-/vite-8.2.2.tgz 0ms (cache hit)
+23 http cache unist-util-visit-parents@https://registry.npmjs.org/unist-util-visit-parents/-/unist-util-visit-parents-6.0.2.tgz 0ms (cache hit)
+24 http cache zwitch@https://registry.npmjs.org/zwitch/-/zwitch-2.0.4.tgz 0ms (cache hit)
+25 http cache unist-util-position@https://registry.npmjs.org/unist-util-position/-/unist-util-position-5.0.0.tgz 0ms (cache hit)
+26 http cache vfile-message@https://registry.npmjs.org/vfile-message/-/vfile-message-4.0.3.tgz 0ms (cache hit)
+27 http cache unist-util-is@https://registry.npmjs.org/unist-util-is/-/unist-util-is-6.0.1.tgz 0ms (cache hit)
+28 http cache unist-util-visit@https://registry.npmjs.org/unist-util-visit/-/unist-util-visit-5.1.0.tgz 0ms (cache hit)
+29 http cache undici-types@https://registry.npmjs.org/undici-types/-/undici-types-8.3.0.tgz 0ms (cache hit)
+30 http cache unist-util-stringify-position@https://registry.npmjs.org/unist-util-stringify-position/-/unist-util-stringify-position-4.0.0.tgz 0ms (cache hit)
+31 http cache undici@https://registry.npmjs.org/undici/-/undici-7.29.1.tgz 0ms (cache hit)
+32 http cache unified@https://registry.npmjs.org/unified/-/unified-11.0.5.tgz 0ms (cache hit)
+33 http cache typescript@https://registry.npmjs.org/typescript/-/typescript-7.0.2.tgz 0ms (cache hit)
+34 http cache tinyglobby@https://registry.npmjs.org/tinyglobby/-/tinyglobby-0.2.17.tgz 0ms (cache hit)
+35 http cache trim-lines@https://registry.npmjs.org/trim-lines/-/trim-lines-3.0.1.tgz 0ms (cache hit)
+36 http cache trough@https://registry.npmjs.org/trough/-/trough-2.2.0.tgz 0ms (cache hit)
+37 http cache sumchecker@https://registry.npmjs.org/sumchecker/-/sumchecker-3.0.1.tgz 0ms (cache hit)
+38 http cache style-to-js@https://registry.npmjs.org/style-to-js/-/style-to-js-1.1.21.tgz 0ms (cache hit)
+39 http cache space-separated-tokens@https://registry.npmjs.org/space-separated-tokens/-/space-separated-tokens-2.0.2.tgz 0ms (cache hit)
+40 http cache style-to-object@https://registry.npmjs.org/style-to-object/-/style-to-object-1.0.14.tgz 0ms (cache hit)
+41 http cache semver@https://registry.npmjs.org/semver/-/semver-7.8.5.tgz 0ms (cache hit)
+42 http cache stringify-entities@https://registry.npmjs.org/stringify-entities/-/stringify-entities-4.0.4.tgz 0ms (cache hit)
+43 http cache scheduler@https://registry.npmjs.org/scheduler/-/scheduler-0.27.0.tgz 0ms (cache hit)
+44 http cache remark-stringify@https://registry.npmjs.org/remark-stringify/-/remark-stringify-11.0.0.tgz 0ms (cache hit)
+45 http cache remark-gfm@https://registry.npmjs.org/remark-gfm/-/remark-gfm-4.0.1.tgz 0ms (cache hit)
+46 http cache source-map-js@https://registry.npmjs.org/source-map-js/-/source-map-js-1.2.1.tgz 0ms (cache hit)
+47 http cache rolldown@https://registry.npmjs.org/rolldown/-/rolldown-1.2.7.tgz 0ms (cache hit)
+48 http cache remark-parse@https://registry.npmjs.org/remark-parse/-/remark-parse-11.0.0.tgz 0ms (cache hit)
+49 http cache react-markdown@https://registry.npmjs.org/react-markdown/-/react-markdown-10.1.0.tgz 0ms (cache hit)
+50 http cache remark-rehype@https://registry.npmjs.org/remark-rehype/-/remark-rehype-11.1.2.tgz 0ms (cache hit)
+51 http cache react-dom@https://registry.npmjs.org/react-dom/-/react-dom-19.2.8.tgz 0ms (cache hit)
+52 http cache property-information@https://registry.npmjs.org/property-information/-/property-information-7.2.0.tgz 0ms (cache hit)
+53 http cache react@https://registry.npmjs.org/react/-/react-19.2.8.tgz 0ms (cache hit)
+54 http cache progress@https://registry.npmjs.org/progress/-/progress-2.0.3.tgz 0ms (cache hit)
+55 http cache postcss@https://registry.npmjs.org/postcss/-/postcss-8.5.28.tgz 0ms (cache hit)
+56 http cache playwright-core@https://registry.npmjs.org/playwright-core/-/playwright-core-1.63.0.tgz 0ms (cache hit)
+57 http cache playwright@https://registry.npmjs.org/playwright/-/playwright-1.63.0.tgz 0ms (cache hit)
+58 http cache picocolors@https://registry.npmjs.org/picocolors/-/picocolors-1.1.1.tgz 0ms (cache hit)
+59 http cache picomatch@https://registry.npmjs.org/picomatch/-/picomatch-4.0.7.tgz 0ms (cache hit)
+60 http cache path-scurry@https://registry.npmjs.org/path-scurry/-/path-scurry-2.0.2.tgz 0ms (cache hit)
+61 http cache ms@https://registry.npmjs.org/ms/-/ms-2.1.3.tgz 0ms (cache hit)
+62 http cache nanoid@https://registry.npmjs.org/nanoid/-/nanoid-3.3.18.tgz 0ms (cache hit)
+63 http cache minipass@https://registry.npmjs.org/minipass/-/minipass-7.1.3.tgz 0ms (cache hit)
+64 http cache parse-entities@https://registry.npmjs.org/parse-entities/-/parse-entities-4.0.2.tgz 0ms (cache hit)
+65 http cache minimatch@https://registry.npmjs.org/minimatch/-/minimatch-10.2.6.tgz 0ms (cache hit)
+66 http cache micromark-util-types@https://registry.npmjs.org/micromark-util-types/-/micromark-util-types-2.0.2.tgz 0ms (cache hit)
+67 http cache micromark-util-subtokenize@https://registry.npmjs.org/micromark-util-subtokenize/-/micromark-util-subtokenize-2.1.0.tgz 0ms (cache hit)
+68 http cache micromark-util-symbol@https://registry.npmjs.org/micromark-util-symbol/-/micromark-util-symbol-2.0.1.tgz 0ms (cache hit)
+69 http cache micromark-util-sanitize-uri@https://registry.npmjs.org/micromark-util-sanitize-uri/-/micromark-util-sanitize-uri-2.0.1.tgz 0ms (cache hit)
+70 http cache micromark-util-html-tag-name@https://registry.npmjs.org/micromark-util-html-tag-name/-/micromark-util-html-tag-name-2.0.1.tgz 0ms (cache hit)
+71 http cache micromark-util-normalize-identifier@https://registry.npmjs.org/micromark-util-normalize-identifier/-/micromark-util-normalize-identifier-2.0.1.tgz 0ms (cache hit)
+72 http cache micromark-util-resolve-all@https://registry.npmjs.org/micromark-util-resolve-all/-/micromark-util-resolve-all-2.0.1.tgz 0ms (cache hit)
+73 http cache micromark-util-encode@https://registry.npmjs.org/micromark-util-encode/-/micromark-util-encode-2.0.1.tgz 0ms (cache hit)
+74 http cache micromark-util-decode-string@https://registry.npmjs.org/micromark-util-decode-string/-/micromark-util-decode-string-2.0.1.tgz 0ms (cache hit)
+75 http cache micromark-util-decode-numeric-character-reference@https://registry.npmjs.org/micromark-util-decode-numeric-character-reference/-/micromark-util-decode-numeric-character-reference-2.0.2.tgz 0ms (cache hit)
+76 http cache micromark-util-combine-extensions@https://registry.npmjs.org/micromark-util-combine-extensions/-/micromark-util-combine-extensions-2.0.1.tgz 0ms (cache hit)
+77 http cache micromark-util-classify-character@https://registry.npmjs.org/micromark-util-classify-character/-/micromark-util-classify-character-2.0.1.tgz 0ms (cache hit)
+78 http cache micromark-util-chunked@https://registry.npmjs.org/micromark-util-chunked/-/micromark-util-chunked-2.0.1.tgz 0ms (cache hit)
+79 http cache micromark-util-character@https://registry.npmjs.org/micromark-util-character/-/micromark-util-character-2.1.1.tgz 0ms (cache hit)
+80 http cache micromark-factory-title@https://registry.npmjs.org/micromark-factory-title/-/micromark-factory-title-2.0.1.tgz 0ms (cache hit)
+81 http cache micromark-factory-space@https://registry.npmjs.org/micromark-factory-space/-/micromark-factory-space-2.0.1.tgz 0ms (cache hit)
+82 http cache micromark-factory-whitespace@https://registry.npmjs.org/micromark-factory-whitespace/-/micromark-factory-whitespace-2.0.1.tgz 0ms (cache hit)
+83 http cache micromark-factory-label@https://registry.npmjs.org/micromark-factory-label/-/micromark-factory-label-2.0.1.tgz 0ms (cache hit)
+84 http cache micromark-factory-destination@https://registry.npmjs.org/micromark-factory-destination/-/micromark-factory-destination-2.0.1.tgz 0ms (cache hit)
+85 http cache micromark-extension-gfm-tagfilter@https://registry.npmjs.org/micromark-extension-gfm-tagfilter/-/micromark-extension-gfm-tagfilter-2.0.0.tgz 0ms (cache hit)
+86 http cache micromark-extension-gfm-table@https://registry.npmjs.org/micromark-extension-gfm-table/-/micromark-extension-gfm-table-2.1.1.tgz 0ms (cache hit)
+87 http cache micromark-extension-gfm-autolink-literal@https://registry.npmjs.org/micromark-extension-gfm-autolink-literal/-/micromark-extension-gfm-autolink-literal-2.1.0.tgz 0ms (cache hit)
+88 http cache micromark-extension-gfm-strikethrough@https://registry.npmjs.org/micromark-extension-gfm-strikethrough/-/micromark-extension-gfm-strikethrough-2.1.0.tgz 0ms (cache hit)
+89 http cache micromark-extension-gfm@https://registry.npmjs.org/micromark-extension-gfm/-/micromark-extension-gfm-3.0.0.tgz 0ms (cache hit)
+90 http cache micromark@https://registry.npmjs.org/micromark/-/micromark-4.0.2.tgz 0ms (cache hit)
+91 http cache micromark-extension-gfm-task-list-item@https://registry.npmjs.org/micromark-extension-gfm-task-list-item/-/micromark-extension-gfm-task-list-item-2.1.0.tgz 0ms (cache hit)
+92 http cache mdast-util-to-string@https://registry.npmjs.org/mdast-util-to-string/-/mdast-util-to-string-4.0.0.tgz 0ms (cache hit)
+93 http cache mdast-util-to-hast@https://registry.npmjs.org/mdast-util-to-hast/-/mdast-util-to-hast-13.2.1.tgz 0ms (cache hit)
+94 http cache mdast-util-to-markdown@https://registry.npmjs.org/mdast-util-to-markdown/-/mdast-util-to-markdown-2.1.2.tgz 0ms (cache hit)
+95 http cache micromark-core-commonmark@https://registry.npmjs.org/micromark-core-commonmark/-/micromark-core-commonmark-2.0.3.tgz 0ms (cache hit)
+96 http cache mdast-util-mdxjs-esm@https://registry.npmjs.org/mdast-util-mdxjs-esm/-/mdast-util-mdxjs-esm-2.0.1.tgz 0ms (cache hit)
+97 http cache mdast-util-mdx-jsx@https://registry.npmjs.org/mdast-util-mdx-jsx/-/mdast-util-mdx-jsx-3.2.0.tgz 0ms (cache hit)
+98 http cache micromark-extension-gfm-footnote@https://registry.npmjs.org/micromark-extension-gfm-footnote/-/micromark-extension-gfm-footnote-2.1.0.tgz 0ms (cache hit)
+99 http cache mdast-util-mdx-expression@https://registry.npmjs.org/mdast-util-mdx-expression/-/mdast-util-mdx-expression-2.0.1.tgz 0ms (cache hit)
+100 http cache mdast-util-phrasing@https://registry.npmjs.org/mdast-util-phrasing/-/mdast-util-phrasing-4.1.0.tgz 0ms (cache hit)
+101 http cache mdast-util-gfm-task-list-item@https://registry.npmjs.org/mdast-util-gfm-task-list-item/-/mdast-util-gfm-task-list-item-2.0.0.tgz 0ms (cache hit)
+102 http cache mdast-util-gfm-strikethrough@https://registry.npmjs.org/mdast-util-gfm-strikethrough/-/mdast-util-gfm-strikethrough-2.0.0.tgz 0ms (cache hit)
+103 http cache mdast-util-gfm-table@https://registry.npmjs.org/mdast-util-gfm-table/-/mdast-util-gfm-table-2.0.0.tgz 0ms (cache hit)
+104 http cache mdast-util-gfm-footnote@https://registry.npmjs.org/mdast-util-gfm-footnote/-/mdast-util-gfm-footnote-2.1.0.tgz 0ms (cache hit)
+105 http cache mdast-util-gfm-autolink-literal@https://registry.npmjs.org/mdast-util-gfm-autolink-literal/-/mdast-util-gfm-autolink-literal-2.0.1.tgz 0ms (cache hit)
+106 http cache mdast-util-gfm@https://registry.npmjs.org/mdast-util-gfm/-/mdast-util-gfm-3.1.0.tgz 0ms (cache hit)
+107 http cache mdast-util-from-markdown@https://registry.npmjs.org/mdast-util-from-markdown/-/mdast-util-from-markdown-2.0.3.tgz 0ms (cache hit)
+108 http cache mdast-util-find-and-replace@https://registry.npmjs.org/mdast-util-find-and-replace/-/mdast-util-find-and-replace-3.0.2.tgz 0ms (cache hit)
+109 http cache lru-cache@https://registry.npmjs.org/lru-cache/-/lru-cache-11.5.2.tgz 0ms (cache hit)
+110 http cache markdown-table@https://registry.npmjs.org/markdown-table/-/markdown-table-3.0.4.tgz 0ms (cache hit)
+111 http cache lucide-react@https://registry.npmjs.org/lucide-react/-/lucide-react-1.41.0.tgz 0ms (cache hit)
+112 http cache longest-streak@https://registry.npmjs.org/longest-streak/-/longest-streak-3.1.0.tgz 0ms (cache hit)
+113 http cache lightningcss-win32-x64-msvc@https://registry.npmjs.org/lightningcss-win32-x64-msvc/-/lightningcss-win32-x64-msvc-1.33.0.tgz 0ms (cache hit)
+114 http cache is-plain-obj@https://registry.npmjs.org/is-plain-obj/-/is-plain-obj-4.1.0.tgz 0ms (cache hit)
+115 http cache lightningcss@https://registry.npmjs.org/lightningcss/-/lightningcss-1.33.0.tgz 0ms (cache hit)
+116 http cache is-hexadecimal@https://registry.npmjs.org/is-hexadecimal/-/is-hexadecimal-2.0.1.tgz 0ms (cache hit)
+117 http cache is-decimal@https://registry.npmjs.org/is-decimal/-/is-decimal-2.0.1.tgz 0ms (cache hit)
+118 http cache is-alphabetical@https://registry.npmjs.org/is-alphabetical/-/is-alphabetical-2.0.1.tgz 0ms (cache hit)
+119 http cache is-alphanumerical@https://registry.npmjs.org/is-alphanumerical/-/is-alphanumerical-2.0.1.tgz 0ms (cache hit)
+120 http cache html-url-attributes@https://registry.npmjs.org/html-url-attributes/-/html-url-attributes-3.0.1.tgz 0ms (cache hit)
+121 http cache hast-util-whitespace@https://registry.npmjs.org/hast-util-whitespace/-/hast-util-whitespace-3.0.0.tgz 0ms (cache hit)
+122 http cache graceful-fs@https://registry.npmjs.org/graceful-fs/-/graceful-fs-4.2.11.tgz 0ms (cache hit)
+123 http cache hast-util-to-jsx-runtime@https://registry.npmjs.org/hast-util-to-jsx-runtime/-/hast-util-to-jsx-runtime-2.3.6.tgz 0ms (cache hit)
+124 http cache fdir@https://registry.npmjs.org/fdir/-/fdir-6.5.0.tgz 0ms (cache hit)
+125 http cache glob@https://registry.npmjs.org/glob/-/glob-13.0.6.tgz 0ms (cache hit)
+126 http cache estree-util-is-identifier-name@https://registry.npmjs.org/estree-util-is-identifier-name/-/estree-util-is-identifier-name-3.0.0.tgz 0ms (cache hit)
+127 http cache escape-string-regexp@https://registry.npmjs.org/escape-string-regexp/-/escape-string-regexp-5.0.0.tgz 0ms (cache hit)
+128 http cache extend@https://registry.npmjs.org/extend/-/extend-3.0.2.tgz 0ms (cache hit)
+129 http cache inline-style-parser@https://registry.npmjs.org/inline-style-parser/-/inline-style-parser-0.2.7.tgz 0ms (cache hit)
+130 http cache env-paths@https://registry.npmjs.org/env-paths/-/env-paths-3.0.0.tgz 0ms (cache hit)
+131 http cache electron@https://registry.npmjs.org/electron/-/electron-44.2.0.tgz 0ms (cache hit)
+132 http cache devlop@https://registry.npmjs.org/devlop/-/devlop-1.1.0.tgz 0ms (cache hit)
+133 http cache dequal@https://registry.npmjs.org/dequal/-/dequal-2.0.3.tgz 0ms (cache hit)
+134 http cache decode-named-character-reference@https://registry.npmjs.org/decode-named-character-reference/-/decode-named-character-reference-1.3.0.tgz 0ms (cache hit)
+135 http cache detect-libc@https://registry.npmjs.org/detect-libc/-/detect-libc-2.1.2.tgz 0ms (cache hit)
+136 http cache debug@https://registry.npmjs.org/debug/-/debug-4.4.3.tgz 0ms (cache hit)
+137 http cache csstype@https://registry.npmjs.org/csstype/-/csstype-3.2.3.tgz 0ms (cache hit)
+138 http cache character-reference-invalid@https://registry.npmjs.org/character-reference-invalid/-/character-reference-invalid-2.0.1.tgz 0ms (cache hit)
+139 http cache character-entities-legacy@https://registry.npmjs.org/character-entities-legacy/-/character-entities-legacy-3.0.0.tgz 0ms (cache hit)
+140 http cache comma-separated-tokens@https://registry.npmjs.org/comma-separated-tokens/-/comma-separated-tokens-2.0.3.tgz 0ms (cache hit)
+141 http cache character-entities@https://registry.npmjs.org/character-entities/-/character-entities-2.0.2.tgz 0ms (cache hit)
+142 http cache ccount@https://registry.npmjs.org/ccount/-/ccount-2.0.1.tgz 0ms (cache hit)
+143 http cache character-entities-html4@https://registry.npmjs.org/character-entities-html4/-/character-entities-html4-2.1.0.tgz 0ms (cache hit)
+144 http cache brace-expansion@https://registry.npmjs.org/brace-expansion/-/brace-expansion-5.0.9.tgz 0ms (cache hit)
+145 http cache @ungap/structured-clone@https://registry.npmjs.org/@ungap/structured-clone/-/structured-clone-1.4.0.tgz 0ms (cache hit)
+146 http cache bail@https://registry.npmjs.org/bail/-/bail-2.0.2.tgz 0ms (cache hit)
+147 http cache balanced-match@https://registry.npmjs.org/balanced-match/-/balanced-match-4.0.4.tgz 0ms (cache hit)
+148 http cache @typescript/typescript-win32-x64@https://registry.npmjs.org/@typescript/typescript-win32-x64/-/typescript-win32-x64-7.0.2.tgz 0ms (cache hit)
+149 http cache @vitejs/plugin-react@https://registry.npmjs.org/@vitejs/plugin-react/-/plugin-react-6.1.1.tgz 0ms (cache hit)
+150 http cache @types/unist@https://registry.npmjs.org/@types/unist/-/unist-3.0.3.tgz 0ms (cache hit)
+151 http cache @types/react@https://registry.npmjs.org/@types/react/-/react-19.2.18.tgz 0ms (cache hit)
+152 http cache @types/react-dom@https://registry.npmjs.org/@types/react-dom/-/react-dom-19.2.7.tgz 0ms (cache hit)
+153 http cache @types/node@https://registry.npmjs.org/@types/node/-/node-26.4.1.tgz 0ms (cache hit)
+154 http cache @types/ms@https://registry.npmjs.org/@types/ms/-/ms-2.1.0.tgz 0ms (cache hit)
+155 http cache @types/mdast@https://registry.npmjs.org/@types/mdast/-/mdast-4.0.4.tgz 0ms (cache hit)
+156 http cache @types/hast@https://registry.npmjs.org/@types/hast/-/hast-3.0.5.tgz 0ms (cache hit)
+157 http cache @types/estree-jsx@https://registry.npmjs.org/@types/estree-jsx/-/estree-jsx-1.0.5.tgz 0ms (cache hit)
+158 http cache @types/debug@https://registry.npmjs.org/@types/debug/-/debug-4.1.13.tgz 0ms (cache hit)
+159 http cache @rolldown/binding-win32-x64-msvc@https://registry.npmjs.org/@rolldown/binding-win32-x64-msvc/-/binding-win32-x64-msvc-1.2.7.tgz 0ms (cache hit)
+160 http cache @types/estree@https://registry.npmjs.org/@types/estree/-/estree-1.0.9.tgz 0ms (cache hit)
+161 http cache @rolldown/pluginutils@https://registry.npmjs.org/@rolldown/pluginutils/-/pluginutils-1.0.1.tgz 0ms (cache hit)
+162 http cache @electron-internal/extract-zip@https://registry.npmjs.org/@electron-internal/extract-zip/-/extract-zip-1.0.5.tgz 0ms (cache hit)
+163 http cache @oxc-project/types@https://registry.npmjs.org/@oxc-project/types/-/types-0.148.0.tgz 0ms (cache hit)
+164 http cache @electron/get@https://registry.npmjs.org/@electron/get/-/get-5.1.0.tgz 0ms (cache hit)
+165 http cache @electron/asar@https://registry.npmjs.org/@electron/asar/-/asar-4.3.0.tgz 0ms (cache hit)
+166 silly tarball no local data for vfile@https://registry.npmjs.org/vfile/-/vfile-6.0.3.tgz. Extracting by manifest.
+167 http cache undici-types@https://registry.npmjs.org/undici-types/-/undici-types-7.18.2.tgz 0ms (cache hit)
+168 silly tarball no local data for vite@https://registry.npmjs.org/vite/-/vite-8.2.2.tgz. Extracting by manifest.
+169 http cache @types/unist@https://registry.npmjs.org/@types/unist/-/unist-2.0.11.tgz 0ms (cache hit)
+170 silly tarball no local data for unist-util-visit-parents@https://registry.npmjs.org/unist-util-visit-parents/-/unist-util-visit-parents-6.0.2.tgz. Extracting by manifest.
+171 silly tarball no local data for zwitch@https://registry.npmjs.org/zwitch/-/zwitch-2.0.4.tgz. Extracting by manifest.
+172 silly tarball no local data for unist-util-position@https://registry.npmjs.org/unist-util-position/-/unist-util-position-5.0.0.tgz. Extracting by manifest.
+173 silly tarball no local data for vfile-message@https://registry.npmjs.org/vfile-message/-/vfile-message-4.0.3.tgz. Extracting by manifest.
+174 silly tarball no local data for unist-util-is@https://registry.npmjs.org/unist-util-is/-/unist-util-is-6.0.1.tgz. Extracting by manifest.
+175 silly tarball no local data for unist-util-visit@https://registry.npmjs.org/unist-util-visit/-/unist-util-visit-5.1.0.tgz. Extracting by manifest.
+176 http cache @types/node@https://registry.npmjs.org/@types/node/-/node-24.13.3.tgz 0ms (cache hit)
+177 silly tarball no local data for undici-types@https://registry.npmjs.org/undici-types/-/undici-types-8.3.0.tgz. Extracting by manifest.
+178 silly tarball no local data for unist-util-stringify-position@https://registry.npmjs.org/unist-util-stringify-position/-/unist-util-stringify-position-4.0.0.tgz. Extracting by manifest.
+179 silly tarball no local data for undici@https://registry.npmjs.org/undici/-/undici-7.29.1.tgz. Extracting by manifest.
+180 silly tarball no local data for unified@https://registry.npmjs.org/unified/-/unified-11.0.5.tgz. Extracting by manifest.
+181 silly tarball no local data for typescript@https://registry.npmjs.org/typescript/-/typescript-7.0.2.tgz. Extracting by manifest.
+182 silly tarball no local data for tinyglobby@https://registry.npmjs.org/tinyglobby/-/tinyglobby-0.2.17.tgz. Extracting by manifest.
+183 silly tarball no local data for trim-lines@https://registry.npmjs.org/trim-lines/-/trim-lines-3.0.1.tgz. Extracting by manifest.
+184 silly tarball no local data for trough@https://registry.npmjs.org/trough/-/trough-2.2.0.tgz. Extracting by manifest.
+185 silly tarball no local data for sumchecker@https://registry.npmjs.org/sumchecker/-/sumchecker-3.0.1.tgz. Extracting by manifest.
+186 silly tarball no local data for style-to-js@https://registry.npmjs.org/style-to-js/-/style-to-js-1.1.21.tgz. Extracting by manifest.
+187 silly tarball no local data for space-separated-tokens@https://registry.npmjs.org/space-separated-tokens/-/space-separated-tokens-2.0.2.tgz. Extracting by manifest.
+188 silly tarball no local data for style-to-object@https://registry.npmjs.org/style-to-object/-/style-to-object-1.0.14.tgz. Extracting by manifest.
+189 silly tarball no local data for semver@https://registry.npmjs.org/semver/-/semver-7.8.5.tgz. Extracting by manifest.
+190 silly tarball no local data for stringify-entities@https://registry.npmjs.org/stringify-entities/-/stringify-entities-4.0.4.tgz. Extracting by manifest.
+191 silly tarball no local data for scheduler@https://registry.npmjs.org/scheduler/-/scheduler-0.27.0.tgz. Extracting by manifest.
+192 silly tarball no local data for remark-stringify@https://registry.npmjs.org/remark-stringify/-/remark-stringify-11.0.0.tgz. Extracting by manifest.
+193 silly tarball no local data for remark-gfm@https://registry.npmjs.org/remark-gfm/-/remark-gfm-4.0.1.tgz. Extracting by manifest.
+194 silly tarball no local data for source-map-js@https://registry.npmjs.org/source-map-js/-/source-map-js-1.2.1.tgz. Extracting by manifest.
+195 silly tarball no local data for rolldown@https://registry.npmjs.org/rolldown/-/rolldown-1.2.7.tgz. Extracting by manifest.
+196 silly tarball no local data for remark-parse@https://registry.npmjs.org/remark-parse/-/remark-parse-11.0.0.tgz. Extracting by manifest.
+197 silly tarball no local data for react-markdown@https://registry.npmjs.org/react-markdown/-/react-markdown-10.1.0.tgz. Extracting by manifest.
+198 silly tarball no local data for remark-rehype@https://registry.npmjs.org/remark-rehype/-/remark-rehype-11.1.2.tgz. Extracting by manifest.
+199 silly tarball no local data for react-dom@https://registry.npmjs.org/react-dom/-/react-dom-19.2.8.tgz. Extracting by manifest.
+200 silly tarball no local data for property-information@https://registry.npmjs.org/property-information/-/property-information-7.2.0.tgz. Extracting by manifest.
+201 silly tarball no local data for react@https://registry.npmjs.org/react/-/react-19.2.8.tgz. Extracting by manifest.
+202 silly tarball no local data for progress@https://registry.npmjs.org/progress/-/progress-2.0.3.tgz. Extracting by manifest.
+203 silly tarball no local data for postcss@https://registry.npmjs.org/postcss/-/postcss-8.5.28.tgz. Extracting by manifest.
+204 silly tarball no local data for playwright-core@https://registry.npmjs.org/playwright-core/-/playwright-core-1.63.0.tgz. Extracting by manifest.
+205 silly tarball no local data for playwright@https://registry.npmjs.org/playwright/-/playwright-1.63.0.tgz. Extracting by manifest.
+206 silly tarball no local data for picocolors@https://registry.npmjs.org/picocolors/-/picocolors-1.1.1.tgz. Extracting by manifest.
+207 silly tarball no local data for picomatch@https://registry.npmjs.org/picomatch/-/picomatch-4.0.7.tgz. Extracting by manifest.
+208 silly tarball no local data for path-scurry@https://registry.npmjs.org/path-scurry/-/path-scurry-2.0.2.tgz. Extracting by manifest.
+209 silly tarball no local data for ms@https://registry.npmjs.org/ms/-/ms-2.1.3.tgz. Extracting by manifest.
+210 silly tarball no local data for nanoid@https://registry.npmjs.org/nanoid/-/nanoid-3.3.18.tgz. Extracting by manifest.
+211 silly tarball no local data for minipass@https://registry.npmjs.org/minipass/-/minipass-7.1.3.tgz. Extracting by manifest.
+212 silly tarball no local data for parse-entities@https://registry.npmjs.org/parse-entities/-/parse-entities-4.0.2.tgz. Extracting by manifest.
+213 silly tarball no local data for minimatch@https://registry.npmjs.org/minimatch/-/minimatch-10.2.6.tgz. Extracting by manifest.
+214 silly tarball no local data for micromark-util-types@https://registry.npmjs.org/micromark-util-types/-/micromark-util-types-2.0.2.tgz. Extracting by manifest.
+215 silly tarball no local data for micromark-util-subtokenize@https://registry.npmjs.org/micromark-util-subtokenize/-/micromark-util-subtokenize-2.1.0.tgz. Extracting by manifest.
+216 silly tarball no local data for micromark-util-symbol@https://registry.npmjs.org/micromark-util-symbol/-/micromark-util-symbol-2.0.1.tgz. Extracting by manifest.
+217 silly tarball no local data for micromark-util-sanitize-uri@https://registry.npmjs.org/micromark-util-sanitize-uri/-/micromark-util-sanitize-uri-2.0.1.tgz. Extracting by manifest.
+218 silly tarball no local data for micromark-util-html-tag-name@https://registry.npmjs.org/micromark-util-html-tag-name/-/micromark-util-html-tag-name-2.0.1.tgz. Extracting by manifest.
+219 silly tarball no local data for micromark-util-normalize-identifier@https://registry.npmjs.org/micromark-util-normalize-identifier/-/micromark-util-normalize-identifier-2.0.1.tgz. Extracting by manifest.
+220 silly tarball no local data for micromark-util-resolve-all@https://registry.npmjs.org/micromark-util-resolve-all/-/micromark-util-resolve-all-2.0.1.tgz. Extracting by manifest.
+221 silly tarball no local data for micromark-util-encode@https://registry.npmjs.org/micromark-util-encode/-/micromark-util-encode-2.0.1.tgz. Extracting by manifest.
+222 silly tarball no local data for micromark-util-decode-string@https://registry.npmjs.org/micromark-util-decode-string/-/micromark-util-decode-string-2.0.1.tgz. Extracting by manifest.
+223 silly tarball no local data for micromark-util-decode-numeric-character-reference@https://registry.npmjs.org/micromark-util-decode-numeric-character-reference/-/micromark-util-decode-numeric-character-reference-2.0.2.tgz. Extracting by manifest.
+224 silly tarball no local data for micromark-util-combine-extensions@https://registry.npmjs.org/micromark-util-combine-extensions/-/micromark-util-combine-extensions-2.0.1.tgz. Extracting by manifest.
+225 silly tarball no local data for micromark-util-classify-character@https://registry.npmjs.org/micromark-util-classify-character/-/micromark-util-classify-character-2.0.1.tgz. Extracting by manifest.
+226 silly tarball no local data for micromark-util-chunked@https://registry.npmjs.org/micromark-util-chunked/-/micromark-util-chunked-2.0.1.tgz. Extracting by manifest.
+227 silly tarball no local data for micromark-util-character@https://registry.npmjs.org/micromark-util-character/-/micromark-util-character-2.1.1.tgz. Extracting by manifest.
+228 silly tarball no local data for micromark-factory-title@https://registry.npmjs.org/micromark-factory-title/-/micromark-factory-title-2.0.1.tgz. Extracting by manifest.
+229 silly tarball no local data for micromark-factory-space@https://registry.npmjs.org/micromark-factory-space/-/micromark-factory-space-2.0.1.tgz. Extracting by manifest.
+230 silly tarball no local data for micromark-factory-whitespace@https://registry.npmjs.org/micromark-factory-whitespace/-/micromark-factory-whitespace-2.0.1.tgz. Extracting by manifest.
+231 silly tarball no local data for micromark-factory-label@https://registry.npmjs.org/micromark-factory-label/-/micromark-factory-label-2.0.1.tgz. Extracting by manifest.
+232 silly tarball no local data for micromark-factory-destination@https://registry.npmjs.org/micromark-factory-destination/-/micromark-factory-destination-2.0.1.tgz. Extracting by manifest.
+233 silly tarball no local data for micromark-extension-gfm-tagfilter@https://registry.npmjs.org/micromark-extension-gfm-tagfilter/-/micromark-extension-gfm-tagfilter-2.0.0.tgz. Extracting by manifest.
+234 silly tarball no local data for micromark-extension-gfm-table@https://registry.npmjs.org/micromark-extension-gfm-table/-/micromark-extension-gfm-table-2.1.1.tgz. Extracting by manifest.
+235 silly tarball no local data for micromark-extension-gfm-autolink-literal@https://registry.npmjs.org/micromark-extension-gfm-autolink-literal/-/micromark-extension-gfm-autolink-literal-2.1.0.tgz. Extracting by manifest.
+236 silly tarball no local data for micromark-extension-gfm-strikethrough@https://registry.npmjs.org/micromark-extension-gfm-strikethrough/-/micromark-extension-gfm-strikethrough-2.1.0.tgz. Extracting by manifest.
+237 silly tarball no local data for micromark-extension-gfm@https://registry.npmjs.org/micromark-extension-gfm/-/micromark-extension-gfm-3.0.0.tgz. Extracting by manifest.
+238 silly tarball no local data for micromark@https://registry.npmjs.org/micromark/-/micromark-4.0.2.tgz. Extracting by manifest.
+239 silly tarball no local data for micromark-extension-gfm-task-list-item@https://registry.npmjs.org/micromark-extension-gfm-task-list-item/-/micromark-extension-gfm-task-list-item-2.1.0.tgz. Extracting by manifest.
+240 silly tarball no local data for mdast-util-to-string@https://registry.npmjs.org/mdast-util-to-string/-/mdast-util-to-string-4.0.0.tgz. Extracting by manifest.
+241 silly tarball no local data for mdast-util-to-hast@https://registry.npmjs.org/mdast-util-to-hast/-/mdast-util-to-hast-13.2.1.tgz. Extracting by manifest.
+242 silly tarball no local data for mdast-util-to-markdown@https://registry.npmjs.org/mdast-util-to-markdown/-/mdast-util-to-markdown-2.1.2.tgz. Extracting by manifest.
+243 silly tarball no local data for micromark-core-commonmark@https://registry.npmjs.org/micromark-core-commonmark/-/micromark-core-commonmark-2.0.3.tgz. Extracting by manifest.
+244 silly tarball no local data for mdast-util-mdxjs-esm@https://registry.npmjs.org/mdast-util-mdxjs-esm/-/mdast-util-mdxjs-esm-2.0.1.tgz. Extracting by manifest.
+245 silly tarball no local data for mdast-util-mdx-jsx@https://registry.npmjs.org/mdast-util-mdx-jsx/-/mdast-util-mdx-jsx-3.2.0.tgz. Extracting by manifest.
+246 silly tarball no local data for micromark-extension-gfm-footnote@https://registry.npmjs.org/micromark-extension-gfm-footnote/-/micromark-extension-gfm-footnote-2.1.0.tgz. Extracting by manifest.
+247 silly tarball no local data for mdast-util-mdx-expression@https://registry.npmjs.org/mdast-util-mdx-expression/-/mdast-util-mdx-expression-2.0.1.tgz. Extracting by manifest.
+248 silly tarball no local data for mdast-util-phrasing@https://registry.npmjs.org/mdast-util-phrasing/-/mdast-util-phrasing-4.1.0.tgz. Extracting by manifest.
+249 silly tarball no local data for mdast-util-gfm-task-list-item@https://registry.npmjs.org/mdast-util-gfm-task-list-item/-/mdast-util-gfm-task-list-item-2.0.0.tgz. Extracting by manifest.
+250 silly tarball no local data for mdast-util-gfm-strikethrough@https://registry.npmjs.org/mdast-util-gfm-strikethrough/-/mdast-util-gfm-strikethrough-2.0.0.tgz. Extracting by manifest.
+251 silly tarball no local data for mdast-util-gfm-table@https://registry.npmjs.org/mdast-util-gfm-table/-/mdast-util-gfm-table-2.0.0.tgz. Extracting by manifest.
+252 silly tarball no local data for mdast-util-gfm-footnote@https://registry.npmjs.org/mdast-util-gfm-footnote/-/mdast-util-gfm-footnote-2.1.0.tgz. Extracting by manifest.
+253 silly tarball no local data for mdast-util-gfm-autolink-literal@https://registry.npmjs.org/mdast-util-gfm-autolink-literal/-/mdast-util-gfm-autolink-literal-2.0.1.tgz. Extracting by manifest.
+254 silly tarball no local data for mdast-util-gfm@https://registry.npmjs.org/mdast-util-gfm/-/mdast-util-gfm-3.1.0.tgz. Extracting by manifest.
+255 silly tarball no local data for mdast-util-from-markdown@https://registry.npmjs.org/mdast-util-from-markdown/-/mdast-util-from-markdown-2.0.3.tgz. Extracting by manifest.
+256 silly tarball no local data for mdast-util-find-and-replace@https://registry.npmjs.org/mdast-util-find-and-replace/-/mdast-util-find-and-replace-3.0.2.tgz. Extracting by manifest.
+257 silly tarball no local data for lru-cache@https://registry.npmjs.org/lru-cache/-/lru-cache-11.5.2.tgz. Extracting by manifest.
+258 silly tarball no local data for markdown-table@https://registry.npmjs.org/markdown-table/-/markdown-table-3.0.4.tgz. Extracting by manifest.
+259 silly tarball no local data for lucide-react@https://registry.npmjs.org/lucide-react/-/lucide-react-1.41.0.tgz. Extracting by manifest.
+260 silly tarball no local data for longest-streak@https://registry.npmjs.org/longest-streak/-/longest-streak-3.1.0.tgz. Extracting by manifest.
+261 silly tarball no local data for lightningcss-win32-x64-msvc@https://registry.npmjs.org/lightningcss-win32-x64-msvc/-/lightningcss-win32-x64-msvc-1.33.0.tgz. Extracting by manifest.
+262 silly tarball no local data for is-plain-obj@https://registry.npmjs.org/is-plain-obj/-/is-plain-obj-4.1.0.tgz. Extracting by manifest.
+263 silly tarball no local data for lightningcss@https://registry.npmjs.org/lightningcss/-/lightningcss-1.33.0.tgz. Extracting by manifest.
+264 silly tarball no local data for is-hexadecimal@https://registry.npmjs.org/is-hexadecimal/-/is-hexadecimal-2.0.1.tgz. Extracting by manifest.
+265 silly tarball no local data for is-decimal@https://registry.npmjs.org/is-decimal/-/is-decimal-2.0.1.tgz. Extracting by manifest.
+266 silly tarball no local data for is-alphabetical@https://registry.npmjs.org/is-alphabetical/-/is-alphabetical-2.0.1.tgz. Extracting by manifest.
+267 silly tarball no local data for is-alphanumerical@https://registry.npmjs.org/is-alphanumerical/-/is-alphanumerical-2.0.1.tgz. Extracting by manifest.
+268 silly tarball no local data for html-url-attributes@https://registry.npmjs.org/html-url-attributes/-/html-url-attributes-3.0.1.tgz. Extracting by manifest.
+269 silly tarball no local data for hast-util-whitespace@https://registry.npmjs.org/hast-util-whitespace/-/hast-util-whitespace-3.0.0.tgz. Extracting by manifest.
+270 silly tarball no local data for graceful-fs@https://registry.npmjs.org/graceful-fs/-/graceful-fs-4.2.11.tgz. Extracting by manifest.
+271 silly tarball no local data for hast-util-to-jsx-runtime@https://registry.npmjs.org/hast-util-to-jsx-runtime/-/hast-util-to-jsx-runtime-2.3.6.tgz. Extracting by manifest.
+272 silly tarball no local data for fdir@https://registry.npmjs.org/fdir/-/fdir-6.5.0.tgz. Extracting by manifest.
+273 silly tarball no local data for glob@https://registry.npmjs.org/glob/-/glob-13.0.6.tgz. Extracting by manifest.
+274 silly tarball no local data for estree-util-is-identifier-name@https://registry.npmjs.org/estree-util-is-identifier-name/-/estree-util-is-identifier-name-3.0.0.tgz. Extracting by manifest.
+275 silly tarball no local data for escape-string-regexp@https://registry.npmjs.org/escape-string-regexp/-/escape-string-regexp-5.0.0.tgz. Extracting by manifest.
+276 silly tarball no local data for extend@https://registry.npmjs.org/extend/-/extend-3.0.2.tgz. Extracting by manifest.
+277 silly tarball no local data for inline-style-parser@https://registry.npmjs.org/inline-style-parser/-/inline-style-parser-0.2.7.tgz. Extracting by manifest.
+278 silly tarball no local data for env-paths@https://registry.npmjs.org/env-paths/-/env-paths-3.0.0.tgz. Extracting by manifest.
+279 silly tarball no local data for electron@https://registry.npmjs.org/electron/-/electron-44.2.0.tgz. Extracting by manifest.
+280 silly tarball no local data for devlop@https://registry.npmjs.org/devlop/-/devlop-1.1.0.tgz. Extracting by manifest.
+281 silly tarball no local data for dequal@https://registry.npmjs.org/dequal/-/dequal-2.0.3.tgz. Extracting by manifest.
+282 silly tarball no local data for decode-named-character-reference@https://registry.npmjs.org/decode-named-character-reference/-/decode-named-character-reference-1.3.0.tgz. Extracting by manifest.
+283 silly tarball no local data for detect-libc@https://registry.npmjs.org/detect-libc/-/detect-libc-2.1.2.tgz. Extracting by manifest.
+284 silly tarball no local data for debug@https://registry.npmjs.org/debug/-/debug-4.4.3.tgz. Extracting by manifest.
+285 silly tarball no local data for csstype@https://registry.npmjs.org/csstype/-/csstype-3.2.3.tgz. Extracting by manifest.
+286 silly tarball no local data for character-reference-invalid@https://registry.npmjs.org/character-reference-invalid/-/character-reference-invalid-2.0.1.tgz. Extracting by manifest.
+287 silly tarball no local data for character-entities-legacy@https://registry.npmjs.org/character-entities-legacy/-/character-entities-legacy-3.0.0.tgz. Extracting by manifest.
+288 silly tarball no local data for comma-separated-tokens@https://registry.npmjs.org/comma-separated-tokens/-/comma-separated-tokens-2.0.3.tgz. Extracting by manifest.
+289 silly tarball no local data for character-entities@https://registry.npmjs.org/character-entities/-/character-entities-2.0.2.tgz. Extracting by manifest.
+290 silly tarball no local data for ccount@https://registry.npmjs.org/ccount/-/ccount-2.0.1.tgz. Extracting by manifest.
+291 silly tarball no local data for character-entities-html4@https://registry.npmjs.org/character-entities-html4/-/character-entities-html4-2.1.0.tgz. Extracting by manifest.
+292 silly tarball no local data for brace-expansion@https://registry.npmjs.org/brace-expansion/-/brace-expansion-5.0.9.tgz. Extracting by manifest.
+293 silly tarball no local data for @ungap/structured-clone@https://registry.npmjs.org/@ungap/structured-clone/-/structured-clone-1.4.0.tgz. Extracting by manifest.
+294 silly tarball no local data for bail@https://registry.npmjs.org/bail/-/bail-2.0.2.tgz. Extracting by manifest.
+295 silly tarball no local data for balanced-match@https://registry.npmjs.org/balanced-match/-/balanced-match-4.0.4.tgz. Extracting by manifest.
+296 silly tarball no local data for @typescript/typescript-win32-x64@https://registry.npmjs.org/@typescript/typescript-win32-x64/-/typescript-win32-x64-7.0.2.tgz. Extracting by manifest.
+297 silly tarball no local data for @vitejs/plugin-react@https://registry.npmjs.org/@vitejs/plugin-react/-/plugin-react-6.1.1.tgz. Extracting by manifest.
+298 silly tarball no local data for @types/unist@https://registry.npmjs.org/@types/unist/-/unist-3.0.3.tgz. Extracting by manifest.
+299 silly tarball no local data for @types/react@https://registry.npmjs.org/@types/react/-/react-19.2.18.tgz. Extracting by manifest.
+300 silly tarball no local data for @types/react-dom@https://registry.npmjs.org/@types/react-dom/-/react-dom-19.2.7.tgz. Extracting by manifest.
+301 silly tarball no local data for @types/node@https://registry.npmjs.org/@types/node/-/node-26.4.1.tgz. Extracting by manifest.
+302 silly tarball no local data for @types/ms@https://registry.npmjs.org/@types/ms/-/ms-2.1.0.tgz. Extracting by manifest.
+303 silly tarball no local data for @types/mdast@https://registry.npmjs.org/@types/mdast/-/mdast-4.0.4.tgz. Extracting by manifest.
+304 silly tarball no local data for @types/hast@https://registry.npmjs.org/@types/hast/-/hast-3.0.5.tgz. Extracting by manifest.
+305 silly tarball no local data for @types/estree-jsx@https://registry.npmjs.org/@types/estree-jsx/-/estree-jsx-1.0.5.tgz. Extracting by manifest.
+306 silly tarball no local data for @types/debug@https://registry.npmjs.org/@types/debug/-/debug-4.1.13.tgz. Extracting by manifest.
+307 silly tarball no local data for @rolldown/binding-win32-x64-msvc@https://registry.npmjs.org/@rolldown/binding-win32-x64-msvc/-/binding-win32-x64-msvc-1.2.7.tgz. Extracting by manifest.
+308 silly tarball no local data for @types/estree@https://registry.npmjs.org/@types/estree/-/estree-1.0.9.tgz. Extracting by manifest.
+309 silly tarball no local data for @rolldown/pluginutils@https://registry.npmjs.org/@rolldown/pluginutils/-/pluginutils-1.0.1.tgz. Extracting by manifest.
+310 silly tarball no local data for @electron-internal/extract-zip@https://registry.npmjs.org/@electron-internal/extract-zip/-/extract-zip-1.0.5.tgz. Extracting by manifest.
+311 silly tarball no local data for @oxc-project/types@https://registry.npmjs.org/@oxc-project/types/-/types-0.148.0.tgz. Extracting by manifest.
+312 silly tarball no local data for @electron/get@https://registry.npmjs.org/@electron/get/-/get-5.1.0.tgz. Extracting by manifest.
+313 silly tarball no local data for @electron/asar@https://registry.npmjs.org/@electron/asar/-/asar-4.3.0.tgz. Extracting by manifest.
+314 silly tarball no local data for undici-types@https://registry.npmjs.org/undici-types/-/undici-types-7.18.2.tgz. Extracting by manifest.
+315 silly tarball no local data for @types/unist@https://registry.npmjs.org/@types/unist/-/unist-2.0.11.tgz. Extracting by manifest.
+316 silly tarball no local data for @types/node@https://registry.npmjs.org/@types/node/-/node-24.13.3.tgz. Extracting by manifest.
+317 http fetch GET https://registry.npmjs.org/vfile/-/vfile-6.0.3.tgz attempt 1 failed with EACCES
+318 http fetch GET https://registry.npmjs.org/vite/-/vite-8.2.2.tgz attempt 1 failed with EACCES
+319 http fetch GET https://registry.npmjs.org/unist-util-visit-parents/-/unist-util-visit-parents-6.0.2.tgz attempt 1 failed with EACCES
+320 http fetch GET https://registry.npmjs.org/zwitch/-/zwitch-2.0.4.tgz attempt 1 failed with EACCES
+321 http fetch GET https://registry.npmjs.org/unist-util-position/-/unist-util-position-5.0.0.tgz attempt 1 failed with EACCES
+322 http fetch GET https://registry.npmjs.org/vfile-message/-/vfile-message-4.0.3.tgz attempt 1 failed with EACCES
+323 http fetch GET https://registry.npmjs.org/unist-util-is/-/unist-util-is-6.0.1.tgz attempt 1 failed with EACCES
+324 http fetch GET https://registry.npmjs.org/unist-util-visit/-/unist-util-visit-5.1.0.tgz attempt 1 failed with EACCES
+325 http fetch GET https://registry.npmjs.org/undici-types/-/undici-types-8.3.0.tgz attempt 1 failed with EACCES
+326 http fetch GET https://registry.npmjs.org/unist-util-stringify-position/-/unist-util-stringify-position-4.0.0.tgz attempt 1 failed with EACCES
+327 http fetch GET https://registry.npmjs.org/undici/-/undici-7.29.1.tgz attempt 1 failed with EACCES
+328 http fetch GET https://registry.npmjs.org/unified/-/unified-11.0.5.tgz attempt 1 failed with EACCES
+329 http fetch GET https://registry.npmjs.org/typescript/-/typescript-7.0.2.tgz attempt 1 failed with EACCES
+330 http fetch GET https://registry.npmjs.org/tinyglobby/-/tinyglobby-0.2.17.tgz attempt 1 failed with EACCES
+331 http fetch GET https://registry.npmjs.org/trim-lines/-/trim-lines-3.0.1.tgz attempt 1 failed with EACCES
+332 http fetch GET https://registry.npmjs.org/trough/-/trough-2.2.0.tgz attempt 1 failed with EACCES
+333 http fetch GET https://registry.npmjs.org/sumchecker/-/sumchecker-3.0.1.tgz attempt 1 failed with EACCES
+334 http fetch GET https://registry.npmjs.org/style-to-js/-/style-to-js-1.1.21.tgz attempt 1 failed with EACCES
+335 http fetch GET https://registry.npmjs.org/space-separated-tokens/-/space-separated-tokens-2.0.2.tgz attempt 1 failed with EACCES
+336 http fetch GET https://registry.npmjs.org/style-to-object/-/style-to-object-1.0.14.tgz attempt 1 failed with EACCES
+337 http fetch GET https://registry.npmjs.org/semver/-/semver-7.8.5.tgz attempt 1 failed with EACCES
+338 http fetch GET https://registry.npmjs.org/stringify-entities/-/stringify-entities-4.0.4.tgz attempt 1 failed with EACCES
+339 http fetch GET https://registry.npmjs.org/scheduler/-/scheduler-0.27.0.tgz attempt 1 failed with EACCES
+340 http fetch GET https://registry.npmjs.org/remark-stringify/-/remark-stringify-11.0.0.tgz attempt 1 failed with EACCES
+341 http fetch GET https://registry.npmjs.org/remark-gfm/-/remark-gfm-4.0.1.tgz attempt 1 failed with EACCES
+342 http fetch GET https://registry.npmjs.org/source-map-js/-/source-map-js-1.2.1.tgz attempt 1 failed with EACCES
+343 http fetch GET https://registry.npmjs.org/rolldown/-/rolldown-1.2.7.tgz attempt 1 failed with EACCES
+344 http fetch GET https://registry.npmjs.org/remark-parse/-/remark-parse-11.0.0.tgz attempt 1 failed with EACCES
+345 http fetch GET https://registry.npmjs.org/react-markdown/-/react-markdown-10.1.0.tgz attempt 1 failed with EACCES
+346 http fetch GET https://registry.npmjs.org/remark-rehype/-/remark-rehype-11.1.2.tgz attempt 1 failed with EACCES
+347 http fetch GET https://registry.npmjs.org/react-dom/-/react-dom-19.2.8.tgz attempt 1 failed with EACCES
+348 http fetch GET https://registry.npmjs.org/property-information/-/property-information-7.2.0.tgz attempt 1 failed with EACCES
+349 http fetch GET https://registry.npmjs.org/react/-/react-19.2.8.tgz attempt 1 failed with EACCES
+350 http fetch GET https://registry.npmjs.org/progress/-/progress-2.0.3.tgz attempt 1 failed with EACCES
+351 http fetch GET https://registry.npmjs.org/postcss/-/postcss-8.5.28.tgz attempt 1 failed with EACCES
+352 http fetch GET https://registry.npmjs.org/playwright-core/-/playwright-core-1.63.0.tgz attempt 1 failed with EACCES
+353 http fetch GET https://registry.npmjs.org/playwright/-/playwright-1.63.0.tgz attempt 1 failed with EACCES
+354 http fetch GET https://registry.npmjs.org/picocolors/-/picocolors-1.1.1.tgz attempt 1 failed with EACCES
+355 http fetch GET https://registry.npmjs.org/picomatch/-/picomatch-4.0.7.tgz attempt 1 failed with EACCES
+356 http fetch GET https://registry.npmjs.org/path-scurry/-/path-scurry-2.0.2.tgz attempt 1 failed with EACCES
+357 http fetch GET https://registry.npmjs.org/ms/-/ms-2.1.3.tgz attempt 1 failed with EACCES
+358 http fetch GET https://registry.npmjs.org/nanoid/-/nanoid-3.3.18.tgz attempt 1 failed with EACCES
+359 http fetch GET https://registry.npmjs.org/minipass/-/minipass-7.1.3.tgz attempt 1 failed with EACCES
+360 http fetch GET https://registry.npmjs.org/parse-entities/-/parse-entities-4.0.2.tgz attempt 1 failed with EACCES
+361 http fetch GET https://registry.npmjs.org/minimatch/-/minimatch-10.2.6.tgz attempt 1 failed with EACCES
+362 http fetch GET https://registry.npmjs.org/micromark-util-types/-/micromark-util-types-2.0.2.tgz attempt 1 failed with EACCES
+363 http fetch GET https://registry.npmjs.org/micromark-util-subtokenize/-/micromark-util-subtokenize-2.1.0.tgz attempt 1 failed with EACCES
+364 http fetch GET https://registry.npmjs.org/micromark-util-symbol/-/micromark-util-symbol-2.0.1.tgz attempt 1 failed with EACCES
+365 http fetch GET https://registry.npmjs.org/micromark-util-sanitize-uri/-/micromark-util-sanitize-uri-2.0.1.tgz attempt 1 failed with EACCES
+366 http fetch GET https://registry.npmjs.org/micromark-util-html-tag-name/-/micromark-util-html-tag-name-2.0.1.tgz attempt 1 failed with EACCES
+367 http fetch GET https://registry.npmjs.org/micromark-util-normalize-identifier/-/micromark-util-normalize-identifier-2.0.1.tgz attempt 1 failed with EACCES
+368 http fetch GET https://registry.npmjs.org/micromark-util-resolve-all/-/micromark-util-resolve-all-2.0.1.tgz attempt 1 failed with EACCES
+369 http fetch GET https://registry.npmjs.org/micromark-util-encode/-/micromark-util-encode-2.0.1.tgz attempt 1 failed with EACCES
+370 http fetch GET https://registry.npmjs.org/micromark-util-decode-string/-/micromark-util-decode-string-2.0.1.tgz attempt 1 failed with EACCES
+371 http fetch GET https://registry.npmjs.org/micromark-util-decode-numeric-character-reference/-/micromark-util-decode-numeric-character-reference-2.0.2.tgz attempt 1 failed with EACCES
+372 http fetch GET https://registry.npmjs.org/micromark-util-combine-extensions/-/micromark-util-combine-extensions-2.0.1.tgz attempt 1 failed with EACCES
+373 http fetch GET https://registry.npmjs.org/micromark-util-classify-character/-/micromark-util-classify-character-2.0.1.tgz attempt 1 failed with EACCES
+374 http fetch GET https://registry.npmjs.org/micromark-util-chunked/-/micromark-util-chunked-2.0.1.tgz attempt 1 failed with EACCES
+375 http fetch GET https://registry.npmjs.org/micromark-util-character/-/micromark-util-character-2.1.1.tgz attempt 1 failed with EACCES
+376 http fetch GET https://registry.npmjs.org/micromark-factory-title/-/micromark-factory-title-2.0.1.tgz attempt 1 failed with EACCES
+377 http fetch GET https://registry.npmjs.org/micromark-factory-space/-/micromark-factory-space-2.0.1.tgz attempt 1 failed with EACCES
+378 http fetch GET https://registry.npmjs.org/micromark-factory-whitespace/-/micromark-factory-whitespace-2.0.1.tgz attempt 1 failed with EACCES
+379 http fetch GET https://registry.npmjs.org/micromark-factory-label/-/micromark-factory-label-2.0.1.tgz attempt 1 failed with EACCES
+380 http fetch GET https://registry.npmjs.org/micromark-factory-destination/-/micromark-factory-destination-2.0.1.tgz attempt 1 failed with EACCES
+381 http fetch GET https://registry.npmjs.org/micromark-extension-gfm-tagfilter/-/micromark-extension-gfm-tagfilter-2.0.0.tgz attempt 1 failed with EACCES
+382 http fetch GET https://registry.npmjs.org/micromark-extension-gfm-table/-/micromark-extension-gfm-table-2.1.1.tgz attempt 1 failed with EACCES
+383 http fetch GET https://registry.npmjs.org/micromark-extension-gfm-autolink-literal/-/micromark-extension-gfm-autolink-literal-2.1.0.tgz attempt 1 failed with EACCES
+384 http fetch GET https://registry.npmjs.org/micromark-extension-gfm-strikethrough/-/micromark-extension-gfm-strikethrough-2.1.0.tgz attempt 1 failed with EACCES
+385 http fetch GET https://registry.npmjs.org/micromark-extension-gfm/-/micromark-extension-gfm-3.0.0.tgz attempt 1 failed with EACCES
+386 http fetch GET https://registry.npmjs.org/micromark/-/micromark-4.0.2.tgz attempt 1 failed with EACCES
+387 http fetch GET https://registry.npmjs.org/micromark-extension-gfm-task-list-item/-/micromark-extension-gfm-task-list-item-2.1.0.tgz attempt 1 failed with EACCES
+388 http fetch GET https://registry.npmjs.org/mdast-util-to-string/-/mdast-util-to-string-4.0.0.tgz attempt 1 failed with EACCES
+389 http fetch GET https://registry.npmjs.org/mdast-util-to-hast/-/mdast-util-to-hast-13.2.1.tgz attempt 1 failed with EACCES
+390 http fetch GET https://registry.npmjs.org/mdast-util-to-markdown/-/mdast-util-to-markdown-2.1.2.tgz attempt 1 failed with EACCES
+391 http fetch GET https://registry.npmjs.org/micromark-core-commonmark/-/micromark-core-commonmark-2.0.3.tgz attempt 1 failed with EACCES
+392 http fetch GET https://registry.npmjs.org/mdast-util-mdxjs-esm/-/mdast-util-mdxjs-esm-2.0.1.tgz attempt 1 failed with EACCES
+393 http fetch GET https://registry.npmjs.org/mdast-util-mdx-jsx/-/mdast-util-mdx-jsx-3.2.0.tgz attempt 1 failed with EACCES
+394 http fetch GET https://registry.npmjs.org/micromark-extension-gfm-footnote/-/micromark-extension-gfm-footnote-2.1.0.tgz attempt 1 failed with EACCES
+395 http fetch GET https://registry.npmjs.org/mdast-util-mdx-expression/-/mdast-util-mdx-expression-2.0.1.tgz attempt 1 failed with EACCES
+396 http fetch GET https://registry.npmjs.org/mdast-util-phrasing/-/mdast-util-phrasing-4.1.0.tgz attempt 1 failed with EACCES
+397 http fetch GET https://registry.npmjs.org/mdast-util-gfm-task-list-item/-/mdast-util-gfm-task-list-item-2.0.0.tgz attempt 1 failed with EACCES
+398 http fetch GET https://registry.npmjs.org/mdast-util-gfm-strikethrough/-/mdast-util-gfm-strikethrough-2.0.0.tgz attempt 1 failed with EACCES
+399 http fetch GET https://registry.npmjs.org/mdast-util-gfm-table/-/mdast-util-gfm-table-2.0.0.tgz attempt 1 failed with EACCES
+400 http fetch GET https://registry.npmjs.org/mdast-util-gfm-footnote/-/mdast-util-gfm-footnote-2.1.0.tgz attempt 1 failed with EACCES
+401 http fetch GET https://registry.npmjs.org/mdast-util-gfm-autolink-literal/-/mdast-util-gfm-autolink-literal-2.0.1.tgz attempt 1 failed with EACCES
+402 http fetch GET https://registry.npmjs.org/mdast-util-gfm/-/mdast-util-gfm-3.1.0.tgz attempt 1 failed with EACCES
+403 http fetch GET https://registry.npmjs.org/mdast-util-from-markdown/-/mdast-util-from-markdown-2.0.3.tgz attempt 1 failed with EACCES
+404 http fetch GET https://registry.npmjs.org/mdast-util-find-and-replace/-/mdast-util-find-and-replace-3.0.2.tgz attempt 1 failed with EACCES
+405 http fetch GET https://registry.npmjs.org/lru-cache/-/lru-cache-11.5.2.tgz attempt 1 failed with EACCES
+406 http fetch GET https://registry.npmjs.org/markdown-table/-/markdown-table-3.0.4.tgz attempt 1 failed with EACCES
+407 http fetch GET https://registry.npmjs.org/lucide-react/-/lucide-react-1.41.0.tgz attempt 1 failed with EACCES
+408 http fetch GET https://registry.npmjs.org/longest-streak/-/longest-streak-3.1.0.tgz attempt 1 failed with EACCES
+409 http fetch GET https://registry.npmjs.org/lightningcss-win32-x64-msvc/-/lightningcss-win32-x64-msvc-1.33.0.tgz attempt 1 failed with EACCES
+410 http fetch GET https://registry.npmjs.org/is-plain-obj/-/is-plain-obj-4.1.0.tgz attempt 1 failed with EACCES
+411 http fetch GET https://registry.npmjs.org/lightningcss/-/lightningcss-1.33.0.tgz attempt 1 failed with EACCES
+412 http fetch GET https://registry.npmjs.org/is-hexadecimal/-/is-hexadecimal-2.0.1.tgz attempt 1 failed with EACCES
+413 http fetch GET https://registry.npmjs.org/is-decimal/-/is-decimal-2.0.1.tgz attempt 1 failed with EACCES
+414 http fetch GET https://registry.npmjs.org/is-alphabetical/-/is-alphabetical-2.0.1.tgz attempt 1 failed with EACCES
+415 http fetch GET https://registry.npmjs.org/is-alphanumerical/-/is-alphanumerical-2.0.1.tgz attempt 1 failed with EACCES
+416 http fetch GET https://registry.npmjs.org/html-url-attributes/-/html-url-attributes-3.0.1.tgz attempt 1 failed with EACCES
+417 http fetch GET https://registry.npmjs.org/hast-util-whitespace/-/hast-util-whitespace-3.0.0.tgz attempt 1 failed with EACCES
+418 http fetch GET https://registry.npmjs.org/graceful-fs/-/graceful-fs-4.2.11.tgz attempt 1 failed with EACCES
+419 http fetch GET https://registry.npmjs.org/hast-util-to-jsx-runtime/-/hast-util-to-jsx-runtime-2.3.6.tgz attempt 1 failed with EACCES
+420 http fetch GET https://registry.npmjs.org/fdir/-/fdir-6.5.0.tgz attempt 1 failed with EACCES
+421 http fetch GET https://registry.npmjs.org/glob/-/glob-13.0.6.tgz attempt 1 failed with EACCES
+422 http fetch GET https://registry.npmjs.org/estree-util-is-identifier-name/-/estree-util-is-identifier-name-3.0.0.tgz attempt 1 failed with EACCES
+423 http fetch GET https://registry.npmjs.org/escape-string-regexp/-/escape-string-regexp-5.0.0.tgz attempt 1 failed with EACCES
+424 http fetch GET https://registry.npmjs.org/extend/-/extend-3.0.2.tgz attempt 1 failed with EACCES
+425 http fetch GET https://registry.npmjs.org/inline-style-parser/-/inline-style-parser-0.2.7.tgz attempt 1 failed with EACCES
+426 http fetch GET https://registry.npmjs.org/env-paths/-/env-paths-3.0.0.tgz attempt 1 failed with EACCES
+427 http fetch GET https://registry.npmjs.org/electron/-/electron-44.2.0.tgz attempt 1 failed with EACCES
+428 http fetch GET https://registry.npmjs.org/devlop/-/devlop-1.1.0.tgz attempt 1 failed with EACCES
+429 http fetch GET https://registry.npmjs.org/dequal/-/dequal-2.0.3.tgz attempt 1 failed with EACCES
+430 http fetch GET https://registry.npmjs.org/decode-named-character-reference/-/decode-named-character-reference-1.3.0.tgz attempt 1 failed with EACCES
+431 http fetch GET https://registry.npmjs.org/detect-libc/-/detect-libc-2.1.2.tgz attempt 1 failed with EACCES
+432 http fetch GET https://registry.npmjs.org/debug/-/debug-4.4.3.tgz attempt 1 failed with EACCES
+433 http fetch GET https://registry.npmjs.org/csstype/-/csstype-3.2.3.tgz attempt 1 failed with EACCES
+434 http fetch GET https://registry.npmjs.org/character-reference-invalid/-/character-reference-invalid-2.0.1.tgz attempt 1 failed with EACCES
+435 http fetch GET https://registry.npmjs.org/character-entities-legacy/-/character-entities-legacy-3.0.0.tgz attempt 1 failed with EACCES
+436 http fetch GET https://registry.npmjs.org/comma-separated-tokens/-/comma-separated-tokens-2.0.3.tgz attempt 1 failed with EACCES
+437 http fetch GET https://registry.npmjs.org/character-entities/-/character-entities-2.0.2.tgz attempt 1 failed with EACCES
+438 http fetch GET https://registry.npmjs.org/ccount/-/ccount-2.0.1.tgz attempt 1 failed with EACCES
+439 http fetch GET https://registry.npmjs.org/character-entities-html4/-/character-entities-html4-2.1.0.tgz attempt 1 failed with EACCES
+440 http fetch GET https://registry.npmjs.org/brace-expansion/-/brace-expansion-5.0.9.tgz attempt 1 failed with EACCES
+441 http fetch GET https://registry.npmjs.org/@ungap/structured-clone/-/structured-clone-1.4.0.tgz attempt 1 failed with EACCES
+442 http fetch GET https://registry.npmjs.org/bail/-/bail-2.0.2.tgz attempt 1 failed with EACCES
+443 http fetch GET https://registry.npmjs.org/balanced-match/-/balanced-match-4.0.4.tgz attempt 1 failed with EACCES
+444 http fetch GET https://registry.npmjs.org/@typescript/typescript-win32-x64/-/typescript-win32-x64-7.0.2.tgz attempt 1 failed with EACCES
+445 http fetch GET https://registry.npmjs.org/@vitejs/plugin-react/-/plugin-react-6.1.1.tgz attempt 1 failed with EACCES
+446 http fetch GET https://registry.npmjs.org/@types/unist/-/unist-3.0.3.tgz attempt 1 failed with EACCES
+447 http fetch GET https://registry.npmjs.org/@types/react/-/react-19.2.18.tgz attempt 1 failed with EACCES
+448 http fetch GET https://registry.npmjs.org/@types/react-dom/-/react-dom-19.2.7.tgz attempt 1 failed with EACCES
+449 http fetch GET https://registry.npmjs.org/@types/node/-/node-26.4.1.tgz attempt 1 failed with EACCES
+450 http fetch GET https://registry.npmjs.org/@types/ms/-/ms-2.1.0.tgz attempt 1 failed with EACCES
+451 http fetch GET https://registry.npmjs.org/@types/mdast/-/mdast-4.0.4.tgz attempt 1 failed with EACCES
+452 http fetch GET https://registry.npmjs.org/@types/hast/-/hast-3.0.5.tgz attempt 1 failed with EACCES
+453 http fetch GET https://registry.npmjs.org/@types/estree-jsx/-/estree-jsx-1.0.5.tgz attempt 1 failed with EACCES
+454 http fetch GET https://registry.npmjs.org/@types/debug/-/debug-4.1.13.tgz attempt 1 failed with EACCES
+455 http fetch GET https://registry.npmjs.org/@rolldown/binding-win32-x64-msvc/-/binding-win32-x64-msvc-1.2.7.tgz attempt 1 failed with EACCES
+456 http fetch GET https://registry.npmjs.org/@types/estree/-/estree-1.0.9.tgz attempt 1 failed with EACCES
+457 http fetch GET https://registry.npmjs.org/@rolldown/pluginutils/-/pluginutils-1.0.1.tgz attempt 1 failed with EACCES
+458 http fetch GET https://registry.npmjs.org/@electron-internal/extract-zip/-/extract-zip-1.0.5.tgz attempt 1 failed with EACCES
+459 http fetch GET https://registry.npmjs.org/@oxc-project/types/-/types-0.148.0.tgz attempt 1 failed with EACCES
+460 http fetch GET https://registry.npmjs.org/@electron/get/-/get-5.1.0.tgz attempt 1 failed with EACCES
+461 http fetch GET https://registry.npmjs.org/@electron/asar/-/asar-4.3.0.tgz attempt 1 failed with EACCES
+462 http fetch GET https://registry.npmjs.org/undici-types/-/undici-types-7.18.2.tgz attempt 1 failed with EACCES
+463 http fetch GET https://registry.npmjs.org/@types/unist/-/unist-2.0.11.tgz attempt 1 failed with EACCES
+464 http fetch GET https://registry.npmjs.org/@types/node/-/node-24.13.3.tgz attempt 1 failed with EACCES
+465 http fetch GET https://registry.npmjs.org/npm attempt 2 failed with EACCES
+466 http fetch GET https://registry.npmjs.org/vfile/-/vfile-6.0.3.tgz attempt 2 failed with EACCES
+467 http fetch GET https://registry.npmjs.org/vite/-/vite-8.2.2.tgz attempt 2 failed with EACCES
+468 http fetch GET https://registry.npmjs.org/unist-util-visit-parents/-/unist-util-visit-parents-6.0.2.tgz attempt 2 failed with EACCES
+469 http fetch GET https://registry.npmjs.org/zwitch/-/zwitch-2.0.4.tgz attempt 2 failed with EACCES
+470 http fetch GET https://registry.npmjs.org/unist-util-position/-/unist-util-position-5.0.0.tgz attempt 2 failed with EACCES
+471 http fetch GET https://registry.npmjs.org/vfile-message/-/vfile-message-4.0.3.tgz attempt 2 failed with EACCES
+472 http fetch GET https://registry.npmjs.org/unist-util-is/-/unist-util-is-6.0.1.tgz attempt 2 failed with EACCES
+473 http fetch GET https://registry.npmjs.org/unist-util-visit/-/unist-util-visit-5.1.0.tgz attempt 2 failed with EACCES
+474 http fetch GET https://registry.npmjs.org/undici-types/-/undici-types-8.3.0.tgz attempt 2 failed with EACCES
+475 http fetch GET https://registry.npmjs.org/unist-util-stringify-position/-/unist-util-stringify-position-4.0.0.tgz attempt 2 failed with EACCES
+476 http fetch GET https://registry.npmjs.org/undici/-/undici-7.29.1.tgz attempt 2 failed with EACCES
+477 http fetch GET https://registry.npmjs.org/unified/-/unified-11.0.5.tgz attempt 2 failed with EACCES
+478 http fetch GET https://registry.npmjs.org/typescript/-/typescript-7.0.2.tgz attempt 2 failed with EACCES
+479 http fetch GET https://registry.npmjs.org/tinyglobby/-/tinyglobby-0.2.17.tgz attempt 2 failed with EACCES
+480 http fetch GET https://registry.npmjs.org/trim-lines/-/trim-lines-3.0.1.tgz attempt 2 failed with EACCES
+481 http fetch GET https://registry.npmjs.org/trough/-/trough-2.2.0.tgz attempt 2 failed with EACCES
+482 http fetch GET https://registry.npmjs.org/sumchecker/-/sumchecker-3.0.1.tgz attempt 2 failed with EACCES
+483 http fetch GET https://registry.npmjs.org/style-to-js/-/style-to-js-1.1.21.tgz attempt 2 failed with EACCES
+484 http fetch GET https://registry.npmjs.org/space-separated-tokens/-/space-separated-tokens-2.0.2.tgz attempt 2 failed with EACCES
+485 http fetch GET https://registry.npmjs.org/style-to-object/-/style-to-object-1.0.14.tgz attempt 2 failed with EACCES
+486 http fetch GET https://registry.npmjs.org/semver/-/semver-7.8.5.tgz attempt 2 failed with EACCES
+487 http fetch GET https://registry.npmjs.org/stringify-entities/-/stringify-entities-4.0.4.tgz attempt 2 failed with EACCES
+488 http fetch GET https://registry.npmjs.org/scheduler/-/scheduler-0.27.0.tgz attempt 2 failed with EACCES
+489 http fetch GET https://registry.npmjs.org/remark-stringify/-/remark-stringify-11.0.0.tgz attempt 2 failed with EACCES
+490 http fetch GET https://registry.npmjs.org/remark-gfm/-/remark-gfm-4.0.1.tgz attempt 2 failed with EACCES
+491 http fetch GET https://registry.npmjs.org/source-map-js/-/source-map-js-1.2.1.tgz attempt 2 failed with EACCES
+492 http fetch GET https://registry.npmjs.org/rolldown/-/rolldown-1.2.7.tgz attempt 2 failed with EACCES
+493 http fetch GET https://registry.npmjs.org/remark-parse/-/remark-parse-11.0.0.tgz attempt 2 failed with EACCES
+494 http fetch GET https://registry.npmjs.org/react-markdown/-/react-markdown-10.1.0.tgz attempt 2 failed with EACCES
+495 http fetch GET https://registry.npmjs.org/remark-rehype/-/remark-rehype-11.1.2.tgz attempt 2 failed with EACCES
+496 http fetch GET https://registry.npmjs.org/react-dom/-/react-dom-19.2.8.tgz attempt 2 failed with EACCES
+497 http fetch GET https://registry.npmjs.org/property-information/-/property-information-7.2.0.tgz attempt 2 failed with EACCES
+498 http fetch GET https://registry.npmjs.org/react/-/react-19.2.8.tgz attempt 2 failed with EACCES
+499 http fetch GET https://registry.npmjs.org/progress/-/progress-2.0.3.tgz attempt 2 failed with EACCES
+500 http fetch GET https://registry.npmjs.org/postcss/-/postcss-8.5.28.tgz attempt 2 failed with EACCES
+501 http fetch GET https://registry.npmjs.org/playwright-core/-/playwright-core-1.63.0.tgz attempt 2 failed with EACCES
+502 http fetch GET https://registry.npmjs.org/playwright/-/playwright-1.63.0.tgz attempt 2 failed with EACCES
+503 http fetch GET https://registry.npmjs.org/picocolors/-/picocolors-1.1.1.tgz attempt 2 failed with EACCES
+504 http fetch GET https://registry.npmjs.org/picomatch/-/picomatch-4.0.7.tgz attempt 2 failed with EACCES
+505 http fetch GET https://registry.npmjs.org/path-scurry/-/path-scurry-2.0.2.tgz attempt 2 failed with EACCES
+506 http fetch GET https://registry.npmjs.org/ms/-/ms-2.1.3.tgz attempt 2 failed with EACCES
+507 http fetch GET https://registry.npmjs.org/nanoid/-/nanoid-3.3.18.tgz attempt 2 failed with EACCES
+508 http fetch GET https://registry.npmjs.org/minipass/-/minipass-7.1.3.tgz attempt 2 failed with EACCES
+509 http fetch GET https://registry.npmjs.org/parse-entities/-/parse-entities-4.0.2.tgz attempt 2 failed with EACCES
+510 http fetch GET https://registry.npmjs.org/minimatch/-/minimatch-10.2.6.tgz attempt 2 failed with EACCES
+511 http fetch GET https://registry.npmjs.org/micromark-util-types/-/micromark-util-types-2.0.2.tgz attempt 2 failed with EACCES
+512 http fetch GET https://registry.npmjs.org/micromark-util-subtokenize/-/micromark-util-subtokenize-2.1.0.tgz attempt 2 failed with EACCES
+513 http fetch GET https://registry.npmjs.org/micromark-util-symbol/-/micromark-util-symbol-2.0.1.tgz attempt 2 failed with EACCES
+514 http fetch GET https://registry.npmjs.org/micromark-util-sanitize-uri/-/micromark-util-sanitize-uri-2.0.1.tgz attempt 2 failed with EACCES
+515 http fetch GET https://registry.npmjs.org/micromark-util-html-tag-name/-/micromark-util-html-tag-name-2.0.1.tgz attempt 2 failed with EACCES
+516 http fetch GET https://registry.npmjs.org/micromark-util-normalize-identifier/-/micromark-util-normalize-identifier-2.0.1.tgz attempt 2 failed with EACCES
+517 http fetch GET https://registry.npmjs.org/micromark-util-resolve-all/-/micromark-util-resolve-all-2.0.1.tgz attempt 2 failed with EACCES
+518 http fetch GET https://registry.npmjs.org/micromark-util-encode/-/micromark-util-encode-2.0.1.tgz attempt 2 failed with EACCES
+519 http fetch GET https://registry.npmjs.org/micromark-util-decode-string/-/micromark-util-decode-string-2.0.1.tgz attempt 2 failed with EACCES
+520 http fetch GET https://registry.npmjs.org/micromark-util-decode-numeric-character-reference/-/micromark-util-decode-numeric-character-reference-2.0.2.tgz attempt 2 failed with EACCES
+521 http fetch GET https://registry.npmjs.org/micromark-util-combine-extensions/-/micromark-util-combine-extensions-2.0.1.tgz attempt 2 failed with EACCES
+522 http fetch GET https://registry.npmjs.org/micromark-util-classify-character/-/micromark-util-classify-character-2.0.1.tgz attempt 2 failed with EACCES
+523 http fetch GET https://registry.npmjs.org/micromark-util-chunked/-/micromark-util-chunked-2.0.1.tgz attempt 2 failed with EACCES
+524 http fetch GET https://registry.npmjs.org/micromark-util-character/-/micromark-util-character-2.1.1.tgz attempt 2 failed with EACCES
+525 http fetch GET https://registry.npmjs.org/micromark-factory-title/-/micromark-factory-title-2.0.1.tgz attempt 2 failed with EACCES
+526 http fetch GET https://registry.npmjs.org/micromark-factory-space/-/micromark-factory-space-2.0.1.tgz attempt 2 failed with EACCES
+527 http fetch GET https://registry.npmjs.org/micromark-factory-whitespace/-/micromark-factory-whitespace-2.0.1.tgz attempt 2 failed with EACCES
+528 http fetch GET https://registry.npmjs.org/micromark-factory-label/-/micromark-factory-label-2.0.1.tgz attempt 2 failed with EACCES
+529 http fetch GET https://registry.npmjs.org/micromark-factory-destination/-/micromark-factory-destination-2.0.1.tgz attempt 2 failed with EACCES
+530 http fetch GET https://registry.npmjs.org/micromark-extension-gfm-tagfilter/-/micromark-extension-gfm-tagfilter-2.0.0.tgz attempt 2 failed with EACCES
+531 http fetch GET https://registry.npmjs.org/micromark-extension-gfm-table/-/micromark-extension-gfm-table-2.1.1.tgz attempt 2 failed with EACCES
+532 http fetch GET https://registry.npmjs.org/micromark-extension-gfm-autolink-literal/-/micromark-extension-gfm-autolink-literal-2.1.0.tgz attempt 2 failed with EACCES
+533 http fetch GET https://registry.npmjs.org/micromark-extension-gfm-strikethrough/-/micromark-extension-gfm-strikethrough-2.1.0.tgz attempt 2 failed with EACCES
+534 http fetch GET https://registry.npmjs.org/micromark-extension-gfm/-/micromark-extension-gfm-3.0.0.tgz attempt 2 failed with EACCES
+535 http fetch GET https://registry.npmjs.org/micromark/-/micromark-4.0.2.tgz attempt 2 failed with EACCES
+536 http fetch GET https://registry.npmjs.org/micromark-extension-gfm-task-list-item/-/micromark-extension-gfm-task-list-item-2.1.0.tgz attempt 2 failed with EACCES
+537 http fetch GET https://registry.npmjs.org/mdast-util-to-string/-/mdast-util-to-string-4.0.0.tgz attempt 2 failed with EACCES
+538 http fetch GET https://registry.npmjs.org/mdast-util-to-hast/-/mdast-util-to-hast-13.2.1.tgz attempt 2 failed with EACCES
+539 http fetch GET https://registry.npmjs.org/mdast-util-to-markdown/-/mdast-util-to-markdown-2.1.2.tgz attempt 2 failed with EACCES
+540 http fetch GET https://registry.npmjs.org/micromark-core-commonmark/-/micromark-core-commonmark-2.0.3.tgz attempt 2 failed with EACCES
+541 http fetch GET https://registry.npmjs.org/mdast-util-mdxjs-esm/-/mdast-util-mdxjs-esm-2.0.1.tgz attempt 2 failed with EACCES
+542 http fetch GET https://registry.npmjs.org/mdast-util-mdx-jsx/-/mdast-util-mdx-jsx-3.2.0.tgz attempt 2 failed with EACCES
+543 http fetch GET https://registry.npmjs.org/micromark-extension-gfm-footnote/-/micromark-extension-gfm-footnote-2.1.0.tgz attempt 2 failed with EACCES
+544 http fetch GET https://registry.npmjs.org/mdast-util-mdx-expression/-/mdast-util-mdx-expression-2.0.1.tgz attempt 2 failed with EACCES
+545 http fetch GET https://registry.npmjs.org/mdast-util-phrasing/-/mdast-util-phrasing-4.1.0.tgz attempt 2 failed with EACCES
+546 http fetch GET https://registry.npmjs.org/mdast-util-gfm-task-list-item/-/mdast-util-gfm-task-list-item-2.0.0.tgz attempt 2 failed with EACCES
+547 http fetch GET https://registry.npmjs.org/mdast-util-gfm-strikethrough/-/mdast-util-gfm-strikethrough-2.0.0.tgz attempt 2 failed with EACCES
+548 http fetch GET https://registry.npmjs.org/mdast-util-gfm-table/-/mdast-util-gfm-table-2.0.0.tgz attempt 2 failed with EACCES
+549 http fetch GET https://registry.npmjs.org/mdast-util-gfm-footnote/-/mdast-util-gfm-footnote-2.1.0.tgz attempt 2 failed with EACCES
+550 http fetch GET https://registry.npmjs.org/mdast-util-gfm-autolink-literal/-/mdast-util-gfm-autolink-literal-2.0.1.tgz attempt 2 failed with EACCES
+551 http fetch GET https://registry.npmjs.org/mdast-util-gfm/-/mdast-util-gfm-3.1.0.tgz attempt 2 failed with EACCES
+552 http fetch GET https://registry.npmjs.org/mdast-util-from-markdown/-/mdast-util-from-markdown-2.0.3.tgz attempt 2 failed with EACCES
+553 http fetch GET https://registry.npmjs.org/mdast-util-find-and-replace/-/mdast-util-find-and-replace-3.0.2.tgz attempt 2 failed with EACCES
+554 http fetch GET https://registry.npmjs.org/lru-cache/-/lru-cache-11.5.2.tgz attempt 2 failed with EACCES
+555 http fetch GET https://registry.npmjs.org/markdown-table/-/markdown-table-3.0.4.tgz attempt 2 failed with EACCES
+556 http fetch GET https://registry.npmjs.org/lucide-react/-/lucide-react-1.41.0.tgz attempt 2 failed with EACCES
+557 http fetch GET https://registry.npmjs.org/longest-streak/-/longest-streak-3.1.0.tgz attempt 2 failed with EACCES
+558 http fetch GET https://registry.npmjs.org/lightningcss-win32-x64-msvc/-/lightningcss-win32-x64-msvc-1.33.0.tgz attempt 2 failed with EACCES
+559 http fetch GET https://registry.npmjs.org/is-plain-obj/-/is-plain-obj-4.1.0.tgz attempt 2 failed with EACCES
+560 http fetch GET https://registry.npmjs.org/lightningcss/-/lightningcss-1.33.0.tgz attempt 2 failed with EACCES
+561 http fetch GET https://registry.npmjs.org/is-hexadecimal/-/is-hexadecimal-2.0.1.tgz attempt 2 failed with EACCES
+562 http fetch GET https://registry.npmjs.org/is-decimal/-/is-decimal-2.0.1.tgz attempt 2 failed with EACCES
+563 http fetch GET https://registry.npmjs.org/is-alphabetical/-/is-alphabetical-2.0.1.tgz attempt 2 failed with EACCES
+564 http fetch GET https://registry.npmjs.org/is-alphanumerical/-/is-alphanumerical-2.0.1.tgz attempt 2 failed with EACCES
+565 http fetch GET https://registry.npmjs.org/html-url-attributes/-/html-url-attributes-3.0.1.tgz attempt 2 failed with EACCES
+566 http fetch GET https://registry.npmjs.org/hast-util-whitespace/-/hast-util-whitespace-3.0.0.tgz attempt 2 failed with EACCES
+567 http fetch GET https://registry.npmjs.org/graceful-fs/-/graceful-fs-4.2.11.tgz attempt 2 failed with EACCES
+568 http fetch GET https://registry.npmjs.org/hast-util-to-jsx-runtime/-/hast-util-to-jsx-runtime-2.3.6.tgz attempt 2 failed with EACCES
+569 http fetch GET https://registry.npmjs.org/fdir/-/fdir-6.5.0.tgz attempt 2 failed with EACCES
+570 http fetch GET https://registry.npmjs.org/glob/-/glob-13.0.6.tgz attempt 2 failed with EACCES
+571 http fetch GET https://registry.npmjs.org/estree-util-is-identifier-name/-/estree-util-is-identifier-name-3.0.0.tgz attempt 2 failed with EACCES
+572 http fetch GET https://registry.npmjs.org/escape-string-regexp/-/escape-string-regexp-5.0.0.tgz attempt 2 failed with EACCES
+573 http fetch GET https://registry.npmjs.org/extend/-/extend-3.0.2.tgz attempt 2 failed with EACCES
+574 http fetch GET https://registry.npmjs.org/inline-style-parser/-/inline-style-parser-0.2.7.tgz attempt 2 failed with EACCES
+575 http fetch GET https://registry.npmjs.org/env-paths/-/env-paths-3.0.0.tgz attempt 2 failed with EACCES
+576 http fetch GET https://registry.npmjs.org/electron/-/electron-44.2.0.tgz attempt 2 failed with EACCES
+577 http fetch GET https://registry.npmjs.org/devlop/-/devlop-1.1.0.tgz attempt 2 failed with EACCES
+578 http fetch GET https://registry.npmjs.org/dequal/-/dequal-2.0.3.tgz attempt 2 failed with EACCES
+579 http fetch GET https://registry.npmjs.org/decode-named-character-reference/-/decode-named-character-reference-1.3.0.tgz attempt 2 failed with EACCES
+580 http fetch GET https://registry.npmjs.org/detect-libc/-/detect-libc-2.1.2.tgz attempt 2 failed with EACCES
+581 http fetch GET https://registry.npmjs.org/debug/-/debug-4.4.3.tgz attempt 2 failed with EACCES
+582 http fetch GET https://registry.npmjs.org/csstype/-/csstype-3.2.3.tgz attempt 2 failed with EACCES
+583 http fetch GET https://registry.npmjs.org/character-reference-invalid/-/character-reference-invalid-2.0.1.tgz attempt 2 failed with EACCES
+584 http fetch GET https://registry.npmjs.org/character-entities-legacy/-/character-entities-legacy-3.0.0.tgz attempt 2 failed with EACCES
+585 http fetch GET https://registry.npmjs.org/comma-separated-tokens/-/comma-separated-tokens-2.0.3.tgz attempt 2 failed with EACCES
+586 http fetch GET https://registry.npmjs.org/character-entities/-/character-entities-2.0.2.tgz attempt 2 failed with EACCES
+587 http fetch GET https://registry.npmjs.org/ccount/-/ccount-2.0.1.tgz attempt 2 failed with EACCES
+588 http fetch GET https://registry.npmjs.org/character-entities-html4/-/character-entities-html4-2.1.0.tgz attempt 2 failed with EACCES
+589 http fetch GET https://registry.npmjs.org/brace-expansion/-/brace-expansion-5.0.9.tgz attempt 2 failed with EACCES
+590 http fetch GET https://registry.npmjs.org/@ungap/structured-clone/-/structured-clone-1.4.0.tgz attempt 2 failed with EACCES
+591 http fetch GET https://registry.npmjs.org/bail/-/bail-2.0.2.tgz attempt 2 failed with EACCES
+592 http fetch GET https://registry.npmjs.org/balanced-match/-/balanced-match-4.0.4.tgz attempt 2 failed with EACCES
+593 http fetch GET https://registry.npmjs.org/@typescript/typescript-win32-x64/-/typescript-win32-x64-7.0.2.tgz attempt 2 failed with EACCES
+594 http fetch GET https://registry.npmjs.org/@vitejs/plugin-react/-/plugin-react-6.1.1.tgz attempt 2 failed with EACCES
+595 http fetch GET https://registry.npmjs.org/@types/unist/-/unist-3.0.3.tgz attempt 2 failed with EACCES
+596 http fetch GET https://registry.npmjs.org/@types/react/-/react-19.2.18.tgz attempt 2 failed with EACCES
+597 http fetch GET https://registry.npmjs.org/@types/react-dom/-/react-dom-19.2.7.tgz attempt 2 failed with EACCES
+598 http fetch GET https://registry.npmjs.org/@types/node/-/node-26.4.1.tgz attempt 2 failed with EACCES
+599 http fetch GET https://registry.npmjs.org/@types/ms/-/ms-2.1.0.tgz attempt 2 failed with EACCES
+600 http fetch GET https://registry.npmjs.org/@types/mdast/-/mdast-4.0.4.tgz attempt 2 failed with EACCES
+601 http fetch GET https://registry.npmjs.org/@types/hast/-/hast-3.0.5.tgz attempt 2 failed with EACCES
+602 http fetch GET https://registry.npmjs.org/@types/estree-jsx/-/estree-jsx-1.0.5.tgz attempt 2 failed with EACCES
+603 http fetch GET https://registry.npmjs.org/@types/debug/-/debug-4.1.13.tgz attempt 2 failed with EACCES
+604 http fetch GET https://registry.npmjs.org/@rolldown/binding-win32-x64-msvc/-/binding-win32-x64-msvc-1.2.7.tgz attempt 2 failed with EACCES
+605 http fetch GET https://registry.npmjs.org/@types/estree/-/estree-1.0.9.tgz attempt 2 failed with EACCES
+606 http fetch GET https://registry.npmjs.org/@rolldown/pluginutils/-/pluginutils-1.0.1.tgz attempt 2 failed with EACCES
+607 http fetch GET https://registry.npmjs.org/@electron-internal/extract-zip/-/extract-zip-1.0.5.tgz attempt 2 failed with EACCES
+608 http fetch GET https://registry.npmjs.org/@oxc-project/types/-/types-0.148.0.tgz attempt 2 failed with EACCES
+609 http fetch GET https://registry.npmjs.org/@electron/get/-/get-5.1.0.tgz attempt 2 failed with EACCES
+610 http fetch GET https://registry.npmjs.org/@electron/asar/-/asar-4.3.0.tgz attempt 2 failed with EACCES
+611 http fetch GET https://registry.npmjs.org/undici-types/-/undici-types-7.18.2.tgz attempt 2 failed with EACCES
+612 http fetch GET https://registry.npmjs.org/@types/unist/-/unist-2.0.11.tgz attempt 2 failed with EACCES
+613 http fetch GET https://registry.npmjs.org/@types/node/-/node-24.13.3.tgz attempt 2 failed with EACCES
