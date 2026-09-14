@@ -6,9 +6,7 @@ Cleo is a local-first AI workspace that brings general chat, developer agents, r
 
 The project supports native desktop builds for Windows, macOS and Linux, plus a Python CLI, Textual TUIs, and a stdio MCP entry point. User data stays on the local device by default; inference is provided by the API provider or external agent harness selected by the user.
 
-> Current version: `0.3.7`. Cleo is still pre-1.0 and is best suited to evaluation, internal-tool integration, and active development. Pin a version and validate it before deployments that require stable data formats or extension contracts.
-
-0.3.7 stores bounded project preferences in Markdown, with an independent Git repository inside the memory directory. Consolidation requires Git on PATH. Legacy fact-based memory requires a [reviewed migration preview](docs/MEMORY_MARKDOWN_GIT.md#旧格式迁移); upgrading does not automatically overwrite old files or delete history.
+> Current version: [v0.4.4](https://github.com/StDoses72/Cleo-AI-agent/releases/tag/v0.4.4) · [Download the desktop app](https://stdoses72.github.io/Cleo-AI-agent/)
 
 ## What Cleo solves
 
@@ -24,7 +22,7 @@ General assistants and coding agents usually keep separate histories, permission
 
 | Surface | Audience | Primary use |
 | --- | --- | --- |
-| Cleo Desktop | End users and developers | Conversation and project management, chat, Productivity, memory inspection, model settings, and updates |
+| Cleo Desktop | End users and developers | Conversation and project management, chat, Productivity, memory inspection, model settings, updates, and local evolution |
 | Cleo Chat CLI / TUI | Terminal users | One-shot prompts, continuous chat, image attachments, project memory, and session resume |
 | Productivity TUI | Software developers | Run Codex, Claude SDK, or ACP agents in a selected working directory |
 | `cleo-codex-mcp` | Integrators | Expose `codex` and `codex-reply` over stdio MCP |
@@ -32,6 +30,10 @@ General assistants and coding agents usually keep separate histories, permission
 ## Highlights
 
 - Streaming chat and one-shot tasks with JPEG, PNG, WebP, and GIF attachments.
+- Paginated message history, collapsible intermediate activity, and native Codex/Claude questions.
+- Local skill discovery, search, and invocation in native Claude/Codex development sessions.
+- Local evolution from requirements and source edits through build checks, application, acceptance, and version saving.
+- Source snapshot contributions through independent receiving branches, with PR status and merge investigation and repair.
 - A provider-neutral coding-harness data plane plus optional Codex-specific controls.
 - An append-only `events.jsonl` source of truth, atomic manifests, and rebuildable SQLite indexes.
 - `non_productivity` and `productivity` memory spaces, with explicit project filters for applicable preferences.
@@ -87,6 +89,15 @@ cleo --productivity --cwd .
 Linux and macOS use the same Python package and JSON formats. See [platform support](docs/PLATFORMS.md) for native builds, installation formats and signing boundaries. Available prebuilt assets depend on the current GitHub Release.
 
 ## Common workflows
+
+### Desktop
+
+- **Development and skills**: select a working directory and a Claude/Codex harness, type `/` to find a local skill, then select it, add arguments, and send. Reopen the session after installing a skill to refresh the catalog. See [local skills](docs/local-skills.md).
+- **Local evolution**: describe a change in the evolution view, wait for checks and packaging to pass, then apply it. After trying the build, confirm acceptance directly; feedback is optional, and applying alone does not count as acceptance. Save a version you like, continue editing, or discard the current changes. See [local evolution](docs/cleo-evolution.md) and [direct acceptance](docs/direct-acceptance.md).
+- **Version updates**: check official releases in Settings → Updates. The evolution version picker also offers official and saved local versions. Switching program versions does not roll chats, memory, or configuration back to an earlier snapshot.
+- **Source contributions**: open the PR dialog and select a checked local build and an empty receiving branch created by a maintainer. Request a branch first if needed. Contributions contain a full source snapshot excluding local configuration, conversations, and runtime data; maintainers decide when to merge and release. See [contribution targets and merge assistance](docs/contribution-targets.md).
+
+### Terminal
 
 ```powershell
 # Continuous general chat
@@ -177,6 +188,9 @@ Cleo-AI-agent/
 - [Backend contributor guide](docs/BACKEND_CODE_REVIEW.md)
 - [Runtime and data maintenance guide](docs/Cleo_Runtime_State_Maintenance_Guide.docx)
 - [Memory-system design record](docs/CASTMIND_MEMORY_MIGRATION.md)
+- [Local evolution and recovery](docs/cleo-evolution.md)
+- [Local skills](docs/local-skills.md)
+- [Source contributions and merge assistance](docs/contribution-targets.md)
 
 The deep operational guides are currently maintained in Chinese; the root README and architecture reference are bilingual.
 
@@ -195,14 +209,6 @@ npm run smoke
 ```
 
 On the target OS and architecture, run `npm run package:portable` from `ui/` to build the full release into the repository-level `release/` directory. See the [development guide](docs/DEVELOPMENT.md) and [desktop subsystem guide](ui/README.md).
-
-## Current boundaries
-
-- Desktop targets are Windows x64, macOS ARM64/x64 and Linux x64. Default macOS artifacts are development builds; public distribution requires signing and notarization. See [platform support](docs/PLATFORMS.md).
-- Cleo is a local single-user application and stdio tool, not a multi-tenant web service or HTTP API.
-- General chat primarily targets OpenAI-compatible chat models; compatibility depends on provider behavior.
-- Productivity providers do not expose identical capabilities; Claude and ACP do not emulate Codex-only controls.
-- Long-term memory is automatically extracted and important conclusions should be checked against evidence and the raw event log.
 
 ## Contributing
 
