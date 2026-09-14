@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, GitBranch, GitPullRequest, History, ShieldCheck, PanelRightOpen, X, LoaderCircle, Save, Play, RotateCcw } from "lucide-react";
 import type { EvolutionBuild, EvolutionPullRequest, EvolutionState } from "../evolution-types";
+import { EvolutionContribution } from "./EvolutionContribution";
 import { GithubLogin } from "./GithubLogin";
+import { ContributionMerge } from "./ContributionMerge";
 
 interface Props {
   children?: ReactNode;
@@ -19,6 +21,8 @@ const phases: Record<string, string> = {
   preparing: "正在准备", building: "正在检查并构建", applying: "正在重启",
   downloading: "正在下载正式版", authenticating: "正在连接 GitHub", submitting: "正在提交 PR",
   checking: "正在检查版本", selecting: "正在切换版本", saving: "正在保存",
+  planning: "正在分析需求并准备验收", validating: "正在核对验收记录",
+  comparing: "正在比较行为", recording: "正在保存验收记录",
 };
 /** Purpose: Keep formal releases distinct from dated local saves. Input: build. Output: display label. */
 export function versionLabel(build?: EvolutionBuild) {
@@ -48,40 +52,25 @@ export function EvolutionPanel({ children, state, error, busy, running, inspecto
   const dialog = useRef<HTMLDialogElement>(null);
   const [name, setName] = useState("");
   const [releaseTag, setReleaseTag] = useState("");
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
-  const submissionId = useRef<string | null>(null);
   const [submittedUrl, setSubmittedUrl] = useState<string | null>(null);
   useEffect(() => { if (sheet && !dialog.current?.open) dialog.current?.showModal(); }, [sheet]);
   const close = () => { if (submittingRef.current) return; dialog.current?.close(); setSheet(null); };
   /** Purpose: Start a fresh user intent, independent of every historical PR. Input: none. Output: empty form. */
   const openContribution = () => {
     if (submittingRef.current) return;
-    submissionId.current = null; setTitle(""); setBody(""); setSubmittedUrl(null); setSheet("contribute");
-  };
-  /** Purpose: Close only after confirmed submission; retain the form on failure.
-   * Input: current title/body. Output: one pending operation and an acknowledged PR receipt.
-   */
-  const submit = async () => {
-    if (submittingRef.current) return;
-    submittingRef.current = true; setSubmitting(true);
-    try {
-      submissionId.current ||= crypto.randomUUID();
-      const url = await onAction("submit", { title, body, submissionId: submissionId.current });
-      if (typeof url === "string" && url.startsWith("https://github.com/")) {
-        setSubmittedUrl(url); submissionId.current = null;
-        setTitle(""); setBody(""); submittingRef.current = false; close();
-      }
-    } finally { submittingRef.current = false; setSubmitting(false); }
+    setSubmittedUrl(null); setSheet("contribute");
   };
   const act = (action: string, params?: Record<string, unknown>) => { close(); onAction(action, params); };
+  /** Purpose: Release dialog focus before entering a repair conversation. Input: contribution action. Output: forwarded operation. */
+  const contributionAction = (action: string, params?: Record<string, unknown>) => {
+    if (action === "repairContribution") close();
+    return onAction(action, params);
+  };
   const active = state?.builds.find((build) => build.id === state.active);
   const base = state?.builds.find((build) => build.id === (state.iteration?.base || state.active));
   const candidate = state?.builds.find((build) => build.id === state.candidate);
-  const contribution = candidate || active;
-  const hasContribution = contribution?.kind === "local" && Boolean(contribution.sourceHash);
   const versions = state?.builds.filter((build) => build.kind === "official" || build.savedAt) || [];
   const blocked = busy || running || submitting || Boolean(state?.transaction);
   const history = [...(state?.pullRequests || []), ...(state?.pullRequest ? [state.pullRequest] : [])]
@@ -94,7 +83,11 @@ export function EvolutionPanel({ children, state, error, busy, running, inspecto
     const result = state.acceptance?.report?.results.find((entry) => entry.id === item.id);
     return result?.after.status === "passed" && result.before.status !== "error";
   }));
-  const canApply = Boolean(verified && behaviorPassed && candidate?.kind === "local" && candidate.id !== state?.active);
+  const automaticPassed = cases.filter((item) => item.kind !== "manual").every((item) => {
+    const result = state?.acceptance?.report?.results.find((entry) => entry.id === item.id);
+    return state?.acceptance?.fresh && result?.after.status === "passed" && result.before.status !== "error";
+  });
+  const canApply = Boolean(verified && automaticPassed && candidate?.kind === "local" && candidate.id !== state?.active);
   const canSave = Boolean(state?.iteration && active?.kind === "local" && active.id !== state.iteration.base
     && state.candidate === state.active && verified && behaviorPassed);
   const checkFailed = validation?.status === "failed" || validation?.status === "interrupted";
@@ -103,7 +96,7 @@ export function EvolutionPanel({ children, state, error, busy, running, inspecto
   const details = state?.logs || validation?.details;
   const status = running ? "正在修改，完成后检查" : busy ? (validation?.status === "running" ? validation.message : phases[state?.phase || ""] || "正在准备")
     : state?.transaction ? "正在重启" : checkFailed ? "检查未通过，修改尚不可应用" : failure ? "操作未完成"
-    : verified && !behaviorPassed ? "构建通过，行为验收待完成" : canApply ? "检查通过，可以应用" : canSave ? "修改已应用，尚未保存"
+    : canApply ? "检查通过，阅读行为说明后可应用" : verified && !behaviorPassed ? (state?.active === state?.candidate ? "已应用，请比对实际行为，确认后保存" : "构建通过，请查看行为比较结果") : canSave ? "行为已确认，可以保存当前版本"
     : validation?.status === "unchanged" ? "检查完成，暂无程序改动" : state?.iteration ? "修改待检查" : "直接描述你想改进的地方";
   return <header className="evolution-toolbar" aria-label="进化操作">
     <div className="evolution-topline">
@@ -134,9 +127,11 @@ export function EvolutionPanel({ children, state, error, busy, running, inspecto
     {submittedUrl && <div className="evolution-pr-notice" aria-label="PR 提交结果" role="status">
       <GitPullRequest size={15} /><span>新 PR 已创建</span>
       <a href={submittedUrl} target="_blank" rel="noreferrer">查看 #{submittedUrl.split("/").at(-1)}</a>
+      <ContributionMerge params={{ url: submittedUrl }} busy={blocked} onAction={contributionAction} />
       <button aria-label="关闭提交提示" onClick={() => setSubmittedUrl(null)}><X size={14} /></button>
     </div>}
     {failure && <div className="evolution-error" role="alert"><span>{failure}</span>
+      {state?.threadId && <button disabled={blocked} onClick={() => onAction("abandonRequest", { threadId: state.threadId })}>废弃原需求</button>}
       {checkFailed && validation.repairable && <button disabled={blocked} onClick={onRepair}>让 Cleo 修复</button>}
       <button disabled={blocked} onClick={checkFailed ? () => onAction("build") : onRetry}>{checkFailed ? "重新检查" : "重试"}</button>
     </div>}
@@ -149,8 +144,9 @@ export function EvolutionPanel({ children, state, error, busy, running, inspecto
         <p>这里保留过去的提交。新建 PR 不会更新这些记录对应的远端分支。</p>
         <div className="evolution-pr-history">{history.map((pr) => <article key={pr.url}>
           <div><a href={pr.url} target="_blank" rel="noreferrer">#{pr.number || pr.url.split("/").at(-1)} · {pr.title || "Pull Request"}</a>
-            <p>{pullRequestStatus(pr)}</p>
+            <p>{pullRequestStatus(pr)}{pr.targetBranch ? ` · 目标：${pr.targetBranch}` : ""}</p>
             {pr.submittedAt && <small>{new Date(pr.submittedAt).toLocaleString("zh-CN")}</small>}
+            <ContributionMerge params={{ url: pr.url }} busy={blocked} onAction={contributionAction} />
           </div><button aria-label={`刷新 PR #${pr.number || pr.url.split("/").at(-1)}`} disabled={blocked} onClick={() => onAction("pullRequest", { url: pr.url })}><RotateCcw size={14} />刷新</button>
         </article>)}</div>
         <button className="evolution-primary" disabled={blocked} onClick={openContribution}><GitPullRequest size={15} />新建 PR</button>
@@ -173,24 +169,13 @@ export function EvolutionPanel({ children, state, error, busy, running, inspecto
         <button className="evolution-primary" disabled={blocked || !canSave}>确认保存</button>
       </form>}
       {sheet === "discard" && <><p>放弃本轮修改，回到「{versionLabel(base)}」。聊天、记忆和配置不变。{active?.id !== base?.id ? "Cleo 会自动重启。" : ""}</p><button className="evolution-primary" disabled={blocked} onClick={() => act("discard")}>确认放弃</button></>}
-      {sheet === "contribute" && <><p>每次发起都会创建一个新的 PR，使用独立分支，不会覆盖之前的提交。</p>
-        {state?.githubAuth?.status === "connected" ? <p>GitHub 已连接。</p>
-          : <button disabled={blocked} onClick={() => act("login")}>连接 GitHub</button>}
-        <p>提交版本：{versionLabel(contribution)}</p>
-        <p>目标：StDoses72/Cleo-AI-agent · main</p>
-        <p>源码基于 {contribution?.baseTag || state?.baseTag || "所选正式版本"}。将该版本包含的改动提交到 StDoses72/Cleo-AI-agent，供维护者审查。</p>
-        {!hasContribution ? <p>当前没有经过构建检查的本地版本。请先完成修改和检查。</p>
-          : !state?.prepared ? <><p>先恢复这个版本的源码，再提交。准备源码不会发布改动。</p>
-            <button disabled={blocked} onClick={() => onAction("prepare")}>{busy && state?.phase === "preparing" ? "正在准备源码…" : "准备当前版本源码"}</button></>
-          : <p>源码已准备，可以填写说明并提交。</p>}
+      {sheet === "contribute" && <>
+        {state?.githubAuth?.status !== "connected" && <button disabled={blocked} onClick={() => act("login")}>连接 GitHub</button>}
         {failure && <p role="alert">{failure}</p>}
-        <form onSubmit={(event) => { event.preventDefault(); void submit(); }}>
-          <label>PR 标题<input aria-label="PR 标题" placeholder="这次想贡献什么改动？" value={title} disabled={submitting} onChange={(event) => { submissionId.current = null; setTitle(event.target.value); }} required /></label>
-          <label>PR 说明<textarea aria-label="PR 说明" placeholder="修改内容和验证结果" value={body} disabled={submitting} onChange={(event) => { submissionId.current = null; setBody(event.target.value); }} required /></label>
-          {submitting && <p role="status">{state?.submission?.message || "正在提交到 GitHub，请稍候…"}</p>}
-          <button className="evolution-primary" disabled={blocked || !hasContribution || !state?.prepared || !title.trim() || !body.trim()}>{submitting ? <><LoaderCircle size={14} className="evolution-spin" />正在提交…</> : "创建新 PR"}</button>
-          <p className="evolution-contribution-hint">成功后自动关闭，可在历史中查看。相同内容的失败重试会确认同一次提交，避免重复创建；关闭后重新发起则是新的 PR。创建成功不代表 CI 通过或已合并。</p>
-        </form></>}
+        <EvolutionContribution state={state} busy={busy || running || Boolean(state?.transaction)} onAction={contributionAction}
+          onBusy={(value) => { submittingRef.current = value; setSubmitting(value); }}
+          onSubmitted={(url) => { setSubmittedUrl(url); submittingRef.current = false; close(); }} />
+      </>}
     </dialog>}
   </header>;
 }

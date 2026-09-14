@@ -53,7 +53,8 @@ jobs:
           mkdir -p config
           cp cleo/config/templates/cleo.example.json config/cleo.json
           cp cleo/config/templates/harnesses.example.json config/harnesses.json
-      - run: python scripts/update_project.py --local-resolver --skip-build
+      # Release verification must exercise the committed dependency locks.
+      # Refresh them explicitly with scripts/update_project.py before a release.
       - run: uv pip install --system -e ".[dev]" --constraint requirements.txt
       - run: npm ci --prefix ui
       - run: node ui/node_modules/electron/install.js
@@ -75,6 +76,7 @@ jobs:
           node ui/scripts/smoke.mjs
           node ui/scripts/smoke-approvals.mjs
           node ui/scripts/smoke-evolution.mjs
+          node ui/tests/acceptance-retry.smoke.mjs
           node ui/scripts/smoke-history.mjs
           node ui/scripts/smoke-layout.mjs
           node ui/scripts/smoke-program-updates.mjs
@@ -84,6 +86,7 @@ jobs:
           xvfb-run -a node ui/scripts/smoke.mjs
           xvfb-run -a node ui/scripts/smoke-approvals.mjs
           xvfb-run -a node ui/scripts/smoke-evolution.mjs
+          xvfb-run -a node ui/tests/acceptance-retry.smoke.mjs
           xvfb-run -a node ui/scripts/smoke-history.mjs
           xvfb-run -a node ui/scripts/smoke-layout.mjs
           xvfb-run -a node ui/scripts/smoke-program-updates.mjs

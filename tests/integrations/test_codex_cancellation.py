@@ -151,12 +151,14 @@ def test_cancel_releases_pending_approval_before_interrupt_and_allows_next_turn(
     asyncio.run(scenario())
 
 
-def test_cancellation_drains_the_real_sdk_notification_worker(monkeypatch):
+def test_cancellation_drains_the_real_sdk_notification_worker():
     async def scenario():
         low_level = AsyncCodexClient()
         reader_ready = asyncio.Event()
         reader_exited = Event()
         loop = asyncio.get_running_loop()
+        original_register = low_level._sync.register_turn_notifications
+        original_queue = None
         completion = SimpleNamespace(
             method="turn/completed",
             payload=TurnCompletedNotification.model_validate({
@@ -168,6 +170,23 @@ def test_cancellation_drains_the_real_sdk_notification_worker(monkeypatch):
             }),
         )
 
+        def register_notifications(turn_id):
+            nonlocal original_queue
+            original_register(turn_id)
+            original_queue = low_level._sync._router._turn_notifications[turn_id]
+            original_get = original_queue.get
+
+            def get():
+                loop.call_soon_threadsafe(reader_ready.set)
+                try:
+                    return original_get()
+                finally:
+                    reader_exited.set()
+
+            original_queue.get = get
+
+        low_level._sync.register_turn_notifications = register_notifications
+
         async def initialized():
             pass
 
@@ -177,20 +196,6 @@ def test_cancellation_drains_the_real_sdk_notification_worker(monkeypatch):
         low_level.turn_interrupt = interrupt
         client = SimpleNamespace(_client=low_level, _ensure_initialized=initialized)
         turn = AsyncTurnHandle(client, "thread", "turn")
-        # Newer SDKs give each handle a subscription instead of a shared queue.
-        subscription = getattr(turn, "_subscription", None)
-        reader = subscription if subscription is not None else low_level._sync
-        method = "next" if subscription is not None else "next_turn_notification"
-        original_read = getattr(reader, method)
-
-        def read_notification(*args):
-            loop.call_soon_threadsafe(reader_ready.set)
-            try:
-                return original_read(*args)
-            finally:
-                reader_exited.set()
-
-        monkeypatch.setattr(reader, method, read_notification)
 
         async def start(*_args, **_kwargs):
             return turn
@@ -208,7 +213,8 @@ def test_cancellation_drains_the_real_sdk_notification_worker(monkeypatch):
             assert reader_exited.is_set(), "SDK notification worker was orphaned"
             assert not runtime.lock.locked()
         finally:
-            low_level._sync._router.route_notification(completion)
+            if original_queue is not None:
+                original_queue.put(completion)
             await asyncio.gather(task, return_exceptions=True)
 
     asyncio.run(scenario())

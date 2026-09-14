@@ -1,4 +1,5 @@
 import type {
+  LocalSkill,
   Attachment,
   ApprovalDecision,
   AgentInstructions,
@@ -28,6 +29,10 @@ import type {
 
 export class IpcCleoClient implements CleoClient {
   private readonly bridge = window.cleoDesktop!;
+
+  getLocalSkills(provider: string, projectPath?: string): Promise<LocalSkill[]> {
+    return this.bridge.request("get_local_skills", { provider, project_path: projectPath });
+  }
 
   async loadWorkspace(): Promise<WorkspaceSnapshot> {
     return this.bridge.request("load_workspace");

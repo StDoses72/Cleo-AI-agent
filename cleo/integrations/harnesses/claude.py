@@ -368,6 +368,8 @@ class ClaudeProvider:
 
         options = ClaudeAgentOptions(
             cwd=project_path,
+            # Native discovery keeps explicit-only and automatic skills distinct.
+            setting_sources=["user", "project"],
             model=model or self._default_model,
             effort=effort,
             permission_mode=permission_mode or self._permission_mode,

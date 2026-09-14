@@ -30,11 +30,12 @@ export interface EvolutionGithubAuth {
 export interface EvolutionPullRequest {
   url: string; state: string; merged: boolean; number?: number; title?: string;
   headRefName?: string; owner?: string; submittedAt?: string; outcome?: "created" | "updated";
-  submissionId?: string; sourceHash?: string;
+  submissionId?: string; sourceHash?: string; buildId?: string; targetBranch?: string;
   checks?: "failed" | "pending" | "passed" | "none"; mergeable?: string; checkedAt?: string;
 }
 
 export interface EvolutionState {
+  branchRequests?: EvolutionBranchRequest[];
   acceptanceRequests?: EvolutionRequest[];
   acceptance?: EvolutionAcceptanceState;
   phase: string;
@@ -69,6 +70,7 @@ export interface EvolutionState {
 }
 
 export interface EvolutionRequest {
+  abandonedAt?: string;
   id: string;
   threadId: string;
   prompt: string;
@@ -85,6 +87,11 @@ export interface EvolutionRequest {
   cases: { requirement: string; current: string; trigger: string; sourceEvidence?: string; item: EvolutionCase }[];
 }
 
+export interface EvolutionBranchRequest {
+  id: string; branch: string; body: string; buildId: string; sourceHash: string; buildName: string;
+  url?: string; status: "pending" | "requested" | "ready"; createdAt: string; checkedAt?: string;
+}
+
 export interface EvolutionCase {
   id: string;
   title: string;
@@ -94,6 +101,7 @@ export interface EvolutionCase {
   kind: "manual" | "dream-format";
   baseline: string;
   enabled: boolean;
+  cancelledAt?: string;
   createdAt: string;
 }
 export interface BehaviorResult {
@@ -102,6 +110,11 @@ export interface BehaviorResult {
   manual?: boolean;
 }
 export interface EvolutionAcceptanceState {
+  interactions?: {
+    feedback: { id: string; caseId: string; body: string; threadId: string; at: string; mode?: "continue" }[];
+    completions: { id: string; note: string; candidate: string; at: string }[];
+    confirmations: { id: string; skipped: boolean; question?: string; at: string }[];
+  };
   cases: EvolutionCase[];
   fresh: boolean;
   report: { candidate: string; sourceHash: string; createdAt: string;

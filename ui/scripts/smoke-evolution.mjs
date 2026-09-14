@@ -165,3 +165,6 @@ try {
   assert.ok(profile.includes("cleo-evolution-ui-"));
   await rm(profile, { recursive: true, force: true });
 }
+
+// Keep cross-view navigation and in-flight output isolation in the existing desktop smoke gate.
+await import("./smoke-evolution-isolation.mjs");

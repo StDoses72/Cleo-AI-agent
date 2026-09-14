@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { spawn } from "node:child_process";
 import { readJson, writeJson } from "./evolution-store.mjs";
+import { EvolutionInteractions } from "./evolution-interactions.mjs";
 
 const digest = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const now = () => new Date().toISOString();
@@ -17,6 +18,7 @@ export class EvolutionAcceptance {
     this.replay = replay;
     this.path = join(store.root, "acceptance", "suite.json");
     this.reportPath = join(store.root, "acceptance", "report.json");
+    this.interactions = new EvolutionInteractions(store);
   }
 
   async status(state) {
@@ -25,7 +27,7 @@ export class EvolutionAcceptance {
     const build = state.builds.find((item) => item.id === (state.candidate || state.active));
     const fresh = Boolean(report && report.suiteHash === digest(cases) && report.candidate === build?.id
       && report.sourceHash === build?.sourceHash && !state.draftDirty);
-    return { cases, report, fresh };
+    return { cases, report, fresh, interactions: await this.interactions.read() };
   }
 
   /** Purpose: Freeze evidence before editing. Input: human expectation and captured trace. Output: immutable case. */
@@ -55,12 +57,32 @@ export class EvolutionAcceptance {
     await writeJson(this.path, cases.map((item) => item.id === id ? { ...item, enabled: false } : item));
   }
 
+  /** Purpose: Withdraw optional human acceptance without claiming it passed.
+   * Input: manual case ID. Output: archived evidence; other fresh results remain usable.
+   */
+  async cancel(id) {
+    const status = await this.status(await this.store.read());
+    const item = status.cases.find((entry) => entry.id === id);
+    if (!item || item.kind !== "manual") throw new Error("只能取消人工验收案例。");
+    if (item.cancelledAt) return item;
+    if (!item.enabled) throw new Error("此验收项已结束。");
+    const cancelled = { ...item, enabled: false, cancelledAt: now() };
+    const cases = status.cases.map((entry) => entry.id === id ? cancelled : entry);
+    await writeJson(this.path, cases);
+    if (status.fresh) {
+      status.report.suiteHash = digest(cases);
+      await writeJson(this.reportPath, status.report);
+    }
+    return cancelled;
+  }
+
   /** Purpose: Compare identical fixtures in independent temporary homes, retaining baseline evidence.
    * Input: fully built candidate. Output: durable report; failure never becomes a passed check.
    */
   async compare(candidateId) {
     const state = await this.store.read();
-    if (!candidateId || state.candidate !== candidateId) throw new Error("请先完成构建检查，再比较行为。");
+    if (!candidateId || (state.candidate || state.active) !== candidateId || state.draftDirty)
+      throw new Error("请先完成当前改动的构建检查，再比较行为。");
     const build = await this.store.build(candidateId);
     const cases = await readJson(this.path, []);
     const report = { candidate: candidateId, sourceHash: build.sourceHash, suiteHash: digest(cases),
@@ -68,7 +90,7 @@ export class EvolutionAcceptance {
     for (const item of cases.filter((entry) => entry.enabled)) {
       if (item.kind === "manual") {
         report.results.push({ id: item.id, before: { status: "manual", detail: "尚未验证；已保留原始证据，不能据此断言旧版失败。" },
-          after: { status: "manual", detail: "请根据预期行为查看修改和预览，再记录验收依据" } });
+          after: { status: "manual", detail: "应用后体验实际效果，符合预期即可点击验收；不符合时继续反馈。" } });
         continue;
       }
       const baselinePath = join(this.store.root, "acceptance", `baseline-${item.id}.json`);
@@ -88,17 +110,47 @@ export class EvolutionAcceptance {
     return report;
   }
 
-  /** Purpose: Record explicit manual verification for this exact candidate. Input: case and observation. Output: dated manual receipt. */
+  /** Purpose: Record explicit confirmation for this candidate, retaining optional legacy notes.
+   * Input: case ID and optional note. Output: dated receipt; no observation text is invented.
+   */
   async review(id, note) {
     const status = await this.status(await this.store.read());
     const item = status.cases.find((entry) => entry.id === id && entry.enabled && entry.kind === "manual");
     if (!status.fresh || !item) throw new Error("案例或版本已变化，请重新比较行为。");
     const observation = String(note || "").trim();
-    if (!observation || observation.length > 4000) throw new Error("请填写验收依据，最多 4,000 字符。");
+    if (observation.length > 4000) throw new Error("验收说明最多 4,000 字符。");
     const result = status.report.results.find((entry) => entry.id === id);
     if (!result) throw new Error("本轮缺少此案例的结果，请重新比较。");
-    result.after = { status: "passed", detail: observation, reviewedAt: now(), manual: true };
+    const detail = note == null && result.after.status === "passed" && result.after.manual
+      ? result.after.detail : observation;
+    result.after = { ...result.after, status: "passed", detail, reviewedAt: now(), manual: true };
     await writeJson(this.reportPath, status.report);
+  }
+
+  /** Complete a manual case on explicit confirmation of the applied build; notes remain optional. */
+  async complete(id, note) {
+    const state = await this.store.read();
+    const status = await this.status(state);
+    const receipt = status.interactions.completions.find((item) => item.id === id);
+    const item = status.cases.find((entry) => entry.id === id);
+    if (item?.cancelledAt) throw new Error("此项已取消验收，未记录为通过。");
+    if (receipt && item && !item.enabled) return receipt;
+    const feedback = status.interactions.feedback.filter((f) => f.caseId === id).at(-1);
+    if (feedback && feedback.mode !== "continue")
+      throw new Error("此项已提交进一步反馈，请先完成修改，再验收最新预期。");
+    if (!status.fresh || status.report?.candidate !== state.active)
+      throw new Error("请先应用当前构建，体验后再确认验收。");
+    await this.review(id, note);
+    const reviewed = await readJson(this.reportPath);
+    const completion = await this.interactions.append("completions", {
+      id, note: reviewed.results.find((result) => result.id === id).after.detail,
+      candidate: state.active, sourceHash: reviewed.sourceHash,
+    });
+    await this.archive(id);
+    // Disabling this explicitly reviewed item does not change any other result's evidence.
+    reviewed.suiteHash = digest(await readJson(this.path, []));
+    await writeJson(this.reportPath, reviewed);
+    return completion;
   }
 
   /** Purpose: Fail closed at Apply and Save without affecting rollback to previously saved programs. */

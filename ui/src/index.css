@@ -3532,3 +3532,10 @@ select.text-control:hover {
     transition-duration: 1ms !important;
   }
 }
+
+.slash-menu { max-height: 320px; overflow-y: auto; }
+.slash-menu button { gap: 10px; flex-shrink: 0; }
+.slash-menu small { color: var(--muted); font-size: 10px; }
+
+.update-notice-minimized { width: auto; min-width: 0; padding: 6px; }
+.update-notice-minimized button { display: flex; align-items: center; gap: 8px; }

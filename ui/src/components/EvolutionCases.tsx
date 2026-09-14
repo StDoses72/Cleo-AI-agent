@@ -1,61 +1,73 @@
 import { useRef, useState } from "react";
-import { FlaskConical, X } from "lucide-react";
-import type { EvolutionAcceptanceState } from "../evolution-types";
+import { ArrowUp, FlaskConical, X } from "lucide-react";
+import type { EvolutionAcceptanceState, EvolutionRequest } from "../evolution-types";
 import type { Thread } from "../types";
 
 interface Props {
   currentCaseIds?: string[];
   state?: EvolutionAcceptanceState;
+  requests?: EvolutionRequest[];
   thread?: Thread | null;
   busy: boolean;
   canCompare?: boolean;
+  canReview?: boolean;
   onAction: (action: string, params?: Record<string, unknown>) => void;
-  onImprove: (id: string) => void;
+  onImprove: (caseId: string, body: string, requestId: string) => Promise<void>;
   onCreate: (input: Record<string, unknown>) => Promise<void>;
 }
 const labels = { passed: "通过", failed: "未通过", error: "运行失败", manual: "待人工验收" };
 
 /** Purpose: Capture human acceptance criteria before editing, then expose comparable version evidence. */
-export function EvolutionCases({ state, thread, busy, canCompare, onAction, onImprove, onCreate, currentCaseIds = [] }: Props) {
+export function EvolutionCases({ state, requests = [], thread, busy, canCompare, canReview, onAction, onImprove, onCreate, currentCaseIds = [] }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [title, setTitle] = useState("");
   const [expectation, setExpectation] = useState("");
   const [issue, setIssue] = useState("");
   const [saving, setSaving] = useState(false);
-  const [notes, setNotes] = useState<Record<string, string>>({});
   const cases = state?.cases.filter((item) => item.enabled) || [];
+  const cancelled = state?.cases.filter((item) => item.cancelledAt) || [];
   return <section className="evolution-cases" aria-label="行为验收">
     <div className="evolution-cases-heading"><FlaskConical size={15} /><strong>{state ? "行为验收" : "改进 Cleo"}</strong>
-      {state && <span>{cases.length} 个案例 · {state.fresh ? "结果对应当前构建" : "等待比较当前构建"}</span>}
+      {state && <span>{cases.length} 项待验收 · {state.fresh ? "结果对应当前构建" : "等待比较当前构建"}</span>}
       <button disabled={busy} onClick={() => { setTitle(thread?.title || ""); setExpectation(""); setIssue(""); dialog.current?.showModal(); }}>
         {thread ? "从此对话创建改进案例" : "添加验收案例"}</button>
       {state && <button disabled={busy || !canCompare || !cases.length} onClick={() => onAction("compareCases")}>比较行为</button>}
     </div>
     {state && Boolean(cases.length) && <details className="evolution-case-list"><summary>查看预期和修改前后结果</summary>
-      <p className="evolution-case-help">自动回放使用固定模型输出和独立临时数据。普通对话需要人工验证；构建通过不能替代行为验收。</p>
+      <p className="evolution-case-help">体验后可确认验收，或沿用原案例继续修改。不想验收此项时可以取消，原始记录会保留。</p>
       {cases.map((item) => {
         const result = state.report?.results.find((entry) => entry.id === item.id);
+        const lastFeedback = state.interactions?.feedback.filter((feedback) => feedback.caseId === item.id).at(-1);
         return <article key={item.id} className="evolution-case">
-          <div><b>{item.title}</b><small>{currentCaseIds.includes(item.id) ? "本轮新增" : "回归案例"} · {item.kind === "dream-format" ? "自动 · Dream 格式恢复" : "人工 · 行为验收"}</small></div>
+          <div><b>{item.title}</b><small>{currentCaseIds.includes(item.id) ? "本轮新增" : item.kind === "manual" ? "待完成" : "回归案例"} · {item.kind === "dream-format" ? "自动 · Dream 格式恢复" : "人工 · 行为验收"}</small></div>
           <p>{item.expectation}</p>
           <div className="evolution-comparison">
-            <div><small>修改前</small><strong>{!result || result.before.status === "manual" ? "尚未验证" : labels[result.before.status]}</strong><p>{result?.before.detail}</p></div>
-            <div><small>当前构建 {state.fresh ? "" : "· 旧结果不可用于验收"}</small><strong>{result ? labels[result.after.status] : "待比较"}</strong><p>{result?.after.detail}</p></div>
+            <div><small>修改前</small><strong>{item.kind === "manual" ? "问题描述 · 来源：冻结的用户描述 / 源码证据，非运行验证" : !result ? "尚未验证" : labels[result.before.status]}</strong><p className="evolution-case-evidence">{item.kind === "manual" ? item.evidence || "未提供修改前证据，请依据案例主题与原始对话比对。" : result?.before.detail}</p></div>
+            <div><small>当前构建 {state.fresh ? "" : "· 尚无有效验收结果"}</small><strong>{item.kind === "manual" && (!state.fresh || result?.after.status !== "passed") ? "预期效果 · 应用后待人工比对" : result ? labels[result.after.status] : "待比较"}</strong><p>{item.expectation}</p>
+              {item.kind === "manual" && <p>应用后操作：{item.evidence.match(/(?:操作|触发条件)[：:]\s*([^\n]+)/)?.[1] || "按左侧证据中的场景操作"}。实际效果符合预期后，直接点击“验收”。</p>}
+              {state.fresh && result?.after.status === "passed" && <p>{result.after.detail ? `验收记录：${result.after.detail}` : "用户已确认验收。"}</p>}
+              {item.kind !== "manual" && result?.after.status !== "passed" && <p>{result?.after.detail}</p>}
+            </div>
           </div>
           <details><summary>原始证据 · {item.sourceThread || "用户提交"}</summary><pre>{item.evidence || "无附加证据"}</pre></details>
-          {item.kind === "manual" && state.fresh && result?.after.status === "manual" && <div className="evolution-manual-review">
-            <label>验收依据<textarea aria-label={`验收依据：${item.title}`} value={notes[item.id] || ""} maxLength={4000}
-              placeholder="记录你检查了什么，以及观察到的结果" onChange={(event) => setNotes({ ...notes, [item.id]: event.target.value })} /></label>
-            <button disabled={busy || !notes[item.id]?.trim()} onClick={() => onAction("reviewCase", { id: item.id, note: notes[item.id] })}>记录人工验收通过</button>
-          </div>}
-          <footer><button disabled={busy} onClick={() => onImprove(item.id)}>让 Cleo 按此案例改进</button>
-            <button disabled={busy} onClick={() => onAction("archiveCase", { id: item.id })}>归档案例</button></footer>
+          {item.kind === "manual" && state.fresh && result?.after.status === "manual" && !canReview && <p>应用当前构建后，在这里确认实际效果。</p>}
+          <CaseFeedback caseId={item.id} title={item.title} state={state} requests={requests} busy={busy} onSend={onImprove} />
+          {item.kind === "manual" && <footer><button disabled={busy || !canReview || !state.fresh
+            || !result || Boolean(lastFeedback && lastFeedback.mode !== "continue")}
+            onClick={() => onAction("completeCase", { id: item.id })}>验收</button>
+            <button disabled={busy} onClick={() => onAction("cancelCase", { id: item.id })}>取消此项验收</button>
+            <small>{!state.fresh ? "可先比较当前版本；也可继续修改或取消此项" : "取消会保留记录，不会记为通过"}</small></footer>}
         </article>;
       })}
     </details>}
+    {cancelled.length > 0 && <details className="evolution-case-list"><summary>已取消验收 · {cancelled.length} 项</summary>
+      {cancelled.map((item) => <article key={item.id} className="evolution-case"><b>{item.title}</b>
+        <p>{item.expectation}</p><small>用户取消验收，未标记通过。</small>
+        <details><summary>原始证据</summary><pre>{item.evidence}</pre></details></article>)}
+    </details>}
     <dialog ref={dialog} className="evolution-dialog" onCancel={() => dialog.current?.close()}>
       <div className="evolution-dialog-title"><h2>冻结改进案例</h2><button aria-label="关闭案例" onClick={() => dialog.current?.close()}><X size={18} /></button></div>
-      <p>先保存当前对话和预期，再让 Cleo 修改自己。案例创建后保持原样；需要调整时归档并新建。</p>
+      <p>先记录当前对话和预期，再让 Cleo 修改。应用后不符合预期，可以直接在验收项里继续反馈；确认通过后结束。</p>
       <form onSubmit={(event) => {
         event.preventDefault(); setSaving(true); setIssue("");
         const evidence = thread?.items.filter((item) => item.type === "message" || item.type === "notice" || item.type === "tool")
@@ -72,4 +84,53 @@ export function EvolutionCases({ state, thread, busy, canCompare, onAction, onIm
       </form>
     </dialog>
   </section>;
+}
+
+/** Purpose: Continue with optional feedback while retaining the case and retry identity.
+ * Input: case and its history. Output: one continuation submission, including when no note is needed.
+ */
+function CaseFeedback({ caseId, title, state, requests, busy, onSend }: {
+  caseId: string; title: string; state: EvolutionAcceptanceState; requests: EvolutionRequest[];
+  busy: boolean; onSend: Props["onImprove"];
+}) {
+  const [body, setBody] = useState("");
+  const [requestId, setRequestId] = useState(() => crypto.randomUUID());
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+  const ancestors = new Set([caseId]);
+  for (let changed = true; changed;) {
+    changed = false;
+    for (const request of requests) {
+      if (request.replaces && request.cases.some((c) => ancestors.has(c.item.id)) && !ancestors.has(request.replaces)) {
+        ancestors.add(request.replaces); changed = true;
+      }
+    }
+  }
+  const messages = state.interactions?.feedback.filter((f) => ancestors.has(f.caseId)) || [];
+  return <div className="evolution-feedback">
+    <p>沿用此案例继续修改，也可以补充实际表现。原有预期会保留。</p>
+    <div className="evolution-feedback-history" role="log" aria-label={`反馈记录：${title}`}>
+      {messages.map((message) => {
+        const request = requests.find((r) => r.id === message.id);
+        return <div key={message.id}><p className="evolution-feedback-user"><small>你</small>{message.body}</p>
+          <p className="evolution-feedback-reply"><small>Cleo</small>{request?.error || (request?.execution?.status === "completed"
+            ? "本轮实现已结束，请查看构建结果；应用后再次验收。" : request?.execution?.status === "interrupted"
+              ? "实现已中断，可在对话中继续。" : request?.execution ? "正在根据反馈修改。" : request?.status === "frozen"
+                ? "已保留验收预期，准备继续修改。" : "反馈已保存，正在准备；如需补充信息，请在对话中确认。")}
+            {request?.answer && <span className="evolution-feedback-assumption">{request.answer}</span>}</p></div>;
+      })}
+    </div>
+    <form onSubmit={(event) => {
+      event.preventDefault(); if (sending || busy) return;
+      setSending(true); setError("");
+      void onSend(caseId, body, requestId).then(() => { setBody(""); setRequestId(crypto.randomUUID()); })
+        .catch((failure: unknown) => setError(failure instanceof Error ? failure.message : String(failure)))
+        .finally(() => setSending(false));
+    }}>
+      <textarea aria-label={`继续反馈：${title}`} placeholder="可选：描述仍未解决的问题；留空也可沿用此案例继续修改。" value={body} maxLength={5000}
+        disabled={sending || busy} onChange={(event) => { setBody(event.target.value); setRequestId(crypto.randomUUID()); }} />
+      <button type="submit" aria-label={`继续修改：${title}`} disabled={busy || sending}><ArrowUp size={16} />继续修改</button>
+    </form>
+    {error && <p role="alert">{error}</p>}
+  </div>;
 }

@@ -46,6 +46,7 @@ import {
   X,
 } from "lucide-react";
 import type {
+  LocalSkill,
   Attachment,
   ProductivityModelCatalog,
   Project,
@@ -103,6 +104,7 @@ interface ConversationProps {
   onOpenPath: (href: string, workspacePath: string) => void;
   onThreadCommand: (command: string) => void;
   commands: string[];
+  skills?: LocalSkill[];
   approvalRequest: ApprovalRequest | null;
   approvalPending: boolean;
   approvalError: string | null;
@@ -157,6 +159,7 @@ export function Conversation({
   onOpenPath,
   onThreadCommand,
   commands,
+  skills,
   approvalRequest,
   approvalPending,
   approvalError,
@@ -342,6 +345,7 @@ export function Conversation({
         onRemoveAttachment={onRemoveAttachment}
         onShowContext={onShowContext}
         commands={commands}
+        skills={skills ?? thread?.skills ?? []}
         approvalRequest={approvalRequest}
         approvalPending={approvalPending}
         approvalError={approvalError}
@@ -918,6 +922,7 @@ function Composer({
   onRemoveAttachment,
   onShowContext,
   commands,
+  skills = [],
   approvalRequest,
   approvalPending,
   approvalError,
@@ -947,6 +952,7 @@ function Composer({
   | "onRemoveAttachment"
   | "onShowContext"
   | "commands"
+  | "skills"
   | "approvalRequest"
   | "approvalPending"
   | "approvalError"
@@ -954,6 +960,10 @@ function Composer({
 >) {
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [draggingFiles, setDraggingFiles] = useState(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const composing = useRef(false);
+  const [selectedCommand, setSelectedCommand] = useState(0);
+  const [dismissedPrefix, setDismissedPrefix] = useState<string | null>(null);
   const effortProviderRequest = useRef<string | null>(null);
   const dragDepth = useRef(0);
   const selectedModel = productivityModels[runtime.provider]?.models.find(
@@ -979,7 +989,18 @@ function Composer({
     onSend(content);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+    if (composing.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+    if (candidates.length && !event.shiftKey) {
+      if (event.key === "Escape") { event.preventDefault(); setDismissedPrefix(prompt); return; }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        setSelectedCommand((index) => (index + (event.key === "ArrowDown" ? 1 : -1) + candidates.length) % candidates.length);
+        return;
+      }
+      if (event.key === "Enter" || event.key === "Tab") {
+        event.preventDefault(); chooseCommand(candidates[selectedCommand % candidates.length]); return;
+      }
+    }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       submit();
@@ -1035,9 +1056,27 @@ function Composer({
     setDraggingFiles(false);
     void addFiles(Array.from(event.dataTransfer.files));
   };
-  const matchingCommands = prompt.startsWith("/")
-    ? commands.filter((command) => command.startsWith(prompt.trim())).slice(0, 8)
+  const showCommands = /^\/[^\s]*$/.test(prompt) && dismissedPrefix !== prompt;
+  const matchingCommands = showCommands
+    ? commands.filter((command) => command.startsWith(prompt))
     : [];
+
+  const matchingSkills = showCommands
+    ? skills.filter((skill) => skill.command.startsWith(prompt) || `/${skill.name}`.startsWith(prompt))
+    : [];
+  const candidates = [...matchingSkills.map((skill) => skill.command), ...matchingCommands];
+  const candidateKey = candidates.join("\n");
+  useEffect(() => { setSelectedCommand(0); }, [prompt, candidateKey, runtime.provider]);
+  useEffect(() => { setDismissedPrefix(null); }, [runtime.provider]);
+  useEffect(() => {
+    document.getElementById(`slash-option-${selectedCommand}`)?.scrollIntoView({ block: "nearest" });
+  }, [selectedCommand]);
+  /** Insert the selected command without sending; arguments remain editable. */
+  const chooseCommand = (command: string) => {
+    if (composing.current) return;
+    setPrompt(`${command} `);
+    inputRef.current?.focus();
+  };
 
   return (
     <div className="composer-dock">
@@ -1062,11 +1101,16 @@ function Composer({
             <span>松开以添加文件</span>
           </div>
         ) : null}
-        {matchingCommands.length ? (
-          <div className="slash-menu surface-popover" data-testid="slash-menu">
-            <span>可用命令</span>
-            {matchingCommands.map((command) => (
-              <button type="button" key={command} onClick={() => setPrompt(`${command} `)}>
+        {matchingCommands.length || matchingSkills.length ? (
+          <div className="slash-menu surface-popover" data-testid="slash-menu" id="slash-options" role="listbox" aria-label="当前 harness 技能与命令">
+            <span>可用命令 · Skills 仅限当前 harness</span>
+            {matchingSkills.map((skill, index) => (
+              <button type="button" role="option" aria-selected={selectedCommand === index} id={`slash-option-${index}`} key={skill.command} title={skill.path} onMouseDown={(event) => event.preventDefault()} onClick={() => chooseCommand(skill.command)}>
+                <code>/{skill.name}</code><small>{skill.source}{skill.command !== `/${skill.name}` ? ` · ${skill.command}` : ""}</small>
+              </button>
+            ))}
+            {matchingCommands.map((command, index) => (
+              <button type="button" role="option" aria-selected={selectedCommand === matchingSkills.length + index} id={`slash-option-${matchingSkills.length + index}`} key={command} onMouseDown={(event) => event.preventDefault()} onClick={() => chooseCommand(command)}>
                 <code>{command}</code>
               </button>
             ))}
@@ -1090,8 +1134,16 @@ function Composer({
         {attachmentError ? <div className="attachment-error" role="alert">{attachmentError}</div> : null}
         {sendError ? <div className="attachment-error" role="alert">{sendError}</div> : null}
         <textarea
+          ref={inputRef}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={Boolean(candidates.length)}
+          aria-controls={candidates.length ? "slash-options" : undefined}
+          aria-activedescendant={candidates.length ? `slash-option-${selectedCommand % candidates.length}` : undefined}
+          onCompositionStart={() => { composing.current = true; }}
+          onCompositionEnd={() => { composing.current = false; }}
           value={prompt}
-          onChange={(event) => setPrompt(event.target.value)}
+          onChange={(event) => { setDismissedPrefix(null); setPrompt(event.target.value); }}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
           rows={1}

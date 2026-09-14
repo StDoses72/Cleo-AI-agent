@@ -8,7 +8,9 @@ import { EvolutionStore, exists, fileHash, readJson, writeJson, ownedPath } from
 import { EvolutionTools, run, fetchRelease, extract } from "./evolution-tools.mjs";
 import { ReleaseDownloads } from "./release-downloads.mjs";
 import { desktopPlatform, installationRoot } from "./platform.mjs";
+import { createContributionSnapshot, assertSnapshotTarget, removeContributionSnapshot } from "./evolution-snapshot.mjs";
 import { compareVersions, validateManifest } from "./updater.mjs";
+import { contributionTarget, validateContributionTarget, requireTargetBranch } from "./evolution-contributions.mjs";
 
 const REPOSITORY = "StDoses72/Cleo-AI-agent";
 const REPO_URL = `https://github.com/${REPOSITORY}.git`;
@@ -703,15 +705,17 @@ export class EvolutionManager {
   }
 
   /** Purpose: Create an independent PR for each user intent, with safe retries of that intent only.
-   * Input: approved title/body and stable submission UUID. Output: a new fork branch and PR receipt.
+   * Input: title/body, stable UUID and selected version/empty target. Output: snapshot PR with the target as its sole parent.
    */
-  async submitPullRequest(title, body, submissionId = randomUUID()) {
+  async submitPullRequest(title, body, submissionId = randomUUID(), selection = {}) {
+    const targetBranch = contributionTarget(selection.targetBranch);
+    if (typeof selection.buildId !== "string" || !selection.buildId) throw new Error("请选择要提交的 Cleo 本地版本。");
     return this.operation("submitting", async () => {
       this.submission = { status: "running", message: "正在检查登录和提交版本…" }; this.onState();
       try {
         if (!title?.trim() || !body?.trim()) throw new Error("请填写 PR 标题和改动说明。");
         if (!/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(submissionId)) throw new Error("提交标识无效，请重新发起 PR。");
-        const contentHash = createHash("sha256").update(JSON.stringify([title.trim(), body])).digest("hex");
+        const contentHash = createHash("sha256").update(JSON.stringify([title.trim(), body, targetBranch, selection.buildId])).digest("hex");
         const state = await this.store.read();
         const completed = state.pullRequests?.find((pr) => pr.submissionId === submissionId);
         if (completed) {
@@ -721,10 +725,11 @@ export class EvolutionManager {
         }
         await this.checkProtection();
         const tools = await this.prepareTools(true);
+        await validateContributionTarget(this, tools, targetBranch);
         await this.runCommand(tools.gh, ["auth", "status"], { env: tools.env });
-        const candidate = state.builds.find((item) => item.id === (state.candidate || state.active));
-        if (!candidate?.sourceHash || candidate.sourceHash !== await this.sourceHash(tools)) {
-          throw new Error("请先对当前修改完成检查和构建，再提交 PR。");
+        const candidate = state.builds.find((item) => item.id === selection.buildId && item.kind === "local");
+        if (!candidate?.sourceHash || state.draftDirty || candidate.sourceHash !== await this.sourceHash(tools)) {
+          throw new Error("请先切换到选定的本地版本，对当前修改完成检查和构建，再提交 PR。");
         }
         const user = JSON.parse(await this.runCommand(tools.gh, ["api", "user"], { env: tools.env }));
         if (!/^[a-zA-Z0-9-]+$/.test(user.login)) throw new Error("GitHub 用户名无效。");
@@ -737,37 +742,42 @@ export class EvolutionManager {
         }
         if (!attempt) {
           attempt = { id: submissionId, branch: `codex/pr-${submissionId}`, owner: user.login,
-            sourceHash: candidate.sourceHash, contentHash, createdAt: new Date().toISOString() };
+            sourceHash: candidate.sourceHash, buildId: candidate.id, targetBranch, contentHash, createdAt: new Date().toISOString() };
           // Persist the identity before any remote mutation so response loss and restarts can reconcile it.
           await this.store.update({ pendingPullRequests: [...(state.pendingPullRequests || []), attempt] });
         }
         const branch = attempt.branch;
-        let existing = (await this.findBranchPullRequests(tools, user.login, branch))[0];
+        let existing = (await this.findBranchPullRequests(tools, user.login, branch, targetBranch))[0];
         let url = existing?.url;
         if (!existing) {
           this.submission = { status: "running", message: "正在将当前版本推送到本次 PR 的独立分支…" }; this.onState();
           // With an explicit repository, --clone=false skips local setup; gh rejects any --remote flag.
-          await this.runCommand(tools.gh, ["repo", "fork", REPOSITORY, "--clone=false"], options);
-          if (!attempt.commit) {
-            await this.commit(tools);
-            attempt = { ...attempt, commit: await this.runCommand(tools.git, ["rev-parse", "HEAD"], options) };
+          if (attempt.commit && !attempt.snapshot) throw new Error("旧版提交尚未完成，请重新发起空分支提交；不会重用旧的开发历史。");
+          if (!attempt.snapshot) {
+            const snapshot = await createContributionSnapshot(this, tools, targetBranch, candidate.sourceHash);
+            attempt = { ...attempt, commit: snapshot.commit, snapshot };
             const current = await this.store.read();
-            await this.store.update({ pendingPullRequests: current.pendingPullRequests.map((item) => item.id === submissionId ? attempt : item) });
+            try { await this.store.update({ pendingPullRequests: current.pendingPullRequests.map((item) => item.id === submissionId ? attempt : item) }); }
+            catch (error) { await removeContributionSnapshot(this, snapshot.directory); throw error; }
           }
+          await assertSnapshotTarget(this, tools, targetBranch, attempt.snapshot.baseSha);
+          await this.runCommand(tools.gh, ["repo", "fork", REPOSITORY, "--clone=false"], options);
+          await assertSnapshotTarget(this, tools, targetBranch, attempt.snapshot.baseSha);
           // Push a pinned snapshot to a unique remote ref; never advance any earlier PR's branch.
           const helper = `!'${tools.gh.replaceAll("\\", "/").replaceAll("'", "'\\''")}' auth git-credential`;
-          await this.runCommand(tools.git, ["-c", "credential.helper=", "-c", `credential.helper=${helper}`, "push",
-            `https://github.com/${user.login}/Cleo-AI-agent.git`, `${attempt.commit}:refs/heads/${branch}`], options);
+          await this.runCommand(tools.git, ["-c", "core.hooksPath=", "-c", "credential.helper=", "-c", `credential.helper=${helper}`, "push",
+            `https://github.com/${user.login}/Cleo-AI-agent.git`, `${attempt.commit}:refs/heads/${branch}`], { ...options, cwd: attempt.snapshot.directory });
+          await assertSnapshotTarget(this, tools, targetBranch, attempt.snapshot.baseSha);
           const bodyFile = join(this.store.root, `pr-body-${randomUUID()}.md`);
           try {
             await writeFile(bodyFile, body, "utf8");
             this.submission = { status: "running", message: "正在创建新的 PR…" }; this.onState();
             try {
-              url = await this.runCommand(tools.gh, ["pr", "create", "--repo", REPOSITORY, "--base", "main", "--head", `${user.login}:${branch}`,
+              url = await this.runCommand(tools.gh, ["pr", "create", "--repo", REPOSITORY, "--base", targetBranch, "--head", `${user.login}:${branch}`,
                 "--title", title.trim(), "--body-file", bodyFile], options);
             } catch (error) {
               // GitHub may have accepted creation before a response was lost. Reconcile before retrying.
-              existing = (await this.findBranchPullRequests(tools, user.login, branch))[0];
+              existing = (await this.findBranchPullRequests(tools, user.login, branch, targetBranch))[0];
               if (!existing) throw error;
               url = existing.url;
             }
@@ -776,9 +786,10 @@ export class EvolutionManager {
         if (!new RegExp(`^https://github\\.com/${REPOSITORY}/pull/\\d+$`, "i").test(url)) throw new Error("GitHub 未返回有效的 PR 地址，请重试以确认提交结果。");
         const receipt = { url, state: existing?.state || "OPEN", merged: existing?.state === "MERGED", number: Number(url.split("/").at(-1)),
           title: title.trim(), headRefName: branch, owner: user.login, submittedAt: new Date().toISOString(),
-          submissionId, contentHash, sourceHash: candidate.sourceHash, outcome: "created", checks: "pending" };
+          submissionId, contentHash, buildId: candidate.id, targetBranch, baseSha: attempt.snapshot?.baseSha, snapshotFormat: attempt.snapshot?.format, sourceHash: candidate.sourceHash, outcome: "created", checks: "pending" };
         try { await this.savePullRequestReceipt(receipt); }
         catch (error) { throw new Error(`GitHub 已接收 PR：${url}。本地回执保存失败，请重试确认；不会重复创建。${error.message}`); }
+        if (attempt.snapshot) await removeContributionSnapshot(this, attempt.snapshot.directory).catch((error) => this.log(`提交成功，临时目录稍后清理：${error.message}`));
         this.submission = { status: "success", message: "PR 提交成功", url }; this.onState();
         return url;
       } catch (error) {
@@ -806,10 +817,11 @@ export class EvolutionManager {
   /** Purpose: Match remote contributions to the actual workspace, never a stale local URL.
    * Input: toolchain, authenticated owner and branch. Output: this owner's matching PRs.
    */
-  async findBranchPullRequests(tools, owner, branch) {
+  async findBranchPullRequests(tools, owner, branch, targetBranch) {
     const prs = JSON.parse(await this.runCommand(tools.gh, ["pr", "list", "--repo", REPOSITORY,
-      "--state", "all", "--head", branch, "--limit", "100", "--json", "url,state,headRefName,headRepositoryOwner"], { env: tools.env }));
-    return prs.filter((pr) => pr.headRefName === branch && pr.headRepositoryOwner?.login?.toLowerCase() === owner.toLowerCase());
+      "--state", "all", "--head", branch, "--base", targetBranch, "--limit", "100", "--json", "url,state,headRefName,baseRefName,headRepositoryOwner"], { env: tools.env }));
+    return prs.filter((pr) => pr.headRefName === branch && pr.baseRefName === targetBranch
+      && pr.headRepositoryOwner?.login?.toLowerCase() === owner.toLowerCase());
   }
 
   /** Purpose: Refresh one historical PR without replacing the latest submission.

@@ -12,6 +12,20 @@ const input = { id: "request-1", threadId: "thread-1", prompt: "给侧栏按钮�
 const plan = { intent: "change", cases: [{ title: "侧栏文字", requirement: input.prompt,
   current: "图标按钮", trigger: "打开侧栏", expectation: "按钮旁显示文字标签", evidence: "ui/src/Button.tsx:1: <button />" }] };
 
+test("abandoning a failed preparation preserves history and prevents stale retries", async (t) => {
+  const f = await setup(t, async () => { throw new Error("案例对应要求未引用原需求，请重试。"); });
+  await assert.rejects(f.prepare(), /未引用原需求/);
+  await f.requests.abandon({ threadId: input.threadId });
+  const old = (await f.requests.read()).requests[0];
+  assert.ok(old.abandonedAt);
+  assert.equal(old.prompt, input.prompt);
+  assert.match(old.error, /未引用原需求/);
+  await assert.rejects(f.prepare(), /已废弃/);
+  f.requests.analyze = async () => structuredClone(plan);
+  const next = await f.prepare({ ...input, id: "new-request", prompt: "新的修改需求" });
+  assert.equal(next.status, "frozen");
+});
+
 async function setup(t, analyze = async () => structuredClone(plan)) {
   const root = await mkdtemp(join(tmpdir(), "cleo-preparation-test-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -104,6 +118,27 @@ test("ambiguity waits for a recorded clarification; clear requests do not reques
   await f.prepare(); assert.equal(calls, 1); assert.deepEqual(f.calls, []);
   const request = await f.prepare({ ...input, clarification: "仅侧栏" });
   assert.equal(request.status, "frozen"); assert.equal(request.clarifications[0].answer, "仅侧栏");
+});
+
+test("reconsidering a request blocked on missing CI logs dispatches the same request once", async (t) => {
+  let attempts = 0;
+  const f = await setup(t, async () => ++attempts === 1
+    ? { intent: "clarification", answer: "请提供 CI 日志和提交 SHA。" }
+    : { intent: "change", cases: [{ ...plan.cases[0], current: "尚未验证（待调查）：缺少 CI 日志",
+      evidence: "用户需求：调查 CI 失败并修复；尚未验证根因。" }] });
+  assert.equal((await f.prepare()).status, "clarification");
+  await f.prepare();
+  assert.equal(attempts, 1, "Reload alone must not start analysis or editing.");
+  const recovered = await f.prepare({ ...input, reanalyze: true });
+  assert.equal(recovered.id, input.id);
+  assert.equal(recovered.status, "frozen");
+  assert.equal(recovered.answer, undefined);
+  assert.equal((await f.requests.read()).requests.length, 1);
+  await f.run({ thread_id: input.threadId, prompt: await f.requests.editingPrompt(input.id) });
+  assert.deepEqual(f.calls, ["begin", "edit", "build"]);
+  assert.equal((await f.acceptance.status(f.state)).report.results[0].after.status, "manual");
+  await f.prepare({ ...input, reanalyze: true });
+  assert.equal(attempts, 2, "Frozen goals must not be regenerated.");
 });
 
 test("interrupted freeze replays journaled IDs without duplicate cases or a new model call", async (t) => {

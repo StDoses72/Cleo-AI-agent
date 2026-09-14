@@ -788,6 +788,11 @@ class DesktopService:
             if command not in allowed:
                 raise ValueError("进化任务不能切换工作目录、任务或放宽权限，请使用进化页面操作。")
         if prompt.startswith("/"):
+            skill = next((skill for skill in self._local_skills(manifest)
+                          if skill.command == prompt.split()[0]), None)
+            if skill is not None:
+                prompt = skill.expand(prompt)
+        if prompt.startswith("/"):
             await self._run_command(manifest, prompt, emit)
             return
 
@@ -951,6 +956,22 @@ class DesktopService:
             "defaultNonProductivityProfile": self._active_agent_profile_id(),
             "defaultProductivityProvider": self.settings.productivity.default_provider,
         }
+
+    async def get_local_skills(
+        self, *, provider: str, project_path: str | None = None
+    ) -> list[dict]:
+        """Purpose: Discover draft skills without creating a session or changing user stores.
+
+        Input: Selected provider and project path. Output: Read-only selectable catalog.
+        """
+        from cleo.desktop.skills import discover_skills
+
+        settings = self._productivity_provider(provider)
+        if not settings.enabled:
+            return []
+        harness = {"codex_sdk": "codex", "claude_sdk": "claude"}.get(settings.type, "")
+        root = project_path or str(self.settings.active_directory_profile.root_path)
+        return [skill.entry() for skill in discover_skills(harness, root, PRODUCTIVITY_COMMANDS)]
 
     async def get_productivity_models(
         self,
@@ -1732,6 +1753,21 @@ class DesktopService:
             )
         return candidates
 
+    def _local_skills(self, manifest: dict[str, Any]):
+        """Purpose: Match the skill catalog to this thread's actual harness.
+
+        Input: Existing session manifest, read only.
+        Output: Transient local skill entries for supported development sessions.
+        """
+        from cleo.desktop.skills import discover_skills
+
+        if manifest["space"] != "productivity" or self._is_evolution(manifest):
+            return []
+        provider = str(manifest.get("provider") or self.settings.productivity.default_provider)
+        kind = self._productivity_provider(provider).type
+        harness = {"codex_sdk": "codex", "claude_sdk": "claude"}.get(kind, "")
+        return discover_skills(harness, manifest.get("cwd") or ".", PRODUCTIVITY_COMMANDS)
+
     async def _thread(
         self,
         manifest: dict[str, Any],
@@ -1781,6 +1817,7 @@ class DesktopService:
             "usage": usage,
             "runtime": self._runtime_profile(manifest),
             "terminal": self._terminal_from_events(events),
+            "skills": [skill.entry() for skill in self._local_skills(manifest)],
         }
 
     def _runtime_profile(self, manifest: dict[str, Any] | None) -> dict[str, Any]:

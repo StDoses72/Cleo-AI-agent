@@ -287,16 +287,21 @@ export class DesktopUpdater {
     }
   }
 
-  async install() {
+  async install(installVersion) {
     if (!this.app.isPackaged || this.state.phase !== "ready" || !this.manifest || !this.archivePath) {
       return false;
     }
     this.setState({ phase: "installing", error: null });
     try {
+      if (installVersion) {
+        const switched = await installVersion(this.manifest.version);
+        if (!switched) throw new Error("未完成版本切换，请重新检查更新后重试。");
+        return true;
+      }
       await this.launchInstaller();
     } catch (error) {
       this.setState({
-        phase: "ready",
+        phase: installVersion ? "install-failed" : "ready",
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;

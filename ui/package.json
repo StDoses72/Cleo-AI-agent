@@ -1,7 +1,7 @@
 {
   "name": "cleo-desktop",
   "productName": "Cleo",
-  "version": "0.4.2",
+  "version": "0.4.4",
   "private": true,
   "type": "module",
   "main": "electron/bootstrap.mjs",
@@ -9,7 +9,7 @@
     "start": "npm run build && electron .",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
-    "test:evolution": "node --test tests/evolution-*.test.mjs",
+    "test:evolution": "node --test electron/evolution-*.test.mjs tests/evolution-*.test.mjs",
     "smoke:evolution-recovery": "node tests/evolution-recovery.smoke.mjs",
     "smoke:evolution-baseline": "node tests/evolution-baseline.smoke.mjs",
     "smoke:evolution-installed": "node tests/evolution-installed.smoke.mjs",

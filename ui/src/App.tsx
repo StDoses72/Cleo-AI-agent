@@ -29,9 +29,9 @@ import { useCleoWorkspace } from "./useCleoWorkspace";
 import type { MemoryViewMode, Project, Thread, UpdateState } from "./types";
 
 export function App() {
-  const workspace = useCleoWorkspace();
   const evolution = useEvolution();
   const [evolutionOpen, setEvolutionOpen] = useState(() => localStorage.getItem("cleo-view") === "evolution");
+  const workspace = useCleoWorkspace(evolutionOpen);
   const openingEvolution = useRef(false);
   const [openingEvolutionUi, setOpeningEvolutionUi] = useState(false);
   const [evolutionIssue, setEvolutionIssue] = useState<string | null>(null);
@@ -59,21 +59,27 @@ export function App() {
       setOpeningEvolutionUi(false);
     }
   };
-  /** Prepare and freeze before the desktop authorizes editing. Retries keep the same request ID. */
+  /** Purpose: Prepare before editing and bind retries to the resolved task.
+   * Input: user intent and optional saved request. Output: one durable request in one task.
+   */
   const sendEvolutionPrompt = async (prompt: string, preserveDraft = false, id: string = crypto.randomUUID(),
-    restored?: Pick<EvolutionRequest, "threadId"> & { id?: string }, clarification?: string, repair = false) => {
+    restored?: Pick<EvolutionRequest, "threadId"> & { id?: string }, clarification?: string, repair = false, skipClarification = false) => {
     if (!prompt.trim() || preparingEvolution.current) return;
     preparingEvolution.current = true;
     setPreparingAcceptance(true);
-    retryEvolution.current = () => { void sendEvolutionPrompt(prompt, preserveDraft, id, restored, clarification, repair); };
+    retryEvolution.current = () => { void sendEvolutionPrompt(prompt, preserveDraft, id, restored, clarification, repair, skipClarification); };
     setEvolutionIssue(null);
     try {
       const thread = restored ? (await workspace.openEvolutionThread(restored.threadId))
         : evolutionThread ? workspace.activeThread : await startEvolution(true);
       if (!thread) return;
+      // The retry callback retains this binding even when its render saw an empty task.
+      const retryTarget = { ...restored, threadId: thread.id };
+      retryEvolution.current = () => { void sendEvolutionPrompt(prompt, preserveDraft, id, retryTarget, clarification, repair, skipClarification); };
       if (restored) await evolution.run("thread", { id: thread.id });
       const request = await evolution.run<EvolutionRequest>(repair ? "repairRequest" : "prepareRequest", {
-        id, threadId: thread.id, prompt, clarification, ...(repair && restored?.id ? { parent: restored.id } : {}),
+        id, threadId: thread.id, prompt, clarification, skipClarification, reanalyze: Boolean(restored && !clarification && !skipClarification),
+        ...(repair && restored?.id ? { parent: restored.id } : {}),
       });
       setPreparingAcceptance(false);
       if (request.status === "frozen" && !request.execution) {
@@ -108,8 +114,19 @@ export function App() {
   const evolutionAction = (action: string, params: Record<string, unknown> = {}) => {
     retryEvolution.current = () => evolutionAction(action, params);
     setEvolutionIssue(null);
+    if (action === "repairContribution") {
+      return evolution.run<string>("contributionRepairPrompt", params).then(async (prompt) => {
+        setEvolutionOpen(true);
+        await sendEvolutionPrompt(prompt, true);
+      }).catch((error: unknown) => setEvolutionIssue(error instanceof Error ? error.message : "无法开始 PR 修复"));
+    }
     return evolution.run(action, params).then((result) => {
       if (action === "discard" || action === "select") workspace.beginEvolutionDraft();
+      if (action === "abandonRequest") {
+        retryEvolution.current = () => {};
+        workspace.beginEvolutionDraft();
+        workspace.setPrompt("");
+      }
       return result;
     }).catch((error: unknown) =>
       setEvolutionIssue(error instanceof Error ? error.message : "操作失败"));
@@ -120,28 +137,42 @@ export function App() {
     await evolution.run("createCase", input);
     setEvolutionOpen(true);
   };
-  const improveFromCase = (id: string) => {
-    void evolution.run<string>("casePrompt", { id }).then((prompt) => {
-      setEvolutionOpen(true);
-      return sendEvolutionPrompt(prompt);
-    }).catch((error: unknown) => setEvolutionIssue(error instanceof Error ? error.message : "无法打开改进案例"));
+  /** Purpose: Continue a case without regenerating its acceptance criteria.
+   * Input: case, optional feedback and retry ID. Output: editing in the original request's task.
+   */
+  const improveFromCase = async (caseId: string, body: string, id: string) => {
+    setEvolutionOpen(true);
+    const existing = evolution.state?.acceptanceRequests?.find((request) => request.id === id);
+    const original = evolution.state?.acceptanceRequests?.find((request) => request.cases.some((c) => c.item.id === caseId));
+    const threadId = existing?.threadId || original?.threadId;
+    const thread = threadId ? await workspace.openEvolutionThread(threadId)
+      : evolutionThread ? workspace.activeThread : await startEvolution();
+    if (!thread) throw new Error("无法打开进化会话，反馈尚未发送。");
+    await evolution.run("thread", { id: thread.id });
+    const request = await evolution.run<EvolutionRequest>("continueCaseRequest", { id, caseId, body, threadId: thread.id });
+    if (request.status === "frozen" && !request.execution) {
+      const prompt = await evolution.run<string>("requestPrompt", { id });
+      await workspace.sendPrompt(prompt, thread, { preserveDraft: true });
+    }
   };
 
   useEffect(() => {
     localStorage.setItem("cleo-view", evolutionOpen ? "evolution" : "workspace");
   }, [evolutionOpen]);
   useEffect(() => {
-    if (evolutionOpen && workspace.snapshot && !evolution.state?.threadId) workspace.beginEvolutionDraft();
-  }, [evolutionOpen, Boolean(workspace.snapshot)]);
+    if (evolutionOpen && workspace.snapshot && evolution.state && !evolution.state.threadId
+        && !openingEvolution.current && !preparingEvolution.current) workspace.beginEvolutionDraft();
+  }, [evolutionOpen, Boolean(workspace.snapshot), evolution.state?.threadId]);
   useEffect(() => {
     if (workspace.snapshot) void window.cleoDesktop?.confirmHealthy().then(() => evolution.refresh()).catch(() => {});
   }, [Boolean(workspace.snapshot)]);
   useEffect(() => {
     if (evolutionOpen && workspace.snapshot && evolution.state?.prepared && evolution.state.threadId && !evolutionThread
-        && !openingEvolution.current && !workspace.runningThreadId) {
+        && !openingEvolution.current && !preparingEvolution.current && !evolutionIssue) {
       void startEvolution();
     }
-  }, [evolutionOpen, Boolean(workspace.snapshot), evolution.state?.prepared]);
+  }, [evolutionOpen, Boolean(workspace.snapshot), evolution.state?.prepared, evolution.state?.threadId,
+    openingEvolutionUi, preparingAcceptance]);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [inspectorBySpace, setInspectorBySpace] = useState({ chat: false, productivity: true, evolution: false });
@@ -293,21 +324,21 @@ export function App() {
         label: "打开 Cleo 对话",
         hint: "切换到 non_productivity 空间",
         icon: commandIcons.chat,
-        run: () => workspace.selectSpace("chat"),
+        run: () => { setEvolutionOpen(false); workspace.selectSpace("chat"); },
       },
       {
         id: "code",
         label: "打开开发任务",
         hint: "切换到 productivity 空间",
         icon: commandIcons.code,
-        run: () => workspace.selectSpace("productivity"),
+        run: () => { setEvolutionOpen(false); workspace.selectSpace("productivity"); },
       },
       {
         id: "memory",
         label: "查看记忆",
         hint: "浏览项目记忆与 persona 投影",
         icon: commandIcons.memory,
-        run: () => workspace.selectSpace("memory"),
+        run: () => { setEvolutionOpen(false); workspace.selectSpace("memory"); },
       },
       {
         id: "inspector",
@@ -374,7 +405,6 @@ export function App() {
         onSelectSpace={(space) => {
           setEvolutionOpen(space === "evolution");
           if (space === "evolution") {
-            if (!evolutionOpen) workspace.beginEvolutionDraft();
             void evolution.refresh().catch(() => {});
           }
           if (space !== "evolution") workspace.selectSpace(space);
@@ -411,24 +441,28 @@ export function App() {
       ) : (
           <Conversation
             preparation={evolutionOpen && <EvolutionPreparation
-              requests={(evolution.state?.acceptanceRequests || []).filter((r) => r.threadId === workspace.activeThreadId)}
+              requests={(evolution.state?.acceptanceRequests || []).filter((r) => r.threadId === workspace.activeThreadId && !r.abandonedAt)}
               acceptance={evolution.state?.acceptance} preparing={preparingAcceptance}
               busy={preparingAcceptance || evolution.pending || updateState.operationBusy || Boolean(workspace.runningThreadId) || evolution.state?.phase !== "idle"}
-              onResume={(request, clarification) => { void sendEvolutionPrompt(request.prompt, true,
-                request.execution ? crypto.randomUUID() : request.id, request, clarification, Boolean(request.execution)); }}
+              onResume={(request, clarification, skip) => { void sendEvolutionPrompt(request.prompt, true,
+                request.execution ? crypto.randomUUID() : request.id, request, clarification, Boolean(request.execution), skip); }}
               onRevise={(params) => evolution.run("reviseRequest", params)} />}
           header={evolutionOpen ? <EvolutionPanel state={evolution.state} error={evolutionIssue || evolution.error}
             busy={openingEvolutionUi || evolution.pending || updateState.operationBusy || Boolean(evolution.state && evolution.state.phase !== "idle")}
             running={Boolean(workspace.runningThreadId)} inspectorOpen={showInspector} onToggleInspector={() => setInspectorOpen((open) => !open)}
             onAction={evolutionAction} onRetry={() => retryEvolution.current()} onRepair={() => { void repairEvolution(); }}>
               <EvolutionCases state={evolution.state?.acceptance} busy={evolution.pending || updateState.operationBusy || Boolean(workspace.runningThreadId) || evolution.state?.phase !== "idle"}
+                requests={evolution.state?.acceptanceRequests}
                 currentCaseIds={evolution.state?.acceptanceRequests?.filter((r) => r.threadId === workspace.activeThreadId).at(-1)?.cases.map((c) => c.item.id)}
-                canCompare={evolution.state?.validation?.status === "passed" && !evolution.state.draftDirty}
+                canCompare={Boolean(evolution.state?.candidate || evolution.state?.active) && !evolution.state?.draftDirty}
+                canReview={Boolean(evolution.state?.active && !evolution.state?.draftDirty
+                  && (!evolution.state.candidate || evolution.state.active === evolution.state.candidate))}
                 onAction={evolutionAction} onImprove={improveFromCase} onCreate={createEvolutionCase} />
             </EvolutionPanel> : undefined}
           improvement={!evolutionOpen && conversationThread && window.cleoDesktop && <EvolutionCases thread={conversationThread}
             busy={Boolean(workspace.runningThreadId) || evolution.pending || Boolean(updateState.operationBusy)} onAction={evolutionAction} onImprove={improveFromCase} onCreate={createEvolutionCase} />}
           prompt={workspace.prompt}
+          skills={workspace.skills}
           onPromptChange={workspace.setPrompt}
           sendError={workspace.sendError}
             sendBlocked={updateState.blocksTasks || (evolutionOpen && updateState.operationBusy) ? "正在处理版本，请稍候…" : evolutionOpen && (preparingAcceptance || openingEvolutionUi || evolution.pending || !evolution.state?.supported || evolution.state?.phase !== "idle") ? "正在处理本地改动，请稍候…" : workspace.startingRun ? "正在提交，请稍候…" : workspace.runningThreadId && workspace.runningThreadId !== workspace.activeThreadId ? "另一个任务正在运行，完成或停止后即可发送。" : null}

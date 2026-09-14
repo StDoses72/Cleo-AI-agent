@@ -515,6 +515,7 @@ export function UpdateNotice({
   onInstall: () => void;
 }) {
   const [dismissed, setDismissed] = useState<string | null>(null);
+  const [minimized, setMinimized] = useState(false);
   const result = state.phase === "updated" || state.phase === "install-failed";
   const resultKey = `${state.phase}:${state.latestVersion}:${state.error}`;
   if (result && dismissed === resultKey) return null;
@@ -527,7 +528,10 @@ export function UpdateNotice({
     installing: "正在准备安装", updated: "更新成功", "install-failed": "更新未完成",
   };
   return (
-    <aside className="update-notice" role="status">
+    <aside className={`update-notice${minimized ? " update-notice-minimized" : ""}`} role="status">
+      {minimized ? <button type="button" aria-label="展开更新提示" aria-expanded={false} onClick={() => setMinimized(false)}>
+        <RefreshCw size={14} />{titles[state.phase] ?? `下载更新 · ${percent}%`}
+      </button> : <>
       <span className="update-notice-icon"><RefreshCw size={16} /></span>
       <div>
         <strong>{titles[state.phase] ?? `正在下载更新 · ${percent}%`}</strong>
@@ -536,6 +540,8 @@ export function UpdateNotice({
       {state.phase === "available" ? <button type="button" disabled={state.operationBusy} onClick={onDownload}>下载</button> : null}
       {state.phase === "ready" ? <button type="button" disabled={state.operationBusy || Boolean(state.installBlocked)} onClick={onInstall}>重启安装</button> : null}
       {result ? <button type="button" onClick={() => setDismissed(resultKey)}>关闭</button> : null}
+      <button type="button" aria-label="最小化更新提示" title="最小化更新提示" aria-expanded={true} onClick={() => setMinimized(true)}>−</button>
+      </>}
     </aside>
   );
 }

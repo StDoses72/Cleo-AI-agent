@@ -5,8 +5,11 @@ import type { Thread } from "./types";
 
 export function useTimelineHistory(thread: Thread | null, update: (id: string, fn: (t: Thread) => Thread) => void) {
   const latest = useRef({ thread, update });
-  latest.current = { thread, update };
   const follow = useRef(true);
+  const positions = useRef(new Map<string, boolean>());
+  if (latest.current.thread) positions.current.set(latest.current.thread.id,
+    follow.current && !latest.current.thread.history?.hasAfter);
+  latest.current = { thread, update };
   const generation = useRef(0);
   const inFlight = useRef(false);
   const [busy, setBusy] = useState<"latest" | "before" | "after" | null>(null);
@@ -48,7 +51,9 @@ export function useTimelineHistory(thread: Thread | null, update: (id: string, f
     busy, error, unread, following, load,
     retry: () => load(retryDirection.current),
     follow: (value: boolean) => { follow.current = value; setFollowing(value); if (value) setUnread(false); },
-    isFollowing: (id: string) => latest.current.thread?.id === id && follow.current && !latest.current.thread.history?.hasAfter,
+    isFollowing: (id: string) => latest.current.thread?.id === id
+      ? follow.current && !latest.current.thread.history?.hasAfter
+      : positions.current.get(id) ?? true,
     notify: (id: string) => { if (latest.current.thread?.id === id) setUnread(true); },
   };
 }

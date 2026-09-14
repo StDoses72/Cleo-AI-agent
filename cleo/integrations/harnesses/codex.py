@@ -16,6 +16,7 @@ from openai_codex import (
     Sandbox,
 )
 from openai_codex.api import ReasoningEffort
+from openai_codex.errors import JsonRpcError
 from openai_codex.generated.v2_all import GetAccountRateLimitsResponse
 
 from cleo.harnesses.control import (
@@ -27,7 +28,7 @@ from cleo.harnesses.control import (
     SessionOptions,
 )
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
-from cleo.harnesses.provider import ProviderSession, ProviderTurn
+from cleo.harnesses.provider import NativeSessionNotFoundError, ProviderSession, ProviderTurn
 from cleo.integrations.harnesses.codex_approvals import CodexApprovalBroker
 from cleo.integrations.harnesses.memory import MemoryMcp
 from cleo.runtime.usage import RateLimitWindowUsage
@@ -166,6 +167,14 @@ class CodexProvider:
                 model=options.model,
                 sandbox=self._sandbox,
             )
+        except JsonRpcError as error:
+            await client.close()
+            if (
+                error.code == -32600
+                and error.message == f"no rollout found for thread id {native_session_id}"
+            ):
+                raise NativeSessionNotFoundError(str(error)) from error
+            raise
         except BaseException:
             await client.close()
             raise

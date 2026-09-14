@@ -25,7 +25,7 @@ from cleo.harnesses.models import (
     EventCallback,
     emit_event,
 )
-from cleo.harnesses.provider import AgentProvider
+from cleo.harnesses.provider import AgentProvider, NativeSessionNotFoundError
 from cleo.runtime.usage import RateLimitWindowUsage
 from cleo.sessions.ports import SessionRepository
 
@@ -106,7 +106,11 @@ class AgentService:
         model: str | None = None,
         project: str | None = None,
     ) -> AgentSession:
-        """按 harness 原生会话 id 恢复会话,复用 SessionStore 中已有 handle。"""
+        """Purpose: Resume a task, reconnecting a confirmed missing empty native draft.
+
+        Input: Provider identity, saved native ID and optional runtime overrides.
+        Output: The original Cleo handle and options; nonempty history is never discarded.
+        """
         implementation = self._provider(provider)
         resolved_path = self._project_directory(project_path)
         stored = self._store.find_by_native_session(
@@ -121,11 +125,25 @@ class AgentService:
         selected_model = model
         if selected_model is None and saved_options is not None:
             selected_model = saved_options.model
-        session = await implementation.resume_session(
-            self._required_text(native_session_id, "native_session_id"),
-            resolved_path,
-            selected_model,
-        )
+        try:
+            session = await implementation.resume_session(
+                self._required_text(native_session_id, "native_session_id"),
+                resolved_path,
+                selected_model,
+            )
+        except NativeSessionNotFoundError:
+            # A thread created but never used may not have a rollout on disk. Only
+            # reconnect an empty local task; failures to read history stay failures.
+            if not stored_handle:
+                raise
+            events = self._store.read_events(stored_handle)
+            manifest = self._store.load_manifest(stored_handle)
+            if not events or len(events) != manifest.get("last_event_seq") or any(
+                event.get("type") not in {"session_created", "session_closed"}
+                for event in events
+            ):
+                raise
+            session = await implementation.create_session(resolved_path, selected_model)
         restored = self._add_route(
             implementation,
             session.id,

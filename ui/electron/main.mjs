@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 import { launchDesktop } from "./evolution-launch.mjs";
 import { waitForControllerReady, showRecovery } from "./evolution-recovery.mjs";
 import { EvolutionManager } from "./evolution.mjs";
+import { listContributionBranches, requestTargetBranch, refreshTargetBranch } from "./evolution-contributions.mjs";
+import { checkContribution, submitContribution, inspectPullRequest, contributionRepairPrompt } from "./evolution-merge-assistance.mjs";
 import { EvolutionAcceptance } from "./evolution-acceptance.mjs";
+import { requireApplicable, reviewApplied } from "./evolution-behavior-policy.mjs";
 import { EvolutionRequests } from "./evolution-requests.mjs";
 import { runPreparedEvolutionTurn } from "./evolution-editing.mjs";
 import { rmSync } from "node:fs";
@@ -104,7 +107,7 @@ async function applyEvolution(id) {
   if (backend.pending.size) throw new Error("请先等待当前任务完成或停止任务，再应用改动。");
   const state = await evolution.store.read();
   if (state.active === id) return true;
-  await acceptance.requirePassed(id);
+  await requireApplicable(acceptance, id);
   const tx = await evolution.stage(id);
   try {
     const controller = await launchDesktop(process.execPath,
@@ -162,6 +165,7 @@ const allowedMethods = new Set([
   "get_model_settings",
   "get_runtime_catalog",
   "get_productivity_models",
+  "get_local_skills",
   "save_model_profile",
   "save_dream_settings",
   "check_model_connection",
@@ -328,7 +332,9 @@ app.whenReady().then(async () => {
   ipcMain.handle("cleo:evolution:state", () => evolutionState());
   ipcMain.handle("cleo:evolution:action", async (_event, payload) => {
     const { action, ...params } = payload || {};
-    if (backend.pending.size && ["prepare", "build", "merge", "submit", "apply", "recovery", "select", "discard", "save", "begin", "repairPrompt", "createCase", "archiveCase", "compareCases", "reviewCase", "prepareRequest", "repairRequest", "reviseRequest"].includes(action)) {
+    if (backend.pending.size && ["checkContribution", "mergeAssistance", "contributionRepairPrompt"].includes(action))
+      throw new Error("请先等待当前任务完成或停止任务，再检查合并。");
+    if (backend.pending.size && ["prepare", "build", "merge", "submit", "apply", "recovery", "select", "discard", "save", "begin", "repairPrompt", "createCase", "archiveCase", "compareCases", "reviewCase", "prepareRequest", "repairRequest", "reviseRequest", "feedbackRequest", "completeCase", "cancelCase", "continueCaseRequest", "abandonRequest", "requestBranch", "refreshBranchRequest"].includes(action)) {
       throw new Error("请先等待当前任务完成或停止任务。");
     }
     const actions = {
@@ -339,17 +345,30 @@ app.whenReady().then(async () => {
       discard: () => changeEvolutionBase(null, true),
       build: async () => {
         const id = await evolution.build();
-        if (id) await evolution.operation("checking", () => acceptance.compare(id));
+        if (id) await evolution.operation("comparing", () => acceptance.compare(id));
         return id;
       },
-      createCase: () => evolution.operation("checking", () => acceptance.create(params)),
-      prepareRequest: () => evolution.operation("checking", () => acceptanceRequests.prepare(params)),
-      repairRequest: () => evolution.operation("checking", () => acceptanceRequests.repair(params)),
-      reviseRequest: () => evolution.operation("checking", () => acceptanceRequests.revise(params)),
+      createCase: () => evolution.operation("recording", () => acceptance.create(params)),
+      prepareRequest: () => evolution.operation("planning", () => acceptanceRequests.prepare(params)),
+      abandonRequest: () => evolution.operation("recording", async () => {
+        const state = await evolution.store.read();
+        const result = await acceptanceRequests.abandon({ threadId: params.threadId || state.threadId });
+        if (result.threadId === state.threadId) await evolution.store.update({ threadId: null });
+        return result;
+      }),
+      feedbackRequest: () => evolution.operation("planning", () => acceptanceRequests.feedback(params)),
+      completeCase: () => evolution.operation("recording", () => acceptance.complete(params.id, params.note)),
+      cancelCase: () => evolution.operation("recording", () => acceptance.cancel(params.id)),
+      continueCaseRequest: () => evolution.operation("planning", () => acceptanceRequests.continueCase(params)),
+      repairRequest: () => evolution.operation("planning", () => acceptanceRequests.repair(params)),
+      reviseRequest: () => evolution.operation("planning", () => acceptanceRequests.revise(params)),
       requestPrompt: () => acceptanceRequests.editingPrompt(params.id),
-      archiveCase: () => evolution.operation("checking", () => acceptance.archive(params.id)),
-      compareCases: () => evolution.operation("checking", async () => acceptance.compare((await evolution.store.read()).candidate)),
-      reviewCase: () => evolution.operation("checking", () => acceptance.review(params.id, params.note)),
+      archiveCase: () => evolution.operation("recording", () => acceptance.archive(params.id)),
+      compareCases: () => evolution.operation("comparing", async () => {
+        const state = await evolution.store.read();
+        return acceptance.compare(state.candidate || state.active);
+      }),
+      reviewCase: () => evolution.operation("recording", () => reviewApplied(acceptance, params.id, params.note)),
       casePrompt: () => acceptance.prompt(params.id),
       repairPrompt: () => evolution.repairPrompt(),
       releases: () => evolution.releases(),
@@ -358,7 +377,13 @@ app.whenReady().then(async () => {
       login: () => evolution.login(),
       openGithubLogin: () => evolution.openGithubLogin(),
       cancelLogin: () => evolution.cancelLogin(),
-      submit: () => evolution.submitPullRequest(params.title, params.body, params.submissionId),
+      submit: () => submitContribution(evolution, params.title, params.body, params.submissionId, params),
+      checkContribution: () => checkContribution(evolution, params),
+      mergeAssistance: () => inspectPullRequest(evolution, params.url),
+      contributionRepairPrompt: () => contributionRepairPrompt(evolution, params),
+      contributionBranches: () => listContributionBranches(evolution),
+      requestBranch: () => requestTargetBranch(evolution, params),
+      refreshBranchRequest: () => refreshTargetBranch(evolution, params.id),
       pullRequest: () => evolution.refreshPullRequest(params.url),
       apply: () => applyEvolution(params.id),
       thread: () => evolution.operation("preparing", () => evolution.store.update({ threadId: String(params.id || "") })),

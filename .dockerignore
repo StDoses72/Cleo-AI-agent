@@ -3,6 +3,7 @@
 .agents
 .codex
 .codex-test-*
+.local-preview-*
 .venv
 .venv-*
 __pycache__
@@ -12,11 +13,14 @@ build
 dist
 .pytest_cache
 .ruff_cache
+uv.lock
 
 .env
 .env.*
 config/cleo.json
 config/harnesses.json
+cleo/config/cleo.json
+cleo/config/harnesses.json
 
 data/*
 !data/.gitkeep
@@ -29,8 +33,19 @@ memory/non_productivity
 memory/productivity
 memory/sessions.sqlite3*
 memory/persona.sqlite3*
+memory/.memory-git.lock
 PERSONA.md
 
 workspace
+
+# Desktop dependencies, generated UI files, and local verification output.
+**/node_modules
+ui/dist
+ui/output
+ui/*.tsbuildinfo
+
+# Desktop build copies and distributables are not Docker source inputs.
+.release-build
+release
 
 *.log

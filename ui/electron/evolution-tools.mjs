@@ -1,26 +1,32 @@
 import { spawn } from "node:child_process";
-import { mkdir, rename, readdir, rm } from "node:fs/promises";
+import { mkdir, rename, readdir, rm, open } from "node:fs/promises";
 import { join, delimiter } from "node:path";
 import { exists, fileHash, readJson, writeJson } from "./evolution-store.mjs";
 
 const GITHUB = "https://api.github.com";
 
 /** Purpose: Run an argument array without a shell. Input: executable, args, process options. Output: bounded output. */
-export async function run(command, args, { cwd, env = process.env, log = () => {}, timeout = 1_800_000, successCodes = [0], signal } = {}) {
+export async function run(command, args, { cwd, env = process.env, log = () => {}, timeout = 1_800_000, successCodes = [0], signal, outputMode = "capture", stdin = "ignore" } = {}) {
   signal?.throwIfAborted();
+  if (!["capture", "tail"].includes(outputMode)) throw new Error(`Unknown command output mode: ${outputMode}`);
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, env, detached: process.platform !== "win32", windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(command, args, { cwd, env, detached: process.platform !== "win32", windowsHide: true, stdio: [stdin, "pipe", "pipe"] });
     let output = "";
+    let tail = "";
     let timedOut = false;
     let oversized = false;
     const collect = (chunk) => {
       const text = chunk.toString();
-      if (output.length + text.length > 16 * 1024 * 1024) oversized = true;
-      else output += text;
+      tail = (tail + text).slice(-64 * 1024);
+      // Metadata must be complete; installation diagnostics only need a bounded tail.
+      if (outputMode === "capture" && !oversized) {
+        if (output.length + text.length > 16 * 1024 * 1024) { oversized = true; output = ""; }
+        else output += text;
+      }
       log(text);
     };
-    child.stdout.on("data", collect);
-    child.stderr.on("data", collect);
+    child.stdout.setEncoding("utf8").on("data", collect);
+    child.stderr.setEncoding("utf8").on("data", collect);
     // Both cancellation and timeout stop descendants before releasing the operation.
     const stop = () => {
       if (process.platform === "win32" && child.pid) {
@@ -38,9 +44,9 @@ export async function run(command, args, { cwd, env = process.env, log = () => {
       cleanup();
       if (signal?.aborted) { reject(signal.reason); return; }
       if (timedOut) { reject(new Error("操作超时，已停止进程。请检查日志后重试。")); return; }
+      if (!successCodes.includes(code)) { reject(new Error(`${command.split(/[\\/]/).at(-1)} 执行失败 (${code})\n${tail.slice(-3000)}`)); return; }
       if (oversized) { reject(new Error("操作输出超过限制，已停止使用不完整的结果。")); return; }
-      if (!successCodes.includes(code)) reject(new Error(`${command.split(/[\\/]/).at(-1)} 执行失败 (${code})\n${output.slice(-3000)}`));
-      else resolve(output.trim());
+      resolve((outputMode === "tail" ? tail : output).trim());
     });
   });
 }
@@ -75,18 +81,20 @@ export async function downloadVerified(url, path, digest, { signal } = {}) {
 }
 
 /** Purpose: Unpack a verified release archive. Input: archive and new destination. Output: extracted tree. */
-export async function extract(archive, destination, { signal } = {}) {
+export async function extract(archive, destination, { signal, log = () => {} } = {}) {
   signal?.throwIfAborted();
   await mkdir(destination, { recursive: true });
+  const options = { outputMode: "tail", log, signal };
   if (process.platform === "win32" && archive.endsWith(".zip")) {
-    // Environment values avoid interpreting paths as PowerShell source code.
-    await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
-      "Expand-Archive -LiteralPath $env:CLEO_ARCHIVE -DestinationPath $env:CLEO_EXTRACT -Force"], {
-      env: { ...process.env, CLEO_ARCHIVE: archive, CLEO_EXTRACT: destination }, signal,
-    });
-  } else if (process.platform === "darwin" && archive.endsWith(".zip")) await run("ditto", ["-x", "-k", archive, destination], { signal });
-  else if (archive.endsWith(".zip")) await run("unzip", ["-q", archive, "-d", destination], { signal });
-  else await run("tar", ["-xf", archive, "-C", destination], { signal });
+    // Keep long-path support without passing Unicode paths through tar's ANSI argv.
+    // Node opens the archive and sets the working directory using Windows Unicode APIs.
+    const tar = join(process.env.SystemRoot || "C:\\Windows", "System32", "tar.exe");
+    const input = await open(archive, "r");
+    try { await run(tar, ["-xf", "-"], { ...options, cwd: destination, stdin: input.fd }); }
+    finally { await input.close(); }
+  } else if (process.platform === "darwin" && archive.endsWith(".zip")) await run("ditto", ["-x", "-k", archive, destination], options);
+  else if (archive.endsWith(".zip")) await run("unzip", ["-q", archive, "-d", destination], options);
+  else await run("tar", ["-xf", archive, "-C", destination], options);
 }
 
 /** Purpose: Find an executable inside an extracted trusted tool. Input: root/name. Output: path or null. */

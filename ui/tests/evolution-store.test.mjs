@@ -27,6 +27,14 @@ async function fixture(t) {
   return { root, data, store };
 }
 
+test("a version selected by a pending branch application survives normal build cleanup", async (t) => {
+  const { store } = await fixture(t);
+  await store.update({ branchRequests: [{ id: "request", buildId: "local", status: "requested" }] });
+  await store.pruneBuilds();
+  assert.ok((await store.read()).builds.some((build) => build.id === "local"));
+  assert.equal(await readFile(join(store.root, "builds/local/Cleo/app.exe"), "utf8"), "local");
+});
+
 test("staging leaves the current app and data untouched; activation backs up before switching", async (t) => {
   const { data, store } = await fixture(t);
   const tx = await store.stage("local");

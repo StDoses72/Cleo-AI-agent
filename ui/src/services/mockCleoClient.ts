@@ -537,6 +537,8 @@ export class MockCleoClient implements CleoClient {
     };
   }
 
+  async getLocalSkills() { return []; }
+
   async getProductivityModels(provider: string): Promise<ProductivityModelCatalog> {
     await delay(260);
     return provider === "claude"

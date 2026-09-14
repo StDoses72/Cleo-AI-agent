@@ -108,3 +108,18 @@
 .evolution-pr-history small { color:var(--muted); font-size:11px; }
 .evolution-pr-history article button { flex-shrink:0; }
 .evolution-contribution-hint { font-size: 12px; color: var(--text-muted, #a0a9b4); line-height: 1.6; }
+
+.evolution-case-evidence { white-space: pre-wrap; overflow-wrap: anywhere; }
+.evolution-feedback { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
+.evolution-feedback > p { color: var(--muted); font-size: 12px; }
+.evolution-feedback-history { max-height: 230px; overflow: auto; }
+.evolution-feedback-history p { padding: 9px 12px; white-space: pre-wrap; border-radius: 10px; }
+.evolution-feedback-history small { display: block; margin-bottom: 4px; color: var(--muted); }
+.evolution-feedback-user { margin-left: 24px; background: var(--surface-hover); }
+.evolution-feedback-reply { margin-right: 24px; }
+.evolution-feedback-assumption { display: block; margin-top: 6px; }
+.evolution-feedback form { display: flex; align-items: flex-end; gap: 8px; border: 1px solid var(--border); border-radius: 12px; padding: 8px; }
+.evolution-feedback form:focus-within { border-color: var(--text-soft); }
+.evolution-feedback textarea { flex: 1; min-width: 0; min-height: 64px; resize: vertical; border: 0; background: transparent; color: inherit; font: inherit; }
+.evolution-feedback button { flex-shrink: 0; min-height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; white-space: nowrap; }
+.slash-menu button[aria-selected="true"] { background: var(--surface-hover); outline: 1px solid var(--border); }

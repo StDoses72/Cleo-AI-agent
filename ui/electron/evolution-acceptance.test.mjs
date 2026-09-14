@@ -23,12 +23,15 @@ async function setup(t, replay) {
 const manual = { title: "Remember scope", expectation: "Only use this project's preferences", evidence: "user: this project only" };
 const automatic = { ...manual, kind: "dream-format", fixture: { prompt: "evidence", invalid: "{} }", corrected: "{}" } };
 
-test("manual acceptance persists, requires observation, and is tied to one source hash", async (t) => {
+test("manual acceptance requires explicit confirmation, permits empty notes, and is tied to one source hash", async (t) => {
   const { acceptance, state } = await setup(t);
   const item = await acceptance.create(manual);
   await assert.rejects(acceptance.requirePassed("new"), /尚未通过/);
   await acceptance.compare("new");
-  await assert.rejects(acceptance.review(item.id, "  "), /依据/);
+  await assert.rejects(acceptance.requirePassed("new"), /尚未通过/);
+  await acceptance.review(item.id, "  ");
+  assert.equal((await acceptance.status(state)).report.results[0].after.detail, "");
+  await assert.rejects(acceptance.review(item.id, "x".repeat(4001)), /4,000/);
   await acceptance.review(item.id, "Preview uses only the correct project's preference.");
   await acceptance.requirePassed("new");
   state.builds[1].sourceHash = "changed";

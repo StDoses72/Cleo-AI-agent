@@ -6,7 +6,7 @@ interface Props {
   acceptance?: EvolutionAcceptanceState;
   preparing: boolean;
   busy: boolean;
-  onResume: (request: EvolutionRequest, clarification?: string) => void;
+  onResume: (request: EvolutionRequest, clarification?: string, skip?: boolean) => void;
   onRevise: (params: Record<string, unknown>) => Promise<unknown>;
 }
 
@@ -30,21 +30,26 @@ export function EvolutionPreparation({ requests, acceptance, preparing, busy, on
       {request.error && <p role="alert">{request.error}</p>}
       {(request.status === "failed" || request.interrupted) && <button disabled={busy} onClick={() => onResume(request)}>重试准备原需求</button>}
       {request.status === "clarification" && <div className="evolution-manual-review">
+        <button disabled={busy} onClick={() => onResume(request)}>重新分析原需求</button>
+        <p>补充一次即可继续；也可以跳过，让 Cleo 说明假设并按判断修改。</p>
         <label>补充需求<textarea aria-label="补充需求" value={answers[request.id] || ""} maxLength={5000}
           onChange={(event) => setAnswers({ ...answers, [request.id]: event.target.value })} /></label>
         <button disabled={busy || !answers[request.id]?.trim()} onClick={() => onResume(request, answers[request.id])}>补充并继续准备</button>
+        <button disabled={busy} onClick={() => onResume(request, undefined, true)}>跳过，按 Cleo 的判断继续</button>
       </div>}
       {request.cases.map((detail) => {
         const { item } = detail;
         const active = acceptance?.cases.find((c) => c.id === item.id)?.enabled;
         const result = acceptance?.report?.results.find((r) => r.id === item.id)?.after;
         const isCurrent = index === requests.length - 1;
-        return <details key={item.id} className="evolution-case" open={isCurrent}>
-          <summary>{item.title} · {active === false ? "历史案例" : isCurrent && !request.repair ? "本轮新增" : "回归案例"}</summary>
+        const completed = acceptance?.interactions?.completions.find((c) => c.id === item.id);
+        const cancelled = acceptance?.cases.find((c) => c.id === item.id)?.cancelledAt;
+        return <details key={item.id} className="evolution-case" open={isCurrent && active !== false}>
+          <summary>{item.title} · {cancelled ? "已取消验收" : completed ? "已验收" : active === false ? "历史预期" : isCurrent && !request.repair ? "本轮新增" : item.kind === "manual" ? "待完成" : "回归案例"}</summary>
           <dl><dt>对应要求</dt><dd>{detail.requirement}</dd><dt>当前行为</dt><dd>{detail.current}</dd>
             <dt>操作 / 触发</dt><dd>{detail.trigger}</dd><dt>预期结果</dt><dd>{item.expectation}</dd>
             <dt>验证方式与结果</dt><dd>{item.kind === "dream-format" ? "自动 · Dream 格式回放" : "人工验收"} · {
-              acceptance?.fresh && result?.status === "passed" ? "通过" : acceptance?.fresh && result?.status === "failed" ? "未通过" : acceptance?.fresh && result?.status === "error" ? "运行失败" : item.kind === "manual" ? "待人工验收" : "待回放"}</dd></dl>
+              cancelled ? "用户取消验收，未标记通过" : completed ? (completed.note ? `已验收：${completed.note}` : "用户已确认验收") : acceptance?.fresh && result?.status === "passed" ? "通过" : acceptance?.fresh && result?.status === "failed" ? "未通过" : acceptance?.fresh && result?.status === "error" ? "运行失败" : item.kind === "manual" ? "待人工验收" : "待回放"}</dd></dl>
           <details><summary>查看静态证据</summary><pre>{detail.sourceEvidence || item.evidence}</pre></details>
           {active && !request.repair && <button disabled={busy} onClick={() => {
             setEditing(item.id); setExpectation(item.expectation); setTrigger(detail.trigger); setReason("");
@@ -65,10 +70,12 @@ export function EvolutionPreparation({ requests, acceptance, preparing, busy, on
         </details>;
       })}
       {request.status === "frozen" && !request.execution
-        && request.cases.every((c) => acceptance?.cases.some((item) => item.id === c.item.id && item.enabled)) && <button disabled={busy}
+        && request.cases.some((c) => acceptance?.cases.some((item) => item.id === c.item.id && item.enabled))
+        && request.cases.every((c) => acceptance?.cases.some((item) => item.id === c.item.id && (item.enabled || item.cancelledAt))) && <button disabled={busy}
         onClick={() => onResume(request)}>按冻结案例继续实现</button>}
       {request.execution && <p>{request.execution.status === "completed" ? "实现任务已结束，行为结果见验收区。" : request.execution.status === "interrupted" ? "实现中断，已保留案例。可使用修复入口继续。" : "实现已提交；刷新不会重复发送。"}</p>}
-      {request.execution && request.execution.status !== "completed" && <button disabled={busy}
+      {request.execution && request.execution.status !== "completed"
+        && request.cases.some((c) => acceptance?.cases.some((item) => item.id === c.item.id && item.enabled)) && <button disabled={busy}
         onClick={() => onResume(request)}>沿用案例继续未完成的实现</button>}
     </article>)}
   </section>;
