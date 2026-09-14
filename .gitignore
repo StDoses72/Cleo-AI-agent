@@ -48,6 +48,8 @@ data/session_artifacts/
 
 # Cleo desktop UI dependencies and renderer artifacts.
 /ui/node_modules/
+/ui/.npm-cache/
+/.test-deps/
 /ui/runtime/node_modules/
 /ui/dist/
 /ui/output/

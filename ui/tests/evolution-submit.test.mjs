@@ -181,6 +181,12 @@ test("snapshot has only the empty target as parent and preserves source bytes wi
   const f = await fixture(t);
   const source = f.manager.source;
   const options = { cwd: source, env: f.tools.env };
+  await mkdir(join(source, "ui/runtime"), { recursive: true });
+  for (const name of ["package.json", "package-lock.json"]) {
+    await cp(new URL(`../runtime/${name}`, import.meta.url), join(source, "ui/runtime", name));
+  }
+  await mkdir(join(source, "ui/.npm-cache"), { recursive: true });
+  await writeFile(join(source, "ui/.npm-cache/debug.log"), "machine-local log");
   await writeFile(join(source, ".env"), "PRIVATE=never-publish\n");
   await writeFile(join(source, ".gitattributes"), "*.txt text eol=lf\n");
   await writeFile(join(source, ".gitignore"), "feature.txt\n.env\n");
@@ -197,6 +203,10 @@ test("snapshot has only the empty target as parent and preserves source bytes wi
   // hash-object compares exact blob bytes, including CRLF, without filters.
   const expectedBlob = await run("git", ["hash-object", "--no-filters", "feature.txt"], options);
   assert.equal(await git(["rev-parse", `${snapshot.commit}:feature.txt`]), expectedBlob);
+  const exportedPaths = (await git(["ls-tree", "-r", "--name-only", snapshot.commit])).split("\n");
+  assert.ok(exportedPaths.includes("ui/runtime/package.json"));
+  assert.ok(exportedPaths.includes("ui/runtime/package-lock.json"));
+  assert.ok(!exportedPaths.includes("ui/.npm-cache/debug.log"));
   assert.ok(!(await git(["ls-tree", "-r", "--name-only", snapshot.commit])).split("\n").includes(".env"));
   assert.equal(await run("git", ["rev-parse", "HEAD"], options), before.head);
   assert.deepEqual(await readFile(join(source, ".git/index")), before.index);
