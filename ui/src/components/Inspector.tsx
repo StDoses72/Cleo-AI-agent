@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import {
   Braces,
   Check,
@@ -20,6 +20,7 @@ import type { MemoryEntry, Project, RuntimeProfile, Thread } from "../types";
 export type InspectorTab = "changes" | "context" | "run";
 
 interface InspectorProps {
+  resizeHandle?: ReactNode;
   thread: Thread | null;
   project: Project | null;
   runtime: RuntimeProfile;
@@ -33,6 +34,7 @@ interface InspectorProps {
 }
 
 export function Inspector({
+  resizeHandle,
   thread,
   project,
   runtime,
@@ -46,6 +48,7 @@ export function Inspector({
 }: InspectorProps) {
   return (
     <aside className="inspector" data-testid="inspector">
+      {resizeHandle}
       <header className="inspector-header">
         <div className="inspector-tabs" role="tablist">
           <button className={activeTab === "changes" ? "active" : ""} type="button" onClick={() => onTabChange("changes")}>变更 {thread?.changes.length ? <small>{thread.changes.length}</small> : null}</button>

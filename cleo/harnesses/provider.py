@@ -6,6 +6,10 @@ from typing import Protocol
 from cleo.harnesses.models import AgentEvent, EventCallback
 
 
+class NativeSessionNotFoundError(RuntimeError):
+    """The provider explicitly reports that a persisted native session is absent."""
+
+
 @dataclass(frozen=True, slots=True)
 class ProviderSession:
     """provider 侧会话句柄(create/resume/fork 的返回)。

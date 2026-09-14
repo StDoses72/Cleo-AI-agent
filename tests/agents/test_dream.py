@@ -138,6 +138,99 @@ def test_incremental_run_only_sends_new_event_text(tmp_path, monkeypatch):
     assert "old evidence unique marker" not in evidence
 
 
+def test_late_turn_diff_does_not_block_dream_or_rewrite_compact(tmp_path, monkeypatch):
+    config, store = setup(tmp_path, monkeypatch, "Keep this original preference")
+    from cleo.memory.paths import compact_path, events_path
+
+    cached = compact_path(config.MEMORY_DIR, "productivity", "cleo", "session-dream")
+    payload = json.loads(cached.read_text(encoding="utf-8"))
+    payload["future_extension"] = {"keep": ["unknown data"]}
+    cached.write_text(json.dumps(payload), encoding="utf-8")
+    compact_before = cached.read_bytes()
+    store.append_event(session_id="session-dream", space="productivity", project="cleo",
+                       event_type="turn_diff", actor="codex", content="late diff evidence")
+    raw = events_path(config.MEMORY_DIR, "productivity", "cleo", "session-dream")
+    events_before = raw.read_bytes()
+    prompts = []
+
+    async def extract(self, prompt):
+        prompts.append(prompt)
+        return extracted(prompt)
+
+    monkeypatch.setattr(dream_module.DreamAgent, "_extract", extract)
+    result = invoke(dream_module.DreamAgent())
+    assert result["status"] == "complete"
+    assert "late diff evidence" in "\n".join(prompts)
+    assert cached.read_bytes() == compact_before
+    assert raw.read_bytes() == events_before
+    assert (
+        get_session_source("productivity", "cleo", "session-dream")["consolidated_hash"]
+        == result["source_hash"]
+    )
+    assert invoke(dream_module.DreamAgent())["status"] == "skipped"
+
+
+@pytest.mark.parametrize("replacement", ['{broken', '{"schema_version":99,"sources":{"keep":1}}'])
+def test_dream_refuses_unreadable_or_newer_queue_without_writing(
+    tmp_path, monkeypatch, replacement
+):
+    config, _ = setup(tmp_path, monkeypatch)
+    from cleo.memory.paths import memory_state_path
+
+    path = memory_state_path(config.MEMORY_DIR, "productivity")
+    path.write_text(replacement, encoding="utf-8")
+    with pytest.raises(ValueError):
+        invoke(dream_module.DreamAgent())
+    assert path.read_text(encoding="utf-8") == replacement
+
+
+def test_late_events_during_extraction_without_compaction_remain_pending(tmp_path, monkeypatch):
+    _, store = setup(tmp_path, monkeypatch)
+
+    async def extract(self, prompt):
+        store.append_event(
+            session_id="session-dream",
+            space="productivity",
+            project="cleo",
+            event_type="user_message",
+            actor="user",
+            content="arrived during extraction",
+        )
+        return extracted(prompt)
+
+    monkeypatch.setattr(dream_module.DreamAgent, "_extract", extract)
+    result = invoke(dream_module.DreamAgent())
+    assert result["status"] == "pending"
+    source = get_session_source("productivity", "cleo", "session-dream")
+    assert source["status"] == "pending"
+    assert source["source_hash"] != source.get("consolidated_hash")
+
+
+@pytest.mark.parametrize("damage", ["missing", "malformed", "newer-schema", "wrong-project"])
+def test_dream_source_rejects_invalid_raw_evidence_without_repairing_it(
+    tmp_path, monkeypatch, damage
+):
+    config, store = setup(tmp_path, monkeypatch)
+    from cleo.memory.paths import events_path
+
+    raw = events_path(config.MEMORY_DIR, "productivity", "cleo", "session-dream")
+    if damage == "missing":
+        raw.unlink()
+    elif damage == "malformed":
+        raw.write_text('{broken', encoding="utf-8")
+    elif damage == "newer-schema":
+        raw.write_text('{"schema_version":99,"seq":1,"future":["keep"]}\n', encoding="utf-8")
+    before = raw.read_bytes() if raw.exists() else None
+    with pytest.raises((FileNotFoundError, ValueError)):
+        dream_module.DreamAgent()._read_source(
+            store,
+            "productivity",
+            "other" if damage == "wrong-project" else "cleo",
+            "session-dream",
+        )
+    assert (raw.read_bytes() if raw.exists() else None) == before
+
+
 def test_new_events_during_run_remain_pending(tmp_path, monkeypatch):
     _, store = setup(tmp_path, monkeypatch)
 
@@ -206,6 +299,127 @@ def test_extractor_has_no_tools_or_accumulating_messages():
     asyncio.run(agent._extract("second"))
     assert [len(messages) for messages in calls] == [2, 2]
     assert calls[1][-1].content == "second"
+
+
+@pytest.mark.parametrize("backend", ["api", "runtime"])
+@pytest.mark.parametrize("invalid", [
+    '{"edits":[],"snapshot":null}}',
+    json.dumps({"snapshot": ["x" * 202]}),
+    json.dumps({"snapshot": ["first\nsecond"]}),
+])
+def test_extractor_corrects_invalid_output_with_original_evidence(monkeypatch, backend, invalid):
+    """Purpose: Reproduce malformed JSON and invalid snapshot lines on both transports.
+
+    Input: Recorded failure shapes followed by a valid model response.
+    Output: Only corrected output is accepted; retries keep the original evidence.
+    """
+    calls = []
+    responses = iter([invalid, '{"snapshot":["Corrected snapshot"],"summary":"valid"}'])
+
+    class Model:
+        async def ainvoke(self, messages):
+            calls.append((messages[0].content, messages[1].content))
+            return AIMessage(content=next(responses))
+
+    class Runtime:
+        def __init__(self, profile, root, instructions, *, mode):
+            assert mode == "dream_extract"
+            self.instructions = instructions
+
+        async def ainvoke(self, payload, *, config):
+            calls.append((self.instructions, payload["messages"][0].content))
+            return {"messages": [AIMessage(content=next(responses))]}
+
+    monkeypatch.setattr("cleo.agents.runtime.RuntimeGraph", Runtime)
+    agent = dream_module.DreamAgent()
+    agent.profile = SimpleNamespace(backend=backend)
+    agent.model = Model() if backend == "api" else None
+    result = asyncio.run(agent._extract("original evidence"))
+
+    assert result.snapshot == ["Corrected snapshot"]
+    assert len(calls) == 2
+    assert [prompt for _, prompt in calls] == ["original evidence"] * 2
+    assert calls[0][0] in calls[1][0]
+    assert "JSON" in calls[1][0]
+    assert len(calls[1][0]) > len(calls[0][0])
+
+
+def test_snapshot_schema_exposes_line_limits():
+    """Purpose: Ensure the model sees the same line limits that validation enforces.
+
+    Input: The extraction JSON schema.
+    Output: Snapshot array and item constraints are present, including newline rejection.
+    """
+    schema = Extraction.model_json_schema()["properties"]["snapshot"]
+    array = next(option for option in schema["anyOf"] if option.get("type") == "array")
+    assert array["maxItems"] == 5
+    assert array["items"]["maxLength"] == 200
+    assert "pattern" in array["items"]
+    assert Extraction(snapshot=["x" * 200]).snapshot == ["x" * 200]
+    for line in ["x" * 201, "first\nsecond", "first\rsecond"]:
+        with pytest.raises(ValidationError):
+            Extraction(snapshot=[line])
+
+
+def test_invalid_output_retry_exhaustion_retains_blocks_without_publication(tmp_path, monkeypatch):
+    """Purpose: Preserve completed work when a block cannot produce valid output.
+
+    Input: A multi-block source with three invalid responses on its second block.
+    Output: No partial publication, and a later retry skips the completed first block.
+    """
+    config, _ = setup(tmp_path, monkeypatch, "multiple evidence records " * 400)
+    monkeypatch.setattr(dream_module, "BLOCK_BUDGET", 1200)
+    calls = []
+
+    class Model:
+        fail = True
+
+        async def ainvoke(self, messages):
+            prompt = messages[-1].content
+            block = json.loads(prompt.split("\nEvidence records:", 1)[0])["block"]
+            calls.append(block)
+            if self.fail and block == 2:
+                return AIMessage(content='{"edits":[]}}')
+            return AIMessage(content=extracted(prompt).model_dump_json())
+
+    model = Model()
+    agent = dream_module.DreamAgent()
+    agent.model = model
+    with pytest.raises(json.JSONDecodeError):
+        invoke(agent)
+    assert calls == [1, 2, 2, 2]
+    assert memories() == []
+    state = get_session_source("productivity", "cleo", "session-dream")
+    assert state["status"] == "failed" and "1/" in state["last_error"]
+    checkpoint = config.MEMORY_DIR / "productivity/projects/cleo/sessions/session-dream/dream.json"
+    assert len(json.loads(checkpoint.read_text())["pending"]["results"]) == 1
+
+    model.fail = False
+    assert invoke(agent)["status"] == "complete"
+    assert calls.count(1) == 1
+    assert calls.count(2) == 4
+    assert len(memories()) == 1
+
+
+@pytest.mark.parametrize("error", [RuntimeError("provider offline"), asyncio.CancelledError()])
+def test_output_correction_does_not_retry_transport_errors_or_cancellation(error):
+    """Purpose: Limit correction retries to malformed responses.
+
+    Input: A provider exception or cancellation before a response exists.
+    Output: The original exception propagates after one request.
+    """
+    calls = []
+
+    class Model:
+        async def ainvoke(self, messages):
+            calls.append(messages)
+            raise error
+
+    agent = dream_module.DreamAgent()
+    agent.model = Model()
+    with pytest.raises(type(error)):
+        asyncio.run(agent._extract("source"))
+    assert len(calls) == 1
 
 
 def test_extractor_rejects_fact_schema_and_batch_scores():
