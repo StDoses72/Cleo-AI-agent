@@ -168,7 +168,7 @@ try {
   await window.getByText("GPT-5.6-Terra", { exact: true }).waitFor();
   await window.screenshot({ path: join(outputDir, "03-runtime-selector.png") });
   await window.getByText("GPT-5.6-Terra", { exact: true }).click();
-  await window.getByTestId("runtime-selector").getByText("gpt-5.6-terra", { exact: true }).waitFor();
+  await window.getByTestId("runtime-selector").getByText("codex · gpt-5.6-terra", { exact: true }).waitFor();
   await window.getByTestId("effort-selector").selectOption("low");
   assert(await window.getByTestId("effort-selector").inputValue() === "low", "Draft effort was not selectable");
   await window.screenshot({ path: join(outputDir, "03-new-thread.png") });
@@ -362,6 +362,8 @@ try {
     "Inspector drawer is clipped in compact view",
   );
   await window.screenshot({ path: join(outputDir, "07-compact-window.png") });
+  await window.getByTestId("inspector").getByRole("button", { name: "关闭检查器", exact: true }).click();
+  await window.getByTestId("inspector").waitFor({ state: "detached" });
 
   await window.getByRole("button", { name: "设置", exact: true }).click();
   await checkSettingsLayout(window);

@@ -111,7 +111,7 @@ test("Windows extraction preserves literal paths and rejects a broken archive", 
   const root = await temporaryDirectory(t);
   const input = join(root, "input.txt");
   const archive = join(root, "新版 [literal].zip");
-  const destination = join(root, "extracted [literal]");
+  const destination = join(root, "已解压 [literal]");
   await writeFile(input, "checked archive content");
   await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
     "$ErrorActionPreference = 'Stop'; Compress-Archive -LiteralPath $env:CLEO_INPUT -DestinationPath $env:CLEO_ZIP"], {

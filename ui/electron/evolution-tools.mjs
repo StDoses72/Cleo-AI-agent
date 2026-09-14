@@ -1,16 +1,16 @@
 import { spawn } from "node:child_process";
-import { mkdir, rename, readdir } from "node:fs/promises";
+import { mkdir, rename, readdir, open } from "node:fs/promises";
 import { join, delimiter } from "node:path";
 import { exists, fileHash, readJson, writeJson } from "./evolution-store.mjs";
 
 const GITHUB = "https://api.github.com";
 
 /** Purpose: Run an argument array without a shell. Input: executable, args, process options. Output: bounded output. */
-export async function run(command, args, { cwd, env = process.env, log = () => {}, timeout = 1_800_000, successCodes = [0], signal, outputMode = "capture" } = {}) {
+export async function run(command, args, { cwd, env = process.env, log = () => {}, timeout = 1_800_000, successCodes = [0], signal, outputMode = "capture", stdin = "ignore" } = {}) {
   signal?.throwIfAborted();
   if (!["capture", "tail"].includes(outputMode)) throw new Error(`Unknown command output mode: ${outputMode}`);
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, env, detached: process.platform !== "win32", windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(command, args, { cwd, env, detached: process.platform !== "win32", windowsHide: true, stdio: [stdin, "pipe", "pipe"] });
     let output = "";
     let tail = "";
     let timedOut = false;
@@ -81,10 +81,12 @@ export async function extract(archive, destination, { log = () => {} } = {}) {
   await mkdir(destination, { recursive: true });
   const options = { outputMode: "tail", log };
   if (process.platform === "win32" && archive.endsWith(".zip")) {
-    // Windows' bundled libarchive handles long paths and literal arguments. Expand-Archive
-    // fails on long Python package paths, then its cleanup error hides the original failure.
+    // Keep long-path support without passing Unicode paths through tar's ANSI argv.
+    // Node opens the archive and sets the working directory using Windows Unicode APIs.
     const tar = join(process.env.SystemRoot || "C:\\Windows", "System32", "tar.exe");
-    await run(tar, ["-xf", archive, "-C", destination], options);
+    const input = await open(archive, "r");
+    try { await run(tar, ["-xf", "-"], { ...options, cwd: destination, stdin: input.fd }); }
+    finally { await input.close(); }
   } else if (process.platform === "darwin" && archive.endsWith(".zip")) await run("ditto", ["-x", "-k", archive, destination], options);
   else if (archive.endsWith(".zip")) await run("unzip", ["-q", archive, "-d", destination], options);
   else await run("tar", ["-xf", archive, "-C", destination], options);
