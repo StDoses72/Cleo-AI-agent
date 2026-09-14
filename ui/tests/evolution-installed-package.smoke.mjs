@@ -2,9 +2,8 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { fileURLToPath } from "node:url";
-import { extractFile } from "@electron/asar";
-import { EvolutionManager } from "../electron/evolution.mjs";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { extractAll, extractFile } from "@electron/asar";
 import { desktopPlatform, installationRoot } from "../electron/platform.mjs";
 
 // Inspect the actual deliverable, including metadata and source snapshot, instead of a synthetic package.
@@ -21,9 +20,13 @@ assert.equal(metadata.version, packageJson.version);
 assert.notEqual(metadata.build_kind, "local");
 assert.ok((await readFile(join(resources, "evolution-source.tar.gz"))).length > 0);
 const root = await mkdtemp(join(tmpdir(), "cleo-installed-package-test-"));
-const manager = new EvolutionManager({ app: { isPackaged: true, getVersion: () => packageJson.version },
-  executable, root: join(root, "evolution"), dataHome: join(root, "home") });
+let manager;
 try {
+  const application = join(root, "application");
+  extractAll(join(resources, "app.asar"), application);
+  const { EvolutionManager } = await import(pathToFileURL(join(application, "electron/evolution.mjs")).href);
+  manager = new EvolutionManager({ app: { isPackaged: true, getVersion: () => packageJson.version },
+    executable, root: join(root, "evolution"), dataHome: join(root, "home") });
   const oldExecutable = `${target.bundle}/${target.executable}`;
   await mkdir(dirname(join(manager.store.root, "builds/old", oldExecutable)), { recursive: true });
   await writeFile(join(manager.store.root, "builds/old", oldExecutable), "old retained package");
@@ -35,7 +38,7 @@ try {
   console.log(JSON.stringify({ status: "passed", platform: target.id, actualReleaseVersion: packageJson.version,
     officialPackageWithSourceRecognized: true }));
 } finally {
-  await manager.close();
+  await manager?.close();
   assert.equal(dirname(root), resolve(tmpdir()));
   await rm(root, { recursive: true, force: true });
 }
