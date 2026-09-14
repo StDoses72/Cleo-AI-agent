@@ -31,11 +31,12 @@ function Fixture() {
     try { await window.fixtureAction(name, params); }
     finally { await refresh(); setBusy(false); }
   };
-  return <div style={{ maxWidth: 1000, margin: "20px auto" }}>
+  return <div style={{ maxWidth: 1000, margin: "20px auto", height: "calc(100vh - 40px)", overflowY: "auto" }}>
+    <style>{".fixture-conversation > .conversation-shell { height: 100%; }"}</style>
     <button onClick={() => setProvider(provider === "codex" ? "claude" : "codex")}>切换测试 harness</button>
     <button onClick={() => setShowComposer(false)}>查看验收测试</button>
     <output data-testid="sent">{JSON.stringify(sent)}</output>
-    {showComposer && <div style={{ height: 500, position: "relative" }}><Conversation
+    {showComposer && <div className="fixture-conversation" style={{ height: 500, position: "relative" }}><Conversation
       thread={null} project={null} space="productivity"
       runtime={{ provider, model: "test", effort: null, access: "workspace-write", approval: "deny_all", editable: true }}
       runtimeCatalog={null} productivityModels={{}} runtimeModelsLoading={null} runtimeModelsError={null}

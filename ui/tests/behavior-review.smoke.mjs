@@ -2,9 +2,13 @@ import assert from "node:assert/strict";
 import { chromium } from "playwright";
 import { createServer } from "vite";
 import { fileURLToPath } from "node:url";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 // Serve only a component fixture: no Electron IPC, application or live data access.
-const server = await createServer({ root: fileURLToPath(new URL("../", import.meta.url)),
+const cacheDir = await mkdtemp(join(tmpdir(), "cleo-behavior-ui-"));
+const server = await createServer({ cacheDir, root: fileURLToPath(new URL("../", import.meta.url)),
   server: { host: "127.0.0.1", port: 0 }, plugins: [{ name: "behavior-fixture",
     configureServer(server) { server.middlewares.use("/__behavior", async (_req, res) => {
       res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -28,8 +32,8 @@ try {
   await page.getByRole("button", { name: "切换构建检查结果" }).click();
   await page.getByRole("button", { name: "应用", exact: true }).click();
   assert.equal(await page.getByRole("button", { name: "保存", exact: true }).isEnabled(), false);
-  await page.getByLabel("验收依据：发现本机 skills").fill("实际应用后，输入 / 可以看到 eli5");
-  await page.getByRole("button", { name: "记录人工验收通过" }).click();
+  assert.equal(await page.getByLabel("验收依据：发现本机 skills").count(), 0);
+  await page.getByRole("button", { name: "验收", exact: true }).click();
   assert.equal(await page.getByRole("button", { name: "保存", exact: true }).isEnabled(), true);
   const expanded = await page.locator(".update-notice").boundingBox();
   await page.getByRole("button", { name: "最小化更新提示" }).click();
@@ -46,4 +50,5 @@ try {
 } finally {
   await browser?.close();
   await server.close();
+  await rm(cacheDir, { recursive: true, force: true });
 }

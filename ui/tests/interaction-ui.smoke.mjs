@@ -10,7 +10,7 @@ import { EvolutionRequests } from "../electron/evolution-requests.mjs";
 
 const ui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = await mkdtemp(join(tmpdir(), "cleo-interaction-ui-"));
-const server = await createServer({ root: ui, server: { host: "127.0.0.1", port: 0 } });
+const server = await createServer({ root: ui, cacheDir: join(root, "vite-cache"), server: { host: "127.0.0.1", port: 0 } });
 let browser;
 try {
   await server.listen();

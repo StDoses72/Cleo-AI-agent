@@ -17,14 +17,14 @@ function Fixture() {
   const [downloads, setDownloads] = useState(0);
   const [installs, setInstalls] = useState(0);
   const [updatePhase, setUpdatePhase] = useState("available");
-  const acceptance = { cases: [item], fresh: true, report: { candidate: "new", sourceHash: "hash",
+  const acceptance = { cases: [{ ...item, enabled: !passed }], fresh: true, report: { candidate: "new", sourceHash: "hash",
     results: [{ id: "case", before: { status: "manual", detail: "generic placeholder" },
       after: { status: passed ? "passed" : "manual", detail: passed ? "已应用并观察到 eli5" : "generic placeholder" } }] } };
   const state = { active, candidate: "new", phase: "idle", builds: [
     { id: "base", kind: "official", version: "0.4.0" }, { id: "new", kind: "local", sourceHash: "hash" }],
     iteration: { base: "base" }, validation: { status: valid ? "passed" : "failed", candidate: "new", sourceHash: "hash" },
     githubAuth: { status: "connected" }, acceptance };
-  const action = (name: string) => { if (name === "apply") setActive("new"); if (name === "reviewCase") setPassed(true); };
+  const action = (name: string) => { if (name === "apply") setActive("new"); if (name === "completeCase") setPassed(true); };
   return <>
     <button onClick={() => setValid((value) => !value)}>切换构建检查结果</button>
     <output data-testid="update-counts">{downloads}:{installs}</output>
