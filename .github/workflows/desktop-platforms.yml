@@ -58,7 +58,7 @@ jobs:
       - run: npm ci --prefix ui
       - run: node ui/node_modules/electron/install.js
       - run: ruff check cleo tests scripts/build-release.py scripts/update_project.py
-      - run: pytest -q
+      - run: pytest -vv -o faulthandler_timeout=120
       - run: npm --prefix ui run test:backend
       - run: npm --prefix ui run test:evolution
       - run: npm --prefix ui run build
