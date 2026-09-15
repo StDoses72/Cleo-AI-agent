@@ -537,7 +537,8 @@ class SessionStore:
             manifest_file = manifest_path(self.memory_root, space, project, session_id)
             _atomic_write_json(manifest_file, manifest)
             if appended and durable_handoff:
-                with manifest_file.open("rb") as persisted:
+                # Windows fsync/_commit requires a writable handle; r+b preserves the file bytes.
+                with manifest_file.open("r+b") as persisted:
                     os.fsync(persisted.fileno())
                 if os.name != "nt":
                     directory_fd = os.open(manifest_file.parent, os.O_RDONLY)

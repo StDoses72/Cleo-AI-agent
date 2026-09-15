@@ -13,6 +13,30 @@ tearDownModule = fixtures.tearDownModule
 class ConversationContextTests(unittest.IsolatedAsyncioTestCase):
     asyncSetUp = fixtures.HarnessSwitchTests.asyncSetUp
 
+    async def test_manifest_durable_flush_uses_a_writable_descriptor(self):
+        import os
+        from pathlib import Path
+
+        original_open, original_fsync = Path.open, os.fsync
+        manifest_streams = []
+
+        def opened(path, *args, **kwargs):
+            stream = original_open(path, *args, **kwargs)
+            if path.name == "manifest.json":
+                manifest_streams.append(stream)
+            return stream
+
+        def windows_flush(fd):
+            for stream in manifest_streams:
+                if not stream.closed and stream.fileno() == fd and not stream.writable():
+                    raise OSError(9, "Bad file descriptor")
+            return original_fsync(fd)
+
+        await self.adapter.prompt(self.id, "Synthetic goal")
+        with patch.object(Path, "open", opened), patch("os.fsync", windows_flush):
+            await self.adapter.switch_session(self.id, "b")
+        self.assertEqual(self.store.load_manifest(self.id)["provider"], "b")
+
     async def test_desktop_stream_publishes_durable_handoff_status_after_turn(self):
         from types import SimpleNamespace
         from unittest.mock import AsyncMock
