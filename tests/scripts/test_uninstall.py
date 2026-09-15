@@ -41,10 +41,14 @@ def desktop(tmp_path: Path):
 
 
 def uninstall(install: Path, env: dict[str, str], *options: str):
+    """Purpose: Run the real uninstaller against an isolated installation fixture.
+    Input: Fixture installation, environment and optional uninstall flags.
+    Output: Exit status and strictly decoded UTF-8 stdout/stderr.
+    """
     return subprocess.run(
         ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
          "-File", str(SCRIPT), "-InstallRoot", str(install), *options],
-        env=env, capture_output=True, text=True, timeout=30,
+        env=env, capture_output=True, text=True, encoding="utf-8", timeout=30,
     )
 
 
@@ -83,6 +87,33 @@ def test_uninstall_rejects_an_unmarked_installation_before_touching_data(desktop
     for path, content in files.items():
         if path != marker:
             assert path.read_text(encoding="utf-8") == content
+
+
+@pytest.mark.parametrize("code_page", [936, 1252])
+def test_uninstall_diagnostics_are_utf8_under_legacy_console_encoding(desktop, code_page):
+    """Purpose: Preserve readable rejection diagnostics under desktop console encodings.
+    Input: Isolated installation fixture and an inherited legacy console code page.
+    Output: Strict UTF-8 diagnostics including the original Unicode path; data untouched.
+    """
+    install, _, _, files, env = desktop
+    unmarked = install.parent / "Cleo 测试"
+    unmarked.mkdir()
+    script = str(SCRIPT).replace("'", "''")
+    target = str(unmarked).replace("'", "''")
+    command = (
+        f"[Console]::OutputEncoding = [System.Text.Encoding]::GetEncoding({code_page}); "
+        f"& '{script}' -InstallRoot '{target}' -PurgeData"
+    )
+    result = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+         "-Command", command], env=env, capture_output=True, timeout=30,
+    )
+    assert result.returncode != 0
+    error = result.stderr.decode("utf-8")
+    assert "unmarked" in error
+    assert "Cleo 测试" in error
+    for path, content in files.items():
+        assert path.read_text(encoding="utf-8") == content
 
 
 def test_uninstall_rejects_linked_program_storage_before_deleting_anything(desktop) -> None:

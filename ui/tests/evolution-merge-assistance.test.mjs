@@ -165,3 +165,37 @@ test("legacy receipts cannot bypass empty target checks", async (t) => {
   await assert.rejects(checkContribution(f.manager, selection), /不是空分支/);
   assert.ok(!f.calls.includes("publish"));
 });
+
+test("snapshot failure identifies the rejected path and the stage before any publish", async (t) => {
+  const f = await fixture(t);
+  await f.emptyTarget();
+  const before = await f.git(["status", "--porcelain"]);
+  const command = f.manager.runCommand;
+  const invalid = "../outside.txt";
+  f.manager.runCommand = (exe, args, opts) => args[0] === "ls-files" && args.includes("--cached")
+    ? Promise.resolve(`${invalid}\0`) : command(exe, args, opts);
+  await assert.rejects(checkContribution(f.manager, selection), (error) => {
+    assert.match(error.message, /快照导出/);
+    assert.ok(error.message.includes(JSON.stringify(invalid)));
+    assert.match(error.message, /未推送/);
+    return true;
+  });
+  assert.equal(await f.git(["status", "--porcelain"]), before);
+  assert.ok(!f.calls.includes("publish"));
+});
+
+test("Git enumeration diagnostics are reported instead of being mistaken for source paths", async (t) => {
+  const f = await fixture(t);
+  await f.emptyTarget();
+  const command = f.manager.runCommand;
+  const warning = "warning: could not open directory 'tests/long-path/': Filename too long\n";
+  f.manager.runCommand = (exe, args, opts) => args[0] === "ls-files" && args.includes("--cached")
+    ? run(process.execPath, ["-e", `process.stderr.write(${JSON.stringify(warning)}); process.stdout.write('shared.txt\\0');`], opts)
+    : command(exe, args, opts);
+  await assert.rejects(checkContribution(f.manager, selection), (error) => {
+    assert.match(error.message, /命令返回诊断/);
+    assert.match(error.message, /Filename too long/);
+    return true;
+  });
+  assert.ok(!f.calls.includes("publish"));
+});

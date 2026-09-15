@@ -120,6 +120,18 @@ async function fixture(t) {
   return { manager, root, remote, calls, command, tools, remotePrs, branches, issues, upstream, setTarget };
 }
 
+test("GitHub stderr warnings do not corrupt JSON metadata or the successful PR receipt", async (t) => {
+  const fixtureState = await fixture(t);
+  fixtureState.manager.runCommand = async (executable, args, options) => {
+    const output = await fixtureState.command(executable, args, options);
+    if (executable !== fixtureState.tools.gh) return output;
+    return run(process.execPath, ["-e", `process.stderr.write('warning: diagnostic only\\n'); process.stdout.write(${JSON.stringify(output)});`], options);
+  };
+  assert.equal(await fixtureState.manager.submitPullRequest(title, body, randomUUID(), selection), prUrl);
+  assert.equal((await fixtureState.manager.store.read()).pullRequest.url, prUrl);
+  assert.equal(fixtureState.remotePrs.length, 1);
+});
+
 test("branch application waits for a maintainer-created target and then submits the selected version from a fork", async (t) => {
   const f = await fixture(t);
   assert.deepEqual(await listContributionBranches(f.manager), ["self-evolving"]);

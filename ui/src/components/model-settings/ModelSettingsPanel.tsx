@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Check, ChevronRight, Layers, Moon, MoreHorizontal, Pause, SlidersHorizontal } from "lucide-react";
 import { cleoClient } from "../../services/cleoClient";
 import type { ApplyModelSettings, ModelProfileSummary, ModelSettings } from "../../types";
-import { billingLabel, modelLabel, profileLabel, profileModels, providerInfo } from "./catalog";
+import { billingLabel, isAccount, modelLabel, profileLabel, profileModels, providerInfo } from "./catalog";
 import { ConnectionDetails, type ConnectionStatus } from "./ConnectionDetails";
 import { ConnectionWizard } from "./ConnectionWizard";
 import { ModelPicker, type ModelChoice } from "./ModelPicker";
@@ -61,7 +61,7 @@ export function ModelSettingsPanel({ page, settings, busy, activeProfileId, onAp
         const role = settings.activeAgent === profile.name ? "对话默认" : settings.activeDreamAgent === profile.name ? "记忆整理" : activeProfileId === profile.name ? "当前对话" : "";
         return <div className="ms-connection-row" key={profile.name}>
           <span className="ms-mark">{providerInfo(profile).mark}</span><div className="ms-connection-body"><strong>{profileLabel(profile)}{role && <span className="ms-role">{role}</span>}</strong><div className="ms-meta">{billingLabel(profile)}<span>· {profileModels(profile).length} 个模型</span></div></div>
-          <span className={`ms-connection-status ${status?.state || ""}`}>{status?.state === "connected" ? "已验证" : status?.state === "error" ? "需要检查" : status?.state === "checking" ? "验证中…" : "已配置"}</span>
+          <span className={`ms-connection-status ${status?.state || ""}`}>{status?.state === "connected" ? (isAccount(profile) ? "客户端检查通过" : "已验证") : status?.state === "error" ? "需要检查" : status?.state === "checking" ? "验证中…" : "已配置"}</span>
           <button className="ms-quiet" disabled={busy} onClick={() => role === "对话默认" || status?.state === "error" ? setDetails(profile.name) : setPicker({ target: "chat", connection: profile.name })}>{role === "对话默认" ? "管理" : status?.state === "error" ? "检查连接" : "设为默认"}</button><button className="ms-icon" aria-label={`管理 ${profileLabel(profile)}`} onClick={() => setDetails(profile.name)}><MoreHorizontal /></button>
         </div>;
       })}</div>

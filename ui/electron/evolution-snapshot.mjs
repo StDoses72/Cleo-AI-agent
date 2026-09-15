@@ -51,7 +51,7 @@ export async function createContributionSnapshot(manager, tools, branch, sourceH
     if (await git(["rev-parse", "FETCH_HEAD"]) !== baseSha) throw new Error("目标分支已变化，已停止提交；请重新检查。");
     if (await git(["ls-tree", "--name-only", baseSha]))
       throw new Error("目标分支不是空分支。请由维护者从 submission-base 创建新的空接收分支；不会覆盖已有文件。");
-    const sourceOptions = { cwd: manager.source, env: tools.env };
+    const sourceOptions = { cwd: manager.source, env: tools.env, trimOutput: false, rejectStderr: true };
     const output = await manager.runCommand(tools.git, ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], sourceOptions);
     const names = [...new Set(output.split("\0").filter(Boolean))].sort();
     const hash = createHash("sha256");
@@ -59,7 +59,8 @@ export async function createContributionSnapshot(manager, tools, branch, sourceH
     for (const name of names) {
       const path = resolve(manager.source, name);
       const child = relative(resolve(manager.source), path);
-      if (!child || child.startsWith("..") || isAbsolute(child) || /[\r\n\\]/.test(name)) throw new Error("源码路径无效。");
+      if (!child || child.startsWith("..") || isAbsolute(child) || /[\r\n\\]/.test(name))
+        throw new Error(`快照导出已停止：源码路径无效：${JSON.stringify(name.slice(0, 2000))}。路径必须位于源码目录内，且不能包含换行或反斜杠。本次尚未生成提交、未推送或创建 PR。`);
       hash.update(name);
       let info;
       try { info = await lstat(path); } catch (error) {

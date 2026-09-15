@@ -375,7 +375,9 @@ export class EvolutionManager {
 
   /** Input: toolchain. Output: digest of tracked and nonignored untracked source, excluding build products. */
   async sourceHash(tools) {
-    const files = await run(tools.git, ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], { cwd: this.source, env: tools.env, signal: this.operationAbort?.signal });
+    const files = await run(tools.git, ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], {
+      cwd: this.source, env: tools.env, signal: this.operationAbort?.signal, trimOutput: false, rejectStderr: true,
+    });
     const hash = createHash("sha256");
     for (const name of [...new Set(files.split("\0").filter(Boolean))].sort()) {
       const path = resolve(this.source, name);

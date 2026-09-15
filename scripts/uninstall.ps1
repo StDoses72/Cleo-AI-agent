@@ -5,6 +5,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+# Keep redirected output, including localized PowerShell errors, readable by desktop callers.
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 
 if (-not $InstallRoot) {
     $InstallRoot = Join-Path $env:LOCALAPPDATA "Programs\Cleo"

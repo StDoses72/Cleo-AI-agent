@@ -44,6 +44,8 @@ data/session_artifacts/
 # Temporary test backups created during local validation.
 .codex-test-backup-*/
 .codex-test-tmp-*/
+/tests/.tmp-*/
+/tests/.diagnostic-deps/
 /.local-preview-*/
 
 # Cleo desktop UI dependencies and renderer artifacts.

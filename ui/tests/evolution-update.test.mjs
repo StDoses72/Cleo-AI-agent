@@ -23,7 +23,11 @@ test("verbose failed commands retain the exit code and last diagnostic", async (
 });
 
 test("metadata capture still refuses truncated results", async () => {
-  await assert.rejects(run(process.execPath, ["-e", verboseChild, "0"]), /操作输出超过限制/);
+  await assert.rejects(run(process.execPath, ["-e", "process.stdout.write('x'.repeat(17 * 1024 * 1024));"]), /操作输出超过限制/);
+});
+
+test("verbose diagnostics cannot overflow or contaminate successful metadata", async () => {
+  assert.equal(await run(process.execPath, ["-e", verboseChild, "0"]), "");
 });
 
 /** Purpose: Exercise installer state without launching an app. Input: none. Output: ready updater and emitted states. */

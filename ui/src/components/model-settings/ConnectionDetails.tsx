@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Info, X } from "lucide-react";
 import { cleoClient } from "../../services/cleoClient";
 import type { ApplyModelSettings, ModelProfileSummary, ModelSettings } from "../../types";
-import { billingLabel, isAccount, modelLabel, profileLabel, profileModels, providerInfo } from "./catalog";
+import { accountCheckScope, billingLabel, isAccount, modelLabel, profileLabel, profileModels, providerInfo } from "./catalog";
 import { ModelDialog } from "./ModelDialog";
 
 export type ConnectionStatus = { state: "connected" | "error" | "checking"; message?: string };
@@ -44,11 +44,12 @@ export function ConnectionDetails({ profile, settings, busy, activeProfileId, st
       <label className="ms-field"><span>连接名称</span><input value={name} onChange={e => setName(e.target.value)} disabled={busy} /></label>
       <dl className="ms-detail-info">
         <div><dt>服务商</dt><dd>{providerInfo(profile).name}</dd></div>
-        <div><dt>连接状态</dt><dd>{status?.state === "connected" ? "已验证" : status?.state === "checking" ? "验证中…" : status?.state === "error" ? "需要检查" : "已配置"}</dd></div>
+        <div><dt>连接状态</dt><dd>{status?.state === "connected" ? (isAccount(profile) ? "客户端检查通过" : "已验证") : status?.state === "checking" ? "验证中…" : status?.state === "error" ? "需要检查" : "已配置"}</dd></div>
         <div><dt>{isAccount(profile) ? "用量来源" : "API Key"}</dt><dd>{isAccount(profile) ? billingLabel(profile) : profile.hasApiKey ? "•••• •••• 已保存" : "未配置"}</dd></div>
         <div><dt>可用模型</dt><dd>{profileModels(profile).length} 个</dd></div>
       </dl>
       <div className="ms-detail-models">{profileModels(profile).map(id => <span key={id}>{modelLabel(id)}</span>)}</div>
+      {isAccount(profile) && <p className="ms-muted">{accountCheckScope}</p>}
       {status?.state === "error" && <p className="ms-error" role="alert">{status.message || "连接尚未通过验证。"}</p>}
       {error && <p className="ms-error" role="alert">{error}</p>}
       <button className="ms-link" disabled={busy} onClick={onReconnect}>{isAccount(profile) ? "重新登录" : "更新密钥与模型"}</button>

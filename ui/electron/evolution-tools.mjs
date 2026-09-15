@@ -5,28 +5,30 @@ import { exists, fileHash, readJson, writeJson } from "./evolution-store.mjs";
 
 const GITHUB = "https://api.github.com";
 
-/** Purpose: Run an argument array without a shell. Input: executable, args, process options. Output: bounded output. */
-export async function run(command, args, { cwd, env = process.env, log = () => {}, timeout = 1_800_000, successCodes = [0], signal, outputMode = "capture", stdin = "ignore" } = {}) {
+/** Purpose: Run an argument array without a shell. Input: executable, args, process options. Output: stdout or a bounded diagnostic tail. */
+export async function run(command, args, { cwd, env = process.env, log = () => {}, timeout = 1_800_000, successCodes = [0], signal, outputMode = "capture", stdin = "ignore", trimOutput = true, rejectStderr = false } = {}) {
   signal?.throwIfAborted();
   if (!["capture", "tail"].includes(outputMode)) throw new Error(`Unknown command output mode: ${outputMode}`);
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd, env, detached: process.platform !== "win32", windowsHide: true, stdio: [stdin, "pipe", "pipe"] });
     let output = "";
     let tail = "";
+    let stderrTail = "";
     let timedOut = false;
     let oversized = false;
-    const collect = (chunk) => {
+    const collect = (chunk, isStdout) => {
       const text = chunk.toString();
       tail = (tail + text).slice(-64 * 1024);
+      if (!isStdout) stderrTail = (stderrTail + text).slice(-64 * 1024);
       // Metadata must be complete; installation diagnostics only need a bounded tail.
-      if (outputMode === "capture" && !oversized) {
+      if (isStdout && outputMode === "capture" && !oversized) {
         if (output.length + text.length > 16 * 1024 * 1024) { oversized = true; output = ""; }
         else output += text;
       }
       log(text);
     };
-    child.stdout.setEncoding("utf8").on("data", collect);
-    child.stderr.setEncoding("utf8").on("data", collect);
+    child.stdout.setEncoding("utf8").on("data", (chunk) => collect(chunk, true));
+    child.stderr.setEncoding("utf8").on("data", (chunk) => collect(chunk, false));
     // Both cancellation and timeout stop descendants before releasing the operation.
     const stop = () => {
       if (process.platform === "win32" && child.pid) {
@@ -46,7 +48,9 @@ export async function run(command, args, { cwd, env = process.env, log = () => {
       if (timedOut) { reject(new Error("操作超时，已停止进程。请检查日志后重试。")); return; }
       if (!successCodes.includes(code)) { reject(new Error(`${command.split(/[\\/]/).at(-1)} 执行失败 (${code})\n${tail.slice(-3000)}`)); return; }
       if (oversized) { reject(new Error("操作输出超过限制，已停止使用不完整的结果。")); return; }
-      resolve((outputMode === "tail" ? tail : output).trim());
+      if (rejectStderr && stderrTail) { reject(new Error(`命令返回诊断，无法确认输出完整。请检查源码读取权限或排除临时文件后重试。\n${stderrTail.slice(-3000)}`)); return; }
+      const result = outputMode === "tail" ? tail : output;
+      resolve(trimOutput ? result.trim() : result);
     });
   });
 }

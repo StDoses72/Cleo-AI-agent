@@ -134,6 +134,44 @@ test("linked obsolete directories cannot delete external data and cleanup can be
   assert.ok(await exists(join(store.root, "builds/obsolete")), "A missing recovery base suspends cleanup.");
 });
 
+test("contribution history does not pin superseded programs or lose receipts and snapshots", async (t) => {
+  const { store, add } = await fixture(t);
+  await add("workspace", { savedAt: "2026-01-01" });
+  await add("requested", { savedAt: "2026-02-01" });
+  await add("pending", { savedAt: "2026-03-01" });
+  await add("current", { savedAt: "2026-04-01" });
+  const snapshot = join(store.root, "submission-snapshots/pending/source.txt");
+  await mkdir(dirname(snapshot), { recursive: true });
+  await writeFile(snapshot, "pending contribution source");
+  const branchRequests = [
+    { buildId: "requested", status: "requested" },
+    { buildId: "pending", status: "ready" },
+  ];
+  const pendingPullRequests = [{ buildId: "pending", snapshot: { directory: dirname(snapshot) } }];
+  await store.update({ active: "current", workspaceBase: "workspace", latestSaved: "current",
+    selectedBase: "current", candidate: null, branchRequests, pendingPullRequests });
+  await store.healthy();
+  const state = await store.read();
+  assert.deepEqual(state.builds.map((build) => build.id), ["baseline", "workspace", "current"]);
+  assert.deepEqual(state.branchRequests, branchRequests);
+  assert.deepEqual(state.pendingPullRequests, pendingPullRequests);
+  assert.equal(await exists(join(store.root, "builds/requested")), false);
+  assert.equal(await exists(join(store.root, "builds/pending")), false);
+  assert.equal(await readFile(snapshot, "utf8"), "pending contribution source");
+  assert.equal(await readFile(join(store.dataHome, "data/latest.json"), "utf8"), "latest user data");
+});
+
+test("missing historical contribution builds do not suspend successful startup cleanup", async (t) => {
+  const { store, add } = await fixture(t);
+  await add("obsolete");
+  await store.update({ candidate: null,
+    branchRequests: [{ buildId: "missing-branch-build", status: "ready" }],
+    pendingPullRequests: [{ buildId: "missing-pr-build" }] });
+  await store.healthy();
+  assert.deepEqual((await store.read()).builds.map((build) => build.id), ["baseline"]);
+  assert.equal(await exists(join(store.root, "builds/obsolete")), false);
+});
+
 test("startup and UI mutations sharing a registry cannot overlap cleanup", async (t) => {
   const { store } = await fixture(t);
   const other = new EvolutionStore(store.root, store.dataHome);

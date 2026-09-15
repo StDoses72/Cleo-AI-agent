@@ -1,5 +1,7 @@
 import type { ModelProfileSummary } from "../../types";
 
+export const accountCheckScope = "仅检查客户端连接、登录状态和模型列表；未发送模型请求，额度及 MCP 工具执行尚未验证。";
+
 export const apiProviders = [
   { id: "openai", name: "OpenAI", mark: "O", provider: "openai", baseUrl: "https://api.openai.com/v1" },
   { id: "anthropic", name: "Anthropic", mark: "A", provider: "anthropic", baseUrl: "https://api.anthropic.com" },

@@ -201,9 +201,7 @@ export class EvolutionStore {
       .sort((a, b) => b.savedAt.localeCompare(a.savedAt));
     const latestSaved = saved.find((build) => build.id === state.latestSaved)?.id || saved[0]?.id || null;
     const keep = new Set([state.baseline, workspaceBase, latestSaved, state.active,
-      state.selectedBase, state.iteration?.base, state.candidate, state.downloadedOfficial, state.pendingImport?.from,
-      ...(state.branchRequests || []).map((request) => request.buildId),
-      ...(state.pendingPullRequests || []).map((request) => request.buildId)].filter(Boolean));
+      state.selectedBase, state.iteration?.base, state.candidate, state.downloadedOfficial, state.pendingImport?.from].filter(Boolean));
     const executingPath = relative(ownedPath(this.root, "builds"), resolve(process.execPath));
     if (!executingPath.startsWith("..") && !isAbsolute(executingPath)) keep.add(executingPath.split(/[\\\\/]/)[0]);
     // Missing recovery dependencies must not turn a damaged registry into destructive cleanup.

@@ -17,6 +17,7 @@ from claude_agent_sdk import (
     ThinkingBlock,
     ToolResultBlock,
     ToolUseBlock,
+    UserMessage,
 )
 
 from cleo.harnesses.control import HarnessModel, SessionOptions
@@ -24,6 +25,7 @@ from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 from cleo.harnesses.provider import ProviderSession, ProviderTurn
 from cleo.harnesses.questions import QuestionBroker, normalize_questions
 from cleo.integrations.harnesses.memory import MemoryMcp
+from cleo.integrations.runtime_diagnostics import diagnostic_text
 
 ClaudePermissionMode = Literal[
     "default",
@@ -221,18 +223,10 @@ class ClaudeProvider:
         prompt: str,
         on_event: EventCallback | None = None,
     ) -> ProviderTurn:
-        """发送一次 query 并流式消费 SDK 消息直至 turn 结束。
-
-        由 ``AgentAdapter.prompt`` 调用; 同一 session 通过锁串行执行。
-        参数:
-            session_id: ``create_session`` / ``resume_session`` 返回的逻辑 id。
-            prompt: 用户输入文本, 由 AgentAdapter 传入, 交给 SDK ``query``。
-            on_event: 实时事件回调, 由 AgentAdapter 传入, 每个消息 block
-                转换出的 ``AgentEvent`` 都会推送给它。
-        返回:
-            ``ProviderTurn``, status/response/error 取自 SDK ResultMessage,
-            events 为本 turn 全部事件; 由 AgentAdapter 持久化并返回给 CLI。
-            SDK 未返回 ResultMessage 时抛 ``RuntimeError``。
+        """Purpose: Consume a serialized SDK turn, including user-wrapped tool results.
+        Input: Logical session ID, user prompt and optional event callback.
+        Output: ProviderTurn with native ID, events and redacted terminal errors;
+            raises RuntimeError if the SDK ends without a ResultMessage.
         """
         runtime = self._sessions[session_id]
         events: list[AgentEvent] = []
@@ -259,6 +253,13 @@ class ClaudeProvider:
                             if event.type == "agent_message" and event.text:
                                 response_parts.append(event.text)
                             await emit_event(on_event, event)
+                    elif isinstance(message, UserMessage) and isinstance(message.content, list):
+                        # SDK tool results arrive as user messages, not assistant blocks.
+                        for block in message.content:
+                            if isinstance(block, ToolResultBlock):
+                                event = self._block_event(block)
+                                events.append(event)
+                                await emit_event(on_event, event)
                     elif isinstance(message, ResultMessage):
                         result_message = message
                         runtime.native_session_id = message.session_id
@@ -272,7 +273,10 @@ class ClaudeProvider:
         response = result_message.result or "".join(response_parts) or None
         error = None
         if result_message.is_error:
-            error = "; ".join(result_message.errors or []) or result_message.result
+            error = diagnostic_text(
+                "; ".join(result_message.errors or []) or result_message.result
+                or f"Claude SDK result: {result_message.subtype}", prompt=prompt,
+            )
         status = "failed" if result_message.is_error else "completed"
         if result_message.stop_reason == "cancelled":
             status = "cancelled"
@@ -393,7 +397,9 @@ class ClaudeProvider:
                             break
                         if server and server["status"] != "pending":
                             raise RuntimeError(
-                                f"Cleo memory MCP failed to connect: {server['status']}"
+                                "Cleo memory MCP failed to connect: "
+                                + diagnostic_text(str(server['status']) + "; "
+                                                  + str(server.get('error') or ''))
                             )
                         await asyncio.sleep(0.1)
             except BaseException:

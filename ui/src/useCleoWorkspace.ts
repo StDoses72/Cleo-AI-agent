@@ -305,6 +305,11 @@ export function useCleoWorkspace(evolutionOpen = false) {
       });
   };
 
+  /** Purpose: Open an empty task in whichever view is on screen.
+   * Input: none. Output: the active view's selection is cleared; saved tasks stay untouched.
+   * Each view owns its own selected thread, so clearing the workspace selection while the
+   * evolution view is open left the old task on screen and the action did nothing at all.
+   */
   const startNewThread = () => {
     selectionRef.current += 1;
     if (activeSpace === "chat" && runtimeCatalog?.defaultNonProductivityProfile) {
@@ -315,7 +320,8 @@ export function useCleoWorkspace(evolutionOpen = false) {
       setDraftModel(activeThread.runtime?.model ?? draftModel);
       setDraftEffort(activeThread.runtime?.effort ?? draftEffort);
     }
-    setActiveThreadId(null);
+    if (evolutionOpen) beginEvolutionDraft();
+    else setActiveThreadId(null);
   };
 
   const createThread = async () => {

@@ -13,6 +13,7 @@ from tempfile import TemporaryDirectory
 
 from cleo.harnesses.models import AgentEvent, emit_event
 from cleo.harnesses.provider import ProviderSession, ProviderTurn
+from cleo.integrations.runtime_diagnostics import StderrCapture, diagnostic_text
 
 
 def process_options() -> dict:
@@ -49,6 +50,10 @@ async def stop_process(process) -> None:
 
 
 async def auth_status(profile) -> dict:
+    """Purpose: Check official login without implying a model turn succeeded.
+    Input: Runtime profile selecting the same CLI used for chat.
+    Output: Login status or bounded, redacted CLI failure details.
+    """
     from cleo.integrations.subscriptions import executable, runtime_environment
 
     process = await asyncio.create_subprocess_exec(
@@ -61,10 +66,24 @@ async def auth_status(profile) -> dict:
         **process_options(),
     )
     try:
-        stdout, _stderr = await asyncio.wait_for(process.communicate(), 20)
-        payload = json.loads(stdout)
+        stdout, stderr = await asyncio.wait_for(process.communicate(), 20)
+        try:
+            payload = json.loads(stdout)
+        except (ValueError, UnicodeDecodeError):
+            payload = None
+        if not isinstance(payload, dict):
+            detail = diagnostic_text(stderr.decode("utf-8", errors="replace"))
+            raise ValueError(
+                f"Claude Code auth status returned invalid JSON (exit_code={process.returncode}). "
+                + detail
+            )
         if process.returncode or not payload.get("loggedIn"):
-            raise ValueError("请先运行 claude auth login，完成 Claude Code 官方登录。")
+            detail = diagnostic_text(stderr.decode("utf-8", errors="replace"))
+            raise ValueError(
+                f"Claude Code 登录检查未通过 (exit_code={process.returncode}, "
+                f"loggedIn={payload.get('loggedIn') is True})。"
+                f"请运行 claude auth login 完成官方登录。 {detail}"
+            )
         return {"status": "connected", "models": []}
     finally:
         await stop_process(process)
@@ -89,6 +108,10 @@ class ClaudeCliProvider:
         return ProviderSession(native_session_id, native_session_id)
 
     async def prompt(self, session_id, prompt, on_event=None):
+        """Purpose: Stream one CLI turn and retain evidence when it fails.
+        Input: Logical session ID, user prompt and optional event callback.
+        Output: Completed turn and reusable native ID, or a redacted diagnostic error.
+        """
         from cleo.integrations.subscriptions import executable, runtime_environment
 
         cwd, native_id = self._sessions[session_id]
@@ -134,19 +157,35 @@ class ClaudeCliProvider:
             )
             self._processes[session_id] = process
 
-            # Drain stderr while streaming stdout; never place login tokens in model output.
-            async def drain_errors():
-                while await process.stderr.read(8192):
-                    pass
-
-            errors = asyncio.create_task(drain_errors())
+            stderr = StderrCapture()
+            errors = asyncio.create_task(stderr.drain(process.stderr))
             result = None
+            protocol_error = False
+            mcp_status = ""
             try:
-                process.stdin.write(prompt.encode("utf-8"))
-                await process.stdin.drain()
-                process.stdin.close()
+                try:
+                    process.stdin.write(prompt.encode("utf-8"))
+                    await process.stdin.drain()
+                except (BrokenPipeError, ConnectionResetError):
+                    # A CLI that rejects its arguments can close stdin before we write.
+                    pass
+                finally:
+                    process.stdin.close()
                 async for line in process.stdout:
-                    payload = json.loads(line)
+                    if not line.strip():
+                        continue
+                    try:
+                        payload = json.loads(line)
+                    except (ValueError, UnicodeDecodeError):
+                        protocol_error = True
+                        continue
+                    if not isinstance(payload, dict):
+                        protocol_error = True
+                        continue
+                    if payload.get("type") == "system" and payload.get("subtype") == "init":
+                        for server in payload.get("mcp_servers", []):
+                            if isinstance(server, dict) and server.get("name") == "cleo-tools":
+                                mcp_status = diagnostic_text(str(server.get("status")), limit=80)
                     if payload.get("type") == "stream_event":
                         event = payload.get("event", {})
                         delta = event.get("delta", {})
@@ -177,10 +216,30 @@ class ClaudeCliProvider:
                                     ),
                                 )
                 await process.wait()
-                if process.returncode or result is None or result.get("is_error"):
+                await errors
+                if result and isinstance(result.get("session_id"), str):
+                    self._sessions[session_id] = (cwd, result["session_id"])
+                if process.returncode or result is None or result.get("is_error") or protocol_error:
+                    state = "missing" if result is None else (
+                        "error" if result.get("is_error") else "success"
+                    )
+                    evidence = [f"exit_code={process.returncode}", f"result={state}"]
+                    if result and result.get("subtype"):
+                        evidence.append("subtype=" + diagnostic_text(str(result["subtype"])))
+                    if mcp_status:
+                        evidence.append("cleo-tools=" + mcp_status)
+                    if protocol_error:
+                        evidence.append("invalid stream-json")
+                    details = []
+                    if result and result.get("is_error"):
+                        for field in ("errors", "result"):
+                            if result.get(field):
+                                details.append(diagnostic_text(str(result[field]), prompt=prompt))
+                    if text := stderr.text(prompt):
+                        details.append("stderr: " + text)
                     raise RuntimeError(
-                        "Claude Code did not complete the turn. "
-                        "Check its login, quota and MCP access."
+                        "Claude Code did not complete the turn (" + "; ".join(evidence) + "). "
+                        + (" ".join(details) or "CLI 未提供错误详情。")
                     )
                 return ProviderTurn(
                     native_session_id=result.get("session_id"),

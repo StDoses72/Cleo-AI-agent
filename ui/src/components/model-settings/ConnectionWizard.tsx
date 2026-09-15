@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, ExternalLink, Eye, Info, KeyRound, UserRound } from "lucide-react";
 import { cleoClient } from "../../services/cleoClient";
 import type { ApplyModelSettings, ModelConnectionInput, ModelConnectionProbe, ModelProfileInput, ModelProfileSummary, ModelSettings, SubscriptionLogin, SubscriptionRuntime } from "../../types";
-import { accounts, apiProviders, isAccount, modelLabel, profileLabel, profileModels } from "./catalog";
+import { accountCheckScope, accounts, apiProviders, isAccount, modelLabel, profileLabel, profileModels } from "./catalog";
 
 const message = (error: unknown) => error instanceof Error ? error.message : "连接失败，请重试。";
 
@@ -154,6 +154,7 @@ export function ConnectionWizard({ existing, settings, busy, onApply, onDone }: 
           </form>}
           {step === "connect" && type === "account" && account && <>
             <div className="ms-billing"><Info /><div><strong>{account.billing}</strong><p>{account.note}</p></div></div>
+            <p className="ms-muted">{accountCheckScope}</p>
             {login?.status === "pending" ? <div className="ms-waiting"><div className="ms-spinner" /><h3>等待账号授权</h3>{login.url?.startsWith("https://") && <a className="ms-secondary" href={login.url} target="_blank" rel="noreferrer">打开官方登录页面<ExternalLink /></a>}<button className="ms-quiet" disabled={working} onClick={() => void cancelLogin()}>取消登录</button></div> : <>
               <button className="ms-primary ms-full" disabled={locked} onClick={() => void startLogin()}><ExternalLink />{working ? "正在连接…" : account.login}</button>
               <button className="ms-quiet ms-full" disabled={locked} onClick={() => void readModels()}>已登录，验证连接</button>
@@ -162,7 +163,8 @@ export function ConnectionWizard({ existing, settings, busy, onApply, onDone }: 
             <details className="ms-advanced"><summary>高级设置</summary><label className="ms-field"><span>官方客户端路径（可选）</span><input value={executable} onChange={e => setExecutable(e.target.value)} placeholder="自动查找本机已安装的客户端" disabled={locked} /></label>{runtime && <a className="ms-link" href={runtime.docs} target="_blank" rel="noreferrer">安装官方客户端<ExternalLink /></a>}</details>
           </>}
           {step === "models" && <>
-            {probe?.status === "connected" && <div className="ms-connected"><Check />连接验证成功</div>}
+            {probe?.status === "connected" && <div className="ms-connected"><Check />{type === "account" ? "客户端检查通过" : "连接验证成功"}</div>}
+            {type === "account" && <p className="ms-muted">{accountCheckScope}</p>}
             <label className="ms-field"><span>连接名称</span><input value={name} onChange={e => setName(e.target.value)} disabled={busy} /></label>
             <div className="ms-models-label">选择要添加的模型<span>已选 {chosen.length}</span></div>
             <input className="ms-model-filter" aria-label="筛选可用模型" placeholder="搜索可用模型" value={modelQuery} onChange={e => setModelQuery(e.target.value)} />
