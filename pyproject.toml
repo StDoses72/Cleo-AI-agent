@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cleo-ai-agent"
+version = "0.4.4"
+description = "A local-first AI workspace for chat, developer agents, resumable sessions, and scoped memory."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "agent-client-protocol>=0.11",
+  "claude-agent-sdk>=0.2",
+  "deepagents",
+  "fastmcp>=3.4",
+  "langchain",
+  "langchain-core",
+  "langchain-anthropic",
+  "langchain-google-genai",
+  "langchain-openai",
+  "httpx",
+  "langgraph",
+  "openai-codex>=0.147",
+  "platformdirs>=4.4",
+  "pydantic",
+  "rich",
+  "textual>=7",
+  "textual-image>=0.8.5",
+  "tiktoken",
+  "uv>=0.11",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "ruff",
+]
+
+[project.scripts]
+cleo = "cleo.cli.application:main"
+cleo-codex-mcp = "cleo.mcp.codex_server:main"
+cleo-memory-mcp = "cleo.mcp.memory_server:main"
+
+[tool.setuptools]
+py-modules = ["main"]
+
+[tool.setuptools.packages.find]
+include = ["cleo*"]
+
+[tool.setuptools.package-data]
+"cleo.config" = ["templates/*.json"]
+"cleo.images" = ["assets/*.png"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
