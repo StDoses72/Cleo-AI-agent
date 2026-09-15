@@ -353,7 +353,7 @@ class HarnessSwitchTests(unittest.IsolatedAsyncioTestCase):
             manifest.pop(key, None)
         path.write_text(json.dumps(manifest))
         switched = await self.adapter.switch_session(self.id, "b")
-        self.assertEqual(switched.project_path, str(self.root))
+        self.assertEqual(Path(switched.project_path), self.root)
         self.assertNotIn("cwd", self.store.load_manifest(self.id))
         log = events_path(self.store.memory_root, "productivity", "project", self.id)
         log.write_bytes(log.read_bytes() + b"{broken event")
