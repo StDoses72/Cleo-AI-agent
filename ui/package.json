@@ -1,0 +1,49 @@
+{
+  "name": "cleo-desktop",
+  "productName": "Cleo",
+  "version": "0.4.4",
+  "private": true,
+  "type": "module",
+  "main": "electron/bootstrap.mjs",
+  "scripts": {
+    "start": "npm run build && electron .",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b",
+    "test:evolution": "node --test electron/evolution-*.test.mjs tests/evolution-*.test.mjs",
+    "smoke:evolution-recovery": "node tests/evolution-recovery.smoke.mjs",
+    "smoke:evolution-baseline": "node tests/evolution-baseline.smoke.mjs",
+    "smoke:evolution-installed": "node tests/evolution-installed.smoke.mjs",
+    "smoke:evolution-installed-package": "node tests/evolution-installed-package.smoke.mjs",
+    "smoke:evolution": "npm run build && node scripts/smoke-evolution.mjs",
+    "test:backend": "node --test electron/platform.test.mjs electron/posix-installer.test.mjs electron/install-state.test.mjs electron/attachments.test.mjs electron/backend.test.mjs electron/dependencies.test.mjs electron/local-files.test.mjs electron/updater.test.mjs tests/timeline-cache.test.mjs tests/release-downloads.test.mjs tests/program-updates.test.mjs tests/shutdown.test.mjs",
+    "smoke:history": "node scripts/smoke-history.mjs",
+    "smoke:layout": "node scripts/smoke-layout.mjs",
+    "smoke:program-updates": "node scripts/smoke-program-updates.mjs",
+    "package:portable": "node ../scripts/build-release.mjs",
+    "smoke": "npm run build && node scripts/smoke.mjs",
+    "smoke:approvals": "npm run build && node scripts/smoke-approvals.mjs",
+    "smoke:update": "npm run build && node scripts/smoke-update.mjs",
+    "smoke:ux": "npm run build && node scripts/smoke-ux.mjs",
+    "smoke:inspector": "npm run build && node scripts/smoke-inspector.mjs",
+    "smoke:real": "npm run build && node scripts/smoke-real.mjs",
+    "smoke:packaged": "node scripts/smoke-packaged.mjs"
+  },
+  "dependencies": {
+    "lucide-react": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "react-markdown": "latest",
+    "remark-gfm": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@vitejs/plugin-react": "latest",
+    "electron": "latest",
+    "@electron/asar": "latest",
+    "playwright": "latest",
+    "typescript": "latest",
+    "vite": "latest"
+  }
+}
