@@ -8,6 +8,15 @@ import "../../src/components/evolution.css";
 import type { EvolutionState } from "../../src/evolution-types";
 import type { UpdateState } from "../../src/types";
 
+declare global {
+  interface Window {
+    releaseTest: { holdNext: boolean; finishRead?: (ok: boolean) => void; reads: string[]; offset: number; login: string };
+  }
+}
+window.releaseTest = { holdNext: false, reads: [], offset: 0, login: "fixture-owner" };
+const now = Date.now;
+Date.now = () => now() + window.releaseTest.offset;
+
 const url = "https://github.com/StDoses72/Cleo-AI-agent/pull/42";
 const initial: EvolutionState = { phase: "idle", supported: true, prepared: false, draftDirty: true, currentVersion: "0.6.0",
   active: "different-running-version", baseline: null, baseTag: "v0.6.0", source: "fixture", threadId: null, error: null, logs: "",
@@ -42,7 +51,20 @@ function Fixture() {
     setCalls(current => [...current, { name, params }]);
     if (name === "retryRelease") setState(current => ({ ...current, releaseJob: { ...current.releaseJob!, phase: "building", message: "正在重试构建" } }));
     if (name === "cancelRelease") setState(current => ({ ...current, releaseJob: { ...current.releaseJob!, phase: "cancelled", message: "发布已停止" } }));
-    if (name === "releasePermission") setState(initial);
+    if (name === "releasePermission" || name === "previewMergedRelease") {
+      window.releaseTest.reads.push(String(params?.url || "permission"));
+      if (window.releaseTest.holdNext) {
+        window.releaseTest.holdNext = false;
+        const ok = await new Promise<boolean>(resolve => { window.releaseTest.finishRead = resolve; });
+        if (!ok) throw new Error("旧来源的迟到错误");
+      }
+      await new Promise(resolve => setTimeout(resolve, 80));
+      const auth = { ...initial.githubAuth!, repositoryAccess: { ...initial.githubAuth!.repositoryAccess!, login: window.releaseTest.login } };
+      setState(current => ({ ...current, githubAuth: auth }));
+      if (name === "releasePermission") return auth.repositoryAccess;
+      if (String(params?.url).endsWith("/44")) throw new Error("该 PR 尚未合并，暂不可发布。");
+      return { url: params?.url, commit: "verified-merge", login: auth.repositoryAccess.login };
+    }
     if (name === "startRelease") {
       await new Promise(resolve => setTimeout(resolve, 250));
       if (failPublish) { setFailPublish(false); throw new Error("网络中断，请恢复连接后使用相同标签重试。"); }
@@ -54,6 +76,10 @@ function Fixture() {
     }
   };
   return <main style={{ maxWidth: 660, margin: "0 auto", padding: 16 }}>
+    <button onClick={() => {
+      window.releaseTest.login = "another-account";
+      setState(current => ({ ...current, githubAuth: { ...current.githubAuth!, repositoryAccess: { ...current.githubAuth!.repositoryAccess!, login: window.releaseTest.login } } }));
+    }}>切换账号（测试）</button>
     <button onClick={() => setState(current => ({ ...current, releaseJob: { ...current.releaseJob!, phase: "repairing", message: "正在调用 harness 修复发布问题（1/3）" } }))}>模拟修复</button>
     <button onClick={() => setState(current => ({ ...current, releaseJob: { ...current.releaseJob!, phase: "failed", message: "发布未完成", error: "测试构建失败" } }))}>模拟失败</button>
     <button onClick={() => setState(current => ({ ...current, releaseJob: { ...current.releaseJob!, phase: "completed", message: "安装包已齐全", releaseUrl: "https://github.com/StDoses72/Cleo-AI-agent/releases/tag/v0.8.0" } }))}>模拟完成</button>
@@ -62,10 +88,10 @@ function Fixture() {
       ...current.githubAuth!.repositoryAccess!, canRelease: false, role: "read-only", message: "当前账号没有直接发布权限，仍可提交 PR。" } } }))}>撤销权限（测试）</button>
     <EvolutionPanel state={state} busy={false} running={false} error={null} inspectorOpen={false}
       onToggleInspector={() => {}} onRetry={() => {}} onRepair={() => {}} onAction={action} />
-    <div className="evolution-dialog" style={{ width: "100%", maxWidth: "100%", maxHeight: "none" }}>
+    <details open><summary>发布表单</summary><div className="evolution-dialog" style={{ width: "100%", maxWidth: "100%", maxHeight: "none" }}>
       <ReleasePublisher state={state} initialUrl={url} buildId="local" busy={busy} onBusy={setBusy} onAction={action} />
-    </div>
-    <UpdateVersionPicker state={update} busy={false} />
+    </div></details>
+    <UpdateVersionPicker state={update} busy={false} onSelect={tag => void window.cleoDesktop!.checkForUpdates(tag)} />
     <output data-testid="calls" hidden>{JSON.stringify(calls)}</output>
   </main>;
 }

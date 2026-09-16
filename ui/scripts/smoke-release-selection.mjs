@@ -1,16 +1,18 @@
 import assert from "node:assert/strict";
-import { mkdir } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 import { chromium } from "playwright";
 
 const ui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const server = await createServer({ root: ui, server: { host: "127.0.0.1", port: 0 } });
+const scratch = await mkdtemp(join(tmpdir(), "cleo-release-ui-"));
+const server = await createServer({ root: ui, cacheDir: join(scratch, "vite"), server: { host: "127.0.0.1", port: 0 } });
 let browser;
 try {
   await server.listen();
-  browser = await chromium.launch({ channel: process.env.CLEO_TEST_BROWSER || "msedge", headless: true });
+  browser = await chromium.launch({ executablePath: process.env.CLEO_TEST_BROWSER, headless: true });
   const page = await browser.newPage();
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
@@ -21,7 +23,34 @@ try {
   assert.equal(await page.getByLabel("发布类型", { exact: true }).inputValue(), "stable");
   assert.match(await page.getByLabel("发布来源 PR").innerText(), /PR release candidate.*0\.6\.1/);
   assert.match(await page.getByLabel("发布来源 PR").innerText(), /Historical merged version/);
-  const output = join(ui, "output/playwright/releases");
+  const publish = page.getByRole("button", { name: "发布", exact: true });
+  await publish.and(page.locator(":enabled")).waitFor();
+  assert.equal(await page.getByRole("button", { name: "重新检查发布权限" }).count(), 0);
+  assert.deepEqual(await page.evaluate(() => window.releaseTest.reads), ["https://github.com/StDoses72/Cleo-AI-agent/pull/42"]);
+  await page.evaluate(() => { window.releaseTest.holdNext = true; });
+  await page.getByLabel("发布来源 PR").selectOption("https://github.com/StDoses72/Cleo-AI-agent/pull/43");
+  await page.waitForFunction(() => Boolean(window.releaseTest.finishRead));
+  await page.getByLabel("版本标签", { exact: true }).fill("v0.7.1");
+  await page.getByLabel("发布来源 PR").selectOption("https://github.com/StDoses72/Cleo-AI-agent/pull/42");
+  assert.equal(await publish.isDisabled(), true);
+  await page.evaluate(() => window.releaseTest.finishRead(false));
+  await publish.and(page.locator(":enabled")).waitFor();
+  assert.equal(await page.getByText("旧来源的迟到错误", { exact: true }).count(), 0);
+  assert.equal(await page.getByLabel("版本标签", { exact: true }).inputValue(), "v0.7.1");
+  const beforeHidden = await page.evaluate(() => window.releaseTest.reads.length);
+  await page.getByText("发布表单", { exact: true }).click();
+  await page.evaluate(() => { window.releaseTest.offset += 60001; window.dispatchEvent(new Event("focus")); });
+  assert.equal(await page.evaluate(() => window.releaseTest.reads.length), beforeHidden);
+  await page.getByText("发布表单", { exact: true }).click();
+  await page.waitForFunction(count => window.releaseTest.reads.length === count + 1, beforeHidden);
+  await publish.and(page.locator(":enabled")).waitFor();
+  assert.equal(JSON.parse(await page.getByTestId("calls").textContent()).filter(call => call.name === "startRelease").length, 0);
+  const beforeAccountChange = await page.evaluate(() => window.releaseTest.reads.length);
+  await page.getByRole("button", { name: "切换账号（测试）", exact: true }).click();
+  await page.waitForFunction(count => window.releaseTest.reads.length > count, beforeAccountChange);
+  await publish.and(page.locator(":enabled")).waitFor();
+  await page.getByText("发布账号：another-account", { exact: true }).waitFor();
+  const output = process.env.CLEO_SMOKE_OUTPUT || join(scratch, "screenshots");
   await mkdir(output, { recursive: true });
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 });
@@ -38,7 +67,7 @@ try {
   await page.locator(".release-publisher form").evaluate(form => form.requestSubmit());
   await page.getByText("发布任务已启动", { exact: false }).waitFor();
   assert.equal(await page.getByRole("link", { name: "查看 PR", exact: true }).getAttribute("href"), "https://github.com/StDoses72/Cleo-AI-agent/pull/42");
-  const calls = JSON.parse(await page.getByTestId("calls").textContent());
+  const calls = JSON.parse(await page.getByTestId("calls").textContent()).filter(call => call.name === "startRelease");
   assert.equal(calls.at(-1).params.prerelease, true);
   assert.equal(calls.length, 1, "One click performs one serialized action; repeated submit is ignored");
   assert.equal(calls[0].name, "startRelease");
@@ -53,6 +82,7 @@ try {
   await page.getByRole("button", { name: "模拟完成", exact: true }).click();
   await page.getByRole("link", { name: "v0.8.0-beta.1 已发布", exact: true }).waitFor();
   assert.equal(await page.locator(".evolution-actionbar .evolution-spin").count(), 0);
+  await page.getByText("其他版本", { exact: true }).click();
   await page.getByLabel("目标更新版本").selectOption("v0.8.0-beta.1");
   assert.equal(await page.getByLabel("目标更新版本").inputValue(), "v0.8.0-beta.1");
   await page.getByLabel("目标更新版本").selectOption("v0.3.0");
@@ -70,7 +100,7 @@ try {
   await page.getByLabel("版本标签", { exact: true }).fill("abc");
   await page.getByRole("button", { name: "发布", exact: true }).click();
   await page.getByRole("alert").filter({ hasText: "合法版本号" }).waitFor();
-  assert.deepEqual(JSON.parse(await page.getByTestId("calls").textContent()), []);
+  assert.equal(JSON.parse(await page.getByTestId("calls").textContent()).filter(call => call.name === "startRelease").length, 0);
   await page.getByLabel("版本标签", { exact: true }).fill("v0.8.0");
   await page.getByRole("button", { name: "发布", exact: true }).click();
   await page.getByText("发布任务已启动", { exact: false }).waitFor();
@@ -90,16 +120,18 @@ try {
   assert.equal(selectedCalls.at(-1).params.commit, undefined, "Old commit must not be reused");
   await page.getByRole("button", { name: "模拟完成", exact: true }).click();
   await page.getByLabel("发布来源 PR").selectOption("https://github.com/StDoses72/Cleo-AI-agent/pull/44");
-  await page.getByRole("button", { name: "发布", exact: true }).click();
   await page.getByRole("alert").filter({ hasText: "尚未合并" }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "发布", exact: true }).isDisabled(), true);
   assert.equal(await page.getByRole("link", { name: "查看 GitHub Release" }).count(), 0);
   await page.reload();
   await page.getByLabel("版本标签", { exact: true }).fill("v0.9.0");
+  await page.getByRole("button", { name: "发布", exact: true }).and(page.locator(":enabled")).waitFor();
   assert.equal(await page.getByRole("button", { name: "发布", exact: true }).isEnabled(), true);
   await page.getByRole("button", { name: "撤销权限（测试）" }).click();
   assert.equal(await page.getByRole("button", { name: "发布", exact: true }).isDisabled(), true);
   assert.equal(await page.getByRole("button", { name: "继续提交 PR", exact: true }).isEnabled(), true);
-  await page.getByRole("button", { name: "重新检查发布权限" }).click();
+  await page.getByRole("button", { name: "重试", exact: true }).click();
+  await page.getByRole("button", { name: "发布", exact: true }).and(page.locator(":enabled")).waitFor();
   assert.equal(await page.getByRole("button", { name: "发布", exact: true }).isEnabled(), true);
   await page.getByRole("button", { name: "下次发布失败（测试）" }).click();
   await page.getByRole("button", { name: "发布", exact: true }).click();
@@ -110,4 +142,8 @@ try {
   await page.getByText("发布任务已启动", { exact: false }).waitFor();
   assert.deepEqual(errors, []);
   console.log("PASS: one-click defaults/validation/source switching, duplicate submission guard, permissions/recovery, failed-publish retry, background progress, bounded repair state, resume and completion, release links/types, update selection, desktop/mobile layout");
-} finally { await browser?.close(); await server.close(); }
+} finally {
+  await browser?.close(); await server.close();
+  assert.equal(dirname(scratch), resolve(tmpdir()));
+  await rm(scratch, { recursive: true, force: true });
+}

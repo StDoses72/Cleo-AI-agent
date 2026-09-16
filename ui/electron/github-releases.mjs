@@ -148,7 +148,7 @@ export async function previewMergedRelease(manager, { url }) {
     const access = await checkReleasePermission(manager, tools);
     if (!access.canRelease) throw new Error(access.message);
     return { ...await mergedReleaseSource(manager, tools, url), login: access.login };
-  }, { prune: false });
+  }, { prune: false, preserveDiagnostics: true });
 }
 
 async function optionalApi(manager, tools, path) {

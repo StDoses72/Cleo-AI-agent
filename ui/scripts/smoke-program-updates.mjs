@@ -115,11 +115,11 @@ try {
   const setEvolution = patch => page.evaluate(patch => window.__programUpdatesTest.setEvolution(patch), patch);
   const counts = () => page.evaluate(() => ({ ...window.__programUpdatesTest.calls }));
   const closeSettings = async () => {
-    if (await settings.count()) await settings.getByRole("button", { name: "关闭设置", exact: true }).click();
-    await settings.waitFor({ state: "detached" });
+    if (await settings.isVisible()) await settings.getByRole("button", { name: "关闭设置", exact: true }).click();
+    await settings.waitFor({ state: "hidden" });
   };
   async function openUpdates() {
-    if (!await settings.count()) await page.getByRole("button", { name: "设置", exact: true }).click();
+    if (!await settings.isVisible()) await page.getByRole("button", { name: "设置", exact: true }).click();
     await settings.getByRole("button", { name: "更新", exact: true }).click();
     await page.locator(".update-settings-page").waitFor();
   }
@@ -183,8 +183,7 @@ try {
   await assertDisabled(updateAction, true, "Settings download action ignores operationBusy");
   await assertDisabled(notice.getByRole("button", { name: "下载", exact: true }), true, "Notice download action ignores operationBusy");
   await setUpdate({ phase: "up-to-date", operationBusy: true });
-  await settings.getByRole("button", { name: "重新检查", exact: true }).waitFor();
-  await assertDisabled(updateAction, true, "Update check ignores operationBusy");
+  assert.equal(await updateAction.count(), 0, "A current version does not need a manual check button");
   assert.deepEqual(await counts(), { check: 0, download: 0, install: 0, turn: 0 });
   console.log("PASS: one update operation at a time; ordinary downloads preserve the composer");
 

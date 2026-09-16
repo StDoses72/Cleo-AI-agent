@@ -450,7 +450,7 @@ app.whenReady().then(async () => {
     if (programUpdates.closed) throw new Error("Cleo 正在退出，请稍后重试。");
     if (["startRelease", "retryRelease", "cancelRelease", "cancelLogin", "openGithubLogin", "requestPrompt", "casePrompt"].includes(action)) return actions[action]();
     return programUpdates.run(actions[action], {
-      allowRunning: ["releases", "download", "pullRequest"].includes(action),
+      allowRunning: ["releases", "download", "pullRequest", "releasePermission", "previewMergedRelease"].includes(action),
     });
   });
   if (!app.isPackaged) ipcMain.handle("cleo:evolution:healthy", () => {});

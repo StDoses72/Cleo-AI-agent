@@ -119,10 +119,11 @@ export class EvolutionManager {
   log(message) { this.logs = (this.logs + message).slice(-16000); this.onState(); }
 
   /** Input: phase and operation. Output: serial execution with retained error and previous working build. */
-  async operation(phase, action, { prune = true } = {}) {
+  async operation(phase, action, { prune = true, preserveDiagnostics = false } = {}) {
     if (this.closed) throw new Error("Cleo 正在退出，不能开始新的进化操作。");
     if (this.phase !== "idle") throw new Error("另一项进化操作正在进行，请稍候。");
     const controller = new AbortController();
+    const previous = preserveDiagnostics ? { error: this.error, logs: this.logs } : null;
     this.operationAbort = controller;
     this.phase = phase; this.error = null; this.logs = ""; this.onState();
     try {
@@ -137,7 +138,10 @@ export class EvolutionManager {
       return await this.operationPromise;
     }
     catch (error) { this.error = error.message; throw error; }
-    finally { this.operationPromise = null; this.operationAbort = null; this.phase = "idle"; this.onState(); }
+    finally {
+      if (previous) { this.error = previous.error; this.logs = previous.logs; }
+      this.operationPromise = null; this.operationAbort = null; this.phase = "idle"; this.onState();
+    }
   }
 
   /** Purpose: Stop operation-owned writers before the app releases its single-instance lock. */

@@ -16,6 +16,7 @@ export type UpdatePhase =
   | "error";
 
 export interface UpdateState {
+  checkedAt?: number;
   releases?: { tag: string; title: string; prerelease: boolean; reason: string | null }[];
   selectedTag?: string | null;
   selectedPrerelease?: boolean;

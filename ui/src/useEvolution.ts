@@ -30,5 +30,13 @@ export function useEvolution() {
       await refresh().catch((failure: unknown) => setError(`状态刷新失败：${String(failure)}`));
     }
   }, [refresh]);
-  return { state, error, pending, run, refresh };
+  const inspect = useCallback(async <T,>(action: string, params: Record<string, unknown> = {}): Promise<T> => {
+    if (!window.cleoDesktop) throw new Error("请在 Cleo 桌面应用中使用本地迭代。");
+    try { return await window.cleoDesktop.evolutionAction<T>(action, params); }
+    catch (failure) {
+      throw new Error((failure instanceof Error ? failure.message : String(failure))
+        .replace(/^Error invoking remote method '[^']+': (?:Error: )?/, ""));
+    }
+  }, []);
+  return { state, error, pending, run, inspect, refresh };
 }

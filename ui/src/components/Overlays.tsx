@@ -300,7 +300,7 @@ interface SettingsModalProps {
   onApplyModelSettings: ApplyModelSettings;
   onLoadAgentInstructions: () => Promise<AgentInstructions>;
   onSaveAgentInstructions: (content: string) => Promise<AgentInstructions>;
-  onCheckForUpdates: () => void;
+  onCheckForUpdates: (tag?: string) => Promise<UpdateState | undefined>;
   onDownloadUpdate: () => void;
   onInstallUpdate: () => void;
   onRevealPath: (path: string) => void;
@@ -412,6 +412,7 @@ export function SettingsModal({
             </div>
           ) : page === "instructions" || isModels ? null : page === "updates" ? (
             <UpdateSettingsPage
+              active={open}
               state={updateState}
               onCheck={onCheckForUpdates}
               onDownload={onDownloadUpdate}
@@ -441,13 +442,13 @@ function formatBytes(value: number) {
 function updateDescription(state: UpdateState) {
   if (state.phase === "ready" && state.installBlocked) return state.installBlocked;
   if (state.phase === "ready" && state.error) return state.error;
-  if (state.operationBusy && !["downloading", "installing"].includes(state.phase)) return "另一项版本操作正在进行。";
+  if (state.operationBusy && !["checking", "downloading", "installing"].includes(state.phase)) return "另一项版本操作正在进行。";
   switch (state.phase) {
     case "unsupported": return state.error || "开发模式不会连接发布服务器；安装后的 Cleo 会自动检查。";
-    case "idle": return "尚未检查更新。";
-    case "checking": return "正在检查 GitHub Release…";
+    case "idle": return "正在获取版本信息…";
+    case "checking": return "正在检查更新…";
     case "up-to-date": return state.selectedTag ? `正在使用所选版本（${state.latestVersion}）。` : state.latestVersion ? `已是最新版本（${state.latestVersion}）。` : "已是最新版本。";
-    case "available": return `发现 Cleo ${state.latestVersion}，下载后会校验 SHA-256。`;
+    case "available": return `${state.selectedTag ? "已选择" : "可更新至"} ${state.latestVersion}${state.selectedPrerelease ? " · 预发布版" : ""}`;
     case "downloading": return `正在下载 ${formatBytes(state.downloadedBytes)} / ${formatBytes(state.totalBytes)}。`;
     case "ready": return `Cleo ${state.latestVersion} 已准备好，点击后重启安装。`;
     case "installing": return state.installStage === "restarting" ? "正在启动新版本…" : "正在校验并解压更新…";
@@ -458,43 +459,89 @@ function updateDescription(state: UpdateState) {
 }
 
 function UpdateSettingsPage({
+  active,
   state,
   onCheck,
   onDownload,
   onInstall,
 }: {
+  active: boolean;
   state: UpdateState;
-  onCheck: () => void;
+  onCheck: (tag?: string) => Promise<UpdateState | undefined>;
   onDownload: () => void;
   onInstall: () => void;
 }) {
+  const [checking, setChecking] = useState(false);
+  const [checkError, setCheckError] = useState("");
+  const inFlight = useRef(false);
+  const lastAttempt = useRef(0);
+  const failures = useRef(0);
+  const current = useRef({ state, onCheck });
+  current.current = { state, onCheck };
+  useEffect(() => { if (!state.error) setCheckError(""); }, [state.checkedAt]);
+  const check = async (tag?: string) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    lastAttempt.current = Date.now();
+    setChecking(true); setCheckError("");
+    try {
+      const result = await current.current.onCheck(tag);
+      if (result?.phase === "error") failures.current += 1;
+      else failures.current = 0;
+    } catch (error) {
+      failures.current += 1;
+      setCheckError(error instanceof Error ? error.message : "无法读取版本，请重试。");
+    } finally { inFlight.current = false; setChecking(false); }
+  };
+  useEffect(() => {
+    if (!active) return;
+    const refresh = () => {
+      const latest = current.current.state;
+      if (document.hidden || latest.operationBusy || inFlight.current
+          || !["idle", "available", "up-to-date", "updated", "error"].includes(latest.phase)) return;
+      const retryAfter = failures.current || latest.phase === "error"
+        ? Math.min(300000, 60000 * 2 ** Math.max(0, failures.current - 1)) : 300000;
+      if (Date.now() - Math.max(latest.checkedAt ?? 0, lastAttempt.current) < retryAfter) return;
+      void check();
+    };
+    refresh();
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    const timer = window.setInterval(refresh, 30000);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+      window.clearInterval(timer);
+    };
+  }, [active, state.phase, state.operationBusy]);
   const percent = state.totalBytes
     ? Math.min(100, Math.round((state.downloadedBytes / state.totalBytes) * 100))
     : 0;
-  const busy = state.operationBusy || state.phase === "checking" || state.phase === "downloading" || state.phase === "installing";
-  const action = state.phase === "available"
-    ? { label: "下载更新", run: onDownload }
-    : state.phase === "ready"
-      ? { label: "重启并安装", run: onInstall }
-      : { label: state.phase === "checking" ? "检查中…" : "检查更新", run: onCheck };
+  const busy = checking || state.operationBusy || state.phase === "checking" || state.phase === "downloading" || state.phase === "installing";
+  let action: { label: string; run: () => void } | null = null;
+  if (checkError || ["error", "install-failed"].includes(state.phase)) action = { label: "重试", run: () => void check() };
+  else if (state.phase === "available") action = { label: "下载更新", run: onDownload };
+  else if (state.phase === "ready") action = { label: "重启并安装", run: onInstall };
+  else if (state.phase === "downloading") action = { label: "正在下载…", run: onDownload };
+  else if (state.phase === "installing") action = { label: "正在安装…", run: onInstall };
   return (
     <div className="settings-page update-settings-page">
       <div className="update-hero">
-        <span className="update-mark"><RefreshCw size={22} /></span>
-        <div><span className="eyebrow">CLEO DESKTOP</span><h3>版本 {state.currentVersion}</h3><p>{updateDescription(state)}</p></div>
+        <div><h3>Cleo {state.currentVersion}{state.currentPrerelease ? " · 预发布版" : ""}</h3>
+          <p role={checkError || ["error", "install-failed"].includes(state.phase) ? "alert" : "status"}>{checkError || updateDescription(state)}</p></div>
       </div>
       {state.phase === "downloading" ? <div className="update-progress" aria-label={`更新下载进度 ${percent}%`}><i style={{ width: `${percent}%` }} /></div> : null}
-      <UpdateVersionPicker state={state} busy={Boolean(busy)} />
-      <div className="update-actions">
-        <button type="button" disabled={busy || state.phase === "unsupported" || (state.phase === "ready" && Boolean(state.installBlocked))} onClick={state.phase === "up-to-date" ? onCheck : action.run}>{state.phase === "up-to-date" ? "重新检查" : action.label}</button>
-      </div>
-      <div className="settings-note"><Brain size={17} /><p>只切换程序版本，保留聊天、记忆与配置。新版启动失败时自动回退。</p></div>
-      {state.dependencies ? <div className="settings-note"><RefreshCw size={17} /><p>{
+      {action && <div className="update-actions">
+        <button type="button" disabled={busy || (state.phase === "ready" && Boolean(state.installBlocked))} onClick={action.run}>{action.label}</button>
+      </div>}
+      {["available", "ready"].includes(state.phase) && <p className="update-data-note">更新会保留聊天、记忆与配置。</p>}
+      <UpdateVersionPicker state={state} busy={Boolean(busy)} onSelect={tag => void check(tag)} />
+      {state.dependencies && <details className="settings-advanced"><summary>运行依赖{state.dependencies.phase === "error" ? " · 更新未完成" : ""}</summary><p>{
         state.dependencies.phase === "ready" ? "运行依赖已更新并通过检查，下次启动自动生效。"
           : state.dependencies.phase === "error" ? `依赖更新未完成，继续使用当前版本。${state.dependencies.error || ""}`
             : ["checking", "updating"].includes(state.dependencies.phase) ? "正在后台检查并更新 SDK 和浏览器工具…"
               : "当前使用已验证的运行依赖。"
-      }</p></div> : null}
+      }</p></details>}
     </div>
   );
 }

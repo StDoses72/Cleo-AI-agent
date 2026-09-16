@@ -6,7 +6,7 @@
   "type": "module",
   "main": "electron/bootstrap.mjs",
   "scripts": {
-    "test:context": "node --test tests/harness-switch-ipc.test.mjs",
+    "test:context": "node --test tests/harness-switch-ipc.test.mjs tests/release-preflight-ipc.test.mjs",
     "start": "npm run build && electron .",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
@@ -20,6 +20,7 @@
     "smoke:history": "node scripts/smoke-history.mjs",
     "smoke:uiux": "node tests/uiux-regressions.smoke.mjs",
     "smoke:concurrency": "node tests/concurrent-runs.smoke.mjs && node tests/running-recovery.smoke.mjs",
+    "smoke:update-settings": "node tests/update-settings.smoke.mjs",
     "smoke:layout": "node scripts/smoke-layout.mjs",
     "smoke:program-updates": "node scripts/smoke-program-updates.mjs",
     "package:portable": "node ../scripts/build-release.mjs",

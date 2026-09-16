@@ -77,11 +77,12 @@ export class SelectableUpdater extends DesktopUpdater {
       const available = Boolean(this.selectedRelease) || compareVersions(manifest.version, this.state.currentVersion) > 0;
       const ready = available && this.archivePath === this.archiveFor(manifest);
       return this.setState({ phase: ready ? "ready" : available ? "available" : "up-to-date", latestVersion: manifest.version,
+        checkedAt: Date.now(),
         selectedTag: this.selectedRelease?.tag || null, selectedPrerelease: release.prerelease,
         downloadedBytes: ready ? manifest.bytes : 0, totalBytes: manifest.bytes, error: null });
     } catch (error) {
       this.manifest = null; this.archivePath = null;
-      return this.setState({ phase: "error", error: error.message });
+      return this.setState({ phase: "error", error: error.message, checkedAt: Date.now() });
     }
   }
 
@@ -156,9 +157,17 @@ export class SelectableProgramUpdates extends ProgramUpdates {
 
   check(tag) {
     if (this.closed) return Promise.resolve(this.updater.getState());
-    return this.run(async () => {
+    if (tag === undefined && this.updater.getState().phase === "ready") return Promise.resolve(this.updater.getState());
+    if (this.checking) return this.checking.tag === tag ? this.checking.promise
+      : Promise.reject(new Error("版本检查正在进行，请完成后再改选。"));
+    const promise = this.run(async () => {
       if (tag !== undefined) this.updater.select(tag);
       return this.updater.check();
     }, { allowRunning: true });
+    const request = { tag, promise: promise.finally(() => {
+      if (this.checking === request) this.checking = null;
+    }) };
+    this.checking = request;
+    return request.promise;
   }
 }

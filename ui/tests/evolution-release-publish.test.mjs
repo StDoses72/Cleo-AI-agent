@@ -5,6 +5,7 @@ import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkReleasePermission, previewRelease, publishRelease, publishMergedRelease, previewMergedRelease } from "../electron/github-releases.mjs";
+import { EvolutionManager } from "../electron/evolution.mjs";
 import { releaseBuilds, publishReleasePackages, releasePackageStatus } from "../electron/release-packages.mjs";
 
 const repo = "StDoses72/Cleo-AI-agent";
@@ -360,6 +361,27 @@ test("partial-draft recovery can inspect its remote PR source without creating a
     assert.equal(source.sourceKind, "merged-pr");
     assert.equal(remote.writes.length, 0);
     assert.deepEqual(state, before);
+  });
+});
+
+test("automatic release preflight preserves editing diagnostics on success and failure", async () => {
+  await fixture(async ({ manager, remote }) => {
+    manager.phase = "idle";
+    manager.error = "Existing build failure";
+    manager.logs = "Original build diagnostics";
+    manager.onState = () => {};
+    manager.store.exclusive = action => action();
+    manager.store.pruneBuilds = () => assert.fail("Preflight must not prune builds");
+    manager.operation = EvolutionManager.prototype.operation.bind(manager);
+    await previewMergedRelease(manager, { url });
+    assert.equal(manager.error, "Existing build failure");
+    assert.equal(manager.logs, "Original build diagnostics");
+    remote.networkError = true;
+    await assert.rejects(previewMergedRelease(manager, { url }), /权限/);
+    assert.equal(manager.error, "Existing build failure");
+    assert.equal(manager.logs, "Original build diagnostics");
+    assert.equal(manager.phase, "idle");
+    assert.equal(remote.writes.length, 0);
   });
 });
 

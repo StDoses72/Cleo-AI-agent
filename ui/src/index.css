@@ -3231,16 +3231,20 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 .settings-action:hover { border-color: var(--border-strong); background: var(--surface-hover); }
 .settings-action.danger { color: var(--danger); }
 
-.update-hero { display: flex; align-items: center; gap: 15px; padding: 17px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
-.update-mark { display: grid; width: 44px; height: 44px; flex: 0 0 auto; place-items: center; border-radius: 12px; color: var(--accent); background: var(--accent-soft); }
-.update-hero h3 { margin-top: 5px; color: var(--text-soft); font-size: var(--font-size-dialog-title); }
+.update-hero { padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+.update-hero h3 { margin: 0; color: var(--text-soft); font-size: var(--font-size-dialog-title); }
 .update-hero p { margin: 6px 0 0; color: var(--muted); font-size: var(--font-size-control); line-height: 1.65; }
 .update-progress { height: 4px; margin-top: 15px; overflow: hidden; border-radius: 4px; background: var(--surface-active); }
 .update-progress i { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width 180ms ease; }
-.update-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 15px; }
+.update-actions { display: flex; gap: 7px; margin-top: 15px; }
 .update-actions button { height: 38px; padding: 0 13px; border: 1px solid var(--border); border-radius: 7px; color: var(--text-soft); background: var(--surface); font-size: var(--font-size-control); }
 .update-actions button:first-child:not(:disabled) { border-color: transparent; color: var(--canvas); background: var(--accent); font-weight: 600; }
 .update-actions button:disabled { cursor: default; opacity: .5; }
+.update-data-note { margin: 10px 0 0; color: var(--muted); font-size: var(--font-size-caption); }
+.update-version-picker { margin-top: 24px; color: var(--muted); font-size: var(--font-size-control); }
+.update-version-picker summary { cursor: pointer; }
+.update-version-picker label { display: grid; gap: 8px; margin-top: 14px; }
+.update-version-picker select { width: 100%; min-width: 0; }
 
 .update-notice { position: fixed; z-index: 700; right: 22px; bottom: 22px; display: flex; min-width: 320px; max-width: 420px; align-items: center; gap: 10px; padding: 11px 12px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface-raised); box-shadow: var(--shadow); animation: toast-in 200ms ease both; }
 .update-notice-icon { display: grid; width: 30px; height: 30px; flex: 0 0 auto; place-items: center; border-radius: 8px; color: var(--accent); background: var(--accent-soft); }

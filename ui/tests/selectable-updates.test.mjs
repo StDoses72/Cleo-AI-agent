@@ -24,7 +24,7 @@ async function fixture(action) {
     evolution_protocol: 2, archive: target.archive, bytes: payload.length, sha256: createHash("sha256").update(payload).digest("hex") });
   const network = async url => {
     calls.push(String(url));
-    if (url.includes("/releases?")) return Response.json(catalog);
+    if (url.includes("/releases?")) { await hooks.catalog?.(); return Response.json(catalog); }
     const tag = decodeURIComponent(new URL(url).pathname.split("/").at(-2));
     if (url.endsWith(target.manifest)) return Response.json({ ...manifest(tag.replace(/^v/, "")), ...hooks.manifest });
     if (url.endsWith(target.archive)) {
@@ -62,6 +62,58 @@ test("catalog includes prereleases, historical versions and platform incompatibi
     assert.equal(updater.catalog[1].prerelease, true);
     assert.match(updater.catalog[3].reason, /平台/);
     await assert.rejects(program.check("v0.2.0"), /平台/);
+  });
+});
+
+test("simultaneous automatic checks share a request and preserve an explicit version", async () => {
+  await fixture(async ({ program, updater, calls, hooks }) => {
+    await program.check();
+    await program.check("v0.3.0");
+    let release;
+    hooks.catalog = () => new Promise(resolve => { release = resolve; });
+    calls.length = 0;
+    const before = Date.now();
+    const first = program.check();
+    const second = program.check();
+    assert.equal(first, second);
+    await assert.rejects(program.check("0.8.0-beta.2"), /正在进行/);
+    release();
+    await first;
+    assert.equal(calls.filter(url => url.includes("/releases?")).length, 1);
+    assert.equal(updater.getState().selectedTag, "v0.3.0");
+    assert(updater.getState().checkedAt >= before);
+    assert.equal(program.busy, false);
+    assert.equal(updater.getState().operationBusy, false);
+  });
+});
+
+test("failed automatic checks record an attempt and allow a later retry", async () => {
+  await fixture(async ({ program, updater, hooks }) => {
+    hooks.catalog = () => { throw new Error("network unavailable"); };
+    const before = Date.now();
+    assert.equal((await program.check()).phase, "error");
+    assert(updater.getState().checkedAt >= before);
+    assert.equal(program.busy, false);
+    delete hooks.catalog;
+    assert.equal((await program.check()).phase, "available");
+  });
+});
+
+test("background checks retain a verified download until the user chooses another version", async () => {
+  await fixture(async ({ program, updater, hooks, calls }) => {
+    await program.check();
+    await program.download();
+    const archive = updater.archivePath;
+    const manifest = updater.manifest;
+    hooks.catalog = () => { throw new Error("offline"); };
+    calls.length = 0;
+    assert.equal((await program.check()).phase, "ready");
+    assert.equal(updater.archivePath, archive);
+    assert.equal(updater.manifest, manifest);
+    assert.equal(calls.length, 0);
+    delete hooks.catalog;
+    assert.equal((await program.check("v0.3.0")).phase, "available");
+    assert.equal(updater.getState().latestVersion, "0.3.0");
   });
 });
 

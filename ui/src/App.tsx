@@ -112,6 +112,7 @@ export function App() {
     }
   };
   const evolutionAction = (action: string, params: Record<string, unknown> = {}) => {
+    if (["releasePermission", "previewMergedRelease"].includes(action)) return evolution.inspect(action, params);
     retryEvolution.current = () => evolutionAction(action, params);
     setEvolutionIssue(null);
     if (action === "repairContribution") {
@@ -130,7 +131,7 @@ export function App() {
       return result;
     }).catch((error: unknown) => {
       setEvolutionIssue(error instanceof Error ? error.message : "操作失败");
-      if (["previewRelease", "publishRelease", "publishMergedRelease", "previewMergedRelease", "releaseBuilds", "publishReleasePackages", "releasePackageStatus", "releasePermission"].includes(action)) throw error;
+      if (["previewRelease", "publishRelease", "publishMergedRelease", "previewMergedRelease", "releaseBuilds", "publishReleasePackages", "releasePackageStatus", "releasePermission", "startRelease"].includes(action)) throw error;
     });
   };
 
@@ -264,14 +265,11 @@ export function App() {
     };
   }, []);
 
-  const runUpdateAction = (action: "check" | "download" | "install") => {
+  const runUpdateAction = (action: "download" | "install") => {
     const desktop = window.cleoDesktop;
     if (!desktop) return;
-    const operation: Promise<UpdateState | boolean> = action === "check"
-      ? desktop.checkForUpdates()
-      : action === "download"
-        ? desktop.downloadUpdate()
-        : desktop.installUpdate();
+    const operation: Promise<UpdateState | boolean> = action === "download"
+      ? desktop.downloadUpdate() : desktop.installUpdate();
     void operation
       .then((result) => {
         if (typeof result !== "boolean" && result.phase === "error") {
@@ -587,7 +585,9 @@ export function App() {
         onApplyModelSettings={workspace.applyModelSettings}
         onLoadAgentInstructions={workspace.loadAgentInstructions}
         onSaveAgentInstructions={workspace.saveAgentInstructions}
-        onCheckForUpdates={() => runUpdateAction("check")}
+        onCheckForUpdates={async (tag) => {
+          return window.cleoDesktop?.checkForUpdates(tag);
+        }}
         onDownloadUpdate={() => runUpdateAction("download")}
         onInstallUpdate={() => runUpdateAction("install")}
         onRevealPath={(path) => void workspace.revealPath(path)}
