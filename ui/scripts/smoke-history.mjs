@@ -111,6 +111,7 @@ try {
   }, { snapshot });
   await page.reload();
   await page.getByText("History item 9999", { exact: true }).waitFor();
+  assert.equal(await page.locator(".history-page-control").count(), 0, "History paging should be automatic");
   const inspector = page.getByTestId("inspector");
   if (await inspector.count()) await inspector.getByRole("button", { name: "关闭检查器", exact: true }).click();
   const viewport = page.locator(".conversation-viewport");

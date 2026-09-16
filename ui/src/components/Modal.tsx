@@ -1,6 +1,7 @@
-import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useLayoutEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
 
 export function handleDialogKeyDown(event: KeyboardEvent<HTMLDialogElement>) {
+  if (!event.currentTarget.open) return;
   event.stopPropagation();
   if ((event.key === "Enter" || event.key === "Escape")
       && (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229)) {
@@ -34,16 +35,28 @@ export function Modal({ open, onClose, className, label, labelledBy, describedBy
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const dialog = ref.current!;
     if (open) dialog.showModal();
     return () => { if (dialog.open) dialog.close(); };
   }, [open]);
+  const close = () => {
+    if (!onClose) return;
+    const dialog = ref.current!;
+    dialog.close();
+    if (document.activeElement instanceof HTMLElement && dialog.contains(document.activeElement)) {
+      document.activeElement.blur();
+    }
+    onClose();
+  };
   return <dialog ref={ref} className={`modal-backdrop ${className}`} role={role}
     aria-label={label} aria-labelledby={labelledBy} aria-describedby={describedBy}
-    onCancel={event => { event.preventDefault(); onClose?.(); }}
-    onKeyDown={handleDialogKeyDown}
-    onMouseDown={event => { if (event.target === ref.current) onClose?.(); }}>
+    onCancel={event => { event.preventDefault(); close(); }}
+    onKeyDown={event => {
+      handleDialogKeyDown(event);
+      if (event.key === "Escape" && !event.defaultPrevented) { event.preventDefault(); close(); }
+    }}
+    onMouseDown={event => { if (event.target === ref.current) close(); }}>
     {children}
   </dialog>;
 }

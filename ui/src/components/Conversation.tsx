@@ -77,6 +77,7 @@ interface ConversationProps {
   runtimeModelsLoading: string | null;
   runtimeModelsError: string | null;
   running: boolean;
+  waitingForAnswer?: boolean;
   sendBlocked: string | null;
   sendError?: string;
   harnessSwitchStatus?: string | null;
@@ -133,6 +134,7 @@ export function Conversation({
   runtimeModelsLoading,
   runtimeModelsError,
   running,
+  waitingForAnswer = false,
   sendBlocked,
   sendError,
   harnessSwitchStatus,
@@ -186,6 +188,13 @@ export function Conversation({
     () => groupTimelineItems(thread?.items ?? []),
     [thread?.items],
   );
+  const currentTurn = timelineItems.slice(timelineItems.findLastIndex(item => item.type === "message" && item.role === "user") + 1);
+  const waiting = Boolean(approvalRequest || waitingForAnswer);
+  const activeProcess = running && !waiting && !thread?.history?.hasAfter
+    ? currentTurn.findLast(item => item.type === "thought-group" ? item.thoughts.some(thought => thought.status === "running")
+      : item.type === "tool-group" && item.tools.some(tool => tool.status === "running")) : undefined;
+  const showActivity = running && !waiting && !thread?.history?.hasAfter && !activeProcess
+    && !currentTurn.some(item => item.type === "message" && item.role === "assistant" && item.content.trim());
 
   const [expansion, setExpansion] = useState<Record<string, { open: boolean; answered: boolean }>>({});
   const stateKey = (id: string) => `${thread?.id}:${id}`;
@@ -213,19 +222,43 @@ export function Conversation({
   }
   const [reader, setReader] = useState<{ item: TimelineItem; field: string; offset: number; text: string; next: number; total: number } | null>(null);
   const [readerError, setReaderError] = useState("");
+  const [readerLoading, setReaderLoading] = useState(false);
+  const readerRequest = useRef(false);
   const readerDialog = useRef<HTMLDialogElement>(null);
+  const readerViewport = useRef<HTMLDivElement>(null);
   const readerGeneration = useRef(0);
-  useEffect(() => { readerGeneration.current++; setReader(null); }, [thread?.id]);
+  const closeReader = () => {
+    readerGeneration.current++;
+    readerRequest.current = false;
+    setReader(null); setReaderError(""); setReaderLoading(false);
+  };
+  useEffect(closeReader, [thread?.id]);
   useEffect(() => { if (reader) readerDialog.current?.showModal(); else readerDialog.current?.close(); }, [Boolean(reader)]);
   const readContent = async (item: TimelineItem, field: string, offset = 0) => {
-    if (!thread) return;
+    if (!thread || (offset > 0 && readerRequest.current)) return;
     const generation = ++readerGeneration.current;
+    readerRequest.current = true; setReaderLoading(true);
     setReaderError("");
+    if (!offset) setReader({ item, field, offset: 0, text: "", next: 0, total: 0 });
     try {
       const content = await cleoClient.readTimelineContent(thread.id, item.id, field, offset);
-      if (generation === readerGeneration.current) setReader({ item, field, ...content });
-    } catch (error) { if (generation === readerGeneration.current) setReaderError(error instanceof Error ? error.message : "正文读取失败"); }
+      if (generation === readerGeneration.current) setReader(current => ({ item, field, ...content,
+        text: offset ? (current?.text ?? "") + content.text : content.text }));
+    } catch (error) {
+      if (generation === readerGeneration.current) setReaderError(error instanceof Error ? error.message : "正文读取失败");
+    } finally {
+      if (generation === readerGeneration.current) { readerRequest.current = false; setReaderLoading(false); }
+    }
   };
+  const loadReaderEdge = () => {
+    const view = readerViewport.current;
+    if (!reader || !view || readerLoading || readerError || reader.next >= reader.total) return;
+    if (view.scrollHeight - view.scrollTop - view.clientHeight < 240) void readContent(reader.item, reader.field, reader.next);
+  };
+  useEffect(() => {
+    const frame = requestAnimationFrame(loadReaderEdge);
+    return () => cancelAnimationFrame(frame);
+  }, [reader?.next, readerLoading, readerError]);
 
   const trackScrollPosition = () => {
     const viewport = viewportRef.current;
@@ -234,16 +267,28 @@ export function Conversation({
     stickToBottomRef.current = distanceFromBottom < 96 && !thread?.history?.hasAfter;
     history?.follow(stickToBottomRef.current);
     if (history?.busy || history?.error) return;
-    if (viewport.scrollTop < 160 && thread?.history?.hasBefore) void history?.load("before");
-    else if (distanceFromBottom < 160 && thread?.history?.hasAfter) void history?.load("after");
+    const prefetchDistance = Math.max(240, viewport.clientHeight / 2);
+    if (viewport.scrollTop < prefetchDistance && thread?.history?.hasBefore) void history?.load("before");
+    else if (distanceFromBottom < prefetchDistance && thread?.history?.hasAfter) void history?.load("after");
   };
+
+  useEffect(() => {
+    if (history?.busy || history?.error) return;
+    const frame = requestAnimationFrame(() => {
+      const viewport = viewportRef.current;
+      if (!viewport || viewport.scrollHeight > viewport.clientHeight + 2) return;
+      if (thread?.history?.hasAfter) void history?.load("after");
+      else if (thread?.history?.hasBefore) void history?.load("before");
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [thread?.id, thread?.items.length, thread?.history?.before, thread?.history?.after, history?.busy, history?.error, bottomInset]);
 
   const renderRow = (row: TimelineRow) => {
     let item: TimelineItem | undefined;
     let content: ReactNode;
     if (row.type === "thought-group") content = <ThoughtGroupEntry item={row} projectPath={project?.path ?? null} onOpenPath={onOpenPath}
-      expanded={isOpen(row)} onToggle={() => toggle(row.id, !isOpen(row), row.hasAnswer)} headerOnly />;
-    else if (row.type === "tool-group") content = <ToolGroupEntry item={row} expanded={isOpen(row)} onToggle={() => toggle(row.id, !isOpen(row))} headerOnly />;
+      expanded={isOpen(row)} onToggle={() => toggle(row.id, !isOpen(row), row.hasAnswer)} active={row.id === activeProcess?.id} headerOnly />;
+    else if (row.type === "tool-group") content = <ToolGroupEntry item={row} expanded={isOpen(row)} onToggle={() => toggle(row.id, !isOpen(row))} active={row.id === activeProcess?.id} headerOnly />;
     else if (row.type === "thought-row") {
       item = row.item;
       content = <div className="thought-process-list virtual-process-row"><ThoughtEntry item={row.item} projectPath={project?.path ?? null} onOpenPath={onOpenPath} /></div>;
@@ -253,7 +298,7 @@ export function Conversation({
         open={expansion[stateKey(row.id)]?.open ?? false} onToggle={open => toggle(row.id, open)} /></div>;
     } else { item = row; content = <TimelineEntry item={row} projectPath={project?.path ?? null} onOpenPath={onOpenPath} />; }
     return <>{content}{item?.more && Object.keys(item.more).map(field => <button className="history-content-link" key={field}
-      onClick={() => void readContent(item!, field)}>查看完整{field === "output" ? "输出" : "正文"}（{item!.more![field]} 字符）</button>)}</>;
+      onClick={() => void readContent(item!, field)}>{field === "output" ? "展开输出" : "展开全文"}</button>)}</>;
   };
 
   return (
@@ -278,6 +323,8 @@ export function Conversation({
       />}{improvement}</div>
 
       <div className="conversation-body" style={{ "--composer-clearance": `${bottomInset}px` } as CSSProperties}>
+        {history?.error && <div className="history-error" role="alert">{history.error}<button onClick={() => void history.retry()}>重试加载</button></div>}
+        {history?.busy && <div className="history-loading" data-direction={history.busy} role="status" aria-label="正在加载历史"><LoaderCircle className="spin" size={14} /></div>}
         <div className="conversation-viewport" ref={viewportRef} tabIndex={0} aria-label="对话历史" onWheel={event => {
           if (event.deltaY < 0) { stickToBottomRef.current = false; history?.follow(false); }
           if (!history?.busy && !history?.error) {
@@ -287,26 +334,14 @@ export function Conversation({
           }
         }}>
           {preparation}
-        {thread?.history?.hasBefore && <button className="history-page-control" disabled={Boolean(history?.busy)} onClick={() => {
-          stickToBottomRef.current = false; history?.follow(false); void history?.load("before");
-        }}>加载更早历史</button>}
-        {history?.error && <div className="history-error" role="alert">{history.error}<button onClick={() => void history.retry()}>重试加载</button></div>}
-        {history?.busy && <div className="history-loading" role="status">正在加载历史…</div>}
         {thread?.items.length ? (
           <>
-            <VirtualTimeline rows={rows} viewport={viewportRef} follow={stickToBottomRef} bottomInset={bottomInset} threadId={thread.id} render={renderRow} onScroll={trackScrollPosition} />
-            {running ? (
-              <div className="streaming-indicator" aria-label="Cleo 正在工作">
-                <span />
-                <span />
-                <span />
-              </div>
-            ) : null}
+            <VirtualTimeline rows={rows} viewport={viewportRef} follow={stickToBottomRef} bottomInset={bottomInset} threadId={thread.id} render={renderRow} onScroll={trackScrollPosition}
+              footer={showActivity && <div className="turn-activity" role="status"><LoaderCircle className="spin" size={14} /><span>正在处理…</span></div>} />
           </>
         ) : (
           <WelcomeState project={project} space={space} onUseSuggestion={onPromptChange} />
         )}
-        {thread?.history?.hasAfter && <button className="history-page-control" disabled={Boolean(history?.busy)} onClick={() => void history?.load("after")}>加载较新历史</button>}
       </div>
 
       <div className="conversation-bottom" ref={bottomRef}>
@@ -314,13 +349,17 @@ export function Conversation({
         void history?.load("latest", () => { stickToBottomRef.current = true; });
       }}><ArrowDown size={17} aria-hidden="true" /></button>}
       {questionUI}
-      {readerError && <p className="history-error" role="alert">{readerError}</p>}
       <dialog ref={readerDialog} className="history-reader" data-content-kind={reader?.item.type} aria-label="完整历史正文"
-        onKeyDown={handleDialogKeyDown} onCancel={() => { readerGeneration.current++; setReader(null); }}>
-        {reader && <><header><strong>完整历史正文</strong><button onClick={() => { readerGeneration.current++; setReader(null); }}>关闭正文</button></header>
-          <p>{reader.offset + 1}–{reader.next} / {reader.total} 字符</p><pre>{reader.text}</pre>
-          <footer><button disabled={!reader.offset} onClick={() => void readContent(reader.item, reader.field, Math.max(0, reader.offset - 16384))}>上一段</button>
-            <button disabled={reader.next >= reader.total} onClick={() => void readContent(reader.item, reader.field, reader.next)}>下一段</button></footer></>}
+        onKeyDown={handleDialogKeyDown} onCancel={closeReader}>
+        {reader && <><header><strong>完整内容</strong><button aria-label="关闭正文" onClick={closeReader}><X size={18} /></button></header>
+          <div className="history-reader-content" ref={readerViewport} onScroll={loadReaderEdge} tabIndex={0}>
+            {reader.item.type === "message" || reader.item.type === "thought"
+              ? <div className="message-copy"><MarkdownContent content={reader.text} projectPath={project?.path ?? null} onOpenPath={onOpenPath} /></div>
+              : <pre>{reader.text}</pre>}
+          </div>
+          {readerLoading && <div className="reader-status" role="status" aria-label="正在读取内容"><LoaderCircle className="spin" size={14} /></div>}
+          {readerError && <p className="history-error" role="alert">{readerError}<button onClick={() => void readContent(reader.item, reader.field, reader.next)}>重试</button></p>}
+        </>}
       </dialog>
 
       <Composer
@@ -708,6 +747,7 @@ function ThoughtGroupEntry({
   expanded: controlled,
   onToggle,
   headerOnly = false,
+  active,
 }: {
   item: ThoughtGroupBlock;
   projectPath: string | null;
@@ -715,13 +755,12 @@ function ThoughtGroupEntry({
   expanded?: boolean;
   onToggle?: () => void;
   headerOnly?: boolean;
+  active?: boolean;
 }) {
   const [localExpanded, setExpanded] = useState(!item.hasAnswer);
   const expanded = controlled ?? localExpanded;
-  const running = item.thoughts.some((thought) => thought.status === "running");
-  const summary = running
-    ? `${item.thoughts.length} 条记录 · 正在更新`
-    : `${item.thoughts.length} 条记录 · ${item.hasAnswer ? "已有最终回答" : "尚无最终回答"}`;
+  const running = active ?? item.thoughts.some((thought) => thought.status === "running");
+  const summary = `${item.thoughts.length} 条`;
 
   return (
     <section className={`thought-group ${running ? "running" : "done"}`} data-testid="thought-group">
@@ -731,14 +770,14 @@ function ThoughtGroupEntry({
         onClick={onToggle ?? (() => setExpanded((value) => !value))}
       >
         <span className="thought-icon">
-          {running ? <LoaderCircle className="spin" size={15} /> : <Sparkles size={15} />}
+          <Sparkles size={15} />
         </span>
         <span className="tool-group-copy">
           <strong>思考过程</strong>
           <small>{summary}</small>
         </span>
         <span className="tool-group-actions">
-          {running ? <LoaderCircle className="spin" size={15} /> : null}
+          {running && !expanded ? <LoaderCircle className="spin" size={15} /> : null}
           <ChevronDown className={expanded ? "rotated" : ""} size={15} />
         </span>
       </button>
@@ -809,17 +848,13 @@ function PlanEntry({ item }: { item: Extract<TimelineItem, { type: "plan" }> }) 
   );
 }
 
-function ToolGroupEntry({ item, expanded: controlled, onToggle, headerOnly = false }: { item: ToolGroupBlock; expanded?: boolean; onToggle?: () => void; headerOnly?: boolean }) {
+function ToolGroupEntry({ item, expanded: controlled, onToggle, headerOnly = false, active }: { item: ToolGroupBlock; expanded?: boolean; onToggle?: () => void; headerOnly?: boolean; active?: boolean }) {
   const [localExpanded, setExpanded] = useState(false);
   const expanded = controlled ?? localExpanded;
   const runningCount = item.tools.filter((tool) => tool.status === "running").length;
   const errorCount = item.tools.filter((tool) => tool.status === "error").length;
-  const status = runningCount ? "running" : errorCount ? "error" : "done";
-  const summary = runningCount
-    ? `${item.tools.length} 次调用 · ${runningCount} 个运行中`
-    : errorCount
-      ? `${item.tools.length} 次调用 · ${errorCount} 个失败`
-      : `${item.tools.length} 次调用 · 已完成`;
+  const status = (active ?? Boolean(runningCount)) ? "running" : errorCount ? "error" : "done";
+  const summary = errorCount ? `${item.tools.length} 项 · ${errorCount} 项失败` : `${item.tools.length} 项`;
   return (
     <section className={`tool-group ${status}`} data-testid="tool-group">
       <button
@@ -1100,7 +1135,7 @@ function Composer({
         onDragLeave={onDragLeave}
         onDrop={onDrop}
       >
-        {sendBlocked && <p className="composer-status" role="status">{sendBlocked}</p>}
+        {sendBlocked && sendBlocked !== harnessSwitchStatus && <p className="composer-status" role="status">{sendBlocked}</p>}
         {draggingFiles ? (
           <div className="composer-drop-overlay" aria-hidden="true">
             <Paperclip size={18} />
@@ -1157,8 +1192,7 @@ function Composer({
           onPaste={onPaste}
           rows={1}
           aria-label={space === "chat" ? "消息" : "任务描述"}
-          placeholder={running ? "Cleo 正在回复…" : space === "chat" ? "向 Cleo 发送消息…" : "描述你想完成的事情"}
-          disabled={running}
+          placeholder={running ? "草拟下一条消息…" : space === "chat" ? "向 Cleo 发送消息…" : "描述你想完成的事情"}
           data-testid="composer-input"
         />
         <div className="composer-footer">

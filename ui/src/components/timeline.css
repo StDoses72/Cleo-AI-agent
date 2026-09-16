@@ -11,10 +11,11 @@
 .virtual-process-row { margin: 0 0 12px; padding: 12px 16px; border-left: 2px solid var(--border); }
 .virtual-process-row .thought-copy { font-size: var(--font-size-body); line-height: var(--line-height-body); }
 .virtual-process-row .thought-entry { margin: 0; }
-.history-page-control { display: block; margin: 14px auto; padding: 8px 14px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--text-soft); }
-.history-error, .history-loading { padding: 8px 20px; color: var(--muted); font-size: 12px; }
+.history-error { padding: 8px 20px; color: var(--muted); font-size: var(--font-size-control); user-select: text; }
 .history-error button { margin-left: 12px; }
-.conversation-viewport > .history-error { position: sticky; top: 0; z-index: 1; background: var(--canvas); }
+.conversation-body > .history-error { position: absolute; top: 8px; left: 24px; right: 24px; z-index: 3; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-raised); }
+.history-loading { position: absolute; top: 8px; left: calc(50% - 12px); z-index: 2; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; color: var(--muted); background: var(--canvas); pointer-events: none; }
+.history-loading[data-direction="after"] { top: auto; bottom: calc(var(--composer-clearance) + 8px); }
 .history-latest { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid var(--border-strong); border-radius: 50%; color: var(--text-soft); background: var(--surface-raised); box-shadow: 0 2px 8px #0001; pointer-events: auto; }
 .history-latest:hover { background: var(--surface-hover); }
 .history-latest[data-unread]::after { position: absolute; top: 1px; right: 1px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); content: ""; }
@@ -44,14 +45,15 @@
 .question-history { margin: 0 0 24px; padding: 16px; border-left: 2px solid var(--accent); background: color-mix(in srgb, var(--surface) 60%, transparent); font-size: 13px; }
 .question-history p { white-space: pre-wrap; line-height: 1.6; }
 .question-history-answer { color: var(--accent); }
-.history-reader pre { max-height: 55vh; padding: 14px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.7; background: var(--surface); }
+.history-reader-content { min-height: 80px; max-height: 60vh; overflow: auto; margin-top: 20px; user-select: text; }
+.history-reader-content pre { margin: 0; padding: 14px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--font-size-control); line-height: 1.7; background: var(--surface); }
+.reader-status { display: flex; justify-content: center; padding: 8px; color: var(--muted); }
 .question-dialog, .history-reader, .question-history { font-family: var(--font-ui); font-size: var(--font-size-body); line-height: var(--line-height-body); }
 .question-dialog h2 { font-size: var(--font-size-dialog-title); font-weight: 550; }
 .question-text, .question-option strong { font-size: var(--font-size-body); line-height: var(--line-height-body); }
 .question-dialog legend, .question-custom, .question-option small { font-size: var(--font-size-caption); }
-.question-dialog button, .question-banner button, .history-reader button, .history-page-control, .history-latest, .history-content-link { font-family: var(--font-ui); font-size: var(--font-size-control); font-weight: 500; line-height: 1.5; }
+.question-dialog button, .question-banner button, .history-reader button, .history-latest, .history-content-link { font-family: var(--font-ui); font-size: var(--font-size-control); font-weight: 500; line-height: 1.5; }
 .question-custom textarea, .question-custom input { font-family: var(--font-ui); font-size: var(--font-size-control); line-height: var(--line-height-body); }
-.history-reader[data-content-kind="message"] pre, .history-reader[data-content-kind="thought"] pre { font-family: var(--font-ui); font-size: var(--font-size-body); line-height: var(--line-height-body); }
 
 @container (max-width: 520px) {
   .conversation-header { gap: 6px; padding-right: 8px; padding-left: 8px; }

@@ -14,6 +14,7 @@ let browser;
 const failures = [];
 
 async function check(name, run) {
+  if (process.argv[2] && !name.includes(process.argv[2])) return;
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   page.setDefaultTimeout(6000);
   try {
@@ -41,10 +42,42 @@ try {
     await dialog.waitFor({ state: "hidden" });
     assert.equal(await page.getByRole("button", { name: "设置", exact: true }).evaluate(e => e === document.activeElement), true, "focus was not restored");
   });
+  await check("command palette can reopen after opening and closing settings", async page => {
+    await page.keyboard.press("Control+k");
+    const search = page.getByRole("combobox", { name: "搜索命令", exact: true });
+    await search.fill("设置");
+    await search.press("Enter");
+    await page.getByRole("dialog", { name: "设置", exact: true }).waitFor();
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Control+k");
+    await search.fill("打开");
+    await search.press("ArrowDown");
+    await search.press("Enter");
+    await page.getByRole("heading", { name: "对话", exact: true }).waitFor();
+  });
+  await check("deletion failures remain visible inside the confirmation dialog", async page => {
+    await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      const original = cleoClient.deleteThread.bind(cleoClient);
+      let failed = false;
+      cleoClient.deleteThread = async id => {
+        if (!failed) { failed = true; throw new Error("delete temporarily unavailable"); }
+        return original(id);
+      };
+    });
+    await page.getByTestId("delete-thread").first().click();
+    const dialog = page.getByRole("alertdialog");
+    await dialog.getByRole("button", { name: "永久删除", exact: true }).click();
+    await dialog.getByRole("alert").filter({ hasText: "delete temporarily unavailable" }).waitFor();
+    await dialog.getByRole("button", { name: "永久删除", exact: true }).click();
+    await dialog.waitFor({ state: "hidden" });
+  });
   await check("settings shortcuts cannot approve or cancel the underlying request", async page => {
     await page.getByTestId("composer-input").fill("approval demo");
     await page.getByTestId("send-button").click();
     await page.getByTestId("approval-prompt").waitFor();
+    assert.equal(await page.locator(".streaming-indicator, .turn-activity").count(), 0,
+      "waiting for approval must not look like an active model response");
     await page.getByRole("button", { name: "设置", exact: true }).click();
     await page.getByRole("button", { name: "外观", exact: true }).click();
     await page.keyboard.press("1");
@@ -71,6 +104,58 @@ try {
     assert.equal(await page.getByRole("dialog", { name: "设置", exact: true }).count(), 1);
     await page.keyboard.press("Escape");
     await page.getByRole("dialog", { name: "设置", exact: true }).waitFor({ state: "hidden" });
+  });
+  await check("working indicator aligns with the timeline and drafts remain editable", async page => {
+    await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      cleoClient.streamTurn = async function* () {
+        await new Promise(resolve => { window.finishActivity = resolve; });
+        yield { type: "done", summary: "finished" };
+      };
+    });
+    await page.getByTestId("composer-input").fill("start delayed demo");
+    await page.getByTestId("send-button").click();
+    await page.locator(".turn-activity").waitFor();
+    const gap = await page.evaluate(() => {
+      const timeline = document.querySelector(".timeline");
+      return document.querySelector(".turn-activity").getBoundingClientRect().left
+        - timeline.getBoundingClientRect().left - parseFloat(getComputedStyle(timeline).paddingLeft);
+    });
+    assert(Math.abs(gap) < 2);
+    await page.getByTestId("composer-input").fill("next instruction draft");
+    await page.evaluate(() => window.finishActivity());
+    await page.locator(".turn-activity").waitFor({ state: "hidden" });
+    assert.equal(await page.getByTestId("composer-input").inputValue(), "next instruction draft");
+  });
+  await check("full content keeps Markdown and automatically loads the next part with retry", async page => {
+    await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      const original = await cleoClient.loadThread("desktop-ui");
+      const text = "# Reader heading\n\n" + "A paragraph to read.\n\n".repeat(500) + "Reader end marker";
+      const item = { id: "large", type: "message", role: "assistant", time: "", content: text.slice(0, 300), more: { content: text.length } };
+      cleoClient.loadThread = async () => ({ ...original, items: [item], history: { before: "0", after: "0", total: 1, hasBefore: false, hasAfter: false, revision: "1" } });
+      window.readerCalls = [];
+      let failed = false;
+      cleoClient.readTimelineContent = async (_thread, _item, _field, offset) => {
+        window.readerCalls.push(offset);
+        if (offset && !failed) { failed = true; throw new Error("reader offline"); }
+        const part = text.slice(offset, offset + 4096);
+        return { text: part, offset, next: offset + part.length, total: text.length };
+      };
+    });
+    await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
+    await page.getByRole("button", { name: "展开全文", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "完整历史正文" });
+    await dialog.getByRole("heading", { name: "Reader heading" }).waitFor();
+    assert.equal(await dialog.getByRole("button", { name: /上一段|下一段/ }).count(), 0);
+    await dialog.locator(".history-reader-content").evaluate(element => { element.scrollTop = element.scrollHeight; });
+    await dialog.getByRole("alert").filter({ hasText: "reader offline" }).waitFor();
+    assert.equal(await dialog.getByRole("heading", { name: "Reader heading" }).count(), 1);
+    await dialog.getByRole("button", { name: "重试", exact: true }).click();
+    await page.waitForFunction(() => window.readerCalls.length === 3);
+    await dialog.locator(".history-reader-content").evaluate(element => { element.scrollTop = element.scrollHeight; });
+    await dialog.getByText(/Reader end marker/).waitFor({ state: "attached" });
+    assert.deepEqual(await page.evaluate(() => window.readerCalls), [0, 4096, 4096, 8192]);
   });
   await check("instruction and connection drafts survive settings navigation", async page => {
     await page.getByRole("button", { name: "设置", exact: true }).click();

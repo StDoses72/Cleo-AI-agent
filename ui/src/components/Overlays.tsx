@@ -149,8 +149,10 @@ export function RenameThreadDialog({ title, onSave, onClose }: {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    dialogRef.current?.showModal();
+    const dialog = dialogRef.current!;
+    dialog.showModal();
     inputRef.current?.select();
+    return () => { if (dialog.open) dialog.close(); };
   }, []);
   return (
     <dialog ref={dialogRef} className="rename-dialog" aria-labelledby="rename-title" onKeyDown={handleDialogKeyDown} onCancel={(event) => {
@@ -192,6 +194,7 @@ interface DeleteThreadDialogProps {
   threadTitle: string | null;
   productivity: boolean;
   deleting: boolean;
+  error?: string | null;
   onCancel: () => void;
   onConfirm: () => void;
 }
@@ -200,6 +203,7 @@ export function DeleteThreadDialog({
   threadTitle,
   productivity,
   deleting,
+  error,
   onCancel,
   onConfirm,
 }: DeleteThreadDialogProps) {
@@ -220,6 +224,7 @@ export function DeleteThreadDialog({
             {productivity ? " SDK / ACP 中的原生会话不会被远程删除。" : ""}
           </p>
         </div>
+        {error && <p className="dialog-error" role="alert">{error}</p>}
         <footer>
           <button autoFocus type="button" onClick={onCancel} disabled={deleting}>取消</button>
           <button className="danger" type="button" onClick={onConfirm} disabled={deleting}>
@@ -234,6 +239,7 @@ export function DeleteThreadDialog({
 interface RemoveProjectDialogProps {
   project: Project | null;
   removing: boolean;
+  error?: string | null;
   onCancel: () => void;
   onConfirm: () => void;
 }
@@ -241,6 +247,7 @@ interface RemoveProjectDialogProps {
 export function RemoveProjectDialog({
   project,
   removing,
+  error,
   onCancel,
   onConfirm,
 }: RemoveProjectDialogProps) {
@@ -261,6 +268,7 @@ export function RemoveProjectDialog({
             以后重新打开此目录即可恢复。
           </p>
         </div>
+        {error && <p className="dialog-error" role="alert">{error}</p>}
         <footer>
           <button autoFocus type="button" onClick={onCancel} disabled={removing}>取消</button>
           <button className="danger" type="button" onClick={onConfirm} disabled={removing}>

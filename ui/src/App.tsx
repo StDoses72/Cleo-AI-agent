@@ -193,8 +193,10 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [threadPendingDeletion, setThreadPendingDeletion] = useState<Thread | null>(null);
   const [deletingThread, setDeletingThread] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [projectPendingRemoval, setProjectPendingRemoval] = useState<Project | null>(null);
   const [removingProject, setRemovingProject] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
   const [undoingChanges, setUndoingChanges] = useState(false);
   const [memoryView, setMemoryView] = useState<MemoryViewMode>("all");
   const [theme, setTheme] = useState<"dark" | "light">(() =>
@@ -417,9 +419,9 @@ export function App() {
         activeProjectId={workspace.activeProjectId}
         activeThreadId={workspace.activeThreadId}
         onSelectProject={workspace.selectProject}
-        onRemoveProject={setProjectPendingRemoval}
+        onRemoveProject={project => { setRemoveError(null); setProjectPendingRemoval(project); }}
         onSelectThread={workspace.selectThread}
-        onDeleteThread={setThreadPendingDeletion}
+        onDeleteThread={thread => { setDeleteError(null); setThreadPendingDeletion(thread); }}
         onCreateThread={() => void workspace.createThread()}
         onChooseWorkspace={() => void workspace.chooseWorkspace().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法打开工作目录", "error"))}
         onOpenCommand={() => setCommandOpen(true)}
@@ -479,6 +481,7 @@ export function App() {
           runtimeModelsLoading={workspace.runtimeModelsLoading}
           runtimeModelsError={workspace.runtimeModelsError}
           running={workspace.runningThreadId !== null && workspace.runningThreadId === workspace.activeThreadId}
+          waitingForAnswer={Boolean(workspace.questions.current)}
           undoing={undoingChanges}
           sidebarCollapsed={sidebarCollapsed}
           inspectorOpen={showInspector}
@@ -598,17 +601,19 @@ export function App() {
         threadTitle={threadPendingDeletion?.title ?? null}
         productivity={threadPendingDeletion?.space === "productivity"}
         deleting={deletingThread}
+        error={deleteError}
         onCancel={() => setThreadPendingDeletion(null)}
         onConfirm={() => {
           if (!threadPendingDeletion) return;
           setDeletingThread(true);
+          setDeleteError(null);
           void workspace.deleteThread(threadPendingDeletion.id)
             .then(() => {
               setThreadPendingDeletion(null);
               notify("Thread 已删除");
             })
             .catch((error: unknown) => {
-              notify(error instanceof Error ? error.message : "无法删除 thread", "error");
+              setDeleteError(error instanceof Error ? error.message : "无法删除任务");
             })
             .finally(() => setDeletingThread(false));
         }}
@@ -616,17 +621,19 @@ export function App() {
       <RemoveProjectDialog
         project={projectPendingRemoval}
         removing={removingProject}
+        error={removeError}
         onCancel={() => setProjectPendingRemoval(null)}
         onConfirm={() => {
           if (!projectPendingRemoval) return;
           setRemovingProject(true);
+          setRemoveError(null);
           void workspace.removeProject(projectPendingRemoval.id)
             .then(() => {
               setProjectPendingRemoval(null);
               notify("项目已从侧边栏移除");
             })
             .catch((error: unknown) => {
-              notify(error instanceof Error ? error.message : "无法移除项目", "error");
+              setRemoveError(error instanceof Error ? error.message : "无法移除项目");
             })
             .finally(() => setRemovingProject(false));
         }}
