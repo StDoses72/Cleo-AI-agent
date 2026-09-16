@@ -14,7 +14,7 @@ on:
         type: string
       notes:
         description: Release notes
-        required: true
+        required: false
         type: string
       title:
         description: Release title (must match an existing release)

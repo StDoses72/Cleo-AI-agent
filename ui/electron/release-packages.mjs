@@ -78,8 +78,7 @@ async function checkedRunResult(manager, tools, params, run) {
 /** Dispatch is explicit; a matching in-flight/successful run reconciles a lost response. */
 export async function publishReleasePackages(manager, params) {
   validateSelection(params);
-  if (typeof params.body !== "string" || !params.body.trim())
-    throw new Error("发布工作流要求非空说明。请先填写发布说明；若 Release 已创建，请在 GitHub 补充说明后重新核对，并填写相同说明。");
+  if (typeof params.body !== "string") throw new Error("发布说明格式无效，请重新核对。");
   return manager.operation("publishing", async () => {
     const tools = await manager.prepareTools(true);
     const source = await checkedSource(manager, tools, params);
@@ -97,15 +96,15 @@ export async function publishReleasePackages(manager, params) {
       const current = await checkedRunResult(manager, tools, params, existing);
       if (current.status !== "incomplete") return current;
     }
-    const repo = await json(manager, tools, endpoint);
-    const file = await json(manager, tools, `${endpoint}/contents/.github/workflows/${workflow}?ref=${encodeURIComponent(repo.default_branch)}`);
+    // Use the verified release ref so snapshot releases do not depend on an older default branch.
+    const file = await json(manager, tools, `${endpoint}/contents/.github/workflows/${workflow}?ref=${encodeURIComponent(params.tag)}`);
     const text = file.encoding === "base64" ? Buffer.from(file.content, "base64").toString("utf8") : "";
     if (!text.includes("allow_existing_release:") || !text.includes("prerelease:"))
-      throw new Error("仓库默认分支的发布工作流尚未支持应用衔接。需要先合入更新后的 publish-release.yml，再重试；Release 和标签均保留。");
+      throw new Error("该版本的发布工作流尚未支持应用衔接。请更新 publish-release.yml 后重新核对版本；Release 和标签均保留。");
     const directory = await mkdtemp(join(tmpdir(), "cleo-package-dispatch-"));
     try {
       const input = join(directory, "dispatch.json");
-      await writeFile(input, JSON.stringify({ ref: repo.default_branch, inputs: {
+      await writeFile(input, JSON.stringify({ ref: params.tag, inputs: {
         run_id: String(params.runId), tag: params.tag, notes: params.body, title: params.title.trim(),
         prerelease: String(params.prerelease), allow_existing_release: "true",
       } }), { mode: 0o600 });

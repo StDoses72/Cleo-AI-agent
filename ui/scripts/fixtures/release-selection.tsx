@@ -50,7 +50,7 @@ function Fixture() {
       await new Promise(resolve => setTimeout(resolve, 250));
       if (failPublish) { setFailPublish(false); throw new Error("网络中断，请恢复连接后使用相同标签重试。"); }
       if (String(params?.url).endsWith("/44")) throw new Error("该 PR 尚未合并，暂不可发布。");
-      return { ...params, targetBranch: "release-branch", sourceKind: "merged-pr", login: "fixture-owner",
+      return { ...params, draft: true, targetBranch: "release-branch", sourceKind: "merged-pr", login: "fixture-owner",
         commit: (String(params?.url).endsWith("/43") ? "b" : "a").repeat(40),
         releaseUrl: `https://github.com/StDoses72/Cleo-AI-agent/releases/tag/${params?.tag}` };
     }

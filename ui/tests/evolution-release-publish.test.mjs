@@ -17,7 +17,7 @@ async function fixture(action) {
   const blob = createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
   const state = { prepared: true, active: "local", builds: [{ id: "local", kind: "local", sourceHash: "verified" }],
     pullRequests: [{ url, buildId: "local", sourceHash: "verified", targetBranch: "release-branch" }] };
-  const remote = { login: "owner", push: true, merged: true, commit, tags: {}, releases: {}, writes: [], blob };
+  const remote = { login: "owner", push: true, merged: true, commit, tags: {}, releases: {}, writes: [], blob, version: "0.5.0-beta.1" };
   const manager = {
     tools: { prepareGithub: async () => ({ gh: "gh", env: {} }) },
     source: root, githubAuth: { status: "connected" }, store: { read: async () => state },
@@ -40,6 +40,12 @@ async function fixture(action) {
         return JSON.stringify(remote.releases[payload.tag_name]);
       }
       const path = args[1];
+      if (path.includes("/contents/")) {
+        assert.ok(path.endsWith(`?ref=${remote.commit}`));
+        const content = path.includes("pyproject.toml") ? `[project]\nversion = "${remote.version}"\n[build-system]\n`
+          : JSON.stringify({ version: remote.uiVersion || remote.version });
+        return JSON.stringify({ encoding: "base64", content: Buffer.from(content).toString("base64") });
+      }
       if (path === "user") return JSON.stringify({ login: remote.login });
       if (path === `repos/${repo}`) return JSON.stringify({ owner: { login: "owner" }, permissions: { push: remote.push } });
       if (path.includes("/pulls/")) return JSON.stringify({ merged: remote.merged, merge_commit_sha: remote.commit,
@@ -91,6 +97,8 @@ for (const prerelease of [false, true]) test(`publishes the verified merged comm
     assert.equal(remote.writes[0].payload.sha, commit);
     assert.equal(remote.writes[1].payload.target_commitish, commit);
     assert.equal(remote.writes[1].payload.prerelease, prerelease);
+    assert.equal(remote.writes[1].payload.draft, true, "Packages must be verified before public release");
+    assert.equal(result.draft, true);
     await publish(preview, prerelease);
     assert.equal(remote.writes.length, 2, "Retry must not create duplicate remote mutations");
   });
@@ -126,25 +134,27 @@ test("lost create response reconciles the exact release without reposting", asyn
   });
 });
 
-test("an exact existing source-only draft can be completed on retry", async () => {
+test("an exact existing source-only draft stays private on retry", async () => {
   await fixture(async ({ manager, remote, publish }) => {
     const preview = await previewRelease(manager, { url });
     remote.tags["v0.5.0-beta.1"] = commit;
     remote.releases["v0.5.0-beta.1"] = { id: 17, tag_name: "v0.5.0-beta.1", name: "Test release",
       body: "Notes", prerelease: true, draft: true, assets: [], html_url: `https://github.com/${repo}/releases/tag/v0.5.0-beta.1` };
     const result = await publish(preview);
-    assert.equal(remote.releases["v0.5.0-beta.1"].draft, false);
+    assert.equal(remote.releases["v0.5.0-beta.1"].draft, true);
+    assert.equal(remote.writes.length, 0);
     assert.match(result.releaseUrl, /releases\/tag/);
   });
 });
 
-test("a draft with partial packages must be completed by the verified package workflow", async () => {
+test("a draft with partial packages stays private for the verified package workflow", async () => {
   await fixture(async ({ manager, remote, publish }) => {
     const preview = await previewRelease(manager, { url });
     remote.tags["v0.5.0-beta.1"] = commit;
     remote.releases["v0.5.0-beta.1"] = { id: 17, tag_name: "v0.5.0-beta.1", name: "Test release",
-      body: "Notes", prerelease: true, draft: true, assets: [{ name: "release.json" }] };
-    await assert.rejects(publish(preview), /安装包/);
+      body: "Notes", prerelease: true, draft: true, assets: [{ name: "release.json" }],
+      html_url: `https://github.com/${repo}/releases/tag/v0.5.0-beta.1` };
+    assert.equal((await publish(preview)).draft, true);
     assert.equal(remote.writes.length, 0);
     assert.equal(remote.releases["v0.5.0-beta.1"].draft, true);
   });
@@ -197,7 +207,7 @@ for (const lost of [false, true]) test(`dispatch forwards exact metadata and rec
   await packageFixture(async ({ manager, params, actions, remote }) => {
     actions.lost = lost;
     assert.equal((await publishReleasePackages(manager, params)).status, "running");
-    assert.deepEqual(actions.dispatches[0], { ref: "main", inputs: { run_id: "99", tag: params.tag,
+    assert.deepEqual(actions.dispatches[0], { ref: params.tag, inputs: { run_id: "99", tag: params.tag,
       title: params.title, notes: params.body, prerelease: "true", allow_existing_release: "true" } });
     await publishReleasePackages(manager, params);
     assert.equal(actions.dispatches.length, 1);
@@ -238,6 +248,8 @@ test("failed runs can retry; successful runs do not claim completion without all
       target === "windows-x64" ? "release.json" : `release-${target}.json`]);
     names.push("Cleo-linux-x64.deb", "Cleo-linux-x64.deb.sha256");
     remote.releases[params.tag].assets = names.map(name => ({ name, size: 100, digest: `sha256:${"a".repeat(64)}` }));
+    assert.equal((await releasePackageStatus(manager, params)).status, "incomplete");
+    remote.releases[params.tag].draft = false;
     const status = await releasePackageStatus(manager, params);
     assert.equal(status.status, "completed"); assert.match(status.releaseUrl, /releases\/tag/);
     await publishReleasePackages(manager, params);
@@ -250,6 +262,7 @@ test("failed runs can retry; successful runs do not claim completion without all
 for (const local of ["different-active", "dirty", "unprepared", "pruned"]) {
   test(`one-click merged PR release works with ${local} source without touching user state`, async () => {
     await fixture(async ({ manager, remote, state }) => {
+      remote.version = "1.2.3";
       state.active = "another-version";
       if (local === "dirty") state.draftDirty = true;
       if (local === "unprepared") state.prepared = false;
@@ -294,10 +307,12 @@ for (const failure of ["empty", "invalid", "unmerged", "branch", "commit-object"
 
 test("new source selection resolves its own merge commit and ignores client commit/branch-head hints", async () => {
   await fixture(async ({ manager, remote, state }) => {
+    remote.version = "1.2.3";
     const second = `https://github.com/${repo}/pull/43`;
     state.pullRequests.push({ url: second, buildId: "pruned-version", targetBranch: "release-branch" });
     await publishMergedRelease(manager, { url, tag: "v1.2.3", commit: "f".repeat(40) });
     remote.commit = "b".repeat(40);
+    remote.version = "1.2.4-beta.1";
     const result = await publishMergedRelease(manager, { url: second, tag: "v1.2.4-beta.1", prerelease: true, commit });
     assert.equal(result.url, second); assert.equal(result.commit, remote.commit);
     assert.equal(remote.tags["v1.2.3"], commit);
@@ -308,6 +323,7 @@ test("new source selection resolves its own merge commit and ignores client comm
 
 test("one-click response loss is recoverable and duplicate concurrent submissions remain serialized", async () => {
   await fixture(async ({ manager, remote }) => {
+    remote.version = "1.2.3";
     let busy = false;
     manager.operation = async (_phase, action) => {
       if (busy) throw new Error("Another operation is running");
@@ -344,5 +360,15 @@ test("partial-draft recovery can inspect its remote PR source without creating a
     assert.equal(source.sourceKind, "merged-pr");
     assert.equal(remote.writes.length, 0);
     assert.deepEqual(state, before);
+  });
+});
+
+for (const mismatch of ["tag", "ui"]) test(`release rejects ${mismatch} version mismatch before creating remote state`, async () => {
+  await fixture(async ({ manager, remote, publish }) => {
+    const preview = await previewRelease(manager, { url });
+    if (mismatch === "tag") remote.version = "0.4.6";
+    else remote.uiVersion = "0.4.6";
+    await assert.rejects(publish(preview), /版本号不一致/);
+    assert.equal(remote.writes.length, 0);
   });
 });

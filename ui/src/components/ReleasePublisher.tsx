@@ -6,6 +6,7 @@ import { ReleasePackages } from "./ReleasePackages";
 interface ReleaseResult extends Record<string, unknown> {
   releaseUrl: string;
   prerelease: boolean;
+  draft: boolean;
   tag: string;
   targetBranch: string;
   commit: string;
@@ -95,14 +96,14 @@ export function ReleasePublisher({ state, busy, initialUrl = "", buildId, onActi
       </details>
       {!connected && <p role="status">请先连接 GitHub。</p>}
       {connected && access && <p role="status">{access.message}</p>}
-      <button className="evolution-primary" disabled={locked || !connected || denied || !receipt || !!result}><Upload size={14} />{pending === "publishMergedRelease" ? "正在核验并发布…" : "发布 Release"}</button>
+      <button className="evolution-primary" disabled={locked || !connected || denied || !receipt || !!result}><Upload size={14} />{pending === "publishMergedRelease" ? "正在核验并创建草稿…" : "创建发布草稿"}</button>
     </form>
     <button disabled={locked} onClick={() => void run("releasePermission")}><RefreshCw size={14} />重新检查发布权限</button>
     {pending === "publishMergedRelease" && <p role="status">{state?.logs.trim().split("\n").at(-1) || "正在检查发布权限、PR 合并状态及提交源码…"}</p>}
     {error && <p role="alert">{error}</p>}
-    {result && <p role="status">{result.prerelease ? "预发布版" : "正式版"} {result.tag} 的 Release 已创建。<a href={result.releaseUrl} target="_blank" rel="noreferrer">查看 GitHub Release</a></p>}
+    {result && <p role="status">{result.prerelease ? "预发布版" : "正式版"} {result.tag}  {result.draft ? "发布草稿已创建，安装包验证完成后才会公开。" : "Release 已存在，请核对安装包状态。"}<a href={result.releaseUrl} target="_blank" rel="noreferrer">查看 GitHub Release</a></p>}
     {result && <p>目标分支：{result.targetBranch} · 发布提交：<code className="release-commit">{result.commit}</code></p>}
-    <details><summary>安装包发布状态（可选）</summary>
+    <details open><summary>完成安装包发布</summary>
       {!result && !packageSource && <button disabled={locked || !connected || denied || !receipt} onClick={() => void run("previewMergedRelease")}><RefreshCw size={14} />核验安装包来源</button>}
       {(result || packageSource) && <ReleasePackages key={`${url}:${(result || packageSource)?.commit}`}
         params={result || { ...packageSource, tag: tag.trim(), title: title.trim() || tag.trim(), body, prerelease }}

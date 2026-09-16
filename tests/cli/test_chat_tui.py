@@ -170,7 +170,10 @@ def test_cleo_session_picker_click_resumes_conversation(monkeypatch) -> None:
             app._start_submission("/sessions")
             worker = app._active_worker
             assert worker is not None
-            await pilot.pause(0.1)
+            # Wait for the modal to mount, rather than racing a fixed 100 ms delay.
+            async with asyncio.timeout(5):
+                while not app.screen.query("#chat-session-options"):
+                    await pilot.pause(0.02)
             options = app.screen.query_one("#chat-session-options")
             for _ in range(20):
                 if options.region.width and options.region.bottom <= app.screen.region.bottom:

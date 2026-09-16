@@ -28,7 +28,7 @@ try {
         { id: "candidate", kind: "local", version: null, baseTag: "v0.3.9", sourceHash: "fixture-source" },
       ], iteration: { base: "baseline" }, pullRequest: null,
       validation: { status: "passed", sourceHash: "fixture-source", candidate: "candidate", message: "检查通过，可以应用。" },
-      releases: [], recoveryPath: "fixture",
+      releases: [], releaseTypes: { "v0.3.9": false }, recoveryPath: "fixture",
     };
     window.evolutionActions = [];
     window.patchEvolution = (patch) => Object.assign(state, patch);

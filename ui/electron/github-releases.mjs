@@ -25,7 +25,7 @@ export async function checkReleasePermission(manager, tools) {
     const role = user.login.toLowerCase() === repo.owner?.login?.toLowerCase() ? "owner"
       : repo.permissions.push ? "collaborator" : "read-only";
     return publish({ status: "checked", repository: REPOSITORY, login: user.login, role, canRelease,
-      message: canRelease ? "有仓库写权限，可以创建 Release。" : "当前账号没有直接发布权限，仍可提交 PR 或申请分支。" });
+      message: canRelease ? "有仓库写权限，可以创建发布草稿。" : "当前账号没有直接发布权限，仍可提交 PR 或申请分支。" });
   } catch {
     return publish({ status: "failed", repository: REPOSITORY, canRelease: false,
       message: "未能确认仓库发布权限，请检查 GitHub 连接后重试。仍可使用 PR 或分支申请。" });
@@ -135,7 +135,7 @@ export async function publishMergedRelease(manager, params) {
     if (!access.canRelease) throw new Error(access.message);
     if (params.login && params.login !== access.login) throw new Error("GitHub 账号已变化，请确认当前账号后再次发布。");
     const source = await mergedReleaseSource(manager, tools, params.url);
-    manager.log?.(`已核验 PR 合并提交 ${source.commit}，正在创建 Release…\n`);
+    manager.log?.(`已核验 PR 合并提交 ${source.commit}，正在创建发布草稿…\n`);
     return createVerifiedRelease(manager, tools, { ...source, login: access.login },
       { tag, title, body, prerelease, commit: source.commit });
   }, { prune: false });
@@ -196,8 +196,27 @@ export async function publishRelease(manager, params) {
   }, { prune: false });
 }
 
-/** Input: verified immutable source and metadata. Output: reconciled release; never replace conflicting remote state. */
+/** Purpose: Reject tags that would produce an uninstallable release before creating remote state.
+ * Input: immutable source commit and requested tag. Output: matching committed Python/UI versions or an error.
+ */
+async function verifyReleaseVersion(manager, tools, commit, tag) {
+  const contents = async path => {
+    const file = await api(manager, tools, `${endpoint}/contents/${path}?ref=${commit}`);
+    if (file.encoding !== "base64" || typeof file.content !== "string") throw new Error("无法读取发布源码版本。");
+    return Buffer.from(file.content, "base64").toString("utf8");
+  };
+  const project = (await contents("pyproject.toml")).split(/^\[project\][ \t]*\r?$/m)[1]?.split(/^\[/m)[0];
+  const pythonVersion = project?.match(/^version\s*=\s*["']([^"']+)["']\s*$/m)?.[1];
+  const uiVersion = JSON.parse(await contents("ui/package.json")).version;
+  if (pythonVersion !== tag.replace(/^v/, "") || uiVersion !== pythonVersion)
+    throw new Error(`版本号不一致：发布标签 ${tag}，Python ${pythonVersion || "未知"}，桌面 ${uiVersion || "未知"}。请先在 PR 中更新项目版本，再创建发布草稿。`);
+}
+
+/** Purpose: Prepare a private release until the package workflow verifies every platform.
+ * Input: verified immutable source and metadata. Output: reconciled draft or existing release without publishing it.
+ */
 async function createVerifiedRelease(manager, tools, source, { tag, title, body, prerelease, commit }) {
+  await verifyReleaseVersion(manager, tools, commit, tag);
   const directory = await mkdtemp(join(tmpdir(), "cleo-release-"));
   const post = async (path, payload, method = "POST") => {
     const file = join(directory, "request.json");
@@ -217,22 +236,14 @@ async function createVerifiedRelease(manager, tools, source, { tag, title, body,
     let result = await findRelease(manager, tools, tag);
     if (!result) {
       try { result = await post(`${endpoint}/releases`, { tag_name: tag, target_commitish: commit,
-        name: title.trim(), body, draft: false, prerelease, make_latest: prerelease ? "false" : "legacy" }); }
+        name: title.trim(), body, draft: true, prerelease, make_latest: "false" }); }
       catch (error) { result = await findRelease(manager, tools, tag); if (!result) throw error; }
     }
     if (result.tag_name !== tag || result.prerelease !== prerelease
         || result.name !== title.trim() || (result.body || "") !== body || await tagCommit(manager, tools, tag) !== commit)
       throw new Error("该标签已有不同的发布内容，请在 GitHub 核对后使用新的版本标签。");
-    if (result.draft) {
-      if (!Array.isArray(result.assets) || result.assets.length) throw new Error("该标签有正在上传安装包的草稿。请在安装包发布流程中使用原构建 run_id 继续，不会提前公开不完整的安装包。");
-      try { result = await post(`${endpoint}/releases/${result.id}`, { draft: false, make_latest: prerelease ? "false" : "legacy" }, "PATCH"); }
-      catch (error) { result = await findRelease(manager, tools, tag); if (!result || result.draft) throw error; }
-    }
-    if (result.draft || result.tag_name !== tag || result.name !== title.trim() || (result.body || "") !== body
-        || result.prerelease !== prerelease || await tagCommit(manager, tools, tag) !== commit)
-      throw new Error("远端发布结果与确认内容不一致，请刷新后核对。");
-    if (!result.html_url?.startsWith(`https://github.com/${REPOSITORY}/releases/tag/`)) throw new Error("GitHub 未返回有效的 Release 地址，请检查发布结果。");
-    return { ...source, tag, title: title.trim(), body, prerelease, releaseUrl: result.html_url };
+    if (!result.html_url?.startsWith(`https://github.com/${REPOSITORY}/releases/`)) throw new Error("GitHub 未返回有效的 Release 地址，请检查发布结果。");
+    return { ...source, tag, title: title.trim(), body, prerelease, draft: result.draft, releaseUrl: result.html_url };
   } catch (error) {
     throw new Error(`${error.message}\n恢复连接或权限后，可重新核对并使用相同标签重试；已有标签和 Release 会先被核验。`, { cause: error });
   } finally { await rm(directory, { recursive: true, force: true }); }
