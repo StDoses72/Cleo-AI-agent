@@ -1209,6 +1209,22 @@ def test_memory_refresh_reads_new_revisions_without_loading_threads(tmp_path, mo
     assert service.runtime.current_thread_id == "keep-current-task"
 
 
+def test_memory_refresh_labels_sources_with_saved_titles(tmp_path):
+    service = _service(tmp_path)
+    service.store.create_session(session_id="source-with-title", space="productivity",
+                                 project="workspace", provider="codex", owner_type="user")
+    service.store.update_manifest("source-with-title", title="检查页面布局")
+    service.runtime.current_thread_id = "another-task"
+    touch_session_source(space="productivity", project="workspace", session_id="source-with-title",
+                         source_hash="updated", last_event_seq=1,
+                         path=memory_state_path(service.settings.MEMORY_DIR, "productivity"))
+    memory = asyncio.run(service.load_memory())
+    source = next(item for item in memory["memoryOverview"]["review_sources"]
+                  if item["session_id"] == "source-with-title")
+    assert source["title"] == "检查页面布局"
+    assert service.runtime.current_thread_id == "another-task"
+
+
 def test_review_memory_source_can_skip_pending_revision(tmp_path: Path) -> None:
     async def scenario() -> None:
         service = _service(tmp_path)

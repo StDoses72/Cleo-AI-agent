@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { dreamStatusLabel } from "../memoryStatus";
 import { UpdateVersionPicker } from "./UpdateVersionPicker";
 import { handleDialogKeyDown, Modal } from "./Modal";
+import { accessLabel, effortLabels } from "../runtime-labels";
 import {
   ArrowRight,
   Brain,
@@ -217,11 +218,10 @@ export function DeleteThreadDialog({
       >
         <span className="delete-thread-icon"><Trash2 size={18} /></span>
         <div>
-          <span className="eyebrow">DELETE THREAD</span>
           <h2 id="delete-thread-title">删除“{threadTitle}”？</h2>
           <p id="delete-thread-detail">
-            此操作会永久删除 Cleo 保存的 thread 与本地历史记录，无法撤销。
-            {productivity ? " SDK / ACP 中的原生会话不会被远程删除。" : ""}
+            永久删除此任务的本地对话记录，无法撤销。
+            {productivity ? "外部客户端中的会话会保留。" : ""}
           </p>
         </div>
         {error && <p className="dialog-error" role="alert">{error}</p>}
@@ -261,7 +261,6 @@ export function RemoveProjectDialog({
       >
         <span className="delete-thread-icon"><Trash2 size={18} /></span>
         <div>
-          <span className="eyebrow">REMOVE PROJECT</span>
           <h2 id="remove-project-title">移除“{project.name}”？</h2>
           <p id="remove-project-detail">
             项目会从侧边栏移除，但不会删除本地文件或 Cleo 保存的历史任务。
@@ -312,8 +311,8 @@ interface SettingsModalProps {
 
 type SettingsPage = "appearance" | "agent" | "instructions" | "models" | "models-add" | "models-dream" | "updates" | "data";
 const settingsTitles: Record<SettingsPage, string> = {
-  appearance: "外观", agent: "Agent", instructions: "Agent 指令", models: "当前配置",
-  "models-add": "新增连接", "models-dream": "DreamAgent", updates: "软件更新", data: "数据与记忆",
+  appearance: "外观", agent: "运行设置", instructions: "对话指令", models: "当前配置",
+  "models-add": "新增连接", "models-dream": "记忆整理", updates: "软件更新", data: "数据与记忆",
 };
 
 export function SettingsModal({
@@ -364,18 +363,17 @@ export function SettingsModal({
           <div className="settings-brand"><span>C</span><strong>设置</strong></div>
           <nav aria-label="设置导航">
             <button className={page === "appearance" ? "active" : ""} aria-current={page === "appearance" ? "page" : undefined} type="button" onClick={() => setPage("appearance")}><Sparkles size={16} />外观</button>
-            <button className={page === "agent" ? "active" : ""} aria-current={page === "agent" ? "page" : undefined} type="button" onClick={() => setPage("agent")}><SlidersHorizontal size={16} />Agent</button>
-            <button className={page === "instructions" ? "active" : ""} aria-current={page === "instructions" ? "page" : undefined} type="button" onClick={() => setPage("instructions")}><FileText size={16} />Agent 指令</button>
+            <button className={page === "agent" ? "active" : ""} aria-current={page === "agent" ? "page" : undefined} type="button" onClick={() => setPage("agent")}><SlidersHorizontal size={16} />运行设置</button>
+            <button className={page === "instructions" ? "active" : ""} aria-current={page === "instructions" ? "page" : undefined} type="button" onClick={() => setPage("instructions")}><FileText size={16} />对话指令</button>
             <button className="settings-model-group" type="button" onClick={() => setPage("models")}><Plus size={16} />模型</button>
             <div className="settings-model-subnav">
               <button className={page === "models" ? "active" : ""} aria-current={page === "models" ? "page" : undefined} onClick={() => setPage("models")}><SlidersHorizontal size={15} />当前配置</button>
               <button className={page === "models-add" ? "active" : ""} aria-current={page === "models-add" ? "page" : undefined} onClick={() => setPage("models-add")}><Plus size={15} />新增连接</button>
-              <button className={page === "models-dream" ? "active" : ""} aria-current={page === "models-dream" ? "page" : undefined} onClick={() => setPage("models-dream")}><Moon size={15} />DreamAgent</button>
+              <button className={page === "models-dream" ? "active" : ""} aria-current={page === "models-dream" ? "page" : undefined} onClick={() => setPage("models-dream")}><Moon size={15} />记忆整理</button>
             </div>
             <button className={page === "updates" ? "active" : ""} aria-current={page === "updates" ? "page" : undefined} type="button" onClick={() => setPage("updates")}><RefreshCw size={16} />更新</button>
             <button className={page === "data" ? "active" : ""} aria-current={page === "data" ? "page" : undefined} type="button" onClick={() => setPage("data")}><Database size={16} />数据与记忆</button>
           </nav>
-          <small>Cleo Desktop · Preview</small>
         </aside>
         <section className="settings-content">
           <header className="settings-header">
@@ -397,21 +395,20 @@ export function SettingsModal({
           </div>
           {page === "appearance" ? (
             <div className="settings-page">
-              <SettingsRow title="主题" description="选择更适合当前环境的界面亮度。">
+              <SettingsRow title="主题">
                 <div className="theme-options">
-                  <button className={theme === "dark" ? "active" : ""} type="button" onClick={() => onThemeChange("dark")}><span className="theme-preview dark"><Moon size={16} /></span><span>夜色</span>{theme === "dark" ? <Check size={14} /> : null}</button>
-                  <button className={theme === "light" ? "active" : ""} type="button" onClick={() => onThemeChange("light")}><span className="theme-preview light"><Sun size={16} /></span><span>雾白</span>{theme === "light" ? <Check size={14} /> : null}</button>
+                  <button className={theme === "dark" ? "active" : ""} type="button" onClick={() => onThemeChange("dark")}><span className="theme-preview dark"><Moon size={16} /></span><span>深色</span>{theme === "dark" ? <Check size={14} /> : null}</button>
+                  <button className={theme === "light" ? "active" : ""} type="button" onClick={() => onThemeChange("light")}><span className="theme-preview light"><Sun size={16} /></span><span>浅色</span>{theme === "light" ? <Check size={14} /> : null}</button>
                 </div>
               </SettingsRow>
-              <SettingsRow title="信息密度" description="当前使用适合桌面工作区的紧凑布局。"><span className="settings-value">紧凑</span></SettingsRow>
-              <SettingsRow title="动态效果" description="控制面板切换与动画；同时遵循系统的减少动态效果偏好。"><label className="switch"><input type="checkbox" aria-label="动态效果" checked={motionEnabled} onChange={(event) => onMotionChange(event.target.checked)} /><span /></label></SettingsRow>
+              <SettingsRow title="动态效果"><label className="switch"><input type="checkbox" aria-label="动态效果" checked={motionEnabled} onChange={(event) => onMotionChange(event.target.checked)} /><span /></label></SettingsRow>
             </div>
           ) : page === "agent" ? (
             <div className="settings-page">
-              <SettingsRow title="Provider" description="来自当前 thread 的真实 harness session。"><span className="settings-value">{runtime.provider}</span></SettingsRow>
-              <SettingsRow title="默认模型" description={runtime.editable === false ? "Cleo 对话模型来自当前 agent profile。" : "应用到当前 productivity thread。"}><select disabled={runtime.editable === false} value={runtime.model} onChange={(event) => onRuntimeChange({ model: event.target.value })}>{(runtime.models?.length ? runtime.models : [runtime.model]).map((model) => <option key={model}>{model}</option>)}</select></SettingsRow>
-              <SettingsRow title="推理强度" description="更高强度适合复杂代码任务。"><div className="segmented-control">{supportedEfforts.length ? supportedEfforts.map((effort) => <button className={runtime.effort === effort ? "active" : ""} type="button" key={effort} onClick={() => onRuntimeChange({ effort })}>{effort}</button>) : <button type="button" disabled>default</button>}</div></SettingsRow>
-              <SettingsRow title="文件访问" description="每个 turn 都会明确显示实际 sandbox。"><span className="settings-value mono">{runtime.access}</span></SettingsRow>
+              <SettingsRow title="服务"><span className="settings-value">{runtime.provider}</span></SettingsRow>
+              <SettingsRow title="当前任务模型">{runtime.editable === false ? <span className="settings-value">{runtime.model}</span> : <select aria-label="当前任务模型" value={runtime.model} onChange={event => onRuntimeChange({ model: event.target.value })}>{(runtime.models?.length ? runtime.models : [runtime.model]).map(model => <option key={model}>{model}</option>)}</select>}</SettingsRow>
+              <SettingsRow title="思考深度"><div className="segmented-control">{supportedEfforts.length ? supportedEfforts.map((effort) => <button className={runtime.effort === effort ? "active" : ""} type="button" key={effort} onClick={() => onRuntimeChange({ effort })}>{effortLabels[effort] ?? effort}</button>) : <span className="settings-value">由模型决定</span>}</div></SettingsRow>
+              <SettingsRow title="文件访问"><span className="settings-value" title={runtime.access}>{accessLabel(runtime.access)}</span></SettingsRow>
             </div>
           ) : page === "instructions" || isModels ? null : page === "updates" ? (
             <UpdateSettingsPage
@@ -422,12 +419,11 @@ export function SettingsModal({
             />
           ) : (
             <div className="settings-page">
-              <SettingsRow title="本地优先" description="会话、配置和记忆只保存在 Cleo 数据目录。"><span className="status-good">已启用</span></SettingsRow>
-              <SettingsRow title="DreamAgent" description="在记忆页查看整理结果和待确认来源。"><span className="settings-value">{dreamStatusLabel(dreamAgent)}</span></SettingsRow>
-              <SettingsRow title="记忆作用域" description="普通对话与开发任务严格分区。"><span className="settings-value">已隔离</span></SettingsRow>
-              <SettingsRow title="配置模板" description="复制与 CLI --print-config-template 相同的模板。"><div className="settings-actions"><button type="button" onClick={() => onCopyConfigTemplate("cleo")}>复制 Cleo</button><button type="button" onClick={() => onCopyConfigTemplate("harnesses")}>复制 Harness</button></div></SettingsRow>
-              <SettingsRow title="重置工作区" description="对应 CLI --reset-to-main；保留 Cleo 配置。"><button className="settings-action danger" type="button" onClick={() => { if (window.confirm("将仓库重置到本地 main 并清理未跟踪文件？此操作不可撤销。")) onResetWorkspace(); }}>重置到 main</button></SettingsRow>
-              <div className="settings-note"><Brain size={17} /><p>当前页面直接读取本地 Cleo backend；会话、记忆、模型与运行参数均来自持久化状态。</p></div>
+              <SettingsRow title="记忆整理"><span className="settings-value">{dreamStatusLabel(dreamAgent)}</span></SettingsRow>
+              <details className="settings-advanced"><summary>高级设置</summary>
+                <SettingsRow title="配置模板"><div className="settings-actions"><button type="button" onClick={() => onCopyConfigTemplate("cleo")}>复制 Cleo 配置</button><button type="button" onClick={() => onCopyConfigTemplate("harnesses")}>复制运行配置</button></div></SettingsRow>
+                <SettingsRow title="重置工作区" description="回到本地 main，删除未提交的改动；保留配置。"><button className="settings-action danger" type="button" onClick={() => { if (window.confirm("将仓库重置到本地 main 并清理未跟踪文件？此操作不可撤销。")) onResetWorkspace(); }}>重置工作区</button></SettingsRow>
+              </details>
             </div>
           )}
           </div>
@@ -578,21 +574,20 @@ function AgentInstructionsPage({
       setBaseline(result.content);
       setSaved(true);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "无法保存 Agent 指令");
+      setError(reason instanceof Error ? reason.message : "无法保存 对话指令");
     }
   };
   return (
     <form className="settings-page agent-instructions-page" onSubmit={submit}>
       <div className="agent-instructions-intro">
         <div>
-          <strong>Non-productivity 系统指令</strong>
-          <p>供 Cleo 普通对话读取；不会传给 Codex、Claude 或 OpenCode productivity harness。</p>
+          <p>仅用于普通对话，不影响开发任务。</p>
         </div>
         <button type="button" disabled={!instructions?.path} onClick={() => instructions?.path && onRevealPath(instructions.path)}><FolderOpen size={14} />打开位置</button>
       </div>
       <code className="agent-instructions-path">{instructions?.path ?? (loading ? "正在读取…" : "尚未读取指令")}</code>
       <textarea
-        aria-label="Non-productivity Agent 指令"
+        aria-label="对话指令内容"
         spellCheck={false}
         value={draft}
         disabled={!instructions && loading}
@@ -606,7 +601,7 @@ function AgentInstructionsPage({
         }}
       />
       <footer>
-        <span className={error ? "error" : ""}>{error ?? (saved ? "已保存；后续 non-productivity 对话将读取新指令。" : instructions?.exists === false ? "保存后会创建 AGENTS.md。" : dirty ? "有未保存修改" : "未修改")}</span>
+        <span className={error ? "error" : ""}>{error ?? (saved ? "已保存，后续对话生效。" : instructions?.exists === false ? "保存后会创建 AGENTS.md。" : dirty ? "有未保存修改" : "未修改")}</span>
         <div>
           <button type="button" disabled={!dirty || loading} onClick={() => { setDraft(baseline); setError(null); setSaved(false); }}><RotateCcw size={14} />撤销修改</button>
           <button className="primary" type="submit" disabled={!dirty || loading}><Save size={14} />{loading ? "保存中…" : "保存"}</button>
@@ -616,8 +611,8 @@ function AgentInstructionsPage({
   );
 }
 
-function SettingsRow({ title, description, children }: { title: string; description: string; children: ReactNode }) {
-  return <div className="settings-row"><div><strong>{title}</strong><p>{description}</p></div><div className="settings-control">{children}</div></div>;
+function SettingsRow({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
+  return <div className="settings-row"><div><strong>{title}</strong>{description && <p>{description}</p>}</div><div className="settings-control">{children}</div></div>;
 }
 
 export function LoadingScreen({ error, onRetry }: { error: string | null; onRetry?: () => void }) {

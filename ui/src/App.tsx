@@ -8,7 +8,7 @@ import { useEvolution } from "./useEvolution";
 import { useInspectorResize } from "./useInspectorResize";
 import "./components/evolution.css";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Command, Minus } from "lucide-react";
+import { Minus } from "lucide-react";
 import { Conversation } from "./components/Conversation";
 import { Inspector, type InspectorTab } from "./components/Inspector";
 import { MemoryView } from "./components/MemoryView";
@@ -191,6 +191,8 @@ export function App() {
   const inspectorResize = useInspectorResize(`${sidebarCollapsed}:${evolutionOpen}`, showInspector);
   const [commandOpen, setCommandOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [improvementOpen, setImprovementOpen] = useState(false);
+  useEffect(() => { setImprovementOpen(false); }, [workspace.activeThreadId, evolutionOpen]);
   const [threadPendingDeletion, setThreadPendingDeletion] = useState<Thread | null>(null);
   const [deletingThread, setDeletingThread] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -304,7 +306,7 @@ export function App() {
       {
         id: "new",
         label: "新建任务",
-        hint: "在当前项目中创建一个空 thread",
+        hint: "在当前项目中创建任务",
         icon: commandIcons.plus,
         shortcut: `${modifierKey} N`,
         run: () => void workspace.createThread(),
@@ -319,21 +321,21 @@ export function App() {
       {
         id: "chat",
         label: "打开 Cleo 对话",
-        hint: "切换到 non_productivity 空间",
+        hint: "日常对话",
         icon: commandIcons.chat,
         run: () => { setEvolutionOpen(false); workspace.selectSpace("chat"); },
       },
       {
         id: "code",
         label: "打开开发任务",
-        hint: "切换到 productivity 空间",
+        hint: "处理开发任务",
         icon: commandIcons.code,
         run: () => { setEvolutionOpen(false); workspace.selectSpace("productivity"); },
       },
       {
         id: "memory",
         label: "查看记忆",
-        hint: "浏览项目记忆与 persona 投影",
+        hint: "查看保存的记忆",
         icon: commandIcons.memory,
         run: () => { setEvolutionOpen(false); workspace.selectSpace("memory"); },
       },
@@ -395,7 +397,7 @@ export function App() {
     <div ref={inspectorResize.setShell} className={appClasses} style={inspectorResize.style} data-theme={theme}>
       <TitleBar
         projectName={evolutionOpen ? "Cleo 进化" : workspace.activeSpace === "memory" ? "记忆" : workspace.activeProject?.name ?? "Cleo"}
-        mode={evolutionOpen ? "Evolution" : workspace.activeSpace === "productivity" ? "Productivity" : workspace.activeSpace === "chat" ? "Chat" : "Memory"}
+        mode={evolutionOpen ? "进化" : workspace.activeSpace === "productivity" ? "开发" : workspace.activeSpace === "chat" ? "对话" : "记忆"}
       />
       {workspace.loadingError && <div className="workspace-error" role="alert">
         <span>{workspace.loadingError}</span><button onClick={workspace.retryLoading}>重试</button>
@@ -424,7 +426,6 @@ export function App() {
         onDeleteThread={thread => { setDeleteError(null); setThreadPendingDeletion(thread); }}
         onCreateThread={() => void workspace.createThread()}
         onChooseWorkspace={() => void workspace.chooseWorkspace().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法打开工作目录", "error"))}
-        onOpenCommand={() => setCommandOpen(true)}
         recoverableChatBackups={workspace.snapshot.backend?.recoverableChatBackups ?? 0}
         onRestoreChatHistory={() => void workspace.restoreChatHistory().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法恢复旧对话", "error"))}
         memoryOverview={workspace.snapshot.memoryOverview}
@@ -463,8 +464,7 @@ export function App() {
                   && (!evolution.state.candidate || evolution.state.active === evolution.state.candidate))}
                 onAction={evolutionAction} onImprove={improveFromCase} onCreate={createEvolutionCase} />
             </EvolutionPanel> : undefined}
-          improvement={!evolutionOpen && conversationThread && window.cleoDesktop && <EvolutionCases thread={conversationThread}
-            busy={Boolean(workspace.runningThreadId) || evolution.pending || Boolean(updateState.operationBusy)} onAction={evolutionAction} onImprove={improveFromCase} onCreate={createEvolutionCase} />}
+          onImprove={!evolutionOpen && conversationThread && window.cleoDesktop ? () => setImprovementOpen(true) : undefined}
           prompt={workspace.prompt}
           skills={workspace.skills}
           onPromptChange={workspace.setPrompt}
@@ -548,6 +548,8 @@ export function App() {
           onResolveApproval={(decision) => void workspace.resolveApproval(decision)}
         />
       )}
+      {!evolutionOpen && conversationThread && window.cleoDesktop && <EvolutionCases dialogOnly open={improvementOpen} onClose={() => setImprovementOpen(false)} thread={conversationThread}
+        busy={Boolean(workspace.runningThreadId) || evolution.pending || Boolean(updateState.operationBusy)} onAction={evolutionAction} onImprove={improveFromCase} onCreate={createEvolutionCase} />}
       {showInspector ? (
         <Inspector
           resizeHandle={<div className="inspector-resize-handle" {...inspectorResize.handleProps} />}
@@ -610,7 +612,7 @@ export function App() {
           void workspace.deleteThread(threadPendingDeletion.id)
             .then(() => {
               setThreadPendingDeletion(null);
-              notify("Thread 已删除");
+              notify("任务已删除");
             })
             .catch((error: unknown) => {
               setDeleteError(error instanceof Error ? error.message : "无法删除任务");
@@ -651,9 +653,8 @@ export function App() {
 function TitleBar({ projectName, mode }: { projectName: string; mode: string }) {
   return (
     <header className="titlebar">
-      <div className="titlebar-brand"><span className="mini-brand">C</span><strong>Cleo</strong><small>Desktop</small></div>
+      <div className="titlebar-brand"><span className="mini-brand">C</span><strong>Cleo</strong></div>
       <div className="titlebar-context"><span>{projectName}</span><Minus size={11} /><small>{mode}</small></div>
-      <div className="titlebar-runtime"><span className="runtime-dot" /><small>Local</small><Command size={13} /></div>
     </header>
   );
 }

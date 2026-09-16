@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, ExternalLink, Eye, Info, KeyRound, UserRound } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ExternalLink, Eye, KeyRound, UserRound } from "lucide-react";
 import { cleoClient } from "../../services/cleoClient";
 import type { ApplyModelSettings, ModelConnectionInput, ModelConnectionProbe, ModelProfileInput, ModelProfileSummary, ModelSettings, SubscriptionLogin, SubscriptionRuntime } from "../../types";
-import { accountCheckScope, accounts, apiProviders, isAccount, modelLabel, profileLabel, profileModels } from "./catalog";
+import { accounts, apiProviders, isAccount, modelLabel, profileLabel, profileModels } from "./catalog";
+import { ConnectionScope } from "./ConnectionScope";
 
 const message = (error: unknown) => error instanceof Error ? error.message : "连接失败，请重试。";
 
-export function ConnectionWizard({ existing, settings, busy, onApply, onDone }: {
+export function ConnectionWizard({ existing, settings, busy, onApply, onDone, active = true }: {
   existing: ModelProfileSummary | null; settings: ModelSettings; busy: boolean;
   onApply: ApplyModelSettings; onDone: () => void;
+  active?: boolean;
 }) {
   const initialApi = existing ? apiProviders.find(p => p.baseUrl === existing.baseUrl && p.provider === existing.provider)
     || apiProviders.find(p => p.provider === existing.provider) : undefined;
@@ -19,7 +21,7 @@ export function ConnectionWizard({ existing, settings, busy, onApply, onDone }: 
   const [showKey, setShowKey] = useState(false);
   const [baseUrl, setBaseUrl] = useState(existing?.baseUrl || "");
   const [executable, setExecutable] = useState(existing?.executable || "");
-  const [step, setStep] = useState<"connect" | "models" | "done">("connect");
+  const [step, setStep] = useState<"connect" | "models">("connect");
   const [probe, setProbe] = useState<ModelConnectionProbe | null>(null);
   const [chosen, setChosen] = useState<string[]>([]);
   const [modelQuery, setModelQuery] = useState("");
@@ -31,6 +33,7 @@ export function ConnectionWizard({ existing, settings, busy, onApply, onDone }: 
   const operation = useRef(0);
   const loginRef = useRef<string | null>(null);
   const mounted = useRef(true);
+  const saving = useRef(false);
   const account = providerId ? accounts[providerId] : undefined;
   const api = apiProviders.find(p => p.id === providerId);
   const provider = type === "api" ? api : account;
@@ -38,6 +41,8 @@ export function ConnectionWizard({ existing, settings, busy, onApply, onDone }: 
   const input: ModelConnectionInput = { displayName: name.trim(), backend: type === "api" ? "api" : providerId || "", provider: existing?.provider || (type === "api" ? api?.provider || "openai" : providerId || ""), apiKey: type === "api" ? key.trim() : "", baseUrl: type === "api" ? baseUrl.trim() : "", executable: type === "account" ? executable.trim() : "", models: chosen };
   const protectedModels = existing ? [...new Set([existing.model, ...(settings.activeDreamAgent === existing.name && settings.activeDreamModel ? [settings.activeDreamModel] : [])])] : [];
   const locked = busy || working || login?.status === "pending";
+  const probeState = useRef({ step, working });
+  probeState.current = { step, working };
 
   useEffect(() => {
     mounted.current = true;
@@ -57,14 +62,31 @@ export function ConnectionWizard({ existing, settings, busy, onApply, onDone }: 
       const result = await cleoClient.checkModelConnection(input);
       if (!mounted.current || request !== operation.current) return;
       setProbe(result);
-      setChosen(existing ? profileModels(existing) : result.models.length ? [result.models[0]] : type === "account" ? ["default"] : []);
+      setChosen(current => existing ? profileModels(existing) : current.length ? current : result.models.length ? [result.models[0]] : type === "account" ? ["default"] : []);
       setStep("models");
     } catch (error) { if (mounted.current && request === operation.current) setError(message(error)); }
     finally { if (mounted.current && request === operation.current) setWorking(false); }
   };
 
   useEffect(() => {
-    if (!login || login.status !== "pending") return;
+    if (!active || type !== "account" || !providerId) return;
+    const refresh = () => {
+      if (!document.hidden && probeState.current.step === "connect" && !probeState.current.working && !loginRef.current) void readModels();
+    };
+    const timer = window.setTimeout(refresh, 250);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearTimeout(timer); window.removeEventListener("focus", refresh);
+      operation.current++; setWorking(false);
+      if (loginRef.current) {
+        const id = loginRef.current; loginRef.current = null; setLogin(null);
+        void cleoClient.cancelSubscriptionLogin(id).catch(() => {});
+      }
+    };
+  }, [active, type, providerId, executable]);
+
+  useEffect(() => {
+    if (!active || !login || login.status !== "pending") return;
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
@@ -82,16 +104,16 @@ export function ConnectionWizard({ existing, settings, busy, onApply, onDone }: 
       }
     }, 1000);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [login]);
+  }, [login, active]);
 
   const chooseProvider = (id: string, nextType = type) => {
-    operation.current++; setType(nextType); setProviderId(id); setStep("connect"); setProbe(null); setChosen([]); setLogin(null); setError(""); setKey(""); setManualModel(""); setModelQuery(""); setExecutable("");
+    operation.current++; setWorking(false); setType(nextType); setProviderId(id); setStep("connect"); setProbe(null); setChosen([]); setLogin(null); setError(""); setKey(""); setManualModel(""); setModelQuery(""); setExecutable("");
     const item = nextType === "api" ? apiProviders.find(p => p.id === id)! : accounts[id];
     setName(`${item.name} · ${nextType === "api" ? "API" : "个人账号"}`);
     setBaseUrl(nextType === "api" ? apiProviders.find(p => p.id === id)!.baseUrl : "");
   };
   const switchType = (value: "api" | "account") => {
-    operation.current++; setType(value); setProviderId(null); setKey(""); setLogin(null); setStep("connect"); setProbe(null); setError("");
+    operation.current++; setWorking(false); setType(value); setProviderId(null); setKey(""); setLogin(null); setStep("connect"); setProbe(null); setError("");
   };
   const startLogin = async () => {
     const request = ++operation.current; setWorking(true); setError("");
@@ -115,8 +137,10 @@ export function ConnectionWizard({ existing, settings, busy, onApply, onDone }: 
     finally { setWorking(false); }
   };
   const save = async () => {
+    if (saving.current || busy) return;
     if (!name.trim()) { setError("请填写连接名称。"); return; }
     if (!chosen.length) { setError("请至少选择或填写一个模型。"); return; }
+    saving.current = true;
     setError("");
     try {
       if (existing) await onApply(() => cleoClient.saveModelProfile({
@@ -126,26 +150,27 @@ export function ConnectionWizard({ existing, settings, busy, onApply, onDone }: 
         maxTokens: existing.maxTokens, activateAgent: false, activateDreamAgent: false,
       }));
       else await onApply(() => cleoClient.createModelConnection(input));
-      if (mounted.current) { setKey(""); setStep("done"); }
+      if (mounted.current) { setKey(""); onDone(); }
     } catch (error) { if (mounted.current) setError(message(error)); }
+    finally { saving.current = false; }
   };
   const visibleModels = [...new Set([...(probe?.models || []), ...chosen])].filter(id => `${id} ${modelLabel(id)}`.toLowerCase().includes(modelQuery.toLowerCase()));
 
   return <>
     <div className="ms-tabs" role="tablist" aria-label="连接方式">
-      {([['api', 'API 密钥', KeyRound], ['account', '账号登录', UserRound]] as const).map(([value, label, Icon]) => <button key={value} role="tab" aria-selected={type === value} className={type === value ? "active" : ""} disabled={locked || !!existing} onClick={() => switchType(value)}><Icon />{label}</button>)}
+      {([['api', 'API 密钥', KeyRound], ['account', '账号登录', UserRound]] as const).map(([value, label, Icon]) => <button key={value} role="tab" aria-selected={type === value} className={type === value ? "active" : ""} disabled={busy || login?.status === "pending" || !!existing} onClick={() => switchType(value)}><Icon />{label}</button>)}
     </div>
     <div className="ms-connect-layout">
       <div className="ms-providers">
         <div className="ms-list-label">选择服务商</div>
         {(type === "api" ? apiProviders : catalog.map(item => ({ id: item.backend, ...accounts[item.backend], name: accounts[item.backend]?.name || item.label, mark: accounts[item.backend]?.mark || "·" }))).map(item =>
-          <button key={item.id} className={`ms-provider-option ${providerId === item.id ? "active" : ""}`} aria-pressed={providerId === item.id} disabled={locked || !!existing} onClick={() => chooseProvider(item.id)}><span className="ms-mark">{item.mark}</span><strong>{item.name}</strong></button>)}
+          <button key={item.id} className={`ms-provider-option ${providerId === item.id ? "active" : ""}`} aria-pressed={providerId === item.id} disabled={busy || login?.status === "pending" || !!existing} onClick={() => chooseProvider(item.id)}><span className="ms-mark">{item.mark}</span><strong>{item.name}</strong></button>)}
         {type === "account" && !catalog.length && <p className="ms-muted">{error || "正在读取登录方式…"}</p>}
       </div>
       <div className="ms-connect-pane">
         {!provider ? <div className="ms-empty-selection">{type === "api" ? <KeyRound /> : <UserRound />}<strong>选择一个服务商</strong></div> : <>
-          {step !== "done" && <div className="ms-connect-heading"><span className="ms-mark">{provider.mark}</span><h3>连接 {provider.name}</h3></div>}
-          <div className="ms-steps">{[type === "api" ? "验证密钥" : "账号授权", "选择模型", "完成"].map((label, i) => <span key={label} className={i === ({ connect: 0, models: 1, done: 2 })[step] ? "active" : ""}><b>{i + 1}</b>{label}</span>)}</div>
+          <div className="ms-connect-heading"><span className="ms-mark">{provider.mark}</span><h3>连接 {provider.name}</h3></div>
+          <div className="ms-steps">{[type === "api" ? "验证密钥" : "账号连接", "选择模型"].map((label, i) => <span key={label} className={i === ({ connect: 0, models: 1 })[step] ? "active" : ""}><b>{i + 1}</b>{label}</span>)}</div>
           {step === "connect" && type === "api" && <form onSubmit={e => { e.preventDefault(); void readModels(); }}>
             <label className="ms-field"><span>连接名称</span><input value={name} onChange={e => setName(e.target.value)} required disabled={locked} /></label>
             <label className="ms-field"><span>API Key</span><div className="ms-input-wrap"><input type={showKey ? "text" : "password"} autoComplete="new-password" value={key} onChange={e => { setKey(e.target.value); setError(""); }} required disabled={locked} /><button type="button" className="ms-icon" aria-label="显示或隐藏密钥" onClick={() => setShowKey(!showKey)}><Eye /></button></div></label>
@@ -153,18 +178,19 @@ export function ConnectionWizard({ existing, settings, busy, onApply, onDone }: 
             <button className="ms-primary ms-full" disabled={locked}>{working ? "正在验证连接…" : <>验证并继续<ArrowRight /></>}</button>
           </form>}
           {step === "connect" && type === "account" && account && <>
-            <div className="ms-billing"><Info /><div><strong>{account.billing}</strong><p>{account.note}</p></div></div>
-            <p className="ms-muted">{accountCheckScope}</p>
+            <p className="ms-meta">{account.billing}</p>
+            <ConnectionScope note={account.note} />
             {login?.status === "pending" ? <div className="ms-waiting"><div className="ms-spinner" /><h3>等待账号授权</h3>{login.url?.startsWith("https://") && <a className="ms-secondary" href={login.url} target="_blank" rel="noreferrer">打开官方登录页面<ExternalLink /></a>}<button className="ms-quiet" disabled={working} onClick={() => void cancelLogin()}>取消登录</button></div> : <>
               <button className="ms-primary ms-full" disabled={locked} onClick={() => void startLogin()}><ExternalLink />{working ? "正在连接…" : account.login}</button>
-              <button className="ms-quiet ms-full" disabled={locked} onClick={() => void readModels()}>已登录，验证连接</button>
+              {error && <button className="ms-quiet ms-full" disabled={locked} onClick={() => void readModels()}>重试检查</button>}
             </>}
             {login?.output && <pre className="ms-login-output">{login.output}</pre>}
-            <details className="ms-advanced"><summary>高级设置</summary><label className="ms-field"><span>官方客户端路径（可选）</span><input value={executable} onChange={e => setExecutable(e.target.value)} placeholder="自动查找本机已安装的客户端" disabled={locked} /></label>{runtime && <a className="ms-link" href={runtime.docs} target="_blank" rel="noreferrer">安装官方客户端<ExternalLink /></a>}</details>
+            {runtime && <a className="ms-link" href={runtime.docs} target="_blank" rel="noreferrer">安装官方客户端<ExternalLink /></a>}
+            <details className="ms-advanced"><summary>指定客户端路径</summary><label className="ms-field"><span>客户端路径</span><input value={executable} onChange={e => setExecutable(e.target.value)} placeholder="自动查找本机已安装的客户端" disabled={busy || login?.status === "pending"} /></label></details>
           </>}
           {step === "models" && <>
             {probe?.status === "connected" && <div className="ms-connected"><Check />{type === "account" ? "客户端检查通过" : "连接验证成功"}</div>}
-            {type === "account" && <p className="ms-muted">{accountCheckScope}</p>}
+            {type === "account" && <ConnectionScope />}
             <label className="ms-field"><span>连接名称</span><input value={name} onChange={e => setName(e.target.value)} disabled={busy} /></label>
             <div className="ms-models-label">选择要添加的模型<span>已选 {chosen.length}</span></div>
             <input className="ms-model-filter" aria-label="筛选可用模型" placeholder="搜索可用模型" value={modelQuery} onChange={e => setModelQuery(e.target.value)} />
@@ -173,7 +199,6 @@ export function ConnectionWizard({ existing, settings, busy, onApply, onDone }: 
             <form className="ms-manual-model" onSubmit={e => { e.preventDefault(); if (manualModel.trim()) { setChosen([...new Set([...chosen, manualModel.trim()])]); setManualModel(""); setModelQuery(""); } }}><input aria-label="模型名称" placeholder="输入模型 ID" value={manualModel} onChange={e => setManualModel(e.target.value)} /><button className="ms-secondary" disabled={!manualModel.trim() || busy}>添加</button></form>
             <div className="ms-form-actions"><button className="ms-quiet" disabled={busy} onClick={() => setStep("connect")}><ArrowLeft />返回</button><button className="ms-primary" disabled={!chosen.length || busy} onClick={() => void save()}>{busy ? "保存中…" : existing ? "保存连接" : "添加连接"}<Check /></button></div>
           </>}
-          {step === "done" && <div className="ms-success"><span className="ms-success-icon"><Check /></span><h3>{existing ? "连接已更新" : "连接已添加"}</h3><div className="ms-success-summary"><span className="ms-mark">{provider.mark}</span><div><strong>{name}</strong><span className="ms-meta">{chosen.length} 个模型</span></div></div><button className="ms-primary" onClick={onDone}>返回当前配置<ArrowRight /></button></div>}
           {error && <p className="ms-error" role="alert">{error}</p>}
         </>}
       </div>

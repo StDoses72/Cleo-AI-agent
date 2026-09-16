@@ -540,7 +540,7 @@ export class MockCleoClient implements CleoClient {
   async getRuntimeCatalog(): Promise<RuntimeCatalog> {
     await delay(120);
     return {
-      nonProductivityProfiles: this.modelSettings.profiles.map(p => ({ id: p.name, provider: p.provider, model: p.model, maxTokens: p.maxTokens, active: p.name === this.modelSettings.activeAgent })),
+      nonProductivityProfiles: this.modelSettings.profiles.map(p => ({ id: p.name, label: p.displayName || p.name, provider: p.provider, model: p.model, maxTokens: p.maxTokens, active: p.name === this.modelSettings.activeAgent })),
       productivityProviders: [
         { id: "codex", type: "codex_sdk", defaultModel: "gpt-5.6-sol", modelSource: "dynamic" },
         { id: "claude", type: "claude_sdk", defaultModel: "claude-opus-5", modelSource: "dynamic" },

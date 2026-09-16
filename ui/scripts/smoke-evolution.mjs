@@ -106,7 +106,7 @@ try {
   ]);
   await page.screenshot({ path: join(output, "02-evolution-ready.png") });
   await page.getByRole("button", { name: "设置", exact: true }).click();
-  await page.getByRole("button", { name: "雾白" }).click();
+  await page.getByRole("button", { name: "浅色" }).click();
   await page.keyboard.press("Escape");
   await page.screenshot({ path: join(output, "03-evolution-light.png") });
   const fit = await page.evaluate(() => ({ width: innerWidth, scrollWidth: document.documentElement.scrollWidth, height: innerHeight, scrollHeight: document.documentElement.scrollHeight }));

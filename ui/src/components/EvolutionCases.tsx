@@ -1,10 +1,13 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowUp, FlaskConical, X } from "lucide-react";
 import type { EvolutionAcceptanceState, EvolutionRequest } from "../evolution-types";
 import type { Thread } from "../types";
 import { handleDialogKeyDown } from "./Modal";
 
 interface Props {
+  dialogOnly?: boolean;
+  open?: boolean;
+  onClose?: () => void;
   currentCaseIds?: string[];
   state?: EvolutionAcceptanceState;
   requests?: EvolutionRequest[];
@@ -19,21 +22,26 @@ interface Props {
 const labels = { passed: "通过", failed: "未通过", error: "运行失败", manual: "待人工验收" };
 
 /** Purpose: Capture human acceptance criteria before editing, then expose comparable version evidence. */
-export function EvolutionCases({ state, requests = [], thread, busy, canCompare, canReview, onAction, onImprove, onCreate, currentCaseIds = [] }: Props) {
+export function EvolutionCases({ state, requests = [], thread, busy, canCompare, canReview, onAction, onImprove, onCreate, currentCaseIds = [], dialogOnly = false, open, onClose }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [title, setTitle] = useState("");
   const [expectation, setExpectation] = useState("");
   const [issue, setIssue] = useState("");
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const openDialog = () => { setTitle(thread?.title || ""); setExpectation(""); setIssue(""); dialog.current?.showModal(); };
+  const closeDialog = () => { if (!savingRef.current) { dialog.current?.close(); onClose?.(); } };
+  useEffect(() => { if (open) openDialog(); else if (open === false) dialog.current?.close(); }, [open, thread?.id]);
+  useEffect(() => { const node = dialog.current; return () => { if (node?.open) node.close(); }; }, []);
   const cases = state?.cases.filter((item) => item.enabled) || [];
   const cancelled = state?.cases.filter((item) => item.cancelledAt) || [];
-  return <section className="evolution-cases" aria-label="行为验收">
-    <div className="evolution-cases-heading"><FlaskConical size={15} /><strong>{state ? "行为验收" : "改进 Cleo"}</strong>
+  return <section className={`evolution-cases${dialogOnly ? " dialog-only" : ""}`} aria-label="行为验收">
+    {!dialogOnly && <div className="evolution-cases-heading"><FlaskConical size={15} /><strong>{state ? "行为验收" : "改进 Cleo"}</strong>
       {state && <span>{cases.length} 项待验收 · {state.fresh ? "结果对应当前构建" : "等待比较当前构建"}</span>}
-      <button disabled={busy} onClick={() => { setTitle(thread?.title || ""); setExpectation(""); setIssue(""); dialog.current?.showModal(); }}>
+      <button disabled={busy} onClick={openDialog}>
         {thread ? "从此对话创建改进案例" : "添加验收案例"}</button>
       {state && <button disabled={busy || !canCompare || !cases.length} onClick={() => onAction("compareCases")}>比较行为</button>}
-    </div>
+    </div>}
     {state && Boolean(cases.length) && <details className="evolution-case-list"><summary>查看预期和修改前后结果</summary>
       <p className="evolution-case-help">体验后可确认验收，或沿用原案例继续修改。不想验收此项时可以取消，原始记录会保留。</p>
       {cases.map((item, index) => {
@@ -68,20 +76,20 @@ export function EvolutionCases({ state, requests = [], thread, busy, canCompare,
         <p>{item.expectation}</p><small>用户取消验收，未标记通过。</small>
         <details><summary>原始证据</summary><pre>{item.evidence}</pre></details></article>)}
     </details>}
-    <dialog ref={dialog} className="evolution-dialog" onKeyDown={handleDialogKeyDown} onCancel={() => dialog.current?.close()}>
-      <div className="evolution-dialog-title"><h2>冻结改进案例</h2><button aria-label="关闭案例" onClick={() => dialog.current?.close()}><X size={18} /></button></div>
-      <p>先记录当前对话和预期，再让 Cleo 修改。应用后不符合预期，可以直接在验收项里继续反馈；确认通过后结束。</p>
+    <dialog ref={dialog} className="evolution-dialog" aria-label="改进 Cleo" onKeyDown={handleDialogKeyDown} onCancel={event => { event.preventDefault(); closeDialog(); }}>
+      <div className="evolution-dialog-title"><h2>改进 Cleo</h2><button aria-label="关闭案例" disabled={saving} onClick={closeDialog}><X size={18} /></button></div>
+      <p>记录问题和期望效果，作为后续验收依据。</p>
       <form onSubmit={(event) => {
-        event.preventDefault(); setSaving(true); setIssue("");
+        event.preventDefault(); if (savingRef.current) return; savingRef.current = true; setSaving(true); setIssue("");
         const evidence = thread?.items.filter((item) => item.type === "message" || item.type === "notice" || item.type === "tool")
           .map((item) => JSON.stringify(item)).join("\n") || "";
         void onCreate({ title, expectation, evidence, sourceThread: thread?.id || "", kind: "manual" })
-          .then(() => dialog.current?.close()).catch((error: unknown) => setIssue(error instanceof Error ? error.message : "保存失败"))
-          .finally(() => setSaving(false));
+          .then(() => { savingRef.current = false; closeDialog(); }).catch((error: unknown) => setIssue(error instanceof Error ? error.message : "保存失败"))
+          .finally(() => { savingRef.current = false; setSaving(false); });
       }}>
         <label>案例名称<input autoFocus aria-label="案例名称" required maxLength={120} value={title} onChange={(event) => setTitle(event.target.value)} /></label>
         <label>预期行为<textarea aria-label="预期行为" required maxLength={4000} value={expectation} onChange={(event) => setExpectation(event.target.value)} placeholder="例如：模型返回格式错误时，保留已有进度并自动尝试纠正，最多三次" /></label>
-        {thread && <p>将保存「{thread.title}」当前已加载的对话记录，来源 {thread.id}。</p>}
+        {thread && <p>将附带「{thread.title}」已加载的对话记录。</p>}
         {issue && <p role="alert">{issue}</p>}
         <button className="evolution-primary" disabled={busy || saving || !title.trim() || !expectation.trim()}>保存案例并打开进化</button>
       </form>

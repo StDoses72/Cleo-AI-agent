@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { dreamStatusLabel } from "../memoryStatus";
 import {
   ArchiveX,
@@ -6,14 +6,10 @@ import {
   CheckCircle2,
   ChevronDown,
   CircleAlert,
-  Clock3,
   Database,
-  Fingerprint,
   FolderGit2,
   LoaderCircle,
-  MoonStar,
   Search,
-  ShieldCheck,
 } from "lucide-react";
 import type {
   MemoryOverview,
@@ -39,21 +35,15 @@ interface MemoryViewProps {
 
 const viewCopy = {
   all: {
-    eyebrow: "DURABLE CONTEXT",
     title: "记忆",
-    description: "按项目保存用户偏好；整理产生的变更由本地 Git 记录。",
     section: "最近更新",
   },
   projects: {
-    eyebrow: "PROJECT LEDGER",
     title: "项目记忆",
-    description: "显示当前项目偏好；工作事实与过程请回查会话历史。",
     section: "项目条目",
   },
   pending: {
-    eyebrow: "REVIEW QUEUE",
     title: "待确认",
-    description: "检查等待整理或整理失败的 session 来源，再决定交给 DreamAgent 或忽略本次。",
     section: "待处理来源",
   },
 } as const;
@@ -77,6 +67,7 @@ export function MemoryView({
   const [reviewDetails, setReviewDetails] = useState<Record<string, MemoryReviewDetails>>({});
   const [reviewDetailsLoadingId, setReviewDetailsLoadingId] = useState<string | null>(null);
   const [reviewDetailsErrors, setReviewDetailsErrors] = useState<Record<string, string>>({});
+  const [detailsRetry, setDetailsRetry] = useState(0);
   const reviewingRef = useRef<string | null>(null);
   const copy = viewCopy[mode];
   const normalizedQuery = query.trim().toLocaleLowerCase();
@@ -96,7 +87,7 @@ export function MemoryView({
 
   const visibleReviewSources = useMemo(
     () => overview.review_sources.filter((source) =>
-      !normalizedQuery || [source.project, source.session_id, source.last_error, spaceLabel(source.space)]
+      !normalizedQuery || [source.title, source.project, source.session_id, source.last_error, spaceLabel(source.space)]
         .filter(Boolean)
         .some((value) => String(value).toLocaleLowerCase().includes(normalizedQuery)),
     ),
@@ -119,30 +110,30 @@ export function MemoryView({
     }
   };
 
-  const toggleReviewSource = async (source: MemoryReviewSource) => {
+  const toggleReviewSource = (source: MemoryReviewSource) => {
     if (reviewingRef.current === source.id) return;
-    if (expandedReviewId === source.id) {
-      setExpandedReviewId(null);
-      return;
-    }
-    setExpandedReviewId(source.id);
-    if (reviewDetails[source.id] || reviewDetailsLoadingId === source.id) return;
+    setExpandedReviewId(current => current === source.id ? null : source.id);
+  };
+  const expandedSource = overview.review_sources.find(source => source.id === expandedReviewId);
+  useEffect(() => {
+    const source = expandedSource;
+    if (!source || (reviewDetails[source.id]?.source_version ?? -1) >= source.source_version) return;
+    let current = true;
     setReviewDetailsLoadingId(source.id);
     setReviewDetailsErrors((current) => ({ ...current, [source.id]: "" }));
-    try {
-      const details = await onLoadReviewDetails(source);
-      setReviewDetails((current) => ({ ...current, [source.id]: details }));
-    } catch (error) {
-      if (reviewingRef.current !== source.id) {
-        setReviewDetailsErrors((current) => ({
-          ...current,
-          [source.id]: error instanceof Error ? error.message : "无法读取这个 session 的内容",
-        }));
-      }
-    } finally {
+    void onLoadReviewDetails(source).then(details => {
+      if (current) setReviewDetails(saved => ({ ...saved, [source.id]: details }));
+    }).catch(error => {
+      if (current) setReviewDetailsErrors(saved => ({ ...saved,
+        [source.id]: error instanceof Error ? error.message : "无法读取对话内容" }));
+    }).finally(() => {
+      if (current) setReviewDetailsLoadingId(saved => saved === source.id ? null : saved);
+    });
+    return () => {
+      current = false;
       setReviewDetailsLoadingId((current) => current === source.id ? null : current);
-    }
-  };
+    };
+  }, [expandedSource?.id, expandedSource?.source_version, detailsRetry]);
 
   const dreamStatus = reviewingId ? "正在整理"
     : reviewError ? "整理失败，可继续重试" : dreamStatusLabel(dreamAgent);
@@ -151,16 +142,14 @@ export function MemoryView({
     <main className="memory-view" data-testid="memory-view" data-mode={mode}>
       <header className="memory-view-header">
         <div>
-          <span className="eyebrow">{copy.eyebrow}</span>
           <h2>{copy.title}</h2>
-          <p>{copy.description}</p>
         </div>
         <label className="memory-search">
           <Search size={15} />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder={mode === "pending" ? "搜索项目或 session" : "搜索记忆"}
+            placeholder={mode === "pending" ? "搜索对话或项目" : "搜索记忆"}
             aria-label={mode === "pending" ? "搜索待确认来源" : "搜索记忆"}
           />
         </label>
@@ -175,11 +164,9 @@ export function MemoryView({
         </p>
       ))}
 
-      <div className="memory-overview">
-        <div><Database size={17} /><span><strong>{summary.active_memories}</strong><small>活跃记忆</small></span></div>
-        <div><ShieldCheck size={17} /><span><strong>{summary.project_scopes}</strong><small>项目作用域</small></span></div>
-        <div><Fingerprint size={17} /><span><strong>{summary.persona_traits}</strong><small>人格倾向</small></span></div>
-        <div><Clock3 size={17} /><span><strong>{formatRelativeTime(dreamAgent.last_processed_at)}</strong><small>上次整理</small></span></div>
+      <div className="memory-summary" role="status">
+        <span>记忆整理 · {dreamStatus}</span>
+        {dreamAgent.last_processed_at && <span>上次整理 {formatRelativeTime(dreamAgent.last_processed_at)}</span>}
       </div>
 
       {mode === "projects" ? (
@@ -211,6 +198,7 @@ export function MemoryView({
       {mode === "pending" ? (
         <ReviewQueue
           sources={visibleReviewSources}
+          filtered={Boolean(normalizedQuery)}
           reviewingId={reviewingId}
           error={reviewError}
           expandedId={expandedReviewId}
@@ -218,36 +206,32 @@ export function MemoryView({
           detailsLoadingId={reviewDetailsLoadingId}
           detailsErrors={reviewDetailsErrors}
           onToggle={(source) => void toggleReviewSource(source)}
+          onRetryDetails={() => setDetailsRetry(value => value + 1)}
           onReview={review}
         />
       ) : (
         <MemoryLedger
           entries={visibleEntries}
+          filtered={Boolean(normalizedQuery) || (mode === "projects" && projectKey !== "all")}
           title={copy.section}
           expandedId={expandedId}
           onToggle={(id) => setExpandedId((current) => current === id ? null : id)}
         />
       )}
 
-      <aside className="dream-strip">
-        <span className="dream-visual"><MoonStar size={18} /></span>
-        <div>
-          <strong>DreamAgent · {dreamStatus}</strong>
-          <p>{dreamAgent.failed_count ? `${dreamAgent.failed_count} 个来源整理失败，需要检查。` : dreamAgent.pending_count ? `${dreamAgent.pending_count} 个来源等待确认。` : "当前没有等待处理的记忆来源。"}</p>
-        </div>
-        <small data-status={dreamAgent.status}>{dreamStatus}</small>
-      </aside>
     </main>
   );
 }
 
 function MemoryLedger({
   entries,
+  filtered,
   title,
   expandedId,
   onToggle,
 }: {
   entries: MemoryOverviewEntry[];
+  filtered: boolean;
   title: string;
   expandedId: string | null;
   onToggle: (id: string) => void;
@@ -276,7 +260,7 @@ function MemoryLedger({
               </div>
             </article>
           );
-        }) : <EmptyMemoryState icon="memory" />}
+        }) : <EmptyMemoryState icon="memory" filtered={filtered} />}
       </div>
     </section>
   );
@@ -286,7 +270,7 @@ function MemoryDetails({ memory }: { memory: MemoryOverviewEntry }) {
   if (memory.scope === "project") {
     return (
       <div className="memory-entry-details">
-        <small>MEMORY.md · 最近的项目记忆变更</small>
+        <small>最近变更</small>
         {memory.history?.length ? memory.history.map((entry) => (
           <p key={entry.commit}>
             <code>{entry.commit.slice(0, 8)}</code> {entry.summary}
@@ -310,6 +294,7 @@ function MemoryDetails({ memory }: { memory: MemoryOverviewEntry }) {
 
 function ReviewQueue({
   sources,
+  filtered,
   reviewingId,
   error,
   expandedId,
@@ -318,8 +303,10 @@ function ReviewQueue({
   detailsErrors,
   onToggle,
   onReview,
+  onRetryDetails,
 }: {
   sources: MemoryReviewSource[];
+  filtered: boolean;
   reviewingId: string | null;
   error: string | null;
   expandedId: string | null;
@@ -328,6 +315,7 @@ function ReviewQueue({
   detailsErrors: Record<string, string>;
   onToggle: (source: MemoryReviewSource) => void;
   onReview: (source: MemoryReviewSource, action: MemoryReviewAction) => Promise<void>;
+  onRetryDetails: () => void;
 }) {
   return (
     <section className="memory-list-section memory-review-section">
@@ -343,9 +331,9 @@ function ReviewQueue({
               <div className="memory-review-copy">
                 <button type="button" className="memory-review-toggle" onClick={() => onToggle(source)} aria-expanded={expanded}>
                   <span className="memory-review-summary">
-                    <span className="memory-review-title"><strong>{source.project}</strong><span>{source.status === "failed" ? "整理失败" : "等待确认"}</span></span>
-                    <p>{source.status === "failed" && source.last_error ? source.last_error : `Session 已更新至第 ${source.source_version} 版，共 ${source.last_event_seq} 个事件。`}</p>
-                    <footer><code>{source.session_id}</code><span>{spaceLabel(source.space)}</span><time>{formatRelativeTime(source.updated_at)}</time></footer>
+                    <span className="memory-review-title"><strong>{source.title || `${source.project} 的对话`}</strong><span>{source.status === "failed" ? "整理失败" : "待整理"}</span></span>
+                    {source.status === "failed" && source.last_error && <p>{source.last_error}</p>}
+                    <footer><span>{source.project} · {spaceLabel(source.space)}</span><time>{formatRelativeTime(source.updated_at)}</time></footer>
                   </span>
                   <ChevronDown size={15} />
                 </button>
@@ -360,14 +348,15 @@ function ReviewQueue({
               </div>
               {expanded ? (
                 <MemoryReviewDetailsPanel
-                  details={details[source.id]}
+                  details={(details[source.id]?.source_version ?? -1) >= source.source_version ? details[source.id] : undefined}
                   loading={detailsLoadingId === source.id}
                   error={detailsErrors[source.id]}
+                  onRetry={onRetryDetails}
                 />
               ) : null}
             </article>
           );
-        }) : <EmptyMemoryState icon="review" />}
+        }) : <EmptyMemoryState icon="review" filtered={filtered} />}
       </div>
     </section>
   );
@@ -377,23 +366,24 @@ function MemoryReviewDetailsPanel({
   details,
   loading,
   error,
+  onRetry,
 }: {
   details?: MemoryReviewDetails;
   loading: boolean;
   error?: string;
+  onRetry: () => void;
 }) {
   if (loading) {
-    return <div className="memory-review-details-status"><LoaderCircle className="spin" size={14} />正在读取 session 内容…</div>;
+    return <div className="memory-review-details-status"><LoaderCircle className="spin" size={14} />正在读取对话…</div>;
   }
   if (error) {
-    return <div className="memory-review-details-status error"><CircleAlert size={14} />{error}</div>;
+    return <div className="memory-review-details-status error" role="alert"><CircleAlert size={14} />{error}<button onClick={onRetry}>重试</button></div>;
   }
   if (!details) return null;
   return (
     <div className="memory-review-details">
       <header>
-        <strong>DreamAgent 输入预览</strong>
-        <span>第 {details.source_version} 版 · 源事件 {details.event_count} 个 · 整理内容 {details.events.length} 项</span>
+        <strong>对话内容</strong>
       </header>
       <div className="memory-review-events">
         {details.events.length ? details.events.map((event) => {
@@ -405,18 +395,18 @@ function MemoryReviewDetailsPanel({
             <div className="memory-review-event" key={event.id}>
               <header>
                 <strong>{reviewEventLabel(event.type, event.metadata)}</strong>
-                <code>{event.type}</code>
                 {event.created_at ? <time>{formatDateTime(event.created_at)}</time> : null}
               </header>
-              {content ? <pre>{content}</pre> : null}
-              {metadata ? <pre className="metadata">{metadata}</pre> : null}
+              {content ? typeof event.content === "string" && ["human", "ai"].includes(event.type)
+                ? <p className="memory-review-text">{content}</p> : <pre>{content}</pre> : null}
+              {metadata ? <details><summary>技术详情</summary><pre className="metadata">{metadata}</pre></details> : null}
             </div>
           );
-        }) : <p>这次来源没有可供 DreamAgent 读取的内容事件。</p>}
+        }) : <p>没有可整理的内容。</p>}
       </div>
       {details.omitted_events.length ? (
-        <div className="memory-review-omitted">
-          <small>未在此预览展开的生命周期或用量事件</small>
+        <details className="memory-review-omitted">
+          <summary>其他记录</summary>
           {details.omitted_events.map((event) => (
             <div key={event.id}>
               <code>#{event.seq}</code>
@@ -425,18 +415,17 @@ function MemoryReviewDetailsPanel({
               {event.created_at ? <time>{formatDateTime(event.created_at)}</time> : null}
             </div>
           ))}
-        </div>
+        </details>
       ) : null}
     </div>
   );
 }
 
-function EmptyMemoryState({ icon }: { icon: "memory" | "review" }) {
+function EmptyMemoryState({ icon, filtered }: { icon: "memory" | "review"; filtered: boolean }) {
   return (
     <div className="memory-empty-state">
       {icon === "review" ? <CheckCircle2 size={20} /> : <Database size={20} />}
-      <strong>{icon === "review" ? "没有待确认来源" : "没有匹配的记忆"}</strong>
-      <span>{icon === "review" ? "DreamAgent 的整理队列目前是干净的。" : "试试其他关键词或项目。"}</span>
+      <strong>{icon === "review" ? filtered ? "没有匹配的对话" : "没有待确认来源" : filtered ? "没有匹配的记忆" : "还没有记忆"}</strong>
     </div>
   );
 }
@@ -480,10 +469,10 @@ function formatRelativeTime(value: string | null) {
   if (Number.isNaN(timestamp)) return "—";
   const elapsedMinutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60_000));
   if (elapsedMinutes < 1) return "刚刚";
-  if (elapsedMinutes < 60) return `${elapsedMinutes}m`;
+  if (elapsedMinutes < 60) return `${elapsedMinutes} 分钟前`;
   const elapsedHours = Math.floor(elapsedMinutes / 60);
-  if (elapsedHours < 24) return `${elapsedHours}h`;
-  return `${Math.floor(elapsedHours / 24)}d`;
+  if (elapsedHours < 24) return `${elapsedHours} 小时前`;
+  return `${Math.floor(elapsedHours / 24)} 天前`;
 }
 
 function formatDateTime(value: string) {

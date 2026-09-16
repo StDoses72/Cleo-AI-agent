@@ -208,9 +208,22 @@ class DesktopService:
 
     async def load_memory(self) -> dict[str, Any]:
         """Refresh memory without reloading or activating any conversation."""
-        overview = await asyncio.to_thread(
-            build_memory_overview, memory_root=self.settings.MEMORY_DIR,
-        )
+        def read():
+            overview = build_memory_overview(memory_root=self.settings.MEMORY_DIR)
+            for source in overview["review_sources"]:
+                try:
+                    manifest = self.store.load_manifest(source["session_id"])
+                except (FileNotFoundError, OSError, ValueError):
+                    continue
+                if (
+                    manifest["space"] == source["space"]
+                    and manifest["project"] == source["project"]
+                    and manifest.get("title")
+                ):
+                    source["title"] = manifest.get("title")
+            return overview
+
+        overview = await asyncio.to_thread(read)
         return {
             "memoryOverview": overview,
             "memories": [self._memory_entry(entry) for entry in overview["entries"]],
@@ -1034,6 +1047,7 @@ class DesktopService:
         profiles = [
             {
                 "id": name,
+                "label": profile.display_name or name,
                 "provider": profile.provider,
                 "model": profile.model,
                 "maxTokens": profile.max_tokens,

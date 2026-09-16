@@ -40,11 +40,11 @@ for (const backend of ["claude_code", "gemini", "copilot", "grok"]) {
   });
 }
 
-test("account reconnect explains the scope before the user verifies", () => {
+test("account reconnect retains scope details without a manual verification step", () => {
   const html = renderToStaticMarkup(createElement(ConnectionWizard, {
     existing: profile("claude_code"), settings, busy: false, onApply: noop, onDone: noop,
   }));
-  assert.match(html, /已登录，验证连接/);
+  assert.doesNotMatch(html, /已登录，验证连接/);
   assert.match(html, /未发送模型请求/);
 });
 
@@ -55,4 +55,16 @@ test("API connection details retain their existing success meaning", () => {
   }));
   assert.match(html, /已验证/);
   assert.doesNotMatch(html, /客户端检查通过|未发送模型请求/);
+});
+
+test("an unavailable model catalog is not a verified connection or an authentication error", () => {
+  const html = renderToStaticMarkup(createElement(ConnectionDetails, {
+    profile: profile("api"), settings, busy: false,
+    status: { state: "manual", message: "服务未提供模型列表，请手动填写模型 ID。" },
+    onStatus: noop, onApply: noop, onReconnect: noop, onClose: noop,
+  }));
+  assert.match(html, /未验证/);
+  assert.match(html, /已配置模型/);
+  assert.match(html, /服务未提供模型列表/);
+  assert.doesNotMatch(html, /需要检查|已验证/);
 });

@@ -247,6 +247,7 @@ export interface RuntimeModelOption {
 
 export interface NonProductivityProfileOption {
   id: string;
+  label?: string;
   provider: string;
   model: string;
   maxTokens: number;
@@ -390,6 +391,7 @@ export interface MemoryProjectSummary {
 }
 
 export interface MemoryReviewSource {
+  title?: string;
   id: string;
   space: "non_productivity" | "productivity";
   project: string;

@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { Info, X } from "lucide-react";
 import { cleoClient } from "../../services/cleoClient";
 import type { ApplyModelSettings, ModelProfileSummary, ModelSettings } from "../../types";
-import { accountCheckScope, billingLabel, isAccount, modelLabel, profileLabel, profileModels, providerInfo } from "./catalog";
+import { billingLabel, isAccount, modelLabel, profileLabel, profileModels, providerInfo } from "./catalog";
 import { ModelDialog } from "./ModelDialog";
+import { ConnectionScope } from "./ConnectionScope";
 
-export type ConnectionStatus = { state: "connected" | "error" | "checking"; message?: string };
+export type ConnectionStatus = { state: "connected" | "manual" | "error" | "checking"; message?: string };
 
 export function ConnectionDetails({ profile, settings, busy, activeProfileId, status, onStatus, onApply, onReconnect, onClose }: {
   profile: ModelProfileSummary; settings: ModelSettings; busy: boolean; status?: ConnectionStatus;
@@ -18,12 +19,16 @@ export function ConnectionDetails({ profile, settings, busy, activeProfileId, st
   const [popover, setPopover] = useState<"hidden" | "hint" | "pinned">("hidden");
   const anchor = useRef<HTMLDivElement>(null);
   const alive = useRef(true);
+  const generation = useRef(0);
   const used = settings.activeAgent === profile.name || settings.activeDreamAgent === profile.name || activeProfileId === profile.name;
   useEffect(() => {
     alive.current = true;
     const dismiss = (event: PointerEvent) => { if (!anchor.current?.contains(event.target as Node)) setPopover("hidden"); };
     document.addEventListener("pointerdown", dismiss);
-    return () => { alive.current = false; document.removeEventListener("pointerdown", dismiss); };
+    void check();
+    const refresh = () => { if (!document.hidden) void check(); };
+    window.addEventListener("focus", refresh);
+    return () => { generation.current++; alive.current = false; document.removeEventListener("pointerdown", dismiss); window.removeEventListener("focus", refresh); };
   }, []);
   const run = async (operation: () => Promise<ModelSettings>) => {
     setError("");
@@ -31,11 +36,12 @@ export function ConnectionDetails({ profile, settings, busy, activeProfileId, st
     catch (error) { if (alive.current) setError(error instanceof Error ? error.message : "保存失败。"); }
   };
   const check = async () => {
+    const request = ++generation.current;
     onStatus({ state: "checking" });
     try {
       const result = await cleoClient.checkModelConnection({ profileId: profile.name });
-      onStatus({ state: result.status === "connected" ? "connected" : "error", message: result.message });
-    } catch (error) { onStatus({ state: "error", message: error instanceof Error ? error.message : "验证失败。" }); }
+      if (alive.current && request === generation.current) onStatus({ state: result.status, message: result.message });
+    } catch (error) { if (alive.current && request === generation.current) onStatus({ state: "error", message: error instanceof Error ? error.message : "验证失败。" }); }
   };
   return <ModelDialog title="连接详情" onClose={() => { if (!busy) onClose(); }} onEscape={() => {
     if (popover !== "hidden") setPopover("hidden"); else if (!busy) onClose();
@@ -44,12 +50,13 @@ export function ConnectionDetails({ profile, settings, busy, activeProfileId, st
       <label className="ms-field"><span>连接名称</span><input value={name} onChange={e => setName(e.target.value)} disabled={busy} /></label>
       <dl className="ms-detail-info">
         <div><dt>服务商</dt><dd>{providerInfo(profile).name}</dd></div>
-        <div><dt>连接状态</dt><dd>{status?.state === "connected" ? (isAccount(profile) ? "客户端检查通过" : "已验证") : status?.state === "checking" ? "验证中…" : status?.state === "error" ? "需要检查" : "已配置"}</dd></div>
+        <div><dt>连接状态</dt><dd>{status?.state === "connected" ? (isAccount(profile) ? "客户端检查通过" : "已验证") : status?.state === "checking" ? "验证中…" : status?.state === "error" ? "需要检查" : status?.state === "manual" ? "未验证" : "已配置"}</dd></div>
         <div><dt>{isAccount(profile) ? "用量来源" : "API Key"}</dt><dd>{isAccount(profile) ? billingLabel(profile) : profile.hasApiKey ? "•••• •••• 已保存" : "未配置"}</dd></div>
-        <div><dt>可用模型</dt><dd>{profileModels(profile).length} 个</dd></div>
+        <div><dt>已配置模型</dt><dd>{profileModels(profile).length} 个</dd></div>
       </dl>
       <div className="ms-detail-models">{profileModels(profile).map(id => <span key={id}>{modelLabel(id)}</span>)}</div>
-      {isAccount(profile) && <p className="ms-muted">{accountCheckScope}</p>}
+      {isAccount(profile) && <ConnectionScope />}
+      {status?.state === "manual" && <p className="ms-muted" role="status">{status.message}</p>}
       {status?.state === "error" && <p className="ms-error" role="alert">{status.message || "连接尚未通过验证。"}</p>}
       {error && <p className="ms-error" role="alert">{error}</p>}
       <button className="ms-link" disabled={busy} onClick={onReconnect}>{isAccount(profile) ? "重新登录" : "更新密钥与模型"}</button>
@@ -61,7 +68,7 @@ export function ConnectionDetails({ profile, settings, busy, activeProfileId, st
           {used ? <><strong><Info />暂时无法移除{popover === "pinned" && <button className="ms-icon" aria-label="关闭移除提示" onClick={() => setPopover("hidden")}><X /></button>}</strong><p>这个连接正在被使用。<br />切换所用模型后，才可移除。</p></> : popover === "pinned" ? <><strong>移除这个连接？</strong><p>已有的对话记录会继续保留。</p><div><button className="ms-quiet" onClick={() => setPopover("hidden")}>取消</button><button className="ms-remove-confirm" disabled={busy} onClick={() => { if (!used) void run(() => cleoClient.removeModelConnection(profile.name)); }}>确认移除</button></div></> : <p>移除连接后，已有的对话记录会继续保留。</p>}
         </div>}
       </div>
-      <div className="ms-footer-actions"><button className="ms-secondary" disabled={busy || status?.state === "checking"} onClick={() => void check()}>验证连接</button><button className="ms-primary" disabled={busy || !name.trim()} onClick={() => void run(() => cleoClient.renameModelConnection(profile.name, name.trim()))}>{busy ? "保存中…" : "保存更改"}</button></div>
+      <div className="ms-footer-actions">{status?.state === "error" && <button className="ms-secondary" disabled={busy} onClick={() => void check()}>重试检查</button>}<button className="ms-primary" disabled={busy || !name.trim() || name.trim() === profileLabel(profile)} onClick={() => void run(() => cleoClient.renameModelConnection(profile.name, name.trim()))}>{busy ? "保存中…" : "保存更改"}</button></div>
     </footer>
   </ModelDialog>;
 }

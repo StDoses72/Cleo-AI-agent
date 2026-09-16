@@ -59,9 +59,9 @@ try {
     await page.getByTestId("conversation").waitFor();
     await rail("设置").click();
     for (const [label, color, symbolColor] of [
-      ["雾白", "#e9e9e6", "#59636f"],
-      ["夜色", "#0b0e12", "#848c98"],
-      ["雾白", "#e9e9e6", "#59636f"],
+      ["浅色", "#e9e9e6", "#59636f"],
+      ["深色", "#0b0e12", "#848c98"],
+      ["浅色", "#e9e9e6", "#59636f"],
     ]) {
       await rail(label).click();
       await page.waitForFunction(() => window.cleoWindow !== undefined);
@@ -73,7 +73,7 @@ try {
     await page.getByTestId("conversation").waitFor();
     assert.equal((await app.evaluate(() => globalThis.uxTitleBarOverlay))?.color, "#e9e9e6", "Saved light theme must restore native controls");
     await rail("设置").click();
-    await rail("夜色").click();
+    await rail("深色").click();
     await page.keyboard.press("Escape");
   });
   await check("chat-welcome", async () => {

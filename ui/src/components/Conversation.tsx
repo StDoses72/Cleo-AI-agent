@@ -61,12 +61,13 @@ import type {
 import { ApprovalPrompt } from "./ApprovalPrompt";
 import { RenameThreadDialog } from "./Overlays";
 import { handleDialogKeyDown } from "./Modal";
+import { effortLabels } from "../runtime-labels";
 
 interface ConversationProps {
   history?: ReturnType<typeof useTimelineHistory>;
   questionUI?: ReactNode;
   preparation?: ReactNode;
-  improvement?: ReactNode;
+  onImprove?: () => void;
   header?: ReactNode;
   thread: Thread | null;
   project: Project | null;
@@ -123,7 +124,7 @@ export function Conversation({
   history,
   questionUI,
   preparation,
-  improvement,
+  onImprove,
   header,
   thread,
   project,
@@ -319,8 +320,9 @@ export function Conversation({
         onRevealPath={onRevealPath}
         onThreadCommand={onThreadCommand}
         onRename={onRename}
+        onImprove={onImprove}
         busy={running || Boolean(sendBlocked)}
-      />}{improvement}</div>
+      />}</div>
 
       <div className="conversation-body" style={{ "--composer-clearance": `${bottomInset}px` } as CSSProperties}>
         {history?.error && <div className="history-error" role="alert">{history.error}<button onClick={() => void history.retry()}>重试加载</button></div>}
@@ -416,6 +418,7 @@ function ConversationHeader({
   onRevealPath,
   onThreadCommand,
   onRename,
+  onImprove,
   busy,
 }: Pick<
   ConversationProps,
@@ -434,6 +437,7 @@ function ConversationHeader({
   | "onRevealPath"
   | "onThreadCommand"
   | "onRename"
+  | "onImprove"
 > & { busy: boolean }) {
   const [threadMenuOpen, setThreadMenuOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
@@ -490,7 +494,7 @@ function ConversationHeader({
             onClick={onUndo}
           >
             <RotateCcw className={undoing ? "spin" : ""} size={14} />
-            <span>{undoing ? "回退中" : "Undo"}</span>
+            <span>{undoing ? "撤销中" : "撤销改动"}</span>
           </button>
         ) : null}
         {project?.branch ? (
@@ -512,15 +516,16 @@ function ConversationHeader({
           </button>
           {threadMenuOpen ? (
             <div className="thread-actions-menu surface-popover">
+              {onImprove && <button type="button" onClick={() => { setThreadMenuOpen(false); onImprove(); }}>改进 Cleo</button>}
               <button type="button" onClick={() => {
                 setThreadMenuOpen(false);
                 setRenameOpen(true);
               }}>重命名</button>
               {thread?.space === "productivity" ? <>
-                <button type="button" onClick={() => runThreadCommand("/fork")}>Fork thread</button>
+                <button type="button" onClick={() => runThreadCommand("/fork")}>创建分支任务</button>
                 <button type="button" onClick={() => runThreadCommand("/compact")}>压缩上下文</button>
                 <button className="danger" type="button" onClick={() => {
-                  if (window.confirm("归档当前 thread 并创建一个新任务？")) runThreadCommand("/archive");
+                  if (window.confirm("归档当前任务并创建新任务？")) runThreadCommand("/archive");
                 }}>归档</button>
               </> : null}
             </div>
@@ -919,9 +924,7 @@ function WelcomeState({ project, space, onUseSuggestion }: { project: Project | 
       <div className="welcome-portrait-wrap">
         <img src="./cleo.png" alt="Cleo" />
       </div>
-      <span className="eyebrow">{project?.name ?? "CLEO"}</span>
-      <h2>{evolving ? "你想让 Cleo 怎样改变？" : space === "chat" ? "今天想聊些什么？" : "从一个清晰的目标开始。"}</h2>
-      <p>{evolving ? "直接描述需求，我会完成修改和检查。应用后，你再决定是否保存。" : space === "chat" ? "聊聊想法、学习新知，或一起解决生活中的小问题。" : "我会先理解工作区，再决定需要读取、修改和验证什么。"}</p>
+      <h2>{evolving ? "你想让 Cleo 怎样改变？" : space === "chat" ? "今天想聊些什么？" : "开始新任务"}</h2>
       <div className="suggestion-list">
         {prompts.map((suggestion) => (
           <button type="button" key={suggestion} onClick={() => {
@@ -1144,7 +1147,7 @@ function Composer({
         ) : null}
         {matchingCommands.length || matchingSkills.length ? (
           <div className="slash-menu surface-popover" data-testid="slash-menu" id="slash-options" role="listbox" aria-label="当前 harness 技能与命令">
-            <span>可用命令 · Skills 仅限当前 harness</span>
+            <span>命令与技能</span>
             {matchingSkills.map((skill, index) => (
               <button type="button" role="option" aria-selected={selectedCommand === index} id={`slash-option-${index}`} key={skill.command} title={skill.path} onMouseDown={(event) => event.preventDefault()} onClick={() => chooseCommand(skill.command)}>
                 <code>/{skill.name}</code><small>{skill.source}{skill.command !== `/${skill.name}` ? ` · ${skill.command}` : ""}</small>
@@ -1200,7 +1203,7 @@ function Composer({
             <button type="button" aria-label="添加附件" title="添加 PDF、Office、图片或代码文件" disabled={running} onClick={() => void pickFiles()}>
               <Paperclip size={16} />
             </button>
-            <button type="button" aria-label="添加上下文" title="查看已附加上下文" onClick={onShowContext}> 
+            <button type="button" aria-label="查看上下文" title="查看上下文" onClick={onShowContext}>
               <AtSign size={16} />
             </button>
             <span className="composer-divider" />
@@ -1228,8 +1231,8 @@ function Composer({
               title="选择思考深度"
               data-testid="effort-selector"
             >
-              <option value="" disabled>由 harness 管理</option>
-              {supportedEfforts.map((effort) => <option key={effort} value={effort}>{effort}</option>)}
+              <option value="" disabled>由模型决定</option>
+              {supportedEfforts.map((effort) => <option key={effort} value={effort}>{effortLabels[effort] ?? effort}</option>)}
             </select> : null}
           </div>
           {running ? (
@@ -1323,7 +1326,7 @@ function RuntimeSelector({
         className="text-control runtime-selector-trigger"
         type="button"
         disabled={(running && space === "chat") || switching || !catalog}
-        aria-label={space === "productivity" ? "选择 Harness 和模型" : "选择对话模型"}
+        aria-label={space === "productivity" ? "选择运行方式和模型" : "选择对话模型"}
         aria-expanded={open}
         onClick={toggleMenu}
         data-testid="runtime-selector"
@@ -1337,7 +1340,6 @@ function RuntimeSelector({
             <>
               <div className="runtime-menu-heading">
                 <span>模型配置</span>
-                <small>cleo.json</small>
               </div>
               <div className="runtime-menu-list">
                 {profiles.map((profile) => (
@@ -1352,7 +1354,7 @@ function RuntimeSelector({
                   >
                     <span className="runtime-menu-copy">
                       <strong>{profile.model}</strong>
-                      <small>{profile.id} · {profile.provider}</small>
+                      <small>{profile.label ? `${profile.label} · ` : ""}{profile.provider}</small>
                     </span>
                     {(selectedProfile?.id ?? runtime.profileId) === profile.id ? <Check size={14} /> : null}
                   </button>
@@ -1362,7 +1364,7 @@ function RuntimeSelector({
           ) : providerScreen ? (
             <>
               <div className="runtime-menu-heading runtime-menu-heading-back">
-                <button type="button" aria-label="返回 provider 列表" onClick={() => setProviderScreen(null)}>
+                <button type="button" aria-label="返回服务列表" onClick={() => setProviderScreen(null)}>
                   <ArrowLeft size={14} />
                 </button>
                 <span>{selectedProvider?.id ?? providerScreen}</span>
@@ -1370,7 +1372,7 @@ function RuntimeSelector({
               </div>
               <div className="runtime-menu-list">
                 {loadingProvider === providerScreen ? (
-                  <div className="runtime-menu-status"><LoaderCircle className="spin" size={14} />正在连接 harness 并读取模型…</div>
+                  <div className="runtime-menu-status"><LoaderCircle className="spin" size={14} />正在读取模型…</div>
                 ) : error ? (
                   <div className="runtime-menu-status error" role="alert">
                     <span>{error}</span>
@@ -1401,7 +1403,7 @@ function RuntimeSelector({
           ) : (
             <>
               <div className="runtime-menu-heading">
-                <span>选择 Harness</span>
+                <span>选择运行方式</span>
                 <small>{running ? "当前轮结束后切换 · 历史保留" : "当前会话生效 · 历史保留"}</small>
               </div>
               <div className="runtime-menu-list">
@@ -1429,8 +1431,8 @@ function RuntimeSelector({
 }
 
 function providerTypeLabel(type?: string) {
-  if (type === "codex_sdk") return "Codex SDK";
-  if (type === "claude_sdk") return "Claude Agent SDK";
-  if (type === "acp") return "ACP";
-  return "Provider";
+  if (type === "codex_sdk") return "Codex";
+  if (type === "claude_sdk") return "Claude";
+  if (type === "acp") return "外部客户端";
+  return "服务";
 }

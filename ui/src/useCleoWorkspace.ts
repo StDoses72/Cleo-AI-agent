@@ -996,7 +996,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
       setRuntimeCatalog(current => current && ({
         ...current,
         nonProductivityProfiles: saved.profiles.map(profile => ({
-          id: profile.name, provider: profile.provider, model: profile.model,
+            id: profile.name, label: profile.displayName || profile.name, provider: profile.provider, model: profile.model,
           maxTokens: profile.maxTokens, active: profile.name === saved.activeAgent,
         })),
         defaultNonProductivityProfile: saved.activeAgent,

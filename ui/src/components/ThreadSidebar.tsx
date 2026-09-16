@@ -1,5 +1,4 @@
 import { modifierKey } from "../platform";
-import { dreamStatusLabel } from "../memoryStatus";
 import { useMemo, useState, type CSSProperties } from "react";
 import {
   Brain,
@@ -28,7 +27,6 @@ interface ThreadSidebarProps {
   onDeleteThread: (thread: Thread) => void;
   onCreateThread: () => void;
   onChooseWorkspace: () => void;
-  onOpenCommand: () => void;
   recoverableChatBackups: number;
   onRestoreChatHistory: () => void;
   memoryOverview: MemoryOverview;
@@ -56,7 +54,6 @@ export function ThreadSidebar({
   onDeleteThread,
   onCreateThread,
   onChooseWorkspace,
-  onOpenCommand,
   recoverableChatBackups,
   onRestoreChatHistory,
   memoryOverview,
@@ -85,10 +82,9 @@ export function ThreadSidebar({
     <aside className="thread-sidebar">
       <div className="sidebar-heading">
         <div>
-          <span className="eyebrow">{space === "chat" ? "CLEO CHAT" : space === "memory" ? "MEMORY" : "WORKSPACE"}</span>
           <h1>{space === "chat" ? "对话" : space === "memory" ? "记忆" : "开发任务"}</h1>
         </div>
-        {space !== "memory" ? (
+        {space === "chat" && recoverableChatBackups > 0 ? (
           <div className="sidebar-actions-wrap">
             <button
               className="icon-button"
@@ -102,7 +98,6 @@ export function ThreadSidebar({
             </button>
             {actionsMenuOpen ? (
               <div className="sidebar-actions-menu surface-popover">
-                {space === "chat" && recoverableChatBackups > 0 ? (
                   <button
                     type="button"
                     onClick={() => {
@@ -116,9 +111,6 @@ export function ThreadSidebar({
                       <small>找到 {recoverableChatBackups} 条可恢复记录</small>
                     </span>
                   </button>
-                ) : (
-                  <span className="sidebar-actions-empty">没有可恢复的历史记录</span>
-                )}
               </div>
             ) : null}
           </div>
@@ -141,7 +133,7 @@ export function ThreadSidebar({
               </span>
               <span className="project-picker-copy">
                 <strong>{activeProject?.name}</strong>
-                <small>{activeProject?.branch ?? "memory project"}</small>
+                {activeProject?.branch && <small>{activeProject.branch}</small>}
               </span>
               <ChevronDown size={15} />
             </button>
@@ -216,12 +208,9 @@ export function ThreadSidebar({
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="搜索 thread"
-              aria-label="搜索 thread"
+              placeholder={space === "chat" ? "搜索对话" : "搜索任务"}
+              aria-label={space === "chat" ? "搜索对话" : "搜索任务"}
             />
-            <button type="button" onClick={onOpenCommand} title="命令面板">
-              <kbd>{modifierKey} K</kbd>
-            </button>
           </label>
 
           <div className="thread-list" data-testid="thread-list">
@@ -239,18 +228,14 @@ export function ThreadSidebar({
             ) : (
               <div className="sidebar-empty">
                 <FileClock size={20} />
-                <span>{query ? "没有匹配的 thread" : "这个项目还没有 thread"}</span>
+                <span>{query ? "没有匹配的任务" : "还没有对话记录"}</span>
               </div>
             )}
           </div>
         </>
       )}
 
-      <footer className="sidebar-footer">
-        <span className="connection-pulse" />
-        <span>本地运行时</span>
-        <small>{backendMode === "local" ? "connected" : "mock"}</small>
-      </footer>
+      {backendMode === "mock" && <footer className="sidebar-footer">演示模式</footer>}
     </aside>
   );
 }
@@ -291,7 +276,7 @@ function ThreadRow({
         className="thread-delete-button"
         type="button"
         aria-label={`删除 ${thread.title}`}
-        title={thread.status === "running" ? "请先停止运行" : "删除 thread"}
+        title={thread.status === "running" ? "请先停止运行" : "删除任务"}
         disabled={thread.status === "running"}
         onClick={onDelete}
         data-testid="delete-thread"
@@ -328,13 +313,6 @@ function MemorySidebar({
         <span>待确认</span>
         <small>{overview.summary.pending_sources}</small>
       </button>
-      <div className="dream-status">
-        <span className="dream-orbit" />
-        <div>
-          <strong>DreamAgent</strong>
-          <small>{dreamStatusLabel(overview.dream_agent)}</small>
-        </div>
-      </div>
     </div>
   );
 }

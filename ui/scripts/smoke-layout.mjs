@@ -84,7 +84,11 @@ try {
   }, { snapshot });
   await page.reload();
   await page.getByText("最后一条消息应完整显示在输入框上方。", { exact: true }).waitFor();
-  await page.locator(".evolution-cases").waitFor();
+  assert.equal(await page.locator(".conversation-chrome .evolution-cases").count(), 0, "Improvement controls should not occupy the conversation header");
+  await page.locator(".thread-actions-wrap > button").click();
+  await page.getByRole("button", { name: "改进 Cleo", exact: true }).click();
+  await page.getByRole("dialog", { name: "改进 Cleo", exact: true }).waitFor();
+  await page.getByRole("button", { name: "关闭案例", exact: true }).click();
 
   const viewport = page.locator(".conversation-viewport");
   const inspector = page.getByTestId("inspector");
@@ -122,7 +126,7 @@ try {
       };
       return {
         width: innerWidth, height: innerHeight, documentWidth: document.documentElement.scrollWidth, documentHeight: document.documentElement.scrollHeight,
-        shell: rect(".conversation-shell"), inspector: rect(".inspector"), header: rect(".conversation-header"), cases: rect(".evolution-cases"),
+        shell: rect(".conversation-shell"), inspector: rect(".inspector"), header: rect(".conversation-header"),
         viewport: rect(".conversation-viewport"), composer: rect(".composer"), input: rect('[data-testid="composer-input"]'),
         send: rect('[data-testid="send-button"]'), tabs: rect(".inspector-tabs"),
         tabScrollHeight: tabs.scrollHeight, tabClientHeight: tabs.clientHeight, tabOverflow: getComputedStyle(tabs).overflowY,
@@ -143,7 +147,7 @@ try {
       assert(control.left >= state.composer.left && control.right <= state.composer.right + 1
         && control.top >= state.composer.top && control.bottom <= state.composer.bottom + 1, `Composer control is clipped: ${context}`);
     }
-    assert(state.header.bottom <= state.cases.top + 1 && state.cases.bottom <= state.viewport.top + 1, `Conversation header overlaps history: ${context}`);
+    assert(state.header.bottom <= state.viewport.top + 1, `Conversation header overlaps history: ${context}`);
     assert(state.tabScrollHeight <= state.tabClientHeight + 1 && state.tabOverflow !== "scroll", `Inspector tabs have vertical overflow: ${context}`);
     assert(state.tabButtons.every(box => box.left >= state.tabs.left - 1 && box.right <= state.tabs.right + 1
       && box.top >= state.tabs.top - 1 && box.bottom <= state.tabs.bottom + 1), `Inspector tabs are clipped: ${context}`);
