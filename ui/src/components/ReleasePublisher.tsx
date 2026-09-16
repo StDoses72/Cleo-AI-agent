@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Upload } from "lucide-react";
+import { useAutomaticRead } from "../useAutomaticRead";
 import type { EvolutionBuild, EvolutionPullRequest, EvolutionState } from "../evolution-types";
 
 interface Props {
@@ -35,11 +36,6 @@ export function ReleasePublisher({ state, busy, initialUrl = "", buildId, onActi
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState("");
   const inFlight = useRef(false);
-  const root = useRef<HTMLElement>(null);
-  const mounted = useRef(false);
-  const reading = useRef(false);
-  const lastRead = useRef({ key: "", at: 0, failures: 0 });
-  const [check, setCheck] = useState<{ key: string; pending: boolean; allowed: boolean; login?: string; error: string }>({ key: "", pending: false, allowed: false, error: "" });
   const access = state?.githubAuth?.repositoryAccess;
   const receipt = history.find(pr => pr.url === url);
   const releasing = Boolean(state?.releaseJob && !["completed", "failed", "cancelled"].includes(state.releaseJob.phase));
@@ -49,60 +45,19 @@ export function ReleasePublisher({ state, busy, initialUrl = "", buildId, onActi
   if (access?.login) knownLogin.current = access.login;
   if (!connected) knownLogin.current = undefined;
   const checkKey = JSON.stringify([connected, url, knownLogin.current]);
-  const current = useRef({ key: checkKey, url, enabled: connected && !busy && !locked && !result, onAction });
-  current.current = { key: checkKey, url, enabled: connected && !busy && !locked && !result, onAction };
-  const inspect = async (force = false) => {
-    const selected = current.current;
-    if (!selected.enabled || reading.current || document.hidden || !root.current?.getClientRects().length
-        || root.current.closest("details:not([open]), dialog:not([open]), [hidden]")) return;
-    const previous = lastRead.current;
-    if (!force && previous.key === selected.key && Date.now() - previous.at < Math.min(300000, 60000 * 2 ** previous.failures)) return;
-    lastRead.current = { key: selected.key, at: Date.now(), failures: previous.key === selected.key ? previous.failures : 0 };
-    reading.current = true;
-    setCheck({ key: selected.key, pending: true, allowed: false, error: "" });
-    try {
-      const value = await selected.onAction(selected.url ? "previewMergedRelease" : "releasePermission", selected.url ? { url: selected.url } : undefined);
-      if (!value || typeof value !== "object") throw new Error("未能确认发布条件，请重试。");
-      if (selected.url) {
-        if (!("url" in value) || value.url !== selected.url || !("commit" in value) || !("login" in value)) throw new Error("未能核验所选 PR，请重试。");
-      } else if (!("status" in value) || value.status !== "checked" || !("canRelease" in value) || !value.canRelease) {
-        throw new Error("message" in value ? String(value.message) : "未能确认发布权限，请重试。");
-      }
-      if (mounted.current && current.current.key === selected.key) {
-        lastRead.current.failures = 0;
-        setCheck({ key: selected.key, pending: false, allowed: true, login: "login" in value ? String(value.login) : undefined, error: "" });
-      }
-    } catch (failure) {
-      if (mounted.current && current.current.key === selected.key) {
-        lastRead.current.failures += 1;
-        setCheck({ key: selected.key, pending: false, allowed: false, error: failure instanceof Error ? failure.message : String(failure) });
-      }
-    } finally {
-      reading.current = false;
-      if (mounted.current && current.current.key !== selected.key) void inspectRef.current();
+  const check = useAutomaticRead(checkKey, connected && !busy && !locked && !result, async () => {
+    const value = await onAction(url ? "previewMergedRelease" : "releasePermission", url ? { url } : undefined);
+    if (!value || typeof value !== "object") throw new Error("未能确认发布条件，请重试。");
+    if (url) {
+      if (!("url" in value) || value.url !== url || !("commit" in value) || !("login" in value)) throw new Error("未能核验所选 PR，请重试。");
+    } else if (!("status" in value) || value.status !== "checked" || !("canRelease" in value) || !value.canRelease) {
+      throw new Error("message" in value ? String(value.message) : "未能确认发布权限，请重试。");
     }
-  };
-  const inspectRef = useRef(inspect);
-  inspectRef.current = inspect;
-  useEffect(() => {
-    mounted.current = true;
-    const refresh = () => void inspectRef.current();
-    window.addEventListener("focus", refresh);
-    document.addEventListener("visibilitychange", refresh);
-    document.addEventListener("toggle", refresh, true);
-    const timer = window.setInterval(refresh, 30000);
-    return () => {
-      mounted.current = false;
-      window.removeEventListener("focus", refresh);
-      document.removeEventListener("visibilitychange", refresh);
-      document.removeEventListener("toggle", refresh, true);
-      window.clearInterval(timer);
-    };
-  }, []);
-  useEffect(() => { void inspectRef.current(); }, [checkKey, busy, locked, result]);
-  const checked = check.key === checkKey ? check : null;
+    return { login: "login" in value ? String(value.login) : undefined };
+  });
+  const checked = check.data;
   const accessError = connected && access && access.status !== "checking" && !access.canRelease ? access.message : "";
-  const canPublish = checked?.allowed && access?.canRelease !== false && (!access?.login || access.login === checked.login);
+  const canPublish = checked && !check.pending && !check.error && access?.canRelease !== false && (!access?.login || access.login === checked.login);
   const validVersion = versionPattern.test(tag.trim()) && !tag.includes("+") && tag.trim().length <= 100;
   const publish = async () => {
     if (inFlight.current || locked || busy || !canPublish || !receipt) return;
@@ -119,7 +74,7 @@ export function ReleasePublisher({ state, busy, initialUrl = "", buildId, onActi
     } catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }
     finally { inFlight.current = false; setPending(null); onBusy?.(false); }
   };
-  return <section ref={root} className="release-publisher" aria-label="创建 GitHub Release">
+  return <section ref={check.root} className="release-publisher" aria-label="创建 GitHub Release">
     <p>自动构建各平台安装包，失败时尝试修复，完成后发布到 GitHub。</p>
     <label>发布来源<select aria-label="发布来源 PR" disabled={locked} value={url} onChange={event => {
       setUrl(event.target.value); setResult(false); setError("");
@@ -141,8 +96,8 @@ export function ReleasePublisher({ state, busy, initialUrl = "", buildId, onActi
       <label>发布说明<textarea aria-label="发布说明" value={body} disabled={locked || !!result} maxLength={20000} onChange={event => setBody(event.target.value)} /></label>
       </details>
       {!connected && <p role="status">请先连接 GitHub。</p>}
-      {connected && checked?.pending && <p role="status">{url ? "正在核对发布来源…" : "正在确认发布权限…"}</p>}
-      {connected && (checked?.error || accessError) && <p role="alert">{checked?.error || accessError} <button type="button" disabled={busy || locked} onClick={() => void inspect(true)}>重试</button></p>}
+      {connected && check.pending && <p role="status">{url ? "正在核对发布来源…" : "正在确认发布权限…"}</p>}
+      {connected && (check.error || accessError) && <p role="alert">{check.error || accessError} <button type="button" disabled={busy || locked} onClick={() => void check.retry()}>重试</button></p>}
       {canPublish && checked?.login && <p className="release-account">发布账号：{checked.login}</p>}
       <button className="evolution-primary" disabled={busy || locked || !connected || !canPublish || !receipt || !!result}><Upload size={14} />{pending === "startRelease" ? "正在启动发布…" : "发布"}</button>
     </form>

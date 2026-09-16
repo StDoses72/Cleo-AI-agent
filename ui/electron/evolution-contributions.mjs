@@ -27,10 +27,10 @@ export async function requireTargetBranch(manager, tools, branch) {
     result = JSON.parse(await manager.runCommand(tools.gh,
       ["api", `repos/${CONTRIBUTION_REPOSITORY}/branches/${encodeURIComponent(branch)}`, "--method", "GET"], { env: tools.env }));
   } catch (error) {
-    if (/HTTP 404/.test(error.message)) throw new Error("目标分支尚未创建或当前账号无权查看，请等待 owner/collaborator 创建后刷新。");
+    if (/HTTP 404/.test(error.message)) throw new Error("目标分支尚未创建或当前账号无权查看，请等待维护者创建。");
     throw error;
   }
-  if (result.name !== branch) throw new Error("目标分支尚未创建，请等待 owner/collaborator 创建后刷新。");
+  if (result.name !== branch) throw new Error("目标分支尚未创建，请等待维护者创建。");
   return result;
 }
 
@@ -41,7 +41,7 @@ export async function listContributionBranches(manager) {
     const output = await manager.runCommand(tools.gh, ["api", `repos/${CONTRIBUTION_REPOSITORY}/branches?per_page=100`,
       "--paginate", "--jq", ".[].name"], { env: tools.env });
     return output.split(/\r?\n/).filter((name) => name && !["main", "submission-base"].includes(name.toLowerCase()));
-  });
+  }, { readOnly: true });
 }
 
 /** Purpose: Submit a durable branch-creation application via Issues, without pushing or creating any branch.

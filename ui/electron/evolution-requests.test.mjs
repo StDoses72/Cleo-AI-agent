@@ -80,6 +80,23 @@ async function setup(t, analyze = async () => structuredClone(plan)) {
   return { root, state, store, acceptance, requests, replayed, calls, evolution, backend, run, prepare };
 }
 
+test("unchanged source still prepares current-version acceptance without marking it passed", async t => {
+  const f = await setup(t);
+  const request = await f.prepare();
+  f.evolution.build = async () => { f.state.candidate = null; f.state.draftDirty = false; return null; };
+  await f.run({ thread_id: input.threadId, prompt: await f.requests.editingPrompt(request.id) });
+  const status = await f.acceptance.status(f.state);
+  assert.equal(status.fresh, true);
+  assert.equal(status.report.candidate, "old");
+  assert.equal(status.report.results[0].after.status, "manual");
+  assert.equal(status.interactions.completions.length, 0);
+  assert.equal(status.cases[0].enabled, true);
+  await f.acceptance.complete(status.cases[0].id);
+  const confirmed = await f.acceptance.status(f.state);
+  assert.equal(confirmed.cases[0].enabled, false);
+  assert.equal(confirmed.interactions.completions[0].id, status.cases[0].id);
+});
+
 test("original request and code evidence are durable before editing; generic cases stay manual after a successful build", async (t) => {
   const f = await setup(t, async () => {
     const saved = await readJson(f.requests.path);

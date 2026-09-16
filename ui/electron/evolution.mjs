@@ -98,6 +98,7 @@ export class EvolutionManager {
     this.sourceRepository = sourceRepository;
     this.onState = onState;
     this.phase = "idle";
+    this.readOnlyOperation = false;
     this.error = null;
     this.logs = "";
     this.closed = false;
@@ -119,11 +120,12 @@ export class EvolutionManager {
   log(message) { this.logs = (this.logs + message).slice(-16000); this.onState(); }
 
   /** Input: phase and operation. Output: serial execution with retained error and previous working build. */
-  async operation(phase, action, { prune = true, preserveDiagnostics = false } = {}) {
+  async operation(phase, action, { prune = true, readOnly = false } = {}) {
     if (this.closed) throw new Error("Cleo 正在退出，不能开始新的进化操作。");
     if (this.phase !== "idle") throw new Error("另一项进化操作正在进行，请稍候。");
     const controller = new AbortController();
-    const previous = preserveDiagnostics ? { error: this.error, logs: this.logs } : null;
+    const previous = readOnly ? { error: this.error, logs: this.logs } : null;
+    this.readOnlyOperation = readOnly;
     this.operationAbort = controller;
     this.phase = phase; this.error = null; this.logs = ""; this.onState();
     try {
@@ -132,7 +134,7 @@ export class EvolutionManager {
         if ((await this.store.read()).transaction) throw new Error("版本正在切换，请等待重启完成或使用恢复入口。");
         const result = await action(controller.signal);
         controller.signal.throwIfAborted();
-        if (prune) await this.store.pruneBuilds();
+        if (prune && !readOnly) await this.store.pruneBuilds();
         return result;
       });
       return await this.operationPromise;
@@ -140,7 +142,7 @@ export class EvolutionManager {
     catch (error) { this.error = error.message; throw error; }
     finally {
       if (previous) { this.error = previous.error; this.logs = previous.logs; }
-      this.operationPromise = null; this.operationAbort = null; this.phase = "idle"; this.onState();
+      this.operationPromise = null; this.operationAbort = null; this.phase = "idle"; this.readOnlyOperation = false; this.onState();
     }
   }
 

@@ -108,6 +108,23 @@ test("PR helper distinguishes clean merge from failed checks and missing permiss
   assert.ok(!f.calls.some((args) => Array.isArray(args) && (args.includes("push") || args.includes("merge"))));
 });
 
+test("unchanged commits reuse the merge probe while CI and PR state stay fresh", async t => {
+  const f = await fixture(t);
+  await inspectPullRequest(f.manager, f.pr.url);
+  const probes = () => f.calls.filter(args => Array.isArray(args) && args.includes("merge-tree")).length;
+  assert.equal(probes(), 1);
+  f.pr.statusCheckRollup[0].conclusion = "SUCCESS";
+  assert.equal((await inspectPullRequest(f.manager, f.pr.url)).checks[0].conclusion, "SUCCESS");
+  assert.equal(probes(), 1);
+  await f.conflict();
+  await inspectPullRequest(f.manager, f.pr.url);
+  assert.equal(probes(), 2);
+  f.pr.state = "MERGED"; f.pr.headRepository = null;
+  assert.equal((await inspectPullRequest(f.manager, f.pr.url)).state, "MERGED");
+  assert.equal(probes(), 2);
+  assert.ok(!f.calls.some(args => Array.isArray(args) && args.includes("push")));
+});
+
 test("repair rereads remote refs, retains original PR identity, and prohibits final merge", async (t) => {
   const f = await fixture(t);
   const first = await contributionRepairPrompt(f.manager, { url: f.pr.url });

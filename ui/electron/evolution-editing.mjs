@@ -1,3 +1,11 @@
+/** An unchanged build still needs acceptance against the version already running. */
+export function compareBuiltVersion(evolution, acceptance, candidate) {
+  return evolution.operation("comparing", async () => {
+    const target = candidate ?? (await acceptance.store.read()).active;
+    return acceptance.compare(target);
+  });
+}
+
 /** The desktop, not an agent's prose or renderer lifecycle, decides when editing may build. */
 export async function runPreparedEvolutionTurn({ evolution, requests, acceptance, backend, params, onEvent }) {
   const id = await evolution.operation("validating", () => requests.claim(params.thread_id, params.prompt));
@@ -18,7 +26,7 @@ export async function runPreparedEvolutionTurn({ evolution, requests, acceptance
   }
   if (succeeded) {
     const candidate = await evolution.build();
-    if (candidate) await evolution.operation("comparing", () => acceptance.compare(candidate));
+    await compareBuiltVersion(evolution, acceptance, candidate);
   }
   return result;
 }

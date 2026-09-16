@@ -37,7 +37,7 @@ export function App() {
   const [evolutionIssue, setEvolutionIssue] = useState<string | null>(null);
   const preparingEvolution = useRef(false);
   const [preparingAcceptance, setPreparingAcceptance] = useState(false);
-  const retryEvolution = useRef<() => void>(() => {});
+  const retryEvolution = useRef<(() => void) | null>(null);
   const evolutionThread = evolutionOpen && Boolean(evolution.state?.threadId)
     && workspace.activeThreadId === evolution.state?.threadId;
 
@@ -112,7 +112,7 @@ export function App() {
     }
   };
   const evolutionAction = (action: string, params: Record<string, unknown> = {}) => {
-    if (["releasePermission", "previewMergedRelease"].includes(action)) return evolution.inspect(action, params);
+    if (["releasePermission", "previewMergedRelease", "contributionBranches", "checkContribution", "mergeAssistance", "releases"].includes(action)) return evolution.inspect(action, params);
     retryEvolution.current = () => evolutionAction(action, params);
     setEvolutionIssue(null);
     if (action === "repairContribution") {
@@ -124,14 +124,14 @@ export function App() {
     return evolution.run(action, params).then((result) => {
       if (action === "discard" || action === "select") workspace.beginEvolutionDraft();
       if (action === "abandonRequest") {
-        retryEvolution.current = () => {};
+        retryEvolution.current = null;
         workspace.beginEvolutionDraft();
         workspace.setPrompt("");
       }
       return result;
     }).catch((error: unknown) => {
       setEvolutionIssue(error instanceof Error ? error.message : "操作失败");
-      if (["previewRelease", "publishRelease", "publishMergedRelease", "previewMergedRelease", "releaseBuilds", "publishReleasePackages", "releasePackageStatus", "releasePermission", "startRelease"].includes(action)) throw error;
+      if (["previewRelease", "publishRelease", "publishMergedRelease", "previewMergedRelease", "releaseBuilds", "publishReleasePackages", "releasePackageStatus", "releasePermission", "startRelease", "submit", "requestBranch"].includes(action)) throw error;
     });
   };
 
@@ -139,6 +139,7 @@ export function App() {
     if (!evolution.state?.prepared) await evolution.run("prepare");
     await evolution.run("createCase", input);
     setEvolutionOpen(true);
+    if ((evolution.state?.candidate || evolution.state?.active) && !evolution.state?.draftDirty) await evolutionAction("compareCases");
   };
   /** Purpose: Continue a case without regenerating its acceptance criteria.
    * Input: case, optional feedback and retry ID. Output: editing in the original request's task.
@@ -193,6 +194,7 @@ export function App() {
   const [commandOpen, setCommandOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [improvementOpen, setImprovementOpen] = useState(false);
+  const [acceptanceGoalOpen, setAcceptanceGoalOpen] = useState(false);
   useEffect(() => { setImprovementOpen(false); }, [workspace.activeThreadId, evolutionOpen]);
   const [threadPendingDeletion, setThreadPendingDeletion] = useState<Thread | null>(null);
   const [deletingThread, setDeletingThread] = useState(false);
@@ -381,6 +383,9 @@ export function App() {
   const settingsRuntime = activeRuntime.effort || !selectedRuntimeModel?.defaultEffort
     ? activeRuntime
     : { ...activeRuntime, effort: selectedRuntimeModel.defaultEffort };
+  const evolutionUnavailable = !evolutionOpen ? null : !evolution.state
+    ? evolution.loadError ? "进化状态读取失败，请先重试。" : "正在读取进化状态…"
+    : !evolution.state.supported ? "当前运行方式不支持本地进化。" : null;
   const appClasses = [
     "app-shell",
     evolutionOpen ? "evolution-open" : "",
@@ -445,22 +450,29 @@ export function App() {
           <Conversation
             preparation={evolutionOpen && <EvolutionPreparation
               requests={(evolution.state?.acceptanceRequests || []).filter((r) => r.threadId === workspace.activeThreadId && !r.abandonedAt)}
-              acceptance={evolution.state?.acceptance} preparing={preparingAcceptance}
+              acceptance={evolution.state?.acceptance}
               busy={preparingAcceptance || evolution.pending || updateState.operationBusy || workspace.anyRunning || evolution.state?.phase !== "idle"}
               onResume={(request, clarification, skip) => { void sendEvolutionPrompt(request.prompt, true,
-                request.execution ? crypto.randomUUID() : request.id, request, clarification, Boolean(request.execution), skip); }}
-              onRevise={(params) => evolution.run("reviseRequest", params)} />}
+                request.execution ? crypto.randomUUID() : request.id, request, clarification, Boolean(request.execution), skip); }} />}
           header={evolutionOpen ? <EvolutionPanel state={evolution.state} error={evolutionIssue || evolution.error}
             busy={openingEvolutionUi || evolution.pending || updateState.operationBusy || Boolean(evolution.state && evolution.state.phase !== "idle")}
-            running={workspace.anyRunning} inspectorOpen={showInspector} onToggleInspector={() => setInspectorOpen((open) => !open)}
-            onAction={evolutionAction} onRetry={() => retryEvolution.current()} onRepair={() => { void repairEvolution(); }}>
+            running={workspace.running} otherTasksRunning={workspace.anyRunning && !workspace.running} inspectorOpen={showInspector} onToggleInspector={() => setInspectorOpen((open) => !open)}
+            onAddGoal={() => setAcceptanceGoalOpen(true)}
+            onAction={evolutionAction} onRetry={() => {
+              if (evolution.loadError || !retryEvolution.current) void evolution.refresh().catch(() => {});
+              else retryEvolution.current();
+            }} onRepair={() => { void repairEvolution(); }}>
               <EvolutionCases state={evolution.state?.acceptance} busy={evolution.pending || updateState.operationBusy || workspace.anyRunning || evolution.state?.phase !== "idle"}
+                open={acceptanceGoalOpen} onClose={() => setAcceptanceGoalOpen(false)}
                 requests={evolution.state?.acceptanceRequests}
-                currentCaseIds={evolution.state?.acceptanceRequests?.filter((r) => r.threadId === workspace.activeThreadId).at(-1)?.cases.map((c) => c.item.id)}
-                canCompare={Boolean(evolution.state?.candidate || evolution.state?.active) && !evolution.state?.draftDirty}
                 canReview={Boolean(evolution.state?.active && !evolution.state?.draftDirty
                   && (!evolution.state.candidate || evolution.state.active === evolution.state.candidate))}
-                onAction={evolutionAction} onImprove={improveFromCase} onCreate={createEvolutionCase} />
+                onAction={evolutionAction} onImprove={improveFromCase} onCreate={createEvolutionCase}
+                onRevise={async params => {
+                  const result = await evolution.run("reviseRequest", params);
+                  if ((evolution.state?.candidate || evolution.state?.active) && !evolution.state?.draftDirty) await evolutionAction("compareCases");
+                  return result;
+                }} />
             </EvolutionPanel> : undefined}
           onImprove={!evolutionOpen && conversationThread && window.cleoDesktop ? () => setImprovementOpen(true) : undefined}
           prompt={workspace.prompt}
@@ -468,7 +480,7 @@ export function App() {
           onPromptChange={workspace.setPrompt}
           sendError={workspace.sendError}
           harnessSwitchStatus={workspace.harnessSwitchStatus}
-            sendBlocked={workspace.harnessSwitchStatus || (updateState.blocksTasks || (evolutionOpen && updateState.operationBusy) ? "正在处理版本，请稍候…" : evolutionOpen && (preparingAcceptance || openingEvolutionUi || evolution.pending || !evolution.state?.supported || evolution.state?.phase !== "idle") ? "正在处理本地改动，请稍候…" : workspace.startingRun ? "正在提交，请稍候…" : null)}
+            sendBlocked={workspace.harnessSwitchStatus || evolutionUnavailable || (updateState.blocksTasks || (evolutionOpen && updateState.operationBusy) ? "请等待当前版本操作完成…" : evolutionOpen && (preparingAcceptance || openingEvolutionUi || evolution.pending || evolution.state?.phase !== "idle") ? "请等待当前操作完成…" : workspace.startingRun ? "正在提交，请稍候…" : null)}
           onRename={workspace.renameThread}
           thread={conversationThread}
           project={conversationProject}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { EvolutionState } from "./evolution-types";
 
 /** Purpose: Keep evolution state synchronized with the desktop controller.
@@ -7,13 +7,27 @@ import type { EvolutionState } from "./evolution-types";
 export function useEvolution() {
   const [state, setState] = useState<EvolutionState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const revision = useRef(0);
   const [pending, setPending] = useState(false);
+  const readQueue = useRef(Promise.resolve());
   const refresh = useCallback(async () => {
-    if (window.cleoDesktop) setState(await window.cleoDesktop.getEvolutionState());
+    if (!window.cleoDesktop) return;
+    const version = ++revision.current;
+    try {
+      const loaded = await window.cleoDesktop.getEvolutionState();
+      if (version === revision.current) { setState(loaded); setLoadError(null); }
+    } catch (failure) {
+      if (version === revision.current) setLoadError(failure instanceof Error ? failure.message : String(failure));
+      throw failure;
+    }
   }, []);
   useEffect(() => {
-    void refresh().catch((failure: unknown) => setError(String(failure)));
-    return window.cleoDesktop?.onEvolutionState(setState);
+    const unsubscribe = window.cleoDesktop?.onEvolutionState(next => {
+      revision.current++; setState(next); setLoadError(null);
+    });
+    void refresh().catch(() => {});
+    return () => { revision.current++; unsubscribe?.(); };
   }, [refresh]);
   const run = useCallback(async <T,>(action: string, params: Record<string, unknown> = {}): Promise<T> => {
     if (!window.cleoDesktop) throw new Error("请在 Cleo 桌面应用中使用本地迭代。");
@@ -27,16 +41,20 @@ export function useEvolution() {
     } finally {
       setPending(false);
       // A failed status refresh must not turn an accepted PR into a failed submission.
-      await refresh().catch((failure: unknown) => setError(`状态刷新失败：${String(failure)}`));
+      await refresh().catch(() => {});
     }
   }, [refresh]);
-  const inspect = useCallback(async <T,>(action: string, params: Record<string, unknown> = {}): Promise<T> => {
-    if (!window.cleoDesktop) throw new Error("请在 Cleo 桌面应用中使用本地迭代。");
-    try { return await window.cleoDesktop.evolutionAction<T>(action, params); }
-    catch (failure) {
-      throw new Error((failure instanceof Error ? failure.message : String(failure))
-        .replace(/^Error invoking remote method '[^']+': (?:Error: )?/, ""));
-    }
+  const inspect = useCallback(<T,>(action: string, params: Record<string, unknown> = {}): Promise<T> => {
+    const request = readQueue.current.then(async () => {
+      if (!window.cleoDesktop) throw new Error("请在 Cleo 桌面应用中使用本地迭代。");
+      try { return await window.cleoDesktop.evolutionAction<T>(action, params); }
+      catch (failure) {
+        throw new Error((failure instanceof Error ? failure.message : String(failure))
+          .replace(/^Error invoking remote method '[^']+': (?:Error: )?/, ""));
+      }
+    });
+    readQueue.current = request.then(() => {}, () => {});
+    return request;
   }, []);
-  return { state, error, pending, run, inspect, refresh };
+  return { state, error: error || loadError, loadError, pending, run, inspect, refresh };
 }

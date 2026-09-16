@@ -7,7 +7,7 @@ import { checkContribution, submitContribution, inspectPullRequest, contribution
 import { EvolutionAcceptance } from "./evolution-acceptance.mjs";
 import { requireApplicable, reviewApplied } from "./evolution-behavior-policy.mjs";
 import { EvolutionRequests } from "./evolution-requests.mjs";
-import { runPreparedEvolutionTurn } from "./evolution-editing.mjs";
+import { compareBuiltVersion, runPreparedEvolutionTurn } from "./evolution-editing.mjs";
 import { rmSync } from "node:fs";
 import { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, shell } from "electron";
 import { dirname, join } from "node:path";
@@ -276,8 +276,7 @@ app.whenReady().then(async () => {
     const method = String(payload?.method || "");
     if (!allowedMethods.has(method)) throw new Error(`Unsupported desktop method: ${method}`);
     const streamId = payload?.streamId ? String(payload.streamId) : null;
-    if (method === "stream_turn" && (programUpdates.blocksTasks || evolution.phase !== "idle"
-        || (await evolution.store.read()).transaction)) {
+    if (method === "stream_turn" && programUpdates.blocksTasks) {
       throw new Error("请等待进化操作完成后再修改代码。");
     }
     const params = payload?.params || {};
@@ -289,7 +288,11 @@ app.whenReady().then(async () => {
     if (programUpdates.closed) throw new Error("Cleo 正在退出，请稍后重试。");
     const isEvolution = method === "stream_turn" && await backend.request("is_evolution_thread", { thread_id: params.thread_id });
     if (programUpdates.closed) throw new Error("Cleo 正在退出，请稍后重试。");
-    if (method === "stream_turn" && programUpdates.blocksTasks) throw new Error("请等待当前版本操作完成。");
+    if (method === "stream_turn") {
+      const transaction = (await evolution.store.read()).transaction;
+      if (programUpdates.blocksTasks || transaction || (evolution.phase !== "idle" && (!evolution.readOnlyOperation || isEvolution)))
+        throw new Error("请等待当前版本操作完成。");
+    }
     if (isEvolution && programUpdates.busy) throw new Error("请等待当前版本操作完成。");
     const result = isEvolution
       ? await runPreparedEvolutionTurn({ evolution, requests: acceptanceRequests, acceptance, backend, params, onEvent })
@@ -354,7 +357,7 @@ app.whenReady().then(async () => {
   ipcMain.handle("cleo:evolution:state", () => evolutionState());
   ipcMain.handle("cleo:evolution:action", async (_event, payload) => {
     const { action, ...params } = payload || {};
-    if (backend.pending.size && ["checkContribution", "mergeAssistance", "contributionRepairPrompt"].includes(action))
+    if (backend.pending.size && action === "contributionRepairPrompt")
       throw new Error("请先等待当前任务完成或停止任务，再检查合并。");
     if (backend.pending.size && ["prepare", "build", "merge", "submit", "apply", "recovery", "select", "discard", "save", "begin", "repairPrompt", "createCase", "archiveCase", "compareCases", "reviewCase", "prepareRequest", "repairRequest", "reviseRequest", "feedbackRequest", "completeCase", "cancelCase", "continueCaseRequest", "abandonRequest", "requestBranch", "refreshBranchRequest"].includes(action)) {
       throw new Error("请先等待当前任务完成或停止任务。");
@@ -367,7 +370,7 @@ app.whenReady().then(async () => {
       discard: () => changeEvolutionBase(null, true),
       build: async () => {
         const id = await evolution.build();
-        if (id) await evolution.operation("comparing", () => acceptance.compare(id));
+        await compareBuiltVersion(evolution, acceptance, id);
         return id;
       },
       createCase: () => evolution.operation("recording", () => acceptance.create(params)),
@@ -450,7 +453,7 @@ app.whenReady().then(async () => {
     if (programUpdates.closed) throw new Error("Cleo 正在退出，请稍后重试。");
     if (["startRelease", "retryRelease", "cancelRelease", "cancelLogin", "openGithubLogin", "requestPrompt", "casePrompt"].includes(action)) return actions[action]();
     return programUpdates.run(actions[action], {
-      allowRunning: ["releases", "download", "pullRequest", "releasePermission", "previewMergedRelease"].includes(action),
+      allowRunning: ["releases", "download", "pullRequest", "releasePermission", "previewMergedRelease", "contributionBranches", "checkContribution", "mergeAssistance"].includes(action),
     });
   });
   if (!app.isPackaged) ipcMain.handle("cleo:evolution:healthy", () => {});

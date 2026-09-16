@@ -381,6 +381,7 @@ test("automatic release preflight preserves editing diagnostics on success and f
     assert.equal(manager.error, "Existing build failure");
     assert.equal(manager.logs, "Original build diagnostics");
     assert.equal(manager.phase, "idle");
+    assert.equal(manager.readOnlyOperation, false);
     assert.equal(remote.writes.length, 0);
   });
 });

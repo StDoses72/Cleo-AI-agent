@@ -17,8 +17,7 @@ try {
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.goto(`${server.resolvedUrls.local[0]}scripts/fixtures/release-selection.html`);
-  await page.getByRole("status", { name: "仓库发布权限" }).waitFor();
-  assert.match(await page.getByRole("status", { name: "仓库发布权限" }).innerText(), /fixture-owner.*owner/);
+  await page.getByText("发布账号：fixture-owner", { exact: true }).waitFor();
   assert.equal(await page.getByRole("button", { name: "核对发布提交" }).count(), 0);
   assert.equal(await page.getByLabel("发布类型", { exact: true }).inputValue(), "stable");
   assert.match(await page.getByLabel("发布来源 PR").innerText(), /PR release candidate.*0\.6\.1/);
@@ -129,7 +128,7 @@ try {
   assert.equal(await page.getByRole("button", { name: "发布", exact: true }).isEnabled(), true);
   await page.getByRole("button", { name: "撤销权限（测试）" }).click();
   assert.equal(await page.getByRole("button", { name: "发布", exact: true }).isDisabled(), true);
-  assert.equal(await page.getByRole("button", { name: "继续提交 PR", exact: true }).isEnabled(), true);
+  assert.equal(await page.getByRole("button", { name: "新建 PR", exact: true }).isEnabled(), true);
   await page.getByRole("button", { name: "重试", exact: true }).click();
   await page.getByRole("button", { name: "发布", exact: true }).and(page.locator(":enabled")).waitFor();
   assert.equal(await page.getByRole("button", { name: "发布", exact: true }).isEnabled(), true);

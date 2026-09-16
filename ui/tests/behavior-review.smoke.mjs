@@ -18,22 +18,23 @@ const server = await createServer({ cacheDir, root: fileURLToPath(new URL("../",
 let browser;
 try {
   await server.listen();
-  browser = await chromium.launch({ channel: "msedge", headless: true });
+  browser = await chromium.launch({ executablePath: process.env.CLEO_TEST_BROWSER, headless: true });
   const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/__behavior`);
-  await page.getByText("查看预期和修改前后结果", { exact: true }).click();
-  assert.match(await page.locator(".evolution-comparison").innerText(), /源码分析显示只有固定命令/);
-  assert.match(await page.locator(".evolution-comparison").innerText(), /预期效果/);
-  assert.match(await page.locator(".evolution-comparison").innerText(), /输入 \/ 后显示/);
+  await page.getByText("查看目标与结果", { exact: true }).click();
+  assert.match(await page.locator(".evolution-case").innerText(), /输入 \/ 后显示/);
+  await page.getByText("依据与历史", { exact: true }).click();
+  assert.match(await page.locator(".evolution-case").innerText(), /源码分析显示只有固定命令/);
+  assert.match(await page.locator(".evolution-case").innerText(), /未实测/);
   assert.equal(await page.getByText("记录人工验收通过", { exact: true }).count(), 0);
   assert.equal(await page.getByRole("button", { name: "应用", exact: true }).isEnabled(), true);
   await page.getByRole("button", { name: "切换构建检查结果" }).click();
-  assert.equal(await page.getByRole("button", { name: "应用", exact: true }).isEnabled(), false);
+  assert.equal(await page.getByRole("button", { name: "应用", exact: true }).count(), 0);
   await page.getByRole("button", { name: "切换构建检查结果" }).click();
   await page.getByRole("button", { name: "应用", exact: true }).click();
-  assert.equal(await page.getByRole("button", { name: "保存", exact: true }).isEnabled(), false);
+  assert.equal(await page.getByRole("button", { name: "保存", exact: true }).count(), 0);
   assert.equal(await page.getByLabel("验收依据：发现本机 skills").count(), 0);
-  await page.getByRole("button", { name: "验收", exact: true }).click();
+  await page.getByRole("button", { name: "确认效果", exact: true }).click();
   assert.equal(await page.getByRole("button", { name: "保存", exact: true }).isEnabled(), true);
   const expanded = await page.locator(".update-notice").boundingBox();
   await page.getByRole("button", { name: "最小化更新提示" }).click();
@@ -46,6 +47,13 @@ try {
   await page.getByRole("button", { name: "展开更新提示" }).click();
   assert.equal(await page.getByRole("button", { name: "重启安装" }).isVisible(), true);
   assert.equal(await page.getByTestId("update-counts").innerText(), "1:0");
+  await page.reload();
+  await page.getByRole("button", { name: "自动检查失败（测试）", exact: true }).click();
+  await page.getByText("验收检查未通过", { exact: true }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "应用", exact: true }).count(), 0);
+  await page.getByRole("button", { name: "重试检查", exact: true }).click();
+  await page.getByRole("button", { name: "应用", exact: true }).and(page.locator(":enabled")).waitFor();
+  assert.equal(await page.getByTestId("comparison-count").innerText(), "1");
   console.log("PASS: before/expected content, apply/check/save gates, minimize/restore without installation");
 } finally {
   await browser?.close();
