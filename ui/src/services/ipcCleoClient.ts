@@ -160,6 +160,10 @@ export class IpcCleoClient implements CleoClient {
     return this.bridge.request("update_runtime", { thread_id: threadId, update });
   }
 
+  switchHarness(threadId: string, provider: string, model: string, effort?: RuntimeProfile["effort"]): Promise<RuntimeProfile> {
+    return this.bridge.request("switch_harness", { thread_id: threadId, provider, model, effort });
+  }
+
   pickAttachments(): Promise<Attachment[]> {
     return this.bridge.pickAttachments();
   }

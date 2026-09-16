@@ -5,11 +5,13 @@ from __future__ import annotations
 import asyncio
 import os
 import secrets
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from cleo.harnesses.context import ContextBinding, ConversationContext
 from cleo.harnesses.control import (
     HarnessAccount,
     HarnessModel,
@@ -18,6 +20,12 @@ from cleo.harnesses.control import (
     SessionOptions,
 )
 from cleo.harnesses.events import event_payload
+from cleo.harnesses.handoff import (
+    DELIVERED_EVENT,
+    SWITCH_EVENT,
+    checked_history,
+    pending_handoff,
+)
 from cleo.harnesses.models import (
     AgentEvent,
     AgentResult,
@@ -39,6 +47,9 @@ class _SessionRoute:
     project_path: str
     native_session_id: str | None
     project: str
+    handoff: str = ""
+    handoff_id: str | None = None
+    context_binding: ContextBinding | None = None
 
 
 class AgentService:
@@ -60,9 +71,18 @@ class AgentService:
         self._providers: dict[str, AgentProvider] = {}
         self._sessions: dict[str, _SessionRoute] = {}
         self._store = session_store
+        self._session_locks: dict[str, asyncio.Lock] = {}
         self._space = space
         self._owner_type = owner_type
         self._memory_context = memory_context
+        self._context = ConversationContext(session_store)
+
+    def _context_lease(self, session_id):
+        return (
+            self._context.lease(session_id)
+            if hasattr(self._store, "memory_root")
+            else nullcontext()
+        )
 
     @property
     def providers(self) -> tuple[str, ...]:
@@ -126,10 +146,34 @@ class AgentService:
         if selected_model is None and saved_options is not None:
             selected_model = saved_options.model
         try:
-            session = await implementation.resume_session(
-                self._required_text(native_session_id, "native_session_id"),
-                resolved_path,
-                selected_model,
+            binding = None
+            if stored_handle:
+                for event in reversed(self._store.read_events(stored_handle)):
+                    payload = (event.get("data") or {}).get("payload") or {}
+                    if (
+                        event.get("actor") == "system"
+                        and isinstance(payload, dict)
+                        and payload.get("context_version") == 1
+                        and payload.get("snapshot_id")
+                    ):
+                        binding = ContextBinding(stored_handle, payload["snapshot_id"])
+                        break
+            resume_context = getattr(implementation, "resume_context_session", None)
+            if binding:
+                self._context.load(binding)
+            session = await (
+                resume_context(
+                    native_session_id,
+                    resolved_path,
+                    selected_model,
+                    binding,
+                )
+                if binding and callable(resume_context)
+                else implementation.resume_session(
+                    self._required_text(native_session_id, "native_session_id"),
+                    resolved_path,
+                    selected_model,
+                )
             )
         except NativeSessionNotFoundError:
             # A thread created but never used may not have a rollout on disk. Only
@@ -138,9 +182,13 @@ class AgentService:
                 raise
             events = self._store.read_events(stored_handle)
             manifest = self._store.load_manifest(stored_handle)
-            if not events or len(events) != manifest.get("last_event_seq") or any(
-                event.get("type") not in {"session_created", "session_closed"}
-                for event in events
+            if (
+                not events
+                or len(events) != manifest.get("last_event_seq")
+                or any(
+                    event.get("type") not in {"session_created", "session_closed"}
+                    for event in events
+                )
             ):
                 raise
             session = await implementation.create_session(resolved_path, selected_model)
@@ -153,6 +201,7 @@ class AgentService:
             handle=(stored or {}).get("id"),
             persist_runtime_options=saved_options is None,
         )
+        self._sessions[restored.id].context_binding = binding
         if saved_options is None:
             return restored
 
@@ -178,10 +227,179 @@ class AgentService:
             await implementation.close(session.id)
             raise
         if isinstance(options, SessionOptions):
-            self._store.update_manifest(restored.id, runtime_options=options.as_dict())
+            self._persist_options(restored.id, options)
         return restored
 
+    async def switch_session(
+        self,
+        session_id: str,
+        provider: str,
+        model: str | None = None,
+        *,
+        prepare: Callable[[AgentProvider, str], Awaitable[None]] | None = None,
+    ) -> AgentSession:
+        """Prepare a fresh native session, then commit the same Cleo identity.
+
+        A fresh target also prevents returning to stale context when switching back.
+        The existing provider_event envelope stores the pending handoff checkpoint;
+        older writers preserve it without knowing any new manifest fields.
+        """
+        session_id = self._required_text(session_id, "session_id")
+        provider = self._required_text(provider, "provider")
+        async with self._session_locks.setdefault(session_id, asyncio.Lock()):
+            with self._context_lease(session_id):
+                return await self._switch_session(session_id, provider, model, prepare=prepare)
+
+    async def _switch_session(self, session_id, provider, model=None, *, prepare=None):
+        implementation = self._provider(provider)
+        self._context.reconcile(session_id)
+        manifest = self._store.load_manifest(session_id)
+        events = checked_history(self._store, session_id)
+        project = manifest["project"]
+        cwd = self._project_directory(str(manifest.get("cwd") or "."))
+        prepared = self._context.prepare(session_id, events)
+        context = prepared.text
+        create_context = getattr(implementation, "create_context_session", None)
+        if prepared.requires_reader and not callable(create_context):
+            raise ValueError(
+                "目标 Harness 不支持长历史的受控读取；未截断历史，原 harness 可继续使用。"
+            )
+        old = self._sessions.get(session_id)
+        handoff_id = f"handoff-{secrets.token_hex(12)}"
+        candidate = await (
+            create_context(cwd, model, prepared.binding)
+            if callable(create_context)
+            else implementation.create_session(cwd, model)
+        )
+        try:
+            validate = getattr(implementation, "validate_handoff", None)
+            if callable(validate):
+                await validate(candidate.id)
+            if prepare is not None:
+                await prepare(implementation, candidate.id)
+            options_method = getattr(implementation, "session_options", None)
+            options = options_method(candidate.id) if callable(options_method) else None
+            raw_options = manifest.get("runtime_options")
+            if raw_options is not None and not isinstance(raw_options, dict):
+                raise ValueError("运行选项格式不受支持，未覆盖现有配置。")
+            runtime = dict(raw_options or {})
+            runtime.update(
+                options.as_dict()
+                if isinstance(options, SessionOptions)
+                else {
+                    "model": model,
+                    "effort": None,
+                    "approval_mode": None,
+                    "sandbox": None,
+                }
+            )
+            if self._store.read_events(session_id) != events:
+                raise ValueError("准备交接时历史发生变化，请重试；原 harness 保持不变。")
+            updates = {
+                "provider": provider,
+                "native_session_id": candidate.native_id,
+                "runtime_options": runtime,
+            }
+            self._store.append_events(
+                space=self._space,
+                project=project,
+                session_id=session_id,
+                events=[
+                    {
+                        "id": handoff_id,
+                        "type": "provider_event",
+                        "actor": "system",
+                        "data": {
+                            "provider_event_type": SWITCH_EVENT,
+                            "payload": {
+                                "version": 1,
+                                "provider": provider,
+                                "from_provider": manifest["provider"],
+                                "native_session_id": candidate.native_id,
+                                "history_seq": manifest["last_event_seq"],
+                                "context_version": 1,
+                                "snapshot_id": prepared.binding.snapshot_id,
+                                "phase": "prepared",
+                                "inline_bytes": prepared.inline_bytes,
+                                "manifest_updates": updates,
+                            },
+                        },
+                    }
+                ],
+                manifest_updates=updates,
+            )
+        except BaseException:
+            await implementation.close(candidate.id)
+            # A complete log commit may precede a failed manifest/index update.
+            # Recover it before any later user request; never keep a stale live route.
+            committed = any(e.get("id") == handoff_id for e in self._store.read_events(session_id))
+            if committed:
+                self._sessions.pop(session_id, None)
+                self._context.reconcile(session_id)
+            raise
+        self._sessions[session_id] = _SessionRoute(
+            implementation,
+            candidate.id,
+            cwd,
+            candidate.native_id,
+            project,
+            context,
+            handoff_id,
+            prepared.binding,
+        )
+        if old is not None:
+            # Cleanup failure cannot undo an already committed selection.
+            try:
+                await old.provider.close(old.provider_session_id)
+            except Exception:
+                pass
+        return AgentSession(
+            id=session_id,
+            provider=provider,
+            project_path=cwd,
+            native_session_id=candidate.native_id,
+            space=self._space,
+            project=project,
+        )
+
+    async def restore_session(
+        self,
+        session_id: str,
+        *,
+        prepare: Callable[[AgentProvider, str], Awaitable[None]] | None = None,
+    ) -> AgentSession:
+        """Restore an acknowledged native thread or rebuild a not-yet-delivered handoff."""
+        with self._context_lease(session_id):
+            self._context.reconcile(session_id)
+        manifest = self._store.load_manifest(session_id)
+        events = checked_history(self._store, session_id)
+        options = self._saved_session_options(session_id)
+        if pending_handoff(events, manifest["provider"]):
+            return await self.switch_session(
+                session_id,
+                manifest["provider"],
+                options.model if options else None,
+                prepare=prepare,
+            )
+        return await self.resume_session(
+            manifest["provider"],
+            manifest["native_session_id"],
+            str(manifest.get("cwd") or "."),
+            project=manifest["project"],
+        )
+
     async def prompt(
+        self,
+        session_id: str,
+        prompt: str,
+        on_event: EventCallback | None = None,
+    ) -> AgentResult:
+        session_id = self._required_text(session_id, "session_id")
+        async with self._session_locks.setdefault(session_id, asyncio.Lock()):
+            with self._context_lease(session_id):
+                return await self._prompt(session_id, prompt, on_event)
+
+    async def _prompt(
         self,
         session_id: str,
         prompt: str,
@@ -194,6 +412,13 @@ class AgentService:
             raise KeyError(f"Unknown agent session: {session_id}")
 
         prompt = self._required_text(prompt, "prompt")
+        if route.handoff_id:
+            # Validate source integrity and reserve room for new input before recording a turn.
+            self._context.load(route.context_binding)
+            if len(prompt.encode()) + len(route.handoff.encode()) > 64_000:
+                raise ValueError(
+                    "本次输入超过保守交接预算，请缩短新消息；历史未截断，尚未提交模型。"
+                )
         turn_key = f"turn-{secrets.token_hex(12)}"
         self._store.append_events(
             space=self._space,
@@ -205,8 +430,15 @@ class AgentService:
             ],
             manifest_updates={"status": "running"},
         )
-        await emit_event(on_event, AgentEvent(provider=route.provider.name, type="turn_started",
-                                             text=prompt, data={"turnId": turn_key}))
+        await emit_event(
+            on_event,
+            AgentEvent(
+                provider=route.provider.name,
+                type="turn_started",
+                text=prompt,
+                data={"turnId": turn_key},
+            ),
+        )
         thought_number = 0
         previous_type = ""
         live_events: set[int] = set()
@@ -215,8 +447,12 @@ class AgentService:
             nonlocal thought_number, previous_type
             payload = event_payload(event)
             source = payload.get("item") if isinstance(payload.get("item"), dict) else payload
-            key = source.get("id") or payload.get("itemId") or source.get("toolCallId") \
+            key = (
+                source.get("id")
+                or payload.get("itemId")
+                or source.get("toolCallId")
                 or source.get("tool_use_id")
+            )
             data = {**event.data, "turn_id": turn_key}
             phase = source.get("phase") or payload.get("phase")
             if event.type in {"thought", "agent_message"} or phase == "commentary":
@@ -235,9 +471,13 @@ class AgentService:
             projected = event.model_copy(update={"data": data})
             stored = self._stored_provider_event(projected)
             if stored is not None:
-                await asyncio.to_thread(self._store.append_events, space=self._space,
-                                        project=route.project, session_id=session_id,
-                                        events=[stored])
+                await asyncio.to_thread(
+                    self._store.append_events,
+                    space=self._space,
+                    project=route.project,
+                    session_id=session_id,
+                    events=[stored],
+                )
                 live_events.add(id(event))
             try:
                 await emit_event(on_event, projected)
@@ -245,12 +485,31 @@ class AgentService:
                 # A durable answer is final even if its UI notification connection closes.
                 if event.type != "question_response" or stored is None:
                     raise
+
         try:
-            context = (self._memory_context(self._space, route.project)
-                       if self._memory_context else '')
+            context = (
+                self._memory_context(self._space, route.project) if self._memory_context else ""
+            )
+            context = "\n\n".join(part for part in (context, route.handoff) if part)
+            if route.handoff_id:
+                self._store.append_event(
+                    space=self._space,
+                    project=route.project,
+                    session_id=session_id,
+                    event_type="provider_event",
+                    actor="system",
+                    data={
+                        "provider_event_type": "cleo/handoff_submitted",
+                        "payload": {
+                            "version": 1,
+                            "switch_id": route.handoff_id,
+                            "turn_id": turn_key,
+                        },
+                    },
+                )
             turn = await route.provider.prompt(
                 route.provider_session_id,
-                context + '\n\nCurrent user request:\n' + prompt if context else prompt,
+                context + "\n\nCurrent user request:\n" + prompt if context else prompt,
                 relay if on_event is not None else None,
             )
         except asyncio.CancelledError:
@@ -275,6 +534,26 @@ class AgentService:
                     "content": turn.response,
                 }
             )
+        if route.handoff_id and turn.status == "completed":
+            stored_events.append(
+                {
+                    "type": "provider_event",
+                    "actor": "system",
+                    "data": {
+                        "provider_event_type": DELIVERED_EVENT,
+                        "payload": {
+                            "version": 1,
+                            "switch_id": route.handoff_id,
+                            "context_version": 1,
+                            "manifest_updates": {
+                                "status": turn.status,
+                                "error": turn.error,
+                                "native_session_id": turn.native_session_id,
+                            },
+                        },
+                    },
+                }
+            )
         stored_events.append(
             {
                 "type": f"session_{turn.status}",
@@ -294,6 +573,16 @@ class AgentService:
             },
         )
         self._store.refresh_compact(session_id)
+        # Deterministic working-state checkpoint; failure must not undo a completed model turn.
+        try:
+            await asyncio.to_thread(
+                self._context.prepare, session_id, self._store.read_events(session_id)
+            )
+        except (OSError, ValueError):
+            pass  # Source remains authoritative; next switch rebuilds or returns the actual error.
+        if turn.status == "completed":
+            route.handoff = ""
+            route.handoff_id = None
         return AgentResult(
             session_id=session_id,
             provider=route.provider.name,
@@ -397,7 +686,7 @@ class AgentService:
             approval_mode=approval_mode,
             sandbox=sandbox,
         )
-        self._store.update_manifest(session_id, runtime_options=options.as_dict())
+        self._persist_options(session_id, options)
         return options
 
     async def resolve_approval(
@@ -551,7 +840,7 @@ class AgentService:
         if persist_runtime_options and callable(options_method):
             options = options_method(provider_session_id)
             if isinstance(options, SessionOptions):
-                self._store.update_manifest(handle, runtime_options=options.as_dict())
+                self._persist_options(handle, options)
         return AgentSession(
             id=handle,
             provider=provider.name,
@@ -559,6 +848,16 @@ class AgentService:
             native_session_id=native_session_id,
             space=self._space,
             project=project,
+        )
+
+    def _persist_options(self, session_id: str, options: SessionOptions) -> None:
+        manifest = self._store.load_manifest(session_id)
+        current = manifest.get("runtime_options")
+        if current is not None and not isinstance(current, dict):
+            raise ValueError("运行选项格式不受支持，未覆盖现有配置。")
+        self._store.update_manifest(
+            session_id,
+            runtime_options={**(current or {}), **options.as_dict()},
         )
 
     def _saved_session_options(self, handle: Any) -> SessionOptions | None:
@@ -596,11 +895,15 @@ class AgentService:
             event_type = "thought"
         if event_type == "agent_message":
             event_type = "thought"
-        if (event_type == "assistant_message_chunk"
-                and event_payload(event).get("phase") == "commentary"):
+        if (
+            event_type == "assistant_message_chunk"
+            and event_payload(event).get("phase") == "commentary"
+        ):
             event_type = "thought"
-        elif (event_type == "assistant_message_chunk"
-              and event_payload(event).get("phase") in {"final_answer", "final"}):
+        elif event_type == "assistant_message_chunk" and event_payload(event).get("phase") in {
+            "final_answer",
+            "final",
+        }:
             event_type = "assistant_fragment"
         if event_type in {
             "agent_message_chunk",
@@ -635,9 +938,7 @@ class AgentService:
             "data": {
                 "provider": event.provider,
                 "schema_version": event.data.get("schema_version", 1),
-                "provider_event_type": event.data.get(
-                    "provider_event_type", event.type
-                ),
+                "provider_event_type": event.data.get("provider_event_type", event.type),
                 "payload": event.data.get("payload", event.data),
                 "turn_id": event.data.get("turn_id"),
                 "timeline_id": event.data.get("timeline_id"),

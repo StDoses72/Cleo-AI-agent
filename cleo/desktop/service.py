@@ -148,6 +148,7 @@ class DesktopService:
         self._subscription_logins = SubscriptionLogins()
         self._productivity_sessions: dict[str, Any] = {}
         self._run_tasks: dict[str, asyncio.Task[Any]] = {}
+        self._harness_switches: set[str] = set()
         self._project_paths: dict[str, str] = {}
 
     async def load_workspace(self) -> dict[str, Any]:
@@ -237,8 +238,8 @@ class DesktopService:
     async def delete_thread(self, *, thread_id: str) -> dict[str, Any]:
         """Delete one local thread after releasing any resident provider session."""
         manifest = self.store.load_manifest(thread_id)
-        if thread_id in self._run_tasks:
-            raise ValueError("正在运行的 thread 不能删除，请先停止运行。")
+        if thread_id in self._run_tasks or thread_id in getattr(self, "_harness_switches", set()):
+            raise ValueError("正在运行或切换 harness 的 thread 不能删除，请先停止运行。")
 
         was_active = self.runtime.current_thread_id == thread_id
         if manifest["space"] == "productivity" and thread_id in self._productivity_sessions:
@@ -633,14 +634,27 @@ class DesktopService:
     async def is_evolution_thread(self, *, thread_id: str) -> bool:
         return self._is_evolution(self.store.load_manifest(thread_id))
 
-    async def analyze_evolution_request(self, *, thread_id: str, request: str) -> dict[str, Any]:
+    async def analyze_evolution_request(self, *, thread_id: str, request: str,
+                                       existing_cases: list | None = None) -> dict[str, Any]:
         """Inspect code and prepare criteria without a coding turn or session writes."""
         from cleo.desktop.evolution_planning import analyze_request
 
         manifest = self.store.load_manifest(thread_id)
         if not self._is_evolution(manifest):
             raise ValueError("请在进化会话中准备验收。")
-        return await analyze_request(self.settings, manifest, Path(manifest["cwd"]), request)
+        return await analyze_request(self.settings, manifest, Path(manifest["cwd"]), request,
+                                     existing_cases)
+
+    async def release_runtime(self, *, thread_id: str | None = None) -> dict[str, Any]:
+        """Freeze the selected coding harness for an independent release repair session."""
+        manifest = self.store.load_manifest(thread_id) if thread_id else {}
+        name = manifest.get("provider") or self.settings.productivity.default_provider
+        provider = self.settings.productivity.providers.get(name)
+        if not provider or not provider.enabled:
+            raise ValueError("请先选择可用的编码 harness，再开始发布。")
+        options = manifest.get("runtime_options") or {}
+        return {"provider": name, "model": options.get("model") or provider.model,
+                "effort": options.get("effort")}
 
     async def open_evolution_thread(
         self, *, thread_id: str | None = None, provider: str | None = None,
@@ -775,6 +789,8 @@ class DesktopService:
         attachments: list[dict[str, Any]] | None,
         emit: Emit,
     ) -> None:
+        if thread_id in getattr(self, "_harness_switches", set()):
+            raise ValueError("正在交接 harness，请等待切换完成后发送。")
         prompt = str(prompt).strip()
         if not prompt:
             raise ValueError("prompt cannot be empty")
@@ -851,7 +867,88 @@ class DesktopService:
             raise ValueError("连接已失效，旧问题不能继续作答。请让 Agent 重新提问。")
         return await self._adapter().resolve_question(thread_id, question_id, answers)
 
-    async def update_runtime(
+    async def _prepare_harness(self, manifest, provider, implementation, session_id, effort=None):
+        """Apply desktop controls to a candidate before making it the current route."""
+        settings = self._productivity_provider(provider)
+        account = getattr(implementation, "account_status", None)
+        if callable(account) and not (await account()).authenticated:
+            raise ValueError(f"{provider} 尚未登录，请先完成登录。")
+        options = {}
+        if self._is_evolution(manifest):
+            if settings.type == "codex_sdk":
+                options.update(sandbox="workspace-write", approval_mode="deny_all")
+            elif settings.type == "claude_sdk":
+                options["approval_mode"] = "acceptEdits"
+        elif settings.type == "codex_sdk":
+            current = implementation.session_options(session_id)
+            if current.approval_mode == "auto_review":
+                options["approval_mode"] = "user"
+        if effort is not None:
+            options["effort"] = effort
+        if options:
+            await implementation.update_session_options(session_id, **options)
+        questions = getattr(implementation, "enable_questions", None)
+        if callable(questions):
+            await questions(session_id)
+        if (not self._is_evolution(manifest) and settings.type == "codex_sdk"
+                and implementation.session_options(session_id).approval_mode != "deny_all"):
+            await implementation.enable_user_approvals(session_id)
+
+    async def switch_harness(
+        self, *, thread_id: str, provider: str, model: str | None = None,
+        effort: str | None = None,
+    ) -> dict[str, Any]:
+        """Wait for the entire current turn, then switch without submitting a user message."""
+        manifest = self.store.load_manifest(thread_id)
+        if manifest["space"] != "productivity":
+            raise ValueError("当前会话不支持切换任务 harness。")
+        selected = self._productivity_provider(provider)
+        adapter = self._adapter()
+        if not selected.enabled or provider not in adapter.providers:
+            raise ValueError(f"Harness {provider!r} 已禁用或不可用。")
+        if not hasattr(self, "_harness_switches"):
+            self._harness_switches = set()
+        if thread_id in self._harness_switches:
+            raise ValueError("此会话正在切换 harness，请等待完成。")
+        self._harness_switches.add(thread_id)
+        try:
+            active = self._run_tasks.get(thread_id)
+            if active is not None and not active.done():
+                # Shield keeps cancelling the picker from cancelling the original turn.
+                await asyncio.gather(asyncio.shield(active), return_exceptions=True)
+            manifest = self.store.load_manifest(thread_id)
+            if provider == manifest["provider"]:
+                update = {"model": model} if model else {}
+                if effort is not None:
+                    update["effort"] = effort
+                return await self._update_runtime(thread_id=thread_id, update=update)
+
+            async def prepare(implementation, session_id):
+                await self._prepare_harness(
+                    manifest, provider, implementation, session_id, effort,
+                )
+                # Existing-schema registration keeps the name usable by older versions.
+                if provider not in self.settings.productivity.providers:
+                    from cleo.config.settings import HARNESSES_CONFIG_PATH
+                    from cleo.desktop.task_harnesses import register_task_provider
+
+                    register_task_provider(HARNESSES_CONFIG_PATH, provider, selected)
+                    self.settings.productivity.providers[provider] = selected
+
+            session = await adapter.switch_session(
+                thread_id, provider, model or selected.model, prepare=prepare,
+            )
+            self._productivity_sessions[thread_id] = session
+            return self._runtime_profile(self.store.load_manifest(thread_id))
+        finally:
+            self._harness_switches.discard(thread_id)
+
+    async def update_runtime(self, *, thread_id: str, update: dict[str, Any]) -> dict[str, Any]:
+        if thread_id in getattr(self, "_harness_switches", set()):
+            raise ValueError("正在切换 harness，请等待交接完成后修改运行参数。")
+        return await self._update_runtime(thread_id=thread_id, update=update)
+
+    async def _update_runtime(
         self,
         *,
         thread_id: str,
@@ -1393,6 +1490,11 @@ class DesktopService:
                     }
             if change_set is not None:
                 await emit({"type": "change-history", "changeSet": change_set})
+            # Publish the durable phase on success AND uncertain/failed submissions.
+            # The renderer must not keep the pre-turn "prepared" profile indefinitely.
+            await emit({"type": "runtime", "runtime": self._runtime_profile(
+                self.store.load_manifest(manifest["id"]),
+            )})
         if result.response and not state.get("assistant"):
             await emit(
                 {
@@ -1821,6 +1923,7 @@ class DesktopService:
         }
 
     def _runtime_profile(self, manifest: dict[str, Any] | None) -> dict[str, Any]:
+        from cleo.harnesses.context import handoff_status
         if manifest is None or manifest.get("space") == "non_productivity":
             options = (
                 manifest.get("runtime_options")
@@ -1875,6 +1978,7 @@ class DesktopService:
                 or getattr(provider_settings.options, "approval_mode", "default")
             ),
             "contextWindow": 128_000,
+            "handoffStatus": handoff_status(self.store.read_events(manifest["id"])),
             "editable": True,
             "supportsQuestions": getattr(provider_settings, "type", None) in {
                 "codex_sdk", "claude_sdk",
@@ -1944,6 +2048,19 @@ class DesktopService:
         if existing is not None:
             await self._restrict_evolution(manifest)
             return existing
+        from cleo.harnesses.handoff import pending_handoff
+
+        events = self.store.read_events(manifest["id"])
+        if pending_handoff(events, str(manifest["provider"])):
+            async def prepare(implementation, session_id):
+                await self._prepare_harness(
+                    manifest, str(manifest["provider"]), implementation, session_id,
+                    (manifest.get("runtime_options") or {}).get("effort"),
+                )
+
+            session = await self._adapter().restore_session(manifest["id"], prepare=prepare)
+            self._productivity_sessions[manifest["id"]] = session
+            return session
         native_id = manifest.get("native_session_id")
         if not native_id:
             raise ValueError(f"Session {manifest['id']} 没有 provider 原生 session id。")

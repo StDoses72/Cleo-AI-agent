@@ -48,6 +48,29 @@ def test_reads_related_code_before_preparing_grounded_manual_cases(tmp_path):
     assert "fixture" not in case
 
 
+def test_repeated_steps_are_deduplicated_without_merging_distinct_outcomes(tmp_path):
+    plan = fixture(tmp_path)
+    plan["cases"].append(dict(plan["cases"][0]))
+    plan["cases"].append({**plan["cases"][0], "expectation": "键盘可以聚焦按钮"})
+    result, _ = run_plan(tmp_path, plan)
+    assert len(result["cases"]) == 2
+    assert result["cases"][1]["expectation"] == "键盘可以聚焦按钮"
+
+
+def test_existing_steps_are_given_as_context_without_rewriting_request(tmp_path):
+    plan = fixture(tmp_path)
+    previous = [{"trigger": "打开侧栏", "expectation": "文字标签可见"}]
+    calls = []
+
+    async def complete(_instructions, prompt):
+        calls.append(json.loads(prompt))
+        return json.dumps({"paths": ["ui/src/Button.tsx"]} if len(calls) == 1 else plan)
+
+    asyncio.run(plan_request(tmp_path, REQUEST, complete, previous))
+    assert calls[1]["existing_cases"] == previous
+    assert calls[1]["request"] == REQUEST
+
+
 def test_investigation_can_reach_editing_without_ci_logs_or_source_references(tmp_path):
     """Purpose: Prepare a clear repair request before its agent fetches missing CI evidence.
 

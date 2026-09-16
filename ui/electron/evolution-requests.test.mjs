@@ -12,6 +12,34 @@ const input = { id: "request-1", threadId: "thread-1", prompt: "给侧栏按钮�
 const plan = { intent: "change", cases: [{ title: "侧栏文字", requirement: input.prompt,
   current: "图标按钮", trigger: "打开侧栏", expectation: "按钮旁显示文字标签", evidence: "ui/src/Button.tsx:1: <button />" }] };
 
+test("repeated behavior keeps the original before evidence and identity across later edits", async t => {
+  const f = await setup(t);
+  const first = await f.prepare();
+  f.state.active = "new";
+  f.requests.analyze = async (_thread, _prompt, previous) => {
+    assert.equal(previous.length, 1);
+    const revised = structuredClone(plan);
+    revised.cases[0].current = "中途实现，不应覆盖原始记录";
+    revised.cases.push(structuredClone(revised.cases[0]));
+    revised.cases.push({ ...revised.cases[0], title: "关闭侧栏", trigger: "关闭侧栏", expectation: "侧栏收起" });
+    return revised;
+  };
+  const next = await f.prepare({ ...input, id: "later-edit", prompt: "继续改进侧栏" });
+  assert.equal(next.cases.length, 2);
+  assert.deepEqual(next.cases[0], first.cases[0]);
+  assert.equal((await f.requests.suite()).length, 2);
+  assert.equal(next.cases[0].item.baseline, "old");
+  assert.equal(next.cases[1].item.baseline, "new");
+});
+
+test("a different outcome remains a distinct criterion even for the same operation", async t => {
+  const f = await setup(t);
+  const first = await f.prepare();
+  f.requests.analyze = async () => ({ ...plan, cases: [{ ...plan.cases[0], expectation: "按钮显示文字并支持键盘焦点" }] });
+  const next = await f.prepare({ ...input, id: "new-outcome" });
+  assert.notEqual(next.cases[0].item.id, first.cases[0].item.id);
+});
+
 test("abandoning a failed preparation preserves history and prevents stale retries", async (t) => {
   const f = await setup(t, async () => { throw new Error("案例对应要求未引用原需求，请重试。"); });
   await assert.rejects(f.prepare(), /未引用原需求/);

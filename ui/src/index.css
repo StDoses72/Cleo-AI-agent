@@ -2027,6 +2027,7 @@ html[data-platform="darwin"] .titlebar {
 .attachment-row button { display: grid; flex: 0 0 auto; place-items: center; color: var(--muted-2); }
 .attachment-row button:hover { color: var(--text); }
 .attachment-error { padding: 0 0 7px; color: var(--danger); font-size: 9px; }
+.harness-switch-status { padding: 0 0 7px; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .text-control:disabled { cursor: default; opacity: .58; }
 
 .composer:focus-within {

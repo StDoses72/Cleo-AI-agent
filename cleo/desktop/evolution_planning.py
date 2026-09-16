@@ -20,6 +20,13 @@ change（可从源码确定修改目标）、investigate（目标明确，需要
 对 change，返回 1 到 12 个案例，覆盖请求，含 requirement（原文中的对应要求）、title、
 current（当前行为的静态分析）、trigger（具体操作/输入）、expectation（可观察的预期）、
 references（至少一条 {path,line}，引用已提供的源码行）。不要生成测试输出、fixture 或通过结果。
+按用户体验顺序拆成小的、递进的验收步骤：进入或触发 → 中间变化 → 完成结果 → 必要的异常恢复。
+简单需求只需 1 项，复杂需求通常 3 到 7 项；不要为凑数量拆开同一个动作，也不要把整个流程塞进一项。
+每项只检查一个清晰的行为；前一步结果可作为下一步起点。标题简短，不编号（界面会自动编号）。
+current 只写这一项在修改前是什么，expectation 只写构建后应该是什么；各用一两句人类可读的话。
+不要反复复制整个需求、通用背景、同一段修改前描述，不用实现细节、变量名、术语堆砌代替用户效果。
+证据路径和技术细节只放 references。说明不确定处，但不要在每个字段反复添加免责声明。
+若提供已有验收，未改变的操作和预期沿用其原文；修改中间实现或重试不构成新验收项。
 investigate 使用相同案例字段，按用户目标定义可观察的验收结果；references 可为空。
 其 current 写明哪些证据尚未获取，trigger 保留用户提供的链接/复现条件，expectation 要求
 调查、修复并报告实际验证结果，不预设根因，不把用户描述当成已经验证的失败。
@@ -80,7 +87,9 @@ def required_text(value, key: str, limit: int) -> str:
     return text.strip()
 
 
-async def plan_request(root: Path, request: str, complete) -> dict:
+async def plan_request(
+    root: Path, request: str, complete, existing_cases: list | None = None,
+) -> dict:
     """Purpose: Freeze observable goals before dispatch, without requiring a diagnosis first.
 
     Input: Source root, user request and read-only completion callback.
@@ -118,6 +127,7 @@ async def plan_request(root: Path, request: str, complete) -> dict:
         remaining -= sum(len(line) + 10 for line in excerpt)
     result = parse_object(await complete(INSTRUCTIONS, json.dumps({
         "request": request,
+        "existing_cases": existing_cases or [],
         "sources": {name: "\n".join(f"{i}: {line}" for i, line in enumerate(lines, 1))
                     for name, lines in sources.items()},
     }, ensure_ascii=False)))
@@ -173,8 +183,10 @@ async def plan_request(root: Path, request: str, complete) -> dict:
         current_label = (
             "尚未验证（待调查）：" if intent == "investigate" else "尚未验证（仅静态分析）："
         )
-        validated.append({**case, "current": current_label + case["current"],
-                          "evidence": "\n".join(evidence), "method": "manual"})
+        if not any(previous["trigger"] == case["trigger"]
+                   and previous["expectation"] == case["expectation"] for previous in validated):
+            validated.append({**case, "current": current_label + case["current"],
+                              "evidence": "\n".join(evidence), "method": "manual"})
     return {
         "intent": "change",
         "cases": validated,
@@ -182,7 +194,8 @@ async def plan_request(root: Path, request: str, complete) -> dict:
     }
 
 
-async def analyze_request(settings, manifest: dict, root: Path, request: str) -> dict:
+async def analyze_request(settings, manifest: dict, root: Path, request: str,
+                          existing_cases: list | None = None) -> dict:
     """Use the task's supported connection with no write tools and no persisted chat history."""
     from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -236,7 +249,7 @@ async def analyze_request(settings, manifest: dict, root: Path, request: str) ->
                     )
                 return content
         try:
-            return await plan_request(root, request, complete)
+            return await plan_request(root, request, complete, existing_cases)
         except TimeoutError as exc:
             raise ValueError("单次需求分析超过 180 秒；原需求已保留，请重试准备。") from exc
 

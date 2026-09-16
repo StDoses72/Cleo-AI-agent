@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { dreamStatusLabel } from "../memoryStatus";
+import { UpdateVersionPicker } from "./UpdateVersionPicker";
 import {
   ArrowRight,
   Brain,
@@ -453,7 +454,7 @@ function updateDescription(state: UpdateState) {
     case "unsupported": return state.error || "开发模式不会连接发布服务器；安装后的 Cleo 会自动检查。";
     case "idle": return "尚未检查更新。";
     case "checking": return "正在检查 GitHub Release…";
-    case "up-to-date": return state.latestVersion ? `已是最新版本（${state.latestVersion}）。` : "已是最新版本。";
+    case "up-to-date": return state.selectedTag ? `正在使用所选版本（${state.latestVersion}）。` : state.latestVersion ? `已是最新版本（${state.latestVersion}）。` : "已是最新版本。";
     case "available": return `发现 Cleo ${state.latestVersion}，下载后会校验 SHA-256。`;
     case "downloading": return `正在下载 ${formatBytes(state.downloadedBytes)} / ${formatBytes(state.totalBytes)}。`;
     case "ready": return `Cleo ${state.latestVersion} 已准备好，点击后重启安装。`;
@@ -491,6 +492,7 @@ function UpdateSettingsPage({
         <div><span className="eyebrow">CLEO DESKTOP</span><h3>版本 {state.currentVersion}</h3><p>{updateDescription(state)}</p></div>
       </div>
       {state.phase === "downloading" ? <div className="update-progress" aria-label={`更新下载进度 ${percent}%`}><i style={{ width: `${percent}%` }} /></div> : null}
+      <UpdateVersionPicker state={state} busy={Boolean(busy)} />
       <div className="update-actions">
         <button type="button" disabled={busy || state.phase === "unsupported" || (state.phase === "ready" && Boolean(state.installBlocked))} onClick={state.phase === "up-to-date" ? onCheck : action.run}>{state.phase === "up-to-date" ? "重新检查" : action.label}</button>
       </div>

@@ -128,8 +128,10 @@ export function App() {
         workspace.setPrompt("");
       }
       return result;
-    }).catch((error: unknown) =>
-      setEvolutionIssue(error instanceof Error ? error.message : "操作失败"));
+    }).catch((error: unknown) => {
+      setEvolutionIssue(error instanceof Error ? error.message : "操作失败");
+      if (["previewRelease", "publishRelease", "publishMergedRelease", "previewMergedRelease", "releaseBuilds", "publishReleasePackages", "releasePackageStatus", "releasePermission"].includes(action)) throw error;
+    });
   };
 
   const createEvolutionCase = async (input: Record<string, unknown>) => {
@@ -465,7 +467,8 @@ export function App() {
           skills={workspace.skills}
           onPromptChange={workspace.setPrompt}
           sendError={workspace.sendError}
-            sendBlocked={updateState.blocksTasks || (evolutionOpen && updateState.operationBusy) ? "正在处理版本，请稍候…" : evolutionOpen && (preparingAcceptance || openingEvolutionUi || evolution.pending || !evolution.state?.supported || evolution.state?.phase !== "idle") ? "正在处理本地改动，请稍候…" : workspace.startingRun ? "正在提交，请稍候…" : workspace.runningThreadId && workspace.runningThreadId !== workspace.activeThreadId ? "另一个任务正在运行，完成或停止后即可发送。" : null}
+          harnessSwitchStatus={workspace.harnessSwitchStatus}
+            sendBlocked={workspace.harnessSwitchStatus || (updateState.blocksTasks || (evolutionOpen && updateState.operationBusy) ? "正在处理版本，请稍候…" : evolutionOpen && (preparingAcceptance || openingEvolutionUi || evolution.pending || !evolution.state?.supported || evolution.state?.phase !== "idle") ? "正在处理本地改动，请稍候…" : workspace.startingRun ? "正在提交，请稍候…" : workspace.runningThreadId && workspace.runningThreadId !== workspace.activeThreadId ? "另一个任务正在运行，完成或停止后即可发送。" : null)}
           onRename={workspace.renameThread}
           thread={conversationThread}
           project={conversationProject}
@@ -511,11 +514,7 @@ export function App() {
             provider, conversationProject?.path, refresh,
           )}
           onSelectProductivityRuntime={(provider, model) => {
-            workspace.selectProductivityRuntime(provider, model);
-            if (evolutionOpen) {
-              workspace.beginEvolutionDraft();
-              void evolution.run("thread", { id: "" });
-            }
+            void workspace.selectProductivityRuntime(provider, model);
           }}
           onEffortChange={(effort) => workspace.updateRuntime({ effort })}
           attachments={workspace.attachments}

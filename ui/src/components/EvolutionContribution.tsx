@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { EvolutionBranchRequest, EvolutionState } from "../evolution-types";
 import { ContributionMerge } from "./ContributionMerge";
+import { ReleasePublisher } from "./ReleasePublisher";
 
 interface Props {
   state: EvolutionState | null;
@@ -26,7 +27,7 @@ export function EvolutionContribution({ state, busy, onAction, onBusy, onSubmitt
   const [receipt, setReceipt] = useState<EvolutionBranchRequest | null>(null);
   const attempt = useRef<string | null>(null);
   const inFlight = useRef(false);
-  const versions = state?.builds.filter((b) => b.kind === "local" && b.sourceHash && (b.savedAt || b.id === state.active || b.id === state.candidate)) || [];
+  const versions = state?.builds.filter((b) => b.kind === "local" && (b.sourceHash || b.importHash) && (b.savedAt || b.id === state.active || b.id === state.candidate)) || [];
   const version = versions.find((b) => b.id === buildId);
   const locked = busy || pending;
   const change = () => { attempt.current = null; setReceipt(null); setError(""); };
@@ -43,7 +44,7 @@ export function EvolutionContribution({ state, busy, onAction, onBusy, onSubmitt
   const submit = async () => {
     if (inFlight.current || locked) return;
     if (!target.trim() || forbidden(target)) { setError("请选择独立的接收分支，不能使用 main 或 submission-base 模板。"); return; }
-    if (!version) { setError("请选择有效的本地版本。"); return; }
+    if (!version?.sourceHash) { setError("请先准备并核验所选版本的源码。"); return; }
     inFlight.current = true; setPending(true); onBusy(true); setError("");
     try {
       attempt.current ||= crypto.randomUUID();
@@ -66,10 +67,12 @@ export function EvolutionContribution({ state, busy, onAction, onBusy, onSubmitt
     </select></label>
     <label>提交本地版本<select aria-label="提交本地版本" disabled={locked} value={buildId} onChange={(e) => { change(); setBuildId(e.target.value); }}>
       <option value="" disabled>请选择本地版本</option>
-      {versions.map((b) => <option key={b.id} value={b.id}>{b.name || `本地版本 · ${b.id}`}</option>)}
+      {versions.map((b) => <option key={b.id} value={b.id}>{b.name || `本地版本 · ${b.id}`}{!b.sourceHash ? " · 待准备源码" : ""}</option>)}
     </select></label>
     {version && buildId !== (state?.candidate || state?.active) && <p>提交 PR 前，请先在顶部“选择版本”切换到此版本并准备源码；申请新分支无需切换。</p>}
-    {!state?.prepared && mode === "existing" && <button disabled={locked} onClick={() => onAction("prepare")}>准备当前版本源码</button>}
+    {(!state?.prepared || !version?.sourceHash) && <button disabled={locked || buildId !== state?.active} onClick={() => onAction("prepare")}>准备当前版本源码</button>}
+    {version && !version.sourceHash && <p>这是导入的开发版。准备源码后，Cleo 会核验随包源码并登记此版本；完成前不能提交。</p>}
+    {version?.sourceOrigin === "bundled-import" && <p>随包源码已核验并登记。此标识说明源码与导入包的来源绑定，不代表新增的构建测试已通过。</p>}
     <p>目标仓库：StDoses72/Cleo-AI-agent。禁止以 main 为目标；最终是否合并到 main，由 owner/collaborator 在 GitHub 决定。</p>
     <form onSubmit={(e) => { e.preventDefault(); void submit(); }}>
       {mode === "existing" ? <>
@@ -88,11 +91,15 @@ export function EvolutionContribution({ state, busy, onAction, onBusy, onSubmitt
       {forbidden(target) && <p role="alert">不允许以 main 或 submission-base 模板为目标分支。</p>}
       {error && <p role="alert">{error}</p>}
       {mode === "existing" && target && version && <ContributionMerge params={{ targetBranch: target, buildId }} busy={locked} onAction={onAction} />}
-      <button className="evolution-primary" disabled={locked || !!receipt || !version || !target.trim() || forbidden(target) || !body.trim()
+      <button className="evolution-primary" disabled={locked || !!receipt || !version?.sourceHash || !target.trim() || forbidden(target) || !body.trim()
         || (mode === "existing" && (!branches.includes(target) || !title.trim() || !state?.prepared))}>
         {pending ? "正在提交…" : mode === "existing" ? "创建新 PR" : "提交分支申请"}
       </button>
     </form>
+    {state?.githubAuth?.repositoryAccess?.canRelease && <details className="evolution-release">
+      <summary>直接创建 Release</summary>
+      <ReleasePublisher key={buildId} state={state} buildId={buildId} busy={locked} onAction={onAction} onBusy={onBusy} />
+    </details>}
     {receipt?.url && <p role="status">申请已提交，目标分支尚待创建。<a href={receipt.url} target="_blank" rel="noreferrer">查看申请</a></p>}
     {Boolean(state?.branchRequests?.length) && <div className="evolution-pr-history" aria-label="目标分支申请">
       <h3>目标分支申请</h3>

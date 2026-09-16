@@ -3,6 +3,9 @@ import { join } from "node:path";
 import { readJson, writeJson } from "./evolution-store.mjs";
 
 const now = () => new Date().toISOString();
+const behaviorText = value => String(value || "").normalize("NFKC").replace(/\s+/g, " ").trim();
+const sameBehavior = (a, b) => behaviorText(a.trigger) === behaviorText(b.trigger)
+  && behaviorText(a.item.expectation) === behaviorText(b.item.expectation);
 const text = (value, limit, name) => {
   if (typeof value !== "string" || !value.trim() || value.length > limit) throw new Error(`${name}无效。`);
   return value.trim();
@@ -159,12 +162,17 @@ export class EvolutionRequests {
       const continuation = confirmed ? "\n已完成一次集中确认，不再追问。" + (skipped
         ? "用户选择跳过确认，未提供具体答案。" : "结合用户补充继续。")
         + "请采用合理且可逆的假设，返回 change 或 investigate 及具体验收；answer 简短说明采用的假设。" : "";
+      const enabled = new Set((await this.suite()).filter(c => c.enabled).map(c => c.id));
+      const previous = data.requests.filter(r => r.id !== id && r.threadId === threadId && !r.abandonedAt)
+        .flatMap(r => r.cases).filter(c => enabled.has(c.item.id) && c.item.id !== replaces);
+      const context = previous.filter((c, index) => previous.findIndex(p => p.item.id === c.item.id) === index)
+        .slice(-30).map(c => ({ title: c.item.title, trigger: c.trigger, expectation: c.item.expectation }));
       let analysis = await this.analyze(threadId, prompt + request.clarifications.map((c) =>
-        `\n澄清问题：${c.question}\n用户补充：${c.answer}`).join("") + continuation);
+        `\n澄清问题：${c.question}\n用户补充：${c.answer}`).join("") + continuation, context);
       if (confirmed && analysis?.intent === "clarification") {
         // One bounded model correction, not another user question or fabricated acceptance.
         analysis = await this.analyze(threadId, prompt + request.clarifications.map((c) => `\n用户补充：${c.answer}`).join("")
-          + continuation + "\n上一分析仍返回了澄清，未遵守已确认的继续方式。请直接准备可执行的调查或修改验收。");
+          + continuation + "\n上一分析仍返回了澄清，未遵守已确认的继续方式。请直接准备可执行的调查或修改验收。", context);
         if (analysis?.intent === "clarification") throw new Error("分析器未能按合理假设生成验收；原需求和确认已保留，可重试准备。");
       }
       if (["question", "clarification"].includes(analysis?.intent)) {
@@ -189,8 +197,9 @@ export class EvolutionRequests {
           expectation: text(c.expectation, 4000, "预期"),
           evidence: `对应要求：${detail.requirement}\n当前行为：${detail.current}\n操作：${detail.trigger}\n静态证据：\n${detail.sourceEvidence}`,
           kind: "manual", enabled: true, sourceThread: threadId, baseline: state.active, createdAt: now() };
-        return { ...detail, item };
-      });
+        const same = previous.find(c => sameBehavior(c, { ...detail, item }));
+        return same || { ...detail, item };
+      }).filter((c, index, all) => all.findIndex(p => sameBehavior(p, c)) === index);
       request.status = "freezing";
       await this.save(data); // Journal IDs before the suite write, for crash-safe replay.
       return await this.freeze(data, request);

@@ -16,6 +16,10 @@ export type UpdatePhase =
   | "error";
 
 export interface UpdateState {
+  releases?: { tag: string; title: string; prerelease: boolean; reason: string | null }[];
+  selectedTag?: string | null;
+  selectedPrerelease?: boolean;
+  currentPrerelease?: boolean;
   phase: UpdatePhase;
   currentVersion: string;
   latestVersion: string | null;
@@ -219,6 +223,7 @@ export interface MemoryEntry {
 }
 
 export interface RuntimeProfile {
+  handoffStatus?: "prepared" | "submitted" | "completed" | null;
   supportsQuestions?: boolean;
   profileId?: string;
   provider: string;
@@ -473,6 +478,7 @@ export type StreamEvent =
   | { type: "changes"; changes: ChangeFile[] }
   | { type: "change-history"; changeSet: ChangeSet }
   | { type: "usage"; usage: Usage }
+  | { type: "runtime"; runtime: RuntimeProfile }
   | { type: "terminal"; chunk: string }
   | { type: "refresh"; activeThreadId: string; space: ThreadSpace }
   | { type: "navigate-space"; space: ThreadSpace }
@@ -498,6 +504,7 @@ export interface CleoClient {
   cancelRun(threadId: string): Promise<void>;
   resolveApproval(threadId: string, approvalId: string, decision: ApprovalDecision): Promise<void>;
   updateRuntime(threadId: string, update: Partial<RuntimeProfile>): Promise<RuntimeProfile>;
+  switchHarness(threadId: string, provider: string, model: string, effort?: RuntimeProfile["effort"]): Promise<RuntimeProfile>;
   pickAttachments(): Promise<Attachment[]>;
   prepareAttachments(files: File[]): Promise<Attachment[]>;
   pickWorkspace(): Promise<string | null>;

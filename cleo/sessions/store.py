@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sqlite3
 import uuid
@@ -501,10 +502,14 @@ class SessionStore:
                 existing_ids.add(event_id)
 
             if appended:
+                durable_handoff = any(str((e.get("data") or {}).get("provider_event_type", ""))
+                                      .startswith("cleo/ha") for e in appended)
                 with output_path.open("a", encoding="utf-8", newline="\n") as stream:
                     for event in appended:
                         stream.write(json.dumps(event, ensure_ascii=False, default=str) + "\n")
                     stream.flush()
+                    if durable_handoff:
+                        os.fsync(stream.fileno())
                 output_stat = output_path.stat()
                 self._event_id_cache[session_id] = (
                     (
@@ -531,6 +536,16 @@ class SessionStore:
             manifest["updated_at"] = _now_iso()
             manifest_file = manifest_path(self.memory_root, space, project, session_id)
             _atomic_write_json(manifest_file, manifest)
+            if appended and durable_handoff:
+                # Windows fsync/_commit requires a writable handle; r+b preserves the file bytes.
+                with manifest_file.open("r+b") as persisted:
+                    os.fsync(persisted.fileno())
+                if os.name != "nt":
+                    directory_fd = os.open(manifest_file.parent, os.O_RDONLY)
+                    try:
+                        os.fsync(directory_fd)
+                    finally:
+                        os.close(directory_fd)
             self._upsert_index(manifest, manifest_file)
             return appended
 
@@ -553,6 +568,25 @@ class SessionStore:
             session_id,
         )
         return load_events(path) if path.exists() else []
+
+    def read_event_prefix(self, session_id: str, through_seq: int) -> list[dict[str, Any]]:
+        """Read a frozen prefix without parsing a concurrently appended, possibly partial tail."""
+        manifest = self.load_manifest(session_id)
+        path = events_path(self.memory_root, manifest["space"], manifest["project"], session_id)
+        records = []
+        with path.open(encoding="utf-8-sig") as source:
+            for line in source:
+                if len(records) >= through_seq:
+                    break
+                if not line.strip():
+                    continue
+                event = json.loads(line)
+                if not isinstance(event, dict) or event.get("seq") != len(records) + 1:
+                    raise ValueError("Snapshot source sequence is incomplete")
+                records.append(event)
+        if len(records) != through_seq:
+            raise ValueError("Snapshot source is incomplete")
+        return records
 
     def _cached_event_state(self, session_id: str, path: Path) -> tuple[set[str], int]:
         """Return committed event IDs and the last sequence, invalidated by file metadata.

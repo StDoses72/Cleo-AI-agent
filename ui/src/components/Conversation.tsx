@@ -78,6 +78,7 @@ interface ConversationProps {
   running: boolean;
   sendBlocked: string | null;
   sendError?: string;
+  harnessSwitchStatus?: string | null;
   prompt: string;
   onPromptChange: (prompt: string) => void;
   onRename: (name: string) => Promise<void>;
@@ -133,6 +134,7 @@ export function Conversation({
   running,
   sendBlocked,
   sendError,
+  harnessSwitchStatus,
   prompt,
   onPromptChange,
   onRename,
@@ -326,6 +328,7 @@ export function Conversation({
         onPromptChange={onPromptChange}
         sendBlocked={sendBlocked}
         sendError={sendError}
+        harnessSwitchStatus={harnessSwitchStatus}
         space={space}
         runtime={runtime}
         runtimeCatalog={runtimeCatalog}
@@ -903,6 +906,7 @@ function Composer({
   onPromptChange: setPrompt,
   sendBlocked,
   sendError,
+  harnessSwitchStatus,
   space,
   runtime,
   runtimeCatalog,
@@ -933,6 +937,7 @@ function Composer({
   | "onPromptChange"
   | "sendBlocked"
   | "sendError"
+  | "harnessSwitchStatus"
   | "runtime"
   | "space"
   | "runtimeCatalog"
@@ -1132,6 +1137,9 @@ function Composer({
           </div>
         ) : null}
         {attachmentError ? <div className="attachment-error" role="alert">{attachmentError}</div> : null}
+        {harnessSwitchStatus ? <div className="harness-switch-status" role="status">{harnessSwitchStatus}</div> : null}
+        {!harnessSwitchStatus && runtime?.handoffStatus === "prepared" ? <div className="harness-switch-status" role="status">交接材料已准备；发送下一条消息时提交给当前 Harness。完整历史仍可查阅。</div> : null}
+        {!harnessSwitchStatus && runtime?.handoffStatus === "submitted" ? <div className="harness-switch-status" role="status">交接请求已提交，尚无首轮完成记录；继续前请核对已有操作，避免重复执行。</div> : null}
         {sendError ? <div className="attachment-error" role="alert">{sendError}</div> : null}
         <textarea
           ref={inputRef}
@@ -1169,6 +1177,7 @@ function Composer({
               loadingProvider={runtimeModelsLoading}
               error={runtimeModelsError}
               running={running}
+              switching={Boolean(harnessSwitchStatus)}
               onSelectProfile={onSelectNonProductivityProfile}
               onLoadModels={onLoadProductivityModels}
               onSelectProductivityRuntime={onSelectProductivityRuntime}
@@ -1176,7 +1185,7 @@ function Composer({
             {space === "productivity" ? <select
               className="text-control effort-selector"
               value={selectedEffort}
-              disabled={running || space !== "productivity" || supportedEfforts.length === 0}
+              disabled={running || Boolean(harnessSwitchStatus) || supportedEfforts.length === 0}
               onChange={(event) => onEffortChange(
                 event.target.value as NonNullable<RuntimeProfile["effort"]>,
               )}
@@ -1228,6 +1237,7 @@ function RuntimeSelector({
   loadingProvider,
   error,
   running,
+  switching,
   onSelectProfile,
   onLoadModels,
   onSelectProductivityRuntime,
@@ -1239,6 +1249,7 @@ function RuntimeSelector({
   loadingProvider: string | null;
   error: string | null;
   running: boolean;
+  switching: boolean;
   onSelectProfile: (profileId: string) => void;
   onLoadModels: (provider: string, refresh?: boolean) => Promise<ProductivityModelCatalog>;
   onSelectProductivityRuntime: (provider: string, model: string) => void;
@@ -1276,7 +1287,7 @@ function RuntimeSelector({
       <button
         className="text-control runtime-selector-trigger"
         type="button"
-        disabled={running || !catalog}
+        disabled={(running && space === "chat") || switching || !catalog}
         aria-label={space === "productivity" ? "选择 Harness 和模型" : "选择对话模型"}
         aria-expanded={open}
         onClick={toggleMenu}
@@ -1356,7 +1367,7 @@ function RuntimeSelector({
             <>
               <div className="runtime-menu-heading">
                 <span>选择 Harness</span>
-                <small>新任务生效 · 历史保留</small>
+                <small>{running ? "当前轮结束后切换 · 历史保留" : "当前会话生效 · 历史保留"}</small>
               </div>
               <div className="runtime-menu-list">
                 {providers.map((provider) => (

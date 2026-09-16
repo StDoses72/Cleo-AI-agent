@@ -60,6 +60,14 @@ export function useCleoWorkspace(evolutionOpen = false) {
   const [runningThreadId, setRunningThreadId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, ComposerDraft>>({});
   const [startingRun, setStartingRun] = useState(false);
+  const [harnessSwitches, setHarnessSwitches] = useState<Record<string, string>>({});
+  const harnessSwitchRef = useRef(new Set<string>());
+  const harnessSwitchTarget = activeThreadId ? harnessSwitches[activeThreadId] : undefined;
+  const harnessSwitchStatus = harnessSwitchTarget
+    ? runningThreadId === activeThreadId
+      ? `已选择 ${harnessSwitchTarget}，等待当前轮结束后交接…`
+      : `正在连接 ${harnessSwitchTarget} 并交接上下文…`
+    : null;
   const runLockRef = useRef(false);
   const [modelSettings, setModelSettings] = useState<ModelSettings | null>(null);
   const [modelSettingsLoading, setModelSettingsLoading] = useState(false);
@@ -417,7 +425,8 @@ export function useCleoWorkspace(evolutionOpen = false) {
    */
   const sendPrompt = async (rawPrompt: string, targetThread?: Thread, { preserveDraft = false } = {}) => {
     const prompt = rawPrompt.trim();
-    if (!prompt || runLockRef.current) return;
+    if (!prompt || runLockRef.current
+      || harnessSwitchRef.current.has(targetThread?.id ?? activeThreadId ?? "")) return;
 
     runLockRef.current = true;
     setStartingRun(true);
@@ -510,6 +519,8 @@ export function useCleoWorkspace(evolutionOpen = false) {
           }));
         } else if (event.type === "usage") {
           updateThread(threadId, (current) => ({ ...current, usage: event.usage }));
+        } else if (event.type === "runtime") {
+          updateThread(threadId, (current) => ({ ...current, runtime: event.runtime }));
         } else if (event.type === "terminal") {
           updateThread(threadId, (current) => ({
             ...current,
@@ -763,27 +774,47 @@ export function useCleoWorkspace(evolutionOpen = false) {
     }
   };
 
-  /** Purpose: Start a task with the chosen harness while retaining its unsent draft.
-   * Input: harness and model IDs. Output: updated draft selection; history stays intact.
-   */
-  const selectProductivityRuntime = (provider: string, model: string) => {
-    setDraftProvider(provider);
-    setDraftModel(model);
+  /** Switch existing tasks in place; new drafts only change their initial selection. */
+  const selectProductivityRuntime = async (provider: string, model: string) => {
     const selectedModel = productivityModels[provider]?.models.find(
       (candidate) => candidate.id === model,
     );
-    setDraftEffort(selectedModel?.defaultEffort ?? null);
-    if (
-      activeThread?.space === "productivity"
-      && activeThread.runtime?.provider === provider
-      && activeThread.runtime?.model === model
-    ) return;
-    updateDraft(`new:productivity:${activeProjectId}`, () => draft);
-    if (evolutionOpen) beginEvolutionDraft();
-    else {
-      setActiveSpace("productivity");
-      setActiveThreadId(null);
+    if (activeThread?.space === "productivity") {
+      const threadId = activeThread.id;
+      if (harnessSwitchRef.current.has(threadId)
+        || (activeThread.runtime?.provider === provider && activeThread.runtime?.model === model)) return;
+      harnessSwitchRef.current.add(threadId);
+      setHarnessSwitches(current => ({ ...current, [threadId]: provider }));
+      updateDraft(threadId, current => ({ ...current, error: undefined }));
+      try {
+        const runtime = await cleoClient.switchHarness(
+          threadId, provider, model, selectedModel?.defaultEffort ?? undefined,
+        );
+        updateThread(threadId, current => ({ ...current, runtime, skills: [] }));
+        // Refresh only capabilities; keep the live timeline and unsent draft in place.
+        try {
+          const skills = await cleoClient.getLocalSkills(provider, activeProject?.path);
+          updateThread(threadId, current => ({ ...current, skills }));
+        } catch {
+          updateDraft(threadId, current => ({ ...current,
+            error: "Harness 已切换；技能列表暂时无法读取。",
+          }));
+        }
+      } catch (error) {
+        updateDraft(threadId, current => ({ ...current,
+          error: error instanceof Error ? error.message : "切换失败，原会话可继续使用。",
+        }));
+      } finally {
+        harnessSwitchRef.current.delete(threadId);
+        setHarnessSwitches(current => {
+          const next = { ...current }; delete next[threadId]; return next;
+        });
+      }
+      return;
     }
+    setDraftProvider(provider);
+    setDraftModel(model);
+    setDraftEffort(selectedModel?.defaultEffort ?? null);
   };
 
   const pickAttachments = async () => {
@@ -975,6 +1006,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
     setPrompt,
     sendError: draft.error,
     startingRun,
+    harnessSwitchStatus,
     modelSettings,
     modelSettingsLoading,
     agentInstructions,

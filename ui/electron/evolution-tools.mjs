@@ -1,9 +1,58 @@
 import { spawn } from "node:child_process";
-import { mkdir, rename, readdir, rm, open } from "node:fs/promises";
-import { join, delimiter } from "node:path";
+import { mkdir, rename, readdir, rm, open, access } from "node:fs/promises";
+import { constants } from "node:fs";
+import { homedir } from "node:os";
+import { join, delimiter, dirname, win32, posix } from "node:path";
 import { exists, fileHash, readJson, writeJson } from "./evolution-store.mjs";
 
 const GITHUB = "https://api.github.com";
+
+/** Purpose: Extend tool lookup without losing Windows' case-insensitive Path variable.
+ * Input: inherited environment and tool directories. Output: a copy with one PATH key.
+ */
+function prependToolPaths(env, directories) {
+  const result = { ...env };
+  // Match Node's first-key precedence when Windows environments contain duplicate spellings.
+  const keys = process.platform === "win32"
+    ? Object.keys(env).filter(key => key.toLowerCase() === "path").sort() : ["PATH"];
+  const inherited = env[keys[0]] || "";
+  for (const key of keys) delete result[key];
+  result.PATH = [...directories, inherited].filter(Boolean).join(delimiter);
+  return result;
+}
+
+/** Follow gh's configuration precedence without reading or copying credentials. */
+export function githubConfigDirectory(env, platform = process.platform, userHome = homedir()) {
+  const paths = platform === "win32" ? win32 : posix;
+  return env.GH_CONFIG_DIR || (env.XDG_CONFIG_HOME ? paths.join(env.XDG_CONFIG_HOME, "gh")
+    : platform === "win32" && (env.AppData || env.APPDATA)
+      ? paths.join(env.AppData || env.APPDATA, "GitHub CLI") : paths.join(userHome, ".config", "gh"));
+}
+
+async function writableGithubPath(path) {
+  try { await access(path, constants.W_OK); return true; }
+  catch (error) {
+    if (error.code === "ENOENT" && dirname(path) !== path) return writableGithubPath(dirname(path));
+    if (["EACCES", "EPERM", "EROFS", "ENOTDIR"].includes(error.code)) return false;
+    throw error;
+  }
+}
+
+/** Use existing writable configuration; otherwise select durable private storage.
+ * The marker stores only the storage choice, never tokens or device codes.
+ */
+export async function githubEnvironment(root, { env = process.env, userHome = homedir() } = {}) {
+  const selected = await readJson(join(root, "github-storage.json"));
+  const directory = githubConfigDirectory(env, process.platform, userHome);
+  if (selected?.private !== true && await writableGithubPath(directory)
+    && await writableGithubPath(join(directory, "hosts.yml"))
+    && await writableGithubPath(join(directory, "config.yml"))) return { ...env };
+  const privateDirectory = join(root, "github-config");
+  await mkdir(privateDirectory, { recursive: true, mode: 0o700 });
+  if (!await writableGithubPath(privateDirectory)) throw new Error("Cleo GitHub 登录配置目录不可写。");
+  await writeJson(join(root, "github-storage.json"), { private: true });
+  return { ...env, GH_CONFIG_DIR: privateDirectory };
+}
 
 /** Purpose: Run an argument array without a shell. Input: executable, args, process options. Output: stdout or a bounded diagnostic tail. */
 export async function run(command, args, { cwd, env = process.env, log = () => {}, timeout = 1_800_000, successCodes = [0], signal, outputMode = "capture", stdin = "ignore", trimOutput = true, rejectStderr = false } = {}) {
@@ -115,6 +164,24 @@ async function findTool(root, name) {
 export class EvolutionTools {
   constructor(root, log = () => {}) { this.root = root; this.log = log; }
 
+  /** GitHub login is independent of build prerequisites and never needs a terminal. */
+  async prepareGithub({ signal, managed = false } = {}) {
+    signal?.throwIfAborted();
+    await mkdir(this.root, { recursive: true });
+    let gh = "gh";
+    try {
+      if (managed) throw new Error("Use managed CLI");
+      await run(gh, ["--version"], { signal, timeout: 10000 });
+    } catch {
+      signal?.throwIfAborted();
+      const target = process.platform === "win32" ? "windows_amd64.zip"
+        : `${process.platform === "darwin" ? "macOS" : "linux"}_${process.arch === "arm64" ? "arm64" : "amd64"}.${process.platform === "darwin" ? "zip" : "tar.gz"}`;
+      gh = await this.githubTool("cli/cli", new RegExp(`_${target.replaceAll(".", "\\.")}$`), process.platform === "win32" ? "gh.exe" : "gh", { signal });
+    }
+    const env = await githubEnvironment(this.root);
+    return { gh, env: { ...prependToolPaths(env, [dirname(gh)]), GH_PROMPT_DISABLED: "1" } };
+  }
+
   /** Input: upstream release repo, asset pattern, executable. Output: verified managed tool path. */
   async githubTool(repository, pattern, executable, { signal } = {}) {
     const key = repository.replaceAll("/", "-");
@@ -142,8 +209,10 @@ export class EvolutionTools {
     if (saved && await exists(saved.node) && await exists(saved.npm)) return saved;
     const platform = process.platform === "win32" ? "win" : process.platform;
     const archiveType = platform === "win" ? "zip" : "tar.gz";
+    const releaseFile = platform === "darwin" ? `osx-${process.arch}-tar`
+      : `${platform}-${process.arch}${platform === "win" ? "-zip" : ""}`;
     const releases = await fetchRelease("https://nodejs.org/dist/index.json", true, { signal });
-    const version = releases.find((item) => item.lts && item.files.includes(`${platform}-${process.arch}${platform === "win" ? "-zip" : ""}`))?.version;
+    const version = releases.find((item) => item.lts && item.files.includes(releaseFile))?.version;
     if (!version) throw new Error("找不到本机适用的 Node.js LTS。");
     this.log(`正在准备 Node.js ${version}…\n`);
     const name = `node-${version}-${platform}-${process.arch}`;
@@ -179,18 +248,9 @@ export class EvolutionTools {
         : `${process.arch === "arm64" ? "aarch64" : "x86_64"}-${process.platform === "darwin" ? "apple-darwin" : "unknown-linux-gnu"}.tar.gz`;
       uv = await this.githubTool("astral-sh/uv", new RegExp(`^uv-${target.replaceAll(".", "\\.")}$`), process.platform === "win32" ? "uv.exe" : "uv", { signal });
     }
-    let gh = "gh";
-    if (withGithub) {
-      try { await run(gh, ["--version"], { signal }); }
-      catch {
-        signal?.throwIfAborted();
-        const target = process.platform === "win32" ? "windows_amd64.zip"
-          : `${process.platform === "darwin" ? "macOS" : "linux"}_${process.arch === "arm64" ? "arm64" : "amd64"}.${process.platform === "darwin" ? "zip" : "tar.gz"}`;
-        gh = await this.githubTool("cli/cli", new RegExp(`_${target.replaceAll(".", "\\.")}$`), process.platform === "win32" ? "gh.exe" : "gh", { signal });
-      }
-    }
-    const { dirname } = await import("node:path");
-    const env = { ...process.env, PATH: [dirname(node), dirname(git), dirname(uv), dirname(gh), process.env.PATH].join(delimiter),
+    const github = withGithub ? await this.prepareGithub({ signal }) : { gh: "gh", env: process.env };
+    const gh = github.gh;
+    const env = { ...prependToolPaths(github.env, [dirname(node), dirname(git), dirname(uv), dirname(gh)]),
       GIT_TERMINAL_PROMPT: "0", GIT_CONFIG_NOSYSTEM: "1", GH_PROMPT_DISABLED: "1" };
     return { node, npm, git, uv, gh, env };
   }

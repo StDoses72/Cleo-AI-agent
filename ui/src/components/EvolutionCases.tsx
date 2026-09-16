@@ -35,16 +35,18 @@ export function EvolutionCases({ state, requests = [], thread, busy, canCompare,
     </div>
     {state && Boolean(cases.length) && <details className="evolution-case-list"><summary>查看预期和修改前后结果</summary>
       <p className="evolution-case-help">体验后可确认验收，或沿用原案例继续修改。不想验收此项时可以取消，原始记录会保留。</p>
-      {cases.map((item) => {
+      {cases.map((item, index) => {
         const result = state.report?.results.find((entry) => entry.id === item.id);
+        const detail = requests.flatMap(request => request.cases).find(c => c.item.id === item.id);
+        const before = detail?.current || item.evidence.match(/当前行为[：:]([\s\S]*?)(?=\n操作[：:]|\n静态证据[：:]|$)/)?.[1];
+        const trigger = detail?.trigger || item.evidence.match(/(?:操作|触发条件)[：:]\s*([^\n]+)/)?.[1];
         const lastFeedback = state.interactions?.feedback.filter((feedback) => feedback.caseId === item.id).at(-1);
         return <article key={item.id} className="evolution-case">
-          <div><b>{item.title}</b><small>{currentCaseIds.includes(item.id) ? "本轮新增" : item.kind === "manual" ? "待完成" : "回归案例"} · {item.kind === "dream-format" ? "自动 · Dream 格式恢复" : "人工 · 行为验收"}</small></div>
-          <p>{item.expectation}</p>
+          <div><b>{index + 1}. {item.title}</b><small>{currentCaseIds.includes(item.id) ? "本轮新增" : item.kind === "manual" ? "待完成" : "回归案例"} · {item.kind === "dream-format" ? "自动 · Dream 格式恢复" : "人工 · 行为验收"}</small></div>
+          {trigger && <p>操作：{trigger}</p>}
           <div className="evolution-comparison">
-            <div><small>修改前</small><strong>{item.kind === "manual" ? "问题描述 · 来源：冻结的用户描述 / 源码证据，非运行验证" : !result ? "尚未验证" : labels[result.before.status]}</strong><p className="evolution-case-evidence">{item.kind === "manual" ? item.evidence || "未提供修改前证据，请依据案例主题与原始对话比对。" : result?.before.detail}</p></div>
-            <div><small>当前构建 {state.fresh ? "" : "· 尚无有效验收结果"}</small><strong>{item.kind === "manual" && (!state.fresh || result?.after.status !== "passed") ? "预期效果 · 应用后待人工比对" : result ? labels[result.after.status] : "待比较"}</strong><p>{item.expectation}</p>
-              {item.kind === "manual" && <p>应用后操作：{item.evidence.match(/(?:操作|触发条件)[：:]\s*([^\n]+)/)?.[1] || "按左侧证据中的场景操作"}。实际效果符合预期后，直接点击“验收”。</p>}
+            <div><small>修改前</small><strong>{item.kind === "manual" ? "源码分析 · 尚未实测" : !result ? "尚未验证" : labels[result.before.status]}</strong><p className="evolution-case-evidence">{item.kind === "manual" ? (before?.replace(/^尚未验证[（(][^）)]*[）)][：:]\s*/, "") || "尚未记录此步骤的旧版表现，可展开原始证据比对。") : result?.before.detail}</p></div>
+            <div><small>构建后</small><strong>{item.kind === "manual" && (!state.fresh || result?.after.status !== "passed") ? "预期效果 · 待体验确认" : result ? labels[result.after.status] : "待比较"}</strong><p>{item.expectation}</p>
               {state.fresh && result?.after.status === "passed" && <p>{result.after.detail ? `验收记录：${result.after.detail}` : "用户已确认验收。"}</p>}
               {item.kind !== "manual" && result?.after.status !== "passed" && <p>{result?.after.detail}</p>}
             </div>

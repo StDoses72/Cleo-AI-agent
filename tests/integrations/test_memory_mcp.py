@@ -222,6 +222,59 @@ def test_claude_failed_mcp_disconnects_without_creating_session(tmp_path, monkey
     assert provider._sessions == {}
 
 
+def test_claude_only_bound_context_tools_are_readable_without_broad_permission(
+    tmp_path, monkeypatch
+):
+    from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
+
+    from cleo.harnesses.context import ContextBinding
+
+    captured = []
+
+    class FakeClient:
+        def __init__(self, *, options):
+            self.options = options
+            captured.append(options)
+
+        async def connect(self):
+            pass
+
+        async def disconnect(self):
+            pass
+
+        async def get_mcp_status(self):
+            return {
+                "mcpServers": [
+                    {"name": name, "status": "connected"} for name in self.options.mcp_servers
+                ]
+            }
+
+    monkeypatch.setattr("cleo.integrations.harnesses.claude.ClaudeSDKClient", FakeClient)
+    provider = ClaudeProvider(memory_mcp=MemoryMcp(tmp_path))
+
+    async def exercise():
+        session = await provider.create_context_session(
+            str(tmp_path), None, ContextBinding("synthetic", "a" * 64)
+        )
+        callback = captured[-1].can_use_tool
+        for name in ("mcp__cleo_context__read_context", "mcp__cleo_context__search_context"):
+            result = await callback(name, {"query": "synthetic"}, SimpleNamespace())
+            assert isinstance(result, PermissionResultAllow)
+        for name in ("Bash", "Write", "mcp__cleo_memory__read_thread", "mcp__cleo_context__delete"):
+            assert isinstance(await callback(name, {}, SimpleNamespace()), PermissionResultDeny)
+        await provider.close(session.id)
+        session = await provider.create_session(str(tmp_path))
+        assert isinstance(
+            await captured[-1].can_use_tool(
+                "mcp__cleo_context__read_context", {}, SimpleNamespace()
+            ),
+            PermissionResultDeny,
+        )
+        await provider.close(session.id)
+
+    asyncio.run(exercise())
+
+
 def test_factory_and_codex_facade_share_explicit_store(tmp_path):
     from cleo.config.settings import ProductivitySettings
     from cleo.integrations.codex import CodexAdapter

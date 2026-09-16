@@ -24,7 +24,7 @@ export function EvolutionPreparation({ requests, acceptance, preparing, busy, on
     {requests.map((request, index) => <article key={request.id} className="evolution-request">
       <div className="evolution-request-heading"><strong>{request.status === "answered" ? "只读答复" : request.repair ? "修复 · 沿用冻结案例" : "验收准备"}</strong>
         <small>{request.status === "frozen" ? "已冻结" : request.status === "failed" ? "准备失败" : request.status === "clarification" ? "等待补充" : request.status === "answered" ? "未启动修改" : request.interrupted ? "准备中断" : "正在分析需求并准备验收"}</small></div>
-      <p className="evolution-request-prompt">{request.prompt}</p>
+      {request.repair ? <p>继续完成原有验收步骤，修改前的记录保持不变。</p> : <p className="evolution-request-prompt">{request.prompt}</p>}
       {request.answer && <p className="evolution-request-prompt">{request.answer}</p>}
       {request.reason && <p>需求调整原因：{request.reason}（旧案例仍保留）</p>}
       {request.error && <p role="alert">{request.error}</p>}
@@ -37,7 +37,7 @@ export function EvolutionPreparation({ requests, acceptance, preparing, busy, on
         <button disabled={busy || !answers[request.id]?.trim()} onClick={() => onResume(request, answers[request.id])}>补充并继续准备</button>
         <button disabled={busy} onClick={() => onResume(request, undefined, true)}>跳过，按 Cleo 的判断继续</button>
       </div>}
-      {request.cases.map((detail) => {
+      {request.cases.filter(detail => !requests.slice(0, index).some(previous => previous.cases.some(c => c.item.id === detail.item.id))).map((detail, step) => {
         const { item } = detail;
         const active = acceptance?.cases.find((c) => c.id === item.id)?.enabled;
         const result = acceptance?.report?.results.find((r) => r.id === item.id)?.after;
@@ -45,12 +45,12 @@ export function EvolutionPreparation({ requests, acceptance, preparing, busy, on
         const completed = acceptance?.interactions?.completions.find((c) => c.id === item.id);
         const cancelled = acceptance?.cases.find((c) => c.id === item.id)?.cancelledAt;
         return <details key={item.id} className="evolution-case" open={isCurrent && active !== false}>
-          <summary>{item.title} · {cancelled ? "已取消验收" : completed ? "已验收" : active === false ? "历史预期" : isCurrent && !request.repair ? "本轮新增" : item.kind === "manual" ? "待完成" : "回归案例"}</summary>
-          <dl><dt>对应要求</dt><dd>{detail.requirement}</dd><dt>当前行为</dt><dd>{detail.current}</dd>
-            <dt>操作 / 触发</dt><dd>{detail.trigger}</dd><dt>预期结果</dt><dd>{item.expectation}</dd>
+          <summary>{step + 1}. {item.title} · {cancelled ? "已取消验收" : completed ? "已验收" : active === false ? "历史预期" : isCurrent && !request.repair ? "本轮新增" : item.kind === "manual" ? "待完成" : "回归案例"}</summary>
+          <dl><dt>修改前（源码分析）</dt><dd>{detail.current.replace(/^尚未验证[（(][^）)]*[）)][：:]\s*/, "")}</dd>
+            <dt>操作</dt><dd>{detail.trigger}</dd><dt>构建后预期</dt><dd>{item.expectation}</dd>
             <dt>验证方式与结果</dt><dd>{item.kind === "dream-format" ? "自动 · Dream 格式回放" : "人工验收"} · {
               cancelled ? "用户取消验收，未标记通过" : completed ? (completed.note ? `已验收：${completed.note}` : "用户已确认验收") : acceptance?.fresh && result?.status === "passed" ? "通过" : acceptance?.fresh && result?.status === "failed" ? "未通过" : acceptance?.fresh && result?.status === "error" ? "运行失败" : item.kind === "manual" ? "待人工验收" : "待回放"}</dd></dl>
-          <details><summary>查看静态证据</summary><pre>{detail.sourceEvidence || item.evidence}</pre></details>
+          <details><summary>查看静态证据</summary><p>对应要求：{detail.requirement}</p><pre>{detail.sourceEvidence || item.evidence}</pre></details>
           {active && !request.repair && <button disabled={busy} onClick={() => {
             setEditing(item.id); setExpectation(item.expectation); setTrigger(detail.trigger); setReason("");
             setRevisionId(crypto.randomUUID()); setError("");

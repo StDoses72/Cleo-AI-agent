@@ -123,3 +123,16 @@
 .evolution-feedback textarea { flex: 1; min-width: 0; min-height: 64px; resize: vertical; border: 0; background: transparent; color: inherit; font: inherit; }
 .evolution-feedback button { flex-shrink: 0; min-height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; white-space: nowrap; }
 .slash-menu button[aria-selected="true"] { background: var(--surface-hover); outline: 1px solid var(--border); }
+.release-publisher { min-width: 0; border-top: 1px solid var(--border); padding-top: 12px; }
+.release-publisher h3 { font-size: 15px; }
+.release-publisher p, .release-commit { overflow-wrap: anywhere; }
+.release-publisher button { display: inline-flex; align-items: center; gap: 6px; }
+.release-publisher > button { margin-top: 8px; }
+.release-publisher details { margin: 12px 0; }
+.release-publisher summary { cursor: pointer; }
+.update-version-picker { margin: 16px 0; min-width: 0; }
+.update-version-picker label { display: grid; gap: 8px; font-size: 13px; }
+.update-version-picker select { width: 100%; min-width: 0; max-width: 100%; padding: 10px; color: var(--text); background: var(--surface); border: 1px solid var(--border-strong); border-radius: 7px; }
+.update-version-picker button { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); }
+.update-version-picker p { font-size: 13px; overflow-wrap: anywhere; }
+.evolution-release-progress { display: flex; align-items: center; gap: 10px; font-size: 12px; }
