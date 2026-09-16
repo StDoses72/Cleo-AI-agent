@@ -1,0 +1,286 @@
+import type {
+  LocalSkill,
+  Attachment,
+  ApprovalDecision,
+  AgentInstructions,
+  CleoClient,
+  CreateThreadOptions,
+  ModelProfileInput,
+  ModelSettings,
+  ModelConnectionInput,
+  ModelConnectionProbe,
+  SubscriptionRuntime,
+  SubscriptionLogin,
+  ProductivityModelCatalog,
+  RuntimeCatalog,
+  MemoryReviewAction,
+  MemoryReviewDetails,
+  MemoryReviewSource,
+  RuntimeProfile,
+  StreamEvent,
+  Thread,
+  ThreadSpace,
+  UndoChangesResult,
+  WorkspaceSnapshot,
+  TimelinePage,
+  TimelineContent,
+  QuestionRequest,
+} from "../types";
+
+export class IpcCleoClient implements CleoClient {
+  private readonly bridge = window.cleoDesktop!;
+
+  getLocalSkills(provider: string, projectPath?: string): Promise<LocalSkill[]> {
+    return this.bridge.request("get_local_skills", { provider, project_path: projectPath });
+  }
+
+  async loadWorkspace(): Promise<WorkspaceSnapshot> {
+    return this.bridge.request("load_workspace");
+  }
+
+  async loadThread(threadId: string): Promise<Thread> {
+    return this.bridge.request("load_thread", { thread_id: threadId });
+  }
+
+  loadTimeline(threadId: string, direction = "latest" as "latest" | "before" | "after", cursor?: string): Promise<TimelinePage> {
+    return this.bridge.request("load_timeline", { thread_id: threadId, direction, cursor });
+  }
+
+  readTimelineContent(threadId: string, itemId: string, field: string, offset: number): Promise<TimelineContent> {
+    return this.bridge.request("read_timeline_content", { thread_id: threadId, item_id: itemId, field, offset });
+  }
+
+  getPendingQuestions(threadId: string): Promise<QuestionRequest[]> {
+    return this.bridge.request("get_pending_questions", { thread_id: threadId });
+  }
+
+  async resolveQuestion(threadId: string, questionId: string, answers: Record<string, string[]>): Promise<void> {
+    await this.bridge.request("resolve_question", { thread_id: threadId, question_id: questionId, answers });
+  }
+
+  async createThread(
+    space: ThreadSpace,
+    projectId: string,
+    options: CreateThreadOptions = {},
+  ): Promise<Thread> {
+    return this.bridge.request("create_thread", {
+      space,
+      project_id_value: projectId,
+      project_path: options.projectPath,
+      provider: options.provider,
+      model: options.model,
+      effort: options.effort,
+      profile_id: options.profileId,
+    });
+  }
+
+  async deleteThread(threadId: string): Promise<WorkspaceSnapshot> {
+    return this.bridge.request("delete_thread", { thread_id: threadId });
+  }
+
+  async addProject(space: ThreadSpace, projectPath: string): Promise<WorkspaceSnapshot> {
+    return this.bridge.request("add_project", { space, project_path: projectPath });
+  }
+
+  async removeProject(projectId: string): Promise<WorkspaceSnapshot> {
+    return this.bridge.request("remove_project", { project_id_value: projectId });
+  }
+
+  async restoreChatBackups(): Promise<WorkspaceSnapshot> {
+    return this.bridge.request("restore_chat_backups");
+  }
+
+  async *streamTurn(
+    threadId: string,
+    prompt: string,
+    attachments: Attachment[] = [],
+  ): AsyncGenerator<StreamEvent> {
+    const streamId = `${threadId}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const events: StreamEvent[] = [];
+    let wake: (() => void) | null = null;
+    let complete = false;
+    let failure: unknown = null;
+    const unsubscribe = this.bridge.onStreamEvent((payload) => {
+      if (payload.streamId !== streamId) return;
+      events.push(payload.event as StreamEvent);
+      wake?.();
+      wake = null;
+    });
+    void this.bridge
+      .request(
+        "stream_turn",
+        { thread_id: threadId, prompt, attachments },
+        streamId,
+      )
+      .catch((error: unknown) => {
+        failure = error;
+      })
+      .finally(() => {
+        complete = true;
+        wake?.();
+        wake = null;
+      });
+
+    try {
+      while (!complete || events.length) {
+        if (!events.length) {
+          await new Promise<void>((resolve) => {
+            wake = resolve;
+          });
+          continue;
+        }
+        yield events.shift()!;
+      }
+      if (failure) throw failure;
+    } finally {
+      unsubscribe();
+    }
+  }
+
+  async cancelRun(threadId: string): Promise<void> {
+    await this.bridge.request("cancel_run", { thread_id: threadId });
+  }
+
+  async resolveApproval(
+    threadId: string,
+    approvalId: string,
+    decision: ApprovalDecision,
+  ): Promise<void> {
+    await this.bridge.request("resolve_approval", {
+      thread_id: threadId,
+      approval_id: approvalId,
+      decision,
+    });
+  }
+
+  async updateRuntime(
+    threadId: string,
+    update: Partial<RuntimeProfile>,
+  ): Promise<RuntimeProfile> {
+    return this.bridge.request("update_runtime", { thread_id: threadId, update });
+  }
+
+  switchHarness(threadId: string, provider: string, model: string, effort?: RuntimeProfile["effort"]): Promise<RuntimeProfile> {
+    return this.bridge.request("switch_harness", { thread_id: threadId, provider, model, effort });
+  }
+
+  pickAttachments(): Promise<Attachment[]> {
+    return this.bridge.pickAttachments();
+  }
+
+  prepareAttachments(files: File[]): Promise<Attachment[]> {
+    return this.bridge.prepareAttachments(files);
+  }
+
+  pickWorkspace(): Promise<string | null> {
+    return this.bridge.pickWorkspace();
+  }
+
+  async copyText(value: string): Promise<void> {
+    await this.bridge.copyText(value);
+  }
+
+  async revealPath(value: string): Promise<void> {
+    await this.bridge.revealPath(value);
+  }
+
+  async openLocalPath(href: string, workspacePath: string): Promise<void> {
+    await this.bridge.openLocalPath(href, workspacePath);
+  }
+
+  getConfigTemplates(): Promise<{ cleo: string; harnesses: string }> {
+    return this.bridge.request("get_config_templates");
+  }
+
+  getAgentInstructions(): Promise<AgentInstructions> {
+    return this.bridge.request("get_agent_instructions");
+  }
+
+  getModelSettings(): Promise<ModelSettings> {
+    return this.bridge.request("get_model_settings");
+  }
+
+  getRuntimeCatalog(): Promise<RuntimeCatalog> {
+    return this.bridge.request("get_runtime_catalog");
+  }
+
+  getProductivityModels(
+    provider: string,
+    projectPath?: string,
+  ): Promise<ProductivityModelCatalog> {
+    return this.bridge.request("get_productivity_models", {
+      provider,
+      project_path: projectPath,
+    });
+  }
+
+  saveModelProfile(profile: ModelProfileInput): Promise<ModelSettings> {
+    return this.bridge.request("save_model_profile", { profile });
+  }
+
+  saveDreamSettings(selection: string, model?: string): Promise<ModelSettings> {
+    return this.bridge.request("save_dream_settings", { selection, model });
+  }
+  checkModelConnection(connection: Partial<ModelConnectionInput> & { profileId?: string }): Promise<ModelConnectionProbe> {
+    return this.bridge.request("check_model_connection", { connection });
+  }
+  createModelConnection(connection: ModelConnectionInput): Promise<ModelSettings> {
+    return this.bridge.request("create_model_connection", { connection });
+  }
+  selectChatModel(profileId: string, model: string): Promise<ModelSettings> {
+    return this.bridge.request("select_chat_model", { profile_id: profileId, model });
+  }
+  renameModelConnection(profileId: string, label: string): Promise<ModelSettings> {
+    return this.bridge.request("rename_model_connection", { profile_id: profileId, label });
+  }
+  removeModelConnection(profileId: string): Promise<ModelSettings> {
+    return this.bridge.request("remove_model_connection", { profile_id: profileId });
+  }
+  getSubscriptionCatalog(): Promise<SubscriptionRuntime[]> {
+    return this.bridge.request("get_subscription_catalog");
+  }
+  checkSubscription(profile: ModelProfileInput): Promise<{ status: string; models: string[] }> {
+    return this.bridge.request("check_subscription", { profile });
+  }
+  startSubscriptionLogin(profile: ModelProfileInput): Promise<SubscriptionLogin> {
+    return this.bridge.request("start_subscription_login", { profile });
+  }
+  readSubscriptionLogin(loginId: string): Promise<SubscriptionLogin> {
+    return this.bridge.request("read_subscription_login", { login_id: loginId });
+  }
+  cancelSubscriptionLogin(loginId: string): Promise<SubscriptionLogin> {
+    return this.bridge.request("cancel_subscription_login", { login_id: loginId });
+  }
+
+  saveAgentInstructions(content: string): Promise<AgentInstructions> {
+    return this.bridge.request("save_agent_instructions", { content });
+  }
+
+  getMemoryReviewDetails(source: MemoryReviewSource): Promise<MemoryReviewDetails> {
+    return this.bridge.request("get_memory_review_details", {
+      space: source.space,
+      project: source.project,
+      session_id: source.session_id,
+    });
+  }
+
+  reviewMemorySource(
+    source: MemoryReviewSource,
+    action: MemoryReviewAction,
+  ): Promise<WorkspaceSnapshot> {
+    return this.bridge.request("review_memory_source", {
+      space: source.space,
+      project: source.project,
+      session_id: source.session_id,
+      action,
+    });
+  }
+
+  undoChanges(threadId: string): Promise<UndoChangesResult> {
+    return this.bridge.request("undo_changes", { thread_id: threadId });
+  }
+
+  async resetWorkspace(): Promise<void> {
+    await this.bridge.request("reset_workspace");
+  }
+}
