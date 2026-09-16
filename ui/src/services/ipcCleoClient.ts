@@ -42,8 +42,8 @@ export class IpcCleoClient implements CleoClient {
     return this.bridge.request("load_memory");
   }
 
-  async loadThread(threadId: string): Promise<Thread> {
-    return this.bridge.request("load_thread", { thread_id: threadId });
+  async loadThread(threadId: string, activate = true): Promise<Thread> {
+    return this.bridge.request("load_thread", { thread_id: threadId, ...(!activate ? { activate: false } : {}) });
   }
 
   loadTimeline(threadId: string, direction = "latest" as "latest" | "before" | "after", cursor?: string): Promise<TimelinePage> {
@@ -98,6 +98,7 @@ export class IpcCleoClient implements CleoClient {
     threadId: string,
     prompt: string,
     attachments: Attachment[] = [],
+    runId?: string,
   ): AsyncGenerator<StreamEvent> {
     const streamId = `${threadId}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const events: StreamEvent[] = [];
@@ -113,7 +114,7 @@ export class IpcCleoClient implements CleoClient {
     void this.bridge
       .request(
         "stream_turn",
-        { thread_id: threadId, prompt, attachments },
+        { thread_id: threadId, prompt, attachments, ...(runId ? { run_id: runId } : {}) },
         streamId,
       )
       .catch((error: unknown) => {
@@ -141,8 +142,11 @@ export class IpcCleoClient implements CleoClient {
     }
   }
 
-  async cancelRun(threadId: string): Promise<void> {
-    await this.bridge.request("cancel_run", { thread_id: threadId });
+  async cancelRun(threadId: string, runId?: string): Promise<boolean> {
+    const result = await this.bridge.request<{ cancelled: boolean }>("cancel_run", {
+      thread_id: threadId, ...(runId ? { run_id: runId } : {}),
+    });
+    return result.cancelled;
   }
 
   async resolveApproval(

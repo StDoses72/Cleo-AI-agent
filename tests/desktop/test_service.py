@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import subprocess
 from pathlib import Path
 from threading import Event, Timer
 from types import SimpleNamespace
@@ -243,6 +244,161 @@ def _service(tmp_path: Path) -> DesktopService:
 
 async def _async_none() -> None:
     pass
+
+
+def test_concurrent_streams_and_late_cancellation_are_task_scoped(tmp_path, monkeypatch):
+    async def scenario():
+        service = _service(tmp_path)
+        for name in ["one", "two"]:
+            service.store.create_session(
+                session_id=name, space="productivity", project=name,
+                provider="codex", owner_type="user", cwd=str(tmp_path / name),
+            )
+        started = {name: asyncio.Event() for name in ["one", "two"]}
+        release = {name: asyncio.Event() for name in ["one", "two"]}
+        cancelled = []
+
+        async def stream(manifest, _prompt, _attachments, emit):
+            name = manifest["id"]
+            started[name].set()
+            try:
+                await release[name].wait()
+                await emit({"type": "done", "summary": name})
+            except asyncio.CancelledError:
+                cancelled.append(name)
+                raise
+
+        monkeypatch.setattr(service, "_stream_productivity", stream)
+        messages = {name: [] for name in started}
+
+        async def emit_one(event):
+            messages["one"].append(event)
+
+        async def emit_two(event):
+            messages["two"].append(event)
+
+        one = asyncio.create_task(service.stream_turn(thread_id="one", prompt="A", attachments=[],
+                                                     run_id="run-one", emit=emit_one))
+        two = asyncio.create_task(service.stream_turn(thread_id="two", prompt="B", attachments=[],
+                                                     run_id="run-two", emit=emit_two))
+        try:
+            await asyncio.wait_for(asyncio.gather(*(event.wait() for event in started.values())), 2)
+            with pytest.raises(RuntimeError, match="尚未结束"):
+                await service.stream_turn(
+                    thread_id="one", prompt="/rename forbidden", attachments=[],
+                    run_id="another-run", emit=emit_one,
+                )
+            result = await service.cancel_run(thread_id="one", run_id="old-run")
+            assert result == {"cancelled": False}
+            assert not one.done() and not two.done()
+            await service.cancel_run(thread_id="two", run_id="run-two")
+            assert cancelled == ["two"] and not one.done()
+            release["one"].set()
+            await asyncio.gather(one, two)
+            assert any(event.get("summary") == "one" for event in messages["one"])
+            assert not any(event.get("summary") == "one" for event in messages["two"])
+            assert service._run_tasks == {}
+        finally:
+            for task in [one, two]:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(one, two, return_exceptions=True)
+
+    asyncio.run(scenario())
+
+
+def test_parallel_workspace_edits_do_not_create_a_cross_task_undo(tmp_path):
+    async def scenario():
+        service = _service(tmp_path)
+        root = tmp_path / "workspace"
+        nested = root / "nested"
+        nested.mkdir()
+        for arguments in [
+            ["init"], ["config", "user.name", "Fixture"],
+            ["config", "user.email", "fixture@example.invalid"],
+        ]:
+            subprocess.run(["git", *arguments], cwd=root, check=True, capture_output=True)
+        (root / "original.txt").write_text("original", encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=root, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "fixture"], cwd=root, check=True, capture_output=True
+        )
+        ready = {name: asyncio.Event() for name in ["one", "two"]}
+        release = asyncio.Event()
+        for name, cwd in [("one", root), ("two", nested)]:
+            service.store.create_session(session_id=name, space="productivity", project=name,
+                                         provider="codex", owner_type="user", cwd=str(cwd))
+            service._productivity_sessions[name] = object()
+
+        class Adapter:
+            async def prompt(self, session_id, _prompt, *, on_event):
+                ready[session_id].set()
+                await release.wait()
+                (root / f"{session_id}.txt").write_text(session_id, encoding="utf-8")
+                return SimpleNamespace(response=session_id, status="completed", error=None)
+
+        service._adapter_instance = Adapter()
+
+        async def emit(_event):
+            pass
+
+        tasks = [
+            asyncio.create_task(service.stream_turn(
+                thread_id=name, prompt=name, attachments=[], emit=emit
+            )) for name in ready
+        ]
+        try:
+            await asyncio.wait_for(asyncio.gather(*(event.wait() for event in ready.values())), 5)
+            assert len(set(service._run_workspaces.values())) == 1
+            with pytest.raises(ValueError, match="正在运行"):
+                await service.undo_changes(thread_id="one")
+            with pytest.raises(ValueError, match="正在运行"):
+                await service.reset_workspace()
+            release.set()
+            await asyncio.gather(*tasks)
+            for name in ready:
+                manifest = service.store.load_manifest(name)
+                assert manifest["undo_checkpoint"] is None
+                assert not any(
+                    event["type"] == "turn_diff" for event in service.store.read_events(name)
+                )
+                with pytest.raises(ValueError, match="共用工作区"):
+                    await service.undo_changes(thread_id=name)
+                assert (root / f"{name}.txt").read_text(encoding="utf-8") == name
+        finally:
+            release.set()
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    asyncio.run(scenario())
+
+
+def test_workspace_restores_an_active_empty_chat_beyond_the_recent_limit(tmp_path):
+    async def scenario():
+        service = _service(tmp_path)
+        service.store.create_session(
+            session_id="running-chat", space="non_productivity", project="general",
+            provider="openai", owner_type="user",
+        )
+        for index in range(100):
+            service.store.create_session(
+                session_id=f"recent-{index}", space="productivity", project="workspace",
+                provider="codex", owner_type="user", cwd=str(tmp_path / "workspace"),
+            )
+        service._run_tasks["running-chat"] = asyncio.current_task()
+        service._run_ids["running-chat"] = "still-running"
+        service.runtime.current_thread_id = "recent-99"
+        snapshot = await service.load_workspace()
+        thread = next(thread for thread in snapshot["threads"] if thread["id"] == "running-chat")
+        assert thread["activeRunId"] == "still-running"
+        assert thread["status"] == "running"
+        assert thread["items"] == []
+        await service.load_thread(thread_id="running-chat", activate=False)
+        assert service.runtime.current_thread_id == "recent-99"
+
+    asyncio.run(scenario())
 
 
 def test_deleted_connection_does_not_hide_saved_conversation(tmp_path):

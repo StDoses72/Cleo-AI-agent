@@ -44,6 +44,9 @@ class ProtocolServer:
             self._tasks.add(task)
             task.add_done_callback(self._tasks.discard)
         if self._tasks:
+            for task in self._tasks:
+                if not task.done() and not task.cancelling():
+                    task.cancel()
             await asyncio.gather(*self._tasks, return_exceptions=True)
         await self.service.shutdown()
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { requestKey } from "./request-key";
 import { cleoClient } from "./services/cleoClient";
 import { boundTimeline } from "./timeline-cache";
 import { useTimelineHistory } from "./useTimelineHistory";
@@ -104,18 +105,24 @@ export function useCleoWorkspace(evolutionOpen = false) {
       window.clearInterval(timer);
     };
   }, [activeSpace, refreshMemory]);
-  const [runningThreadId, setRunningThreadId] = useState<string | null>(null);
+  const [runs, setRuns] = useState<Record<string, string>>({});
+  const [restoredRuns, setRestoredRuns] = useState<Record<string, string>>({});
+  const [recoveryErrors, setRecoveryErrors] = useState<Record<string, string>>({});
+  const runLocks = useRef(new Map<string, string>());
+  const threadVersions = useRef(new Map<string, number>());
+  const [startingKeys, setStartingKeys] = useState<string[]>([]);
+  const runningThreadIds = Object.keys(runs);
+  const running = Boolean(activeThreadId && runs[activeThreadId]);
+  const anyRunning = runningThreadIds.length > 0 || startingKeys.length > 0;
   const [drafts, setDrafts] = useState<Record<string, ComposerDraft>>({});
-  const [startingRun, setStartingRun] = useState(false);
   const [harnessSwitches, setHarnessSwitches] = useState<Record<string, string>>({});
   const harnessSwitchRef = useRef(new Set<string>());
   const harnessSwitchTarget = activeThreadId ? harnessSwitches[activeThreadId] : undefined;
   const harnessSwitchStatus = harnessSwitchTarget
-    ? runningThreadId === activeThreadId
+    ? running
       ? `已选择 ${harnessSwitchTarget}，等待当前轮结束后交接…`
       : `正在连接 ${harnessSwitchTarget} 并交接上下文…`
     : null;
-  const runLockRef = useRef(false);
   const [modelSettings, setModelSettings] = useState<ModelSettings | null>(null);
   const [modelSettingsLoading, setModelSettingsLoading] = useState(false);
   const [modelSettingsError, setModelSettingsError] = useState<string | null>(null);
@@ -130,14 +137,15 @@ export function useCleoWorkspace(evolutionOpen = false) {
   const modelRequestRef = useRef(0);
   const modelCacheRef = useRef(new Map<string, ProductivityModelCatalog>());
   const [pendingApprovals, setPendingApprovals] = useState<ApprovalRequest[]>([]);
-  const [approvalPendingId, setApprovalPendingId] = useState<string | null>(null);
-  const [approvalError, setApprovalError] = useState<string | null>(null);
+  const [approvalPending, setApprovalPending] = useState<string[]>([]);
+  const approvalSending = useRef(new Set<string>());
+  const [approvalErrors, setApprovalErrors] = useState<Record<string, string>>({});
+  const approvalVersions = useRef(new Map<string, number>());
   const [draftProfileId, setDraftProfileId] = useState("");
   const [draftProvider, setDraftProvider] = useState("");
   const [draftModel, setDraftModel] = useState("");
   const [draftEffort, setDraftEffort] = useState<RuntimeProfile["effort"]>(null);
-  const generationRef = useRef(0);
-  const cancellingRunRef = useRef(false);
+  const cancellingRuns = useRef(new Set<string>());
   const selectionRef = useRef(0);
   const evolutionSelectionRef = useRef(0);
   const viewRef = useRef(evolutionOpen);
@@ -152,6 +160,10 @@ export function useCleoWorkspace(evolutionOpen = false) {
     threadId: string | null;
   }>>>({});
   const draftKey = activeThreadId ?? `new:${activeSpace}:${activeProjectId}`;
+  const startingRun = startingKeys.includes(draftKey);
+  const approvalPendingId = pendingApprovals.find(request => request.threadId === activeThreadId
+    && approvalPending.includes(requestKey(request.threadId, request.id)))?.id ?? null;
+  const approvalError = activeThreadId ? approvalErrors[activeThreadId] ?? null : null;
   const draft = drafts[draftKey] ?? emptyDraft;
   const updateDraft = (key: string, update: (draft: ComposerDraft) => ComposerDraft) => {
     setDrafts((current) => ({ ...current, [key]: update(current[key] ?? emptyDraft) }));
@@ -169,6 +181,12 @@ export function useCleoWorkspace(evolutionOpen = false) {
       .then(([loaded, catalog]) => {
         if (!active) return;
         setSnapshot(loaded);
+        const restored = Object.fromEntries(loaded.threads.filter(thread => thread.activeRunId)
+          .map(thread => [thread.id, thread.activeRunId!]));
+        for (const [id, token] of Object.entries(restored)) runLocks.current.set(id, token);
+        setRuns(restored); setRestoredRuns(restored);
+        setPendingApprovals(loaded.threads.flatMap(thread => thread.pendingApprovals ?? []));
+        for (const thread of loaded.threads) questions.restore(thread.id, thread.pendingQuestions ?? [], questions.version(thread.id));
         setRuntimeCatalog(catalog);
         setDraftProfileId(catalog.defaultNonProductivityProfile);
         setDraftProvider(catalog.defaultProductivityProvider);
@@ -262,6 +280,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
   }, [activeThread?.id, activeSpace, evolutionOpen, skillKey]);
 
   const updateThread = (threadId: string, update: (thread: Thread) => Thread) => {
+    threadVersions.current.set(threadId, (threadVersions.current.get(threadId) ?? 0) + 1);
     setSnapshot((current) =>
       current
         ? {
@@ -283,14 +302,72 @@ export function useCleoWorkspace(evolutionOpen = false) {
     );
   };
 
+  const refreshWorkspace = async (operation: () => Promise<WorkspaceSnapshot>) => {
+    const versions = new Map(threadVersions.current);
+    const refreshed = await operation();
+    setSnapshot(current => {
+      if (!current) return refreshed;
+      const live = new Map(current.threads.filter(thread => runLocks.current.has(thread.id)
+        || threadVersions.current.get(thread.id) !== versions.get(thread.id)).map(thread => [thread.id, thread]));
+      return { ...refreshed, threads: [
+        ...refreshed.threads.map(thread => live.get(thread.id) ?? thread),
+        ...[...live.values()].filter(thread => !refreshed.threads.some(saved => saved.id === thread.id)),
+      ] };
+    });
+    return refreshed;
+  };
+
   const history = useTimelineHistory(activeThread, updateThread);
   const questions = useQuestions(activeThread, updateThread);
   useEffect(() => {
+    if (!Object.keys(restoredRuns).length) return;
+    let active = true;
+    let timer: number;
+    const refresh = async () => {
+      await Promise.all(Object.entries(restoredRuns).map(async ([id, token]) => {
+        const approvalVersion = approvalVersions.current.get(id);
+        const questionVersion = questions.version(id);
+        try {
+          const loaded = await cleoClient.loadThread(id, false);
+          if (!active || runLocks.current.get(id) !== token) return;
+          updateThread(id, current => history.isFollowing(id) ? loaded : { ...loaded,
+            items: current.items, history: current.history && { ...current.history,
+              total: Math.max(current.history.total, loaded.history?.total ?? 0),
+              hasAfter: current.history.hasAfter || loaded.history?.revision !== current.history.revision } });
+          if (approvalVersions.current.get(id) === approvalVersion) setPendingApprovals(current => [
+            ...current.filter(request => request.threadId !== id), ...(loaded.pendingApprovals ?? []),
+          ]);
+          questions.restore(id, loaded.pendingQuestions ?? [], questionVersion);
+          setRecoveryErrors(current => ({ ...current, [id]: "" }));
+          if (loaded.activeRunId) {
+            if (loaded.activeRunId !== token) {
+              runLocks.current.set(id, loaded.activeRunId);
+              setRuns(current => ({ ...current, [id]: loaded.activeRunId! }));
+              setRestoredRuns(current => ({ ...current, [id]: loaded.activeRunId! }));
+            }
+          } else {
+            runLocks.current.delete(id);
+            setRuns(current => { const next = { ...current }; delete next[id]; return next; });
+            setRestoredRuns(current => { const next = { ...current }; delete next[id]; return next; });
+            questions.finish(id);
+            void refreshMemory();
+          }
+        } catch (error) {
+          if (active && runLocks.current.get(id) === token) setRecoveryErrors(current => ({ ...current,
+            [id]: error instanceof Error ? error.message : "无法同步运行状态，将自动重试。" }));
+        }
+      }));
+      if (active) timer = window.setTimeout(() => void refresh(), 1500);
+    };
+    void refresh();
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [restoredRuns]);
+  useEffect(() => {
     setSnapshot(current => current && { ...current, threads: current.threads.map(thread =>
-      [activeThreadId, workspaceThreadId, evolutionThreadId, runningThreadId].includes(thread.id)
+      [activeThreadId, workspaceThreadId, evolutionThreadId].includes(thread.id) || runLocks.current.has(thread.id)
         ? thread : { ...thread, items: [] }) });
     if (activeThread?.history?.total && !activeThread.items.length) void history.load("latest");
-  }, [activeThreadId, workspaceThreadId, evolutionThreadId, runningThreadId]);
+  }, [activeThreadId, workspaceThreadId, evolutionThreadId, runs]);
 
   const selectSpace = (space: WorkspaceSpace) => {
     clearLoadingError();
@@ -348,19 +425,21 @@ export function useCleoWorkspace(evolutionOpen = false) {
     const thread = snapshot?.threads.find((candidate) => candidate.id === threadId);
     if (!thread || thread.projectId === EVOLUTION_PROJECT) return;
     const selection = ++selectionRef.current;
+    const version = threadVersions.current.get(threadId);
     setActiveSpace(thread.space);
     setActiveProjectId(thread.projectId);
     setActiveThreadId(threadId);
     void cleoClient
       .loadThread(threadId)
       .then((loaded) => {
-        if (selectionRef.current !== selection) return;
+        if (selectionRef.current !== selection || threadVersions.current.get(threadId) !== version
+            || runLocks.current.has(threadId)) return;
         updateThread(threadId, () => loaded);
         setActiveSpace(loaded.space);
         setActiveProjectId(loaded.projectId);
       })
       .catch((error: unknown) => {
-        if (selectionRef.current !== selection) return;
+        if (selectionRef.current !== selection || threadVersions.current.get(threadId) !== version || runLocks.current.has(threadId)) return;
         loadingRetry.current = () => selectThread(threadId);
         setLoadingError(error instanceof Error ? error.message : "无法恢复历史记录");
       });
@@ -432,9 +511,9 @@ export function useCleoWorkspace(evolutionOpen = false) {
     if (cached) {
       setEvolutionThreadId(cached.id);
       // Never reload over in-flight chunks; this cache receives the stream even when hidden.
-      if (runLockRef.current) return cached;
+      if (runLocks.current.has(cached.id)) return cached;
     }
-    if (!threadId && runLockRef.current) throw new Error("请先等待当前任务完成。");
+    if (!threadId && runLocks.current.size) throw new Error("请先等待运行中的任务完成。");
     if (!window.cleoDesktop) throw new Error("本地迭代需要在桌面应用中运行。");
     const selected = ++evolutionSelectionRef.current;
     const result = await window.cleoDesktop.request<{ thread: Thread; workspace: WorkspaceSnapshot }>(
@@ -464,8 +543,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
     const space: ThreadSpace = activeSpace === "chat" ? "chat" : "productivity";
     const name = projectPath.split(/[\\/]/).filter(Boolean).at(-1) ?? "workspace";
     const projectId = `${space}:${name}`;
-    const refreshed = await cleoClient.addProject(space, projectPath);
-    setSnapshot(refreshed);
+    await refreshWorkspace(() => cleoClient.addProject(space, projectPath));
     setActiveSpace(space);
     setActiveProjectId(projectId);
     setActiveThreadId(null);
@@ -478,16 +556,19 @@ export function useCleoWorkspace(evolutionOpen = false) {
    */
   const sendPrompt = async (rawPrompt: string, targetThread?: Thread, { preserveDraft = false } = {}) => {
     const prompt = rawPrompt.trim();
-    if (!prompt || runLockRef.current
+    const lockKey = targetThread?.id ?? activeThread?.id ?? draftKey;
+    if (!prompt || runLocks.current.has(lockKey)
       || harnessSwitchRef.current.has(targetThread?.id ?? activeThreadId ?? "")) return;
 
-    runLockRef.current = true;
-    setStartingRun(true);
+    const token = crypto.randomUUID();
+    runLocks.current.set(lockKey, token);
+    setStartingKeys(keys => [...keys, lockKey]);
     const sourceDraftKey = draftKey;
     const pendingAttachments = preserveDraft ? [] : draft.attachments;
     updateDraft(sourceDraftKey, (current) => ({ ...current, error: undefined }));
 
     let thread = targetThread ?? activeThread;
+    const selection = selectionRef.current + (thread ? 0 : 1);
     try {
       if (!thread) thread = await createThread();
     } catch (error) {
@@ -495,16 +576,16 @@ export function useCleoWorkspace(evolutionOpen = false) {
         ...current,
         error: error instanceof Error ? error.message : "无法创建对话，请重试。",
       }));
-      runLockRef.current = false;
-      setStartingRun(false);
+      if (runLocks.current.get(lockKey) === token) runLocks.current.delete(lockKey);
+      setStartingKeys(keys => keys.filter(key => key !== lockKey));
       return;
     }
 
     const threadId = thread.id;
-    const selection = selectionRef.current;
     const canNavigate = () => selectionRef.current === selection
       && viewRef.current === evolutionOpen && thread.projectId !== EVOLUTION_PROJECT;
-    const generation = ++generationRef.current;
+    if (lockKey !== threadId) runLocks.current.delete(lockKey);
+    runLocks.current.set(threadId, token);
     const userItem: TimelineItem = {
       id: `${threadId}-user-${Date.now()}`,
       type: "message",
@@ -514,8 +595,8 @@ export function useCleoWorkspace(evolutionOpen = false) {
     };
     let turnId = userItem.id;
     userItem.turnId = turnId;
-    setRunningThreadId(threadId);
-    setStartingRun(false);
+    setRuns(current => ({ ...current, [threadId]: token }));
+    setStartingKeys(keys => keys.filter(key => key !== lockKey));
     if (!preserveDraft) updateDraft(sourceDraftKey, (current) => ({
       prompt: current.prompt === draft.prompt ? "" : current.prompt,
       attachments: current.attachments.filter((item) => !pendingAttachments.some((sent) => sent.path === item.path)),
@@ -531,8 +612,8 @@ export function useCleoWorkspace(evolutionOpen = false) {
 
     let failed = false;
     try {
-      for await (const event of cleoClient.streamTurn(threadId, prompt, pendingAttachments)) {
-        if (generationRef.current !== generation) return;
+      for await (const event of cleoClient.streamTurn(threadId, prompt, pendingAttachments, token)) {
+        if (runLocks.current.get(threadId) !== token) return;
         if (event.type === "turn-started") {
           turnId = event.item.turnId ?? event.item.id;
           updateThread(threadId, current => ({ ...current, items: current.items.map(item => item.id === userItem.id ? event.item : item) }));
@@ -580,8 +661,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
             terminal: [...(current.terminal ?? []), event.chunk],
           }));
         } else if (event.type === "refresh") {
-          const refreshed = await cleoClient.loadWorkspace();
-          setSnapshot(refreshed);
+          const refreshed = await refreshWorkspace(() => cleoClient.loadWorkspace());
           const next = refreshed.threads.find((item) => item.id === event.activeThreadId);
           if (canNavigate() && next?.projectId !== EVOLUTION_PROJECT) {
             setActiveSpace(event.space);
@@ -594,15 +674,17 @@ export function useCleoWorkspace(evolutionOpen = false) {
           const selected = await cleoClient.pickAttachments();
           appendAttachments(selected, threadId);
         } else if (event.type === "approval-request") {
+          approvalVersions.current.set(threadId, (approvalVersions.current.get(threadId) ?? 0) + 1);
           const request = { ...event.request, threadId };
           setPendingApprovals((current) => [
-            ...current.filter((candidate) => candidate.id !== request.id),
+            ...current.filter((candidate) => candidate.threadId !== threadId || candidate.id !== request.id),
             request,
           ]);
-          setApprovalError(null);
+          setApprovalErrors(current => ({ ...current, [threadId]: "" }));
         } else if (event.type === "approval-resolved") {
+          approvalVersions.current.set(threadId, (approvalVersions.current.get(threadId) ?? 0) + 1);
           setPendingApprovals((current) => current.filter(
-            (candidate) => candidate.id !== event.response.id,
+            (candidate) => candidate.threadId !== threadId || candidate.id !== event.response.id,
           ));
         } else if (event.type === "done") {
           updateThread(threadId, (current) => ({
@@ -629,6 +711,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
         }
       }
     } catch (error) {
+      if (runLocks.current.get(threadId) !== token) return;
       failed = true;
       updateThread(threadId, (current) => ({
         ...current,
@@ -645,32 +728,34 @@ export function useCleoWorkspace(evolutionOpen = false) {
         ],
       }));
     } finally {
-      if (generationRef.current === generation) {
+      if (runLocks.current.get(threadId) === token) {
         if (!failed) {
           updateThread(threadId, (current) =>
-            current.status === "running" ? { ...current, status: "completed" } : current,
+            current.status === "running" ? { ...current, status: cancellingRuns.current.has(token) ? "attention" : "completed" } : current,
           );
         }
-        setRunningThreadId(null);
-        runLockRef.current = false;
+        runLocks.current.delete(threadId);
+        setRuns(current => { const next = { ...current }; if (next[threadId] === token) delete next[threadId]; return next; });
         setPendingApprovals((current) => current.filter(
           (candidate) => candidate.threadId !== threadId,
         ));
         questions.finish(threadId);
         void refreshMemory();
-        if (history.isFollowing(threadId) && thread.history) await history.load("latest");
+        if (history.isActive(threadId) && history.isFollowing(threadId) && thread.history) await history.load("latest");
       }
     }
   };
 
   const cancelRun = async () => {
-    const threadId = runningThreadId;
-    if (!threadId || cancellingRunRef.current) return;
-    cancellingRunRef.current = true;
-    const previousGeneration = generationRef.current;
+    const threadId = activeThreadId;
+    const token = threadId ? runLocks.current.get(threadId) : undefined;
+    if (!threadId || !token || cancellingRuns.current.has(token)) return;
+    cancellingRuns.current.add(token);
     try {
-      await cleoClient.cancelRun(threadId);
+      const cancelled = await cleoClient.cancelRun(threadId, token);
+      if (cancelled === false) return; // Recovery polling will reconcile a newer or completed run.
     } catch (error) {
+      if (runLocks.current.get(threadId) !== token) return;
       updateThread(threadId, (current) => ({
         ...current,
         items: [...current.items, {
@@ -683,13 +768,14 @@ export function useCleoWorkspace(evolutionOpen = false) {
       }));
       return;
     } finally {
-      cancellingRunRef.current = false;
+      cancellingRuns.current.delete(token);
     }
     // A completed stream may already have allowed a newer run to start.
-    if (generationRef.current !== previousGeneration) return;
-    generationRef.current += 1;
-    runLockRef.current = false;
-    setRunningThreadId(null);
+    if (runLocks.current.get(threadId) !== token) return;
+    runLocks.current.delete(threadId);
+    setRuns(current => { const next = { ...current }; if (next[threadId] === token) delete next[threadId]; return next; });
+    setRestoredRuns(current => { const next = { ...current }; if (next[threadId] === token) delete next[threadId]; return next; });
+    setRecoveryErrors(current => ({ ...current, [threadId]: "" }));
     questions.finish(threadId);
     void refreshMemory();
     setPendingApprovals((current) => current.filter(
@@ -709,32 +795,39 @@ export function useCleoWorkspace(evolutionOpen = false) {
         },
       ],
     }));
-    if (history.isFollowing(threadId)) await history.load("latest");
+    if (history.isActive(threadId) && history.isFollowing(threadId)) await history.load("latest");
   };
 
   const resolveApproval = async (decision: ApprovalDecision) => {
     const request = pendingApprovals.find(candidate => candidate.threadId === activeThreadId);
-    if (!request || approvalPendingId) return;
-    setApprovalPendingId(request.id);
-    setApprovalError(null);
+    if (!request) return;
+    const key = requestKey(request.threadId, request.id);
+    if (approvalSending.current.has(key)) return;
+    approvalVersions.current.set(request.threadId, (approvalVersions.current.get(request.threadId) ?? 0) + 1);
+    approvalSending.current.add(key);
+    setApprovalPending(current => [...current, key]);
+    setApprovalErrors(current => ({ ...current, [request.threadId]: "" }));
     try {
       await cleoClient.resolveApproval(request.threadId, request.id, decision);
       setPendingApprovals((current) => current.filter(
-        (candidate) => candidate.id !== request.id,
+        (candidate) => candidate.threadId !== request.threadId || candidate.id !== request.id,
       ));
     } catch (error) {
-      setApprovalError(error instanceof Error ? error.message : "无法提交审批决定");
+      setApprovalErrors(current => ({ ...current, [request.threadId]: error instanceof Error ? error.message : "无法提交审批决定" }));
     } finally {
-      setApprovalPendingId(null);
+      approvalSending.current.delete(key);
+      approvalVersions.current.set(request.threadId, (approvalVersions.current.get(request.threadId) ?? 0) + 1);
+      setApprovalPending(current => current.filter(value => value !== key));
     }
   };
 
   const renameThread = async (title: string) => {
     const threadId = activeThreadId;
     if (!threadId || !title.trim()) throw new Error("请输入会话名称。");
-    if (runLockRef.current) throw new Error("请等待当前运行完成后重命名。");
-    runLockRef.current = true;
-    setStartingRun(true);
+    if (runLocks.current.has(threadId)) throw new Error("请等待当前运行完成后重命名。");
+    const token = crypto.randomUUID();
+    runLocks.current.set(threadId, token);
+    setStartingKeys(keys => [...keys, threadId]);
     try {
       for await (const event of cleoClient.streamTurn(threadId, `/rename ${title.trim()}`)) {
         if (event.type === "error") throw new Error(event.message);
@@ -742,8 +835,8 @@ export function useCleoWorkspace(evolutionOpen = false) {
       const renamed = await cleoClient.loadThread(threadId);
       updateThread(threadId, () => renamed);
     } finally {
-      runLockRef.current = false;
-      setStartingRun(false);
+      if (runLocks.current.get(threadId) === token) runLocks.current.delete(threadId);
+      setStartingKeys(keys => keys.filter(key => key !== threadId));
     }
   };
 
@@ -903,23 +996,21 @@ export function useCleoWorkspace(evolutionOpen = false) {
   };
   const resetWorkspace = async () => {
     await cleoClient.resetWorkspace();
-    const refreshed = await cleoClient.loadWorkspace();
-    setSnapshot(refreshed);
+    await refreshWorkspace(() => cleoClient.loadWorkspace());
   };
   const undoChanges = async () => {
     if (!activeThread || activeThread.space !== "productivity") {
       throw new Error("只有开发任务可以回退 Git 改动。");
     }
-    if (runningThreadId === activeThread.id) {
+    if (runLocks.current.has(activeThread.id)) {
       throw new Error("任务正在运行，请先停止后再回退。");
     }
-    const result = await cleoClient.undoChanges(activeThread.id);
-    setSnapshot(result.workspace);
-    return result;
+    let result: Awaited<ReturnType<typeof cleoClient.undoChanges>>;
+    await refreshWorkspace(async () => { result = await cleoClient.undoChanges(activeThread.id); return result.workspace; });
+    return result!;
   };
   const restoreChatHistory = async () => {
-    const refreshed = await cleoClient.restoreChatBackups();
-    setSnapshot(refreshed);
+    const refreshed = await refreshWorkspace(() => cleoClient.restoreChatBackups());
     const restored = refreshed.threads.find(
       (thread) => thread.id === refreshed.activeThreadId && thread.space === "chat",
     ) ?? refreshed.threads.find((thread) => thread.space === "chat");
@@ -931,14 +1022,13 @@ export function useCleoWorkspace(evolutionOpen = false) {
     return refreshed;
   };
   const deleteThread = async (threadId: string) => {
-    if (runningThreadId === threadId) {
+    if (runLocks.current.has(threadId)) {
       throw new Error("正在运行的 thread 不能删除，请先停止运行。");
     }
     const deleted = snapshot?.threads.find((thread) => thread.id === threadId);
     const deletedWasActive = activeThreadId === threadId;
     selectionRef.current += 1;
-    const refreshed = await cleoClient.deleteThread(threadId);
-    setSnapshot(refreshed);
+    const refreshed = await refreshWorkspace(() => cleoClient.deleteThread(threadId));
     if (deletedWasActive) {
       const replacement = refreshed.threads.find(
         (thread) =>
@@ -958,8 +1048,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
   const removeProject = async (projectId: string) => {
     const removed = snapshot?.projects.find((project) => project.id === projectId);
     if (!removed) throw new Error("找不到要移除的项目。");
-    const refreshed = await cleoClient.removeProject(projectId);
-    setSnapshot(refreshed);
+    const refreshed = await refreshWorkspace(() => cleoClient.removeProject(projectId));
     const preservedProject = refreshed.projects.find(
       (project) => project.id === activeProjectId,
     );
@@ -1053,7 +1142,10 @@ export function useCleoWorkspace(evolutionOpen = false) {
     history,
     questions,
     skills: activeThread?.skills ?? (draftSkills?.key === skillKey && !evolutionOpen ? draftSkills.skills : []),
-    snapshot,
+    snapshot: snapshot && { ...snapshot, threads: snapshot.threads.map(thread => ({ ...thread,
+      waitingFor: pendingApprovals.some(request => request.threadId === thread.id) ? "approval" as const
+        : questions.pending.some(request => request.threadId === thread.id) ? "question" as const : undefined,
+    })) },
     loadingError,
     memoryError,
     memoryRefreshing,
@@ -1065,12 +1157,14 @@ export function useCleoWorkspace(evolutionOpen = false) {
     activeProjectId,
     activeThread,
     activeThreadId,
-    runningThreadId,
+    running,
+    runningThreadIds,
+    anyRunning,
     draftRuntime,
     attachments: draft.attachments,
     prompt: draft.prompt,
     setPrompt,
-    sendError: draft.error,
+    sendError: draft.error || (activeThreadId ? recoveryErrors[activeThreadId] : undefined),
     startingRun,
     harnessSwitchStatus,
     modelSettings,

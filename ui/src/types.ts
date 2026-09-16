@@ -155,6 +155,9 @@ export interface LocalSkill {
 }
 
 export interface Thread {
+  activeRunId?: string | null;
+  pendingApprovals?: ApprovalRequest[];
+  waitingFor?: "approval" | "question";
   skills?: LocalSkill[];
   id: string;
   space: ThreadSpace;
@@ -493,7 +496,7 @@ export type StreamEvent =
 export interface CleoClient {
   loadWorkspace(): Promise<WorkspaceSnapshot>;
   loadMemory(): Promise<Pick<WorkspaceSnapshot, "memories" | "memoryOverview">>;
-  loadThread(threadId: string): Promise<Thread>;
+  loadThread(threadId: string, activate?: boolean): Promise<Thread>;
   loadTimeline(threadId: string, direction?: "latest" | "before" | "after", cursor?: string): Promise<TimelinePage>;
   readTimelineContent(threadId: string, itemId: string, field: string, offset: number): Promise<TimelineContent>;
   getPendingQuestions(threadId: string): Promise<QuestionRequest[]>;
@@ -503,8 +506,8 @@ export interface CleoClient {
   addProject(space: ThreadSpace, projectPath: string): Promise<WorkspaceSnapshot>;
   removeProject(projectId: string): Promise<WorkspaceSnapshot>;
   restoreChatBackups(): Promise<WorkspaceSnapshot>;
-  streamTurn(threadId: string, prompt: string, attachments?: Attachment[]): AsyncGenerator<StreamEvent>;
-  cancelRun(threadId: string): Promise<void>;
+  streamTurn(threadId: string, prompt: string, attachments?: Attachment[], runId?: string): AsyncGenerator<StreamEvent>;
+  cancelRun(threadId: string, runId?: string): Promise<boolean>;
   resolveApproval(threadId: string, approvalId: string, decision: ApprovalDecision): Promise<void>;
   updateRuntime(threadId: string, update: Partial<RuntimeProfile>): Promise<RuntimeProfile>;
   switchHarness(threadId: string, provider: string, model: string, effort?: RuntimeProfile["effort"]): Promise<RuntimeProfile>;

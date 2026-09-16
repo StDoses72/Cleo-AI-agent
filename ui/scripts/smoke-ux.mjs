@@ -133,15 +133,25 @@ try {
     assert.equal(await input.inputValue(), "");
     assert.equal(await page.locator(".attachment-chip").count(), 0);
   });
-  await check("busy-send-preserves-draft", async () => {
-    await input.fill("正在运行的测试");
+  await check("concurrent-send-preserves-drafts", async () => {
+    await input.fill("审批测试 A");
     await input.press("Enter");
-    await page.getByTestId("stop-button").waitFor();
-    await rail("对话").click();
-    await input.fill("等待发送的草稿");
+    await page.getByTestId("approval-prompt").waitFor();
+    await input.fill("A 的下一条草稿");
+    await page.getByRole("button", { name: /^统一 managed 与 native sessions/ }).click();
+    await input.fill("审批测试 B");
     await input.press("Enter");
-    assert.equal(await input.inputValue(), "等待发送的草稿");
-    await page.getByText("另一个任务正在运行，完成或停止后即可发送。", { exact: true }).waitFor();
+    await page.getByTestId("approval-prompt").waitFor();
+    await input.fill("B 的下一条草稿");
+    await page.getByTestId("stop-button").click();
+    await page.getByTestId("stop-button").waitFor({ state: "hidden" });
+    assert.equal(await input.inputValue(), "B 的下一条草稿");
+    await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
+    assert.equal(await input.inputValue(), "A 的下一条草稿");
+    await page.getByTestId("approval-prompt").waitFor();
+    await page.getByTestId("stop-button").click();
+    await page.getByTestId("stop-button").waitFor({ state: "hidden" });
+    assert.equal(await input.inputValue(), "A 的下一条草稿");
   });
   await check("ime-enter", async () => {
     await input.fill("还在选字");

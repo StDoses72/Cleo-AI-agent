@@ -148,15 +148,21 @@ class DesktopService:
         self._subscription_logins = SubscriptionLogins()
         self._productivity_sessions: dict[str, Any] = {}
         self._run_tasks: dict[str, asyncio.Task[Any]] = {}
+        self._run_ids: dict[str, str] = {}
+        self._pending_approvals: dict[str, dict[str, dict[str, Any]]] = {}
+        self._run_workspaces: dict[str, str] = {}
+        self._workspace_guard = asyncio.Lock()
         self._harness_switches: set[str] = set()
         self._project_paths: dict[str, str] = {}
 
     async def load_workspace(self) -> dict[str, Any]:
         self._debug("load rows")
-        rows = self.store.list_sessions()
+        rows = sorted(
+            self.store.list_sessions(), key=lambda row: row["id"] not in self._run_tasks
+        )
         records: list[dict[str, Any]] = []
         for row in rows:
-            if len(records) >= 100:
+            if len(records) >= 100 and row["id"] not in self._run_tasks:
                 break
             try:
                 manifest = self.store.load_manifest(str(row["id"]))
@@ -165,7 +171,8 @@ class DesktopService:
                 page = await asyncio.to_thread(TimelineIndex(self.store, manifest).page, limit=1)
             except (FileNotFoundError, OSError, ValueError):
                 continue
-            if manifest["space"] == "non_productivity" and not page["total"]:
+            if (manifest["space"] == "non_productivity" and not page["total"]
+                    and manifest["id"] not in self._run_tasks):
                 continue
             records.append(manifest)
         manifests = records
@@ -229,10 +236,11 @@ class DesktopService:
             "memories": [self._memory_entry(entry) for entry in overview["entries"]],
         }
 
-    async def load_thread(self, *, thread_id: str) -> dict[str, Any]:
+    async def load_thread(self, *, thread_id: str, activate: bool = True) -> dict[str, Any]:
         """Reload one persisted thread and make it the active resume target."""
         manifest = self.store.load_manifest(thread_id)
-        self._activate(manifest)
+        if activate:
+            self._activate(manifest)
         return await self._thread(manifest)
 
     async def load_timeline(self, *, thread_id: str, cursor: str | None = None,
@@ -807,14 +815,16 @@ class DesktopService:
         prompt: str,
         attachments: list[dict[str, Any]] | None,
         emit: Emit,
+        run_id: str | None = None,
     ) -> None:
+        if run_id is not None and (not isinstance(run_id, str) or not run_id or len(run_id) > 128):
+            raise ValueError("无效的运行标识。")
         if thread_id in getattr(self, "_harness_switches", set()):
             raise ValueError("正在交接 harness，请等待切换完成后发送。")
         prompt = str(prompt).strip()
         if not prompt:
             raise ValueError("prompt cannot be empty")
         manifest = self.store.load_manifest(thread_id)
-        self._activate(manifest)
         if self._is_evolution(manifest) and prompt.startswith("/"):
             command = prompt.split(" ", 1)[0]
             allowed = {
@@ -822,22 +832,32 @@ class DesktopService:
             }
             if command not in allowed:
                 raise ValueError("进化任务不能切换工作目录、任务或放宽权限，请使用进化页面操作。")
+        active = self._run_tasks.get(thread_id)
+        if active is not None and not active.done():
+            raise RuntimeError("当前运行尚未结束，请等待停止操作完成后重试。")
+        self._activate(manifest)
         if prompt.startswith("/"):
             skill = next((skill for skill in self._local_skills(manifest)
                           if skill.command == prompt.split()[0]), None)
             if skill is not None:
                 prompt = skill.expand(prompt)
-        if prompt.startswith("/"):
-            await self._run_command(manifest, prompt, emit)
-            return
-
-        active = self._run_tasks.get(thread_id)
-        if active is not None and not active.done():
-            raise RuntimeError("当前运行尚未结束，请等待停止操作完成后重试。")
         task = asyncio.current_task()
         if task is not None:
             self._run_tasks[thread_id] = task
+        self._run_ids[thread_id] = run_id or secrets.token_hex(16)
         try:
+            if prompt.startswith("/"):
+                await self._run_command(manifest, prompt, emit)
+                return
+            async with self._workspace_guard:
+                root = await asyncio.to_thread(self._workspace_root, manifest)
+                self._run_workspaces[thread_id] = root
+                self.store.update_manifest(thread_id, undo_checkpoint_shared=False)
+                peers = [key for key, value in self._run_workspaces.items()
+                         if key != thread_id and value == root]
+                if peers:
+                    for key in [thread_id, *peers]:
+                        self.store.update_manifest(key, undo_checkpoint_shared=True)
             if manifest["space"] == "non_productivity":
                 await self._stream_chat(manifest, prompt, attachments or [], emit)
             else:
@@ -847,9 +867,28 @@ class DesktopService:
             self.store.set_status(thread_id, status)
             await emit({"type": "error", "message": "当前运行已取消。"})
         finally:
-            self._run_tasks.pop(thread_id, None)
+            async with self._workspace_guard:
+                try:
+                    latest = self.store.load_manifest(thread_id)
+                    if latest.get("undo_checkpoint_shared") and latest.get("undo_checkpoint"):
+                        await asyncio.to_thread(discard_git_checkpoint, latest["undo_checkpoint"])
+                        self.store.update_manifest(thread_id, undo_checkpoint=None)
+                except (OSError, RuntimeError, ValueError) as exc:
+                    self._debug(f"Shared checkpoint cleanup failed for {thread_id}: {exc}")
+                finally:
+                    self._run_workspaces.pop(thread_id, None)
+                    self._run_tasks.pop(thread_id, None)
+                    self._run_ids.pop(thread_id, None)
+                    self._pending_approvals.pop(thread_id, None)
 
-    async def cancel_run(self, *, thread_id: str) -> dict[str, Any]:
+    def _workspace_root(self, manifest: dict[str, Any]) -> str:
+        cwd = manifest.get("cwd") or str(self.settings.active_directory_profile.root_path)
+        status = inspect_git_status(cwd)
+        return os.path.normcase(str(Path(status.repo_root if status else cwd).resolve()))
+
+    async def cancel_run(self, *, thread_id: str, run_id: str | None = None) -> dict[str, Any]:
+        if run_id is not None and self._run_ids.get(thread_id) != run_id:
+            return {"cancelled": False}
         task = self._run_tasks.get(thread_id)
         if task is not None:
             # The stream owns provider interruption and cleanup. Interrupting
@@ -872,7 +911,9 @@ class DesktopService:
         if manifest["space"] != "productivity":
             raise ValueError("Only productivity tasks can request tool approval.")
         await self._ensure_productivity_session(manifest)
-        return await self._adapter().resolve_approval(thread_id, approval_id, decision)
+        result = await self._adapter().resolve_approval(thread_id, approval_id, decision)
+        self._pending_approvals.get(thread_id, {}).pop(approval_id, None)
+        return result
 
     async def get_pending_questions(self, *, thread_id: str) -> list[dict]:
         self.store.load_manifest(thread_id)
@@ -1276,13 +1317,30 @@ class DesktopService:
     async def reset_workspace(self) -> dict[str, Any]:
         from cleo.integrations.workspace import reset_workspace_to_main
 
-        await asyncio.to_thread(
-            reset_workspace_to_main, self.settings.active_directory_profile.root_path
-        )
+        async with self._workspace_guard:
+            root = await asyncio.to_thread(self._workspace_root, {})
+            if root in self._run_workspaces.values():
+                raise ValueError("此工作区有任务正在运行，请等待结束后再重置。")
+            await asyncio.to_thread(
+                reset_workspace_to_main, self.settings.active_directory_profile.root_path
+            )
         return {"reset": True}
 
     async def undo_changes(self, *, thread_id: str) -> dict[str, Any]:
         """Undo only the changes made by the latest productivity turn."""
+        async with self._workspace_guard:
+            manifest = self.store.load_manifest(thread_id)
+            root = await asyncio.to_thread(self._workspace_root, manifest)
+            if root in self._run_workspaces.values():
+                raise ValueError("此工作区有任务正在运行，请等待结束后再回退。")
+            if manifest.get("undo_checkpoint_shared"):
+                raise ValueError(
+                    "这轮运行与其他任务共用工作区，无法单独回退；请在 Git 中查看改动。"
+                )
+            result = await self._undo_changes(thread_id=thread_id)
+        return {**result, "workspace": await self.load_workspace()}
+
+    async def _undo_changes(self, *, thread_id: str) -> dict[str, Any]:
         manifest = self.store.load_manifest(thread_id)
         if manifest["space"] != "productivity":
             raise ValueError("只有开发任务可以回退 Git 改动。")
@@ -1299,10 +1357,7 @@ class DesktopService:
 
         result = await asyncio.to_thread(undo_git_checkpoint, checkpoint)
         self.store.update_manifest(thread_id, undo_checkpoint=None)
-        return {
-            "restoredFiles": result.restored_count,
-            "workspace": await self.load_workspace(),
-        }
+        return {"restoredFiles": result.restored_count}
 
     async def shutdown(self) -> None:
         await self._subscription_logins.close()
@@ -1428,6 +1483,13 @@ class DesktopService:
 
             capture_context_usage(event, usage)
             for projected in stream_event_item(event, state):
+                if projected["type"] == "approval-request":
+                    request = {**projected["request"], "threadId": manifest["id"]}
+                    self._pending_approvals.setdefault(manifest["id"], {})[request["id"]] = request
+                elif projected["type"] == "approval-resolved":
+                    self._pending_approvals.get(manifest["id"], {}).pop(
+                        projected["response"]["id"], None
+                    )
                 if projected.get("type") == "changes":
                     state["changes:emitted"] = projected.get("changes")
                 visible = (projected.get("item")
@@ -1468,6 +1530,10 @@ class DesktopService:
                         finalize_git_checkpoint,
                         checkpoint,
                     )
+                    if self.store.load_manifest(manifest["id"]).get("undo_checkpoint_shared"):
+                        raise ValueError(
+                            "Concurrent workspace edits cannot be attributed to one turn"
+                        )
                     self.store.update_manifest(
                         manifest["id"],
                         undo_checkpoint=completed_checkpoint.to_dict(),
@@ -1482,6 +1548,10 @@ class DesktopService:
                             read_git_checkpoint_diff,
                             completed_checkpoint,
                         )
+                        if self.store.load_manifest(manifest["id"]).get("undo_checkpoint_shared"):
+                            raise ValueError(
+                                "Concurrent workspace edits cannot be attributed to one turn"
+                            )
                         if turn_diff:
                             persisted = self.store.append_event(
                                 space=str(manifest["space"]),
@@ -1930,7 +2000,12 @@ class DesktopService:
             else manifest.get("title") or "新任务",
             "summary": summary,
             "updatedAt": relative_time(manifest.get("updated_at")),
-            "status": self._thread_status(manifest.get("status")),
+            "status": "running" if manifest["id"] in self._run_tasks else (
+                "attention" if manifest.get("status") == "running"
+                else self._thread_status(manifest.get("status"))
+            ),
+            "activeRunId": self._run_ids.get(manifest["id"]),
+            "pendingApprovals": list(self._pending_approvals.get(manifest["id"], {}).values()),
             "items": items if include_history else [],
             "history": {key: value for key, value in page.items() if key != "items"},
             "pendingQuestions": await self.get_pending_questions(thread_id=manifest["id"]),

@@ -254,7 +254,7 @@ function ThreadRow({
   return (
     <div
       className={`thread-row ${active ? "active" : ""}`}
-      data-status={thread.status}
+      data-status={thread.waitingFor ? "attention" : thread.status}
     >
       <button className="thread-row-select" type="button" onClick={onClick}>
         <span className="thread-status-dot" />
@@ -264,10 +264,10 @@ function ThreadRow({
             <time>{thread.updatedAt}</time>
           </span>
           <span className="thread-summary">{thread.summary}</span>
-          {statusLabel[thread.status] ? (
-            <span className={`thread-status-label ${thread.status}`}>
+          {thread.waitingFor || statusLabel[thread.status] ? (
+            <span className={`thread-status-label ${thread.waitingFor ? "attention" : thread.status}`}>
               {thread.status === "attention" ? <CircleAlert size={11} /> : null}
-              {statusLabel[thread.status]}
+              {thread.waitingFor === "approval" ? "等待审批" : thread.waitingFor === "question" ? "等待回答" : statusLabel[thread.status]}
             </span>
           ) : null}
         </span>

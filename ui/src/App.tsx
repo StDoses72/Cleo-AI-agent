@@ -218,7 +218,7 @@ export function App() {
   const unfinishedEvolution = evolution.state?.iteration || evolution.state?.draftDirty
     || (localCandidate?.kind === "local" && !localCandidate.savedAt);
   const displayedUpdateState: UpdateState = { ...updateState,
-    installBlocked: workspace.runningThreadId ? "请先等待当前任务结束。"
+    installBlocked: workspace.anyRunning ? "请先等待运行中的任务结束。"
       : unfinishedEvolution ? "请先保存或放弃本轮进化，再安装更新。" : null,
   };
   const toastTimerRef = useRef<number | null>(null);
@@ -448,15 +448,15 @@ export function App() {
             preparation={evolutionOpen && <EvolutionPreparation
               requests={(evolution.state?.acceptanceRequests || []).filter((r) => r.threadId === workspace.activeThreadId && !r.abandonedAt)}
               acceptance={evolution.state?.acceptance} preparing={preparingAcceptance}
-              busy={preparingAcceptance || evolution.pending || updateState.operationBusy || Boolean(workspace.runningThreadId) || evolution.state?.phase !== "idle"}
+              busy={preparingAcceptance || evolution.pending || updateState.operationBusy || workspace.anyRunning || evolution.state?.phase !== "idle"}
               onResume={(request, clarification, skip) => { void sendEvolutionPrompt(request.prompt, true,
                 request.execution ? crypto.randomUUID() : request.id, request, clarification, Boolean(request.execution), skip); }}
               onRevise={(params) => evolution.run("reviseRequest", params)} />}
           header={evolutionOpen ? <EvolutionPanel state={evolution.state} error={evolutionIssue || evolution.error}
             busy={openingEvolutionUi || evolution.pending || updateState.operationBusy || Boolean(evolution.state && evolution.state.phase !== "idle")}
-            running={Boolean(workspace.runningThreadId)} inspectorOpen={showInspector} onToggleInspector={() => setInspectorOpen((open) => !open)}
+            running={workspace.anyRunning} inspectorOpen={showInspector} onToggleInspector={() => setInspectorOpen((open) => !open)}
             onAction={evolutionAction} onRetry={() => retryEvolution.current()} onRepair={() => { void repairEvolution(); }}>
-              <EvolutionCases state={evolution.state?.acceptance} busy={evolution.pending || updateState.operationBusy || Boolean(workspace.runningThreadId) || evolution.state?.phase !== "idle"}
+              <EvolutionCases state={evolution.state?.acceptance} busy={evolution.pending || updateState.operationBusy || workspace.anyRunning || evolution.state?.phase !== "idle"}
                 requests={evolution.state?.acceptanceRequests}
                 currentCaseIds={evolution.state?.acceptanceRequests?.filter((r) => r.threadId === workspace.activeThreadId).at(-1)?.cases.map((c) => c.item.id)}
                 canCompare={Boolean(evolution.state?.candidate || evolution.state?.active) && !evolution.state?.draftDirty}
@@ -470,7 +470,7 @@ export function App() {
           onPromptChange={workspace.setPrompt}
           sendError={workspace.sendError}
           harnessSwitchStatus={workspace.harnessSwitchStatus}
-            sendBlocked={workspace.harnessSwitchStatus || (updateState.blocksTasks || (evolutionOpen && updateState.operationBusy) ? "正在处理版本，请稍候…" : evolutionOpen && (preparingAcceptance || openingEvolutionUi || evolution.pending || !evolution.state?.supported || evolution.state?.phase !== "idle") ? "正在处理本地改动，请稍候…" : workspace.startingRun ? "正在提交，请稍候…" : workspace.runningThreadId && workspace.runningThreadId !== workspace.activeThreadId ? "另一个任务正在运行，完成或停止后即可发送。" : null)}
+            sendBlocked={workspace.harnessSwitchStatus || (updateState.blocksTasks || (evolutionOpen && updateState.operationBusy) ? "正在处理版本，请稍候…" : evolutionOpen && (preparingAcceptance || openingEvolutionUi || evolution.pending || !evolution.state?.supported || evolution.state?.phase !== "idle") ? "正在处理本地改动，请稍候…" : workspace.startingRun ? "正在提交，请稍候…" : null)}
           onRename={workspace.renameThread}
           thread={conversationThread}
           project={conversationProject}
@@ -480,7 +480,7 @@ export function App() {
           productivityModels={workspace.productivityModels}
           runtimeModelsLoading={workspace.runtimeModelsLoading}
           runtimeModelsError={workspace.runtimeModelsError}
-          running={workspace.runningThreadId !== null && workspace.runningThreadId === workspace.activeThreadId}
+          running={workspace.running}
           waitingForAnswer={Boolean(workspace.questions.current)}
           undoing={undoingChanges}
           sidebarCollapsed={sidebarCollapsed}
@@ -549,7 +549,7 @@ export function App() {
         />
       )}
       {!evolutionOpen && conversationThread && window.cleoDesktop && <EvolutionCases dialogOnly open={improvementOpen} onClose={() => setImprovementOpen(false)} thread={conversationThread}
-        busy={Boolean(workspace.runningThreadId) || evolution.pending || Boolean(updateState.operationBusy)} onAction={evolutionAction} onImprove={improveFromCase} onCreate={createEvolutionCase} />}
+        busy={workspace.anyRunning || evolution.pending || Boolean(updateState.operationBusy)} onAction={evolutionAction} onImprove={improveFromCase} onCreate={createEvolutionCase} />}
       {showInspector ? (
         <Inspector
           resizeHandle={<div className="inspector-resize-handle" {...inspectorResize.handleProps} />}
@@ -595,7 +595,9 @@ export function App() {
           void workspace.copyConfigTemplate(kind).then(() => notify("配置模板已复制"));
         }}
         onResetWorkspace={() => {
-          void workspace.resetWorkspace().then(() => notify("工作区已重置到 main"));
+          void workspace.resetWorkspace()
+            .then(() => notify("工作区已重置到 main"))
+            .catch((error) => notify(error instanceof Error ? error.message : "重置失败，请重试", "error"));
         }}
         onClose={() => setSettingsOpen(false)}
       />
