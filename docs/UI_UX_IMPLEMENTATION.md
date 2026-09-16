@@ -52,4 +52,6 @@
 
 统一目录：C:\Users\steph\AppData\Local\Temp\cleo-uiux-fixes-20260916。基线导入 patch 已删除；测试将子目录放在此处并通过 finally 清理。最终完成前须删除整个任务临时目录并复核 git status。
 
+并行任务阶段清理：普通临时文件、浏览器文件、截图、日志、缓存与空目录已删除。上述目录内剩余52个测试仓库只读Git对象，位于 pytest-concurrent-safety、pytest-concurrent-safety-recheck、pytest-desktop-all、pytest-final-concurrency、pytest-service-concurrency 子目录；自动审批拒绝带 `-Force` 的删除，普通删除因只读属性失败。未声称清理全部完成，后续完成验收时需处理该明确残留。
+
 本文件是这次修复的交付/验证记录，不修改或替代仓库指导规则。
