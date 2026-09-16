@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 from threading import Event, Timer
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
@@ -11,7 +12,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from cleo.cli.chat_tui import COMMANDS as CHAT_TUI_COMMANDS
 from cleo.cli.productivity_tui import COMMANDS as PRODUCTIVITY_TUI_COMMANDS
 from cleo.desktop.service import CHAT_COMMANDS, PRODUCTIVITY_COMMANDS, DesktopService
-from cleo.harnesses.control import HarnessModel
+from cleo.harnesses.control import HarnessModel, SessionOptions
 from cleo.harnesses.models import AgentEvent
 from cleo.memory.paths import memory_state_path
 from cleo.memory.state import (
@@ -123,7 +124,7 @@ class FakeProductivity:
             type="codex_sdk",
             model="gpt-test",
             models=[],
-            options=SimpleNamespace(sandbox="workspace-write", approval_mode="on-request"),
+            options=SimpleNamespace(sandbox="workspace-write", approval_mode="auto_review"),
         )
     }
 
@@ -244,6 +245,183 @@ def _service(tmp_path: Path) -> DesktopService:
 
 async def _async_none() -> None:
     pass
+
+
+@pytest.mark.parametrize("entry", ["resume", "switch"])
+@pytest.mark.parametrize("approval", ["auto_review", "deny_all", "user"])
+def test_desktop_preserves_codex_approval_policy(tmp_path, entry, approval):
+    async def scenario():
+        service = _service(tmp_path)
+        manifest = service.store.create_session(
+            session_id="approval-policy", space="productivity", project="workspace",
+            provider="codex", owner_type="user", cwd=str(tmp_path / "workspace"),
+        )
+        adapter = SimpleNamespace(
+            session_options=lambda _: SessionOptions(
+                approval_mode=approval, sandbox="workspace-write"
+            ),
+            update_session_options=AsyncMock(), enable_questions=AsyncMock(),
+            enable_user_approvals=AsyncMock(),
+        )
+        service._adapter_instance = adapter
+        if entry == "resume":
+            await service._enable_desktop_approvals(manifest["id"], "codex")
+        else:
+            await service._prepare_harness(manifest, "codex", adapter, manifest["id"])
+        adapter.update_session_options.assert_not_awaited()
+        adapter.enable_questions.assert_awaited_once()
+        adapter.enable_user_approvals.assert_awaited_once()
+
+    asyncio.run(scenario())
+
+
+def _permission_service(tmp_path):
+    service = _service(tmp_path)
+    adapter = FakeAdapter(service.store)
+    service._adapter_instance = adapter
+    for thread_id in ("permissions", "other-task"):
+        service.store.create_session(
+            session_id=thread_id, space="productivity", project="workspace",
+            provider="codex", owner_type="user", cwd=str(tmp_path / "workspace"),
+            native_session_id=f"native-{thread_id}",
+        )
+        service._productivity_sessions[thread_id] = SimpleNamespace(id=thread_id)
+    return service, adapter
+
+
+def test_permission_changes_are_independent_persisted_and_task_scoped(tmp_path):
+    async def scenario():
+        service, adapter = _permission_service(tmp_path)
+        result = await service.update_runtime(
+            thread_id="permissions", update={"access": "full-access"},
+        )
+        assert result["access"] == "full-access"
+        assert result["approval"] == "auto_review"
+        assert result["settingsRevision"] == 1
+        assert result["pendingPermissions"] is None
+        result = await service.update_runtime(
+            thread_id="permissions", update={"approval": "deny_all"},
+        )
+        assert result["access"] == "full-access"
+        assert result["approval"] == "deny_all"
+        assert result["settingsRevision"] == 2
+        assert adapter.updated_with == {"session_id": "permissions", "approval_mode": "deny_all"}
+        saved = SessionStore(service.store.memory_root, service.settings.SESSION_INDEX_PATH)
+        assert saved.load_manifest("permissions")["runtime_options"] == {
+            "sandbox": "full-access", "approval_mode": "deny_all",
+        }
+        other = service._runtime_profile(service.store.load_manifest("other-task"))
+        assert other["access"] == "workspace-write"
+        assert other["approval"] == "auto_review"
+        assert other["settingsRevision"] == 0
+
+    asyncio.run(scenario())
+
+
+def test_running_permissions_merge_then_apply_before_next_turn(tmp_path):
+    async def scenario():
+        service, adapter = _permission_service(tmp_path)
+        service._run_tasks["permissions"] = asyncio.current_task()
+        await service.update_runtime(thread_id="permissions", update={"access": "read-only"})
+        result = await service.update_runtime(
+            thread_id="permissions", update={"approval": "user"},
+        )
+        assert adapter.updated_with is None
+        assert (result["access"], result["approval"]) == ("workspace-write", "auto_review")
+        assert result["pendingPermissions"] == {
+            "provider": "codex", "access": "read-only", "approval": "user",
+        }
+        service._run_tasks.clear()
+        events = []
+
+        async def stream(manifest, *_):
+            assert manifest["runtime_options"] == {"sandbox": "read-only", "approval_mode": "user"}
+            assert manifest["pending_runtime_permissions"] is None
+            assert events[0]["type"] == "runtime"
+
+        service._stream_productivity = stream
+        await service.stream_turn(
+            thread_id="permissions", prompt="hello", attachments=[],
+            emit=AsyncMock(side_effect=events.append),
+        )
+        assert events[0]["runtime"]["settingsRevision"] == 3
+        assert events[0]["runtime"]["pendingPermissions"] is None
+        assert not service._run_tasks
+
+    asyncio.run(scenario())
+
+
+def test_pending_permissions_can_be_discarded_and_old_snapshot_cannot_reapply(tmp_path):
+    async def scenario():
+        service, adapter = _permission_service(tmp_path)
+        service._run_tasks["permissions"] = asyncio.current_task()
+        await service.update_runtime(thread_id="permissions", update={"access": "full-access"})
+        reserved = service.store.load_manifest("permissions")
+        result = await service.update_runtime(
+            thread_id="permissions", update={"discardPendingPermissions": True},
+        )
+        assert result["pendingPermissions"] is None
+        await service._apply_pending_permissions(reserved)
+        assert adapter.updated_with is None
+        assert result["access"] == "workspace-write"
+        await service.update_runtime(thread_id="permissions", update={"access": "read-only"})
+        await service._apply_pending_permissions(reserved)
+        assert adapter.updated_with is None
+        pending = service.store.load_manifest("permissions")["pending_runtime_permissions"]
+        assert pending["options"] == {"sandbox": "read-only"}
+
+    asyncio.run(scenario())
+
+
+def test_permission_failure_preserves_pending_choice_and_blocks_turn(tmp_path):
+    async def scenario():
+        service, adapter = _permission_service(tmp_path)
+        service._run_tasks["permissions"] = asyncio.current_task()
+        await service.update_runtime(thread_id="permissions", update={"access": "read-only"})
+        service._run_tasks.clear()
+        adapter.update_session_options = AsyncMock(
+            side_effect=ValueError("runtime rejected policy"),
+        )
+        service._stream_productivity = AsyncMock()
+        with pytest.raises(ValueError, match="runtime rejected policy"):
+            await service.stream_turn(
+                thread_id="permissions", prompt="hello", attachments=[], emit=AsyncMock(),
+            )
+        service._stream_productivity.assert_not_awaited()
+        result = service._runtime_profile(service.store.load_manifest("permissions"))
+        assert result["access"] == "workspace-write"
+        assert result["pendingPermissions"]["access"] == "read-only"
+        assert not service._run_tasks
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("update", [
+    {"access": "danger-full-access"}, {"approval": "auto_allow"}, {"access": None},
+])
+def test_permission_validation_rejects_unknown_codex_modes(tmp_path, update):
+    async def scenario():
+        service, adapter = _permission_service(tmp_path)
+        with pytest.raises(ValueError, match="不支持的权限选项"):
+            await service.update_runtime(thread_id="permissions", update=update)
+        assert adapter.updated_with is None
+    asyncio.run(scenario())
+
+
+def test_permissions_cannot_be_transferred_to_another_harness(tmp_path):
+    async def scenario():
+        service, adapter = _permission_service(tmp_path)
+        service.store.update_manifest("permissions", pending_runtime_permissions={
+            "provider": "old-provider", "options": {"sandbox": "full-access"},
+        })
+        with pytest.raises(ValueError, match="之前的运行后端"):
+            await service._apply_pending_permissions(service.store.load_manifest("permissions"))
+        assert adapter.updated_with is None
+        result = await service.update_runtime(
+            thread_id="permissions", update={"discardPendingPermissions": True},
+        )
+        assert result["pendingPermissions"] is None
+    asyncio.run(scenario())
 
 
 def test_concurrent_streams_and_late_cancellation_are_task_scoped(tmp_path, monkeypatch):
@@ -906,7 +1084,7 @@ def test_create_productivity_thread_uses_selected_workspace(tmp_path: Path) -> N
         }
         assert thread["projectId"] == "productivity:selected-project"
         assert thread["runtime"]["effort"] == "low"
-        assert thread["runtime"]["approval"] == "user"
+        assert thread["runtime"]["approval"] == "auto_review"
         assert adapter.approvals_enabled == [thread["id"]]
         assert adapter.updated_with == {
             "session_id": thread["id"],

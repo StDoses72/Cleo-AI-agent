@@ -227,6 +227,13 @@ export interface MemoryEntry {
 }
 
 export interface RuntimeProfile {
+  settingsRevision?: number;
+  permissionOptions?: {
+    access: { value: string; label: string; description: string }[];
+    approval: { value: string; label: string; description: string }[];
+    reason?: string;
+  };
+  pendingPermissions?: { provider: string; access?: string | null; approval?: string | null } | null;
   handoffStatus?: "prepared" | "submitted" | "completed" | null;
   supportsQuestions?: boolean;
   profileId?: string;
@@ -239,6 +246,10 @@ export interface RuntimeProfile {
   contextWindow?: number;
   editable?: boolean;
 }
+
+export type RuntimeUpdate = Partial<Pick<RuntimeProfile, "model" | "effort" | "access" | "approval" | "profileId">> & {
+  discardPendingPermissions?: boolean;
+};
 
 export interface RuntimeModelOption {
   id: string;
@@ -510,7 +521,7 @@ export interface CleoClient {
   streamTurn(threadId: string, prompt: string, attachments?: Attachment[], runId?: string): AsyncGenerator<StreamEvent>;
   cancelRun(threadId: string, runId?: string): Promise<boolean>;
   resolveApproval(threadId: string, approvalId: string, decision: ApprovalDecision): Promise<void>;
-  updateRuntime(threadId: string, update: Partial<RuntimeProfile>): Promise<RuntimeProfile>;
+  updateRuntime(threadId: string, update: RuntimeUpdate): Promise<RuntimeProfile>;
   switchHarness(threadId: string, provider: string, model: string, effort?: RuntimeProfile["effort"]): Promise<RuntimeProfile>;
   pickAttachments(): Promise<Attachment[]>;
   prepareAttachments(files: File[]): Promise<Attachment[]>;

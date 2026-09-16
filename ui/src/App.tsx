@@ -583,6 +583,8 @@ export function App() {
         onMotionChange={setMotionEnabled}
         dreamAgent={workspace.snapshot.memoryOverview.dream_agent}
         runtime={settingsRuntime}
+        runtimeThread={selectedThread}
+        onPermissionsChange={workspace.updatePermissions}
         supportedEfforts={supportedEfforts}
         modelSettings={workspace.modelSettings}
         modelSettingsLoading={workspace.modelSettingsLoading}

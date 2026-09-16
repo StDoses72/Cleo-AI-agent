@@ -17,6 +17,7 @@ import type {
   ProductivityModelCatalog,
   RuntimeCatalog,
   RuntimeProfile,
+  RuntimeUpdate,
   Thread,
   ThreadSpace,
   TimelineItem,
@@ -287,7 +288,10 @@ export function useCleoWorkspace(evolutionOpen = false) {
             ...current,
             threads: current.threads.map((thread) =>
               thread.id === threadId ? (() => {
-                const next = update(thread);
+                let next = update(thread);
+                if ((next.runtime?.settingsRevision ?? 0) < (thread.runtime?.settingsRevision ?? 0)) {
+                  next = { ...next, runtime: thread.runtime };
+                }
                 const items = boundTimeline(next.items);
                 return { ...next, items, history: next.history && {
                   ...next.history,
@@ -840,7 +844,12 @@ export function useCleoWorkspace(evolutionOpen = false) {
     }
   };
 
-  const updateRuntime = (update: Partial<RuntimeProfile>) => {
+  const updatePermissions = async (threadId: string, update: RuntimeUpdate) => {
+    const runtime = await cleoClient.updateRuntime(threadId, update);
+    updateThread(threadId, current => ({ ...current, runtime }));
+  };
+
+  const updateRuntime = (update: RuntimeUpdate) => {
     if (activeSpace === "productivity" && update.effort) {
       setDraftEffort(update.effort);
     }
@@ -850,17 +859,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
     void cleoClient
       .updateRuntime(threadId, update)
       .then((runtime) => {
-        setSnapshot((current) =>
-          current
-            ? {
-                ...current,
-                runtime,
-                threads: current.threads.map((thread) =>
-                  thread.id === threadId ? { ...thread, runtime } : thread,
-                ),
-              }
-            : current,
-        );
+        updateThread(threadId, current => ({ ...current, runtime }));
       })
       .catch((error: unknown) => {
         if (selectionRef.current !== selection) return;
@@ -1192,6 +1191,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
     cancelRun,
     resolveApproval,
     updateRuntime,
+    updatePermissions,
     selectNonProductivityProfile,
     loadProductivityModels,
     selectProductivityRuntime,

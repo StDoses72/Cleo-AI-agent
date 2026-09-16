@@ -16,6 +16,7 @@ import type {
   MemoryReviewDetails,
   MemoryReviewSource,
   RuntimeProfile,
+  RuntimeUpdate,
   StreamEvent,
   Thread,
   ThreadSpace,
@@ -501,10 +502,17 @@ export class MockCleoClient implements CleoClient {
   }
 
   async updateRuntime(
-    _threadId: string,
-    update: Partial<RuntimeProfile>,
+    threadId: string,
+    update: RuntimeUpdate,
   ): Promise<RuntimeProfile> {
-    return { ...snapshot.runtime, ...update };
+    const thread = snapshot.threads.find(item => item.id === threadId);
+    if (!thread) throw new Error("Unknown thread");
+    const current = thread.runtime ?? snapshot.runtime;
+    const { discardPendingPermissions, ...changes } = update;
+    const runtime = { ...current, ...changes, settingsRevision: (current.settingsRevision ?? 0) + 1,
+      ...(discardPendingPermissions ? { pendingPermissions: null } : {}) };
+    thread.runtime = runtime;
+    return clone(runtime);
   }
 
   async switchHarness(threadId: string, provider: string, model: string, effort?: RuntimeProfile["effort"]): Promise<RuntimeProfile> {

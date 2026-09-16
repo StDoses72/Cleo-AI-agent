@@ -88,6 +88,7 @@ def test_desktop_dispatch_uses_selected_harness_and_keeps_builtins(skill_home, t
     service._is_evolution = lambda _: False
     service._productivity_provider = lambda name: SimpleNamespace(type=f"{name}_sdk")
     service._run_tasks = {}
+    service._runtime_locks = {}
     service._run_ids = {}
     service._pending_approvals = {}
     service._run_workspaces = {}

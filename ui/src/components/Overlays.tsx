@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { dreamStatusLabel } from "../memoryStatus";
 import { UpdateVersionPicker } from "./UpdateVersionPicker";
 import { handleDialogKeyDown, Modal } from "./Modal";
-import { accessLabel, effortLabels } from "../runtime-labels";
+import { accessLabel, approvalLabel, effortLabels } from "../runtime-labels";
 import {
   ArrowRight,
   Brain,
@@ -36,6 +36,7 @@ import type {
   MemoryOverview,
   Project,
   RuntimeProfile,
+  RuntimeUpdate,
   UpdateState,
   WorkspaceSpace,
 } from "../types";
@@ -286,6 +287,8 @@ interface SettingsModalProps {
   onMotionChange: (enabled: boolean) => void;
   dreamAgent: MemoryOverview["dream_agent"];
   runtime: RuntimeProfile;
+  runtimeThread?: { id: string; title: string } | null;
+  onPermissionsChange?: (threadId: string, update: RuntimeUpdate) => Promise<void>;
   supportedEfforts: NonNullable<RuntimeProfile["effort"]>[];
   modelSettings: ModelSettings | null;
   modelSettingsLoading: boolean;
@@ -295,7 +298,7 @@ interface SettingsModalProps {
   agentInstructionsError?: string | null;
   updateState: UpdateState;
   onThemeChange: (theme: "dark" | "light") => void;
-  onRuntimeChange: (update: Partial<RuntimeProfile>) => void;
+  onRuntimeChange: (update: RuntimeUpdate) => void;
   onLoadModelSettings: () => Promise<ModelSettings>;
   onApplyModelSettings: ApplyModelSettings;
   onLoadAgentInstructions: () => Promise<AgentInstructions>;
@@ -322,6 +325,8 @@ export function SettingsModal({
   onMotionChange,
   dreamAgent,
   runtime,
+  runtimeThread,
+  onPermissionsChange,
   supportedEfforts,
   modelSettings,
   modelSettingsLoading,
@@ -405,10 +410,12 @@ export function SettingsModal({
             </div>
           ) : page === "agent" ? (
             <div className="settings-page">
+              {runtimeThread && <p className="settings-scope">当前任务 · {runtimeThread.title}</p>}
               <SettingsRow title="服务"><span className="settings-value">{runtime.provider}</span></SettingsRow>
               <SettingsRow title="当前任务模型">{runtime.editable === false ? <span className="settings-value">{runtime.model}</span> : <select aria-label="当前任务模型" value={runtime.model} onChange={event => onRuntimeChange({ model: event.target.value })}>{(runtime.models?.length ? runtime.models : [runtime.model]).map(model => <option key={model}>{model}</option>)}</select>}</SettingsRow>
               <SettingsRow title="思考深度"><div className="segmented-control">{supportedEfforts.length ? supportedEfforts.map((effort) => <button className={runtime.effort === effort ? "active" : ""} type="button" key={effort} onClick={() => onRuntimeChange({ effort })}>{effortLabels[effort] ?? effort}</button>) : <span className="settings-value">由模型决定</span>}</div></SettingsRow>
-              <SettingsRow title="文件访问"><span className="settings-value" title={runtime.access}>{accessLabel(runtime.access)}</span></SettingsRow>
+              <RuntimePermissions key={runtimeThread?.id ?? "draft"} runtime={runtime}
+                threadId={runtimeThread?.id} onChange={onPermissionsChange} />
             </div>
           ) : page === "instructions" || isModels ? null : page === "updates" ? (
             <UpdateSettingsPage
@@ -432,6 +439,50 @@ export function SettingsModal({
       </div>
     </Modal>
   );
+}
+
+function RuntimePermissions({ runtime, threadId, onChange }: {
+  runtime: RuntimeProfile;
+  threadId?: string;
+  onChange?: (threadId: string, update: RuntimeUpdate) => Promise<void>;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const inFlight = useRef(false);
+  const pending = runtime.pendingPermissions;
+  const sameProvider = !pending || pending.provider === runtime.provider;
+  const change = async (update: RuntimeUpdate) => {
+    if (!threadId || !onChange || inFlight.current) return;
+    inFlight.current = true;
+    setSaving(true); setError("");
+    try { await onChange(threadId, update); }
+    catch (error) { setError(error instanceof Error ? error.message : "权限更改未保存，请重试。"); }
+    finally { inFlight.current = false; setSaving(false); }
+  };
+  return <>
+    {(["access", "approval"] as const).map(field => {
+      const title = field === "access" ? "文件访问" : "审批方式";
+      const label = field === "access" ? accessLabel : approvalLabel;
+      const choices = runtime.permissionOptions?.[field] ?? [];
+      const value = (sameProvider && pending?.[field]) || runtime[field];
+      const choice = choices.find(choice => choice.value === value);
+      return <SettingsRow key={field} title={title} description={choice?.description}>
+        {threadId && onChange && choices.length ? <select aria-label={title} value={value} disabled={saving}
+          onChange={event => void change({ [field]: event.target.value })}>
+          {!choice && <option value={value}>{label(value)}</option>}
+          {choices.map(choice => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
+        </select> : <span className="settings-value">{label(runtime[field])}</span>}
+      </SettingsRow>;
+    })}
+    {pending && <div className="settings-permission-pending" role="status">
+      <p>{sameProvider ? `下次运行使用所选权限。当前：${accessLabel(runtime.access)} · ${approvalLabel(runtime.approval)}。`
+        : "待生效权限属于之前的服务，请重新选择或取消更改。"}</p>
+      <button className="settings-action" disabled={saving} onClick={() => void change({ discardPendingPermissions: true })}>取消更改</button>
+    </div>}
+    {runtime.permissionOptions?.reason && <p className="settings-scope">{runtime.permissionOptions.reason}</p>}
+    {saving && <p className="settings-scope" role="status">正在保存…</p>}
+    {error && <p className="settings-error" role="alert">{error}</p>}
+  </>;
 }
 
 function formatBytes(value: number) {

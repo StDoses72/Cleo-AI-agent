@@ -17,6 +17,7 @@ import type {
   MemoryReviewDetails,
   MemoryReviewSource,
   RuntimeProfile,
+  RuntimeUpdate,
   StreamEvent,
   Thread,
   ThreadSpace,
@@ -163,7 +164,7 @@ export class IpcCleoClient implements CleoClient {
 
   async updateRuntime(
     threadId: string,
-    update: Partial<RuntimeProfile>,
+    update: RuntimeUpdate,
   ): Promise<RuntimeProfile> {
     return this.bridge.request("update_runtime", { thread_id: threadId, update });
   }

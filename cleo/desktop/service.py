@@ -152,6 +152,7 @@ class DesktopService:
         self._pending_approvals: dict[str, dict[str, dict[str, Any]]] = {}
         self._run_workspaces: dict[str, str] = {}
         self._workspace_guard = asyncio.Lock()
+        self._runtime_locks: dict[str, asyncio.Lock] = {}
         self._harness_switches: set[str] = set()
         self._project_paths: dict[str, str] = {}
 
@@ -849,6 +850,13 @@ class DesktopService:
             if prompt.startswith("/"):
                 await self._run_command(manifest, prompt, emit)
                 return
+            if manifest["space"] == "productivity":
+                had_pending_permissions = bool(manifest.get("pending_runtime_permissions"))
+                async with self._runtime_lock(thread_id):
+                    await self._apply_pending_permissions(manifest)
+                    manifest = self.store.load_manifest(thread_id)
+                if had_pending_permissions:
+                    await emit({"type": "runtime", "runtime": self._runtime_profile(manifest)})
             async with self._workspace_guard:
                 root = await asyncio.to_thread(self._workspace_root, manifest)
                 self._run_workspaces[thread_id] = root
@@ -939,10 +947,6 @@ class DesktopService:
                 options.update(sandbox="workspace-write", approval_mode="deny_all")
             elif settings.type == "claude_sdk":
                 options["approval_mode"] = "acceptEdits"
-        elif settings.type == "codex_sdk":
-            current = implementation.session_options(session_id)
-            if current.approval_mode == "auto_review":
-                options["approval_mode"] = "user"
         if effort is not None:
             options["effort"] = effort
         if options:
@@ -950,8 +954,7 @@ class DesktopService:
         questions = getattr(implementation, "enable_questions", None)
         if callable(questions):
             await questions(session_id)
-        if (not self._is_evolution(manifest) and settings.type == "codex_sdk"
-                and implementation.session_options(session_id).approval_mode != "deny_all"):
+        if not self._is_evolution(manifest) and settings.type == "codex_sdk":
             await implementation.enable_user_approvals(session_id)
 
     async def switch_harness(
@@ -976,45 +979,80 @@ class DesktopService:
             if active is not None and not active.done():
                 # Shield keeps cancelling the picker from cancelling the original turn.
                 await asyncio.gather(asyncio.shield(active), return_exceptions=True)
-            manifest = self.store.load_manifest(thread_id)
-            if provider == manifest["provider"]:
-                update = {"model": model} if model else {}
-                if effort is not None:
-                    update["effort"] = effort
-                return await self._update_runtime(thread_id=thread_id, update=update)
+            async with self._runtime_lock(thread_id):
+                manifest = self.store.load_manifest(thread_id)
+                if provider == manifest["provider"]:
+                    update = {"model": model} if model else {}
+                    if effort is not None:
+                        update["effort"] = effort
+                    return await self._update_runtime(thread_id=thread_id, update=update)
 
-            async def prepare(implementation, session_id):
-                await self._prepare_harness(
-                    manifest, provider, implementation, session_id, effort,
+                async def prepare(implementation, session_id):
+                    await self._prepare_harness(
+                        manifest, provider, implementation, session_id, effort,
+                    )
+                    # Existing-schema registration keeps the name usable by older versions.
+                    if provider not in self.settings.productivity.providers:
+                        from cleo.config.settings import HARNESSES_CONFIG_PATH
+                        from cleo.desktop.task_harnesses import register_task_provider
+
+                        register_task_provider(HARNESSES_CONFIG_PATH, provider, selected)
+                        self.settings.productivity.providers[provider] = selected
+
+                session = await adapter.switch_session(
+                    thread_id, provider, model or selected.model, prepare=prepare,
                 )
-                # Existing-schema registration keeps the name usable by older versions.
-                if provider not in self.settings.productivity.providers:
-                    from cleo.config.settings import HARNESSES_CONFIG_PATH
-                    from cleo.desktop.task_harnesses import register_task_provider
-
-                    register_task_provider(HARNESSES_CONFIG_PATH, provider, selected)
-                    self.settings.productivity.providers[provider] = selected
-
-            session = await adapter.switch_session(
-                thread_id, provider, model or selected.model, prepare=prepare,
-            )
-            self._productivity_sessions[thread_id] = session
-            return self._runtime_profile(self.store.load_manifest(thread_id))
+                self._productivity_sessions[thread_id] = session
+                self._runtime_revision(thread_id)
+                return self._runtime_profile(self.store.load_manifest(thread_id))
         finally:
             self._harness_switches.discard(thread_id)
 
     async def update_runtime(self, *, thread_id: str, update: dict[str, Any]) -> dict[str, Any]:
-        if thread_id in getattr(self, "_harness_switches", set()):
-            raise ValueError("正在切换 harness，请等待交接完成后修改运行参数。")
-        return await self._update_runtime(thread_id=thread_id, update=update)
+        async with self._runtime_lock(thread_id):
+            if thread_id in getattr(self, "_harness_switches", set()):
+                raise ValueError("正在切换 harness，请等待交接完成后修改运行参数。")
+            return await self._update_runtime(thread_id=thread_id, update=update)
+
+    def _runtime_lock(self, thread_id: str) -> asyncio.Lock:
+        return self._runtime_locks.setdefault(thread_id, asyncio.Lock())
+
+    def _runtime_revision(self, thread_id: str, **changes) -> None:
+        manifest = self.store.load_manifest(thread_id)
+        self.store.update_manifest(
+            thread_id, runtime_settings_revision=manifest.get("runtime_settings_revision", 0) + 1,
+            **changes,
+        )
+
+    async def _apply_pending_permissions(self, manifest: dict[str, Any]) -> None:
+        pending = manifest.get("pending_runtime_permissions")
+        if not pending:
+            return
+        # Changes made after this run was reserved belong to the following run.
+        latest = self.store.load_manifest(manifest["id"])
+        if latest.get("pending_runtime_permissions") != pending:
+            return
+        if pending["provider"] != manifest["provider"]:
+            raise ValueError("待生效权限属于之前的运行后端，请在运行设置中重新选择或取消更改。")
+        await self._ensure_productivity_session(manifest)
+        await self._adapter().update_session_options(manifest["id"], **pending["options"])
+        latest = self.store.load_manifest(manifest["id"])
+        remaining = latest.get("pending_runtime_permissions")
+        self._runtime_revision(
+            manifest["id"], pending_runtime_permissions=None if remaining == pending else remaining,
+        )
 
     async def _update_runtime(
         self,
         *,
         thread_id: str,
         update: dict[str, Any],
+        command: bool = False,
     ) -> dict[str, Any]:
         manifest = self.store.load_manifest(thread_id)
+        if update.get("discardPendingPermissions") is True:
+            self._runtime_revision(thread_id, pending_runtime_permissions=None)
+            return self._runtime_profile(self.store.load_manifest(thread_id))
         if manifest["space"] != "productivity":
             if "profileId" not in update:
                 return self._runtime_profile(manifest)
@@ -1044,7 +1082,6 @@ class DesktopService:
             self._chat_agents.pop(thread_id, None)
             self._chat_agents_restored.discard(thread_id)
             return self._runtime_profile(self.store.load_manifest(thread_id))
-        await self._ensure_productivity_session(manifest)
         options: dict[str, Any] = {}
         if self._is_evolution(manifest):
             if update.get("access", "workspace-write") != "workspace-write":
@@ -1059,8 +1096,31 @@ class DesktopService:
             options["sandbox"] = str(update["access"])
         if "approval" in update:
             options["approval_mode"] = str(update["approval"])
+        permission_update = "access" in update or "approval" in update
+        if permission_update:
+            from cleo.desktop.runtime_permissions import validate_permissions
+
+            validate_permissions(self._productivity_provider(manifest["provider"]).type, update)
+        await self._ensure_productivity_session(manifest)
+        if permission_update and thread_id in self._run_tasks and not command:
+            if set(options) - {"sandbox", "approval_mode"}:
+                raise ValueError("运行中请分别调整模型和权限。权限更改将在下次运行使用。")
+            previous = manifest.get("pending_runtime_permissions") or {}
+            saved = (previous.get("options", {})
+                     if previous.get("provider") == manifest["provider"] else {})
+            self._runtime_revision(thread_id, pending_runtime_permissions={
+                "provider": manifest["provider"], "options": {**saved, **options},
+            })
+            return self._runtime_profile(self.store.load_manifest(thread_id))
+        if permission_update:
+            pending = manifest.get("pending_runtime_permissions") or {}
+            if pending.get("provider") == manifest["provider"]:
+                options = {**pending["options"], **options}
         if options:
             await self._adapter().update_session_options(thread_id, **options)
+            self._runtime_revision(
+                thread_id, **({"pending_runtime_permissions": None} if permission_update else {}),
+            )
         return self._runtime_profile(self.store.load_manifest(thread_id))
 
     async def get_config_templates(self) -> dict[str, str]:
@@ -1727,7 +1787,11 @@ class DesktopService:
             await self._notice(emit, "工作区差异", "已刷新右侧变更面板。", "success")
         elif command == "/model":
             if argument:
-                await adapter.update_session_options(manifest["id"], model=argument)
+                async with self._runtime_lock(manifest["id"]):
+                    runtime = await self._update_runtime(
+                        thread_id=manifest["id"], update={"model": argument}, command=True,
+                    )
+                await emit({"type": "runtime", "runtime": runtime})
                 await self._notice(emit, "模型已更新", argument, "success")
             else:
                 models = await adapter.list_models(manifest["provider"])
@@ -1748,8 +1812,12 @@ class DesktopService:
                     str(getattr(options, field) or "default"),
                 )
             else:
-                update = {field: argument}
-                await adapter.update_session_options(manifest["id"], **update)
+                ui_field = {"sandbox": "access", "approval_mode": "approval"}.get(field, field)
+                async with self._runtime_lock(manifest["id"]):
+                    runtime = await self._update_runtime(
+                        thread_id=manifest["id"], update={ui_field: argument}, command=True,
+                    )
+                await emit({"type": "runtime", "runtime": runtime})
                 await self._notice(emit, "运行参数已更新", f"{field} = {argument}", "success")
         elif command == "/cd":
             target = resolve_productivity_cwd(argument, session.project_path)
@@ -2070,7 +2138,8 @@ class DesktopService:
             ),
             "approval": str(
                 options.get("approval_mode")
-                or getattr(provider_settings.options, "approval_mode", "default")
+                or getattr(provider_settings.options, "approval_mode", None)
+                or getattr(provider_settings.options, "permission_mode", "default")
             ),
             "contextWindow": 128_000,
             "handoffStatus": handoff_status(self.store.read_events(manifest["id"])),
@@ -2078,6 +2147,25 @@ class DesktopService:
             "supportsQuestions": getattr(provider_settings, "type", None) in {
                 "codex_sdk", "claude_sdk",
             },
+            "settingsRevision": manifest.get("runtime_settings_revision", 0),
+            "permissionOptions": self._permission_options(manifest, provider_settings),
+            "pendingPermissions": self._pending_permissions_profile(manifest),
+        }
+
+    def _permission_options(self, manifest, provider_settings):
+        from cleo.desktop.runtime_permissions import permission_choices
+
+        return permission_choices(provider_settings.type, fixed=self._is_evolution(manifest))
+
+    @staticmethod
+    def _pending_permissions_profile(manifest):
+        pending = manifest.get("pending_runtime_permissions")
+        if not pending:
+            return None
+        options = pending["options"]
+        return {
+            "provider": pending["provider"],
+            "access": options.get("sandbox"), "approval": options.get("approval_mode"),
         }
 
     def _agent_profiles(self) -> dict[str, Any]:
@@ -2178,14 +2266,8 @@ class DesktopService:
         if self._is_evolution(self.store.load_manifest(session_id)):
             return
         settings = self._productivity_provider(provider)
-        options = self._adapter().session_options(session_id)
-        if settings.type != "codex_sdk" or options.approval_mode == "deny_all":
+        if settings.type != "codex_sdk":
             return
-        if options.approval_mode == "auto_review":
-            await self._adapter().update_session_options(
-                session_id,
-                approval_mode="user",
-            )
         await self._adapter().enable_user_approvals(session_id)
 
     def _productivity_provider(self, name: str) -> Any:
