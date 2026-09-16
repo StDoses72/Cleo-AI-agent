@@ -59,6 +59,11 @@ export class MockCleoClient implements CleoClient {
     return result;
   }
 
+  async loadMemory(): Promise<Pick<WorkspaceSnapshot, "memories" | "memoryOverview">> {
+    await delay(60);
+    return clone({ memories: snapshot.memories, memoryOverview: snapshot.memoryOverview });
+  }
+
   async loadThread(threadId: string): Promise<Thread> {
     await delay(120);
     const thread = snapshot.threads.find((candidate) => candidate.id === threadId);

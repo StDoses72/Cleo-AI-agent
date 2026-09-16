@@ -60,6 +60,7 @@ import type {
 } from "../types";
 import { ApprovalPrompt } from "./ApprovalPrompt";
 import { RenameThreadDialog } from "./Overlays";
+import { handleDialogKeyDown } from "./Modal";
 
 interface ConversationProps {
   history?: ReturnType<typeof useTimelineHistory>;
@@ -315,7 +316,7 @@ export function Conversation({
       {questionUI}
       {readerError && <p className="history-error" role="alert">{readerError}</p>}
       <dialog ref={readerDialog} className="history-reader" data-content-kind={reader?.item.type} aria-label="完整历史正文"
-        onKeyDown={event => event.stopPropagation()} onCancel={() => { readerGeneration.current++; setReader(null); }}>
+        onKeyDown={handleDialogKeyDown} onCancel={() => { readerGeneration.current++; setReader(null); }}>
         {reader && <><header><strong>完整历史正文</strong><button onClick={() => { readerGeneration.current++; setReader(null); }}>关闭正文</button></header>
           <p>{reader.offset + 1}–{reader.next} / {reader.total} 字符</p><pre>{reader.text}</pre>
           <footer><button disabled={!reader.offset} onClick={() => void readContent(reader.item, reader.field, Math.max(0, reader.offset - 16384))}>上一段</button>

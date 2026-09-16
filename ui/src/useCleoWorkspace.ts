@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cleoClient } from "./services/cleoClient";
 import { boundTimeline } from "./timeline-cache";
 import { useTimelineHistory } from "./useTimelineHistory";
@@ -49,6 +49,40 @@ const EVOLUTION_PROJECT = "productivity:cleo-evolution";
 export function useCleoWorkspace(evolutionOpen = false) {
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
   const [loadingError, setLoadingError] = useState<string | null>(null);
+  const [memoryError, setMemoryError] = useState<string | null>(null);
+  const [memoryRefreshing, setMemoryRefreshing] = useState(false);
+  const memoryRevision = useRef(0);
+  const memoryRefresh = useRef<Promise<void> | null>(null);
+  const refreshMemory = useCallback(() => {
+    memoryRevision.current++;
+    if (memoryRefresh.current) return memoryRefresh.current;
+    const read = async () => {
+      setMemoryRefreshing(true);
+      let revision: number;
+      do {
+        revision = memoryRevision.current;
+        try {
+          const memory = await cleoClient.loadMemory();
+          if (revision === memoryRevision.current) {
+            setSnapshot(current => current && { ...current, ...memory });
+            setMemoryError(null);
+          }
+        } catch (error) {
+          if (revision === memoryRevision.current) setMemoryError(error instanceof Error ? error.message : "无法刷新记忆");
+        }
+      } while (revision !== memoryRevision.current);
+    };
+    memoryRefresh.current = read().finally(() => { memoryRefresh.current = null; setMemoryRefreshing(false); });
+    return memoryRefresh.current;
+  }, []);
+  const [bootstrapVersion, setBootstrapVersion] = useState(0);
+  const loadingRetry = useRef<(() => void) | null>(null);
+  const clearLoadingError = () => { setLoadingError(null); loadingRetry.current = null; };
+  const retryLoading = () => {
+    const retry = loadingRetry.current;
+    clearLoadingError();
+    if (retry) retry(); else setBootstrapVersion(version => version + 1);
+  };
   // Navigation is local to each view; the shared snapshot still owns all timelines by ID.
   const [workspaceSpace, setActiveSpace] = useState<WorkspaceSpace>("productivity");
   const [workspaceProjectId, setActiveProjectId] = useState("cleo-agent");
@@ -57,6 +91,19 @@ export function useCleoWorkspace(evolutionOpen = false) {
   const activeSpace = evolutionOpen ? "productivity" : workspaceSpace;
   const activeProjectId = evolutionOpen ? EVOLUTION_PROJECT : workspaceProjectId;
   const activeThreadId = evolutionOpen ? evolutionThreadId : workspaceThreadId;
+  useEffect(() => {
+    if (activeSpace !== "memory") return;
+    const refresh = () => { if (!document.hidden) void refreshMemory(); };
+    refresh();
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    const timer = window.setInterval(refresh, 15000);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+      window.clearInterval(timer);
+    };
+  }, [activeSpace, refreshMemory]);
   const [runningThreadId, setRunningThreadId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, ComposerDraft>>({});
   const [startingRun, setStartingRun] = useState(false);
@@ -71,8 +118,10 @@ export function useCleoWorkspace(evolutionOpen = false) {
   const runLockRef = useRef(false);
   const [modelSettings, setModelSettings] = useState<ModelSettings | null>(null);
   const [modelSettingsLoading, setModelSettingsLoading] = useState(false);
+  const [modelSettingsError, setModelSettingsError] = useState<string | null>(null);
   const [agentInstructions, setAgentInstructions] = useState<AgentInstructions | null>(null);
   const [agentInstructionsLoading, setAgentInstructionsLoading] = useState(false);
+  const [agentInstructionsError, setAgentInstructionsError] = useState<string | null>(null);
   const [runtimeCatalog, setRuntimeCatalog] = useState<RuntimeCatalog | null>(null);
   const [productivityModels, setProductivityModels] = useState<Record<string, ProductivityModelCatalog>>({});
   const [runtimeModelsLoading, setRuntimeModelsLoading] = useState<string | null>(null);
@@ -153,7 +202,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [bootstrapVersion]);
 
   const activeThread = useMemo(
     () => snapshot?.threads.find((thread) => thread.id === activeThreadId) ?? null,
@@ -244,6 +293,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
   }, [activeThreadId, workspaceThreadId, evolutionThreadId, runningThreadId]);
 
   const selectSpace = (space: WorkspaceSpace) => {
+    clearLoadingError();
     if (space === activeSpace && activeProject?.id !== "productivity:cleo-evolution") return;
     selectionRef.current += 1;
     setActiveSpace(space);
@@ -283,6 +333,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
   };
 
   const selectProject = (projectId: string) => {
+    clearLoadingError();
     selectionRef.current += 1;
     setActiveProjectId(projectId);
     if (!snapshot || activeSpace === "memory") return;
@@ -293,6 +344,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
   };
 
   const selectThread = (threadId: string) => {
+    clearLoadingError();
     const thread = snapshot?.threads.find((candidate) => candidate.id === threadId);
     if (!thread || thread.projectId === EVOLUTION_PROJECT) return;
     const selection = ++selectionRef.current;
@@ -309,6 +361,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
       })
       .catch((error: unknown) => {
         if (selectionRef.current !== selection) return;
+        loadingRetry.current = () => selectThread(threadId);
         setLoadingError(error instanceof Error ? error.message : "无法恢复历史记录");
       });
   };
@@ -604,6 +657,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
           (candidate) => candidate.threadId !== threadId,
         ));
         questions.finish(threadId);
+        void refreshMemory();
         if (history.isFollowing(threadId) && thread.history) await history.load("latest");
       }
     }
@@ -637,6 +691,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
     runLockRef.current = false;
     setRunningThreadId(null);
     questions.finish(threadId);
+    void refreshMemory();
     setPendingApprovals((current) => current.filter(
       (candidate) => candidate.threadId !== threadId,
     ));
@@ -698,6 +753,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
     }
     const threadId = activeThreadId;
     if (!threadId) return;
+    const selection = selectionRef.current;
     void cleoClient
       .updateRuntime(threadId, update)
       .then((runtime) => {
@@ -714,6 +770,8 @@ export function useCleoWorkspace(evolutionOpen = false) {
         );
       })
       .catch((error: unknown) => {
+        if (selectionRef.current !== selection) return;
+        loadingRetry.current = () => updateRuntime(update);
         setLoadingError(error instanceof Error ? error.message : "无法更新运行参数");
       });
   };
@@ -918,10 +976,14 @@ export function useCleoWorkspace(evolutionOpen = false) {
   };
   const loadModelSettings = async () => {
     setModelSettingsLoading(true);
+    setModelSettingsError(null);
     try {
       const loaded = await cleoClient.getModelSettings();
       setModelSettings(loaded);
       return loaded;
+    } catch (error) {
+      setModelSettingsError(error instanceof Error ? error.message : "无法读取模型配置");
+      throw error;
     } finally {
       setModelSettingsLoading(false);
     }
@@ -949,10 +1011,14 @@ export function useCleoWorkspace(evolutionOpen = false) {
   };
   const loadAgentInstructions = async () => {
     setAgentInstructionsLoading(true);
+    setAgentInstructionsError(null);
     try {
       const loaded = await cleoClient.getAgentInstructions();
       setAgentInstructions(loaded);
       return loaded;
+    } catch (error) {
+      setAgentInstructionsError(error instanceof Error ? error.message : "无法读取对话指令");
+      throw error;
     } finally {
       setAgentInstructionsLoading(false);
     }
@@ -973,15 +1039,10 @@ export function useCleoWorkspace(evolutionOpen = false) {
   ) => {
     try {
       const refreshed = await cleoClient.reviewMemorySource(source, action);
-      setSnapshot(refreshed);
+      await refreshMemory();
       return refreshed;
     } catch (error) {
-      // Show the persisted failure/checkpoint state while preserving the original error.
-      try {
-        setSnapshot(await cleoClient.loadWorkspace());
-      } catch (refreshError) {
-        setLoadingError(refreshError instanceof Error ? refreshError.message : "无法刷新记忆状态");
-      }
+      await refreshMemory();
       throw error;
     }
   };
@@ -994,6 +1055,11 @@ export function useCleoWorkspace(evolutionOpen = false) {
     skills: activeThread?.skills ?? (draftSkills?.key === skillKey && !evolutionOpen ? draftSkills.skills : []),
     snapshot,
     loadingError,
+    memoryError,
+    memoryRefreshing,
+    refreshMemory,
+    clearLoadingError,
+    retryLoading,
     activeSpace,
     activeProject,
     activeProjectId,
@@ -1009,8 +1075,10 @@ export function useCleoWorkspace(evolutionOpen = false) {
     harnessSwitchStatus,
     modelSettings,
     modelSettingsLoading,
+    modelSettingsError,
     agentInstructions,
     agentInstructionsLoading,
+    agentInstructionsError,
     runtimeCatalog,
     productivityModels,
     runtimeModelsLoading,

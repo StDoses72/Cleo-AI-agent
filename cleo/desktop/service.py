@@ -176,10 +176,7 @@ class DesktopService:
                         manifests[0]["id"] if manifests else None)
         threads = [await self._thread(m, include_history=m["id"] == selected) for m in manifests]
         self._debug("load overview")
-        overview = build_memory_overview(
-            memory_root=self.settings.MEMORY_DIR,
-        )
-        memories = [self._memory_entry(entry) for entry in overview["entries"]]
+        memory = await self.load_memory()
         self._debug("load result")
         active_manifest = next(
             (
@@ -192,8 +189,7 @@ class DesktopService:
         return {
             "projects": projects,
             "threads": threads,
-            "memories": memories,
-            "memoryOverview": overview,
+            **memory,
             "runtime": self._runtime_profile(active_manifest),
             "activeThreadId": active_manifest["id"] if active_manifest else None,
             "activeSpace": self._ui_space(active_manifest["space"])
@@ -208,6 +204,16 @@ class DesktopService:
                 },
                 "recoverableChatBackups": len(self._chat_backup_candidates()),
             },
+        }
+
+    async def load_memory(self) -> dict[str, Any]:
+        """Refresh memory without reloading or activating any conversation."""
+        overview = await asyncio.to_thread(
+            build_memory_overview, memory_root=self.settings.MEMORY_DIR,
+        )
+        return {
+            "memoryOverview": overview,
+            "memories": [self._memory_entry(entry) for entry in overview["entries"]],
         }
 
     async def load_thread(self, *, thread_id: str) -> dict[str, Any]:

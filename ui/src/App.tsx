@@ -281,14 +281,7 @@ export function App() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        if (document.querySelector(".model-dialog[open]")) return;
-        setCommandOpen(false);
-        setSettingsOpen(false);
-        if (!deletingThread) setThreadPendingDeletion(null);
-        if (!removingProject) setProjectPendingRemoval(null);
-        return;
-      }
+      if (event.defaultPrevented || event.isComposing || document.querySelector("dialog[open]")) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === "k") {
         event.preventDefault();
         setCommandOpen((open) => !open);
@@ -360,7 +353,7 @@ export function App() {
     [inspectorOpen, workspace],
   );
 
-  if (!workspace.snapshot) return <LoadingScreen error={workspace.loadingError} />;
+  if (!workspace.snapshot) return <LoadingScreen error={workspace.loadingError} onRetry={workspace.retryLoading} />;
 
   const activeRuntime = evolutionOpen && !evolutionThread ? workspace.draftRuntime : workspace.activeThread?.runtime ?? workspace.draftRuntime;
   const selectedThread = evolutionOpen && !evolutionThread ? null : workspace.activeThread;
@@ -402,6 +395,10 @@ export function App() {
         projectName={evolutionOpen ? "Cleo 进化" : workspace.activeSpace === "memory" ? "记忆" : workspace.activeProject?.name ?? "Cleo"}
         mode={evolutionOpen ? "Evolution" : workspace.activeSpace === "productivity" ? "Productivity" : workspace.activeSpace === "chat" ? "Chat" : "Memory"}
       />
+      {workspace.loadingError && <div className="workspace-error" role="alert">
+        <span>{workspace.loadingError}</span><button onClick={workspace.retryLoading}>重试</button>
+        <button onClick={workspace.clearLoadingError}>关闭</button>
+      </div>}
       <WorkspaceRail
         activeSpace={evolutionOpen ? "evolution" : workspace.activeSpace}
         onSelectSpace={(space) => {
@@ -437,6 +434,9 @@ export function App() {
         <MemoryView
           overview={workspace.snapshot.memoryOverview}
           mode={memoryView}
+          refreshError={workspace.memoryError}
+          refreshing={workspace.memoryRefreshing}
+          onRetryRefresh={() => void workspace.refreshMemory()}
           onLoadReviewDetails={workspace.loadMemoryReviewDetails}
           onReviewSource={workspace.reviewMemorySource}
         />
@@ -571,8 +571,10 @@ export function App() {
         supportedEfforts={supportedEfforts}
         modelSettings={workspace.modelSettings}
         modelSettingsLoading={workspace.modelSettingsLoading}
+        modelSettingsError={workspace.modelSettingsError}
         agentInstructions={workspace.agentInstructions}
         agentInstructionsLoading={workspace.agentInstructionsLoading}
+        agentInstructionsError={workspace.agentInstructionsError}
         updateState={displayedUpdateState}
         onThemeChange={setTheme}
         onRuntimeChange={workspace.updateRuntime}

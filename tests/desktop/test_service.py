@@ -1184,6 +1184,31 @@ def test_memory_review_details_return_current_redacted_compact_events(tmp_path: 
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize("space", ["productivity", "non_productivity"])
+def test_memory_refresh_reads_new_revisions_without_loading_threads(tmp_path, monkeypatch, space):
+    service = _service(tmp_path)
+    service.runtime.current_thread_id = "keep-current-task"
+    state_path = memory_state_path(service.settings.MEMORY_DIR, space)
+
+    def unexpected_workspace_read():
+        raise AssertionError("Memory refresh must not enumerate conversations")
+
+    monkeypatch.setattr(service.store, "list_sessions", unexpected_workspace_read)
+    touch_session_source(space=space, project="workspace", session_id="source",
+                         source_hash="first", last_event_seq=1, path=state_path)
+    first = asyncio.run(service.load_memory())
+    assert set(first) == {"memories", "memoryOverview"}
+    assert first["memoryOverview"]["review_sources"][0]["status"] == "pending"
+    mark_consolidation_skipped(space, "workspace", "source", "first", reason="skip once",
+                               review_result={"decision": "skip"}, path=state_path)
+    assert asyncio.run(service.load_memory())["memoryOverview"]["review_sources"] == []
+    touch_session_source(space=space, project="workspace", session_id="source",
+                         source_hash="second", last_event_seq=2, path=state_path)
+    updated = asyncio.run(service.load_memory())
+    assert updated["memoryOverview"]["review_sources"][0]["source_version"] == 2
+    assert service.runtime.current_thread_id == "keep-current-task"
+
+
 def test_review_memory_source_can_skip_pending_revision(tmp_path: Path) -> None:
     async def scenario() -> None:
         service = _service(tmp_path)

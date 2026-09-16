@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { ArrowUp, FlaskConical, X } from "lucide-react";
 import type { EvolutionAcceptanceState, EvolutionRequest } from "../evolution-types";
 import type { Thread } from "../types";
+import { handleDialogKeyDown } from "./Modal";
 
 interface Props {
   currentCaseIds?: string[];
@@ -67,7 +68,7 @@ export function EvolutionCases({ state, requests = [], thread, busy, canCompare,
         <p>{item.expectation}</p><small>用户取消验收，未标记通过。</small>
         <details><summary>原始证据</summary><pre>{item.evidence}</pre></details></article>)}
     </details>}
-    <dialog ref={dialog} className="evolution-dialog" onCancel={() => dialog.current?.close()}>
+    <dialog ref={dialog} className="evolution-dialog" onKeyDown={handleDialogKeyDown} onCancel={() => dialog.current?.close()}>
       <div className="evolution-dialog-title"><h2>冻结改进案例</h2><button aria-label="关闭案例" onClick={() => dialog.current?.close()}><X size={18} /></button></div>
       <p>先记录当前对话和预期，再让 Cleo 修改。应用后不符合预期，可以直接在验收项里继续反馈；确认通过后结束。</p>
       <form onSubmit={(event) => {

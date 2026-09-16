@@ -15,22 +15,28 @@ function Summary({ profile, model, children }: { profile?: ModelProfileSummary; 
   return <div className="ms-summary"><span className="ms-mark large">{profile ? providerInfo(profile).mark : "·"}</span><div><strong>{model ? modelLabel(model) : "选择一个模型"}</strong><div className="ms-meta">{profile && <>{profileLabel(profile)}<span>· {billingLabel(profile)}</span></>}</div></div>{children}</div>;
 }
 
-export function ModelSettingsPanel({ page, settings, busy, activeProfileId, onApply, onNavigate }: {
+export function ModelSettingsPanel({ page, settings, busy, activeProfileId, onApply, onNavigate, loadError, onRetry, active = true }: {
   page: ModelsPage; settings: ModelSettings | null; busy: boolean; onApply: ApplyModelSettings;
   activeProfileId?: string;
+  loadError?: string | null;
+  onRetry?: () => void;
+  active?: boolean;
   onNavigate: (page: ModelsPage) => void;
 }) {
   const [details, setDetails] = useState<string | null>(null);
   const [picker, setPicker] = useState<{ target: "chat" | "dream"; connection?: string } | null>(null);
   const [statuses, setStatuses] = useState<Record<string, ConnectionStatus>>({});
   const [reconnect, setReconnect] = useState<ModelProfileSummary | null>(null);
+  const [wizardOpen, setWizardOpen] = useState(page === "add");
   const [draft, setDraft] = useState(settings ? dreamChoice(settings) : { mode: "follow", profileId: "", model: "" });
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   useEffect(() => { if (settings) setDraft(dreamChoice(settings)); }, [settings?.activeDreamAgent, settings?.activeDreamModel, settings?.dreamEnabled]);
-  useEffect(() => { setError(""); if (page !== "add") setReconnect(null); }, [page]);
+  useEffect(() => { setError(""); if (page === "add") setWizardOpen(true); }, [page]);
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(""), 3000); return () => clearTimeout(timer); }, [notice]);
-  if (!settings) return <div className="model-settings ms-loading">正在读取模型配置…</div>;
+  if (!settings) return <div className="model-settings ms-loading" role={loadError ? "alert" : "status"}>
+    {loadError || "正在读取模型配置…"}{loadError && <button className="ms-link" onClick={onRetry} disabled={busy}>重试</button>}
+  </div>;
   const chat = settings.profiles.find(p => p.name === settings.activeAgent);
   const detail = settings.profiles.find(p => p.name === details);
   const fixedDream = settings.profiles.find(p => p.name === draft.profileId);
@@ -52,6 +58,8 @@ export function ModelSettingsPanel({ page, settings, busy, activeProfileId, onAp
     } catch (error) { setError(error instanceof Error ? error.message : "保存失败。"); }
   };
   return <div className="model-settings" data-testid="model-settings">
+    {loadError && <p className="ms-error" role="alert">{loadError}
+      <button className="ms-link" onClick={onRetry} disabled={busy}>重试</button></p>}
     {page === "current" && <>
       <div className="ms-section-label">默认对话模型</div>
       <Summary profile={chat} model={chat?.model}><button className="ms-secondary" disabled={busy} onClick={() => setPicker({ target: "chat" })}>切换模型<ChevronRight /></button></Summary>
@@ -67,7 +75,7 @@ export function ModelSettingsPanel({ page, settings, busy, activeProfileId, onAp
       })}</div>
       <div className="ms-dream-link"><Moon /><div><strong>DreamAgent</strong><div className="ms-meta">{settings.dreamEnabled === false ? "自动整理已暂停" : settings.activeDreamAgent ? `${profileLabel(savedDream!)} · ${modelLabel(settings.activeDreamModel || savedDream!.model)}` : `跟随对话 · ${modelLabel(chat?.model || "default")}`}</div></div><button className="ms-quiet" onClick={() => onNavigate("dream")}>设置记忆整理<ChevronRight /></button></div>
     </>}
-    {page === "add" && <ConnectionWizard key={reconnect?.name || "new"} existing={reconnect} settings={settings} busy={busy} onApply={onApply} onDone={() => { setReconnect(null); onNavigate("current"); }} />}
+    {wizardOpen && <div hidden={page !== "add"}><ConnectionWizard key={reconnect?.name || "new"} existing={reconnect} settings={settings} busy={busy} onApply={onApply} onDone={() => { setReconnect(null); setWizardOpen(false); onNavigate("current"); }} /></div>}
     {page === "dream" && <>
       <div className="ms-section-label">模型使用方式</div>
       <div className="ms-dream-options" role="radiogroup" aria-label="DreamAgent 模型使用方式">{([
@@ -80,7 +88,7 @@ export function ModelSettingsPanel({ page, settings, busy, activeProfileId, onAp
     </>}
     {error && !picker && <p className="ms-error" role="alert">{error}</p>}
     {notice && <div className="ms-notice" role="status"><Check />{notice}</div>}
-    {picker && <ModelPicker title={picker.target === "chat" ? "选择对话默认模型" : "选择记忆整理模型"} profiles={settings.profiles.filter(p => !picker.connection || p.name === picker.connection)} selected={picker.target === "chat" ? { profileId: picker.connection || settings.activeAgent, model: settings.profiles.find(p => p.name === (picker.connection || settings.activeAgent))!.model } : draft.profileId ? draft : null} busy={busy} error={error} onSelect={choice => void changeModel(choice)} onClose={() => { setPicker(null); setError(""); }} />}
-    {detail && <ConnectionDetails key={detail.name} profile={detail} settings={settings} busy={busy} activeProfileId={activeProfileId} status={statuses[detail.name]} onStatus={status => setStatuses(current => ({ ...current, [detail.name]: status }))} onApply={onApply} onClose={() => setDetails(null)} onReconnect={() => { setReconnect(detail); setDetails(null); onNavigate("add"); }} />}
+    {active && picker && <ModelPicker title={picker.target === "chat" ? "选择对话默认模型" : "选择记忆整理模型"} profiles={settings.profiles.filter(p => !picker.connection || p.name === picker.connection)} selected={picker.target === "chat" ? { profileId: picker.connection || settings.activeAgent, model: settings.profiles.find(p => p.name === (picker.connection || settings.activeAgent))!.model } : draft.profileId ? draft : null} busy={busy} error={error} onSelect={choice => void changeModel(choice)} onClose={() => { setPicker(null); setError(""); }} />}
+    {active && detail && <ConnectionDetails key={detail.name} profile={detail} settings={settings} busy={busy} activeProfileId={activeProfileId} status={statuses[detail.name]} onStatus={status => setStatuses(current => ({ ...current, [detail.name]: status }))} onApply={onApply} onClose={() => setDetails(null)} onReconnect={() => { setReconnect(detail); setDetails(null); onNavigate("add"); }} />}
   </div>;
 }

@@ -490,6 +490,7 @@ export type StreamEvent =
 
 export interface CleoClient {
   loadWorkspace(): Promise<WorkspaceSnapshot>;
+  loadMemory(): Promise<Pick<WorkspaceSnapshot, "memories" | "memoryOverview">>;
   loadThread(threadId: string): Promise<Thread>;
   loadTimeline(threadId: string, direction?: "latest" | "before" | "after", cursor?: string): Promise<TimelinePage>;
   readTimelineContent(threadId: string, itemId: string, field: string, offset: number): Promise<TimelineContent>;

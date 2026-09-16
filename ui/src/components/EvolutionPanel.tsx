@@ -5,6 +5,7 @@ import { EvolutionContribution } from "./EvolutionContribution";
 import { GithubLogin } from "./GithubLogin";
 import { ContributionMerge } from "./ContributionMerge";
 import { ReleasePublisher } from "./ReleasePublisher";
+import { handleDialogKeyDown } from "./Modal";
 
 interface Props {
   children?: ReactNode;
@@ -151,7 +152,7 @@ export function EvolutionPanel({ children, state, error, busy, running, inspecto
     {state?.lastRestartError && !failure && <p className="evolution-notice">{state.lastRestartError}</p>}
     {details && (busy || failure || canApply) && <details className="evolution-log"><summary>查看检查详情</summary><pre>{details}</pre></details>}
     {children}
-    {sheet && <dialog ref={dialog} className="evolution-dialog" onCancel={(event) => { event.preventDefault(); close(); }} onClick={(event) => { if (event.target === dialog.current) close(); }}>
+    {sheet && <dialog ref={dialog} className="evolution-dialog" onKeyDown={handleDialogKeyDown} onCancel={(event) => { event.preventDefault(); close(); }} onClick={(event) => { if (event.target === dialog.current) close(); }}>
       <div className="evolution-dialog-title"><h2>{sheet === "versions" ? "版本" : sheet === "contribute" ? "提交与发布" : sheet === "history" ? "PR 历史" : sheet === "publish" ? "发布版本" : sheet === "save" ? "保存本地版本" : "放弃本轮修改"}</h2><button aria-label="关闭" onClick={close}><X size={18} /></button></div>
       {sheet === "publish" && <ReleasePublisher state={state} initialUrl={releasePr} onStarted={() => { submittingRef.current = false; setSubmitting(false); close(); }} busy={busy || running || Boolean(state?.transaction)} onAction={contributionAction}
         onBusy={value => { submittingRef.current = value; setSubmitting(value); }} />}

@@ -100,6 +100,7 @@ try {
       },
       request: async (method, params, streamId) => {
         if (method === "load_workspace") return copy(workspace);
+        if (method === "load_memory") return structuredClone({ memories: workspace.memories, memoryOverview: workspace.memoryOverview });
         if (method === "get_runtime_catalog") return { nonProductivityProfiles: [], productivityProviders: [
           { id: "codex", label: "Codex", models: ["test"], defaultModel: "test", efforts: ["low"] }],
           defaultProductivityProvider: "codex", defaultNonProductivityProfile: "" };

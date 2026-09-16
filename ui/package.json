@@ -18,6 +18,7 @@
     "smoke:evolution": "npm run build && node scripts/smoke-evolution.mjs",
     "test:backend": "node --test electron/platform.test.mjs electron/posix-installer.test.mjs electron/install-state.test.mjs electron/attachments.test.mjs electron/backend.test.mjs electron/dependencies.test.mjs electron/local-files.test.mjs electron/updater.test.mjs tests/timeline-cache.test.mjs tests/release-downloads.test.mjs tests/program-updates.test.mjs tests/shutdown.test.mjs",
     "smoke:history": "node scripts/smoke-history.mjs",
+    "smoke:uiux": "node tests/uiux-regressions.smoke.mjs",
     "smoke:layout": "node scripts/smoke-layout.mjs",
     "smoke:program-updates": "node scripts/smoke-program-updates.mjs",
     "package:portable": "node ../scripts/build-release.mjs",

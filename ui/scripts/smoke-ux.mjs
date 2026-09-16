@@ -163,6 +163,7 @@ try {
       onStreamEvent: (listener) => { listeners.add(listener); return () => listeners.delete(listener); },
       request: async (method, params, streamId) => {
         if (method === "load_workspace") return structuredClone(workspace);
+        if (method === "load_memory") return structuredClone({ memories: workspace.memories, memoryOverview: workspace.memoryOverview });
         if (method === "get_runtime_catalog") return {
           nonProductivityProfiles: [{ id: "test", provider: "openai", model: "test", maxTokens: 100000, active: true }],
           productivityProviders: [], defaultNonProductivityProfile: "test", defaultProductivityProvider: "",

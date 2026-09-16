@@ -27,6 +27,9 @@ import type {
 interface MemoryViewProps {
   overview: MemoryOverview;
   mode: MemoryViewMode;
+  refreshError?: string | null;
+  refreshing?: boolean;
+  onRetryRefresh?: () => void;
   onLoadReviewDetails: (source: MemoryReviewSource) => Promise<MemoryReviewDetails>;
   onReviewSource: (
     source: MemoryReviewSource,
@@ -58,6 +61,9 @@ const viewCopy = {
 export function MemoryView({
   overview,
   mode,
+  refreshError,
+  refreshing,
+  onRetryRefresh,
   onLoadReviewDetails,
   onReviewSource,
 }: MemoryViewProps) {
@@ -159,6 +165,9 @@ export function MemoryView({
           />
         </label>
       </header>
+
+      {refreshError && <div className="memory-review-error" role="alert"><span>{refreshError}</span>
+        <button disabled={refreshing} onClick={onRetryRefresh}>重试</button></div>}
 
       {overview.issues?.map((issue) => (
         <p role="status" key={`${issue.space}:${issue.project}`}>

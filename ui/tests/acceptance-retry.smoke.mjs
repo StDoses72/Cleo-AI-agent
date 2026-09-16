@@ -118,6 +118,7 @@ try {
   });
   await page.exposeFunction("testDesktopRequest", async (method, params, streamId) => {
     if (method === "load_workspace") return workspace;
+    if (method === "load_memory") return structuredClone({ memories: workspace.memories, memoryOverview: workspace.memoryOverview });
     if (method === "get_runtime_catalog") return { nonProductivityProfiles: [], productivityProviders: [
       { id: "codex", label: "Codex", defaultModel: "test", models: ["test"], efforts: ["low"] }],
       defaultProductivityProvider: "codex", defaultNonProductivityProfile: "" };

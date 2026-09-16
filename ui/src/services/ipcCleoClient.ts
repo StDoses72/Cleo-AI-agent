@@ -38,6 +38,10 @@ export class IpcCleoClient implements CleoClient {
     return this.bridge.request("load_workspace");
   }
 
+  loadMemory(): Promise<Pick<WorkspaceSnapshot, "memories" | "memoryOverview">> {
+    return this.bridge.request("load_memory");
+  }
+
   async loadThread(threadId: string): Promise<Thread> {
     return this.bridge.request("load_thread", { thread_id: threadId });
   }

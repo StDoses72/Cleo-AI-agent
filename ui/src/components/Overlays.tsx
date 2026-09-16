@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { dreamStatusLabel } from "../memoryStatus";
 import { UpdateVersionPicker } from "./UpdateVersionPicker";
+import { handleDialogKeyDown, Modal } from "./Modal";
 import {
   ArrowRight,
   Brain,
@@ -57,12 +58,10 @@ interface CommandPaletteProps {
 export function CommandPalette({ open, actions, onClose }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (open) {
       setQuery("");
       setSelectedIndex(0);
-      window.setTimeout(() => inputRef.current?.focus(), 30);
     }
   }, [open]);
   const filtered = useMemo(() => {
@@ -78,12 +77,12 @@ export function CommandPalette({ open, actions, onClose }: CommandPaletteProps) 
 
   if (!open) return null;
   return (
-    <div className="overlay-backdrop" role="presentation" onMouseDown={onClose}>
-      <div className="command-palette" role="dialog" aria-label="命令面板" onMouseDown={(event) => event.stopPropagation()}>
+    <Modal open={open} className="overlay-backdrop" label="命令面板" onClose={onClose}>
+      <div className="command-palette" onMouseDown={(event) => event.stopPropagation()}>
         <label className="command-search">
           <Search size={18} />
           <input
-            ref={inputRef}
+            autoFocus
             value={query}
             aria-label="搜索命令"
             role="combobox"
@@ -134,7 +133,7 @@ export function CommandPalette({ open, actions, onClose }: CommandPaletteProps) 
         </div>
         <footer><span><kbd>↑↓</kbd> 选择</span><span><kbd>↵</kbd> 打开</span></footer>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -154,7 +153,7 @@ export function RenameThreadDialog({ title, onSave, onClose }: {
     inputRef.current?.select();
   }, []);
   return (
-    <dialog ref={dialogRef} className="rename-dialog" aria-labelledby="rename-title" onCancel={(event) => {
+    <dialog ref={dialogRef} className="rename-dialog" aria-labelledby="rename-title" onKeyDown={handleDialogKeyDown} onCancel={(event) => {
       event.preventDefault();
       if (!savingRef.current) onClose();
     }}>
@@ -204,19 +203,12 @@ export function DeleteThreadDialog({
   onCancel,
   onConfirm,
 }: DeleteThreadDialogProps) {
-  const cancelRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (threadTitle) window.setTimeout(() => cancelRef.current?.focus(), 30);
-  }, [threadTitle]);
   if (!threadTitle) return null;
   return (
-    <div className="overlay-backdrop delete-thread-backdrop" role="presentation" onMouseDown={deleting ? undefined : onCancel}>
+    <Modal open className="overlay-backdrop delete-thread-backdrop" role="alertdialog"
+      labelledBy="delete-thread-title" describedBy="delete-thread-detail" onClose={deleting ? undefined : onCancel}>
       <div
         className="delete-thread-dialog"
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="delete-thread-title"
-        aria-describedby="delete-thread-detail"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <span className="delete-thread-icon"><Trash2 size={18} /></span>
@@ -229,13 +221,13 @@ export function DeleteThreadDialog({
           </p>
         </div>
         <footer>
-          <button ref={cancelRef} type="button" onClick={onCancel} disabled={deleting}>取消</button>
+          <button autoFocus type="button" onClick={onCancel} disabled={deleting}>取消</button>
           <button className="danger" type="button" onClick={onConfirm} disabled={deleting}>
             {deleting ? "删除中…" : "永久删除"}
           </button>
         </footer>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -252,19 +244,12 @@ export function RemoveProjectDialog({
   onCancel,
   onConfirm,
 }: RemoveProjectDialogProps) {
-  const cancelRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (project) window.setTimeout(() => cancelRef.current?.focus(), 30);
-  }, [project]);
   if (!project) return null;
   return (
-    <div className="overlay-backdrop delete-thread-backdrop" role="presentation" onMouseDown={removing ? undefined : onCancel}>
+    <Modal open className="overlay-backdrop delete-thread-backdrop" role="alertdialog"
+      labelledBy="remove-project-title" describedBy="remove-project-detail" onClose={removing ? undefined : onCancel}>
       <div
         className="delete-thread-dialog"
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="remove-project-title"
-        aria-describedby="remove-project-detail"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <span className="delete-thread-icon"><Trash2 size={18} /></span>
@@ -277,13 +262,13 @@ export function RemoveProjectDialog({
           </p>
         </div>
         <footer>
-          <button ref={cancelRef} type="button" onClick={onCancel} disabled={removing}>取消</button>
+          <button autoFocus type="button" onClick={onCancel} disabled={removing}>取消</button>
           <button className="danger" type="button" onClick={onConfirm} disabled={removing}>
             {removing ? "移除中…" : "移除项目"}
           </button>
         </footer>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -297,8 +282,10 @@ interface SettingsModalProps {
   supportedEfforts: NonNullable<RuntimeProfile["effort"]>[];
   modelSettings: ModelSettings | null;
   modelSettingsLoading: boolean;
+  modelSettingsError?: string | null;
   agentInstructions: AgentInstructions | null;
   agentInstructionsLoading: boolean;
+  agentInstructionsError?: string | null;
   updateState: UpdateState;
   onThemeChange: (theme: "dark" | "light") => void;
   onRuntimeChange: (update: Partial<RuntimeProfile>) => void;
@@ -331,8 +318,10 @@ export function SettingsModal({
   supportedEfforts,
   modelSettings,
   modelSettingsLoading,
+  modelSettingsError,
   agentInstructions,
   agentInstructionsLoading,
+  agentInstructionsError,
   updateState,
   onThemeChange,
   onRuntimeChange,
@@ -353,16 +342,15 @@ export function SettingsModal({
   useEffect(() => { scrollRef.current?.scrollTo(0, 0); }, [open, page]);
   useEffect(() => {
     if (open) {
-      void onLoadModelSettings();
-      void onLoadAgentInstructions();
+      void onLoadModelSettings().catch(() => {});
+      void onLoadAgentInstructions().catch(() => {});
     }
   }, [open]);
-  if (!open) return null;
   const isModels = page === "models" || page === "models-add" || page === "models-dream";
   const modelPage: ModelsPage = page === "models-add" ? "add" : page === "models-dream" ? "dream" : "current";
   return (
-    <div className="overlay-backdrop settings-backdrop" role="presentation" onMouseDown={onClose}>
-      <div className="settings-modal" role="dialog" aria-modal="true" aria-label="设置" onMouseDown={(event) => event.stopPropagation()}>
+    <Modal open={open} className="overlay-backdrop settings-backdrop" label="设置" onClose={onClose}>
+      <div className="settings-modal" onMouseDown={(event) => event.stopPropagation()}>
         <button className="icon-button settings-close" aria-label="关闭设置" onClick={onClose}><X size={17} /></button>
         <aside>
           <div className="settings-brand"><span>C</span><strong>设置</strong></div>
@@ -387,6 +375,18 @@ export function SettingsModal({
             <div className="settings-heading"><h2>{settingsTitles[page]}</h2>{page === "models" && <button className="settings-primary" onClick={() => setPage("models-add")}><Plus size={15} />新增连接</button>}</div>
           </header>
           <div className="settings-scroll" ref={scrollRef}>
+          <div hidden={page !== "instructions"} className="settings-instructions-container">
+            {agentInstructionsError && <p className="settings-error" role="alert">{agentInstructionsError}
+              <button type="button" onClick={() => void onLoadAgentInstructions().catch(() => {})}>重试</button></p>}
+            <AgentInstructionsPage instructions={agentInstructions} loading={agentInstructionsLoading}
+              onSave={onSaveAgentInstructions} onRevealPath={onRevealPath} />
+          </div>
+          <div hidden={!isModels}>
+            <ModelSettingsPanel page={modelPage} settings={modelSettings} busy={modelSettingsLoading}
+              loadError={modelSettingsError} onRetry={() => void onLoadModelSettings().catch(() => {})}
+              active={open && isModels} activeProfileId={runtime.profileId} onApply={onApplyModelSettings}
+              onNavigate={next => setPage(next === "current" ? "models" : next === "add" ? "models-add" : "models-dream")} />
+          </div>
           {page === "appearance" ? (
             <div className="settings-page">
               <SettingsRow title="主题" description="选择更适合当前环境的界面亮度。">
@@ -405,19 +405,7 @@ export function SettingsModal({
               <SettingsRow title="推理强度" description="更高强度适合复杂代码任务。"><div className="segmented-control">{supportedEfforts.length ? supportedEfforts.map((effort) => <button className={runtime.effort === effort ? "active" : ""} type="button" key={effort} onClick={() => onRuntimeChange({ effort })}>{effort}</button>) : <button type="button" disabled>default</button>}</div></SettingsRow>
               <SettingsRow title="文件访问" description="每个 turn 都会明确显示实际 sandbox。"><span className="settings-value mono">{runtime.access}</span></SettingsRow>
             </div>
-          ) : page === "instructions" ? (
-            <AgentInstructionsPage
-              instructions={agentInstructions}
-              loading={agentInstructionsLoading}
-              onSave={onSaveAgentInstructions}
-              onRevealPath={onRevealPath}
-            />
-          ) : isModels ? (
-            <ModelSettingsPanel page={modelPage} settings={modelSettings} busy={modelSettingsLoading}
-              activeProfileId={runtime.profileId}
-              onApply={onApplyModelSettings}
-              onNavigate={next => setPage(next === "current" ? "models" : next === "add" ? "models-add" : "models-dream")} />
-          ) : page === "updates" ? (
+          ) : page === "instructions" || isModels ? null : page === "updates" ? (
             <UpdateSettingsPage
               state={updateState}
               onCheck={onCheckForUpdates}
@@ -437,7 +425,7 @@ export function SettingsModal({
           </div>
         </section>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -561,11 +549,14 @@ function AgentInstructionsPage({
 }) {
   const [draft, setDraft] = useState("");
   const [baseline, setBaseline] = useState("");
+  const baselineRef = useRef("");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   useEffect(() => {
     if (!instructions) return;
-    setDraft(instructions.content);
+    const previousBaseline = baselineRef.current;
+    setDraft(current => current === previousBaseline ? instructions.content : current);
+    baselineRef.current = instructions.content;
     setBaseline(instructions.content);
     setError(null);
   }, [instructions]);
@@ -591,7 +582,7 @@ function AgentInstructionsPage({
         </div>
         <button type="button" disabled={!instructions?.path} onClick={() => instructions?.path && onRevealPath(instructions.path)}><FolderOpen size={14} />打开位置</button>
       </div>
-      <code className="agent-instructions-path">{instructions?.path ?? "正在读取 AGENTS.md…"}</code>
+      <code className="agent-instructions-path">{instructions?.path ?? (loading ? "正在读取…" : "尚未读取指令")}</code>
       <textarea
         aria-label="Non-productivity Agent 指令"
         spellCheck={false}
@@ -621,11 +612,11 @@ function SettingsRow({ title, description, children }: { title: string; descript
   return <div className="settings-row"><div><strong>{title}</strong><p>{description}</p></div><div className="settings-control">{children}</div></div>;
 }
 
-export function LoadingScreen({ error }: { error: string | null }) {
+export function LoadingScreen({ error, onRetry }: { error: string | null; onRetry?: () => void }) {
   return (
     <div className="loading-screen">
       <div className="loading-brand"><span>C</span></div>
-      {error ? <><strong>无法打开工作区</strong><p>{error}</p></> : <><div className="loading-line"><i /></div><span>正在打开本地工作区</span></>}
+      {error ? <><strong>无法打开工作区</strong><p>{error}</p><button onClick={onRetry}>重试</button></> : <><div className="loading-line"><i /></div><span>正在打开本地工作区</span></>}
     </div>
   );
 }

@@ -44,4 +44,3 @@ def pending_handoff(events: list[dict[str, Any]], provider: str) -> bool:
             # Only our explicit acknowledgement proves the native thread has it.
             return event["id"] not in delivered
     return False
-

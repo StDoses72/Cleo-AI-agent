@@ -67,6 +67,7 @@ try {
     window.cleoDesktop = {
       async request(method, params = {}, streamId) {
         if (method === "load_workspace") return { ...snapshot, projects: [{ id: "p", name: "Test", path: "fixture", space: "productivity", accent: "cyan" }], threads: [load("history"), threads[1]], activeThreadId: "history", activeSpace: "productivity", runtime };
+        if (method === "load_memory") return structuredClone({ memories: snapshot.memories, memoryOverview: snapshot.memoryOverview });
         if (method === "get_runtime_catalog") return { nonProductivityProfiles: [], defaultNonProductivityProfile: "", defaultProductivityProvider: "codex", productivityProviders: [{ id: "codex", type: "codex_sdk", defaultModel: "test", modelSource: "config" }] };
         if (method === "get_productivity_models") return { provider: "codex", source: "sdk", models: [{ id: "test", label: "test", isDefault: true, defaultEffort: "low", supportedEfforts: ["low"] }] };
         if (method === "load_thread") return load(params.thread_id);

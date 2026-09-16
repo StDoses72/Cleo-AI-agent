@@ -76,6 +76,7 @@ try {
     window.cleoDesktop = {
       async request(method) {
         if (method === "load_workspace") return { ...snapshot, runtime, threads: [thread], activeThreadId: thread.id, activeSpace: "productivity" };
+        if (method === "load_memory") return structuredClone({ memories: snapshot.memories, memoryOverview: snapshot.memoryOverview });
         if (method === "load_thread") return thread;
         if (method === "load_timeline") return { ...thread.history, items: thread.items };
         if (method === "get_pending_questions") return [];

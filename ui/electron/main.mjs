@@ -165,6 +165,7 @@ async function changeEvolutionBase(id, discard = false) {
 
 const allowedMethods = new Set([
   "load_workspace",
+  "load_memory",
   "open_evolution_thread",
   "load_thread",
   "create_thread",

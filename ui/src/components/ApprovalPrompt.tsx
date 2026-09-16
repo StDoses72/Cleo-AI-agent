@@ -24,10 +24,12 @@ export function ApprovalPrompt({ request, pending, error, onResolve }: ApprovalP
 
   useEffect(() => {
     const decideFromKeyboard = (event: globalThis.KeyboardEvent) => {
-      if (!request || pending) return;
+      if (!request || pending || event.defaultPrevented || event.isComposing
+          || event.ctrlKey || event.metaKey || event.altKey || document.querySelector("dialog[open]")) return;
       if (event.target instanceof HTMLInputElement
         || event.target instanceof HTMLTextAreaElement
-        || event.target instanceof HTMLSelectElement) return;
+        || event.target instanceof HTMLSelectElement
+        || (event.target instanceof HTMLElement && event.target.isContentEditable)) return;
       if (event.key === "1" && decisions.has("accept")) onResolve("accept");
       if (event.key === "2" && decisions.has("acceptForSession")) {
         onResolve("acceptForSession");
