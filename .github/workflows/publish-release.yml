@@ -1,0 +1,202 @@
+name: Publish verified release
+run-name: release ${{ inputs.tag }} build ${{ inputs.run_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful Desktop platforms workflow run ID
+        required: true
+        type: string
+      tag:
+        description: Existing release tag matching the build commit
+        required: true
+        type: string
+      notes:
+        description: Release notes
+        required: true
+        type: string
+      title:
+        description: Release title (must match an existing release)
+        type: string
+        default: ''
+      prerelease:
+        description: Publish as a pre-release
+        type: boolean
+        default: false
+      allow_existing_release:
+        description: Complete missing verified assets on an app-created release without overwriting anything
+        type: boolean
+        default: false
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: publish-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      BUILD_RUN: ${{ inputs.run_id }}
+      RELEASE_TAG: ${{ inputs.tag }}
+      RELEASE_NOTES: ${{ inputs.notes }}
+      RELEASE_TITLE: ${{ inputs.title }}
+      RELEASE_PRERELEASE: ${{ inputs.prerelease }}
+      RELEASE_RESUME_PUBLISHED: ${{ inputs.allow_existing_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify successful build and matching tag
+        run: |
+          python - <<'PY'
+          import json, os, re, subprocess, tomllib
+          tag, run = os.environ['RELEASE_TAG'], os.environ['BUILD_RUN']
+          assert re.fullmatch(r'v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?', tag) and run.isdecimal()
+          build = json.loads(subprocess.check_output(['gh', 'api', f"repos/{os.environ['GH_REPO']}/actions/runs/{run}"]))
+          commit = subprocess.check_output(['git', 'rev-parse', f'{tag}^{{commit}}'], text=True).strip()
+          assert build['name'] == 'Desktop platforms' and build['conclusion'] == 'success'
+          assert build['event'] == 'workflow_dispatch', 'Use a full Desktop platforms build, not a PR smoke run'
+          assert build['head_sha'] == commit
+          project = subprocess.check_output(['git', 'show', f'{tag}:pyproject.toml'], text=True)
+          assert tomllib.loads(project)['project']['version'] == tag[1:]
+          ui = subprocess.check_output(['git', 'show', f'{tag}:ui/package.json'], text=True)
+          assert json.loads(ui)['version'] == tag[1:], 'UI and Python package versions must both match the tag'
+          print(f'Publishing verified build {run} from {commit}')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          pattern: desktop-*
+          path: ${{ runner.temp }}/release-artifacts
+      - name: Verify complete packages and checksums
+        run: |
+          python - <<'PY'
+          import hashlib, json, os, shutil, tarfile, zipfile
+          from pathlib import Path
+          temporary = Path(os.environ['RUNNER_TEMP'])
+          output = temporary / 'release-files'
+          output.mkdir()
+          for source in (temporary / 'release-artifacts').glob('desktop-*/release/*'):
+              assert source.is_file() and not (output / source.name).exists()
+              shutil.copy2(source, output / source.name)
+          version = os.environ['RELEASE_TAG'][1:]
+          for target in ('windows-x64', 'macos-arm64', 'macos-x64', 'linux-x64'):
+              manifest = 'release.json' if target == 'windows-x64' else f'release-{target}.json'
+              metadata = json.loads((output / manifest).read_text(encoding='utf-8-sig'))
+              assert metadata['version'] == version and metadata['platform'] == target
+              filename = f'Cleo-{target}' + ('.tar.gz' if target == 'linux-x64' else '.zip')
+              assert metadata['archive'] == filename
+              archive = output / filename
+              assert archive.stat().st_size == metadata['bytes']
+              with archive.open('rb') as stream:
+                  digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+              assert digest == metadata['sha256']
+              assert (output / f'Cleo-{target}.sha256').read_text(encoding='utf-8-sig').split() == [digest, filename]
+              prefix = 'Cleo.app/Contents/Resources' if target.startswith('macos') else 'Cleo'
+              if archive.suffix == '.zip':
+                  with zipfile.ZipFile(archive) as bundle:
+                      packaged = json.loads(bundle.read(f'{prefix}/release.json').decode('utf-8-sig'))
+                      resources = prefix if target.startswith('macos') else prefix + '/resources'
+                      codex = json.loads(bundle.read(f'{resources}/browser/node_modules/@openai/codex/package.json'))
+              else:
+                  with tarfile.open(archive, 'r:gz') as bundle:
+                      packaged = json.load(bundle.extractfile('Cleo/release.json'))
+                      codex = json.load(bundle.extractfile('Cleo/resources/browser/node_modules/@openai/codex/package.json'))
+              assert packaged['version'] == version and packaged['platform'] == target
+              print(f"Verified {target}: {digest}, Codex CLI {codex['version']}")
+          deb = output / 'Cleo-linux-x64.deb'
+          with deb.open('rb') as stream:
+              digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+          assert (output / 'Cleo-linux-x64.deb.sha256').read_text().split() == [digest, deb.name]
+          assert len(list(output.iterdir())) == 14
+          (temporary / 'release-notes.md').write_text(os.environ['RELEASE_NOTES'], encoding='utf-8')
+          PY
+      - name: Upload draft, verify uploaded assets, and publish
+        run: |
+          python - <<'PY'
+          import hashlib, json, os, subprocess
+          from pathlib import Path
+          temporary = Path(os.environ['RUNNER_TEMP'])
+          files = sorted((temporary / 'release-files').iterdir())
+          tag = os.environ['RELEASE_TAG']
+          title = os.environ.get('RELEASE_TITLE') or f'Cleo {tag}'
+          notes = (temporary / 'release-notes.md').read_text(encoding='utf-8')
+          prerelease = os.environ.get('RELEASE_PRERELEASE') == 'true'
+          def draft_release():
+              """Find the exact tag, including drafts beyond the first page."""
+              page = 1
+              while True:
+                  releases = json.loads(subprocess.check_output([
+                      'gh', 'api', f"repos/{os.environ['GH_REPO']}/releases?per_page=100&page={page}",
+                  ]))
+                  match = next((item for item in releases if item['tag_name'] == tag), None)
+                  if match or len(releases) < 100:
+                      return match
+                  page += 1
+          # Re-fetch without moving an existing local tag before uploading anything.
+          subprocess.run(['git', 'fetch', '--no-tags', 'origin', f'refs/tags/{tag}'], check=True)
+          commit = subprocess.check_output(['git', 'rev-parse', 'FETCH_HEAD^{commit}'], text=True).strip()
+          build = json.loads(subprocess.check_output(['gh', 'api', f"repos/{os.environ['GH_REPO']}/actions/runs/{os.environ['BUILD_RUN']}"]))
+          assert build['head_sha'] == commit, 'Release tag moved after build verification'
+          release = draft_release()
+          if release is None:
+              try:
+                  subprocess.run(['gh', 'release', 'create', tag, '--draft', '--verify-tag',
+                                  '--title', title, '--notes-file', str(temporary / 'release-notes.md'),
+                                  f'--prerelease={str(prerelease).lower()}'], check=True)
+              except subprocess.CalledProcessError:
+                  if draft_release() is None:
+                      raise
+              release = draft_release()
+          assert release is not None
+          assert release['draft'] or os.environ.get('RELEASE_RESUME_PUBLISHED') == 'true', 'Refusing to overwrite a published release'
+          assert release['name'] == title and (release.get('body') or '') == notes, 'Existing release title/notes differ'
+          assert release['prerelease'] == prerelease, 'Existing release type differs'
+          expected = {}
+          for path in files:
+              with path.open('rb') as stream:
+                  digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+              expected[path.name] = (path.stat().st_size, f'sha256:{digest}')
+          def verified_assets(value):
+              """Reject conflicting remote files before adding any missing verified packages."""
+              assets = {asset['name']: asset for asset in value['assets']}
+              assert len(assets) == len(value['assets']) and set(assets) <= set(expected), 'Unexpected remote assets'
+              for name, asset in assets.items():
+                  assert (asset['size'], asset.get('digest')) == expected[name], f'Asset mismatch: {name}'
+              return assets
+          assets = verified_assets(release)
+          missing = [str(path) for path in files if path.name not in assets]
+          if missing:
+              subprocess.run(['gh', 'release', 'upload', tag, *missing], check=True)
+          release = draft_release()
+          assert release['name'] == title and (release.get('body') or '') == notes and release['prerelease'] == prerelease
+          assert set(verified_assets(release)) == set(expected), 'Release packages are incomplete'
+          subprocess.run(['git', 'fetch', '--no-tags', 'origin', f'refs/tags/{tag}'], check=True)
+          current = subprocess.check_output(['git', 'rev-parse', 'FETCH_HEAD^{commit}'], text=True).strip()
+          assert current == commit, 'Release tag moved during upload; refusing to publish the draft'
+          if release['draft']:
+              subprocess.run(['gh', 'release', 'edit', tag, '--draft=false', f'--latest={str(not prerelease).lower()}'], check=True)
+          PY
+      - name: Remove temporary release files
+        if: always()
+        run: |
+          python - <<'PY'
+          import os, shutil
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']).resolve()
+          for name in ('release-artifacts', 'release-files'):
+              path = root / name
+              if path.is_dir():
+                  assert path.resolve().parent == root
+                  shutil.rmtree(path)
+          (root / 'release-notes.md').unlink(missing_ok=True)
+          PY
