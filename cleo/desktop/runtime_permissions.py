@@ -15,6 +15,26 @@ CODEX_APPROVAL = [
     {"value": "deny_all", "label": "拒绝审批请求",
      "description": "无需确认即可执行的操作继续运行，需要审批的请求会被拒绝。"},
 ]
+CLAUDE_APPROVAL = [
+    {"value": "default", "label": "人工审批",
+     "description": "由你确认未被 Claude 规则允许的操作。"},
+    {"value": "acceptEdits", "label": "自动允许编辑",
+     "description": "自动允许工作目录中的文件操作；其他请求仍需确认。"},
+    {"value": "auto", "label": "自动审查",
+     "description": "由 Claude 审查并允许或拒绝操作；需要当前客户端和模型支持。"},
+    {"value": "dontAsk", "label": "拒绝审批请求",
+     "description": "已允许的操作继续运行，需要确认的请求会被拒绝。"},
+    {"value": "bypassPermissions", "label": "跳过常规审批",
+     "description": "允许大多数操作；明确的拒绝规则和必须人工确认的请求仍然生效。"},
+    {"value": "plan", "label": "规划模式", "description": "编辑操作不会自动批准。"},
+]
+ACP_APPROVAL = [
+    {"value": "user", "label": "人工审批", "description": "由你选择服务提供的允许或拒绝选项。"},
+    {"value": "auto_allow", "label": "自动允许请求",
+     "description": "自动选择服务提供的允许选项；不改变服务自身的文件访问限制。"},
+    {"value": "deny_all", "label": "自动拒绝请求",
+     "description": "自动选择拒绝选项；服务没有提供拒绝选项时取消请求。"},
+]
 
 
 def permission_choices(provider_type: str, *, fixed: bool = False) -> dict:
@@ -22,14 +42,16 @@ def permission_choices(provider_type: str, *, fixed: bool = False) -> dict:
         return {"access": [], "approval": [], "reason": "进化任务使用固定权限。"}
     if provider_type == "codex_sdk":
         return {"access": CODEX_ACCESS, "approval": CODEX_APPROVAL}
+    if provider_type in {"claude_sdk", "acp"}:
+        return {"access": [], "approval": CLAUDE_APPROVAL if provider_type == "claude_sdk"
+                else ACP_APPROVAL, "reason": "此服务不提供独立的文件访问范围设置。"}
     return {"access": [], "approval": [], "reason": "此任务使用运行后端的权限配置。"}
 
 
 def validate_permissions(provider_type: str, update: dict) -> None:
-    if provider_type != "codex_sdk":
-        # Other adapters validate their own native modes, never Codex sandbox values.
-        return
-    for field, choices in (("access", CODEX_ACCESS), ("approval", CODEX_APPROVAL)):
+    capabilities = permission_choices(provider_type)
+    for field in ("access", "approval"):
+        choices = capabilities[field]
         if field in update and (not isinstance(update[field], str)
                                or update[field] not in {choice["value"] for choice in choices}):
             raise ValueError(f"不支持的权限选项：{field}={update[field]}")

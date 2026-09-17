@@ -493,6 +493,7 @@ def compact_events(
             "tool_result",
             "permission_request",
             "permission_response",
+            "approval_review",
             "file_change",
             "terminal_output",
             "plan_update",

@@ -29,7 +29,7 @@ _SIGNAL = re.compile(
     r"must|mustn't|never|constraint|decision|next|todo|done|failed|禁止|必须|不要|决定|接下来|待办|完成|失败|改为|纠正",
     re.I,
 )
-_IGNORED = {"thought", "status", "permission_request", "permission_response"}
+_IGNORED = {"thought", "status", "permission_request", "permission_response", "approval_review"}
 
 
 def handoff_status(events: list[dict]) -> str | None:

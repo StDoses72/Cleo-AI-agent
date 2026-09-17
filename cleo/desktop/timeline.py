@@ -14,6 +14,7 @@ from cleo.memory.paths import events_path
 PAGE_SIZE = 80
 PREVIEW_CHARS = 8192
 PAGE_BYTES = 512 * 1024
+PROJECTION_VERSION = 2
 
 
 def _json(value):
@@ -78,11 +79,13 @@ class TimelineIndex:
         except FileNotFoundError:
             info = None
         signature = [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns] if info else None
-        if old and old["signature"] == signature:
+        if (old and old.get("projection_version") == PROJECTION_VERSION
+                and old["signature"] == signature):
             db.commit()
             return old
         reset = (
             old is None
+            or old.get("projection_version") != PROJECTION_VERSION
             or signature is None
             or old["signature"] is None
             or signature[:2] != old["signature"][:2]
@@ -151,6 +154,7 @@ class TimelineIndex:
                     )
                     offset = stream.tell()
         meta = {
+            "projection_version": PROJECTION_VERSION,
             "signature": signature,
             "epoch": epoch,
             "turn_id": turn_id,

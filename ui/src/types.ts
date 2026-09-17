@@ -115,6 +115,8 @@ export type TimelineItem = {
       command: string;
       status: "running" | "done" | "error";
       output?: string;
+      permission?: { source: string; policy: string; decision: string };
+      approvalAudit?: boolean;
     }
   | {
       id: string;
@@ -188,6 +190,8 @@ export interface Attachment {
 export type ApprovalDecision = "accept" | "acceptForSession" | "decline" | "cancel";
 
 export interface ApprovalRequest {
+  title?: string;
+  decisionLabels?: Partial<Record<ApprovalDecision, string>>;
   id: string;
   kind: "command" | "file_change" | "permissions" | "elicitation";
   method: string;

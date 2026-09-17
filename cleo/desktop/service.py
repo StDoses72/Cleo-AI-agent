@@ -954,7 +954,7 @@ class DesktopService:
         questions = getattr(implementation, "enable_questions", None)
         if callable(questions):
             await questions(session_id)
-        if not self._is_evolution(manifest) and settings.type == "codex_sdk":
+        if not self._is_evolution(manifest) and settings.type in {"codex_sdk", "claude_sdk", "acp"}:
             await implementation.enable_user_approvals(session_id)
 
     async def switch_harness(
@@ -2139,7 +2139,9 @@ class DesktopService:
             "approval": str(
                 options.get("approval_mode")
                 or getattr(provider_settings.options, "approval_mode", None)
-                or getattr(provider_settings.options, "permission_mode", "default")
+                or getattr(provider_settings.options, "permission_mode", None)
+                or ("auto_allow" if getattr(provider_settings.options, "auto_approve", False)
+                    else "deny_all" if provider_settings.type == "acp" else "default")
             ),
             "contextWindow": 128_000,
             "handoffStatus": handoff_status(self.store.read_events(manifest["id"])),
@@ -2266,7 +2268,7 @@ class DesktopService:
         if self._is_evolution(self.store.load_manifest(session_id)):
             return
         settings = self._productivity_provider(provider)
-        if settings.type != "codex_sdk":
+        if settings.type not in {"codex_sdk", "claude_sdk", "acp"}:
             return
         await self._adapter().enable_user_approvals(session_id)
 

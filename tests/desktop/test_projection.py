@@ -241,12 +241,14 @@ def test_live_approval_events_project_to_desktop_protocol() -> None:
             },
         }
     ]
-    assert response == [
+    assert response[:1] == [
         {
             "type": "approval-resolved",
             "response": {"id": "approval-1", "decision": "accept"},
         }
     ]
+    assert response[1]["type"] == "upsert-item"
+    assert response[1]["item"]["name"] == "人工审批 · 已允许"
 
 
 def test_nested_repo_final_refresh_preserves_latest_streamed_diff() -> None:

@@ -61,7 +61,7 @@ import type {
 import { ApprovalPrompt } from "./ApprovalPrompt";
 import { RenameThreadDialog } from "./Overlays";
 import { handleDialogKeyDown } from "./Modal";
-import { effortLabels } from "../runtime-labels";
+import { approvalLabel, effortLabels } from "../runtime-labels";
 
 interface ConversationProps {
   history?: ReturnType<typeof useTimelineHistory>;
@@ -857,7 +857,7 @@ function ToolGroupEntry({ item, expanded: controlled, onToggle, headerOnly = fal
   const [localExpanded, setExpanded] = useState(false);
   const expanded = controlled ?? localExpanded;
   const runningCount = item.tools.filter((tool) => tool.status === "running").length;
-  const errorCount = item.tools.filter((tool) => tool.status === "error").length;
+  const errorCount = item.tools.filter((tool) => tool.status === "error" && !tool.approvalAudit).length;
   const status = (active ?? Boolean(runningCount)) ? "running" : errorCount ? "error" : "done";
   const summary = errorCount ? `${item.tools.length} 项 · ${errorCount} 项失败` : `${item.tools.length} 项`;
   return (
@@ -896,9 +896,9 @@ function ToolProcess({ tool, index, open, onToggle }: { tool: ToolTimelineItem; 
         <span className="tool-main">
           <span>
             <strong>{tool.name}</strong>
-            <small>{tool.status === "running" ? "运行中" : tool.status === "error" ? "失败" : "完成"}</small>
+            {!tool.approvalAudit && <small>{tool.status === "running" ? "运行中" : tool.status === "error" ? "失败" : "完成"}</small>}
           </span>
-          <code>{tool.command || "等待工具输入"}</code>
+          {(tool.command || !tool.approvalAudit) && <code>{tool.command || "等待工具输入"}</code>}
         </span>
         {tool.status === "running" ? (
           <LoaderCircle className="spin" size={14} />
@@ -910,6 +910,7 @@ function ToolProcess({ tool, index, open, onToggle }: { tool: ToolTimelineItem; 
           <Check size={14} />
         )}
       </summary>
+      {tool.permission && <p className="tool-permission">{tool.permission.source} · {approvalLabel(tool.permission.policy)} · 已允许执行</p>}
       {tool.output ? <pre>{tool.output}</pre> : null}
     </details>
   );

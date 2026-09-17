@@ -23,6 +23,7 @@ from claude_agent_sdk import (
     UserMessage,
 )
 
+from cleo.harnesses.approvals import PermissionBroker
 from cleo.harnesses.control import HarnessModel, SessionOptions
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 from cleo.harnesses.provider import ProviderSession, ProviderTurn
@@ -60,6 +61,7 @@ class _ClaudeRuntime:
     active: bool = False
     context_binding: Any = None
     questions: QuestionBroker = field(default_factory=lambda: QuestionBroker("claude"))
+    approvals: PermissionBroker = field(default_factory=lambda: PermissionBroker("claude"))
 
 
 class ClaudeProvider:
@@ -210,14 +212,14 @@ class ClaudeProvider:
         if sandbox is not None:
             raise ValueError("Claude Agent SDK does not expose a sandbox option.")
 
-        current = runtime.options
-        next_model = current.model if model is None else model
-        next_effort = current.effort if effort is None else effort
-        next_permission = current.approval_mode if approval_mode is None else approval_mode
-        if next_permission is not None and next_permission not in ClaudePermissionMode.__args__:
-            raise ValueError(f"Unsupported Claude permission mode: {next_permission}")
+        if approval_mode is not None and approval_mode not in ClaudePermissionMode.__args__:
+            raise ValueError(f"Unsupported Claude permission mode: {approval_mode}")
 
         async with runtime.lock:
+            current = runtime.options
+            next_model = current.model if model is None else model
+            next_effort = current.effort if effort is None else effort
+            next_permission = current.approval_mode if approval_mode is None else approval_mode
             if effort is not None and effort != current.effort:
                 replacement = await self._connect(
                     runtime.cwd,
@@ -231,6 +233,8 @@ class ClaudeProvider:
                 runtime.client = replacement.client
                 replacement.questions.enabled = runtime.questions.enabled
                 runtime.questions = replacement.questions
+                replacement.approvals.enabled = runtime.approvals.enabled
+                runtime.approvals = replacement.approvals
             elif model is not None and model != current.model:
                 await runtime.client.set_model(model)
             if approval_mode is not None and approval_mode != current.approval_mode:
@@ -302,6 +306,8 @@ class ClaudeProvider:
             runtime.questions.bind(
                 question_event if runtime.questions.enabled and on_event else None,
             )
+            runtime.approvals.callback = question_event
+            runtime.approvals.reviewed_items.clear()
             try:
                 await runtime.client.query(prompt)
                 async for message in runtime.client.receive_response():
@@ -319,14 +325,38 @@ class ClaudeProvider:
                         for block in message.content:
                             if isinstance(block, ToolResultBlock):
                                 event = self._block_event(block)
+                                reviewed = block.tool_use_id in runtime.approvals.reviewed_items
+                                if not block.is_error and not reviewed:
+                                    event.data["permission"] = {
+                                        "source": "Claude 后端",
+                                        "policy": runtime.options.approval_mode,
+                                        "decision": "accept",
+                                    }
                                 events.append(event)
                                 await emit_event(on_event, event)
                     elif isinstance(message, ResultMessage):
                         result_message = message
                         runtime.native_session_id = message.session_id
+                        for denial in message.permission_denials or []:
+                            if not isinstance(denial, dict):
+                                continue
+                            item_id = str(denial.get("tool_use_id") or "")
+                            if item_id and item_id in runtime.approvals.reviewed_items:
+                                continue
+                            request = runtime.approvals.request(
+                                itemId=item_id, command=str(denial.get("tool_name") or "工具"),
+                                permissions=denial.get("tool_input"),
+                                reason="后端权限策略拒绝了此请求。",
+                            )
+                            await runtime.approvals.record(
+                                request, "decline", source="native_policy",
+                                policy=runtime.options.approval_mode,
+                            )
             finally:
                 await runtime.questions.cancel_all()
                 runtime.questions.callback = None
+                await runtime.approvals.cancel_all()
+                runtime.approvals.callback = None
                 runtime.active = False
 
         if result_message is None:
@@ -364,6 +394,7 @@ class ClaudeProvider:
         """
         runtime = self._sessions[session_id]
         await runtime.questions.cancel_all()
+        await runtime.approvals.cancel_all()
         if runtime.active:
             await runtime.client.interrupt()
 
@@ -379,6 +410,7 @@ class ClaudeProvider:
         if runtime is None:
             return
         await runtime.questions.cancel_all()
+        await runtime.approvals.cancel_all()
         if runtime.active:
             await runtime.client.interrupt()
         await runtime.client.disconnect()
@@ -391,6 +423,12 @@ class ClaudeProvider:
 
     async def enable_questions(self, session_id: str) -> None:
         self._sessions[session_id].questions.enabled = True
+
+    async def enable_user_approvals(self, session_id: str) -> None:
+        self._sessions[session_id].approvals.enabled = True
+
+    async def resolve_approval(self, session_id: str, approval_id: str, decision: str) -> dict:
+        return await self._sessions[session_id].approvals.resolve(approval_id, decision)
 
     async def _connect(
         self,
@@ -412,6 +450,7 @@ class ClaudeProvider:
             ``_ClaudeRuntime``, 由调用方登记进 ``_sessions``。
         """
         questions = QuestionBroker(self.name)
+        approvals = PermissionBroker(self.name)
 
         async def ask_hook(input_data, _tool_use_id, _context):
             # AskUserQuestion must reach the callback even under permissive tool policies.
@@ -433,7 +472,21 @@ class ClaudeProvider:
                 # neither changes general memory access nor authorizes file/command tools.
                 return PermissionResultAllow(updated_input=input_data)
             if tool_name != "AskUserQuestion":
-                return PermissionResultDeny(message="此工具需要权限确认；请使用支持的审批入口。")
+                request = approvals.request(
+                    itemId=str(getattr(context, "tool_use_id", "") or ""), cwd=project_path,
+                    title=getattr(context, "title", None) or f"允许使用 {tool_name}？",
+                    command=str(input_data.get("command") or input_data.get("file_path")
+                                or json.dumps(input_data, ensure_ascii=False)),
+                    permissions=input_data,
+                    reason=getattr(context, "decision_reason", None)
+                    or getattr(context, "description", None) or "Claude 请求你的确认。",
+                )
+                decision = await approvals.ask(request)
+                if decision == "accept":
+                    return PermissionResultAllow(updated_input=input_data)
+                return PermissionResultDeny(
+                    message="用户拒绝或取消了此请求。", interrupt=decision == "cancel",
+                )
             try:
                 normalized = normalize_questions(input_data.get("questions"), claude=True)
             except ValueError as exc:
@@ -505,6 +558,7 @@ class ClaudeProvider:
             ),
             cwd=project_path,
             questions=questions,
+            approvals=approvals,
             context_binding=context,
         )
 
@@ -525,5 +579,8 @@ class ClaudeProvider:
         if isinstance(block, ToolUseBlock):
             return AgentEvent(provider=self.name, type="tool_call", data=asdict(block))
         if isinstance(block, ToolResultBlock):
-            return AgentEvent(provider=self.name, type="tool_result", data=asdict(block))
+            return AgentEvent(provider=self.name, type="tool_result", data={
+                **asdict(block), "output": block.content,
+                "status": "failed" if block.is_error else "completed",
+            })
         return None

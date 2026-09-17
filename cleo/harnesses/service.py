@@ -466,6 +466,9 @@ class AgentService:
                     data["timeline_id"] = f"{turn_key}:tool:{key or secrets.token_hex(6)}"
                 elif event.type == "plan_update":
                     data["timeline_id"] = f"{turn_key}:plan"
+                elif event.type in {"approval_review", "permission_response"}:
+                    approval_id = payload.get("id") or payload.get("reviewId")
+                    data["timeline_id"] = f"{turn_key}:approval:{approval_id}"
                 elif event.type == "assistant_message_chunk" and phase in {"final_answer", "final"}:
                     data["timeline_id"] = f"{turn_key}:answer"
             projected = event.model_copy(update={"data": data})
@@ -919,6 +922,7 @@ class AgentService:
             "tool_result",
             "permission_request",
             "permission_response",
+            "approval_review",
             "file_change",
             "terminal_output",
             "plan_update",

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from acp import update_agent_message_text
@@ -173,7 +174,7 @@ def test_acp_provider_uses_model_specific_effort_controls(tmp_path) -> None:
     connection = Connection()
 
     async def connect(_project_path: str):
-        return connection, Manager(), object(), object()
+        return connection, Manager(), _AcpClientHost("test-acp", str(tmp_path), False), object()
 
     provider._connect = connect
 
@@ -186,9 +187,11 @@ def test_acp_provider_uses_model_specific_effort_controls(tmp_path) -> None:
         assert models[1].supported_efforts == ("high", "xhigh")
 
         session = await provider.create_session(str(tmp_path), model="deep")
-        assert provider.session_options(session.id) == SessionOptions(model="deep", effort="high")
+        assert provider.session_options(session.id) == SessionOptions(
+            model="deep", effort="high", approval_mode="deny_all",
+        )
         options = await provider.update_session_options(session.id, effort="xhigh")
-        assert options == SessionOptions(model="deep", effort="xhigh")
+        assert options == SessionOptions(model="deep", effort="xhigh", approval_mode="deny_all")
 
     asyncio.run(scenario())
     assert ("model", "deep") in calls
@@ -653,7 +656,9 @@ def test_codex_provider_applies_runtime_options_to_next_turn() -> None:
 
     provider = CodexProvider(default_model="gpt-default")
     provider._sessions["session-options"] = _CodexRuntime(
-        client=SimpleNamespace(),
+        client=SimpleNamespace(_client=SimpleNamespace(
+            request=AsyncMock(return_value=SimpleNamespace(requirements=None)),
+        )),
         thread=FakeThread(),
         options=SessionOptions(
             model="gpt-before",

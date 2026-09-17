@@ -58,7 +58,7 @@ export function ApprovalPrompt({ request, pending, error, onResolve }: ApprovalP
       ? "该命令需要超出当前沙箱或写入受保护区域。请确认后继续。"
       : request.kind === "file_change"
         ? "这项文件修改超出了当前会话已经授予的写入范围。"
-        : "Codex 请求临时扩展当前会话的文件系统或网络访问范围。"
+        : "当前服务请求你的确认。"
   );
 
   return (
@@ -67,7 +67,7 @@ export function ApprovalPrompt({ request, pending, error, onResolve }: ApprovalP
         <span className="approval-mark" aria-hidden="true"><ShieldCheck size={18} /></span>
         <div>
           <span className="approval-kicker">需要你的确认</span>
-          <h3 id="approval-title">{titleByKind[request.kind]}</h3>
+          <h3 id="approval-title">{request.title || titleByKind[request.kind]}</h3>
         </div>
         <span className="approval-context" title={request.cwd || request.method}>
           <GitBranch size={12} />{request.kind === "command" ? "命令" : request.kind === "file_change" ? "文件" : "权限"}
@@ -80,6 +80,9 @@ export function ApprovalPrompt({ request, pending, error, onResolve }: ApprovalP
       </div>
 
       <p className="approval-reason">{reason}</p>
+      {request.kind === "permissions" && request.permissions && request.command && <details className="approval-details">
+        <summary>请求详情</summary><pre>{JSON.stringify(request.permissions, null, 2)}</pre>
+      </details>}
       {request.kind === "elicitation" && request.mode === "url" && !request.unsupportedReason ? (
         <p className="approval-reason">
           请先打开 <a href={request.url!} target="_blank" rel="noreferrer">{request.url}</a>，
@@ -94,7 +97,7 @@ export function ApprovalPrompt({ request, pending, error, onResolve }: ApprovalP
         {decisions.has("accept") ? (
           <button className="approval-option primary" type="button" disabled={pending} onClick={() => onResolve("accept")} data-testid="approval-once">
             <span>
-              <strong>{request.mode === "url" ? "已完成授权" : request.kind === "elicitation" ? "允许" : "仅允许这一次"}</strong>
+              <strong>{request.decisionLabels?.accept || (request.mode === "url" ? "已完成授权" : request.kind === "elicitation" ? "允许" : "仅允许这一次")}</strong>
               <small>{request.kind === "elicitation" ? "继续此工具请求" : "继续当前操作，不保存规则"}</small>
             </span>
             {pending ? <LoaderCircle className="approval-spinner" size={13} /> : <kbd>1</kbd>}
@@ -102,7 +105,7 @@ export function ApprovalPrompt({ request, pending, error, onResolve }: ApprovalP
         ) : null}
         {decisions.has("acceptForSession") ? (
           <button className="approval-option" type="button" disabled={pending} onClick={() => onResolve("acceptForSession")} data-testid="approval-session">
-            <span><strong>本次会话始终允许</strong><small>相同请求在本次会话中不再询问</small></span>
+            <span><strong>{request.decisionLabels?.acceptForSession || "本次会话始终允许"}</strong><small>{request.decisionLabels ? "采用服务提供的权限范围" : "相同请求在本次会话中不再询问"}</small></span>
             <kbd>2</kbd>
           </button>
         ) : null}
@@ -111,7 +114,7 @@ export function ApprovalPrompt({ request, pending, error, onResolve }: ApprovalP
       <footer className="approval-footer">
         {decisions.has("decline") ? (
           <button type="button" disabled={pending} onClick={() => onResolve("decline")} data-testid="approval-deny">
-            <X size={13} />拒绝
+            <X size={13} />{request.decisionLabels?.decline || "拒绝"}
           </button>
         ) : <span />}
         {decisions.has("cancel") ? (

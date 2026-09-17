@@ -142,8 +142,54 @@ try {
   await settings.getByText("此任务使用运行后端的权限配置。").waitFor();
   assert.equal(await access.count(), 0, "Unsupported permission controls must not be offered");
   assert.equal(await approval.count(), 0);
+  await settings.getByRole("button", { name: "关闭设置", exact: true }).click();
+  for (const [provider, initial, selected, choices] of [
+    ["claude", "default", "auto", [["default", "人工审批"], ["auto", "自动审查"], ["acceptEdits", "自动允许编辑"]]],
+    ["native-acp", "deny_all", "auto_allow", [["user", "人工审批"], ["auto_allow", "自动允许请求"], ["deny_all", "自动拒绝请求"]]],
+  ]) {
+    await page.evaluate(({ provider, initial, choices }) => {
+      const runtime = window.permissionTest.fixture.threads.find(t => t.id === "desktop-ui").runtime;
+      Object.assign(runtime, { provider, access: "default", approval: initial, permissionOptions: {
+        access: [], approval: choices.map(([value, label]) => ({ value, label, description: "" })),
+        reason: "此服务不提供独立的文件访问范围设置。",
+      }, settingsRevision: runtime.settingsRevision + 1 });
+    }, { provider, initial, choices });
+    await page.getByRole("button", { name: /^统一 managed 与 native sessions/ }).click();
+    await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
+    await open();
+    await approval.waitFor();
+    assert.equal(await access.count(), 0, "Native approval modes are not Codex file access modes");
+    await approval.selectOption(selected);
+    await approval.and(page.locator(":enabled")).waitFor();
+    assert.equal(await approval.inputValue(), selected);
+    await settings.getByRole("button", { name: "关闭设置", exact: true }).click();
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.evaluate(() => {
+    const thread = window.permissionTest.fixture.threads.find(t => t.id === "desktop-ui");
+    thread.items = [
+      { id: "u", type: "message", role: "user", content: "Audit history", time: "" },
+      { id: "approved", type: "tool", name: "自动审查 · 已允许", command: "test command A", status: "done", approvalAudit: true, output: "来源：codex · 自动审查\n结果：已允许" },
+      { id: "denied", type: "tool", name: "自动审查 · 已拒绝", command: "test command B", status: "error", approvalAudit: true, output: "来源：codex · 自动审查\n结果：已拒绝\n原因：native review reason" },
+      { id: "claude-tool", type: "tool", name: "Read", command: "test file", status: "done", output: "file content", permission: { source: "Claude 后端", policy: "auto", decision: "accept" } },
+      { id: "a", type: "message", role: "assistant", content: "Audit complete", time: "" },
+    ];
+  });
+  await page.getByRole("button", { name: /^统一 managed 与 native sessions/ }).click();
+  await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
+  await page.getByText("Audit complete", { exact: true }).waitFor();
+  assert.equal(await page.getByTestId("approval-prompt").count(), 0, "Automatic audit history must not require a manual decision");
+  await page.getByTestId("tool-group").getByRole("button").click();
+  const denied = page.getByTestId("tool-process").filter({ hasText: "自动审查 · 已拒绝" });
+  await denied.locator("summary").click();
+  await denied.getByText(/native review reason/).waitFor();
+  assert.equal(await denied.getByText("失败", { exact: true }).count(), 0);
+  const nativeTool = page.getByTestId("tool-process").filter({ hasText: "Read" });
+  await nativeTool.locator("summary").click();
+  await nativeTool.getByText("Claude 后端 · 自动审查 · 已允许执行", { exact: true }).waitFor();
+  if (process.env.CLEO_SMOKE_OUTPUT) await page.screenshot({ path: join(process.env.CLEO_SMOKE_OUTPUT, "approval-history.png") });
   assert.deepEqual(errors, []);
-  console.log("PASS: independent permissions, automatic review, saved/pending state, failure recovery, discard, stale responses, task isolation, unsupported modes, dark/light and narrow layout");
+  console.log("PASS: independent permissions, automatic review, saved/pending state, failure recovery, discard, stale responses, task isolation, native Claude/ACP modes, durable audit display, dark/light and narrow layout");
 } finally {
   await browser?.close(); await server.close();
   assert.equal(dirname(scratch), resolve(tmpdir()));

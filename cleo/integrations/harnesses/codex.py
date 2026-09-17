@@ -17,7 +17,10 @@ from openai_codex import (
 )
 from openai_codex.api import ReasoningEffort
 from openai_codex.errors import JsonRpcError
-from openai_codex.generated.v2_all import GetAccountRateLimitsResponse
+from openai_codex.generated.v2_all import (
+    ConfigRequirementsReadResponse,
+    GetAccountRateLimitsResponse,
+)
 
 from cleo.harnesses.control import (
     HarnessAccount,
@@ -126,12 +129,13 @@ class CodexProvider:
                 approval_mode=self._approval_mode,
                 sandbox=self._sandbox.value,
             )
-            thread = await client.thread_start(
-                approval_mode=self._sdk_approval_mode(self._approval_mode),
-                cwd=project_path,
-                model=options.model,
-                sandbox=self._sandbox,
-            )
+            if options.approval_mode == "user":
+                thread = await self._manual_thread(client, "thread_start", project_path, options)
+            else:
+                thread = await client.thread_start(
+                    approval_mode=self._sdk_approval_mode(self._approval_mode),
+                    cwd=project_path, model=options.model, sandbox=self._sandbox,
+                )
         except BaseException:
             await client.close()
             raise
@@ -183,13 +187,15 @@ class CodexProvider:
                 approval_mode=self._approval_mode,
                 sandbox=self._sandbox.value,
             )
-            thread = await client.thread_resume(
-                native_session_id,
-                approval_mode=self._sdk_approval_mode(self._approval_mode),
-                cwd=project_path,
-                model=options.model,
-                sandbox=self._sandbox,
-            )
+            if options.approval_mode == "user":
+                thread = await self._manual_thread(
+                    client, "thread_resume", project_path, options, native_session_id,
+                )
+            else:
+                thread = await client.thread_resume(
+                    native_session_id, approval_mode=self._sdk_approval_mode(self._approval_mode),
+                    cwd=project_path, model=options.model, sandbox=self._sandbox,
+                )
         except JsonRpcError as error:
             await client.close()
             if (
@@ -302,7 +308,7 @@ class CodexProvider:
                 turn = await asyncio.shield(turn_task)
             except asyncio.CancelledError:
                 await runtime.approvals.questions.cancel_all()
-                runtime.approvals.cancel_all()
+                await runtime.approvals.cancel_pending()
                 await turn_started.wait()
                 if not turn_task.done() and runtime.active_turn is not None:
                     await runtime.active_turn.interrupt()
@@ -310,13 +316,13 @@ class CodexProvider:
                 raise
             finally:
                 if not turn_task.done():
-                    runtime.approvals.cancel_all()
+                    await runtime.approvals.cancel_pending()
                     await runtime.client.close()
                     await asyncio.gather(turn_task, return_exceptions=True)
                 runtime.active_turn = None
                 await runtime.approvals.questions.cancel_all()
                 runtime.approvals.questions.callback = None
-                runtime.approvals.cancel_all()
+                await runtime.approvals.cancel_pending()
                 runtime.approvals.unbind()
 
         response = final_response or "".join(response_parts) or None
@@ -361,7 +367,6 @@ class CodexProvider:
             更新后的 ``SessionOptions``, 由 AgentAdapter 持久化并回显给 CLI。
         """
         runtime = self._sessions[session_id]
-        current = runtime.options
         if effort is not None:
             ReasoningEffort(effort)
         if approval_mode is not None:
@@ -369,6 +374,27 @@ class CodexProvider:
                 raise ValueError(f"Unsupported Codex approval mode: {approval_mode}")
         if sandbox is not None:
             Sandbox(sandbox)
+        if approval_mode is not None or sandbox is not None:
+            response = await runtime.client._client.request(
+                "configRequirements/read", None, response_model=ConfigRequirementsReadResponse,
+            )
+            requirements = response.requirements
+            if requirements is not None:
+                rules = requirements.model_dump(mode="json", by_alias=True)
+                allowed_sandbox = rules.get("allowedSandboxModes")
+                native_sandbox = "danger-full-access" if sandbox == "full-access" else sandbox
+                if (sandbox is not None and allowed_sandbox is not None
+                        and native_sandbox not in allowed_sandbox):
+                    raise ValueError("此设备的管理策略不允许所选文件访问范围。")
+                policy = "never" if approval_mode == "deny_all" else "on-request"
+                allowed_approval = rules.get("allowedApprovalPolicies")
+                if (approval_mode is not None and allowed_approval is not None
+                        and policy not in allowed_approval):
+                    raise ValueError("此设备的管理策略不允许所选审批方式。")
+                features = rules.get("featureRequirements") or {}
+                if approval_mode == "auto_review" and features.get("guardian_approval") is False:
+                    raise ValueError("此设备的管理策略未启用自动审查。")
+        current = runtime.options
         runtime.options = SessionOptions(
             model=current.model if model is None else model,
             effort=current.effort if effort is None else effort,
@@ -551,17 +577,18 @@ class CodexProvider:
         )
         await client.__aenter__()
         try:
-            thread = await client.thread_fork(
-                source.thread.id,
-                approval_mode=(
-                    self._sdk_approval_mode(options.approval_mode)
-                    if options.approval_mode
-                    else None
-                ),
-                cwd=source.cwd or None,
-                model=options.model,
-                sandbox=Sandbox(options.sandbox) if options.sandbox else None,
-            )
+            if options.approval_mode == "user":
+                thread = await self._manual_thread(
+                    client, "thread_fork", source.cwd, options, source.thread.id,
+                )
+            else:
+                thread = await client.thread_fork(
+                    source.thread.id,
+                    approval_mode=(self._sdk_approval_mode(options.approval_mode)
+                                   if options.approval_mode else None),
+                    cwd=source.cwd or None, model=options.model,
+                    sandbox=Sandbox(options.sandbox) if options.sandbox else None,
+                )
         except BaseException:
             await client.close()
             raise
@@ -629,7 +656,7 @@ class CodexProvider:
         """
         runtime = self._sessions[session_id]
         await runtime.approvals.questions.cancel_all()
-        runtime.approvals.cancel_all()
+        await runtime.approvals.cancel_pending()
         if runtime.active_turn is not None:
             await runtime.active_turn.interrupt()
 
@@ -644,7 +671,7 @@ class CodexProvider:
         if runtime is None:
             return
         await runtime.approvals.questions.cancel_all()
-        runtime.approvals.cancel_all()
+        await runtime.approvals.cancel_pending()
         if runtime.active_turn is not None:
             await runtime.active_turn.interrupt()
         await runtime.client.close()
@@ -709,10 +736,21 @@ class CodexProvider:
 
     @staticmethod
     def _sdk_approval_mode(value: str) -> ApprovalMode:
-        if value == "user":
-            # User review is applied with the raw turn override in _start_turn.
-            return ApprovalMode.deny_all
         return ApprovalMode(value)
+
+    @staticmethod
+    async def _manual_thread(client, operation, cwd, options, thread_id=None) -> AsyncThread:
+        # The high-level SDK only exposes automatic review and deny-all presets.
+        await client._ensure_initialized()
+        params = {
+            "approvalPolicy": "on-request", "approvalsReviewer": "user", "cwd": cwd,
+            "model": options.model,
+            "sandbox": ("danger-full-access"
+                        if options.sandbox == "full-access" else options.sandbox),
+        }
+        method = getattr(client._client, operation)
+        result = await method(thread_id, params) if thread_id else await method(params)
+        return AsyncThread(client, result.thread.id)
 
     @staticmethod
     def _sandbox_policy(value: str | None) -> dict[str, Any] | None:
@@ -859,6 +897,8 @@ class CodexProvider:
         elif method == "turn/diff/updated":
             event_type = "file_change"
             text = str(data.get("diff") or "") or None
+        elif method in {"item/autoApprovalReview/started", "item/autoApprovalReview/completed"}:
+            event_type = "approval_review"
         elif method == "error":
             event_type = "error"
             error = data.get("error")
