@@ -358,7 +358,7 @@ try {
   assert(compactFit.document.width === compactFit.viewport.width, "Compact view scrolls horizontally");
   assert(compactFit.document.height === compactFit.viewport.height, "Compact view scrolls vertically");
   assert(compactFit.composer?.bottom <= compactFit.viewport.height, "Composer is clipped in compact view");
-  assert(compactFit.threadSelect?.right <= compactFit.threadRow?.right, "Thread controls overflow their row");
+  assert(!await window.locator(".thread-sidebar").isVisible(), "Compact inspector must leave room for the conversation");
   assert(
     !compactFit.inspector || compactFit.inspector.right <= compactFit.viewport.width,
     "Inspector drawer is clipped in compact view",
@@ -366,6 +366,14 @@ try {
   await window.screenshot({ path: join(outputDir, "07-compact-window.png") });
   await window.getByTestId("inspector").getByRole("button", { name: "关闭检查器", exact: true }).click();
   await window.getByTestId("inspector").waitFor({ state: "detached" });
+
+  await window.waitForFunction(() => !document.querySelector(".app-shell").getAnimations()
+    .some(animation => animation.playState === "running"));
+  const sidebarFit = await window.locator(".thread-row").first().evaluate(row => {
+    const button = row.querySelector(".thread-row-select");
+    return button.getBoundingClientRect().right <= row.getBoundingClientRect().right + 1;
+  });
+  assert(sidebarFit, "Thread controls overflow their visible row");
 
   await window.getByRole("button", { name: "设置", exact: true }).click();
   await checkSettingsLayout(window);

@@ -23,6 +23,7 @@
     "smoke:update-settings": "node tests/update-settings.smoke.mjs",
     "smoke:permissions": "node tests/runtime-permissions.smoke.mjs",
     "smoke:steering": "node tests/steering.smoke.mjs",
+    "smoke:timing": "node tests/timing.smoke.mjs",
     "smoke:evolution-ui": "node tests/evolution-overview.smoke.mjs && node tests/contribution-merge.smoke.mjs && node tests/interaction-ui.smoke.mjs && node tests/behavior-review.smoke.mjs",
     "smoke:layout": "node scripts/smoke-layout.mjs",
     "smoke:program-updates": "node scripts/smoke-program-updates.mjs",

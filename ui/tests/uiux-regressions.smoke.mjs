@@ -259,6 +259,8 @@ try {
     await page.getByTestId("approval-prompt").waitFor();
     assert.equal(await page.locator(".streaming-indicator, .turn-activity").count(), 0,
       "waiting for approval must not look like an active model response");
+    assert.equal(await page.locator(".timeline .spin").count(), 0,
+      "expanded process rows must pause their activity when waiting for approval");
     await page.getByRole("button", { name: "设置", exact: true }).click();
     await page.getByRole("button", { name: "外观", exact: true }).click();
     await page.keyboard.press("1");
@@ -268,6 +270,8 @@ try {
     assert.equal(await page.getByTestId("approval-prompt").count(), 1);
     await page.getByTestId("approval-cancel").click();
     await page.getByTestId("approval-prompt").waitFor({ state: "hidden" });
+    assert.equal(await page.locator(".timeline .spin").count(), 0,
+      "a completed or cancelled turn must not keep an old thought spinning");
   });
   await check("nested dialogs own focus, Escape and global shortcuts", async page => {
     await page.getByRole("button", { name: "设置", exact: true }).click();

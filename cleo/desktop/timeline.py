@@ -254,6 +254,19 @@ class TimelineIndex:
             ).fetchone()
             return json.loads(row[0])["data"]["payload"] if row else None
 
+    def last_messages(self, turn_ids):
+        if not turn_ids:
+            return {}
+        with closing(self._connect()) as db, db:
+            self._sync(db)
+            rows = db.execute(
+                "SELECT turn_id,id FROM items WHERE turn_id IN ("
+                + ",".join("?" for _ in turn_ids)
+                + ") AND json_extract(body,'$.type')='message' "
+                "ORDER BY json_extract(body,'$.role')='assistant',position", turn_ids,
+            )
+            return {row[0]: row[1] for row in rows}
+
     def steers(self, *, unresolved=False):
         with closing(self._connect()) as db, db:
             self._sync(db)

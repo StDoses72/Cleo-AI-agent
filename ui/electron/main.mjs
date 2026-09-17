@@ -181,6 +181,7 @@ const allowedMethods = new Set([
   "get_pending_questions",
   "load_timeline",
   "read_timeline_content",
+  "get_timing",
   "update_runtime",
   "switch_harness",
   "get_config_templates",

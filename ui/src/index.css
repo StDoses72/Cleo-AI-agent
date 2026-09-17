@@ -330,6 +330,7 @@ html[data-platform="darwin"] .titlebar {
 }
 
 .sidebar-collapsed .thread-sidebar {
+  visibility: hidden;
   pointer-events: none;
   opacity: 0;
 }
@@ -3430,3 +3431,19 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
 .update-notice-minimized { width: auto; min-width: 0; padding: 6px; }
 .update-notice-minimized button { display: flex; align-items: center; gap: 8px; }
+.timing, .timing-unrecorded { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.timing { margin-top: 8px; }
+.timing summary, .memory-timing-history > summary { cursor: pointer; width: fit-content; }
+.timing-detail { margin-top: 8px; padding: 0 0 4px 12px; border-left: 1px solid var(--border); }
+.timing-detail p { margin: 6px 0; }
+.timing-detail button { color: var(--text); text-decoration: underline; }
+.timing-attempt { display: flex; align-items: center; gap: 8px; }
+.timing-attempt select { min-width: 0; max-width: 100%; color: inherit; background: var(--surface-raised); }
+.timing-stages { list-style: none; margin: 8px 0; padding: 0; }
+.timing-stages li { display: flex; justify-content: space-between; gap: 16px; padding: 3px 0; }
+.timing-stages li[data-nested="true"] { padding-left: 12px; }
+.timing-stages li > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.timing-stages li > span:last-child { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.timing-stages small { margin-left: 8px; font-size: inherit; color: var(--text-soft); }
+.memory-timing-history { margin-bottom: 18px; color: var(--text-soft); font-size: 12px; }
+.memory-timing-history > div { padding: 10px 0; border-bottom: 1px solid var(--border); }

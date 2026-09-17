@@ -97,6 +97,8 @@ export interface SteerReceipt {
 }
 
 export type TimelineItem = {
+  timing?: TimingSummary;
+  timingError?: string | null;
   order?: number;
   turnId?: string;
   turnHasAnswer?: boolean;
@@ -173,6 +175,8 @@ export interface LocalSkill {
 }
 
 export interface Thread {
+  currentTiming?: TimingSummary | null;
+  timingError?: string | null;
   steerReady?: boolean;
   activeRunId?: string | null;
   pendingApprovals?: ApprovalRequest[];
@@ -466,6 +470,8 @@ export type MemoryViewMode = "all" | "projects" | "pending";
 export type MemoryReviewAction = "consolidate" | "skip";
 
 export interface MemoryOverview {
+  timings?: TimingSummary[];
+  timingError?: string | null;
   schema_version: 1;
   issues?: Array<{ space: string; project: string; error: string; questions?: string[] }>;
   summary: {
@@ -509,6 +515,7 @@ export interface UndoChangesResult {
 }
 
 export type StreamEvent =
+  | { type: "timing"; timing: TimingSummary }
   | { type: "upsert-item"; item: TimelineItem }
   | { type: "turn-started"; item: TimelineItem }
   | { type: "question-request"; request: QuestionRequest }
@@ -527,6 +534,7 @@ export type StreamEvent =
   | { type: "error"; message: string };
 
 export interface CleoClient {
+  getTiming(timingId: string): Promise<TimingDetails>;
   loadWorkspace(): Promise<WorkspaceSnapshot>;
   loadMemory(): Promise<Pick<WorkspaceSnapshot, "memories" | "memoryOverview">>;
   loadThread(threadId: string, activate?: boolean): Promise<Thread>;
@@ -577,4 +585,28 @@ export interface CleoClient {
   ): Promise<WorkspaceSnapshot>;
   undoChanges(threadId: string): Promise<UndoChangesResult>;
   resetWorkspace(): Promise<void>;
+}
+
+export interface TimingSummary {
+  title?: string | null;
+  id: string;
+  sessionId: string;
+  space: string;
+  project: string;
+  kind: "reply" | "dream";
+  turnId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  status: "running" | "completed" | "failed" | "cancelled" | "unconfirmed" | "skipped" | "needs_clarification" | "pending";
+  elapsedMs: number;
+  phase: string | null;
+  unavailable: string[];
+  persistenceError: string | null;
+}
+
+export interface TimingDetails extends TimingSummary {
+  accumulatedMs: number;
+  attempts: TimingSummary[];
+  spans: { id: string; ordinal: number; label: string; category: string; parentId: string | null;
+    elapsedMs: number; status: TimingSummary["status"] }[];
 }

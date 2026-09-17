@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import type { MemoryEntry, Project, RuntimeProfile, Thread } from "../types";
 import { accessLabel, approvalLabel, effortLabels } from "../runtime-labels";
+import { Timing } from "./Timing";
 
 export type InspectorTab = "changes" | "context" | "run";
 
@@ -214,6 +215,7 @@ function RunPanel({ thread, project }: { thread: Thread | null; project: Project
         <span className={running ? "running" : hasIssue ? "issue" : completed ? "complete" : "idle"}>{running ? <Circle size={12} /> : hasIssue ? <CircleAlert size={12} /> : completed ? <Check size={12} /> : <Clock3 size={12} />}</span>
         <div><strong>{running ? "Agent 正在执行" : hasIssue ? "上次运行需要查看" : completed ? "上次运行已完成" : "尚未运行"}</strong><small>{running || hasIssue || completed ? thread?.updatedAt : "发送第一条消息后，可在这里查看进度。"}</small></div>
       </section>
+      <Timing key={thread?.currentTiming?.id ?? thread?.id} summary={thread?.currentTiming} error={thread?.timingError} />
       <div className="terminal-head"><Terminal size={14} /><span>cleo · {project?.name ?? "workspace"}</span></div>
       <pre className="terminal-output" tabIndex={0} role="region" aria-label="终端输出">{thread?.terminal?.length ? thread.terminal.join("") : <span className="muted">暂无运行输出</span>}{running && <span className="cursor">▋</span>}</pre>
       <div className="run-events">

@@ -495,6 +495,9 @@ class AgentService:
                     raise
 
         try:
+            from cleo.runtime.timing import phase
+
+            phase("准备模型上下文")
             context = (
                 self._memory_context(self._space, route.project) if self._memory_context else ""
             )
@@ -515,6 +518,7 @@ class AgentService:
                         },
                     },
                 )
+            phase("模型运行（含工具与等待）")
             turn = await route.provider.prompt(
                 route.provider_session_id,
                 context + "\n\nCurrent user request:\n" + prompt if context else prompt,
@@ -526,6 +530,9 @@ class AgentService:
         except Exception as exc:
             self._store.set_status(session_id, "failed", error=str(exc))
             raise
+        phase("保存回复与会话状态", previous_status=(
+            "cancelled" if turn.status == "cancelled" else "failed" if turn.error else "completed"
+        ))
         route.native_session_id = turn.native_session_id
         stored_events = [
             translated

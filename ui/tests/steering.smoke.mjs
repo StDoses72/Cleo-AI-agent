@@ -155,7 +155,7 @@ try {
   await page.evaluate(() => { window.steerTest.holdNext = true; });
   await send("先不要改样式，只处理历史加载逻辑");
   await page.waitForFunction(() => Boolean(window.steerTest.release));
-  await page.getByTestId("steer-receipt").getByText("运行时已接收", { exact: true }).waitFor();
+  await page.getByTestId("steer-receipt").getByText("已接收", { exact: true }).waitFor();
   assert.equal(await page.getByTestId("stop-button").isEnabled(), true);
   await input.fill("A 尚未发送的草稿");
   await page.getByRole("button", { name: /^统一 managed 与 native sessions/ }).click();

@@ -41,6 +41,7 @@ from cleo.memory.state import (
     mark_consolidation_started,
     needs_consolidation,
 )
+from cleo.runtime.timing import measure, phase, stage
 
 DREAM_AGENT_SYSTEM_PROMPT = """
 You maintain a small Markdown file of USER PREFERENCES. Return a JSON INSTANCE
@@ -111,11 +112,13 @@ class DreamAgent:
         correction = ""
         for attempt in range(1, MAX_EXTRACTION_ATTEMPTS + 1):
             # Retry only invalid output, never transport failures, cancellation, or publication.
-            text = await self._request_text(instructions + correction, prompt)
+            with stage(f"模型提取 · 第 {attempt} 次请求", category="model"):
+                text = await self._request_text(instructions + correction, prompt)
             if text.startswith("```json\n") and text.endswith("```"):
                 text = text[8:-3].strip()
             try:
-                return Extraction.model_validate(json.loads(text))
+                with stage(f"第 {attempt} 次输出校验"):
+                    return Extraction.model_validate(json.loads(text))
             except (json.JSONDecodeError, ValidationError) as exc:
                 if attempt == MAX_EXTRACTION_ATTEMPTS:
                     raise
@@ -178,10 +181,18 @@ class DreamAgent:
     ):
         if not force and not settings.active_profiles.dream_enabled:
             return {"status": "skipped", "reason": "automatic memory consolidation is disabled"}
-        validate_dream_state(settings.MEMORY_DIR, space)
-        directory = project_directory(settings.MEMORY_DIR, space, project)
-        async with project_lock(directory):
-            return await self._consolidate(session_id, project, space, refresh_snapshot=force)
+        async with measure(settings.MEMORY_DIR, session_id=session_id, space=space,
+                           project=project, kind="dream") as timing:
+            timing.summary["unavailable"] = ["模型服务内部阶段"]
+            phase("校验整理状态")
+            validate_dream_state(settings.MEMORY_DIR, space)
+            directory = project_directory(settings.MEMORY_DIR, space, project)
+            phase("等待项目整理锁")
+            async with project_lock(directory):
+                result = await self._consolidate(session_id, project, space, refresh_snapshot=force)
+            if result["status"] in {"skipped", "needs_clarification", "pending"}:
+                timing.summary["status"] = result["status"]
+            return result
 
     async def _consolidate(self, session_id, project, space, *, refresh_snapshot=False):
         """Purpose: Extract checkpointed memories from a validated raw-event snapshot.
@@ -191,6 +202,7 @@ class DreamAgent:
         from cleo.agents.profiles import dream_profile
         from cleo.sessions.store import SessionStore
 
+        phase("读取与校验来源、现有记忆")
         store = SessionStore(settings.MEMORY_DIR, settings.SESSION_INDEX_PATH)
         manifest, events, current_hash = await asyncio.to_thread(
             self._read_source, store, space, project, session_id,
@@ -213,6 +225,7 @@ class DreamAgent:
         completed = 0
         total = 0
         try:
+            phase("准备分块与恢复检查点")
             path = session_directory(settings.MEMORY_DIR, space, project, session_id) / "dream.json"
             committed = int(checkpoint["committed_seq"])
             prefix = [e for e in events if e["seq"] <= committed]
@@ -257,6 +270,7 @@ class DreamAgent:
             review_path = repository.path(space, project).with_name(".memory-review.json")
             conflicts = read_conflicts(review_path, parse_memory(initial).preferences)
             for index, block in enumerate(blocks):
+                phase(f"处理第 {index + 1}/{total} 块")
                 current_hash = get_session_source(space, project, session_id)["source_hash"]
                 mark_consolidation_started(
                     space, project, session_id, current_hash,
@@ -264,7 +278,8 @@ class DreamAgent:
                 )
                 cached = pending["results"].get(block.digest)
                 if cached is not None:
-                    result = Extraction.model_validate(cached)
+                    with stage("恢复已完成的提取"):
+                        result = Extraction.model_validate(cached)
                 else:
                     prompt = canonical({
                         "space": space, "project": project, "session_id": session_id,
@@ -275,20 +290,23 @@ class DreamAgent:
                         "unresolved_conflicts": conflicts,
                     }) + "\nEvidence records:\n" + block.text
                     result = await self._extract(prompt)
+                    with stage("校验证据并保存分块结果"):
+                        result.validate_evidence(block)
+                        pending["results"][block.digest] = result.model_dump()
+                        save_checkpoint(path, checkpoint)
+                with stage("校验并合并结果"):
                     result.validate_evidence(block)
-                    pending["results"][block.digest] = result.model_dump()
-                    save_checkpoint(path, checkpoint)
-                result.validate_evidence(block)
-                candidate = apply_edits(candidate, result.edits)
-                for conflict in result.conflicts:
-                    if any(item not in parse_memory(candidate).preferences
-                           for item in conflict.preferences):
-                        raise ValueError("conflict must reference exact existing preferences")
-                conflicts = [c.model_dump() for c in result.conflicts]
-                if result.snapshot is not None and pending["refresh_snapshot"]:
-                    snapshot_lines, work_item = result.snapshot, result.work_item
-                carry = result.summary
+                    candidate = apply_edits(candidate, result.edits)
+                    for conflict in result.conflicts:
+                        if any(item not in parse_memory(candidate).preferences
+                               for item in conflict.preferences):
+                            raise ValueError("conflict must reference exact existing preferences")
+                    conflicts = [c.model_dump() for c in result.conflicts]
+                    if result.snapshot is not None and pending["refresh_snapshot"]:
+                        snapshot_lines, work_item = result.snapshot, result.work_item
+                    carry = result.summary
                 completed += 1
+            phase("发布前校验")
             latest = await asyncio.to_thread(store.read_events, session_id)
             latest_prefix = [e for e in latest if e["seq"] <= pending["to_seq"]]
             if event_content_hash(latest_prefix) != source_hash:
@@ -297,6 +315,7 @@ class DreamAgent:
             if (latest_manifest["space"], latest_manifest["project"]) != (space, project):
                 raise ValueError("session moved before memory publication")
             if conflicts:
+                phase("保存待澄清结果")
                 atomic_text(review_path, canonical({"memory_hash": digest(initial),
                             "conflicts": [{"hashes": [digest(text) for text in c["preferences"]],
                                            "question": c["question"]} for c in conflicts]}))
@@ -322,10 +341,12 @@ class DreamAgent:
                 ))
             pending["published_memory"] = candidate
             save_checkpoint(path, checkpoint)
+            phase("发布记忆文件与 Git 提交")
             commit = await finish_write(repository.publish, space, project,
                                         pending["base_memory"], candidate,
                                         f"Consolidate preferences from {session_id}\n\n"
                                         f"Source: {source_hash}")
+            phase("保存整理状态")
             review_path.unlink(missing_ok=True)
             count = len(parse_memory(candidate).preferences)
             checkpoint.update(committed_seq=pending["to_seq"], committed_hash=source_hash,
@@ -350,14 +371,18 @@ class DreamAgent:
             return {"status": "complete", "source_hash": source_hash,
                     "completed_blocks": completed, "durable_memory_count": count, "commit": commit}
         except asyncio.CancelledError:
+            phase("保存中断状态", previous_status="cancelled")
             mark_consolidation_failed(
                 space, project, session_id, current_hash,
                 f"Consolidation cancelled; {completed}/{total} blocks checkpointed.",
             )
+            phase(None)
             raise
         except Exception as exc:
+            phase("保存失败状态", previous_status="failed")
             mark_consolidation_failed(
                 space, project, session_id, current_hash,
                 f"{completed}/{total} blocks checkpointed. {exc}",
             )
+            phase(None)
             raise

@@ -242,21 +242,20 @@ try {
   const scenarios = [
     { name: "wide", width: 1600, height: 1000, zoom: 1 },
     { name: "compact", width: 1080, height: 760, zoom: 1 },
+    { name: "narrow", width: 760, height: 800, zoom: 1 },
     { name: "zoom", width: 1600, height: 1000, zoom: 1.5 },
     { name: "compact-zoom", width: 1080, height: 760, zoom: 1.5 },
   ];
   for (const scenario of scenarios) {
     const size = await resizeWindow(application, page, scenario);
     console.log(JSON.stringify({ scenario: scenario.name, ...size }));
-    if (scenario.name === "compact-zoom") {
-      await page.getByRole("button", { name: "收起侧栏", exact: true }).click();
-    }
     for (const theme of ["dark", "light"]) {
       const label = `${scenario.name}-${theme}`;
       await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
       await openInspector();
       await jumpLatest();
       const open = await checkGeometry(label);
+      assert(open.shell.width >= 350, `Conversation became too narrow (${label}): ${open.shell.width}`);
       await checkLastMessage(label);
       await checkScrollAndHitTargets(label);
       await checkRuntimeMenu(label);
@@ -269,7 +268,7 @@ try {
       await inspector.waitFor({ state: "detached" });
       await settle();
       const closedWidth = await page.locator(".conversation-shell").evaluate(element => element.getBoundingClientRect().width);
-      assert(closedWidth > open.shell.width + 100, `Closing the inspector does not restore chat space (${label}): ${open.shell.width} → ${closedWidth}`);
+      assert(closedWidth >= open.shell.width, `Closing the inspector reduces chat space (${label}): ${open.shell.width} → ${closedWidth}`);
       await checkLastMessage(`${label}-closed`);
     }
   }

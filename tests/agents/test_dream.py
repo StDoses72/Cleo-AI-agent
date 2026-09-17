@@ -40,6 +40,34 @@ def invoke(agent):
     return asyncio.run(agent.invoke("session-dream", "cleo", "productivity"))
 
 
+def test_timing_tracks_actual_retries_and_publish_without_changing_evidence(tmp_path, monkeypatch):
+    from cleo.runtime.timing import TimingStore
+
+    config, store = setup(tmp_path, monkeypatch)
+    original = store.read_events("session-dream")
+    calls = []
+
+    async def request(self, instructions, prompt):
+        calls.append(prompt)
+        await asyncio.sleep(0.002)
+        return "invalid" if len(calls) == 1 else extracted(prompt).model_dump_json()
+
+    monkeypatch.setattr(dream_module.DreamAgent, "_request_text", request)
+    assert invoke(dream_module.DreamAgent())["status"] == "complete"
+    timings = TimingStore(config.MEMORY_DIR)
+    result = timings.detail(timings.summaries(kind="dream")[0]["id"])
+    assert result["elapsedMs"] > 0 and result["status"] == "completed"
+    models = [span for span in result["spans"] if span["category"] == "model"]
+    assert len(models) == 2 and all(span["elapsedMs"] > 0 for span in models)
+    assert any(span["status"] == "failed" and "校验" in span["label"] for span in result["spans"])
+    assert {"发布记忆文件与 Git 提交", "保存整理状态", "准备分块与恢复检查点"} <= {
+        span["label"] for span in result["spans"]
+    }
+    assert store.read_events("session-dream") == original
+    assert invoke(dream_module.DreamAgent())["status"] == "skipped"
+    assert len(calls) == 2
+
+
 def memories():
     return MemoryReader(dream_module.settings.MEMORY_DIR).search_long_term_memory(
         space="productivity", project="cleo")["results"]

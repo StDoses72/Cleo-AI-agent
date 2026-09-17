@@ -233,6 +233,14 @@ class DesktopService:
             return overview
 
         overview = await asyncio.to_thread(read)
+        timings, timing_error = await self._timing_summaries(kind="dream")
+        for timing in timings:
+            try:
+                timing["title"] = self.store.load_manifest(timing["sessionId"]).get("title")
+            except (FileNotFoundError, OSError, ValueError):
+                pass
+        overview["timings"] = timings
+        overview["timingError"] = timing_error
         return {
             "memoryOverview": overview,
             "memories": [self._memory_entry(entry) for entry in overview["entries"]],
@@ -256,6 +264,20 @@ class DesktopService:
             )
         page = await asyncio.to_thread(TimelineIndex(self.store, manifest).page,
                                        cursor=cursor, direction=direction, limit=limit)
+        timings, timing_error = await self._timing_summaries(
+            session_id=thread_id, kind="reply",
+            turn_ids=list({item.get("turnId") for item in page["items"] if item.get("turnId")}),
+            limit=500,
+        )
+        by_turn = {timing["turnId"]: timing for timing in reversed(timings)}
+        last_messages = await asyncio.to_thread(
+            TimelineIndex(self.store, manifest).last_messages, list(by_turn),
+        )
+        for item in page["items"]:
+            if item["id"] == last_messages.get(item.get("turnId")):
+                item["timing"] = by_turn[item["turnId"]]
+            if timing_error:
+                item["timingError"] = timing_error
         pending = {q["id"] for q in await self.get_pending_questions(thread_id=thread_id)}
         for item in page["items"]:
             if item["type"] == "question":
@@ -263,6 +285,40 @@ class DesktopService:
                 if item["request"]["status"] == "pending" and item["id"] not in pending:
                     item["request"]["status"] = "unavailable"
         return page
+
+    async def _timing_summaries(self, **filters):
+        import sqlite3
+
+        from cleo.runtime.timing import TimingStore
+
+        try:
+            timings = await asyncio.to_thread(
+                TimingStore(self.settings.MEMORY_DIR).summaries, **filters,
+            )
+            for timing in timings:
+                if (timing["kind"] == "reply" and timing["status"] == "running"
+                        and timing["sessionId"] not in self._run_tasks):
+                    timing["status"] = "unconfirmed"
+            return timings, None
+        except (OSError, sqlite3.Error) as error:
+            self._debug(f"Timing read failed: {error}")
+            return [], "计时记录暂时无法读取。"
+
+    async def get_timing(self, *, timing_id: str) -> dict:
+        from cleo.runtime.timing import TimingStore
+
+        if not isinstance(timing_id, str) or len(timing_id) > 128:
+            raise ValueError("无效的计时记录标识。")
+        detail = await asyncio.to_thread(TimingStore(self.settings.MEMORY_DIR).detail, timing_id)
+        for attempt in [detail, *detail["attempts"]]:
+            if (attempt["kind"] == "reply" and attempt["status"] == "running"
+                    and attempt["sessionId"] not in self._run_tasks):
+                attempt["status"] = "unconfirmed"
+        if detail["status"] == "unconfirmed":
+            for span in detail["spans"]:
+                if span["status"] == "running":
+                    span["status"] = "unconfirmed"
+        return detail
 
     async def read_timeline_content(self, *, thread_id: str, item_id: str, field: str,
                                     offset: int = 0) -> dict:
@@ -911,8 +967,48 @@ class DesktopService:
                 terminal = None
                 stream = (self._stream_chat if manifest["space"] == "non_productivity"
                           else self._stream_productivity)
-                await stream(manifest, prompt, attachments or [], run_event,
-                             **({"steer_ids": steer_ids} if steer_ids else {}))
+                from cleo.runtime.timing import measure
+
+                async def timing_event(summary):
+                    await emit({"type": "timing", "timing": summary})
+
+                async with measure(
+                    self.settings.MEMORY_DIR, session_id=thread_id, space=manifest["space"],
+                    project=manifest["project"], kind="reply", emit=timing_event,
+                ) as timing:
+                    timing.phase("准备上下文与任务")
+                    timing.summary["unavailable"] = ["模型服务内部阶段"]
+                    observed = {}
+
+                    async def timed_event(event, timing=timing, observed=observed):
+                        if event["type"] == "turn-started":
+                            timing.summary["turnId"] = event["item"]["id"]
+                        elif event["type"] == "error":
+                            timing.summary["status"] = "failed"
+                        elif event["type"] == "upsert-item" and event["item"]["type"] == "tool":
+                            item = event["item"]
+                            key = item["id"]
+                            if item["status"] == "running" and key not in observed:
+                                observed[key] = timing.start(item["name"], category="tool")
+                            elif item["status"] in {"done", "error"}:
+                                timing.end(observed.get(key),
+                                           "failed" if item["status"] == "error" else "completed")
+                        elif event["type"] in {"approval-request", "question-request"}:
+                            request = event["request"]
+                            key = event["type"].split("-")[0] + request["id"]
+                            if key not in observed:
+                                observed[key] = timing.start(
+                                    "等待审批" if event["type"] == "approval-request"
+                                    else "等待回答",
+                                    category="wait",
+                                )
+                        elif event["type"] in {"approval-resolved", "question-resolved"}:
+                            result = event.get("response") or event["request"]
+                            timing.end(observed.get(event["type"].split("-")[0] + result["id"]))
+                        await run_event(event)
+
+                    await stream(manifest, prompt, attachments or [], timed_event,
+                                 **({"steer_ids": steer_ids} if steer_ids else {}))
                 if not terminal or terminal["type"] != "done" or steering.mode != "boundary":
                     break
                 next_message = await steering.next_boundary()
@@ -1601,6 +1697,9 @@ class DesktopService:
             "content": prompt, "time": "",
         }})
         text = ""
+        from cleo.runtime.timing import phase
+
+        phase("模型响应（含工具与等待）")
         try:
             async for chunk in agent.stream_text(
                 prompt,
@@ -1623,10 +1722,15 @@ class DesktopService:
                         },
                     }
                 )
-        except BaseException:
+        except BaseException as error:
+            phase("保存中断回复", previous_status=(
+                "cancelled" if isinstance(error, asyncio.CancelledError) else "failed"
+            ))
             await self._sync_chat(agent, manifest, "interrupted")
+            phase(None)
             raise
         else:
+            phase("保存回复与会话状态")
             await self._sync_chat(agent, manifest, "completed")
         usage = agent.context_usage
         await emit({"type": "usage", "usage": self._usage_dict(usage)})
@@ -1732,6 +1836,13 @@ class DesktopService:
                 **({"steer_ids": steer_ids} if steer_ids else {}),
             )
         finally:
+            from cleo.runtime.timing import phase
+
+            error = sys.exception()
+            phase("整理文件改动与保存结果", previous_status=(
+                "cancelled" if isinstance(error, asyncio.CancelledError)
+                else "failed" if error else "completed"
+            ))
             for projected in finalize_stream_tools(state):
                 await emit(projected)
             change_set = None
@@ -2211,8 +2322,13 @@ class DesktopService:
                 else changes_from_diff(diff)
             )
         usage = self._usage_from_events(events, self._runtime_profile(manifest)["contextWindow"])
+        timings, timing_error = await self._timing_summaries(
+            session_id=manifest["id"], kind="reply", limit=1,
+        )
         return {
             "id": manifest["id"],
+            "currentTiming": timings[0] if timings else None,
+            "timingError": timing_error,
             "space": self._ui_space(manifest["space"]),
             "projectId": project_id(manifest["space"], manifest["project"]),
             "title": manifest.get("title") or "新对话"

@@ -92,6 +92,10 @@ export class MockCleoClient implements CleoClient {
       hasAfter: end < all.length, revision: String(all.length) };
   }
 
+  async getTiming(_timingId: string): Promise<import("../types").TimingDetails> {
+    throw new Error("此示例没有计时记录。");
+  }
+
   async readTimelineContent(threadId: string, itemId: string, field: string, offset: number): Promise<TimelineContent> {
     const item = (this.histories.get(threadId) ?? snapshot.threads.find(t => t.id === threadId)?.items ?? []).find(i => i.id === itemId);
     const value = item && (item as unknown as Record<string, unknown>)[field];

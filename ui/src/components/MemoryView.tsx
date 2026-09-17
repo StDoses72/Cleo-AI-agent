@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { dreamStatusLabel } from "../memoryStatus";
+import { Timing } from "./Timing";
 import {
   ArchiveX,
   Brain,
@@ -168,6 +169,15 @@ export function MemoryView({
         <span>记忆整理 · {dreamStatus}</span>
         {dreamAgent.last_processed_at && <span>上次整理 {formatRelativeTime(dreamAgent.last_processed_at)}</span>}
       </div>
+
+      <details className="memory-timing-history">
+        <summary>整理耗时</summary>
+        {overview.timingError ? <p role="alert">{overview.timingError}</p>
+          : overview.timings?.length ? overview.timings.map(timing => <div key={timing.id}>
+            <span>{timing.title || timing.sessionId} · {timing.project} · {new Date(timing.createdAt).toLocaleString()}</span>
+            <Timing summary={timing} />
+          </div>) : <p>耗时未记录</p>}
+      </details>
 
       {mode === "projects" ? (
         <nav className="memory-project-filter" aria-label="筛选记忆项目">

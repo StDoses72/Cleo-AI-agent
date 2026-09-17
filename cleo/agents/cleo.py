@@ -22,6 +22,7 @@ from cleo.config.settings import AgentProfile, settings
 from cleo.memory.paths import DEFAULT_MEMORY_SPACE
 from cleo.memory.persona import render_persona_markdown
 from cleo.memory.reader import READING_INSTRUCTIONS, preference_context
+from cleo.runtime.timing_callbacks import timing_config
 from cleo.runtime.usage import ContextWindowUsage
 from cleo.sessions.ports import SessionRepository
 
@@ -253,7 +254,7 @@ class Agent:
 
         async for chunk in self.deepagent.astream(
             {"messages": messages},
-            config={"configurable": {"thread_id": thread_id}},
+            config={"configurable": {"thread_id": thread_id}, **timing_config()},
             stream_mode="messages",
         ):
             self._capture_usage(chunk)

@@ -99,6 +99,7 @@ class HarnessSwitchTests(unittest.IsolatedAsyncioTestCase):
         service._adapter_instance = self.adapter
         service._productivity_sessions = {self.id: self.session}
         service._run_tasks = {}
+        service._steering_runs = {}
         service._runtime_locks = {}
         service._harness_switches = set()
         selected = SimpleNamespace(enabled=True, model="test")

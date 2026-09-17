@@ -132,6 +132,9 @@ try {
   if (process.env.CLEO_SMOKE_OUTPUT) await page.screenshot({ path: join(process.env.CLEO_SMOKE_OUTPUT, "permissions-light-narrow.png") });
   assert.equal(await settings.evaluate(el => el.scrollWidth <= el.clientWidth), true);
   await settings.getByRole("button", { name: "关闭设置", exact: true }).click();
+  if (!await page.locator(".thread-sidebar").isVisible()) {
+    await page.getByRole("button", { name: "展开侧栏", exact: true }).click();
+  }
   await page.evaluate(() => {
     const runtime = window.permissionTest.fixture.threads.find(t => t.id === "desktop-ui").runtime;
     runtime.permissionOptions = { access: [], approval: [], reason: "此任务使用运行后端的权限配置。" };

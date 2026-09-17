@@ -115,7 +115,7 @@ def test_claude_reconnect_keeps_process_local_mcp(tmp_path, monkeypatch):
 
 
 def test_acp_create_and_resume_receive_session_mcp(tmp_path, monkeypatch):
-    from cleo.integrations.harnesses.acp import AcpAgentSpec, AcpProvider
+    from cleo.integrations.harnesses.acp import AcpAgentSpec, AcpProvider, _AcpClientHost
 
     calls = []
 
@@ -139,7 +139,7 @@ def test_acp_create_and_resume_receive_session_mcp(tmp_path, monkeypatch):
         return (
             Connection(),
             Manager(),
-            None,
+            _AcpClientHost("test", project_path, False),
             SimpleNamespace(agent_capabilities=SimpleNamespace(load_session=True)),
         )
 

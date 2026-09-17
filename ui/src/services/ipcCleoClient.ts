@@ -151,6 +151,10 @@ export class IpcCleoClient implements CleoClient {
     return result.cancelled;
   }
 
+  getTiming(timingId: string): Promise<import("../types").TimingDetails> {
+    return this.bridge.request("get_timing", { timing_id: timingId });
+  }
+
   steerRun(threadId: string, runId: string, requestId: string, text: string, retry = false): Promise<TimelineItem> {
     return this.bridge.request("steer_run", {
       thread_id: threadId, run_id: runId, request_id: requestId, text, retry,

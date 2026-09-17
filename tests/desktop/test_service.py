@@ -247,6 +247,56 @@ async def _async_none() -> None:
     pass
 
 
+@pytest.mark.parametrize("outcome", ["completed", "failed", "cancelled"])
+def test_reply_timing_survives_reload_and_tracks_tools_and_waits(tmp_path, outcome):
+    async def scenario():
+        service = _service(tmp_path)
+        service.store.create_session(
+            session_id="measured", space="non_productivity", project="general",
+            provider="cleo", owner_type="user",
+        )
+        async def stream(manifest, prompt, attachments, emit):
+            service.store.append_events(
+                session_id="measured", space="non_productivity", project="general", events=[
+                    {"id": "timed-turn", "type": "user_message", "actor": "user",
+                     "content": prompt},
+                    {"id": "answer", "type": "assistant_message", "actor": "assistant",
+                     "content": "unchanged answer"},
+                ],
+            )
+            await emit({"type": "turn-started", "item": {"id": "timed-turn"}})
+            await emit({"type": "upsert-item", "item": {
+                "id": "tool", "type": "tool", "name": "read_file", "status": "running",
+            }})
+            await emit({"type": "approval-request", "request": {"id": "wait"}})
+            await asyncio.sleep(0.002)
+            await emit({"type": "approval-resolved", "response": {"id": "wait"}})
+            await emit({"type": "upsert-item", "item": {
+                "id": "tool", "type": "tool", "name": "read_file", "status": "done",
+            }})
+            if outcome == "cancelled":
+                raise asyncio.CancelledError()
+            await emit({"type": "error", "message": "test failure"} if outcome == "failed"
+                       else {"type": "done", "summary": "finished"})
+        service._stream_chat = stream
+        events = []
+        await service.stream_turn(
+            thread_id="measured", prompt="test", attachments=[],
+            emit=AsyncMock(side_effect=events.append),
+        )
+        timing = [event["timing"] for event in events if event["type"] == "timing"][-1]
+        assert timing["status"] == outcome and timing["elapsedMs"] > 0
+        detail = await service.get_timing(timing_id=timing["id"])
+        assert {"tool", "wait"} <= {span["category"] for span in detail["spans"]}
+        page = await service.load_timeline(thread_id="measured")
+        answer = next(item for item in page["items"] if item["id"] == "answer")
+        assert answer["timing"]["id"] == timing["id"]
+        assert answer["timing"]["elapsedMs"] == timing["elapsedMs"]
+        assert answer["content"] == "unchanged answer"
+        assert not any(event["type"] == "timing" for event in service.store.read_events("measured"))
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize("entry", ["resume", "switch"])
 @pytest.mark.parametrize("approval", ["auto_review", "deny_all", "user"])
 def test_desktop_preserves_codex_approval_policy(tmp_path, entry, approval):

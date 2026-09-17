@@ -47,7 +47,7 @@ export function useAutomaticRead<T>(key: string, enabled: boolean, read: () => P
     window.addEventListener("focus", returnToPage);
     document.addEventListener("visibilitychange", returnToPage);
     document.addEventListener("toggle", check, true);
-    const timer = window.setInterval(check, 30000);
+    const timer = window.setInterval(check, Math.min(interval, 30000));
     return () => {
       mounted.current = false;
       window.removeEventListener("focus", returnToPage);
@@ -55,7 +55,7 @@ export function useAutomaticRead<T>(key: string, enabled: boolean, read: () => P
       document.removeEventListener("toggle", check, true);
       window.clearInterval(timer);
     };
-  }, [refresh]);
+  }, [refresh, interval]);
   useEffect(() => { void refresh(); }, [key, enabled, refresh]);
   const current = state.key === key ? state : null;
   return { root, data: current?.data ?? null, pending: current?.pending ?? false, error: current?.error ?? "", retry: () => refresh(true) };

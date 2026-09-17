@@ -1,5 +1,6 @@
 import { modifierKey } from "../platform";
 import { VirtualTimeline } from "./VirtualTimeline";
+import { Timing } from "./Timing";
 import { cleoClient } from "../services/cleoClient";
 import type { useTimelineHistory } from "../useTimelineHistory";
 import "./timeline.css";
@@ -305,6 +306,7 @@ export function Conversation({
       content = <div className="tool-process-list virtual-process-row"><ToolProcess tool={row.item} index={row.index}
         open={expansion[stateKey(row.id)]?.open ?? false} onToggle={open => toggle(row.id, open)} /></div>;
     } else { item = row; content = <TimelineEntry item={row} projectPath={project?.path ?? null} onOpenPath={onOpenPath}
+      activeTurnId={running ? thread?.currentTiming?.turnId : null}
       steeringBusy={steeringBusy} onRetrySteer={onRetrySteer} onRestoreSteer={onRestoreSteer} />; }
     return <>{content}{item?.more && Object.keys(item.more).map(field => <button className="history-content-link" key={field}
       onClick={() => void readContent(item!, field)}>{field === "output" ? "展开输出" : "展开全文"}</button>)}</>;
@@ -347,7 +349,9 @@ export function Conversation({
         {thread?.items.length ? (
           <>
             <VirtualTimeline rows={rows} viewport={viewportRef} follow={stickToBottomRef} bottomInset={bottomInset} threadId={thread.id} render={renderRow} onScroll={trackScrollPosition}
-              footer={showActivity && <div className="turn-activity" role="status"><LoaderCircle className="spin" size={14} /><span>正在处理…</span></div>} />
+              footer={<>{showActivity && <div className="turn-activity" role="status"><LoaderCircle className="spin" size={14} /><span>正在处理…</span></div>}
+                {thread.currentTiming && (running || !thread.items.some(item => item.timing?.id === thread.currentTiming?.id))
+                  && <Timing key={thread.currentTiming.id} summary={thread.currentTiming} />}</>} />
           </>
         ) : (
           <WelcomeState project={project} space={space} onUseSuggestion={onPromptChange} />
@@ -640,6 +644,7 @@ function TimelineEntry({
   steeringBusy,
   onRetrySteer,
   onRestoreSteer,
+  activeTurnId,
 }: {
   item: TimelineBlock;
   projectPath: string | null;
@@ -647,6 +652,7 @@ function TimelineEntry({
   steeringBusy?: boolean;
   onRetrySteer?: ConversationProps["onRetrySteer"];
   onRestoreSteer?: ConversationProps["onRestoreSteer"];
+  activeTurnId?: string | null;
 }) {
   if (item.type === "thought-group") {
     return <ThoughtGroupEntry item={item} projectPath={projectPath} onOpenPath={onOpenPath} />;
@@ -660,11 +666,11 @@ function TimelineEntry({
   </section>;
   if (item.type === "message") {
     return (
-      <article className={`message-entry ${item.role}`}>
-        <div className="message-meta">
-          <span>{item.role === "user" ? "你" : "Cleo"}</span>
+      <article className={`message-entry ${item.role}`} aria-label={item.role === "user" ? "你的消息" : "Cleo 的回复"}>
+        {(item.role === "assistant" || item.time) && <div className="message-meta">
+          {item.role === "assistant" && <span>Cleo</span>}
           <time>{item.time}</time>
-        </div>
+        </div>}
         <div className="message-copy">
           <MarkdownContent
             content={item.content}
@@ -674,7 +680,7 @@ function TimelineEntry({
         </div>
         {item.steer && <div className="steer-receipt" data-testid="steer-receipt" data-status={item.steer.status}>
           <span>{({ queued: item.steer.mode === "native" ? "等待投递" : "当前回复结束后发送",
-            sending: "正在投递", received: "运行时已接收", failed: "未投递",
+            sending: "正在投递", received: "已接收", failed: "未投递",
             cancelled: "已取消投递", uncertain: "接收状态未确认" })[item.steer.status]}</span>
           {item.steer.error && <span className="steer-error">{item.steer.error}</span>}
           {item.steer.retryable && onRetrySteer && <button disabled={steeringBusy}
@@ -685,6 +691,8 @@ function TimelineEntry({
               document.querySelector<HTMLTextAreaElement>('[data-testid="composer-input"]')?.focus();
             }}>放回输入框</button>}
         </div>}
+        {(item.timing || item.role === "assistant") && item.turnId !== activeTurnId && <Timing key={item.timing?.id ?? item.id}
+          summary={item.timing} error={item.timingError} />}
       </article>
     );
   }
@@ -809,7 +817,7 @@ function ThoughtGroupEntry({
           <small>{summary}</small>
         </span>
         <span className="tool-group-actions">
-          {running && !expanded ? <LoaderCircle className="spin" size={15} /> : null}
+          {running ? <LoaderCircle className="spin" size={15} /> : null}
           <ChevronDown className={expanded ? "rotated" : ""} size={15} />
         </span>
       </button>
@@ -840,11 +848,7 @@ function ThoughtEntry({
 }) {
   return (
     <div className={`thought-entry ${item.status}`}>
-      {item.status === "running" ? (
-        <LoaderCircle className="spin" size={15} />
-      ) : (
-        <Sparkles size={15} />
-      )}
+      <Sparkles size={15} />
       <div className="thought-copy">
         <MarkdownContent content={item.content} projectPath={projectPath} onOpenPath={onOpenPath} />
       </div>
@@ -867,8 +871,6 @@ function PlanEntry({ item }: { item: Extract<TimelineItem, { type: "plan" }> }) 
           <li key={step.label} data-status={step.status}>
             {step.status === "done" ? (
               <CircleCheck size={15} />
-            ) : step.status === "running" ? (
-              <LoaderCircle className="spin" size={15} />
             ) : (
               <Circle size={15} />
             )}
@@ -928,7 +930,7 @@ function ToolProcess({ tool, index, open, onToggle }: { tool: ToolTimelineItem; 
           {(tool.command || !tool.approvalAudit) && <code>{tool.command || "等待工具输入"}</code>}
         </span>
         {tool.status === "running" ? (
-          <LoaderCircle className="spin" size={14} />
+          <Circle size={14} />
         ) : tool.status === "error" ? (
           <X size={14} />
         ) : tool.output ? (

@@ -666,6 +666,16 @@ export function useCleoWorkspace(evolutionOpen = false) {
         } else if (event.type === "upsert-item") {
           const projected = { ...event.item, turnId: event.item.turnId ?? turnId };
           upsertTimelineItem(threadId, projected);
+        } else if (event.type === "timing") {
+          if (event.timing.sessionId !== threadId) continue;
+          updateThread(threadId, current => {
+            const matching = current.items.filter(item => item.type === "message" && item.turnId === event.timing.turnId);
+            const last = matching.findLast(item => item.type === "message" && item.role === "assistant")?.id
+              ?? matching.at(-1)?.id;
+            return { ...current, currentTiming: event.timing,
+              items: current.items.map(item => item.id === last ? { ...item, timing: event.timing }
+                : item.timing?.id === event.timing.id ? { ...item, timing: undefined } : item) };
+          });
         } else if (event.type === "question-request") {
           if (!history.isFollowing(threadId)) {
             history.notify(threadId);

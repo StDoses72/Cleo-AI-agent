@@ -179,6 +179,13 @@ export function App() {
     openingEvolutionUi, preparingAcceptance]);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [compactColumns, setCompactColumns] = useState(() => window.matchMedia("(max-width: 1010px)").matches);
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 1010px)");
+    const changed = () => setCompactColumns(media.matches);
+    media.addEventListener("change", changed);
+    return () => media.removeEventListener("change", changed);
+  }, []);
   const [inspectorBySpace, setInspectorBySpace] = useState({ chat: false, productivity: true, evolution: false });
   const inspectorSpace = evolutionOpen ? "evolution" : workspace.activeSpace === "chat" ? "chat" : "productivity";
   const inspectorOpen = inspectorBySpace[inspectorSpace];
@@ -190,7 +197,8 @@ export function App() {
   };
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("changes");
   const showInspector = inspectorOpen && (evolutionOpen || workspace.activeSpace !== "memory");
-  const inspectorResize = useInspectorResize(`${sidebarCollapsed}:${evolutionOpen}`, showInspector);
+  const sidebarHidden = sidebarCollapsed || (compactColumns && showInspector);
+  const inspectorResize = useInspectorResize(`${sidebarHidden}:${evolutionOpen}`, showInspector);
   const [commandOpen, setCommandOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [improvementOpen, setImprovementOpen] = useState(false);
@@ -401,7 +409,7 @@ export function App() {
   const appClasses = [
     "app-shell",
     evolutionOpen ? "evolution-open" : "",
-    sidebarCollapsed && !evolutionOpen ? "sidebar-collapsed" : "",
+    sidebarHidden && !evolutionOpen ? "sidebar-collapsed" : "",
     showInspector ? "inspector-open" : "inspector-closed",
     inspectorResize.dragging ? "inspector-resizing" : "",
   ]
@@ -505,9 +513,12 @@ export function App() {
           running={workspace.running}
           waitingForAnswer={Boolean(workspace.questions.current)}
           undoing={undoingChanges}
-          sidebarCollapsed={sidebarCollapsed}
+          sidebarCollapsed={sidebarHidden}
           inspectorOpen={showInspector}
-          onToggleSidebar={() => setSidebarCollapsed((collapsed) => !collapsed)}
+          onToggleSidebar={() => {
+            if (compactColumns && showInspector) { setInspectorOpen(false); setSidebarCollapsed(false); }
+            else setSidebarCollapsed(collapsed => !collapsed);
+          }}
           onToggleInspector={() => setInspectorOpen((open) => !open)}
           onOpenCommand={() => setCommandOpen(true)}
           onSend={(prompt) => void (workspace.running ? workspace.sendSteer(prompt)
