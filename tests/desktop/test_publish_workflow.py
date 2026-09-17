@@ -69,7 +69,8 @@ class PublishWorkflowTests(unittest.TestCase):
                     exec(script, {})
 
     def exercise_upload(self, draft, partial=False, conflicting=False, allow_existing=True,
-                        metadata_conflict=False, interrupt=False, prerelease=False):
+                        metadata_conflict=False, interrupt=False, prerelease=False,
+                        incomplete=False, foreign_upload=False, create_lag=False):
         """Retry only missing assets and never overwrite published content or metadata."""
         with tempfile.TemporaryDirectory(prefix="cleo-publish-workflow-") as temporary:
             files = Path(temporary) / "release-files"
@@ -79,31 +80,51 @@ class PublishWorkflowTests(unittest.TestCase):
             (Path(temporary) / "release-notes.md").write_text("Notes")
             release = {"id": 7, "tag_name": "v0.5.0", "name": "Cleo v0.5.0", "body": "Notes",
                        "draft": draft, "prerelease": prerelease, "assets": []}
-            if partial or conflicting:
+            if partial or conflicting or incomplete:
                 data = (files / "asset-0").read_bytes()
-                release["assets"].append({"name": "asset-0", "size": len(data),
+                release["assets"].append({"id": 8, "name": "asset-0", "state": "uploaded",
+                                          "size": len(data),
                                           "digest": "sha256:" + hashlib.sha256(data).hexdigest()})
+            if incomplete:
+                release["assets"][0].update(state="starter", digest=None, uploader={
+                    "login": "another-user" if foreign_upload else "github-actions[bot]",
+                })
             if conflicting:
                 release["assets"][0]["digest"] = "sha256:" + "0" * 64
             if metadata_conflict:
                 release["body"] = "Unrelated release"
             mutations = []
             interrupted = False
+            created, visibility_reads = not create_lag, 0
 
             def output(args, **_kwargs):
+                nonlocal visibility_reads
                 if args[:2] == ["git", "rev-parse"]:
                     return "a" * 40
                 if "/actions/runs/" in args[-1]:
                     return json.dumps({"head_sha": "a" * 40})
+                if "/assets?" in args[-1]:
+                    return json.dumps(release["assets"])
+                if not created or visibility_reads:
+                    visibility_reads = max(0, visibility_reads - 1)
+                    return "[]"
                 return json.dumps([release])
 
             def run(args, **_kwargs):
-                nonlocal interrupted
+                nonlocal interrupted, created, visibility_reads
                 if args[0] == "git":
                     return
                 mutations.append(args)
+                if args[1:3] == ["release", "create"]:
+                    created, visibility_reads = True, 2
+                if args[1:4] == ["api", "--method", "DELETE"]:
+                    self.assertEqual(args[-1], "repos/fixture/repo/releases/assets/8")
+                    self.assertEqual(release["assets"][0]["state"], "starter")
+                    release["assets"].pop(0)
                 if args[1:3] == ["release", "upload"]:
                     self.assertNotIn("--clobber", args)
+                    self.assertEqual(len(args), 5, "Upload one file at a time")
+                    self.assertEqual(_kwargs.get("timeout"), 600)
                     for value in args[4:]:
                         path = Path(value)
                         if not path.is_file():
@@ -111,7 +132,7 @@ class PublishWorkflowTests(unittest.TestCase):
                         self.assertNotIn(path.name, {asset["name"] for asset in release["assets"]})
                         data = path.read_bytes()
                         release["assets"].append({
-                            "name": path.name, "size": len(data),
+                            "name": path.name, "size": len(data), "state": "uploaded",
                             "digest": "sha256:" + hashlib.sha256(data).hexdigest(),
                         })
                         if interrupt and not interrupted:
@@ -130,9 +151,11 @@ class PublishWorkflowTests(unittest.TestCase):
                 with (
                     patch("subprocess.check_output", side_effect=output),
                     patch("subprocess.run", side_effect=run),
+                    patch("time.sleep"),
                 ):
                     script = workflow_script("Upload draft, verify uploaded assets, and publish")
-                    if conflicting or metadata_conflict or (not draft and not allow_existing):
+                    if (conflicting or metadata_conflict or foreign_upload
+                            or (not draft and not allow_existing)):
                         with self.assertRaises(AssertionError):
                             exec(script, {})
                         self.assertEqual(mutations, [])
@@ -151,6 +174,15 @@ class PublishWorkflowTests(unittest.TestCase):
 
     def test_partial_draft_upload_resumes(self):
         self.exercise_upload(draft=True, partial=True)
+
+    def test_interrupted_actions_upload_removes_only_its_incomplete_placeholder(self):
+        self.exercise_upload(draft=True, incomplete=True)
+
+    def test_another_uploaders_incomplete_asset_is_not_deleted(self):
+        self.exercise_upload(draft=True, incomplete=True, foreign_upload=True)
+
+    def test_new_draft_can_take_time_to_appear_in_the_release_list(self):
+        self.exercise_upload(draft=True, create_lag=True)
 
     def test_partial_published_upload_resumes(self):
         self.exercise_upload(draft=False, partial=True)

@@ -40,7 +40,7 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 60
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
@@ -129,7 +129,7 @@ jobs:
       - name: Upload draft, verify uploaded assets, and publish
         run: |
           python - <<'PY'
-          import hashlib, json, os, subprocess
+          import hashlib, json, os, subprocess, time
           from pathlib import Path
           temporary = Path(os.environ['RUNNER_TEMP'])
           files = sorted((temporary / 'release-files').iterdir())
@@ -162,7 +162,11 @@ jobs:
               except subprocess.CalledProcessError:
                   if draft_release() is None:
                       raise
-              release = draft_release()
+              for _ in range(10):
+                  release = draft_release()
+                  if release is not None:
+                      break
+                  time.sleep(1)
           assert release is not None
           assert release['draft'] or os.environ.get('RELEASE_RESUME_PUBLISHED') == 'true', 'Refusing to overwrite a published release'
           assert release['name'] == title and (release.get('body') or '') == notes, 'Existing release title/notes differ'
@@ -172,20 +176,39 @@ jobs:
               with path.open('rb') as stream:
                   digest = hashlib.file_digest(stream, 'sha256').hexdigest()
               expected[path.name] = (path.stat().st_size, f'sha256:{digest}')
-          def verified_assets(value):
+          def remote_assets():
+              return json.loads(subprocess.check_output([
+                  'gh', 'api', f"repos/{os.environ['GH_REPO']}/releases/{release['id']}/assets?per_page=100",
+              ]))
+          def verified_assets(values, allow_incomplete=False):
               """Reject conflicting remote files before adding any missing verified packages."""
-              assets = {asset['name']: asset for asset in value['assets']}
-              assert len(assets) == len(value['assets']) and set(assets) <= set(expected), 'Unexpected remote assets'
+              assets = {asset['name']: asset for asset in values}
+              assert len(assets) == len(values) and set(assets) <= set(expected), 'Unexpected remote assets'
               for name, asset in assets.items():
+                  if asset['state'] == 'starter':
+                      assert allow_incomplete and not asset.get('digest') and asset['size'] in (0, expected[name][0]), f'Unrecognized incomplete asset: {name}'
+                      assert asset.get('uploader', {}).get('login') == 'github-actions[bot]', f'Incomplete asset belongs to another uploader: {name}'
+                      continue
+                  assert asset['state'] == 'uploaded', f'Asset is not uploaded: {name}'
                   assert (asset['size'], asset.get('digest')) == expected[name], f'Asset mismatch: {name}'
               return assets
-          assets = verified_assets(release)
-          missing = [str(path) for path in files if path.name not in assets]
-          if missing:
-              subprocess.run(['gh', 'release', 'upload', tag, *missing], check=True)
+          assets = verified_assets(remote_assets(), allow_incomplete=True)
+          # A timed-out upload leaves a non-downloadable starter, omitted from release.assets.
+          # Delete only matching incomplete Actions uploads, never an uploaded asset.
+          for name, asset in list(assets.items()):
+              if asset['state'] == 'starter':
+                  subprocess.run(['gh', 'api', '--method', 'DELETE',
+                                  f"repos/{os.environ['GH_REPO']}/releases/assets/{asset['id']}"], check=True)
+                  del assets[name]
+          missing = sorted((path for path in files if path.name not in assets),
+                           key=lambda path: (path.name != 'Cleo-windows-x64.zip', path.name))
+          for path in missing:
+              print(f'Uploading {path.name} ({path.stat().st_size} bytes)', flush=True)
+              subprocess.run(['gh', 'release', 'upload', tag, str(path)], check=True, timeout=600)
+              print(f'Uploaded {path.name}', flush=True)
           release = draft_release()
           assert release['name'] == title and (release.get('body') or '') == notes and release['prerelease'] == prerelease
-          assert set(verified_assets(release)) == set(expected), 'Release packages are incomplete'
+          assert set(verified_assets(remote_assets())) == set(expected), 'Release packages are incomplete'
           subprocess.run(['git', 'fetch', '--no-tags', 'origin', f'refs/tags/{tag}'], check=True)
           current = subprocess.check_output(['git', 'rev-parse', 'FETCH_HEAD^{commit}'], text=True).strip()
           assert current == commit, 'Release tag moved during upload; refusing to publish the draft'
