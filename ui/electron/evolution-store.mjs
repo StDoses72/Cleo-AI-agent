@@ -6,6 +6,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { createRequire } from "node:module";
 import { cp, mkdir, readFile, lstat, readdir, open, rm } from "node:fs/promises";
 import { join, resolve, relative, isAbsolute, dirname } from "node:path";
+import { releaseTagForVersion } from "./release-channel.mjs";
 
 const mutationQueues = new Map();
 const jsonQueues = new Map();
@@ -260,7 +261,7 @@ export class EvolutionStore {
       previousRestartError: state.lastRestartError || null,
     };
     if (officialSelection) transaction.officialSelection = {
-      baseTag: build.baseTag || `v${build.version}`,
+      baseTag: build.baseTag || releaseTagForVersion(build.version),
       sourceArchive: `source-history-${transaction.id}`,
       originalSelection: Object.fromEntries(SELECTION_FIELDS.map((name) => [name, state[name] ?? null])),
     };

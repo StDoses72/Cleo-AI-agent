@@ -276,13 +276,14 @@ export function useCleoWorkspace(evolutionOpen = false) {
 
   const skillKey = `${draftRuntime.provider}:${activeProject?.path ?? ""}`;
   useEffect(() => {
-    if (activeThread || activeSpace !== "productivity" || evolutionOpen) return;
+    if (activeThread || activeSpace !== "productivity" || evolutionOpen
+        || !runtimeCatalog?.productivityProviders.some(provider => provider.id === draftRuntime.provider)) return;
     let cancelled = false;
     void cleoClient.getLocalSkills(draftRuntime.provider, activeProject?.path)
       .then((skills) => { if (!cancelled) setDraftSkills({ key: skillKey, skills }); })
       .catch(() => { if (!cancelled) setDraftSkills({ key: skillKey, skills: [] }); });
     return () => { cancelled = true; };
-  }, [activeThread?.id, activeSpace, evolutionOpen, skillKey]);
+  }, [activeThread?.id, activeSpace, evolutionOpen, skillKey, runtimeCatalog]);
 
   const updateThread = (threadId: string, update: (thread: Thread) => Thread) => {
     threadVersions.current.set(threadId, (threadVersions.current.get(threadId) ?? 0) + 1);

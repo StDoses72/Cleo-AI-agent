@@ -34,8 +34,10 @@ window.on("console", (message) => {
 });
 
 try {
-  await window.getByText("connected", { exact: true }).waitFor({ timeout: 20_000 });
-  await window.getByTestId("composer-input").waitFor();
+  await window.getByTestId("composer-input").waitFor({ timeout: 20_000 });
+  const connected = await window.evaluate(async () =>
+    (await window.cleoDesktop.request("load_workspace")).backend.connected);
+  if (!connected) throw new Error("Packaged backend is not connected.");
   await window.getByRole("button", { name: "进化", exact: true }).click();
   await window.getByRole("region", { name: "修改操作", exact: true }).waitFor();
   const evolution = await window.evaluate(() => window.cleoDesktop.getEvolutionState());

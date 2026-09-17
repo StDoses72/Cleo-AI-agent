@@ -19,6 +19,7 @@ import {
   materializeInlineAttachments,
 } from "./attachments.mjs";
 import { BackendBridge } from "./backend.mjs";
+import { configureReleaseChannel } from "./release-channel.mjs";
 import { openLocalHref } from "./local-files.mjs";
 import { SelectableUpdater, SelectableProgramUpdates, prepareSelectedRelease } from "./selectable-updates.mjs";
 import { checkReleasePermission, previewRelease, publishRelease, publishMergedRelease, previewMergedRelease } from "./github-releases.mjs";
@@ -34,7 +35,7 @@ import {
 } from "./install-state.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-app.setName("Cleo");
+const alphaChannel = configureReleaseChannel(app);
 if (app.isPackaged) {
   if (process.platform === "win32") {
     const paths = installationPaths(app.getPath("temp"), process.execPath);
@@ -250,7 +251,7 @@ function createWindow() {
   void window.loadFile(join(here, "../dist/index.html"));
 }
 
-app.setAppUserModelId("ai.cleo.desktop");
+app.setAppUserModelId(alphaChannel ? "ai.cleo.desktop.alpha" : "ai.cleo.desktop");
 app.whenReady().then(async () => {
   const attachmentTempRoot = join(app.getPath("temp"), "Cleo", "attachments", randomUUID());
   app.once("will-quit", () => {

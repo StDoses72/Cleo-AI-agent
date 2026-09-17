@@ -10,13 +10,14 @@ import { ReleaseDownloads } from "./release-downloads.mjs";
 import { desktopPlatform, installationRoot } from "./platform.mjs";
 import { createContributionSnapshot, assertSnapshotTarget, removeContributionSnapshot } from "./evolution-snapshot.mjs";
 import { compareVersions, validateManifest } from "./updater.mjs";
+import { alphaTagPattern, releaseTagForVersion, versionForReleaseTag } from "./release-channel.mjs";
 import { contributionTarget, validateContributionTarget, requireTargetBranch } from "./evolution-contributions.mjs";
 
 const REPOSITORY = "StDoses72/Cleo-AI-agent";
 const REPO_URL = `https://github.com/${REPOSITORY}.git`;
 const API = `https://api.github.com/repos/${REPOSITORY}`;
 const GITHUB_DEVICE_URL = "https://github.com/login/device";
-const PROTECTED = ["bootstrap.mjs", "evolution.mjs", "evolution-store.mjs", "evolution-tools.mjs", "evolution-recovery.mjs", "evolution-launch.mjs", "evolution-progress.mjs", "evolution-handoff.mjs", "release-downloads.mjs", "program-updates.mjs", "updater.mjs", "shutdown.mjs"];
+const PROTECTED = ["bootstrap.mjs", "release-channel.mjs", "evolution.mjs", "evolution-store.mjs", "evolution-tools.mjs", "evolution-recovery.mjs", "evolution-launch.mjs", "evolution-progress.mjs", "evolution-handoff.mjs", "release-downloads.mjs", "program-updates.mjs", "updater.mjs", "shutdown.mjs"];
 
 /** Input: accumulated CLI diagnostics. Output: a device code from known gh formats only.
  * Supports ordinary and clipboard-enabled gh without changing global configuration.
@@ -253,7 +254,7 @@ export class EvolutionManager {
       this.log("正在保留新版程序；原版本和用户数据继续保留。\n");
       await copyProgramBundle(source, directory, { signal: this.operationAbort?.signal });
       const record = { id, kind: "local", version: null, name: "本机开发版", savedAt: new Date().toISOString(),
-        createdAt: new Date().toISOString(), baseTag: `v${this.app.getVersion()}`,
+        createdAt: new Date().toISOString(), baseTag: releaseTagForVersion(this.app.getVersion()),
         executable: `${this.target.bundle}/${this.target.executable}`, importSource: this.executable, importHash: digest };
       if (await exists(this.source)) await rename(this.source, join(this.store.root, `source-history-${randomUUID()}`));
       await this.store.update({ builds: [...state.builds, record], active: id, selectedBase: id,
@@ -278,8 +279,9 @@ export class EvolutionManager {
     const resources = join(source, this.target.resources);
     const metadata = await readJson(join(this.target.platform === "darwin" ? resources : source, "release.json"));
     if (metadata?.app !== "Cleo" || metadata.platform !== this.target.id || metadata.evolution_protocol !== 2
-        || metadata.version !== this.app.getVersion() || !/^\d+\.\d+\.\d+$/.test(metadata.version)
+        || metadata.version !== this.app.getVersion() || !/^\d+\.\d+\.\d+(?:-alpha)?$/.test(metadata.version)
         || (metadata.build_kind && metadata.build_kind !== "official")) return null;
+    if (metadata.version.endsWith("-alpha") !== Boolean(active.version?.endsWith("-alpha"))) return null;
     if (state.builds.some(build => build.id === state.baseline && build.version === metadata.version)) return null;
     const path = this.target.platform === "win32" ? resolve(this.executable).toLowerCase() : resolve(this.executable);
     const previous = state.installedReleases?.[path] || active.version;
@@ -309,7 +311,7 @@ export class EvolutionManager {
           if (await archiveHash(bundle) !== hash || !await exists(join(bundle, this.target.executable))) {
             throw new Error("新版程序复制校验失败，请重新安装后重试。");
           }
-          record = { id, kind: "official", version: installed.version, baseTag: `v${installed.version}`,
+          record = { id, kind: "official", version: installed.version, baseTag: releaseTagForVersion(installed.version),
             executable: `${this.target.bundle}/${this.target.executable}`, createdAt: new Date().toISOString(),
             installSource: installed.path, installHash: hash };
           await this.store.update({ builds: [...state.builds, record] });
@@ -334,7 +336,7 @@ export class EvolutionManager {
     this.log("正在保存当前可用程序和独立恢复入口…\n");
     await mkdir(dirname(directory), { recursive: true });
     await copyProgramBundle(installationRoot(this.executable, this.target), directory, { signal: this.operationAbort?.signal });
-    const record = { id, kind: "official", version: this.app.getVersion(), baseTag: `v${this.app.getVersion()}`,
+    const record = { id, kind: "official", version: this.app.getVersion(), baseTag: releaseTagForVersion(this.app.getVersion()),
       executable: `${bundle}/${this.target.executable}`, createdAt: new Date().toISOString(), baseline: true };
     const path = this.target.platform === "win32" ? resolve(this.executable).toLowerCase() : resolve(this.executable);
     await this.store.update({ active: id, baseline: id, builds: [...state.builds, record],
@@ -344,7 +346,7 @@ export class EvolutionManager {
       // A separate shortcut remains usable even when the current app's JavaScript cannot load.
       await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
         "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:CLEO_SHORTCUT); $s.TargetPath = $env:CLEO_RECOVERY_EXE; $s.Arguments = '--cleo-recovery'; $s.Save()"], {
-        env: { ...process.env, CLEO_SHORTCUT: join(this.app.getPath("desktop"), "Cleo 恢复.lnk"), CLEO_RECOVERY_EXE: baseline.executable }, signal: this.operationAbort?.signal,
+        env: { ...process.env, CLEO_SHORTCUT: join(this.app.getPath("desktop"), this.app.getVersion().endsWith("-alpha") ? "Cleo Alpha 恢复.lnk" : "Cleo 恢复.lnk"), CLEO_RECOVERY_EXE: baseline.executable }, signal: this.operationAbort?.signal,
       });
     }
     return baseline;
@@ -378,8 +380,8 @@ export class EvolutionManager {
   /** Restore one build's source in an isolated directory and compute the same digest used by submission. */
   async restoreBuildSource(selected, tools, destination) {
     await this.verifyImportedBundle(selected);
-    const baseTag = selected.baseTag || `v${selected.version || this.app.getVersion()}`;
-    if (!/^v\d+\.\d+\.\d+$/.test(baseTag)) throw new Error("当前程序没有正式版本号，无法确定源码基准。");
+    const baseTag = selected.baseTag || releaseTagForVersion(selected.version || this.app.getVersion());
+    if (!/^v\d+\.\d+\.\d+$/.test(baseTag) && !alphaTagPattern.test(baseTag)) throw new Error("当前程序没有可识别的版本号，无法确定源码基准。");
     this.log(`正在获取 ${baseTag} 的源码…\n`);
     await run(tools.git, ["clone", "--branch", baseTag, "--single-branch", this.sourceRepository, destination],
       { env: tools.env, log: (text) => this.log(text), signal: this.operationAbort?.signal });
@@ -605,7 +607,7 @@ export class EvolutionManager {
       const rawManifest = await fetchRelease(release.manifestUrl, true, { signal });
       if (rawManifest.evolution_protocol !== 2) throw new Error("该版本尚不支持保留当前用户数据的版本切换，无法通过进化入口应用。");
       const manifest = validateManifest(rawManifest, this.target);
-      if (`v${manifest.version}` !== (tag.startsWith("v") ? tag : `v${tag}`)) throw new Error("版本清单与所选 release 不一致。");
+      if (manifest.version !== versionForReleaseTag(tag)) throw new Error("版本清单与所选 release 不一致。");
       const archive = await this.downloads.get(manifest, {
         url: `https://github.com/${REPOSITORY}/releases/download/${encodeURIComponent(tag)}/${manifest.archive}`, onProgress,
       });

@@ -326,7 +326,8 @@ def build(*, locked_dependencies: bool = False) -> None:
             control = deb / "DEBIAN"
             control.mkdir(parents=True)
             (control / "control").write_text(
-                f"Package: cleo-desktop\nVersion: {version}\nArchitecture: amd64\n"
+                f"Package: cleo-desktop\nVersion: {version.replace('-', '~', 1)}\n"
+                "Architecture: amd64\n"
                 "Maintainer: Cleo contributors\nSection: utils\nPriority: optional\n"
                 "Depends: libgtk-3-0 | libgtk-3-0t64, libnss3, libgbm1, "
                 "libasound2 | libasound2t64, libxss1, libxtst6, libx11-xcb1\n"

@@ -44,6 +44,30 @@ class PublishWorkflowTests(unittest.TestCase):
             with patch("subprocess.check_output", side_effect=output):
                 exec(workflow_script("Verify successful build and matching tag"), {})
 
+    def test_alpha_numbering_requires_prerelease_and_matches_package_version(self):
+        def output(args, **_kwargs):
+            if args[:2] == ["gh", "api"]:
+                return json.dumps({"name": "Desktop platforms", "conclusion": "success",
+                                   "head_sha": "a" * 40, "event": "workflow_dispatch"})
+            if args[1] == "rev-parse":
+                return "a" * 40
+            if args[-1].endswith("ui/package.json"):
+                return json.dumps({"version": "0.0.1-alpha"})
+            return '[project]\nversion = "0.0.1-alpha"\n'
+
+        for prerelease in ("false", "true"):
+            with self.subTest(prerelease=prerelease), patch.dict(os.environ, {
+                "RELEASE_TAG": "alpha-0.0.1", "BUILD_RUN": "99", "GH_REPO": "fixture/repo",
+                "RELEASE_PRERELEASE": prerelease,
+            }), patch("subprocess.check_output", side_effect=output) as call:
+                script = workflow_script("Verify successful build and matching tag")
+                if prerelease == "false":
+                    with self.assertRaisesRegex(AssertionError, "pre-releases"):
+                        exec(script, {})
+                    call.assert_not_called()
+                else:
+                    exec(script, {})
+
     def exercise_upload(self, draft, partial=False, conflicting=False, allow_existing=True,
                         metadata_conflict=False, interrupt=False, prerelease=False):
         """Retry only missing assets and never overwrite published content or metadata."""
@@ -146,9 +170,9 @@ class PublishWorkflowTests(unittest.TestCase):
     def test_prerelease_packages_do_not_become_latest_stable(self):
         self.exercise_upload(draft=True, prerelease=True)
 
-    def exercise_package_verification(self, corrupt=False):
+    def exercise_package_verification(self, corrupt=False, alpha=False):
         with tempfile.TemporaryDirectory(prefix="cleo-package-verification-") as temporary:
-            version = "0.5.0-beta.1"
+            version = "0.0.1-alpha" if alpha else "0.5.0-beta.1"
             for target in ("windows-x64", "macos-arm64", "macos-x64", "linux-x64"):
                 folder = Path(temporary) / "release-artifacts" / f"desktop-{target}" / "release"
                 folder.mkdir(parents=True)
@@ -185,7 +209,8 @@ class PublishWorkflowTests(unittest.TestCase):
                 if corrupt and target == "windows-x64":
                     archive.write_bytes(b"corrupt")
             with patch.dict(os.environ, {
-                "RUNNER_TEMP": temporary, "RELEASE_TAG": f"v{version}", "RELEASE_NOTES": "Notes",
+                "RUNNER_TEMP": temporary,
+                "RELEASE_TAG": "alpha-0.0.1" if alpha else f"v{version}", "RELEASE_NOTES": "Notes",
             }):
                 if corrupt:
                     with self.assertRaises(AssertionError):
@@ -196,6 +221,9 @@ class PublishWorkflowTests(unittest.TestCase):
 
     def test_all_four_platform_packages_keep_version_size_and_hash_checks(self):
         self.exercise_package_verification()
+
+    def test_alpha_packages_keep_version_size_and_hash_checks(self):
+        self.exercise_package_verification(alpha=True)
 
     def test_corrupt_archive_fails_before_upload_stage(self):
         self.exercise_package_verification(corrupt=True)

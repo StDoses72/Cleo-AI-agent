@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { DesktopUpdater, compareVersions, validateManifest } from "./updater.mjs";
 import { ProgramUpdates } from "./program-updates.mjs";
 import { exists, ownedPath } from "./evolution-store.mjs";
-import { releaseTagPattern } from "./github-releases.mjs";
+import { alphaTagPattern, versionForReleaseTag } from "./release-channel.mjs";
 
 const repository = "StDoses72/Cleo-AI-agent";
 const api = `https://api.github.com/repos/${repository}/releases`;
@@ -28,7 +28,8 @@ export class SelectableUpdater extends DesktopUpdater {
       if (!Array.isArray(items)) throw new Error("GitHub 返回的版本列表无效。");
       for (const item of items.filter(item => !item.draft)) {
         const assets = item.assets || [];
-        const reason = !releaseTagPattern.test(item.tag_name) ? "版本标签不受支持"
+        const reason = !versionForReleaseTag(item.tag_name) ? "版本标签不受支持"
+          : alphaTagPattern.test(item.tag_name) && !item.prerelease ? "实验版必须标记为预发布"
           : !assets.some(asset => asset.name === this.target.manifest) ? "缺少当前平台的版本清单"
             : !assets.some(asset => asset.name === this.target.archive) ? "缺少当前平台的安装包" : null;
         releases.push({ tag: item.tag_name, title: item.name || item.tag_name, prerelease: Boolean(item.prerelease),
@@ -38,7 +39,7 @@ export class SelectableUpdater extends DesktopUpdater {
       if (items.length < 100) break;
     }
     this.catalog = releases;
-    this.setState({ releases, currentPrerelease: releases.find(item => item.tag.replace(/^v/, "") === this.state.currentVersion)?.prerelease });
+    this.setState({ releases, currentPrerelease: releases.find(item => versionForReleaseTag(item.tag) === this.state.currentVersion)?.prerelease });
     return releases;
   }
 
@@ -72,7 +73,7 @@ export class SelectableUpdater extends DesktopUpdater {
       const raw = await this.json(release.manifestUrl);
       const manifest = validateManifest(raw, this.target);
       if (raw.evolution_protocol !== 2) throw new Error("该版本不支持保留当前数据的版本切换。");
-      if (manifest.version !== release.tag.replace(/^v/, "")) throw new Error("版本清单与所选版本不一致。");
+      if (manifest.version !== versionForReleaseTag(release.tag)) throw new Error("版本清单与所选版本不一致。");
       this.manifest = manifest;
       const available = Boolean(this.selectedRelease) || compareVersions(manifest.version, this.state.currentVersion) > 0;
       const ready = available && this.archivePath === this.archiveFor(manifest);
@@ -107,7 +108,7 @@ export async function prepareSelectedRelease(manager, updater, tag, { onProgress
   return manager.operation("downloading", async signal => {
     const release = updater.checkedRelease;
     const manifest = updater.manifest;
-    if (!release || release.tag !== tag || !manifest || manifest.version !== tag.replace(/^v/, ""))
+    if (!release || release.tag !== tag || !manifest || manifest.version !== versionForReleaseTag(tag))
       throw new Error("所选版本已变化，请重新下载并校验。");
     await manager.ensureBaseline();
     const archive = await manager.downloads.get(manifest, { url: release.archiveUrl, onProgress });

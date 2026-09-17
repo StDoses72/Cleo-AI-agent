@@ -26,7 +26,7 @@ async function fixture(action) {
     calls.push(String(url));
     if (url.includes("/releases?")) { await hooks.catalog?.(); return Response.json(catalog); }
     const tag = decodeURIComponent(new URL(url).pathname.split("/").at(-2));
-    if (url.endsWith(target.manifest)) return Response.json({ ...manifest(tag.replace(/^v/, "")), ...hooks.manifest });
+    if (url.endsWith(target.manifest)) return Response.json({ ...manifest(tag.startsWith("alpha-") ? `${tag.slice(6)}-alpha` : tag.replace(/^v/, "")), ...hooks.manifest });
     if (url.endsWith(target.archive)) {
       await hooks.download?.();
       return new Response(hooks.corrupt ? "corrupt" : payload);
@@ -62,6 +62,21 @@ test("catalog includes prereleases, historical versions and platform incompatibi
     assert.equal(updater.catalog[1].prerelease, true);
     assert.match(updater.catalog[3].reason, /平台/);
     await assert.rejects(program.check("v0.2.0"), /平台/);
+  });
+});
+
+test("alpha experiments require explicit selection and prerelease metadata", async () => {
+  await fixture(async ({ program, updater, catalog, manager, applied }) => {
+    catalog.push({ tag_name: "alpha-0.0.1", prerelease: true, assets: [{ name: updater.target.manifest }, { name: updater.target.archive }] });
+    catalog.push({ tag_name: "alpha-0.0.2", prerelease: false, assets: [{ name: updater.target.manifest }, { name: updater.target.archive }] });
+    assert.equal((await program.check()).latestVersion, "0.9.0");
+    await assert.rejects(program.check("alpha-0.0.2"), /预发布/);
+    assert.equal((await program.check("alpha-0.0.1")).latestVersion, "0.0.1-alpha");
+    assert.equal((await program.download()).phase, "ready");
+    await program.install();
+    const build = (await manager.store.read()).builds.find(item => item.id === applied[0]);
+    assert.equal(build.baseTag, "alpha-0.0.1");
+    assert.equal(build.version, "0.0.1-alpha");
   });
 });
 

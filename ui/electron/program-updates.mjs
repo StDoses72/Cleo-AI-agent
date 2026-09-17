@@ -1,3 +1,5 @@
+import { versionForReleaseTag } from "./release-channel.mjs";
+
 /** Coordinate user-requested program changes across the update and evolution entry points. */
 export class ProgramUpdates {
   constructor({ updater, evolution, apply, hasRunningTask = () => false }) {
@@ -49,8 +51,8 @@ export class ProgramUpdates {
       try {
         await this.evolution.assertOfficialSwitchAllowed();
         const releases = await this.evolution.releases();
-        const release = releases.find(item => item.tag.replace(/^v/, "") === version);
-        if (!release) throw new Error("找不到已下载的正式版本，请重新检查更新。");
+        const release = releases.find(item => versionForReleaseTag(item.tag) === version);
+        if (!release) throw new Error("找不到已下载的发布版本，请重新检查更新。");
         const id = await this.evolution.downloadRelease(release.tag, {
           onProgress: (downloadedBytes, totalBytes) => this.updater.setState({ downloadedBytes, totalBytes }),
         });

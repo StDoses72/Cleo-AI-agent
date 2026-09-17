@@ -15,6 +15,7 @@ import { createInterface } from "node:readline";
 import { desktopPlatform, installationRoot } from "./platform.mjs";
 import { installationPaths, processStartTime, readInstallation, writeInstallation } from "./install-state.mjs";
 import { ReleaseDownloads } from "./release-downloads.mjs";
+import { releaseTagForVersion } from "./release-channel.mjs";
 
 export const RELEASE_MANIFEST_URL =
   "https://github.com/StDoses72/Cleo-AI-agent/releases/latest/download/release.json";
@@ -270,7 +271,7 @@ export class DesktopUpdater {
     });
     try {
       this.archivePath = await this.releaseDownloads().get(manifest, {
-        url: new URL(`v${manifest.version.replace(/^v/, "")}/${manifest.archive}`, this.assetBaseUrl).href,
+        url: new URL(`${releaseTagForVersion(manifest.version)}/${manifest.archive}`, this.assetBaseUrl).href,
         onProgress: (downloadedBytes, totalBytes) => this.setState({ downloadedBytes, totalBytes }),
       });
       // A verified download is available, but does not authorize installation on a later launch.

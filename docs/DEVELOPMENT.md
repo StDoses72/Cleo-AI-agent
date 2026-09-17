@@ -197,6 +197,8 @@ Compose 使用 bind mount 读取配置与 workspace，用 named volume 保存 da
 
 ## Windows 桌面发布
 
+实验版独立编号，例如 GitHub 标签 `alpha-0.0.1`、发布名称 `Cleo α 0.0.1（实验版）`，包内版本为 `0.0.1-alpha`。必须标记为 Pre-release，不成为 Latest。安装版使用独立的 `Cleo Alpha` 配置及数据目录；显式设置的 `CLEO_HOME` 和 `--user-data-dir` 仍优先。正式版继续使用 `v` 标签及原来的目录。Linux 包管理版本用 `0.0.1~alpha`，保证排序低于同号稳定版。
+
 macOS/Linux 的原生构建、安装格式、签名边界与四目标 CI 见[平台支持](PLATFORMS.md)。
 `npm run package:portable` 会按当前操作系统选择构建器；下面保留 Windows 发布步骤。
 

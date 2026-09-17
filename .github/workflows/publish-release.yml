@@ -59,16 +59,21 @@ jobs:
           python - <<'PY'
           import json, os, re, subprocess, tomllib
           tag, run = os.environ['RELEASE_TAG'], os.environ['BUILD_RUN']
-          assert re.fullmatch(r'v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?', tag) and run.isdecimal()
+          core = r'(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)'
+          alpha = re.fullmatch(r'alpha-(' + core + ')', tag)
+          assert (alpha or re.fullmatch(r'v' + core + r'(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?', tag)) and run.isdecimal()
+          version = alpha[1] + '-alpha' if alpha else tag[1:]
+          prerelease = os.environ.get('RELEASE_PRERELEASE') == 'true'
+          assert '-' not in version or prerelease, 'Experimental versions must be marked as pre-releases'
           build = json.loads(subprocess.check_output(['gh', 'api', f"repos/{os.environ['GH_REPO']}/actions/runs/{run}"]))
           commit = subprocess.check_output(['git', 'rev-parse', f'{tag}^{{commit}}'], text=True).strip()
           assert build['name'] == 'Desktop platforms' and build['conclusion'] == 'success'
           assert build['event'] == 'workflow_dispatch', 'Use a full Desktop platforms build, not a PR smoke run'
           assert build['head_sha'] == commit
           project = subprocess.check_output(['git', 'show', f'{tag}:pyproject.toml'], text=True)
-          assert tomllib.loads(project)['project']['version'] == tag[1:]
+          assert tomllib.loads(project)['project']['version'] == version
           ui = subprocess.check_output(['git', 'show', f'{tag}:ui/package.json'], text=True)
-          assert json.loads(ui)['version'] == tag[1:], 'UI and Python package versions must both match the tag'
+          assert json.loads(ui)['version'] == version, 'UI and Python package versions must both match the tag'
           print(f'Publishing verified build {run} from {commit}')
           PY
       - uses: actions/download-artifact@v4
@@ -88,7 +93,8 @@ jobs:
           for source in (temporary / 'release-artifacts').glob('desktop-*/release/*'):
               assert source.is_file() and not (output / source.name).exists()
               shutil.copy2(source, output / source.name)
-          version = os.environ['RELEASE_TAG'][1:]
+          tag = os.environ['RELEASE_TAG']
+          version = tag.removeprefix('alpha-') + '-alpha' if tag.startswith('alpha-') else tag[1:]
           for target in ('windows-x64', 'macos-arm64', 'macos-x64', 'linux-x64'):
               manifest = 'release.json' if target == 'windows-x64' else f'release-{target}.json'
               metadata = json.loads((output / manifest).read_text(encoding='utf-8-sig'))
