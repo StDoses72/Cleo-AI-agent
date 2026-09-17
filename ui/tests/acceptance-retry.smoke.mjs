@@ -47,6 +47,7 @@ let modelFails = false;
 let releaseAnalysis;
 let holdAnalysis = false;
 let missingEvidence = false;
+let branchReady = false;
 const workspace = structuredClone(fixtureWorkspace);
 const runtime = { provider: "codex", model: "test", effort: "low", access: "workspace-write", approval: "deny_all", editable: true };
 let thread = { ...workspace.threads[0], id: "evolution-test", projectId: "productivity:cleo-evolution",
@@ -73,6 +74,15 @@ const requests = new EvolutionRequests(acceptance, async (_thread, prompt) => {
 });
 const snapshot = async () => ({ ...state, acceptance: await acceptance.status(state), acceptanceRequests: await requests.status() });
 const publish = async () => page.evaluate((value) => window.testEvolutionListener?.(value), await snapshot());
+async function waitForCompletedRequests(count) {
+  const deadline = Date.now() + 10000;
+  while (Date.now() < deadline) {
+    const saved = await requests.status();
+    if (saved.length === count && saved.at(-1).execution?.status === "completed") return;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  assert.fail("The original task did not complete its recorded request");
+}
 const evolution = {
   operation: (_phase, action) => store.exclusive(action),
   begin: async () => { actions.push("begin"); state.iteration = { base: "old" }; state.draftDirty = true; },
@@ -85,7 +95,9 @@ try {
     actions.push(action);
     try {
       if (action === "thread") { state.threadId = params.id; return; }
-      if (action === "contributionBranches") return ["main", "self-evolving"];
+      if (action === "contributionBranches") return ["main", "self-evolving", ...(branchReady ? ["feature/requested"] : [])];
+      if (action === "checkContribution") return { targetBranch: params.targetBranch, baseSha: "base", headSha: "head",
+        compatible: true, snapshotFormat: "empty-target-snapshot-v1", checkedAt: new Date().toISOString() };
       if (action === "requestBranch") {
         assert.notEqual(params.targetBranch, "main");
         state.branchRequests = [{ id: params.submissionId, branch: params.targetBranch, body: params.body,
@@ -109,7 +121,11 @@ try {
       }
       if (action === "continueCaseRequest") return await store.exclusive(() => requests.continueCase(params));
       if (action === "cancelCase") return await store.exclusive(() => acceptance.cancel(params.id));
-      if (action === "compareCases") return await store.exclusive(() => acceptance.compare(state.candidate || state.active));
+      if (action === "compareCases") {
+        const report = await store.exclusive(() => acceptance.compare(state.candidate || state.active));
+        state.error = null;
+        return report;
+      }
       if (action === "completeCase") return await store.exclusive(() => acceptance.complete(params.id));
       if (action === "reviseRequest") return await store.exclusive(() => requests.revise(params));
       if (action === "requestPrompt") return requests.editingPrompt(params.id);
@@ -164,33 +180,37 @@ try {
   modelFails = true;
   await page.getByTestId("composer-input").fill("给侧栏按钮显示文字");
   await page.getByTestId("composer-input").press("Enter");
-  await page.getByRole("button", { name: "重试准备原需求", exact: true }).waitFor();
+  const retryPreparation = page.locator(".evolution-preparation").getByRole("button", { name: "重试", exact: true });
+  await retryPreparation.waitFor();
   const original = (await requests.status())[0];
   assert.equal(newThreads, 1);
   modelFails = false;
-  await page.getByRole("button", { name: "重试", exact: true }).click();
-  await page.waitForFunction(() => document.body.textContent.includes("实现任务已结束"));
+  await retryPreparation.click();
+  await waitForCompletedRequests(1);
   assert.equal(newThreads, 1);
   assert.equal((await requests.status()).length, 1);
   assert.equal((await requests.status())[0].threadId, original.threadId);
   assert.equal((await requests.status())[0].execution.status, "completed");
   assert.equal(await page.getByText("请求标识已用于另一条需求。", { exact: true }).count(), 0);
 
-  // Recreate the user's stuck state: no candidate and no current comparison.
-  state.candidate = null; state.active = "old"; state.iteration = null; state.validation = null;
+  // Retry an interrupted comparison of the unchanged active version without a candidate build.
+  state.candidate = null; state.active = "old"; state.iteration = null;
+  state.validation = { status: "unchanged", sourceHash: "old", message: "暂无程序改动" };
+  state.error = "上次验收检查已中断";
   await publish();
   await page.locator(".evolution-cases > .evolution-case-list > summary").first().click();
   const item = (await requests.suite())[0];
-  assert.equal(await page.getByRole("button", { name: "验收", exact: true }).isDisabled(), true);
-  assert.equal(await page.getByRole("button", { name: "取消此项验收", exact: true }).isEnabled(), true);
+  assert.equal(await page.getByRole("button", { name: "确认效果", exact: true }).isDisabled(), true);
+  assert.equal(await page.getByRole("button", { name: "取消此项", exact: true }).isEnabled(), true);
+  await page.locator(".evolution-feedback > summary").click();
   assert.equal(await page.getByRole("button", { name: "继续修改：侧栏显示文字", exact: true }).isEnabled(), true);
-  await page.getByRole("button", { name: "比较行为", exact: true }).click();
-  await page.waitForFunction(() => [...document.querySelectorAll('button')].some((b) => b.textContent === "验收" && !b.disabled));
+  await page.locator(".evolution-error").getByRole("button", { name: "重试", exact: true }).click();
+  await page.waitForFunction(() => [...document.querySelectorAll('button')].some((b) => b.textContent === "确认效果" && !b.disabled));
 
   // Continue with no new input: same case, same task, no model planning.
   await page.getByRole("button", { name: "继续修改：侧栏显示文字", exact: true }).click();
-  await page.waitForFunction(() => document.querySelectorAll('.evolution-request').length === 2
-    && [...document.querySelectorAll('.evolution-request')].at(-1)?.textContent.includes("实现任务已结束"));
+  await waitForCompletedRequests(2);
+  await page.locator(".evolution-feedback-reply").filter({ hasText: "本轮实现已结束" }).waitFor();
   assert.equal((await requests.suite()).length, 1);
   assert.equal((await requests.status()).at(-1).cases[0].item.id, item.id);
   assert.equal((await requests.status()).at(-1).repair, true);
@@ -202,13 +222,13 @@ try {
 
   state.candidate = null; state.draftDirty = true; state.iteration = null; state.validation = null;
   await publish();
-  await page.getByRole("button", { name: "取消此项验收", exact: true }).click();
+  await page.getByRole("button", { name: "取消此项", exact: true }).click();
   await page.getByText(/0 项待验收/).waitFor();
   assert.equal((await acceptance.interactions.read()).completions.length, 0);
   assert.equal((await requests.suite())[0].expectation, item.expectation);
   await page.reload();
   await page.getByText(/0 项待验收/).waitFor();
-  await page.getByText("已取消验收 · 1 项", { exact: true }).click();
+  await page.getByText("历史记录 · 1 项", { exact: true }).click();
   await page.screenshot({ path: join(output, "cancelled.png"), fullPage: true });
   // A failed old request can be abandoned without any acceptance result or editing.
   requests.analyze = async () => { throw new Error("案例对应要求未引用原需求，请重试。"); };
@@ -246,7 +266,9 @@ try {
   await dialog.getByText("申请已提交，目标分支尚待创建。", { exact: false }).waitFor();
   assert.equal(submissions.length, 1);
   assert.equal(await dialog.getByRole("button", { name: "向该分支提交 PR", exact: true }).count(), 0);
-  await dialog.getByRole("button", { name: "检查分支是否已创建", exact: true }).click();
+  assert.equal(await dialog.getByRole("button", { name: "检查分支是否已创建", exact: true }).count(), 0);
+  branchReady = true;
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await dialog.getByRole("button", { name: "向该分支提交 PR", exact: true }).click();
   await dialog.getByLabel("PR 标题", { exact: true }).fill("向新目标提交");
   await dialog.getByRole("button", { name: "创建新 PR", exact: true }).click();
