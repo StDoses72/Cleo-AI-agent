@@ -204,7 +204,13 @@ jobs:
                            key=lambda path: (path.name != 'Cleo-windows-x64.zip', path.name))
           for path in missing:
               print(f'Uploading {path.name} ({path.stat().st_size} bytes)', flush=True)
-              subprocess.run(['gh', 'release', 'upload', tag, str(path)], check=True, timeout=600)
+              subprocess.run(['curl', '--http1.1', '--fail-with-body', '--connect-timeout', '30',
+                              '--max-time', '600', '--speed-limit', '1024', '--speed-time', '60',
+                              '--config', '-', '--header', 'Content-Type: application/octet-stream',
+                              '--data-binary', f'@{path}',
+                              f"https://uploads.github.com/repos/{os.environ['GH_REPO']}/releases/{release['id']}/assets?name={path.name}"],
+                             input=f'header = "Authorization: Bearer {os.environ["GH_TOKEN"]}"\n',
+                             text=True, check=True, timeout=630)
               print(f'Uploaded {path.name}', flush=True)
           release = draft_release()
           assert release['name'] == title and (release.get('body') or '') == notes and release['prerelease'] == prerelease
