@@ -31,10 +31,11 @@ const phases: Record<string, string> = {
   publishing: "正在创建 GitHub Release",
 };
 /** Purpose: Keep formal releases distinct from dated local saves. Input: build. Output: display label. */
+const releaseVersionLabel = (version: string) => version.endsWith("-alpha") ? `α ${version.slice(0, -6)}` : `v${version}`;
 export function versionLabel(build?: EvolutionBuild, prerelease?: boolean) {
   if (!build) return "当前版本";
   if (build.name) return build.name;
-  if (build.kind === "official") return `${prerelease === undefined ? "发布版" : prerelease ? "预发布版" : "正式版"} v${build.version}`;
+  if (build.kind === "official") return `${build.version?.endsWith("-alpha") ? "实验版" : prerelease === undefined ? "发布版" : prerelease ? "预发布版" : "正式版"} ${releaseVersionLabel(build.version || "—")}`;
   if (build.savedAt) {
     const date = new Date(build.savedAt);
     return Number.isNaN(date.getTime()) ? "已保存的本地版" : `本地版 · ${date.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}`;
@@ -116,7 +117,7 @@ export function EvolutionPanel({ children, state, error, busy, running, otherTas
     <div className="evolution-topline">
       <GitBranch size={19} className="evolution-accent" /><strong>进化</strong>
       <button className="evolution-version-trigger" onClick={() => setSheet("versions")} aria-label="选择版本" disabled={busy}>
-        <span>正在使用</span><b>{active ? versionLabel(active, state?.releaseTypes?.[active.baseTag || ""]) : `v${state?.currentVersion || "—"}`}</b><ChevronDown size={14} />
+        <span>正在使用</span><b>{active ? versionLabel(active, state?.releaseTypes?.[active.baseTag || ""]) : releaseVersionLabel(state?.currentVersion || "—")}</b><ChevronDown size={14} />
       </button>
       <div className="evolution-top-actions">
         <button aria-label="查看代码变更" aria-pressed={inspectorOpen} title="查看代码变更" onClick={onToggleInspector}><PanelRightOpen size={18} /></button>
