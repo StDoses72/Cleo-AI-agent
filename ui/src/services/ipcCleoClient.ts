@@ -25,6 +25,7 @@ import type {
   WorkspaceSnapshot,
   TimelinePage,
   TimelineContent,
+  TimelineItem,
   QuestionRequest,
 } from "../types";
 
@@ -148,6 +149,12 @@ export class IpcCleoClient implements CleoClient {
       thread_id: threadId, ...(runId ? { run_id: runId } : {}),
     });
     return result.cancelled;
+  }
+
+  steerRun(threadId: string, runId: string, requestId: string, text: string, retry = false): Promise<TimelineItem> {
+    return this.bridge.request("steer_run", {
+      thread_id: threadId, run_id: runId, request_id: requestId, text, retry,
+    });
   }
 
   async resolveApproval(

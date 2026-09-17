@@ -98,7 +98,7 @@ try {
   await page.evaluate(() => { window.permissionTest.running = true; });
   await access.selectOption("read-only"); await settled();
   await approval.selectOption("user"); await settled();
-  await settings.getByText("下次运行使用所选权限。当前：完全访问 · 拒绝审批请求。").waitFor();
+  await settings.getByText("下次运行使用所选权限。当前（含补充指令）：完全访问 · 拒绝审批请求。").waitFor();
   assert.deepEqual(await page.evaluate(() => {
     const runtime = window.permissionTest.fixture.threads.find(t => t.id === "desktop-ui").runtime;
     return [runtime.access, runtime.approval, runtime.pendingPermissions];

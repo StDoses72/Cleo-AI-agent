@@ -289,6 +289,149 @@ def _permission_service(tmp_path):
     return service, adapter
 
 
+@pytest.mark.parametrize("space,provider_type", [
+    ("productivity", "claude_sdk"), ("productivity", "acp"), ("non_productivity", "api"),
+])
+def test_steer_boundary_runs_serially_and_keeps_all_instructions(tmp_path, space, provider_type):
+    async def scenario():
+        service = _service(tmp_path)
+        manifest = service.store.create_session(
+            session_id="steer-boundary", space=space, project="workspace", provider="native",
+            owner_type="user", cwd=str(tmp_path / "workspace"),
+        )
+        service._productivity_provider = lambda _: SimpleNamespace(type=provider_type)
+        ready, release = asyncio.Event(), asyncio.Event()
+        prompts, events = [], []
+
+        async def stream(manifest, prompt, _attachments, emit, *, steer_ids=None):
+            turn = f"turn-{len(prompts)}"
+            prompts.append(prompt)
+            service.store.append_events(
+                session_id=manifest["id"], space=space, project="workspace", events=[{
+                    "id": turn, "type": "user_message", "actor": "user", "content": prompt,
+                    "data": {"steer_ids": steer_ids} if steer_ids else {},
+                }],
+            )
+            await emit({"type": "turn-started", "item": {
+                "id": turn, "type": "message", "role": "user", "content": prompt, "time": "",
+            }})
+            if len(prompts) == 1:
+                ready.set()
+                await release.wait()
+            else:
+                await emit({"type": "upsert-item", "item": {
+                    "id": "late-old-output", "turnId": "turn-0", "type": "message",
+                    "role": "assistant", "content": "old callback", "time": "",
+                }})
+                assert service._steering_runs[manifest["id"]].records["one"]["status"] == "sending"
+            await emit({"type": "upsert-item", "item": {
+                "id": turn + ":answer", "turnId": turn, "type": "message", "role": "assistant",
+                "content": "response", "time": "",
+            }})
+            await emit({"type": "done", "summary": "response"})
+
+        service._stream_chat = service._stream_productivity = stream
+        task = asyncio.create_task(service.stream_turn(
+            thread_id=manifest["id"], run_id="original-run", prompt="original goal",
+            attachments=[], emit=AsyncMock(side_effect=events.append),
+        ))
+        try:
+            await asyncio.wait_for(ready.wait(), 2)
+            first = await service.steer_run(thread_id=manifest["id"], run_id="original-run",
+                                            request_id="one", text="first constraint")
+            assert first["steer"]["status"] == "queued"
+            await service.steer_run(thread_id=manifest["id"], run_id="original-run",
+                                    request_id="two", text="second constraint")
+            assert prompts == ["original goal"]
+            assert not any(event["type"] == "done" for event in events)
+            release.set()
+            await asyncio.wait_for(task, 3)
+            assert prompts == ["original goal", "first constraint\n\nsecond constraint"]
+            assert len([event for event in events if event["type"] == "done"]) == 1
+            first = await service.steer_run(thread_id=manifest["id"], run_id="original-run",
+                                            request_id="one", text="first constraint")
+            assert first["steer"]["status"] == "received"
+            assert not service._run_tasks and not service._steering_runs
+        finally:
+            release.set()
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+    asyncio.run(scenario())
+
+
+def test_native_steer_targets_current_run_without_bypassing_pending_approval(tmp_path):
+    async def scenario():
+        service, _ = _permission_service(tmp_path)
+        ready, release = asyncio.Event(), asyncio.Event()
+
+        class Adapter(FakeAdapter):
+            def __init__(self):
+                super().__init__(service.store)
+                self.steered = []
+                self.prompts = []
+
+            async def steer(self, session_id, text, expected_turn_id):
+                assert session_id == "permissions" and expected_turn_id == "native-turn"
+                self.steered.append(text)
+
+            async def prompt(self, session_id, prompt, on_event):
+                self.prompts.append(prompt)
+                service.store.append_events(
+                    session_id=session_id, space="productivity", project="workspace", events=[{
+                        "id": "original", "type": "user_message", "actor": "user",
+                        "content": prompt,
+                    }],
+                )
+                await on_event(AgentEvent(provider="codex", type="turn_started", text=prompt,
+                                          data={"turnId": "original"}))
+                await on_event(AgentEvent(provider="codex", type="runtime_turn_started",
+                                          data={"native_turn_id": "native-turn"}))
+                await on_event(AgentEvent(provider="codex", type="permission_request", data={
+                    "id": "approval", "kind": "command", "command": "test-command",
+                    "availableDecisions": ["accept", "decline"],
+                }))
+                ready.set()
+                await release.wait()
+                return SimpleNamespace(status="completed", response="done", error=None)
+
+        adapter = Adapter()
+        service._adapter_instance = adapter
+        task = asyncio.create_task(service.stream_turn(
+            thread_id="permissions", run_id="original-run", prompt="original goal",
+            attachments=[], emit=AsyncMock(),
+        ))
+        try:
+            await asyncio.wait_for(ready.wait(), 3)
+            await service.steer_run(thread_id="permissions", run_id="original-run",
+                                    request_id="one", text="keep original goal, change direction")
+            await asyncio.wait_for(asyncio.shield(service._steering_runs["permissions"].worker), 3)
+            assert adapter.steered == ["keep original goal, change direction"]
+            assert adapter.resolved == []
+            assert "approval" in service._pending_approvals["permissions"]
+            assert not task.done() and adapter.prompts == ["original goal"]
+            stale = await service.steer_run(thread_id="permissions", run_id="wrong-run",
+                                            request_id="stale", text="must not run")
+            assert stale["steer"]["status"] == "failed"
+            other = await service.steer_run(thread_id="other-task", run_id="original-run",
+                                            request_id="other", text="must not cross tasks")
+            assert other["steer"]["status"] == "failed"
+            assert len(adapter.steered) == 1
+            await service.resolve_approval(thread_id="permissions", approval_id="approval",
+                                           decision="decline")
+            release.set()
+            await asyncio.wait_for(task, 3)
+            replay = await service.steer_run(thread_id="permissions", run_id="original-run",
+                                             request_id="one", text=adapter.steered[0])
+            assert replay["steer"]["status"] == "received" and len(adapter.steered) == 1
+        finally:
+            release.set()
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+    asyncio.run(scenario())
+
+
 def test_permission_changes_are_independent_persisted_and_task_scoped(tmp_path):
     async def scenario():
         service, adapter = _permission_service(tmp_path)
@@ -1207,6 +1350,7 @@ def test_registered_project_directories_drive_both_agent_spaces(tmp_path: Path) 
         )
 
         assert captured_agent_options["project_path"] == str(chat_path.resolve())
+        assert captured_agent_options["session_store"] is service.store
 
     asyncio.run(scenario())
 

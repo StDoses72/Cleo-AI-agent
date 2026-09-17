@@ -3195,6 +3195,10 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 .settings-error button { margin-left: 12px; text-decoration: underline; }
 .settings-scope { color: var(--muted); font-size: var(--font-size-caption); overflow-wrap: anywhere; }
 .tool-permission { color: var(--muted); font-size: var(--font-size-caption); margin: 8px 0; }
+.composer-send-actions { display: flex; align-items: center; gap: 8px; }
+.steer-receipt { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin-top: 8px; color: var(--muted); font-size: var(--font-size-caption); }
+.steer-receipt button { padding: 0; color: var(--text-soft); text-decoration: underline; }
+.steer-error { flex-basis: 100%; }
 .approval-details { color: var(--muted); font-size: var(--font-size-caption); margin: 8px 0; }
 .approval-details pre { max-height: 200px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 .settings-permission-pending { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 12px 0; }

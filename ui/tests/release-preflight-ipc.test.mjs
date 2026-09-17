@@ -24,6 +24,7 @@ test("automatic release preflight leaves conversations available and never dispa
     backend: { pending: new Map([["running-task", {}]]), request: async (method, params) => {
       if (method === "is_evolution_thread") return params.thread_id === "evolution";
       if (method === "stream_turn") return "ordinary task started";
+      if (method === "steer_run") return "steer forwarded to existing task";
       throw new Error(`Unexpected request: ${method}`);
     } },
     evolution,
@@ -41,12 +42,15 @@ test("automatic release preflight leaves conversations available and never dispa
   assert.equal(program.blocksTasks, false);
   assert.equal(updates.at(-1).blocksTasks, false);
   assert.equal(await request({}, { method: "stream_turn", params: { thread_id: "ordinary" } }), "ordinary task started");
+  assert.equal(await request({}, { method: "steer_run", params: { thread_id: "ordinary" } }), "steer forwarded to existing task");
   await assert.rejects(request({}, { method: "stream_turn", params: { thread_id: "evolution" } }), /等待/);
   evolution.readOnlyOperation = false;
   await assert.rejects(request({}, { method: "stream_turn", params: { thread_id: "ordinary" } }), /等待/);
+  await assert.rejects(request({}, { method: "steer_run", params: { thread_id: "ordinary" } }), /等待/);
   evolution.readOnlyOperation = true;
   evolution.store.read = async () => ({ transaction: { phase: "applying" } });
   await assert.rejects(request({}, { method: "stream_turn", params: { thread_id: "ordinary" } }), /等待/);
+  await assert.rejects(request({}, { method: "steer_run", params: { thread_id: "ordinary" } }), /等待/);
   evolution.store.read = async () => ({});
   finish();
   assert.equal((await reading).commit, "verified");

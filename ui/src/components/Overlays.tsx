@@ -475,7 +475,7 @@ function RuntimePermissions({ runtime, threadId, onChange }: {
       </SettingsRow>;
     })}
     {pending && <div className="settings-permission-pending" role="status">
-      <p>{sameProvider ? `下次运行使用所选权限。当前：${accessLabel(runtime.access)} · ${approvalLabel(runtime.approval)}。`
+      <p>{sameProvider ? `下次运行使用所选权限。当前（含补充指令）：${accessLabel(runtime.access)} · ${approvalLabel(runtime.approval)}。`
         : "待生效权限属于之前的服务，请重新选择或取消更改。"}</p>
       <button className="settings-action" disabled={saving} onClick={() => void change({ discardPendingPermissions: true })}>取消更改</button>
     </div>}

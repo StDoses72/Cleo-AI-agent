@@ -18,6 +18,7 @@ import type {
   RuntimeCatalog,
   RuntimeProfile,
   RuntimeUpdate,
+  SteerReceipt,
   Thread,
   ThreadSpace,
   TimelineItem,
@@ -147,6 +148,9 @@ export function useCleoWorkspace(evolutionOpen = false) {
   const [draftModel, setDraftModel] = useState("");
   const [draftEffort, setDraftEffort] = useState<RuntimeProfile["effort"]>(null);
   const cancellingRuns = useRef(new Set<string>());
+  const steeringRequests = useRef(new Map<string, { id: string; runId: string; text: string; draftText: string }>());
+  const steeringLocks = useRef(new Set<string>());
+  const [steeringThreads, setSteeringThreads] = useState<string[]>([]);
   const selectionRef = useRef(0);
   const evolutionSelectionRef = useRef(0);
   const viewRef = useRef(evolutionOpen);
@@ -322,6 +326,40 @@ export function useCleoWorkspace(evolutionOpen = false) {
   };
 
   const history = useTimelineHistory(activeThread, updateThread);
+  const acknowledgeSteer = (threadId: string, item: TimelineItem) => {
+    if (item.type !== "message" || !item.steer || item.steer.threadId !== threadId) return;
+    const receipt = item.steer;
+    const pending = steeringRequests.current.get(receipt.threadId);
+    if (!pending || pending.id !== receipt.id || pending.runId !== receipt.runId
+        || pending.text !== receipt.text) return;
+    steeringRequests.current.delete(receipt.threadId);
+    const accepted = ["queued", "sending", "received"].includes(receipt.status);
+    updateDraft(receipt.threadId, current => ({ ...current,
+      prompt: accepted && current.prompt === pending.draftText ? "" : current.prompt,
+      error: accepted ? undefined : receipt.error ?? undefined,
+    }));
+  };
+  const upsertTimelineItem = (threadId: string, projected: TimelineItem) => {
+    if (projected.type === "message" && projected.steer && projected.steer.threadId !== threadId) return;
+    acknowledgeSteer(threadId, projected);
+    const following = history.isFollowing(threadId);
+    if (!following) history.notify(threadId);
+    updateThread(threadId, current => {
+      const index = current.items.findIndex(item => item.id === projected.id);
+      const previous = current.items[index];
+      if (previous?.type === "message" && previous.steer && projected.type === "message"
+          && projected.steer && previous.steer.revision > projected.steer.revision) return current;
+      const items = [...current.items];
+      if (index >= 0) items[index] = projected;
+      else if (following && (projected.order === undefined || items[0]?.order === undefined
+          || projected.order >= items[0].order)) items.push(projected);
+      items.sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER));
+      const answered = projected.type === "message" && projected.role === "assistant" && projected.content.trim();
+      return { ...current, items: answered ? items.map(item => item.turnId === projected.turnId
+        ? { ...item, turnHasAnswer: true } : item) : items,
+      history: current.history && { ...current.history, hasAfter: current.history.hasAfter || !following } };
+    });
+  };
   const questions = useQuestions(activeThread, updateThread);
   useEffect(() => {
     if (!Object.keys(restoredRuns).length) return;
@@ -334,6 +372,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
         try {
           const loaded = await cleoClient.loadThread(id, false);
           if (!active || runLocks.current.get(id) !== token) return;
+          loaded.items.forEach(item => acknowledgeSteer(id, item));
           updateThread(id, current => history.isFollowing(id) ? loaded : { ...loaded,
             items: current.items, history: current.history && { ...current.history,
               total: Math.max(current.history.total, loaded.history?.total ?? 0),
@@ -436,6 +475,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
     void cleoClient
       .loadThread(threadId)
       .then((loaded) => {
+        loaded.items.forEach(item => acknowledgeSteer(threadId, item));
         if (selectionRef.current !== selection || threadVersions.current.get(threadId) !== version
             || runLocks.current.has(threadId)) return;
         updateThread(threadId, () => loaded);
@@ -610,6 +650,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
       title: current.items.length === 0 ? prompt.slice(0, 26) : current.title,
       summary: prompt.slice(0, 64),
       status: "running",
+      steerReady: false,
       updatedAt: "刚刚",
       items: history.isFollowing(threadId) ? [...current.items, userItem] : current.items,
     }));
@@ -620,21 +661,11 @@ export function useCleoWorkspace(evolutionOpen = false) {
         if (runLocks.current.get(threadId) !== token) return;
         if (event.type === "turn-started") {
           turnId = event.item.turnId ?? event.item.id;
-          updateThread(threadId, current => ({ ...current, items: current.items.map(item => item.id === userItem.id ? event.item : item) }));
+          updateThread(threadId, current => ({ ...current, steerReady: true,
+            items: current.items.map(item => item.id === userItem.id ? event.item : item) }));
         } else if (event.type === "upsert-item") {
           const projected = { ...event.item, turnId: event.item.turnId ?? turnId };
-          const following = history.isFollowing(threadId);
-          if (!following) history.notify(threadId);
-          updateThread(threadId, (current) => {
-            const index = current.items.findIndex((item) => item.id === projected.id);
-            const items = [...current.items];
-            if (index >= 0) items[index] = projected;
-            else if (following && (projected.order === undefined || items[0]?.order === undefined || projected.order >= items[0].order)) items.push(projected);
-            items.sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER));
-            const answered = projected.type === "message" && projected.role === "assistant" && projected.content.trim();
-            return { ...current, items: answered ? items.map(item => item.turnId === projected.turnId ? { ...item, turnHasAnswer: true } : item) : items,
-              history: current.history && { ...current.history, hasAfter: current.history.hasAfter || !following } };
-          });
+          upsertTimelineItem(threadId, projected);
         } else if (event.type === "question-request") {
           if (!history.isFollowing(threadId)) {
             history.notify(threadId);
@@ -847,6 +878,67 @@ export function useCleoWorkspace(evolutionOpen = false) {
   const updatePermissions = async (threadId: string, update: RuntimeUpdate) => {
     const runtime = await cleoClient.updateRuntime(threadId, update);
     updateThread(threadId, current => ({ ...current, runtime }));
+  };
+
+  const submitSteer = async (threadId: string, runId: string, text: string, requestId: string, retry = false) => {
+    const item = await cleoClient.steerRun(threadId, runId, requestId, text, retry);
+    if (item.type !== "message" || !item.steer || item.steer.id !== requestId
+        || item.steer.threadId !== threadId || item.steer.runId !== runId || item.steer.text !== text) {
+      throw new Error("引导回执与目标运行不一致");
+    }
+    upsertTimelineItem(threadId, item);
+    return item;
+  };
+
+  const sendSteer = async (text: string) => {
+    const threadId = activeThreadId;
+    const runId = threadId ? runLocks.current.get(threadId) : undefined;
+    if (!threadId || !runId || !text.trim() || steeringLocks.current.has(threadId)) return;
+    if (draft.attachments.length) {
+      updateDraft(threadId, current => ({ ...current, error: "运行中追加指令暂不支持附件，附件可在本轮结束后发送。" }));
+      return;
+    }
+    const previous = steeringRequests.current.get(threadId);
+    const draftText = draft.prompt;
+    const requestId = previous?.runId === runId && previous.text === text ? previous.id : crypto.randomUUID();
+    steeringRequests.current.set(threadId, { id: requestId, runId, text, draftText });
+    steeringLocks.current.add(threadId);
+    setSteeringThreads(current => [...current, threadId]);
+    updateDraft(threadId, current => ({ ...current, error: undefined }));
+    try {
+      await submitSteer(threadId, runId, text, requestId);
+    } catch (error) {
+      if (steeringRequests.current.get(threadId)?.id === requestId) {
+        updateDraft(threadId, current => ({ ...current, error: error instanceof Error
+          ? `${error.message}；重试会核对同一条消息。` : "尚未确认提交结果，重试会核对同一条消息。" }));
+      }
+    } finally {
+      steeringLocks.current.delete(threadId);
+      setSteeringThreads(current => current.filter(id => id !== threadId));
+    }
+  };
+
+  const retrySteer = async (receipt: SteerReceipt) => {
+    if (steeringLocks.current.has(receipt.threadId)) return;
+    steeringLocks.current.add(receipt.threadId);
+    setSteeringThreads(current => [...current, receipt.threadId]);
+    try {
+      await submitSteer(receipt.threadId, receipt.runId, receipt.text, receipt.id, true);
+    } catch (error) {
+      updateDraft(receipt.threadId, current => ({ ...current,
+        error: error instanceof Error ? error.message : "无法核对引导消息。请重试。",
+      }));
+    } finally {
+      steeringLocks.current.delete(receipt.threadId);
+      setSteeringThreads(current => current.filter(id => id !== receipt.threadId));
+    }
+  };
+
+  const restoreSteer = (receipt: SteerReceipt) => {
+    updateDraft(receipt.threadId, current => ({ ...current, error: undefined,
+      prompt: current.prompt.trim() && current.prompt !== receipt.text
+        ? `${current.prompt}\n\n${receipt.text}` : receipt.text,
+    }));
   };
 
   const updateRuntime = (update: RuntimeUpdate) => {
@@ -1187,6 +1279,10 @@ export function useCleoWorkspace(evolutionOpen = false) {
     openEvolutionThread,
     beginEvolutionDraft,
     sendPrompt,
+    sendSteer,
+    retrySteer,
+    restoreSteer,
+    steeringBusy: activeThreadId ? steeringThreads.includes(activeThreadId) : false,
     renameThread,
     cancelRun,
     resolveApproval,

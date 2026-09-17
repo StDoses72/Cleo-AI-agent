@@ -393,17 +393,21 @@ class AgentService:
         session_id: str,
         prompt: str,
         on_event: EventCallback | None = None,
+        *,
+        steer_ids: list[str] | None = None,
     ) -> AgentResult:
         session_id = self._required_text(session_id, "session_id")
         async with self._session_locks.setdefault(session_id, asyncio.Lock()):
             with self._context_lease(session_id):
-                return await self._prompt(session_id, prompt, on_event)
+                return await self._prompt(session_id, prompt, on_event, steer_ids=steer_ids)
 
     async def _prompt(
         self,
         session_id: str,
         prompt: str,
         on_event: EventCallback | None = None,
+        *,
+        steer_ids: list[str] | None = None,
     ) -> AgentResult:
         """向已存在的会话发送一轮 prompt,并把事件/状态写入 SessionStore。"""
         session_id = self._required_text(session_id, "session_id")
@@ -425,7 +429,8 @@ class AgentService:
             project=route.project,
             session_id=session_id,
             events=[
-                {"id": turn_key, "type": "user_message", "actor": "agent", "content": prompt},
+                {"id": turn_key, "type": "user_message", "actor": "agent", "content": prompt,
+                 "data": {"steer_ids": steer_ids} if steer_ids else {}},
                 {"type": "session_running", "actor": "system"},
             ],
             manifest_updates={"status": "running"},
@@ -702,6 +707,11 @@ class AgentService:
         method = self._capability(route.provider, "resolve_approval")
         return await method(route.provider_session_id, approval_id, decision)
 
+    async def steer(self, session_id: str, text: str, expected_turn_id: str) -> None:
+        route = self._route(session_id)
+        method = self._capability(route.provider, "steer")
+        await method(route.provider_session_id, text, expected_turn_id)
+
     async def enable_user_approvals(self, session_id: str) -> None:
         route = self._route(session_id)
         method = self._capability(route.provider, "enable_user_approvals")
@@ -888,6 +898,8 @@ class AgentService:
     @staticmethod
     def _stored_provider_event(event) -> dict[str, Any] | None:
         event_type = event.type
+        if event_type == "runtime_turn_started":
+            return None
         if event_type == "assistant_message_completed":
             payload = event.data.get("payload")
             payload = payload if isinstance(payload, dict) else event.data

@@ -106,7 +106,7 @@ def project_events(events: list[dict]) -> list[Record]:
         payload = data.get("payload") or {}
         item = payload.get("item") or {}
         method = str(data.get("provider_event_type") or "")
-        if method in _NOISE:
+        if method in _NOISE or event.get("type") == "steer":
             continue
         key = (
             data.get("provider"), payload.get("threadId"), payload.get("turnId"),

@@ -508,7 +508,7 @@ class SessionStore:
                     for event in appended:
                         stream.write(json.dumps(event, ensure_ascii=False, default=str) + "\n")
                     stream.flush()
-                    if durable_handoff:
+                    if durable_handoff or any(e["type"] == "steer" for e in appended):
                         os.fsync(stream.fileno())
                 output_stat = output_path.stat()
                 self._event_id_cache[session_id] = (

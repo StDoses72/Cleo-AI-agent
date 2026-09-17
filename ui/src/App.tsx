@@ -386,6 +386,18 @@ export function App() {
   const evolutionUnavailable = !evolutionOpen ? null : !evolution.state
     ? evolution.loadError ? "进化状态读取失败，请先重试。" : "正在读取进化状态…"
     : !evolution.state.supported ? "当前运行方式不支持本地进化。" : null;
+  let composerBlocked = workspace.harnessSwitchStatus || evolutionUnavailable;
+  if (!composerBlocked && (updateState.blocksTasks || (evolutionOpen && updateState.operationBusy))) {
+    composerBlocked = "请等待当前版本操作完成…";
+  }
+  if (!composerBlocked && evolutionOpen && (evolution.state?.phase !== "idle"
+      || (!workspace.running && (preparingAcceptance || openingEvolutionUi || evolution.pending)))) {
+    composerBlocked = "请等待当前操作完成…";
+  }
+  if (!composerBlocked && (workspace.startingRun || workspace.steeringBusy)) composerBlocked = "正在提交，请稍候…";
+  if (!composerBlocked && workspace.running && activeRuntime.steerMode && !conversationThread?.steerReady) {
+    composerBlocked = "正在准备任务，输入会保留…";
+  }
   const appClasses = [
     "app-shell",
     evolutionOpen ? "evolution-open" : "",
@@ -480,7 +492,7 @@ export function App() {
           onPromptChange={workspace.setPrompt}
           sendError={workspace.sendError}
           harnessSwitchStatus={workspace.harnessSwitchStatus}
-            sendBlocked={workspace.harnessSwitchStatus || evolutionUnavailable || (updateState.blocksTasks || (evolutionOpen && updateState.operationBusy) ? "请等待当前版本操作完成…" : evolutionOpen && (preparingAcceptance || openingEvolutionUi || evolution.pending || evolution.state?.phase !== "idle") ? "请等待当前操作完成…" : workspace.startingRun ? "正在提交，请稍候…" : null)}
+          sendBlocked={composerBlocked}
           onRename={workspace.renameThread}
           thread={conversationThread}
           project={conversationProject}
@@ -498,7 +510,11 @@ export function App() {
           onToggleSidebar={() => setSidebarCollapsed((collapsed) => !collapsed)}
           onToggleInspector={() => setInspectorOpen((open) => !open)}
           onOpenCommand={() => setCommandOpen(true)}
-          onSend={(prompt) => void (evolutionOpen ? sendEvolutionPrompt(prompt) : workspace.sendPrompt(prompt))}
+          onSend={(prompt) => void (workspace.running ? workspace.sendSteer(prompt)
+            : evolutionOpen ? sendEvolutionPrompt(prompt) : workspace.sendPrompt(prompt))}
+          onRetrySteer={receipt => void workspace.retrySteer(receipt)}
+          onRestoreSteer={workspace.restoreSteer}
+          steeringBusy={workspace.steeringBusy}
           onCancel={workspace.cancelRun}
           onUndo={() => {
             if (!workspace.activeProject?.branch) {

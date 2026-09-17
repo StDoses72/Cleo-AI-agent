@@ -501,6 +501,10 @@ export class MockCleoClient implements CleoClient {
     request.resolve(decision);
   }
 
+  async steerRun(): Promise<TimelineItem> {
+    throw new Error("演示模式无法向运行中的模型投递指令。");
+  }
+
   async updateRuntime(
     threadId: string,
     update: RuntimeUpdate,

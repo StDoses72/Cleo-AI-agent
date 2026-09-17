@@ -517,6 +517,10 @@ def test_codex_provider_streams_new_sdk_notifications() -> None:
 
     assert result.status == "completed"
     assert result.response == "hello world"
+    ready = received.pop(0)
+    assert ready.type == "runtime_turn_started"
+    assert ready.data["native_turn_id"] == "turn-1"
+    assert AgentAdapter._stored_provider_event(ready) is None
     assert received[0].type == "assistant_message_chunk"
     assert received[0].text == "hello"
     assert received[1].type == "tool_call"

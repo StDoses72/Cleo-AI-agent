@@ -29,6 +29,7 @@ from cleo.harnesses.control import (
     NativeSessionDetail,
     NativeSessionPage,
     SessionOptions,
+    SteerRejected,
 )
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 from cleo.harnesses.provider import NativeSessionNotFoundError, ProviderSession, ProviderTurn
@@ -260,6 +261,10 @@ class CodexProvider:
                 finally:
                     turn_started.set()
                 runtime.active_turn = turn
+                await emit_event(on_event, AgentEvent(
+                    provider=self.name, type="runtime_turn_started",
+                    data={"native_turn_id": turn.id},
+                ))
                 message_phases: dict[str, str] = {}
                 async for notification in turn.stream():
                     data = self._notification_data(notification.payload)
@@ -411,6 +416,25 @@ class CodexProvider:
     ) -> dict[str, Any]:
         runtime = self._sessions[session_id]
         return await runtime.approvals.resolve(approval_id, decision)
+
+    async def steer(self, session_id: str, text: str, expected_turn_id: str) -> None:
+        turn = self._sessions[session_id].active_turn
+        if turn is None or turn.id != expected_turn_id:
+            raise SteerRejected("目标运行已结束，指令未投递。")
+        try:
+            response = await turn.steer(text)
+        except JsonRpcError as error:
+            if error.code == -32601:
+                raise SteerRejected("当前 Codex 客户端不支持运行中引导。") from error
+            if error.code == -32602 or (
+                error.code == -32600 and any(part in error.message.lower() for part in (
+                    "no active turn", "expected turn", "turn id mismatch", "turn_id mismatch",
+                ))
+            ):
+                raise SteerRejected(str(error)) from error
+            raise
+        if response.turn_id != expected_turn_id:
+            raise RuntimeError("Steering acknowledgement referred to a different turn")
 
     async def enable_user_approvals(self, session_id: str) -> None:
         self._sessions[session_id].user_approvals_enabled = True

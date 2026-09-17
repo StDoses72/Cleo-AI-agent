@@ -45,6 +45,7 @@ def timeline_from_events(
     questions = state.get("questions", {})
     thoughts = state.get("thoughts", {})
     answers = state.get("answers", {})
+    steers = state.get("steers", {})
     for event in events:
         event_type = str(event.get("type") or "")
         event_id = str(event.get("id") or f"event-{len(items)}")
@@ -55,8 +56,19 @@ def timeline_from_events(
         data = event.get("data") if isinstance(event.get("data"), dict) else {}
         payload = data.get("payload") if isinstance(data.get("payload"), dict) else data
         if event_type in {"user_message", "human"} and content:
+            if data.get("steer_id"):
+                continue
             current_turn_key = event_id
-            items.append(_message(event_id, "user", content, event.get("created_at")))
+            if not data.get("steer_ids"):
+                items.append(_message(event_id, "user", content, event.get("created_at")))
+        elif event_type == "steer":
+            item = steer_item(payload)
+            existing = steers.get(payload["id"])
+            if existing is None:
+                steers[payload["id"]] = item
+                items.append(item)
+            else:
+                existing.update(item)
         elif event_type in {"assistant_message", "assistant_fragment", "ai"} and content:
             identifier = data.get("timeline_id") or event_id
             answer = answers.get(identifier)
@@ -570,6 +582,14 @@ def _message(event_id: str, role: str, content: str, created_at: Any) -> dict[st
         except ValueError:
             time_text = ""
     return {"id": event_id, "type": "message", "role": role, "content": content, "time": time_text}
+
+
+def steer_item(receipt: dict[str, Any]) -> dict[str, Any]:
+    item = _message(f"steer-{receipt['id']}", "user", receipt["text"], receipt.get("createdAt"))
+    item["steer"] = receipt
+    if receipt.get("turnId"):
+        item["turnId"] = receipt["turnId"]
+    return item
 
 
 def _plan_step(value: Any) -> dict[str, str] | None:

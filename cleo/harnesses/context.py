@@ -29,7 +29,9 @@ _SIGNAL = re.compile(
     r"must|mustn't|never|constraint|decision|next|todo|done|failed|禁止|必须|不要|决定|接下来|待办|完成|失败|改为|纠正",
     re.I,
 )
-_IGNORED = {"thought", "status", "permission_request", "permission_response", "approval_review"}
+_IGNORED = {
+    "thought", "status", "permission_request", "permission_response", "approval_review", "steer",
+}
 
 
 def handoff_status(events: list[dict]) -> str | None:
@@ -125,7 +127,7 @@ def project(events: list[dict]) -> list[dict]:
     final_turns: set[str] = set()
     current = ""
     for event in events:
-        if event["type"] == "user_message":
+        if event["type"] == "user_message" and not (event.get("data") or {}).get("steer_id"):
             current = event["id"]
         if event["type"] == "assistant_message":
             final_turns.add(_turn(event, current))
@@ -134,7 +136,7 @@ def project(events: list[dict]) -> list[dict]:
     fragments: dict[str, dict] = {}
     for event in events:
         kind = event["type"]
-        if kind == "user_message":
+        if kind == "user_message" and not (event.get("data") or {}).get("steer_id"):
             current = event["id"]
         turn = _turn(event, current)
         if kind.startswith("session_") or kind in _IGNORED:

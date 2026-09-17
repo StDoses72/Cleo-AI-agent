@@ -32,6 +32,7 @@ def test_desktop_cancel_waits_for_cleanup_without_interrupting_twice():
         service = object.__new__(DesktopService)
         service.store = SimpleNamespace(load_manifest=lambda _: {"space": "productivity"})
         service._productivity_sessions = {"thread": object()}
+        service._steering_runs = {}
         service._adapter = lambda: SimpleNamespace(cancel=interrupt)
         task = asyncio.create_task(run())
         service._run_tasks = {"thread": task}

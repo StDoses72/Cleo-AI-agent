@@ -82,6 +82,20 @@ export interface TimelinePageInfo {
 export interface TimelinePage extends TimelinePageInfo { items: TimelineItem[] }
 export interface TimelineContent { text: string; offset: number; next: number; total: number }
 
+export interface SteerReceipt {
+  id: string;
+  threadId: string;
+  runId: string;
+  turnId?: string | null;
+  text: string;
+  mode: "native" | "boundary";
+  status: "queued" | "sending" | "received" | "failed" | "cancelled" | "uncertain";
+  revision: number;
+  retryable: boolean;
+  error?: string | null;
+  createdAt: string;
+}
+
 export type TimelineItem = {
   order?: number;
   turnId?: string;
@@ -95,6 +109,7 @@ export type TimelineItem = {
       role: "user" | "assistant";
       content: string;
       time: string;
+      steer?: SteerReceipt;
     }
   | {
       id: string;
@@ -158,6 +173,7 @@ export interface LocalSkill {
 }
 
 export interface Thread {
+  steerReady?: boolean;
   activeRunId?: string | null;
   pendingApprovals?: ApprovalRequest[];
   waitingFor?: "approval" | "question";
@@ -231,6 +247,7 @@ export interface MemoryEntry {
 }
 
 export interface RuntimeProfile {
+  steerMode?: "native" | "boundary";
   settingsRevision?: number;
   permissionOptions?: {
     access: { value: string; label: string; description: string }[];
@@ -524,6 +541,7 @@ export interface CleoClient {
   restoreChatBackups(): Promise<WorkspaceSnapshot>;
   streamTurn(threadId: string, prompt: string, attachments?: Attachment[], runId?: string): AsyncGenerator<StreamEvent>;
   cancelRun(threadId: string, runId?: string): Promise<boolean>;
+  steerRun(threadId: string, runId: string, requestId: string, text: string, retry?: boolean): Promise<TimelineItem>;
   resolveApproval(threadId: string, approvalId: string, decision: ApprovalDecision): Promise<void>;
   updateRuntime(threadId: string, update: RuntimeUpdate): Promise<RuntimeProfile>;
   switchHarness(threadId: string, provider: string, model: string, effort?: RuntimeProfile["effort"]): Promise<RuntimeProfile>;

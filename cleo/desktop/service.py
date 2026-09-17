@@ -149,6 +149,7 @@ class DesktopService:
         self._productivity_sessions: dict[str, Any] = {}
         self._run_tasks: dict[str, asyncio.Task[Any]] = {}
         self._run_ids: dict[str, str] = {}
+        self._steering_runs: dict[str, Any] = {}
         self._pending_approvals: dict[str, dict[str, dict[str, Any]]] = {}
         self._run_workspaces: dict[str, str] = {}
         self._workspace_guard = asyncio.Lock()
@@ -247,6 +248,12 @@ class DesktopService:
     async def load_timeline(self, *, thread_id: str, cursor: str | None = None,
                             direction: str = "latest", limit: int = 80) -> dict:
         manifest = self.store.load_manifest(thread_id)
+        if thread_id not in self._run_tasks:
+            from cleo.desktop.steering import recover_steers
+
+            await recover_steers(
+                self.store, manifest, is_active=lambda: thread_id in self._run_tasks,
+            )
         page = await asyncio.to_thread(TimelineIndex(self.store, manifest).page,
                                        cursor=cursor, direction=direction, limit=limit)
         pending = {q["id"] for q in await self.get_pending_questions(thread_id=thread_id)}
@@ -846,10 +853,21 @@ class DesktopService:
         if task is not None:
             self._run_tasks[thread_id] = task
         self._run_ids[thread_id] = run_id or secrets.token_hex(16)
+        steering = None
         try:
             if prompt.startswith("/"):
                 await self._run_command(manifest, prompt, emit)
                 return
+            from cleo.desktop.steering import SteeringRun
+
+            async def deliver_native(text, native_turn_id):
+                await self._adapter().steer(thread_id, text, native_turn_id)
+
+            steering = SteeringRun(
+                self.store, manifest, self._run_ids[thread_id], self._steer_mode(manifest),
+                emit, deliver_native,
+            )
+            self._steering_runs[thread_id] = steering
             if manifest["space"] == "productivity":
                 had_pending_permissions = bool(manifest.get("pending_runtime_permissions"))
                 async with self._runtime_lock(thread_id):
@@ -866,28 +884,122 @@ class DesktopService:
                 if peers:
                     for key in [thread_id, *peers]:
                         self.store.update_manifest(key, undo_checkpoint_shared=True)
-            if manifest["space"] == "non_productivity":
-                await self._stream_chat(manifest, prompt, attachments or [], emit)
-            else:
-                await self._stream_productivity(manifest, prompt, attachments or [], emit)
+            terminal = None
+
+            async def run_event(event):
+                nonlocal terminal
+                if event["type"] == "turn-started":
+                    steering.bind_turn(event["item"]["id"])
+                if event["type"] == "done":
+                    if terminal is None or terminal["type"] != "error":
+                        terminal = event
+                    await steering.boundary_received()
+                    return
+                if event["type"] == "error":
+                    terminal = event
+                if (event["type"] == "upsert-item" and steering.batch
+                    and event["item"].get("turnId") == steering.turn_id and (
+                        event["item"]["type"] != "message"
+                        or event["item"].get("role") == "assistant"
+                    )
+                ):
+                    await steering.boundary_received()
+                await emit(event)
+
+            steer_ids = None
+            while True:
+                terminal = None
+                stream = (self._stream_chat if manifest["space"] == "non_productivity"
+                          else self._stream_productivity)
+                await stream(manifest, prompt, attachments or [], run_event,
+                             **({"steer_ids": steer_ids} if steer_ids else {}))
+                if not terminal or terminal["type"] != "done" or steering.mode != "boundary":
+                    break
+                next_message = await steering.next_boundary()
+                if next_message is None:
+                    break
+                prompt, steer_ids = next_message
+                attachments = []
+            await steering.close()
+            if terminal and terminal["type"] == "done":
+                await emit(terminal)
         except asyncio.CancelledError:
             status = "interrupted" if manifest["space"] == "non_productivity" else "cancelled"
             self.store.set_status(thread_id, status)
             await emit({"type": "error", "message": "当前运行已取消。"})
         finally:
-            async with self._workspace_guard:
-                try:
-                    latest = self.store.load_manifest(thread_id)
-                    if latest.get("undo_checkpoint_shared") and latest.get("undo_checkpoint"):
-                        await asyncio.to_thread(discard_git_checkpoint, latest["undo_checkpoint"])
-                        self.store.update_manifest(thread_id, undo_checkpoint=None)
-                except (OSError, RuntimeError, ValueError) as exc:
-                    self._debug(f"Shared checkpoint cleanup failed for {thread_id}: {exc}")
-                finally:
-                    self._run_workspaces.pop(thread_id, None)
-                    self._run_tasks.pop(thread_id, None)
-                    self._run_ids.pop(thread_id, None)
-                    self._pending_approvals.pop(thread_id, None)
+            try:
+                if steering is not None:
+                    await steering.close()
+            finally:
+                self._steering_runs.pop(thread_id, None)
+                async with self._workspace_guard:
+                    try:
+                        latest = self.store.load_manifest(thread_id)
+                        if latest.get("undo_checkpoint_shared") and latest.get("undo_checkpoint"):
+                            await asyncio.to_thread(
+                                discard_git_checkpoint, latest["undo_checkpoint"],
+                            )
+                            self.store.update_manifest(thread_id, undo_checkpoint=None)
+                    except (OSError, RuntimeError, ValueError) as exc:
+                        self._debug(f"Shared checkpoint cleanup failed for {thread_id}: {exc}")
+                    finally:
+                        self._run_workspaces.pop(thread_id, None)
+                        self._run_tasks.pop(thread_id, None)
+                        self._run_ids.pop(thread_id, None)
+                        self._pending_approvals.pop(thread_id, None)
+
+    def _steer_mode(self, manifest):
+        if (manifest["space"] == "productivity"
+                and self._productivity_provider(manifest["provider"]).type == "codex_sdk"):
+            return "native"
+        return "boundary"
+
+    async def steer_run(self, *, thread_id: str, run_id: str, request_id: str,
+                        text: str, retry: bool = False) -> dict:
+        from cleo.desktop.steering import (
+            new_receipt,
+            persist_receipt,
+            receipt_view,
+            validate_steer,
+        )
+
+        validate_steer(request_id, run_id, text)
+        if not isinstance(retry, bool):
+            raise ValueError("无效的重试参数。")
+        text = text.strip()
+        manifest = self.store.load_manifest(thread_id)
+        steering = self._steering_runs.get(thread_id)
+        existing = await asyncio.to_thread(TimelineIndex(self.store, manifest).steer, request_id)
+        if existing:
+            if existing["runId"] != run_id or existing["text"] != text:
+                raise ValueError("请求标识已被另一条指令使用。")
+            if steering is None or steering.run_id != run_id:
+                if existing["status"] in {"queued", "sending"}:
+                    sending = existing["status"] == "sending"
+                    existing = await persist_receipt(
+                        self.store, manifest, existing,
+                        status="uncertain" if sending else "cancelled", retryable=False,
+                        error=("目标运行已结束，未确认是否接收。" if sending
+                               else "目标运行已结束，指令未投递。"),
+                    )
+                elif existing.get("retryable"):
+                    existing = await persist_receipt(
+                        self.store, manifest, existing, retryable=False,
+                    )
+        active = self._run_tasks.get(thread_id)
+        if (steering and steering.run_id == run_id
+                and active is not None and not active.cancelling()
+                and thread_id not in self._harness_switches):
+            return await steering.submit(request_id, text, retry=retry)
+        if existing:
+            return await receipt_view(self.store, manifest, existing)
+        receipt = new_receipt(manifest, request_id, run_id, text, self._steer_mode(manifest))
+        receipt = await persist_receipt(
+            self.store, manifest, receipt, status="failed", retryable=False,
+            error="目标运行已结束或正在切换服务，指令未投递。",
+        )
+        return await receipt_view(self.store, manifest, receipt)
 
     def _workspace_root(self, manifest: dict[str, Any]) -> str:
         cwd = manifest.get("cwd") or str(self.settings.active_directory_profile.root_path)
@@ -902,6 +1014,9 @@ class DesktopService:
             # The stream owns provider interruption and cleanup. Interrupting
             # here as well races turn/completed and can strand the next request.
             if not task.cancelling():
+                steering = self._steering_runs.get(thread_id)
+                if steering:
+                    steering.stop_accepting()
                 task.cancel()
             result, = await asyncio.gather(task, return_exceptions=True)
             if isinstance(result, Exception):
@@ -1443,6 +1558,8 @@ class DesktopService:
         prompt: str,
         attachments: list[dict[str, Any]],
         emit: Emit,
+        *,
+        steer_ids: list[str] | None = None,
     ) -> None:
         agent = self._chat_agents.get(manifest["id"])
         if agent is None:
@@ -1462,6 +1579,27 @@ class DesktopService:
         chat_attachments = await asyncio.gather(
             *(self._chat_attachment(item) for item in attachments)
         )
+        from langchain_core.messages import HumanMessage, message_to_dict
+
+        from cleo.agents.cleo import _build_user_content
+
+        turn_id = f"turn-{secrets.token_hex(12)}"
+        user_message = HumanMessage(
+            id=turn_id, content=_build_user_content(prompt, chat_attachments),
+        )
+        await asyncio.to_thread(
+            self.store.append_events, session_id=manifest["id"], space=manifest["space"],
+            project=manifest["project"], events=[{
+                "id": turn_id, "type": "user_message", "actor": "user",
+                "content": user_message.content,
+                "source_message_id": turn_id, "message": message_to_dict(user_message),
+                "data": {"steer_ids": steer_ids} if steer_ids else {},
+            }],
+        )
+        await emit({"type": "turn-started", "item": {
+            "id": turn_id, "turnId": turn_id, "type": "message", "role": "user",
+            "content": prompt, "time": "",
+        }})
         text = ""
         try:
             async for chunk in agent.stream_text(
@@ -1469,13 +1607,15 @@ class DesktopService:
                 manifest["id"],
                 loaded_info=loaded or None,
                 images=chat_attachments,
+                message_id=turn_id,
             ):
                 text += chunk
                 await emit(
                     {
                         "type": "upsert-item",
                         "item": {
-                            "id": "live-assistant",
+                            "id": f"{turn_id}:answer",
+                            "turnId": turn_id,
                             "type": "message",
                             "role": "assistant",
                             "content": text,
@@ -1498,6 +1638,8 @@ class DesktopService:
         prompt: str,
         attachments: list[dict[str, Any]],
         emit: Emit,
+        *,
+        steer_ids: list[str] | None = None,
     ) -> None:
         await self._ensure_productivity_session(manifest)
         turn_title = " ".join(prompt.split())[:80]
@@ -1541,6 +1683,15 @@ class DesktopService:
         async def on_event(event: Any) -> None:
             from cleo.harnesses.events import capture_context_usage
 
+            if event.type == "runtime_turn_started":
+                steering = self._steering_runs.get(manifest["id"])
+                if steering:
+                    steering.native_ready(event.data["native_turn_id"])
+                return
+            steering = self._steering_runs.get(manifest["id"])
+            if (steering and steering.batch and event.data.get("turn_id") == steering.turn_id
+                    and event.type in {"permission_request", "question_request"}):
+                await steering.boundary_received()
             capture_context_usage(event, usage)
             for projected in stream_event_item(event, state):
                 if projected["type"] == "approval-request":
@@ -1578,6 +1729,7 @@ class DesktopService:
         try:
             result = await self._adapter().prompt(
                 manifest["id"], self._evolution_prompt(manifest, prompt), on_event=on_event,
+                **({"steer_ids": steer_ids} if steer_ids else {}),
             )
         finally:
             for projected in finalize_stream_tools(state):
@@ -2073,6 +2225,9 @@ class DesktopService:
                 else self._thread_status(manifest.get("status"))
             ),
             "activeRunId": self._run_ids.get(manifest["id"]),
+            "steerReady": (manifest["id"] in self._steering_runs
+                           and not self._steering_runs[manifest["id"]].closed
+                           and self._steering_runs[manifest["id"]].ready.is_set()),
             "pendingApprovals": list(self._pending_approvals.get(manifest["id"], {}).values()),
             "items": items if include_history else [],
             "history": {key: value for key, value in page.items() if key != "items"},
@@ -2115,6 +2270,7 @@ class DesktopService:
                 "contextWindow": snapshot["max_tokens"],
                 "editable": False,
                 "supportsQuestions": False,
+                "steerMode": "boundary",
             }
         provider = str(manifest.get("provider") or self.settings.productivity.default_provider)
         provider_settings = self._productivity_provider(provider)
@@ -2150,6 +2306,7 @@ class DesktopService:
                 "codex_sdk", "claude_sdk",
             },
             "settingsRevision": manifest.get("runtime_settings_revision", 0),
+            "steerMode": self._steer_mode(manifest),
             "permissionOptions": self._permission_options(manifest, provider_settings),
             "pendingPermissions": self._pending_permissions_profile(manifest),
         }
@@ -2300,7 +2457,7 @@ class DesktopService:
             from cleo.agents import Agent
 
             self._agent_factory = Agent
-        return self._agent_factory(**kwargs)
+        return self._agent_factory(session_store=self.store, **kwargs)
 
     def _activate(self, manifest: dict[str, Any]) -> None:
         self.runtime.update_current_space(str(manifest["space"]))

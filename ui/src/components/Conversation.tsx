@@ -52,6 +52,7 @@ import type {
   Project,
   RuntimeCatalog,
   RuntimeProfile,
+  SteerReceipt,
   Thread,
   ThreadSpace,
   TimelineItem,
@@ -93,6 +94,9 @@ interface ConversationProps {
   onOpenCommand: () => void;
   onSend: (prompt: string) => void;
   onCancel: () => void;
+  steeringBusy?: boolean;
+  onRetrySteer?: (receipt: SteerReceipt) => void;
+  onRestoreSteer?: (receipt: SteerReceipt) => void;
   onUndo: () => void;
   onSelectNonProductivityProfile: (profileId: string) => void;
   onLoadProductivityModels: (provider: string, refresh?: boolean) => Promise<ProductivityModelCatalog>;
@@ -150,6 +154,9 @@ export function Conversation({
   onOpenCommand,
   onSend,
   onCancel,
+  steeringBusy = false,
+  onRetrySteer,
+  onRestoreSteer,
   onUndo,
   onSelectNonProductivityProfile,
   onLoadProductivityModels,
@@ -297,7 +304,8 @@ export function Conversation({
       item = row.item;
       content = <div className="tool-process-list virtual-process-row"><ToolProcess tool={row.item} index={row.index}
         open={expansion[stateKey(row.id)]?.open ?? false} onToggle={open => toggle(row.id, open)} /></div>;
-    } else { item = row; content = <TimelineEntry item={row} projectPath={project?.path ?? null} onOpenPath={onOpenPath} />; }
+    } else { item = row; content = <TimelineEntry item={row} projectPath={project?.path ?? null} onOpenPath={onOpenPath}
+      steeringBusy={steeringBusy} onRetrySteer={onRetrySteer} onRestoreSteer={onRestoreSteer} />; }
     return <>{content}{item?.more && Object.keys(item.more).map(field => <button className="history-content-link" key={field}
       onClick={() => void readContent(item!, field)}>{field === "output" ? "展开输出" : "展开全文"}</button>)}</>;
   };
@@ -629,10 +637,16 @@ function TimelineEntry({
   item,
   projectPath,
   onOpenPath,
+  steeringBusy,
+  onRetrySteer,
+  onRestoreSteer,
 }: {
   item: TimelineBlock;
   projectPath: string | null;
   onOpenPath: ConversationProps["onOpenPath"];
+  steeringBusy?: boolean;
+  onRetrySteer?: ConversationProps["onRetrySteer"];
+  onRestoreSteer?: ConversationProps["onRestoreSteer"];
 }) {
   if (item.type === "thought-group") {
     return <ThoughtGroupEntry item={item} projectPath={projectPath} onOpenPath={onOpenPath} />;
@@ -658,6 +672,19 @@ function TimelineEntry({
             onOpenPath={onOpenPath}
           />
         </div>
+        {item.steer && <div className="steer-receipt" data-testid="steer-receipt" data-status={item.steer.status}>
+          <span>{({ queued: item.steer.mode === "native" ? "等待投递" : "当前回复结束后发送",
+            sending: "正在投递", received: "运行时已接收", failed: "未投递",
+            cancelled: "已取消投递", uncertain: "接收状态未确认" })[item.steer.status]}</span>
+          {item.steer.error && <span className="steer-error">{item.steer.error}</span>}
+          {item.steer.retryable && onRetrySteer && <button disabled={steeringBusy}
+            onClick={() => onRetrySteer(item.steer!)}>重试</button>}
+          {["failed", "cancelled", "uncertain"].includes(item.steer.status) && onRestoreSteer
+            && <button onClick={() => {
+              onRestoreSteer(item.steer!);
+              document.querySelector<HTMLTextAreaElement>('[data-testid="composer-input"]')?.focus();
+            }}>放回输入框</button>}
+        </div>}
       </article>
     );
   }
@@ -1030,7 +1057,7 @@ function Composer({
 
   const submit = () => {
     const content = prompt.trim() || (attachments.length ? "请分析这些附件。" : "");
-    if (!content || running || sendBlocked) return;
+    if (!content || (running && !runtime.steerMode) || sendBlocked) return;
     onSend(content);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1196,7 +1223,7 @@ function Composer({
           onPaste={onPaste}
           rows={1}
           aria-label={space === "chat" ? "消息" : "任务描述"}
-          placeholder={running ? "草拟下一条消息…" : space === "chat" ? "向 Cleo 发送消息…" : "描述你想完成的事情"}
+          placeholder={running ? runtime.steerMode ? "补充或调整这项任务…" : "草拟下一条消息…" : space === "chat" ? "向 Cleo 发送消息…" : "描述你想完成的事情"}
           data-testid="composer-input"
         />
         <div className="composer-footer">
@@ -1236,23 +1263,26 @@ function Composer({
               {supportedEfforts.map((effort) => <option key={effort} value={effort}>{effortLabels[effort] ?? effort}</option>)}
             </select> : null}
           </div>
-          {running ? (
+          <div className="composer-send-actions">
+          {running && (
             <button className="send-button stop" type="button" aria-label="停止" title="停止" onClick={onCancel} data-testid="stop-button">
               <Square size={13} fill="currentColor" />
             </button>
-          ) : (
+          )}
+          {(!running || runtime.steerMode) && (
             <button
               className="send-button"
               type="button"
-              aria-label="发送"
-              title="发送 · Enter"
+              aria-label={running ? "追加指令" : "发送"}
+              title={sendBlocked || (running ? runtime.steerMode === "native" ? "追加指令 · Enter" : "当前回复结束后发送 · Enter" : "发送 · Enter")}
               disabled={Boolean(sendBlocked) || (!prompt.trim() && attachments.length === 0)}
               onClick={submit}
-              data-testid="send-button"
+              data-testid={running ? "steer-button" : "send-button"}
             >
               <ArrowUp size={16} />
             </button>
           )}
+          </div>
         </div>
       </div>
     </div>

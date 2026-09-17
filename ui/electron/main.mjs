@@ -174,6 +174,7 @@ const allowedMethods = new Set([
   "remove_project",
   "restore_chat_backups",
   "stream_turn",
+  "steer_run",
   "cancel_run",
   "resolve_approval",
   "resolve_question",
@@ -276,7 +277,8 @@ app.whenReady().then(async () => {
     const method = String(payload?.method || "");
     if (!allowedMethods.has(method)) throw new Error(`Unsupported desktop method: ${method}`);
     const streamId = payload?.streamId ? String(payload.streamId) : null;
-    if (method === "stream_turn" && programUpdates.blocksTasks) {
+    const controlsRun = method === "stream_turn" || method === "steer_run";
+    if (controlsRun && programUpdates.blocksTasks) {
       throw new Error("请等待进化操作完成后再修改代码。");
     }
     const params = payload?.params || {};
@@ -286,15 +288,15 @@ app.whenReady().then(async () => {
       }
     };
     if (programUpdates.closed) throw new Error("Cleo 正在退出，请稍后重试。");
-    const isEvolution = method === "stream_turn" && await backend.request("is_evolution_thread", { thread_id: params.thread_id });
+    const isEvolution = controlsRun && await backend.request("is_evolution_thread", { thread_id: params.thread_id });
     if (programUpdates.closed) throw new Error("Cleo 正在退出，请稍后重试。");
-    if (method === "stream_turn") {
+    if (controlsRun) {
       const transaction = (await evolution.store.read()).transaction;
       if (programUpdates.blocksTasks || transaction || (evolution.phase !== "idle" && (!evolution.readOnlyOperation || isEvolution)))
         throw new Error("请等待当前版本操作完成。");
     }
     if (isEvolution && programUpdates.busy) throw new Error("请等待当前版本操作完成。");
-    const result = isEvolution
+    const result = isEvolution && method === "stream_turn"
       ? await runPreparedEvolutionTurn({ evolution, requests: acceptanceRequests, acceptance, backend, params, onEvent })
       : await backend.request(method, params, onEvent);
     if (["save_model_profile", "save_dream_settings", "create_model_connection",
