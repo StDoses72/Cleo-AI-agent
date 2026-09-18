@@ -121,23 +121,25 @@ class PublishWorkflowTests(unittest.TestCase):
                     self.assertEqual(args[-1], "repos/fixture/repo/releases/assets/8")
                     self.assertEqual(release["assets"][0]["state"], "starter")
                     release["assets"].pop(0)
-                if args[1:3] == ["release", "upload"]:
-                    self.assertNotIn("--clobber", args)
-                    self.assertEqual(len(args), 5, "Upload one file at a time")
-                    self.assertEqual(_kwargs.get("timeout"), 600)
-                    for value in args[4:]:
-                        path = Path(value)
-                        if not path.is_file():
-                            continue
-                        self.assertNotIn(path.name, {asset["name"] for asset in release["assets"]})
-                        data = path.read_bytes()
-                        release["assets"].append({
-                            "name": path.name, "size": len(data), "state": "uploaded",
-                            "digest": "sha256:" + hashlib.sha256(data).hexdigest(),
-                        })
-                        if interrupt and not interrupted:
-                            interrupted = True
-                            raise subprocess.CalledProcessError(1, args)
+                if args[0] == "curl":
+                    self.assertIn("--http1.1", args)
+                    self.assertEqual(args[args.index("--max-time") + 1], "600")
+                    self.assertEqual(_kwargs.get("timeout"), 630)
+                    self.assertNotIn("fixture-token", " ".join(args))
+                    self.assertEqual(_kwargs["input"],
+                                     'header = "Authorization: Bearer fixture-token"\n')
+                    path = Path(args[args.index("--data-binary") + 1].removeprefix("@"))
+                    self.assertEqual(args[-1],
+                                     f"https://uploads.github.com/repos/fixture/repo/releases/7/assets?name={path.name}")
+                    self.assertNotIn(path.name, {asset["name"] for asset in release["assets"]})
+                    data = path.read_bytes()
+                    release["assets"].append({
+                        "name": path.name, "size": len(data), "state": "uploaded",
+                        "digest": "sha256:" + hashlib.sha256(data).hexdigest(),
+                    })
+                    if interrupt and not interrupted:
+                        interrupted = True
+                        raise subprocess.CalledProcessError(1, args)
                 if args[1:3] == ["release", "edit"]:
                     self.assertTrue(release["draft"], "Do not edit published metadata")
                     self.assertIn(f"--latest={str(not prerelease).lower()}", args)
@@ -145,6 +147,7 @@ class PublishWorkflowTests(unittest.TestCase):
 
             with patch.dict(os.environ, {"RUNNER_TEMP": temporary, "RELEASE_TAG": "v0.5.0",
                                          "GH_REPO": "fixture/repo", "BUILD_RUN": "99",
+                                         "GH_TOKEN": "fixture-token",
                                          "RELEASE_TITLE": "Cleo v0.5.0",
                                          "RELEASE_PRERELEASE": str(prerelease).lower(),
                                          "RELEASE_RESUME_PUBLISHED": str(allow_existing).lower()}):
