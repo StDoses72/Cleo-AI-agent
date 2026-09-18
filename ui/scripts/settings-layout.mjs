@@ -7,8 +7,8 @@ export async function checkSettingsLayout(page) {
   });
   const navigation = settings.getByRole("navigation", { name: "设置导航" });
   const pages = [
-    ["外观", "外观"], ["Agent", "Agent"], ["Agent 指令", "Agent 指令"],
-    ["当前配置", "当前配置"], ["新增连接", "新增连接"], ["DreamAgent", "DreamAgent"],
+    ["外观", "外观"], ["运行设置", "运行设置"], ["对话指令", "对话指令"],
+    ["当前配置", "当前配置"], ["新增连接", "新增连接"], ["记忆整理", "记忆整理"],
     ["更新", "软件更新"], ["数据与记忆", "数据与记忆"],
   ];
   let baseline;

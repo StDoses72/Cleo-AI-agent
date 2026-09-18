@@ -180,6 +180,18 @@ async def collect(graph, text):
     ]
 
 
+def test_desktop_runtime_reuses_the_store_lock_for_concurrent_steering(tmp_path, monkeypatch):
+    graph, _, store = setup_runtime(tmp_path, monkeypatch)
+    graph = module.RuntimeGraph(graph.profile, tmp_path, "Cleo instructions", session_store=store)
+
+    def no_other_store(*_args, **_kwargs):
+        raise AssertionError("Concurrent writers must share the desktop SessionStore lock")
+
+    monkeypatch.setattr(module, "SessionStore", no_other_store)
+    assert asyncio.run(collect(graph, "one")) == ["hello"]
+    assert graph.session_store is store
+
+
 def test_resume_uses_native_history_without_replaying_it(tmp_path, monkeypatch):
     graph, provider, store = setup_runtime(tmp_path, monkeypatch)
 

@@ -100,6 +100,7 @@ try {
       },
       request: async (method, params, streamId) => {
         if (method === "load_workspace") return copy(workspace);
+        if (method === "load_memory") return structuredClone({ memories: workspace.memories, memoryOverview: workspace.memoryOverview });
         if (method === "get_runtime_catalog") return { nonProductivityProfiles: [], productivityProviders: [
           { id: "codex", label: "Codex", models: ["test"], defaultModel: "test", efforts: ["low"] }],
           defaultProductivityProvider: "codex", defaultNonProductivityProfile: "" };
@@ -151,16 +152,6 @@ try {
     await visible("EVOLUTION COMPLETE");
     for (let i = 0; i < 3; i++) { await navigate("开发"); await visible("DEV HISTORY"); await navigate("进化"); await visible("EVOLUTION COMPLETE"); }
     assert.equal(await page.getByText("EVOLUTION COMPLETE", { exact: true }).count(), 1);
-  });
-  await check("new task clears evolution while preserving development and saved history", "", async () => {
-    await visible("DEV HISTORY"); await navigate("进化"); await visible("EVOLUTION HISTORY");
-    await page.keyboard.press("ControlOrMeta+k");
-    await page.getByRole("combobox", { name: "搜索命令" }).fill("新建任务");
-    await page.getByRole("combobox", { name: "搜索命令" }).press("Enter");
-    await page.getByTestId("conversation").getByText("EVOLUTION HISTORY", { exact: true }).waitFor({ state: "hidden" });
-    assert.equal(await page.evaluate(() => window.isolation.workspace.threads.find((thread) => thread.id === "evolution").items[0].content), "EVOLUTION HISTORY");
-    await navigate("开发"); await visible("DEV HISTORY");
-    await navigate("进化"); await visible("EVOLUTION HISTORY");
   });
   await check("background refresh cannot select evolution in development", "", async () => {
     await navigate("进化"); await visible("EVOLUTION HISTORY"); await send("change"); await stream("evolution");

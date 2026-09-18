@@ -14,6 +14,7 @@ from cleo.memory.paths import events_path
 PAGE_SIZE = 80
 PREVIEW_CHARS = 8192
 PAGE_BYTES = 512 * 1024
+PROJECTION_VERSION = 3
 
 
 def _json(value):
@@ -78,11 +79,13 @@ class TimelineIndex:
         except FileNotFoundError:
             info = None
         signature = [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns] if info else None
-        if old and old["signature"] == signature:
+        if (old and old.get("projection_version") == PROJECTION_VERSION
+                and old["signature"] == signature):
             db.commit()
             return old
         reset = (
             old is None
+            or old.get("projection_version") != PROJECTION_VERSION
             or signature is None
             or old["signature"] is None
             or signature[:2] != old["signature"][:2]
@@ -109,7 +112,7 @@ class TimelineIndex:
                         raise ValueError("无法读取此版本的会话历史。")
                     changed = []
                     state = {"turn_id": turn_id, "changed": changed}
-                    kinds = ("tools", "plans", "thoughts", "questions", "answers")
+                    kinds = ("tools", "plans", "thoughts", "questions", "answers", "steers")
                     state.update(
                         {kind: _ProjectionMap(db, turn_id, kind, changed) for kind in kinds}
                     )
@@ -151,6 +154,7 @@ class TimelineIndex:
                     )
                     offset = stream.tell()
         meta = {
+            "projection_version": PROJECTION_VERSION,
             "signature": signature,
             "epoch": epoch,
             "turn_id": turn_id,
@@ -240,6 +244,41 @@ class TimelineIndex:
                 raise ValueError("找不到这条历史内容，请重新加载。")
             return {"text": row[0], "offset": offset, "next": offset + len(row[0]), "total": row[1]}
 
+    def steer(self, request_id):
+        with closing(self._connect()) as db, db:
+            self._sync(db)
+            row = db.execute(
+                "SELECT body FROM events WHERE type='steer' "
+                "AND json_extract(body,'$.data.payload.id')=? ORDER BY offset DESC LIMIT 1",
+                (request_id,),
+            ).fetchone()
+            return json.loads(row[0])["data"]["payload"] if row else None
+
+    def last_messages(self, turn_ids):
+        if not turn_ids:
+            return {}
+        with closing(self._connect()) as db, db:
+            self._sync(db)
+            rows = db.execute(
+                "SELECT turn_id,id FROM items WHERE turn_id IN ("
+                + ",".join("?" for _ in turn_ids)
+                + ") AND json_extract(body,'$.type')='message' "
+                "ORDER BY json_extract(body,'$.role')='assistant',position", turn_ids,
+            )
+            return {row[0]: row[1] for row in rows}
+
+    def steers(self, *, unresolved=False):
+        with closing(self._connect()) as db, db:
+            self._sync(db)
+            rows = db.execute(
+                "SELECT body FROM events WHERE offset IN (SELECT max(offset) FROM events "
+                "WHERE type='steer' GROUP BY json_extract(body,'$.data.payload.id')) "
+                "ORDER BY offset",
+            )
+            receipts = [json.loads(row[0])["data"]["payload"] for row in rows]
+            return [receipt for receipt in receipts if not unresolved
+                    or receipt["status"] in {"queued", "sending"} or receipt.get("retryable")]
+
     def recent_events(self):
         with closing(self._connect()) as db, db:
             self._sync(db)
@@ -263,6 +302,8 @@ class _ProjectionMap:
 
     def __init__(self, db, turn_id, kind, changed):
         self.db, self.turn_id, self.kind, self.changed = db, turn_id, kind, changed
+        if kind == "steers":
+            self.turn_id = ""  # Receipts retain one position across subsequent turn boundaries.
 
     def get(self, key):
         row = self.db.execute(

@@ -77,14 +77,26 @@ def test_desktop_dispatch_uses_selected_harness_and_keeps_builtins(skill_home, t
     write_skill(skill_home / ".codex" / "skills", "eli5", "CODEX instructions")
     write_skill(skill_home / ".claude" / "skills", "eli5", "CLAUDE instructions")
     write_skill(skill_home / ".codex" / "skills", "help", "SKILL HELP")
-    manifest = {"id": "session", "space": "productivity", "provider": "codex", "cwd": str(tmp_path)}
+    manifest = {"id": "session", "space": "productivity", "project": "workspace",
+                "provider": "codex", "cwd": str(tmp_path)}
     service = DesktopService.__new__(DesktopService)
-    service.store = SimpleNamespace(load_manifest=lambda _: manifest)
-    service.settings = SimpleNamespace(productivity=SimpleNamespace(default_provider="codex"))
+    service.store = SimpleNamespace(
+        load_manifest=lambda _: manifest,
+        update_manifest=lambda _, **changes: manifest.update(changes),
+    )
+    service.settings = SimpleNamespace(
+        MEMORY_DIR=tmp_path / "memory", productivity=SimpleNamespace(default_provider="codex"),
+    )
     service._activate = lambda _: None
     service._is_evolution = lambda _: False
     service._productivity_provider = lambda name: SimpleNamespace(type=f"{name}_sdk")
     service._run_tasks = {}
+    service._steering_runs = {}
+    service._runtime_locks = {}
+    service._run_ids = {}
+    service._pending_approvals = {}
+    service._run_workspaces = {}
+    service._workspace_guard = asyncio.Lock()
     service._stream_productivity = AsyncMock()
     service._run_command = AsyncMock()
     emit = AsyncMock()

@@ -5,7 +5,7 @@ import os
 import secrets
 import shutil
 from contextlib import AbstractAsyncContextManager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +25,7 @@ from acp.schema import (
     Implementation,
 )
 
+from cleo.harnesses.approvals import PermissionBroker
 from cleo.harnesses.control import HarnessModel, SessionOptions
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 from cleo.harnesses.provider import ProviderSession, ProviderTurn
@@ -73,7 +74,9 @@ class _AcpClientHost:
         """
         self._provider = provider
         self._root = Path(project_path).resolve()
-        self._auto_approve = auto_approve
+        self.approval_mode = "auto_allow" if auto_approve else "deny_all"
+        self.approvals = PermissionBroker(provider)
+        self._turn_active = False
         self._callback: EventCallback | None = None
         self.events: list[AgentEvent] = []
         self.response_parts: list[str] = []
@@ -89,6 +92,19 @@ class _AcpClientHost:
         self._callback = callback
         self.events.clear()
         self.response_parts.clear()
+        self._turn_active = True
+        self.approvals.callback = self._permission_event
+        self.approvals.reviewed_items.clear()
+
+    async def _permission_event(self, event: AgentEvent) -> None:
+        self.events.append(event)
+        await emit_event(self._callback, event)
+
+    async def end_turn(self) -> None:
+        self._turn_active = False
+        await self.approvals.cancel_all()
+        self.approvals.callback = None
+        self._callback = None
 
     async def session_update(self, session_id: str, update: Any, **_kwargs: Any) -> None:
         """接收 agent 的 ``session/update`` 通知并归一化为 ``AgentEvent``。
@@ -145,7 +161,32 @@ class _AcpClientHost:
             ``auto_approve`` 时优先选 allow 类选项, 否则优先 reject,
             无匹配项时返回 cancelled。
         """
-        kinds = ("allow_once", "allow_always") if self._auto_approve else (
+        if not self._turn_active:
+            return RequestPermissionResponse(outcome=DeniedOutcome(outcome="cancelled"))
+        native = tool_call.model_dump(by_alias=True, exclude_none=True) if tool_call else {}
+        decisions = {}
+        for kind, decision in (("allow_once", "accept"), ("allow_always", "acceptForSession"),
+                               ("reject_once", "decline"), ("reject_always", "decline")):
+            option = next((o for o in options if o.kind == kind), None)
+            if option is not None:
+                decisions.setdefault(decision, option)
+        request = self.approvals.request(
+            method="session/request_permission", threadId=session_id,
+            itemId=str(native.get("toolCallId") or ""), cwd=str(self._root),
+            command=str(native.get("title") or "工具请求"), permissions=native.get("rawInput"),
+            title="允许此工具操作？", reason="由当前 ACP 服务请求。",
+            availableDecisions=[*decisions, "cancel"],
+            decisionLabels={key: option.name for key, option in decisions.items()},
+        )
+        if self.approval_mode == "user":
+            decision = await self.approvals.ask(request)
+            selected = decisions.get(decision)
+            if selected is None:
+                return RequestPermissionResponse(outcome=DeniedOutcome(outcome="cancelled"))
+            return RequestPermissionResponse(
+                outcome=AllowedOutcome(outcome="selected", option_id=selected.option_id),
+            )
+        kinds = ("allow_once", "allow_always") if self.approval_mode == "auto_allow" else (
             "reject_once",
             "reject_always",
         )
@@ -153,6 +194,8 @@ class _AcpClientHost:
             (option for kind in kinds for option in options if option.kind == kind),
             None,
         )
+        decision = next((key for key, option in decisions.items() if option is selected), "cancel")
+        await self.approvals.record(request, decision, source="policy", policy=self.approval_mode)
         if selected is None:
             return RequestPermissionResponse(outcome=DeniedOutcome(outcome="cancelled"))
         return RequestPermissionResponse(
@@ -406,6 +449,7 @@ class AcpProvider:
                 or current.effort
                 or ""
             ) or None,
+            approval_mode=current.approval_mode,
         )
 
     @classmethod
@@ -478,7 +522,7 @@ class AcpProvider:
             config_options,
             self._session_options(
                 config_options,
-                SessionOptions(model=model),
+                SessionOptions(model=model, approval_mode=host.approval_mode),
                 self._spec.model_config_id,
             ),
         )
@@ -527,7 +571,7 @@ class AcpProvider:
             config_options,
             self._session_options(
                 config_options,
-                SessionOptions(model=model),
+                SessionOptions(model=model, approval_mode=host.approval_mode),
                 self._spec.model_config_id,
             ),
         )
@@ -547,8 +591,10 @@ class AcpProvider:
         sandbox: str | None = None,
     ) -> SessionOptions:
         """Update model or effort only when the ACP agent exposes that control."""
-        if approval_mode is not None or sandbox is not None:
-            raise ValueError("This ACP harness does not expose approval or sandbox controls.")
+        if sandbox is not None:
+            raise ValueError("This ACP harness does not expose sandbox controls.")
+        if approval_mode is not None and approval_mode not in {"user", "auto_allow", "deny_all"}:
+            raise ValueError(f"Unsupported ACP approval mode: {approval_mode}")
         runtime = self._sessions[session_id]
         async with runtime.lock:
             for value, category, fallback_id, configured_id in (
@@ -589,7 +635,16 @@ class AcpProvider:
                 runtime.options,
                 self._spec.model_config_id,
             )
+            if approval_mode is not None:
+                runtime.host.approval_mode = approval_mode
+                runtime.options = replace(runtime.options, approval_mode=approval_mode)
             return runtime.options
+
+    async def enable_user_approvals(self, session_id: str) -> None:
+        self._sessions[session_id].host.approvals.enabled = True
+
+    async def resolve_approval(self, session_id: str, approval_id: str, decision: str) -> dict:
+        return await self._sessions[session_id].host.approvals.resolve(approval_id, decision)
 
     async def prompt(
         self,
@@ -616,9 +671,11 @@ class AcpProvider:
             try:
                 result = await runtime.connection.prompt(session_id, [text_block(prompt)])
             except asyncio.CancelledError:
+                await runtime.host.end_turn()
                 await runtime.connection.cancel(session_id)
                 raise
             finally:
+                await runtime.host.end_turn()
                 runtime.active = False
 
         return ProviderTurn(
@@ -638,6 +695,7 @@ class AcpProvider:
                 当前处于 active(prompt 进行中)时向 agent 发送 cancel 通知。
         """
         runtime = self._sessions[session_id]
+        await runtime.host.end_turn()
         if runtime.active:
             await runtime.connection.cancel(session_id)
 
@@ -652,6 +710,7 @@ class AcpProvider:
         runtime = self._sessions.pop(session_id, None)
         if runtime is None:
             return
+        await runtime.host.end_turn()
         if runtime.active:
             await runtime.connection.cancel(session_id)
         await runtime.manager.__aexit__(None, None, None)

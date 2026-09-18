@@ -156,7 +156,8 @@ class TaskHarnessTests(unittest.IsolatedAsyncioTestCase):
                         "runtime_options": {"model": "opus"}}
             profile = dream_profile(service.settings, manifest)
             self.assertEqual((profile.backend, profile.model), ("claude_code", "opus"))
-            async def prepare(root, request, complete):
+            async def prepare(root, request, complete, existing_cases=None):
+                self.assertIsNone(existing_cases)
                 await complete("instructions", "prompt")
                 return {"intent": "question", "answer": "read only"}
 

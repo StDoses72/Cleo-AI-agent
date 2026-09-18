@@ -1,8 +1,10 @@
 import asyncio
 import base64
+import subprocess
 from pathlib import Path
 from threading import Event, Timer
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
@@ -10,7 +12,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from cleo.cli.chat_tui import COMMANDS as CHAT_TUI_COMMANDS
 from cleo.cli.productivity_tui import COMMANDS as PRODUCTIVITY_TUI_COMMANDS
 from cleo.desktop.service import CHAT_COMMANDS, PRODUCTIVITY_COMMANDS, DesktopService
-from cleo.harnesses.control import HarnessModel
+from cleo.harnesses.control import HarnessModel, SessionOptions
 from cleo.harnesses.models import AgentEvent
 from cleo.memory.paths import memory_state_path
 from cleo.memory.state import (
@@ -122,7 +124,7 @@ class FakeProductivity:
             type="codex_sdk",
             model="gpt-test",
             models=[],
-            options=SimpleNamespace(sandbox="workspace-write", approval_mode="on-request"),
+            options=SimpleNamespace(sandbox="workspace-write", approval_mode="auto_review"),
         )
     }
 
@@ -243,6 +245,531 @@ def _service(tmp_path: Path) -> DesktopService:
 
 async def _async_none() -> None:
     pass
+
+
+@pytest.mark.parametrize("outcome", ["completed", "failed", "cancelled"])
+def test_reply_timing_survives_reload_and_tracks_tools_and_waits(tmp_path, outcome):
+    async def scenario():
+        service = _service(tmp_path)
+        service.store.create_session(
+            session_id="measured", space="non_productivity", project="general",
+            provider="cleo", owner_type="user",
+        )
+        async def stream(manifest, prompt, attachments, emit):
+            service.store.append_events(
+                session_id="measured", space="non_productivity", project="general", events=[
+                    {"id": "timed-turn", "type": "user_message", "actor": "user",
+                     "content": prompt},
+                    {"id": "answer", "type": "assistant_message", "actor": "assistant",
+                     "content": "unchanged answer"},
+                ],
+            )
+            await emit({"type": "turn-started", "item": {"id": "timed-turn"}})
+            await emit({"type": "upsert-item", "item": {
+                "id": "tool", "type": "tool", "name": "read_file", "status": "running",
+            }})
+            await emit({"type": "approval-request", "request": {"id": "wait"}})
+            await asyncio.sleep(0.002)
+            await emit({"type": "approval-resolved", "response": {"id": "wait"}})
+            await emit({"type": "upsert-item", "item": {
+                "id": "tool", "type": "tool", "name": "read_file", "status": "done",
+            }})
+            if outcome == "cancelled":
+                raise asyncio.CancelledError()
+            await emit({"type": "error", "message": "test failure"} if outcome == "failed"
+                       else {"type": "done", "summary": "finished"})
+        service._stream_chat = stream
+        events = []
+        await service.stream_turn(
+            thread_id="measured", prompt="test", attachments=[],
+            emit=AsyncMock(side_effect=events.append),
+        )
+        timing = [event["timing"] for event in events if event["type"] == "timing"][-1]
+        assert timing["status"] == outcome and timing["elapsedMs"] > 0
+        detail = await service.get_timing(timing_id=timing["id"])
+        assert {"tool", "wait"} <= {span["category"] for span in detail["spans"]}
+        page = await service.load_timeline(thread_id="measured")
+        answer = next(item for item in page["items"] if item["id"] == "answer")
+        assert answer["timing"]["id"] == timing["id"]
+        assert answer["timing"]["elapsedMs"] == timing["elapsedMs"]
+        assert answer["content"] == "unchanged answer"
+        assert not any(event["type"] == "timing" for event in service.store.read_events("measured"))
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("entry", ["resume", "switch"])
+@pytest.mark.parametrize("approval", ["auto_review", "deny_all", "user"])
+def test_desktop_preserves_codex_approval_policy(tmp_path, entry, approval):
+    async def scenario():
+        service = _service(tmp_path)
+        manifest = service.store.create_session(
+            session_id="approval-policy", space="productivity", project="workspace",
+            provider="codex", owner_type="user", cwd=str(tmp_path / "workspace"),
+        )
+        adapter = SimpleNamespace(
+            session_options=lambda _: SessionOptions(
+                approval_mode=approval, sandbox="workspace-write"
+            ),
+            update_session_options=AsyncMock(), enable_questions=AsyncMock(),
+            enable_user_approvals=AsyncMock(),
+        )
+        service._adapter_instance = adapter
+        if entry == "resume":
+            await service._enable_desktop_approvals(manifest["id"], "codex")
+        else:
+            await service._prepare_harness(manifest, "codex", adapter, manifest["id"])
+        adapter.update_session_options.assert_not_awaited()
+        adapter.enable_questions.assert_awaited_once()
+        adapter.enable_user_approvals.assert_awaited_once()
+
+    asyncio.run(scenario())
+
+
+def _permission_service(tmp_path):
+    service = _service(tmp_path)
+    adapter = FakeAdapter(service.store)
+    service._adapter_instance = adapter
+    for thread_id in ("permissions", "other-task"):
+        service.store.create_session(
+            session_id=thread_id, space="productivity", project="workspace",
+            provider="codex", owner_type="user", cwd=str(tmp_path / "workspace"),
+            native_session_id=f"native-{thread_id}",
+        )
+        service._productivity_sessions[thread_id] = SimpleNamespace(id=thread_id)
+    return service, adapter
+
+
+@pytest.mark.parametrize("space,provider_type", [
+    ("productivity", "claude_sdk"), ("productivity", "acp"), ("non_productivity", "api"),
+])
+def test_steer_boundary_runs_serially_and_keeps_all_instructions(tmp_path, space, provider_type):
+    async def scenario():
+        service = _service(tmp_path)
+        manifest = service.store.create_session(
+            session_id="steer-boundary", space=space, project="workspace", provider="native",
+            owner_type="user", cwd=str(tmp_path / "workspace"),
+        )
+        service._productivity_provider = lambda _: SimpleNamespace(type=provider_type)
+        ready, release = asyncio.Event(), asyncio.Event()
+        prompts, events = [], []
+
+        async def stream(manifest, prompt, _attachments, emit, *, steer_ids=None):
+            turn = f"turn-{len(prompts)}"
+            prompts.append(prompt)
+            service.store.append_events(
+                session_id=manifest["id"], space=space, project="workspace", events=[{
+                    "id": turn, "type": "user_message", "actor": "user", "content": prompt,
+                    "data": {"steer_ids": steer_ids} if steer_ids else {},
+                }],
+            )
+            await emit({"type": "turn-started", "item": {
+                "id": turn, "type": "message", "role": "user", "content": prompt, "time": "",
+            }})
+            if len(prompts) == 1:
+                ready.set()
+                await release.wait()
+            else:
+                await emit({"type": "upsert-item", "item": {
+                    "id": "late-old-output", "turnId": "turn-0", "type": "message",
+                    "role": "assistant", "content": "old callback", "time": "",
+                }})
+                assert service._steering_runs[manifest["id"]].records["one"]["status"] == "sending"
+            await emit({"type": "upsert-item", "item": {
+                "id": turn + ":answer", "turnId": turn, "type": "message", "role": "assistant",
+                "content": "response", "time": "",
+            }})
+            await emit({"type": "done", "summary": "response"})
+
+        service._stream_chat = service._stream_productivity = stream
+        task = asyncio.create_task(service.stream_turn(
+            thread_id=manifest["id"], run_id="original-run", prompt="original goal",
+            attachments=[], emit=AsyncMock(side_effect=events.append),
+        ))
+        try:
+            await asyncio.wait_for(ready.wait(), 2)
+            first = await service.steer_run(thread_id=manifest["id"], run_id="original-run",
+                                            request_id="one", text="first constraint")
+            assert first["steer"]["status"] == "queued"
+            await service.steer_run(thread_id=manifest["id"], run_id="original-run",
+                                    request_id="two", text="second constraint")
+            assert prompts == ["original goal"]
+            assert not any(event["type"] == "done" for event in events)
+            release.set()
+            await asyncio.wait_for(task, 3)
+            assert prompts == ["original goal", "first constraint\n\nsecond constraint"]
+            assert len([event for event in events if event["type"] == "done"]) == 1
+            first = await service.steer_run(thread_id=manifest["id"], run_id="original-run",
+                                            request_id="one", text="first constraint")
+            assert first["steer"]["status"] == "received"
+            assert not service._run_tasks and not service._steering_runs
+        finally:
+            release.set()
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+    asyncio.run(scenario())
+
+
+def test_native_steer_targets_current_run_without_bypassing_pending_approval(tmp_path):
+    async def scenario():
+        service, _ = _permission_service(tmp_path)
+        ready, release = asyncio.Event(), asyncio.Event()
+
+        class Adapter(FakeAdapter):
+            def __init__(self):
+                super().__init__(service.store)
+                self.steered = []
+                self.prompts = []
+
+            async def steer(self, session_id, text, expected_turn_id):
+                assert session_id == "permissions" and expected_turn_id == "native-turn"
+                self.steered.append(text)
+
+            async def prompt(self, session_id, prompt, on_event):
+                self.prompts.append(prompt)
+                service.store.append_events(
+                    session_id=session_id, space="productivity", project="workspace", events=[{
+                        "id": "original", "type": "user_message", "actor": "user",
+                        "content": prompt,
+                    }],
+                )
+                await on_event(AgentEvent(provider="codex", type="turn_started", text=prompt,
+                                          data={"turnId": "original"}))
+                await on_event(AgentEvent(provider="codex", type="runtime_turn_started",
+                                          data={"native_turn_id": "native-turn"}))
+                await on_event(AgentEvent(provider="codex", type="permission_request", data={
+                    "id": "approval", "kind": "command", "command": "test-command",
+                    "availableDecisions": ["accept", "decline"],
+                }))
+                ready.set()
+                await release.wait()
+                return SimpleNamespace(status="completed", response="done", error=None)
+
+        adapter = Adapter()
+        service._adapter_instance = adapter
+        task = asyncio.create_task(service.stream_turn(
+            thread_id="permissions", run_id="original-run", prompt="original goal",
+            attachments=[], emit=AsyncMock(),
+        ))
+        try:
+            await asyncio.wait_for(ready.wait(), 3)
+            await service.steer_run(thread_id="permissions", run_id="original-run",
+                                    request_id="one", text="keep original goal, change direction")
+            await asyncio.wait_for(asyncio.shield(service._steering_runs["permissions"].worker), 3)
+            assert adapter.steered == ["keep original goal, change direction"]
+            assert adapter.resolved == []
+            assert "approval" in service._pending_approvals["permissions"]
+            assert not task.done() and adapter.prompts == ["original goal"]
+            stale = await service.steer_run(thread_id="permissions", run_id="wrong-run",
+                                            request_id="stale", text="must not run")
+            assert stale["steer"]["status"] == "failed"
+            other = await service.steer_run(thread_id="other-task", run_id="original-run",
+                                            request_id="other", text="must not cross tasks")
+            assert other["steer"]["status"] == "failed"
+            assert len(adapter.steered) == 1
+            await service.resolve_approval(thread_id="permissions", approval_id="approval",
+                                           decision="decline")
+            release.set()
+            await asyncio.wait_for(task, 3)
+            replay = await service.steer_run(thread_id="permissions", run_id="original-run",
+                                             request_id="one", text=adapter.steered[0])
+            assert replay["steer"]["status"] == "received" and len(adapter.steered) == 1
+        finally:
+            release.set()
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+    asyncio.run(scenario())
+
+
+def test_permission_changes_are_independent_persisted_and_task_scoped(tmp_path):
+    async def scenario():
+        service, adapter = _permission_service(tmp_path)
+        result = await service.update_runtime(
+            thread_id="permissions", update={"access": "full-access"},
+        )
+        assert result["access"] == "full-access"
+        assert result["approval"] == "auto_review"
+        assert result["settingsRevision"] == 1
+        assert result["pendingPermissions"] is None
+        result = await service.update_runtime(
+            thread_id="permissions", update={"approval": "deny_all"},
+        )
+        assert result["access"] == "full-access"
+        assert result["approval"] == "deny_all"
+        assert result["settingsRevision"] == 2
+        assert adapter.updated_with == {"session_id": "permissions", "approval_mode": "deny_all"}
+        saved = SessionStore(service.store.memory_root, service.settings.SESSION_INDEX_PATH)
+        assert saved.load_manifest("permissions")["runtime_options"] == {
+            "sandbox": "full-access", "approval_mode": "deny_all",
+        }
+        other = service._runtime_profile(service.store.load_manifest("other-task"))
+        assert other["access"] == "workspace-write"
+        assert other["approval"] == "auto_review"
+        assert other["settingsRevision"] == 0
+
+    asyncio.run(scenario())
+
+
+def test_running_permissions_merge_then_apply_before_next_turn(tmp_path):
+    async def scenario():
+        service, adapter = _permission_service(tmp_path)
+        service._run_tasks["permissions"] = asyncio.current_task()
+        await service.update_runtime(thread_id="permissions", update={"access": "read-only"})
+        result = await service.update_runtime(
+            thread_id="permissions", update={"approval": "user"},
+        )
+        assert adapter.updated_with is None
+        assert (result["access"], result["approval"]) == ("workspace-write", "auto_review")
+        assert result["pendingPermissions"] == {
+            "provider": "codex", "access": "read-only", "approval": "user",
+        }
+        service._run_tasks.clear()
+        events = []
+
+        async def stream(manifest, *_):
+            assert manifest["runtime_options"] == {"sandbox": "read-only", "approval_mode": "user"}
+            assert manifest["pending_runtime_permissions"] is None
+            assert events[0]["type"] == "runtime"
+
+        service._stream_productivity = stream
+        await service.stream_turn(
+            thread_id="permissions", prompt="hello", attachments=[],
+            emit=AsyncMock(side_effect=events.append),
+        )
+        assert events[0]["runtime"]["settingsRevision"] == 3
+        assert events[0]["runtime"]["pendingPermissions"] is None
+        assert not service._run_tasks
+
+    asyncio.run(scenario())
+
+
+def test_pending_permissions_can_be_discarded_and_old_snapshot_cannot_reapply(tmp_path):
+    async def scenario():
+        service, adapter = _permission_service(tmp_path)
+        service._run_tasks["permissions"] = asyncio.current_task()
+        await service.update_runtime(thread_id="permissions", update={"access": "full-access"})
+        reserved = service.store.load_manifest("permissions")
+        result = await service.update_runtime(
+            thread_id="permissions", update={"discardPendingPermissions": True},
+        )
+        assert result["pendingPermissions"] is None
+        await service._apply_pending_permissions(reserved)
+        assert adapter.updated_with is None
+        assert result["access"] == "workspace-write"
+        await service.update_runtime(thread_id="permissions", update={"access": "read-only"})
+        await service._apply_pending_permissions(reserved)
+        assert adapter.updated_with is None
+        pending = service.store.load_manifest("permissions")["pending_runtime_permissions"]
+        assert pending["options"] == {"sandbox": "read-only"}
+
+    asyncio.run(scenario())
+
+
+def test_permission_failure_preserves_pending_choice_and_blocks_turn(tmp_path):
+    async def scenario():
+        service, adapter = _permission_service(tmp_path)
+        service._run_tasks["permissions"] = asyncio.current_task()
+        await service.update_runtime(thread_id="permissions", update={"access": "read-only"})
+        service._run_tasks.clear()
+        adapter.update_session_options = AsyncMock(
+            side_effect=ValueError("runtime rejected policy"),
+        )
+        service._stream_productivity = AsyncMock()
+        with pytest.raises(ValueError, match="runtime rejected policy"):
+            await service.stream_turn(
+                thread_id="permissions", prompt="hello", attachments=[], emit=AsyncMock(),
+            )
+        service._stream_productivity.assert_not_awaited()
+        result = service._runtime_profile(service.store.load_manifest("permissions"))
+        assert result["access"] == "workspace-write"
+        assert result["pendingPermissions"]["access"] == "read-only"
+        assert not service._run_tasks
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("update", [
+    {"access": "danger-full-access"}, {"approval": "auto_allow"}, {"access": None},
+])
+def test_permission_validation_rejects_unknown_codex_modes(tmp_path, update):
+    async def scenario():
+        service, adapter = _permission_service(tmp_path)
+        with pytest.raises(ValueError, match="不支持的权限选项"):
+            await service.update_runtime(thread_id="permissions", update=update)
+        assert adapter.updated_with is None
+    asyncio.run(scenario())
+
+
+def test_permissions_cannot_be_transferred_to_another_harness(tmp_path):
+    async def scenario():
+        service, adapter = _permission_service(tmp_path)
+        service.store.update_manifest("permissions", pending_runtime_permissions={
+            "provider": "old-provider", "options": {"sandbox": "full-access"},
+        })
+        with pytest.raises(ValueError, match="之前的运行后端"):
+            await service._apply_pending_permissions(service.store.load_manifest("permissions"))
+        assert adapter.updated_with is None
+        result = await service.update_runtime(
+            thread_id="permissions", update={"discardPendingPermissions": True},
+        )
+        assert result["pendingPermissions"] is None
+    asyncio.run(scenario())
+
+
+def test_concurrent_streams_and_late_cancellation_are_task_scoped(tmp_path, monkeypatch):
+    async def scenario():
+        service = _service(tmp_path)
+        for name in ["one", "two"]:
+            service.store.create_session(
+                session_id=name, space="productivity", project=name,
+                provider="codex", owner_type="user", cwd=str(tmp_path / name),
+            )
+        started = {name: asyncio.Event() for name in ["one", "two"]}
+        release = {name: asyncio.Event() for name in ["one", "two"]}
+        cancelled = []
+
+        async def stream(manifest, _prompt, _attachments, emit):
+            name = manifest["id"]
+            started[name].set()
+            try:
+                await release[name].wait()
+                await emit({"type": "done", "summary": name})
+            except asyncio.CancelledError:
+                cancelled.append(name)
+                raise
+
+        monkeypatch.setattr(service, "_stream_productivity", stream)
+        messages = {name: [] for name in started}
+
+        async def emit_one(event):
+            messages["one"].append(event)
+
+        async def emit_two(event):
+            messages["two"].append(event)
+
+        one = asyncio.create_task(service.stream_turn(thread_id="one", prompt="A", attachments=[],
+                                                     run_id="run-one", emit=emit_one))
+        two = asyncio.create_task(service.stream_turn(thread_id="two", prompt="B", attachments=[],
+                                                     run_id="run-two", emit=emit_two))
+        try:
+            await asyncio.wait_for(asyncio.gather(*(event.wait() for event in started.values())), 2)
+            with pytest.raises(RuntimeError, match="尚未结束"):
+                await service.stream_turn(
+                    thread_id="one", prompt="/rename forbidden", attachments=[],
+                    run_id="another-run", emit=emit_one,
+                )
+            result = await service.cancel_run(thread_id="one", run_id="old-run")
+            assert result == {"cancelled": False}
+            assert not one.done() and not two.done()
+            await service.cancel_run(thread_id="two", run_id="run-two")
+            assert cancelled == ["two"] and not one.done()
+            release["one"].set()
+            await asyncio.gather(one, two)
+            assert any(event.get("summary") == "one" for event in messages["one"])
+            assert not any(event.get("summary") == "one" for event in messages["two"])
+            assert service._run_tasks == {}
+        finally:
+            for task in [one, two]:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(one, two, return_exceptions=True)
+
+    asyncio.run(scenario())
+
+
+def test_parallel_workspace_edits_do_not_create_a_cross_task_undo(tmp_path):
+    async def scenario():
+        service = _service(tmp_path)
+        root = tmp_path / "workspace"
+        nested = root / "nested"
+        nested.mkdir()
+        for arguments in [
+            ["init"], ["config", "user.name", "Fixture"],
+            ["config", "user.email", "fixture@example.invalid"],
+        ]:
+            subprocess.run(["git", *arguments], cwd=root, check=True, capture_output=True)
+        (root / "original.txt").write_text("original", encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=root, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "fixture"], cwd=root, check=True, capture_output=True
+        )
+        ready = {name: asyncio.Event() for name in ["one", "two"]}
+        release = asyncio.Event()
+        for name, cwd in [("one", root), ("two", nested)]:
+            service.store.create_session(session_id=name, space="productivity", project=name,
+                                         provider="codex", owner_type="user", cwd=str(cwd))
+            service._productivity_sessions[name] = object()
+
+        class Adapter:
+            async def prompt(self, session_id, _prompt, *, on_event):
+                ready[session_id].set()
+                await release.wait()
+                (root / f"{session_id}.txt").write_text(session_id, encoding="utf-8")
+                return SimpleNamespace(response=session_id, status="completed", error=None)
+
+        service._adapter_instance = Adapter()
+
+        async def emit(_event):
+            pass
+
+        tasks = [
+            asyncio.create_task(service.stream_turn(
+                thread_id=name, prompt=name, attachments=[], emit=emit
+            )) for name in ready
+        ]
+        try:
+            await asyncio.wait_for(asyncio.gather(*(event.wait() for event in ready.values())), 5)
+            assert len(set(service._run_workspaces.values())) == 1
+            with pytest.raises(ValueError, match="正在运行"):
+                await service.undo_changes(thread_id="one")
+            with pytest.raises(ValueError, match="正在运行"):
+                await service.reset_workspace()
+            release.set()
+            await asyncio.gather(*tasks)
+            for name in ready:
+                manifest = service.store.load_manifest(name)
+                assert manifest["undo_checkpoint"] is None
+                assert not any(
+                    event["type"] == "turn_diff" for event in service.store.read_events(name)
+                )
+                with pytest.raises(ValueError, match="共用工作区"):
+                    await service.undo_changes(thread_id=name)
+                assert (root / f"{name}.txt").read_text(encoding="utf-8") == name
+        finally:
+            release.set()
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    asyncio.run(scenario())
+
+
+def test_workspace_restores_an_active_empty_chat_beyond_the_recent_limit(tmp_path):
+    async def scenario():
+        service = _service(tmp_path)
+        service.store.create_session(
+            session_id="running-chat", space="non_productivity", project="general",
+            provider="openai", owner_type="user",
+        )
+        for index in range(100):
+            service.store.create_session(
+                session_id=f"recent-{index}", space="productivity", project="workspace",
+                provider="codex", owner_type="user", cwd=str(tmp_path / "workspace"),
+            )
+        service._run_tasks["running-chat"] = asyncio.current_task()
+        service._run_ids["running-chat"] = "still-running"
+        service.runtime.current_thread_id = "recent-99"
+        snapshot = await service.load_workspace()
+        thread = next(thread for thread in snapshot["threads"] if thread["id"] == "running-chat")
+        assert thread["activeRunId"] == "still-running"
+        assert thread["status"] == "running"
+        assert thread["items"] == []
+        await service.load_thread(thread_id="running-chat", activate=False)
+        assert service.runtime.current_thread_id == "recent-99"
+
+    asyncio.run(scenario())
 
 
 def test_deleted_connection_does_not_hide_saved_conversation(tmp_path):
@@ -750,7 +1277,7 @@ def test_create_productivity_thread_uses_selected_workspace(tmp_path: Path) -> N
         }
         assert thread["projectId"] == "productivity:selected-project"
         assert thread["runtime"]["effort"] == "low"
-        assert thread["runtime"]["approval"] == "user"
+        assert thread["runtime"]["approval"] == "auto_review"
         assert adapter.approvals_enabled == [thread["id"]]
         assert adapter.updated_with == {
             "session_id": thread["id"],
@@ -873,6 +1400,7 @@ def test_registered_project_directories_drive_both_agent_spaces(tmp_path: Path) 
         )
 
         assert captured_agent_options["project_path"] == str(chat_path.resolve())
+        assert captured_agent_options["session_store"] is service.store
 
     asyncio.run(scenario())
 
@@ -1182,6 +1710,47 @@ def test_memory_review_details_return_current_redacted_compact_events(tmp_path: 
         ]
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("space", ["productivity", "non_productivity"])
+def test_memory_refresh_reads_new_revisions_without_loading_threads(tmp_path, monkeypatch, space):
+    service = _service(tmp_path)
+    service.runtime.current_thread_id = "keep-current-task"
+    state_path = memory_state_path(service.settings.MEMORY_DIR, space)
+
+    def unexpected_workspace_read():
+        raise AssertionError("Memory refresh must not enumerate conversations")
+
+    monkeypatch.setattr(service.store, "list_sessions", unexpected_workspace_read)
+    touch_session_source(space=space, project="workspace", session_id="source",
+                         source_hash="first", last_event_seq=1, path=state_path)
+    first = asyncio.run(service.load_memory())
+    assert set(first) == {"memories", "memoryOverview"}
+    assert first["memoryOverview"]["review_sources"][0]["status"] == "pending"
+    mark_consolidation_skipped(space, "workspace", "source", "first", reason="skip once",
+                               review_result={"decision": "skip"}, path=state_path)
+    assert asyncio.run(service.load_memory())["memoryOverview"]["review_sources"] == []
+    touch_session_source(space=space, project="workspace", session_id="source",
+                         source_hash="second", last_event_seq=2, path=state_path)
+    updated = asyncio.run(service.load_memory())
+    assert updated["memoryOverview"]["review_sources"][0]["source_version"] == 2
+    assert service.runtime.current_thread_id == "keep-current-task"
+
+
+def test_memory_refresh_labels_sources_with_saved_titles(tmp_path):
+    service = _service(tmp_path)
+    service.store.create_session(session_id="source-with-title", space="productivity",
+                                 project="workspace", provider="codex", owner_type="user")
+    service.store.update_manifest("source-with-title", title="检查页面布局")
+    service.runtime.current_thread_id = "another-task"
+    touch_session_source(space="productivity", project="workspace", session_id="source-with-title",
+                         source_hash="updated", last_event_seq=1,
+                         path=memory_state_path(service.settings.MEMORY_DIR, "productivity"))
+    memory = asyncio.run(service.load_memory())
+    source = next(item for item in memory["memoryOverview"]["review_sources"]
+                  if item["session_id"] == "source-with-title")
+    assert source["title"] == "检查页面布局"
+    assert service.runtime.current_thread_id == "another-task"
 
 
 def test_review_memory_source_can_skip_pending_revision(tmp_path: Path) -> None:

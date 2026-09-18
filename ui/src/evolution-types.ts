@@ -8,6 +8,8 @@ export interface EvolutionBuild {
   name?: string;
   savedAt?: string;
   sourceHash?: string;
+  importHash?: string;
+  sourceOrigin?: "bundled-import";
 }
 
 export interface EvolutionValidation {
@@ -21,10 +23,20 @@ export interface EvolutionValidation {
 }
 
 export interface EvolutionGithubAuth {
-  status: "starting" | "waiting" | "connected" | "failed" | "cancelled";
+  repositoryAccess?: {
+    status: "checking" | "checked" | "failed";
+    repository: string;
+    login?: string;
+    role?: "owner" | "collaborator" | "read-only";
+    canRelease: boolean;
+    message: string;
+  };
+  status: "disconnected" | "starting" | "waiting" | "checking" | "connected" | "failed" | "cancelled";
   message: string;
   code?: string;
   browserError?: string | null;
+  reason?: string;
+  diagnostic?: string;
 }
 
 export interface EvolutionPullRequest {
@@ -35,6 +47,9 @@ export interface EvolutionPullRequest {
 }
 
 export interface EvolutionState {
+  releaseJob?: { id: string; tag: string; phase: string; message: string; error?: string;
+    workflowUrl?: string; releaseUrl?: string } | null;
+  releaseTypes?: Record<string, boolean>;
   branchRequests?: EvolutionBranchRequest[];
   acceptanceRequests?: EvolutionRequest[];
   acceptance?: EvolutionAcceptanceState;
@@ -65,7 +80,7 @@ export interface EvolutionState {
   transaction?: { phase: string } | null;
   pullRequest: EvolutionPullRequest | null;
   pullRequests?: EvolutionPullRequest[];
-  releases: { tag: string; title: string; publishedAt: string; url: string }[];
+  releases: { tag: string; title: string; publishedAt: string; url: string; prerelease?: boolean; reason?: string | null }[];
   recoveryPath: string | null;
 }
 

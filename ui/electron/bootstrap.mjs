@@ -2,8 +2,9 @@ import { app, dialog, ipcMain } from "electron";
 import { join, resolve } from "node:path";
 import { EvolutionStore } from "./evolution-store.mjs";
 import { desktopDataHome } from "./platform.mjs";
+import { configureReleaseChannel } from "./release-channel.mjs";
 
-app.setName("Cleo");
+configureReleaseChannel(app);
 const root = join(app.getPath("userData"), "evolution");
 const dataHome = desktopDataHome({ platform: process.platform, environment: process.env,
   home: app.getPath("home"), userData: app.getPath("userData") });

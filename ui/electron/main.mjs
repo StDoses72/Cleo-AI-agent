@@ -7,7 +7,7 @@ import { checkContribution, submitContribution, inspectPullRequest, contribution
 import { EvolutionAcceptance } from "./evolution-acceptance.mjs";
 import { requireApplicable, reviewApplied } from "./evolution-behavior-policy.mjs";
 import { EvolutionRequests } from "./evolution-requests.mjs";
-import { runPreparedEvolutionTurn } from "./evolution-editing.mjs";
+import { compareBuiltVersion, runPreparedEvolutionTurn } from "./evolution-editing.mjs";
 import { rmSync } from "node:fs";
 import { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, shell } from "electron";
 import { dirname, join } from "node:path";
@@ -19,10 +19,15 @@ import {
   materializeInlineAttachments,
 } from "./attachments.mjs";
 import { BackendBridge } from "./backend.mjs";
+import { configureReleaseChannel } from "./release-channel.mjs";
 import { openLocalHref } from "./local-files.mjs";
-import { DesktopUpdater } from "./updater.mjs";
+import { SelectableUpdater, SelectableProgramUpdates, prepareSelectedRelease } from "./selectable-updates.mjs";
+import { checkReleasePermission, previewRelease, publishRelease, publishMergedRelease, previewMergedRelease } from "./github-releases.mjs";
+import { releaseBuilds, publishReleasePackages, releasePackageStatus } from "./release-packages.mjs";
 import { ReleaseDownloads } from "./release-downloads.mjs";
-import { ProgramUpdates } from "./program-updates.mjs";
+import { ReleaseJobs } from "./release-jobs.mjs";
+import { GithubReleaseDriver } from "./release-driver.mjs";
+import { runReleaseRepair } from "./release-repair.mjs";
 import { createQuitBarrier } from "./shutdown.mjs";
 import { DependencyUpdater } from "./dependencies.mjs";
 import {
@@ -30,7 +35,7 @@ import {
 } from "./install-state.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-app.setName("Cleo");
+const alphaChannel = configureReleaseChannel(app);
 if (app.isPackaged) {
   if (process.platform === "win32") {
     const paths = installationPaths(app.getPath("temp"), process.execPath);
@@ -47,7 +52,7 @@ const releaseDownloads = new ReleaseDownloads({
     join(evolutionRoot, "downloads", `v${manifest.version}-${manifest.archive}`),
   ],
 });
-const updater = new DesktopUpdater({
+const updater = new SelectableUpdater({
   app,
   downloads: releaseDownloads,
   resourcesPath: process.resourcesPath,
@@ -76,7 +81,7 @@ const evolution = new EvolutionManager({
     }).catch((error) => console.error("Evolution status:", error.message));
   },
 });
-const programUpdates = new ProgramUpdates({ updater, evolution, apply: applyEvolution,
+const programUpdates = new SelectableProgramUpdates({ updater, evolution, apply: applyEvolution,
   hasRunningTask: () => backend.pending.size > 0 });
 app.on("cleo:healthy", (transactionId) => {
   void evolution.store.read().then(state => {
@@ -90,16 +95,32 @@ app.on("cleo:healthy", (transactionId) => {
 process.env.CLEO_EVOLUTION_WORKSPACE = evolution.source;
 const acceptance = new EvolutionAcceptance(evolution.store);
 const acceptanceRequests = new EvolutionRequests(acceptance,
-  (threadId, request) => backend.request("analyze_evolution_request", { thread_id: threadId, request }),
+  (threadId, request, existing_cases) => backend.request("analyze_evolution_request", { thread_id: threadId, request, existing_cases }),
   () => { void evolutionState().then((state) => {
     for (const window of BrowserWindow.getAllWindows()) {
       if (!window.isDestroyed()) window.webContents.send("cleo:evolution:state", state);
     }
   }).catch((error) => console.error("Acceptance preparation:", error.message)); });
 
+const releaseJobs = new ReleaseJobs(evolutionRoot, new GithubReleaseDriver(evolution, {
+  runtime: async () => backend.request("release_runtime", { thread_id: (await evolution.store.read()).threadId }),
+  repair: (request, signal) => runReleaseRepair(backend, request, signal),
+}), { onChange: () => {
+  void evolutionState().then(state => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) window.webContents.send("cleo:evolution:state", state);
+    }
+  }).catch(error => console.error("Release progress:", error.message));
+} });
+
 async function evolutionState() {
   const state = await evolution.status();
-  return { ...state, acceptance: await acceptance.status(state), acceptanceRequests: await acceptanceRequests.status() };
+  const job = await releaseJobs.status();
+  return { ...state, releases: updater.catalog.length ? updater.catalog : state.releases,
+    releaseJob: job ? { id: job.id, tag: job.tag, phase: job.phase, message: job.message,
+      error: job.error, workflowUrl: job.workflowUrl, releaseUrl: job.releaseUrl } : null,
+    releaseTypes: Object.fromEntries(updater.catalog.map(item => [item.tag, item.prerelease])),
+    acceptance: await acceptance.status(state), acceptanceRequests: await acceptanceRequests.status() };
 }
 
 /** Purpose: Hand off activation after explicit consent. Input: build id; current user data is always retained. Output: app restart. */
@@ -145,6 +166,7 @@ async function changeEvolutionBase(id, discard = false) {
 
 const allowedMethods = new Set([
   "load_workspace",
+  "load_memory",
   "open_evolution_thread",
   "load_thread",
   "create_thread",
@@ -153,13 +175,16 @@ const allowedMethods = new Set([
   "remove_project",
   "restore_chat_backups",
   "stream_turn",
+  "steer_run",
   "cancel_run",
   "resolve_approval",
   "resolve_question",
   "get_pending_questions",
   "load_timeline",
   "read_timeline_content",
+  "get_timing",
   "update_runtime",
+  "switch_harness",
   "get_config_templates",
   "get_agent_instructions",
   "get_model_settings",
@@ -226,7 +251,7 @@ function createWindow() {
   void window.loadFile(join(here, "../dist/index.html"));
 }
 
-app.setAppUserModelId("ai.cleo.desktop");
+app.setAppUserModelId(alphaChannel ? "ai.cleo.desktop.alpha" : "ai.cleo.desktop");
 app.whenReady().then(async () => {
   const attachmentTempRoot = join(app.getPath("temp"), "Cleo", "attachments", randomUUID());
   app.once("will-quit", () => {
@@ -254,8 +279,8 @@ app.whenReady().then(async () => {
     const method = String(payload?.method || "");
     if (!allowedMethods.has(method)) throw new Error(`Unsupported desktop method: ${method}`);
     const streamId = payload?.streamId ? String(payload.streamId) : null;
-    if (method === "stream_turn" && (programUpdates.blocksTasks || evolution.phase !== "idle"
-        || (await evolution.store.read()).transaction)) {
+    const controlsRun = method === "stream_turn" || method === "steer_run";
+    if (controlsRun && programUpdates.blocksTasks) {
       throw new Error("请等待进化操作完成后再修改代码。");
     }
     const params = payload?.params || {};
@@ -265,11 +290,15 @@ app.whenReady().then(async () => {
       }
     };
     if (programUpdates.closed) throw new Error("Cleo 正在退出，请稍后重试。");
-    const isEvolution = method === "stream_turn" && await backend.request("is_evolution_thread", { thread_id: params.thread_id });
+    const isEvolution = controlsRun && await backend.request("is_evolution_thread", { thread_id: params.thread_id });
     if (programUpdates.closed) throw new Error("Cleo 正在退出，请稍后重试。");
-    if (method === "stream_turn" && programUpdates.blocksTasks) throw new Error("请等待当前版本操作完成。");
+    if (controlsRun) {
+      const transaction = (await evolution.store.read()).transaction;
+      if (programUpdates.blocksTasks || transaction || (evolution.phase !== "idle" && (!evolution.readOnlyOperation || isEvolution)))
+        throw new Error("请等待当前版本操作完成。");
+    }
     if (isEvolution && programUpdates.busy) throw new Error("请等待当前版本操作完成。");
-    const result = isEvolution
+    const result = isEvolution && method === "stream_turn"
       ? await runPreparedEvolutionTurn({ evolution, requests: acceptanceRequests, acceptance, backend, params, onEvent })
       : await backend.request(method, params, onEvent);
     if (["save_model_profile", "save_dream_settings", "create_model_connection",
@@ -326,13 +355,13 @@ app.whenReady().then(async () => {
     }
   });
   ipcMain.handle("cleo:update:get-state", () => updater.getState());
-  ipcMain.handle("cleo:update:check", () => programUpdates.check());
+  ipcMain.handle("cleo:update:check", (_event, tag) => programUpdates.check(tag));
   ipcMain.handle("cleo:update:download", () => programUpdates.download());
   ipcMain.handle("cleo:update:install", () => programUpdates.install());
   ipcMain.handle("cleo:evolution:state", () => evolutionState());
   ipcMain.handle("cleo:evolution:action", async (_event, payload) => {
     const { action, ...params } = payload || {};
-    if (backend.pending.size && ["checkContribution", "mergeAssistance", "contributionRepairPrompt"].includes(action))
+    if (backend.pending.size && action === "contributionRepairPrompt")
       throw new Error("请先等待当前任务完成或停止任务，再检查合并。");
     if (backend.pending.size && ["prepare", "build", "merge", "submit", "apply", "recovery", "select", "discard", "save", "begin", "repairPrompt", "createCase", "archiveCase", "compareCases", "reviewCase", "prepareRequest", "repairRequest", "reviseRequest", "feedbackRequest", "completeCase", "cancelCase", "continueCaseRequest", "abandonRequest", "requestBranch", "refreshBranchRequest"].includes(action)) {
       throw new Error("请先等待当前任务完成或停止任务。");
@@ -345,7 +374,7 @@ app.whenReady().then(async () => {
       discard: () => changeEvolutionBase(null, true),
       build: async () => {
         const id = await evolution.build();
-        if (id) await evolution.operation("comparing", () => acceptance.compare(id));
+        await compareBuiltVersion(evolution, acceptance, id);
         return id;
       },
       createCase: () => evolution.operation("recording", () => acceptance.create(params)),
@@ -371,10 +400,41 @@ app.whenReady().then(async () => {
       reviewCase: () => evolution.operation("recording", () => reviewApplied(acceptance, params.id, params.note)),
       casePrompt: () => acceptance.prompt(params.id),
       repairPrompt: () => evolution.repairPrompt(),
-      releases: () => evolution.releases(),
-      download: () => evolution.downloadRelease(params.tag),
+      releases: async () => {
+        await updater.refreshCatalog();
+        return updater.catalog;
+      },
+      selectUpdate: async () => {
+        updater.select(params.tag);
+        const state = await updater.check();
+        if (state.phase === "error") throw new Error(state.error);
+        return state;
+      },
+      download: async () => {
+        updater.select(params.tag);
+        const checked = await updater.check();
+        if (checked.phase === "error") throw new Error(checked.error);
+        const downloaded = await updater.download();
+        if (downloaded.phase !== "ready") throw new Error(downloaded.error || "请先下载并校验所选版本。");
+        return prepareSelectedRelease(evolution, updater, params.tag);
+      },
       merge: () => evolution.mergeRelease(params.tag),
-      login: () => evolution.login(),
+      login: async () => {
+        const auth = await evolution.login();
+        if (auth?.status === "connected") await checkReleasePermission(evolution);
+        return evolution.githubAuth;
+      },
+      releasePermission: () => checkReleasePermission(evolution),
+      previewRelease: () => previewRelease(evolution, params),
+      publishRelease: () => publishRelease(evolution, params),
+      publishMergedRelease: () => publishMergedRelease(evolution, params),
+      startRelease: () => releaseJobs.start(params),
+      retryRelease: () => releaseJobs.resume(true),
+      cancelRelease: () => releaseJobs.cancel(),
+      previewMergedRelease: () => previewMergedRelease(evolution, params),
+      releaseBuilds: () => releaseBuilds(evolution, params),
+      publishReleasePackages: () => publishReleasePackages(evolution, params),
+      releasePackageStatus: () => releasePackageStatus(evolution, params),
       openGithubLogin: () => evolution.openGithubLogin(),
       cancelLogin: () => evolution.cancelLogin(),
       submit: () => submitContribution(evolution, params.title, params.body, params.submissionId, params),
@@ -394,14 +454,16 @@ app.whenReady().then(async () => {
       },
     };
     if (!Object.hasOwn(actions, action)) throw new Error("不支持的进化操作。");
-    if (["cancelLogin", "openGithubLogin", "requestPrompt", "casePrompt"].includes(action)) return actions[action]();
+    if (programUpdates.closed) throw new Error("Cleo 正在退出，请稍后重试。");
+    if (["startRelease", "retryRelease", "cancelRelease", "cancelLogin", "openGithubLogin", "requestPrompt", "casePrompt"].includes(action)) return actions[action]();
     return programUpdates.run(actions[action], {
-      allowRunning: ["releases", "download", "pullRequest"].includes(action),
+      allowRunning: ["releases", "download", "pullRequest", "releasePermission", "previewMergedRelease", "contributionBranches", "checkContribution", "mergeAssistance"].includes(action),
     });
   });
   if (!app.isPackaged) ipcMain.handle("cleo:evolution:healthy", () => {});
   // Downloaded updates never authorize installation. Selection is explicit and recoverable.
   backend.runtime = await dependencies.prepare();
+  void releaseJobs.resume().catch(error => console.error("Release resume:", error.message));
   const hasInstallResult = await updater.restoreInstallationResult();
   createWindow();
   const installResult = await updater.takeInstallResult();
@@ -426,7 +488,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", createQuitBarrier({
-  close: [() => programUpdates.close(), () => backend.shutdown(), () => dependencies.close(),
+  close: [() => releaseJobs.close(), () => programUpdates.close(), () => backend.shutdown(), () => dependencies.close(),
     () => releaseDownloads.close(), () => evolution.close(), () => evolution.cancelLogin()],
   onError: error => console.error("Cleo shutdown failed:", error),
   quit: () => app.quit(),

@@ -148,14 +148,23 @@ class DesktopService:
         self._subscription_logins = SubscriptionLogins()
         self._productivity_sessions: dict[str, Any] = {}
         self._run_tasks: dict[str, asyncio.Task[Any]] = {}
+        self._run_ids: dict[str, str] = {}
+        self._steering_runs: dict[str, Any] = {}
+        self._pending_approvals: dict[str, dict[str, dict[str, Any]]] = {}
+        self._run_workspaces: dict[str, str] = {}
+        self._workspace_guard = asyncio.Lock()
+        self._runtime_locks: dict[str, asyncio.Lock] = {}
+        self._harness_switches: set[str] = set()
         self._project_paths: dict[str, str] = {}
 
     async def load_workspace(self) -> dict[str, Any]:
         self._debug("load rows")
-        rows = self.store.list_sessions()
+        rows = sorted(
+            self.store.list_sessions(), key=lambda row: row["id"] not in self._run_tasks
+        )
         records: list[dict[str, Any]] = []
         for row in rows:
-            if len(records) >= 100:
+            if len(records) >= 100 and row["id"] not in self._run_tasks:
                 break
             try:
                 manifest = self.store.load_manifest(str(row["id"]))
@@ -164,7 +173,8 @@ class DesktopService:
                 page = await asyncio.to_thread(TimelineIndex(self.store, manifest).page, limit=1)
             except (FileNotFoundError, OSError, ValueError):
                 continue
-            if manifest["space"] == "non_productivity" and not page["total"]:
+            if (manifest["space"] == "non_productivity" and not page["total"]
+                    and manifest["id"] not in self._run_tasks):
                 continue
             records.append(manifest)
         manifests = records
@@ -175,10 +185,7 @@ class DesktopService:
                         manifests[0]["id"] if manifests else None)
         threads = [await self._thread(m, include_history=m["id"] == selected) for m in manifests]
         self._debug("load overview")
-        overview = build_memory_overview(
-            memory_root=self.settings.MEMORY_DIR,
-        )
-        memories = [self._memory_entry(entry) for entry in overview["entries"]]
+        memory = await self.load_memory()
         self._debug("load result")
         active_manifest = next(
             (
@@ -191,8 +198,7 @@ class DesktopService:
         return {
             "projects": projects,
             "threads": threads,
-            "memories": memories,
-            "memoryOverview": overview,
+            **memory,
             "runtime": self._runtime_profile(active_manifest),
             "activeThreadId": active_manifest["id"] if active_manifest else None,
             "activeSpace": self._ui_space(active_manifest["space"])
@@ -209,17 +215,69 @@ class DesktopService:
             },
         }
 
-    async def load_thread(self, *, thread_id: str) -> dict[str, Any]:
+    async def load_memory(self) -> dict[str, Any]:
+        """Refresh memory without reloading or activating any conversation."""
+        def read():
+            overview = build_memory_overview(memory_root=self.settings.MEMORY_DIR)
+            for source in overview["review_sources"]:
+                try:
+                    manifest = self.store.load_manifest(source["session_id"])
+                except (FileNotFoundError, OSError, ValueError):
+                    continue
+                if (
+                    manifest["space"] == source["space"]
+                    and manifest["project"] == source["project"]
+                    and manifest.get("title")
+                ):
+                    source["title"] = manifest.get("title")
+            return overview
+
+        overview = await asyncio.to_thread(read)
+        timings, timing_error = await self._timing_summaries(kind="dream")
+        for timing in timings:
+            try:
+                timing["title"] = self.store.load_manifest(timing["sessionId"]).get("title")
+            except (FileNotFoundError, OSError, ValueError):
+                pass
+        overview["timings"] = timings
+        overview["timingError"] = timing_error
+        return {
+            "memoryOverview": overview,
+            "memories": [self._memory_entry(entry) for entry in overview["entries"]],
+        }
+
+    async def load_thread(self, *, thread_id: str, activate: bool = True) -> dict[str, Any]:
         """Reload one persisted thread and make it the active resume target."""
         manifest = self.store.load_manifest(thread_id)
-        self._activate(manifest)
+        if activate:
+            self._activate(manifest)
         return await self._thread(manifest)
 
     async def load_timeline(self, *, thread_id: str, cursor: str | None = None,
                             direction: str = "latest", limit: int = 80) -> dict:
         manifest = self.store.load_manifest(thread_id)
+        if thread_id not in self._run_tasks:
+            from cleo.desktop.steering import recover_steers
+
+            await recover_steers(
+                self.store, manifest, is_active=lambda: thread_id in self._run_tasks,
+            )
         page = await asyncio.to_thread(TimelineIndex(self.store, manifest).page,
                                        cursor=cursor, direction=direction, limit=limit)
+        timings, timing_error = await self._timing_summaries(
+            session_id=thread_id, kind="reply",
+            turn_ids=list({item.get("turnId") for item in page["items"] if item.get("turnId")}),
+            limit=500,
+        )
+        by_turn = {timing["turnId"]: timing for timing in reversed(timings)}
+        last_messages = await asyncio.to_thread(
+            TimelineIndex(self.store, manifest).last_messages, list(by_turn),
+        )
+        for item in page["items"]:
+            if item["id"] == last_messages.get(item.get("turnId")):
+                item["timing"] = by_turn[item["turnId"]]
+            if timing_error:
+                item["timingError"] = timing_error
         pending = {q["id"] for q in await self.get_pending_questions(thread_id=thread_id)}
         for item in page["items"]:
             if item["type"] == "question":
@@ -227,6 +285,40 @@ class DesktopService:
                 if item["request"]["status"] == "pending" and item["id"] not in pending:
                     item["request"]["status"] = "unavailable"
         return page
+
+    async def _timing_summaries(self, **filters):
+        import sqlite3
+
+        from cleo.runtime.timing import TimingStore
+
+        try:
+            timings = await asyncio.to_thread(
+                TimingStore(self.settings.MEMORY_DIR).summaries, **filters,
+            )
+            for timing in timings:
+                if (timing["kind"] == "reply" and timing["status"] == "running"
+                        and timing["sessionId"] not in self._run_tasks):
+                    timing["status"] = "unconfirmed"
+            return timings, None
+        except (OSError, sqlite3.Error) as error:
+            self._debug(f"Timing read failed: {error}")
+            return [], "计时记录暂时无法读取。"
+
+    async def get_timing(self, *, timing_id: str) -> dict:
+        from cleo.runtime.timing import TimingStore
+
+        if not isinstance(timing_id, str) or len(timing_id) > 128:
+            raise ValueError("无效的计时记录标识。")
+        detail = await asyncio.to_thread(TimingStore(self.settings.MEMORY_DIR).detail, timing_id)
+        for attempt in [detail, *detail["attempts"]]:
+            if (attempt["kind"] == "reply" and attempt["status"] == "running"
+                    and attempt["sessionId"] not in self._run_tasks):
+                attempt["status"] = "unconfirmed"
+        if detail["status"] == "unconfirmed":
+            for span in detail["spans"]:
+                if span["status"] == "running":
+                    span["status"] = "unconfirmed"
+        return detail
 
     async def read_timeline_content(self, *, thread_id: str, item_id: str, field: str,
                                     offset: int = 0) -> dict:
@@ -237,8 +329,8 @@ class DesktopService:
     async def delete_thread(self, *, thread_id: str) -> dict[str, Any]:
         """Delete one local thread after releasing any resident provider session."""
         manifest = self.store.load_manifest(thread_id)
-        if thread_id in self._run_tasks:
-            raise ValueError("正在运行的 thread 不能删除，请先停止运行。")
+        if thread_id in self._run_tasks or thread_id in getattr(self, "_harness_switches", set()):
+            raise ValueError("正在运行或切换 harness 的 thread 不能删除，请先停止运行。")
 
         was_active = self.runtime.current_thread_id == thread_id
         if manifest["space"] == "productivity" and thread_id in self._productivity_sessions:
@@ -633,14 +725,27 @@ class DesktopService:
     async def is_evolution_thread(self, *, thread_id: str) -> bool:
         return self._is_evolution(self.store.load_manifest(thread_id))
 
-    async def analyze_evolution_request(self, *, thread_id: str, request: str) -> dict[str, Any]:
+    async def analyze_evolution_request(self, *, thread_id: str, request: str,
+                                       existing_cases: list | None = None) -> dict[str, Any]:
         """Inspect code and prepare criteria without a coding turn or session writes."""
         from cleo.desktop.evolution_planning import analyze_request
 
         manifest = self.store.load_manifest(thread_id)
         if not self._is_evolution(manifest):
             raise ValueError("请在进化会话中准备验收。")
-        return await analyze_request(self.settings, manifest, Path(manifest["cwd"]), request)
+        return await analyze_request(self.settings, manifest, Path(manifest["cwd"]), request,
+                                     existing_cases)
+
+    async def release_runtime(self, *, thread_id: str | None = None) -> dict[str, Any]:
+        """Freeze the selected coding harness for an independent release repair session."""
+        manifest = self.store.load_manifest(thread_id) if thread_id else {}
+        name = manifest.get("provider") or self.settings.productivity.default_provider
+        provider = self.settings.productivity.providers.get(name)
+        if not provider or not provider.enabled:
+            raise ValueError("请先选择可用的编码 harness，再开始发布。")
+        options = manifest.get("runtime_options") or {}
+        return {"provider": name, "model": options.get("model") or provider.model,
+                "effort": options.get("effort")}
 
     async def open_evolution_thread(
         self, *, thread_id: str | None = None, provider: str | None = None,
@@ -774,12 +879,16 @@ class DesktopService:
         prompt: str,
         attachments: list[dict[str, Any]] | None,
         emit: Emit,
+        run_id: str | None = None,
     ) -> None:
+        if run_id is not None and (not isinstance(run_id, str) or not run_id or len(run_id) > 128):
+            raise ValueError("无效的运行标识。")
+        if thread_id in getattr(self, "_harness_switches", set()):
+            raise ValueError("正在交接 harness，请等待切换完成后发送。")
         prompt = str(prompt).strip()
         if not prompt:
             raise ValueError("prompt cannot be empty")
         manifest = self.store.load_manifest(thread_id)
-        self._activate(manifest)
         if self._is_evolution(manifest) and prompt.startswith("/"):
             command = prompt.split(" ", 1)[0]
             allowed = {
@@ -787,39 +896,223 @@ class DesktopService:
             }
             if command not in allowed:
                 raise ValueError("进化任务不能切换工作目录、任务或放宽权限，请使用进化页面操作。")
+        active = self._run_tasks.get(thread_id)
+        if active is not None and not active.done():
+            raise RuntimeError("当前运行尚未结束，请等待停止操作完成后重试。")
+        self._activate(manifest)
         if prompt.startswith("/"):
             skill = next((skill for skill in self._local_skills(manifest)
                           if skill.command == prompt.split()[0]), None)
             if skill is not None:
                 prompt = skill.expand(prompt)
-        if prompt.startswith("/"):
-            await self._run_command(manifest, prompt, emit)
-            return
-
-        active = self._run_tasks.get(thread_id)
-        if active is not None and not active.done():
-            raise RuntimeError("当前运行尚未结束，请等待停止操作完成后重试。")
         task = asyncio.current_task()
         if task is not None:
             self._run_tasks[thread_id] = task
+        self._run_ids[thread_id] = run_id or secrets.token_hex(16)
+        steering = None
         try:
-            if manifest["space"] == "non_productivity":
-                await self._stream_chat(manifest, prompt, attachments or [], emit)
-            else:
-                await self._stream_productivity(manifest, prompt, attachments or [], emit)
+            if prompt.startswith("/"):
+                await self._run_command(manifest, prompt, emit)
+                return
+            from cleo.desktop.steering import SteeringRun
+
+            async def deliver_native(text, native_turn_id):
+                await self._adapter().steer(thread_id, text, native_turn_id)
+
+            steering = SteeringRun(
+                self.store, manifest, self._run_ids[thread_id], self._steer_mode(manifest),
+                emit, deliver_native,
+            )
+            self._steering_runs[thread_id] = steering
+            if manifest["space"] == "productivity":
+                had_pending_permissions = bool(manifest.get("pending_runtime_permissions"))
+                async with self._runtime_lock(thread_id):
+                    await self._apply_pending_permissions(manifest)
+                    manifest = self.store.load_manifest(thread_id)
+                if had_pending_permissions:
+                    await emit({"type": "runtime", "runtime": self._runtime_profile(manifest)})
+            async with self._workspace_guard:
+                root = await asyncio.to_thread(self._workspace_root, manifest)
+                self._run_workspaces[thread_id] = root
+                self.store.update_manifest(thread_id, undo_checkpoint_shared=False)
+                peers = [key for key, value in self._run_workspaces.items()
+                         if key != thread_id and value == root]
+                if peers:
+                    for key in [thread_id, *peers]:
+                        self.store.update_manifest(key, undo_checkpoint_shared=True)
+            terminal = None
+
+            async def run_event(event):
+                nonlocal terminal
+                if event["type"] == "turn-started":
+                    steering.bind_turn(event["item"]["id"])
+                if event["type"] == "done":
+                    if terminal is None or terminal["type"] != "error":
+                        terminal = event
+                    await steering.boundary_received()
+                    return
+                if event["type"] == "error":
+                    terminal = event
+                if (event["type"] == "upsert-item" and steering.batch
+                    and event["item"].get("turnId") == steering.turn_id and (
+                        event["item"]["type"] != "message"
+                        or event["item"].get("role") == "assistant"
+                    )
+                ):
+                    await steering.boundary_received()
+                await emit(event)
+
+            steer_ids = None
+            while True:
+                terminal = None
+                stream = (self._stream_chat if manifest["space"] == "non_productivity"
+                          else self._stream_productivity)
+                from cleo.runtime.timing import measure
+
+                async def timing_event(summary):
+                    await emit({"type": "timing", "timing": summary})
+
+                async with measure(
+                    self.settings.MEMORY_DIR, session_id=thread_id, space=manifest["space"],
+                    project=manifest["project"], kind="reply", emit=timing_event,
+                ) as timing:
+                    timing.phase("准备上下文与任务")
+                    timing.summary["unavailable"] = ["模型服务内部阶段"]
+                    observed = {}
+
+                    async def timed_event(event, timing=timing, observed=observed):
+                        if event["type"] == "turn-started":
+                            timing.summary["turnId"] = event["item"]["id"]
+                        elif event["type"] == "error":
+                            timing.summary["status"] = "failed"
+                        elif event["type"] == "upsert-item" and event["item"]["type"] == "tool":
+                            item = event["item"]
+                            key = item["id"]
+                            if item["status"] == "running" and key not in observed:
+                                observed[key] = timing.start(item["name"], category="tool")
+                            elif item["status"] in {"done", "error"}:
+                                timing.end(observed.get(key),
+                                           "failed" if item["status"] == "error" else "completed")
+                        elif event["type"] in {"approval-request", "question-request"}:
+                            request = event["request"]
+                            key = event["type"].split("-")[0] + request["id"]
+                            if key not in observed:
+                                observed[key] = timing.start(
+                                    "等待审批" if event["type"] == "approval-request"
+                                    else "等待回答",
+                                    category="wait",
+                                )
+                        elif event["type"] in {"approval-resolved", "question-resolved"}:
+                            result = event.get("response") or event["request"]
+                            timing.end(observed.get(event["type"].split("-")[0] + result["id"]))
+                        await run_event(event)
+
+                    await stream(manifest, prompt, attachments or [], timed_event,
+                                 **({"steer_ids": steer_ids} if steer_ids else {}))
+                if not terminal or terminal["type"] != "done" or steering.mode != "boundary":
+                    break
+                next_message = await steering.next_boundary()
+                if next_message is None:
+                    break
+                prompt, steer_ids = next_message
+                attachments = []
+            await steering.close()
+            if terminal and terminal["type"] == "done":
+                await emit(terminal)
         except asyncio.CancelledError:
             status = "interrupted" if manifest["space"] == "non_productivity" else "cancelled"
             self.store.set_status(thread_id, status)
             await emit({"type": "error", "message": "当前运行已取消。"})
         finally:
-            self._run_tasks.pop(thread_id, None)
+            try:
+                if steering is not None:
+                    await steering.close()
+            finally:
+                self._steering_runs.pop(thread_id, None)
+                async with self._workspace_guard:
+                    try:
+                        latest = self.store.load_manifest(thread_id)
+                        if latest.get("undo_checkpoint_shared") and latest.get("undo_checkpoint"):
+                            await asyncio.to_thread(
+                                discard_git_checkpoint, latest["undo_checkpoint"],
+                            )
+                            self.store.update_manifest(thread_id, undo_checkpoint=None)
+                    except (OSError, RuntimeError, ValueError) as exc:
+                        self._debug(f"Shared checkpoint cleanup failed for {thread_id}: {exc}")
+                    finally:
+                        self._run_workspaces.pop(thread_id, None)
+                        self._run_tasks.pop(thread_id, None)
+                        self._run_ids.pop(thread_id, None)
+                        self._pending_approvals.pop(thread_id, None)
 
-    async def cancel_run(self, *, thread_id: str) -> dict[str, Any]:
+    def _steer_mode(self, manifest):
+        if (manifest["space"] == "productivity"
+                and self._productivity_provider(manifest["provider"]).type == "codex_sdk"):
+            return "native"
+        return "boundary"
+
+    async def steer_run(self, *, thread_id: str, run_id: str, request_id: str,
+                        text: str, retry: bool = False) -> dict:
+        from cleo.desktop.steering import (
+            new_receipt,
+            persist_receipt,
+            receipt_view,
+            validate_steer,
+        )
+
+        validate_steer(request_id, run_id, text)
+        if not isinstance(retry, bool):
+            raise ValueError("无效的重试参数。")
+        text = text.strip()
+        manifest = self.store.load_manifest(thread_id)
+        steering = self._steering_runs.get(thread_id)
+        existing = await asyncio.to_thread(TimelineIndex(self.store, manifest).steer, request_id)
+        if existing:
+            if existing["runId"] != run_id or existing["text"] != text:
+                raise ValueError("请求标识已被另一条指令使用。")
+            if steering is None or steering.run_id != run_id:
+                if existing["status"] in {"queued", "sending"}:
+                    sending = existing["status"] == "sending"
+                    existing = await persist_receipt(
+                        self.store, manifest, existing,
+                        status="uncertain" if sending else "cancelled", retryable=False,
+                        error=("目标运行已结束，未确认是否接收。" if sending
+                               else "目标运行已结束，指令未投递。"),
+                    )
+                elif existing.get("retryable"):
+                    existing = await persist_receipt(
+                        self.store, manifest, existing, retryable=False,
+                    )
+        active = self._run_tasks.get(thread_id)
+        if (steering and steering.run_id == run_id
+                and active is not None and not active.cancelling()
+                and thread_id not in self._harness_switches):
+            return await steering.submit(request_id, text, retry=retry)
+        if existing:
+            return await receipt_view(self.store, manifest, existing)
+        receipt = new_receipt(manifest, request_id, run_id, text, self._steer_mode(manifest))
+        receipt = await persist_receipt(
+            self.store, manifest, receipt, status="failed", retryable=False,
+            error="目标运行已结束或正在切换服务，指令未投递。",
+        )
+        return await receipt_view(self.store, manifest, receipt)
+
+    def _workspace_root(self, manifest: dict[str, Any]) -> str:
+        cwd = manifest.get("cwd") or str(self.settings.active_directory_profile.root_path)
+        status = inspect_git_status(cwd)
+        return os.path.normcase(str(Path(status.repo_root if status else cwd).resolve()))
+
+    async def cancel_run(self, *, thread_id: str, run_id: str | None = None) -> dict[str, Any]:
+        if run_id is not None and self._run_ids.get(thread_id) != run_id:
+            return {"cancelled": False}
         task = self._run_tasks.get(thread_id)
         if task is not None:
             # The stream owns provider interruption and cleanup. Interrupting
             # here as well races turn/completed and can strand the next request.
             if not task.cancelling():
+                steering = self._steering_runs.get(thread_id)
+                if steering:
+                    steering.stop_accepting()
                 task.cancel()
             result, = await asyncio.gather(task, return_exceptions=True)
             if isinstance(result, Exception):
@@ -837,7 +1130,9 @@ class DesktopService:
         if manifest["space"] != "productivity":
             raise ValueError("Only productivity tasks can request tool approval.")
         await self._ensure_productivity_session(manifest)
-        return await self._adapter().resolve_approval(thread_id, approval_id, decision)
+        result = await self._adapter().resolve_approval(thread_id, approval_id, decision)
+        self._pending_approvals.get(thread_id, {}).pop(approval_id, None)
+        return result
 
     async def get_pending_questions(self, *, thread_id: str) -> list[dict]:
         self.store.load_manifest(thread_id)
@@ -851,13 +1146,124 @@ class DesktopService:
             raise ValueError("连接已失效，旧问题不能继续作答。请让 Agent 重新提问。")
         return await self._adapter().resolve_question(thread_id, question_id, answers)
 
-    async def update_runtime(
+    async def _prepare_harness(self, manifest, provider, implementation, session_id, effort=None):
+        """Apply desktop controls to a candidate before making it the current route."""
+        settings = self._productivity_provider(provider)
+        account = getattr(implementation, "account_status", None)
+        if callable(account) and not (await account()).authenticated:
+            raise ValueError(f"{provider} 尚未登录，请先完成登录。")
+        options = {}
+        if self._is_evolution(manifest):
+            if settings.type == "codex_sdk":
+                options.update(sandbox="workspace-write", approval_mode="deny_all")
+            elif settings.type == "claude_sdk":
+                options["approval_mode"] = "acceptEdits"
+        if effort is not None:
+            options["effort"] = effort
+        if options:
+            await implementation.update_session_options(session_id, **options)
+        questions = getattr(implementation, "enable_questions", None)
+        if callable(questions):
+            await questions(session_id)
+        if not self._is_evolution(manifest) and settings.type in {"codex_sdk", "claude_sdk", "acp"}:
+            await implementation.enable_user_approvals(session_id)
+
+    async def switch_harness(
+        self, *, thread_id: str, provider: str, model: str | None = None,
+        effort: str | None = None,
+    ) -> dict[str, Any]:
+        """Wait for the entire current turn, then switch without submitting a user message."""
+        manifest = self.store.load_manifest(thread_id)
+        if manifest["space"] != "productivity":
+            raise ValueError("当前会话不支持切换任务 harness。")
+        selected = self._productivity_provider(provider)
+        adapter = self._adapter()
+        if not selected.enabled or provider not in adapter.providers:
+            raise ValueError(f"Harness {provider!r} 已禁用或不可用。")
+        if not hasattr(self, "_harness_switches"):
+            self._harness_switches = set()
+        if thread_id in self._harness_switches:
+            raise ValueError("此会话正在切换 harness，请等待完成。")
+        self._harness_switches.add(thread_id)
+        try:
+            active = self._run_tasks.get(thread_id)
+            if active is not None and not active.done():
+                # Shield keeps cancelling the picker from cancelling the original turn.
+                await asyncio.gather(asyncio.shield(active), return_exceptions=True)
+            async with self._runtime_lock(thread_id):
+                manifest = self.store.load_manifest(thread_id)
+                if provider == manifest["provider"]:
+                    update = {"model": model} if model else {}
+                    if effort is not None:
+                        update["effort"] = effort
+                    return await self._update_runtime(thread_id=thread_id, update=update)
+
+                async def prepare(implementation, session_id):
+                    await self._prepare_harness(
+                        manifest, provider, implementation, session_id, effort,
+                    )
+                    # Existing-schema registration keeps the name usable by older versions.
+                    if provider not in self.settings.productivity.providers:
+                        from cleo.config.settings import HARNESSES_CONFIG_PATH
+                        from cleo.desktop.task_harnesses import register_task_provider
+
+                        register_task_provider(HARNESSES_CONFIG_PATH, provider, selected)
+                        self.settings.productivity.providers[provider] = selected
+
+                session = await adapter.switch_session(
+                    thread_id, provider, model or selected.model, prepare=prepare,
+                )
+                self._productivity_sessions[thread_id] = session
+                self._runtime_revision(thread_id)
+                return self._runtime_profile(self.store.load_manifest(thread_id))
+        finally:
+            self._harness_switches.discard(thread_id)
+
+    async def update_runtime(self, *, thread_id: str, update: dict[str, Any]) -> dict[str, Any]:
+        async with self._runtime_lock(thread_id):
+            if thread_id in getattr(self, "_harness_switches", set()):
+                raise ValueError("正在切换 harness，请等待交接完成后修改运行参数。")
+            return await self._update_runtime(thread_id=thread_id, update=update)
+
+    def _runtime_lock(self, thread_id: str) -> asyncio.Lock:
+        return self._runtime_locks.setdefault(thread_id, asyncio.Lock())
+
+    def _runtime_revision(self, thread_id: str, **changes) -> None:
+        manifest = self.store.load_manifest(thread_id)
+        self.store.update_manifest(
+            thread_id, runtime_settings_revision=manifest.get("runtime_settings_revision", 0) + 1,
+            **changes,
+        )
+
+    async def _apply_pending_permissions(self, manifest: dict[str, Any]) -> None:
+        pending = manifest.get("pending_runtime_permissions")
+        if not pending:
+            return
+        # Changes made after this run was reserved belong to the following run.
+        latest = self.store.load_manifest(manifest["id"])
+        if latest.get("pending_runtime_permissions") != pending:
+            return
+        if pending["provider"] != manifest["provider"]:
+            raise ValueError("待生效权限属于之前的运行后端，请在运行设置中重新选择或取消更改。")
+        await self._ensure_productivity_session(manifest)
+        await self._adapter().update_session_options(manifest["id"], **pending["options"])
+        latest = self.store.load_manifest(manifest["id"])
+        remaining = latest.get("pending_runtime_permissions")
+        self._runtime_revision(
+            manifest["id"], pending_runtime_permissions=None if remaining == pending else remaining,
+        )
+
+    async def _update_runtime(
         self,
         *,
         thread_id: str,
         update: dict[str, Any],
+        command: bool = False,
     ) -> dict[str, Any]:
         manifest = self.store.load_manifest(thread_id)
+        if update.get("discardPendingPermissions") is True:
+            self._runtime_revision(thread_id, pending_runtime_permissions=None)
+            return self._runtime_profile(self.store.load_manifest(thread_id))
         if manifest["space"] != "productivity":
             if "profileId" not in update:
                 return self._runtime_profile(manifest)
@@ -887,7 +1293,6 @@ class DesktopService:
             self._chat_agents.pop(thread_id, None)
             self._chat_agents_restored.discard(thread_id)
             return self._runtime_profile(self.store.load_manifest(thread_id))
-        await self._ensure_productivity_session(manifest)
         options: dict[str, Any] = {}
         if self._is_evolution(manifest):
             if update.get("access", "workspace-write") != "workspace-write":
@@ -902,8 +1307,31 @@ class DesktopService:
             options["sandbox"] = str(update["access"])
         if "approval" in update:
             options["approval_mode"] = str(update["approval"])
+        permission_update = "access" in update or "approval" in update
+        if permission_update:
+            from cleo.desktop.runtime_permissions import validate_permissions
+
+            validate_permissions(self._productivity_provider(manifest["provider"]).type, update)
+        await self._ensure_productivity_session(manifest)
+        if permission_update and thread_id in self._run_tasks and not command:
+            if set(options) - {"sandbox", "approval_mode"}:
+                raise ValueError("运行中请分别调整模型和权限。权限更改将在下次运行使用。")
+            previous = manifest.get("pending_runtime_permissions") or {}
+            saved = (previous.get("options", {})
+                     if previous.get("provider") == manifest["provider"] else {})
+            self._runtime_revision(thread_id, pending_runtime_permissions={
+                "provider": manifest["provider"], "options": {**saved, **options},
+            })
+            return self._runtime_profile(self.store.load_manifest(thread_id))
+        if permission_update:
+            pending = manifest.get("pending_runtime_permissions") or {}
+            if pending.get("provider") == manifest["provider"]:
+                options = {**pending["options"], **options}
         if options:
             await self._adapter().update_session_options(thread_id, **options)
+            self._runtime_revision(
+                thread_id, **({"pending_runtime_permissions": None} if permission_update else {}),
+            )
         return self._runtime_profile(self.store.load_manifest(thread_id))
 
     async def get_config_templates(self) -> dict[str, str]:
@@ -931,6 +1359,7 @@ class DesktopService:
         profiles = [
             {
                 "id": name,
+                "label": profile.display_name or name,
                 "provider": profile.provider,
                 "model": profile.model,
                 "maxTokens": profile.max_tokens,
@@ -1159,13 +1588,30 @@ class DesktopService:
     async def reset_workspace(self) -> dict[str, Any]:
         from cleo.integrations.workspace import reset_workspace_to_main
 
-        await asyncio.to_thread(
-            reset_workspace_to_main, self.settings.active_directory_profile.root_path
-        )
+        async with self._workspace_guard:
+            root = await asyncio.to_thread(self._workspace_root, {})
+            if root in self._run_workspaces.values():
+                raise ValueError("此工作区有任务正在运行，请等待结束后再重置。")
+            await asyncio.to_thread(
+                reset_workspace_to_main, self.settings.active_directory_profile.root_path
+            )
         return {"reset": True}
 
     async def undo_changes(self, *, thread_id: str) -> dict[str, Any]:
         """Undo only the changes made by the latest productivity turn."""
+        async with self._workspace_guard:
+            manifest = self.store.load_manifest(thread_id)
+            root = await asyncio.to_thread(self._workspace_root, manifest)
+            if root in self._run_workspaces.values():
+                raise ValueError("此工作区有任务正在运行，请等待结束后再回退。")
+            if manifest.get("undo_checkpoint_shared"):
+                raise ValueError(
+                    "这轮运行与其他任务共用工作区，无法单独回退；请在 Git 中查看改动。"
+                )
+            result = await self._undo_changes(thread_id=thread_id)
+        return {**result, "workspace": await self.load_workspace()}
+
+    async def _undo_changes(self, *, thread_id: str) -> dict[str, Any]:
         manifest = self.store.load_manifest(thread_id)
         if manifest["space"] != "productivity":
             raise ValueError("只有开发任务可以回退 Git 改动。")
@@ -1182,10 +1628,7 @@ class DesktopService:
 
         result = await asyncio.to_thread(undo_git_checkpoint, checkpoint)
         self.store.update_manifest(thread_id, undo_checkpoint=None)
-        return {
-            "restoredFiles": result.restored_count,
-            "workspace": await self.load_workspace(),
-        }
+        return {"restoredFiles": result.restored_count}
 
     async def shutdown(self) -> None:
         await self._subscription_logins.close()
@@ -1211,6 +1654,8 @@ class DesktopService:
         prompt: str,
         attachments: list[dict[str, Any]],
         emit: Emit,
+        *,
+        steer_ids: list[str] | None = None,
     ) -> None:
         agent = self._chat_agents.get(manifest["id"])
         if agent is None:
@@ -1230,20 +1675,46 @@ class DesktopService:
         chat_attachments = await asyncio.gather(
             *(self._chat_attachment(item) for item in attachments)
         )
+        from langchain_core.messages import HumanMessage, message_to_dict
+
+        from cleo.agents.cleo import _build_user_content
+
+        turn_id = f"turn-{secrets.token_hex(12)}"
+        user_message = HumanMessage(
+            id=turn_id, content=_build_user_content(prompt, chat_attachments),
+        )
+        await asyncio.to_thread(
+            self.store.append_events, session_id=manifest["id"], space=manifest["space"],
+            project=manifest["project"], events=[{
+                "id": turn_id, "type": "user_message", "actor": "user",
+                "content": user_message.content,
+                "source_message_id": turn_id, "message": message_to_dict(user_message),
+                "data": {"steer_ids": steer_ids} if steer_ids else {},
+            }],
+        )
+        await emit({"type": "turn-started", "item": {
+            "id": turn_id, "turnId": turn_id, "type": "message", "role": "user",
+            "content": prompt, "time": "",
+        }})
         text = ""
+        from cleo.runtime.timing import phase
+
+        phase("模型响应（含工具与等待）")
         try:
             async for chunk in agent.stream_text(
                 prompt,
                 manifest["id"],
                 loaded_info=loaded or None,
                 images=chat_attachments,
+                message_id=turn_id,
             ):
                 text += chunk
                 await emit(
                     {
                         "type": "upsert-item",
                         "item": {
-                            "id": "live-assistant",
+                            "id": f"{turn_id}:answer",
+                            "turnId": turn_id,
                             "type": "message",
                             "role": "assistant",
                             "content": text,
@@ -1251,10 +1722,15 @@ class DesktopService:
                         },
                     }
                 )
-        except BaseException:
+        except BaseException as error:
+            phase("保存中断回复", previous_status=(
+                "cancelled" if isinstance(error, asyncio.CancelledError) else "failed"
+            ))
             await self._sync_chat(agent, manifest, "interrupted")
+            phase(None)
             raise
         else:
+            phase("保存回复与会话状态")
             await self._sync_chat(agent, manifest, "completed")
         usage = agent.context_usage
         await emit({"type": "usage", "usage": self._usage_dict(usage)})
@@ -1266,6 +1742,8 @@ class DesktopService:
         prompt: str,
         attachments: list[dict[str, Any]],
         emit: Emit,
+        *,
+        steer_ids: list[str] | None = None,
     ) -> None:
         await self._ensure_productivity_session(manifest)
         turn_title = " ".join(prompt.split())[:80]
@@ -1309,8 +1787,24 @@ class DesktopService:
         async def on_event(event: Any) -> None:
             from cleo.harnesses.events import capture_context_usage
 
+            if event.type == "runtime_turn_started":
+                steering = self._steering_runs.get(manifest["id"])
+                if steering:
+                    steering.native_ready(event.data["native_turn_id"])
+                return
+            steering = self._steering_runs.get(manifest["id"])
+            if (steering and steering.batch and event.data.get("turn_id") == steering.turn_id
+                    and event.type in {"permission_request", "question_request"}):
+                await steering.boundary_received()
             capture_context_usage(event, usage)
             for projected in stream_event_item(event, state):
+                if projected["type"] == "approval-request":
+                    request = {**projected["request"], "threadId": manifest["id"]}
+                    self._pending_approvals.setdefault(manifest["id"], {})[request["id"]] = request
+                elif projected["type"] == "approval-resolved":
+                    self._pending_approvals.get(manifest["id"], {}).pop(
+                        projected["response"]["id"], None
+                    )
                 if projected.get("type") == "changes":
                     state["changes:emitted"] = projected.get("changes")
                 visible = (projected.get("item")
@@ -1339,8 +1833,16 @@ class DesktopService:
         try:
             result = await self._adapter().prompt(
                 manifest["id"], self._evolution_prompt(manifest, prompt), on_event=on_event,
+                **({"steer_ids": steer_ids} if steer_ids else {}),
             )
         finally:
+            from cleo.runtime.timing import phase
+
+            error = sys.exception()
+            phase("整理文件改动与保存结果", previous_status=(
+                "cancelled" if isinstance(error, asyncio.CancelledError)
+                else "failed" if error else "completed"
+            ))
             for projected in finalize_stream_tools(state):
                 await emit(projected)
             change_set = None
@@ -1351,6 +1853,10 @@ class DesktopService:
                         finalize_git_checkpoint,
                         checkpoint,
                     )
+                    if self.store.load_manifest(manifest["id"]).get("undo_checkpoint_shared"):
+                        raise ValueError(
+                            "Concurrent workspace edits cannot be attributed to one turn"
+                        )
                     self.store.update_manifest(
                         manifest["id"],
                         undo_checkpoint=completed_checkpoint.to_dict(),
@@ -1365,6 +1871,10 @@ class DesktopService:
                             read_git_checkpoint_diff,
                             completed_checkpoint,
                         )
+                        if self.store.load_manifest(manifest["id"]).get("undo_checkpoint_shared"):
+                            raise ValueError(
+                                "Concurrent workspace edits cannot be attributed to one turn"
+                            )
                         if turn_diff:
                             persisted = self.store.append_event(
                                 space=str(manifest["space"]),
@@ -1393,6 +1903,11 @@ class DesktopService:
                     }
             if change_set is not None:
                 await emit({"type": "change-history", "changeSet": change_set})
+            # Publish the durable phase on success AND uncertain/failed submissions.
+            # The renderer must not keep the pre-turn "prepared" profile indefinitely.
+            await emit({"type": "runtime", "runtime": self._runtime_profile(
+                self.store.load_manifest(manifest["id"]),
+            )})
         if result.response and not state.get("assistant"):
             await emit(
                 {
@@ -1535,7 +2050,11 @@ class DesktopService:
             await self._notice(emit, "工作区差异", "已刷新右侧变更面板。", "success")
         elif command == "/model":
             if argument:
-                await adapter.update_session_options(manifest["id"], model=argument)
+                async with self._runtime_lock(manifest["id"]):
+                    runtime = await self._update_runtime(
+                        thread_id=manifest["id"], update={"model": argument}, command=True,
+                    )
+                await emit({"type": "runtime", "runtime": runtime})
                 await self._notice(emit, "模型已更新", argument, "success")
             else:
                 models = await adapter.list_models(manifest["provider"])
@@ -1556,8 +2075,12 @@ class DesktopService:
                     str(getattr(options, field) or "default"),
                 )
             else:
-                update = {field: argument}
-                await adapter.update_session_options(manifest["id"], **update)
+                ui_field = {"sandbox": "access", "approval_mode": "approval"}.get(field, field)
+                async with self._runtime_lock(manifest["id"]):
+                    runtime = await self._update_runtime(
+                        thread_id=manifest["id"], update={ui_field: argument}, command=True,
+                    )
+                await emit({"type": "runtime", "runtime": runtime})
                 await self._notice(emit, "运行参数已更新", f"{field} = {argument}", "success")
         elif command == "/cd":
             target = resolve_productivity_cwd(argument, session.project_path)
@@ -1799,8 +2322,13 @@ class DesktopService:
                 else changes_from_diff(diff)
             )
         usage = self._usage_from_events(events, self._runtime_profile(manifest)["contextWindow"])
+        timings, timing_error = await self._timing_summaries(
+            session_id=manifest["id"], kind="reply", limit=1,
+        )
         return {
             "id": manifest["id"],
+            "currentTiming": timings[0] if timings else None,
+            "timingError": timing_error,
             "space": self._ui_space(manifest["space"]),
             "projectId": project_id(manifest["space"], manifest["project"]),
             "title": manifest.get("title") or "新对话"
@@ -1808,7 +2336,15 @@ class DesktopService:
             else manifest.get("title") or "新任务",
             "summary": summary,
             "updatedAt": relative_time(manifest.get("updated_at")),
-            "status": self._thread_status(manifest.get("status")),
+            "status": "running" if manifest["id"] in self._run_tasks else (
+                "attention" if manifest.get("status") == "running"
+                else self._thread_status(manifest.get("status"))
+            ),
+            "activeRunId": self._run_ids.get(manifest["id"]),
+            "steerReady": (manifest["id"] in self._steering_runs
+                           and not self._steering_runs[manifest["id"]].closed
+                           and self._steering_runs[manifest["id"]].ready.is_set()),
+            "pendingApprovals": list(self._pending_approvals.get(manifest["id"], {}).values()),
             "items": items if include_history else [],
             "history": {key: value for key, value in page.items() if key != "items"},
             "pendingQuestions": await self.get_pending_questions(thread_id=manifest["id"]),
@@ -1821,6 +2357,7 @@ class DesktopService:
         }
 
     def _runtime_profile(self, manifest: dict[str, Any] | None) -> dict[str, Any]:
+        from cleo.harnesses.context import handoff_status
         if manifest is None or manifest.get("space") == "non_productivity":
             options = (
                 manifest.get("runtime_options")
@@ -1849,6 +2386,7 @@ class DesktopService:
                 "contextWindow": snapshot["max_tokens"],
                 "editable": False,
                 "supportsQuestions": False,
+                "steerMode": "boundary",
             }
         provider = str(manifest.get("provider") or self.settings.productivity.default_provider)
         provider_settings = self._productivity_provider(provider)
@@ -1872,13 +2410,37 @@ class DesktopService:
             ),
             "approval": str(
                 options.get("approval_mode")
-                or getattr(provider_settings.options, "approval_mode", "default")
+                or getattr(provider_settings.options, "approval_mode", None)
+                or getattr(provider_settings.options, "permission_mode", None)
+                or ("auto_allow" if getattr(provider_settings.options, "auto_approve", False)
+                    else "deny_all" if provider_settings.type == "acp" else "default")
             ),
             "contextWindow": 128_000,
+            "handoffStatus": handoff_status(self.store.read_events(manifest["id"])),
             "editable": True,
             "supportsQuestions": getattr(provider_settings, "type", None) in {
                 "codex_sdk", "claude_sdk",
             },
+            "settingsRevision": manifest.get("runtime_settings_revision", 0),
+            "steerMode": self._steer_mode(manifest),
+            "permissionOptions": self._permission_options(manifest, provider_settings),
+            "pendingPermissions": self._pending_permissions_profile(manifest),
+        }
+
+    def _permission_options(self, manifest, provider_settings):
+        from cleo.desktop.runtime_permissions import permission_choices
+
+        return permission_choices(provider_settings.type, fixed=self._is_evolution(manifest))
+
+    @staticmethod
+    def _pending_permissions_profile(manifest):
+        pending = manifest.get("pending_runtime_permissions")
+        if not pending:
+            return None
+        options = pending["options"]
+        return {
+            "provider": pending["provider"],
+            "access": options.get("sandbox"), "approval": options.get("approval_mode"),
         }
 
     def _agent_profiles(self) -> dict[str, Any]:
@@ -1944,6 +2506,19 @@ class DesktopService:
         if existing is not None:
             await self._restrict_evolution(manifest)
             return existing
+        from cleo.harnesses.handoff import pending_handoff
+
+        events = self.store.read_events(manifest["id"])
+        if pending_handoff(events, str(manifest["provider"])):
+            async def prepare(implementation, session_id):
+                await self._prepare_harness(
+                    manifest, str(manifest["provider"]), implementation, session_id,
+                    (manifest.get("runtime_options") or {}).get("effort"),
+                )
+
+            session = await self._adapter().restore_session(manifest["id"], prepare=prepare)
+            self._productivity_sessions[manifest["id"]] = session
+            return session
         native_id = manifest.get("native_session_id")
         if not native_id:
             raise ValueError(f"Session {manifest['id']} 没有 provider 原生 session id。")
@@ -1966,14 +2541,8 @@ class DesktopService:
         if self._is_evolution(self.store.load_manifest(session_id)):
             return
         settings = self._productivity_provider(provider)
-        options = self._adapter().session_options(session_id)
-        if settings.type != "codex_sdk" or options.approval_mode == "deny_all":
+        if settings.type not in {"codex_sdk", "claude_sdk", "acp"}:
             return
-        if options.approval_mode == "auto_review":
-            await self._adapter().update_session_options(
-                session_id,
-                approval_mode="user",
-            )
         await self._adapter().enable_user_approvals(session_id)
 
     def _productivity_provider(self, name: str) -> Any:
@@ -2004,7 +2573,7 @@ class DesktopService:
             from cleo.agents import Agent
 
             self._agent_factory = Agent
-        return self._agent_factory(**kwargs)
+        return self._agent_factory(session_store=self.store, **kwargs)
 
     def _activate(self, manifest: dict[str, Any]) -> None:
         self.runtime.update_current_space(str(manifest["space"]))

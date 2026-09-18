@@ -13,8 +13,8 @@ export function GithubLogin({ auth, busy, onAction, onContribute }: {
 }) {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [failedCopy, setFailedCopy] = useState<string | null>(null);
-  if (!auth) return null;
-  const pending = auth.status === "starting" || auth.status === "waiting";
+  auth = auth || { status: "disconnected", message: "在这里连接 GitHub。Cleo 自动准备登录组件，无需安装工具或填写令牌。" };
+  const pending = auth.status === "starting" || auth.status === "waiting" || auth.status === "checking";
   const retry = auth.status === "failed" || auth.status === "cancelled";
   const copyCode = async () => {
     if (!auth.code) return;
@@ -26,6 +26,11 @@ export function GithubLogin({ auth, busy, onAction, onContribute }: {
   return <section className="evolution-github" aria-label="GitHub 登录">
     <div className="evolution-github-heading"><GitBranch size={16} /><strong>GitHub 连接</strong></div>
     <p role="status">{auth.message}</p>
+    {auth.status === "connected" && <p role="status" aria-label="仓库发布权限">
+      {auth.repositoryAccess?.login && <strong>{auth.repositoryAccess.login} · {auth.repositoryAccess.role} · </strong>}
+      {auth.repositoryAccess?.message || "仓库发布权限尚未确认。"}
+    </p>}
+    {auth.diagnostic && <p className="evolution-github-hint">诊断：{auth.diagnostic}</p>}
     {auth.status === "waiting" && auth.code && <>
       <div className="evolution-github-code">
         <code aria-label="GitHub 一次性验证码">{auth.code}</code>
@@ -36,10 +41,12 @@ export function GithubLogin({ auth, busy, onAction, onContribute }: {
       {failedCopy === auth.code && <p className="evolution-github-hint">复制失败，请手动选择并复制验证码。</p>}
     </>}
     <div className="evolution-github-actions">
-      {auth.status === "connected" && <button className="evolution-primary" disabled={busy} onClick={onContribute}>继续提交 PR</button>}
+      {auth.status === "connected" && <button className="evolution-primary" disabled={busy} onClick={onContribute}>{auth.repositoryAccess?.canRelease ? "提交 PR / 发布" : "继续提交 PR"}</button>}
       {auth.status === "waiting" && <button className="evolution-primary" onClick={() => onAction("openGithubLogin")}><ExternalLink size={14} />打开 GitHub 授权页面</button>}
       {pending && <button onClick={() => onAction("cancelLogin")}>取消登录</button>}
       {retry && <button disabled={busy} onClick={() => onAction("login")}>重新连接 GitHub</button>}
+      {auth.status === "disconnected" && <button disabled={busy} onClick={() => onAction("login")}>连接 GitHub</button>}
+      {auth.status === "connected" && <button disabled={busy} onClick={() => onAction("login")}>检查连接</button>}
     </div>
   </section>;
 }

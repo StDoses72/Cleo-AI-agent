@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import secrets
 import threading
 from dataclasses import dataclass, field
@@ -90,7 +91,7 @@ class CodexApprovalBroker:
         except BaseException:
             with self._lock:
                 self._pending.pop(request["id"], None)
-            return self._safe_rejection(method, params)
+            return pending.response or self._safe_rejection(method, params)
 
         pending.done.wait()
         with self._lock:
@@ -102,7 +103,7 @@ class CodexApprovalBroker:
             raise ValueError(f"Unsupported approval decision: {decision}")
         with self._lock:
             pending = self._pending.get(request_id)
-            if pending is None:
+            if pending is None or pending.response is not None:
                 raise ValueError("This approval request is no longer pending.")
             available = set(pending.request["availableDecisions"])
             if decision not in available:
@@ -119,7 +120,8 @@ class CodexApprovalBroker:
                     self._event(
                         "permission_response",
                         method,
-                        {"id": request_id, "decision": decision},
+                        {"id": request_id, "decision": decision, "source": "user",
+                         "request": pending.request},
                     ),
                 )
         except Exception:
@@ -130,11 +132,25 @@ class CodexApprovalBroker:
             pending.done.set()
         return {"id": request_id, "decision": decision}
 
-    def cancel_all(self) -> None:
+    def cancel_all(self) -> list[dict[str, Any]]:
+        cancelled = []
         with self._lock:
             for pending in self._pending.values():
-                pending.response = self._response(pending.method, pending.params, "cancel")
+                if pending.response is None:
+                    pending.response = self._response(pending.method, pending.params, "cancel")
+                    cancelled.append({"id": pending.request["id"], "decision": "cancel",
+                                      "source": "lifecycle", "request": pending.request})
                 pending.done.set()
+        return cancelled
+
+    async def cancel_pending(self) -> None:
+        for payload in self.cancel_all():
+            try:
+                await emit_event(self._callback, self._event(
+                    "permission_response", payload["request"]["method"], payload,
+                ))
+            except Exception:
+                logging.getLogger(__name__).warning("Approval cancellation could not be recorded")
 
     def _request(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         kind = {

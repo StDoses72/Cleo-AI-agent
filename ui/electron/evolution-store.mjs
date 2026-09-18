@@ -260,7 +260,8 @@ export class EvolutionStore {
       previousRestartError: state.lastRestartError || null,
     };
     if (officialSelection) transaction.officialSelection = {
-      baseTag: build.baseTag || `v${build.version}`,
+      baseTag: build.baseTag || (build.version?.endsWith("-alpha")
+        ? `alpha-${build.version.slice(0, -6)}` : `v${build.version}`),
       sourceArchive: `source-history-${transaction.id}`,
       originalSelection: Object.fromEntries(SELECTION_FIELDS.map((name) => [name, state[name] ?? null])),
     };

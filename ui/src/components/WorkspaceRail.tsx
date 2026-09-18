@@ -39,7 +39,6 @@ export function WorkspaceRail({
         ))}
       </div>
       <div className="rail-bottom">
-        <span className="runtime-dot" title="本地 runtime 已就绪" />
         <button
           className="rail-button"
           type="button"

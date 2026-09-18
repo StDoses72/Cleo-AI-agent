@@ -17,6 +17,7 @@ import type {
   MemoryReviewDetails,
   MemoryReviewSource,
   RuntimeProfile,
+  RuntimeUpdate,
   StreamEvent,
   Thread,
   ThreadSpace,
@@ -24,6 +25,7 @@ import type {
   WorkspaceSnapshot,
   TimelinePage,
   TimelineContent,
+  TimelineItem,
   QuestionRequest,
 } from "../types";
 
@@ -38,8 +40,12 @@ export class IpcCleoClient implements CleoClient {
     return this.bridge.request("load_workspace");
   }
 
-  async loadThread(threadId: string): Promise<Thread> {
-    return this.bridge.request("load_thread", { thread_id: threadId });
+  loadMemory(): Promise<Pick<WorkspaceSnapshot, "memories" | "memoryOverview">> {
+    return this.bridge.request("load_memory");
+  }
+
+  async loadThread(threadId: string, activate = true): Promise<Thread> {
+    return this.bridge.request("load_thread", { thread_id: threadId, ...(!activate ? { activate: false } : {}) });
   }
 
   loadTimeline(threadId: string, direction = "latest" as "latest" | "before" | "after", cursor?: string): Promise<TimelinePage> {
@@ -94,6 +100,7 @@ export class IpcCleoClient implements CleoClient {
     threadId: string,
     prompt: string,
     attachments: Attachment[] = [],
+    runId?: string,
   ): AsyncGenerator<StreamEvent> {
     const streamId = `${threadId}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const events: StreamEvent[] = [];
@@ -109,7 +116,7 @@ export class IpcCleoClient implements CleoClient {
     void this.bridge
       .request(
         "stream_turn",
-        { thread_id: threadId, prompt, attachments },
+        { thread_id: threadId, prompt, attachments, ...(runId ? { run_id: runId } : {}) },
         streamId,
       )
       .catch((error: unknown) => {
@@ -137,8 +144,21 @@ export class IpcCleoClient implements CleoClient {
     }
   }
 
-  async cancelRun(threadId: string): Promise<void> {
-    await this.bridge.request("cancel_run", { thread_id: threadId });
+  async cancelRun(threadId: string, runId?: string): Promise<boolean> {
+    const result = await this.bridge.request<{ cancelled: boolean }>("cancel_run", {
+      thread_id: threadId, ...(runId ? { run_id: runId } : {}),
+    });
+    return result.cancelled;
+  }
+
+  getTiming(timingId: string): Promise<import("../types").TimingDetails> {
+    return this.bridge.request("get_timing", { timing_id: timingId });
+  }
+
+  steerRun(threadId: string, runId: string, requestId: string, text: string, retry = false): Promise<TimelineItem> {
+    return this.bridge.request("steer_run", {
+      thread_id: threadId, run_id: runId, request_id: requestId, text, retry,
+    });
   }
 
   async resolveApproval(
@@ -155,9 +175,13 @@ export class IpcCleoClient implements CleoClient {
 
   async updateRuntime(
     threadId: string,
-    update: Partial<RuntimeProfile>,
+    update: RuntimeUpdate,
   ): Promise<RuntimeProfile> {
     return this.bridge.request("update_runtime", { thread_id: threadId, update });
+  }
+
+  switchHarness(threadId: string, provider: string, model: string, effort?: RuntimeProfile["effort"]): Promise<RuntimeProfile> {
+    return this.bridge.request("switch_harness", { thread_id: threadId, provider, model, effort });
   }
 
   pickAttachments(): Promise<Attachment[]> {

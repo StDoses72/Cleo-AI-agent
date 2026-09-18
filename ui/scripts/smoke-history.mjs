@@ -67,6 +67,7 @@ try {
     window.cleoDesktop = {
       async request(method, params = {}, streamId) {
         if (method === "load_workspace") return { ...snapshot, projects: [{ id: "p", name: "Test", path: "fixture", space: "productivity", accent: "cyan" }], threads: [load("history"), threads[1]], activeThreadId: "history", activeSpace: "productivity", runtime };
+        if (method === "load_memory") return structuredClone({ memories: snapshot.memories, memoryOverview: snapshot.memoryOverview });
         if (method === "get_runtime_catalog") return { nonProductivityProfiles: [], defaultNonProductivityProfile: "", defaultProductivityProvider: "codex", productivityProviders: [{ id: "codex", type: "codex_sdk", defaultModel: "test", modelSource: "config" }] };
         if (method === "get_productivity_models") return { provider: "codex", source: "sdk", models: [{ id: "test", label: "test", isDefault: true, defaultEffort: "low", supportedEfforts: ["low"] }] };
         if (method === "load_thread") return load(params.thread_id);
@@ -110,6 +111,7 @@ try {
   }, { snapshot });
   await page.reload();
   await page.getByText("History item 9999", { exact: true }).waitFor();
+  assert.equal(await page.locator(".history-page-control").count(), 0, "History paging should be automatic");
   const inspector = page.getByTestId("inspector");
   if (await inspector.count()) await inspector.getByRole("button", { name: "关闭检查器", exact: true }).click();
   const viewport = page.locator(".conversation-viewport");

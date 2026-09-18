@@ -49,6 +49,7 @@ export function useTimelineHistory(thread: Thread | null, update: (id: string, f
 
   return {
     busy, error, unread, following, load,
+    isActive: (id: string) => latest.current.thread?.id === id,
     retry: () => load(retryDirection.current),
     follow: (value: boolean) => { follow.current = value; setFollowing(value); if (value) setUnread(false); },
     isFollowing: (id: string) => latest.current.thread?.id === id

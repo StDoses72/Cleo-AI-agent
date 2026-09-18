@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from
 import {
   Braces,
   Check,
-  ChevronRight,
   Circle,
   CircleAlert,
   CircleCheck,
@@ -16,6 +15,8 @@ import {
   X,
 } from "lucide-react";
 import type { MemoryEntry, Project, RuntimeProfile, Thread } from "../types";
+import { accessLabel, approvalLabel, effortLabels } from "../runtime-labels";
+import { Timing } from "./Timing";
 
 export type InspectorTab = "changes" | "context" | "run";
 
@@ -170,34 +171,34 @@ function ContextPanel({
   memories: MemoryEntry[];
   onRevealPath: (value: string) => void;
 }) {
-  const ratio = thread?.usage.used != null
-    ? Math.round((thread.usage.used / thread.usage.limit) * 100) : 0;
+  const ratio = thread?.usage.used != null && thread.usage.limit > 0
+    ? Math.round((thread.usage.used / thread.usage.limit) * 100) : null;
   const relevantMemories = useMemo(() => memories.slice(0, 3), [memories]);
   return (
     <div className="context-panel">
       <section className="inspector-section">
         <div className="section-kicker"><Cpu size={14} /><span>运行参数</span></div>
         <dl className="property-list">
-          <div><dt>Provider</dt><dd>{runtime.provider}</dd></div>
-          <div><dt>Model</dt><dd>{runtime.model}</dd></div>
-          <div><dt>推理</dt><dd>{runtime.effort}</dd></div>
-          <div><dt>访问</dt><dd>{runtime.access}</dd></div>
-          <div><dt>确认</dt><dd>{runtime.approval}</dd></div>
+          <div><dt>服务</dt><dd>{runtime.provider}</dd></div>
+          <div><dt>模型</dt><dd>{runtime.model}</dd></div>
+          <div><dt>思考深度</dt><dd>{runtime.effort ? effortLabels[runtime.effort] ?? runtime.effort : "由模型决定"}</dd></div>
+          <div><dt>访问</dt><dd title={runtime.access}>{accessLabel(runtime.access)}</dd></div>
+          <div><dt>审批</dt><dd title={runtime.approval}>{approvalLabel(runtime.approval)}</dd></div>
         </dl>
       </section>
       <section className="inspector-section">
-        <div className="section-kicker"><Clock3 size={14} /><span>上下文窗口</span><small>{ratio}%</small></div>
-        <div className="usage-track"><span style={{ width: `${ratio}%` }} /></div>
-        <div className="usage-copy"><span>{thread?.usage.used == null ? "上下文用量未知" : `${(thread.usage.used / 1000).toFixed(1)}k / ${(thread.usage.limit / 1000).toFixed(0)}k`}</span><small>in {thread?.usage.input ?? "—"} · out {thread?.usage.output ?? "—"}</small></div>
+        <div className="section-kicker"><Clock3 size={14} /><span>上下文窗口</span><small>{ratio === null ? "—" : `${ratio}%`}</small></div>
+        {ratio !== null && <div className="usage-track"><span style={{ width: `${Math.min(100, ratio)}%` }} /></div>}
+        <div className="usage-copy"><span>{thread?.usage.used == null || thread.usage.limit <= 0 ? "上下文用量未知" : `${(thread.usage.used / 1000).toFixed(1)}k / ${(thread.usage.limit / 1000).toFixed(0)}k`}</span><small>输入 {thread?.usage.input ?? "—"} · 输出 {thread?.usage.output ?? "—"}</small></div>
       </section>
       <section className="inspector-section">
         <div className="section-kicker"><ShieldCheck size={14} /><span>工作区</span></div>
         <button className="workspace-context-row" type="button" onClick={() => project?.path && onRevealPath(project.path)}><span className="project-glyph compact" style={{ "--project-accent": project?.accent } as CSSProperties}>{project?.name.slice(0, 1)}</span><div><strong>{project?.name}</strong><small>{project?.path}</small></div></button>
       </section>
       <section className="inspector-section memory-context">
-        <div className="section-kicker"><CircleCheck size={14} /><span>已附加记忆</span><small>{relevantMemories.length}</small></div>
+        <div className="section-kicker"><CircleCheck size={14} /><span>记忆预览</span><small>{relevantMemories.length}</small></div>
         {relevantMemories.map((memory) => (
-          <button type="button" key={memory.id}><span>{memory.title}</span><ChevronRight size={13} /></button>
+          <details key={memory.id}><summary>{memory.title}</summary><p>{memory.content}</p></details>
         ))}
       </section>
     </div>
@@ -214,8 +215,9 @@ function RunPanel({ thread, project }: { thread: Thread | null; project: Project
         <span className={running ? "running" : hasIssue ? "issue" : completed ? "complete" : "idle"}>{running ? <Circle size={12} /> : hasIssue ? <CircleAlert size={12} /> : completed ? <Check size={12} /> : <Clock3 size={12} />}</span>
         <div><strong>{running ? "Agent 正在执行" : hasIssue ? "上次运行需要查看" : completed ? "上次运行已完成" : "尚未运行"}</strong><small>{running || hasIssue || completed ? thread?.updatedAt : "发送第一条消息后，可在这里查看进度。"}</small></div>
       </section>
+      <Timing key={thread?.currentTiming?.id ?? thread?.id} summary={thread?.currentTiming} error={thread?.timingError} />
       <div className="terminal-head"><Terminal size={14} /><span>cleo · {project?.name ?? "workspace"}</span></div>
-      <pre className="terminal-output" tabIndex={0} role="region" aria-label="终端输出"><span className="prompt">PS {project?.path ?? "D:\\workspace"}&gt;</span>{"\n"}{thread?.terminal?.length ? thread.terminal.join("") : <span className="muted">终端输出会在 Agent 执行命令时实时显示。</span>}{"\n\n"}<span className="cursor">▋</span></pre>
+      <pre className="terminal-output" tabIndex={0} role="region" aria-label="终端输出">{thread?.terminal?.length ? thread.terminal.join("") : <span className="muted">暂无运行输出</span>}{running && <span className="cursor">▋</span>}</pre>
       <div className="run-events">
         {thread?.items.filter((item) => item.type === "tool").slice(-8).map((item) => item.type === "tool" ? <div className={item.status === "error" ? "issue" : ""} key={item.id}>{item.status === "error" ? <CircleAlert size={14} /> : item.status === "running" ? <Circle size={14} /> : <CircleCheck size={14} />}<span>{item.name}</span><time>{item.status === "running" ? "running" : item.status}</time></div> : null)}
         {!thread?.items.some((item) => item.type === "tool") ? <div><Clock3 size={14} /><span>尚无工具运行</span><time>—</time></div> : null}

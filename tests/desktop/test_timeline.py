@@ -15,6 +15,17 @@ def fixture(tmp_path, events):
     return store, TimelineIndex(store, manifest)
 
 
+def test_timing_stays_on_reply_when_a_late_steer_receipt_follows_it(tmp_path):
+    _, index = fixture(tmp_path, [
+        {"id": "u", "type": "user_message", "actor": "user", "content": "goal"},
+        {"id": "a", "type": "assistant_message", "actor": "codex", "content": "reply"},
+        {"type": "steer", "actor": "user", "data": {"payload": {
+            "id": "late", "turnId": "u", "text": "constraint", "status": "received",
+        }}},
+    ])
+    assert index.last_messages(["u"]) == {"u": "a"}
+
+
 def test_ten_thousand_items_page_both_ways_without_rereading_log(tmp_path, monkeypatch):
     events = [
         {

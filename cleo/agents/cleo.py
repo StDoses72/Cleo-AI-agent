@@ -22,7 +22,9 @@ from cleo.config.settings import AgentProfile, settings
 from cleo.memory.paths import DEFAULT_MEMORY_SPACE
 from cleo.memory.persona import render_persona_markdown
 from cleo.memory.reader import READING_INSTRUCTIONS, preference_context
+from cleo.runtime.timing_callbacks import timing_config
 from cleo.runtime.usage import ContextWindowUsage
+from cleo.sessions.ports import SessionRepository
 
 SYSTEM_PROMPT = """
 You are Cleo, a personal AI assistant.
@@ -117,6 +119,7 @@ class Agent:
         space: str = DEFAULT_MEMORY_SPACE,
         profile: AgentProfile | None = None,
         project_path: str | Path | None = None,
+        session_store: SessionRepository | None = None,
     ) -> None:
         """初始化模型、backend、工具列表与 deepagent 图。
 
@@ -192,6 +195,7 @@ class Agent:
             self.deepagent = RuntimeGraph(
                 selected_profile, self.root_dir, system_prompt + "\n\n" + context,
                 scope={"space": space, "project": project},
+                session_store=session_store,
             )
             return
         self.deepagent = create_deep_agent(
@@ -217,6 +221,7 @@ class Agent:
         thread_id: str = "local",
         loaded_info: list | None = None,
         images: list[dict[str, str]] | None = None,
+        message_id: str | None = None,
     ) -> AsyncIterator[str]:
         """以 async generator 形式流式产出 Agent 回复的文本增量。
 
@@ -243,11 +248,13 @@ class Agent:
             "role": "user",
             "content": _build_user_content(message, image_inputs),
         }
+        if message_id is not None:
+            user_message["id"] = message_id
         messages = [user_message] if loaded_info is None else [*loaded_info, user_message]
 
         async for chunk in self.deepagent.astream(
             {"messages": messages},
-            config={"configurable": {"thread_id": thread_id}},
+            config={"configurable": {"thread_id": thread_id}, **timing_config()},
             stream_mode="messages",
         ):
             self._capture_usage(chunk)

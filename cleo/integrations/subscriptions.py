@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import platform
 import shutil
 import sys
 from dataclasses import dataclass
@@ -76,20 +77,33 @@ RUNTIMES = {
         "command": "claude",
         "args": [],
         "login": "claude auth login",
-        "docs": "https://code.claude.com/docs/en/authentication",
+        "docs": "https://code.claude.com/docs/en/setup",
     },
 }
 
 
+def _runtime_path() -> str:
+    """Include standard CLI installs when launched outside a login shell."""
+    paths = [value for value in os.environ.get("PATH", "").split(os.pathsep) if value]
+    paths.append(str(Path.home() / ".local" / "bin"))
+    if sys.platform == "darwin":
+        brew = [Path("/opt/homebrew/bin"), Path("/usr/local/bin")]
+        if platform.machine() != "arm64":
+            brew.reverse()
+        paths.extend(str(path) for path in brew)
+    return os.pathsep.join(dict.fromkeys(paths))
+
+
 def executable(profile: AgentProfile) -> str:
-    command = (
-        profile.executable
-        or (os.environ.get("CLEO_CODEX_BIN") if profile.backend == "codex" else None)
-        or RUNTIMES[profile.backend]["command"]
+    configured = profile.executable or (
+        os.environ.get("CLEO_CODEX_BIN") if profile.backend == "codex" else None
     )
+    command = os.path.expanduser(configured or RUNTIMES[profile.backend]["command"])
     resolved = shutil.which(command)
     if resolved is None:
-        raise FileNotFoundError(f"未找到 {command}。请先安装官方 CLI，或填写可执行文件路径。")
+        resolved = shutil.which(command, path=_runtime_path())
+    if resolved is None:
+        raise FileNotFoundError(f"未找到 {command}。请安装客户端或指定路径。")
     return resolved
 
 
@@ -106,11 +120,13 @@ def runtime_environment() -> dict[str, str]:
         "GOOGLE_GENAI_USE_GCA",
         "CLAUDE_CODE_OAUTH_TOKEN",
     }
-    return {
+    environment = {
         key: value
         for key, value in os.environ.items()
         if key not in excluded and not key.startswith("COPILOT_PROVIDER_")
     }
+    environment["PATH"] = _runtime_path()
+    return environment
 
 
 @dataclass(frozen=True)

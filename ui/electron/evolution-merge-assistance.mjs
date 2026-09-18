@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { CONTRIBUTION_REPOSITORY, contributionTarget, validateContributionTarget } from "./evolution-contributions.mjs";
 
 const shaPattern = /^[a-f0-9]{40}$/;
+const mergeProbes = new WeakMap();
 
 /** Purpose: Reject incomplete remote metadata. Input: Git object ID. Output: pinned SHA. */
 function requireSha(value) {
@@ -56,7 +57,7 @@ export async function checkContribution(manager, selection) {
         headSha: snapshot.commit, compatible: true, conflicts: [], fileCount: snapshot.fileCount,
         checkedAt: new Date().toISOString(), snapshotFormat: snapshot.format };
     } finally { await removeContributionSnapshot(manager, snapshot.directory); }
-  });
+  }, { readOnly: true });
 }
 
 /** Purpose: Gate the existing protected publisher without changing its retry or receipt format. Input: approved submission. Output: PR URL. */
@@ -76,29 +77,36 @@ export async function inspectPullRequest(manager, url) {
     requireSha(pr.headRefOid); requireSha(pr.baseRefOid);
     const owner = pr.headRepositoryOwner?.login;
     const name = pr.headRepository?.name;
-    if (!/^[a-zA-Z0-9-]+$/.test(owner || "") || !/^[a-zA-Z0-9_.-]+$/.test(name || ""))
+    const open = pr.state === "OPEN";
+    if (open && (!/^[a-zA-Z0-9-]+$/.test(owner || "") || !/^[a-zA-Z0-9_.-]+$/.test(name || "")))
       throw new Error("PR 源仓库不存在或不可访问，无法检查合并。");
     let canUpdate;
     let permissionError;
-    try {
+    if (open) try {
       const repository = JSON.parse(await manager.runCommand(tools.gh,
         ["api", `repos/${owner}/${name}`, "--method", "GET"], { env: tools.env }));
       canUpdate = repository.permissions?.push;
     } catch (error) { permissionError = error.message; }
     let probe;
     let probeError;
-    try {
-      probe = await inProbe(manager, tools, async (git) => {
-        await git(["fetch", "--no-tags", `https://github.com/${CONTRIBUTION_REPOSITORY}.git`, pr.baseRefOid]);
-        await git(["fetch", "--no-tags", `https://github.com/${owner}/${name}.git`, pr.headRefOid]);
-        return inspectMerge(git, pr.headRefOid, pr.baseRefOid);
-      });
+    if (open) try {
+      const cached = mergeProbes.get(manager)?.get(url);
+      if (cached?.headSha === pr.headRefOid && cached?.baseSha === pr.baseRefOid) probe = cached;
+      else {
+        probe = await inProbe(manager, tools, async (git) => {
+          await git(["fetch", "--no-tags", `https://github.com/${CONTRIBUTION_REPOSITORY}.git`, pr.baseRefOid]);
+          await git(["fetch", "--no-tags", `https://github.com/${owner}/${name}.git`, pr.headRefOid]);
+          return inspectMerge(git, pr.headRefOid, pr.baseRefOid);
+        });
+        if (!mergeProbes.has(manager)) mergeProbes.set(manager, new Map());
+        mergeProbes.get(manager).set(url, probe);
+      }
     } catch (error) { probeError = error.message; }
     return { ...probe, url, number: pr.number, state: pr.state, targetBranch: pr.baseRefName, headBranch: pr.headRefName,
-      headRepository: `${owner}/${name}`, headSha: pr.headRefOid, baseSha: pr.baseRefOid,
+      headRepository: owner && name ? `${owner}/${name}` : null, headSha: pr.headRefOid, baseSha: pr.baseRefOid,
       mergeable: pr.mergeable, mergeStateStatus: pr.mergeStateStatus, canUpdate, permissionError,
       checks: pr.statusCheckRollup || [], probeError, checkedAt: new Date().toISOString() };
-  });
+  }, { readOnly: true });
 }
 
 /** Purpose: Hand off explicit repair intent with freshly checked refs, never auto-merge. Input: PR URL or selected contribution. Output: agent task text. */

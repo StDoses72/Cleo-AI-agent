@@ -16,6 +16,7 @@ import type {
   MemoryReviewDetails,
   MemoryReviewSource,
   RuntimeProfile,
+  RuntimeUpdate,
   StreamEvent,
   Thread,
   ThreadSpace,
@@ -42,10 +43,11 @@ export class MockCleoClient implements CleoClient {
     ],
     activeAgent: "deepseek-flash", activeDreamAgent: "", dreamEnabled: true,
   };
-  private readonly approvalResolvers = new Map<string, (decision: ApprovalDecision) => void>();
+  private readonly approvalResolvers = new Map<string, { threadId: string; resolve: (decision: ApprovalDecision) => void }>();
   private readonly reviewingMemorySourceIds = new Set<string>();
   private readonly histories = new Map<string, TimelineItem[]>();
   private readonly runVersions = new Map<string, number>();
+  private readonly activeRuns = new Map<string, string>();
   private readonly questions = new Map<string, { request: QuestionRequest; resolve: (answers: Record<string, string[]> | null) => void }>();
 
   async loadWorkspace(): Promise<WorkspaceSnapshot> {
@@ -57,6 +59,11 @@ export class MockCleoClient implements CleoClient {
       thread.history = history;
     }
     return result;
+  }
+
+  async loadMemory(): Promise<Pick<WorkspaceSnapshot, "memories" | "memoryOverview">> {
+    await delay(60);
+    return clone({ memories: snapshot.memories, memoryOverview: snapshot.memoryOverview });
   }
 
   async loadThread(threadId: string): Promise<Thread> {
@@ -83,6 +90,10 @@ export class MockCleoClient implements CleoClient {
     return { items: clone(all.slice(start, end).map(item => ({ ...item, turnHasAnswer: finalTurns.has(item.turnId) }))),
       total: all.length, before: String(start), after: String(end - 1), hasBefore: start > 0,
       hasAfter: end < all.length, revision: String(all.length) };
+  }
+
+  async getTiming(_timingId: string): Promise<import("../types").TimingDetails> {
+    throw new Error("此示例没有计时记录。");
   }
 
   async readTimelineContent(threadId: string, itemId: string, field: string, offset: number): Promise<TimelineContent> {
@@ -190,42 +201,53 @@ export class MockCleoClient implements CleoClient {
     return clone(snapshot);
   }
 
-  async *streamTurn(threadId: string, prompt: string, attachments: Attachment[] = []): AsyncGenerator<StreamEvent> {
+  async *streamTurn(threadId: string, prompt: string, attachments: Attachment[] = [], runId = crypto.randomUUID()): AsyncGenerator<StreamEvent> {
     const version = (this.runVersions.get(threadId) ?? 0) + 1;
     this.runVersions.set(threadId, version);
-    const turnId = `mock-turn-${Date.now()}`;
-    const items = this.histories.get(threadId) ?? clone(snapshot.threads.find(t => t.id === threadId)?.items ?? []);
-    this.histories.set(threadId, items);
-    const user: TimelineItem = { id: turnId, turnId, cursor: String(items.length), order: items.length, type: "message", role: "user", content: prompt, time: "" };
-    items.push(user);
-    yield { type: "turn-started", item: user };
-    if (/提问测试|question demo/i.test(prompt)) {
-      const request: QuestionRequest = { id: `question-${turnId}`, threadId, provider: "claude", status: "pending", questions: [
-        { id: "choice", header: "方向", question: "希望如何实现？", multiple: false, options: [{ label: "最小改动", description: "保留现有流程" }, { label: "重新设计", description: "调整交互方式" }] },
-        { id: "sections", header: "范围", question: "需要哪些部分？", multiple: true, options: [{ label: "前端", description: "用户界面" }, { label: "后端", description: "运行服务" }] },
-        { id: "text", header: "说明", question: "还有哪些补充要求？", multiple: false, options: [] },
-      ] };
-      const answer = new Promise<Record<string, string[]> | null>(resolve => this.questions.set(request.id, { request, resolve }));
-      const questionItem: TimelineItem = { id: request.id, turnId, type: "question", request };
-      items.push(questionItem);
-      yield { type: "question-request", request: clone(request) };
-      const answers = await answer;
-      questionItem.request = { ...request, status: answers ? "answered" : "cancelled", answers: answers ?? undefined };
-      yield { type: "question-resolved", request: clone(questionItem.request) };
-      if (!answers) return;
-    }
-    for await (const event of this.mockTurn(threadId, prompt, attachments)) {
-      if (this.runVersions.get(threadId) !== version) return;
-      if (event.type === "upsert-item") {
-        event.item = { ...event.item, turnId };
-        const at = items.findIndex(i => i.id === event.item.id);
-        event.item.cursor = String(at >= 0 ? at : items.length);
-        event.item.order = at >= 0 ? at : items.length;
-        if (at >= 0) items[at] = clone(event.item); else items.push(clone(event.item));
-      } else if (event.type === "error") {
-        items.push({ id: `${turnId}:error`, turnId, type: "notice", tone: "warning", title: "任务已暂停", detail: event.message });
+    this.activeRuns.set(threadId, runId);
+    const storedThread = snapshot.threads.find(thread => thread.id === threadId)!;
+    storedThread.status = "running";
+    try {
+      const turnId = `mock-turn-${runId}`;
+      const items = this.histories.get(threadId) ?? clone(snapshot.threads.find(t => t.id === threadId)?.items ?? []);
+      this.histories.set(threadId, items);
+      const user: TimelineItem = { id: turnId, turnId, cursor: String(items.length), order: items.length, type: "message", role: "user", content: prompt, time: "" };
+      items.push(user);
+      yield { type: "turn-started", item: user };
+      if (/提问测试|question demo/i.test(prompt)) {
+        const request: QuestionRequest = { id: `question-${turnId}`, threadId, provider: "claude", status: "pending", questions: [
+          { id: "choice", header: "方向", question: "希望如何实现？", multiple: false, options: [{ label: "最小改动", description: "保留现有流程" }, { label: "重新设计", description: "调整交互方式" }] },
+          { id: "sections", header: "范围", question: "需要哪些部分？", multiple: true, options: [{ label: "前端", description: "用户界面" }, { label: "后端", description: "运行服务" }] },
+          { id: "text", header: "说明", question: "还有哪些补充要求？", multiple: false, options: [] },
+        ] };
+        const answer = new Promise<Record<string, string[]> | null>(resolve => this.questions.set(request.id, { request, resolve }));
+        const questionItem: TimelineItem = { id: request.id, turnId, type: "question", request };
+        items.push(questionItem);
+        yield { type: "question-request", request: clone(request) };
+        const answers = await answer;
+        questionItem.request = { ...request, status: answers ? "answered" : "cancelled", answers: answers ?? undefined };
+        yield { type: "question-resolved", request: clone(questionItem.request) };
+        if (!answers) return;
       }
-      yield event;
+      for await (const event of this.mockTurn(threadId, prompt, attachments)) {
+        if (this.runVersions.get(threadId) !== version) return;
+        if (event.type === "upsert-item") {
+          event.item = { ...event.item, turnId };
+          const at = items.findIndex(i => i.id === event.item.id);
+          event.item.cursor = String(at >= 0 ? at : items.length);
+          event.item.order = at >= 0 ? at : items.length;
+          if (at >= 0) items[at] = clone(event.item); else items.push(clone(event.item));
+        } else if (event.type === "error") {
+          storedThread.status = "attention";
+          items.push({ id: `${turnId}:error`, turnId, type: "notice", tone: "warning", title: "任务已暂停", detail: event.message });
+        }
+        yield event;
+      }
+    } finally {
+      if (this.activeRuns.get(threadId) === runId) {
+        this.activeRuns.delete(threadId);
+        if (storedThread.status === "running") storedThread.status = "completed";
+      }
     }
   }
 
@@ -273,7 +295,7 @@ export class MockCleoClient implements CleoClient {
         },
       };
       const decision = await new Promise<ApprovalDecision>((resolve) => {
-        this.approvalResolvers.set(approvalId, resolve);
+        this.approvalResolvers.set(approvalId, { threadId, resolve });
       });
       this.approvalResolvers.delete(approvalId);
       yield { type: "approval-resolved", response: { id: approvalId, decision } };
@@ -455,15 +477,22 @@ export class MockCleoClient implements CleoClient {
     yield { type: "done", summary: prompt.slice(0, 54) };
   }
 
-  async cancelRun(_threadId: string): Promise<void> {
+  async cancelRun(_threadId: string, runId?: string): Promise<boolean> {
+    const activeRunId = this.activeRuns.get(_threadId);
+    if (!activeRunId || (runId && activeRunId !== runId)) return false;
     this.runVersions.set(_threadId, (this.runVersions.get(_threadId) ?? 0) + 1);
     await delay(250);
-    for (const resolve of this.approvalResolvers.values()) resolve("cancel");
-    this.approvalResolvers.clear();
+    if (this.activeRuns.has(_threadId) && this.activeRuns.get(_threadId) !== activeRunId) return true;
+    for (const [id, request] of this.approvalResolvers) {
+      if (request.threadId === _threadId) { request.resolve("cancel"); this.approvalResolvers.delete(id); }
+    }
+    const thread = snapshot.threads.find(thread => thread.id === _threadId);
+    if (thread) thread.status = "attention";
     this.histories.get(_threadId)?.push({ id: `cancel-${Date.now()}`, type: "notice", tone: "info", title: "已停止当前运行", detail: "可以继续发送新请求。" });
     for (const [id, question] of this.questions) {
       if (question.request.threadId === _threadId) { question.resolve(null); this.questions.delete(id); }
     }
+    return true;
   }
 
   async resolveApproval(
@@ -471,16 +500,35 @@ export class MockCleoClient implements CleoClient {
     approvalId: string,
     decision: ApprovalDecision,
   ): Promise<void> {
-    const resolve = this.approvalResolvers.get(approvalId);
-    if (!resolve) throw new Error("This approval request is no longer pending.");
-    resolve(decision);
+    const request = this.approvalResolvers.get(approvalId);
+    if (!request || request.threadId !== _threadId) throw new Error("This approval request is no longer pending.");
+    request.resolve(decision);
+  }
+
+  async steerRun(): Promise<TimelineItem> {
+    throw new Error("演示模式无法向运行中的模型投递指令。");
   }
 
   async updateRuntime(
-    _threadId: string,
-    update: Partial<RuntimeProfile>,
+    threadId: string,
+    update: RuntimeUpdate,
   ): Promise<RuntimeProfile> {
-    return { ...snapshot.runtime, ...update };
+    const thread = snapshot.threads.find(item => item.id === threadId);
+    if (!thread) throw new Error("Unknown thread");
+    const current = thread.runtime ?? snapshot.runtime;
+    const { discardPendingPermissions, ...changes } = update;
+    const runtime = { ...current, ...changes, settingsRevision: (current.settingsRevision ?? 0) + 1,
+      ...(discardPendingPermissions ? { pendingPermissions: null } : {}) };
+    thread.runtime = runtime;
+    return clone(runtime);
+  }
+
+  async switchHarness(threadId: string, provider: string, model: string, effort?: RuntimeProfile["effort"]): Promise<RuntimeProfile> {
+    const thread = snapshot.threads.find((item) => item.id === threadId);
+    if (!thread) throw new Error("Unknown thread");
+    const runtime = { ...(thread.runtime ?? snapshot.runtime), provider, model, effort: effort ?? null };
+    thread.runtime = runtime;
+    return runtime;
   }
 
   async pickAttachments(): Promise<Attachment[]> {
@@ -527,7 +575,7 @@ export class MockCleoClient implements CleoClient {
   async getRuntimeCatalog(): Promise<RuntimeCatalog> {
     await delay(120);
     return {
-      nonProductivityProfiles: this.modelSettings.profiles.map(p => ({ id: p.name, provider: p.provider, model: p.model, maxTokens: p.maxTokens, active: p.name === this.modelSettings.activeAgent })),
+      nonProductivityProfiles: this.modelSettings.profiles.map(p => ({ id: p.name, label: p.displayName || p.name, provider: p.provider, model: p.model, maxTokens: p.maxTokens, active: p.name === this.modelSettings.activeAgent })),
       productivityProviders: [
         { id: "codex", type: "codex_sdk", defaultModel: "gpt-5.6-sol", modelSource: "dynamic" },
         { id: "claude", type: "claude_sdk", defaultModel: "claude-opus-5", modelSource: "dynamic" },

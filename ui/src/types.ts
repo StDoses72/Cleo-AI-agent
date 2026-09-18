@@ -16,6 +16,11 @@ export type UpdatePhase =
   | "error";
 
 export interface UpdateState {
+  checkedAt?: number;
+  releases?: { tag: string; title: string; prerelease: boolean; reason: string | null }[];
+  selectedTag?: string | null;
+  selectedPrerelease?: boolean;
+  currentPrerelease?: boolean;
   phase: UpdatePhase;
   currentVersion: string;
   latestVersion: string | null;
@@ -77,7 +82,23 @@ export interface TimelinePageInfo {
 export interface TimelinePage extends TimelinePageInfo { items: TimelineItem[] }
 export interface TimelineContent { text: string; offset: number; next: number; total: number }
 
+export interface SteerReceipt {
+  id: string;
+  threadId: string;
+  runId: string;
+  turnId?: string | null;
+  text: string;
+  mode: "native" | "boundary";
+  status: "queued" | "sending" | "received" | "failed" | "cancelled" | "uncertain";
+  revision: number;
+  retryable: boolean;
+  error?: string | null;
+  createdAt: string;
+}
+
 export type TimelineItem = {
+  timing?: TimingSummary;
+  timingError?: string | null;
   order?: number;
   turnId?: string;
   turnHasAnswer?: boolean;
@@ -90,6 +111,7 @@ export type TimelineItem = {
       role: "user" | "assistant";
       content: string;
       time: string;
+      steer?: SteerReceipt;
     }
   | {
       id: string;
@@ -110,6 +132,8 @@ export type TimelineItem = {
       command: string;
       status: "running" | "done" | "error";
       output?: string;
+      permission?: { source: string; policy: string; decision: string };
+      approvalAudit?: boolean;
     }
   | {
       id: string;
@@ -151,6 +175,12 @@ export interface LocalSkill {
 }
 
 export interface Thread {
+  currentTiming?: TimingSummary | null;
+  timingError?: string | null;
+  steerReady?: boolean;
+  activeRunId?: string | null;
+  pendingApprovals?: ApprovalRequest[];
+  waitingFor?: "approval" | "question";
   skills?: LocalSkill[];
   id: string;
   space: ThreadSpace;
@@ -180,6 +210,8 @@ export interface Attachment {
 export type ApprovalDecision = "accept" | "acceptForSession" | "decline" | "cancel";
 
 export interface ApprovalRequest {
+  title?: string;
+  decisionLabels?: Partial<Record<ApprovalDecision, string>>;
   id: string;
   kind: "command" | "file_change" | "permissions" | "elicitation";
   method: string;
@@ -219,6 +251,15 @@ export interface MemoryEntry {
 }
 
 export interface RuntimeProfile {
+  steerMode?: "native" | "boundary";
+  settingsRevision?: number;
+  permissionOptions?: {
+    access: { value: string; label: string; description: string }[];
+    approval: { value: string; label: string; description: string }[];
+    reason?: string;
+  };
+  pendingPermissions?: { provider: string; access?: string | null; approval?: string | null } | null;
+  handoffStatus?: "prepared" | "submitted" | "completed" | null;
   supportsQuestions?: boolean;
   profileId?: string;
   provider: string;
@@ -231,6 +272,10 @@ export interface RuntimeProfile {
   editable?: boolean;
 }
 
+export type RuntimeUpdate = Partial<Pick<RuntimeProfile, "model" | "effort" | "access" | "approval" | "profileId">> & {
+  discardPendingPermissions?: boolean;
+};
+
 export interface RuntimeModelOption {
   id: string;
   label: string;
@@ -242,6 +287,7 @@ export interface RuntimeModelOption {
 
 export interface NonProductivityProfileOption {
   id: string;
+  label?: string;
   provider: string;
   model: string;
   maxTokens: number;
@@ -385,6 +431,7 @@ export interface MemoryProjectSummary {
 }
 
 export interface MemoryReviewSource {
+  title?: string;
   id: string;
   space: "non_productivity" | "productivity";
   project: string;
@@ -423,6 +470,8 @@ export type MemoryViewMode = "all" | "projects" | "pending";
 export type MemoryReviewAction = "consolidate" | "skip";
 
 export interface MemoryOverview {
+  timings?: TimingSummary[];
+  timingError?: string | null;
   schema_version: 1;
   issues?: Array<{ space: string; project: string; error: string; questions?: string[] }>;
   summary: {
@@ -466,6 +515,7 @@ export interface UndoChangesResult {
 }
 
 export type StreamEvent =
+  | { type: "timing"; timing: TimingSummary }
   | { type: "upsert-item"; item: TimelineItem }
   | { type: "turn-started"; item: TimelineItem }
   | { type: "question-request"; request: QuestionRequest }
@@ -473,6 +523,7 @@ export type StreamEvent =
   | { type: "changes"; changes: ChangeFile[] }
   | { type: "change-history"; changeSet: ChangeSet }
   | { type: "usage"; usage: Usage }
+  | { type: "runtime"; runtime: RuntimeProfile }
   | { type: "terminal"; chunk: string }
   | { type: "refresh"; activeThreadId: string; space: ThreadSpace }
   | { type: "navigate-space"; space: ThreadSpace }
@@ -483,8 +534,10 @@ export type StreamEvent =
   | { type: "error"; message: string };
 
 export interface CleoClient {
+  getTiming(timingId: string): Promise<TimingDetails>;
   loadWorkspace(): Promise<WorkspaceSnapshot>;
-  loadThread(threadId: string): Promise<Thread>;
+  loadMemory(): Promise<Pick<WorkspaceSnapshot, "memories" | "memoryOverview">>;
+  loadThread(threadId: string, activate?: boolean): Promise<Thread>;
   loadTimeline(threadId: string, direction?: "latest" | "before" | "after", cursor?: string): Promise<TimelinePage>;
   readTimelineContent(threadId: string, itemId: string, field: string, offset: number): Promise<TimelineContent>;
   getPendingQuestions(threadId: string): Promise<QuestionRequest[]>;
@@ -494,10 +547,12 @@ export interface CleoClient {
   addProject(space: ThreadSpace, projectPath: string): Promise<WorkspaceSnapshot>;
   removeProject(projectId: string): Promise<WorkspaceSnapshot>;
   restoreChatBackups(): Promise<WorkspaceSnapshot>;
-  streamTurn(threadId: string, prompt: string, attachments?: Attachment[]): AsyncGenerator<StreamEvent>;
-  cancelRun(threadId: string): Promise<void>;
+  streamTurn(threadId: string, prompt: string, attachments?: Attachment[], runId?: string): AsyncGenerator<StreamEvent>;
+  cancelRun(threadId: string, runId?: string): Promise<boolean>;
+  steerRun(threadId: string, runId: string, requestId: string, text: string, retry?: boolean): Promise<TimelineItem>;
   resolveApproval(threadId: string, approvalId: string, decision: ApprovalDecision): Promise<void>;
-  updateRuntime(threadId: string, update: Partial<RuntimeProfile>): Promise<RuntimeProfile>;
+  updateRuntime(threadId: string, update: RuntimeUpdate): Promise<RuntimeProfile>;
+  switchHarness(threadId: string, provider: string, model: string, effort?: RuntimeProfile["effort"]): Promise<RuntimeProfile>;
   pickAttachments(): Promise<Attachment[]>;
   prepareAttachments(files: File[]): Promise<Attachment[]>;
   pickWorkspace(): Promise<string | null>;
@@ -530,4 +585,28 @@ export interface CleoClient {
   ): Promise<WorkspaceSnapshot>;
   undoChanges(threadId: string): Promise<UndoChangesResult>;
   resetWorkspace(): Promise<void>;
+}
+
+export interface TimingSummary {
+  title?: string | null;
+  id: string;
+  sessionId: string;
+  space: string;
+  project: string;
+  kind: "reply" | "dream";
+  turnId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  status: "running" | "completed" | "failed" | "cancelled" | "unconfirmed" | "skipped" | "needs_clarification" | "pending";
+  elapsedMs: number;
+  phase: string | null;
+  unavailable: string[];
+  persistenceError: string | null;
+}
+
+export interface TimingDetails extends TimingSummary {
+  accumulatedMs: number;
+  attempts: TimingSummary[];
+  spans: { id: string; ordinal: number; label: string; category: string; parentId: string | null;
+    elapsedMs: number; status: TimingSummary["status"] }[];
 }

@@ -34,10 +34,12 @@ window.on("console", (message) => {
 });
 
 try {
-  await window.getByText("connected", { exact: true }).waitFor({ timeout: 20_000 });
-  await window.getByTestId("composer-input").waitFor();
+  await window.getByTestId("composer-input").waitFor({ timeout: 20_000 });
+  const connected = await window.evaluate(async () =>
+    (await window.cleoDesktop.request("load_workspace")).backend.connected);
+  if (!connected) throw new Error("Packaged backend is not connected.");
   await window.getByRole("button", { name: "进化", exact: true }).click();
-  await window.getByRole("region", { name: "修改操作", exact: true }).waitFor();
+  await window.locator('.evolution-toolbar[aria-label="进化操作"]').waitFor();
   const evolution = await window.evaluate(() => window.cleoDesktop.getEvolutionState());
   if (!evolution.supported || evolution.phase !== "idle") throw new Error("Packaged evolution controller is unavailable.");
   await window.getByRole("button", { name: "开发", exact: true }).click();

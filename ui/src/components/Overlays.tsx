@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { dreamStatusLabel } from "../memoryStatus";
+import { UpdateVersionPicker } from "./UpdateVersionPicker";
+import { handleDialogKeyDown, Modal } from "./Modal";
+import { accessLabel, approvalLabel, effortLabels } from "../runtime-labels";
 import {
   ArrowRight,
   Brain,
@@ -33,6 +36,7 @@ import type {
   MemoryOverview,
   Project,
   RuntimeProfile,
+  RuntimeUpdate,
   UpdateState,
   WorkspaceSpace,
 } from "../types";
@@ -56,12 +60,10 @@ interface CommandPaletteProps {
 export function CommandPalette({ open, actions, onClose }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (open) {
       setQuery("");
       setSelectedIndex(0);
-      window.setTimeout(() => inputRef.current?.focus(), 30);
     }
   }, [open]);
   const filtered = useMemo(() => {
@@ -77,12 +79,12 @@ export function CommandPalette({ open, actions, onClose }: CommandPaletteProps) 
 
   if (!open) return null;
   return (
-    <div className="overlay-backdrop" role="presentation" onMouseDown={onClose}>
-      <div className="command-palette" role="dialog" aria-label="命令面板" onMouseDown={(event) => event.stopPropagation()}>
+    <Modal open={open} className="overlay-backdrop" label="命令面板" onClose={onClose}>
+      <div className="command-palette" onMouseDown={(event) => event.stopPropagation()}>
         <label className="command-search">
           <Search size={18} />
           <input
-            ref={inputRef}
+            autoFocus
             value={query}
             aria-label="搜索命令"
             role="combobox"
@@ -133,7 +135,7 @@ export function CommandPalette({ open, actions, onClose }: CommandPaletteProps) 
         </div>
         <footer><span><kbd>↑↓</kbd> 选择</span><span><kbd>↵</kbd> 打开</span></footer>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -149,11 +151,13 @@ export function RenameThreadDialog({ title, onSave, onClose }: {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    dialogRef.current?.showModal();
+    const dialog = dialogRef.current!;
+    dialog.showModal();
     inputRef.current?.select();
+    return () => { if (dialog.open) dialog.close(); };
   }, []);
   return (
-    <dialog ref={dialogRef} className="rename-dialog" aria-labelledby="rename-title" onCancel={(event) => {
+    <dialog ref={dialogRef} className="rename-dialog" aria-labelledby="rename-title" onKeyDown={handleDialogKeyDown} onCancel={(event) => {
       event.preventDefault();
       if (!savingRef.current) onClose();
     }}>
@@ -192,6 +196,7 @@ interface DeleteThreadDialogProps {
   threadTitle: string | null;
   productivity: boolean;
   deleting: boolean;
+  error?: string | null;
   onCancel: () => void;
   onConfirm: () => void;
 }
@@ -200,47 +205,42 @@ export function DeleteThreadDialog({
   threadTitle,
   productivity,
   deleting,
+  error,
   onCancel,
   onConfirm,
 }: DeleteThreadDialogProps) {
-  const cancelRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (threadTitle) window.setTimeout(() => cancelRef.current?.focus(), 30);
-  }, [threadTitle]);
   if (!threadTitle) return null;
   return (
-    <div className="overlay-backdrop delete-thread-backdrop" role="presentation" onMouseDown={deleting ? undefined : onCancel}>
+    <Modal open className="overlay-backdrop delete-thread-backdrop" role="alertdialog"
+      labelledBy="delete-thread-title" describedBy="delete-thread-detail" onClose={deleting ? undefined : onCancel}>
       <div
         className="delete-thread-dialog"
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="delete-thread-title"
-        aria-describedby="delete-thread-detail"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <span className="delete-thread-icon"><Trash2 size={18} /></span>
         <div>
-          <span className="eyebrow">DELETE THREAD</span>
           <h2 id="delete-thread-title">删除“{threadTitle}”？</h2>
           <p id="delete-thread-detail">
-            此操作会永久删除 Cleo 保存的 thread 与本地历史记录，无法撤销。
-            {productivity ? " SDK / ACP 中的原生会话不会被远程删除。" : ""}
+            永久删除此任务的本地对话记录，无法撤销。
+            {productivity ? "外部客户端中的会话会保留。" : ""}
           </p>
         </div>
+        {error && <p className="dialog-error" role="alert">{error}</p>}
         <footer>
-          <button ref={cancelRef} type="button" onClick={onCancel} disabled={deleting}>取消</button>
+          <button autoFocus type="button" onClick={onCancel} disabled={deleting}>取消</button>
           <button className="danger" type="button" onClick={onConfirm} disabled={deleting}>
             {deleting ? "删除中…" : "永久删除"}
           </button>
         </footer>
       </div>
-    </div>
+    </Modal>
   );
 }
 
 interface RemoveProjectDialogProps {
   project: Project | null;
   removing: boolean;
+  error?: string | null;
   onCancel: () => void;
   onConfirm: () => void;
 }
@@ -248,41 +248,35 @@ interface RemoveProjectDialogProps {
 export function RemoveProjectDialog({
   project,
   removing,
+  error,
   onCancel,
   onConfirm,
 }: RemoveProjectDialogProps) {
-  const cancelRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (project) window.setTimeout(() => cancelRef.current?.focus(), 30);
-  }, [project]);
   if (!project) return null;
   return (
-    <div className="overlay-backdrop delete-thread-backdrop" role="presentation" onMouseDown={removing ? undefined : onCancel}>
+    <Modal open className="overlay-backdrop delete-thread-backdrop" role="alertdialog"
+      labelledBy="remove-project-title" describedBy="remove-project-detail" onClose={removing ? undefined : onCancel}>
       <div
         className="delete-thread-dialog"
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="remove-project-title"
-        aria-describedby="remove-project-detail"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <span className="delete-thread-icon"><Trash2 size={18} /></span>
         <div>
-          <span className="eyebrow">REMOVE PROJECT</span>
           <h2 id="remove-project-title">移除“{project.name}”？</h2>
           <p id="remove-project-detail">
             项目会从侧边栏移除，但不会删除本地文件或 Cleo 保存的历史任务。
             以后重新打开此目录即可恢复。
           </p>
         </div>
+        {error && <p className="dialog-error" role="alert">{error}</p>}
         <footer>
-          <button ref={cancelRef} type="button" onClick={onCancel} disabled={removing}>取消</button>
+          <button autoFocus type="button" onClick={onCancel} disabled={removing}>取消</button>
           <button className="danger" type="button" onClick={onConfirm} disabled={removing}>
             {removing ? "移除中…" : "移除项目"}
           </button>
         </footer>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -293,19 +287,23 @@ interface SettingsModalProps {
   onMotionChange: (enabled: boolean) => void;
   dreamAgent: MemoryOverview["dream_agent"];
   runtime: RuntimeProfile;
+  runtimeThread?: { id: string; title: string } | null;
+  onPermissionsChange?: (threadId: string, update: RuntimeUpdate) => Promise<void>;
   supportedEfforts: NonNullable<RuntimeProfile["effort"]>[];
   modelSettings: ModelSettings | null;
   modelSettingsLoading: boolean;
+  modelSettingsError?: string | null;
   agentInstructions: AgentInstructions | null;
   agentInstructionsLoading: boolean;
+  agentInstructionsError?: string | null;
   updateState: UpdateState;
   onThemeChange: (theme: "dark" | "light") => void;
-  onRuntimeChange: (update: Partial<RuntimeProfile>) => void;
+  onRuntimeChange: (update: RuntimeUpdate) => void;
   onLoadModelSettings: () => Promise<ModelSettings>;
   onApplyModelSettings: ApplyModelSettings;
   onLoadAgentInstructions: () => Promise<AgentInstructions>;
   onSaveAgentInstructions: (content: string) => Promise<AgentInstructions>;
-  onCheckForUpdates: () => void;
+  onCheckForUpdates: (tag?: string) => Promise<UpdateState | undefined>;
   onDownloadUpdate: () => void;
   onInstallUpdate: () => void;
   onRevealPath: (path: string) => void;
@@ -316,8 +314,8 @@ interface SettingsModalProps {
 
 type SettingsPage = "appearance" | "agent" | "instructions" | "models" | "models-add" | "models-dream" | "updates" | "data";
 const settingsTitles: Record<SettingsPage, string> = {
-  appearance: "外观", agent: "Agent", instructions: "Agent 指令", models: "当前配置",
-  "models-add": "新增连接", "models-dream": "DreamAgent", updates: "软件更新", data: "数据与记忆",
+  appearance: "外观", agent: "运行设置", instructions: "对话指令", models: "当前配置",
+  "models-add": "新增连接", "models-dream": "记忆整理", updates: "软件更新", data: "数据与记忆",
 };
 
 export function SettingsModal({
@@ -327,11 +325,15 @@ export function SettingsModal({
   onMotionChange,
   dreamAgent,
   runtime,
+  runtimeThread,
+  onPermissionsChange,
   supportedEfforts,
   modelSettings,
   modelSettingsLoading,
+  modelSettingsError,
   agentInstructions,
   agentInstructionsLoading,
+  agentInstructionsError,
   updateState,
   onThemeChange,
   onRuntimeChange,
@@ -352,33 +354,31 @@ export function SettingsModal({
   useEffect(() => { scrollRef.current?.scrollTo(0, 0); }, [open, page]);
   useEffect(() => {
     if (open) {
-      void onLoadModelSettings();
-      void onLoadAgentInstructions();
+      void onLoadModelSettings().catch(() => {});
+      void onLoadAgentInstructions().catch(() => {});
     }
   }, [open]);
-  if (!open) return null;
   const isModels = page === "models" || page === "models-add" || page === "models-dream";
   const modelPage: ModelsPage = page === "models-add" ? "add" : page === "models-dream" ? "dream" : "current";
   return (
-    <div className="overlay-backdrop settings-backdrop" role="presentation" onMouseDown={onClose}>
-      <div className="settings-modal" role="dialog" aria-modal="true" aria-label="设置" onMouseDown={(event) => event.stopPropagation()}>
+    <Modal open={open} className="overlay-backdrop settings-backdrop" label="设置" onClose={onClose}>
+      <div className="settings-modal" onMouseDown={(event) => event.stopPropagation()}>
         <button className="icon-button settings-close" aria-label="关闭设置" onClick={onClose}><X size={17} /></button>
         <aside>
           <div className="settings-brand"><span>C</span><strong>设置</strong></div>
           <nav aria-label="设置导航">
             <button className={page === "appearance" ? "active" : ""} aria-current={page === "appearance" ? "page" : undefined} type="button" onClick={() => setPage("appearance")}><Sparkles size={16} />外观</button>
-            <button className={page === "agent" ? "active" : ""} aria-current={page === "agent" ? "page" : undefined} type="button" onClick={() => setPage("agent")}><SlidersHorizontal size={16} />Agent</button>
-            <button className={page === "instructions" ? "active" : ""} aria-current={page === "instructions" ? "page" : undefined} type="button" onClick={() => setPage("instructions")}><FileText size={16} />Agent 指令</button>
+            <button className={page === "agent" ? "active" : ""} aria-current={page === "agent" ? "page" : undefined} type="button" onClick={() => setPage("agent")}><SlidersHorizontal size={16} />运行设置</button>
+            <button className={page === "instructions" ? "active" : ""} aria-current={page === "instructions" ? "page" : undefined} type="button" onClick={() => setPage("instructions")}><FileText size={16} />对话指令</button>
             <button className="settings-model-group" type="button" onClick={() => setPage("models")}><Plus size={16} />模型</button>
             <div className="settings-model-subnav">
               <button className={page === "models" ? "active" : ""} aria-current={page === "models" ? "page" : undefined} onClick={() => setPage("models")}><SlidersHorizontal size={15} />当前配置</button>
               <button className={page === "models-add" ? "active" : ""} aria-current={page === "models-add" ? "page" : undefined} onClick={() => setPage("models-add")}><Plus size={15} />新增连接</button>
-              <button className={page === "models-dream" ? "active" : ""} aria-current={page === "models-dream" ? "page" : undefined} onClick={() => setPage("models-dream")}><Moon size={15} />DreamAgent</button>
+              <button className={page === "models-dream" ? "active" : ""} aria-current={page === "models-dream" ? "page" : undefined} onClick={() => setPage("models-dream")}><Moon size={15} />记忆整理</button>
             </div>
             <button className={page === "updates" ? "active" : ""} aria-current={page === "updates" ? "page" : undefined} type="button" onClick={() => setPage("updates")}><RefreshCw size={16} />更新</button>
             <button className={page === "data" ? "active" : ""} aria-current={page === "data" ? "page" : undefined} type="button" onClick={() => setPage("data")}><Database size={16} />数据与记忆</button>
           </nav>
-          <small>Cleo Desktop · Preview</small>
         </aside>
         <section className="settings-content">
           <header className="settings-header">
@@ -386,38 +386,40 @@ export function SettingsModal({
             <div className="settings-heading"><h2>{settingsTitles[page]}</h2>{page === "models" && <button className="settings-primary" onClick={() => setPage("models-add")}><Plus size={15} />新增连接</button>}</div>
           </header>
           <div className="settings-scroll" ref={scrollRef}>
+          <div hidden={page !== "instructions"} className="settings-instructions-container">
+            {agentInstructionsError && <p className="settings-error" role="alert">{agentInstructionsError}
+              <button type="button" onClick={() => void onLoadAgentInstructions().catch(() => {})}>重试</button></p>}
+            <AgentInstructionsPage instructions={agentInstructions} loading={agentInstructionsLoading}
+              onSave={onSaveAgentInstructions} onRevealPath={onRevealPath} />
+          </div>
+          <div hidden={!isModels}>
+            <ModelSettingsPanel page={modelPage} settings={modelSettings} busy={modelSettingsLoading}
+              loadError={modelSettingsError} onRetry={() => void onLoadModelSettings().catch(() => {})}
+              active={open && isModels} activeProfileId={runtime.profileId} onApply={onApplyModelSettings}
+              onNavigate={next => setPage(next === "current" ? "models" : next === "add" ? "models-add" : "models-dream")} />
+          </div>
           {page === "appearance" ? (
             <div className="settings-page">
-              <SettingsRow title="主题" description="选择更适合当前环境的界面亮度。">
+              <SettingsRow title="主题">
                 <div className="theme-options">
-                  <button className={theme === "dark" ? "active" : ""} type="button" onClick={() => onThemeChange("dark")}><span className="theme-preview dark"><Moon size={16} /></span><span>夜色</span>{theme === "dark" ? <Check size={14} /> : null}</button>
-                  <button className={theme === "light" ? "active" : ""} type="button" onClick={() => onThemeChange("light")}><span className="theme-preview light"><Sun size={16} /></span><span>雾白</span>{theme === "light" ? <Check size={14} /> : null}</button>
+                  <button className={theme === "dark" ? "active" : ""} type="button" onClick={() => onThemeChange("dark")}><span className="theme-preview dark"><Moon size={16} /></span><span>深色</span>{theme === "dark" ? <Check size={14} /> : null}</button>
+                  <button className={theme === "light" ? "active" : ""} type="button" onClick={() => onThemeChange("light")}><span className="theme-preview light"><Sun size={16} /></span><span>浅色</span>{theme === "light" ? <Check size={14} /> : null}</button>
                 </div>
               </SettingsRow>
-              <SettingsRow title="信息密度" description="当前使用适合桌面工作区的紧凑布局。"><span className="settings-value">紧凑</span></SettingsRow>
-              <SettingsRow title="动态效果" description="控制面板切换与动画；同时遵循系统的减少动态效果偏好。"><label className="switch"><input type="checkbox" aria-label="动态效果" checked={motionEnabled} onChange={(event) => onMotionChange(event.target.checked)} /><span /></label></SettingsRow>
+              <SettingsRow title="动态效果"><label className="switch"><input type="checkbox" aria-label="动态效果" checked={motionEnabled} onChange={(event) => onMotionChange(event.target.checked)} /><span /></label></SettingsRow>
             </div>
           ) : page === "agent" ? (
             <div className="settings-page">
-              <SettingsRow title="Provider" description="来自当前 thread 的真实 harness session。"><span className="settings-value">{runtime.provider}</span></SettingsRow>
-              <SettingsRow title="默认模型" description={runtime.editable === false ? "Cleo 对话模型来自当前 agent profile。" : "应用到当前 productivity thread。"}><select disabled={runtime.editable === false} value={runtime.model} onChange={(event) => onRuntimeChange({ model: event.target.value })}>{(runtime.models?.length ? runtime.models : [runtime.model]).map((model) => <option key={model}>{model}</option>)}</select></SettingsRow>
-              <SettingsRow title="推理强度" description="更高强度适合复杂代码任务。"><div className="segmented-control">{supportedEfforts.length ? supportedEfforts.map((effort) => <button className={runtime.effort === effort ? "active" : ""} type="button" key={effort} onClick={() => onRuntimeChange({ effort })}>{effort}</button>) : <button type="button" disabled>default</button>}</div></SettingsRow>
-              <SettingsRow title="文件访问" description="每个 turn 都会明确显示实际 sandbox。"><span className="settings-value mono">{runtime.access}</span></SettingsRow>
+              {runtimeThread && <p className="settings-scope">当前任务 · {runtimeThread.title}</p>}
+              <SettingsRow title="服务"><span className="settings-value">{runtime.provider}</span></SettingsRow>
+              <SettingsRow title="当前任务模型">{runtime.editable === false ? <span className="settings-value">{runtime.model}</span> : <select aria-label="当前任务模型" value={runtime.model} onChange={event => onRuntimeChange({ model: event.target.value })}>{(runtime.models?.length ? runtime.models : [runtime.model]).map(model => <option key={model}>{model}</option>)}</select>}</SettingsRow>
+              <SettingsRow title="思考深度"><div className="segmented-control">{supportedEfforts.length ? supportedEfforts.map((effort) => <button className={runtime.effort === effort ? "active" : ""} type="button" key={effort} onClick={() => onRuntimeChange({ effort })}>{effortLabels[effort] ?? effort}</button>) : <span className="settings-value">由模型决定</span>}</div></SettingsRow>
+              <RuntimePermissions key={runtimeThread?.id ?? "draft"} runtime={runtime}
+                threadId={runtimeThread?.id} onChange={onPermissionsChange} />
             </div>
-          ) : page === "instructions" ? (
-            <AgentInstructionsPage
-              instructions={agentInstructions}
-              loading={agentInstructionsLoading}
-              onSave={onSaveAgentInstructions}
-              onRevealPath={onRevealPath}
-            />
-          ) : isModels ? (
-            <ModelSettingsPanel page={modelPage} settings={modelSettings} busy={modelSettingsLoading}
-              activeProfileId={runtime.profileId}
-              onApply={onApplyModelSettings}
-              onNavigate={next => setPage(next === "current" ? "models" : next === "add" ? "models-add" : "models-dream")} />
-          ) : page === "updates" ? (
+          ) : page === "instructions" || isModels ? null : page === "updates" ? (
             <UpdateSettingsPage
+              active={open}
               state={updateState}
               onCheck={onCheckForUpdates}
               onDownload={onDownloadUpdate}
@@ -425,19 +427,62 @@ export function SettingsModal({
             />
           ) : (
             <div className="settings-page">
-              <SettingsRow title="本地优先" description="会话、配置和记忆只保存在 Cleo 数据目录。"><span className="status-good">已启用</span></SettingsRow>
-              <SettingsRow title="DreamAgent" description="在记忆页查看整理结果和待确认来源。"><span className="settings-value">{dreamStatusLabel(dreamAgent)}</span></SettingsRow>
-              <SettingsRow title="记忆作用域" description="普通对话与开发任务严格分区。"><span className="settings-value">已隔离</span></SettingsRow>
-              <SettingsRow title="配置模板" description="复制与 CLI --print-config-template 相同的模板。"><div className="settings-actions"><button type="button" onClick={() => onCopyConfigTemplate("cleo")}>复制 Cleo</button><button type="button" onClick={() => onCopyConfigTemplate("harnesses")}>复制 Harness</button></div></SettingsRow>
-              <SettingsRow title="重置工作区" description="对应 CLI --reset-to-main；保留 Cleo 配置。"><button className="settings-action danger" type="button" onClick={() => { if (window.confirm("将仓库重置到本地 main 并清理未跟踪文件？此操作不可撤销。")) onResetWorkspace(); }}>重置到 main</button></SettingsRow>
-              <div className="settings-note"><Brain size={17} /><p>当前页面直接读取本地 Cleo backend；会话、记忆、模型与运行参数均来自持久化状态。</p></div>
+              <SettingsRow title="记忆整理"><span className="settings-value">{dreamStatusLabel(dreamAgent)}</span></SettingsRow>
+              <details className="settings-advanced"><summary>高级设置</summary>
+                <SettingsRow title="配置模板"><div className="settings-actions"><button type="button" onClick={() => onCopyConfigTemplate("cleo")}>复制 Cleo 配置</button><button type="button" onClick={() => onCopyConfigTemplate("harnesses")}>复制运行配置</button></div></SettingsRow>
+                <SettingsRow title="重置工作区" description="回到本地 main，删除未提交的改动；保留配置。"><button className="settings-action danger" type="button" onClick={() => { if (window.confirm("将仓库重置到本地 main 并清理未跟踪文件？此操作不可撤销。")) onResetWorkspace(); }}>重置工作区</button></SettingsRow>
+              </details>
             </div>
           )}
           </div>
         </section>
       </div>
-    </div>
+    </Modal>
   );
+}
+
+function RuntimePermissions({ runtime, threadId, onChange }: {
+  runtime: RuntimeProfile;
+  threadId?: string;
+  onChange?: (threadId: string, update: RuntimeUpdate) => Promise<void>;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const inFlight = useRef(false);
+  const pending = runtime.pendingPermissions;
+  const sameProvider = !pending || pending.provider === runtime.provider;
+  const change = async (update: RuntimeUpdate) => {
+    if (!threadId || !onChange || inFlight.current) return;
+    inFlight.current = true;
+    setSaving(true); setError("");
+    try { await onChange(threadId, update); }
+    catch (error) { setError(error instanceof Error ? error.message : "权限更改未保存，请重试。"); }
+    finally { inFlight.current = false; setSaving(false); }
+  };
+  return <>
+    {(["access", "approval"] as const).map(field => {
+      const title = field === "access" ? "文件访问" : "审批方式";
+      const label = field === "access" ? accessLabel : approvalLabel;
+      const choices = runtime.permissionOptions?.[field] ?? [];
+      const value = (sameProvider && pending?.[field]) || runtime[field];
+      const choice = choices.find(choice => choice.value === value);
+      return <SettingsRow key={field} title={title} description={choice?.description}>
+        {threadId && onChange && choices.length ? <select aria-label={title} value={value} disabled={saving}
+          onChange={event => void change({ [field]: event.target.value })}>
+          {!choice && <option value={value}>{label(value)}</option>}
+          {choices.map(choice => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
+        </select> : <span className="settings-value">{label(runtime[field])}</span>}
+      </SettingsRow>;
+    })}
+    {pending && <div className="settings-permission-pending" role="status">
+      <p>{sameProvider ? `下次运行使用所选权限。当前（含补充指令）：${accessLabel(runtime.access)} · ${approvalLabel(runtime.approval)}。`
+        : "待生效权限属于之前的服务，请重新选择或取消更改。"}</p>
+      <button className="settings-action" disabled={saving} onClick={() => void change({ discardPendingPermissions: true })}>取消更改</button>
+    </div>}
+    {runtime.permissionOptions?.reason && <p className="settings-scope">{runtime.permissionOptions.reason}</p>}
+    {saving && <p className="settings-scope" role="status">正在保存…</p>}
+    {error && <p className="settings-error" role="alert">{error}</p>}
+  </>;
 }
 
 function formatBytes(value: number) {
@@ -448,13 +493,13 @@ function formatBytes(value: number) {
 function updateDescription(state: UpdateState) {
   if (state.phase === "ready" && state.installBlocked) return state.installBlocked;
   if (state.phase === "ready" && state.error) return state.error;
-  if (state.operationBusy && !["downloading", "installing"].includes(state.phase)) return "另一项版本操作正在进行。";
+  if (state.operationBusy && !["checking", "downloading", "installing"].includes(state.phase)) return "另一项版本操作正在进行。";
   switch (state.phase) {
     case "unsupported": return state.error || "开发模式不会连接发布服务器；安装后的 Cleo 会自动检查。";
-    case "idle": return "尚未检查更新。";
-    case "checking": return "正在检查 GitHub Release…";
-    case "up-to-date": return state.latestVersion ? `已是最新版本（${state.latestVersion}）。` : "已是最新版本。";
-    case "available": return `发现 Cleo ${state.latestVersion}，下载后会校验 SHA-256。`;
+    case "idle": return "正在获取版本信息…";
+    case "checking": return "正在检查更新…";
+    case "up-to-date": return state.selectedTag ? `正在使用所选版本（${state.latestVersion}）。` : state.latestVersion ? `已是最新版本（${state.latestVersion}）。` : "已是最新版本。";
+    case "available": return `${state.selectedTag ? "已选择" : "可更新至"} ${state.latestVersion}${state.selectedPrerelease ? " · 预发布版" : ""}`;
     case "downloading": return `正在下载 ${formatBytes(state.downloadedBytes)} / ${formatBytes(state.totalBytes)}。`;
     case "ready": return `Cleo ${state.latestVersion} 已准备好，点击后重启安装。`;
     case "installing": return state.installStage === "restarting" ? "正在启动新版本…" : "正在校验并解压更新…";
@@ -465,42 +510,89 @@ function updateDescription(state: UpdateState) {
 }
 
 function UpdateSettingsPage({
+  active,
   state,
   onCheck,
   onDownload,
   onInstall,
 }: {
+  active: boolean;
   state: UpdateState;
-  onCheck: () => void;
+  onCheck: (tag?: string) => Promise<UpdateState | undefined>;
   onDownload: () => void;
   onInstall: () => void;
 }) {
+  const [checking, setChecking] = useState(false);
+  const [checkError, setCheckError] = useState("");
+  const inFlight = useRef(false);
+  const lastAttempt = useRef(0);
+  const failures = useRef(0);
+  const current = useRef({ state, onCheck });
+  current.current = { state, onCheck };
+  useEffect(() => { if (!state.error) setCheckError(""); }, [state.checkedAt]);
+  const check = async (tag?: string) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    lastAttempt.current = Date.now();
+    setChecking(true); setCheckError("");
+    try {
+      const result = await current.current.onCheck(tag);
+      if (result?.phase === "error") failures.current += 1;
+      else failures.current = 0;
+    } catch (error) {
+      failures.current += 1;
+      setCheckError(error instanceof Error ? error.message : "无法读取版本，请重试。");
+    } finally { inFlight.current = false; setChecking(false); }
+  };
+  useEffect(() => {
+    if (!active) return;
+    const refresh = () => {
+      const latest = current.current.state;
+      if (document.hidden || latest.operationBusy || inFlight.current
+          || !["idle", "available", "up-to-date", "updated", "error"].includes(latest.phase)) return;
+      const retryAfter = failures.current || latest.phase === "error"
+        ? Math.min(300000, 60000 * 2 ** Math.max(0, failures.current - 1)) : 300000;
+      if (Date.now() - Math.max(latest.checkedAt ?? 0, lastAttempt.current) < retryAfter) return;
+      void check();
+    };
+    refresh();
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    const timer = window.setInterval(refresh, 30000);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+      window.clearInterval(timer);
+    };
+  }, [active, state.phase, state.operationBusy]);
   const percent = state.totalBytes
     ? Math.min(100, Math.round((state.downloadedBytes / state.totalBytes) * 100))
     : 0;
-  const busy = state.operationBusy || state.phase === "checking" || state.phase === "downloading" || state.phase === "installing";
-  const action = state.phase === "available"
-    ? { label: "下载更新", run: onDownload }
-    : state.phase === "ready"
-      ? { label: "重启并安装", run: onInstall }
-      : { label: state.phase === "checking" ? "检查中…" : "检查更新", run: onCheck };
+  const busy = checking || state.operationBusy || state.phase === "checking" || state.phase === "downloading" || state.phase === "installing";
+  let action: { label: string; run: () => void } | null = null;
+  if (checkError || ["error", "install-failed"].includes(state.phase)) action = { label: "重试", run: () => void check() };
+  else if (state.phase === "available") action = { label: "下载更新", run: onDownload };
+  else if (state.phase === "ready") action = { label: "重启并安装", run: onInstall };
+  else if (state.phase === "downloading") action = { label: "正在下载…", run: onDownload };
+  else if (state.phase === "installing") action = { label: "正在安装…", run: onInstall };
   return (
     <div className="settings-page update-settings-page">
       <div className="update-hero">
-        <span className="update-mark"><RefreshCw size={22} /></span>
-        <div><span className="eyebrow">CLEO DESKTOP</span><h3>版本 {state.currentVersion}</h3><p>{updateDescription(state)}</p></div>
+        <div><h3>Cleo {state.currentVersion}{state.currentPrerelease ? " · 预发布版" : ""}</h3>
+          <p role={checkError || ["error", "install-failed"].includes(state.phase) ? "alert" : "status"}>{checkError || updateDescription(state)}</p></div>
       </div>
       {state.phase === "downloading" ? <div className="update-progress" aria-label={`更新下载进度 ${percent}%`}><i style={{ width: `${percent}%` }} /></div> : null}
-      <div className="update-actions">
-        <button type="button" disabled={busy || state.phase === "unsupported" || (state.phase === "ready" && Boolean(state.installBlocked))} onClick={state.phase === "up-to-date" ? onCheck : action.run}>{state.phase === "up-to-date" ? "重新检查" : action.label}</button>
-      </div>
-      <div className="settings-note"><Brain size={17} /><p>只切换程序版本，保留聊天、记忆与配置。新版启动失败时自动回退。</p></div>
-      {state.dependencies ? <div className="settings-note"><RefreshCw size={17} /><p>{
+      {action && <div className="update-actions">
+        <button type="button" disabled={busy || (state.phase === "ready" && Boolean(state.installBlocked))} onClick={action.run}>{action.label}</button>
+      </div>}
+      {["available", "ready"].includes(state.phase) && <p className="update-data-note">更新会保留聊天、记忆与配置。</p>}
+      <UpdateVersionPicker state={state} busy={Boolean(busy)} onSelect={tag => void check(tag)} />
+      {state.dependencies && <details className="settings-advanced"><summary>运行依赖{state.dependencies.phase === "error" ? " · 更新未完成" : ""}</summary><p>{
         state.dependencies.phase === "ready" ? "运行依赖已更新并通过检查，下次启动自动生效。"
           : state.dependencies.phase === "error" ? `依赖更新未完成，继续使用当前版本。${state.dependencies.error || ""}`
             : ["checking", "updating"].includes(state.dependencies.phase) ? "正在后台检查并更新 SDK 和浏览器工具…"
               : "当前使用已验证的运行依赖。"
-      }</p></div> : null}
+      }</p></details>}
     </div>
   );
 }
@@ -559,11 +651,14 @@ function AgentInstructionsPage({
 }) {
   const [draft, setDraft] = useState("");
   const [baseline, setBaseline] = useState("");
+  const baselineRef = useRef("");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   useEffect(() => {
     if (!instructions) return;
-    setDraft(instructions.content);
+    const previousBaseline = baselineRef.current;
+    setDraft(current => current === previousBaseline ? instructions.content : current);
+    baselineRef.current = instructions.content;
     setBaseline(instructions.content);
     setError(null);
   }, [instructions]);
@@ -577,21 +672,20 @@ function AgentInstructionsPage({
       setBaseline(result.content);
       setSaved(true);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "无法保存 Agent 指令");
+      setError(reason instanceof Error ? reason.message : "无法保存 对话指令");
     }
   };
   return (
     <form className="settings-page agent-instructions-page" onSubmit={submit}>
       <div className="agent-instructions-intro">
         <div>
-          <strong>Non-productivity 系统指令</strong>
-          <p>供 Cleo 普通对话读取；不会传给 Codex、Claude 或 OpenCode productivity harness。</p>
+          <p>仅用于普通对话，不影响开发任务。</p>
         </div>
         <button type="button" disabled={!instructions?.path} onClick={() => instructions?.path && onRevealPath(instructions.path)}><FolderOpen size={14} />打开位置</button>
       </div>
-      <code className="agent-instructions-path">{instructions?.path ?? "正在读取 AGENTS.md…"}</code>
+      <code className="agent-instructions-path">{instructions?.path ?? (loading ? "正在读取…" : "尚未读取指令")}</code>
       <textarea
-        aria-label="Non-productivity Agent 指令"
+        aria-label="对话指令内容"
         spellCheck={false}
         value={draft}
         disabled={!instructions && loading}
@@ -605,7 +699,7 @@ function AgentInstructionsPage({
         }}
       />
       <footer>
-        <span className={error ? "error" : ""}>{error ?? (saved ? "已保存；后续 non-productivity 对话将读取新指令。" : instructions?.exists === false ? "保存后会创建 AGENTS.md。" : dirty ? "有未保存修改" : "未修改")}</span>
+        <span className={error ? "error" : ""}>{error ?? (saved ? "已保存，后续对话生效。" : instructions?.exists === false ? "保存后会创建 AGENTS.md。" : dirty ? "有未保存修改" : "未修改")}</span>
         <div>
           <button type="button" disabled={!dirty || loading} onClick={() => { setDraft(baseline); setError(null); setSaved(false); }}><RotateCcw size={14} />撤销修改</button>
           <button className="primary" type="submit" disabled={!dirty || loading}><Save size={14} />{loading ? "保存中…" : "保存"}</button>
@@ -615,15 +709,15 @@ function AgentInstructionsPage({
   );
 }
 
-function SettingsRow({ title, description, children }: { title: string; description: string; children: ReactNode }) {
-  return <div className="settings-row"><div><strong>{title}</strong><p>{description}</p></div><div className="settings-control">{children}</div></div>;
+function SettingsRow({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
+  return <div className="settings-row"><div><strong>{title}</strong>{description && <p>{description}</p>}</div><div className="settings-control">{children}</div></div>;
 }
 
-export function LoadingScreen({ error }: { error: string | null }) {
+export function LoadingScreen({ error, onRetry }: { error: string | null; onRetry?: () => void }) {
   return (
     <div className="loading-screen">
       <div className="loading-brand"><span>C</span></div>
-      {error ? <><strong>无法打开工作区</strong><p>{error}</p></> : <><div className="loading-line"><i /></div><span>正在打开本地工作区</span></>}
+      {error ? <><strong>无法打开工作区</strong><p>{error}</p><button onClick={onRetry}>重试</button></> : <><div className="loading-line"><i /></div><span>正在打开本地工作区</span></>}
     </div>
   );
 }

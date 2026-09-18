@@ -2,6 +2,7 @@
 
 import asyncio
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from openai_codex.errors import JsonRpcError
@@ -17,6 +18,9 @@ class DraftClient:
     def __init__(self, calls, error=None):
         self.calls = calls
         self.error = error
+        self._client = SimpleNamespace(
+            request=AsyncMock(return_value=SimpleNamespace(requirements=None)),
+        )
 
     async def __aenter__(self):
         return self

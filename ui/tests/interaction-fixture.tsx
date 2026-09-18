@@ -51,13 +51,13 @@ function Fixture() {
       onOpenPath={() => {}} onThreadCommand={() => {}} commands={["/help", "/git"]} skills={skills}
       approvalRequest={null} approvalPending={false} approvalError={null} onResolveApproval={() => {}}
     /></div>}
-    <EvolutionCases state={data?.acceptance} requests={data?.requests} busy={busy} canReview canCompare
+    <EvolutionCases state={data?.acceptance} requests={data?.requests} busy={busy} canReview
       onAction={(name, params) => { void action(name, params); }} onCreate={async () => {}}
       onImprove={(caseId, body, id) => action("feedback", { caseId, body, id, threadId: "thread" })} />
-    <EvolutionPreparation requests={data?.requests || []} acceptance={data?.acceptance} preparing={busy} busy={busy}
+    <EvolutionPreparation requests={data?.requests || []} acceptance={data?.acceptance} busy={busy}
       onResume={(request, clarification, skipClarification) => { void action("resume", {
         id: request.id, threadId: request.threadId, prompt: request.prompt, clarification, skipClarification,
-      }); }} onRevise={async () => {}} />
+      }); }} />
   </div>;
 }
 createRoot(document.getElementById("root")!).render(<Fixture />);

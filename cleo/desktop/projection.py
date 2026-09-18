@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Iterable
 from datetime import UTC, datetime
@@ -44,6 +45,7 @@ def timeline_from_events(
     questions = state.get("questions", {})
     thoughts = state.get("thoughts", {})
     answers = state.get("answers", {})
+    steers = state.get("steers", {})
     for event in events:
         event_type = str(event.get("type") or "")
         event_id = str(event.get("id") or f"event-{len(items)}")
@@ -54,8 +56,19 @@ def timeline_from_events(
         data = event.get("data") if isinstance(event.get("data"), dict) else {}
         payload = data.get("payload") if isinstance(data.get("payload"), dict) else data
         if event_type in {"user_message", "human"} and content:
+            if data.get("steer_id"):
+                continue
             current_turn_key = event_id
-            items.append(_message(event_id, "user", content, event.get("created_at")))
+            if not data.get("steer_ids"):
+                items.append(_message(event_id, "user", content, event.get("created_at")))
+        elif event_type == "steer":
+            item = steer_item(payload)
+            existing = steers.get(payload["id"])
+            if existing is None:
+                steers[payload["id"]] = item
+                items.append(item)
+            else:
+                existing.update(item)
         elif event_type in {"assistant_message", "assistant_fragment", "ai"} and content:
             identifier = data.get("timeline_id") or event_id
             answer = answers.get(identifier)
@@ -126,6 +139,8 @@ def timeline_from_events(
                     tools[f"{current_turn_key}:{tool_id}"] = item
                 items.append(item)
             item["status"] = "error" if source.get("status") == "failed" else "done"
+            if source.get("permission"):
+                item["permission"] = source["permission"]
             output = _content_text(source.get("output") or content)
             if output:
                 item["output"] = output
@@ -133,6 +148,21 @@ def timeline_from_events(
             question = {"id": payload["id"], "type": "question", "request": dict(payload)}
             questions[payload["id"]] = question
             items.append(question)
+        elif event_type in {"approval_review", "permission_response"} or (
+            event_type == "provider_event" and data.get("provider_event_type") in {
+                "item/autoApprovalReview/started", "item/autoApprovalReview/completed",
+            }
+        ):
+            provider = str(data.get("provider") or event.get("actor") or "")
+            approval = _approval_item(payload, provider)
+            approval["id"] = data.get("timeline_id") or approval["id"]
+            key = f"{current_turn_key}:{approval['id']}"
+            existing = tools.get(key)
+            if existing is None:
+                tools[key] = approval
+                items.append(approval)
+            else:
+                existing.update(approval)
         elif event_type == "question_response" and payload.get("id") in questions:
             questions[payload["id"]]["request"].update(payload)
         elif event_type in {
@@ -300,6 +330,7 @@ def stream_event_item(event: AgentEvent, state: dict[str, Any]) -> list[dict[str
         item.get("id")
         or payload.get("itemId")
         or item.get("toolCallId")
+        or item.get("tool_use_id")
         or payload.get("turnId")
     )
     event_key = str(event_identifier or len(state))
@@ -434,6 +465,8 @@ def stream_event_item(event: AgentEvent, state: dict[str, Any]) -> list[dict[str
             }
         tool = dict(tool)
         tool["status"] = "error" if item.get("status") == "failed" else "done"
+        if item.get("permission"):
+            tool["permission"] = item["permission"]
         result = _content_text(item.get("output") or event.text)
         if result:
             tool["output"] = result
@@ -452,6 +485,12 @@ def stream_event_item(event: AgentEvent, state: dict[str, Any]) -> list[dict[str
         output.append({"type": "approval-request", "request": payload})
     elif event.type == "permission_response":
         output.append({"type": "approval-resolved", "response": payload})
+        output.append({"type": "upsert-item", "item": _approval_item(payload, event.provider)})
+    elif event.type == "approval_review":
+        approval = _approval_item(payload, event.provider)
+        key = str(payload.get("reviewId") or payload.get("id"))
+        state[f"tool:approval:{key}"] = approval
+        output.append({"type": "upsert-item", "item": approval})
     elif event.type in {"question_request", "question_response"}:
         output.append({"type": "question-request" if event.type == "question_request"
                        else "question-resolved", "request": payload})
@@ -478,12 +517,54 @@ def finalize_stream_tools(state: dict[str, Any]) -> list[dict[str, Any]]:
     return [{"type": "upsert-item", "item": tool} for tool in finalized]
 
 
+def _approval_item(payload: dict[str, Any], provider: str) -> dict[str, Any]:
+    review = payload.get("review") or {}
+    decision = str(review.get("status") or payload.get("decision") or "unknown")
+    labels = {"inProgress": "审查中", "approved": "已允许", "accept": "已允许",
+              "acceptForSession": "已允许后续同类请求", "denied": "已拒绝", "decline": "已拒绝",
+              "cancel": "已取消", "aborted": "已取消", "timedOut": "审查超时"}
+    result = labels.get(decision, "结果未知")
+    source = "自动审查" if review else {
+        "user": "人工审批", "lifecycle": "运行结束", "policy": "自动审批",
+        "unavailable": "审批不可用",
+    }.get(payload.get("source", "user"), "后端权限检查")
+    request = payload.get("action") or payload.get("request") or {}
+    command = (request.get("command") or request.get("title") or request.get("argv")
+               or request.get("files") or request.get("permissions") or request.get("fileChanges")
+               or request)
+    if not isinstance(command, str):
+        command = json.dumps(command, ensure_ascii=False) if command else ""
+    detail = f"来源：{provider} · {source}\n结果：{result}"
+    if payload.get("decisionSource"):
+        detail += "\n决策来源：" + str(payload["decisionSource"])
+    if payload.get("policy"):
+        detail += "\n策略：" + str(payload["policy"])
+    reason = review.get("rationale") or request.get("reason")
+    if reason:
+        detail += "\n原因：" + str(reason)
+    if request.get("permissions") and request.get("command"):
+        detail += "\n请求参数：" + json.dumps(request["permissions"], ensure_ascii=False)
+    return {
+        "id": f"approval-{payload.get('reviewId') or payload.get('id')}",
+        "type": "tool", "name": f"{source} · {result}", "command": command, "output": detail,
+        "approvalPending": decision == "inProgress",
+        "approvalAudit": True,
+        "status": "running" if decision == "inProgress" else (
+            "done" if decision in {"approved", "accept", "acceptForSession"} else "error"
+        ),
+    }
+
+
 def _finalize_running_tools(tools: Iterable[Any]) -> list[dict[str, Any]]:
     finalized: list[dict[str, Any]] = []
     for tool in tools:
         if not isinstance(tool, dict) or tool.get("status") != "running":
             continue
         tool["status"] = "error"
+        if tool.get("approvalPending"):
+            tool["approvalPending"] = False
+            tool["name"] = "自动审查 · 未完成"
+            tool["output"] = str(tool.get("output", "")) + "\n任务已结束，未收到审查结果。"
         tool.setdefault("output", _INCOMPLETE_TOOL_OUTPUT)
         finalized.append(tool)
     return finalized
@@ -501,6 +582,14 @@ def _message(event_id: str, role: str, content: str, created_at: Any) -> dict[st
         except ValueError:
             time_text = ""
     return {"id": event_id, "type": "message", "role": role, "content": content, "time": time_text}
+
+
+def steer_item(receipt: dict[str, Any]) -> dict[str, Any]:
+    item = _message(f"steer-{receipt['id']}", "user", receipt["text"], receipt.get("createdAt"))
+    item["steer"] = receipt
+    if receipt.get("turnId"):
+        item["turnId"] = receipt["turnId"]
+    return item
 
 
 def _plan_step(value: Any) -> dict[str, str] | None:

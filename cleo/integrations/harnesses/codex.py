@@ -17,7 +17,10 @@ from openai_codex import (
 )
 from openai_codex.api import ReasoningEffort
 from openai_codex.errors import JsonRpcError
-from openai_codex.generated.v2_all import GetAccountRateLimitsResponse
+from openai_codex.generated.v2_all import (
+    ConfigRequirementsReadResponse,
+    GetAccountRateLimitsResponse,
+)
 
 from cleo.harnesses.control import (
     HarnessAccount,
@@ -26,6 +29,7 @@ from cleo.harnesses.control import (
     NativeSessionDetail,
     NativeSessionPage,
     SessionOptions,
+    SteerRejected,
 )
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 from cleo.harnesses.provider import NativeSessionNotFoundError, ProviderSession, ProviderTurn
@@ -52,6 +56,7 @@ class _CodexRuntime:
     active_turn: AsyncTurnHandle | None = None
     approvals: CodexApprovalBroker = field(default_factory=CodexApprovalBroker)
     user_approvals_enabled: bool = False
+    context_binding: Any = None
 
 
 class CodexProvider:
@@ -97,6 +102,8 @@ class CodexProvider:
         self,
         project_path: str,
         model: str | None = None,
+        *,
+        context=None,
     ) -> ProviderSession:
         """创建 AsyncCodex client 并启动新 thread。
 
@@ -111,7 +118,11 @@ class CodexProvider:
             client 并向上抛出异常。
         """
         approvals = CodexApprovalBroker(self.name)
-        client = self._client_with_approvals(approvals)
+        client = (
+            self._client_with_approvals(approvals, context=context)
+            if context
+            else self._client_with_approvals(approvals)
+        )
         await client.__aenter__()
         try:
             options = SessionOptions(
@@ -119,25 +130,38 @@ class CodexProvider:
                 approval_mode=self._approval_mode,
                 sandbox=self._sandbox.value,
             )
-            thread = await client.thread_start(
-                approval_mode=self._sdk_approval_mode(self._approval_mode),
-                cwd=project_path,
-                model=options.model,
-                sandbox=self._sandbox,
-            )
+            if options.approval_mode == "user":
+                thread = await self._manual_thread(client, "thread_start", project_path, options)
+            else:
+                thread = await client.thread_start(
+                    approval_mode=self._sdk_approval_mode(self._approval_mode),
+                    cwd=project_path, model=options.model, sandbox=self._sandbox,
+                )
         except BaseException:
             await client.close()
             raise
         self._sessions[thread.id] = _CodexRuntime(
-            client, thread, options, project_path, approvals=approvals
+            client, thread, options, project_path, approvals=approvals, context_binding=context
         )
         return ProviderSession(id=thread.id, native_id=thread.id)
+
+    async def create_context_session(self, project_path, model, binding):
+        if self._memory_mcp is None:
+            raise ValueError("Codex context reader is not configured")
+        return await self.create_session(project_path, model, context=binding)
+
+    async def resume_context_session(self, native_id, project_path, model, binding):
+        if self._memory_mcp is None:
+            raise ValueError("Codex context reader is not configured")
+        return await self.resume_session(native_id, project_path, model, context=binding)
 
     async def resume_session(
         self,
         native_session_id: str,
         project_path: str,
         model: str | None = None,
+        *,
+        context=None,
     ) -> ProviderSession:
         """创建 client 并通过 ``thread_resume`` 恢复既有 thread。
 
@@ -152,7 +176,11 @@ class CodexProvider:
             ``ProviderSession``(id == 恢复后的 thread id), 由 AgentAdapter 消费。
         """
         approvals = CodexApprovalBroker(self.name)
-        client = self._client_with_approvals(approvals)
+        client = (
+            self._client_with_approvals(approvals, context=context)
+            if context
+            else self._client_with_approvals(approvals)
+        )
         await client.__aenter__()
         try:
             options = SessionOptions(
@@ -160,13 +188,15 @@ class CodexProvider:
                 approval_mode=self._approval_mode,
                 sandbox=self._sandbox.value,
             )
-            thread = await client.thread_resume(
-                native_session_id,
-                approval_mode=self._sdk_approval_mode(self._approval_mode),
-                cwd=project_path,
-                model=options.model,
-                sandbox=self._sandbox,
-            )
+            if options.approval_mode == "user":
+                thread = await self._manual_thread(
+                    client, "thread_resume", project_path, options, native_session_id,
+                )
+            else:
+                thread = await client.thread_resume(
+                    native_session_id, approval_mode=self._sdk_approval_mode(self._approval_mode),
+                    cwd=project_path, model=options.model, sandbox=self._sandbox,
+                )
         except JsonRpcError as error:
             await client.close()
             if (
@@ -179,7 +209,7 @@ class CodexProvider:
             await client.close()
             raise
         self._sessions[thread.id] = _CodexRuntime(
-            client, thread, options, project_path, approvals=approvals
+            client, thread, options, project_path, approvals=approvals, context_binding=context
         )
         return ProviderSession(id=thread.id, native_id=thread.id)
 
@@ -210,6 +240,7 @@ class CodexProvider:
         status = "failed"
         error: str | None = None
         async with runtime.lock:
+
             async def approval_event(event: AgentEvent) -> None:
                 events.append(event)
                 await emit_event(on_event, event)
@@ -230,12 +261,18 @@ class CodexProvider:
                 finally:
                     turn_started.set()
                 runtime.active_turn = turn
+                await emit_event(on_event, AgentEvent(
+                    provider=self.name, type="runtime_turn_started",
+                    data={"native_turn_id": turn.id},
+                ))
                 message_phases: dict[str, str] = {}
                 async for notification in turn.stream():
                     data = self._notification_data(notification.payload)
                     started_item = data.get("item")
-                    if (isinstance(started_item, dict)
-                            and started_item.get("type") == "agentMessage"):
+                    if (
+                        isinstance(started_item, dict)
+                        and started_item.get("type") == "agentMessage"
+                    ):
                         message_phases[str(started_item.get("id"))] = str(
                             started_item.get("phase") or "",
                         )
@@ -260,8 +297,11 @@ class CodexProvider:
                     if event is None:
                         continue
                     events.append(event)
-                    if (event.type == "assistant_message_chunk" and event.text
-                            and data.get("phase") in {"final_answer", "final"}):
+                    if (
+                        event.type == "assistant_message_chunk"
+                        and event.text
+                        and data.get("phase") in {"final_answer", "final"}
+                    ):
                         response_parts.append(event.text)
                     await emit_event(on_event, event)
                 return turn
@@ -273,7 +313,7 @@ class CodexProvider:
                 turn = await asyncio.shield(turn_task)
             except asyncio.CancelledError:
                 await runtime.approvals.questions.cancel_all()
-                runtime.approvals.cancel_all()
+                await runtime.approvals.cancel_pending()
                 await turn_started.wait()
                 if not turn_task.done() and runtime.active_turn is not None:
                     await runtime.active_turn.interrupt()
@@ -281,13 +321,13 @@ class CodexProvider:
                 raise
             finally:
                 if not turn_task.done():
-                    runtime.approvals.cancel_all()
+                    await runtime.approvals.cancel_pending()
                     await runtime.client.close()
                     await asyncio.gather(turn_task, return_exceptions=True)
                 runtime.active_turn = None
                 await runtime.approvals.questions.cancel_all()
                 runtime.approvals.questions.callback = None
-                runtime.approvals.cancel_all()
+                await runtime.approvals.cancel_pending()
                 runtime.approvals.unbind()
 
         response = final_response or "".join(response_parts) or None
@@ -332,7 +372,6 @@ class CodexProvider:
             更新后的 ``SessionOptions``, 由 AgentAdapter 持久化并回显给 CLI。
         """
         runtime = self._sessions[session_id]
-        current = runtime.options
         if effort is not None:
             ReasoningEffort(effort)
         if approval_mode is not None:
@@ -340,12 +379,31 @@ class CodexProvider:
                 raise ValueError(f"Unsupported Codex approval mode: {approval_mode}")
         if sandbox is not None:
             Sandbox(sandbox)
+        if approval_mode is not None or sandbox is not None:
+            response = await runtime.client._client.request(
+                "configRequirements/read", None, response_model=ConfigRequirementsReadResponse,
+            )
+            requirements = response.requirements
+            if requirements is not None:
+                rules = requirements.model_dump(mode="json", by_alias=True)
+                allowed_sandbox = rules.get("allowedSandboxModes")
+                native_sandbox = "danger-full-access" if sandbox == "full-access" else sandbox
+                if (sandbox is not None and allowed_sandbox is not None
+                        and native_sandbox not in allowed_sandbox):
+                    raise ValueError("此设备的管理策略不允许所选文件访问范围。")
+                policy = "never" if approval_mode == "deny_all" else "on-request"
+                allowed_approval = rules.get("allowedApprovalPolicies")
+                if (approval_mode is not None and allowed_approval is not None
+                        and policy not in allowed_approval):
+                    raise ValueError("此设备的管理策略不允许所选审批方式。")
+                features = rules.get("featureRequirements") or {}
+                if approval_mode == "auto_review" and features.get("guardian_approval") is False:
+                    raise ValueError("此设备的管理策略未启用自动审查。")
+        current = runtime.options
         runtime.options = SessionOptions(
             model=current.model if model is None else model,
             effort=current.effort if effort is None else effort,
-            approval_mode=(
-                current.approval_mode if approval_mode is None else approval_mode
-            ),
+            approval_mode=(current.approval_mode if approval_mode is None else approval_mode),
             sandbox=current.sandbox if sandbox is None else sandbox,
         )
         return runtime.options
@@ -358,6 +416,25 @@ class CodexProvider:
     ) -> dict[str, Any]:
         runtime = self._sessions[session_id]
         return await runtime.approvals.resolve(approval_id, decision)
+
+    async def steer(self, session_id: str, text: str, expected_turn_id: str) -> None:
+        turn = self._sessions[session_id].active_turn
+        if turn is None or turn.id != expected_turn_id:
+            raise SteerRejected("目标运行已结束，指令未投递。")
+        try:
+            response = await turn.steer(text)
+        except JsonRpcError as error:
+            if error.code == -32601:
+                raise SteerRejected("当前 Codex 客户端不支持运行中引导。") from error
+            if error.code == -32602 or (
+                error.code == -32600 and any(part in error.message.lower() for part in (
+                    "no active turn", "expected turn", "turn id mismatch", "turn_id mismatch",
+                ))
+            ):
+                raise SteerRejected(str(error)) from error
+            raise
+        if response.turn_id != expected_turn_id:
+            raise RuntimeError("Steering acknowledgement referred to a different turn")
 
     async def enable_user_approvals(self, session_id: str) -> None:
         self._sessions[session_id].user_approvals_enabled = True
@@ -517,25 +594,35 @@ class CodexProvider:
         source = self._sessions[session_id]
         options = source.options
         approvals = CodexApprovalBroker(self.name)
-        client = self._client_with_approvals(approvals)
+        client = (
+            self._client_with_approvals(approvals, context=source.context_binding)
+            if source.context_binding
+            else self._client_with_approvals(approvals)
+        )
         await client.__aenter__()
         try:
-            thread = await client.thread_fork(
-                source.thread.id,
-                approval_mode=(
-                    self._sdk_approval_mode(options.approval_mode)
-                    if options.approval_mode
-                    else None
-                ),
-                cwd=source.cwd or None,
-                model=options.model,
-                sandbox=Sandbox(options.sandbox) if options.sandbox else None,
-            )
+            if options.approval_mode == "user":
+                thread = await self._manual_thread(
+                    client, "thread_fork", source.cwd, options, source.thread.id,
+                )
+            else:
+                thread = await client.thread_fork(
+                    source.thread.id,
+                    approval_mode=(self._sdk_approval_mode(options.approval_mode)
+                                   if options.approval_mode else None),
+                    cwd=source.cwd or None, model=options.model,
+                    sandbox=Sandbox(options.sandbox) if options.sandbox else None,
+                )
         except BaseException:
             await client.close()
             raise
         self._sessions[thread.id] = _CodexRuntime(
-            client, thread, options, source.cwd, approvals=approvals
+            client,
+            thread,
+            options,
+            source.cwd,
+            approvals=approvals,
+            context_binding=source.context_binding,
         )
         return ProviderSession(id=thread.id, native_id=thread.id)
 
@@ -593,7 +680,7 @@ class CodexProvider:
         """
         runtime = self._sessions[session_id]
         await runtime.approvals.questions.cancel_all()
-        runtime.approvals.cancel_all()
+        await runtime.approvals.cancel_pending()
         if runtime.active_turn is not None:
             await runtime.active_turn.interrupt()
 
@@ -608,7 +695,7 @@ class CodexProvider:
         if runtime is None:
             return
         await runtime.approvals.questions.cancel_all()
-        runtime.approvals.cancel_all()
+        await runtime.approvals.cancel_pending()
         if runtime.active_turn is not None:
             await runtime.active_turn.interrupt()
         await runtime.client.close()
@@ -654,8 +741,13 @@ class CodexProvider:
             config.codex_bin = codex_bin
         return AsyncCodex(config=config) if config is not None else AsyncCodex()
 
-    def _client_with_approvals(self, approvals: CodexApprovalBroker) -> AsyncCodex:
-        client = self._client(self._memory_mcp.codex_config() if self._memory_mcp else None)
+    def _client_with_approvals(self, approvals: CodexApprovalBroker, *, context=None) -> AsyncCodex:
+        memory = (
+            self._memory_mcp.for_context(context)
+            if context and self._memory_mcp
+            else self._memory_mcp
+        )
+        client = self._client(memory.codex_config() if memory else None)
         async_client = getattr(client, "_client", None)
         sync_client = getattr(async_client, "_sync", None)
         if sync_client is None or not hasattr(sync_client, "_approval_handler"):
@@ -668,10 +760,21 @@ class CodexProvider:
 
     @staticmethod
     def _sdk_approval_mode(value: str) -> ApprovalMode:
-        if value == "user":
-            # User review is applied with the raw turn override in _start_turn.
-            return ApprovalMode.deny_all
         return ApprovalMode(value)
+
+    @staticmethod
+    async def _manual_thread(client, operation, cwd, options, thread_id=None) -> AsyncThread:
+        # The high-level SDK only exposes automatic review and deny-all presets.
+        await client._ensure_initialized()
+        params = {
+            "approvalPolicy": "on-request", "approvalsReviewer": "user", "cwd": cwd,
+            "model": options.model,
+            "sandbox": ("danger-full-access"
+                        if options.sandbox == "full-access" else options.sandbox),
+        }
+        method = getattr(client._client, operation)
+        result = await method(thread_id, params) if thread_id else await method(params)
+        return AsyncThread(client, result.thread.id)
 
     @staticmethod
     def _sandbox_policy(value: str | None) -> dict[str, Any] | None:
@@ -818,6 +921,8 @@ class CodexProvider:
         elif method == "turn/diff/updated":
             event_type = "file_change"
             text = str(data.get("diff") or "") or None
+        elif method in {"item/autoApprovalReview/started", "item/autoApprovalReview/completed"}:
+            event_type = "approval_review"
         elif method == "error":
             event_type = "error"
             error = data.get("error")

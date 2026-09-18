@@ -203,7 +203,8 @@ def test_acp_permissions_follow_configuration(tmp_path, approve, expected):
     from cleo.integrations.harnesses.acp import _AcpClientHost
 
     host = _AcpClientHost("acp", str(tmp_path), auto_approve=approve)
-    options = [SimpleNamespace(kind="allow_once", option_id="allow"),
-               SimpleNamespace(kind="reject_once", option_id="reject")]
+    options = [SimpleNamespace(kind="allow_once", option_id="allow", name="Allow once"),
+               SimpleNamespace(kind="reject_once", option_id="reject", name="Reject once")]
+    host.begin_turn(None)
     result = asyncio.run(host.request_permission("native", {}, options))
     assert result.outcome.option_id == expected

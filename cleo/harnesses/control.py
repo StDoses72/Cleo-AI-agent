@@ -6,6 +6,14 @@ from dataclasses import dataclass
 from typing import Any
 
 
+class SteerRejected(ValueError):
+    """A steering request was rejected before being queued by the runtime."""
+
+    def __init__(self, message: str, *, retryable: bool = False):
+        super().__init__(message)
+        self.retryable = retryable
+
+
 @dataclass(frozen=True, slots=True)
 class HarnessModel:
     """provider 支持的单个模型的描述。

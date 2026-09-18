@@ -57,6 +57,13 @@ def package_macos(bundle: Path, version: str, icon: Path, scratch: Path) -> None
     )
     with info_path.open("wb") as stream:
         plistlib.dump(info, stream)
+    # A checked-in ICNS also works where macOS image services are unavailable.
+    packaged_icon = icon.with_suffix(".icns")
+    if packaged_icon.is_file():
+        shutil.copy2(packaged_icon, contents / "Resources" / "cleo.icns")
+        run("codesign", "--force", "--deep", "--sign", "-", bundle, cwd=scratch)
+        run("codesign", "--verify", "--deep", "--strict", bundle, cwd=scratch)
+        return
     iconset = scratch / "cleo.iconset"
     iconset.mkdir()
     for size in (16, 32, 128, 256, 512):
@@ -186,6 +193,9 @@ def build(*, locked_dependencies: bool = False) -> None:
             ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
         )
         python_install = scratch / "python-install"
+        # uv splits constraint arguments on spaces, even when passed as one argv
+        # value. Keep this filename relative to the installation working directory.
+        shutil.copy2(ROOT / "requirements.txt", scratch / "requirements.txt")
         run(
             "uv",
             "python",
@@ -218,7 +228,7 @@ def build(*, locked_dependencies: bool = False) -> None:
             python,
             "--break-system-packages",
             "--compile-bytecode",
-            "--constraint", ROOT / "requirements.txt",
+            "--constraint", "requirements.txt",
             python_source,
             f"claude-agent-sdk=={locked_version('claude-agent-sdk')}",
             f"openai-codex-cli-bin=={locked_version('openai-codex-cli-bin')}",
@@ -316,7 +326,8 @@ def build(*, locked_dependencies: bool = False) -> None:
             control = deb / "DEBIAN"
             control.mkdir(parents=True)
             (control / "control").write_text(
-                f"Package: cleo-desktop\nVersion: {version}\nArchitecture: amd64\n"
+                f"Package: cleo-desktop\nVersion: {version.replace('-', '~', 1)}\n"
+                "Architecture: amd64\n"
                 "Maintainer: Cleo contributors\nSection: utils\nPriority: optional\n"
                 "Depends: libgtk-3-0 | libgtk-3-0t64, libnss3, libgbm1, "
                 "libasound2 | libasound2t64, libxss1, libxtst6, libx11-xcb1\n"

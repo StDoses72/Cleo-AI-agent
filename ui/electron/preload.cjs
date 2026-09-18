@@ -53,7 +53,7 @@ if (!process.argv.includes("--cleo-desktop-mock")) {
       return () => ipcRenderer.removeListener("cleo:evolution:state", handler);
     },
     getUpdateState: () => ipcRenderer.invoke("cleo:update:get-state"),
-    checkForUpdates: () => ipcRenderer.invoke("cleo:update:check"),
+    checkForUpdates: (tag) => ipcRenderer.invoke("cleo:update:check", tag),
     downloadUpdate: () => ipcRenderer.invoke("cleo:update:download"),
     installUpdate: () => ipcRenderer.invoke("cleo:update:install"),
     onUpdateState: (listener) => {

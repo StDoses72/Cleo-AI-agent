@@ -10,13 +10,62 @@ import { ReleaseDownloads } from "./release-downloads.mjs";
 import { desktopPlatform, installationRoot } from "./platform.mjs";
 import { createContributionSnapshot, assertSnapshotTarget, removeContributionSnapshot } from "./evolution-snapshot.mjs";
 import { compareVersions, validateManifest } from "./updater.mjs";
+import { alphaTagPattern, releaseTagForVersion, versionForReleaseTag } from "./release-channel.mjs";
 import { contributionTarget, validateContributionTarget, requireTargetBranch } from "./evolution-contributions.mjs";
 
 const REPOSITORY = "StDoses72/Cleo-AI-agent";
 const REPO_URL = `https://github.com/${REPOSITORY}.git`;
 const API = `https://api.github.com/repos/${REPOSITORY}`;
 const GITHUB_DEVICE_URL = "https://github.com/login/device";
-const PROTECTED = ["bootstrap.mjs", "evolution.mjs", "evolution-store.mjs", "evolution-tools.mjs", "evolution-recovery.mjs", "evolution-launch.mjs", "evolution-progress.mjs", "evolution-handoff.mjs", "release-downloads.mjs", "program-updates.mjs", "updater.mjs", "shutdown.mjs"];
+const PROTECTED = ["bootstrap.mjs", "release-channel.mjs", "evolution.mjs", "evolution-store.mjs", "evolution-tools.mjs", "evolution-recovery.mjs", "evolution-launch.mjs", "evolution-progress.mjs", "evolution-handoff.mjs", "release-downloads.mjs", "program-updates.mjs", "updater.mjs", "shutdown.mjs"];
+
+/** Input: accumulated CLI diagnostics. Output: a device code from known gh formats only.
+ * Supports ordinary and clipboard-enabled gh without changing global configuration.
+ */
+function githubDeviceCode(output) {
+  const text = stripVTControlCharacters(output);
+  const plain = text.match(/\bone-time code:\s*([A-Z0-9]{4}-[A-Z0-9]{4})(?![A-Z0-9-])/i)?.[1];
+  const copied = text.match(/\bone-time code\s*\(\s*([A-Z0-9]{4}-[A-Z0-9]{4})\s*\)\s+copied to clipboard\b/i)?.[1];
+  return (plain || copied)?.toUpperCase();
+}
+
+/** Only allowlisted diagnostics reach the UI; raw CLI output can contain credentials. */
+function githubLoginFailure(error, stage) {
+  const text = error?.message || "";
+  const http = text.match(/\bHTTP(?:\/\d(?:\.\d)?)?\s+([45]\d\d)\b/i)?.[1];
+  let reason = "unknown";
+  let message = "GitHub 登录未完成。请在 Cleo 中重新连接，无需打开终端或填写令牌。";
+  if (/keychain|keyring|permission denied|EACCES|EPERM|EROFS|不可写|read.only file system/i.test(text)) {
+    reason = "storage"; message = "GitHub 登录凭证未能保存到本机。请检查系统钥匙串提示或 Cleo 数据目录的写入权限，然后在这里重试。";
+  } else if (/deadline exceeded|timed?\s*out|expired|超时/i.test(text)) {
+    reason = "timeout"; message = "GitHub 授权等待超时，请重新连接并使用新的验证码。";
+  } else if (error?.code === "ENOENT" || /unknown (?:flag|command)/i.test(text)) {
+    reason = "cli"; message = "GitHub 登录组件暂不可用。Cleo 已尝试准备内置工具，请在这里重新连接。";
+  } else if (/not logged|not authenticated|gh auth login|bad credentials|invalid.*token|credentials unavailable/i.test(text) || http === "401") {
+    reason = "credentials"; message = "GitHub 网页授权尚未形成可用的本机登录。请在这里重新连接，并使用本次显示的验证码。";
+  } else if (/access.denied|denied.*access|oauth.*denied/i.test(text)) {
+    reason = "denied"; message = "GitHub 授权被拒绝。需要连接时，可在这里重新发起并在官方页面确认授权。";
+  } else if (/ENOTFOUND|ECONN|EAI_AGAIN|network|TLS|certificate|connection|dial tcp/i.test(text) || http) {
+    reason = "network"; message = "连接 GitHub 时发生网络或服务错误；网页授权成功也可能在后续验证时失败。请在这里重试。";
+  }
+  const exit = text.match(/(?:执行失败|failed)\s*\((\d+)\)/)?.[1];
+  return { status: "failed", reason, message,
+    diagnostic: [stage, reason, http && `HTTP ${http}`, exit && `CLI ${exit}`].filter(Boolean).join(" · ") };
+}
+
+/** Input: packaged resources and native filesystem. Output: development bundle identity. */
+export async function developmentBundleDigest(resources, filesystem) {
+  const hash = createHash("sha256").update(await filesystem.readFile(join(resources, "app.asar")));
+  // Python-only iterations leave app.asar unchanged. The build's source archive
+  // covers backend changes; old bundles without an archive keep their old identity.
+  try {
+    const source = await filesystem.readFile(join(resources, "evolution-source.tar.gz"));
+    hash.update("\0evolution-source\0").update(createHash("sha256").update(source).digest());
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  return hash.digest("hex");
+}
 
 /** Purpose: Retain an installation as physical files without Electron expanding ASAR archives.
  * Input: installation root and destination. Output: byte-preserving bundle copy, including native symlinks.
@@ -50,6 +99,7 @@ export class EvolutionManager {
     this.sourceRepository = sourceRepository;
     this.onState = onState;
     this.phase = "idle";
+    this.readOnlyOperation = false;
     this.error = null;
     this.logs = "";
     this.closed = false;
@@ -71,10 +121,12 @@ export class EvolutionManager {
   log(message) { this.logs = (this.logs + message).slice(-16000); this.onState(); }
 
   /** Input: phase and operation. Output: serial execution with retained error and previous working build. */
-  async operation(phase, action, { prune = true } = {}) {
+  async operation(phase, action, { prune = true, readOnly = false } = {}) {
     if (this.closed) throw new Error("Cleo 正在退出，不能开始新的进化操作。");
     if (this.phase !== "idle") throw new Error("另一项进化操作正在进行，请稍候。");
     const controller = new AbortController();
+    const previous = readOnly ? { error: this.error, logs: this.logs } : null;
+    this.readOnlyOperation = readOnly;
     this.operationAbort = controller;
     this.phase = phase; this.error = null; this.logs = ""; this.onState();
     try {
@@ -83,13 +135,16 @@ export class EvolutionManager {
         if ((await this.store.read()).transaction) throw new Error("版本正在切换，请等待重启完成或使用恢复入口。");
         const result = await action(controller.signal);
         controller.signal.throwIfAborted();
-        if (prune) await this.store.pruneBuilds();
+        if (prune && !readOnly) await this.store.pruneBuilds();
         return result;
       });
       return await this.operationPromise;
     }
     catch (error) { this.error = error.message; throw error; }
-    finally { this.operationPromise = null; this.operationAbort = null; this.phase = "idle"; this.onState(); }
+    finally {
+      if (previous) { this.error = previous.error; this.logs = previous.logs; }
+      this.operationPromise = null; this.operationAbort = null; this.phase = "idle"; this.readOnlyOperation = false; this.onState();
+    }
   }
 
   /** Purpose: Stop operation-owned writers before the app releases its single-instance lock. */
@@ -190,7 +245,7 @@ export class EvolutionManager {
       if (!state.baseline) return this.ensureBaseline();
       const source = installationRoot(this.executable, this.target);
       const filesystem = process.versions.electron ? createRequire(import.meta.url)("original-fs").promises : { readFile };
-      const digest = createHash("sha256").update(await filesystem.readFile(join(source, this.target.resources, "app.asar"))).digest("hex");
+      const digest = await developmentBundleDigest(join(source, this.target.resources), filesystem);
       const existing = state.builds.find((build) => build.importSource === this.executable && build.importHash === digest);
       if (existing) return existing;
       if (state.importedBundles?.[this.executable] === digest) return this.store.build(state.active);
@@ -199,12 +254,13 @@ export class EvolutionManager {
       this.log("正在保留新版程序；原版本和用户数据继续保留。\n");
       await copyProgramBundle(source, directory, { signal: this.operationAbort?.signal });
       const record = { id, kind: "local", version: null, name: "本机开发版", savedAt: new Date().toISOString(),
-        createdAt: new Date().toISOString(), baseTag: `v${this.app.getVersion()}`,
+        createdAt: new Date().toISOString(), baseTag: releaseTagForVersion(this.app.getVersion()),
         executable: `${this.target.bundle}/${this.target.executable}`, importSource: this.executable, importHash: digest };
       if (await exists(this.source)) await rename(this.source, join(this.store.root, `source-history-${randomUUID()}`));
       await this.store.update({ builds: [...state.builds, record], active: id, selectedBase: id,
         workspaceBase: id, latestSaved: id, pendingImport: { from: state.active, to: id }, importedBundles: { ...state.importedBundles, [this.executable]: digest },
-        prepared: false, candidate: null, threadId: null, iteration: null, baseTag: record.baseTag });
+        prepared: false, candidate: null, threadId: null, iteration: null, draftDirty: false, pendingMerge: null,
+        baseSourceHash: null, baseTag: record.baseTag });
       return record;
     });
   }
@@ -223,8 +279,9 @@ export class EvolutionManager {
     const resources = join(source, this.target.resources);
     const metadata = await readJson(join(this.target.platform === "darwin" ? resources : source, "release.json"));
     if (metadata?.app !== "Cleo" || metadata.platform !== this.target.id || metadata.evolution_protocol !== 2
-        || metadata.version !== this.app.getVersion() || !/^\d+\.\d+\.\d+$/.test(metadata.version)
+        || metadata.version !== this.app.getVersion() || !/^\d+\.\d+\.\d+(?:-alpha)?$/.test(metadata.version)
         || (metadata.build_kind && metadata.build_kind !== "official")) return null;
+    if (metadata.version.endsWith("-alpha") !== Boolean(active.version?.endsWith("-alpha"))) return null;
     if (state.builds.some(build => build.id === state.baseline && build.version === metadata.version)) return null;
     const path = this.target.platform === "win32" ? resolve(this.executable).toLowerCase() : resolve(this.executable);
     const previous = state.installedReleases?.[path] || active.version;
@@ -254,7 +311,7 @@ export class EvolutionManager {
           if (await archiveHash(bundle) !== hash || !await exists(join(bundle, this.target.executable))) {
             throw new Error("新版程序复制校验失败，请重新安装后重试。");
           }
-          record = { id, kind: "official", version: installed.version, baseTag: `v${installed.version}`,
+          record = { id, kind: "official", version: installed.version, baseTag: releaseTagForVersion(installed.version),
             executable: `${this.target.bundle}/${this.target.executable}`, createdAt: new Date().toISOString(),
             installSource: installed.path, installHash: hash };
           await this.store.update({ builds: [...state.builds, record] });
@@ -279,7 +336,7 @@ export class EvolutionManager {
     this.log("正在保存当前可用程序和独立恢复入口…\n");
     await mkdir(dirname(directory), { recursive: true });
     await copyProgramBundle(installationRoot(this.executable, this.target), directory, { signal: this.operationAbort?.signal });
-    const record = { id, kind: "official", version: this.app.getVersion(), baseTag: `v${this.app.getVersion()}`,
+    const record = { id, kind: "official", version: this.app.getVersion(), baseTag: releaseTagForVersion(this.app.getVersion()),
       executable: `${bundle}/${this.target.executable}`, createdAt: new Date().toISOString(), baseline: true };
     const path = this.target.platform === "win32" ? resolve(this.executable).toLowerCase() : resolve(this.executable);
     await this.store.update({ active: id, baseline: id, builds: [...state.builds, record],
@@ -289,7 +346,7 @@ export class EvolutionManager {
       // A separate shortcut remains usable even when the current app's JavaScript cannot load.
       await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
         "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:CLEO_SHORTCUT); $s.TargetPath = $env:CLEO_RECOVERY_EXE; $s.Arguments = '--cleo-recovery'; $s.Save()"], {
-        env: { ...process.env, CLEO_SHORTCUT: join(this.app.getPath("desktop"), "Cleo 恢复.lnk"), CLEO_RECOVERY_EXE: baseline.executable }, signal: this.operationAbort?.signal,
+        env: { ...process.env, CLEO_SHORTCUT: join(this.app.getPath("desktop"), this.app.getVersion().endsWith("-alpha") ? "Cleo Alpha 恢复.lnk" : "Cleo 恢复.lnk"), CLEO_RECOVERY_EXE: baseline.executable }, signal: this.operationAbort?.signal,
       });
     }
     return baseline;
@@ -309,14 +366,80 @@ export class EvolutionManager {
     });
   }
 
-  /** Input: none. Output: isolated editable source based on the running official version. */
+  /** Verify the retained import, not an unrelated editable workspace or an import hash used as a source hash. */
+  async verifyImportedBundle(selected) {
+    if (!selected.importHash) return;
+    const resources = join(selected.directory, this.target.bundle, this.target.resources);
+    if (!await exists(join(resources, "evolution-source.tar.gz"))) throw new Error("导入的开发版缺少随包源码，无法登记为可提交版本。");
+    const filesystem = process.versions.electron ? createRequire(import.meta.url)("original-fs").promises : { readFile };
+    if (await developmentBundleDigest(resources, filesystem) !== selected.importHash) {
+      throw new Error("导入程序与随包源码校验失败，文件可能已经变化，请重新导入完整开发版。");
+    }
+  }
+
+  /** Restore one build's source in an isolated directory and compute the same digest used by submission. */
+  async restoreBuildSource(selected, tools, destination) {
+    await this.verifyImportedBundle(selected);
+    const baseTag = selected.baseTag || releaseTagForVersion(selected.version || this.app.getVersion());
+    if (!/^v\d+\.\d+\.\d+$/.test(baseTag) && !alphaTagPattern.test(baseTag)) throw new Error("当前程序没有可识别的版本号，无法确定源码基准。");
+    this.log(`正在获取 ${baseTag} 的源码…\n`);
+    await run(tools.git, ["clone", "--branch", baseTag, "--single-branch", this.sourceRepository, destination],
+      { env: tools.env, log: (text) => this.log(text), signal: this.operationAbort?.signal });
+    await run(tools.git, ["switch", "-c", `cleo/local-${randomUUID().slice(0, 8)}`],
+      { cwd: destination, env: tools.env, signal: this.operationAbort?.signal });
+    const bundled = join(selected.directory, this.target.bundle, this.target.resources, "evolution-source.tar.gz");
+    if (await exists(bundled)) {
+      await extract(bundled, destination, { signal: this.operationAbort?.signal });
+      const manifest = await readJson(join(destination, "evolution-source.json"));
+      for (const name of manifest.deleted || []) {
+        if (name.startsWith(".git/") || name === ".git") throw new Error("Invalid bundled source path.");
+        await rm(ownedPath(destination, name), { force: true });
+      }
+      await rm(join(destination, "evolution-source.json"));
+    }
+    await this.verifyImportedBundle(selected);
+    return { baseTag, sourceHash: await this.sourceHash(tools, destination) };
+  }
+
+  /** Source registration is not a compiler/test receipt and never creates an applicable candidate. */
+  async registerImportedSource(selected, sourceHash) {
+    if (!selected.importHash) return;
+    const state = await this.store.read();
+    await this.store.update({ builds: state.builds.map(build => build.id === selected.id
+      ? { ...build, sourceHash, sourceOrigin: "bundled-import" } : build) });
+  }
+
+  /** Reconcile only an orphan import flag against verified bytes; never approve an editing iteration. */
+  async reconcileImportedDraft(tools) {
+    const state = await this.store.read();
+    const active = state.builds.find(build => build.id === state.active);
+    if (!state.draftDirty || !state.prepared || state.iteration || state.candidate || state.pendingMerge
+        || state.transaction || active?.sourceOrigin !== "bundled-import" || !active.importHash || !active.sourceHash) return state;
+    if (active.sourceHash !== await this.sourceHash(tools)) return state;
+    await this.verifyImportedBundle(await this.store.build(active.id));
+    return this.store.update({ draftDirty: false });
+  }
+
+  /** Input: none. Output: isolated editable source bound to the selected program. */
   async prepare() {
     return this.operation("preparing", async () => {
       await this.ensureBaseline();
       const state = await this.store.read();
       const selected = await this.store.build(state.active);
       if (state.prepared && await exists(join(this.source, ".git"))) {
-        if (selected.kind !== "official" || !state.baseTag || !selected.baseTag || state.baseTag === selected.baseTag) return this.source;
+        if (selected.kind !== "official" || !state.baseTag || !selected.baseTag || state.baseTag === selected.baseTag) {
+          if (selected.importHash && !selected.sourceHash) {
+            // Legacy prepared imports may already contain user edits. Never register those as shipped source.
+            const tools = await this.prepareTools();
+            const reference = await mkdtemp(join(this.store.root, "source-import-"));
+            try {
+              const restored = await this.restoreBuildSource(selected, tools, reference);
+              await this.registerImportedSource(selected, restored.sourceHash);
+            } finally { await rm(reference, { recursive: true, force: true }); }
+          }
+          if (state.draftDirty) await this.reconcileImportedDraft(await this.prepareTools());
+          return this.source;
+        }
         // Older controllers changed active without advancing the editable source baseline.
         await this.assertOfficialSwitchAllowed();
         await this.store.update({ selectedBase: selected.id, workspaceBase: selected.id, baseTag: selected.baseTag,
@@ -324,30 +447,20 @@ export class EvolutionManager {
         await rename(this.source, join(this.store.root, `source-history-${randomUUID()}`));
       }
       const tools = await this.prepareTools();
-      const baseTag = selected.baseTag || `v${selected.version || this.app.getVersion()}`;
-      if (!/^v\d+\.\d+\.\d+$/.test(baseTag)) throw new Error("当前程序没有正式版本号，无法确定源码基准。");
-      const temporary = join(this.store.root, `source-${randomUUID()}`);
-      this.log(`正在获取 ${baseTag} 的源码…\n`);
-      await run(tools.git, ["clone", "--branch", baseTag, "--single-branch", this.sourceRepository, temporary], { env: tools.env, log: (text) => this.log(text), signal: this.operationAbort?.signal });
-      await run(tools.git, ["switch", "-c", `cleo/local-${randomUUID().slice(0, 8)}`], { cwd: temporary, env: tools.env, signal: this.operationAbort?.signal });
-      const bundled = join(selected.directory, this.target.bundle, this.target.resources, "evolution-source.tar.gz");
-      if (await exists(bundled)) {
-        await extract(bundled, temporary, { signal: this.operationAbort?.signal });
-        const manifest = await readJson(join(temporary, "evolution-source.json"));
-        for (const name of manifest.deleted || []) {
-          if (name.startsWith(".git/") || name === ".git") throw new Error("Invalid bundled source path.");
-          await rm(ownedPath(temporary, name), { force: true });
+      const temporary = await mkdtemp(join(this.store.root, "source-"));
+      try {
+        const restored = await this.restoreBuildSource(selected, tools, temporary);
+        await this.saveProtection(temporary);
+        if (await exists(this.source)) {
+          const retained = join(this.store.root, `source-recovery-${randomUUID()}`);
+          await rename(this.source, retained);
+          this.log(`先前未完成的工作区已保留：${retained}\n`);
         }
-        await rm(join(temporary, "evolution-source.json"));
-      }
-      await this.saveProtection(temporary);
-      if (await exists(this.source)) {
-        const retained = join(this.store.root, `source-recovery-${randomUUID()}`);
-        await rename(this.source, retained);
-        this.log(`先前未完成的工作区已保留：${retained}\n`);
-      }
-      await rename(temporary, this.source);
-      await this.store.update({ baseTag, prepared: true, baseSourceHash: await this.sourceHash(tools) });
+        await rename(temporary, this.source);
+        await this.registerImportedSource(selected, restored.sourceHash);
+        await this.store.update({ baseTag: restored.baseTag, prepared: true, baseSourceHash: restored.sourceHash });
+        await this.reconcileImportedDraft(tools);
+      } finally { await rm(temporary, { recursive: true, force: true }); }
       return this.source;
     });
   }
@@ -374,14 +487,14 @@ export class EvolutionManager {
   }
 
   /** Input: toolchain. Output: digest of tracked and nonignored untracked source, excluding build products. */
-  async sourceHash(tools) {
+  async sourceHash(tools, source = this.source) {
     const files = await run(tools.git, ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], {
-      cwd: this.source, env: tools.env, signal: this.operationAbort?.signal, trimOutput: false, rejectStderr: true,
+      cwd: source, env: tools.env, signal: this.operationAbort?.signal, trimOutput: false, rejectStderr: true,
     });
     const hash = createHash("sha256");
     for (const name of [...new Set(files.split("\0").filter(Boolean))].sort()) {
-      const path = resolve(this.source, name);
-      if (!path.startsWith(`${resolve(this.source)}${process.platform === "win32" ? "\\" : "/"}`)) throw new Error("源码包含非法路径。");
+      const path = resolve(source, name);
+      if (!path.startsWith(`${resolve(source)}${process.platform === "win32" ? "\\" : "/"}`)) throw new Error("源码包含非法路径。");
       hash.update(name); hash.update(await exists(path) ? await fileHash(path) : "deleted");
     }
     return hash.digest("hex");
@@ -494,7 +607,7 @@ export class EvolutionManager {
       const rawManifest = await fetchRelease(release.manifestUrl, true, { signal });
       if (rawManifest.evolution_protocol !== 2) throw new Error("该版本尚不支持保留当前用户数据的版本切换，无法通过进化入口应用。");
       const manifest = validateManifest(rawManifest, this.target);
-      if (`v${manifest.version}` !== (tag.startsWith("v") ? tag : `v${tag}`)) throw new Error("版本清单与所选 release 不一致。");
+      if (manifest.version !== versionForReleaseTag(tag)) throw new Error("版本清单与所选 release 不一致。");
       const archive = await this.downloads.get(manifest, {
         url: `https://github.com/${REPOSITORY}/releases/download/${encodeURIComponent(tag)}/${manifest.archive}`, onProgress,
       });
@@ -646,6 +759,18 @@ export class EvolutionManager {
     await this.githubLogin;
   }
 
+  async checkGithubCredentials(tools, signal) {
+    const options = { env: tools.env, signal, timeout: 30000 };
+    try {
+      await this.runCommand(tools.gh, ["auth", "status", "--hostname", "github.com", "--active"], options);
+    } catch (error) {
+      signal.throwIfAborted();
+      if (!/unknown flag:\s*--active\b/i.test(error.message || "")) throw error;
+      await this.runCommand(tools.gh, ["auth", "status", "--hostname", "github.com"], options);
+    }
+    signal.throwIfAborted();
+  }
+
   /** Purpose: Guide a cancellable GitHub CLI device login with live instructions and distinct failures.
    * Input: none. Output: transient login result; credentials stay with gh and build validation is untouched.
    */
@@ -657,36 +782,52 @@ export class EvolutionManager {
       const { signal } = controller;
       this.setGithubAuth({ status: "starting", message: "正在准备 GitHub 登录…" });
       let output = "";
+      let stage = "准备登录组件";
       try {
-        const tools = await this.prepareTools(true);
+        let tools = await this.tools.prepareGithub({ signal });
         signal.throwIfAborted();
-        const options = { env: tools.env, signal };
+        stage = "检查本机登录";
+        this.setGithubAuth({ status: "starting", message: "正在检查 GitHub 登录状态…" });
         try {
-          await this.runCommand(tools.gh, ["auth", "status", "--hostname", "github.com", "--active"], { ...options, timeout: 30000 });
-          signal.throwIfAborted();
+          await this.checkGithubCredentials(tools, signal);
         } catch {
           signal.throwIfAborted();
-          await this.runCommand(tools.gh, ["auth", "login", "--hostname", "github.com", "--git-protocol", "https", "--web"], {
-            ...options, timeout: 900000,
+          stage = "获取授权并保存凭证";
+          this.setGithubAuth({ status: "starting", message: "正在获取 GitHub 授权码…" });
+          let loginError;
+          const authorize = () => this.runCommand(tools.gh, ["auth", "login", "--hostname", "github.com", "--git-protocol", "https", "--web"], {
+            env: tools.env, signal, timeout: 900000,
             log: (chunk) => {
               if (signal.aborted) return;
               output = (output + chunk).slice(-8000);
-              const code = stripVTControlCharacters(output).match(/one-time code:\s*([A-Z0-9]{4}-[A-Z0-9]{4})\b/i)?.[1].toUpperCase();
+              const code = githubDeviceCode(output);
               if (code && this.githubAuth?.status === "starting") {
                 this.setGithubAuth({ status: "waiting", code, message: "请在 GitHub 页面输入验证码并完成授权。" });
                 void this.openGithubLogin();
               }
             },
           });
+          try { await authorize(); }
+          catch (error) {
+            signal.throwIfAborted();
+            // Unsupported system CLI: provision the managed CLI once, never ask for a terminal.
+            if (/unknown (?:flag|command)/i.test(error.message || "") && !githubDeviceCode(output)) {
+              tools = await this.tools.prepareGithub({ signal, managed: true });
+              output = "";
+              try { await authorize(); } catch (failure) { loginError = failure; }
+            } else loginError = error;
+          }
           signal.throwIfAborted();
+          stage = "验证本机凭证";
+          this.setGithubAuth({ status: "checking", message: "正在确认本机登录凭证是否可用…" });
+          try { await this.checkGithubCredentials(tools, signal); }
+          catch (error) { throw loginError || error; }
         }
+        this.error = null;
         this.setGithubAuth({ status: "connected", message: "GitHub 已连接，可以继续提交 PR。" });
       } catch (error) {
-        const message = signal.aborted ? "已取消 GitHub 登录。"
-          : /deadline exceeded|timed?\s*out|expired|超时/i.test(error.message || "")
-            ? "GitHub 授权等待超时，请重新连接并使用新的验证码。"
-            : "GitHub 连接未完成，请检查网络后重新连接。";
-        this.setGithubAuth({ status: signal.aborted ? "cancelled" : "failed", message });
+        this.setGithubAuth(signal.aborted ? { status: "cancelled", message: "已取消 GitHub 登录。" }
+          : githubLoginFailure(error, stage));
       } finally {
         this.githubAbort = null;
       }
@@ -718,7 +859,7 @@ export class EvolutionManager {
         if (!title?.trim() || !body?.trim()) throw new Error("请填写 PR 标题和改动说明。");
         if (!/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(submissionId)) throw new Error("提交标识无效，请重新发起 PR。");
         const contentHash = createHash("sha256").update(JSON.stringify([title.trim(), body, targetBranch, selection.buildId])).digest("hex");
-        const state = await this.store.read();
+        let state = await this.store.read();
         const completed = state.pullRequests?.find((pr) => pr.submissionId === submissionId);
         if (completed) {
           if (completed.contentHash !== contentHash) throw new Error("提交内容已变化，请重新发起 PR。");
@@ -727,12 +868,14 @@ export class EvolutionManager {
         }
         await this.checkProtection();
         const tools = await this.prepareTools(true);
+        state = await this.reconcileImportedDraft(tools);
         await validateContributionTarget(this, tools, targetBranch);
         await this.runCommand(tools.gh, ["auth", "status"], { env: tools.env });
         const candidate = state.builds.find((item) => item.id === selection.buildId && item.kind === "local");
         if (!candidate?.sourceHash || state.draftDirty || candidate.sourceHash !== await this.sourceHash(tools)) {
           throw new Error("请先切换到选定的本地版本，对当前修改完成检查和构建，再提交 PR。");
         }
+        if (candidate.importHash) await this.verifyImportedBundle(await this.store.build(candidate.id));
         const user = JSON.parse(await this.runCommand(tools.gh, ["api", "user"], { env: tools.env }));
         if (!/^[a-zA-Z0-9-]+$/.test(user.login)) throw new Error("GitHub 用户名无效。");
         const options = { cwd: this.source, env: tools.env };

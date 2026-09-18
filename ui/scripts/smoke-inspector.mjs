@@ -29,6 +29,7 @@ await page.addInitScript((data) => {
   window.cleoDesktop = {
     request: async (method) => {
       if (method === "load_workspace") return structuredClone(data);
+      if (method === "load_memory") return structuredClone({ memories: data.memories, memoryOverview: data.memoryOverview });
       if (method === "get_runtime_catalog") return { nonProductivityProfiles: [], productivityProviders: [], defaultNonProductivityProfile: "", defaultProductivityProvider: "test" };
       if (method === "get_productivity_models") return { provider: "test", source: "config", models: [] };
       throw new Error(`Unexpected test request: ${method}`);

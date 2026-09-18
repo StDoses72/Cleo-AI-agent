@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
+import { handleDialogKeyDown } from "../Modal";
 
 export function ModelDialog({ title, onClose, onEscape, children }: {
   title: string; onClose: () => void; onEscape?: () => void; children: ReactNode;
@@ -12,6 +13,8 @@ export function ModelDialog({ title, onClose, onEscape, children }: {
   }, []);
   return <dialog ref={ref} className="model-settings model-dialog" aria-label={title}
     onKeyDown={event => {
+      handleDialogKeyDown(event);
+      if (event.defaultPrevented) return;
       if (event.key === "Escape") {
         event.preventDefault(); event.stopPropagation(); (onEscape || onClose)();
       }

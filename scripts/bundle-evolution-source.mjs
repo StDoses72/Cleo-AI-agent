@@ -3,6 +3,7 @@ import { cp, mkdir, readFile, writeFile, lstat, mkdtemp, rm } from "node:fs/prom
 import { join, resolve, dirname, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { releaseTagForVersion } from "../ui/electron/release-channel.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const destination = process.argv[2];
@@ -18,7 +19,7 @@ function git(args) {
 
 try {
   const version = JSON.parse(await readFile(join(root, "ui/package.json"), "utf8")).version;
-  const versionTag = `v${version}`;
+  const versionTag = releaseTagForVersion(version);
   // An unpublished release has no tag yet; local iterations explicitly supply their selected base.
   const base = process.env.CLEO_EVOLUTION_BASE_TAG
     || (git(["tag", "--list", versionTag]).trim() ? versionTag : "HEAD");

@@ -16,6 +16,7 @@ from cleo.config.settings import AgentProfile, settings
 from cleo.harnesses.events import capture_context_usage
 from cleo.integrations.subscriptions import AgentMcp, create_runtime
 from cleo.runtime.usage import ContextWindowUsage
+from cleo.sessions.ports import SessionRepository
 from cleo.sessions.store import SessionStore
 
 
@@ -28,12 +29,14 @@ class RuntimeGraph:
         *,
         mode: str = "chat",
         scope: dict[str, str] | None = None,
+        session_store: SessionRepository | None = None,
     ) -> None:
         self.profile = profile
         self.root = root
         self.instructions = instructions
         self.mode = mode
         self.scope = scope or {}
+        self.session_store = session_store
         self._messages: dict[str, list] = {}
         self._locks: dict[str, asyncio.Lock] = {}
 
@@ -72,7 +75,9 @@ class RuntimeGraph:
             usage = ContextWindowUsage(window_tokens=self.profile.max_tokens)
 
             async def execute():
-                store = SessionStore(settings.MEMORY_DIR, settings.SESSION_INDEX_PATH)
+                store = self.session_store or SessionStore(
+                    settings.MEMORY_DIR, settings.SESSION_INDEX_PATH,
+                )
                 try:
                     manifest = store.load_manifest(thread_id) if self.mode == "chat" else {}
                 except FileNotFoundError:

@@ -26,6 +26,13 @@ from cleo.harnesses import (
 from cleo.runtime.usage import RateLimitWindowUsage
 
 
+async def session_options_when_mounted(app, pilot):
+    async with asyncio.timeout(5):
+        while not app.screen.query("#session-options"):
+            await pilot.pause(0.01)
+    return app.screen.query_one("#session-options")
+
+
 class FakeRuntime:
     def __init__(self) -> None:
         self.current_project: str | None = "cleo"
@@ -459,7 +466,7 @@ def test_sessions_picker_click_resumes_saved_productivity_session(
             assert worker is not None
             await pilot.pause(0.1)
             assert isinstance(app.screen, SessionPicker)
-            options = app.screen.query_one("#session-options")
+            options = await session_options_when_mounted(app, pilot)
             for _ in range(20):
                 if options.region.width and options.region.bottom <= app.screen.region.bottom:
                     break
@@ -571,7 +578,7 @@ def test_sessions_picker_imports_native_codex_thread_with_history(tmp_path) -> N
             worker = app._active_worker
             assert worker is not None
             await pilot.pause(0.1)
-            options = app.screen.query_one("#session-options")
+            options = await session_options_when_mounted(app, pilot)
             await pilot.click(options, offset=(4, 1))
             await worker.wait()
 

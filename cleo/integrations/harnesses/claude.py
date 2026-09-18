@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import secrets
+import subprocess
 from dataclasses import asdict, dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -20,6 +23,7 @@ from claude_agent_sdk import (
     UserMessage,
 )
 
+from cleo.harnesses.approvals import PermissionBroker
 from cleo.harnesses.control import HarnessModel, SessionOptions
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 from cleo.harnesses.provider import ProviderSession, ProviderTurn
@@ -55,7 +59,9 @@ class _ClaudeRuntime:
     native_session_id: str | None = None
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     active: bool = False
+    context_binding: Any = None
     questions: QuestionBroker = field(default_factory=lambda: QuestionBroker("claude"))
+    approvals: PermissionBroker = field(default_factory=lambda: PermissionBroker("claude"))
 
 
 class ClaudeProvider:
@@ -135,6 +141,57 @@ class ClaudeProvider:
         self._sessions[session_id] = runtime
         return ProviderSession(id=session_id, native_id=native_session_id)
 
+    async def validate_handoff(self, session_id: str) -> None:
+        """Check the SDK's actual CLI login without submitting a model/tool turn."""
+        from cleo.integrations.claude_cli import process_options, stop_process
+
+        runtime = self._sessions[session_id]
+        transport = getattr(runtime.client, "_transport", None)
+        cli = getattr(transport, "_cli_path", None)
+        if not cli:
+            raise RuntimeError("无法确认 Claude SDK 的登录状态，原 harness 保持不变。")
+        process = await asyncio.create_subprocess_exec(
+            str(cli),
+            "auth",
+            "status",
+            cwd=runtime.cwd,
+            env=dict(os.environ),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            **process_options(),
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(process.communicate(), 20)
+            try:
+                status = json.loads(stdout)
+            except (ValueError, UnicodeDecodeError):
+                status = None
+            if (
+                process.returncode
+                or not isinstance(status, dict)
+                or status.get("loggedIn") is not True
+            ):
+                detail = diagnostic_text(stderr.decode("utf-8", errors="replace"))
+                raise ValueError("Claude 登录检查未通过，原 harness 保持不变。" + detail)
+        finally:
+            await stop_process(process)
+
+    async def create_context_session(self, project_path, model, binding):
+        if self._memory_mcp is None:
+            raise ValueError("Claude context reader is not configured")
+        session_id = f"claude_{secrets.token_hex(6)}"
+        self._sessions[session_id] = await self._connect(project_path, model, context=binding)
+        return ProviderSession(id=session_id)
+
+    async def resume_context_session(self, native_id, project_path, model, binding):
+        if self._memory_mcp is None:
+            raise ValueError("Claude context reader is not configured")
+        runtime = await self._connect(project_path, model, resume=native_id, context=binding)
+        runtime.native_session_id = native_id
+        session_id = f"claude_{secrets.token_hex(6)}"
+        self._sessions[session_id] = runtime
+        return ProviderSession(id=session_id, native_id=native_id)
+
     def session_options(self, session_id: str) -> SessionOptions:
         """Return the model and effort currently applied to a Claude session."""
         return self._sessions[session_id].options
@@ -155,14 +212,14 @@ class ClaudeProvider:
         if sandbox is not None:
             raise ValueError("Claude Agent SDK does not expose a sandbox option.")
 
-        current = runtime.options
-        next_model = current.model if model is None else model
-        next_effort = current.effort if effort is None else effort
-        next_permission = current.approval_mode if approval_mode is None else approval_mode
-        if next_permission is not None and next_permission not in ClaudePermissionMode.__args__:
-            raise ValueError(f"Unsupported Claude permission mode: {next_permission}")
+        if approval_mode is not None and approval_mode not in ClaudePermissionMode.__args__:
+            raise ValueError(f"Unsupported Claude permission mode: {approval_mode}")
 
         async with runtime.lock:
+            current = runtime.options
+            next_model = current.model if model is None else model
+            next_effort = current.effort if effort is None else effort
+            next_permission = current.approval_mode if approval_mode is None else approval_mode
             if effort is not None and effort != current.effort:
                 replacement = await self._connect(
                     runtime.cwd,
@@ -170,11 +227,14 @@ class ClaudeProvider:
                     effort=next_effort,
                     resume=runtime.native_session_id,
                     permission_mode=next_permission,
+                    **({"context": runtime.context_binding} if runtime.context_binding else {}),
                 )
                 await runtime.client.disconnect()
                 runtime.client = replacement.client
                 replacement.questions.enabled = runtime.questions.enabled
                 runtime.questions = replacement.questions
+                replacement.approvals.enabled = runtime.approvals.enabled
+                runtime.approvals = replacement.approvals
             elif model is not None and model != current.model:
                 await runtime.client.set_model(model)
             if approval_mode is not None and approval_mode != current.approval_mode:
@@ -211,9 +271,12 @@ class ClaudeProvider:
             models.setdefault(model.id, model)
         if not models:
             models["default"] = HarnessModel(
-                id="default", display_name="Claude 默认模型", is_default=True,
+                id="default",
+                display_name="Claude 默认模型",
+                is_default=True,
                 description="当前 Claude 未提供模型目录，使用其默认模型",
-                default_effort=None, supported_efforts=(),
+                default_effort=None,
+                supported_efforts=(),
             )
         return tuple(models.values())
 
@@ -235,12 +298,16 @@ class ClaudeProvider:
 
         async with runtime.lock:
             runtime.active = True
+
             async def question_event(event):
                 events.append(event)
                 await emit_event(on_event, event)
+
             runtime.questions.bind(
                 question_event if runtime.questions.enabled and on_event else None,
             )
+            runtime.approvals.callback = question_event
+            runtime.approvals.reviewed_items.clear()
             try:
                 await runtime.client.query(prompt)
                 async for message in runtime.client.receive_response():
@@ -258,14 +325,38 @@ class ClaudeProvider:
                         for block in message.content:
                             if isinstance(block, ToolResultBlock):
                                 event = self._block_event(block)
+                                reviewed = block.tool_use_id in runtime.approvals.reviewed_items
+                                if not block.is_error and not reviewed:
+                                    event.data["permission"] = {
+                                        "source": "Claude 后端",
+                                        "policy": runtime.options.approval_mode,
+                                        "decision": "accept",
+                                    }
                                 events.append(event)
                                 await emit_event(on_event, event)
                     elif isinstance(message, ResultMessage):
                         result_message = message
                         runtime.native_session_id = message.session_id
+                        for denial in message.permission_denials or []:
+                            if not isinstance(denial, dict):
+                                continue
+                            item_id = str(denial.get("tool_use_id") or "")
+                            if item_id and item_id in runtime.approvals.reviewed_items:
+                                continue
+                            request = runtime.approvals.request(
+                                itemId=item_id, command=str(denial.get("tool_name") or "工具"),
+                                permissions=denial.get("tool_input"),
+                                reason="后端权限策略拒绝了此请求。",
+                            )
+                            await runtime.approvals.record(
+                                request, "decline", source="native_policy",
+                                policy=runtime.options.approval_mode,
+                            )
             finally:
                 await runtime.questions.cancel_all()
                 runtime.questions.callback = None
+                await runtime.approvals.cancel_all()
+                runtime.approvals.callback = None
                 runtime.active = False
 
         if result_message is None:
@@ -274,8 +365,10 @@ class ClaudeProvider:
         error = None
         if result_message.is_error:
             error = diagnostic_text(
-                "; ".join(result_message.errors or []) or result_message.result
-                or f"Claude SDK result: {result_message.subtype}", prompt=prompt,
+                "; ".join(result_message.errors or [])
+                or result_message.result
+                or f"Claude SDK result: {result_message.subtype}",
+                prompt=prompt,
             )
         status = "failed" if result_message.is_error else "completed"
         if result_message.stop_reason == "cancelled":
@@ -301,6 +394,7 @@ class ClaudeProvider:
         """
         runtime = self._sessions[session_id]
         await runtime.questions.cancel_all()
+        await runtime.approvals.cancel_all()
         if runtime.active:
             await runtime.client.interrupt()
 
@@ -316,6 +410,7 @@ class ClaudeProvider:
         if runtime is None:
             return
         await runtime.questions.cancel_all()
+        await runtime.approvals.cancel_all()
         if runtime.active:
             await runtime.client.interrupt()
         await runtime.client.disconnect()
@@ -329,6 +424,12 @@ class ClaudeProvider:
     async def enable_questions(self, session_id: str) -> None:
         self._sessions[session_id].questions.enabled = True
 
+    async def enable_user_approvals(self, session_id: str) -> None:
+        self._sessions[session_id].approvals.enabled = True
+
+    async def resolve_approval(self, session_id: str, approval_id: str, decision: str) -> dict:
+        return await self._sessions[session_id].approvals.resolve(approval_id, decision)
+
     async def _connect(
         self,
         project_path: str,
@@ -336,6 +437,7 @@ class ClaudeProvider:
         effort: str | None = None,
         resume: str | None = None,
         permission_mode: ClaudePermissionMode | None = None,
+        context=None,
     ) -> _ClaudeRuntime:
         """创建并连接一个 ``ClaudeSDKClient``。
 
@@ -348,28 +450,65 @@ class ClaudeProvider:
             ``_ClaudeRuntime``, 由调用方登记进 ``_sessions``。
         """
         questions = QuestionBroker(self.name)
+        approvals = PermissionBroker(self.name)
 
         async def ask_hook(input_data, _tool_use_id, _context):
             # AskUserQuestion must reach the callback even under permissive tool policies.
-            return {"hookSpecificOutput": {"hookEventName": "PreToolUse",
-                                           "permissionDecision": "ask"}}
+            return {
+                "hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "ask"}
+            }
 
         async def can_use_tool(tool_name, input_data, context):
+            if (
+                memory
+                and memory.context
+                and tool_name
+                in {
+                    "mcp__cleo_context__read_context",
+                    "mcp__cleo_context__search_context",
+                }
+            ):
+                # The process-bound reader validates scope and arguments. This grant
+                # neither changes general memory access nor authorizes file/command tools.
+                return PermissionResultAllow(updated_input=input_data)
             if tool_name != "AskUserQuestion":
-                return PermissionResultDeny(message="此工具需要权限确认；请使用支持的审批入口。")
+                request = approvals.request(
+                    itemId=str(getattr(context, "tool_use_id", "") or ""), cwd=project_path,
+                    title=getattr(context, "title", None) or f"允许使用 {tool_name}？",
+                    command=str(input_data.get("command") or input_data.get("file_path")
+                                or json.dumps(input_data, ensure_ascii=False)),
+                    permissions=input_data,
+                    reason=getattr(context, "decision_reason", None)
+                    or getattr(context, "description", None) or "Claude 请求你的确认。",
+                )
+                decision = await approvals.ask(request)
+                if decision == "accept":
+                    return PermissionResultAllow(updated_input=input_data)
+                return PermissionResultDeny(
+                    message="用户拒绝或取消了此请求。", interrupt=decision == "cancel",
+                )
             try:
                 normalized = normalize_questions(input_data.get("questions"), claude=True)
             except ValueError as exc:
                 return PermissionResultDeny(message=str(exc))
             answers = await questions.ask(
-                normalized, native_id=str(getattr(context, "tool_use_id", "") or ""),
+                normalized,
+                native_id=str(getattr(context, "tool_use_id", "") or ""),
             )
             if answers is None:
                 return PermissionResultDeny(message="用户未提交答案。请在对话中重新询问。")
-            return PermissionResultAllow(updated_input={**input_data, "answers": {
-                q["question"]: ", ".join(answers[q["id"]]) for q in normalized
-            }})
+            return PermissionResultAllow(
+                updated_input={
+                    **input_data,
+                    "answers": {q["question"]: ", ".join(answers[q["id"]]) for q in normalized},
+                }
+            )
 
+        memory = (
+            self._memory_mcp.for_context(context)
+            if context and self._memory_mcp
+            else self._memory_mcp
+        )
         options = ClaudeAgentOptions(
             cwd=project_path,
             # Native discovery keeps explicit-only and automatic skills distinct.
@@ -378,7 +517,7 @@ class ClaudeProvider:
             effort=effort,
             permission_mode=permission_mode or self._permission_mode,
             resume=resume,
-            mcp_servers=self._memory_mcp.claude_servers() if self._memory_mcp else {},
+            mcp_servers=memory.claude_servers() if memory else {},
             can_use_tool=can_use_tool,
             hooks={"PreToolUse": [HookMatcher(matcher="AskUserQuestion", hooks=[ask_hook])]},
         )
@@ -389,17 +528,22 @@ class ClaudeProvider:
                 async with asyncio.timeout(30):
                     while True:
                         status = await client.get_mcp_status()
+                        expected = {"cleo_memory", "cleo_context"} if context else {"cleo_memory"}
+                        servers = [s for s in status["mcpServers"] if s["name"] in expected]
+                        if len(servers) == len(expected) and all(
+                            s["status"] == "connected" for s in servers
+                        ):
+                            break
                         server = next(
-                            (s for s in status["mcpServers"] if s["name"] == "cleo_memory"),
+                            (s for s in servers if s["status"] not in {"pending", "connected"}),
                             None,
                         )
-                        if server and server["status"] == "connected":
-                            break
-                        if server and server["status"] != "pending":
+                        if server:
                             raise RuntimeError(
                                 "Cleo memory MCP failed to connect: "
-                                + diagnostic_text(str(server['status']) + "; "
-                                                  + str(server.get('error') or ''))
+                                + diagnostic_text(
+                                    str(server["status"]) + "; " + str(server.get("error") or "")
+                                )
                             )
                         await asyncio.sleep(0.1)
             except BaseException:
@@ -414,6 +558,8 @@ class ClaudeProvider:
             ),
             cwd=project_path,
             questions=questions,
+            approvals=approvals,
+            context_binding=context,
         )
 
     def _block_event(self, block: object) -> AgentEvent | None:
@@ -433,5 +579,8 @@ class ClaudeProvider:
         if isinstance(block, ToolUseBlock):
             return AgentEvent(provider=self.name, type="tool_call", data=asdict(block))
         if isinstance(block, ToolResultBlock):
-            return AgentEvent(provider=self.name, type="tool_result", data=asdict(block))
+            return AgentEvent(provider=self.name, type="tool_result", data={
+                **asdict(block), "output": block.content,
+                "status": "failed" if block.is_error else "completed",
+            })
         return None

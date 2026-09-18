@@ -129,7 +129,7 @@ try {
   await window.getByRole("heading", { name: "项目记忆", exact: true }).waitFor();
   await window.getByRole("button", { name: /Cleo-AI-agent/ }).click();
   await window.getByText("修改后列出变更文件", { exact: true }).click();
-  await window.getByText("MEMORY.md · 最近的项目记忆变更", { exact: true }).waitFor();
+  await window.getByText("最近变更", { exact: true }).waitFor();
   await window.getByText("01234567", { exact: true }).waitFor();
   assert(await window.getByText("置信度", { exact: true }).count() === 0,
     "Project preferences still show synthetic confidence scores");
@@ -153,14 +153,14 @@ try {
   await window.getByRole("button", { name: "开发", exact: true }).click();
   await window.getByTestId("conversation").waitFor();
   await window.getByTestId("new-thread").click();
-  await window.getByText("从一个清晰的目标开始。").waitFor();
+  await window.getByText("开始新任务").waitFor();
   await window.getByTestId("runtime-selector").click();
   await window.getByText("claude", { exact: true }).click();
   await window.getByText("Claude Opus 5", { exact: true }).waitFor();
   await window.getByText("Claude Opus 5", { exact: true }).click();
   assert(
-    JSON.stringify(await window.getByTestId("effort-selector").locator("option").allTextContents())
-      === JSON.stringify(["由 harness 管理", "low", "medium", "high", "xhigh", "max"]),
+    JSON.stringify(await window.getByTestId("effort-selector").locator("option").evaluateAll(options => options.map(option => option.value)))
+      === JSON.stringify(["", "low", "medium", "high", "xhigh", "max"]),
     "Claude effort options did not match the harness catalog",
   );
   await window.getByTestId("runtime-selector").click();
@@ -217,7 +217,7 @@ try {
   await window.getByTestId("stop-button").waitFor();
   await window.getByRole("heading", { name: "正在整理", exact: true }).waitFor({ timeout: 20_000 });
   await window.getByTestId("thought-group").waitFor({ timeout: 5_000 });
-  await window.getByTestId("tool-group").getByText("2 次调用", { exact: false }).waitFor({ timeout: 5_000 });
+  await window.getByTestId("tool-group").getByText("2 项", { exact: false }).waitFor({ timeout: 5_000 });
   const streamingLayout = await window.evaluate(() => {
     const timeline = document.querySelector('[data-testid="timeline"]');
     const thoughtGroup = timeline?.querySelector('[data-testid="thought-group"]');
@@ -320,10 +320,10 @@ try {
   await window.getByRole("button", { name: "设置", exact: true }).click();
   await window.getByRole("dialog", { name: "设置" }).waitFor();
   await checkSettingsLayout(window);
-  await window.getByRole("button", { name: /雾白/ }).click();
+  await window.getByRole("button", { name: /浅色/ }).click();
   await window.screenshot({ path: join(outputDir, "06-settings-light.png") });
   await window.getByRole("button", { name: "数据与记忆", exact: true }).click();
-  await window.getByText("在记忆页查看整理结果和待确认来源。", { exact: true }).waitFor();
+  await window.locator(".settings-row").getByText("记忆整理", { exact: true }).waitFor();
   await window.screenshot({ path: join(outputDir, "06b-settings-memory.png") });
   await window.getByRole("button", { name: "模型", exact: true }).click();
   await window.getByRole("button", { name: "切换模型", exact: true }).waitFor();
@@ -358,7 +358,7 @@ try {
   assert(compactFit.document.width === compactFit.viewport.width, "Compact view scrolls horizontally");
   assert(compactFit.document.height === compactFit.viewport.height, "Compact view scrolls vertically");
   assert(compactFit.composer?.bottom <= compactFit.viewport.height, "Composer is clipped in compact view");
-  assert(compactFit.threadSelect?.right <= compactFit.threadRow?.right, "Thread controls overflow their row");
+  assert(!await window.locator(".thread-sidebar").isVisible(), "Compact inspector must leave room for the conversation");
   assert(
     !compactFit.inspector || compactFit.inspector.right <= compactFit.viewport.width,
     "Inspector drawer is clipped in compact view",
@@ -367,12 +367,20 @@ try {
   await window.getByTestId("inspector").getByRole("button", { name: "关闭检查器", exact: true }).click();
   await window.getByTestId("inspector").waitFor({ state: "detached" });
 
+  await window.waitForFunction(() => !document.querySelector(".app-shell").getAnimations()
+    .some(animation => animation.playState === "running"));
+  const sidebarFit = await window.locator(".thread-row").first().evaluate(row => {
+    const button = row.querySelector(".thread-row-select");
+    return button.getBoundingClientRect().right <= row.getBoundingClientRect().right + 1;
+  });
+  assert(sidebarFit, "Thread controls overflow their visible row");
+
   await window.getByRole("button", { name: "设置", exact: true }).click();
   await checkSettingsLayout(window);
   await window.keyboard.press("Escape");
 
   await window.getByTestId("new-thread").click();
-  await window.getByText("从一个清晰的目标开始。").waitFor();
+  await window.getByText("开始新任务").waitFor();
   await window.getByTestId("composer-input").fill("请模拟失败状态");
   await window.getByTestId("send-button").click();
   await window.getByText("任务已暂停").waitFor({ timeout: 20_000 });
@@ -395,7 +403,7 @@ try {
   const productivityRowsBeforeDelete = await window.locator(".thread-row").count();
   await window.locator(".thread-row").first().hover();
   await window.getByTestId("delete-thread").first().click();
-  await window.getByText("SDK / ACP 中的原生会话不会被远程删除。", { exact: false }).waitFor();
+  await window.getByText("外部客户端中的会话会保留。", { exact: false }).waitFor();
   await window.getByRole("button", { name: "永久删除", exact: true }).click();
   await window.waitForFunction(
     (count) => document.querySelectorAll(".thread-row").length === count - 1,

@@ -1,5 +1,6 @@
 import { modifierKey } from "../platform";
 import { VirtualTimeline } from "./VirtualTimeline";
+import { Timing } from "./Timing";
 import { cleoClient } from "../services/cleoClient";
 import type { useTimelineHistory } from "../useTimelineHistory";
 import "./timeline.css";
@@ -52,6 +53,7 @@ import type {
   Project,
   RuntimeCatalog,
   RuntimeProfile,
+  SteerReceipt,
   Thread,
   ThreadSpace,
   TimelineItem,
@@ -60,12 +62,14 @@ import type {
 } from "../types";
 import { ApprovalPrompt } from "./ApprovalPrompt";
 import { RenameThreadDialog } from "./Overlays";
+import { handleDialogKeyDown } from "./Modal";
+import { approvalLabel, effortLabels } from "../runtime-labels";
 
 interface ConversationProps {
   history?: ReturnType<typeof useTimelineHistory>;
   questionUI?: ReactNode;
   preparation?: ReactNode;
-  improvement?: ReactNode;
+  onImprove?: () => void;
   header?: ReactNode;
   thread: Thread | null;
   project: Project | null;
@@ -76,8 +80,10 @@ interface ConversationProps {
   runtimeModelsLoading: string | null;
   runtimeModelsError: string | null;
   running: boolean;
+  waitingForAnswer?: boolean;
   sendBlocked: string | null;
   sendError?: string;
+  harnessSwitchStatus?: string | null;
   prompt: string;
   onPromptChange: (prompt: string) => void;
   onRename: (name: string) => Promise<void>;
@@ -89,6 +95,9 @@ interface ConversationProps {
   onOpenCommand: () => void;
   onSend: (prompt: string) => void;
   onCancel: () => void;
+  steeringBusy?: boolean;
+  onRetrySteer?: (receipt: SteerReceipt) => void;
+  onRestoreSteer?: (receipt: SteerReceipt) => void;
   onUndo: () => void;
   onSelectNonProductivityProfile: (profileId: string) => void;
   onLoadProductivityModels: (provider: string, refresh?: boolean) => Promise<ProductivityModelCatalog>;
@@ -120,7 +129,7 @@ export function Conversation({
   history,
   questionUI,
   preparation,
-  improvement,
+  onImprove,
   header,
   thread,
   project,
@@ -131,8 +140,10 @@ export function Conversation({
   runtimeModelsLoading,
   runtimeModelsError,
   running,
+  waitingForAnswer = false,
   sendBlocked,
   sendError,
+  harnessSwitchStatus,
   prompt,
   onPromptChange,
   onRename,
@@ -144,6 +155,9 @@ export function Conversation({
   onOpenCommand,
   onSend,
   onCancel,
+  steeringBusy = false,
+  onRetrySteer,
+  onRestoreSteer,
   onUndo,
   onSelectNonProductivityProfile,
   onLoadProductivityModels,
@@ -183,6 +197,13 @@ export function Conversation({
     () => groupTimelineItems(thread?.items ?? []),
     [thread?.items],
   );
+  const currentTurn = timelineItems.slice(timelineItems.findLastIndex(item => item.type === "message" && item.role === "user") + 1);
+  const waiting = Boolean(approvalRequest || waitingForAnswer);
+  const activeProcess = running && !waiting && !thread?.history?.hasAfter
+    ? currentTurn.findLast(item => item.type === "thought-group" ? item.thoughts.some(thought => thought.status === "running")
+      : item.type === "tool-group" && item.tools.some(tool => tool.status === "running")) : undefined;
+  const showActivity = running && !waiting && !thread?.history?.hasAfter && !activeProcess
+    && !currentTurn.some(item => item.type === "message" && item.role === "assistant" && item.content.trim());
 
   const [expansion, setExpansion] = useState<Record<string, { open: boolean; answered: boolean }>>({});
   const stateKey = (id: string) => `${thread?.id}:${id}`;
@@ -210,19 +231,43 @@ export function Conversation({
   }
   const [reader, setReader] = useState<{ item: TimelineItem; field: string; offset: number; text: string; next: number; total: number } | null>(null);
   const [readerError, setReaderError] = useState("");
+  const [readerLoading, setReaderLoading] = useState(false);
+  const readerRequest = useRef(false);
   const readerDialog = useRef<HTMLDialogElement>(null);
+  const readerViewport = useRef<HTMLDivElement>(null);
   const readerGeneration = useRef(0);
-  useEffect(() => { readerGeneration.current++; setReader(null); }, [thread?.id]);
+  const closeReader = () => {
+    readerGeneration.current++;
+    readerRequest.current = false;
+    setReader(null); setReaderError(""); setReaderLoading(false);
+  };
+  useEffect(closeReader, [thread?.id]);
   useEffect(() => { if (reader) readerDialog.current?.showModal(); else readerDialog.current?.close(); }, [Boolean(reader)]);
   const readContent = async (item: TimelineItem, field: string, offset = 0) => {
-    if (!thread) return;
+    if (!thread || (offset > 0 && readerRequest.current)) return;
     const generation = ++readerGeneration.current;
+    readerRequest.current = true; setReaderLoading(true);
     setReaderError("");
+    if (!offset) setReader({ item, field, offset: 0, text: "", next: 0, total: 0 });
     try {
       const content = await cleoClient.readTimelineContent(thread.id, item.id, field, offset);
-      if (generation === readerGeneration.current) setReader({ item, field, ...content });
-    } catch (error) { if (generation === readerGeneration.current) setReaderError(error instanceof Error ? error.message : "正文读取失败"); }
+      if (generation === readerGeneration.current) setReader(current => ({ item, field, ...content,
+        text: offset ? (current?.text ?? "") + content.text : content.text }));
+    } catch (error) {
+      if (generation === readerGeneration.current) setReaderError(error instanceof Error ? error.message : "正文读取失败");
+    } finally {
+      if (generation === readerGeneration.current) { readerRequest.current = false; setReaderLoading(false); }
+    }
   };
+  const loadReaderEdge = () => {
+    const view = readerViewport.current;
+    if (!reader || !view || readerLoading || readerError || reader.next >= reader.total) return;
+    if (view.scrollHeight - view.scrollTop - view.clientHeight < 240) void readContent(reader.item, reader.field, reader.next);
+  };
+  useEffect(() => {
+    const frame = requestAnimationFrame(loadReaderEdge);
+    return () => cancelAnimationFrame(frame);
+  }, [reader?.next, readerLoading, readerError]);
 
   const trackScrollPosition = () => {
     const viewport = viewportRef.current;
@@ -231,16 +276,28 @@ export function Conversation({
     stickToBottomRef.current = distanceFromBottom < 96 && !thread?.history?.hasAfter;
     history?.follow(stickToBottomRef.current);
     if (history?.busy || history?.error) return;
-    if (viewport.scrollTop < 160 && thread?.history?.hasBefore) void history?.load("before");
-    else if (distanceFromBottom < 160 && thread?.history?.hasAfter) void history?.load("after");
+    const prefetchDistance = Math.max(240, viewport.clientHeight / 2);
+    if (viewport.scrollTop < prefetchDistance && thread?.history?.hasBefore) void history?.load("before");
+    else if (distanceFromBottom < prefetchDistance && thread?.history?.hasAfter) void history?.load("after");
   };
+
+  useEffect(() => {
+    if (history?.busy || history?.error) return;
+    const frame = requestAnimationFrame(() => {
+      const viewport = viewportRef.current;
+      if (!viewport || viewport.scrollHeight > viewport.clientHeight + 2) return;
+      if (thread?.history?.hasAfter) void history?.load("after");
+      else if (thread?.history?.hasBefore) void history?.load("before");
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [thread?.id, thread?.items.length, thread?.history?.before, thread?.history?.after, history?.busy, history?.error, bottomInset]);
 
   const renderRow = (row: TimelineRow) => {
     let item: TimelineItem | undefined;
     let content: ReactNode;
     if (row.type === "thought-group") content = <ThoughtGroupEntry item={row} projectPath={project?.path ?? null} onOpenPath={onOpenPath}
-      expanded={isOpen(row)} onToggle={() => toggle(row.id, !isOpen(row), row.hasAnswer)} headerOnly />;
-    else if (row.type === "tool-group") content = <ToolGroupEntry item={row} expanded={isOpen(row)} onToggle={() => toggle(row.id, !isOpen(row))} headerOnly />;
+      expanded={isOpen(row)} onToggle={() => toggle(row.id, !isOpen(row), row.hasAnswer)} active={row.id === activeProcess?.id} headerOnly />;
+    else if (row.type === "tool-group") content = <ToolGroupEntry item={row} expanded={isOpen(row)} onToggle={() => toggle(row.id, !isOpen(row))} active={row.id === activeProcess?.id} headerOnly />;
     else if (row.type === "thought-row") {
       item = row.item;
       content = <div className="thought-process-list virtual-process-row"><ThoughtEntry item={row.item} projectPath={project?.path ?? null} onOpenPath={onOpenPath} /></div>;
@@ -248,9 +305,11 @@ export function Conversation({
       item = row.item;
       content = <div className="tool-process-list virtual-process-row"><ToolProcess tool={row.item} index={row.index}
         open={expansion[stateKey(row.id)]?.open ?? false} onToggle={open => toggle(row.id, open)} /></div>;
-    } else { item = row; content = <TimelineEntry item={row} projectPath={project?.path ?? null} onOpenPath={onOpenPath} />; }
+    } else { item = row; content = <TimelineEntry item={row} projectPath={project?.path ?? null} onOpenPath={onOpenPath}
+      activeTurnId={running ? thread?.currentTiming?.turnId : null}
+      steeringBusy={steeringBusy} onRetrySteer={onRetrySteer} onRestoreSteer={onRestoreSteer} />; }
     return <>{content}{item?.more && Object.keys(item.more).map(field => <button className="history-content-link" key={field}
-      onClick={() => void readContent(item!, field)}>查看完整{field === "output" ? "输出" : "正文"}（{item!.more![field]} 字符）</button>)}</>;
+      onClick={() => void readContent(item!, field)}>{field === "output" ? "展开输出" : "展开全文"}</button>)}</>;
   };
 
   return (
@@ -271,10 +330,13 @@ export function Conversation({
         onRevealPath={onRevealPath}
         onThreadCommand={onThreadCommand}
         onRename={onRename}
+        onImprove={onImprove}
         busy={running || Boolean(sendBlocked)}
-      />}{improvement}</div>
+      />}</div>
 
       <div className="conversation-body" style={{ "--composer-clearance": `${bottomInset}px` } as CSSProperties}>
+        {history?.error && <div className="history-error" role="alert">{history.error}<button onClick={() => void history.retry()}>重试加载</button></div>}
+        {history?.busy && <div className="history-loading" data-direction={history.busy} role="status" aria-label="正在加载历史"><LoaderCircle className="spin" size={14} /></div>}
         <div className="conversation-viewport" ref={viewportRef} tabIndex={0} aria-label="对话历史" onWheel={event => {
           if (event.deltaY < 0) { stickToBottomRef.current = false; history?.follow(false); }
           if (!history?.busy && !history?.error) {
@@ -284,26 +346,16 @@ export function Conversation({
           }
         }}>
           {preparation}
-        {thread?.history?.hasBefore && <button className="history-page-control" disabled={Boolean(history?.busy)} onClick={() => {
-          stickToBottomRef.current = false; history?.follow(false); void history?.load("before");
-        }}>加载更早历史</button>}
-        {history?.error && <div className="history-error" role="alert">{history.error}<button onClick={() => void history.retry()}>重试加载</button></div>}
-        {history?.busy && <div className="history-loading" role="status">正在加载历史…</div>}
         {thread?.items.length ? (
           <>
-            <VirtualTimeline rows={rows} viewport={viewportRef} follow={stickToBottomRef} bottomInset={bottomInset} threadId={thread.id} render={renderRow} onScroll={trackScrollPosition} />
-            {running ? (
-              <div className="streaming-indicator" aria-label="Cleo 正在工作">
-                <span />
-                <span />
-                <span />
-              </div>
-            ) : null}
+            <VirtualTimeline rows={rows} viewport={viewportRef} follow={stickToBottomRef} bottomInset={bottomInset} threadId={thread.id} render={renderRow} onScroll={trackScrollPosition}
+              footer={<>{showActivity && <div className="turn-activity" role="status"><LoaderCircle className="spin" size={14} /><span>正在处理…</span></div>}
+                {thread.currentTiming && (running || !thread.items.some(item => item.timing?.id === thread.currentTiming?.id))
+                  && <Timing key={thread.currentTiming.id} summary={thread.currentTiming} />}</>} />
           </>
         ) : (
           <WelcomeState project={project} space={space} onUseSuggestion={onPromptChange} />
         )}
-        {thread?.history?.hasAfter && <button className="history-page-control" disabled={Boolean(history?.busy)} onClick={() => void history?.load("after")}>加载较新历史</button>}
       </div>
 
       <div className="conversation-bottom" ref={bottomRef}>
@@ -311,13 +363,17 @@ export function Conversation({
         void history?.load("latest", () => { stickToBottomRef.current = true; });
       }}><ArrowDown size={17} aria-hidden="true" /></button>}
       {questionUI}
-      {readerError && <p className="history-error" role="alert">{readerError}</p>}
       <dialog ref={readerDialog} className="history-reader" data-content-kind={reader?.item.type} aria-label="完整历史正文"
-        onKeyDown={event => event.stopPropagation()} onCancel={() => { readerGeneration.current++; setReader(null); }}>
-        {reader && <><header><strong>完整历史正文</strong><button onClick={() => { readerGeneration.current++; setReader(null); }}>关闭正文</button></header>
-          <p>{reader.offset + 1}–{reader.next} / {reader.total} 字符</p><pre>{reader.text}</pre>
-          <footer><button disabled={!reader.offset} onClick={() => void readContent(reader.item, reader.field, Math.max(0, reader.offset - 16384))}>上一段</button>
-            <button disabled={reader.next >= reader.total} onClick={() => void readContent(reader.item, reader.field, reader.next)}>下一段</button></footer></>}
+        onKeyDown={handleDialogKeyDown} onCancel={closeReader}>
+        {reader && <><header><strong>完整内容</strong><button aria-label="关闭正文" onClick={closeReader}><X size={18} /></button></header>
+          <div className="history-reader-content" ref={readerViewport} onScroll={loadReaderEdge} tabIndex={0}>
+            {reader.item.type === "message" || reader.item.type === "thought"
+              ? <div className="message-copy"><MarkdownContent content={reader.text} projectPath={project?.path ?? null} onOpenPath={onOpenPath} /></div>
+              : <pre>{reader.text}</pre>}
+          </div>
+          {readerLoading && <div className="reader-status" role="status" aria-label="正在读取内容"><LoaderCircle className="spin" size={14} /></div>}
+          {readerError && <p className="history-error" role="alert">{readerError}<button onClick={() => void readContent(reader.item, reader.field, reader.next)}>重试</button></p>}
+        </>}
       </dialog>
 
       <Composer
@@ -326,6 +382,7 @@ export function Conversation({
         onPromptChange={onPromptChange}
         sendBlocked={sendBlocked}
         sendError={sendError}
+        harnessSwitchStatus={harnessSwitchStatus}
         space={space}
         runtime={runtime}
         runtimeCatalog={runtimeCatalog}
@@ -373,6 +430,7 @@ function ConversationHeader({
   onRevealPath,
   onThreadCommand,
   onRename,
+  onImprove,
   busy,
 }: Pick<
   ConversationProps,
@@ -391,6 +449,7 @@ function ConversationHeader({
   | "onRevealPath"
   | "onThreadCommand"
   | "onRename"
+  | "onImprove"
 > & { busy: boolean }) {
   const [threadMenuOpen, setThreadMenuOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
@@ -447,7 +506,7 @@ function ConversationHeader({
             onClick={onUndo}
           >
             <RotateCcw className={undoing ? "spin" : ""} size={14} />
-            <span>{undoing ? "回退中" : "Undo"}</span>
+            <span>{undoing ? "撤销中" : "撤销改动"}</span>
           </button>
         ) : null}
         {project?.branch ? (
@@ -469,15 +528,16 @@ function ConversationHeader({
           </button>
           {threadMenuOpen ? (
             <div className="thread-actions-menu surface-popover">
+              {onImprove && <button type="button" onClick={() => { setThreadMenuOpen(false); onImprove(); }}>改进 Cleo</button>}
               <button type="button" onClick={() => {
                 setThreadMenuOpen(false);
                 setRenameOpen(true);
               }}>重命名</button>
               {thread?.space === "productivity" ? <>
-                <button type="button" onClick={() => runThreadCommand("/fork")}>Fork thread</button>
+                <button type="button" onClick={() => runThreadCommand("/fork")}>创建分支任务</button>
                 <button type="button" onClick={() => runThreadCommand("/compact")}>压缩上下文</button>
                 <button className="danger" type="button" onClick={() => {
-                  if (window.confirm("归档当前 thread 并创建一个新任务？")) runThreadCommand("/archive");
+                  if (window.confirm("归档当前任务并创建新任务？")) runThreadCommand("/archive");
                 }}>归档</button>
               </> : null}
             </div>
@@ -581,10 +641,18 @@ function TimelineEntry({
   item,
   projectPath,
   onOpenPath,
+  steeringBusy,
+  onRetrySteer,
+  onRestoreSteer,
+  activeTurnId,
 }: {
   item: TimelineBlock;
   projectPath: string | null;
   onOpenPath: ConversationProps["onOpenPath"];
+  steeringBusy?: boolean;
+  onRetrySteer?: ConversationProps["onRetrySteer"];
+  onRestoreSteer?: ConversationProps["onRestoreSteer"];
+  activeTurnId?: string | null;
 }) {
   if (item.type === "thought-group") {
     return <ThoughtGroupEntry item={item} projectPath={projectPath} onOpenPath={onOpenPath} />;
@@ -598,11 +666,11 @@ function TimelineEntry({
   </section>;
   if (item.type === "message") {
     return (
-      <article className={`message-entry ${item.role}`}>
-        <div className="message-meta">
-          <span>{item.role === "user" ? "你" : "Cleo"}</span>
+      <article className={`message-entry ${item.role}`} aria-label={item.role === "user" ? "你的消息" : "Cleo 的回复"}>
+        {(item.role === "assistant" || item.time) && <div className="message-meta">
+          {item.role === "assistant" && <span>Cleo</span>}
           <time>{item.time}</time>
-        </div>
+        </div>}
         <div className="message-copy">
           <MarkdownContent
             content={item.content}
@@ -610,6 +678,21 @@ function TimelineEntry({
             onOpenPath={onOpenPath}
           />
         </div>
+        {item.steer && <div className="steer-receipt" data-testid="steer-receipt" data-status={item.steer.status}>
+          <span>{({ queued: item.steer.mode === "native" ? "等待投递" : "当前回复结束后发送",
+            sending: "正在投递", received: "已接收", failed: "未投递",
+            cancelled: "已取消投递", uncertain: "接收状态未确认" })[item.steer.status]}</span>
+          {item.steer.error && <span className="steer-error">{item.steer.error}</span>}
+          {item.steer.retryable && onRetrySteer && <button disabled={steeringBusy}
+            onClick={() => onRetrySteer(item.steer!)}>重试</button>}
+          {["failed", "cancelled", "uncertain"].includes(item.steer.status) && onRestoreSteer
+            && <button onClick={() => {
+              onRestoreSteer(item.steer!);
+              document.querySelector<HTMLTextAreaElement>('[data-testid="composer-input"]')?.focus();
+            }}>放回输入框</button>}
+        </div>}
+        {(item.timing || item.role === "assistant") && item.turnId !== activeTurnId && <Timing key={item.timing?.id ?? item.id}
+          summary={item.timing} error={item.timingError} />}
       </article>
     );
   }
@@ -704,6 +787,7 @@ function ThoughtGroupEntry({
   expanded: controlled,
   onToggle,
   headerOnly = false,
+  active,
 }: {
   item: ThoughtGroupBlock;
   projectPath: string | null;
@@ -711,13 +795,12 @@ function ThoughtGroupEntry({
   expanded?: boolean;
   onToggle?: () => void;
   headerOnly?: boolean;
+  active?: boolean;
 }) {
   const [localExpanded, setExpanded] = useState(!item.hasAnswer);
   const expanded = controlled ?? localExpanded;
-  const running = item.thoughts.some((thought) => thought.status === "running");
-  const summary = running
-    ? `${item.thoughts.length} 条记录 · 正在更新`
-    : `${item.thoughts.length} 条记录 · ${item.hasAnswer ? "已有最终回答" : "尚无最终回答"}`;
+  const running = active ?? item.thoughts.some((thought) => thought.status === "running");
+  const summary = `${item.thoughts.length} 条`;
 
   return (
     <section className={`thought-group ${running ? "running" : "done"}`} data-testid="thought-group">
@@ -727,7 +810,7 @@ function ThoughtGroupEntry({
         onClick={onToggle ?? (() => setExpanded((value) => !value))}
       >
         <span className="thought-icon">
-          {running ? <LoaderCircle className="spin" size={15} /> : <Sparkles size={15} />}
+          <Sparkles size={15} />
         </span>
         <span className="tool-group-copy">
           <strong>思考过程</strong>
@@ -765,11 +848,7 @@ function ThoughtEntry({
 }) {
   return (
     <div className={`thought-entry ${item.status}`}>
-      {item.status === "running" ? (
-        <LoaderCircle className="spin" size={15} />
-      ) : (
-        <Sparkles size={15} />
-      )}
+      <Sparkles size={15} />
       <div className="thought-copy">
         <MarkdownContent content={item.content} projectPath={projectPath} onOpenPath={onOpenPath} />
       </div>
@@ -792,8 +871,6 @@ function PlanEntry({ item }: { item: Extract<TimelineItem, { type: "plan" }> }) 
           <li key={step.label} data-status={step.status}>
             {step.status === "done" ? (
               <CircleCheck size={15} />
-            ) : step.status === "running" ? (
-              <LoaderCircle className="spin" size={15} />
             ) : (
               <Circle size={15} />
             )}
@@ -805,17 +882,13 @@ function PlanEntry({ item }: { item: Extract<TimelineItem, { type: "plan" }> }) 
   );
 }
 
-function ToolGroupEntry({ item, expanded: controlled, onToggle, headerOnly = false }: { item: ToolGroupBlock; expanded?: boolean; onToggle?: () => void; headerOnly?: boolean }) {
+function ToolGroupEntry({ item, expanded: controlled, onToggle, headerOnly = false, active }: { item: ToolGroupBlock; expanded?: boolean; onToggle?: () => void; headerOnly?: boolean; active?: boolean }) {
   const [localExpanded, setExpanded] = useState(false);
   const expanded = controlled ?? localExpanded;
   const runningCount = item.tools.filter((tool) => tool.status === "running").length;
-  const errorCount = item.tools.filter((tool) => tool.status === "error").length;
-  const status = runningCount ? "running" : errorCount ? "error" : "done";
-  const summary = runningCount
-    ? `${item.tools.length} 次调用 · ${runningCount} 个运行中`
-    : errorCount
-      ? `${item.tools.length} 次调用 · ${errorCount} 个失败`
-      : `${item.tools.length} 次调用 · 已完成`;
+  const errorCount = item.tools.filter((tool) => tool.status === "error" && !tool.approvalAudit).length;
+  const status = (active ?? Boolean(runningCount)) ? "running" : errorCount ? "error" : "done";
+  const summary = errorCount ? `${item.tools.length} 项 · ${errorCount} 项失败` : `${item.tools.length} 项`;
   return (
     <section className={`tool-group ${status}`} data-testid="tool-group">
       <button
@@ -852,12 +925,12 @@ function ToolProcess({ tool, index, open, onToggle }: { tool: ToolTimelineItem; 
         <span className="tool-main">
           <span>
             <strong>{tool.name}</strong>
-            <small>{tool.status === "running" ? "运行中" : tool.status === "error" ? "失败" : "完成"}</small>
+            {!tool.approvalAudit && <small>{tool.status === "running" ? "运行中" : tool.status === "error" ? "失败" : "完成"}</small>}
           </span>
-          <code>{tool.command || "等待工具输入"}</code>
+          {(tool.command || !tool.approvalAudit) && <code>{tool.command || "等待工具输入"}</code>}
         </span>
         {tool.status === "running" ? (
-          <LoaderCircle className="spin" size={14} />
+          <Circle size={14} />
         ) : tool.status === "error" ? (
           <X size={14} />
         ) : tool.output ? (
@@ -866,6 +939,7 @@ function ToolProcess({ tool, index, open, onToggle }: { tool: ToolTimelineItem; 
           <Check size={14} />
         )}
       </summary>
+      {tool.permission && <p className="tool-permission">{tool.permission.source} · {approvalLabel(tool.permission.policy)} · 已允许执行</p>}
       {tool.output ? <pre>{tool.output}</pre> : null}
     </details>
   );
@@ -880,9 +954,7 @@ function WelcomeState({ project, space, onUseSuggestion }: { project: Project | 
       <div className="welcome-portrait-wrap">
         <img src="./cleo.png" alt="Cleo" />
       </div>
-      <span className="eyebrow">{project?.name ?? "CLEO"}</span>
-      <h2>{evolving ? "你想让 Cleo 怎样改变？" : space === "chat" ? "今天想聊些什么？" : "从一个清晰的目标开始。"}</h2>
-      <p>{evolving ? "直接描述需求，我会完成修改和检查。应用后，你再决定是否保存。" : space === "chat" ? "聊聊想法、学习新知，或一起解决生活中的小问题。" : "我会先理解工作区，再决定需要读取、修改和验证什么。"}</p>
+      <h2>{evolving ? "你想让 Cleo 怎样改变？" : space === "chat" ? "今天想聊些什么？" : "开始新任务"}</h2>
       <div className="suggestion-list">
         {prompts.map((suggestion) => (
           <button type="button" key={suggestion} onClick={() => {
@@ -903,6 +975,7 @@ function Composer({
   onPromptChange: setPrompt,
   sendBlocked,
   sendError,
+  harnessSwitchStatus,
   space,
   runtime,
   runtimeCatalog,
@@ -933,6 +1006,7 @@ function Composer({
   | "onPromptChange"
   | "sendBlocked"
   | "sendError"
+  | "harnessSwitchStatus"
   | "runtime"
   | "space"
   | "runtimeCatalog"
@@ -985,7 +1059,7 @@ function Composer({
 
   const submit = () => {
     const content = prompt.trim() || (attachments.length ? "请分析这些附件。" : "");
-    if (!content || running || sendBlocked) return;
+    if (!content || (running && !runtime.steerMode) || sendBlocked) return;
     onSend(content);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1094,7 +1168,7 @@ function Composer({
         onDragLeave={onDragLeave}
         onDrop={onDrop}
       >
-        {sendBlocked && <p className="composer-status" role="status">{sendBlocked}</p>}
+        {sendBlocked && sendBlocked !== harnessSwitchStatus && <p className="composer-status" role="status">{sendBlocked}</p>}
         {draggingFiles ? (
           <div className="composer-drop-overlay" aria-hidden="true">
             <Paperclip size={18} />
@@ -1103,7 +1177,7 @@ function Composer({
         ) : null}
         {matchingCommands.length || matchingSkills.length ? (
           <div className="slash-menu surface-popover" data-testid="slash-menu" id="slash-options" role="listbox" aria-label="当前 harness 技能与命令">
-            <span>可用命令 · Skills 仅限当前 harness</span>
+            <span>命令与技能</span>
             {matchingSkills.map((skill, index) => (
               <button type="button" role="option" aria-selected={selectedCommand === index} id={`slash-option-${index}`} key={skill.command} title={skill.path} onMouseDown={(event) => event.preventDefault()} onClick={() => chooseCommand(skill.command)}>
                 <code>/{skill.name}</code><small>{skill.source}{skill.command !== `/${skill.name}` ? ` · ${skill.command}` : ""}</small>
@@ -1132,6 +1206,9 @@ function Composer({
           </div>
         ) : null}
         {attachmentError ? <div className="attachment-error" role="alert">{attachmentError}</div> : null}
+        {harnessSwitchStatus ? <div className="harness-switch-status" role="status">{harnessSwitchStatus}</div> : null}
+        {!harnessSwitchStatus && runtime?.handoffStatus === "prepared" ? <div className="harness-switch-status" role="status">交接材料已准备；发送下一条消息时提交给当前 Harness。完整历史仍可查阅。</div> : null}
+        {!harnessSwitchStatus && runtime?.handoffStatus === "submitted" ? <div className="harness-switch-status" role="status">交接请求已提交，尚无首轮完成记录；继续前请核对已有操作，避免重复执行。</div> : null}
         {sendError ? <div className="attachment-error" role="alert">{sendError}</div> : null}
         <textarea
           ref={inputRef}
@@ -1148,8 +1225,7 @@ function Composer({
           onPaste={onPaste}
           rows={1}
           aria-label={space === "chat" ? "消息" : "任务描述"}
-          placeholder={running ? "Cleo 正在回复…" : space === "chat" ? "向 Cleo 发送消息…" : "描述你想完成的事情"}
-          disabled={running}
+          placeholder={running ? runtime.steerMode ? "补充或调整这项任务…" : "草拟下一条消息…" : space === "chat" ? "向 Cleo 发送消息…" : "描述你想完成的事情"}
           data-testid="composer-input"
         />
         <div className="composer-footer">
@@ -1157,7 +1233,7 @@ function Composer({
             <button type="button" aria-label="添加附件" title="添加 PDF、Office、图片或代码文件" disabled={running} onClick={() => void pickFiles()}>
               <Paperclip size={16} />
             </button>
-            <button type="button" aria-label="添加上下文" title="查看已附加上下文" onClick={onShowContext}> 
+            <button type="button" aria-label="查看上下文" title="查看上下文" onClick={onShowContext}>
               <AtSign size={16} />
             </button>
             <span className="composer-divider" />
@@ -1169,6 +1245,7 @@ function Composer({
               loadingProvider={runtimeModelsLoading}
               error={runtimeModelsError}
               running={running}
+              switching={Boolean(harnessSwitchStatus)}
               onSelectProfile={onSelectNonProductivityProfile}
               onLoadModels={onLoadProductivityModels}
               onSelectProductivityRuntime={onSelectProductivityRuntime}
@@ -1176,7 +1253,7 @@ function Composer({
             {space === "productivity" ? <select
               className="text-control effort-selector"
               value={selectedEffort}
-              disabled={running || space !== "productivity" || supportedEfforts.length === 0}
+              disabled={running || Boolean(harnessSwitchStatus) || supportedEfforts.length === 0}
               onChange={(event) => onEffortChange(
                 event.target.value as NonNullable<RuntimeProfile["effort"]>,
               )}
@@ -1184,27 +1261,30 @@ function Composer({
               title="选择思考深度"
               data-testid="effort-selector"
             >
-              <option value="" disabled>由 harness 管理</option>
-              {supportedEfforts.map((effort) => <option key={effort} value={effort}>{effort}</option>)}
+              <option value="" disabled>由模型决定</option>
+              {supportedEfforts.map((effort) => <option key={effort} value={effort}>{effortLabels[effort] ?? effort}</option>)}
             </select> : null}
           </div>
-          {running ? (
+          <div className="composer-send-actions">
+          {running && (
             <button className="send-button stop" type="button" aria-label="停止" title="停止" onClick={onCancel} data-testid="stop-button">
               <Square size={13} fill="currentColor" />
             </button>
-          ) : (
+          )}
+          {(!running || runtime.steerMode) && (
             <button
               className="send-button"
               type="button"
-              aria-label="发送"
-              title="发送 · Enter"
+              aria-label={running ? "追加指令" : "发送"}
+              title={sendBlocked || (running ? runtime.steerMode === "native" ? "追加指令 · Enter" : "当前回复结束后发送 · Enter" : "发送 · Enter")}
               disabled={Boolean(sendBlocked) || (!prompt.trim() && attachments.length === 0)}
               onClick={submit}
-              data-testid="send-button"
+              data-testid={running ? "steer-button" : "send-button"}
             >
               <ArrowUp size={16} />
             </button>
           )}
+          </div>
         </div>
       </div>
     </div>
@@ -1228,6 +1308,7 @@ function RuntimeSelector({
   loadingProvider,
   error,
   running,
+  switching,
   onSelectProfile,
   onLoadModels,
   onSelectProductivityRuntime,
@@ -1239,6 +1320,7 @@ function RuntimeSelector({
   loadingProvider: string | null;
   error: string | null;
   running: boolean;
+  switching: boolean;
   onSelectProfile: (profileId: string) => void;
   onLoadModels: (provider: string, refresh?: boolean) => Promise<ProductivityModelCatalog>;
   onSelectProductivityRuntime: (provider: string, model: string) => void;
@@ -1276,8 +1358,8 @@ function RuntimeSelector({
       <button
         className="text-control runtime-selector-trigger"
         type="button"
-        disabled={running || !catalog}
-        aria-label={space === "productivity" ? "选择 Harness 和模型" : "选择对话模型"}
+        disabled={(running && space === "chat") || switching || !catalog}
+        aria-label={space === "productivity" ? "选择运行方式和模型" : "选择对话模型"}
         aria-expanded={open}
         onClick={toggleMenu}
         data-testid="runtime-selector"
@@ -1291,7 +1373,6 @@ function RuntimeSelector({
             <>
               <div className="runtime-menu-heading">
                 <span>模型配置</span>
-                <small>cleo.json</small>
               </div>
               <div className="runtime-menu-list">
                 {profiles.map((profile) => (
@@ -1306,7 +1387,7 @@ function RuntimeSelector({
                   >
                     <span className="runtime-menu-copy">
                       <strong>{profile.model}</strong>
-                      <small>{profile.id} · {profile.provider}</small>
+                      <small>{profile.label ? `${profile.label} · ` : ""}{profile.provider}</small>
                     </span>
                     {(selectedProfile?.id ?? runtime.profileId) === profile.id ? <Check size={14} /> : null}
                   </button>
@@ -1316,7 +1397,7 @@ function RuntimeSelector({
           ) : providerScreen ? (
             <>
               <div className="runtime-menu-heading runtime-menu-heading-back">
-                <button type="button" aria-label="返回 provider 列表" onClick={() => setProviderScreen(null)}>
+                <button type="button" aria-label="返回服务列表" onClick={() => setProviderScreen(null)}>
                   <ArrowLeft size={14} />
                 </button>
                 <span>{selectedProvider?.id ?? providerScreen}</span>
@@ -1324,7 +1405,7 @@ function RuntimeSelector({
               </div>
               <div className="runtime-menu-list">
                 {loadingProvider === providerScreen ? (
-                  <div className="runtime-menu-status"><LoaderCircle className="spin" size={14} />正在连接 harness 并读取模型…</div>
+                  <div className="runtime-menu-status"><LoaderCircle className="spin" size={14} />正在读取模型…</div>
                 ) : error ? (
                   <div className="runtime-menu-status error" role="alert">
                     <span>{error}</span>
@@ -1355,8 +1436,8 @@ function RuntimeSelector({
           ) : (
             <>
               <div className="runtime-menu-heading">
-                <span>选择 Harness</span>
-                <small>新任务生效 · 历史保留</small>
+                <span>选择运行方式</span>
+                <small>{running ? "当前轮结束后切换 · 历史保留" : "当前会话生效 · 历史保留"}</small>
               </div>
               <div className="runtime-menu-list">
                 {providers.map((provider) => (
@@ -1383,8 +1464,8 @@ function RuntimeSelector({
 }
 
 function providerTypeLabel(type?: string) {
-  if (type === "codex_sdk") return "Codex SDK";
-  if (type === "claude_sdk") return "Claude Agent SDK";
-  if (type === "acp") return "ACP";
-  return "Provider";
+  if (type === "codex_sdk") return "Codex";
+  if (type === "claude_sdk") return "Claude";
+  if (type === "acp") return "外部客户端";
+  return "服务";
 }

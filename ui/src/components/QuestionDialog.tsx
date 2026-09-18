@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { MessageCircleQuestion, X } from "lucide-react";
 import type { useQuestions } from "../useQuestions";
+import { handleDialogKeyDown } from "./Modal";
 
 export function QuestionDialog({ questions }: { questions: ReturnType<typeof useQuestions> }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -14,10 +15,7 @@ export function QuestionDialog({ questions }: { questions: ReturnType<typeof use
       <button onClick={questions.reopen}>回答问题</button>
     </div>}
     <dialog ref={dialog} className="question-dialog" aria-label="Agent 提问"
-      onKeyDown={event => {
-        event.stopPropagation();
-        if (event.key === "Enter" && (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229)) event.preventDefault();
-      }} onCancel={event => { event.preventDefault(); questions.collapse(); }}>
+      onKeyDown={handleDialogKeyDown} onCancel={event => { event.preventDefault(); questions.collapse(); }}>
       {request && <form onSubmit={event => { event.preventDefault(); void questions.submit(); }}>
         <header><h2>Agent 提问</h2><button type="button" aria-label="收起提问" onClick={questions.collapse}><X size={18} /></button></header>
         <p>提交后继续原任务。收起窗口不会提交答案。</p>

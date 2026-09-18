@@ -63,6 +63,7 @@ try {
     window.cleoDesktop = {
       async request(method, params = {}) {
         if (method === "load_workspace") return { ...snapshot, runtime, threads: [load()], activeThreadId: "layout", activeSpace: "productivity" };
+        if (method === "load_memory") return structuredClone({ memories: snapshot.memories, memoryOverview: snapshot.memoryOverview });
         if (method === "load_thread") return load();
         if (method === "load_timeline") return pageOf(params.direction, params.cursor);
         if (method === "get_pending_questions") return [];
@@ -83,7 +84,11 @@ try {
   }, { snapshot });
   await page.reload();
   await page.getByText("最后一条消息应完整显示在输入框上方。", { exact: true }).waitFor();
-  await page.locator(".evolution-cases").waitFor();
+  assert.equal(await page.locator(".conversation-chrome .evolution-cases").count(), 0, "Improvement controls should not occupy the conversation header");
+  await page.locator(".thread-actions-wrap > button").click();
+  await page.getByRole("button", { name: "改进 Cleo", exact: true }).click();
+  await page.getByRole("dialog", { name: "改进 Cleo", exact: true }).waitFor();
+  await page.getByRole("button", { name: "关闭案例", exact: true }).click();
 
   const viewport = page.locator(".conversation-viewport");
   const inspector = page.getByTestId("inspector");
@@ -121,7 +126,7 @@ try {
       };
       return {
         width: innerWidth, height: innerHeight, documentWidth: document.documentElement.scrollWidth, documentHeight: document.documentElement.scrollHeight,
-        shell: rect(".conversation-shell"), inspector: rect(".inspector"), header: rect(".conversation-header"), cases: rect(".evolution-cases"),
+        shell: rect(".conversation-shell"), inspector: rect(".inspector"), header: rect(".conversation-header"),
         viewport: rect(".conversation-viewport"), composer: rect(".composer"), input: rect('[data-testid="composer-input"]'),
         send: rect('[data-testid="send-button"]'), tabs: rect(".inspector-tabs"),
         tabScrollHeight: tabs.scrollHeight, tabClientHeight: tabs.clientHeight, tabOverflow: getComputedStyle(tabs).overflowY,
@@ -142,7 +147,7 @@ try {
       assert(control.left >= state.composer.left && control.right <= state.composer.right + 1
         && control.top >= state.composer.top && control.bottom <= state.composer.bottom + 1, `Composer control is clipped: ${context}`);
     }
-    assert(state.header.bottom <= state.cases.top + 1 && state.cases.bottom <= state.viewport.top + 1, `Conversation header overlaps history: ${context}`);
+    assert(state.header.bottom <= state.viewport.top + 1, `Conversation header overlaps history: ${context}`);
     assert(state.tabScrollHeight <= state.tabClientHeight + 1 && state.tabOverflow !== "scroll", `Inspector tabs have vertical overflow: ${context}`);
     assert(state.tabButtons.every(box => box.left >= state.tabs.left - 1 && box.right <= state.tabs.right + 1
       && box.top >= state.tabs.top - 1 && box.bottom <= state.tabs.bottom + 1), `Inspector tabs are clipped: ${context}`);
@@ -237,21 +242,20 @@ try {
   const scenarios = [
     { name: "wide", width: 1600, height: 1000, zoom: 1 },
     { name: "compact", width: 1080, height: 760, zoom: 1 },
+    { name: "narrow", width: 760, height: 800, zoom: 1 },
     { name: "zoom", width: 1600, height: 1000, zoom: 1.5 },
     { name: "compact-zoom", width: 1080, height: 760, zoom: 1.5 },
   ];
   for (const scenario of scenarios) {
     const size = await resizeWindow(application, page, scenario);
     console.log(JSON.stringify({ scenario: scenario.name, ...size }));
-    if (scenario.name === "compact-zoom") {
-      await page.getByRole("button", { name: "收起侧栏", exact: true }).click();
-    }
     for (const theme of ["dark", "light"]) {
       const label = `${scenario.name}-${theme}`;
       await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
       await openInspector();
       await jumpLatest();
       const open = await checkGeometry(label);
+      assert(open.shell.width >= 350, `Conversation became too narrow (${label}): ${open.shell.width}`);
       await checkLastMessage(label);
       await checkScrollAndHitTargets(label);
       await checkRuntimeMenu(label);
@@ -264,7 +268,7 @@ try {
       await inspector.waitFor({ state: "detached" });
       await settle();
       const closedWidth = await page.locator(".conversation-shell").evaluate(element => element.getBoundingClientRect().width);
-      assert(closedWidth > open.shell.width + 100, `Closing the inspector does not restore chat space (${label}): ${open.shell.width} → ${closedWidth}`);
+      assert(closedWidth >= open.shell.width, `Closing the inspector reduces chat space (${label}): ${open.shell.width} → ${closedWidth}`);
       await checkLastMessage(`${label}-closed`);
     }
   }

@@ -19,7 +19,7 @@ interface Window {
     onEvolutionState(listener: (state: import("./evolution-types").EvolutionState) => void): () => void;
     confirmHealthy(): Promise<void>;
     getUpdateState(): Promise<import("./types").UpdateState>;
-    checkForUpdates(): Promise<import("./types").UpdateState>;
+    checkForUpdates(tag?: string): Promise<import("./types").UpdateState>;
     downloadUpdate(): Promise<import("./types").UpdateState>;
     installUpdate(): Promise<boolean>;
     onUpdateState(listener: (state: import("./types").UpdateState) => void): () => void;

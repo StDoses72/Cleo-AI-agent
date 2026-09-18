@@ -1,21 +1,24 @@
 import assert from "node:assert/strict";
-import { mkdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { _electron as electron } from "playwright";
 import { snapshot } from "../src/services/mockData.ts";
 
-const appDir = join(dirname(fileURLToPath(import.meta.url)), "..");
-const outputDir = join(appDir, "output", "playwright", "ux");
-await mkdir(outputDir, { recursive: true });
-const app = await electron.launch({ args: ["."], cwd: appDir, env: { ...process.env, CLEO_DESKTOP_MOCK: "1" } });
-const page = await app.firstWindow();
-page.setDefaultTimeout(4000);
+const ui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const scratch = await mkdtemp(join(tmpdir(), "cleo-ux-smoke-"));
+const appDir = join(scratch, "app");
+const outputDir = process.env.CLEO_SMOKE_OUTPUT || join(scratch, "screenshots");
+let app;
+let page;
+let input;
 const results = [];
-const input = page.getByTestId("composer-input");
 const rail = (name) => page.getByRole("button", { name, exact: true });
 
 async function check(name, run) {
+  if (process.argv[2] && !name.includes(process.argv[2])) return;
   await page.reload();
   await page.getByTestId("conversation").waitFor({ timeout: 15000 });
   try {
@@ -23,11 +26,25 @@ async function check(name, run) {
     results.push({ name, status: "passed" });
   } catch (error) {
     results.push({ name, status: "failed", error: error.message });
+    console.error(name, await page.evaluate(() => ({ focus: document.activeElement?.outerHTML.slice(0, 240), dialogs: [...document.querySelectorAll("dialog[open]")].map(e => e.className) })));
   }
   await page.screenshot({ path: join(outputDir, `${name}.png`) });
 }
 
 try {
+  await mkdir(appDir);
+  await mkdir(outputDir, { recursive: true });
+  await cp(join(ui, "electron"), join(appDir, "electron"), { recursive: true });
+  await cp(join(ui, "package.json"), join(appDir, "package.json"));
+  const build = spawnSync(process.execPath, [join(ui, "node_modules/vite/bin/vite.js"), "build", "--outDir", join(appDir, "dist")], {
+    cwd: ui, stdio: "pipe", windowsHide: true,
+  });
+  assert.equal(build.status, 0, build.stderr?.toString());
+  app = await electron.launch({ args: [appDir, `--user-data-dir=${join(scratch, "profile")}`],
+    env: { ...process.env, CLEO_DESKTOP_MOCK: "1", CLEO_HOME: join(scratch, "home") } });
+  page = await app.firstWindow();
+  page.setDefaultTimeout(4000);
+  input = page.getByTestId("composer-input");
   await check("native-titlebar-theme", async () => {
     await app.evaluate(({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows()[0];
@@ -42,9 +59,9 @@ try {
     await page.getByTestId("conversation").waitFor();
     await rail("设置").click();
     for (const [label, color, symbolColor] of [
-      ["雾白", "#e9e9e6", "#59636f"],
-      ["夜色", "#0b0e12", "#848c98"],
-      ["雾白", "#e9e9e6", "#59636f"],
+      ["浅色", "#e9e9e6", "#59636f"],
+      ["深色", "#0b0e12", "#848c98"],
+      ["浅色", "#e9e9e6", "#59636f"],
     ]) {
       await rail(label).click();
       await page.waitForFunction(() => window.cleoWindow !== undefined);
@@ -56,7 +73,7 @@ try {
     await page.getByTestId("conversation").waitFor();
     assert.equal((await app.evaluate(() => globalThis.uxTitleBarOverlay))?.color, "#e9e9e6", "Saved light theme must restore native controls");
     await rail("设置").click();
-    await rail("夜色").click();
+    await rail("深色").click();
     await page.keyboard.press("Escape");
   });
   await check("chat-welcome", async () => {
@@ -73,6 +90,7 @@ try {
   await check("command-keyboard", async () => {
     await page.keyboard.press("Control+k");
     const search = page.locator(".command-search input");
+    await search.waitFor();
     await search.fill("设置");
     await search.press("Enter");
     await page.getByRole("dialog", { name: "设置", exact: true }).waitFor();
@@ -115,15 +133,25 @@ try {
     assert.equal(await input.inputValue(), "");
     assert.equal(await page.locator(".attachment-chip").count(), 0);
   });
-  await check("busy-send-preserves-draft", async () => {
-    await input.fill("正在运行的测试");
+  await check("concurrent-send-preserves-drafts", async () => {
+    await input.fill("审批测试 A");
     await input.press("Enter");
-    await page.getByTestId("stop-button").waitFor();
-    await rail("对话").click();
-    await input.fill("等待发送的草稿");
+    await page.getByTestId("approval-prompt").waitFor();
+    await input.fill("A 的下一条草稿");
+    await page.getByRole("button", { name: /^统一 managed 与 native sessions/ }).click();
+    await input.fill("审批测试 B");
     await input.press("Enter");
-    assert.equal(await input.inputValue(), "等待发送的草稿");
-    await page.getByText("另一个任务正在运行，完成或停止后即可发送。", { exact: true }).waitFor();
+    await page.getByTestId("approval-prompt").waitFor();
+    await input.fill("B 的下一条草稿");
+    await page.getByTestId("stop-button").click();
+    await page.getByTestId("stop-button").waitFor({ state: "hidden" });
+    assert.equal(await input.inputValue(), "B 的下一条草稿");
+    await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
+    assert.equal(await input.inputValue(), "A 的下一条草稿");
+    await page.getByTestId("approval-prompt").waitFor();
+    await page.getByTestId("stop-button").click();
+    await page.getByTestId("stop-button").waitFor({ state: "hidden" });
+    assert.equal(await input.inputValue(), "A 的下一条草稿");
   });
   await check("ime-enter", async () => {
     await input.fill("还在选字");
@@ -158,11 +186,16 @@ try {
     const workspace = { ...fixture, threads: [], activeThreadId: null, activeSpace: "chat" };
     const ux = window.__ux = { creates: 0, sent: [], failCreate: false, releaseCreate: null };
     window.cleoDesktop = {
+      getEvolutionState: async () => ({ phase: "idle", builds: [], releases: [], supported: false }),
+      onEvolutionState: () => () => {},
+      confirmHealthy: async () => {},
       getUpdateState: async () => ({ phase: "unsupported", currentVersion: "test" }),
       onUpdateState: () => () => {},
       onStreamEvent: (listener) => { listeners.add(listener); return () => listeners.delete(listener); },
       request: async (method, params, streamId) => {
         if (method === "load_workspace") return structuredClone(workspace);
+        if (method === "load_memory") return structuredClone({ memories: workspace.memories, memoryOverview: workspace.memoryOverview });
+        if (method === "get_pending_questions") return [];
         if (method === "get_runtime_catalog") return {
           nonProductivityProfiles: [{ id: "test", provider: "openai", model: "test", maxTokens: 100000, active: true }],
           productivityProviders: [], defaultNonProductivityProfile: "test", defaultProductivityProvider: "",
@@ -212,5 +245,7 @@ try {
   console.log(JSON.stringify(results, null, 2));
   if (results.some((result) => result.status === "failed")) process.exitCode = 1;
 } finally {
-  await app.close();
+  await app?.close();
+  assert.equal(dirname(scratch), resolve(tmpdir()));
+  await rm(scratch, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }

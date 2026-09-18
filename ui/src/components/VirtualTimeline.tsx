@@ -2,9 +2,10 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNo
 
 interface Row { id: string }
 
-export function VirtualTimeline<T extends Row>({ rows, viewport, follow, bottomInset = 0, threadId, render, onScroll }: {
+export function VirtualTimeline<T extends Row>({ rows, viewport, follow, bottomInset = 0, threadId, render, onScroll, footer }: {
   rows: T[]; viewport: RefObject<HTMLDivElement | null>; follow: RefObject<boolean>;
   bottomInset?: number;
+  footer?: ReactNode;
   threadId: string; render: (row: T) => ReactNode; onScroll: () => void;
 }) {
   const container = useRef<HTMLDivElement>(null);
@@ -24,20 +25,26 @@ export function VirtualTimeline<T extends Row>({ rows, viewport, follow, bottomI
     && (programmaticScrollTop.current === null || Math.abs(top - programmaticScrollTop.current) > 1);
   const remember = useCallback(() => {
     if (follow.current || !viewport.current) return;
-    const top = viewport.current.getBoundingClientRect().top;
-    const bottom = viewport.current.getBoundingClientRect().bottom;
-    const node = [...nodes.current.entries()].sort((a, b) => a[1].getBoundingClientRect().top - b[1].getBoundingClientRect().top)
-      .find(([, element]) => element.getBoundingClientRect().bottom > top + 1 && element.getBoundingClientRect().top < bottom);
-    anchor.current = node ? { id: node[0], top: node[1].getBoundingClientRect().top - top } : null;
+    const { top, bottom } = viewport.current.getBoundingClientRect();
+    let first: { id: string; top: number } | null = null;
+    for (const [id, element] of nodes.current) {
+      const rect = element.getBoundingClientRect();
+      if (rect.bottom > top + 1 && rect.top < bottom && (!first || rect.top - top < first.top)) {
+        first = { id, top: rect.top - top };
+      }
+    }
+    anchor.current = first;
   }, [follow, viewport]);
 
   // The parent viewport ref is available after the complete layout commit.
   useEffect(() => {
+    let frame = 0;
     const userScroll = () => {
       programmaticScrollTop.current = null;
       anchor.current = null;
     };
-    const scroll = () => {
+    const updateScroll = () => {
+      frame = 0;
       const top = viewport.current?.scrollTop;
       if (top === undefined) return;
       const expected = programmaticScrollTop.current;
@@ -46,12 +53,14 @@ export function VirtualTimeline<T extends Row>({ rows, viewport, follow, bottomI
       if (expected === null || Math.abs(top - expected) > 1) { onScrollRef.current(); remember(); }
       refresh(value => value + 1);
     };
+    const scroll = () => { if (!frame) frame = requestAnimationFrame(updateScroll); };
     const element = viewport.current;
     element?.addEventListener("scroll", scroll);
     element?.addEventListener("wheel", userScroll, { passive: true });
     element?.addEventListener("pointerdown", userScroll);
     element?.addEventListener("keydown", userScroll);
     return () => {
+      cancelAnimationFrame(frame);
       element?.removeEventListener("scroll", scroll);
       element?.removeEventListener("wheel", userScroll);
       element?.removeEventListener("pointerdown", userScroll);
@@ -126,6 +135,7 @@ export function VirtualTimeline<T extends Row>({ rows, viewport, follow, bottomI
       {render(row)}
     </MeasuredRow>)}
     <div aria-hidden="true" style={{ height: offsets.at(-1)! - offsets[end] }} />
+    {footer}
   </div>;
 }
 

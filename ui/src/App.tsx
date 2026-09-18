@@ -8,7 +8,7 @@ import { useEvolution } from "./useEvolution";
 import { useInspectorResize } from "./useInspectorResize";
 import "./components/evolution.css";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Command, Minus } from "lucide-react";
+import { Minus } from "lucide-react";
 import { Conversation } from "./components/Conversation";
 import { Inspector, type InspectorTab } from "./components/Inspector";
 import { MemoryView } from "./components/MemoryView";
@@ -37,7 +37,7 @@ export function App() {
   const [evolutionIssue, setEvolutionIssue] = useState<string | null>(null);
   const preparingEvolution = useRef(false);
   const [preparingAcceptance, setPreparingAcceptance] = useState(false);
-  const retryEvolution = useRef<() => void>(() => {});
+  const retryEvolution = useRef<(() => void) | null>(null);
   const evolutionThread = evolutionOpen && Boolean(evolution.state?.threadId)
     && workspace.activeThreadId === evolution.state?.threadId;
 
@@ -112,6 +112,7 @@ export function App() {
     }
   };
   const evolutionAction = (action: string, params: Record<string, unknown> = {}) => {
+    if (["releasePermission", "previewMergedRelease", "contributionBranches", "checkContribution", "mergeAssistance", "releases"].includes(action)) return evolution.inspect(action, params);
     retryEvolution.current = () => evolutionAction(action, params);
     setEvolutionIssue(null);
     if (action === "repairContribution") {
@@ -123,19 +124,22 @@ export function App() {
     return evolution.run(action, params).then((result) => {
       if (action === "discard" || action === "select") workspace.beginEvolutionDraft();
       if (action === "abandonRequest") {
-        retryEvolution.current = () => {};
+        retryEvolution.current = null;
         workspace.beginEvolutionDraft();
         workspace.setPrompt("");
       }
       return result;
-    }).catch((error: unknown) =>
-      setEvolutionIssue(error instanceof Error ? error.message : "操作失败"));
+    }).catch((error: unknown) => {
+      setEvolutionIssue(error instanceof Error ? error.message : "操作失败");
+      if (["previewRelease", "publishRelease", "publishMergedRelease", "previewMergedRelease", "releaseBuilds", "publishReleasePackages", "releasePackageStatus", "releasePermission", "startRelease", "submit", "requestBranch"].includes(action)) throw error;
+    });
   };
 
   const createEvolutionCase = async (input: Record<string, unknown>) => {
     if (!evolution.state?.prepared) await evolution.run("prepare");
     await evolution.run("createCase", input);
     setEvolutionOpen(true);
+    if ((evolution.state?.candidate || evolution.state?.active) && !evolution.state?.draftDirty) await evolutionAction("compareCases");
   };
   /** Purpose: Continue a case without regenerating its acceptance criteria.
    * Input: case, optional feedback and retry ID. Output: editing in the original request's task.
@@ -175,6 +179,13 @@ export function App() {
     openingEvolutionUi, preparingAcceptance]);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [compactColumns, setCompactColumns] = useState(() => window.matchMedia("(max-width: 1010px)").matches);
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 1010px)");
+    const changed = () => setCompactColumns(media.matches);
+    media.addEventListener("change", changed);
+    return () => media.removeEventListener("change", changed);
+  }, []);
   const [inspectorBySpace, setInspectorBySpace] = useState({ chat: false, productivity: true, evolution: false });
   const inspectorSpace = evolutionOpen ? "evolution" : workspace.activeSpace === "chat" ? "chat" : "productivity";
   const inspectorOpen = inspectorBySpace[inspectorSpace];
@@ -186,13 +197,19 @@ export function App() {
   };
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("changes");
   const showInspector = inspectorOpen && (evolutionOpen || workspace.activeSpace !== "memory");
-  const inspectorResize = useInspectorResize(`${sidebarCollapsed}:${evolutionOpen}`, showInspector);
+  const sidebarHidden = sidebarCollapsed || (compactColumns && showInspector);
+  const inspectorResize = useInspectorResize(`${sidebarHidden}:${evolutionOpen}`, showInspector);
   const [commandOpen, setCommandOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [improvementOpen, setImprovementOpen] = useState(false);
+  const [acceptanceGoalOpen, setAcceptanceGoalOpen] = useState(false);
+  useEffect(() => { setImprovementOpen(false); }, [workspace.activeThreadId, evolutionOpen]);
   const [threadPendingDeletion, setThreadPendingDeletion] = useState<Thread | null>(null);
   const [deletingThread, setDeletingThread] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [projectPendingRemoval, setProjectPendingRemoval] = useState<Project | null>(null);
   const [removingProject, setRemovingProject] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
   const [undoingChanges, setUndoingChanges] = useState(false);
   const [memoryView, setMemoryView] = useState<MemoryViewMode>("all");
   const [theme, setTheme] = useState<"dark" | "light">(() =>
@@ -212,7 +229,7 @@ export function App() {
   const unfinishedEvolution = evolution.state?.iteration || evolution.state?.draftDirty
     || (localCandidate?.kind === "local" && !localCandidate.savedAt);
   const displayedUpdateState: UpdateState = { ...updateState,
-    installBlocked: workspace.runningThreadId ? "请先等待当前任务结束。"
+    installBlocked: workspace.anyRunning ? "请先等待运行中的任务结束。"
       : unfinishedEvolution ? "请先保存或放弃本轮进化，再安装更新。" : null,
   };
   const toastTimerRef = useRef<number | null>(null);
@@ -258,14 +275,11 @@ export function App() {
     };
   }, []);
 
-  const runUpdateAction = (action: "check" | "download" | "install") => {
+  const runUpdateAction = (action: "download" | "install") => {
     const desktop = window.cleoDesktop;
     if (!desktop) return;
-    const operation: Promise<UpdateState | boolean> = action === "check"
-      ? desktop.checkForUpdates()
-      : action === "download"
-        ? desktop.downloadUpdate()
-        : desktop.installUpdate();
+    const operation: Promise<UpdateState | boolean> = action === "download"
+      ? desktop.downloadUpdate() : desktop.installUpdate();
     void operation
       .then((result) => {
         if (typeof result !== "boolean" && result.phase === "error") {
@@ -279,14 +293,7 @@ export function App() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        if (document.querySelector(".model-dialog[open]")) return;
-        setCommandOpen(false);
-        setSettingsOpen(false);
-        if (!deletingThread) setThreadPendingDeletion(null);
-        if (!removingProject) setProjectPendingRemoval(null);
-        return;
-      }
+      if (event.defaultPrevented || event.isComposing || document.querySelector("dialog[open]")) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === "k") {
         event.preventDefault();
         setCommandOpen((open) => !open);
@@ -307,7 +314,7 @@ export function App() {
       {
         id: "new",
         label: "新建任务",
-        hint: "在当前项目中创建一个空 thread",
+        hint: "在当前项目中创建任务",
         icon: commandIcons.plus,
         shortcut: `${modifierKey} N`,
         run: () => void workspace.createThread(),
@@ -322,21 +329,21 @@ export function App() {
       {
         id: "chat",
         label: "打开 Cleo 对话",
-        hint: "切换到 non_productivity 空间",
+        hint: "日常对话",
         icon: commandIcons.chat,
         run: () => { setEvolutionOpen(false); workspace.selectSpace("chat"); },
       },
       {
         id: "code",
         label: "打开开发任务",
-        hint: "切换到 productivity 空间",
+        hint: "处理开发任务",
         icon: commandIcons.code,
         run: () => { setEvolutionOpen(false); workspace.selectSpace("productivity"); },
       },
       {
         id: "memory",
         label: "查看记忆",
-        hint: "浏览项目记忆与 persona 投影",
+        hint: "查看保存的记忆",
         icon: commandIcons.memory,
         run: () => { setEvolutionOpen(false); workspace.selectSpace("memory"); },
       },
@@ -358,7 +365,7 @@ export function App() {
     [inspectorOpen, workspace],
   );
 
-  if (!workspace.snapshot) return <LoadingScreen error={workspace.loadingError} />;
+  if (!workspace.snapshot) return <LoadingScreen error={workspace.loadingError} onRetry={workspace.retryLoading} />;
 
   const activeRuntime = evolutionOpen && !evolutionThread ? workspace.draftRuntime : workspace.activeThread?.runtime ?? workspace.draftRuntime;
   const selectedThread = evolutionOpen && !evolutionThread ? null : workspace.activeThread;
@@ -384,10 +391,25 @@ export function App() {
   const settingsRuntime = activeRuntime.effort || !selectedRuntimeModel?.defaultEffort
     ? activeRuntime
     : { ...activeRuntime, effort: selectedRuntimeModel.defaultEffort };
+  const evolutionUnavailable = !evolutionOpen ? null : !evolution.state
+    ? evolution.loadError ? "进化状态读取失败，请先重试。" : "正在读取进化状态…"
+    : !evolution.state.supported ? "当前运行方式不支持本地进化。" : null;
+  let composerBlocked = workspace.harnessSwitchStatus || evolutionUnavailable;
+  if (!composerBlocked && (updateState.blocksTasks || (evolutionOpen && updateState.operationBusy))) {
+    composerBlocked = "请等待当前版本操作完成…";
+  }
+  if (!composerBlocked && evolutionOpen && (evolution.state?.phase !== "idle"
+      || (!workspace.running && (preparingAcceptance || openingEvolutionUi || evolution.pending)))) {
+    composerBlocked = "请等待当前操作完成…";
+  }
+  if (!composerBlocked && (workspace.startingRun || workspace.steeringBusy)) composerBlocked = "正在提交，请稍候…";
+  if (!composerBlocked && workspace.running && activeRuntime.steerMode && !conversationThread?.steerReady) {
+    composerBlocked = "正在准备任务，输入会保留…";
+  }
   const appClasses = [
     "app-shell",
     evolutionOpen ? "evolution-open" : "",
-    sidebarCollapsed && !evolutionOpen ? "sidebar-collapsed" : "",
+    sidebarHidden && !evolutionOpen ? "sidebar-collapsed" : "",
     showInspector ? "inspector-open" : "inspector-closed",
     inspectorResize.dragging ? "inspector-resizing" : "",
   ]
@@ -398,8 +420,12 @@ export function App() {
     <div ref={inspectorResize.setShell} className={appClasses} style={inspectorResize.style} data-theme={theme}>
       <TitleBar
         projectName={evolutionOpen ? "Cleo 进化" : workspace.activeSpace === "memory" ? "记忆" : workspace.activeProject?.name ?? "Cleo"}
-        mode={evolutionOpen ? "Evolution" : workspace.activeSpace === "productivity" ? "Productivity" : workspace.activeSpace === "chat" ? "Chat" : "Memory"}
+        mode={evolutionOpen ? "进化" : workspace.activeSpace === "productivity" ? "开发" : workspace.activeSpace === "chat" ? "对话" : "记忆"}
       />
+      {workspace.loadingError && <div className="workspace-error" role="alert">
+        <span>{workspace.loadingError}</span><button onClick={workspace.retryLoading}>重试</button>
+        <button onClick={workspace.clearLoadingError}>关闭</button>
+      </div>}
       <WorkspaceRail
         activeSpace={evolutionOpen ? "evolution" : workspace.activeSpace}
         onSelectSpace={(space) => {
@@ -418,12 +444,11 @@ export function App() {
         activeProjectId={workspace.activeProjectId}
         activeThreadId={workspace.activeThreadId}
         onSelectProject={workspace.selectProject}
-        onRemoveProject={setProjectPendingRemoval}
+        onRemoveProject={project => { setRemoveError(null); setProjectPendingRemoval(project); }}
         onSelectThread={workspace.selectThread}
-        onDeleteThread={setThreadPendingDeletion}
+        onDeleteThread={thread => { setDeleteError(null); setThreadPendingDeletion(thread); }}
         onCreateThread={() => void workspace.createThread()}
         onChooseWorkspace={() => void workspace.chooseWorkspace().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法打开工作目录", "error"))}
-        onOpenCommand={() => setCommandOpen(true)}
         recoverableChatBackups={workspace.snapshot.backend?.recoverableChatBackups ?? 0}
         onRestoreChatHistory={() => void workspace.restoreChatHistory().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法恢复旧对话", "error"))}
         memoryOverview={workspace.snapshot.memoryOverview}
@@ -435,6 +460,9 @@ export function App() {
         <MemoryView
           overview={workspace.snapshot.memoryOverview}
           mode={memoryView}
+          refreshError={workspace.memoryError}
+          refreshing={workspace.memoryRefreshing}
+          onRetryRefresh={() => void workspace.refreshMemory()}
           onLoadReviewDetails={workspace.loadMemoryReviewDetails}
           onReviewSource={workspace.reviewMemorySource}
         />
@@ -442,30 +470,37 @@ export function App() {
           <Conversation
             preparation={evolutionOpen && <EvolutionPreparation
               requests={(evolution.state?.acceptanceRequests || []).filter((r) => r.threadId === workspace.activeThreadId && !r.abandonedAt)}
-              acceptance={evolution.state?.acceptance} preparing={preparingAcceptance}
-              busy={preparingAcceptance || evolution.pending || updateState.operationBusy || Boolean(workspace.runningThreadId) || evolution.state?.phase !== "idle"}
+              acceptance={evolution.state?.acceptance}
+              busy={preparingAcceptance || evolution.pending || updateState.operationBusy || workspace.anyRunning || evolution.state?.phase !== "idle"}
               onResume={(request, clarification, skip) => { void sendEvolutionPrompt(request.prompt, true,
-                request.execution ? crypto.randomUUID() : request.id, request, clarification, Boolean(request.execution), skip); }}
-              onRevise={(params) => evolution.run("reviseRequest", params)} />}
+                request.execution ? crypto.randomUUID() : request.id, request, clarification, Boolean(request.execution), skip); }} />}
           header={evolutionOpen ? <EvolutionPanel state={evolution.state} error={evolutionIssue || evolution.error}
             busy={openingEvolutionUi || evolution.pending || updateState.operationBusy || Boolean(evolution.state && evolution.state.phase !== "idle")}
-            running={Boolean(workspace.runningThreadId)} inspectorOpen={showInspector} onToggleInspector={() => setInspectorOpen((open) => !open)}
-            onAction={evolutionAction} onRetry={() => retryEvolution.current()} onRepair={() => { void repairEvolution(); }}>
-              <EvolutionCases state={evolution.state?.acceptance} busy={evolution.pending || updateState.operationBusy || Boolean(workspace.runningThreadId) || evolution.state?.phase !== "idle"}
+            running={workspace.running} otherTasksRunning={workspace.anyRunning && !workspace.running} inspectorOpen={showInspector} onToggleInspector={() => setInspectorOpen((open) => !open)}
+            onAddGoal={() => setAcceptanceGoalOpen(true)}
+            onAction={evolutionAction} onRetry={() => {
+              if (evolution.loadError || !retryEvolution.current) void evolution.refresh().catch(() => {});
+              else retryEvolution.current();
+            }} onRepair={() => { void repairEvolution(); }}>
+              <EvolutionCases state={evolution.state?.acceptance} busy={evolution.pending || updateState.operationBusy || workspace.anyRunning || evolution.state?.phase !== "idle"}
+                open={acceptanceGoalOpen} onClose={() => setAcceptanceGoalOpen(false)}
                 requests={evolution.state?.acceptanceRequests}
-                currentCaseIds={evolution.state?.acceptanceRequests?.filter((r) => r.threadId === workspace.activeThreadId).at(-1)?.cases.map((c) => c.item.id)}
-                canCompare={Boolean(evolution.state?.candidate || evolution.state?.active) && !evolution.state?.draftDirty}
                 canReview={Boolean(evolution.state?.active && !evolution.state?.draftDirty
                   && (!evolution.state.candidate || evolution.state.active === evolution.state.candidate))}
-                onAction={evolutionAction} onImprove={improveFromCase} onCreate={createEvolutionCase} />
+                onAction={evolutionAction} onImprove={improveFromCase} onCreate={createEvolutionCase}
+                onRevise={async params => {
+                  const result = await evolution.run("reviseRequest", params);
+                  if ((evolution.state?.candidate || evolution.state?.active) && !evolution.state?.draftDirty) await evolutionAction("compareCases");
+                  return result;
+                }} />
             </EvolutionPanel> : undefined}
-          improvement={!evolutionOpen && conversationThread && window.cleoDesktop && <EvolutionCases thread={conversationThread}
-            busy={Boolean(workspace.runningThreadId) || evolution.pending || Boolean(updateState.operationBusy)} onAction={evolutionAction} onImprove={improveFromCase} onCreate={createEvolutionCase} />}
+          onImprove={!evolutionOpen && conversationThread && window.cleoDesktop ? () => setImprovementOpen(true) : undefined}
           prompt={workspace.prompt}
           skills={workspace.skills}
           onPromptChange={workspace.setPrompt}
           sendError={workspace.sendError}
-            sendBlocked={updateState.blocksTasks || (evolutionOpen && updateState.operationBusy) ? "正在处理版本，请稍候…" : evolutionOpen && (preparingAcceptance || openingEvolutionUi || evolution.pending || !evolution.state?.supported || evolution.state?.phase !== "idle") ? "正在处理本地改动，请稍候…" : workspace.startingRun ? "正在提交，请稍候…" : workspace.runningThreadId && workspace.runningThreadId !== workspace.activeThreadId ? "另一个任务正在运行，完成或停止后即可发送。" : null}
+          harnessSwitchStatus={workspace.harnessSwitchStatus}
+          sendBlocked={composerBlocked}
           onRename={workspace.renameThread}
           thread={conversationThread}
           project={conversationProject}
@@ -475,14 +510,22 @@ export function App() {
           productivityModels={workspace.productivityModels}
           runtimeModelsLoading={workspace.runtimeModelsLoading}
           runtimeModelsError={workspace.runtimeModelsError}
-          running={workspace.runningThreadId !== null && workspace.runningThreadId === workspace.activeThreadId}
+          running={workspace.running}
+          waitingForAnswer={Boolean(workspace.questions.current)}
           undoing={undoingChanges}
-          sidebarCollapsed={sidebarCollapsed}
+          sidebarCollapsed={sidebarHidden}
           inspectorOpen={showInspector}
-          onToggleSidebar={() => setSidebarCollapsed((collapsed) => !collapsed)}
+          onToggleSidebar={() => {
+            if (compactColumns && showInspector) { setInspectorOpen(false); setSidebarCollapsed(false); }
+            else setSidebarCollapsed(collapsed => !collapsed);
+          }}
           onToggleInspector={() => setInspectorOpen((open) => !open)}
           onOpenCommand={() => setCommandOpen(true)}
-          onSend={(prompt) => void (evolutionOpen ? sendEvolutionPrompt(prompt) : workspace.sendPrompt(prompt))}
+          onSend={(prompt) => void (workspace.running ? workspace.sendSteer(prompt)
+            : evolutionOpen ? sendEvolutionPrompt(prompt) : workspace.sendPrompt(prompt))}
+          onRetrySteer={receipt => void workspace.retrySteer(receipt)}
+          onRestoreSteer={workspace.restoreSteer}
+          steeringBusy={workspace.steeringBusy}
           onCancel={workspace.cancelRun}
           onUndo={() => {
             if (!workspace.activeProject?.branch) {
@@ -511,11 +554,7 @@ export function App() {
             provider, conversationProject?.path, refresh,
           )}
           onSelectProductivityRuntime={(provider, model) => {
-            workspace.selectProductivityRuntime(provider, model);
-            if (evolutionOpen) {
-              workspace.beginEvolutionDraft();
-              void evolution.run("thread", { id: "" });
-            }
+            void workspace.selectProductivityRuntime(provider, model);
           }}
           onEffortChange={(effort) => workspace.updateRuntime({ effort })}
           attachments={workspace.attachments}
@@ -546,6 +585,8 @@ export function App() {
           onResolveApproval={(decision) => void workspace.resolveApproval(decision)}
         />
       )}
+      {!evolutionOpen && conversationThread && window.cleoDesktop && <EvolutionCases dialogOnly open={improvementOpen} onClose={() => setImprovementOpen(false)} thread={conversationThread}
+        busy={workspace.anyRunning || evolution.pending || Boolean(updateState.operationBusy)} onAction={evolutionAction} onImprove={improveFromCase} onCreate={createEvolutionCase} />}
       {showInspector ? (
         <Inspector
           resizeHandle={<div className="inspector-resize-handle" {...inspectorResize.handleProps} />}
@@ -569,11 +610,15 @@ export function App() {
         onMotionChange={setMotionEnabled}
         dreamAgent={workspace.snapshot.memoryOverview.dream_agent}
         runtime={settingsRuntime}
+        runtimeThread={selectedThread}
+        onPermissionsChange={workspace.updatePermissions}
         supportedEfforts={supportedEfforts}
         modelSettings={workspace.modelSettings}
         modelSettingsLoading={workspace.modelSettingsLoading}
+        modelSettingsError={workspace.modelSettingsError}
         agentInstructions={workspace.agentInstructions}
         agentInstructionsLoading={workspace.agentInstructionsLoading}
+        agentInstructionsError={workspace.agentInstructionsError}
         updateState={displayedUpdateState}
         onThemeChange={setTheme}
         onRuntimeChange={workspace.updateRuntime}
@@ -581,7 +626,9 @@ export function App() {
         onApplyModelSettings={workspace.applyModelSettings}
         onLoadAgentInstructions={workspace.loadAgentInstructions}
         onSaveAgentInstructions={workspace.saveAgentInstructions}
-        onCheckForUpdates={() => runUpdateAction("check")}
+        onCheckForUpdates={async (tag) => {
+          return window.cleoDesktop?.checkForUpdates(tag);
+        }}
         onDownloadUpdate={() => runUpdateAction("download")}
         onInstallUpdate={() => runUpdateAction("install")}
         onRevealPath={(path) => void workspace.revealPath(path)}
@@ -589,7 +636,9 @@ export function App() {
           void workspace.copyConfigTemplate(kind).then(() => notify("配置模板已复制"));
         }}
         onResetWorkspace={() => {
-          void workspace.resetWorkspace().then(() => notify("工作区已重置到 main"));
+          void workspace.resetWorkspace()
+            .then(() => notify("工作区已重置到 main"))
+            .catch((error) => notify(error instanceof Error ? error.message : "重置失败，请重试", "error"));
         }}
         onClose={() => setSettingsOpen(false)}
       />
@@ -597,17 +646,19 @@ export function App() {
         threadTitle={threadPendingDeletion?.title ?? null}
         productivity={threadPendingDeletion?.space === "productivity"}
         deleting={deletingThread}
+        error={deleteError}
         onCancel={() => setThreadPendingDeletion(null)}
         onConfirm={() => {
           if (!threadPendingDeletion) return;
           setDeletingThread(true);
+          setDeleteError(null);
           void workspace.deleteThread(threadPendingDeletion.id)
             .then(() => {
               setThreadPendingDeletion(null);
-              notify("Thread 已删除");
+              notify("任务已删除");
             })
             .catch((error: unknown) => {
-              notify(error instanceof Error ? error.message : "无法删除 thread", "error");
+              setDeleteError(error instanceof Error ? error.message : "无法删除任务");
             })
             .finally(() => setDeletingThread(false));
         }}
@@ -615,17 +666,19 @@ export function App() {
       <RemoveProjectDialog
         project={projectPendingRemoval}
         removing={removingProject}
+        error={removeError}
         onCancel={() => setProjectPendingRemoval(null)}
         onConfirm={() => {
           if (!projectPendingRemoval) return;
           setRemovingProject(true);
+          setRemoveError(null);
           void workspace.removeProject(projectPendingRemoval.id)
             .then(() => {
               setProjectPendingRemoval(null);
               notify("项目已从侧边栏移除");
             })
             .catch((error: unknown) => {
-              notify(error instanceof Error ? error.message : "无法移除项目", "error");
+              setRemoveError(error instanceof Error ? error.message : "无法移除项目");
             })
             .finally(() => setRemovingProject(false));
         }}
@@ -643,9 +696,8 @@ export function App() {
 function TitleBar({ projectName, mode }: { projectName: string; mode: string }) {
   return (
     <header className="titlebar">
-      <div className="titlebar-brand"><span className="mini-brand">C</span><strong>Cleo</strong><small>Desktop</small></div>
+      <div className="titlebar-brand"><span className="mini-brand">C</span><strong>Cleo</strong></div>
       <div className="titlebar-context"><span>{projectName}</span><Minus size={11} /><small>{mode}</small></div>
-      <div className="titlebar-runtime"><span className="runtime-dot" /><small>Local</small><Command size={13} /></div>
     </header>
   );
 }
