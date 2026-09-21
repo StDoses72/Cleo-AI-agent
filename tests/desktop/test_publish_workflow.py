@@ -205,9 +205,17 @@ class PublishWorkflowTests(unittest.TestCase):
     def test_prerelease_packages_do_not_become_latest_stable(self):
         self.exercise_upload(draft=True, prerelease=True)
 
-    def exercise_package_verification(self, corrupt=False, alpha=False):
+    def exercise_package_verification(self, corrupt=False, alpha=False, invalid_dependencies=None):
         with tempfile.TemporaryDirectory(prefix="cleo-package-verification-") as temporary:
             version = "0.0.1-alpha" if alpha else "0.5.0-beta.1"
+            locks = {}
+            for name in (
+                "requirements.txt", "ui/package-lock.json", "ui/runtime/package-lock.json",
+            ):
+                path = Path(temporary) / "dependency-locks" / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"resolved dependency fixture")
+                locks[name] = hashlib.sha256(path.read_bytes()).hexdigest()
             for target in ("windows-x64", "macos-arm64", "macos-x64", "linux-x64"):
                 folder = Path(temporary) / "release-artifacts" / f"desktop-{target}" / "release"
                 folder.mkdir(parents=True)
@@ -215,12 +223,19 @@ class PublishWorkflowTests(unittest.TestCase):
                 archive = folder / f"Cleo-{target}{extension}"
                 prefix = "Cleo.app/Contents/Resources" if target.startswith("macos") else "Cleo"
                 resources = prefix if target.startswith("macos") else prefix + "/resources"
-                codex_path = f"{resources}/browser/node_modules/@openai/codex/package.json"
+                dependencies = {"lock_sha256": dict(locks), "python_packages": {
+                    "openai-codex": "0.155.1", "openai-codex-cli-bin": "0.155.1",
+                }}
+                if target == "windows-x64":
+                    if invalid_dependencies == "lock":
+                        dependencies["lock_sha256"]["requirements.txt"] = "0" * 64
+                    elif invalid_dependencies == "sdk":
+                        dependencies["python_packages"]["openai-codex"] = "0.147.0"
                 entries = {
                     f"{prefix}/release.json": json.dumps({
                         "version": version, "platform": target,
                     }).encode(),
-                    codex_path: b'{"version":"0.1.0"}',
+                    f"{resources}/dependencies.json": json.dumps(dependencies).encode(),
                 }
                 if target == "linux-x64":
                     with tarfile.open(archive, "w:gz") as bundle:
@@ -247,12 +262,17 @@ class PublishWorkflowTests(unittest.TestCase):
                 "RUNNER_TEMP": temporary,
                 "RELEASE_TAG": "alpha-0.0.1" if alpha else f"v{version}", "RELEASE_NOTES": "Notes",
             }):
-                if corrupt:
+                if corrupt or invalid_dependencies:
                     with self.assertRaises(AssertionError):
                         exec(workflow_script("Verify complete packages and checksums"), {})
                 else:
                     exec(workflow_script("Verify complete packages and checksums"), {})
                     self.assertEqual(len(list((Path(temporary) / "release-files").iterdir())), 14)
+
+    def test_dependency_drift_blocks_release_even_when_archive_checksums_match(self):
+        for kind in ("lock", "sdk"):
+            with self.subTest(kind=kind):
+                self.exercise_package_verification(invalid_dependencies=kind)
 
     def test_all_four_platform_packages_keep_version_size_and_hash_checks(self):
         self.exercise_package_verification()

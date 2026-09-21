@@ -158,8 +158,6 @@ def test_cancellation_drains_the_real_sdk_notification_worker():
         reader_ready = asyncio.Event()
         reader_exited = Event()
         loop = asyncio.get_running_loop()
-        original_register = low_level._sync.register_turn_notifications
-        original_queue = None
         completion = SimpleNamespace(
             method="turn/completed",
             payload=TurnCompletedNotification.model_validate({
@@ -171,23 +169,6 @@ def test_cancellation_drains_the_real_sdk_notification_worker():
             }),
         )
 
-        def register_notifications(turn_id):
-            nonlocal original_queue
-            original_register(turn_id)
-            original_queue = low_level._sync._router._turn_notifications[turn_id]
-            original_get = original_queue.get
-
-            def get():
-                loop.call_soon_threadsafe(reader_ready.set)
-                try:
-                    return original_get()
-                finally:
-                    reader_exited.set()
-
-            original_queue.get = get
-
-        low_level._sync.register_turn_notifications = register_notifications
-
         async def initialized():
             pass
 
@@ -197,6 +178,16 @@ def test_cancellation_drains_the_real_sdk_notification_worker():
         low_level.turn_interrupt = interrupt
         client = SimpleNamespace(_client=low_level, _ensure_initialized=initialized)
         turn = AsyncTurnHandle(client, "thread", "turn")
+        original_next = turn._subscription.next
+
+        def next_notification():
+            loop.call_soon_threadsafe(reader_ready.set)
+            try:
+                return original_next()
+            finally:
+                reader_exited.set()
+
+        turn._subscription.next = next_notification
 
         async def start(*_args, **_kwargs):
             return turn
@@ -214,9 +205,8 @@ def test_cancellation_drains_the_real_sdk_notification_worker():
             assert reader_exited.is_set(), "SDK notification worker was orphaned"
             assert not runtime.lock.locked()
         finally:
-            if original_queue is not None:
-                original_queue.put(completion)
-            await asyncio.gather(task, return_exceptions=True)
+            low_level._sync._router.route_notification(completion)
+            await asyncio.wait_for(asyncio.gather(task, return_exceptions=True), 2)
 
     asyncio.run(scenario())
 

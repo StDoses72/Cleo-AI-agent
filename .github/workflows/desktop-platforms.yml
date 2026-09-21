@@ -18,7 +18,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  dependencies:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v6
+      - name: Resolve latest stable dependencies once for all platforms
+        run: python scripts/update_project.py --local-resolver --skip-build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dependency-locks
+          if-no-files-found: error
+          path: |
+            requirements.txt
+            ui/package-lock.json
+            ui/runtime/package-lock.json
+
   desktop:
+    needs: dependencies
     strategy:
       fail-fast: false
       matrix:
@@ -37,6 +61,10 @@ jobs:
       PYTHONUTF8: '1'
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dependency-locks
+          path: .
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -53,12 +81,11 @@ jobs:
           mkdir -p config
           cp cleo/config/templates/cleo.example.json config/cleo.json
           cp cleo/config/templates/harnesses.example.json config/harnesses.json
-      # Release verification must exercise the committed dependency locks.
-      # Refresh them explicitly with scripts/update_project.py before a release.
+      # Test and package the same freshly resolved dependency snapshot.
       - run: uv pip install --system -e ".[dev]" --constraint requirements.txt
       - run: npm ci --prefix ui
       - run: node ui/node_modules/electron/install.js
-      - run: ruff check cleo tests scripts/build-release.py scripts/update_project.py
+      - run: ruff check cleo tests scripts/build-release.py scripts/update_project.py scripts/release_dependencies.py
       - run: pytest -vv -o faulthandler_timeout=120
       - run: npm --prefix ui run test:backend
       - run: npm --prefix ui run test:evolution

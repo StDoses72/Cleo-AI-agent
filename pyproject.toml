@@ -20,7 +20,7 @@ dependencies = [
   "langchain-openai",
   "httpx",
   "langgraph",
-  "openai-codex>=0.147",
+  "openai-codex>=0.155.1",
   "platformdirs>=4.4",
   "pydantic",
   "rich",

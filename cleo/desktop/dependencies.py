@@ -142,7 +142,8 @@ def update(root: Path, base_python: Path, base_browser: Path, current: str | Non
             ), encoding="utf-8")
             lock = scratch / "requirements.txt"
             run([
-                sys.executable, "-I", "-m", "uv", "pip", "compile", "--upgrade",
+                sys.executable, "-I", "-m", "uv", "pip", "compile", "--upgrade", "--refresh",
+                "--prerelease=disallow",
                 "--python", python, "--no-header", "--no-annotate", "--no-emit-index-url",
                 "--output-file", lock, requirements,
             ])

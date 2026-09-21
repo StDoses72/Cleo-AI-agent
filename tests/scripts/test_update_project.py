@@ -11,6 +11,32 @@ from pathlib import Path
 import pytest
 
 
+def test_python_resolution_refreshes_stable_versions_instead_of_reusing_old_lock(
+    tmp_path, monkeypatch,
+):
+    spec = importlib.util.spec_from_file_location(
+        "update_project", Path(__file__).resolve().parents[2] / "scripts/update_project.py",
+    )
+    updater = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(updater)
+    lock = tmp_path / "requirements.txt"
+    lock.write_text("openai-codex==0.147.0\n")
+    monkeypatch.setattr(updater, "REQUIREMENTS_PATH", lock)
+    monkeypatch.setattr(updater.shutil, "which", lambda _: "uv")
+
+    def resolve(command):
+        assert {"--upgrade", "--refresh", "--prerelease=disallow"} <= set(command)
+        output = next(arg.split("=", 1)[1] for arg in command if arg.startswith("--output-file="))
+        Path(output).write_text("openai-codex==0.155.1\n")
+
+    monkeypatch.setattr(updater, "_run", resolve)
+    updater._compile_requirements_locally(
+        check_only=False, index_url="https://pypi.org/simple", extra_index_url="",
+    )
+    assert "openai-codex==0.155.1" in lock.read_text()
+    assert "0.147.0" not in lock.read_text()
+
+
 def test_node_locks_remain_portable_with_a_symlinked_temporary_directory(tmp_path, monkeypatch):
     if shutil.which("npm.cmd" if os.name == "nt" else "npm") is None:
         pytest.skip("npm is not installed")

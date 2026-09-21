@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from openai_codex import AsyncTurnHandle
+from openai_codex.async_client import AsyncCodexClient
 from openai_codex.errors import JsonRpcError
 from openai_codex.generated.v2_all import TurnSteerResponse
 
@@ -13,8 +14,9 @@ from cleo.integrations.harnesses.codex import CodexProvider, _CodexRuntime
 
 def fixture():
     method = AsyncMock(return_value=TurnSteerResponse(turn_id="native-turn"))
-    client = SimpleNamespace(_ensure_initialized=AsyncMock(),
-                             _client=SimpleNamespace(turn_steer=method))
+    low_level = AsyncCodexClient()
+    low_level.turn_steer = method
+    client = SimpleNamespace(_ensure_initialized=AsyncMock(), _client=low_level)
     turn = AsyncTurnHandle(client, "native-thread", "native-turn")
     options = SessionOptions(model="model", sandbox="workspace-write", approval_mode="auto_review")
     runtime = _CodexRuntime(client, SimpleNamespace(id="native-thread"), options=options,

@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from openai_codex.async_client import AsyncCodexClient
 from openai_codex.client import _params_dict
 
 from cleo.harnesses.control import SessionOptions
@@ -13,9 +14,11 @@ from cleo.integrations.harnesses.codex import CodexProvider, _CodexRuntime
 def test_fast_can_be_enabled_and_explicitly_cleared_without_changing_approval(approval):
     async def scenario():
         start = AsyncMock(return_value=SimpleNamespace(turn=SimpleNamespace(id="turn")))
+        low_level = AsyncCodexClient()
+        low_level.turn_start = start
         high_level = AsyncMock()
         runtime = _CodexRuntime(
-            SimpleNamespace(_client=SimpleNamespace(turn_start=start)),
+            SimpleNamespace(_client=low_level),
             SimpleNamespace(id="native", turn=high_level),
             options=SessionOptions(approval_mode=approval, sandbox="workspace-write"),
         )

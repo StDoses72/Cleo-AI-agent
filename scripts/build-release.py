@@ -258,6 +258,9 @@ def build(*, locked_dependencies: bool = False) -> None:
             cwd=scratch,
         )
         shutil.copy2(Path(node).resolve(), browser / "node")
+        run(sys.executable, ROOT / "scripts/release_dependencies.py",
+            "--root", ROOT, "--python", resources / "python/bin/python3",
+            "--browser", browser, "--output", resources / "dependencies.json", cwd=scratch)
         update = resources / "update"
         update.mkdir()
         for name in ("posix-installer.mjs", "platform.mjs"):

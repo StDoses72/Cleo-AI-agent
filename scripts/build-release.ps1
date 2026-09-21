@@ -370,6 +370,12 @@ try {
     Invoke-Checked -FilePath $node.Source -WorkingDirectory $sourceRoot -Arguments @(
         (Join-Path $sourceRoot "scripts\bundle-evolution-source.mjs"), $resourcesPath
     )
+    Invoke-Checked -FilePath $runtimePython.FullName -WorkingDirectory $sourceRoot -Arguments @(
+        (Join-Path $PSScriptRoot "release_dependencies.py"),
+        "--root", $sourceRoot, "--python", (Join-Path $resourcesPath "python\python.exe"),
+        "--browser", (Join-Path $resourcesPath "browser"),
+        "--output", (Join-Path $resourcesPath "dependencies.json")
+    )
     $version = (Get-Content -LiteralPath (Join-Path $uiRoot "package.json") -Raw | ConvertFrom-Json).version
     $releaseMetadata = [ordered]@{
         schema_version = 1
