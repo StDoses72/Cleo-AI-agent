@@ -45,6 +45,12 @@ for (const explicitBase of [false, true]) {
     await writeFile(join(saved, executable), "fixture");
     const resources = join(saved, manager.target.bundle, manager.target.resources);
     const env = { ...process.env };
+    if (process.platform === "win32") {
+      const shadow = join(root, "shadow-tools");
+      await mkdir(shadow);
+      await cp(process.execPath, join(shadow, "tar.exe"));
+      env.PATH = `${shadow};${process.env.PATH}`;
+    }
     delete env.CLEO_EVOLUTION_BASE_TAG;
     if (explicitBase) env.CLEO_EVOLUTION_BASE_TAG = baseTag;
     await run(process.execPath, [join(source, "scripts/bundle-evolution-source.mjs"), resources], { env });

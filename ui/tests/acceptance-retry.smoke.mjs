@@ -237,7 +237,7 @@ try {
   await page.getByRole("button", { name: "废弃原需求", exact: true }).waitFor();
   const abandoned = (await requests.status()).at(-1);
   await page.getByRole("button", { name: "废弃原需求", exact: true }).click();
-  await page.waitForFunction(() => !document.body.textContent.includes("操作未完成"));
+  await page.getByRole("button", { name: "废弃原需求", exact: true }).waitFor({ state: "hidden" });
   assert.ok((await requests.status()).find((r) => r.id === abandoned.id).abandonedAt);
   assert.equal(state.threadId, null);
   await page.reload();

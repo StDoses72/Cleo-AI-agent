@@ -47,7 +47,8 @@ try {
     schema: 1, commit: git(["rev-parse", "HEAD"]).trim(), files: copied, deleted,
   }));
   await mkdir(destination, { recursive: true });
-  const result = spawnSync("tar", ["-c", "-z", "-f", join(resolve(destination), "evolution-source.tar.gz"), "-C", scratch, "."],
+  const tar = process.platform === "win32" ? join(process.env.SystemRoot || "C:\\Windows", "System32", "tar.exe") : "tar";
+  const result = spawnSync(tar, ["-c", "-z", "-f", join(resolve(destination), "evolution-source.tar.gz"), "-C", scratch, "."],
     { stdio: "inherit", windowsHide: true });
   if (result.status !== 0) throw new Error("Cannot bundle evolution source.");
 } finally {
