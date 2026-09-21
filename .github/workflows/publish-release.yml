@@ -169,7 +169,7 @@ jobs:
                   time.sleep(1)
           assert release is not None
           assert release['draft'] or os.environ.get('RELEASE_RESUME_PUBLISHED') == 'true', 'Refusing to overwrite a published release'
-          assert release['name'] == title and (release.get('body') or '') == notes, 'Existing release title/notes differ'
+          assert release['name'] == title and (release.get('body') or '').replace('\r\n', '\n') == notes, 'Existing release title/notes differ'
           assert release['prerelease'] == prerelease, 'Existing release type differs'
           expected = {}
           for path in files:
@@ -213,7 +213,7 @@ jobs:
                              text=True, check=True, timeout=630)
               print(f'Uploaded {path.name}', flush=True)
           release = draft_release()
-          assert release['name'] == title and (release.get('body') or '') == notes and release['prerelease'] == prerelease
+          assert release['name'] == title and (release.get('body') or '').replace('\r\n', '\n') == notes and release['prerelease'] == prerelease
           assert set(verified_assets(remote_assets())) == set(expected), 'Release packages are incomplete'
           subprocess.run(['git', 'fetch', '--no-tags', 'origin', f'refs/tags/{tag}'], check=True)
           current = subprocess.check_output(['git', 'rev-parse', 'FETCH_HEAD^{commit}'], text=True).strip()
