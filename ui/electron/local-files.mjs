@@ -35,6 +35,9 @@ export function resolveLocalHref(href, workspacePath) {
   } catch {
     throw new Error("链接中的文件路径格式无效");
   }
+  if (process.platform === "win32" && /^\/[a-z]:[\\/]/i.test(decodedHref)) {
+    decodedHref = decodedHref.slice(1);
+  }
   if (/^[a-z][a-z\d+.-]*:/i.test(decodedHref) && !/^[a-z]:[\\/]/i.test(decodedHref)) {
     throw new Error("这个链接不是可打开的本地文件");
   }

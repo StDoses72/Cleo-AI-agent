@@ -128,3 +128,25 @@ test("missing files and executable links return useful errors", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("Windows drive links with a leading slash open the actual file", {
+  skip: process.platform !== "win32",
+}, async () => {
+  const root = await mkdtemp(join(tmpdir(), "cleo-drive-links-"));
+  try {
+    const page = join(root, "报告 file.md");
+    await writeFile(page, "report");
+    const href = "/" + encodeURI(page.replaceAll("\\", "/"));
+    const opened = [];
+    for (const suffix of ["", ":12", ":12:3", "#L12"]) {
+      const result = await openLocalHref({ href: href + suffix, workspacePath: "",
+        shellAdapter: { openPath: async (path) => { opened.push(path); return ""; } } });
+      assert.equal(result.path, await realpath(page));
+    }
+    assert.equal(opened.length, 4);
+    assert.equal(resolveLocalHref("/D:/example/README.md", "C:\\elsewhere").candidate,
+      "D:\\example\\README.md");
+    assert.equal(resolveLocalHref("//server/share/report.md", "").candidate,
+      "\\\\server\\share\\report.md");
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
