@@ -18,7 +18,7 @@ if (process.platform !== "win32") {
     await rm(join(app, "resources/default_app.asar"), { force: true });
     const source = join(root, "source");
     await mkdir(join(source, "electron"), { recursive: true });
-    for (const name of ["bootstrap.mjs", "evolution-store.mjs", "evolution-recovery.mjs", "evolution-launch.mjs", "evolution-progress.mjs", "evolution-handoff.mjs", "platform.mjs"]) {
+    for (const name of ["bootstrap.mjs", "release-channel.mjs", "evolution-store.mjs", "evolution-recovery.mjs", "evolution-launch.mjs", "evolution-progress.mjs", "evolution-handoff.mjs", "platform.mjs"]) {
       await cp(join(ui, "electron", name), join(source, "electron", name));
     }
     const bootstrap = join(source, "electron/bootstrap.mjs");
