@@ -48,12 +48,14 @@ class SessionOptions:
         effort: 推理强度档位。
         approval_mode: 审批模式。
         sandbox: 沙箱级别。
+        service_tier: Codex 速度档位(default/fast)，None 沿用原生配置。
     """
 
     model: str | None = None
     effort: str | None = None
     approval_mode: str | None = None
     sandbox: str | None = None
+    service_tier: str | None = None
 
     def as_dict(self) -> dict[str, str | None]:
         """转为普通 dict 以便 JSON 持久化。
@@ -61,7 +63,7 @@ class SessionOptions:
         参数: 无(仅 self)。
 
         返回:
-            四键 dict;消费方: AgentAdapter.update_session_options 与
+            运行选项 dict;消费方: AgentAdapter.update_session_options 与
             _add_route 写入 SessionStore 的 manifest.runtime_options。
         """
         return {
@@ -69,6 +71,7 @@ class SessionOptions:
             "effort": self.effort,
             "approval_mode": self.approval_mode,
             "sandbox": self.sandbox,
+            "service_tier": self.service_tier,
         }
 
 

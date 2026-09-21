@@ -353,6 +353,7 @@ def test_agent_adapter_restores_saved_runtime_options(tmp_path) -> None:
                 effort=changes.get("effort") or current.effort,
                 approval_mode=changes.get("approval_mode") or current.approval_mode,
                 sandbox=changes.get("sandbox") or current.sandbox,
+                service_tier=changes.get("service_tier") or current.service_tier,
             )
             return self.options[session_id]
 
@@ -366,6 +367,7 @@ def test_agent_adapter_restores_saved_runtime_options(tmp_path) -> None:
             session.id,
             model="model-b",
             effort="xhigh",
+            service_tier="fast",
             approval_mode="user",
             sandbox="full-access",
         )
@@ -384,12 +386,14 @@ def test_agent_adapter_restores_saved_runtime_options(tmp_path) -> None:
     assert second_provider.session_options("stateful-resumed") == SessionOptions(
         model="model-b",
         effort="xhigh",
+        service_tier="fast",
         approval_mode="user",
         sandbox="full-access",
     )
     assert second._store.load_manifest(handle)["runtime_options"] == {
         "model": "model-b",
         "effort": "xhigh",
+        "service_tier": "fast",
         "approval_mode": "user",
         "sandbox": "full-access",
     }

@@ -6,7 +6,9 @@ Cleo is a local-first AI workspace that brings general chat, developer agents, r
 
 The project supports native desktop builds for Windows, macOS and Linux, plus a Python CLI, Textual TUIs, and a stdio MCP entry point. User data stays on the local device by default; inference is provided by the API provider or external agent harness selected by the user.
 
-> Current version: [v0.4.4](https://github.com/StDoses72/Cleo-AI-agent/releases/tag/v0.4.4) · [Download the desktop app](https://stdoses72.github.io/Cleo-AI-agent/)
+> Current version: [v0.4.11](https://github.com/StDoses72/Cleo-AI-agent/releases/tag/v0.4.11) · [Download the desktop app](https://stdoses72.github.io/Cleo-AI-agent/)
+
+Codex development conversations offer Standard and Fast speed beside the composer, saved per conversation. Fast mode consumes more credits; availability depends on the model and account.
 
 ## What Cleo solves
 

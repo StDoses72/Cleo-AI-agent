@@ -149,6 +149,8 @@ export class MockCleoClient implements CleoClient {
             provider: options.provider ?? "codex",
             model: options.model ?? "gpt-5.6-sol",
             effort: options.effort ?? "medium",
+            serviceTier: options.provider === "claude" ? null : options.serviceTier ?? "default",
+            supportsFastMode: options.provider !== "claude",
             access: "workspace-write",
             approval: "user",
             editable: true,
@@ -526,7 +528,8 @@ export class MockCleoClient implements CleoClient {
   async switchHarness(threadId: string, provider: string, model: string, effort?: RuntimeProfile["effort"]): Promise<RuntimeProfile> {
     const thread = snapshot.threads.find((item) => item.id === threadId);
     if (!thread) throw new Error("Unknown thread");
-    const runtime = { ...(thread.runtime ?? snapshot.runtime), provider, model, effort: effort ?? null };
+    const runtime = { ...(thread.runtime ?? snapshot.runtime), provider, model, effort: effort ?? null,
+      supportsFastMode: provider === "codex", serviceTier: provider === "codex" ? "default" as const : null };
     thread.runtime = runtime;
     return runtime;
   }

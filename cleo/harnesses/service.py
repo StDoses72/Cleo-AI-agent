@@ -213,6 +213,7 @@ class AgentService:
             effort=saved_options.effort,
             approval_mode=saved_options.approval_mode,
             sandbox=saved_options.sandbox,
+            service_tier=saved_options.service_tier,
         )
         try:
             options = await update_options(
@@ -221,6 +222,7 @@ class AgentService:
                 effort=desired.effort,
                 approval_mode=desired.approval_mode,
                 sandbox=desired.sandbox,
+                **({"service_tier": desired.service_tier} if desired.service_tier else {}),
             )
         except Exception:
             self._sessions.pop(restored.id, None)
@@ -291,6 +293,7 @@ class AgentService:
                     "effort": None,
                     "approval_mode": None,
                     "sandbox": None,
+                    "service_tier": None,
                 }
             )
             if self._store.read_events(session_id) != events:
@@ -690,6 +693,7 @@ class AgentService:
         effort: str | None = None,
         approval_mode: str | None = None,
         sandbox: str | None = None,
+        service_tier: str | None = None,
     ) -> SessionOptions:
         """更新会话运行时选项并同步到 SessionStore manifest。"""
         route = self._route(session_id)
@@ -700,6 +704,7 @@ class AgentService:
             effort=effort,
             approval_mode=approval_mode,
             sandbox=sandbox,
+            **({"service_tier": service_tier} if service_tier is not None else {}),
         )
         self._persist_options(session_id, options)
         return options
@@ -900,6 +905,7 @@ class AgentService:
             effort=optional_text("effort"),
             approval_mode=optional_text("approval_mode"),
             sandbox=optional_text("sandbox"),
+            service_tier=optional_text("service_tier"),
         )
 
     @staticmethod

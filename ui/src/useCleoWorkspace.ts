@@ -147,6 +147,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
   const [draftProvider, setDraftProvider] = useState("");
   const [draftModel, setDraftModel] = useState("");
   const [draftEffort, setDraftEffort] = useState<RuntimeProfile["effort"]>(null);
+  const [draftServiceTier, setDraftServiceTier] = useState<"default" | "fast">("default");
   const cancellingRuns = useRef(new Set<string>());
   const steeringRequests = useRef(new Map<string, { id: string; runId: string; text: string; draftText: string }>());
   const steeringLocks = useRef(new Set<string>());
@@ -267,12 +268,14 @@ export function useCleoWorkspace(evolutionOpen = false) {
       provider: (provider?.id ?? draftProvider) || "选择 SDK / ACP",
       model: draftModel || provider?.defaultModel || "选择模型",
       effort: draftEffort,
+      serviceTier: provider?.type === "codex_sdk" ? draftServiceTier : null,
+      supportsFastMode: provider?.type === "codex_sdk",
       access: "workspace-write",
       approval: "default",
       contextWindow: 128000,
       editable: false,
     };
-  }, [activeSpace, draftEffort, draftModel, draftProfileId, draftProvider, runtimeCatalog]);
+  }, [activeSpace, draftEffort, draftServiceTier, draftModel, draftProfileId, draftProvider, runtimeCatalog]);
 
   const skillKey = `${draftRuntime.provider}:${activeProject?.path ?? ""}`;
   useEffect(() => {
@@ -504,6 +507,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
       setDraftProvider(activeThread.runtime?.provider ?? draftProvider);
       setDraftModel(activeThread.runtime?.model ?? draftModel);
       setDraftEffort(activeThread.runtime?.effort ?? draftEffort);
+      setDraftServiceTier(activeThread.runtime?.serviceTier ?? "default");
     }
     if (evolutionOpen) beginEvolutionDraft();
     else setActiveThreadId(null);
@@ -530,6 +534,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
             provider: draftProvider || runtimeCatalog?.defaultProductivityProvider,
             model: draftModel || undefined,
             effort: draftEffort ?? undefined,
+            serviceTier: draftRuntime.supportsFastMode ? draftServiceTier : undefined,
           },
     );
     setSnapshot((current) =>
@@ -563,7 +568,8 @@ export function useCleoWorkspace(evolutionOpen = false) {
     const selected = ++evolutionSelectionRef.current;
     const result = await window.cleoDesktop.request<{ thread: Thread; workspace: WorkspaceSnapshot }>(
       "open_evolution_thread", { thread_id: threadId, provider: draftProvider || undefined,
-        model: draftModel || undefined, effort: draftEffort ?? undefined },
+        model: draftModel || undefined, effort: draftEffort ?? undefined,
+        service_tier: draftRuntime.supportsFastMode ? draftServiceTier : undefined },
     );
     // A late response must still register a newly created stream target, but cannot replace
     // another view's selected conversation or its newer timeline with a whole stale snapshot.
@@ -959,6 +965,9 @@ export function useCleoWorkspace(evolutionOpen = false) {
   };
 
   const updateRuntime = (update: RuntimeUpdate) => {
+    if (activeSpace === "productivity" && update.serviceTier) {
+      setDraftServiceTier(update.serviceTier);
+    }
     if (activeSpace === "productivity" && update.effort) {
       setDraftEffort(update.effort);
     }

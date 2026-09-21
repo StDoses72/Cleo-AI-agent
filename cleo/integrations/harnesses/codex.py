@@ -15,7 +15,7 @@ from openai_codex import (
     CodexConfig,
     Sandbox,
 )
-from openai_codex.api import ReasoningEffort
+from openai_codex.api import ReasoningEffort, _approval_mode_override_settings
 from openai_codex.errors import JsonRpcError
 from openai_codex.generated.v2_all import (
     ConfigRequirementsReadResponse,
@@ -360,6 +360,7 @@ class CodexProvider:
         effort: str | None = None,
         approval_mode: str | None = None,
         sandbox: str | None = None,
+        service_tier: str | None = None,
     ) -> SessionOptions:
         """更新 session 的模型/推理力度/审批/沙箱选项(校验后生效于后续 turn)。
 
@@ -372,6 +373,8 @@ class CodexProvider:
             更新后的 ``SessionOptions``, 由 AgentAdapter 持久化并回显给 CLI。
         """
         runtime = self._sessions[session_id]
+        if service_tier is not None and service_tier not in {"default", "fast"}:
+            raise ValueError("不支持的 Codex 速度档位。")
         if effort is not None:
             ReasoningEffort(effort)
         if approval_mode is not None:
@@ -405,6 +408,7 @@ class CodexProvider:
             effort=current.effort if effort is None else effort,
             approval_mode=(current.approval_mode if approval_mode is None else approval_mode),
             sandbox=current.sandbox if sandbox is None else sandbox,
+            service_tier=current.service_tier if service_tier is None else service_tier,
         )
         return runtime.options
 
@@ -706,7 +710,7 @@ class CodexProvider:
         prompt: str,
     ) -> AsyncTurnHandle:
         options = runtime.options
-        if options.approval_mode != "user":
+        if options.approval_mode != "user" and options.service_tier != "default":
             return await runtime.thread.turn(
                 prompt,
                 approval_mode=(
@@ -717,17 +721,30 @@ class CodexProvider:
                 effort=ReasoningEffort(options.effort) if options.effort else None,
                 model=options.model,
                 sandbox=Sandbox(options.sandbox) if options.sandbox else None,
+                **({"service_tier": options.service_tier} if options.service_tier else {}),
             )
+        params = {
+            "approvalPolicy": "on-request", "approvalsReviewer": "user",
+            "effort": options.effort, "model": options.model,
+            "sandboxPolicy": self._sandbox_policy(options.sandbox),
+        }
+        if options.approval_mode != "user":
+            policy, reviewer = _approval_mode_override_settings(
+                self._sdk_approval_mode(options.approval_mode) if options.approval_mode else None,
+            )
+            params.pop("approvalPolicy")
+            params.pop("approvalsReviewer")
+            if policy is not None:
+                params["approvalPolicy"] = policy.model_dump(mode="json")
+            if reviewer is not None:
+                params["approvalsReviewer"] = reviewer.value
+        if options.service_tier is not None:
+            # Explicit null clears Fast; the high-level SDK omits None values.
+            params["serviceTier"] = "fast" if options.service_tier == "fast" else None
         started = await runtime.client._client.turn_start(
             runtime.thread.id,
             prompt,
-            params={
-                "approvalPolicy": "on-request",
-                "approvalsReviewer": "user",
-                "effort": options.effort,
-                "model": options.model,
-                "sandboxPolicy": self._sandbox_policy(options.sandbox),
-            },
+            params=params,
         )
         return AsyncTurnHandle(runtime.client, runtime.thread.id, started.turn.id)
 

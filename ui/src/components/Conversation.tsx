@@ -103,6 +103,7 @@ interface ConversationProps {
   onLoadProductivityModels: (provider: string, refresh?: boolean) => Promise<ProductivityModelCatalog>;
   onSelectProductivityRuntime: (provider: string, model: string) => void;
   onEffortChange: (effort: NonNullable<RuntimeProfile["effort"]>) => void;
+  onServiceTierChange?: (tier: "default" | "fast") => void;
   attachments: Attachment[];
   onPickAttachments: () => Promise<void>;
   onPrepareAttachments: (files: File[]) => Promise<void>;
@@ -163,6 +164,7 @@ export function Conversation({
   onLoadProductivityModels,
   onSelectProductivityRuntime,
   onEffortChange,
+  onServiceTierChange,
   attachments,
   onPickAttachments,
   onPrepareAttachments,
@@ -397,6 +399,7 @@ export function Conversation({
         onLoadProductivityModels={onLoadProductivityModels}
         onSelectProductivityRuntime={onSelectProductivityRuntime}
         onEffortChange={onEffortChange}
+        onServiceTierChange={onServiceTierChange}
         attachments={attachments}
         onPickAttachments={onPickAttachments}
         onPrepareAttachments={onPrepareAttachments}
@@ -990,6 +993,7 @@ function Composer({
   onLoadProductivityModels,
   onSelectProductivityRuntime,
   onEffortChange,
+  onServiceTierChange,
   attachments,
   onPickAttachments,
   onPrepareAttachments,
@@ -1021,6 +1025,7 @@ function Composer({
   | "onLoadProductivityModels"
   | "onSelectProductivityRuntime"
   | "onEffortChange"
+  | "onServiceTierChange"
   | "attachments"
   | "onPickAttachments"
   | "onPrepareAttachments"
@@ -1265,6 +1270,19 @@ function Composer({
               <option value="" disabled>由模型决定</option>
               {supportedEfforts.map((effort) => <option key={effort} value={effort}>{effortLabels[effort] ?? effort}</option>)}
             </select> : null}
+            {space === "productivity" && runtime.supportsFastMode && onServiceTierChange && <select
+              className="text-control"
+              value={runtime.serviceTier ?? ""}
+              disabled={running || Boolean(harnessSwitchStatus)}
+              onChange={event => onServiceTierChange(event.target.value as "default" | "fast")}
+              aria-label="Codex 速度"
+              title="快速模式消耗更多额度；可用性取决于模型和账号。"
+              data-testid="speed-selector"
+            >
+              <option value="" disabled>速度随配置</option>
+              <option value="default">标准速度</option>
+              <option value="fast">快速 · 更多额度</option>
+            </select>}
           </div>
           <div className="composer-send-actions">
           {running && (

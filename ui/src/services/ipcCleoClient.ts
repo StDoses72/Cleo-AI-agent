@@ -76,6 +76,7 @@ export class IpcCleoClient implements CleoClient {
       provider: options.provider,
       model: options.model,
       effort: options.effort,
+      service_tier: options.serviceTier,
       profile_id: options.profileId,
     });
   }

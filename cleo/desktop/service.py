@@ -750,6 +750,7 @@ class DesktopService:
     async def open_evolution_thread(
         self, *, thread_id: str | None = None, provider: str | None = None,
         model: str | None = None, effort: str | None = None,
+        service_tier: str | None = None,
     ) -> dict[str, Any]:
         """Purpose: Open a real coding conversation in managed source only.
 
@@ -772,6 +773,7 @@ class DesktopService:
             thread = await self.create_thread(
                 space="productivity", project_id_value="productivity:cleo-evolution",
                 project_path=source, provider=provider, model=model, effort=effort,
+                **({"service_tier": service_tier} if service_tier is not None else {}),
             )
             self.store.rename_session(thread["id"], "Cleo 自我迭代")
             thread = await self.load_thread(thread_id=thread["id"])
@@ -786,6 +788,7 @@ class DesktopService:
         model: str | None = None,
         effort: str | None = None,
         profile_id: str | None = None,
+        service_tier: str | None = None,
         project_path: str | None = None,
     ) -> dict[str, Any]:
         memory_space = "non_productivity" if space == "chat" else "productivity"
@@ -846,6 +849,8 @@ class DesktopService:
             if not Path(project_path).is_dir():
                 raise ValueError(f"工作目录不存在或不是文件夹：{project_path}")
             provider_settings = self._productivity_provider(provider_name)
+            if service_tier is not None:
+                self._validate_service_tier(provider_settings.type, service_tier)
             selected_model = model or provider_settings.model
             if provider_name not in self.settings.productivity.providers:
                 from cleo.config.settings import HARNESSES_CONFIG_PATH
@@ -868,6 +873,8 @@ class DesktopService:
             await self._enable_desktop_approvals(session.id, provider_name)
             if effort is not None:
                 await adapter.update_session_options(session.id, effort=effort)
+            if service_tier is not None:
+                await adapter.update_session_options(session.id, service_tier=service_tier)
             manifest = self.store.load_manifest(session.id)
         self._activate(manifest)
         return await self._thread(manifest)
@@ -1303,6 +1310,11 @@ class DesktopService:
             options["model"] = str(update["model"])
         if "effort" in update:
             options["effort"] = str(update["effort"])
+        if "serviceTier" in update:
+            self._validate_service_tier(
+                self._productivity_provider(manifest["provider"]).type, update["serviceTier"],
+            )
+            options["service_tier"] = update["serviceTier"]
         if "access" in update:
             options["sandbox"] = str(update["access"])
         if "approval" in update:
@@ -2356,6 +2368,11 @@ class DesktopService:
             "skills": [skill.entry() for skill in self._local_skills(manifest)],
         }
 
+    @staticmethod
+    def _validate_service_tier(provider_type: str, value: Any) -> None:
+        if provider_type != "codex_sdk" or value not in ("default", "fast"):
+            raise ValueError("速度档位仅支持 Codex 的标准或快速模式。")
+
     def _runtime_profile(self, manifest: dict[str, Any] | None) -> dict[str, Any]:
         from cleo.harnesses.context import handoff_status
         if manifest is None or manifest.get("space") == "non_productivity":
@@ -2405,6 +2422,9 @@ class DesktopService:
                 )
             ),
             "effort": str(options["effort"]) if options.get("effort") else None,
+            "serviceTier": options.get("service_tier")
+            if provider_settings.type == "codex_sdk" else None,
+            "supportsFastMode": provider_settings.type == "codex_sdk",
             "access": str(
                 options.get("sandbox") or getattr(provider_settings.options, "sandbox", "default")
             ),

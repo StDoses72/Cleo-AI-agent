@@ -1297,6 +1297,32 @@ def test_create_productivity_thread_uses_selected_workspace(tmp_path: Path) -> N
     asyncio.run(scenario())
 
 
+def test_codex_speed_is_created_updated_and_projected_from_saved_options(tmp_path):
+    async def scenario():
+        service = _service(tmp_path)
+        adapter = FakeAdapter(service.store)
+        service._adapter_instance = adapter
+        thread = await service.create_thread(
+            space="productivity", project_id_value="productivity:workspace",
+            project_path=str(tmp_path / "workspace"), service_tier="fast",
+        )
+        assert thread["runtime"]["supportsFastMode"] is True
+        assert thread["runtime"]["serviceTier"] == "fast"
+        assert adapter.updated_with["service_tier"] == "fast"
+        result = await service.update_runtime(
+            thread_id=thread["id"], update={"serviceTier": "default"},
+        )
+        assert result["serviceTier"] == "default"
+        manifest = service.store.load_manifest(thread["id"])
+        assert manifest["runtime_options"]["service_tier"] == "default"
+        assert service._runtime_profile(manifest)["serviceTier"] == "default"
+        for provider, tier in [("claude_sdk", "fast"), ("codex_sdk", "invalid")]:
+            with pytest.raises(ValueError, match="速度档位"):
+                service._validate_service_tier(provider, tier)
+
+    asyncio.run(scenario())
+
+
 def test_desktop_forwards_approval_decisions_to_active_codex_session(tmp_path: Path) -> None:
     async def scenario() -> None:
         service = _service(tmp_path)

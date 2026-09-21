@@ -557,6 +557,7 @@ export function App() {
             void workspace.selectProductivityRuntime(provider, model);
           }}
           onEffortChange={(effort) => workspace.updateRuntime({ effort })}
+          onServiceTierChange={(serviceTier) => workspace.updateRuntime({ serviceTier })}
           attachments={workspace.attachments}
           onPickAttachments={workspace.pickAttachments}
           onPrepareAttachments={workspace.prepareAttachments}

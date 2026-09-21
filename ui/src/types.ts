@@ -266,13 +266,15 @@ export interface RuntimeProfile {
   model: string;
   models?: string[];
   effort: ReasoningEffort | null;
+  serviceTier?: "default" | "fast" | null;
+  supportsFastMode?: boolean;
   access: string;
   approval: string;
   contextWindow?: number;
   editable?: boolean;
 }
 
-export type RuntimeUpdate = Partial<Pick<RuntimeProfile, "model" | "effort" | "access" | "approval" | "profileId">> & {
+export type RuntimeUpdate = Partial<Pick<RuntimeProfile, "model" | "effort" | "serviceTier" | "access" | "approval" | "profileId">> & {
   discardPendingPermissions?: boolean;
 };
 
@@ -321,6 +323,7 @@ export interface CreateThreadOptions {
   provider?: string;
   model?: string;
   effort?: ReasoningEffort;
+  serviceTier?: "default" | "fast";
   profileId?: string;
 }
 
