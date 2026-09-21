@@ -43,6 +43,18 @@ def validate_codex_runtime() -> str:
     return str(binary)
 
 
+def validate_claude_runtime() -> str:
+    import claude_agent_sdk
+
+    binary = Path(claude_agent_sdk.__file__).parent / "_bundled" / (
+        "claude.exe" if os.name == "nt" else "claude"
+    )
+    if not binary.is_file():
+        raise FileNotFoundError("Claude SDK is missing its bundled CLI")
+    run([binary, "--version"])
+    return str(binary)
+
+
 def write_state(root: Path, state: dict) -> None:
     temporary = root / "state.json.tmp"
     temporary.write_text(json.dumps(state) + "\n", encoding="utf-8")
@@ -100,8 +112,8 @@ def validate_runtime(python: Path, browser: Path) -> None:
         "from openai_codex.api import AsyncTurnHandle; "
         "from openai_codex import AsyncCodex, CodexConfig; "
         "assert hasattr(AsyncCodex, 'models'); "
-        "from cleo.desktop.dependencies import validate_codex_runtime; "
-        "validate_codex_runtime()"
+        "from cleo.desktop.dependencies import validate_claude_runtime, validate_codex_runtime; "
+        "validate_codex_runtime(); validate_claude_runtime()"
     )])
     run([sys.executable, "-I", "-m", "uv", "pip", "check", "--python", python])
     node = browser / ("node.exe" if os.name == "nt" else "node")
@@ -144,6 +156,7 @@ def update(root: Path, base_python: Path, base_browser: Path, current: str | Non
             run([
                 sys.executable, "-I", "-m", "uv", "pip", "compile", "--upgrade", "--refresh",
                 "--prerelease=disallow",
+                "--only-binary=claude-agent-sdk,openai-codex-cli-bin",
                 "--python", python, "--no-header", "--no-annotate", "--no-emit-index-url",
                 "--output-file", lock, requirements,
             ])

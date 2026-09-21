@@ -96,58 +96,7 @@ function Copy-RequiredItem {
     Copy-Item -LiteralPath $source -Destination $DestinationRoot -Recurse
 }
 
-function Get-LockedRequirementVersion {
-    param([Parameter(Mandatory = $true)][string]$PackageName)
 
-    $pattern = "^$([regex]::Escape($PackageName))==([^;\s]+)"
-    foreach ($line in Get-Content -LiteralPath (Join-Path $sourceRoot "requirements.txt")) {
-        $match = [regex]::Match($line.Trim(), $pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
-        if ($match.Success) {
-            return $match.Groups[1].Value
-        }
-    }
-    throw "requirements.txt does not lock $PackageName."
-}
-
-function Download-LockedWindowsWheel {
-    param(
-        [Parameter(Mandatory = $true)][string]$PackageName,
-        [Parameter(Mandatory = $true)][string]$Version,
-        [Parameter(Mandatory = $true)][string]$DestinationRoot,
-        [string]$WheelTag = "py3-none"
-    )
-
-    $indexUrl = "$($PythonIndex.TrimEnd('/'))/$PackageName/"
-    $indexPath = Join-Path $DestinationRoot "$PackageName-index.html"
-    Invoke-Checked -FilePath $curl.Source -WorkingDirectory $DestinationRoot -Arguments @(
-        "--fail", "--location", "--retry", "3", "--retry-all-errors",
-        "--output", $indexPath, $indexUrl
-    )
-    $wheelPackageName = $PackageName.Replace("-", "_")
-    $wheelPattern = 'href="([^"]+/' + [regex]::Escape($wheelPackageName) + '-' +
-        [regex]::Escape($Version) + '-' + [regex]::Escape($WheelTag) +
-        '-win_amd64\.whl)#sha256=([a-fA-F0-9]{64})"'
-    $wheelMatch = [regex]::Match(
-        (Get-Content -LiteralPath $indexPath -Raw),
-        $wheelPattern,
-        [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
-    )
-    if (-not $wheelMatch.Success) {
-        throw "The Python index does not contain a Windows x64 wheel for $PackageName==$Version."
-    }
-    $wheelUrl = [Uri]::new([Uri]::new($indexUrl), $wheelMatch.Groups[1].Value).AbsoluteUri
-    $wheelName = [System.IO.Path]::GetFileName(([Uri]$wheelUrl).LocalPath)
-    $wheelPath = Join-Path $DestinationRoot $wheelName
-    Invoke-Checked -FilePath $curl.Source -WorkingDirectory $DestinationRoot -Arguments @(
-        "--fail", "--location", "--retry", "3", "--retry-all-errors",
-        "--output", $wheelPath, $wheelUrl
-    )
-    $actualHash = Get-ReleaseFileHash -LiteralPath $wheelPath
-    if (-not $actualHash.Equals($wheelMatch.Groups[2].Value, [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "Python wheel checksum mismatch for $PackageName==$Version."
-    }
-    return $wheelPath
-}
 
 $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
 if (-not $npm) {
@@ -280,14 +229,6 @@ try {
     if (-not $runtimePython) {
         throw "The downloaded Python runtime does not contain python.exe."
     }
-    $wheelhouse = Join-Path $scratchRoot "wheelhouse"
-    New-Item -ItemType Directory -Path $wheelhouse -Force | Out-Null
-    $codexWheel = Download-LockedWindowsWheel -PackageName "openai-codex-cli-bin" `
-        -Version (Get-LockedRequirementVersion -PackageName "openai-codex-cli-bin") `
-        -DestinationRoot $wheelhouse
-    $claudeWheel = Download-LockedWindowsWheel -PackageName "claude-agent-sdk" `
-        -Version (Get-LockedRequirementVersion -PackageName "claude-agent-sdk") `
-        -DestinationRoot $wheelhouse
     $previousUvConcurrency = $env:UV_CONCURRENT_DOWNLOADS
     $previousUvTimeout = $env:UV_HTTP_TIMEOUT
     try {
@@ -301,9 +242,8 @@ try {
             "--no-cache",
             "--compile-bytecode",
             "--constraint", (Join-Path $sourceRoot "requirements.txt"),
-            $pythonSourceRoot,
-            $codexWheel,
-            $claudeWheel
+            "--only-binary", "claude-agent-sdk,openai-codex-cli-bin",
+            $pythonSourceRoot
         )
     } finally {
         if ($null -eq $previousUvConcurrency) {

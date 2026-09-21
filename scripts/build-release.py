@@ -8,7 +8,6 @@ import json
 import os
 import platform
 import plistlib
-import re
 import shutil
 import subprocess
 import sys
@@ -23,15 +22,6 @@ ROOT = Path(__file__).resolve().parents[1]
 def run(*args: str | Path, cwd: Path, env: dict[str, str] | None = None) -> None:
     print("+", " ".join(map(str, args)), flush=True)
     subprocess.run(list(map(str, args)), cwd=cwd, env=env, check=True)
-
-
-def locked_version(package: str) -> str:
-    match = re.search(
-        rf"^{re.escape(package)}==([^;\s]+)", (ROOT / "requirements.txt").read_text(), re.MULTILINE
-    )
-    if not match:
-        raise ValueError(f"Missing locked dependency: {package}")
-    return match[1]
 
 
 def download(url: str, path: Path) -> None:
@@ -230,8 +220,7 @@ def build(*, locked_dependencies: bool = False) -> None:
             "--compile-bytecode",
             "--constraint", "requirements.txt",
             python_source,
-            f"claude-agent-sdk=={locked_version('claude-agent-sdk')}",
-            f"openai-codex-cli-bin=={locked_version('openai-codex-cli-bin')}",
+            "--only-binary", "claude-agent-sdk,openai-codex-cli-bin",
             cwd=scratch,
         )
         shutil.copytree(python.parent.parent, resources / "python", symlinks=True)
@@ -258,7 +247,7 @@ def build(*, locked_dependencies: bool = False) -> None:
             cwd=scratch,
         )
         shutil.copy2(Path(node).resolve(), browser / "node")
-        run(sys.executable, ROOT / "scripts/release_dependencies.py",
+        run(resources / "python/bin/python3", ROOT / "scripts/release_dependencies.py",
             "--root", ROOT, "--python", resources / "python/bin/python3",
             "--browser", browser, "--output", resources / "dependencies.json", cwd=scratch)
         update = resources / "update"

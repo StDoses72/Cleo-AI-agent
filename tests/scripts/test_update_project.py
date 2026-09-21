@@ -25,7 +25,8 @@ def test_python_resolution_refreshes_stable_versions_instead_of_reusing_old_lock
     monkeypatch.setattr(updater.shutil, "which", lambda _: "uv")
 
     def resolve(command):
-        assert {"--upgrade", "--refresh", "--prerelease=disallow"} <= set(command)
+        assert {"--upgrade", "--refresh", "--prerelease=disallow", "--universal",
+                "--only-binary=claude-agent-sdk,openai-codex-cli-bin"} <= set(command)
         output = next(arg.split("=", 1)[1] for arg in command if arg.startswith("--output-file="))
         Path(output).write_text("openai-codex==0.155.1\n")
 

@@ -3,9 +3,10 @@
 import argparse
 import hashlib
 import json
-import re
 import subprocess
 from pathlib import Path
+
+from packaging.requirements import Requirement
 
 LOCKS = ("requirements.txt", "ui/package-lock.json", "ui/runtime/package-lock.json")
 
@@ -14,15 +15,18 @@ def record(root: Path, python: Path, browser: Path, output: Path) -> None:
     packages = json.loads(subprocess.check_output([
         str(python), "-I", "-c",
         "import json, importlib.metadata as m; "
-        "from cleo.desktop.dependencies import validate_codex_runtime; "
-        "validate_codex_runtime(); "
+        "from cleo.desktop.dependencies import validate_claude_runtime, validate_codex_runtime; "
+        "validate_codex_runtime(); validate_claude_runtime(); "
         "print(json.dumps({d.metadata['Name'].lower().replace('_','-'): "
         "d.version for d in m.distributions()}))",
     ], text=True, timeout=60))
-    wanted = dict(re.findall(
-        r"^([A-Za-z0-9_.-]+)==([^\s;]+)",
-        (root / "requirements.txt").read_text(encoding="utf-8"), re.M,
-    ))
+    wanted = {}
+    for line in (root / "requirements.txt").read_text(encoding="utf-8").splitlines():
+        if not line.strip() or line.startswith("#"):
+            continue
+        requirement = Requirement(line)
+        if requirement.marker is None or requirement.marker.evaluate():
+            wanted[requirement.name] = next(iter(requirement.specifier)).version
     for name in ("openai-codex", "openai-codex-cli-bin", "claude-agent-sdk"):
         if packages.get(name) != wanted.get(name) or name not in wanted:
             raise ValueError(f"Packaged {name} does not match the resolved dependency lock")

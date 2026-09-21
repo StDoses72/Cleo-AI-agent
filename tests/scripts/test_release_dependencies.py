@@ -62,6 +62,14 @@ def test_stale_browser_tool_cannot_publish_a_receipt(packaged):
         receipt.record(root, root / "python", root / "browser", root / "dependencies.json")
 
 
+def test_receipt_selects_only_requirements_for_the_current_platform(packaged):
+    root, packages = packaged
+    with (root / "requirements.txt").open("a") as stream:
+        stream.write("claude-agent-sdk==9.9.9 ; sys_platform == 'unsupported-test-platform'\n")
+    receipt.record(root, root / "python", root / "browser", root / "dependencies.json")
+    assert json.loads((root / "dependencies.json").read_text())["python_packages"] == packages
+
+
 def test_all_platforms_test_the_same_freshly_resolved_locks():
     workflow = yaml.safe_load((ROOT / ".github/workflows/desktop-platforms.yml").read_text())
     jobs = workflow["jobs"]
@@ -78,3 +86,6 @@ def test_all_platforms_test_the_same_freshly_resolved_locks():
     test = next(i for i, s in enumerate(steps) if s.get("run", "").startswith("pytest"))
     package = next(i for i, s in enumerate(steps) if "package:portable" in s.get("run", ""))
     assert download < install < test < package
+    for name in ("Desktop smoke", "Independent recovery smoke", "Native packaged smoke"):
+        step = next(step for step in steps if step.get("name") == name)
+        assert step["shell"] == "bash", "An earlier failed command must stop the Windows step"

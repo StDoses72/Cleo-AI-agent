@@ -168,3 +168,11 @@ def test_unchanged_pending_update_still_requires_restart(runtime_update, monkeyp
     result = dependencies.update(root, python, browser, None)
     assert result["phase"] == "ready"
     assert result["active"] == pending.name
+
+
+def test_claude_validation_rejects_a_source_install_without_its_cli(tmp_path, monkeypatch):
+    import claude_agent_sdk
+
+    monkeypatch.setattr(claude_agent_sdk, "__file__", str(tmp_path / "__init__.py"))
+    with pytest.raises(FileNotFoundError, match="missing its bundled CLI"):
+        dependencies.validate_claude_runtime()

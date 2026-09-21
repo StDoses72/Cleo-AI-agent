@@ -99,6 +99,7 @@ jobs:
           sudo chmod 4755 ui/node_modules/electron/dist/chrome-sandbox
       - name: Desktop smoke
         if: runner.os != 'Linux'
+        shell: bash
         run: |
           node ui/scripts/smoke.mjs
           node ui/scripts/smoke-approvals.mjs
@@ -119,6 +120,7 @@ jobs:
           xvfb-run -a node ui/scripts/smoke-program-updates.mjs
       - name: Independent recovery smoke
         if: runner.os == 'Windows'
+        shell: bash
         run: |
           npm --prefix ui run smoke:evolution-recovery
           npm --prefix ui run smoke:evolution-installed
@@ -135,6 +137,7 @@ jobs:
         run: ./scripts/build-release.ps1 -LockedDependencies -ElectronMirror '' -PythonIndex 'https://pypi.org/simple/'
       - name: Native packaged smoke
         if: runner.os == 'macOS' || (runner.os == 'Windows' && github.event_name == 'workflow_dispatch')
+        shell: bash
         run: |
           npm --prefix ui run smoke:packaged
           npm --prefix ui run smoke:evolution-baseline

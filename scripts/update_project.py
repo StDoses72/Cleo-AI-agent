@@ -120,6 +120,8 @@ def _compile_requirements(
                 "--upgrade",
                 "--refresh",
                 "--prerelease=disallow",
+                "--universal",
+                "--only-binary=claude-agent-sdk,openai-codex-cli-bin",
                 "--strip-extras",
                 "--no-header",
                 "--no-annotate",
@@ -153,12 +155,12 @@ def _compile_requirements_locally(
             "--upgrade",
             "--refresh",
             "--prerelease=disallow",
+            "--universal",
+            "--only-binary=claude-agent-sdk,openai-codex-cli-bin",
             "--strip-extras",
             "--no-header",
             "--no-annotate",
             "--no-emit-index-url",
-            "--python-platform",
-            "linux",
             "--python-version",
             "3.12",
             "--index-url",
@@ -260,7 +262,7 @@ def _parse_args() -> argparse.Namespace:
         "--local-resolver",
         action="store_true",
         help=(
-            "Resolve the Python 3.12 Linux lock with local uv instead of the "
+            "Resolve the cross-platform Python lock with local uv instead of the "
             "Docker resolver image. Docker is still required unless --skip-build is set."
         ),
     )

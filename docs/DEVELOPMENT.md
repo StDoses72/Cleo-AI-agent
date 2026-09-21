@@ -148,7 +148,7 @@ git diff --stat
 运行工具中的 npm 保留 11.x，以兼容内置 Node 24；Python/Node 本身仍使用发布流程指定的运行时。
 Codex Python SDK 使用官方配套的 `openai-codex-cli-bin`；桌面版通过 `CLEO_CODEX_BIN` 选择同一 Python 环境里的配套 CLI，启动和更新时校验 SDK、CLI 包及可执行文件版本一致。
 
-`requirements.txt` 是面向 Python 3.12/Linux 容器生成的精确锁文件；两个 `package-lock.json` 记录对应的 npm 解析结果。这些文件由更新命令生成，不应手工编辑。仓库忽略的 `uv.lock` 仅供本地使用；使用 uv 开发环境时，运行 `uv sync --upgrade --extra dev` 同步升级。
+`requirements.txt` 是带平台条件的跨平台 Python 精确锁文件；两个 `package-lock.json` 记录对应的 npm 解析结果。这些文件由更新命令生成，不应手工编辑。仓库忽略的 `uv.lock` 仅供本地使用；使用 uv 开发环境时，运行 `uv sync --upgrade --extra dev` 同步升级。
 
 更新锁文件并构建镜像：
 
@@ -176,7 +176,7 @@ python scripts\update_project.py `
   --extra-index-url https://pypi.org/simple
 ```
 
-更新后运行完整 Python 测试、`npm --prefix ui run test:backend` 和前端构建，并检查锁文件变化。桌面构建默认先运行相同更新流程。CI 的独立 `dependencies` job 每次解析最新稳定且相互兼容的依赖，将三个锁文件保存为 `dependency-locks` artifact；四个平台下载同一份结果后再安装、测试和打包。解析失败会阻止构建，不会退回仓库里的旧锁文件。打包传入 `--locked-dependencies`（Windows 为 `-LockedDependencies`）只用于复用本次已经测试的版本，避免测试和打包之间再次解析导致漂移。
+更新后运行完整 Python 测试、`npm --prefix ui run test:backend` 和前端构建，并检查锁文件变化。桌面构建默认先运行相同更新流程。CI 的独立 `dependencies` job 每次解析最新稳定且相互兼容的依赖，将三个锁文件保存为 `dependency-locks` artifact；解析时要求四个平台的 SDK 原生二进制包可用；如果上游尚未提供某个平台的新版本，会自动为该平台选择最新可用版本，并写入条件表达式，不在脚本里固定版本。四个平台下载同一份结果后按平台条件安装、测试和打包。解析失败会阻止构建，不会退回仓库里的旧锁文件。打包传入 `--locked-dependencies`（Windows 为 `-LockedDependencies`）只用于复用本次已经测试的版本，避免测试和打包之间再次解析导致漂移。
 
 每个安装包的 `resources/dependencies.json` 记录实际安装的 Python 包和工具版本，以及三个锁文件的 SHA-256。构建时校验 Codex SDK、配套 CLI、Claude SDK 和浏览器工具与解析结果一致；发布时再次核对四个平台的依赖记录与同一构建的 `dependency-locks` artifact。一份缺失、不匹配或未通过测试的依赖快照不能发布。Python 3.12、Node 24 和 npm 11.x 是当前支持的运行环境；应用依赖在这些兼容约束下更新，Python 预发布包不参与自动解析。
 
