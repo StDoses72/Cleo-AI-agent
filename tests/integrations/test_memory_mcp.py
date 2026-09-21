@@ -1,6 +1,9 @@
 import asyncio
+import os
+import subprocess
 import sys
 import tomllib
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -14,6 +17,22 @@ from cleo.integrations.harnesses.codex_approvals import CodexApprovalBroker
 from cleo.integrations.harnesses.memory import MemoryMcp
 from cleo.memory.reader import TOOL_NAMES
 from cleo.sessions.store import SessionStore
+
+
+def test_memory_configuration_import_does_not_load_application_settings(tmp_path):
+    source = Path(__file__).resolve().parents[2]
+    result = subprocess.run(
+        [sys.executable, "-I", "-B", "-c",
+         f"import sys; sys.path.insert(0, {str(source)!r}); "
+         "from cleo.integrations.harnesses.memory import MemoryMcp; "
+         "assert 'cleo.config.settings' not in sys.modules"],
+        cwd=tmp_path,
+        env={**os.environ, "CLEO_HOME": str(tmp_path),
+             "CLEO_CONFIG_PATH": str(tmp_path / "missing.json")},
+        capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert not (tmp_path / "missing.json").exists()
 
 
 @pytest.mark.parametrize("custom_index", [False, True])
@@ -69,7 +88,7 @@ def test_stdio_tools_work_from_unrelated_cwd_without_configuration_writes(tmp_pa
 
 
 def test_codex_override_is_client_local_and_valid_toml(tmp_path, monkeypatch):
-    monkeypatch.setattr("cleo.integrations.codex_home.APP_HOME", tmp_path)
+    monkeypatch.setattr("cleo.config.settings.APP_HOME", tmp_path)
     memory = MemoryMcp(tmp_path / "memory")
     provider = CodexProvider(None, memory_mcp=memory)
     client = provider._client_with_approvals(CodexApprovalBroker("codex"))
@@ -160,7 +179,7 @@ def test_acp_create_and_resume_receive_session_mcp(tmp_path, monkeypatch):
 
 
 def test_codex_create_resume_and_fork_preserve_mcp(tmp_path, monkeypatch):
-    monkeypatch.setattr("cleo.integrations.codex_home.APP_HOME", tmp_path)
+    monkeypatch.setattr("cleo.config.settings.APP_HOME", tmp_path)
     clients = []
 
     class FakeClient:

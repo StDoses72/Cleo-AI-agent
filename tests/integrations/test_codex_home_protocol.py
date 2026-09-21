@@ -17,7 +17,7 @@ def test_persisted_cleo_thread_is_not_in_the_shared_codex_home(tmp_path, monkeyp
     shared.mkdir()
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    monkeypatch.setattr("cleo.integrations.codex_home.APP_HOME", tmp_path / "cleo")
+    monkeypatch.setattr("cleo.config.settings.APP_HOME", tmp_path / "cleo")
     monkeypatch.setenv("CODEX_HOME", str(shared))
     monkeypatch.setenv("CODEX_SQLITE_HOME", str(shared))
     config = CodexConfig(

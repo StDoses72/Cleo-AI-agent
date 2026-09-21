@@ -11,7 +11,7 @@ from cleo.integrations.subscriptions import AgentMcp
 def test_login_cancel_closes_official_attempt_and_prevents_overlapping_logins(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setattr("cleo.integrations.codex_home.APP_HOME", tmp_path)
+    monkeypatch.setattr("cleo.config.settings.APP_HOME", tmp_path)
     events = []
 
     class Login:

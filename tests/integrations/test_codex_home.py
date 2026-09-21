@@ -12,7 +12,7 @@ from cleo.integrations.harnesses.codex import CodexProvider
 
 
 def test_isolation_preserves_shared_config_and_does_not_copy_auth(tmp_path, monkeypatch):
-    monkeypatch.setattr("cleo.integrations.codex_home.APP_HOME", tmp_path / "cleo")
+    monkeypatch.setattr("cleo.config.settings.APP_HOME", tmp_path / "cleo")
     shared = tmp_path / "shared"
     shared.mkdir()
     (shared / "auth.json").write_text("private login sentinel")

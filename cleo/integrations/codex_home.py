@@ -5,10 +5,10 @@ from dataclasses import replace
 
 from openai_codex import CodexConfig
 
-from cleo.config.settings import APP_HOME
-
 
 def isolated_codex_config(config: CodexConfig | None = None) -> CodexConfig:
+    from cleo.config.settings import APP_HOME
+
     home = (APP_HOME / "data" / "codex").resolve()
     home.mkdir(parents=True, exist_ok=True)
     config = config or CodexConfig()
