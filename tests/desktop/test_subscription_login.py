@@ -11,6 +11,7 @@ from cleo.integrations.subscriptions import AgentMcp
 def test_login_cancel_closes_official_attempt_and_prevents_overlapping_logins(
     tmp_path, monkeypatch
 ):
+    monkeypatch.setattr("cleo.integrations.codex_home.APP_HOME", tmp_path)
     events = []
 
     class Login:
@@ -23,8 +24,8 @@ def test_login_cancel_closes_official_attempt_and_prevents_overlapping_logins(
             events.append("cancelled")
 
     class Client:
-        def __init__(self, **_kwargs):
-            pass
+        def __init__(self, *, config):
+            assert config.env["CODEX_HOME"] == str((tmp_path / "data/codex").resolve())
 
         async def __aenter__(self):
             return self

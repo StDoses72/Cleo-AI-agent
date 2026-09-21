@@ -52,3 +52,21 @@ test("concurrent update requests share one operation and cannot restart after sh
   await updater.check();
   assert.equal(calls, 1);
 });
+
+test("automatic checks run at startup, repeat, and stop on shutdown", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const updater = new DependencyUpdater({
+    app: { getVersion: () => "0.4.11" }, resourcesPath: ".", cleoHome: tmpdir(),
+  });
+  let calls = 0;
+  updater.check = () => { calls++; return Promise.resolve(); };
+  updater.startAutomaticChecks();
+  updater.startAutomaticChecks();
+  assert.equal(calls, 1);
+  t.mock.timers.tick(24 * 60 * 60 * 1000);
+  assert.equal(calls, 2);
+  await updater.close();
+  t.mock.timers.tick(24 * 60 * 60 * 1000);
+  updater.startAutomaticChecks();
+  assert.equal(calls, 2);
+});

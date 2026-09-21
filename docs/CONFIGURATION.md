@@ -16,6 +16,8 @@ Cleo 使用两个经过 Pydantic 校验的 JSON 文件：`cleo.json` 管理通�
 
 可用 `CLEO_CONFIG_PATH` 与 `CLEO_HARNESSES_CONFIG_PATH` 指定配置文件。打包应用由 Electron 显式设置 `CLEO_HOME`；源码 checkout 会以仓库为相对路径根。
 
+Cleo 新建的 Codex 会话使用 `<Cleo 数据根目录>/data/codex` 作为独立 `CODEX_HOME`，SQLite 状态也固定在该目录。它们不会写入默认 Codex 应用的会话列表；Cleo 的历史和继续对话能力保留。登录入口位于“设置 → 模型 → 新增连接 → 账号登录 → Codex”。该目录不自动复制原 Codex 登录、全局配置、插件和 skills；组织策略仍然适用。已有会话及其原生分支沿用原目录，不移动、不删除。
+
 ## `cleo.json` 结构
 
 配置由激活选择和 profile registry 组成：

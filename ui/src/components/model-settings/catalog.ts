@@ -12,7 +12,7 @@ export const apiProviders = [
 ];
 
 export const accounts: Record<string, { name: string; mark: string; login: string; billing: string; note: string }> = {
-  codex: { name: "Codex", mark: "O", login: "使用 ChatGPT 账号登录", billing: "使用 Codex 额度", note: "与 Codex 共用用量，不会使用 ChatGPT 普通 Chat 的聊天额度。" },
+  codex: { name: "Codex", mark: "O", login: "使用 ChatGPT 账号登录", billing: "使用 Codex 额度", note: "请在 Cleo 中独立登录。新会话与 Codex 应用的历史分开保存；同一账号的 Codex 额度仍共享。" },
   claude_code: { name: "Claude Code", mark: "A", login: "使用 Claude 账号登录", billing: "按 Claude Code 规则计费", note: "非交互调用的可用额度，以账号当前方案为准。" },
   gemini: { name: "Gemini CLI", mark: "G", login: "使用 Google 账号登录", billing: "使用 Gemini CLI 配额", note: "通过官方客户端使用账号可用的 CLI 配额。" },
   copilot: { name: "GitHub Copilot", mark: "G", login: "使用 GitHub 账号登录", billing: "使用 Copilot 配额", note: "可用模型及用量按你的 Copilot 方案计算。" },

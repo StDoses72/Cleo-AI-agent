@@ -68,7 +68,8 @@ def test_stdio_tools_work_from_unrelated_cwd_without_configuration_writes(tmp_pa
         assert not (root / "sessions.sqlite3").exists()
 
 
-def test_codex_override_is_client_local_and_valid_toml(tmp_path):
+def test_codex_override_is_client_local_and_valid_toml(tmp_path, monkeypatch):
+    monkeypatch.setattr("cleo.integrations.codex_home.APP_HOME", tmp_path)
     memory = MemoryMcp(tmp_path / "memory")
     provider = CodexProvider(None, memory_mcp=memory)
     client = provider._client_with_approvals(CodexApprovalBroker("codex"))
@@ -80,7 +81,9 @@ def test_codex_override_is_client_local_and_valid_toml(tmp_path):
     assert server["args"][:2] == ["-I", "-c"]
     assert server["required"] is True
     independent = CodexProvider(None)._client_with_approvals(CodexApprovalBroker("codex"))
-    assert independent._client._sync.config.config_overrides == ()
+    independent_config = independent._client._sync.config
+    assert "mcp_servers" not in tomllib.loads("\n".join(independent_config.config_overrides))
+    assert independent_config.env["CODEX_HOME"] == str((tmp_path / "data/codex").resolve())
 
 
 def test_claude_reconnect_keeps_process_local_mcp(tmp_path, monkeypatch):
@@ -157,6 +160,7 @@ def test_acp_create_and_resume_receive_session_mcp(tmp_path, monkeypatch):
 
 
 def test_codex_create_resume_and_fork_preserve_mcp(tmp_path, monkeypatch):
+    monkeypatch.setattr("cleo.integrations.codex_home.APP_HOME", tmp_path)
     clients = []
 
     class FakeClient:
@@ -195,7 +199,9 @@ def test_codex_create_resume_and_fork_preserve_mcp(tmp_path, monkeypatch):
 
     asyncio.run(exercise())
     assert len(clients) == 3
-    assert all(c.config == memory.codex_config() and c.closed for c in clients)
+    assert all(c.config.config_overrides[:-1] == memory.codex_config().config_overrides
+               and c.config.env["CODEX_HOME"] == str((tmp_path / "data/codex").resolve())
+               and c.closed for c in clients)
 
 
 def test_claude_failed_mcp_disconnects_without_creating_session(tmp_path, monkeypatch):

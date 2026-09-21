@@ -466,6 +466,7 @@ app.whenReady().then(async () => {
   void releaseJobs.resume().catch(error => console.error("Release resume:", error.message));
   const hasInstallResult = await updater.restoreInstallationResult();
   createWindow();
+  dependencies.startAutomaticChecks();
   const installResult = await updater.takeInstallResult();
   if (installResult) {
     void dialog.showMessageBox({

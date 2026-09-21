@@ -31,13 +31,16 @@ def python_executable(root: Path) -> Path:
     return root / ("Scripts/python.exe" if (root / "pyvenv.cfg").exists() else "python.exe")
 
 
-def codex_executable(browser: Path) -> Path:
-    name = "codex.exe" if os.name == "nt" else "codex"
-    matches = list((browser / "node_modules/@openai").rglob(name))
-    matches = [path for path in matches if path.is_file()]
-    if len(matches) != 1:
-        raise RuntimeError("The Codex package must contain one native runtime for this platform.")
-    return matches[0]
+def validate_codex_runtime() -> str:
+    from codex_cli_bin import bundled_codex_path
+
+    sdk = importlib.metadata.version("openai-codex")
+    cli = importlib.metadata.version("openai-codex-cli-bin")
+    binary = bundled_codex_path()
+    version = run([binary, "--version"]).strip()
+    if cli != sdk or version != f"codex-cli {sdk}":
+        raise RuntimeError(f"Codex SDK/CLI version mismatch: SDK={sdk}, CLI={cli}, {version}")
+    return str(binary)
 
 
 def write_state(root: Path, state: dict) -> None:
@@ -96,10 +99,11 @@ def validate_runtime(python: Path, browser: Path) -> None:
         "from cleo.mcp.memory_server import create_server; "
         "from openai_codex.api import AsyncTurnHandle; "
         "from openai_codex import AsyncCodex, CodexConfig; "
-        "assert hasattr(AsyncCodex, 'models')"
+        "assert hasattr(AsyncCodex, 'models'); "
+        "from cleo.desktop.dependencies import validate_codex_runtime; "
+        "validate_codex_runtime()"
     )])
     run([sys.executable, "-I", "-m", "uv", "pip", "check", "--python", python])
-    run([codex_executable(browser), "--version"])
     node = browser / ("node.exe" if os.name == "nt" else "node")
     run([node, browser / "node_modules/agent-browser/bin/agent-browser.js", "--version"])
 
@@ -161,7 +165,7 @@ def update(root: Path, base_python: Path, base_browser: Path, current: str | Non
                 != json.loads((source_browser / "package-lock.json").read_text())
             )
             if not python_changed and not browser_changed:
-                state.update(phase="up-to-date")
+                state.update(phase="ready" if active and active.name != current else "up-to-date")
                 write_state(root, state)
                 return state
             state.update(phase="updating")

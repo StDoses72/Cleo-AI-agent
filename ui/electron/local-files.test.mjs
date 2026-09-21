@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { chmod, mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 import { openLocalHref, resolveLocalHref } from "./local-files.mjs";
@@ -77,12 +78,29 @@ test("Codex file links ignore trailing line and column numbers", async () => {
   }
 });
 
-test("local links cannot escape the active workspace", () => {
-  const workspace = join(tmpdir(), "cleo-workspace");
-  assert.throws(
-    () => resolveLocalHref("../outside.html", workspace),
-    /只能打开当前项目目录中的文件/,
-  );
+test("files outside the workspace open from relative, absolute, and file URL links", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cleo-outside-links-"));
+  try {
+    const workspace = join(root, "project");
+    const page = join(root, "报告 100%.md");
+    await mkdir(workspace);
+    await writeFile(page, "report");
+    const opened = [];
+    const shellAdapter = { openPath: async (path) => { opened.push(path); return ""; } };
+    const links = [
+      ["../报告%20100%25.md", workspace],
+      [encodeURI(page) + ":12:3", workspace],
+      [pathToFileURL(page).href, ""],
+      [encodeURI(page), join(root, "missing-project")],
+      [encodeURI(page), ""],
+    ];
+    for (const [href, workspacePath] of links) {
+      const result = await openLocalHref({ href, workspacePath, shellAdapter });
+      assert.equal(result.path, await realpath(page));
+    }
+    assert.equal(opened.length, links.length);
+    assert.throws(() => resolveLocalHref("report.md", ""), /没有关联工作目录/);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test("missing files and executable links return useful errors", async () => {

@@ -41,7 +41,7 @@ def test_missing_empty_rollout_reconnects_the_same_cleo_task_and_options(tmp_pat
     async def exercise():
         calls = []
         provider = CodexProvider("model")
-        provider._client_with_approvals = lambda _broker: DraftClient(calls)
+        provider._client_with_approvals = lambda _broker, **_: DraftClient(calls)
         first = AgentAdapter(tmp_path)
         first.register(provider)
         original = await first.create_session("codex", model="model")
@@ -81,7 +81,7 @@ def test_reconnect_never_discards_history_or_retries_unrelated_failures(
     async def exercise():
         calls = []
         provider = CodexProvider("model")
-        provider._client_with_approvals = lambda _broker: DraftClient(calls, error)
+        provider._client_with_approvals = lambda _broker, **_: DraftClient(calls, error)
         first = AgentAdapter(tmp_path)
         first.register(provider)
         original = await first.create_session("codex", model="model")

@@ -33,6 +33,7 @@ from cleo.harnesses.control import (
 )
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 from cleo.harnesses.provider import NativeSessionNotFoundError, ProviderSession, ProviderTurn
+from cleo.integrations.codex_home import isolated_codex_config
 from cleo.integrations.harnesses.codex_approvals import CodexApprovalBroker
 from cleo.integrations.harnesses.memory import MemoryMcp
 from cleo.runtime.usage import RateLimitWindowUsage
@@ -57,6 +58,7 @@ class _CodexRuntime:
     approvals: CodexApprovalBroker = field(default_factory=CodexApprovalBroker)
     user_approvals_enabled: bool = False
     context_binding: Any = None
+    legacy_home: bool = False
 
 
 class CodexProvider:
@@ -162,6 +164,7 @@ class CodexProvider:
         model: str | None = None,
         *,
         context=None,
+        _legacy: bool = False,
     ) -> ProviderSession:
         """创建 client 并通过 ``thread_resume`` 恢复既有 thread。
 
@@ -176,10 +179,9 @@ class CodexProvider:
             ``ProviderSession``(id == 恢复后的 thread id), 由 AgentAdapter 消费。
         """
         approvals = CodexApprovalBroker(self.name)
-        client = (
-            self._client_with_approvals(approvals, context=context)
-            if context
-            else self._client_with_approvals(approvals)
+        client = self._client_with_approvals(
+            approvals, **({"context": context} if context else {}),
+            **({"legacy": True} if _legacy else {}),
         )
         await client.__aenter__()
         try:
@@ -203,13 +205,18 @@ class CodexProvider:
                 error.code == -32600
                 and error.message == f"no rollout found for thread id {native_session_id}"
             ):
+                if not _legacy:
+                    return await self.resume_session(
+                        native_session_id, project_path, model, context=context, _legacy=True,
+                    )
                 raise NativeSessionNotFoundError(str(error)) from error
             raise
         except BaseException:
             await client.close()
             raise
         self._sessions[thread.id] = _CodexRuntime(
-            client, thread, options, project_path, approvals=approvals, context_binding=context
+            client, thread, options, project_path, approvals=approvals, context_binding=context,
+            legacy_home=_legacy,
         )
         return ProviderSession(id=thread.id, native_id=thread.id)
 
@@ -497,7 +504,7 @@ class CodexProvider:
             ``NativeSessionPage``, 含本页 ``NativeSession`` 元组与
             ``next_cursor`` 翻页游标。
         """
-        async with self._client() as client:
+        async with self._client(legacy=True) as client:
             response = await client.thread_list(
                 archived=archived,
                 cursor=cursor,
@@ -513,6 +520,8 @@ class CodexProvider:
     async def read_native_session(
         self,
         native_session_id: str,
+        *,
+        _legacy: bool = False,
     ) -> NativeSessionDetail:
         """读取某个原生 thread 的详情(含全部 turn 记录)。
 
@@ -524,9 +533,15 @@ class CodexProvider:
             ``NativeSessionDetail``, 含归一化的 session 信息与按 JSON
             序列化的 turns 元组。
         """
-        async with self._client() as client:
-            thread = await client.thread_resume(native_session_id)
-            response = await thread.read(include_turns=True)
+        try:
+            async with self._client(**({"legacy": True} if _legacy else {})) as client:
+                thread = await client.thread_resume(native_session_id)
+                response = await thread.read(include_turns=True)
+        except JsonRpcError as error:
+            if (not _legacy and error.code == -32600
+                    and error.message == f"no rollout found for thread id {native_session_id}"):
+                return await self.read_native_session(native_session_id, _legacy=True)
+            raise
         native = self._native_session(response.thread)
         turns = tuple(
             turn.model_dump(mode="json", by_alias=True, exclude_none=True)
@@ -598,10 +613,9 @@ class CodexProvider:
         source = self._sessions[session_id]
         options = source.options
         approvals = CodexApprovalBroker(self.name)
-        client = (
-            self._client_with_approvals(approvals, context=source.context_binding)
-            if source.context_binding
-            else self._client_with_approvals(approvals)
+        client = self._client_with_approvals(
+            approvals, **({"context": source.context_binding} if source.context_binding else {}),
+            **({"legacy": True} if source.legacy_home else {}),
         )
         await client.__aenter__()
         try:
@@ -627,6 +641,7 @@ class CodexProvider:
             source.cwd,
             approvals=approvals,
             context_binding=source.context_binding,
+            legacy_home=source.legacy_home,
         )
         return ProviderSession(id=thread.id, native_id=thread.id)
 
@@ -749,8 +764,10 @@ class CodexProvider:
         return AsyncTurnHandle(runtime.client, runtime.thread.id, started.turn.id)
 
     @staticmethod
-    def _client(config: CodexConfig | None = None) -> AsyncCodex:
-        # Desktop maintains its own current CLI, independently of the SDK release cadence.
+    def _client(config: CodexConfig | None = None, *, legacy: bool = False) -> AsyncCodex:
+        if not legacy:
+            config = isolated_codex_config(config)
+        # Desktop selects the CLI bundled with its validated Python SDK runtime.
         if (codex_bin := os.environ.get("CLEO_CODEX_BIN")) and not (
             config is not None and config.codex_bin
         ):
@@ -758,13 +775,15 @@ class CodexProvider:
             config.codex_bin = codex_bin
         return AsyncCodex(config=config) if config is not None else AsyncCodex()
 
-    def _client_with_approvals(self, approvals: CodexApprovalBroker, *, context=None) -> AsyncCodex:
+    def _client_with_approvals(
+        self, approvals: CodexApprovalBroker, *, context=None, legacy: bool = False,
+    ) -> AsyncCodex:
         memory = (
             self._memory_mcp.for_context(context)
             if context and self._memory_mcp
             else self._memory_mcp
         )
-        client = self._client(memory.codex_config() if memory else None)
+        client = self._client(memory.codex_config() if memory else None, legacy=legacy)
         async_client = getattr(client, "_client", None)
         sync_client = getattr(async_client, "_sync", None)
         if sync_client is None or not hasattr(sync_client, "_approval_handler"):

@@ -37,8 +37,10 @@ class SubscriptionLogins:
                 if profile.backend == "codex":
                     from openai_codex import AsyncCodex
 
+                    from cleo.integrations.codex_home import isolated_codex_config
+
                     async with AsyncCodex(
-                        config=AgentMcp(profile, root, "").codex_config()
+                        config=isolated_codex_config(AgentMcp(profile, root, "").codex_config())
                     ) as client:
                         login = await client.login_chatgpt()
                         state["url"] = login.auth_url

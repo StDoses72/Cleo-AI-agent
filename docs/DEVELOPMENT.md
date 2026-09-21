@@ -146,7 +146,7 @@ git diff --stat
 `pyproject.toml` 是 Python 直接依赖入口，保留最低版本，不限制旧的上限。
 `ui/package.json` 和 `ui/runtime/package.json` 中的应用依赖跟随 npm 的 `latest` 稳定版标签。
 运行工具中的 npm 保留 11.x，以兼容内置 Node 24；Python/Node 本身仍使用发布流程指定的运行时。
-Codex Python SDK 使用官方配套依赖，桌面版通过 `CLEO_CODEX_BIN` 调用单独更新的官方 `@openai/codex` CLI，避免模型列表受 Python SDK 发版速度限制。
+Codex Python SDK 使用官方配套的 `openai-codex-cli-bin`；桌面版通过 `CLEO_CODEX_BIN` 选择同一 Python 环境里的配套 CLI，启动和更新时校验 SDK、CLI 包及可执行文件版本一致。
 
 `requirements.txt` 是面向 Python 3.12/Linux 容器生成的精确锁文件；两个 `package-lock.json` 记录对应的 npm 解析结果。这些文件由更新命令生成，不应手工编辑。仓库忽略的 `uv.lock` 仅供本地使用；使用 uv 开发环境时，运行 `uv sync --upgrade --extra dev` 同步升级。
 
@@ -178,7 +178,7 @@ python scripts\update_project.py `
 
 更新后运行完整 Python 测试、`npm --prefix ui run test:backend` 和前端构建，并检查锁文件变化。桌面构建默认先运行相同更新流程；CI 在测试前更新一次，打包传入 `--locked-dependencies`（Windows 为 `-LockedDependencies`）复用已测试的版本。
 
-启动时，Cleo 从当前程序版本对应的独立 `runtimes/` 目录选择已经验证的 Python/工具运行时；导入检查失败会回到随应用打包的版本。当前桌面入口不启动独立的依赖下载任务，不能把依赖准备状态当成另一项整包更新。
+启动时，Cleo 从当前程序版本对应的独立 `runtimes/` 目录选择已经验证的 Python/工具运行时；导入或 Codex 版本检查失败会回到随应用打包的版本。启动后及持续运行期间每 24 小时自动检查依赖更新，通过验证后下次启动生效；失败保留当前运行版本。依赖更新与整包更新独立。
 
 安装版每六小时检查正式发布，下载和安装都需要用户操作。普通更新与进化版本管理共用 `ReleaseDownloads`：按用户配置目录、平台、版本和 SHA-256 隔离缓存；包完整校验后才可解压。同一个包的并发请求共享下载，旧缓存经过校验后可复用。下载完成不会在下次启动时自行安装。Linux `.deb` 的系统安装仍由包管理器维护。
 

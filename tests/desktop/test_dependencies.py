@@ -120,3 +120,51 @@ def test_unchanged_dependencies_do_not_copy_a_runtime(runtime_update, monkeypatc
     assert result["phase"] == "up-to-date"
     assert "active" not in result
     assert not any(path.is_dir() for path in root.iterdir())
+
+
+def test_codex_validation_uses_sdk_bundled_cli(monkeypatch):
+    from codex_cli_bin import bundled_codex_path
+
+    versions = {"openai-codex": "0.147.0", "openai-codex-cli-bin": "0.147.0"}
+    monkeypatch.setattr(dependencies.importlib.metadata, "version", versions.__getitem__)
+    calls = []
+
+    def run(command):
+        calls.append(command)
+        return "codex-cli 0.147.0\n"
+
+    monkeypatch.setattr(dependencies, "run", run)
+    assert dependencies.validate_codex_runtime() == str(bundled_codex_path())
+    assert calls == [[bundled_codex_path(), "--version"]]
+
+
+@pytest.mark.parametrize("package_version,binary_version", [
+    ("0.153.4", "0.153.4"), ("0.147.0", "0.153.4"),
+])
+def test_codex_validation_rejects_mismatched_versions(monkeypatch, package_version, binary_version):
+    monkeypatch.setattr(dependencies.importlib.metadata, "version", lambda name:
+                        "0.147.0" if name == "openai-codex" else package_version)
+    monkeypatch.setattr(dependencies, "run", lambda _: f"codex-cli {binary_version}\n")
+    with pytest.raises(RuntimeError, match="Codex SDK/CLI version mismatch"):
+        dependencies.validate_codex_runtime()
+
+
+def test_unchanged_pending_update_still_requires_restart(runtime_update, monkeypatch):
+    root, python, browser, _ = runtime_update
+    pending = root / ("a" * 32)
+    (pending / "python").mkdir(parents=True)
+    (pending / "browser").mkdir()
+    for name in ("package.json", "package-lock.json"):
+        (pending / "browser" / name).write_bytes((browser / name).read_bytes())
+    dependencies.write_state(root, {"active": pending.name, "phase": "ready"})
+    original = dependencies.run
+
+    def run(command, **kwargs):
+        if "-c" in command:
+            return '{"example":"2.0"}'
+        return original(command, **kwargs)
+
+    monkeypatch.setattr(dependencies, "run", run)
+    result = dependencies.update(root, python, browser, None)
+    assert result["phase"] == "ready"
+    assert result["active"] == pending.name

@@ -12,7 +12,7 @@ Codex 连接使用 ChatGPT 订阅中的 **Codex 额度**，跟随此连接的 Dr
 
 | 连接 | 官方运行接口 | 登录方式 |
 | --- | --- | --- |
-| ChatGPT / Codex | Codex App Server，经现有 Python SDK | 设置页打开官方浏览器登录，或 `codex login` |
+| ChatGPT / Codex | Codex App Server，经现有 Python SDK | 在 Cleo 设置页打开官方浏览器登录 |
 | Gemini | `gemini --acp` | 设置页调用官方 Google 登录，或在 `gemini` 中选择 Google 登录 |
 | GitHub Copilot | `copilot --acp --stdio` | 设置页运行 `copilot login` |
 | Grok | `grok agent stdio` | 设置页运行 `grok login` |
@@ -29,8 +29,9 @@ API 支持 OpenAI 兼容、Anthropic 和 Google Gemini 接口。服务没有模�
 订阅的 `default` 跟随服务商默认值；需要固定模型时应选择具体模型 ID。
 
 API Key 配置继续可用。订阅 Profile 不接受 API Key 或 Base URL。
-多个同服务的 Profile 共用该 CLI 当前账号；它们不是相互独立的账号槽位。
-登录或在官方 CLI 退出账号会影响使用该 CLI 的其他应用。
+多个同服务的 Profile 共用该运行时的账号；它们不是相互独立的账号槽位。
+Codex 的新会话使用 Cleo 数据根目录下的 `data/codex`，与默认 Codex 应用/CLI 的历史、登录缓存及全局配置分开。首次使用请在 Cleo 内登录；同一 ChatGPT 账号的额度仍共享。原 Codex 的登录文件和全局配置不会自动复制。
+已有 Codex 会话及从它们派生的原生分支继续使用原目录，不做迁移或删除。其他服务仍沿用官方 CLI 的账号，登录或退出可能影响使用同一 CLI 的应用。
 Cleo 不主动在额度耗尽后切换付费 API，也不自动购买额度。
 官方 CLI 本身的既有配置、组织策略、额外用量设置仍然适用。
 

@@ -214,12 +214,16 @@ async def inspect_connection(profile: AgentProfile) -> dict:
     if profile.backend == "codex":
         from openai_codex import AsyncCodex
 
-        config = AgentMcp(profile, Path.cwd(), "").codex_config()
+        from cleo.integrations.codex_home import isolated_codex_config
+
+        config = isolated_codex_config(AgentMcp(profile, Path.cwd(), "").codex_config())
         async with AsyncCodex(config=config) as client:
             account = await client.account()
             payload = account.account.model_dump(mode="json") if account.account else {}
             if payload.get("type") != "chatgpt":
-                raise ValueError("请先使用 ChatGPT 账号登录 Codex（API Key 登录不适用）。")
+                raise ValueError(
+                    "请在 Cleo 中使用 ChatGPT 账号独立登录 Codex（API Key 登录不适用）。"
+                )
             result = await client.models()
             return {"status": "connected", "models": [m.id for m in result.data]}
     if profile.backend == "claude_code":

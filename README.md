@@ -6,7 +6,7 @@ Cleo 是一套本地优先的 AI 工作空间：它把通用对话、开发者�
 
 项目提供 Windows、macOS、Linux 桌面构建支持，以及 Python CLI、Textual TUI 和 stdio MCP 入口。用户数据默认保存在本机；模型推理由用户配置的 API provider 或外部 agent harness 提供。
 
-> 当前版本：[v0.4.11](https://github.com/StDoses72/Cleo-AI-agent/releases/tag/v0.4.11) · [下载桌面版](https://stdoses72.github.io/Cleo-AI-agent/)
+> 当前版本：[v0.5.0](https://github.com/StDoses72/Cleo-AI-agent/releases/tag/v0.5.0) · [下载桌面版](https://stdoses72.github.io/Cleo-AI-agent/)
 
 ## Cleo 解决什么问题
 
@@ -64,6 +64,8 @@ Set-ExecutionPolicy -Scope Process Bypass
 首次进入应用后，在“设置 → 模型”中配置 provider、模型、API Key 和可选 Base URL，再分别选择 Cleo 与 DreamAgent 使用的 profile。API Key 只写入本地配置，桌面读取接口不会回传明文。
 
 使用 Codex 开发对话时，可在输入框旁选择标准速度或快速模式；选择按对话保存。快速模式消耗更多额度，可用性取决于模型和账号。
+
+新建 Codex 会话的历史保存在 Cleo 专用目录，不写入默认 Codex 应用的会话列表；首次使用需在 Cleo 内单独登录。已有会话沿用原目录，详见[配置说明](docs/CONFIGURATION.md)。
 
 ### 从源码运行
 

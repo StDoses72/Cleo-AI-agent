@@ -743,7 +743,8 @@ function MarkdownContent({
           const hasUnsupportedScheme = /^[a-z][a-z\d+.-]*:/i.test(href)
             && !/^[a-z]:[\\/]/i.test(href)
             && !/^file:/i.test(href);
-          if (hasUnsupportedScheme || !projectPath) {
+          const absolutePath = /^(?:[a-z]:[\\/]|[\\/]|file:)/i.test(href);
+          if (hasUnsupportedScheme || (!projectPath && !absolutePath)) {
             return (
               <span
                 className="markdown-link local-file-link disabled"
@@ -762,7 +763,7 @@ function MarkdownContent({
               title={`在系统默认应用中打开 · ${href}`}
               onClick={(event) => {
                 event.preventDefault();
-                onOpenPath(href, projectPath);
+                onOpenPath(href, projectPath || "");
               }}
             >
               <span>{children}</span>

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFile, spawn } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -18,24 +18,6 @@ export function readDependencyState(root) {
   }
 }
 
-export function findCodexBinary(browserRoot) {
-  const root = join(browserRoot, "node_modules", "@openai");
-  if (!existsSync(root)) return undefined;
-  const name = process.platform === "win32" ? "codex.exe" : "codex";
-  const visit = (directory) => {
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      const path = join(directory, entry.name);
-      if (entry.isFile() && entry.name === name) return path;
-      if (entry.isDirectory()) {
-        const found = visit(path);
-        if (found) return found;
-      }
-    }
-    return undefined;
-  };
-  return visit(root);
-}
-
 export function selectRuntime(root, resourcesPath) {
   const state = readDependencyState(root);
   const candidate = typeof state.active === "string" && /^[a-f0-9]{32}$/.test(state.active)
@@ -48,7 +30,7 @@ export function selectRuntime(root, resourcesPath) {
   const browserRoot = join(resources, "browser");
   return {
     python: valid ? managedPython(resources) : bundledPython(resources), browserRoot,
-    codexBin: findCodexBinary(browserRoot), current: valid ? state.active : null,
+    current: valid ? state.active : null,
   };
 }
 
@@ -69,6 +51,7 @@ export class DependencyUpdater {
     this.runtime = null;
     this.checking = null;
     this.closed = false;
+    this.checkTimer = null;
   }
 
   async prepare() {
@@ -79,14 +62,29 @@ export class DependencyUpdater {
         await execute(this.runtime.python, ["-I", "-c", "from cleo.desktop.server import main"], {
           timeout: 60_000, windowsHide: true,
         });
+        await this.resolveCodexBinary();
       } catch (error) {
         const state = { ...readDependencyState(this.root), active: null, phase: "error", error: `依赖启动检查失败，已恢复随应用安装的版本：${error.message}` };
         await writeFile(join(this.root, "state.json"), JSON.stringify(state));
         this.runtime = selectRuntime(this.root, this.resourcesPath);
       }
     }
+    if (!this.runtime.codexBin) await this.resolveCodexBinary();
     this.publish();
     return this.runtime;
+  }
+
+  async resolveCodexBinary() {
+    const { stdout } = await execute(this.runtime.python, ["-I", "-c",
+      "import json; from cleo.desktop.dependencies import validate_codex_runtime; print(json.dumps(validate_codex_runtime()))"],
+    { timeout: 60_000, windowsHide: true });
+    this.runtime.codexBin = JSON.parse(stdout);
+  }
+
+  startAutomaticChecks() {
+    if (this.closed || this.checkTimer !== null) return;
+    void this.check();
+    this.checkTimer = setInterval(() => void this.check(), 24 * 60 * 60 * 1000);
   }
 
   publish() {
@@ -141,6 +139,8 @@ export class DependencyUpdater {
 
   async close() {
     this.closed = true;
+    clearInterval(this.checkTimer);
+    this.checkTimer = null;
     const child = this.child;
     if (!child) return;
     if (process.platform === "win32") {
