@@ -21,16 +21,15 @@ foreach ($definition in $ast.FindAll({ param($node)
 }
 # Reproduce a host where module discovery cannot supply Get-FileHash.
 $PSModuleAutoLoadingPreference = 'None'
-$electronArchive = $wheelPath = $archivePath = $env:CLEO_HASH_INPUT
+$electronArchive = $archivePath = $env:CLEO_HASH_INPUT
 $assignments = $ast.FindAll({ param($node)
     $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
-    $node.Left.Extent.Text -in @('$actualHash', '$actualElectronHash', '$hash')
+    $node.Left.Extent.Text -in @('$actualElectronHash', '$hash')
 }, $true)
-if ($assignments.Count -ne 3) { throw 'Expected all three package checksum sites.' }
+if ($assignments.Count -ne 2) { throw 'Expected Electron and release archive checksum sites.' }
 foreach ($assignment in $assignments) {
     . ([scriptblock]::Create($assignment.Extent.Text))
 }
-[Console]::WriteLine($actualHash)
 [Console]::WriteLine($actualElectronHash)
 [Console]::WriteLine($hash)
 `;
@@ -54,7 +53,7 @@ test("release checksums work without module autoloading and reject missing files
     await writeFile(input, content);
     const expected = createHash("sha256").update(content).digest("hex");
     const result = await run("powershell.exe", args, options);
-    assert.deepEqual(result.toLowerCase().split(/\r?\n/), [expected, expected, expected]);
+    assert.deepEqual(result.toLowerCase().split(/\r?\n/), [expected, expected]);
   }
   await rm(input);
   await assert.rejects(run("powershell.exe", args, options));
