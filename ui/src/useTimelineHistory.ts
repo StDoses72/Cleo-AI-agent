@@ -40,6 +40,7 @@ export function useTimelineHistory(thread: Thread | null, update: (id: string, f
       beforeApply?.();
       latest.current.update(current.id, saved => mergeTimelinePage(saved, page, direction, current));
       if (direction === "latest") { follow.current = true; setFollowing(true); setUnread(false); }
+      return true;
     } catch (failure) {
       if (token === generation.current) setError(failure instanceof Error ? failure.message : "历史加载失败");
     } finally {
@@ -48,7 +49,7 @@ export function useTimelineHistory(thread: Thread | null, update: (id: string, f
   };
 
   return {
-    busy, error, unread, following, load,
+    busy, error, unread, following, followRef: follow, load,
     isActive: (id: string) => latest.current.thread?.id === id,
     retry: () => load(retryDirection.current),
     follow: (value: boolean) => { follow.current = value; setFollowing(value); if (value) setUnread(false); },

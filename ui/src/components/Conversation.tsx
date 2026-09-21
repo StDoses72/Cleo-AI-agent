@@ -182,7 +182,8 @@ export function Conversation({
   const viewportRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [bottomInset, setBottomInset] = useState(140);
-  const stickToBottomRef = useRef(true);
+  const localFollowRef = useRef(true);
+  const stickToBottomRef = history?.followRef ?? localFollowRef;
   useLayoutEffect(() => { stickToBottomRef.current = true; }, [thread?.id]);
   useLayoutEffect(() => {
     const bottom = bottomRef.current;

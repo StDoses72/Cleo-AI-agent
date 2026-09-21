@@ -80,7 +80,9 @@ try {
         if (method === "get_pending_questions") return [...pending.values()].filter(q => q.threadId === params.thread_id);
         if (method === "stream_turn") {
           stream = { id: streamId, threadId: params.thread_id };
-          const user = { id: "live-turn", turnId: "live-turn", type: "message", role: "user", content: params.prompt, time: "" };
+          if (window.holdTurnStart) await new Promise(resolve => { window.releaseTurnStart = resolve; });
+          const turnId = params.prompt.startsWith("Send from ") ? params.prompt : "live-turn";
+          const user = { id: turnId, turnId, type: "message", role: "user", content: params.prompt, time: "" };
           storage[params.thread_id].push(user);
           window.emitTest({ type: "turn-started", item: user });
           await new Promise(resolve => { finish = resolve; });
@@ -214,6 +216,46 @@ try {
   await page.getByRole("button", { name: "回到最新", exact: true }).click();
   await page.getByRole("button", { name: "回到最新", exact: true }).waitFor({ state: "hidden" });
   await page.getByText("History item 9999", { exact: true }).waitFor();
+  // Sending while reading history must show the optimistic user message before
+  // the backend acknowledges it, then replace it without duplicates.
+  for (const olderPage of [false, true]) {
+    await viewport.hover();
+    if (olderPage) {
+      for (let i = 0; i < 7; i++) {
+        const before = await page.getByTestId("conversation").getAttribute("data-cache-first");
+        await page.mouse.wheel(0, -10000000);
+        await page.waitForFunction(old => document.querySelector("[data-cache-first]")?.getAttribute("data-cache-first") !== old, before);
+      }
+    } else {
+      await page.mouse.wheel(0, -40);
+      await page.getByRole("button", { name: "回到最新", exact: true }).waitFor();
+    }
+    const prompt = `Send from ${olderPage ? "older page" : "near bottom"}`;
+    await page.evaluate(() => { window.holdTurnStart = true; });
+    await page.getByTestId("composer-input").fill(prompt);
+    if (olderPage) {
+      await page.evaluate(() => { window.failHistory = true; });
+      await page.getByTestId("send-button").click();
+      await page.getByText("无法加载最新对话，请重试发送。", { exact: true }).waitFor();
+      assert.equal(await page.getByTestId("composer-input").inputValue(), prompt);
+      assert.equal(await page.evaluate(() => Boolean(window.releaseTurnStart)), false,
+        "Failed latest-page loading still started the turn");
+    }
+    await page.getByTestId("send-button").click();
+    await page.waitForFunction(() => Boolean(window.releaseTurnStart));
+    const message = page.getByRole("article", { name: "你的消息", exact: true }).getByText(prompt, { exact: true });
+    await message.waitFor({ timeout: 3000 });
+    assert(await message.evaluate(el => {
+      const rect = el.getBoundingClientRect();
+      const viewport = document.querySelector(".conversation-viewport").getBoundingClientRect();
+      return rect.top >= viewport.top && rect.bottom <= viewport.bottom;
+    }), "Sent user message is outside the visible history viewport");
+    await page.evaluate(() => { window.releaseTurnStart(); window.releaseTurnStart = null; window.holdTurnStart = false; });
+    await page.waitForFunction(id => [...document.querySelectorAll("[data-row-id]")].some(el => el.dataset.rowId === id), prompt);
+    assert.equal(await message.count(), 1, "Turn acknowledgement duplicated the user message");
+    await page.getByTestId("stop-button").click();
+    await page.getByTestId("send-button").waitFor();
+  }
   await page.evaluate(() => { window.delayHistory = true; });
   await viewport.hover(); await page.mouse.wheel(0, -10000000);
   await page.getByText("交互提问", { exact: true }).click();

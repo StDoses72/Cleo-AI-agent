@@ -616,6 +616,12 @@ export function useCleoWorkspace(evolutionOpen = false) {
     const selection = selectionRef.current + (thread ? 0 : 1);
     try {
       if (!thread) thread = await createThread();
+      if (!preserveDraft && history.isActive(thread.id)) {
+        if (thread.history?.hasAfter && !await history.load("latest")) {
+          throw new Error("无法加载最新对话，请重试发送。");
+        }
+        history.follow(true);
+      }
     } catch (error) {
       updateDraft(sourceDraftKey, (current) => ({
         ...current,
@@ -653,7 +659,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
       status: "running",
       steerReady: false,
       updatedAt: "刚刚",
-      items: history.isFollowing(threadId) ? [...current.items, userItem] : current.items,
+      items: !preserveDraft || history.isFollowing(threadId) ? [...current.items, userItem] : current.items,
     }));
 
     let failed = false;
