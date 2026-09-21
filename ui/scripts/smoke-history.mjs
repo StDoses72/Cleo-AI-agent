@@ -115,6 +115,28 @@ try {
   const inspector = page.getByTestId("inspector");
   if (await inspector.count()) await inspector.getByRole("button", { name: "关闭检查器", exact: true }).click();
   const viewport = page.locator(".conversation-viewport");
+  // Small upward wheel movements must escape bottom-follow, including repeated
+  // touchpad-sized deltas. Scrolling back to the bottom must restore following.
+  for (const delta of [20, 40, 80]) {
+    await viewport.hover();
+    await page.mouse.wheel(0, -delta);
+    await page.waitForTimeout(150);
+    assert(await viewport.evaluate(el => el.scrollHeight - el.clientHeight - el.scrollTop > 10),
+      `Upward ${delta}px wheel movement was pulled back to the bottom`);
+    await page.getByRole("button", { name: "回到最新", exact: true }).click();
+    await page.getByRole("button", { name: "回到最新", exact: true }).waitFor({ state: "hidden" });
+  }
+  for (let i = 0; i < 6; i++) {
+    await viewport.hover();
+    await page.mouse.wheel(0, -40);
+    await page.waitForTimeout(100);
+  }
+  assert(await viewport.evaluate(el => el.scrollHeight - el.clientHeight - el.scrollTop > 180),
+    "Repeated small upward movements did not advance through history");
+  await page.mouse.wheel(0, 600);
+  await page.getByRole("button", { name: "回到最新", exact: true }).waitFor({ state: "hidden" });
+  assert(await viewport.evaluate(el => el.scrollHeight - el.clientHeight - el.scrollTop < 2),
+    "Scrolling back to the bottom did not restore following");
   // Deliver wheel intent before the compositor's scroll position, then cause an
   // unrelated React render before the native scroll event reaches the timeline.
   for (const frames of [1, 4]) {

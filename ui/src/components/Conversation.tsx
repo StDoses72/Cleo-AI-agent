@@ -273,7 +273,7 @@ export function Conversation({
     const viewport = viewportRef.current;
     if (!viewport) return;
     const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
-    stickToBottomRef.current = distanceFromBottom < 96 && !thread?.history?.hasAfter;
+    stickToBottomRef.current = distanceFromBottom <= 1 && !thread?.history?.hasAfter;
     history?.follow(stickToBottomRef.current);
     if (history?.busy || history?.error) return;
     const prefetchDistance = Math.max(240, viewport.clientHeight / 2);
