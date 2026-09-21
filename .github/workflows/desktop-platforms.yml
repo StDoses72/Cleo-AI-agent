@@ -99,15 +99,19 @@ jobs:
           sudo chmod 4755 ui/node_modules/electron/dist/chrome-sandbox
       - name: Desktop smoke
         if: runner.os != 'Linux'
-        shell: bash
-        run: |
-          node ui/scripts/smoke.mjs
-          node ui/scripts/smoke-approvals.mjs
-          node ui/scripts/smoke-evolution.mjs
-          node ui/tests/acceptance-retry.smoke.mjs
-          node ui/scripts/smoke-history.mjs
-          node ui/scripts/smoke-layout.mjs
-          node ui/scripts/smoke-program-updates.mjs
+        run: node ui/scripts/smoke.mjs
+      - if: runner.os != 'Linux'
+        run: node ui/scripts/smoke-approvals.mjs
+      - if: runner.os != 'Linux'
+        run: node ui/scripts/smoke-evolution.mjs
+      - if: runner.os != 'Linux'
+        run: node ui/tests/acceptance-retry.smoke.mjs
+      - if: runner.os != 'Linux'
+        run: node ui/scripts/smoke-history.mjs
+      - if: runner.os != 'Linux'
+        run: node ui/scripts/smoke-layout.mjs
+      - if: runner.os != 'Linux'
+        run: node ui/scripts/smoke-program-updates.mjs
       - name: Linux desktop smoke
         if: runner.os == 'Linux'
         run: |
@@ -120,10 +124,10 @@ jobs:
           xvfb-run -a node ui/scripts/smoke-program-updates.mjs
       - name: Independent recovery smoke
         if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          npm --prefix ui run smoke:evolution-recovery
-          npm --prefix ui run smoke:evolution-installed
+        run: npm --prefix ui run smoke:evolution-recovery
+      - name: Installed release smoke
+        if: runner.os == 'Windows'
+        run: npm --prefix ui run smoke:evolution-installed
       - name: Windows update smoke
         if: runner.os == 'Windows'
         env:
@@ -137,12 +141,16 @@ jobs:
         run: ./scripts/build-release.ps1 -LockedDependencies -ElectronMirror '' -PythonIndex 'https://pypi.org/simple/'
       - name: Native packaged smoke
         if: runner.os == 'macOS' || (runner.os == 'Windows' && github.event_name == 'workflow_dispatch')
-        shell: bash
-        run: |
-          npm --prefix ui run smoke:packaged
-          npm --prefix ui run smoke:evolution-baseline
-          npm --prefix ui run smoke:evolution-installed-package
-          python tests/integrations/smoke_packaged_memory.py ${{ runner.os == 'Windows' && 'release/Cleo/resources/python/python.exe' || 'release/Cleo.app/Contents/Resources/python/bin/python3' }}
+        run: npm --prefix ui run smoke:packaged
+      - name: Native recovery baseline smoke
+        if: runner.os == 'macOS' || (runner.os == 'Windows' && github.event_name == 'workflow_dispatch')
+        run: npm --prefix ui run smoke:evolution-baseline
+      - name: Native installed package smoke
+        if: runner.os == 'macOS' || (runner.os == 'Windows' && github.event_name == 'workflow_dispatch')
+        run: npm --prefix ui run smoke:evolution-installed-package
+      - name: Native memory handshake smoke
+        if: runner.os == 'macOS' || (runner.os == 'Windows' && github.event_name == 'workflow_dispatch')
+        run: python tests/integrations/smoke_packaged_memory.py ${{ runner.os == 'Windows' && 'release/Cleo/resources/python/python.exe' || 'release/Cleo.app/Contents/Resources/python/bin/python3' }}
       - name: Linux installed package smoke
         if: runner.os == 'Linux'
         run: |

@@ -86,6 +86,9 @@ def test_all_platforms_test_the_same_freshly_resolved_locks():
     test = next(i for i, s in enumerate(steps) if s.get("run", "").startswith("pytest"))
     package = next(i for i, s in enumerate(steps) if "package:portable" in s.get("run", ""))
     assert download < install < test < package
-    for name in ("Desktop smoke", "Independent recovery smoke", "Native packaged smoke"):
+    for name in ("Desktop smoke", "Independent recovery smoke", "Installed release smoke",
+                 "Native packaged smoke", "Native recovery baseline smoke",
+                 "Native installed package smoke", "Native memory handshake smoke"):
         step = next(step for step in steps if step.get("name") == name)
-        assert step["shell"] == "bash", "An earlier failed command must stop the Windows step"
+        assert "\n" not in step["run"].strip(), "Each Windows command must have its own exit check"
+        assert "shell" not in step, "Use the runner's native shell and path encoding"

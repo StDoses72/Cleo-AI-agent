@@ -344,10 +344,12 @@ export class EvolutionManager {
     const baseline = await this.store.build(id);
     if (process.platform === "win32") {
       // A separate shortcut remains usable even when the current app's JavaScript cannot load.
-      await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
-        "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:CLEO_SHORTCUT); $s.TargetPath = $env:CLEO_RECOVERY_EXE; $s.Arguments = '--cleo-recovery'; $s.Save()"], {
-        env: { ...process.env, CLEO_SHORTCUT: join(this.app.getPath("desktop"), this.app.getVersion().endsWith("-alpha") ? "Cleo Alpha 恢复.lnk" : "Cleo 恢复.lnk"), CLEO_RECOVERY_EXE: baseline.executable }, signal: this.operationAbort?.signal,
-      });
+      const { shell } = createRequire(import.meta.url)("electron");
+      const shortcut = join(this.app.getPath("desktop"), this.app.getVersion().endsWith("-alpha")
+        ? "Cleo Alpha 恢复.lnk" : "Cleo 恢复.lnk");
+      if (!shell.writeShortcutLink(shortcut, "create", {
+        target: baseline.executable, args: "--cleo-recovery",
+      })) throw new Error("无法创建 Cleo 恢复快捷方式。");
     }
     return baseline;
   }

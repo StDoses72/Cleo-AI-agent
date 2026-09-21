@@ -25,7 +25,7 @@ try {
   await writeFile(join(root, "package.json"), JSON.stringify({ name: "cleo-baseline-test", type: "module", main: "main.mjs" }));
   const moduleUrl = pathToFileURL(join(ui, "electron/evolution.mjs")).href;
   await writeFile(join(root, "main.mjs"), [
-    'import { app } from "electron";',
+    'import { app, shell } from "electron";',
     'import { writeFile } from "node:fs/promises";',
     'import { join } from "node:path";',
     'import { createRequire } from "node:module";',
@@ -39,6 +39,10 @@ try {
     '  });',
     '  const first = await manager.ensureBaseline();',
     '  const second = await manager.ensureBaseline();',
+    '  if (process.platform === "win32") {',
+    '    const shortcut = shell.readShortcutLink(join(root, "desktop", "Cleo 恢复.lnk"));',
+    '    if (await physical.realpath(shortcut.target) !== await physical.realpath(first.executable) || shortcut.args !== "--cleo-recovery") throw new Error("Recovery shortcut did not preserve its Unicode name and target.");',
+    '  }',
     '  if (first.id !== second.id) throw new Error("Repeated preparation replaced the baseline.");',
     '  const obsolete = join(root, "registry/builds/obsolete");',
     '  await physical.cp(first.directory, obsolete, { recursive: true });',
