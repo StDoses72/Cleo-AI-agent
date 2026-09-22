@@ -13,9 +13,15 @@ from openai_codex import (
     AsyncThread,
     AsyncTurnHandle,
     CodexConfig,
+    Input,
     Sandbox,
 )
-from openai_codex.api import ReasoningEffort, _approval_mode_override_settings
+from openai_codex.api import (
+    ReasoningEffort,
+    _approval_mode_override_settings,
+    _normalize_run_input,
+    _to_wire_input,
+)
 from openai_codex.errors import JsonRpcError
 from openai_codex.generated.v2_all import (
     ConfigRequirementsReadResponse,
@@ -223,7 +229,7 @@ class CodexProvider:
     async def prompt(
         self,
         session_id: str,
-        prompt: str,
+        prompt: str | Input,
         on_event: EventCallback | None = None,
     ) -> ProviderTurn:
         """在 thread 上执行一次 turn 并流式处理 notification 直至完成。
@@ -722,7 +728,7 @@ class CodexProvider:
     async def _start_turn(
         self,
         runtime: _CodexRuntime,
-        prompt: str,
+        prompt: str | Input,
     ) -> AsyncTurnHandle:
         options = runtime.options
         if options.approval_mode != "user" and options.service_tier != "default":
@@ -758,7 +764,7 @@ class CodexProvider:
             params["serviceTier"] = "fast" if options.service_tier == "fast" else None
         started = await runtime.client._client.turn_start(
             runtime.thread.id,
-            prompt,
+            prompt if isinstance(prompt, str) else _to_wire_input(_normalize_run_input(prompt)),
             params=params,
         )
         return AsyncTurnHandle(runtime.client, runtime.thread.id, started.turn.id)

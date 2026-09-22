@@ -247,6 +247,30 @@ async def _async_none() -> None:
     pass
 
 
+def test_chat_error_detail_survives_history_reload(tmp_path):
+    from cleo.desktop.projection import timeline_from_events
+
+    async def fail(*args, **kwargs):
+        raise ValueError("Image input rejected")
+        yield
+
+    async def scenario():
+        service = _service(tmp_path)
+        manifest = service.store.create_session(
+            session_id="failed-chat", space="non_productivity", project="general",
+            provider="cleo", owner_type="user",
+        )
+        service._chat_agents["failed-chat"] = SimpleNamespace(stream_text=fail)
+        service._sync_chat = AsyncMock()
+        with pytest.raises(ValueError, match="Image input rejected"):
+            await service._stream_chat(manifest, "describe", [], AsyncMock())
+        items = timeline_from_events(service.store.read_events("failed-chat"))
+        assert items[-1]["type"] == "notice"
+        assert items[-1]["detail"] == "Image input rejected"
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize("outcome", ["completed", "failed", "cancelled"])
 def test_reply_timing_survives_reload_and_tracks_tools_and_waits(tmp_path, outcome):
     async def scenario():

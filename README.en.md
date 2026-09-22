@@ -34,6 +34,7 @@ General assistants and coding agents usually keep separate histories, permission
 ## Highlights
 
 - Streaming chat and one-shot tasks with JPEG, PNG, WebP, and GIF attachments.
+- Codex subscription chat sends images through the Codex runtime and retains image context when restoring history or asking follow-up questions.
 - Paginated message history, collapsible intermediate activity, and native Codex/Claude questions.
 - Local skill discovery, search, and invocation in native Claude/Codex development sessions.
 - Local evolution from requirements and source edits through build checks, application, acceptance, and version saving.

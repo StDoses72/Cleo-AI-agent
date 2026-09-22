@@ -180,6 +180,57 @@ async def collect(graph, text):
     ]
 
 
+def test_codex_subscription_images_reach_sdk_and_resume_without_replay(tmp_path, monkeypatch):
+    from openai_codex import ImageInput, TextInput
+
+    graph, provider, store = setup_runtime(tmp_path, monkeypatch)
+    image = [{"type": "text", "text": "explain this"},
+             {"type": "image", "base64": "aW1hZ2U=", "mime_type": "image/png"}]
+
+    async def exercise():
+        assert await collect(graph, image) == ["hello"]
+        assert await collect(graph, "follow up") == ["hello"]
+        assert await collect(graph, image) == ["hello"]
+
+    asyncio.run(exercise())
+    first, followup, resumed = provider.prompts
+    assert ImageInput("data:image/png;base64,aW1hZ2U=") in first
+    assert TextInput("Cleo instructions") in first
+    assert followup == "follow up"
+    assert ImageInput("data:image/png;base64,aW1hZ2U=") in resumed
+    assert TextInput("Cleo instructions") not in resumed
+    assert store.load_langchain_messages("chat")[0].content == image
+
+
+def test_codex_restores_failed_image_history_as_images_not_base64_text(tmp_path, monkeypatch):
+    from openai_codex import ImageInput, TextInput
+
+    graph, provider, _ = setup_runtime(tmp_path, monkeypatch)
+    image = HumanMessage([{"type": "image", "base64": "aW1hZ2U=", "mime_type": "image/png"}])
+
+    async def exercise():
+        return [chunk async for chunk in graph.astream(
+            {"messages": [image, HumanMessage("try again")]},
+            config={"configurable": {"thread_id": "chat"}}, stream_mode="messages",
+        )]
+
+    asyncio.run(exercise())
+    prompt = provider.prompts[0]
+    assert ImageInput("data:image/png;base64,aW1hZ2U=") in prompt
+    assert TextInput("try again") == prompt[-1]
+    assert all("aW1hZ2U=" not in item.text for item in prompt if isinstance(item, TextInput))
+
+
+def test_codex_rejects_documents_before_sending_to_runtime(tmp_path, monkeypatch):
+    graph, provider, _ = setup_runtime(tmp_path, monkeypatch)
+    with pytest.raises(ValueError, match="Codex.*图片"):
+        asyncio.run(collect(graph, [
+            {"type": "file", "base64": "cGRm", "mime_type": "application/pdf"},
+        ]))
+    assert not provider.prompts
+    assert asyncio.run(collect(graph, "text still works")) == ["hello"]
+
+
 def test_desktop_runtime_reuses_the_store_lock_for_concurrent_steering(tmp_path, monkeypatch):
     graph, _, store = setup_runtime(tmp_path, monkeypatch)
     graph = module.RuntimeGraph(graph.profile, tmp_path, "Cleo instructions", session_store=store)

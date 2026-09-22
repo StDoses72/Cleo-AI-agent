@@ -722,6 +722,33 @@ def test_codex_provider_applies_runtime_options_to_next_turn() -> None:
     assert str(received_kwargs["sandbox"].value) == "full-access"
 
 
+@pytest.mark.parametrize("manual", [True, False])
+def test_codex_image_input_reaches_both_turn_start_paths(manual):
+    from openai_codex import ImageInput, TextInput
+
+    received = {}
+
+    class LowLevelClient(AsyncCodexClient):
+        async def turn_start(self, thread_id, prompt, params):
+            received["prompt"] = prompt
+            return SimpleNamespace(turn=SimpleNamespace(id="image-turn"))
+
+    async def turn(prompt, **kwargs):
+        received["prompt"] = prompt
+        return SimpleNamespace(id="image-turn")
+
+    runtime = _CodexRuntime(
+        client=SimpleNamespace(_client=LowLevelClient()),
+        thread=SimpleNamespace(id="image-thread", turn=turn),
+        options=SessionOptions(approval_mode="user" if manual else "deny_all"),
+    )
+    prompt = [TextInput("describe"), ImageInput("data:image/png;base64,aW1hZ2U=")]
+    asyncio.run(CodexProvider(None)._start_turn(runtime, prompt))
+    assert received["prompt"] == ([{"type": "text", "text": "describe"},
+                                    {"type": "image", "url": "data:image/png;base64,aW1hZ2U="}]
+                                   if manual else prompt)
+
+
 def test_codex_provider_routes_user_approval_to_app_server_client() -> None:
     received: dict[str, object] = {}
 

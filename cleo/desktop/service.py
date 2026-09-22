@@ -1739,6 +1739,14 @@ class DesktopService:
                 "cancelled" if isinstance(error, asyncio.CancelledError) else "failed"
             ))
             await self._sync_chat(agent, manifest, "interrupted")
+            if isinstance(error, Exception):
+                from cleo.integrations.runtime_diagnostics import diagnostic_text
+
+                detail = diagnostic_text(str(error), prompt=prompt) or type(error).__name__
+                await asyncio.to_thread(
+                    self.store.append_event, session_id=manifest["id"], space=manifest["space"],
+                    project=manifest["project"], event_type="error", actor="system", content=detail,
+                )
             phase(None)
             raise
         else:

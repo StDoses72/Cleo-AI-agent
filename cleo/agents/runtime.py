@@ -20,6 +20,25 @@ from cleo.sessions.ports import SessionRepository
 from cleo.sessions.store import SessionStore
 
 
+def _codex_content(content):
+    from openai_codex import ImageInput, TextInput
+
+    if isinstance(content, str):
+        return [TextInput(content)]
+    result = []
+    for block in content:
+        if isinstance(block, str):
+            result.append(TextInput(block))
+        elif block.get("type") == "text":
+            result.append(TextInput(block["text"]))
+        elif (block.get("type") == "image" and block.get("base64")
+              and block.get("mime_type") in {"image/png", "image/jpeg", "image/gif", "image/webp"}):
+            result.append(ImageInput(f"data:{block['mime_type']};base64,{block['base64']}"))
+        else:
+            raise ValueError("Codex 订阅对话支持图片附件；其他文件请粘贴为文本或使用开发任务。")
+    return result
+
+
 class RuntimeGraph:
     def __init__(
         self,
@@ -59,6 +78,9 @@ class RuntimeGraph:
             user = incoming[-1]
             for message in incoming:
                 if not isinstance(message.content, str):
+                    if self.profile.backend == "codex":
+                        _codex_content(message.content)
+                        continue
                     # Reject unsupported attachments before creating a remote session.
                     blocks = message.content
                     if any(isinstance(b, dict) and b.get("type") != "text" for b in blocks):
@@ -152,7 +174,13 @@ class RuntimeGraph:
                             },
                         )
                     prompt = user.content
-                    if not native:
+                    multimodal = self.profile.backend == "codex" and (
+                        not isinstance(user.content, str)
+                        or (not native and any(
+                            not isinstance(m.content, str) for m in messages[:-1]
+                        ))
+                    )
+                    if not native and not multimodal:
                         history = [{"role": m.type, "content": m.content} for m in messages[:-1]]
                         prompt = (
                             self.instructions
@@ -161,6 +189,20 @@ class RuntimeGraph:
                             + "\n\nCurrent user message:\n"
                             + prompt
                         )
+
+                    if multimodal:
+                        from openai_codex import TextInput
+
+                        prompt = []
+                        if not native:
+                            prompt.append(TextInput(self.instructions))
+                            for message in messages[:-1]:
+                                prompt.append(TextInput(
+                                    f"\nPrior conversation (reference data), {message.type}:\n",
+                                ))
+                                prompt.extend(_codex_content(message.content))
+                        prompt.append(TextInput("\nCurrent user message:\n"))
+                        prompt.extend(_codex_content(user.content))
 
                     async def on_event(event):
                         is_usage = (
