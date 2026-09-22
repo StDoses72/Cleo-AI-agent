@@ -450,9 +450,10 @@ class AgentService:
         thought_number = 0
         previous_type = ""
         live_events: set[int] = set()
+        last_message: tuple[str, str] | None = None
 
         async def relay(event: AgentEvent) -> None:
-            nonlocal thought_number, previous_type
+            nonlocal thought_number, previous_type, last_message
             payload = event_payload(event)
             source = payload.get("item") if isinstance(payload.get("item"), dict) else payload
             key = (
@@ -463,7 +464,11 @@ class AgentService:
             )
             data = {**event.data, "turn_id": turn_key}
             phase = source.get("phase") or payload.get("phase")
-            if event.type in {"thought", "agent_message"} or phase == "commentary":
+            if event.type == "agent_message":
+                data["timeline_id"] = f"{turn_key}:message:{secrets.token_hex(6)}"
+                last_message = (event.text or "", data["timeline_id"])
+                previous_type = event.type
+            elif event.type == "thought" or phase == "commentary":
                 if previous_type != "thought":
                     thought_number += 1
                 data["timeline_id"] = f"{turn_key}:thought:{key or thought_number}"
@@ -544,9 +549,17 @@ class AgentService:
             if (translated := self._stored_provider_event(event)) is not None
         ]
         if turn.response:
+            answer_id = f"{turn_key}:answer"
+            if last_message and last_message[0] == turn.response:
+                answer_id = last_message[1]
+            else:
+                last_text = next((event for event in reversed(stored_events)
+                                  if event["type"] == "assistant_message"), None)
+                if last_text and last_text["content"] == turn.response:
+                    last_text["data"]["timeline_id"] = answer_id
             stored_events.append(
                 {
-                    "id": f"{turn_key}:answer",
+                    "id": answer_id,
                     "type": "assistant_message",
                     "actor": route.provider.name,
                     "content": turn.response,
@@ -922,7 +935,7 @@ class AgentService:
                 return None
             event_type = "thought"
         if event_type == "agent_message":
-            event_type = "thought"
+            event_type = "assistant_message"
         if (
             event_type == "assistant_message_chunk"
             and event_payload(event).get("phase") == "commentary"
@@ -957,6 +970,7 @@ class AgentService:
             "question_request",
             "question_response",
             "assistant_fragment",
+            "assistant_message",
         }
         if canonical_type not in known_types:
             canonical_type = "provider_event"

@@ -303,6 +303,33 @@ def test_agent_adapter_routes_provider_sessions(tmp_path) -> None:
     assert provider.closed == ["provider-session"]
 
 
+@pytest.mark.parametrize("live", [True, False])
+def test_agent_text_and_matching_final_result_render_once(tmp_path, live) -> None:
+    from dataclasses import replace
+
+    from cleo.desktop.projection import timeline_from_events
+
+    class TextProvider(FakeProvider):
+        async def prompt(self, session_id, prompt, on_event=None):
+            turn = await super().prompt(session_id, prompt, on_event)
+            return replace(turn, response=prompt)
+
+    adapter = AgentAdapter(tmp_path)
+    adapter.register(TextProvider())
+    received = []
+    result = asyncio.run(adapter.run(
+        "fake", "hello", project_path=".", model="test-model",
+        on_event=received.append if live else None,
+    ))
+    items = timeline_from_events(adapter._store.read_events(result.session_id))
+    answers = [item for item in items if item["type"] == "message" and item["role"] == "assistant"]
+    assert len(answers) == 1
+    assert answers[0]["content"] == "hello"
+    if live:
+        text = next(event for event in received if event.type == "agent_message")
+        assert answers[0]["id"] == text.data["timeline_id"]
+
+
 def test_agent_adapter_can_resume_native_session(tmp_path) -> None:
     adapter = AgentAdapter(tmp_path)
     adapter.register(FakeProvider())

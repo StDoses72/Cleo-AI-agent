@@ -55,6 +55,8 @@ def timeline_from_events(
             content = event["content"]
         data = event.get("data") if isinstance(event.get("data"), dict) else {}
         payload = data.get("payload") if isinstance(data.get("payload"), dict) else data
+        if event_type == "thought" and data.get("provider_event_type") == "agent_message":
+            event_type = "assistant_fragment"
         if event_type in {"user_message", "human"} and content:
             if data.get("steer_id"):
                 continue
@@ -394,7 +396,14 @@ def stream_event_item(event: AgentEvent, state: dict[str, Any]) -> list[dict[str
                     "item": _message(active_id, "assistant", content, None),
                 }
             )
-    elif event.type in {"thought", "agent_message"} and event.text:
+    elif event.type == "agent_message" and event.text:
+        identifier = event.data.get("timeline_id") or f"live-message-{len(state)}"
+        state[f"message:{identifier}"] = event.text
+        state["assistant"] = event.text
+        output.append({"type": "upsert-item", "item": _message(
+            identifier, "assistant", event.text, None,
+        )})
+    elif event.type == "thought" and event.text:
         thought_id = f"thought-{event_key}"
         if event_identifier is None:
             active_id = state.get("thought:active_id")

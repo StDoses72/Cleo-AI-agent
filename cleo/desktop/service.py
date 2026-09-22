@@ -1920,7 +1920,7 @@ class DesktopService:
             await emit({"type": "runtime", "runtime": self._runtime_profile(
                 self.store.load_manifest(manifest["id"]),
             )})
-        if result.response and not state.get("assistant"):
+        if result.response and state.get("assistant") != result.response:
             await emit(
                 {
                     "type": "upsert-item",

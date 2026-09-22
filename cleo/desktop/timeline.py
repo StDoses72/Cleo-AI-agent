@@ -14,7 +14,7 @@ from cleo.memory.paths import events_path
 PAGE_SIZE = 80
 PREVIEW_CHARS = 8192
 PAGE_BYTES = 512 * 1024
-PROJECTION_VERSION = 3
+PROJECTION_VERSION = 4
 
 
 def _json(value):

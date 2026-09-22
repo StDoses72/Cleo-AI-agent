@@ -584,41 +584,34 @@ type TimelineBlock = Exclude<TimelineItem, { type: "thought" | "tool" }>
 type TimelineRow = TimelineBlock | { id: string; type: "thought-row"; item: ThoughtTimelineItem }
   | { id: string; type: "tool-row"; item: ToolTimelineItem; index: number };
 
-function groupTimelineItems(items: TimelineItem[]): TimelineBlock[] {
+export function groupTimelineItems(items: TimelineItem[]): TimelineBlock[] {
   const blocks: TimelineBlock[] = [];
   let turn: TimelineItem[] = [];
   let turnId = "initial";
 
   const flushTurn = () => {
     if (!turn.length) return;
-    const assistants = turn.filter(
-      (item): item is Extract<TimelineItem, { type: "message" }> =>
-        item.type === "message" && item.role === "assistant",
-    );
-    const process = turn.filter(
-      (item) => item.type !== "message" || item.role !== "assistant",
-    );
-    const thoughts = process.filter(
+    const thoughts = turn.filter(
       (item): item is ThoughtTimelineItem => item.type === "thought",
     );
-    const tools = process.filter(
+    const tools = turn.filter(
       (item): item is ToolTimelineItem => item.type === "tool",
     );
     let addedThoughtGroup = false;
     let addedToolGroup = false;
 
-    for (const item of process) {
+    for (const item of turn) {
       if (item.type === "thought" && !addedThoughtGroup) {
         blocks.push({
-          id: `thought-group-${turnId}`,
+          id: `thought-group-${turn[0].id}`,
           type: "thought-group",
           thoughts,
-          hasAnswer: assistants.some(item => item.content.trim()) || turn.some(item => item.turnHasAnswer),
+          hasAnswer: turn.some(item => item.turnHasAnswer),
         });
         addedThoughtGroup = true;
       } else if (item.type === "tool" && !addedToolGroup) {
         blocks.push({
-          id: `tool-group-${turnId}`,
+          id: `tool-group-${turn[0].id}`,
           type: "tool-group",
           tools,
         });
@@ -627,12 +620,17 @@ function groupTimelineItems(items: TimelineItem[]): TimelineBlock[] {
         blocks.push(item);
       }
     }
-    blocks.push(...assistants);
     turn = [];
   };
 
   for (const item of items) {
-    const next = item.turnId ?? (item.type === "message" && item.role === "user" ? item.id : turnId);
+    if (item.type === "message") {
+      flushTurn();
+      blocks.push(item);
+      turnId = item.turnId ?? item.id;
+      continue;
+    }
+    const next = item.turnId ?? turnId;
     if (next !== turnId && turn.length) flushTurn();
     turnId = next;
     turn.push(item);

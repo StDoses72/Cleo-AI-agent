@@ -23,6 +23,23 @@ from cleo.integrations.harnesses.acp import AcpAgentSpec, AcpProvider, _AcpClien
 from cleo.integrations.harnesses.claude import ClaudeProvider, _ClaudeRuntime
 
 
+def test_claude_auto_review_is_forwarded_to_native_client():
+    from cleo.desktop.runtime_permissions import permission_choices
+
+    async def scenario():
+        client = SimpleNamespace(set_permission_mode=AsyncMock())
+        provider = ClaudeProvider()
+        provider._sessions["test"] = _ClaudeRuntime(
+            client=client, cwd=".", options=SessionOptions(approval_mode="acceptEdits"),
+        )
+        options = await provider.update_session_options("test", approval_mode="auto")
+        client.set_permission_mode.assert_awaited_once_with("auto")
+        assert options.approval_mode == "auto"
+
+    assert "auto" in {choice["value"] for choice in permission_choices("claude_sdk")["approval"]}
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize("decision", ["accept", "decline", "cancel"])
 def test_claude_uses_native_callback_without_changing_inputs(tmp_path, monkeypatch, decision):
     connections = []

@@ -10,6 +10,31 @@ from cleo.desktop.projection import (
 from cleo.harnesses.models import AgentEvent
 
 
+def test_claude_text_remains_a_message_live_and_in_history() -> None:
+    from cleo.harnesses.service import AgentService
+
+    event = AgentEvent(provider="custom-claude", type="agent_message", text="正在检查文件",
+                       data={"timeline_id": "turn:message:1"})
+    live = stream_event_item(event, {})[0]["item"]
+    stored = AgentService._stored_provider_event(event)
+    history = timeline_from_events([stored])[0]
+    for item in (live, history):
+        assert item["id"] == "turn:message:1"
+        assert item["type"] == "message"
+        assert item["role"] == "assistant"
+        assert item["content"] == "正在检查文件"
+
+
+def test_legacy_claude_text_is_not_thinking() -> None:
+    items = timeline_from_events([
+        {"id": "text", "type": "thought", "content": "检查完成",
+         "data": {"provider_event_type": "agent_message"}},
+        {"id": "thinking", "type": "thought", "content": "推理内容",
+         "data": {"provider_event_type": "thought"}},
+    ])
+    assert [item["type"] for item in items] == ["message", "thought"]
+
+
 def test_changes_from_diff_splits_files_and_counts_lines() -> None:
     diff = """diff --git a/a.py b/a.py
 --- a/a.py
