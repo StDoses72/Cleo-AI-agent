@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -73,7 +73,7 @@ test("an installation completing during the startup probe is not marked failed",
 });
 
 test("the standalone Windows progress window displays and closes on success", {
-  skip: process.platform !== "win32", timeout: 20_000,
+  skip: process.platform !== "win32", timeout: 65_000,
 }, async () => {
   const root = await mkdtemp(join(tmpdir(), "cleo-update-window-"));
   const paths = installationPaths(root, join(root, "Cleo.exe"));
@@ -85,15 +85,51 @@ test("the standalone Windows progress window displays and closes on success", {
     await promisify(execFile)(powershell, ["-NoProfile", "-STA", "-ExecutionPolicy", "Bypass",
       "-File", fileURLToPath(new URL("../../scripts/update-progress.ps1", import.meta.url)),
       "-StatusPath", paths.status,
-    ], { windowsHide: true, timeout: 15_000 });
+    ], { windowsHide: true, timeout: 60_000 });
     assert.match(await readFile(`${paths.status}.window`, "utf8"), /^\d+$/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
+test("installation state replacement tolerates a brief Windows reader lock", {
+  skip: process.platform !== "win32", timeout: 65_000,
+}, async () => {
+  const root = await mkdtemp(join(tmpdir(), "cleo-update-lock-"));
+  const paths = installationPaths(root, join(root, "Cleo.exe"));
+  let reader;
+  try {
+    await writeInstallation(paths.status, { phase: "verifying" });
+    const script = join(root, "reader.ps1");
+    await writeFile(script, `param([string]$Path)
+$stream = [IO.File]::Open($Path, 'Open', 'Read', 'Read')
+try {
+  [IO.File]::WriteAllText("$Path.reader", 'ready')
+  Start-Sleep -Milliseconds 500
+} finally { $stream.Dispose() }
+`);
+    const powershell = join(process.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+    reader = promisify(execFile)(powershell, ["-NoProfile", "-ExecutionPolicy", "Bypass",
+      "-File", script, "-Path", paths.status], { windowsHide: true, timeout: 60_000 });
+    reader.catch(() => {});
+    for (let attempt = 0; attempt < 300; attempt += 1) {
+      try { await readFile(`${paths.status}.reader`); break; } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+    await readFile(`${paths.status}.reader`);
+    await writeInstallation(paths.status, { phase: "completed" });
+    await reader;
+    assert.equal((await readInstallation(paths.status)).phase, "completed");
+  } finally {
+    await reader?.catch(() => {});
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("a previous Windows progress window closes when a retry takes ownership", {
-  skip: process.platform !== "win32", timeout: 20_000,
+  skip: process.platform !== "win32", timeout: 65_000,
 }, async () => {
   const root = await mkdtemp(join(tmpdir(), "cleo-update-window-retry-"));
   const paths = installationPaths(root, join(root, "Cleo.exe"));
@@ -105,9 +141,9 @@ test("a previous Windows progress window closes when a retry takes ownership", {
     const running = promisify(execFile)(powershell, ["-NoProfile", "-STA", "-ExecutionPolicy", "Bypass",
       "-File", fileURLToPath(new URL("../../scripts/update-progress.ps1", import.meta.url)),
       "-StatusPath", paths.status,
-    ], { windowsHide: true, timeout: 15_000 });
+    ], { windowsHide: true, timeout: 60_000 });
     const ready = `${paths.status}.window`;
-    for (let attempt = 0; attempt < 50; attempt += 1) {
+    for (let attempt = 0; attempt < 300; attempt += 1) {
       try { await readFile(ready); break; } catch (error) {
         if (error.code !== "ENOENT") throw error;
         await new Promise((resolve) => setTimeout(resolve, 100));

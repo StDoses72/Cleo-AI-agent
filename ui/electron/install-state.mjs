@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 const ACTIVE_PHASES = new Set(["starting", "verifying", "extracting", "waiting", "replacing"]);
 
@@ -28,8 +29,19 @@ export async function readInstallation(path) {
 export async function writeInstallation(path, state) {
   await mkdir(dirname(path), { recursive: true });
   const temporary = `${path}.${randomUUID()}.tmp`;
-  await writeFile(temporary, JSON.stringify(state), "utf8");
-  await rename(temporary, path);
+  try {
+    await writeFile(temporary, JSON.stringify(state), "utf8");
+    for (let attempt = 0; ; attempt += 1) {
+      try { await rename(temporary, path); break; }
+      catch (error) {
+        if (process.platform !== "win32" || !["EPERM", "EACCES", "EBUSY"].includes(error.code)
+            || attempt >= 7) throw error;
+        await delay(50 * (attempt + 1));
+      }
+    }
+  } finally {
+    await rm(temporary, { force: true });
+  }
 }
 
 export function processIsAlive(pid) {
