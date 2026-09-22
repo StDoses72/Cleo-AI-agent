@@ -200,6 +200,8 @@ The main usage guides are available in Chinese and English. Internal development
 
 ## Development
 
+Run `python scripts/update_project.py --local-resolver --skip-build` to refresh dependency locks and upgrade stable development dependencies in an existing `.venv`. `--check` leaves the environment unchanged.
+
 ```powershell
 pip install -e ".[dev]"
 ruff check cleo tests

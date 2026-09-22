@@ -7,8 +7,43 @@ import subprocess
 import tarfile
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+
+
+@pytest.mark.parametrize("existing,check", [(True, False), (True, True), (False, False)])
+def test_update_syncs_existing_development_environment_only_when_writing(tmp_path, monkeypatch,
+                                                                     existing, check):
+    spec = importlib.util.spec_from_file_location(
+        "update_project", Path(__file__).resolve().parents[2] / "scripts/update_project.py",
+    )
+    updater = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(updater)
+    if existing:
+        (tmp_path / ".venv").mkdir()
+        (tmp_path / ".venv" / "pyvenv.cfg").write_text("home = test")
+    monkeypatch.setattr(updater, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(updater, "_parse_args", lambda: SimpleNamespace(
+        local_resolver=True, check=check, skip_build=True,
+        index_url="https://pypi.org/simple", extra_index_url="https://fallback.example/simple",
+    ))
+    monkeypatch.setattr(updater, "_validate_pyproject", lambda: None)
+    monkeypatch.setattr(updater, "_compile_requirements_locally", lambda **kwargs: False)
+    monkeypatch.setattr(updater, "_update_node_dependencies", lambda **kwargs: False)
+    monkeypatch.setattr(updater.shutil, "which", lambda _: "uv")
+    commands = []
+    monkeypatch.setattr(updater, "_run", commands.append)
+    assert updater.main() == 0
+    if existing and not check:
+        assert commands == [["uv", "sync", "--project", str(tmp_path), "--upgrade", "--refresh",
+                             "--extra", "dev", "--prerelease=disallow",
+                             "--no-build-package", "claude-agent-sdk",
+                             "--no-build-package", "openai-codex-cli-bin", "--index-url",
+                             "https://pypi.org/simple", "--extra-index-url",
+                             "https://fallback.example/simple"]]
+    else:
+        assert commands == []
 
 
 def test_python_resolution_refreshes_stable_versions_instead_of_reusing_old_lock(

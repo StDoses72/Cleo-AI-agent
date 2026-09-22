@@ -199,6 +199,8 @@ Cleo-AI-agent/
 
 ## 开发与验证
 
+更新依赖时运行 `python scripts/update_project.py --local-resolver --skip-build`：刷新项目锁文件，并自动升级已有 `.venv` 中的稳定开发依赖。`--check` 只检查，不修改环境。
+
 ```powershell
 pip install -e ".[dev]"
 ruff check cleo tests

@@ -232,6 +232,21 @@ def _update_node_dependencies(*, check_only: bool) -> bool:
     return stale
 
 
+def _sync_development_environment(index_url: str, extra_index_url: str) -> None:
+    if not (PROJECT_ROOT / ".venv" / "pyvenv.cfg").is_file():
+        return
+    uv = shutil.which("uv")
+    if uv is None:
+        raise RuntimeError("uv is required to update the existing .venv")
+    command = [uv, "sync", "--project", str(PROJECT_ROOT), "--upgrade", "--refresh",
+               "--extra", "dev", "--prerelease=disallow",
+               "--no-build-package", "claude-agent-sdk",
+               "--no-build-package", "openai-codex-cli-bin", "--index-url", index_url]
+    if extra_index_url:
+        command.extend(["--extra-index-url", extra_index_url])
+    _run(command)
+
+
 def _build_image(index_url: str, extra_index_url: str, *, pull: bool) -> None:
     command = [
         "docker",
@@ -316,6 +331,7 @@ def main() -> int:
         node_stale = _update_node_dependencies(check_only=args.check)
         if args.check:
             return 1 if stale or node_stale else 0
+        _sync_development_environment(args.index_url, args.extra_index_url)
         if not args.skip_build:
             if args.local_resolver:
                 _check_docker()

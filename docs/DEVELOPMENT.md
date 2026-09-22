@@ -148,7 +148,7 @@ git diff --stat
 运行工具中的 npm 保留 11.x，以兼容内置 Node 24；Python/Node 本身仍使用发布流程指定的运行时。
 Codex Python SDK 使用官方配套的 `openai-codex-cli-bin`；桌面版通过 `CLEO_CODEX_BIN` 选择同一 Python 环境里的配套 CLI，启动和更新时校验 SDK、CLI 包及可执行文件版本一致。
 
-`requirements.txt` 是带平台条件的跨平台 Python 精确锁文件；两个 `package-lock.json` 记录对应的 npm 解析结果。这些文件由更新命令生成，不应手工编辑。仓库忽略的 `uv.lock` 仅供本地使用；使用 uv 开发环境时，运行 `uv sync --upgrade --extra dev` 同步升级。
+`requirements.txt` 是带平台条件的跨平台 Python 精确锁文件；两个 `package-lock.json` 记录对应的 npm 解析结果。这些文件由更新命令生成，不应手工编辑。仓库忽略的 `uv.lock` 仅供本地使用。更新命令检测到已有 `.venv` 时，会自动通过 `uv sync --upgrade --extra dev --prerelease=disallow` 刷新本地锁文件并升级开发依赖，需要安装 `uv`。没有 `.venv` 的 CI 环境不会创建它；`--check` 不修改环境。最低版本约束仍表示兼容性要求，锁文件记录最新稳定且兼容的解析结果。
 
 更新锁文件并构建镜像：
 
