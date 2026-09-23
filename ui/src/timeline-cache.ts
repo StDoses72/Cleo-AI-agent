@@ -43,8 +43,35 @@ export function mergeTimelinePage(thread: Thread, page: TimelinePage, direction:
     (item.order === undefined || item.order > (page.items.at(-1)?.order ?? -1)));
   const joined = direction === "latest" ? [...fetched, ...appended]
     : direction === "before" ? [...fetched, ...existing] : [...existing, ...fetched];
-  const unique = [...new Map(joined.map(item => [item.id, item])).values()];
-  const items = boundTimeline(unique, direction === "before" ? "start" : "end");
+  const unique = [...new Map(joined.filter(item => {
+    if (item.type !== "message" || item.role !== "assistant" || !item.turnId
+        || !item.content || item.id !== `${item.turnId}:answer`) return true;
+    return !page.items.some(saved => saved.type === "message" && saved.role === "assistant"
+      && saved.turnId === item.turnId && saved.id !== item.id
+      && saved.content.startsWith(item.content));
+  }).map(item => [item.id, item])).values()].map(item => {
+    const saved = incoming.get(item.id);
+    return item.order === undefined && saved?.order !== undefined
+      ? { ...item, order: saved.order, cursor: saved.cursor } : item;
+  });
+  const ordered = unique.filter(item => item.order !== undefined).sort((a, b) => a.order! - b.order!);
+  if (ordered.length) {
+    const orderedIds = new Set(ordered.map(item => item.id));
+    for (const item of unique.filter(candidate => candidate.order === undefined)) {
+      const source = thread.items.findIndex(candidate => candidate.id === item.id);
+      const next = source < 0 ? undefined : thread.items.slice(source + 1)
+        .find(candidate => orderedIds.has(candidate.id));
+      const nextIndex = next ? ordered.findIndex(candidate => candidate.id === next.id) : -1;
+      if (nextIndex >= 0) ordered.splice(nextIndex, 0, item);
+      else {
+        const sameTurn = item.turnId
+          ? ordered.findLastIndex(candidate => candidate.turnId === item.turnId) : -1;
+        ordered.splice(sameTurn >= 0 ? sameTurn + 1 : ordered.length, 0, item);
+      }
+      orderedIds.add(item.id);
+    }
+  }
+  const items = boundTimeline(ordered.length ? ordered : unique, direction === "before" ? "start" : "end");
   const old = thread.history;
   const { items: _items, ...info } = page;
   return { ...thread, items, history: {

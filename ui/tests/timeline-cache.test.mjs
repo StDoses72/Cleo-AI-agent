@@ -53,6 +53,31 @@ test("an in-flight page cannot overwrite newer stream updates or drop appended i
   }
 });
 
+test("persisted chat replies replace matching live replies without moving them past the next user turn", () => {
+  const previousUser = { id: "turn-1", turnId: "turn-1", type: "message", role: "user", content: "first", order: 1 };
+  const liveReply = { id: "turn-1:answer", turnId: "turn-1", type: "message", role: "assistant", content: "answer" };
+  const savedReply = { ...liveReply, id: "evt-answer", order: 2, cursor: "2" };
+  const nextUser = { id: "turn-2", turnId: "turn-2", type: "message", role: "user", content: "next", order: 3 };
+  const requested = { items: [previousUser] };
+  const current = { items: [previousUser, liveReply, nextUser] };
+  const loaded = { ...page(0, 3), items: [previousUser, savedReply, nextUser] };
+  for (const direction of ["latest", "before", "after"]) {
+    const result = mergeTimelinePage(current, loaded, direction, requested);
+    assert.deepEqual(result.items.map(item => item.id), ["turn-1", "evt-answer", "turn-2"]);
+  }
+  const stale = { ...loaded, items: [previousUser, nextUser] };
+  assert.deepEqual(mergeTimelinePage(current, stale, "latest", requested).items.map(item => item.id),
+    ["turn-1", "turn-1:answer", "turn-2"]);
+  const different = { ...loaded, items: [previousUser, { ...savedReply, content: "different" }, nextUser] };
+  assert.deepEqual(mergeTimelinePage(current, different, "latest", requested).items.map(item => item.id),
+    ["turn-1", "evt-answer", "turn-1:answer", "turn-2"]);
+  const updatedUser = { ...nextUser, content: "next updated", order: undefined };
+  const updated = mergeTimelinePage({ items: [previousUser, liveReply, updatedUser] }, loaded, "latest", requested);
+  assert.deepEqual(updated.items.map(item => item.id), ["turn-1", "evt-answer", "turn-2"]);
+  assert.equal(updated.items[2].content, "next updated");
+  assert.equal(updated.items[2].order, 3);
+});
+
 test("durable question cancellation supersedes provisional UI cleanup", () => {
   const question = { id: "q", type: "question", request: { status: "pending" } };
   const requested = { items: [question] };
