@@ -82,7 +82,7 @@ jobs:
           cp cleo/config/templates/cleo.example.json config/cleo.json
           cp cleo/config/templates/harnesses.example.json config/harnesses.json
       # Test and package the same freshly resolved dependency snapshot.
-      - run: uv pip install --system -e ".[dev]" --constraint requirements.txt
+      - run: uv pip install --refresh --system -e ".[dev]" --constraint requirements.txt
       - run: npm ci --prefix ui
       - run: node ui/node_modules/electron/install.js
       - run: ruff check cleo tests scripts/build-release.py scripts/update_project.py scripts/release_dependencies.py
