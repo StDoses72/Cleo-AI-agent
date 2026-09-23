@@ -134,7 +134,8 @@ try {
   const stream = (id) => page.waitForFunction((value) => window.isolation.streams.has(value), id);
   const check = async (name, query, action) => {
     try {
-      await page.goto(`http://127.0.0.1:${server.address().port}/?${query}`);
+      await page.goto(`http://127.0.0.1:${server.address().port}/?${query}`,
+        { waitUntil: "domcontentloaded", timeout: 15_000 });
       await page.getByTestId("composer-input").waitFor();
       await action();
       assert.deepEqual(errors, []);
