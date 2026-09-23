@@ -6,7 +6,7 @@ Cleo 是一套本地优先的 AI 工作空间：它把通用对话、开发者�
 
 项目提供 Windows、macOS、Linux 桌面构建支持，以及 Python CLI、Textual TUI 和 stdio MCP 入口。用户数据默认保存在本机；模型推理由用户配置的 API provider 或外部 agent harness 提供。
 
-> 当前版本：[v0.5.5](https://github.com/StDoses72/Cleo-AI-agent/releases/tag/v0.5.5) · [下载桌面版](https://stdoses72.github.io/Cleo-AI-agent/)
+> 当前版本：[v0.5.6](https://github.com/StDoses72/Cleo-AI-agent/releases/tag/v0.5.6) · [下载桌面版](https://stdoses72.github.io/Cleo-AI-agent/)
 
 ## Cleo 解决什么问题
 
