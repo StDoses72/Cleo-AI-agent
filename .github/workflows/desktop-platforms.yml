@@ -30,6 +30,8 @@ jobs:
         with:
           python-version: '3.12'
       - uses: astral-sh/setup-uv@v6
+      - name: Verify direct evolution request contract before resolving dependencies
+        run: node --test ui/tests/evolution-retry.test.mjs
       - name: Resolve latest stable dependencies once for all platforms
         run: python scripts/update_project.py --local-resolver --skip-build
       - uses: actions/upload-artifact@v4
@@ -89,6 +91,7 @@ jobs:
       - run: pytest -vv -o faulthandler_timeout=120
       - run: npm --prefix ui run test:backend
       - run: npm --prefix ui run test:evolution
+      - run: npm --prefix ui run test:context
       - run: npm --prefix ui run build
       - name: Linux desktop libraries
         if: runner.os == 'Linux'
@@ -105,7 +108,7 @@ jobs:
       - if: runner.os != 'Linux'
         run: node ui/scripts/smoke-evolution.mjs
       - if: runner.os != 'Linux'
-        run: node ui/tests/acceptance-retry.smoke.mjs
+        run: node ui/tests/contribution-target.smoke.mjs
       - if: runner.os != 'Linux'
         run: node ui/scripts/smoke-history.mjs
       - if: runner.os != 'Linux'
@@ -118,7 +121,7 @@ jobs:
           xvfb-run -a node ui/scripts/smoke.mjs
           xvfb-run -a node ui/scripts/smoke-approvals.mjs
           xvfb-run -a node ui/scripts/smoke-evolution.mjs
-          xvfb-run -a node ui/tests/acceptance-retry.smoke.mjs
+          xvfb-run -a node ui/tests/contribution-target.smoke.mjs
           xvfb-run -a node ui/scripts/smoke-history.mjs
           xvfb-run -a node ui/scripts/smoke-layout.mjs
           xvfb-run -a node ui/scripts/smoke-program-updates.mjs

@@ -35,12 +35,12 @@ export function EvolutionCases({ state, requests = [], thread, busy, canReview, 
   useEffect(() => { const node = dialog.current; return () => { if (node?.open) node.close(); }; }, []);
   const cases = state?.cases.filter((item) => item.enabled) || [];
   const history = state?.cases.filter(item => !item.enabled) || [];
-  const dialogOnlyView = dialogOnly;
+  const dialogOnlyView = dialogOnly || !state?.cases.length;
   return <section className={`evolution-cases${dialogOnlyView ? " dialog-only" : ""}`} aria-label={dialogOnlyView ? undefined : "行为验收"}>
     {!dialogOnlyView && <div className="evolution-cases-heading"><FlaskConical size={15} /><strong>验收清单</strong>
       {state && <span>{cases.length} 项待验收</span>}
       <button disabled={busy} onClick={openDialog}>
-        {thread ? "从此对话创建改进案例" : "添加验收目标"}</button>
+        {thread ? "从此对话创建改进案例" : "添加目标"}</button>
     </div>}
     {state && Boolean(cases.length) && <details className="evolution-case-list"><summary>查看目标与结果</summary>
       {cases.map((item, index) => {

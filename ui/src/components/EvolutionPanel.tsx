@@ -22,7 +22,7 @@ interface Props {
   onRepair: () => void;
 }
 const phases: Record<string, string> = {
-  preparing: "正在准备", planning: "正在准备修改", building: "正在检查并构建", applying: "正在重启",
+  preparing: "正在准备", building: "正在检查并构建", applying: "正在重启",
   downloading: "正在下载正式版", authenticating: "正在连接 GitHub", submitting: "正在提交 PR",
   checking: "正在检查…", selecting: "正在切换版本", saving: "正在保存",
   validating: "正在检查修改",

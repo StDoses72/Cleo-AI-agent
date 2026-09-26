@@ -12,10 +12,15 @@ async function fixture(t) {
   const job = { id: "12345678-1234-1234-1234-123456789012", commit, login: "owner", tag: "v0.4.8",
     branch: "codex/own-release", title: "v0.4.8", body: "", prerelease: false, attempt: 1 };
   const requests = [], runs = [];
-  const remote = { runs, requests, login: "owner", changes: "", names: "", attempt: 1, head: commit, git: [] };
-  const driver = new GithubReleaseDriver({ store: { root }, tools: { prepare: async () => ({ gh: "gh", git: "git", env: {} }) } }, {
+  const remote = { runs, requests, login: "owner", changes: "", names: "", attempt: 1, head: commit, git: [], checks: [] };
+  const driver = new GithubReleaseDriver({ store: { root }, tools: { prepare: async () => ({ gh: "gh", git: "git", node: "node", npm: "npm-cli.js", env: {} }) } }, {
     runtime: async () => ({}), repair: async () => { remote.repairs = (remote.repairs || 0) + 1; },
     runCommand: async (tool, args) => {
+      if (tool === "node" || tool === "xvfb-run") {
+        remote.checks.push({ tool, args });
+        if (remote.checkError && args.includes("check:release")) throw new Error(remote.checkError);
+        return "";
+      }
       if (tool === "git") {
         remote.git.push(args);
         if (args.includes("rev-parse")) return remote.head;
@@ -132,4 +137,22 @@ test("version preparation synchronizes project, UI and lockfile without changing
 test("logs redact GitHub authentication before persistence or harness input", () => {
   assert.equal(redactReleaseLog("ghp_secret github_pat_hidden Authorization: Bearer abc"),
     "[redacted] [redacted] Authorization: Bearer [redacted]");
+});
+
+test("failed local repair validation stops before commit, push, or another workflow", async t => {
+  const { driver, job, remote, checkpoint } = await fixture(t);
+  job.repairPhase = "building";
+  remote.changes = "M ui/src/App.tsx";
+  remote.names = "ui/src/App.tsx";
+  const source = join(driver.directory(job), "source");
+  await mkdir(join(source, "ui"), { recursive: true });
+  await writeFile(join(source, "pyproject.toml"), '[project]\nversion = "0.4.8"\n');
+  for (const name of ["package.json", "package-lock.json"])
+    await writeFile(join(source, "ui", name), JSON.stringify({ version: "0.4.8" }));
+  remote.checkError = "Evolution smoke: direct conversation regressed";
+  await assert.rejects(driver.repair(job, undefined, checkpoint), /direct conversation regressed/);
+  assert.equal(remote.checks.length, 3);
+  assert.equal(remote.git.some(args => args.includes("commit") || args.includes("push")), false);
+  assert.equal(remote.requests.length, 0);
+  assert.equal(job.repairCommitBase, undefined);
 });
