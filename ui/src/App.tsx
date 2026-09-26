@@ -430,7 +430,7 @@ export function App() {
       thread={conversationThread} busy={Boolean(composerBlocked) || preparingTurn}
       canReview={Boolean(evolution.state?.active && evolution.state.active === evolution.state.candidate)}
       onAction={(action, params) => { void evolutionAction(action, params); }}
-      onCreate={(input) => Promise.resolve(evolutionAction("createCase", input))}
+      onCreate={async (input) => { await evolutionAction("createCase", input); }}
       onImprove={continueAcceptanceCase}
       onRevise={(params) => Promise.resolve(evolutionAction("reviseRequest", params))} />
     <EvolutionPreparation requests={evolution.state?.acceptanceRequests ?? []} acceptance={evolution.state?.acceptance}
