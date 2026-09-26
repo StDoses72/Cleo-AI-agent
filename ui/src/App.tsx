@@ -64,10 +64,10 @@ export function App() {
       setOpeningEvolutionUi(false);
     }
   };
-  /** Purpose: Freeze acceptance goals before handing an evolution request to the selected harness.
+  /** Purpose: Send a user prompt to the evolution thread, optionally through a frozen request.
    * Input: user text, optional existing task, and preparation action. Output: one guarded coding turn.
    */
-  const sendEvolutionPrompt = async (prompt: string, preserveDraft = false, threadId?: string, requestAction = "prepareRequest") => {
+  const sendEvolutionPrompt = async (prompt: string, preserveDraft = false, threadId?: string, requestAction?: string) => {
     if (!prompt.trim() || preparingEvolution.current) return;
     preparingEvolution.current = true;
     setPreparingTurn(true);
@@ -78,6 +78,10 @@ export function App() {
       if (!thread) return;
       retryEvolution.current = () => { void sendEvolutionPrompt(prompt, true, thread.id, requestAction); };
       await evolution.run("thread", { id: thread.id });
+      if (!requestAction) {
+        await workspace.sendPrompt(prompt, thread, { preserveDraft });
+        return;
+      }
       const request = await evolution.run<EvolutionRequest>(requestAction, { id: crypto.randomUUID(), threadId: thread.id, prompt });
       if (request.status !== "frozen") return;
       const preparedPrompt = await evolution.run<string>("requestPrompt", { id: request.id });
