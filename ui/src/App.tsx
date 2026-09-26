@@ -2,6 +2,8 @@ import { DependencySetup } from "./components/DependencySetup";
 import { modifierKey } from "./platform";
 import { QuestionDialog } from "./components/QuestionDialog";
 import { EvolutionPanel } from "./components/EvolutionPanel";
+import { EvolutionCases } from "./components/EvolutionCases";
+import { EvolutionPreparation } from "./components/EvolutionPreparation";
 import { useEvolution } from "./useEvolution";
 import { useInspectorResize } from "./useInspectorResize";
 import "./components/evolution.css";
@@ -24,8 +26,11 @@ import {
 } from "./components/Overlays";
 import { ThreadSidebar } from "./components/ThreadSidebar";
 import { WorkspaceRail } from "./components/WorkspaceRail";
+import type { EvolutionAcceptanceState, EvolutionRequest } from "./evolution-types";
 import { useCleoWorkspace } from "./useCleoWorkspace";
 import type { MemoryViewMode, Project, Thread, UpdateState } from "./types";
+
+const emptyAcceptance: EvolutionAcceptanceState = { cases: [], fresh: false, report: null };
 
 export function App() {
   const evolution = useEvolution();
@@ -59,10 +64,10 @@ export function App() {
       setOpeningEvolutionUi(false);
     }
   };
-  /** Purpose: Send ordinary instructions directly to the selected evolution harness.
-   * Input: user text and optional existing task. Output: one coding turn, no acceptance planning.
+  /** Purpose: Freeze acceptance goals before handing an evolution request to the selected harness.
+   * Input: user text, optional existing task, and preparation action. Output: one guarded coding turn.
    */
-  const sendEvolutionPrompt = async (prompt: string, preserveDraft = false, threadId?: string) => {
+  const sendEvolutionPrompt = async (prompt: string, preserveDraft = false, threadId?: string, requestAction = "prepareRequest") => {
     if (!prompt.trim() || preparingEvolution.current) return;
     preparingEvolution.current = true;
     setPreparingTurn(true);
@@ -71,9 +76,12 @@ export function App() {
       const thread = threadId ? await workspace.openEvolutionThread(threadId)
         : evolutionThread ? workspace.activeThread : await startEvolution(true);
       if (!thread) return;
-      retryEvolution.current = () => { void sendEvolutionPrompt(prompt, true, thread.id); };
+      retryEvolution.current = () => { void sendEvolutionPrompt(prompt, true, thread.id, requestAction); };
       await evolution.run("thread", { id: thread.id });
-      await workspace.sendPrompt(prompt, thread, { preserveDraft });
+      const request = await evolution.run<EvolutionRequest>(requestAction, { id: crypto.randomUUID(), threadId: thread.id, prompt });
+      if (request.status !== "frozen") return;
+      const preparedPrompt = await evolution.run<string>("requestPrompt", { id: request.id });
+      await workspace.sendPrompt(preparedPrompt, thread, { preserveDraft });
     } catch (error) {
       setEvolutionIssue(error instanceof Error ? error.message : "无法开始修改");
     } finally { preparingEvolution.current = false; setPreparingTurn(false); await evolution.refresh(); }
@@ -83,8 +91,50 @@ export function App() {
     retryEvolution.current = () => { void repairEvolution(); };
     try {
       const prompt = await evolution.run<string>("repairPrompt");
-      await sendEvolutionPrompt(prompt, true, evolution.state?.threadId || undefined);
+      await sendEvolutionPrompt(prompt, true, evolution.state?.threadId || undefined, "repairRequest");
     } catch (error) { setEvolutionIssue(error instanceof Error ? error.message : "无法开始修复"); }
+  };
+  /** Purpose: Resume a prepared acceptance request without regenerating unrelated goals. */
+  const resumeEvolutionRequest = async (request: EvolutionRequest, clarification?: string, skipClarification?: boolean) => {
+    if (preparingEvolution.current) return;
+    preparingEvolution.current = true;
+    setPreparingTurn(true);
+    setEvolutionIssue(null);
+    try {
+      const thread = await workspace.openEvolutionThread(request.threadId);
+      await evolution.run("thread", { id: thread.id });
+      const prepared = await evolution.run<EvolutionRequest>("prepareRequest", {
+        id: request.id,
+        threadId: request.threadId,
+        prompt: request.prompt,
+        clarification,
+        skipClarification,
+        reanalyze: !clarification && !skipClarification,
+      });
+      if (prepared.status !== "frozen") return;
+      const preparedPrompt = await evolution.run<string>("requestPrompt", { id: prepared.id });
+      await workspace.sendPrompt(preparedPrompt, thread, { preserveDraft: true });
+    } catch (error) {
+      setEvolutionIssue(error instanceof Error ? error.message : "无法继续修改");
+    } finally { preparingEvolution.current = false; setPreparingTurn(false); await evolution.refresh(); }
+  };
+  /** Purpose: Continue from an existing acceptance case while preserving its frozen expectation. */
+  const continueAcceptanceCase = async (caseId: string, body: string, requestId: string) => {
+    if (preparingEvolution.current) return;
+    preparingEvolution.current = true;
+    setPreparingTurn(true);
+    setEvolutionIssue(null);
+    try {
+      const thread = evolutionThread && workspace.activeThread ? workspace.activeThread : await startEvolution(false);
+      if (!thread) return;
+      retryEvolution.current = () => { void continueAcceptanceCase(caseId, body, requestId); };
+      const request = await evolution.run<EvolutionRequest>("continueCaseRequest", { id: requestId, caseId, body, threadId: thread.id });
+      if (request.status !== "frozen") return;
+      const preparedPrompt = await evolution.run<string>("requestPrompt", { id: request.id });
+      await workspace.sendPrompt(preparedPrompt, thread, { preserveDraft: true });
+    } catch (error) {
+      setEvolutionIssue(error instanceof Error ? error.message : "无法继续修改");
+    } finally { preparingEvolution.current = false; setPreparingTurn(false); await evolution.refresh(); }
   };
   const evolutionAction = (action: string, params: Record<string, unknown> = {}) => {
     if (["releasePermission", "previewMergedRelease", "contributionBranches", "checkContribution", "mergeAssistance", "releases"].includes(action)) return evolution.inspect(action, params);
@@ -371,6 +421,17 @@ export function App() {
   ]
     .filter(Boolean)
     .join(" ");
+  const evolutionPreparation = evolutionOpen ? <>
+    <EvolutionCases state={evolution.state?.acceptance ?? emptyAcceptance} requests={evolution.state?.acceptanceRequests ?? []}
+      thread={conversationThread} busy={Boolean(composerBlocked) || preparingTurn}
+      canReview={Boolean(evolution.state?.active && evolution.state.active === evolution.state.candidate)}
+      onAction={(action, params) => { void evolutionAction(action, params); }}
+      onCreate={(input) => Promise.resolve(evolutionAction("createCase", input))}
+      onImprove={continueAcceptanceCase}
+      onRevise={(params) => Promise.resolve(evolutionAction("reviseRequest", params))} />
+    <EvolutionPreparation requests={evolution.state?.acceptanceRequests ?? []} acceptance={evolution.state?.acceptance}
+      busy={Boolean(composerBlocked) || preparingTurn} onResume={(request, clarification, skip) => { void resumeEvolutionRequest(request, clarification, skip); }} />
+  </> : undefined;
 
   return (
     <div ref={inspectorResize.setShell} className={appClasses} style={inspectorResize.style} data-theme={theme}>
@@ -433,6 +494,7 @@ export function App() {
               if (evolution.loadError || !retryEvolution.current) void evolution.refresh().catch(() => {});
               else retryEvolution.current();
             }} onRepair={() => { void repairEvolution(); }} /> : undefined}
+          preparation={evolutionPreparation}
           onImprove={!evolutionOpen && conversationThread && window.cleoDesktop ? () => { setImprovementDraft("请改进 Cleo："); setEvolutionOpen(true); } : undefined}
           prompt={workspace.prompt}
           skills={workspace.skills}
