@@ -1,0 +1,44 @@
+# Local skills in development sessions
+
+[中文](local-skills.md) | [Documentation](README.en.md)
+
+Cleo discovers skills for the selected native Claude or Codex harness when loading a
+development thread or selecting a new task's harness. Type `/gri` to filter by
+skill name, use arrows and Enter/Tab or click to insert the command, then add
+arguments and send. Selection never submits a task; IME composition is guarded.
+Entries show their harness and
+user/project scope, with the exact file path available on hover. `/eli5` and
+`/eli5 explain recursion` load the actual local `SKILL.md`, including its resource
+directory, into the provider request. The existing conversation record contains
+the invocation, source path and loaded instructions for inspection.
+
+Supported directories:
+
+- Claude: `<Cleo data root>/data/claude/skills` and project `.claude/skills`
+  directories.
+- Codex: `<Cleo data root>/data/codex/skills`, `~/.agents/skills`, and project
+  `.codex/skills` and `.agents/skills` directories.
+- User-level directories match the Cleo-owned homes the harness processes use;
+  skills from the local `~/.claude`, `~/.codex` (or `CLAUDE_CONFIG_DIR`/`CODEX_HOME`)
+  are copied into Cleo's directory on first use, and the menu lists those copies.
+- Project discovery visits the working directory and its parents up to the Git
+  root. Each skill has its own directory containing `SKILL.md`; `.system` skills
+  are also supported. Symlinked skill directories are resolved and deduplicated.
+
+Built-in commands keep their names. Duplicate or reserved skill names receive
+stable `/skill:name:id` commands, so each source remains selectable. Files with
+`user-invocable: false` are excluded. Missing, empty or unreadable skills cannot
+be invoked; discovery never modifies existing skill files (it only adds the
+local skills imported as described above).
+
+This first stage supports native Claude/Codex development sessions only. Chat,
+evolution sessions, other ACP harnesses, plugin registry discovery, and
+cross-harness reuse are outside its scope. Reopen a thread to refresh its catalog
+after installing skills. This is instruction loading, not emulation of all
+vendor-specific execution options; existing harness permissions still apply.
+
+Claude's native connection enables `setting_sources=["user", "project"]` for
+automatic discovery. Codex retains its native skill discovery and trigger rules.
+The explicit menu's user-invocable filter does not disable automatic-only skills
+in the native runtime. Unsupported harnesses are not given an invented catalog
+or a claim that a skill ran.
