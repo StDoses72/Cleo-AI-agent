@@ -1,0 +1,644 @@
+import { DependencySetup } from "./components/DependencySetup";
+import { modifierKey } from "./platform";
+import { QuestionDialog } from "./components/QuestionDialog";
+import { EvolutionPanel } from "./components/EvolutionPanel";
+import { useEvolution } from "./useEvolution";
+import { useInspectorResize } from "./useInspectorResize";
+import "./components/evolution.css";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Minus } from "lucide-react";
+import { Conversation } from "./components/Conversation";
+import { Inspector, type InspectorTab } from "./components/Inspector";
+import { isComputerTool } from "./components/ComputerPreview";
+import { MemoryView } from "./components/MemoryView";
+import {
+  CommandPalette,
+  DeleteThreadDialog,
+  LoadingScreen,
+  RemoveProjectDialog,
+  SettingsModal,
+  Toast,
+  UpdateNotice,
+  commandIcons,
+  type CommandAction,
+} from "./components/Overlays";
+import { ThreadSidebar } from "./components/ThreadSidebar";
+import { WorkspaceRail } from "./components/WorkspaceRail";
+import { useCleoWorkspace } from "./useCleoWorkspace";
+import type { MemoryViewMode, Project, Thread, UpdateState } from "./types";
+
+export function App() {
+  const evolution = useEvolution();
+  const [evolutionOpen, setEvolutionOpen] = useState(() => localStorage.getItem("cleo-view") === "evolution");
+  const workspace = useCleoWorkspace(evolutionOpen);
+  const [improvementDraft, setImprovementDraft] = useState<string | null>(null);
+  const openingEvolution = useRef(false);
+  const [openingEvolutionUi, setOpeningEvolutionUi] = useState(false);
+  const [evolutionIssue, setEvolutionIssue] = useState<string | null>(null);
+  const preparingEvolution = useRef(false);
+  const [preparingTurn, setPreparingTurn] = useState(false);
+  const retryEvolution = useRef<(() => void) | null>(null);
+  const evolutionThread = evolutionOpen && Boolean(evolution.state?.threadId)
+    && workspace.activeThreadId === evolution.state?.threadId;
+
+  const startEvolution = async (newThread = false): Promise<Thread | null> => {
+    if (openingEvolution.current) return null;
+    openingEvolution.current = true;
+    setOpeningEvolutionUi(true);
+    setEvolutionIssue(null);
+    try {
+      if (!evolution.state?.prepared) await evolution.run("prepare");
+      const thread = await workspace.openEvolutionThread(newThread ? null : evolution.state?.threadId);
+      await evolution.run("thread", { id: thread.id });
+      return thread;
+    } catch (error) {
+      setEvolutionIssue(error instanceof Error ? error.message : "无法打开进化对话");
+      return null;
+    } finally {
+      openingEvolution.current = false;
+      setOpeningEvolutionUi(false);
+    }
+  };
+  /** Purpose: Send ordinary instructions directly to the selected evolution harness.
+   * Input: user text and optional existing task. Output: one coding turn, no acceptance planning.
+   */
+  const sendEvolutionPrompt = async (prompt: string, preserveDraft = false, threadId?: string) => {
+    if (!prompt.trim() || preparingEvolution.current) return;
+    preparingEvolution.current = true;
+    setPreparingTurn(true);
+    setEvolutionIssue(null);
+    try {
+      const thread = threadId ? await workspace.openEvolutionThread(threadId)
+        : evolutionThread ? workspace.activeThread : await startEvolution(true);
+      if (!thread) return;
+      retryEvolution.current = () => { void sendEvolutionPrompt(prompt, true, thread.id); };
+      await evolution.run("thread", { id: thread.id });
+      await workspace.sendPrompt(prompt, thread, { preserveDraft });
+    } catch (error) {
+      setEvolutionIssue(error instanceof Error ? error.message : "无法开始修改");
+    } finally { preparingEvolution.current = false; setPreparingTurn(false); await evolution.refresh(); }
+  };
+  /** Purpose: Return compiler/runtime diagnostics to the same agent. Input: none. Output: repair turn. */
+  const repairEvolution = async () => {
+    retryEvolution.current = () => { void repairEvolution(); };
+    try {
+      const prompt = await evolution.run<string>("repairPrompt");
+      await sendEvolutionPrompt(prompt, true, evolution.state?.threadId || undefined);
+    } catch (error) { setEvolutionIssue(error instanceof Error ? error.message : "无法开始修复"); }
+  };
+  const evolutionAction = (action: string, params: Record<string, unknown> = {}) => {
+    if (["releasePermission", "previewMergedRelease", "contributionBranches", "checkContribution", "mergeAssistance", "releases"].includes(action)) return evolution.inspect(action, params);
+    retryEvolution.current = () => evolutionAction(action, params);
+    setEvolutionIssue(null);
+    if (action === "repairContribution") {
+      return evolution.run<string>("contributionRepairPrompt", params).then(async (prompt) => {
+        setEvolutionOpen(true);
+        await sendEvolutionPrompt(prompt, true);
+      }).catch((error: unknown) => setEvolutionIssue(error instanceof Error ? error.message : "无法开始 PR 修复"));
+    }
+    return evolution.run(action, params).then((result) => {
+      if (action === "discard" || action === "select") workspace.beginEvolutionDraft();
+      return result;
+    }).catch((error: unknown) => {
+      setEvolutionIssue(error instanceof Error ? error.message : "操作失败");
+      if (["previewRelease", "publishRelease", "publishMergedRelease", "previewMergedRelease", "releaseBuilds", "publishReleasePackages", "releasePackageStatus", "releasePermission", "startRelease", "submit", "requestBranch"].includes(action)) throw error;
+    });
+  };
+
+  useEffect(() => {
+    if (!evolutionOpen || !improvementDraft) return;
+    workspace.setPrompt(improvementDraft);
+    setImprovementDraft(null);
+  }, [evolutionOpen, improvementDraft]);
+
+  useEffect(() => {
+    localStorage.setItem("cleo-view", evolutionOpen ? "evolution" : "workspace");
+  }, [evolutionOpen]);
+  useEffect(() => {
+    if (evolutionOpen && workspace.snapshot && evolution.state && !evolution.state.threadId
+        && !openingEvolution.current && !preparingEvolution.current) workspace.beginEvolutionDraft();
+  }, [evolutionOpen, Boolean(workspace.snapshot), evolution.state?.threadId]);
+  useEffect(() => {
+    if (workspace.snapshot) void window.cleoDesktop?.confirmHealthy().then(() => evolution.refresh()).catch(() => {});
+  }, [Boolean(workspace.snapshot)]);
+  useEffect(() => {
+    if (evolutionOpen && workspace.snapshot && evolution.state?.prepared && evolution.state.threadId && !evolutionThread
+        && !openingEvolution.current && !preparingEvolution.current && !evolutionIssue) {
+      void startEvolution();
+    }
+  }, [evolutionOpen, Boolean(workspace.snapshot), evolution.state?.prepared, evolution.state?.threadId,
+    openingEvolutionUi, preparingTurn]);
+
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [compactColumns, setCompactColumns] = useState(() => window.matchMedia("(max-width: 1010px)").matches);
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 1010px)");
+    const changed = () => setCompactColumns(media.matches);
+    media.addEventListener("change", changed);
+    return () => media.removeEventListener("change", changed);
+  }, []);
+  const [inspectorBySpace, setInspectorBySpace] = useState({ chat: false, productivity: true, evolution: false });
+  const inspectorSpace = evolutionOpen ? "evolution" : workspace.activeSpace === "chat" ? "chat" : "productivity";
+  const inspectorOpen = inspectorBySpace[inspectorSpace];
+  const setInspectorOpen = (value: boolean | ((open: boolean) => boolean)) => {
+    setInspectorBySpace((current) => ({
+      ...current,
+      [inspectorSpace]: typeof value === "function" ? value(current[inspectorSpace]) : value,
+    }));
+  };
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("changes");
+  const previewOpenedFor = useRef<string | null>(null);
+  const computerRun = workspace.running && workspace.activeThread?.items.some(
+    item => isComputerTool(item) && item.status === "running",
+  ) ? `${workspace.activeThread.id}:${workspace.activeThread.activeRunId ?? workspace.activeThread.items.filter(item => item.type === "message" && item.role === "user").at(-1)?.id}` : null;
+  useEffect(() => {
+    if (!computerRun || previewOpenedFor.current === computerRun) return;
+    let cancelled = false;
+    // Only the isolated desktop needs an embedded viewer; host tools act on real windows.
+    void window.cleoDesktop?.computerDesktop().then(state => {
+      if (cancelled) return;
+      previewOpenedFor.current = computerRun;
+      if (state.runtime === "host" || state.runtime === "custom" || state.phase === "external") return;
+      setInspectorTab("computer");
+      setInspectorBySpace(current => ({ ...current, [inspectorSpace]: true }));
+    }).catch(() => { /* The task timeline reports connection failures. */ });
+    return () => { cancelled = true; };
+  }, [computerRun, inspectorSpace]);
+  const showInspector = inspectorOpen && (evolutionOpen || workspace.activeSpace !== "memory");
+  const sidebarHidden = sidebarCollapsed || (compactColumns && showInspector);
+  const inspectorResize = useInspectorResize(`${sidebarHidden}:${evolutionOpen}`, showInspector);
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [threadPendingDeletion, setThreadPendingDeletion] = useState<Thread | null>(null);
+  const [deletingThread, setDeletingThread] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [projectPendingRemoval, setProjectPendingRemoval] = useState<Project | null>(null);
+  const [removingProject, setRemovingProject] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  const [undoingChanges, setUndoingChanges] = useState(false);
+  const [memoryView, setMemoryView] = useState<MemoryViewMode>("all");
+  const [theme, setTheme] = useState<"dark" | "light">(() =>
+    localStorage.getItem("cleo-theme") === "light" ? "light" : "dark",
+  );
+  const [motionEnabled, setMotionEnabled] = useState(() => localStorage.getItem("cleo-motion") !== "reduced");
+  const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
+  const [updateState, setUpdateState] = useState<UpdateState>({
+    phase: window.cleoDesktop ? "idle" : "unsupported",
+    currentVersion: "dev",
+    latestVersion: null,
+    downloadedBytes: 0,
+    totalBytes: 0,
+    error: null,
+  });
+  const localCandidate = evolution.state?.builds.find(build => build.id === evolution.state?.candidate);
+  const unfinishedEvolution = evolution.state?.iteration || evolution.state?.draftDirty
+    || (localCandidate?.kind === "local" && !localCandidate.savedAt);
+  const displayedUpdateState: UpdateState = { ...updateState,
+    installBlocked: workspace.anyRunning ? "请先等待运行中的任务结束。"
+      : unfinishedEvolution ? "请先保存或放弃本轮进化，再安装更新。" : null,
+  };
+  const toastTimerRef = useRef<number | null>(null);
+
+  const notify = (message: string, tone: "success" | "error" = "success") => {
+    setToast({ message, tone });
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => setToast(null), 2600);
+  };
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("cleo-theme", theme);
+    window.cleoWindow?.setTheme(theme);
+  }, [theme]);
+
+  useEffect(() => {
+    const motion = motionEnabled ? "full" : "reduced";
+    document.documentElement.dataset.motion = motion;
+    localStorage.setItem("cleo-motion", motion);
+  }, [motionEnabled]);
+
+  useEffect(() => {
+    // Start compact windows with space for the conversation, but let an opened
+    // inspector stay available when resizing the window or dragging its boundary.
+    if (window.matchMedia("(max-width: 1180px)").matches)
+      setInspectorBySpace({ chat: false, productivity: false, evolution: false });
+  }, []);
+
+  useEffect(() => {
+    const desktop = window.cleoDesktop;
+    if (!desktop) return;
+    let active = true;
+    void desktop.getUpdateState().then((state) => {
+      if (active) setUpdateState(state);
+    });
+    const unsubscribe = desktop.onUpdateState((state) => {
+      if (active) setUpdateState(state);
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
+  const runUpdateAction = (action: "download" | "install") => {
+    const desktop = window.cleoDesktop;
+    if (!desktop) return;
+    const operation: Promise<UpdateState | boolean> = action === "download"
+      ? desktop.downloadUpdate() : desktop.installUpdate();
+    void operation
+      .then((result) => {
+        if (typeof result !== "boolean" && result.phase === "error") {
+          notify(result.error || "更新操作失败", "error");
+        }
+      })
+      .catch((error: unknown) => {
+        notify(error instanceof Error ? error.message : "更新操作失败", "error");
+      });
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing || document.querySelector("dialog[open]")) return;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === "k") {
+        event.preventDefault();
+        setCommandOpen((open) => !open);
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === "n") {
+        event.preventDefault();
+        if (evolutionOpen) { event.preventDefault(); return; }
+        if (workspace.activeSpace === "memory") workspace.selectSpace("productivity");
+        void workspace.createThread();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [deletingThread, removingProject, workspace.activeSpace, workspace.createThread, workspace.selectSpace]);
+
+  const commandActions = useMemo<CommandAction[]>(
+    () => [
+      {
+        id: "new",
+        label: "新建任务",
+        hint: "在当前项目中创建任务",
+        icon: commandIcons.plus,
+        shortcut: `${modifierKey} N`,
+        run: () => void workspace.createThread(),
+      },
+      {
+        id: "workspace",
+        label: "新项目",
+        hint: "选择或新建本地文件夹作为工作区",
+        icon: commandIcons.code,
+        run: () => void workspace.chooseWorkspace().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法打开工作目录", "error")),
+      },
+      {
+        id: "chat",
+        label: "打开 Cleo 对话",
+        hint: "日常对话",
+        icon: commandIcons.chat,
+        run: () => { setEvolutionOpen(false); workspace.selectSpace("chat"); },
+      },
+      {
+        id: "code",
+        label: "打开开发任务",
+        hint: "处理开发任务",
+        icon: commandIcons.code,
+        run: () => { setEvolutionOpen(false); workspace.selectSpace("productivity"); },
+      },
+      {
+        id: "memory",
+        label: "查看记忆",
+        hint: "查看保存的记忆",
+        icon: commandIcons.memory,
+        run: () => { setEvolutionOpen(false); workspace.selectSpace("memory"); },
+      },
+      {
+        id: "inspector",
+        label: inspectorOpen ? "关闭检查器" : "打开检查器",
+        hint: "查看文件变更、上下文与运行输出",
+        icon: commandIcons.inspector,
+        run: () => setInspectorOpen((open) => !open),
+      },
+      {
+        id: "settings",
+        label: "打开设置",
+        hint: "修改外观、模型与数据选项",
+        icon: commandIcons.settings,
+        run: () => setSettingsOpen(true),
+      },
+    ],
+    [inspectorOpen, workspace],
+  );
+
+  if (!workspace.snapshot) return <><DependencySetup /><LoadingScreen error={workspace.loadingError} onRetry={workspace.retryLoading} /></>;
+
+  const activeRuntime = evolutionOpen && !evolutionThread ? workspace.draftRuntime : workspace.activeThread?.runtime ?? workspace.draftRuntime;
+  const selectedThread = evolutionOpen && !evolutionThread ? null : workspace.activeThread;
+  const conversationThread = selectedThread;
+  const conversationProject: Project | null = evolutionOpen
+    ? { id: "productivity:cleo-evolution", space: "productivity", name: "Cleo", path: evolution.state?.source || "", accent: "cyan" }
+    : workspace.activeProject;
+  const selectedRuntimeModel = workspace.activeSpace === "productivity"
+    ? workspace.productivityModels[activeRuntime.provider]?.models.find(
+        (model) => model.id === activeRuntime.model,
+      )
+    : undefined;
+  const supportedEfforts = selectedRuntimeModel?.supportedEfforts ?? [];
+  const settingsRuntime = activeRuntime.effort || !selectedRuntimeModel?.defaultEffort
+    ? activeRuntime
+    : { ...activeRuntime, effort: selectedRuntimeModel.defaultEffort };
+  const evolutionUnavailable = !evolutionOpen ? null : !evolution.state
+    ? evolution.loadError ? "进化状态读取失败，请先重试。" : "正在读取进化状态…"
+    : !evolution.state.supported ? "当前运行方式不支持本地进化。" : null;
+  let composerBlocked = workspace.harnessSwitchStatus || evolutionUnavailable;
+  if (!composerBlocked && (updateState.blocksTasks || (evolutionOpen && updateState.operationBusy))) {
+    composerBlocked = "请等待当前版本操作完成…";
+  }
+  if (!composerBlocked && evolutionOpen && (evolution.state?.phase !== "idle"
+      || (!workspace.running && (preparingTurn || openingEvolutionUi || evolution.pending)))) {
+    composerBlocked = "请等待当前操作完成…";
+  }
+  if (!composerBlocked && (workspace.startingRun || workspace.steeringBusy)) composerBlocked = "正在提交，请稍候…";
+  if (!composerBlocked && workspace.running && activeRuntime.steerMode && !conversationThread?.steerReady) {
+    composerBlocked = "正在准备任务，输入会保留…";
+  }
+  const appClasses = [
+    "app-shell",
+    evolutionOpen ? "evolution-open" : "",
+    sidebarHidden && !evolutionOpen ? "sidebar-collapsed" : "",
+    showInspector ? "inspector-open" : "inspector-closed",
+    inspectorResize.dragging ? "inspector-resizing" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <div ref={inspectorResize.setShell} className={appClasses} style={inspectorResize.style} data-theme={theme}>
+      <TitleBar
+        projectName={evolutionOpen ? "Cleo 进化" : workspace.activeSpace === "memory" ? "记忆" : workspace.activeProject?.name ?? "Cleo"}
+        mode={evolutionOpen ? "进化" : workspace.activeSpace === "productivity" ? "开发" : workspace.activeSpace === "chat" ? "对话" : "记忆"}
+      />
+      {workspace.loadingError && <div className="workspace-error" role="alert">
+        <span>{workspace.loadingError}</span><button onClick={workspace.retryLoading}>重试</button>
+        <button onClick={workspace.clearLoadingError}>关闭</button>
+      </div>}
+      <DependencySetup />
+      <WorkspaceRail
+        activeSpace={evolutionOpen ? "evolution" : workspace.activeSpace}
+        onSelectSpace={(space) => {
+          setEvolutionOpen(space === "evolution");
+          if (space === "evolution") {
+            void evolution.refresh().catch(() => {});
+          }
+          if (space !== "evolution") workspace.selectSpace(space);
+        }}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
+      {!evolutionOpen && <ThreadSidebar
+        space={workspace.activeSpace}
+        projects={workspace.snapshot.projects.filter((project) => project.id !== "productivity:cleo-evolution")}
+        threads={workspace.snapshot.threads.filter((thread) => thread.projectId !== "productivity:cleo-evolution")}
+        activeProjectId={workspace.activeProjectId}
+        activeThreadId={workspace.activeThreadId}
+        onSelectProject={workspace.selectProject}
+        onRemoveProject={project => { setRemoveError(null); setProjectPendingRemoval(project); }}
+        onSelectThread={workspace.selectThread}
+        onDeleteThread={thread => { setDeleteError(null); setThreadPendingDeletion(thread); }}
+        onCreateThread={() => void workspace.createThread()}
+        choosingWorkspace={workspace.choosingWorkspace}
+        onChooseWorkspace={() => void workspace.chooseWorkspace().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法打开工作目录", "error"))}
+        recoverableChatBackups={workspace.snapshot.backend?.recoverableChatBackups ?? 0}
+        onRestoreChatHistory={() => void workspace.restoreChatHistory().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法恢复旧对话", "error"))}
+        memoryOverview={workspace.snapshot.memoryOverview}
+        memoryView={memoryView}
+        onMemoryViewChange={setMemoryView}
+        backendMode={workspace.snapshot.backend?.mode ?? "mock"}
+      />}
+      {!evolutionOpen && workspace.activeSpace === "memory" ? (
+        <MemoryView
+          overview={workspace.snapshot.memoryOverview}
+          mode={memoryView}
+          refreshError={workspace.memoryError}
+          refreshing={workspace.memoryRefreshing}
+          onRetryRefresh={() => void workspace.refreshMemory()}
+          onLoadReviewDetails={workspace.loadMemoryReviewDetails}
+          onReviewSource={workspace.reviewMemorySource}
+        />
+      ) : (
+          <Conversation
+          header={evolutionOpen ? <EvolutionPanel state={evolution.state} error={evolutionIssue || evolution.error}
+            busy={openingEvolutionUi || evolution.pending || updateState.operationBusy || Boolean(evolution.state && evolution.state.phase !== "idle")}
+            running={workspace.running} otherTasksRunning={workspace.anyRunning && !workspace.running} inspectorOpen={showInspector} onToggleInspector={() => setInspectorOpen((open) => !open)}
+            onAction={evolutionAction} onRetry={() => {
+              if (evolution.loadError || !retryEvolution.current) void evolution.refresh().catch(() => {});
+              else retryEvolution.current();
+            }} onRepair={() => { void repairEvolution(); }} /> : undefined}
+          onImprove={!evolutionOpen && conversationThread && window.cleoDesktop ? () => { setImprovementDraft("请改进 Cleo："); setEvolutionOpen(true); } : undefined}
+          prompt={workspace.prompt}
+          skills={workspace.skills}
+          onPromptChange={workspace.setPrompt}
+          sendError={workspace.sendError}
+          harnessSwitchStatus={workspace.harnessSwitchStatus}
+          sendBlocked={composerBlocked}
+          onRename={workspace.renameThread}
+          thread={conversationThread}
+          project={conversationProject}
+          space={!evolutionOpen && workspace.activeSpace === "chat" ? "chat" : "productivity"}
+          runtime={activeRuntime}
+          runtimeCatalog={workspace.runtimeCatalog}
+          productivityModels={workspace.productivityModels}
+          runtimeModelsLoading={workspace.runtimeModelsLoading}
+          runtimeModelsError={workspace.runtimeModelsError}
+          running={workspace.running}
+          waitingForAnswer={Boolean(workspace.questions.current)}
+          undoing={undoingChanges}
+          sidebarCollapsed={sidebarHidden}
+          inspectorOpen={showInspector}
+          onToggleSidebar={() => {
+            if (compactColumns && showInspector) { setInspectorOpen(false); setSidebarCollapsed(false); }
+            else setSidebarCollapsed(collapsed => !collapsed);
+          }}
+          onToggleInspector={() => setInspectorOpen((open) => !open)}
+          onOpenCommand={() => setCommandOpen(true)}
+          onSend={(prompt) => void (workspace.running ? workspace.sendSteer(prompt)
+            : evolutionOpen ? sendEvolutionPrompt(prompt) : workspace.sendPrompt(prompt))}
+          onRetrySteer={receipt => void workspace.retrySteer(receipt)}
+          onRestoreSteer={workspace.restoreSteer}
+          steeringBusy={workspace.steeringBusy}
+          onCancel={workspace.cancelRun}
+          onUndo={() => {
+            if (!workspace.activeProject?.branch) {
+              notify("当前工作目录不是 Git 仓库，无法回退。", "error");
+              return;
+            }
+            if (!window.confirm("将回退最近一次回答产生的文件改动，并保留回答前已有的改动。是否继续？")) return;
+            setUndoingChanges(true);
+            void workspace.undoChanges()
+              .then((result) => {
+                notify(result.restoredFiles > 0
+                  ? `已回退本次回答对 ${result.restoredFiles} 个文件的改动`
+                  : "最近一次回答没有产生文件改动");
+              })
+              .catch((error: unknown) => {
+                notify(error instanceof Error ? error.message : "无法回退 Git 改动", "error");
+              })
+              .finally(() => setUndoingChanges(false));
+          }}
+          onSelectNonProductivityProfile={(profileId) => {
+            void workspace.selectNonProductivityProfile(profileId).catch(
+              (error: unknown) => notify(error instanceof Error ? error.message : "无法切换模型", "error"),
+            );
+          }}
+          onLoadProductivityModels={(provider, refresh) => workspace.loadProductivityModels(
+            provider, conversationProject?.path, refresh,
+          )}
+          onSelectProductivityRuntime={(provider, model) => {
+            void workspace.selectProductivityRuntime(provider, model);
+          }}
+          onEffortChange={(effort) => workspace.updateRuntime({ effort })}
+          onServiceTierChange={(serviceTier) => workspace.updateRuntime({ serviceTier })}
+          onPermissionChange={workspace.activeThread?.id ? (update) => workspace.updatePermissions(workspace.activeThread!.id, update) : undefined}
+          attachments={workspace.attachments}
+          onPickAttachments={workspace.pickAttachments}
+          onPrepareAttachments={workspace.prepareAttachments}
+          onRemoveAttachment={workspace.removeAttachment}
+          onShowRun={() => {
+            setInspectorTab("run");
+            setInspectorOpen(true);
+          }}
+          onShowContext={() => {
+            setInspectorTab("context");
+            setInspectorOpen(true);
+          }}
+          onRevealPath={(path) => void workspace.revealPath(path)}
+          onOpenPath={(href, workspacePath) => {
+            void workspace.openLocalPath(href, workspacePath).catch((error: unknown) => {
+              notify(error instanceof Error ? error.message : "无法打开本地文件", "error");
+            });
+          }}
+          onThreadCommand={(command) => void workspace.sendPrompt(command)}
+          commands={workspace.snapshot.backend?.commands[workspace.activeSpace === "chat" ? "chat" : "productivity"] ?? []}
+          history={workspace.history}
+          questionUI={<QuestionDialog questions={workspace.questions} />}
+          approvalRequest={workspace.pendingApprovals.find(q => q.threadId === workspace.activeThreadId) ?? null}
+          approvalPending={workspace.approvalPendingId !== null}
+          approvalError={workspace.approvalError}
+          onResolveApproval={(decision) => void workspace.resolveApproval(decision)}
+        />
+      )}
+      {showInspector ? (
+        <Inspector
+          running={workspace.running}
+          onStop={() => void workspace.cancelRun()}
+          resizeHandle={<div className="inspector-resize-handle" {...inspectorResize.handleProps} />}
+          thread={conversationThread}
+          project={conversationProject}
+          runtime={activeRuntime}
+          memories={workspace.snapshot.memories}
+          activeTab={inspectorTab}
+          onTabChange={setInspectorTab}
+          onClose={() => setInspectorOpen(false)}
+          onNotify={notify}
+          onCopyText={(value) => void workspace.copyText(value)}
+          onRevealPath={(value) => void workspace.revealPath(value)}
+        />
+      ) : null}
+      <CommandPalette open={commandOpen} actions={commandActions} onClose={() => setCommandOpen(false)} />
+      <SettingsModal
+        open={settingsOpen}
+        theme={theme}
+        motionEnabled={motionEnabled}
+        onMotionChange={setMotionEnabled}
+        dreamAgent={workspace.snapshot.memoryOverview.dream_agent}
+        runtime={settingsRuntime}
+        runtimeThread={selectedThread}
+        onPermissionsChange={workspace.updatePermissions}
+        supportedEfforts={supportedEfforts}
+        modelSettings={workspace.modelSettings}
+        modelSettingsLoading={workspace.modelSettingsLoading}
+        modelSettingsError={workspace.modelSettingsError}
+        agentInstructions={workspace.agentInstructions}
+        agentInstructionsLoading={workspace.agentInstructionsLoading}
+        agentInstructionsError={workspace.agentInstructionsError}
+        updateState={displayedUpdateState}
+        onThemeChange={setTheme}
+        onRuntimeChange={workspace.updateRuntime}
+        onLoadModelSettings={workspace.loadModelSettings}
+        onApplyModelSettings={workspace.applyModelSettings}
+        onLoadAgentInstructions={workspace.loadAgentInstructions}
+        onSaveAgentInstructions={workspace.saveAgentInstructions}
+        onCheckForUpdates={async (tag) => {
+          return window.cleoDesktop?.checkForUpdates(tag);
+        }}
+        onDownloadUpdate={() => runUpdateAction("download")}
+        onInstallUpdate={() => runUpdateAction("install")}
+        onRevealPath={(path) => void workspace.revealPath(path)}
+        onCopyConfigTemplate={(kind) => {
+          void workspace.copyConfigTemplate(kind).then(() => notify("配置模板已复制"));
+        }}
+        onResetWorkspace={() => {
+          void workspace.resetWorkspace()
+            .then(() => notify("工作区已重置到 main"))
+            .catch((error) => notify(error instanceof Error ? error.message : "重置失败，请重试", "error"));
+        }}
+        onClose={() => setSettingsOpen(false)}
+      />
+      <DeleteThreadDialog
+        threadTitle={threadPendingDeletion?.title ?? null}
+        productivity={threadPendingDeletion?.space === "productivity"}
+        deleting={deletingThread}
+        error={deleteError}
+        onCancel={() => setThreadPendingDeletion(null)}
+        onConfirm={() => {
+          if (!threadPendingDeletion) return;
+          setDeletingThread(true);
+          setDeleteError(null);
+          void workspace.deleteThread(threadPendingDeletion.id)
+            .then(() => {
+              setThreadPendingDeletion(null);
+              notify("任务已删除");
+            })
+            .catch((error: unknown) => {
+              setDeleteError(error instanceof Error ? error.message : "无法删除任务");
+            })
+            .finally(() => setDeletingThread(false));
+        }}
+      />
+      <RemoveProjectDialog
+        project={projectPendingRemoval}
+        removing={removingProject}
+        error={removeError}
+        onCancel={() => setProjectPendingRemoval(null)}
+        onConfirm={() => {
+          if (!projectPendingRemoval) return;
+          setRemovingProject(true);
+          setRemoveError(null);
+          void workspace.removeProject(projectPendingRemoval.id)
+            .then(() => {
+              setProjectPendingRemoval(null);
+              notify("项目已从侧边栏移除");
+            })
+            .catch((error: unknown) => {
+              setRemoveError(error instanceof Error ? error.message : "无法移除项目");
+            })
+            .finally(() => setRemovingProject(false));
+        }}
+      />
+      <UpdateNotice
+        state={displayedUpdateState}
+        onDownload={() => runUpdateAction("download")}
+        onInstall={() => runUpdateAction("install")}
+      />
+      {toast ? <Toast message={toast.message} tone={toast.tone} /> : null}
+    </div>
+  );
+}
+
+function TitleBar({ projectName, mode }: { projectName: string; mode: string }) {
+  return (
+    <header className="titlebar">
+      <div className="titlebar-brand"><span className="mini-brand">C</span><strong>Cleo</strong></div>
+      <div className="titlebar-context"><span>{projectName}</span><Minus size={11} /><small>{mode}</small></div>
+    </header>
+  );
+}
