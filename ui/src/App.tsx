@@ -2,6 +2,8 @@ import { DependencySetup } from "./components/DependencySetup";
 import { modifierKey } from "./platform";
 import { QuestionDialog } from "./components/QuestionDialog";
 import { EvolutionPanel } from "./components/EvolutionPanel";
+import { EvolutionCases } from "./components/EvolutionCases";
+import { EvolutionPreparation } from "./components/EvolutionPreparation";
 import { useEvolution } from "./useEvolution";
 import { useInspectorResize } from "./useInspectorResize";
 import "./components/evolution.css";
@@ -25,6 +27,7 @@ import {
 import { ThreadSidebar } from "./components/ThreadSidebar";
 import { WorkspaceRail } from "./components/WorkspaceRail";
 import { useCleoWorkspace } from "./useCleoWorkspace";
+import type { EvolutionRequest } from "./evolution-types";
 import type { MemoryViewMode, Project, Thread, UpdateState } from "./types";
 
 export function App() {
@@ -59,31 +62,49 @@ export function App() {
       setOpeningEvolutionUi(false);
     }
   };
-  /** Purpose: Send ordinary instructions directly to the selected evolution harness.
-   * Input: user text and optional existing task. Output: one coding turn, no acceptance planning.
+  /** Purpose: Freeze acceptance goals before handing editing to the desktop-managed evolution turn.
+   * Input: request action and stable params. Output: optional coding turn only after cases are frozen.
    */
-  const sendEvolutionPrompt = async (prompt: string, preserveDraft = false, threadId?: string) => {
-    if (!prompt.trim() || preparingEvolution.current) return;
+  const runPreparedEvolutionRequest = async (
+    action: "prepareRequest" | "repairRequest" | "continueCaseRequest" | "reviseRequest",
+    params: Record<string, unknown>,
+    { preserveDraft = false, threadId, newThread = false }: { preserveDraft?: boolean; threadId?: string; newThread?: boolean } = {},
+  ) => {
+    if (preparingEvolution.current) return;
+    const stableParams = { ...params, id: typeof params.id === "string" ? params.id : crypto.randomUUID() };
+    const prompt = typeof stableParams.prompt === "string" ? stableParams.prompt : "";
+    if (action === "prepareRequest" && !prompt.trim()) return;
     preparingEvolution.current = true;
     setPreparingTurn(true);
     setEvolutionIssue(null);
     try {
+      const openedByStart = !threadId && !evolutionThread;
       const thread = threadId ? await workspace.openEvolutionThread(threadId)
-        : evolutionThread ? workspace.activeThread : await startEvolution(true);
+        : evolutionThread ? workspace.activeThread : await startEvolution(newThread);
       if (!thread) return;
-      retryEvolution.current = () => { void sendEvolutionPrompt(prompt, true, thread.id); };
-      await evolution.run("thread", { id: thread.id });
-      await workspace.sendPrompt(prompt, thread, { preserveDraft });
+      retryEvolution.current = () => { void runPreparedEvolutionRequest(action, stableParams, { preserveDraft: true, threadId: thread.id }); };
+      if (!openedByStart && evolution.state?.threadId !== thread.id) await evolution.run("thread", { id: thread.id });
+      const request = await evolution.run<EvolutionRequest>(action, { ...stableParams, threadId: thread.id });
+      if (request.status === "frozen") {
+        const preparedPrompt = await evolution.run<string>("requestPrompt", { id: request.id });
+        await workspace.sendPrompt(preparedPrompt, thread, { preserveDraft });
+      }
     } catch (error) {
       setEvolutionIssue(error instanceof Error ? error.message : "无法开始修改");
     } finally { preparingEvolution.current = false; setPreparingTurn(false); await evolution.refresh(); }
+  };
+  /** Purpose: Start a new user request through acceptance preparation.
+   * Input: user text and optional existing task. Output: one prepared coding turn, or a visible preparation card.
+   */
+  const sendEvolutionPrompt = async (prompt: string, preserveDraft = false, threadId?: string) => {
+    await runPreparedEvolutionRequest("prepareRequest", { prompt }, { preserveDraft, threadId, newThread: true });
   };
   /** Purpose: Return compiler/runtime diagnostics to the same agent. Input: none. Output: repair turn. */
   const repairEvolution = async () => {
     retryEvolution.current = () => { void repairEvolution(); };
     try {
       const prompt = await evolution.run<string>("repairPrompt");
-      await sendEvolutionPrompt(prompt, true, evolution.state?.threadId || undefined);
+      await runPreparedEvolutionRequest("repairRequest", { prompt }, { preserveDraft: true, threadId: evolution.state?.threadId || undefined });
     } catch (error) { setEvolutionIssue(error instanceof Error ? error.message : "无法开始修复"); }
   };
   const evolutionAction = (action: string, params: Record<string, unknown> = {}) => {
@@ -103,6 +124,26 @@ export function App() {
       setEvolutionIssue(error instanceof Error ? error.message : "操作失败");
       if (["previewRelease", "publishRelease", "publishMergedRelease", "previewMergedRelease", "releaseBuilds", "publishReleasePackages", "releasePackageStatus", "releasePermission", "startRelease", "submit", "requestBranch"].includes(action)) throw error;
     });
+  };
+  const continueEvolutionCase = (caseId: string, body: string, id: string) =>
+    runPreparedEvolutionRequest("continueCaseRequest", { id, caseId, body }, { preserveDraft: true, threadId: evolution.state?.threadId || undefined });
+  const createEvolutionCase = async (input: Record<string, unknown>) => {
+    const title = String(input.title || "").trim();
+    const expectation = String(input.expectation || "").trim();
+    await runPreparedEvolutionRequest("prepareRequest", {
+      prompt: `请改进 Cleo：${title}\n期望行为：${expectation}`,
+    }, { preserveDraft: true, threadId: evolution.state?.threadId || undefined, newThread: true });
+  };
+  const reviseEvolutionCase = (params: Record<string, unknown>) =>
+    runPreparedEvolutionRequest("reviseRequest", params, { preserveDraft: true, threadId: evolution.state?.threadId || undefined });
+  const resumeEvolutionRequest = (request: EvolutionRequest, clarification?: string, skipClarification?: boolean) => {
+    if (request.execution?.status === "interrupted" || (request.execution?.status === "submitted" && !preparingTurn)) {
+      void runPreparedEvolutionRequest("repairRequest", { prompt: request.prompt, parent: request.id }, { preserveDraft: true, threadId: request.threadId });
+      return;
+    }
+    void runPreparedEvolutionRequest("prepareRequest", {
+      id: request.id, prompt: request.prompt, clarification, skipClarification,
+    }, { preserveDraft: true, threadId: request.threadId });
   };
 
   useEffect(() => {
@@ -432,7 +473,16 @@ export function App() {
             onAction={evolutionAction} onRetry={() => {
               if (evolution.loadError || !retryEvolution.current) void evolution.refresh().catch(() => {});
               else retryEvolution.current();
-            }} onRepair={() => { void repairEvolution(); }} /> : undefined}
+            }} onRepair={() => { void repairEvolution(); }}>
+              <EvolutionCases state={evolution.state?.acceptance} requests={evolution.state?.acceptanceRequests || []}
+                thread={conversationThread} busy={openingEvolutionUi || evolution.pending || preparingTurn || workspace.running}
+                canReview={Boolean(evolution.state?.active && evolution.state.active === evolution.state?.candidate && !evolution.state?.draftDirty)}
+                onAction={evolutionAction} onImprove={continueEvolutionCase} onCreate={createEvolutionCase}
+                onRevise={reviseEvolutionCase} />
+              <EvolutionPreparation requests={evolution.state?.acceptanceRequests || []} acceptance={evolution.state?.acceptance}
+                busy={openingEvolutionUi || evolution.pending || preparingTurn || workspace.running}
+                onResume={resumeEvolutionRequest} />
+            </EvolutionPanel> : undefined}
           onImprove={!evolutionOpen && conversationThread && window.cleoDesktop ? () => { setImprovementDraft("请改进 Cleo："); setEvolutionOpen(true); } : undefined}
           prompt={workspace.prompt}
           skills={workspace.skills}

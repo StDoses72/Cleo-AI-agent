@@ -4,7 +4,9 @@ import { waitForControllerReady, showRecovery } from "./evolution-recovery.mjs";
 import { EvolutionManager } from "./evolution.mjs";
 import { listContributionBranches, requestTargetBranch, refreshTargetBranch } from "./evolution-contributions.mjs";
 import { checkContribution, submitContribution, inspectPullRequest, contributionRepairPrompt } from "./evolution-merge-assistance.mjs";
-import { runEvolutionTurn } from "./evolution-editing.mjs";
+import { runEvolutionTurn, runPreparedEvolutionTurn, compareBuiltVersion } from "./evolution-editing.mjs";
+import { EvolutionAcceptance } from "./evolution-acceptance.mjs";
+import { EvolutionRequests } from "./evolution-requests.mjs";
 import { rmSync } from "node:fs";
 import { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, shell } from "electron";
 import { trustedPreviewSender } from "./computer-preview.mjs";
@@ -90,6 +92,17 @@ const evolution = new EvolutionManager({
     }).catch((error) => console.error("Evolution status:", error.message));
   },
 });
+const publishEvolutionState = () => {
+  void evolutionState().then((state) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) window.webContents.send("cleo:evolution:state", state);
+    }
+  }).catch((error) => console.error("Evolution status:", error.message));
+};
+const acceptance = new EvolutionAcceptance(evolution.store);
+const requests = new EvolutionRequests(acceptance, (threadId, prompt, existingCases) =>
+  backend.request("analyze_evolution_request", { thread_id: threadId, request: prompt, existing_cases: existingCases }),
+publishEvolutionState);
 const programUpdates = new SelectableProgramUpdates({ updater, evolution, apply: applyEvolution,
   hasRunningTask: () => backend.pending.size > 0 || setup.busy });
 app.on("cleo:healthy", (transactionId) => {
@@ -184,7 +197,8 @@ async function evolutionState() {
     releaseJob: job ? { id: job.id, tag: job.tag, phase: job.phase, message: job.message,
       error: job.error, workflowUrl: job.workflowUrl, releaseUrl: job.releaseUrl } : null,
     releaseTypes: Object.fromEntries(updater.catalog.map(item => [item.tag, item.prerelease])),
-    acceptance: undefined, acceptanceRequests: [], suggestedVersionName: nextVersionName(state) };
+    acceptance: await acceptance.status(state), acceptanceRequests: await requests.status(),
+    suggestedVersionName: nextVersionName(state) };
 }
 
 /** Purpose: Hand off activation after explicit consent. Input: build id; current user data is always retained. Output: app restart. */
@@ -248,13 +262,17 @@ async function monitoredEvolutionTurn(params, onEvent) {
     if (companion.thread?.id === params.thread_id) { companion.thread.status = "running"; companion.thread.activeRunId = params.run_id; }
     await publishMonitor().catch(error => console.error("Evolution monitor:", error.message));
     await openEvolutionMonitor().catch(error => console.error("Evolution monitor:", error.message));
-    return await runEvolutionTurn({ evolution, backend, params, onEvent: event => {
+    const relay = event => {
       companion.event(params.thread_id, event);
       if (event.type === "done") completed = true;
       if (event.type === "error") failed = true;
       if (event.type === "question-request") editingDetail = "agent 正在询问取舍，可在此窗口或 Cleo 会话中回答。";
       onEvent(event);
-    } });
+    };
+    if (String(params.prompt || "").startsWith("[[CLEO_ACCEPTANCE_REQUEST:")) {
+      return await runPreparedEvolutionTurn({ evolution, requests, acceptance, backend, params, onEvent: relay });
+    }
+    return await runEvolutionTurn({ evolution, backend, params, onEvent: relay });
   } catch (error) { failed = true; throw error; }
   finally {
     if (queued) await monitorStore.receipt(queued.id, completed && !failed ? "completed" : "interrupted");
@@ -488,7 +506,7 @@ app.whenReady().then(async () => {
     if (setup.busy && !["monitor", "nextMessage"].includes(action)) throw new Error("请等待依赖安装完成。");
     if (backend.pending.size && action === "contributionRepairPrompt")
       throw new Error("请先等待当前任务完成或停止任务，再检查合并。");
-    if (backend.pending.size && ["prepare", "build", "merge", "submit", "apply", "recovery", "select", "discard", "save", "begin", "repairPrompt", "requestBranch", "refreshBranchRequest"].includes(action)) {
+    if (backend.pending.size && ["prepare", "build", "merge", "submit", "apply", "recovery", "select", "discard", "save", "begin", "repairPrompt", "prepareRequest", "repairRequest", "continueCaseRequest", "reviseRequest", "abandonRequest", "requestBranch", "refreshBranchRequest"].includes(action)) {
       throw new Error("请先等待当前任务完成或停止任务。");
     }
     const actions = {
@@ -506,6 +524,15 @@ app.whenReady().then(async () => {
         if (state.lastRestartError) return "上次应用未能正常启动，请在 Cleo 源码工作区调查并修复启动问题。保留用户数据和恢复控制器，不要自行重启。诊断数据：\n" + state.lastRestartError;
         return (await evolution.repairPrompt()).replace("桌面会在本轮结束后重新检查。", "修复后由用户选择检查改动。");
       },
+      prepareRequest: () => evolution.operation("planning", () => requests.prepare(params)),
+      repairRequest: () => evolution.operation("planning", () => requests.repair(params)),
+      continueCaseRequest: () => evolution.operation("planning", () => requests.continueCase(params)),
+      reviseRequest: () => evolution.operation("planning", () => requests.revise(params)),
+      abandonRequest: () => evolution.operation("planning", () => requests.abandon(params)),
+      requestPrompt: () => requests.editingPrompt(params.id),
+      compareCases: async () => compareBuiltVersion(evolution, acceptance, params.id || (await evolution.store.read()).candidate),
+      completeCase: () => evolution.operation("comparing", () => acceptance.complete(params.id, params.note)),
+      cancelCase: () => evolution.operation("comparing", () => acceptance.cancel(params.id)),
       releases: async () => {
         await updater.refreshCatalog();
         return updater.catalog;
