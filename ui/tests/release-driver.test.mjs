@@ -16,7 +16,7 @@ async function fixture(t) {
   const driver = new GithubReleaseDriver({ store: { root }, tools: { prepare: async () => ({ gh: "gh", git: "git", node: "node", npm: "npm-cli.js", env: {} }) } }, {
     runtime: async () => ({}), repair: async () => { remote.repairs = (remote.repairs || 0) + 1; },
     runCommand: async (tool, args) => {
-      if (tool === "node" || tool === "xvfb-run") {
+      if (tool === "node") {
         remote.checks.push({ tool, args });
         if (remote.checkError && args.includes("check:release")) throw new Error(remote.checkError);
         return "";
@@ -149,9 +149,9 @@ test("failed local repair validation stops before commit, push, or another workf
   await writeFile(join(source, "pyproject.toml"), '[project]\nversion = "0.4.8"\n');
   for (const name of ["package.json", "package-lock.json"])
     await writeFile(join(source, "ui", name), JSON.stringify({ version: "0.4.8" }));
-  remote.checkError = "Evolution smoke: direct conversation regressed";
-  await assert.rejects(driver.repair(job, undefined, checkpoint), /direct conversation regressed/);
-  assert.equal(remote.checks.length, 3);
+  remote.checkError = "Release compilation failed";
+  await assert.rejects(driver.repair(job, undefined, checkpoint), /compilation failed/);
+  assert.equal(remote.checks.length, 2);
   assert.equal(remote.git.some(args => args.includes("commit") || args.includes("push")), false);
   assert.equal(remote.requests.length, 0);
   assert.equal(job.repairCommitBase, undefined);

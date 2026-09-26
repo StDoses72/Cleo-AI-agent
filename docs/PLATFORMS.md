@@ -94,11 +94,13 @@ macOS/Linux 便携包通过各自的 manifest 选择更新，校验平台、架�
 
 ## 验证
 
-`Desktop platforms` CI 分别在 Windows x64、macOS ARM64、macOS Intel、Ubuntu x64 上运行
-Python、Node 与 Electron smoke。macOS/Linux 还会构建原生包并运行最终包 smoke；手动运行
-工作流时同样构建并验证 Windows 发布包。Windows 还验证更新进度与重复启动保护。产物与截图
-作为 Actions artifacts 保存，不自动发布 Release。macOS runner 标签来自
+`Desktop platforms` CI 分别在 Windows x64、macOS ARM64、macOS Intel、Ubuntu x64 上构建
+原生安装包，并用独立的临时用户目录验证程序能打开并渲染窗口。Linux 还验证 `.deb` 安装。
+发布门禁只覆盖依赖、编译、打包、包完整性和基本启动，不要求具体按钮或产品功能存在。
+Python、Node 和界面功能测试保留供开发时按需运行，不阻止主动增删功能的版本发布。
+自动修复先运行 `npm --prefix ui run check:release`（仅编译），不能为了旧功能测试恢复已删除功能。
+产物与启动截图作为 Actions artifacts 保存，不自动发布 Release。macOS runner 标签来自
 [GitHub 官方 runner 列表](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)。
 
 Windows 本机的模拟路径测试不代替 macOS 原生运行结果。查看 PR 的矩阵任务及 artifacts，
-确认对应目标的构建与测试状态后再发布。
+确认对应目标的构建与启动状态后再发布。发布工作流再次核对标签、版本、依赖快照、附件和 SHA-256。

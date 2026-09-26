@@ -176,9 +176,9 @@ python scripts\update_project.py `
   --extra-index-url https://pypi.org/simple
 ```
 
-更新后运行完整 Python 测试、`npm --prefix ui run test:backend` 和前端构建，并检查锁文件变化。桌面构建默认先运行相同更新流程。CI 的独立 `dependencies` job 每次解析最新稳定且相互兼容的依赖，将三个锁文件保存为 `dependency-locks` artifact；解析时要求四个平台的 SDK 原生二进制包可用；如果上游尚未提供某个平台的新版本，会自动为该平台选择最新可用版本，并写入条件表达式，不在脚本里固定版本。四个平台下载同一份结果后按平台条件安装、测试和打包。解析失败会阻止构建，不会退回仓库里的旧锁文件。打包传入 `--locked-dependencies`（Windows 为 `-LockedDependencies`）只用于复用本次已经测试的版本，避免测试和打包之间再次解析导致漂移。
+开发时可按修改范围运行 Python、Node 功能测试；发布只要求编译、原生打包、包完整性和基本启动检查，并检查锁文件变化。桌面构建默认先运行相同更新流程。CI 的独立 `dependencies` job 每次解析最新稳定且相互兼容的依赖，将三个锁文件保存为 `dependency-locks` artifact；解析时要求四个平台的 SDK 原生二进制包可用；如果上游尚未提供某个平台的新版本，会自动为该平台选择最新可用版本，并写入条件表达式，不在脚本里固定版本。四个平台下载同一份结果后按平台条件安装、打包和验证基本启动。解析失败会阻止构建，不会退回仓库里的旧锁文件。打包传入 `--locked-dependencies`（Windows 为 `-LockedDependencies`）只用于复用本次解析的版本，避免不同平台打包时再次解析导致漂移。
 
-每个安装包的 `resources/dependencies.json` 记录实际安装的 Python 包和工具版本，以及三个锁文件的 SHA-256。构建时校验 Codex SDK、配套 CLI、Claude SDK 和浏览器工具与解析结果一致；发布时再次核对四个平台的依赖记录与同一构建的 `dependency-locks` artifact。一份缺失、不匹配或未通过测试的依赖快照不能发布。Python 3.12、Node 24 和 npm 11.x 是当前支持的运行环境；应用依赖在这些兼容约束下更新，Python 预发布包不参与自动解析。
+每个安装包的 `resources/dependencies.json` 记录实际安装的 Python 包和工具版本，以及三个锁文件的 SHA-256。构建时校验 Codex SDK、配套 CLI、Claude SDK 和浏览器工具与解析结果一致；发布时再次核对四个平台的依赖记录与同一构建的 `dependency-locks` artifact。一份缺失、不匹配或无法打包启动的依赖快照不能发布。Python 3.12、Node 24 和 npm 11.x 是当前支持的运行环境；应用依赖在这些兼容约束下更新，Python 预发布包不参与自动解析。
 
 启动时，Cleo 从当前程序版本对应的独立 `runtimes/` 目录选择已经验证的 Python/工具运行时；导入或 Codex 版本检查失败会回到随应用打包的版本。启动后及持续运行期间每 24 小时自动检查依赖更新，通过验证后下次启动生效；失败保留当前运行版本。依赖更新与整包更新独立。
 

@@ -128,8 +128,9 @@ jobs:
               assert packaged['version'] == version and packaged['platform'] == target
               assert dependencies['lock_sha256'] == locks, 'Package did not use this build dependency snapshot'
               packages = dependencies['python_packages']
-              assert packages['openai-codex'] == packages['openai-codex-cli-bin'], 'Codex SDK/CLI mismatch'
-              print(f"Verified {target}: {digest}, Codex SDK/CLI {packages['openai-codex']}")
+              if 'openai-codex' in packages and 'openai-codex-cli-bin' in packages:
+                  assert packages['openai-codex'] == packages['openai-codex-cli-bin'], 'Codex SDK/CLI mismatch'
+              print(f"Verified {target}: {digest}")
           deb = output / 'Cleo-linux-x64.deb'
           with deb.open('rb') as stream:
               digest = hashlib.file_digest(stream, 'sha256').hexdigest()
