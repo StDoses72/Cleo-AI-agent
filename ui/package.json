@@ -37,7 +37,7 @@
     "smoke:inspector": "npm run build && node scripts/smoke-inspector.mjs",
     "smoke:real": "npm run build && node scripts/smoke-real.mjs",
     "smoke:packaged": "node scripts/smoke-packaged.mjs",
-    "check:release": "npm run test:backend && npm run test:evolution && npm run test:context && npm run build && node scripts/smoke-evolution.mjs && node tests/contribution-target.smoke.mjs"
+    "check:release": "npm run test:backend && npm run test:evolution && npm run test:context && npm run build && node scripts/smoke-evolution.mjs && node tests/contribution-target.smoke.mjs && node scripts/smoke.mjs && node scripts/smoke-approvals.mjs && node scripts/smoke-history.mjs && node scripts/smoke-layout.mjs && node scripts/smoke-program-updates.mjs"
   },
   "dependencies": {
     "@novnc/novnc": "1.5.0",

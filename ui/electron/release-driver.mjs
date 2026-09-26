@@ -198,7 +198,7 @@ export class GithubReleaseDriver {
     await this.command(tools.node, [tools.npm, "ci", "--include=dev", "--ignore-scripts", "--no-audit", "--no-fund"], options);
     await this.command(tools.node, ["node_modules/electron/install.js"], options);
     const args = [tools.npm, "run", "check:release"];
-    if (process.platform === "linux") await this.command("xvfb-run", ["-a", tools.node, ...args], options);
+    if (process.platform === "linux" && !tools.env.DISPLAY) await this.command("xvfb-run", ["-a", tools.node, ...args], options);
     else await this.command(tools.node, args, options);
   }
 
