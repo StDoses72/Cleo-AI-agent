@@ -66,7 +66,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 使用 Codex 开发对话时，可在输入框旁选择标准速度或快速模式；选择按对话保存。快速模式消耗更多额度，可用性取决于模型和账号。
 
-新建 Codex 会话的历史保存在 Cleo 专用目录，不写入默认 Codex 应用的会话列表；首次使用需在 Cleo 内单独登录。已有会话沿用原目录，详见[配置说明](docs/CONFIGURATION.md)。
+新建 Codex/Claude 会话的登录、配置、历史和 skills 保存在 Cleo 专用目录（`data/codex`、`data/claude`），不写入默认应用的会话列表；本机已有的 skills、指令和设置会自动补充导入，登录需在 Cleo 内单独完成一次。已有会话沿用原目录，详见[配置说明](docs/CONFIGURATION.md)。
 
 ### 从源码运行
 

@@ -19,26 +19,41 @@ def main():
         (project / ".git").mkdir(parents=True)
         for harness in ("codex", "claude"):
             for name in ("eli5", "help"):
-                path = home / f".{harness}" / "skills" / name / "SKILL.md"
+                # Same fixed directory the harness process uses: <CLEO_HOME>/data/<harness>.
+                path = root / "cleo" / "data" / harness / "skills" / name / "SKILL.md"
                 path.parent.mkdir(parents=True)
                 path.write_text(
                     f"---\nname: {name}\n---\n{harness} actual instructions", encoding="utf-8"
                 )
-        with patch.object(Path, "home", return_value=home), patch.dict(os.environ, {
+        with patch.object(Path, "home", return_value=home), patch(
+            "cleo.config.settings.APP_HOME", root / "cleo",
+        ), patch.dict(os.environ, {
+            # External vendor homes must not feed the catalog.
             "CODEX_HOME": str(home / ".codex"), "CLAUDE_CONFIG_DIR": str(home / ".claude"),
         }):
             manifest = {
-                "id": "test", "space": "productivity", "cwd": str(project), "provider": "codex"
+                "id": "test", "space": "productivity", "project": "workspace", "cwd": str(project),
+                "provider": "codex",
             }
             service = DesktopService.__new__(DesktopService)
-            service.store = SimpleNamespace(load_manifest=lambda _: manifest)
+            service.store = SimpleNamespace(
+                load_manifest=lambda _: manifest,
+                update_manifest=lambda _, **changes: manifest.update(changes),
+            )
             service.settings = SimpleNamespace(
-                productivity=SimpleNamespace(default_provider="codex")
+                MEMORY_DIR=root / "memory",
+                productivity=SimpleNamespace(default_provider="codex"),
             )
             service._activate = lambda _: None
             service._is_evolution = lambda _: False
             service._productivity_provider = lambda name: SimpleNamespace(type=f"{name}_sdk")
             service._run_tasks = {}
+            service._steering_runs = {}
+            service._runtime_locks = {}
+            service._run_ids = {}
+            service._pending_approvals = {}
+            service._run_workspaces = {}
+            service._workspace_guard = asyncio.Lock()
             service._stream_productivity = AsyncMock()
             service._run_command = AsyncMock()
             emit = AsyncMock()

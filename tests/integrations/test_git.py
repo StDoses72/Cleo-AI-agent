@@ -31,6 +31,30 @@ def _git_output(cwd, *args: str) -> str:
     ).stdout
 
 
+def test_undo_visibility_uses_tree_changes_instead_of_checkpoint_commit_ids(tmp_path):
+    from cleo.desktop.service import DesktopService
+
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "test@example.com")
+    _git(tmp_path, "config", "user.name", "Test")
+    tracked = tmp_path / "tracked.txt"
+    tracked.write_text("before")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "initial")
+    before = create_git_checkpoint(str(tmp_path), "no-op")
+    after = finalize_git_checkpoint(before)
+    assert before.before_worktree != after.after_worktree
+    assert not DesktopService._can_undo({"undo_checkpoint": after.to_dict()})
+    before = create_git_checkpoint(str(tmp_path), "changed")
+    tracked.write_text("after")
+    after = finalize_git_checkpoint(before)
+    assert DesktopService._can_undo({"undo_checkpoint": after.to_dict()})
+    assert not DesktopService._can_undo({
+        "undo_checkpoint": after.to_dict(), "undo_checkpoint_shared": True,
+    })
+    assert not DesktopService._can_undo({})
+
+
 def test_read_git_diff_includes_tracked_patch_and_untracked_names(tmp_path) -> None:
     _git(tmp_path, "init")
     _git(tmp_path, "config", "user.email", "test@example.com")

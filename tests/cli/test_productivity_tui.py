@@ -27,10 +27,16 @@ from cleo.runtime.usage import RateLimitWindowUsage
 
 
 async def session_options_when_mounted(app, pilot):
+    """Purpose: Wait for a clickable picker. Input: UI pilot. Output: laid-out option list."""
     async with asyncio.timeout(5):
-        while not app.screen.query("#session-options"):
+        while True:
+            matches = app.screen.query("#session-options")
+            if matches:
+                options = matches.first()
+                if (options.region.width > 4 and options.region.height > 1
+                        and options.region.bottom <= app.screen.region.bottom):
+                    return options
             await pilot.pause(0.01)
-    return app.screen.query_one("#session-options")
 
 
 class FakeRuntime:
@@ -467,12 +473,8 @@ def test_sessions_picker_click_resumes_saved_productivity_session(
             await pilot.pause(0.1)
             assert isinstance(app.screen, SessionPicker)
             options = await session_options_when_mounted(app, pilot)
-            for _ in range(20):
-                if options.region.width and options.region.bottom <= app.screen.region.bottom:
-                    break
-                await pilot.pause(0.02)
-            await pilot.click(options, offset=(4, 1))
-            await worker.wait()
+            assert await pilot.click(options, offset=(4, 1))
+            await asyncio.wait_for(worker.wait(), timeout=5)
             assert app.session.id == "agent-saved"
             assert "Earlier request" in str(app.query_one(".user-message").render())
             assert "Earlier response" in str(
@@ -579,8 +581,8 @@ def test_sessions_picker_imports_native_codex_thread_with_history(tmp_path) -> N
             assert worker is not None
             await pilot.pause(0.1)
             options = await session_options_when_mounted(app, pilot)
-            await pilot.click(options, offset=(4, 1))
-            await worker.wait()
+            assert await pilot.click(options, offset=(4, 1))
+            await asyncio.wait_for(worker.wait(), timeout=5)
 
             assert app.session.id == "agent-imported"
             assert app.session.native_session_id == native.id
@@ -723,8 +725,8 @@ def test_project_picker_click_opens_recent_project(tmp_path, monkeypatch) -> Non
                 if options.region.width and options.region.bottom <= app.screen.region.bottom:
                     break
                 await pilot.pause(0.02)
-            await pilot.click(options, offset=(4, 4))
-            await worker.wait()
+            assert await pilot.click(options, offset=(4, 4))
+            await asyncio.wait_for(worker.wait(), timeout=5)
             assert app.session.project == "target"
             assert Path(app.session.project_path) == target.resolve()
 

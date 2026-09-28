@@ -398,11 +398,17 @@ class AgentService:
         on_event: EventCallback | None = None,
         *,
         steer_ids: list[str] | None = None,
+        display_prompt: str | None = None,
     ) -> AgentResult:
+        """Purpose: Run a model prompt while optionally presenting the user's concise request.
+
+        Input: Model prompt and optional display text. Output: Provider result and saved events.
+        """
         session_id = self._required_text(session_id, "session_id")
         async with self._session_locks.setdefault(session_id, asyncio.Lock()):
             with self._context_lease(session_id):
-                return await self._prompt(session_id, prompt, on_event, steer_ids=steer_ids)
+                return await self._prompt(session_id, prompt, on_event, steer_ids=steer_ids,
+                                          display_prompt=display_prompt)
 
     async def _prompt(
         self,
@@ -411,6 +417,7 @@ class AgentService:
         on_event: EventCallback | None = None,
         *,
         steer_ids: list[str] | None = None,
+        display_prompt: str | None = None,
     ) -> AgentResult:
         """向已存在的会话发送一轮 prompt,并把事件/状态写入 SessionStore。"""
         session_id = self._required_text(session_id, "session_id")
@@ -433,7 +440,8 @@ class AgentService:
             session_id=session_id,
             events=[
                 {"id": turn_key, "type": "user_message", "actor": "agent", "content": prompt,
-                 "data": {"steer_ids": steer_ids} if steer_ids else {}},
+                 "data": {**({"steer_ids": steer_ids} if steer_ids else {}),
+                          **({"display_prompt": display_prompt} if display_prompt else {})}},
                 {"type": "session_running", "actor": "system"},
             ],
             manifest_updates={"status": "running"},
@@ -443,7 +451,7 @@ class AgentService:
             AgentEvent(
                 provider=route.provider.name,
                 type="turn_started",
-                text=prompt,
+                text=display_prompt or prompt,
                 data={"turnId": turn_key},
             ),
         )
@@ -698,6 +706,15 @@ class AgentService:
         method = self._capability(route.provider, "session_options")
         return method(route.provider_session_id)
 
+    def permission_capabilities(self, session_id: str) -> dict:
+        """Purpose: Read cached native permission support for a connected session.
+
+        Input: Cleo session handle. Output: Provider report or an empty unverified report.
+        """
+        route = self._route(session_id)
+        method = getattr(route.provider, "permission_capabilities", None)
+        return method(route.provider_session_id) if callable(method) else {}
+
     async def update_session_options(
         self,
         session_id: str,
@@ -720,6 +737,10 @@ class AgentService:
             **({"service_tier": service_tier} if service_tier is not None else {}),
         )
         self._persist_options(session_id, options)
+        native_id = getattr(route.provider, "session_native_id", None)
+        if callable(native_id):
+            route.native_session_id = native_id(route.provider_session_id)
+            self._store.update_manifest(session_id, native_session_id=route.native_session_id)
         return options
 
     async def resolve_approval(

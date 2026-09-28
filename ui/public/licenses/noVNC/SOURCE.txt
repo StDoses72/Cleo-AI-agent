@@ -1,0 +1,3 @@
+noVNC 1.5.0
+Source: https://github.com/novnc/noVNC/tree/v1.5.0
+Library bundled without modification.

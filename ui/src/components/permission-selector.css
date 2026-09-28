@@ -1,0 +1,4 @@
+.permission-selector { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.permission-selector select { max-width: 240px; }
+.permission-selector small { color: var(--text-muted); font-size: 11px; }
+.permission-selector-error { flex-basis: 100%; color: var(--danger, #ef7878); font-size: 12px; white-space: normal; }

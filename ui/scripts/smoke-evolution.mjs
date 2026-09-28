@@ -24,7 +24,6 @@ try {
     const workspace = structuredClone(fixture);
     const streams = new Set();
     const evolutionListeners = new Set();
-    const publish = () => { for (const listener of evolutionListeners) listener(structuredClone(state)); };
     const timeline = thread => ({ items: thread.items, before: "0", after: String(thread.items.length - 1),
       total: thread.items.length, hasBefore: false, hasAfter: false, revision: String(thread.items.length) });
     const state = {
@@ -39,6 +38,8 @@ try {
     };
     window.evolutionActions = [];
     window.failEvolutionRead = true;
+    window.sentEvolutionPrompts = [];
+    window.failEvolutionThread = false;
     window.patchEvolution = (patch) => Object.assign(state, patch);
     window.cleoDesktop = {
       getEvolutionState: async () => {
@@ -62,6 +63,7 @@ try {
         if (method === "load_thread") return structuredClone(workspace.threads.find(thread => thread.id === params.thread_id));
         if (method === "load_timeline") return timeline(workspace.threads.find(thread => thread.id === params.thread_id));
         if (method === "stream_turn") {
+          window.sentEvolutionPrompts.push({ prompt: params.prompt, threadId: params.thread_id });
           const thread = workspace.threads.find(thread => thread.id === params.thread_id);
           const turnId = crypto.randomUUID();
           const emit = event => { for (const listener of streams) listener({ streamId, event }); };
@@ -72,7 +74,6 @@ try {
           const reply = { id: `${turnId}-answer`, turnId, type: "message", role: "assistant", content: "## 运行完成\n\n隔离测试回复。", time: "", order: thread.items.length, cursor: String(thread.items.length) };
           thread.items.push(reply); thread.status = "completed";
           emit({ type: "upsert-item", item: reply }); emit({ type: "done", summary: "隔离测试完成" });
-          state.testRequest.execution = { status: "completed" }; publish();
           return null;
         }
         if (method !== "open_evolution_thread") throw new Error("Unexpected fixture request: " + method);
@@ -90,14 +91,15 @@ try {
         window.evolutionActions.push({ action, params });
         if (action === "releases") return [];
         if (action === "prepare") state.prepared = true;
-        if (action === "thread") state.threadId = params.id;
-        if (action === "prepareRequest" || action === "repairRequest") {
-          state.testRequest = { ...params, status: "frozen", cases: [{ item: { id: "fixture-case", kind: "manual",
-            expectation: "按钮清楚", evidence: "隔离 UI fixture", enabled: true } }] };
-          state.acceptanceRequests = [...(state.acceptanceRequests || []), state.testRequest];
-          return state.testRequest;
+        if (action === "thread") {
+          if (window.failEvolutionThread) {
+            window.failEvolutionThread = false;
+            throw new Error("进化连接暂时失败（测试）");
+          }
+          state.threadId = params.id;
         }
-        if (action === "requestPrompt") return `[[CLEO_ACCEPTANCE_REQUEST:${params.id}]]\n${state.testRequest.prompt}`;
+        if (["prepareRequest", "repairRequest", "requestPrompt"].includes(action))
+          throw new Error("Direct evolution must not invoke removed acceptance planning: " + action);
         if (action === "begin") {
           state.iteration = { base: state.active }; state.draftDirty = true;
           state.validation = { status: "pending", message: "待检查" };
@@ -136,10 +138,8 @@ try {
   await page.getByRole("button", { name: "查看代码变更", exact: true }).click();
   assert.ok(await page.locator(".inspector").isVisible());
   await page.getByRole("button", { name: "查看代码变更", exact: true }).click();
-  await page.getByRole("button", { name: "添加验收目标", exact: true }).click();
-  await page.getByRole("dialog", { name: "改进 Cleo", exact: true }).waitFor();
-  assert(await page.getByLabel("案例名称", { exact: true }).evaluate(input => input === document.activeElement));
-  await page.getByRole("button", { name: "关闭案例", exact: true }).click();
+  assert.equal(await page.getByRole("button", { name: "添加验收目标", exact: true }).count(), 0);
+  assert.equal(await page.locator(".evolution-preparation,.evolution-cases").count(), 0);
   await page.getByTestId("runtime-selector").click();
   await page.getByTestId("runtime-menu").waitFor();
   const harnesses = await page.locator(".runtime-menu strong").allTextContents();
@@ -173,15 +173,29 @@ try {
   await page.getByRole("button", { name: "进化", exact: true }).click();
   await page.getByTestId("composer-input").fill("把我的 Cleo 按钮调整得更清楚");
   await page.getByTestId("composer-input").press("Enter");
-  await page.waitForFunction(() => window.evolutionActions.some((item) => item.action === "requestPrompt"));
+  await page.waitForFunction(() => window.sentEvolutionPrompts.length === 1);
   await page.getByRole("heading", { name: "运行完成", exact: true }).waitFor();
   const automatic = await page.evaluate(() => window.evolutionActions.map((item) => item.action));
   assert.ok(automatic.indexOf("prepare") < automatic.indexOf("thread"));
-  assert.ok(automatic.indexOf("thread") < automatic.indexOf("prepareRequest"));
-  assert.ok(automatic.indexOf("prepareRequest") < automatic.indexOf("requestPrompt"));
-  assert.ok(!automatic.includes("begin") && !automatic.includes("build"), "Renderer must leave editing/build authorization to the desktop, exercised by smoke-evolution-preparation.");
+  assert.deepEqual(await page.evaluate(() => window.sentEvolutionPrompts), [
+    { prompt: "把我的 Cleo 按钮调整得更清楚", threadId: "evolution-chat-fixture" },
+  ]);
+  assert.ok(!automatic.some(action => ["prepareRequest", "repairRequest", "requestPrompt"].includes(action)));
+  await page.evaluate(() => { window.failEvolutionThread = true; });
+  await page.getByTestId("composer-input").fill("连接失败后保持原需求");
+  await page.getByTestId("composer-input").press("Enter");
+  const connectionError = page.getByRole("alert").filter({ hasText: "进化连接暂时失败（测试）" });
+  await connectionError.waitFor();
+  await page.getByTestId("composer-input").fill("保留未发送的下一条草稿");
+  await connectionError.getByRole("button", { name: "重试", exact: true }).click();
+  await connectionError.waitFor({ state: "hidden" });
+  await page.waitForFunction(() => window.sentEvolutionPrompts.length === 2);
+  assert.deepEqual(await page.evaluate(() => window.sentEvolutionPrompts[1]),
+    { prompt: "连接失败后保持原需求", threadId: "evolution-chat-fixture" });
+  assert.equal(await page.getByTestId("composer-input").inputValue(), "保留未发送的下一条草稿");
+  assert.ok(!automatic.includes("begin") && !automatic.includes("build"), "Sending a request must not implicitly build or apply changes.");
   await page.evaluate(() => window.patchEvolution({
-    active: "baseline", candidate: "candidate", draftDirty: false, logs: "",
+    active: "baseline", candidate: "candidate", iteration: { base: "baseline" }, draftDirty: false, logs: "",
     validation: { status: "failed", stage: "typecheck", sourceHash: "fixture-source", repairable: true,
       message: "前端类型检查未通过。当前修改尚不可应用。请让 Cleo 修复后重新检查。",
       details: "src/components/Conversation.tsx(228,9): error TS17001: JSX elements cannot have multiple attributes with the same name." },
@@ -194,14 +208,14 @@ try {
   assert.equal(await page.locator(".evolution-log").getAttribute("open"), null);
   await page.screenshot({ path: join(output, "04-evolution-validation-failed.png") });
   await page.getByTestId("composer-input").fill("保留我的下一条需求草稿");
-  const preparedCount = automatic.filter((action) => action === "requestPrompt").length;
+  const sentCount = await page.evaluate(() => window.sentEvolutionPrompts.length);
   await page.getByRole("button", { name: "让 Cleo 修复", exact: true }).click();
-  await page.waitForFunction((before) => window.evolutionActions.filter((item) => item.action === "requestPrompt").length > before, preparedCount);
-  await page.waitForFunction(() => document.querySelectorAll(".timeline h2").length >= 2);
+  await page.waitForFunction((before) => window.sentEvolutionPrompts.length > before, sentCount);
+  await page.waitForFunction(() => document.querySelectorAll(".timeline h2").length >= 3);
   assert.equal(await page.getByTestId("composer-input").inputValue(), "保留我的下一条需求草稿");
   assert.equal(await page.getByRole("button", { name: "应用", exact: true }).count(), 0, "Agent completion cannot replace desktop validation.");
   const repaired = await page.evaluate(() => window.evolutionActions.map((item) => item.action));
-  assert.deepEqual(repaired.slice(repaired.lastIndexOf("repairPrompt")), ["repairPrompt", "repairRequest", "requestPrompt"]);
+  assert.deepEqual(repaired.slice(repaired.lastIndexOf("repairPrompt")), ["repairPrompt", "thread"]);
   await page.evaluate(() => window.patchEvolution({
     draftDirty: true, validation: { status: "failed", stage: "dependencies", repairable: false, message: "依赖准备未完成。" },
   }));

@@ -1,49 +1,40 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile, mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { readFile } from "node:fs/promises";
 import { stripTypeScriptTypes } from "node:module";
-import { EvolutionRequests } from "../electron/evolution-requests.mjs";
-import { EvolutionAcceptance } from "../electron/evolution-acceptance.mjs";
 
-test("App retry keeps the resolved thread after preparation fails in a newly opened task", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "cleo-retry-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  const store = { root, read: async () => ({ active: "base", builds: [] }) };
-  let attempts = 0;
-  const requests = new EvolutionRequests(new EvolutionAcceptance(store), async () => {
-    if (!attempts++) throw new Error("temporary model failure");
-    return { intent: "question", answer: "recovered without editing" };
-  });
+test("App retry sends unchanged instructions to the resolved task after connection failure", async () => {
   const source = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
-  // Execute the production callback, retaining its original-render closure across a retry.
-  const callback = source.slice(source.indexOf("  const sendEvolutionPrompt ="), source.indexOf("  /** Purpose: Give the original editing task"));
-  assert.ok(callback.includes("prepareRequest"));
-  const outputText = stripTypeScriptTypes(callback) + "\nreturn sendEvolutionPrompt;";
+  const start = source.indexOf("  const sendEvolutionPrompt =");
+  const end = source.indexOf("  /** Purpose: Return compiler/runtime diagnostics", start);
+  assert.ok(start >= 0 && end > start);
+  // Run the actual callback with its original-render closure, including the retry it installs.
+  const outputText = stripTypeScriptTypes(source.slice(start, end)) + "\nreturn sendEvolutionPrompt;";
   const retryEvolution = { current: () => {} };
+  const sent = [];
+  const actions = [];
   let opened = 0, issue = null;
   const evolution = { refresh: async () => {}, run: async (action, params) => {
-    if (action === "thread") return;
-    if (action === "prepareRequest") return requests.prepare(params);
-    throw new Error(`Unexpected ${action}`);
+    actions.push([action, params]);
+    assert.equal(action, "thread", "Direct conversation must not invoke the removed planning workflow");
   } };
-  const workspace = { openEvolutionThread: async (id) => ({ id }) };
-  const send = new Function("preparingEvolution", "setPreparingAcceptance", "retryEvolution", "setEvolutionIssue",
+  const workspace = { openEvolutionThread: async id => ({ id }), sendPrompt: async (prompt, thread) => {
+    sent.push({ prompt, threadId: thread.id });
+    if (sent.length === 1) throw new Error("temporary connection failure");
+  } };
+  const send = new Function("preparingEvolution", "setPreparingTurn", "retryEvolution", "setEvolutionIssue",
     "workspace", "evolutionThread", "startEvolution", "evolution", outputText)(
-    { current: false }, () => {}, retryEvolution, (value) => { issue = value; }, workspace, false,
+    { current: false }, () => {}, retryEvolution, value => { issue = value; }, workspace, false,
     async () => ({ id: `thread-${++opened}` }), evolution);
-  await send("original request", false, "same-request");
-  assert.equal(issue, "temporary model failure");
-  const original = (await requests.read()).requests[0];
+  await send("original request");
+  assert.equal(issue, "temporary connection failure");
   retryEvolution.current();
-  for (let i = 0; i < 100 && (await requests.read()).requests[0].status !== "answered"; i++) {
-    await new Promise((done) => setTimeout(done, 5));
-  }
-  assert.equal(issue, null, `Retry failed: ${issue}`);
-  const recovered = (await requests.read()).requests;
-  assert.equal(recovered.length, 1);
-  assert.equal(recovered[0].threadId, original.threadId);
-  assert.equal(recovered[0].status, "answered");
+  for (let i = 0; i < 100 && sent.length < 2; i++) await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(issue, null);
+  assert.deepEqual(sent, [
+    { prompt: "original request", threadId: "thread-1" },
+    { prompt: "original request", threadId: "thread-1" },
+  ]);
+  assert.equal(actions.length, 2);
   assert.equal(opened, 1);
 });

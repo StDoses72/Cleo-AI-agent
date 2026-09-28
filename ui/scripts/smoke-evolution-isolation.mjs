@@ -61,7 +61,6 @@ try {
     const streams = new Map();
     let stateListener = () => {};
     let releaseOpen;
-    let releasePrepare;
     const copy = (value) => structuredClone(value);
     const publish = () => stateListener(copy(state));
     const emit = (threadId, event) => {
@@ -72,7 +71,7 @@ try {
     function assertStream(stream) { if (!stream) throw new Error("Missing test stream"); }
     window.isolation = {
       workspace, streams, calls: [], listening: () => listeners.size,
-      releaseOpen: () => releaseOpen?.(), releasePrepare: () => releasePrepare?.(),
+      releaseOpen: () => releaseOpen?.(),
       chunk(threadId, text) {
         const thread = threadId === evo.id ? evo : dev;
         const item = message(`${threadId}-reply`, text);
@@ -90,12 +89,6 @@ try {
       onStreamEvent: (listener) => { listeners.add(listener); return () => listeners.delete(listener); },
       evolutionAction: async (action, params) => {
         if (action === "thread") { state.threadId = params.id; publish(); return; }
-        if (action === "prepareRequest") {
-          window.isolation.calls.push("prepare");
-          if (options.has("hold-prepare")) await new Promise((done) => { releasePrepare = done; });
-          return { id: params.id, threadId: params.threadId, prompt: params.prompt, status: "frozen" };
-        }
-        if (action === "requestPrompt") return "EVOLUTION REQUEST";
         throw new Error(`Unexpected action: ${action}`);
       },
       request: async (method, params, streamId) => {
@@ -161,7 +154,7 @@ try {
     await page.waitForFunction(() => window.isolation.listening() === 0);
     await visible("DEV HISTORY"); assert.ok(!(await content()).includes("EVOLUTION ONLY"));
   });
-  await check("late creation and preparation keep development selection and cache the new thread", "new&hold-open&hold-prepare", async () => {
+  await check("late creation keeps development selection and caches the new thread", "new&hold-open", async () => {
     await navigate("进化"); await send("create feature");
     await page.waitForFunction(() => window.isolation.calls.includes("open"));
     await navigate("开发");
@@ -169,8 +162,7 @@ try {
     await visible("DEV OTHER HISTORY");
     await page.getByTestId("composer-input").fill("DEV UNSENT DRAFT");
     await page.evaluate(() => window.isolation.releaseOpen());
-    await page.waitForFunction(() => window.isolation.calls.includes("prepare"));
-    await page.evaluate(() => window.isolation.releasePrepare()); await stream("evolution");
+    await stream("evolution");
     await page.evaluate(() => { window.isolation.chunk("evolution", "NEW EVOLUTION OUTPUT"); window.isolation.finish("evolution"); });
     await page.waitForFunction(() => window.isolation.listening() === 0);
     await visible("DEV OTHER HISTORY"); assert.equal(await page.getByTestId("composer-input").inputValue(), "DEV UNSENT DRAFT");

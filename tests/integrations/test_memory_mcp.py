@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import subprocess
 import sys
@@ -103,6 +104,29 @@ def test_codex_override_is_client_local_and_valid_toml(tmp_path, monkeypatch):
     independent_config = independent._client._sync.config
     assert "mcp_servers" not in tomllib.loads("\n".join(independent_config.config_overrides))
     assert independent_config.env["CODEX_HOME"] == str((tmp_path / "data/codex").resolve())
+
+
+@pytest.mark.parametrize("settings,granted", [
+    ({}, True), ({"runtime": "isolated"}, True),
+    ({"runtime": "host"}, True), ({"command": "custom-mcp"}, False),
+])
+@pytest.mark.parametrize("approval", ["deny_all", "user", "auto_review"])
+def test_codex_computer_grant_is_scoped_to_owned_tools(tmp_path, settings, granted, approval):
+    """Purpose: Keep desktop grants local and narrow. Input: runtime choice. Output: policy."""
+    path = tmp_path / "computer-use.json"
+    path.write_text(json.dumps(settings), encoding="utf-8")
+    before = path.read_bytes()
+    mcp = MemoryMcp(tmp_path / "memory", computer_config_path=path)
+    config = tomllib.loads("\n".join(mcp.codex_config(approval_mode=approval).config_overrides))
+    assert set(config) == {"mcp_servers"}  # Never alter global/session approval or sandbox.
+    computer = config["mcp_servers"]["cleo_computer"]
+    assert computer.get("tools", {}) == ({
+        "computer_tools": {"approval_mode": "approve" if approval == "deny_all" else "prompt"},
+        "computer_call": {"approval_mode": "approve" if approval == "deny_all" else "prompt"},
+    } if granted else {})
+    assert "tools" not in config["mcp_servers"]["cleo_memory"]
+    assert "tools" not in mcp.claude_servers()["cleo_computer"]
+    assert path.read_bytes() == before
 
 
 def test_claude_reconnect_keeps_process_local_mcp(tmp_path, monkeypatch):
@@ -218,9 +242,12 @@ def test_codex_create_resume_and_fork_preserve_mcp(tmp_path, monkeypatch):
 
     asyncio.run(exercise())
     assert len(clients) == 3
-    assert all(c.config.config_overrides[:-1] == memory.codex_config().config_overrides
-               and c.config.env["CODEX_HOME"] == str((tmp_path / "data/codex").resolve())
-               and c.closed for c in clients)
+    for client in clients:
+        mcp_overrides = tuple(value for value in client.config.config_overrides
+                              if value.startswith("mcp_servers."))
+        assert mcp_overrides == memory.codex_config().config_overrides
+        assert client.config.env["CODEX_HOME"] == str((tmp_path / "data/codex").resolve())
+        assert client.closed
 
 
 def test_claude_failed_mcp_disconnects_without_creating_session(tmp_path, monkeypatch):

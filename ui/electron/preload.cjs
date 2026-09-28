@@ -7,6 +7,13 @@ contextBridge.exposeInMainWorld("cleoWindow", {
 
 if (!process.argv.includes("--cleo-desktop-mock")) {
   contextBridge.exposeInMainWorld("cleoDesktop", {
+    onCompanionThread: listener => {
+      const handler = (_event, thread) => listener(thread);
+      ipcRenderer.on("cleo:companion-thread", handler);
+      return () => ipcRenderer.removeListener("cleo:companion-thread", handler);
+    },
+    setup: (action, params = {}) => ipcRenderer.invoke("cleo:setup", action, params),
+    computerDesktop: (action = "status", text = "") => ipcRenderer.invoke("cleo:computer-desktop", action, text),
     request: (method, params = {}, streamId = null) =>
       ipcRenderer.invoke("cleo:request", { method, params, streamId }),
     onStreamEvent: (listener) => {

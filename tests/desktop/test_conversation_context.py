@@ -322,3 +322,53 @@ class ConversationContextTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    async def test_evolution_instructions_reach_agent_but_user_sees_only_request(self):
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        from cleo.desktop.projection import timeline_from_events
+
+        service = fixtures.HarnessSwitchTests.desktop(self)
+        service._ensure_productivity_session = AsyncMock()
+        service._is_evolution = lambda manifest: True
+        service._debug = lambda *args: None
+        service._productivity_provider = lambda name: SimpleNamespace(type="codex_sdk")
+        service._runtime_profile = lambda manifest: {"contextWindow": 64000}
+        prompts = []
+        original = self.adapter.prompt
+
+        async def prompt(session_id, text, **kwargs):
+            prompts.append(text)
+            return await original(session_id, text, **kwargs)
+
+        self.adapter.prompt = prompt
+        request = (
+            "[[CLEO_ACCEPTANCE_REQUEST:r1]]\n把检查按钮放到左边\n补充：只改伴随窗口\n"
+            "继续方式与假设：按补充推进，采用可逆假设。\n"
+            "\n以下案例已经由桌面保存并冻结。实现需求，保留已有回归；不得改写预期或声称人工案例已经通过。\n"
+            "case-1 按钮位置\n操作与证据：打开窗口\n预期：在左边\n验证方式：manual"
+        )
+        events = []
+        with (
+            patch("cleo.desktop.service.create_git_checkpoint", side_effect=ValueError("not git")),
+            patch("cleo.desktop.service.read_git_diff", return_value=""),
+        ):
+            await service._stream_productivity(
+                self.store.load_manifest(self.id), request, [],
+                AsyncMock(side_effect=events.append),
+            )
+        visible = "把检查按钮放到左边\n补充：只改伴随窗口"
+        self.assertTrue(prompts[0].startswith("Cleo self-iteration requirements:"))
+        self.assertIn("case-1 按钮位置", prompts[0])
+        started = next(event for event in events if event["type"] == "turn-started")
+        self.assertEqual(started["item"]["content"], visible)
+        saved = self.store.read_events(self.id)
+        user = [event for event in saved if event["type"] == "user_message"][-1]
+        self.assertIn("Cleo self-iteration requirements:", user["content"])
+        self.assertEqual(user["data"]["display_prompt"], visible)
+        messages = [item for item in timeline_from_events(saved) if item.get("role") == "user"]
+        self.assertEqual(messages[-1]["content"], visible)
+        for text in (item["content"] for item in timeline_from_events(saved)):
+            self.assertNotIn("self-iteration requirements", text)
+            self.assertNotIn("CLEO_ACCEPTANCE_REQUEST", text)

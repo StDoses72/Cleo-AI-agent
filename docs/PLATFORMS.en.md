@@ -61,3 +61,9 @@ Windows uses `scripts/build-release.ps1`; macOS/Linux use `scripts/build-release
 | Linux portable | `release-linux-x64.json` | `Cleo-linux-x64.sha256` |
 
 Upload each package with its matching manifest and checksum. The Debian package has its own `Cleo-linux-x64.deb.sha256` and uses the package manager rather than a portable manifest. See [development and releases (Chinese)](DEVELOPMENT.md) for maintainer details.
+
+## Release validation
+
+`Desktop platforms` builds all four native targets and checks that each packaged application opens a rendered window with a fresh temporary profile. Linux also checks `.deb` installation. Publication verifies the tag, versions, dependency snapshot, assets and SHA-256 checksums.
+
+Feature tests remain available for development but are not release gates. Adding or removing product features does not require preserving old buttons or workflows. Automatic repair runs `npm --prefix ui run check:release` for compilation only and must preserve the selected version's behavior.

@@ -526,7 +526,10 @@ class SessionStore:
                             event.get("type") == "user_message"
                             or event.get("actor") == "user"
                         ):
-                            title = _automatic_title(event.get("content"))
+                            # Generated instructions are internal; title from what the user sees.
+                            data = event.get("data")
+                            display = data.get("display_prompt") if isinstance(data, dict) else None
+                            title = _automatic_title(display or event.get("content"))
                             if title:
                                 manifest["title"] = title
                                 break

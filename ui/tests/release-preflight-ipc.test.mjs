@@ -21,6 +21,8 @@ test("automatic release preflight leaves conversations available and never dispa
   vm.runInNewContext(`${allowlist}\n${main.slice(requestStart, requestEnd)}\n${main.slice(start, end)}`, {
     ipcMain: { handle: (name, callback) => { handlers.set(name, callback); } },
     programUpdates: program,
+    setup: { busy: false },
+    companion: { controlling: false },
     backend: { pending: new Map([["running-task", {}]]), request: async (method, params) => {
       if (method === "is_evolution_thread") return params.thread_id === "evolution";
       if (method === "stream_turn") return "ordinary task started";

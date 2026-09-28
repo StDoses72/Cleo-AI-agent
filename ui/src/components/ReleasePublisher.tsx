@@ -11,7 +11,10 @@ interface Props {
   onAction: (action: string, params?: Record<string, unknown>) => void | Promise<unknown>;
   onBusy?: (busy: boolean) => void;
   onStarted?: () => void;
+  onContribute?: (buildId: string) => void;
 }
+
+interface ReleaseSource { key: string; build?: EvolutionBuild; pr?: EvolutionPullRequest }
 
 const versionPattern = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 
@@ -23,11 +26,43 @@ function sourceLabel(pr: EvolutionPullRequest, builds: EvolutionBuild[]) {
   return `PR #${pr.number || pr.url.split("/").at(-1)} · ${name}${version ? ` (${version})` : ""} · ${pr.targetBranch || "目标分支待核验"}`;
 }
 
-/** Input: registered PRs and desktop actions. Output: a single-click remote-source release form. */
-export function ReleasePublisher({ state, busy, initialUrl = "", buildId, onAction, onBusy, onStarted }: Props) {
+/** Input: a retained local build. Output: the name users gave it, or where it came from. */
+function buildLabel(build: EvolutionBuild, state: EvolutionState | null) {
+  const saved = build.savedAt && !Number.isNaN(new Date(build.savedAt).getTime())
+    ? `本地版 · ${new Date(build.savedAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}` : "";
+  const name = build.name || saved || (build.id === state?.active ? "当前运行的版本" : build.id === state?.candidate ? "待应用的修改" : `本地版本 ${build.id}`);
+  return `${name}${build.version ? ` (${build.version})` : ""}`;
+}
+
+/** Input: evolution state. Output: local versions (each with its best PR), then PR versions whose local copy was pruned. */
+function releaseSources(state: EvolutionState | null) {
   const history = [...(state?.pullRequests || []), ...(state?.pullRequest ? [state.pullRequest] : [])]
     .filter((pr, index, all) => all.findIndex(item => item.url === pr.url) === index);
-  const [url, setUrl] = useState(() => initialUrl || history.find(pr => buildId && pr.buildId === buildId)?.url || "");
+  const builds = (state?.builds || []).filter(build => build.kind === "local" && (build.sourceHash || build.importHash)
+    && (build.savedAt || build.id === state?.active || build.id === state?.candidate || history.some(pr => pr.buildId === build.id)));
+  // Prefer a merged PR, then the most recent submission for the same local version.
+  const prFor = (id: string) => history.filter(pr => pr.buildId === id)
+    .sort((a, b) => Number(b.merged) - Number(a.merged) || String(b.submittedAt || "").localeCompare(String(a.submittedAt || "")))[0];
+  const locals: ReleaseSource[] = builds.map(build => ({ key: `build:${build.id}`, build, pr: prFor(build.id) }));
+  const others: ReleaseSource[] = history.filter(pr => !builds.some(build => build.id === pr.buildId)).map(pr => ({ key: `pr:${pr.url}`, pr }));
+  return { history, locals, others };
+}
+
+const prState = (pr?: EvolutionPullRequest) => !pr ? "未提交 PR" : `PR #${pr.number || pr.url.split("/").at(-1)} ${pr.merged ? "已合并" : "待合并"}`;
+
+/** Input: retained local versions, their PRs and desktop actions. Output: choose a local version, then one-click release. */
+export function ReleasePublisher({ state, busy, initialUrl = "", buildId, onAction, onBusy, onStarted, onContribute }: Props) {
+  const { history, locals, others } = releaseSources(state);
+  const [choice, setChoice] = useState(() => {
+    const initial = history.find(pr => pr.url === initialUrl);
+    if (initial) return locals.find(source => source.build?.id === initial.buildId)?.key || `pr:${initial.url}`;
+    return locals.find(source => source.build?.id === buildId)?.key || "";
+  });
+  const source = [...locals, ...others].find(item => item.key === choice);
+  const [url, setUrl] = useState(() => {
+    const initial = history.find(pr => pr.url === initialUrl);
+    return initial ? initial.url : source?.pr?.url || "";
+  });
   const [tag, setTag] = useState("");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -76,13 +111,21 @@ export function ReleasePublisher({ state, busy, initialUrl = "", buildId, onActi
   };
   return <section ref={check.root} className="release-publisher" aria-label="创建 GitHub Release">
     <p>自动构建各平台安装包，失败时尝试修复，完成后发布到 GitHub。</p>
-    <label>发布来源<select aria-label="发布来源 PR" disabled={locked} value={url} onChange={event => {
-      setUrl(event.target.value); setResult(false); setError("");
+    <label>发布本地版本<select aria-label="发布本地版本" disabled={locked} value={choice} onChange={event => {
+      const next = [...locals, ...others].find(item => item.key === event.target.value);
+      setChoice(event.target.value); setUrl(next?.pr?.url || ""); setResult(false); setError("");
     }}>
-      <option value="">请选择 PR 对应版本</option>
-      {history.map(pr => <option key={pr.url} value={pr.url}>{sourceLabel(pr, state?.builds || [])} · {pr.merged ? "已合并" : "合并状态待核验"}</option>)}
+      <option value="">请选择要发布的本地版本</option>
+      {locals.length > 0 && <optgroup label="本地版本">
+        {locals.map(item => <option key={item.key} value={item.key}>{buildLabel(item.build!, state)} · {prState(item.pr)}</option>)}
+      </optgroup>}
+      {others.length > 0 && <optgroup label="其他 PR 版本（本地副本已清理）">
+        {others.map(item => <option key={item.key} value={item.key}>{sourceLabel(item.pr!, state?.builds || [])} · {item.pr!.merged ? "已合并" : "合并状态待核验"}</option>)}
+      </optgroup>}
     </select></label>
-    {!history.length && <p role="status">暂无已记录的 PR，请先完成 PR 提交。</p>}
+    {!locals.length && !others.length && <p role="status">暂无可发布的本地版本，请先保存版本并通过 PR 合并。</p>}
+    {source?.build && !source.pr && <p role="status" className="release-needs-pr">此版本还没有 PR。Release 只发布已合并到 GitHub 仓库的源码，请先为它提交 PR，合并后再发布。
+      {onContribute && <button type="button" disabled={locked} onClick={() => onContribute(source.build!.id)}>为此版本新建 PR</button>}</p>}
     {receipt && <a href={url} target="_blank" rel="noreferrer">查看 PR</a>}
     <form noValidate onSubmit={event => { event.preventDefault(); void publish(); }}>
       <label>发布版本号<input aria-label="版本标签" value={tag} disabled={locked || !!result} required maxLength={100} placeholder="v1.2.3"

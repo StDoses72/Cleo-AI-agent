@@ -13,8 +13,10 @@ from deepagents.backends import CompositeBackend, FilesystemBackend
 from langchain.chat_models import init_chat_model
 from langgraph.checkpoint.memory import InMemorySaver
 
+from cleo.agents.computer_images import ComputerImagesMiddleware
 from cleo.agents.tools.browser_tools import get_browser_tools
 from cleo.agents.tools.codex_tools import create_codex_tools
+from cleo.agents.tools.computer_tools import get_computer_tools
 from cleo.agents.tools.memory_tools import create_memory_tools
 from cleo.agents.tools.shell_tools import create_shell_command_tool
 from cleo.agents.tools.web_search_tools import get_web_search_tools
@@ -100,6 +102,7 @@ def chat_tools(root_dir: Path) -> list:
         *create_codex_tools(root_dir),
         *get_web_search_tools(),
         *get_browser_tools(),
+        *get_computer_tools(),
         *create_memory_tools(settings.MEMORY_DIR, settings.SESSION_INDEX_PATH),
     ]
 
@@ -209,6 +212,7 @@ class Agent:
             checkpointer=InMemorySaver(),
             system_prompt=system_prompt,
             tools=self.tool_list,
+            middleware=[ComputerImagesMiddleware()],
             interrupt_on=None,
             backend=self.backend,
             skills=[f"{cleo_prefix}/skills"],

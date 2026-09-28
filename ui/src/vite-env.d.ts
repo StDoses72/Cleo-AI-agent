@@ -6,6 +6,9 @@ interface Window {
     setTheme(theme: "dark" | "light"): void;
   };
   cleoDesktop?: {
+    onCompanionThread?(listener: (thread: import("./types").Thread) => void): () => void;
+    setup?(action: "startup" | "status" | "scan" | "install" | "dismiss", params?: Record<string, unknown>): Promise<import("./components/DependencySetup").SetupState>;
+    computerDesktop(action?: "status" | "start" | "take" | "release" | "stop" | "text" | "select", text?: string): Promise<import("./components/ComputerPreview").DesktopState>;
     request<T = unknown>(method: string, params?: Record<string, unknown>, streamId?: string | null): Promise<T>;
     onStreamEvent(listener: (payload: { streamId: string; event: unknown }) => void): () => void;
     pickAttachments(): Promise<import("./types").Attachment[]>;

@@ -174,7 +174,31 @@ export interface LocalSkill {
   path: string;
 }
 
+/** One skill, agent, command, rule, prompt or instruction file compared across both sides. */
+export interface HarnessSyncItem {
+  id: string;
+  kind: string;
+  name: string;
+  state: "same" | "different" | "local_only" | "cleo_only";
+}
+
+/** Cleo's own harness directory compared with the local Claude/Codex setup. */
+export interface HarnessSyncStatus {
+  harness: "claude" | "codex";
+  localPath: string;
+  localExists: boolean;
+  cleoPath: string;
+  items: HarnessSyncItem[];
+  settings: { file: string; missingInCleo: string[] };
+}
+
+export interface HarnessSyncResult {
+  copied: string[];
+  skipped: string[];
+}
+
 export interface Thread {
+  canUndo?: boolean;
   currentTiming?: TimingSummary | null;
   timingError?: string | null;
   steerReady?: boolean;
@@ -254,8 +278,10 @@ export interface RuntimeProfile {
   steerMode?: "native" | "boundary";
   settingsRevision?: number;
   permissionOptions?: {
-    access: { value: string; label: string; description: string }[];
-    approval: { value: string; label: string; description: string }[];
+    access: { value: string; label: string; description: string; disabledReason?: string | null }[];
+    approval: { value: string; label: string; description: string; disabledReason?: string | null }[];
+    presets?: { value: string; label: string; description: string;
+      update: { approval: string; access?: string }; disabledReason?: string | null }[];
     reason?: string;
   };
   pendingPermissions?: { provider: string; access?: string | null; approval?: string | null } | null;
@@ -276,6 +302,7 @@ export interface RuntimeProfile {
 
 export type RuntimeUpdate = Partial<Pick<RuntimeProfile, "model" | "effort" | "serviceTier" | "access" | "approval" | "profileId">> & {
   discardPendingPermissions?: boolean;
+  permissionProvider?: string;
 };
 
 export interface RuntimeModelOption {
@@ -497,6 +524,7 @@ export interface MemoryOverview {
 }
 
 export interface WorkspaceSnapshot {
+  selectedProjectId?: string;
   projects: Project[];
   threads: Thread[];
   memories: MemoryEntry[];
@@ -568,6 +596,8 @@ export interface CleoClient {
   getRuntimeCatalog(): Promise<RuntimeCatalog>;
   getProductivityModels(provider: string, projectPath?: string): Promise<ProductivityModelCatalog>;
   getLocalSkills(provider: string, projectPath?: string): Promise<LocalSkill[]>;
+  getHarnessSync(): Promise<HarnessSyncStatus[]>;
+  syncHarnessItems(harness: string, direction: "import" | "export", items: string[], settings?: boolean): Promise<HarnessSyncResult>;
   saveModelProfile(profile: ModelProfileInput): Promise<ModelSettings>;
   saveDreamSettings(selection: string, model?: string): Promise<ModelSettings>;
   checkModelConnection(connection: Partial<ModelConnectionInput> & { profileId?: string }): Promise<ModelConnectionProbe>;

@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
+import { Upload } from "lucide-react";
 import { useAutomaticRead } from "../useAutomaticRead";
 import type { EvolutionBranchRequest, EvolutionState } from "../evolution-types";
 import { ContributionMerge } from "./ContributionMerge";
-import { ReleasePublisher } from "./ReleasePublisher";
 
 interface Props {
   state: EvolutionState | null;
@@ -10,16 +10,19 @@ interface Props {
   onAction: (action: string, params?: Record<string, unknown>) => void | Promise<unknown>;
   onBusy: (busy: boolean) => void;
   onSubmitted: (url: string) => void;
+  /** Open the release dialog, preselecting the local version chosen here. */
+  onRelease?: (buildId: string) => void;
+  initialBuildId?: string;
 }
 const forbidden = (value: string) => ["main", "submission-base"].includes(value.trim().replace(/^refs\/heads\//, "").toLowerCase());
 
 /** Purpose: Separate a fork PR from an application for an upstream target branch.
  * Input: saved versions, controller actions. Output: explicit target/version selection and truthful application receipts.
  */
-export function EvolutionContribution({ state, busy, onAction, onBusy, onSubmitted }: Props) {
+export function EvolutionContribution({ state, busy, onAction, onBusy, onSubmitted, onRelease, initialBuildId }: Props) {
   const [mode, setMode] = useState("existing");
   const [target, setTarget] = useState("");
-  const [buildId, setBuildId] = useState(state?.candidate || state?.active || "");
+  const [buildId, setBuildId] = useState(initialBuildId || state?.candidate || state?.active || "");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [pending, setPending] = useState(false);
@@ -59,6 +62,10 @@ export function EvolutionContribution({ state, busy, onAction, onBusy, onSubmitt
     finally { inFlight.current = false; setPending(false); onBusy(false); }
   };
   return <section ref={catalog.root} aria-label="贡献提交">
+    {state?.githubAuth?.repositoryAccess?.canRelease && onRelease && <div className="evolution-release-entry">
+      <span>有仓库发布权限：可以把本地版本直接发布为 GitHub Release。</span>
+      <button type="button" className="evolution-primary" disabled={locked} onClick={() => onRelease(buildId)}><Upload size={14} />Release</button>
+    </div>}
     <p>提交至 StDoses72/Cleo-AI-agent，由维护者审查。</p>
     <label>提交方式<select aria-label="提交方式" value={mode} disabled={pending} onChange={(e) => { change(); setMode(e.target.value); setTarget(""); }}>
       <option value="existing">向已有分支提交 PR</option>
@@ -99,10 +106,6 @@ export function EvolutionContribution({ state, busy, onAction, onBusy, onSubmitt
       <p>通过自己的 fork 提交完整源码。接收分支须由维护者从 submission-base 创建并保持为空；main 与模板分支不可直接提交。</p>
       {version?.sourceOrigin === "bundled-import" && <p>此版本的随包源码已核验；这不代表后续构建和测试已通过。</p>}
     </details>
-    {state?.githubAuth?.repositoryAccess?.canRelease && <details className="evolution-release">
-      <summary>直接创建 Release</summary>
-      <ReleasePublisher key={buildId} state={state} buildId={buildId} busy={locked} onAction={onAction} onBusy={onBusy} />
-    </details>}
     {receipt?.url && <p role="status">申请已提交，目标分支尚待创建。<a href={receipt.url} target="_blank" rel="noreferrer">查看申请</a></p>}
     {Boolean(state?.branchRequests?.length) && <div className="evolution-pr-history" aria-label="目标分支申请">
       <h3>目标分支申请</h3>

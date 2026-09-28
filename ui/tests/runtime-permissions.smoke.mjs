@@ -24,6 +24,11 @@ try {
       provider: "codex", model: "test-model", effort: "high", access: "workspace-write", approval: "auto_review",
       settingsRevision: 0, pendingPermissions: null,
       permissionOptions: {
+        presets: [
+          { value: "ask", label: "请求批准", description: "由你确认", update: { approval: "user", access: "workspace-write" } },
+          { value: "review", label: "帮我审批", description: "由 harness 审查", update: { approval: "auto_review", access: "workspace-write" } },
+          { value: "full", label: "完全访问", description: "无需常规审批", update: { approval: "deny_all", access: "full-access" } },
+        ],
         access: [
           { value: "read-only", label: "只读", description: "默认只读，超出范围的操作由审批策略决定。" },
           { value: "workspace-write", label: "工作区可写", description: "默认允许写入工作目录，额外访问由审批策略决定。" },
@@ -54,7 +59,7 @@ try {
           if (control.fail) throw new Error("权限未保存：服务暂时不可用");
           const thread = fixture.threads.find(thread => thread.id === params.thread_id);
           const current = thread.runtime;
-          const { discardPendingPermissions, ...changes } = params.update;
+          const { discardPendingPermissions, permissionProvider, ...changes } = params.update;
           thread.runtime = { ...current, settingsRevision: current.settingsRevision + 1 };
           if (discardPendingPermissions) thread.runtime.pendingPermissions = null;
           else if (control.running) thread.runtime.pendingPermissions = { provider: current.provider, ...current.pendingPermissions, ...changes };
@@ -73,6 +78,25 @@ try {
   }, snapshot);
   await page.goto(server.resolvedUrls.local[0]);
   await page.getByTestId("composer-input").waitFor();
+  const preset = page.getByTestId("permission-selector");
+  const presetSettled = () => preset.and(page.locator(":enabled")).waitFor();
+  assert.equal(await preset.inputValue(), "review");
+  await preset.selectOption("full"); await presetSettled();
+  assert.deepEqual(await page.evaluate(() => window.permissionTest.calls.at(-1).update),
+    { approval: "deny_all", access: "full-access", permissionProvider: "codex" });
+  await preset.selectOption("ask"); await presetSettled();
+  assert.deepEqual(await page.evaluate(() => window.permissionTest.calls.at(-1).update),
+    { approval: "user", access: "workspace-write", permissionProvider: "codex" });
+  await page.evaluate(() => { window.permissionTest.fail = true; });
+  await preset.selectOption("full"); await presetSettled();
+  assert.equal(await preset.inputValue(), "ask", "A rejected mode must not appear effective");
+  await page.getByRole("alert").getByText("权限未保存：服务暂时不可用").waitFor();
+  await page.evaluate(() => { window.permissionTest.fail = false; window.permissionTest.running = true; });
+  await preset.selectOption("review"); await presetSettled();
+  await page.getByText("下轮生效 · 当前：请求批准", { exact: true }).waitFor();
+  await page.evaluate(() => { window.permissionTest.running = false; });
+  await preset.selectOption("review"); await presetSettled();
+  if (process.env.CLEO_SMOKE_OUTPUT) await page.screenshot({ path: join(process.env.CLEO_SMOKE_OUTPUT, "session-permissions.png") });
   const settings = page.getByRole("dialog", { name: "设置", exact: true });
   const open = async () => {
     await page.getByRole("button", { name: "设置", exact: true }).click();

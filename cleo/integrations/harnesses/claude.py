@@ -16,6 +16,7 @@ from claude_agent_sdk import (
     PermissionResultAllow,
     PermissionResultDeny,
     ResultMessage,
+    SystemMessage,
     TextBlock,
     ThinkingBlock,
     ToolResultBlock,
@@ -28,8 +29,13 @@ from cleo.harnesses.control import HarnessModel, SessionOptions
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 from cleo.harnesses.provider import ProviderSession, ProviderTurn
 from cleo.harnesses.questions import QuestionBroker, normalize_questions
+from cleo.integrations.harness_home import (
+    CLAUDE_LOGIN_HINT,
+    claude_environment,
+    claude_session_is_external,
+)
 from cleo.integrations.harnesses.memory import MemoryMcp
-from cleo.integrations.runtime_diagnostics import diagnostic_text
+from cleo.integrations.runtime_diagnostics import CLAUDE_MESSAGE_BUFFER_BYTES, diagnostic_text
 
 ClaudePermissionMode = Literal[
     "default",
@@ -59,9 +65,13 @@ class _ClaudeRuntime:
     native_session_id: str | None = None
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     active: bool = False
+    needs_reconnect: bool = False
     context_binding: Any = None
     questions: QuestionBroker = field(default_factory=lambda: QuestionBroker("claude"))
     approvals: PermissionBroker = field(default_factory=lambda: PermissionBroker("claude"))
+    permission_verified: bool = False
+    # Sessions created before isolation keep resuming from the user's own Claude directory.
+    external_home: bool = False
 
 
 class ClaudeProvider:
@@ -135,7 +145,10 @@ class ClaudeProvider:
             ``ProviderSession``, id 为本地生成的新逻辑 id, native_id 为传入的
             原生 session id; 由 AgentAdapter 记录并用于后续路由。
         """
-        runtime = await self._connect(project_path, model, resume=native_session_id)
+        runtime = await self._connect(
+            project_path, model, resume=native_session_id,
+            external_home=claude_session_is_external(native_session_id),
+        )
         runtime.native_session_id = native_session_id
         session_id = f"claude_{secrets.token_hex(6)}"
         self._sessions[session_id] = runtime
@@ -146,6 +159,7 @@ class ClaudeProvider:
         from cleo.integrations.claude_cli import process_options, stop_process
 
         runtime = self._sessions[session_id]
+        external = getattr(runtime, "external_home", False)
         transport = getattr(runtime.client, "_transport", None)
         cli = getattr(transport, "_cli_path", None)
         if not cli:
@@ -155,7 +169,7 @@ class ClaudeProvider:
             "auth",
             "status",
             cwd=runtime.cwd,
-            env=dict(os.environ),
+            env=claude_environment(dict(os.environ), external=external),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             **process_options(),
@@ -172,7 +186,10 @@ class ClaudeProvider:
                 or status.get("loggedIn") is not True
             ):
                 detail = diagnostic_text(stderr.decode("utf-8", errors="replace"))
-                raise ValueError("Claude 登录检查未通过，原 harness 保持不变。" + detail)
+                raise ValueError(
+                    "Claude 登录检查未通过，原 harness 保持不变。"
+                    + ("" if external else CLAUDE_LOGIN_HINT) + detail
+                )
         finally:
             await stop_process(process)
 
@@ -186,7 +203,10 @@ class ClaudeProvider:
     async def resume_context_session(self, native_id, project_path, model, binding):
         if self._memory_mcp is None:
             raise ValueError("Claude context reader is not configured")
-        runtime = await self._connect(project_path, model, resume=native_id, context=binding)
+        runtime = await self._connect(
+            project_path, model, resume=native_id, context=binding,
+            external_home=claude_session_is_external(native_id),
+        )
         runtime.native_session_id = native_id
         session_id = f"claude_{secrets.token_hex(6)}"
         self._sessions[session_id] = runtime
@@ -205,7 +225,10 @@ class ClaudeProvider:
         approval_mode: str | None = None,
         sandbox: str | None = None,
     ) -> SessionOptions:
-        """Apply Claude model, effort, and permission changes to later turns."""
+        """Purpose: Apply options with native startup flags when permission policy changes.
+
+        Input: Session ID and requested options. Output: Applied options; resumed history is kept.
+        """
         runtime = self._sessions[session_id]
         if effort is not None and effort not in CLAUDE_EFFORTS:
             raise ValueError(f"Unsupported Claude effort: {effort}")
@@ -220,24 +243,20 @@ class ClaudeProvider:
             next_model = current.model if model is None else model
             next_effort = current.effort if effort is None else effort
             next_permission = current.approval_mode if approval_mode is None else approval_mode
-            if effort is not None and effort != current.effort:
-                replacement = await self._connect(
-                    runtime.cwd,
-                    next_model,
-                    effort=next_effort,
-                    resume=runtime.native_session_id,
-                    permission_mode=next_permission,
-                    **({"context": runtime.context_binding} if runtime.context_binding else {}),
-                )
-                await runtime.client.disconnect()
-                runtime.client = replacement.client
-                replacement.questions.enabled = runtime.questions.enabled
-                runtime.questions = replacement.questions
-                replacement.approvals.enabled = runtime.approvals.enabled
-                runtime.approvals = replacement.approvals
+            reconnect = runtime.needs_reconnect or (
+                effort is not None and effort != current.effort
+            ) or (
+                next_permission != current.approval_mode
+                and "bypassPermissions" in {next_permission, current.approval_mode}
+            )
+            # Claude rejects entering bypass mode unless its process launched with that flag.
+            # Leaving it also gets a fresh process without the permissive startup option.
+            if reconnect:
+                await self._reconnect_runtime(runtime, next_model, next_effort, next_permission)
             elif model is not None and model != current.model:
                 await runtime.client.set_model(model)
-            if approval_mode is not None and approval_mode != current.approval_mode:
+            if not reconnect and approval_mode is not None \
+                    and approval_mode != current.approval_mode:
                 await runtime.client.set_permission_mode(approval_mode)
             runtime.options = SessionOptions(
                 model=next_model,
@@ -245,6 +264,30 @@ class ClaudeProvider:
                 approval_mode=next_permission,
             )
         return runtime.options
+
+    async def _reconnect_runtime(self, runtime, model, effort, permission_mode):
+        """Purpose: Replace an SDK stream while retaining history, scope and UI brokers.
+
+        Input: Existing runtime and desired launch options. Output: Fresh connected process.
+        """
+        replacement = await self._connect(
+            runtime.cwd, model, effort=effort, resume=runtime.native_session_id,
+            permission_mode=permission_mode,
+            **({"context": runtime.context_binding} if runtime.context_binding else {}),
+            **({"external_home": True} if runtime.external_home else {}),
+        )
+        try:
+            await runtime.client.disconnect()
+        except BaseException:
+            await replacement.client.disconnect()
+            raise
+        runtime.client = replacement.client
+        replacement.questions.enabled = runtime.questions.enabled
+        runtime.questions = replacement.questions
+        replacement.approvals.enabled = runtime.approvals.enabled
+        runtime.approvals = replacement.approvals
+        runtime.permission_verified = replacement.permission_verified
+        runtime.needs_reconnect = False
 
     async def list_models(self, project_path: str = ".") -> tuple[HarnessModel, ...]:
         """Purpose: Combine live Claude choices with explicitly configured model IDs.
@@ -254,7 +297,9 @@ class ClaudeProvider:
         """
         from cleo.integrations.harnesses.claude_models import discover_claude_models
 
-        discovered = await discover_claude_models(project_path)
+        discovered = await discover_claude_models(
+            project_path, env=claude_environment(dict(os.environ)),
+        )
         models = {model.id: model for model in discovered}
         configured = tuple(
             HarnessModel(
@@ -297,6 +342,9 @@ class ClaudeProvider:
         result_message: ResultMessage | None = None
 
         async with runtime.lock:
+            if runtime.needs_reconnect:
+                await self._reconnect_runtime(runtime, runtime.options.model,
+                                              runtime.options.effort, runtime.options.approval_mode)
             runtime.active = True
 
             async def question_event(event):
@@ -311,7 +359,11 @@ class ClaudeProvider:
             try:
                 await runtime.client.query(prompt)
                 async for message in runtime.client.receive_response():
-                    if isinstance(message, AssistantMessage):
+                    if isinstance(message, SystemMessage) and message.subtype == "init":
+                        native_id = message.data.get("session_id")
+                        if isinstance(native_id, str) and native_id:
+                            runtime.native_session_id = native_id
+                    elif isinstance(message, AssistantMessage):
                         for block in message.content:
                             event = self._block_event(block)
                             if event is None:
@@ -352,6 +404,12 @@ class ClaudeProvider:
                                 request, "decline", source="native_policy",
                                 policy=runtime.options.approval_mode,
                             )
+            except BaseException:
+                # A stopped or broken stream may retain denials and its final ResultMessage.
+                # A later query must resume history on a new stream, never consume that tail.
+                runtime.needs_reconnect = True
+                await runtime.client.disconnect()
+                raise
             finally:
                 await runtime.questions.cancel_all()
                 runtime.questions.callback = None
@@ -427,6 +485,15 @@ class ClaudeProvider:
     async def enable_user_approvals(self, session_id: str) -> None:
         self._sessions[session_id].approvals.enabled = True
 
+    def permission_capabilities(self, session_id: str) -> dict:
+        """Purpose: Describe native verification without inventing a supported-mode list.
+
+        Input: Connected session ID. Output: A note distinguishing current mode from auto support.
+        """
+        verified = self._sessions[session_id].permission_verified
+        return {"reason": ("已核对 Claude 当前权限。" if verified else "") +
+                "切换时由 Claude 检查；帮我审批的可用性取决于客户端、模型和账号。"}
+
     async def resolve_approval(self, session_id: str, approval_id: str, decision: str) -> dict:
         return await self._sessions[session_id].approvals.resolve(approval_id, decision)
 
@@ -438,6 +505,7 @@ class ClaudeProvider:
         resume: str | None = None,
         permission_mode: ClaudePermissionMode | None = None,
         context=None,
+        external_home: bool = False,
     ) -> _ClaudeRuntime:
         """创建并连接一个 ``ClaudeSDKClient``。
 
@@ -446,6 +514,8 @@ class ClaudeProvider:
                 ``resume_session``。
             model: 模型 id; 为 None 时回落到 ``default_model``。
             resume: 原生 session id, 由 ``resume_session`` 传入, 用于恢复会话。
+            external_home: 仅隔离前创建的会话为 True, 沿用用户原 Claude 目录;
+                其余会话固定使用 ``<CLEO_HOME>/data/claude``。
         返回:
             ``_ClaudeRuntime``, 由调用方登记进 ``_sessions``。
         """
@@ -510,19 +580,36 @@ class ClaudeProvider:
             else self._memory_mcp
         )
         options = ClaudeAgentOptions(
+            max_buffer_size=CLAUDE_MESSAGE_BUFFER_BYTES,
             cwd=project_path,
             # Native discovery keeps explicit-only and automatic skills distinct.
             setting_sources=["user", "project"],
             model=model or self._default_model,
             effort=effort,
             permission_mode=permission_mode or self._permission_mode,
+            extra_args={"dangerously-skip-permissions": None}
+            if (permission_mode or self._permission_mode) == "bypassPermissions" else {},
             resume=resume,
+            # The SDK overlays this onto the inherited environment.
+            env=claude_environment(external=external_home),
             mcp_servers=memory.claude_servers() if memory else {},
             can_use_tool=can_use_tool,
             hooks={"PreToolUse": [HookMatcher(matcher="AskUserQuestion", hooks=[ask_hook])]},
         )
         client = ClaudeSDKClient(options=options)
         await client.connect()
+        verified = False
+        try:
+            describe = getattr(client, "get_server_info", None)
+            info = await describe() if callable(describe) else None
+            actual = info.get("current_permission_mode") if isinstance(info, dict) else None
+            if actual is not None and actual != options.permission_mode:
+                raise ValueError(f"Claude 未应用所选权限：请求 {options.permission_mode}，"
+                                 f"实际 {actual}。")
+            verified = actual is not None
+        except BaseException:
+            await client.disconnect()
+            raise
         if self._memory_mcp:
             try:
                 async with asyncio.timeout(30):
@@ -559,7 +646,9 @@ class ClaudeProvider:
             cwd=project_path,
             questions=questions,
             approvals=approvals,
+            permission_verified=verified,
             context_binding=context,
+            external_home=external_home,
         )
 
     def _block_event(self, block: object) -> AgentEvent | None:

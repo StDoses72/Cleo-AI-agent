@@ -1,4 +1,6 @@
 import type {
+  HarnessSyncResult,
+  HarnessSyncStatus,
   LocalSkill,
   Attachment,
   ApprovalDecision,
@@ -34,6 +36,14 @@ export class IpcCleoClient implements CleoClient {
 
   getLocalSkills(provider: string, projectPath?: string): Promise<LocalSkill[]> {
     return this.bridge.request("get_local_skills", { provider, project_path: projectPath });
+  }
+
+  getHarnessSync(): Promise<HarnessSyncStatus[]> {
+    return this.bridge.request("get_harness_sync");
+  }
+
+  syncHarnessItems(harness: string, direction: "import" | "export", items: string[], settings = false): Promise<HarnessSyncResult> {
+    return this.bridge.request("sync_harness_items", { harness, direction, items, settings });
   }
 
   async loadWorkspace(): Promise<WorkspaceSnapshot> {

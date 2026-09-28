@@ -77,6 +77,7 @@ def build_agent_adapter(
     session_store: SessionStore | None = None,
     space: str = "productivity",
     owner_type: str = "agent",
+    computer_config_path: Path | None = None,
 ) -> AgentAdapter:
     """Build an AgentAdapter and register every enabled configured provider.
 
@@ -106,6 +107,7 @@ def build_agent_adapter(
     memory_mcp = MemoryMcp(
         session_store.memory_root if session_store is not None else Path(project_root) / "memory",
         session_store.index_path if session_store is not None else None,
+        computer_config_path=computer_config_path,
     )
     for name, provider_settings in productivity.providers.items():
         if provider_settings.enabled:

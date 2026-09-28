@@ -1,4 +1,6 @@
 import type {
+  HarnessSyncResult,
+  HarnessSyncStatus,
   CleoClient,
   AgentInstructions,
   Attachment,
@@ -35,6 +37,19 @@ const delay = (milliseconds: number) =>
 const clone = <T,>(value: T): T => structuredClone(value);
 
 export class MockCleoClient implements CleoClient {
+  private harnessSync: HarnessSyncStatus[] = [
+    { harness: "claude", localPath: "C:\\Users\\demo\\.claude", localExists: true, cleoPath: "C:\\Users\\demo\\AppData\\Local\\Cleo\\data\\claude",
+      items: [
+        { id: "skills/grill", kind: "skills", name: "grill", state: "local_only" },
+        { id: "skills/eli5", kind: "skills", name: "eli5", state: "same" },
+        { id: "skills/review", kind: "skills", name: "review", state: "cleo_only" },
+      ], settings: { file: "settings.json", missingInCleo: ["theme"] } },
+    { harness: "codex", localPath: "C:\\Users\\demo\\.codex", localExists: true, cleoPath: "C:\\Users\\demo\\AppData\\Local\\Cleo\\data\\codex",
+      items: [
+        { id: "skills/pdf", kind: "skills", name: "pdf", state: "different" },
+        { id: "rules/default.rules", kind: "rules", name: "default.rules", state: "same" },
+      ], settings: { file: "config.toml", missingInCleo: [] } },
+  ];
   private modelSettings: ModelSettings = {
     profiles: [
       { name: "deepseek-flash", displayName: "DeepSeek · 日常", provider: "openai", model: "deepseek-v4-flash", models: ["deepseek-v4-flash", "deepseek-reasoner"], baseUrl: "https://api.deepseek.com", maxTokens: 100000, hasApiKey: true },
@@ -188,7 +203,7 @@ export class MockCleoClient implements CleoClient {
         removable: true,
       });
     }
-    return clone(snapshot);
+    return { ...clone(snapshot), selectedProjectId: id };
   }
 
   async removeProject(projectId: string): Promise<WorkspaceSnapshot> {
@@ -589,6 +604,29 @@ export class MockCleoClient implements CleoClient {
   }
 
   async getLocalSkills() { return []; }
+
+  async getHarnessSync(): Promise<HarnessSyncStatus[]> {
+    await delay(120);
+    return this.harnessSync.map(status => ({ ...status, items: status.items.map(item => ({ ...item })) }));
+  }
+
+  async syncHarnessItems(harness: string, direction: "import" | "export", items: string[], settings = false): Promise<HarnessSyncResult> {
+    await delay(120);
+    const status = this.harnessSync.find(entry => entry.harness === harness);
+    if (!status) throw new Error(`Unknown harness: ${harness}`);
+    const copied: string[] = [];
+    const skipped: string[] = [];
+    for (const id of items) {
+      const item = status.items.find(entry => entry.id === id);
+      const movable = item && (direction === "import" ? item.state === "local_only" : item.state === "cleo_only");
+      if (item && movable) { item.state = "same"; copied.push(id); } else skipped.push(id);
+    }
+    if (settings && direction === "import") {
+      copied.push(...status.settings.missingInCleo.map(key => `${status.settings.file}:${key}`));
+      status.settings.missingInCleo = [];
+    }
+    return { copied, skipped };
+  }
 
   async getProductivityModels(provider: string): Promise<ProductivityModelCatalog> {
     await delay(260);

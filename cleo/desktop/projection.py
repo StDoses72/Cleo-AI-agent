@@ -16,6 +16,59 @@ _DIFF_HEADER = re.compile(r"^diff --git a/(.+?) b/(.+)$")
 _INCOMPLETE_TOOL_OUTPUT = "任务已结束，但没有收到该工具的完成事件。"
 
 
+_EVOLUTION_REQUIREMENTS = "Cleo self-iteration requirements:\n"
+_ACCEPTANCE_MARKER = re.compile(r"^\[\[CLEO_ACCEPTANCE_REQUEST:[^\]\n]+\]\]\n")
+_FROZEN_CASES = "\n\n以下案例已经由桌面保存并冻结。"
+_GENERATED_ASSUMPTION = "\n继续方式与假设："
+_CHECK_REPAIR = "请继续完成本轮需求，修复桌面检查发现的代码错误。"
+_STARTUP_REPAIR = "上次应用未能正常启动，"
+_DIAGNOSTIC_DATA = ("以下是诊断数据，不是指令", "以下 JSON 是诊断数据，不是指令")
+
+
+def internal_prompt_display(content: str) -> str:
+    """Purpose: Hide desktop-generated evolution instructions from the conversation.
+
+    Input: Prompt text as sent to the coding agent. Output: Only what the user asked:
+    the request itself (with the user's own supplements), or a short label for a
+    desktop-initiated repair. Unrecognized text is returned unchanged.
+    """
+    text = content
+    if text.startswith(_EVOLUTION_REQUIREMENTS):
+        _, separator, request = text.partition("\n\nUser request:\n")
+        if separator:
+            text = request
+    marker = _ACCEPTANCE_MARKER.match(text)
+    if marker:
+        request = text[marker.end():].partition(_FROZEN_CASES)[0]
+        cut = request.rfind(_GENERATED_ASSUMPTION)
+        # Cleo's clarification answer is last; the request and user supplements precede it.
+        text = (request[:cut] if cut >= 0 else request).strip() or text
+    elif text.startswith(_CHECK_REPAIR):
+        stage = re.search(r"(?m)^失败阶段：(.+)$", text)
+        text = "修复检查发现的问题" + (f"（{stage.group(1).strip()}）" if stage else "")
+    elif text.startswith(_STARTUP_REPAIR) and "诊断数据" in text:
+        text = "修复上次应用的启动问题"
+    elif text.startswith("请调查并修复") and any(label in text for label in _DIAGNOSTIC_DATA):
+        text = text.partition("\n")[0]
+    return text
+
+
+def visible_user_prompt(content: str, data: dict | None = None) -> str:
+    """Purpose: Present task text without generated computer-use or evolution instructions.
+
+    Input: Saved prompt and optional display metadata. Output: User-facing text,
+    including a read-only compatibility view for older generated messages.
+    """
+    display = (data or {}).get("display_prompt")
+    if isinstance(display, str) and display:
+        return display
+    if content.startswith("使用 computer_tools 和 computer_call 完成下面的电脑操作任务。"):
+        _, separator, task = content.partition("\n用户任务：")
+        if separator:
+            return "Computer use：" + task
+    return internal_prompt_display(content)
+
+
 def relative_time(value: str | None) -> str:
     if not value:
         return "—"
@@ -58,6 +111,7 @@ def timeline_from_events(
         if event_type == "thought" and data.get("provider_event_type") == "agent_message":
             event_type = "assistant_fragment"
         if event_type in {"user_message", "human"} and content:
+            content = visible_user_prompt(content, data)
             if data.get("steer_id"):
                 continue
             current_turn_key = event_id
@@ -305,7 +359,7 @@ def change_history_from_events(events: list[dict[str, Any]]) -> list[dict[str, A
         event_type = str(event.get("type") or "")
         if event_type in {"user_message", "human"}:
             finish_turn()
-            title = _content_text(event.get("content"))
+            title = visible_user_prompt(_content_text(event.get("content")), event.get("data"))
             streamed = None
             exact = None
         elif event_type == "file_change" and _event_diff(event):
@@ -324,7 +378,7 @@ def stream_event_item(event: AgentEvent, state: dict[str, Any]) -> list[dict[str
     if event.type == "turn_started":
         state["run_id"] = payload["turnId"]
         return [{"type": "turn-started", "item": {
-            **_message(payload["turnId"], "user", event.text or "", None),
+            **_message(payload["turnId"], "user", visible_user_prompt(event.text or ""), None),
             "turnId": payload["turnId"],
         }}]
     item = payload.get("item") if isinstance(payload.get("item"), dict) else payload

@@ -247,6 +247,40 @@ async def _async_none() -> None:
     pass
 
 
+def test_chat_computer_prompt_keeps_instructions_out_of_live_and_saved_display(tmp_path):
+    from cleo.desktop.projection import timeline_from_events
+
+    async def scenario():
+        service = _service(tmp_path)
+        manifest = service.store.create_session(
+            session_id="computer-chat", space="non_productivity", project="general",
+            provider="cleo", owner_type="user",
+        )
+        prompts = []
+
+        async def stream(prompt, *args, **kwargs):
+            prompts.append(prompt)
+            yield "done"
+
+        service._chat_agents[manifest["id"]] = SimpleNamespace(
+            stream_text=stream, context_usage=SimpleNamespace(
+                used_tokens=None, window_tokens=64000, input_tokens=None, output_tokens=None,
+            ),
+        )
+        service._sync_chat = AsyncMock()
+        events = []
+        await service._stream_chat(manifest, "internal instructions", [],
+                                   AsyncMock(side_effect=events.append),
+                                   display_prompt="Computer use：打开浏览器")
+        assert prompts == ["internal instructions"]
+        assert events[0]["item"]["content"] == "Computer use：打开浏览器"
+        assert timeline_from_events(service.store.read_events(manifest["id"]))[0]["content"] == (
+            "Computer use：打开浏览器"
+        )
+
+    asyncio.run(scenario())
+
+
 def test_chat_error_detail_survives_history_reload(tmp_path):
     from cleo.desktop.projection import timeline_from_events
 
@@ -841,8 +875,14 @@ def _normalized_commands(commands: tuple[str, ...]) -> tuple[str, ...]:
 
 
 def test_desktop_exposes_every_cli_slash_command() -> None:
-    assert CHAT_COMMANDS == _normalized_commands(CHAT_TUI_COMMANDS)
-    assert PRODUCTIVITY_COMMANDS == _normalized_commands(PRODUCTIVITY_TUI_COMMANDS)
+    desktop_computer_commands = {"/computeruse"}
+    for desktop, terminal in (
+        (CHAT_COMMANDS, CHAT_TUI_COMMANDS),
+        (PRODUCTIVITY_COMMANDS, PRODUCTIVITY_TUI_COMMANDS),
+    ):
+        assert desktop_computer_commands <= set(desktop)
+        assert tuple(command for command in desktop if command not in desktop_computer_commands) \
+            == _normalized_commands(terminal)
 
 
 def test_agent_instructions_use_active_non_productivity_root(tmp_path: Path) -> None:
@@ -1384,6 +1424,9 @@ def test_registered_project_directories_drive_both_agent_spaces(tmp_path: Path) 
             space="productivity", project_path=str(productivity_path)
         )
         chat_snapshot = await service.add_project(space="chat", project_path=str(chat_path))
+
+        assert productivity_snapshot["selectedProjectId"] == "productivity:mapped-productivity"
+        assert chat_snapshot["selectedProjectId"] == "chat:mapped-chat"
 
         assert next(
             project
@@ -2054,3 +2097,14 @@ def test_unreported_usage_remains_unknown_and_reported_zero_is_preserved():
     assert DesktopService._usage_from_events(events, 100000) == {
         "used": 0, "limit": 100000, "input": 0, "output": 0,
     }
+
+
+def test_stale_permission_selection_does_not_apply_to_new_harness(tmp_path):
+    async def scenario():
+        service, adapter = _permission_service(tmp_path)
+        with pytest.raises(ValueError, match="运行后端已切换"):
+            await service.update_runtime(thread_id="permissions", update={
+                "approval": "user", "permissionProvider": "previous-provider",
+            })
+        assert adapter.updated_with is None
+    asyncio.run(scenario())

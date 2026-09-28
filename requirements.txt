@@ -69,8 +69,8 @@ mdit-py-plugins==0.6.1
 mdurl==0.1.2
 more-itertools==11.1.0
 openai==3.19.0
-openai-codex==0.156.0
-openai-codex-cli-bin==0.156.0
+openai-codex==0.156.1
+openai-codex-cli-bin==0.156.1
 openapi-pydantic==0.5.1
 opentelemetry-api==1.44.0
 orjson==3.12.0

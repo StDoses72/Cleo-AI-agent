@@ -178,6 +178,7 @@ export class GithubReleaseDriver {
       if (names.split(/\r?\n/).some(name => /^(\.github\/|ui\/electron\/release-|AGENTS\.md$)/.test(name)))
         throw new Error("自动修复涉及发布校验或工作流，修复已保留，请人工核对后继续。");
       await setReleaseVersion(source, job.tag.slice(1));
+      await this.validateRepair(job, tools, signal);
       await checkpoint({ repairCommitBase: job.commit });
       return this.finishRepair(job, tools, signal, checkpoint);
     }
@@ -186,6 +187,16 @@ export class GithubReleaseDriver {
     await checkpoint({ retryRun: { attempt: Number(current.run_attempt) + 1, at: new Date().toISOString() } });
     await this.post(job, tools, `${endpoint}/actions/runs/${runId}/rerun-failed-jobs`, {}, signal);
     return { changed: false };
+  }
+
+  /** Purpose: Catch compilation failures before publishing an automatic repair.
+   * Input: isolated job checkout, managed tools and cancellation signal.
+   * Output: successful local release checks, or an error before commit and push.
+   */
+  async validateRepair(job, tools, signal) {
+    const options = { cwd: join(this.directory(job), "source", "ui"), env: tools.env, signal };
+    await this.command(tools.node, [tools.npm, "ci", "--include=dev", "--ignore-scripts", "--no-audit", "--no-fund"], options);
+    await this.command(tools.node, [tools.npm, "run", "check:release"], options);
   }
 
   /** Reconcile a controller commit or push interrupted between Git and the journal write. */

@@ -17,8 +17,8 @@ change（可从源码确定修改目标）、investigate（目标明确，需要
 缺少 CI 日志、提交 SHA、文件片段或运行证据是执行 session 的调查工作，不是需求歧义。
 不得因分析器没有工具或仅收到部分源码而要求用户手工提供这些资料。
 当前行为只能静态分析，不得声称运行过旧版或验证过失败。没有可靠执行器的案例均为人工验收。
-对 change，返回 1 到 12 个案例，覆盖请求，含 requirement（原文中的对应要求）、title、
-current（当前行为的静态分析）、trigger（具体操作/输入）、expectation（可观察的预期）、
+对 change，返回 1 到 12 个案例，覆盖请求，含 requirement（概括对应的用户要求，无需逐字引用）、
+title、current（当前行为的静态分析）、trigger（具体操作/输入）、expectation（可观察的预期）、
 references（至少一条 {path,line}，引用已提供的源码行）。不要生成测试输出、fixture 或通过结果。
 按用户体验顺序拆成小的、递进的验收步骤：进入或触发 → 中间变化 → 完成结果 → 必要的异常恢复。
 简单需求只需 1 项，复杂需求通常 3 到 7 项；不要为凑数量拆开同一个动作，也不要把整个流程塞进一项。
@@ -71,10 +71,23 @@ def source_inventory(root: Path) -> list[str]:
 
 
 def parse_object(text: str) -> dict:
-    value = text.strip()
-    if value.startswith("```json\n") and value.endswith("```"):
-        value = value[8:-3].strip()
-    result = json.loads(value)
+    """Purpose: Read one model JSON object despite surrounding Markdown or prose.
+
+    Input: A read-only model response. Output: One object, or a readable retry error.
+    """
+    value = text.lstrip("\ufeff").strip()
+    try:
+        result = json.loads(value)
+    except json.JSONDecodeError:
+        start = value.find("{")
+        try:
+            if start < 0:
+                raise ValueError("Missing object")
+            result, end = json.JSONDecoder().raw_decode(value[start:])
+            if "{" in value[start + end:]:
+                raise ValueError("Ambiguous objects")
+        except (ValueError, json.JSONDecodeError) as exc:
+            raise ValueError("需求分析未返回唯一有效的 JSON；原需求已保留，请重试。") from exc
     if not isinstance(result, dict):
         raise ValueError("验收分析返回的不是 JSON 对象。")
     return result
@@ -155,8 +168,6 @@ async def plan_request(
                 "expectation": 4000,
             }.items()
         }
-        if case["requirement"] not in request:
-            raise ValueError("案例对应要求未引用原需求，请重试。")
         references = item.get("references")
         minimum_references = 0 if intent == "investigate" else 1
         if not isinstance(references, list) or not minimum_references <= len(references) <= 8:

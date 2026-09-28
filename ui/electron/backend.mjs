@@ -103,7 +103,7 @@ export class BackendBridge {
   }
 
   handleLine(line) {
-    this.debug(`stdout ${line.slice(0, 240)}`);
+    this.debug(line.includes("viewerUrl") ? "stdout [private desktop connection]" : `stdout ${line.slice(0, 240)}`);
     let message;
     try {
       message = JSON.parse(line);

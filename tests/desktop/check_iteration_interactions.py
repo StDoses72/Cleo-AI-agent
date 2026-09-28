@@ -68,5 +68,11 @@ async def check(root):
 
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory(prefix="cleo-iteration-check-") as temporary:
-        asyncio.run(check(Path(temporary)))
+        # Harness homes derive from CLEO_HOME; never create them in live user data.
+        with (
+            patch("cleo.config.settings.APP_HOME", Path(temporary) / "cleo"),
+            # Do not copy the developer's real ~/.claude setup into the fixture.
+            patch("cleo.integrations.harness_import.ensure_imported"),
+        ):
+            asyncio.run(check(Path(temporary)))
     print("PASS: native Claude skill setup, draft discovery, planner assumptions (isolated mocks)")

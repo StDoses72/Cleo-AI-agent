@@ -1,7 +1,7 @@
 {
   "name": "cleo-desktop",
   "productName": "Cleo",
-  "version": "0.5.6",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "main": "electron/bootstrap.mjs",
@@ -22,6 +22,8 @@
     "smoke:concurrency": "node tests/concurrent-runs.smoke.mjs && node tests/running-recovery.smoke.mjs",
     "smoke:update-settings": "node tests/update-settings.smoke.mjs",
     "smoke:permissions": "node tests/runtime-permissions.smoke.mjs",
+    "smoke:evolution-workspace": "node tests/evolution-workspace.smoke.mjs && node tests/evolution-monitor.smoke.mjs",
+    "smoke:projects": "node tests/project-workspaces.smoke.mjs",
     "smoke:steering": "node tests/steering.smoke.mjs",
     "smoke:timing": "node tests/timing.smoke.mjs",
     "smoke:evolution-ui": "node tests/evolution-overview.smoke.mjs && node tests/contribution-merge.smoke.mjs && node tests/interaction-ui.smoke.mjs && node tests/behavior-review.smoke.mjs",
@@ -34,9 +36,12 @@
     "smoke:ux": "npm run build && node scripts/smoke-ux.mjs",
     "smoke:inspector": "npm run build && node scripts/smoke-inspector.mjs",
     "smoke:real": "npm run build && node scripts/smoke-real.mjs",
-    "smoke:packaged": "node scripts/smoke-packaged.mjs"
+    "smoke:packaged": "node scripts/smoke-packaged.mjs",
+    "smoke:package-launch": "node scripts/smoke-package-launch.mjs",
+    "check:release": "npm run build"
   },
   "dependencies": {
+    "@novnc/novnc": "1.5.0",
     "lucide-react": "latest",
     "react": "latest",
     "react-dom": "latest",
@@ -44,12 +49,12 @@
     "remark-gfm": "latest"
   },
   "devDependencies": {
+    "@electron/asar": "latest",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "@vitejs/plugin-react": "latest",
     "electron": "latest",
-    "@electron/asar": "latest",
     "playwright": "latest",
     "typescript": "latest",
     "vite": "latest"

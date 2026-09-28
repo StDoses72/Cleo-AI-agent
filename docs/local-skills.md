@@ -12,12 +12,13 @@ Cleo 在加载开发会话或选择新任务的原生 Claude/Codex harness 时�
 
 ## 支持的目录
 
-- Claude：`$CLAUDE_CONFIG_DIR/skills`（默认 `~/.claude/skills`）及项目 `.claude/skills`。
-- Codex：`$CODEX_HOME/skills`（默认 `~/.codex/skills`）、`~/.agents/skills`，以及项目 `.codex/skills` 和 `.agents/skills`。
+- Claude：`<Cleo 数据根目录>/data/claude/skills` 及项目 `.claude/skills`。
+- Codex：`<Cleo 数据根目录>/data/codex/skills`、`~/.agents/skills`，以及项目 `.codex/skills` 和 `.agents/skills`。
+- 用户级目录与 harness 进程实际使用的 Cleo 专用目录一致；本机 `~/.claude`、`~/.codex`（或 `CLAUDE_CONFIG_DIR`/`CODEX_HOME`）中的 skills 会在首次使用时复制进 Cleo 目录，菜单列出的是 Cleo 中的副本。
 - 项目发现从工作目录向上直到 Git 根目录。每项 skill 使用包含 `SKILL.md` 的独立目录；支持 `.system` 子目录，并解析、去重符号链接。
 
 内置命令保留原名；重复或保留名称使用稳定的 `/skill:name:id` 命令。
-菜单排除 `user-invocable: false` 项目；缺失、空白或不可读的文件不能调用，发现过程不会创建或修复文件。
+菜单排除 `user-invocable: false` 项目；缺失、空白或不可读的文件不能调用，发现过程不会修改已有 skill 文件（仅按上文补充导入本机 skills）。
 
 ## 使用范围
 

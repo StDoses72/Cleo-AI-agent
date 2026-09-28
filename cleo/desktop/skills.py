@@ -1,9 +1,8 @@
-"""Read-only local skill discovery and explicit invocation for coding harnesses."""
+"""Local skill discovery and explicit invocation for coding harnesses."""
 
 from __future__ import annotations
 
 import hashlib
-import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -59,12 +58,13 @@ def discover_skills(harness: str, cwd: str, reserved: tuple[str, ...]) -> list[L
     """
     if harness not in {"claude", "codex"}:
         return []
+    from cleo.integrations.harness_home import harness_home
+
     home = Path.home()
-    config = Path(os.environ.get(
-        "CODEX_HOME" if harness == "codex" else "CLAUDE_CONFIG_DIR",
-        str(home / f".{harness}"),
-    )).expanduser()
-    roots = [(config / "skills", f"{harness} · 用户")]
+    # The same Cleo-owned directory the harness process uses. Its preparation copies
+    # skills from the user's local harness in once; the external copy is not listed.
+    config = harness_home(harness)
+    roots = [(config / "skills", f"{harness} · Cleo")]
     if harness == "codex":
         roots.append((home / ".agents" / "skills", "codex · 用户 .agents"))
     project = Path(cwd).resolve()

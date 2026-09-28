@@ -53,6 +53,7 @@ import type {
   Project,
   RuntimeCatalog,
   RuntimeProfile,
+  RuntimeUpdate,
   SteerReceipt,
   Thread,
   ThreadSpace,
@@ -60,6 +61,7 @@ import type {
   ApprovalDecision,
   ApprovalRequest,
 } from "../types";
+import { PermissionSelector } from "./PermissionSelector";
 import { ApprovalPrompt } from "./ApprovalPrompt";
 import { RenameThreadDialog } from "./Overlays";
 import { handleDialogKeyDown } from "./Modal";
@@ -103,6 +105,7 @@ interface ConversationProps {
   onLoadProductivityModels: (provider: string, refresh?: boolean) => Promise<ProductivityModelCatalog>;
   onSelectProductivityRuntime: (provider: string, model: string) => void;
   onEffortChange: (effort: NonNullable<RuntimeProfile["effort"]>) => void;
+  onPermissionChange?: (update: RuntimeUpdate) => Promise<void>;
   onServiceTierChange?: (tier: "default" | "fast") => void;
   attachments: Attachment[];
   onPickAttachments: () => Promise<void>;
@@ -165,6 +168,7 @@ export function Conversation({
   onSelectProductivityRuntime,
   onEffortChange,
   onServiceTierChange,
+  onPermissionChange,
   attachments,
   onPickAttachments,
   onPrepareAttachments,
@@ -400,6 +404,7 @@ export function Conversation({
         onSelectProductivityRuntime={onSelectProductivityRuntime}
         onEffortChange={onEffortChange}
         onServiceTierChange={onServiceTierChange}
+        onPermissionChange={onPermissionChange}
         attachments={attachments}
         onPickAttachments={onPickAttachments}
         onPrepareAttachments={onPrepareAttachments}
@@ -500,17 +505,17 @@ function ConversationHeader({
         </div>
       </div>
       <div className="header-actions">
-        {space === "productivity" ? (
+        {space === "productivity" && thread?.canUndo ? (
           <button
             className="undo-button"
             type="button"
             disabled={!thread || running || undoing}
             aria-label="回退 Git 改动"
-            title="回退最近一次回答产生的 Git 改动"
+            title="回退最近一轮对项目 Git 文件的修改；不包含浏览器或桌面操作"
             onClick={onUndo}
           >
             <RotateCcw className={undoing ? "spin" : ""} size={14} />
-            <span>{undoing ? "撤销中" : "撤销改动"}</span>
+            <span>{undoing ? "撤销中" : "撤销项目改动"}</span>
           </button>
         ) : null}
         {project?.branch ? (
@@ -993,6 +998,7 @@ function Composer({
   onSelectProductivityRuntime,
   onEffortChange,
   onServiceTierChange,
+  onPermissionChange,
   attachments,
   onPickAttachments,
   onPrepareAttachments,
@@ -1025,6 +1031,7 @@ function Composer({
   | "onSelectProductivityRuntime"
   | "onEffortChange"
   | "onServiceTierChange"
+  | "onPermissionChange"
   | "attachments"
   | "onPickAttachments"
   | "onPrepareAttachments"
@@ -1136,6 +1143,8 @@ function Composer({
     void addFiles(Array.from(event.dataTransfer.files));
   };
   const showCommands = /^\/[^\s]*$/.test(prompt) && dismissedPrefix !== prompt;
+  const computerUseSelected = prompt.startsWith("/computeruse ");
+  const composerText = computerUseSelected ? prompt.slice("/computeruse ".length) : prompt;
   const matchingCommands = showCommands
     ? commands.filter((command) => command.startsWith(prompt))
     : [];
@@ -1215,6 +1224,10 @@ function Composer({
         {!harnessSwitchStatus && runtime?.handoffStatus === "prepared" ? <div className="harness-switch-status" role="status">交接材料已准备；发送下一条消息时提交给当前 Harness。完整历史仍可查阅。</div> : null}
         {!harnessSwitchStatus && runtime?.handoffStatus === "submitted" ? <div className="harness-switch-status" role="status">交接请求已提交，尚无首轮完成记录；继续前请核对已有操作，避免重复执行。</div> : null}
         {sendError ? <div className="attachment-error" role="alert">{sendError}</div> : null}
+        {computerUseSelected && <div className="attachment-row"><span className="attachment-chip computer-use-chip">
+          <span>Computer Use</span>
+          <button type="button" aria-label="移除 Computer Use" onClick={() => { setPrompt(composerText); inputRef.current?.focus(); }}><X size={12} /></button>
+        </span></div>}
         <textarea
           ref={inputRef}
           role="combobox"
@@ -1224,9 +1237,14 @@ function Composer({
           aria-activedescendant={candidates.length ? `slash-option-${selectedCommand % candidates.length}` : undefined}
           onCompositionStart={() => { composing.current = true; }}
           onCompositionEnd={() => { composing.current = false; }}
-          value={prompt}
-          onChange={(event) => { setDismissedPrefix(null); setPrompt(event.target.value); }}
-          onKeyDown={onKeyDown}
+          value={composerText}
+          onChange={(event) => { setDismissedPrefix(null); setPrompt((computerUseSelected ? "/computeruse " : "") + event.target.value); }}
+          onKeyDown={(event) => {
+            if (computerUseSelected && !composerText && event.key === "Backspace" && !composing.current) {
+              event.preventDefault(); setPrompt(""); return;
+            }
+            onKeyDown(event);
+          }}
           onPaste={onPaste}
           rows={1}
           aria-label={space === "chat" ? "消息" : "任务描述"}
@@ -1269,6 +1287,8 @@ function Composer({
               <option value="" disabled>由模型决定</option>
               {supportedEfforts.map((effort) => <option key={effort} value={effort}>{effortLabels[effort] ?? effort}</option>)}
             </select> : null}
+            {space === "productivity" && <PermissionSelector key={runtime.provider} runtime={runtime}
+              onChange={onPermissionChange} disabled={Boolean(harnessSwitchStatus)} />}
             {space === "productivity" && runtime.supportsFastMode && onServiceTierChange && <select
               className="text-control"
               value={runtime.serviceTier ?? ""}

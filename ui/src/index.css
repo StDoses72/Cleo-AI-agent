@@ -596,6 +596,25 @@ html[data-platform="darwin"] .titlebar {
   flex: 1;
 }
 
+.new-project-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  margin: 0 12px 8px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text-soft);
+  background: transparent;
+  font-size: var(--font-size-caption);
+  text-align: left;
+}
+
+.new-project-button:hover:not(:disabled) { background: var(--surface-hover); }
+.new-project-button svg { color: var(--accent); }
+.new-project-button:disabled { opacity: 0.6; cursor: wait; }
+
 .sidebar-search {
   display: flex;
   height: 32px;
@@ -3447,3 +3466,23 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 .timing-stages small { margin-left: 8px; font-size: inherit; color: var(--text-soft); }
 .memory-timing-history { margin-bottom: 18px; color: var(--text-soft); font-size: 12px; }
 .memory-timing-history > div { padding: 10px 0; border-bottom: 1px solid var(--border); }
+
+/* Settings -> Import: compare Cleo's harness directories with the local setup. */
+.harness-sync .settings-note { display: block; margin-top: 0; color: var(--muted); font-size: var(--font-size-caption); line-height: 1.65; }
+.harness-sync-toolbar { display: flex; justify-content: flex-end; margin: 14px 0; }
+.harness-sync-toolbar button, .harness-sync-group > button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid var(--border-strong); border-radius: 7px; }
+.harness-sync-group > button.settings-primary { border-color: transparent; }
+.harness-sync-card { margin-bottom: 16px; padding: 14px 16px; border: 1px solid var(--border-strong); border-radius: 10px; }
+.harness-sync-card > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.harness-sync-badge { padding: 2px 8px; border-radius: 999px; color: var(--muted); background: color-mix(in srgb, var(--accent) 10%, transparent); font-size: var(--font-size-caption); }
+.harness-sync-badge.ok { color: var(--success); }
+.harness-sync-paths { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: center; color: var(--muted); font-size: var(--font-size-caption); word-break: break-all; user-select: text; }
+.harness-sync-summary { margin: 10px 0 4px; color: var(--muted); font-size: var(--font-size-caption); }
+.harness-sync-group { margin-top: 12px; }
+.harness-sync-group h4 { margin: 0 0 6px; font-size: var(--font-size-body); }
+.harness-sync-list { display: grid; gap: 4px; max-height: 220px; margin: 0 0 8px; padding: 0; overflow: auto; list-style: none; }
+.harness-sync-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.harness-sync-list label { display: inline-flex; align-items: center; gap: 8px; }
+.harness-sync-list small { color: var(--muted); }
+.harness-sync-keys { margin: 0 0 8px; color: var(--muted); font-size: var(--font-size-caption); word-break: break-all; user-select: text; }
+.settings-success { color: var(--success); font-size: var(--font-size-body); }

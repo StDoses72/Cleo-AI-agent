@@ -72,6 +72,9 @@ class AgentTool(Tool):
                 store=None,
             )
         result = await item.ainvoke(arguments)
+        if item.name in {"computer_tools", "computer_call"}:
+            from cleo.mcp.computer_server import mcp_content
+            return ToolResult(content=mcp_content(result))
         return ToolResult(
             content=result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)
         )

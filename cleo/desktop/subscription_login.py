@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from cleo.config.settings import AgentProfile
 from cleo.integrations.claude_cli import process_options, stop_process
+from cleo.integrations.harness_home import claude_environment
 from cleo.integrations.subscriptions import (
     AgentMcp,
     create_runtime,
@@ -66,11 +67,14 @@ class SubscriptionLogins:
                     finally:
                         await manager.__aexit__(None, None, None)
                 else:
-                    args = ["auth", "login"] if profile.backend == "claude_code" else ["login"]
+                    claude = profile.backend == "claude_code"
+                    args = ["auth", "login"] if claude else ["login"]
+                    environment = runtime_environment()
                     process = await asyncio.create_subprocess_exec(
                         executable(profile),
                         *args,
-                        env=runtime_environment(),
+                        # Claude signs in to Cleo's own directory, used by every Claude entry.
+                        env=claude_environment(environment) if claude else environment,
                         cwd=str(root),
                         stdin=subprocess.DEVNULL,
                         stdout=subprocess.PIPE,

@@ -16,7 +16,30 @@ Cleo 使用两个经过 Pydantic 校验的 JSON 文件：`cleo.json` 管理通�
 
 可用 `CLEO_CONFIG_PATH` 与 `CLEO_HARNESSES_CONFIG_PATH` 指定配置文件。打包应用由 Electron 显式设置 `CLEO_HOME`；源码 checkout 会以仓库为相对路径根。
 
-Cleo 新建的 Codex 会话使用 `<Cleo 数据根目录>/data/codex` 作为独立 `CODEX_HOME`，SQLite 状态也固定在该目录。它们不会写入默认 Codex 应用的会话列表；Cleo 的历史和继续对话能力保留。登录入口位于“设置 → 模型 → 新增连接 → 账号登录 → Codex”。该目录不自动复制原 Codex 登录、全局配置、插件和 skills；组织策略仍然适用。已有会话及其原生分支沿用原目录，不移动、不删除。
+每个 coding harness 在 Cleo 数据根目录下有一个固定目录，跨会话、跨版本复用：
+
+```text
+<Cleo 数据根目录>/
+├─ config/        Cleo 配置
+├─ memory/        Cleo 聊天与记忆
+├─ data/
+│  ├─ codex/      Codex 的配置、登录、会话、skills（CODEX_HOME，SQLite 状态也在此）
+│  └─ claude/     Claude 的配置、登录、会话、skills（CLAUDE_CONFIG_DIR）
+└─ runtimes/      安装的运行程序和依赖
+```
+
+登录、验证连接、模型列表、对话、恢复会话和 skill 菜单都通过同一目录管理模块使用这些目录，不再读取外部 `~/.codex`、`~/.claude` 或环境变量中的 `CODEX_HOME`/`CLAUDE_CONFIG_DIR`。它们只保存 harness 自身状态：agent 的工作目录仍是会话选择的项目，权限也仍按会话所选模式执行。
+
+Cleo 新建的 Codex/Claude 会话不会写入默认 Codex/Claude 应用的会话列表；Cleo 的历史和继续对话能力保留。登录入口位于“设置 → 模型 → 新增连接 → 账号登录 → Codex / Claude Code”，Claude SDK harness 与 Claude Code 连接共用同一登录。组织策略仍然适用。
+
+**导入本机配置**：Cleo 首次使用某个 harness 目录时（每次启动检查一次），会检测本机的 `~/.claude`、`~/.codex`（或 `CLAUDE_CONFIG_DIR`/`CODEX_HOME`），把 Cleo 目录中还没有的项目复制进来并直接生效：
+
+- Claude：`skills/`、`agents/`、`commands/`、`CLAUDE.md`，以及 `settings.json` 中缺少的设置。
+- Codex：`skills/`、`rules/`、`prompts/`、`AGENTS.md`，以及 `config.toml` 中缺少的设置（追加在文件中，保留原有内容）；指向已复制 skills 的路径会改为 Cleo 副本。
+
+复制只增不改：原目录只读取不修改；Cleo 目录中已有的文件、设置和同名 skill 不会被覆盖。已导入的项目记录在 `data/<harness>/.cleo-imported.json`，在 Cleo 中删除后不会再次导入；本机新增的项目会在下次启动时补充。登录凭据、插件、会话历史，以及切换账号/计费/服务商的设置（如 `apiKeyHelper`、`model_provider`、API Key 环境变量）不会导入，因此仍需在 Cleo 中登录一次。
+
+也可以打开“设置 → 导入”随时对比 Cleo 目录与本机 Claude/Codex：列出相同、本机新增、Cleo 新增和同名但内容不同的项目，可把本机新增的技能等导入 Cleo，或把 Cleo 中新增的导出回本机。两个方向都只复制对方缺少的项目，同名内容不同时两边都保留、不会覆盖；设置只支持从本机补充导入。隔离前创建的已有会话（及 Codex 原生分支）沿用原目录继续恢复，不移动、不删除。
 
 ## `cleo.json` 结构
 

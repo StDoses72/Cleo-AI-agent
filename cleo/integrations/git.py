@@ -254,6 +254,23 @@ def finalize_git_checkpoint(checkpoint: GitCheckpoint) -> GitCheckpoint:
     )
 
 
+def git_checkpoint_has_changes(value: dict[str, Any]) -> bool:
+    """Purpose: Detect undoable tree changes, ignoring different snapshot commit IDs.
+
+    Input: Completed checkpoint metadata. Output: Whether index or worktree differs.
+    """
+    checkpoint = GitCheckpoint.from_dict(value)
+    for tree in ("worktree", "index"):
+        result = _git(checkpoint.repo_root, "diff", "--quiet", "--no-ext-diff",
+                      getattr(checkpoint, "before_" + tree),
+                      getattr(checkpoint, "after_" + tree), "--")
+        if result.returncode == 1:
+            return True
+        if result.returncode != 0:
+            raise ValueError("Git 回退记录不可用。")
+    return False
+
+
 def read_git_checkpoint_diff(value: dict[str, Any] | GitCheckpoint) -> str:
     """Return the exact worktree diff captured by one completed agent turn."""
     checkpoint = value if isinstance(value, GitCheckpoint) else GitCheckpoint.from_dict(value)

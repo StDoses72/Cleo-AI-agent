@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ChevronDown, GitBranch, GitPullRequest, History, ShieldCheck, PanelRightOpen, X, LoaderCircle, Save, Play, RotateCcw, FlaskConical } from "lucide-react";
+import { ChevronDown, GitBranch, GitPullRequest, History, ShieldCheck, PanelRightOpen, X, LoaderCircle, Save, Play, RotateCcw } from "lucide-react";
 import type { EvolutionBuild, EvolutionState } from "../evolution-types";
 import { useAutomaticRead } from "../useAutomaticRead";
 import { EvolutionContribution } from "./EvolutionContribution";
@@ -17,7 +17,6 @@ interface Props {
   otherTasksRunning?: boolean;
   inspectorOpen: boolean;
   onToggleInspector: () => void;
-  onAddGoal?: () => void;
   onAction: (action: string, params?: Record<string, unknown>) => void | Promise<unknown>;
   onRetry: () => void;
   onRepair: () => void;
@@ -26,8 +25,7 @@ const phases: Record<string, string> = {
   preparing: "正在准备", building: "正在检查并构建", applying: "正在重启",
   downloading: "正在下载正式版", authenticating: "正在连接 GitHub", submitting: "正在提交 PR",
   checking: "正在检查…", selecting: "正在切换版本", saving: "正在保存",
-  planning: "正在准备修改", validating: "正在核对验收记录",
-  comparing: "正在比较行为", recording: "正在保存验收记录",
+  validating: "正在检查修改",
   publishing: "正在创建 GitHub Release",
 };
 /** Purpose: Keep formal releases distinct from dated local saves. Input: build. Output: display label. */
@@ -46,9 +44,11 @@ export function versionLabel(build?: EvolutionBuild, prerelease?: boolean) {
 /** Purpose: Present only version identity and the next useful actions above the normal conversation.
  * Input: evolution state and commands. Output: persistent toolbar with contextual version and contribution dialogs.
  */
-export function EvolutionPanel({ children, state, error, busy, running, otherTasksRunning = false, inspectorOpen, onToggleInspector, onAddGoal, onAction, onRetry, onRepair }: Props) {
+export function EvolutionPanel({ children, state, error, busy, running, otherTasksRunning = false, inspectorOpen, onToggleInspector, onAction, onRetry, onRepair }: Props) {
   const [sheet, setSheet] = useState<"versions" | "contribute" | "history" | "publish" | "save" | "discard" | null>(null);
   const [releasePr, setReleasePr] = useState("");
+  const [releaseBuild, setReleaseBuild] = useState("");
+  const [contributionBuild, setContributionBuild] = useState("");
   const dialog = useRef<HTMLDialogElement>(null);
   const [name, setName] = useState("");
   const [releaseTag, setReleaseTag] = useState("");
@@ -64,9 +64,15 @@ export function EvolutionPanel({ children, state, error, busy, running, otherTas
   useEffect(() => { if (sheet && !dialog.current?.open) dialog.current?.showModal(); }, [sheet]);
   const close = () => { if (submittingRef.current) return; dialog.current?.close(); setSheet(null); };
   /** Purpose: Start a fresh user intent, independent of every historical PR. Input: none. Output: empty form. */
-  const openContribution = () => {
+  const openContribution = (buildId?: unknown) => {
     if (submittingRef.current) return;
+    setContributionBuild(typeof buildId === "string" ? buildId : "");
     setSubmittedUrl(null); setSheet("contribute");
+  };
+  /** Purpose: Release starts by choosing a local version. Input: preselected version or PR. Output: release dialog. */
+  const openRelease = (buildId = "", prUrl = "") => {
+    if (submittingRef.current) return;
+    setReleaseBuild(buildId); setReleasePr(prUrl); setSheet("publish");
   };
   const act = (action: string, params?: Record<string, unknown>) => { close(); onAction(action, params); };
   /** Purpose: Release dialog focus before entering a repair conversation. Input: contribution action. Output: forwarded operation. */
@@ -88,30 +94,19 @@ export function EvolutionPanel({ children, state, error, busy, running, otherTas
   const validation = state?.validation;
   const verified = Boolean(validation?.status === "passed" && validation.sourceHash
     && validation.candidate === candidate?.id && validation.sourceHash === candidate?.sourceHash && !state?.draftDirty);
-  const cases = state?.acceptance?.cases.filter((item) => item.enabled) || [];
-  const behaviorPassed = !cases.length || Boolean(state?.acceptance?.fresh && cases.every((item) => {
-    const result = state.acceptance?.report?.results.find((entry) => entry.id === item.id);
-    return result?.after.status === "passed" && result.before.status !== "error";
-  }));
-  const automaticPassed = cases.filter((item) => item.kind !== "manual").every((item) => {
-    const result = state?.acceptance?.report?.results.find((entry) => entry.id === item.id);
-    return state?.acceptance?.fresh && result?.after.status === "passed" && result.before.status !== "error";
-  });
-  const canApply = Boolean(verified && automaticPassed && candidate?.kind === "local" && candidate.id !== state?.active);
+  const canApply = Boolean(verified && candidate?.kind === "local" && candidate.id !== state?.active);
   const canSave = Boolean(state?.iteration && active?.kind === "local" && active.id !== state.iteration.base
-    && state.candidate === state.active && verified && behaviorPassed);
+    && state.candidate === state.active && verified);
   const checkFailed = validation?.status === "failed" || validation?.status === "interrupted";
-  const retryAcceptance = !state?.draftDirty && (verified || validation?.status === "unchanged")
-    && (!automaticPassed || (!error && Boolean(state?.error) && Boolean(state?.acceptance && !state.acceptance.fresh)));
   const failure = error || state?.error || (checkFailed ? validation.message : null);
   const needsCheck = Boolean(state?.iteration && !verified && validation?.status !== "unchanged");
   const details = state?.logs || validation?.details;
   const status = running ? "正在修改…" : awaitingAuthorization ? "等待 GitHub 授权" : busy ? (state?.phase === "building" && validation?.status === "running" ? validation.message : phases[state?.phase || ""] || "正在准备")
     : otherTasksRunning ? "其他任务正在运行"
     : state?.transaction ? "正在重启" : checkFailed ? "检查未通过，修改尚不可应用" : failure ? "操作未完成"
-    : retryAcceptance ? "验收检查未通过" : canApply ? "检查通过，可以应用" : verified && !behaviorPassed ? "请确认验收清单中的效果" : canSave ? "可以保存当前版本"
+    : canApply ? "检查通过，可以应用" : canSave ? "可以保存当前版本"
     : validation?.status === "unchanged" ? "暂无程序改动" : state?.iteration ? "改动待检查" : "";
-  const showStatus = running || busy || otherTasksRunning || canApply || canSave || retryAcceptance || state?.iteration || releaseJob || state?.transaction;
+  const showStatus = running || busy || otherTasksRunning || canApply || canSave || state?.iteration || releaseJob || state?.transaction;
   const sheetTitle = sheet === "versions" ? "版本" : sheet === "contribute" ? "提交与发布" : sheet === "history" ? "PR 历史" : sheet === "publish" ? "发布版本" : sheet === "save" ? "保存本地版本" : "放弃本轮修改";
   return <header className="evolution-toolbar" aria-label="进化操作">
     <div className="evolution-topline">
@@ -120,8 +115,8 @@ export function EvolutionPanel({ children, state, error, busy, running, otherTas
         <span>正在使用</span><b>{active ? versionLabel(active, state?.releaseTypes?.[active.baseTag || ""]) : releaseVersionLabel(state?.currentVersion || "—")}</b><ChevronDown size={14} />
       </button>
       <div className="evolution-top-actions">
+        <button onClick={() => onAction("monitor")}>进化状态</button>
         <button aria-label="查看代码变更" aria-pressed={inspectorOpen} title="查看代码变更" onClick={onToggleInspector}><PanelRightOpen size={18} /></button>
-        {onAddGoal && !state?.acceptance?.cases.length && <button aria-label="添加验收目标" title="添加验收目标" disabled={blocked} onClick={onAddGoal}><FlaskConical size={17} /></button>}
         {history.length > 0 && <button aria-label="PR 历史" title="PR 历史" onClick={() => setSheet("history")}><History size={16} /><span>历史</span></button>}
         <button aria-label={authorizing ? "继续连接 GitHub" : "新建 PR"} disabled={blocked && !authorizing} onClick={openContribution}><GitPullRequest size={17} />{authorizing ? "继续连接" : "新建 PR"}</button>
       </div>
@@ -139,7 +134,6 @@ export function EvolutionPanel({ children, state, error, busy, running, otherTas
       </div>}
       <div className="evolution-actions">
         {needsCheck && !failure && !running && !busy && <button disabled={blocked} onClick={() => onAction("build")}>检查改动</button>}
-        {retryAcceptance && !failure && !running && !busy && <button disabled={blocked} onClick={() => onAction("compareCases")}>重试检查</button>}
         {canApply && <button className="evolution-primary" disabled={blocked} onClick={() => onAction("apply", { id: candidate?.id })}><Play size={14} />应用</button>}
         {canSave && <button className="evolution-primary" disabled={blocked} onClick={() => { setName(""); setSheet("save"); }}><Save size={14} />保存</button>}
       </div>
@@ -152,18 +146,17 @@ export function EvolutionPanel({ children, state, error, busy, running, otherTas
       <button aria-label="关闭提交提示" onClick={() => setSubmittedUrl(null)}><X size={14} /></button>
     </div>}
     {failure && <div className="evolution-error" role="alert"><span>{failure}</span>
-      {state?.threadId && <button disabled={blocked} onClick={() => onAction("abandonRequest", { threadId: state.threadId })}>废弃原需求</button>}
       {checkFailed && validation.repairable && <button disabled={blocked} onClick={onRepair}>让 Cleo 修复</button>}
-      <button disabled={blocked} onClick={checkFailed ? () => onAction("build") : retryAcceptance ? () => onAction("compareCases") : onRetry}>{checkFailed ? "重新检查" : "重试"}</button>
+      <button disabled={blocked} onClick={checkFailed ? () => onAction("build") : onRetry}>{checkFailed ? "重新检查" : "重试"}</button>
     </div>}
-    {state?.lastRestartError && !failure && <p className="evolution-notice">{state.lastRestartError}</p>}
+    {state?.lastRestartError && !failure && <p className="evolution-notice">{state.lastRestartError} <button disabled={blocked} onClick={onRepair}>让 Cleo 修复</button></p>}
     {details && (busy || failure || canApply) && <details className="evolution-log"><summary>查看检查详情</summary><pre>{details}</pre></details>}
     {children}
     {sheet && <dialog ref={dialog} className="evolution-dialog" aria-label={sheetTitle} onKeyDown={handleDialogKeyDown} onCancel={(event) => { event.preventDefault(); close(); }} onClick={(event) => { if (event.target === dialog.current) close(); }}>
       <div className="evolution-dialog-title"><h2>{sheetTitle}</h2><button aria-label="关闭" onClick={close}><X size={18} /></button></div>
       {sheet === "publish" && <>
         {state?.githubAuth?.status !== "connected" && <GithubLogin auth={state?.githubAuth} busy={blocked} onAction={onAction} onContribute={openContribution} />}
-        <ReleasePublisher state={state} initialUrl={releasePr} onStarted={() => { submittingRef.current = false; setSubmitting(false); close(); }} busy={busy || running || otherTasksRunning || Boolean(state?.transaction)} onAction={contributionAction}
+        <ReleasePublisher key={`${releasePr}|${releaseBuild}`} state={state} initialUrl={releasePr} buildId={releaseBuild} onContribute={openContribution} onStarted={() => { submittingRef.current = false; setSubmitting(false); close(); }} busy={busy || running || otherTasksRunning || Boolean(state?.transaction)} onAction={contributionAction}
           onBusy={value => { submittingRef.current = value; setSubmitting(value); }} />
       </>}
       {sheet === "history" && <>
@@ -171,7 +164,7 @@ export function EvolutionPanel({ children, state, error, busy, running, otherTas
           <div><a href={pr.url} target="_blank" rel="noreferrer">#{pr.number || pr.url.split("/").at(-1)} · {pr.title || "Pull Request"}</a>
             {pr.submittedAt && <small>{new Date(pr.submittedAt).toLocaleString("zh-CN")}</small>}
             <ContributionMerge params={{ url: pr.url }} busy={blocked} onAction={contributionAction} />
-            {state?.githubAuth?.repositoryAccess?.canRelease && <button disabled={blocked} onClick={() => { setReleasePr(pr.url); setSheet("publish"); }}>发布该 PR 版本</button>}
+            {state?.githubAuth?.repositoryAccess?.canRelease && <button disabled={blocked} onClick={() => openRelease("", pr.url)}>发布该 PR 版本</button>}
           </div>
         </article>)}</div>
         <button className="evolution-primary" disabled={blocked} onClick={openContribution}><GitPullRequest size={15} />新建 PR</button>
@@ -202,12 +195,13 @@ export function EvolutionPanel({ children, state, error, busy, running, otherTas
       </section>}
       {sheet === "save" && <form onSubmit={(event) => { event.preventDefault(); act("save", { name }); }}>
         <p>保存当前效果，替换上一次保存的本地版本。基础版本继续保留。</p>
-        <label>名称（可选）<input autoFocus aria-label="本地版本名称" value={name} onChange={(event) => setName(event.target.value)} placeholder="留空使用保存时间" maxLength={80} /></label>
+        <label>名称（可选）<input autoFocus aria-label="本地版本名称" value={name} onChange={(event) => setName(event.target.value)} placeholder={state?.suggestedVersionName ? `留空使用 ${state.suggestedVersionName}` : "留空使用默认名称"} maxLength={80} /></label>
         <button className="evolution-primary" disabled={blocked || !canSave}>确认保存</button>
       </form>}
       {sheet === "discard" && <><p>放弃本轮修改，回到「{versionLabel(base)}」。聊天、记忆和配置不变。{active?.id !== base?.id ? "Cleo 会自动重启。" : ""}</p><button className="evolution-primary" disabled={blocked} onClick={() => act("discard")}>确认放弃</button></>}
       {sheet === "contribute" && <>
         {state?.githubAuth?.status === "connected" ? <EvolutionContribution state={state} busy={busy || running || otherTasksRunning || Boolean(state?.transaction)} onAction={contributionAction}
+          initialBuildId={contributionBuild} onRelease={id => openRelease(id)}
           onBusy={(value) => { submittingRef.current = value; setSubmitting(value); }}
           onSubmitted={(url) => { setSubmittedUrl(url); submittingRef.current = false; close(); }} />
           : <GithubLogin auth={state?.githubAuth} busy={blocked} onAction={onAction} onContribute={openContribution} />}

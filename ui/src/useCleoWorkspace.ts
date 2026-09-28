@@ -25,6 +25,7 @@ import type {
   WorkspaceSnapshot,
   WorkspaceSpace,
 } from "./types";
+import { visiblePrompt } from "./visible-prompt";
 
 function currentTime() {
   return new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
@@ -79,6 +80,8 @@ export function useCleoWorkspace(evolutionOpen = false) {
     return memoryRefresh.current;
   }, []);
   const [bootstrapVersion, setBootstrapVersion] = useState(0);
+  const [choosingWorkspace, setChoosingWorkspace] = useState(false);
+  const workspacePickerOpen = useRef(false);
   const loadingRetry = useRef<(() => void) | null>(null);
   const clearLoadingError = () => { setLoadingError(null); loadingRetry.current = null; };
   const retryLoading = () => {
@@ -365,6 +368,27 @@ export function useCleoWorkspace(evolutionOpen = false) {
     });
   };
   const questions = useQuestions(activeThread, updateThread);
+  const companionRuns = useRef(new Set<string>());
+  const companionUpdate = useRef((thread: Thread) => {});
+  companionUpdate.current = thread => {
+    if (runLocks.current.has(thread.id) && !companionRuns.current.has(thread.id)) return;
+    if (thread.status === "running" && thread.activeRunId) {
+      companionRuns.current.add(thread.id);
+      runLocks.current.set(thread.id, thread.activeRunId);
+    } else {
+      companionRuns.current.delete(thread.id);
+      runLocks.current.delete(thread.id);
+    }
+    updateThread(thread.id, current => ({ ...current, ...thread }));
+    setRuns(current => {
+      const next = { ...current };
+      if (thread.status === "running") next[thread.id] = thread.activeRunId || "companion";
+      else delete next[thread.id];
+      return next;
+    });
+    questions.restore(thread.id, thread.pendingQuestions || [], questions.version(thread.id));
+  };
+  useEffect(() => window.cleoDesktop?.onCompanionThread?.(thread => companionUpdate.current(thread)), []);
   useEffect(() => {
     if (!Object.keys(restoredRuns).length) return;
     let active = true;
@@ -588,30 +612,48 @@ export function useCleoWorkspace(evolutionOpen = false) {
     return result.thread;
   };
 
+  /** Purpose: Register a selected folder and open its empty composer without launching a model.
+   * Input: Native directory selection. Output: Registered workspace; cancellation keeps selection.
+   * A late dialog result must not replace a task the user selected in the meantime.
+   */
   const chooseWorkspace = async () => {
-    const projectPath = await cleoClient.pickWorkspace();
-    if (!projectPath) return null;
+    if (workspacePickerOpen.current) return null;
+    workspacePickerOpen.current = true;
+    setChoosingWorkspace(true);
+    const selection = selectionRef.current;
     const space: ThreadSpace = activeSpace === "chat" ? "chat" : "productivity";
-    const name = projectPath.split(/[\\/]/).filter(Boolean).at(-1) ?? "workspace";
-    const projectId = `${space}:${name}`;
-    await refreshWorkspace(() => cleoClient.addProject(space, projectPath));
-    setActiveSpace(space);
-    setActiveProjectId(projectId);
-    setActiveThreadId(null);
-    return projectPath;
+    try {
+      const projectPath = await cleoClient.pickWorkspace();
+      if (!projectPath) return null;
+      const refreshed = await refreshWorkspace(() => cleoClient.addProject(space, projectPath));
+      const projectId = refreshed.selectedProjectId;
+      if (!projectId || !refreshed.projects.some(project => project.id === projectId)) {
+        throw new Error("文件夹已添加，但无法定位项目，请在项目列表中选择。");
+      }
+      if (selectionRef.current === selection) {
+        selectionRef.current += 1;
+        setActiveSpace(space);
+        setActiveProjectId(projectId);
+        setActiveThreadId(null);
+      }
+      return projectPath;
+    } finally {
+      workspacePickerOpen.current = false;
+      setChoosingWorkspace(false);
+    }
   };
 
   /** Purpose: Stream a user turn or diagnostic follow-up into a task.
    * Input: prompt, optional task, and draft preservation for controller-generated diagnostics.
    * Output: updated task timeline; diagnostic follow-ups leave draft text and attachments untouched.
    */
-  const sendPrompt = async (rawPrompt: string, targetThread?: Thread, { preserveDraft = false } = {}) => {
+  const sendPrompt = async (rawPrompt: string, targetThread?: Thread, { preserveDraft = false, deliveryId = "" } = {}) => {
     const prompt = rawPrompt.trim();
     const lockKey = targetThread?.id ?? activeThread?.id ?? draftKey;
     if (!prompt || runLocks.current.has(lockKey)
       || harnessSwitchRef.current.has(targetThread?.id ?? activeThreadId ?? "")) return;
 
-    const token = crypto.randomUUID();
+    const token = deliveryId || crypto.randomUUID();
     runLocks.current.set(lockKey, token);
     setStartingKeys(keys => [...keys, lockKey]);
     const sourceDraftKey = draftKey;
@@ -647,7 +689,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
       id: `${threadId}-user-${Date.now()}`,
       type: "message",
       role: "user",
-      content: prompt,
+      content: visiblePrompt(prompt),
       time: currentTime(),
     };
     let turnId = userItem.id;
@@ -660,8 +702,8 @@ export function useCleoWorkspace(evolutionOpen = false) {
     }));
     updateThread(threadId, (current) => ({
       ...current,
-      title: current.items.length === 0 ? prompt.slice(0, 26) : current.title,
-      summary: prompt.slice(0, 64),
+      title: current.items.length === 0 ? visiblePrompt(prompt).slice(0, 26) : current.title,
+      summary: visiblePrompt(prompt).slice(0, 64),
       status: "running",
       steerReady: false,
       updatedAt: "刚刚",
@@ -1302,6 +1344,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
     selectThread,
     createThread: startNewThread,
     chooseWorkspace,
+    choosingWorkspace,
     openEvolutionThread,
     beginEvolutionDraft,
     sendPrompt,

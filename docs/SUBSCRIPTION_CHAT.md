@@ -30,8 +30,8 @@ API 支持 OpenAI 兼容、Anthropic 和 Google Gemini 接口。服务没有模�
 
 API Key 配置继续可用。订阅 Profile 不接受 API Key 或 Base URL。
 多个同服务的 Profile 共用该运行时的账号；它们不是相互独立的账号槽位。
-Codex 的新会话使用 Cleo 数据根目录下的 `data/codex`，与默认 Codex 应用/CLI 的历史、登录缓存及全局配置分开。首次使用请在 Cleo 内登录；同一 ChatGPT 账号的额度仍共享。原 Codex 的登录文件和全局配置不会自动复制。
-已有 Codex 会话及从它们派生的原生分支继续使用原目录，不做迁移或删除。其他服务仍沿用官方 CLI 的账号，登录或退出可能影响使用同一 CLI 的应用。
+Codex 和 Claude 的新会话分别使用 Cleo 数据根目录下的 `data/codex`、`data/claude`，与默认应用/CLI 的历史、登录缓存及全局配置分开。首次使用请在 Cleo 内登录；同一账号的额度仍共享。原登录文件不会复制；本机的 skills、指令和设置会在首次使用时补充导入，详见[配置说明](CONFIGURATION.md)。
+已有 Codex/Claude 会话（及 Codex 原生分支）继续使用原目录，不做迁移或删除。其他服务仍沿用官方 CLI 的账号，登录或退出可能影响使用同一 CLI 的应用。
 Cleo 不主动在额度耗尽后切换付费 API，也不自动购买额度。
 官方 CLI 本身的既有配置、组织策略、额外用量设置仍然适用。
 

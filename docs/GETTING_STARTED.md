@@ -28,7 +28,8 @@ Set-ExecutionPolicy -Scope Process Bypass
 ```text
 %LOCALAPPDATA%\Programs\Cleo\   程序与内置 Python/Node runtime
 %LOCALAPPDATA%\Cleo\            配置、会话、记忆、模型、skills、workspace
-%USERPROFILE%\.codex\           Codex 登录和原生 task 历史
+%LOCALAPPDATA%\Cleo\data\codex\  Cleo 专用的 Codex 登录、配置、会话、skills
+%LOCALAPPDATA%\Cleo\data\claude\ Cleo 专用的 Claude 登录、配置、会话、skills
 ```
 
 ### 2. 配置模型

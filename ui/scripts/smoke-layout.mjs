@@ -87,8 +87,10 @@ try {
   assert.equal(await page.locator(".conversation-chrome .evolution-cases").count(), 0, "Improvement controls should not occupy the conversation header");
   await page.locator(".thread-actions-wrap > button").click();
   await page.getByRole("button", { name: "改进 Cleo", exact: true }).click();
-  await page.getByRole("dialog", { name: "改进 Cleo", exact: true }).waitFor();
-  await page.getByRole("button", { name: "关闭案例", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="composer-input"]')?.value === "请改进 Cleo：");
+  assert.equal(await page.getByRole("dialog", { name: "改进 Cleo", exact: true }).count(), 0);
+  await page.getByRole("navigation", { name: "工作区" }).getByRole("button", { name: "开发", exact: true }).click();
+  await page.getByText("最后一条消息应完整显示在输入框上方。", { exact: true }).waitFor();
 
   const viewport = page.locator(".conversation-viewport");
   const inspector = page.getByTestId("inspector");

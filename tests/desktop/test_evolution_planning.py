@@ -9,11 +9,27 @@ import pytest
 from cleo.desktop.evolution_planning import (
     INSTRUCTIONS,
     analyze_request,
+    parse_object,
     plan_request,
     source_inventory,
 )
 
 REQUEST = "给侧栏按钮显示文字"
+
+
+@pytest.mark.parametrize("reply", [
+    '```json\n{"paths": []}\n```\n\n目录中没有相关模块。',
+    '所选源码如下：\n```JSON\r\n{"paths": []}\r\n```',
+    '分析结果：\n{"paths": []}\n以上是相关文件。',
+])
+def test_planner_accepts_one_json_object_with_model_commentary(reply):
+    assert parse_object(reply) == {"paths": []}
+
+
+@pytest.mark.parametrize("reply", ['', '没有结果', '{"paths": []} {"paths": ["other"]}'])
+def test_planner_reports_unusable_or_ambiguous_output(reply):
+    with pytest.raises(ValueError, match="分析.*JSON"):
+        parse_object(reply)
 
 
 def fixture(tmp_path):
@@ -55,6 +71,20 @@ def test_repeated_steps_are_deduplicated_without_merging_distinct_outcomes(tmp_p
     result, _ = run_plan(tmp_path, plan)
     assert len(result["cases"]) == 2
     assert result["cases"][1]["expectation"] == "键盘可以聚焦按钮"
+
+
+@pytest.mark.parametrize("requirement", ["给侧栏按钮 显示文字", "让侧栏按钮带有文字标签"])
+def test_requirement_summary_does_not_need_to_quote_request(tmp_path, requirement):
+    """Purpose: Allow formatted or paraphrased requirement summaries.
+
+    Input: A valid case whose summary differs from the original request.
+    Output: An accepted case with the original request still passed to the model.
+    """
+    plan = fixture(tmp_path)
+    plan["cases"][0]["requirement"] = requirement
+    result, calls = run_plan(tmp_path, plan)
+    assert result["cases"][0]["requirement"] == requirement
+    assert calls[1][1]["request"] == REQUEST
 
 
 def test_existing_steps_are_given_as_context_without_rewriting_request(tmp_path):
@@ -120,7 +150,7 @@ def test_nonediting_intents_return_no_cases(tmp_path, intent):
 
 
 @pytest.mark.parametrize(
-    "change", ["line", "path", "requirement", "missing-trigger", "empty-cases"]
+    "change", ["line", "path", "empty-requirement", "missing-trigger", "empty-cases"]
 )
 def test_rejects_fabricated_evidence_and_incomplete_cases(tmp_path, change):
     result = fixture(tmp_path)
@@ -128,8 +158,8 @@ def test_rejects_fabricated_evidence_and_incomplete_cases(tmp_path, change):
         result["cases"][0]["references"][0]["line"] = 200
     elif change == "path":
         result["cases"][0]["references"][0]["path"] = "unread.tsx"
-    elif change == "requirement":
-        result["cases"][0]["requirement"] = "delete memory"
+    elif change == "empty-requirement":
+        result["cases"][0]["requirement"] = ""
     elif change == "missing-trigger":
         del result["cases"][0]["trigger"]
     else:

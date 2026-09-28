@@ -26,11 +26,11 @@ def service_for_source(monkeypatch, tmp_path, provider_type="codex_sdk"):
     return service, manifest, adapter
 
 
-def test_evolution_enforces_workspace_access_and_denies_escalation(monkeypatch, tmp_path):
+def test_evolution_uses_full_access_without_changing_ordinary_tasks(monkeypatch, tmp_path):
     service, manifest, adapter = service_for_source(monkeypatch, tmp_path)
     asyncio.run(service._restrict_evolution(manifest))
     adapter.update_session_options.assert_awaited_once_with(
-        "evolution", sandbox="workspace-write", approval_mode="deny_all"
+        "evolution", sandbox="full-access", approval_mode="deny_all"
     )
 
 
@@ -59,11 +59,11 @@ def test_evolution_prompt_preserves_user_request_and_shared_data_contract(
     assert service._evolution_prompt(manifest, prompt) == prompt
 
 
-def test_claude_uses_its_own_permission_control(monkeypatch, tmp_path):
+def test_claude_evolution_can_execute_without_an_unavailable_approval_broker(monkeypatch, tmp_path):
     service, manifest, adapter = service_for_source(monkeypatch, tmp_path, "claude_sdk")
     asyncio.run(service._restrict_evolution(manifest))
     adapter.update_session_options.assert_awaited_once_with(
-        "evolution", approval_mode="acceptEdits",
+        "evolution", approval_mode="bypassPermissions",
     )
 
 

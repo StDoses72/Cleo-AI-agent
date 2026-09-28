@@ -4,6 +4,9 @@ import os
 import re
 from pathlib import Path
 
+# Screenshot tool results are base64 encoded and routinely exceed the SDK's 1 MiB default.
+CLAUDE_MESSAGE_BUFFER_BYTES = 32 * 1024 * 1024
+
 
 def diagnostic_text(value: str, *, prompt: str = "", limit: int = 2000) -> str:
     """Purpose: Make runtime error text safe and short enough for the error UI.

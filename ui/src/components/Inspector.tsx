@@ -17,10 +17,13 @@ import {
 import type { MemoryEntry, Project, RuntimeProfile, Thread } from "../types";
 import { accessLabel, approvalLabel, effortLabels } from "../runtime-labels";
 import { Timing } from "./Timing";
+import { ComputerPreview } from "./ComputerPreview";
 
-export type InspectorTab = "changes" | "context" | "run";
+export type InspectorTab = "changes" | "context" | "run" | "computer";
 
 interface InspectorProps {
+  running: boolean;
+  onStop: () => void;
   resizeHandle?: ReactNode;
   thread: Thread | null;
   project: Project | null;
@@ -35,6 +38,8 @@ interface InspectorProps {
 }
 
 export function Inspector({
+  running,
+  onStop,
   resizeHandle,
   thread,
   project,
@@ -55,10 +60,13 @@ export function Inspector({
           <button className={activeTab === "changes" ? "active" : ""} type="button" onClick={() => onTabChange("changes")}>变更 {thread?.changes.length ? <small>{thread.changes.length}</small> : null}</button>
           <button className={activeTab === "context" ? "active" : ""} type="button" onClick={() => onTabChange("context")}>上下文</button>
           <button className={activeTab === "run" ? "active" : ""} type="button" onClick={() => onTabChange("run")}>运行</button>
+          <button className={activeTab === "computer" ? "active" : ""} type="button" onClick={() => onTabChange("computer")}>电脑</button>
         </div>
         <button className="icon-button" type="button" aria-label="关闭检查器" onClick={onClose}><X size={16} /></button>
       </header>
-      {activeTab === "changes" ? (
+      {activeTab === "computer" ? (
+        <ComputerPreview thread={thread} running={running} onStop={onStop} />
+      ) : activeTab === "changes" ? (
         <ChangesPanel thread={thread} onNotify={onNotify} onCopyText={onCopyText} />
       ) : activeTab === "context" ? (
         <ContextPanel thread={thread} project={project} runtime={runtime} memories={memories} onRevealPath={onRevealPath} />

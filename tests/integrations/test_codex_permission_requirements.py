@@ -62,7 +62,7 @@ def test_manual_policy_is_passed_at_native_thread_creation(operation, sandbox):
 
         client = Client()
         provider = CodexProvider("model", approval_mode="user", sandbox=sandbox)
-        provider._client_with_approvals = lambda _: client
+        provider._client_with_approvals = lambda _, **kwargs: client
         if operation == "create":
             await provider.create_session("C:/workspace")
             sent = native.thread_start.call_args.args[0]
@@ -83,4 +83,42 @@ def test_manual_policy_is_passed_at_native_thread_creation(operation, sandbox):
             "danger-full-access" if sandbox is Sandbox.full_access else sandbox.value
         )
         assert provider.session_options("native").approval_mode == "user"
+    asyncio.run(scenario())
+
+
+def test_rejected_reconnect_restores_old_client_and_never_recreates_history(tmp_path):
+    from cleo.integrations.harnesses.memory import MemoryMcp
+
+    async def scenario():
+        class Client:
+            def __init__(self):
+                self.close = AsyncMock()
+                self.thread_resume = AsyncMock(side_effect=RuntimeError("Native policy rejected"))
+                self.thread_start = AsyncMock()
+                self._ensure_initialized = AsyncMock()
+                self._client = SimpleNamespace(thread_resume=AsyncMock(
+                    return_value=SimpleNamespace(thread=SimpleNamespace(id="has-history"))))
+
+            async def __aenter__(self):
+                return self
+
+        old, rejected, restored = Client(), Client(), Client()
+        runtime = _CodexRuntime(old, SimpleNamespace(id="has-history"),
+                                SessionOptions(approval_mode="user", sandbox="workspace-write"),
+                                str(tmp_path), has_started_turn=True)
+        provider = CodexProvider(None, memory_mcp=MemoryMcp(
+            tmp_path, computer_config_path=tmp_path / "computer.json"))
+        clients = iter([rejected, restored])
+        provider._client_with_approvals = lambda *args, **kwargs: next(clients)
+        with pytest.raises(RuntimeError, match="Native policy rejected"):
+            await provider._reconnect_computer_permissions(
+                runtime, SessionOptions(approval_mode="deny_all", sandbox="full-access"))
+        assert runtime.client is restored
+        assert runtime.thread.id == "has-history"
+        assert runtime.options.approval_mode == "user"
+        rejected.close.assert_awaited_once()
+        old.close.assert_awaited_once()
+        rejected.thread_start.assert_not_awaited()
+        restored.thread_start.assert_not_awaited()
+        restored.close.assert_not_awaited()
     asyncio.run(scenario())

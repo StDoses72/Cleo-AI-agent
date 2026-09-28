@@ -13,7 +13,16 @@ from tempfile import TemporaryDirectory
 
 from cleo.harnesses.models import AgentEvent, emit_event
 from cleo.harnesses.provider import ProviderSession, ProviderTurn
-from cleo.integrations.runtime_diagnostics import StderrCapture, diagnostic_text
+from cleo.integrations.harness_home import (
+    CLAUDE_LOGIN_HINT,
+    claude_environment,
+    claude_session_is_external,
+)
+from cleo.integrations.runtime_diagnostics import (
+    CLAUDE_MESSAGE_BUFFER_BYTES,
+    StderrCapture,
+    diagnostic_text,
+)
 
 
 def process_options() -> dict:
@@ -60,7 +69,7 @@ async def auth_status(profile) -> dict:
         executable(profile),
         "auth",
         "status",
-        env=runtime_environment(),
+        env=claude_environment(runtime_environment()),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         **process_options(),
@@ -82,7 +91,7 @@ async def auth_status(profile) -> dict:
             raise ValueError(
                 f"Claude Code 登录检查未通过 (exit_code={process.returncode}, "
                 f"loggedIn={payload.get('loggedIn') is True})。"
-                f"请运行 claude auth login 完成官方登录。 {detail}"
+                f"{CLAUDE_LOGIN_HINT} {detail}"
             )
         return {"status": "connected", "models": []}
     finally:
@@ -97,6 +106,8 @@ class ClaudeCliProvider:
         self.mcp = mcp
         self._sessions: dict[str, tuple[str, str | None]] = {}
         self._processes = {}
+        # Logical sessions resumed from history created before isolation.
+        self._external: set[str] = set()
 
     async def create_session(self, project_path, model=None):
         identifier = secrets.token_hex(12)
@@ -105,6 +116,8 @@ class ClaudeCliProvider:
 
     async def resume_session(self, native_session_id, project_path, model=None):
         self._sessions[native_session_id] = (project_path, native_session_id)
+        if claude_session_is_external(native_session_id):
+            self._external.add(native_session_id)
         return ProviderSession(native_session_id, native_session_id)
 
     async def prompt(self, session_id, prompt, on_event=None):
@@ -148,11 +161,13 @@ class ClaudeCliProvider:
                 executable(self.profile),
                 *args,
                 cwd=cwd,
-                env=runtime_environment(),
+                env=claude_environment(
+                    runtime_environment(), external=session_id in self._external,
+                ),
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                limit=8 * 1024 * 1024,
+                limit=CLAUDE_MESSAGE_BUFFER_BYTES,
                 **process_options(),
             )
             self._processes[session_id] = process
@@ -260,3 +275,4 @@ class ClaudeCliProvider:
     async def close(self, session_id):
         await self.cancel(session_id)
         self._sessions.pop(session_id, None)
+        self._external.discard(session_id)

@@ -22,7 +22,8 @@ const initial: EvolutionState = { phase: "idle", supported: true, prepared: fals
   active: "different-running-version", baseline: null, baseTag: "v0.6.0", source: "fixture", threadId: null, error: null, logs: "",
   githubAuth: { status: "connected", message: "GitHub 已连接", repositoryAccess: { status: "checked", repository: "StDoses72/Cleo-AI-agent",
     login: "fixture-owner", role: "owner", canRelease: true, message: "有仓库写权限，可以创建 Release。" } },
-  builds: [{ id: "local", name: "PR release candidate", kind: "local", version: "0.6.1", baseTag: "v0.6.0", createdAt: "2026-01-01", sourceHash: "verified" }],
+  builds: [{ id: "local", name: "PR release candidate", kind: "local", version: "0.6.1", baseTag: "v0.6.0", createdAt: "2026-01-01", sourceHash: "verified" },
+    { id: "unshared", name: "尚未提交的界面", kind: "local", version: "0.6.2", baseTag: "v0.6.0", createdAt: "2026-01-02", savedAt: "2026-01-02T00:00:00Z", sourceHash: "unshared-source" }],
   pullRequest: { url, state: "MERGED", merged: true, buildId: "local", sourceHash: "verified", targetBranch: "release-branch" },
   pullRequests: [
     { url: url.replace("42", "43"), title: "Historical merged version", state: "MERGED", merged: true, buildId: "pruned", targetBranch: "release-branch" },

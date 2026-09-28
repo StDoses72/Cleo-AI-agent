@@ -263,6 +263,28 @@ def test_claude_provider_reconnects_with_selected_effort(tmp_path) -> None:
     ]
 
 
+def test_computer_prompt_reaches_provider_but_display_text_survives_reload(tmp_path):
+    from cleo.desktop.projection import timeline_from_events
+
+    async def scenario():
+        adapter = AgentAdapter(tmp_path)
+        adapter.register(FakeProvider())
+        session = await adapter.create_session("fake", model="test-model")
+        received = []
+        result = await adapter.prompt(session.id, "internal desktop instructions",
+                                      on_event=received.append,
+                                      display_prompt="Computer use：打开浏览器")
+        assert result.response == "done:internal desktop instructions"
+        assert received[0].text == "Computer use：打开浏览器"
+        events = adapter._store.read_events(session.id)
+        user = next(event for event in events if event["type"] == "user_message")
+        assert user["content"] == "internal desktop instructions"
+        assert timeline_from_events(events)[0]["content"] == "Computer use：打开浏览器"
+        await adapter.aclose()
+
+    asyncio.run(scenario())
+
+
 def test_agent_adapter_routes_provider_sessions(tmp_path) -> None:
     provider = FakeProvider()
     adapter = AgentAdapter(tmp_path)
@@ -341,6 +363,32 @@ def test_agent_adapter_can_resume_native_session(tmp_path) -> None:
         assert result.response == "done:continue"
 
     asyncio.run(exercise())
+
+
+def test_permission_change_persists_replacement_native_id_and_routes_capabilities(tmp_path):
+    class PermissionProvider(FakeProvider):
+        def session_options(self, session_id):
+            return SessionOptions(approval_mode="user", sandbox="workspace-write")
+
+        async def update_session_options(self, session_id, **changes):
+            return self.session_options(session_id)
+
+        def session_native_id(self, session_id):
+            return "replacement-native"
+
+        def permission_capabilities(self, session_id):
+            return {"reason": "Native policy checked"}
+
+    async def scenario():
+        adapter = AgentAdapter(tmp_path)
+        adapter.register(PermissionProvider())
+        session = await adapter.create_session("fake", model="test-model")
+        assert adapter.permission_capabilities(session.id)["reason"] == "Native policy checked"
+        await adapter.update_session_options(session.id, approval_mode="user")
+        manifest = adapter._store.load_manifest(session.id)
+        assert manifest["native_session_id"] == "replacement-native"
+        assert adapter._route(session.id).native_session_id == "replacement-native"
+    asyncio.run(scenario())
 
 
 def test_agent_adapter_restores_saved_runtime_options(tmp_path) -> None:

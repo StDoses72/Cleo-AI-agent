@@ -44,6 +44,7 @@ class TaskHarnessTests(unittest.IsolatedAsyncioTestCase):
 
         service = DesktopService.__new__(DesktopService)
         service.settings = SimpleNamespace(
+            PROFILE_DIR=Path(fixture.name) / "cleo.json",
             productivity=ProductivitySettings(),
             active_directory_profile=SimpleNamespace(root_path=Path(fixture.name)),
         )

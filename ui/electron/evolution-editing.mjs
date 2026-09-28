@@ -30,3 +30,11 @@ export async function runPreparedEvolutionTurn({ evolution, requests, acceptance
   }
   return result;
 }
+/** Purpose: Run a normal coding conversation in the dedicated source workspace.
+ * Input: selected harness and user turn. Output: editable changes, with explicit build kept separate.
+ */
+export async function runEvolutionTurn({ evolution, backend, params, onEvent }) {
+  await evolution.begin();
+  await evolution.recordValidation({ status: "pending", message: "可以继续补充需求；准备体验时点击检查改动。" });
+  return backend.request("stream_turn", params, onEvent);
+}

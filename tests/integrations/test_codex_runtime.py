@@ -11,7 +11,8 @@ def test_desktop_cli_override_preserves_memory_configuration(monkeypatch, tmp_pa
     monkeypatch.setattr("cleo.integrations.harnesses.codex.AsyncCodex", lambda **kwargs: kwargs)
     result = CodexProvider._client(config)
     assert result["config"].codex_bin == executable
-    assert result["config"].config_overrides[0] == "mcp_servers.cleo_memory.enabled=true"
+    assert tuple(value for value in result["config"].config_overrides
+                 if value.startswith("mcp_servers.")) == config.config_overrides
     assert result["config"].env["CODEX_HOME"] == str((tmp_path / "data/codex").resolve())
 
 

@@ -37,15 +37,51 @@ ACP_APPROVAL = [
 ]
 
 
-def permission_choices(provider_type: str, *, fixed: bool = False) -> dict:
+def permission_choices(provider_type: str, *, fixed: bool = False, support=None) -> dict:
+    """Purpose: Describe session presets using the connected harness's restrictions.
+
+    Input: Provider type, fixed evolution scope and optional native capability report.
+    Output: Independent advanced choices and atomic common presets, with rejection reasons.
+    """
     if fixed:
         return {"access": [], "approval": [], "reason": "进化任务使用固定权限。"}
     if provider_type == "codex_sdk":
-        return {"access": CODEX_ACCESS, "approval": CODEX_APPROVAL}
-    if provider_type in {"claude_sdk", "acp"}:
-        return {"access": [], "approval": CLAUDE_APPROVAL if provider_type == "claude_sdk"
-                else ACP_APPROVAL, "reason": "此服务不提供独立的文件访问范围设置。"}
-    return {"access": [], "approval": [], "reason": "此任务使用运行后端的权限配置。"}
+        choices = {"access": CODEX_ACCESS, "approval": CODEX_APPROVAL}
+        modes = [
+            ("ask", "请求批准", "user", "workspace-write"),
+            ("review", "帮我审批", "auto_review", "workspace-write"),
+            ("full", "完全访问", "deny_all", "full-access"),
+        ]
+    elif provider_type == "claude_sdk":
+        choices = {"access": [], "approval": CLAUDE_APPROVAL}
+        modes = [("ask", "请求批准", "default", None),
+                 ("review", "帮我审批", "auto", None),
+                 ("full", "完全访问", "bypassPermissions", None)]
+    elif provider_type == "acp":
+        return {"access": [], "approval": ACP_APPROVAL,
+                "reason": "此服务不提供统一权限档位，请使用高级审批设置。"}
+    else:
+        return {"access": [], "approval": [], "reason": "此任务使用运行后端的权限配置。"}
+    restrictions = support or {}
+    result = {field: [dict(choice, disabledReason=restrictions.get(field, {}).get(choice["value"]))
+                      for choice in values] for field, values in choices.items()}
+    descriptions = {
+        "ask": "由你批准超出已有授权范围的操作。",
+        "review": "由当前 harness 自动审查操作；可能允许、拒绝或请求你确认。",
+        "full": "允许常规文件、命令和工具操作，无需逐项确认；服务强制规则仍生效。",
+    }
+    result["presets"] = []
+    for value, label, approval, access in modes:
+        update = {"approval": approval, **({"access": access} if access else {})}
+        reason = next((restrictions.get(field, {}).get(option)
+                       for field, option in update.items()
+                       if restrictions.get(field, {}).get(option)), None)
+        result["presets"].append({"value": value, "label": label,
+                                  "description": descriptions[value], "update": update,
+                                  "disabledReason": reason})
+    result["reason"] = (restrictions.get("reason") or
+                        "选择后由当前 harness 检查并生效，仅影响此会话。")
+    return result
 
 
 def validate_permissions(provider_type: str, update: dict) -> None:

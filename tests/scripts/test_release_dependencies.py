@@ -70,7 +70,7 @@ def test_receipt_selects_only_requirements_for_the_current_platform(packaged):
     assert json.loads((root / "dependencies.json").read_text())["python_packages"] == packages
 
 
-def test_all_platforms_test_the_same_freshly_resolved_locks():
+def test_all_platforms_package_the_same_freshly_resolved_locks():
     workflow = yaml.safe_load((ROOT / ".github/workflows/desktop-platforms.yml").read_text())
     jobs = workflow["jobs"]
     steps = jobs["dependencies"]["steps"]
@@ -78,17 +78,22 @@ def test_all_platforms_test_the_same_freshly_resolved_locks():
     upload = next(i for i, s in enumerate(steps)
                   if s.get("with", {}).get("name") == "dependency-locks")
     assert resolve < upload
+    assert set(steps[upload]["with"]["path"].split()) == set(receipt.LOCKS)
     assert jobs["desktop"]["needs"] == "dependencies"
     steps = jobs["desktop"]["steps"]
     download = next(i for i, s in enumerate(steps)
                     if s.get("with", {}).get("name") == "dependency-locks")
-    install = next(i for i, s in enumerate(steps) if "uv pip install" in s.get("run", ""))
-    test = next(i for i, s in enumerate(steps) if s.get("run", "").startswith("pytest"))
-    package = next(i for i, s in enumerate(steps) if "package:portable" in s.get("run", ""))
-    assert download < install < test < package
-    for name in ("Desktop smoke", "Independent recovery smoke", "Installed release smoke",
-                 "Native packaged smoke", "Native recovery baseline smoke",
-                 "Native installed package smoke", "Native memory handshake smoke"):
-        step = next(step for step in steps if step.get("name") == name)
+    package_steps = []
+    for command, flag in (("package:portable", "--locked-dependencies"),
+                          ("build-release.ps1", "-LockedDependencies")):
+        index = next(i for i, s in enumerate(steps) if command in s.get("run", ""))
+        assert download < index
+        step = steps[index]
+        assert flag in step["run"], "Every platform must package the shared dependency locks"
         assert "\n" not in step["run"].strip(), "Each Windows command must have its own exit check"
         assert "shell" not in step, "Use the runner's native shell and path encoding"
+        package_steps.append(index)
+    launch_checks = [i for i, s in enumerate(steps)
+                     if "smoke:package-launch" in s.get("run", "")]
+    assert len(launch_checks) == 2, "Verify packaged startup on Linux and native Windows/macOS"
+    assert max(package_steps) < min(launch_checks)

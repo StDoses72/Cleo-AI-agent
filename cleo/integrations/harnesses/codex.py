@@ -65,6 +65,8 @@ class _CodexRuntime:
     user_approvals_enabled: bool = False
     context_binding: Any = None
     legacy_home: bool = False
+    permission_support: dict = field(default_factory=dict)
+    has_started_turn: bool = False
 
 
 class CodexProvider:
@@ -223,6 +225,7 @@ class CodexProvider:
         self._sessions[thread.id] = _CodexRuntime(
             client, thread, options, project_path, approvals=approvals, context_binding=context,
             legacy_home=_legacy,
+            has_started_turn=True,
         )
         return ProviderSession(id=thread.id, native_id=thread.id)
 
@@ -375,15 +378,11 @@ class CodexProvider:
         sandbox: str | None = None,
         service_tier: str | None = None,
     ) -> SessionOptions:
-        """更新 session 的模型/推理力度/审批/沙箱选项(校验后生效于后续 turn)。
+        """Purpose: Validate native requirements before changing this session's options.
 
-        由 ``AgentAdapter.update_session_options`` 调用, CLI productivity
-        界面(cleo/cli/productivity.py)在用户修改选项时触发。
-        参数:
-            session_id: 目标 session id; 其余各参数为 None 表示保持原值,
-                非 None 时会先用对应 Enum 构造做合法性校验。
-        返回:
-            更新后的 ``SessionOptions``, 由 AgentAdapter 持久化并回显给 CLI。
+        Input: Session ID and optional overrides; None retains the existing value.
+        Output: Accepted options. MCP authorization changes reconnect the idle native session;
+        file access and review selection apply to the next turn, including after restore.
         """
         runtime = self._sessions[session_id]
         if service_tier is not None and service_tier not in {"default", "fast"}:
@@ -396,34 +395,87 @@ class CodexProvider:
         if sandbox is not None:
             Sandbox(sandbox)
         if approval_mode is not None or sandbox is not None:
-            response = await runtime.client._client.request(
-                "configRequirements/read", None, response_model=ConfigRequirementsReadResponse,
-            )
-            requirements = response.requirements
-            if requirements is not None:
-                rules = requirements.model_dump(mode="json", by_alias=True)
-                allowed_sandbox = rules.get("allowedSandboxModes")
-                native_sandbox = "danger-full-access" if sandbox == "full-access" else sandbox
-                if (sandbox is not None and allowed_sandbox is not None
-                        and native_sandbox not in allowed_sandbox):
-                    raise ValueError("此设备的管理策略不允许所选文件访问范围。")
-                policy = "never" if approval_mode == "deny_all" else "on-request"
-                allowed_approval = rules.get("allowedApprovalPolicies")
-                if (approval_mode is not None and allowed_approval is not None
-                        and policy not in allowed_approval):
-                    raise ValueError("此设备的管理策略不允许所选审批方式。")
-                features = rules.get("featureRequirements") or {}
-                if approval_mode == "auto_review" and features.get("guardian_approval") is False:
-                    raise ValueError("此设备的管理策略未启用自动审查。")
+            await self._refresh_permission_support(runtime)
+            for field, value in (("access", sandbox), ("approval", approval_mode)):
+                reason = runtime.permission_support.get(field, {}).get(value)
+                if reason:
+                    raise ValueError(reason)
         current = runtime.options
-        runtime.options = SessionOptions(
+        desired = SessionOptions(
             model=current.model if model is None else model,
             effort=current.effort if effort is None else effort,
             approval_mode=(current.approval_mode if approval_mode is None else approval_mode),
             sandbox=current.sandbox if sandbox is None else sandbox,
             service_tier=current.service_tier if service_tier is None else service_tier,
         )
+        if approval_mode is not None and approval_mode != current.approval_mode:
+            await self._reconnect_computer_permissions(runtime, desired)
+        runtime.options = desired
         return runtime.options
+
+    def session_native_id(self, session_id: str) -> str:
+        """Purpose: Expose the active native ID. Input: Stable handle. Output: Native ID."""
+        return self._sessions[session_id].thread.id
+
+    async def _reconnect_computer_permissions(self, runtime, options):
+        """Purpose: Replace process-local MCP grants when the session reviewer changes.
+
+        Input: Idle runtime and validated next options. Output: Connected replacement retaining
+        history. Only a brand-new, never-run thread may be recreated before its rollout exists.
+        """
+        if self._memory_mcp is None:
+            return
+        before = self._memory_mcp.codex_config(approval_mode=runtime.options.approval_mode)
+        after = self._memory_mcp.codex_config(approval_mode=options.approval_mode)
+        if before.config_overrides == after.config_overrides:
+            return
+        if runtime.active_turn is not None:
+            raise ValueError("请等待当前运行结束后再更改权限。")
+        broker = CodexApprovalBroker(self.name)
+        client = self._client_with_approvals(
+            broker, context=runtime.context_binding, legacy=runtime.legacy_home,
+            approval_mode=options.approval_mode,
+        )
+        await client.__aenter__()
+        async def connect(target, selected):
+            """Purpose: Resume native history or replace a never-run thread; return its handle."""
+            async def open_thread(operation, thread_id=None):
+                if selected.approval_mode == "user":
+                    return await self._manual_thread(target, operation, runtime.cwd,
+                                                     selected, thread_id)
+                method = getattr(target, operation)
+                return await method(*([thread_id] if thread_id else []),
+                                    approval_mode=self._sdk_approval_mode(selected.approval_mode),
+                                    cwd=runtime.cwd, model=selected.model,
+                                    sandbox=Sandbox(selected.sandbox))
+            try:
+                return await open_thread("thread_resume", runtime.thread.id)
+            except JsonRpcError as error:
+                if runtime.has_started_turn or "no rollout found" not in error.message.lower():
+                    raise
+                return await open_thread("thread_start")
+
+        # The native rollout permits only one writer, including between turns.
+        # Keep the old policy available to restore if the new native resume is rejected.
+        await runtime.client.close()
+        try:
+            thread = await connect(client, options)
+        except BaseException:
+            await client.close()
+            previous = self._client_with_approvals(
+                runtime.approvals, context=runtime.context_binding, legacy=runtime.legacy_home,
+                approval_mode=runtime.options.approval_mode,
+            )
+            await previous.__aenter__()
+            try:
+                runtime.thread = await connect(previous, runtime.options)
+            except BaseException:
+                await previous.close()
+                raise
+            runtime.client = previous
+            raise
+        broker.questions.enabled = runtime.approvals.questions.enabled
+        runtime.client, runtime.thread, runtime.approvals = client, thread, broker
 
     async def resolve_approval(
         self,
@@ -454,7 +506,39 @@ class CodexProvider:
             raise RuntimeError("Steering acknowledgement referred to a different turn")
 
     async def enable_user_approvals(self, session_id: str) -> None:
+        await self._refresh_permission_support(self._sessions[session_id])
         self._sessions[session_id].user_approvals_enabled = True
+
+    def permission_capabilities(self, session_id: str) -> dict:
+        """Purpose: Expose native restrictions. Input: Session ID. Output: Cached report."""
+        return self._sessions[session_id].permission_support
+
+    async def _refresh_permission_support(self, runtime: _CodexRuntime) -> None:
+        """Purpose: Check the connected CLI's effective administrator requirements.
+
+        Input: Live runtime. Output: Cached reasons for modes disallowed by native policy.
+        Errors propagate so a permission change cannot be reported as saved without a check.
+        """
+        response = await runtime.client._client.request(
+            "configRequirements/read", None, response_model=ConfigRequirementsReadResponse,
+        )
+        rules = (response.requirements.model_dump(mode="json", by_alias=True)
+                 if response.requirements is not None else {})
+        support = {"access": {}, "approval": {},
+                   "reason": "已读取 Codex 管理策略；选择仅影响此会话。"}
+        allowed_sandbox = rules.get("allowedSandboxModes")
+        for value in ("read-only", "workspace-write", "full-access"):
+            native = "danger-full-access" if value == "full-access" else value
+            if allowed_sandbox is not None and native not in allowed_sandbox:
+                support["access"][value] = "此设备的管理策略不允许所选文件访问范围。"
+        allowed_approval = rules.get("allowedApprovalPolicies")
+        for value in CODEX_APPROVAL_MODES:
+            policy = "never" if value == "deny_all" else "on-request"
+            if allowed_approval is not None and policy not in allowed_approval:
+                support["approval"][value] = "此设备的管理策略不允许所选审批方式。"
+        if (rules.get("featureRequirements") or {}).get("guardian_approval") is False:
+            support["approval"]["auto_review"] = "此设备的管理策略未启用自动审查。"
+        runtime.permission_support = support
 
     async def resolve_question(self, session_id: str, question_id: str, answers: dict) -> dict:
         return await self._sessions[session_id].approvals.questions.resolve(question_id, answers)
@@ -622,6 +706,7 @@ class CodexProvider:
         client = self._client_with_approvals(
             approvals, **({"context": source.context_binding} if source.context_binding else {}),
             **({"legacy": True} if source.legacy_home else {}),
+            approval_mode=options.approval_mode,
         )
         await client.__aenter__()
         try:
@@ -648,6 +733,7 @@ class CodexProvider:
             approvals=approvals,
             context_binding=source.context_binding,
             legacy_home=source.legacy_home,
+            has_started_turn=True,
         )
         return ProviderSession(id=thread.id, native_id=thread.id)
 
@@ -730,6 +816,7 @@ class CodexProvider:
         runtime: _CodexRuntime,
         prompt: str | Input,
     ) -> AsyncTurnHandle:
+        runtime.has_started_turn = True
         options = runtime.options
         if options.approval_mode != "user" and options.service_tier != "default":
             return await runtime.thread.turn(
@@ -783,13 +870,16 @@ class CodexProvider:
 
     def _client_with_approvals(
         self, approvals: CodexApprovalBroker, *, context=None, legacy: bool = False,
+        approval_mode: str | None = None,
     ) -> AsyncCodex:
         memory = (
             self._memory_mcp.for_context(context)
             if context and self._memory_mcp
             else self._memory_mcp
         )
-        client = self._client(memory.codex_config() if memory else None, legacy=legacy)
+        config = (memory.codex_config(approval_mode=approval_mode or self._approval_mode)
+                  if memory else None)
+        client = self._client(config, legacy=legacy)
         async_client = getattr(client, "_client", None)
         sync_client = getattr(async_client, "_sync", None)
         if sync_client is None or not hasattr(sync_client, "_approval_handler"):

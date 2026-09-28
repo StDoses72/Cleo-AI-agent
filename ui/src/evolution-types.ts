@@ -47,6 +47,8 @@ export interface EvolutionPullRequest {
 }
 
 export interface EvolutionState {
+  /** Default local version name: the previous version number with its last digit incremented. */
+  suggestedVersionName?: string;
   releaseJob?: { id: string; tag: string; phase: string; message: string; error?: string;
     workflowUrl?: string; releaseUrl?: string } | null;
   releaseTypes?: Record<string, boolean>;

@@ -6,6 +6,7 @@ import {
   CircleAlert,
   FileClock,
   FolderOpen,
+  FolderPlus,
   FolderGit2,
   History,
   MoreHorizontal,
@@ -27,6 +28,7 @@ interface ThreadSidebarProps {
   onDeleteThread: (thread: Thread) => void;
   onCreateThread: () => void;
   onChooseWorkspace: () => void;
+  choosingWorkspace?: boolean;
   recoverableChatBackups: number;
   onRestoreChatHistory: () => void;
   memoryOverview: MemoryOverview;
@@ -54,6 +56,7 @@ export function ThreadSidebar({
   onDeleteThread,
   onCreateThread,
   onChooseWorkspace,
+  choosingWorkspace = false,
   recoverableChatBackups,
   onRestoreChatHistory,
   memoryOverview,
@@ -147,9 +150,10 @@ export function ThreadSidebar({
                     onChooseWorkspace();
                   }}
                   data-testid="choose-workspace"
+                  disabled={choosingWorkspace}
                 >
                   <span className="project-glyph compact"><FolderOpen size={14} /></span>
-                  <span><strong>打开工作目录</strong><small>选择任意本地文件夹</small></span>
+                  <span><strong>{space === "productivity" ? "新项目" : "打开工作目录"}</strong><small>选择或新建本地文件夹</small></span>
                 </button>
                 {projects
                   .filter((project) =>
@@ -202,6 +206,13 @@ export function ThreadSidebar({
             <span>{space === "chat" ? "新对话" : "新任务"}</span>
             <kbd>{modifierKey} N</kbd>
           </button>
+
+          {space === "productivity" && <button className="new-project-button" type="button"
+            onClick={onChooseWorkspace} disabled={choosingWorkspace} data-testid="new-project"
+            title="选择或新建本地文件夹，作为项目工作区">
+            <FolderPlus size={16} />
+            <span>{choosingWorkspace ? "正在选择文件夹…" : "新项目"}</span>
+          </button>}
 
           <label className="sidebar-search">
             <Search size={15} />

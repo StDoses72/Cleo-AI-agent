@@ -109,3 +109,31 @@ def test_authentication_error_does_not_fall_back_to_shared_codex():
         assert calls == [{}, "closed"]
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("platform", ["win32", "linux", "darwin"])
+def test_native_sandbox_default_is_windows_only(tmp_path, monkeypatch, platform):
+    monkeypatch.setattr("cleo.config.settings.APP_HOME", tmp_path)
+    monkeypatch.setattr("cleo.integrations.codex_home.sys.platform", platform)
+    config = isolated_codex_config()
+    assert ('windows.sandbox="unelevated"' in config.config_overrides) == (platform == "win32")
+
+
+def test_explicit_windows_sandbox_settings_are_preserved(tmp_path, monkeypatch):
+    monkeypatch.setattr("cleo.config.settings.APP_HOME", tmp_path)
+    monkeypatch.setattr("cleo.integrations.codex_home.sys.platform", "win32")
+    home = tmp_path / "data" / "codex"
+    home.mkdir(parents=True)
+    saved = '[windows]\nsandbox = "elevated"\n'
+    (home / "config.toml").write_text(saved, encoding="utf-8")
+    assert not any(value.startswith("windows.sandbox=")
+                   for value in isolated_codex_config().config_overrides)
+    assert (home / "config.toml").read_text(encoding="utf-8") == saved
+    (home / "config.toml").write_text('model = "gpt-5.5"\n', encoding="utf-8")
+    explicit = isolated_codex_config(CodexConfig(
+        config_overrides=('windows.sandbox="elevated"',),
+    ))
+    settings = {}
+    for override in explicit.config_overrides:
+        settings.update(tomllib.loads(override))
+    assert settings["windows"]["sandbox"] == "elevated"

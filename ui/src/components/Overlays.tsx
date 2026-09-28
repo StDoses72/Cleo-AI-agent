@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { dreamStatusLabel } from "../memoryStatus";
 import { UpdateVersionPicker } from "./UpdateVersionPicker";
 import { handleDialogKeyDown, Modal } from "./Modal";
+import { PermissionSelector } from "./PermissionSelector";
 import { accessLabel, approvalLabel, effortLabels } from "../runtime-labels";
 import {
+  ArrowDownToLine,
   ArrowRight,
   Brain,
   Check,
@@ -41,6 +43,7 @@ import type {
   WorkspaceSpace,
 } from "../types";
 import { ModelSettingsPanel, type ModelsPage } from "./model-settings/ModelSettingsPanel";
+import { HarnessImportPage } from "./HarnessImportPage";
 
 export interface CommandAction {
   id: string;
@@ -312,10 +315,10 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-type SettingsPage = "appearance" | "agent" | "instructions" | "models" | "models-add" | "models-dream" | "updates" | "data";
+type SettingsPage = "appearance" | "agent" | "instructions" | "models" | "models-add" | "models-dream" | "import" | "updates" | "data";
 const settingsTitles: Record<SettingsPage, string> = {
   appearance: "外观", agent: "运行设置", instructions: "对话指令", models: "当前配置",
-  "models-add": "新增连接", "models-dream": "记忆整理", updates: "软件更新", data: "数据与记忆",
+  "models-add": "新增连接", "models-dream": "记忆整理", import: "导入", updates: "软件更新", data: "数据与记忆",
 };
 
 export function SettingsModal({
@@ -366,6 +369,7 @@ export function SettingsModal({
         <button className="icon-button settings-close" aria-label="关闭设置" onClick={onClose}><X size={17} /></button>
         <aside>
           <div className="settings-brand"><span>C</span><strong>设置</strong></div>
+          {window.cleoDesktop?.setup && <button type="button" onClick={() => { onClose(); window.dispatchEvent(new Event("cleo:open-setup")); }}>检查运行环境</button>}
           <nav aria-label="设置导航">
             <button className={page === "appearance" ? "active" : ""} aria-current={page === "appearance" ? "page" : undefined} type="button" onClick={() => setPage("appearance")}><Sparkles size={16} />外观</button>
             <button className={page === "agent" ? "active" : ""} aria-current={page === "agent" ? "page" : undefined} type="button" onClick={() => setPage("agent")}><SlidersHorizontal size={16} />运行设置</button>
@@ -376,6 +380,7 @@ export function SettingsModal({
               <button className={page === "models-add" ? "active" : ""} aria-current={page === "models-add" ? "page" : undefined} onClick={() => setPage("models-add")}><Plus size={15} />新增连接</button>
               <button className={page === "models-dream" ? "active" : ""} aria-current={page === "models-dream" ? "page" : undefined} onClick={() => setPage("models-dream")}><Moon size={15} />记忆整理</button>
             </div>
+            <button className={page === "import" ? "active" : ""} aria-current={page === "import" ? "page" : undefined} type="button" onClick={() => setPage("import")}><ArrowDownToLine size={16} />导入</button>
             <button className={page === "updates" ? "active" : ""} aria-current={page === "updates" ? "page" : undefined} type="button" onClick={() => setPage("updates")}><RefreshCw size={16} />更新</button>
             <button className={page === "data" ? "active" : ""} aria-current={page === "data" ? "page" : undefined} type="button" onClick={() => setPage("data")}><Database size={16} />数据与记忆</button>
           </nav>
@@ -391,6 +396,9 @@ export function SettingsModal({
               <button type="button" onClick={() => void onLoadAgentInstructions().catch(() => {})}>重试</button></p>}
             <AgentInstructionsPage instructions={agentInstructions} loading={agentInstructionsLoading}
               onSave={onSaveAgentInstructions} onRevealPath={onRevealPath} />
+          </div>
+          <div hidden={page !== "import"}>
+            <HarnessImportPage active={open && page === "import"} onRevealPath={onRevealPath} />
           </div>
           <div hidden={!isModels}>
             <ModelSettingsPanel page={modelPage} settings={modelSettings} busy={modelSettingsLoading}
@@ -417,7 +425,7 @@ export function SettingsModal({
               <RuntimePermissions key={runtimeThread?.id ?? "draft"} runtime={runtime}
                 threadId={runtimeThread?.id} onChange={onPermissionsChange} />
             </div>
-          ) : page === "instructions" || isModels ? null : page === "updates" ? (
+          ) : page === "instructions" || page === "import" || isModels ? null : page === "updates" ? (
             <UpdateSettingsPage
               active={open}
               state={updateState}
@@ -455,11 +463,13 @@ function RuntimePermissions({ runtime, threadId, onChange }: {
     if (!threadId || !onChange || inFlight.current) return;
     inFlight.current = true;
     setSaving(true); setError("");
-    try { await onChange(threadId, update); }
+    try { await onChange(threadId, { ...update, permissionProvider: runtime.provider }); }
     catch (error) { setError(error instanceof Error ? error.message : "权限更改未保存，请重试。"); }
     finally { inFlight.current = false; setSaving(false); }
   };
   return <>
+    <PermissionSelector key={runtime.provider} runtime={runtime} disabled={saving}
+      onChange={threadId && onChange ? update => onChange(threadId, update) : undefined} />
     {(["access", "approval"] as const).map(field => {
       const title = field === "access" ? "文件访问" : "审批方式";
       const label = field === "access" ? accessLabel : approvalLabel;
@@ -470,7 +480,8 @@ function RuntimePermissions({ runtime, threadId, onChange }: {
         {threadId && onChange && choices.length ? <select aria-label={title} value={value} disabled={saving}
           onChange={event => void change({ [field]: event.target.value })}>
           {!choice && <option value={value}>{label(value)}</option>}
-          {choices.map(choice => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
+          {choices.map(choice => <option key={choice.value} value={choice.value} disabled={Boolean(choice.disabledReason)}
+            title={choice.disabledReason ?? choice.description}>{choice.label}{choice.disabledReason ? "（不可用）" : ""}</option>)}
         </select> : <span className="settings-value">{label(runtime[field])}</span>}
       </SettingsRow>;
     })}
