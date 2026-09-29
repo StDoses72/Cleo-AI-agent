@@ -5,6 +5,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { bundledPython } from "./platform.mjs";
+import { findInstalledRuntime } from "./online-runtime.mjs";
 
 const execute = promisify(execFile);
 
@@ -42,6 +43,8 @@ export class DependencyUpdater {
   constructor({ app, resourcesPath, cleoHome, onState = () => {} }) {
     this.app = app;
     this.resourcesPath = resourcesPath;
+    this.cleoHome = cleoHome;
+    this.baseResources = resourcesPath;
     const key = createHash("sha256").update(resolve(resourcesPath || ".")).digest("hex").slice(0, 24);
     const version = createHash("sha256").update(app.getVersion()).digest("hex").slice(0, 24);
     this.installationRoot = join(cleoHome, "runtimes", key);
@@ -56,7 +59,8 @@ export class DependencyUpdater {
 
   async prepare() {
     if (!this.app.isPackaged || process.env.CLEO_PYTHON || process.env.CLEO_DESKTOP_MOCK === "1") return null;
-    this.runtime = selectRuntime(this.root, this.resourcesPath);
+    this.baseResources = findInstalledRuntime(this.resourcesPath, this.cleoHome);
+    this.runtime = selectRuntime(this.root, this.baseResources);
     if (this.runtime.current) {
       try {
         await execute(this.runtime.python, ["-I", "-c", "from cleo.desktop.server import main"], {
@@ -66,7 +70,7 @@ export class DependencyUpdater {
       } catch (error) {
         const state = { ...readDependencyState(this.root), active: null, phase: "error", error: `依赖启动检查失败，已恢复随应用安装的版本：${error.message}` };
         await writeFile(join(this.root, "state.json"), JSON.stringify(state));
-        this.runtime = selectRuntime(this.root, this.resourcesPath);
+        this.runtime = selectRuntime(this.root, this.baseResources);
       }
     }
     if (!this.runtime.codexBin) await this.resolveCodexBinary();
@@ -114,12 +118,12 @@ export class DependencyUpdater {
     // Other versions retain their runtime snapshots so explicit rollback remains reproducible.
     if (this.closed) return;
     const args = ["-I", "-m", "cleo.desktop.dependencies", "--root", this.root,
-      "--python-root", join(this.resourcesPath, "python"),
-      "--browser-root", join(this.resourcesPath, "browser")];
+      "--python-root", join(this.baseResources, "python"),
+      "--browser-root", join(this.baseResources, "browser")];
     if (this.runtime.current) args.push("--current", this.runtime.current);
     this.onState({ phase: "checking", error: null });
     await new Promise((done) => {
-      const child = spawn(bundledPython(this.resourcesPath), args, {
+      const child = spawn(bundledPython(this.baseResources), args, {
         windowsHide: true, detached: process.platform !== "win32", stdio: ["ignore", "ignore", "pipe"],
       });
       this.child = child;

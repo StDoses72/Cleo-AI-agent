@@ -20,10 +20,10 @@ function render() {
   document.querySelector("#version").textContent = `${release?.tag || "最新稳定版"}${links?.bytes ? ` · ${Math.round(links.bytes / 1_000_000)} MB` : ""}`;
   note.hidden = !target;
   note.textContent = target.startsWith("macos")
-    ? `${links?.kind === "installer" ? "双击 PKG，按系统安装向导安装到「应用程序」，完成前会验证基础运行环境。" : "此版本提供 ZIP：解压后将 Cleo.app 放入「应用程序」。"} 尚未通过 Apple 公证；若提示无法验证，请在确认来源后前往「系统设置 → 隐私与安全性 → 仍要打开」。M 系列芯片请选择 Apple Silicon。`
-    : target === "linux-deb" ? "适用于 Debian / Ubuntu x64。双击 DEB，在软件安装程序中完成安装，系统依赖由包管理器处理。也可运行 sudo apt install ./Cleo-linux-x64.deb；其他发行版请选便携包。"
+    ? `${links?.kind === "installer" ? "双击 PKG，安装到「应用程序」。安装阶段会联网下载并验证运行环境。" : "此版本提供 ZIP：解压后将 Cleo.app 放入「应用程序」。"} 尚未通过 Apple 公证；若提示无法验证，请在确认来源后前往「系统设置 → 隐私与安全性 → 仍要打开」。M 系列芯片请选择 Apple Silicon。`
+    : target === "linux-deb" ? "适用于 Debian / Ubuntu x64。双击 DEB，在软件安装程序中完成安装，自动联网准备依赖。也可运行 sudo apt install ./Cleo-linux-x64.deb。"
       : target === "linux-x64" ? "解压后运行 Cleo/Cleo。需要桌面环境、Electron 运行库及可用的系统 sandbox；Ubuntu / Debian 可选择 deb 包。"
-        : links?.kind === "installer" ? "双击 EXE 安装向导。安装前会验证内置 Python、Node 和后端，安装完成后从开始菜单打开 Cleo。"
+        : links?.kind === "installer" ? "双击 EXE，选择安装位置。安装器会联网下载并验证 Python、Node 和后端，完成后从开始菜单打开 Cleo。"
           : "此版本提供 ZIP：解压后运行 Cleo/Cleo.exe。已安装 Cleo 的用户也可以直接在应用内检查更新。";
 }
 
@@ -61,7 +61,7 @@ async function detect() {
   if (!shellSelected && result.os === "windows") shell.value = "windows";
   document.querySelector("#detection").textContent = result.target
     ? `根据浏览器信息推荐 ${TARGETS[result.target].label}。你也可以切换安装包。`
-    : result.os === "macos" && !result.arch ? "已识别 macOS。请在苹果菜单 → 关于本机查看芯片，选择 Apple Silicon 或 Intel；也可使用下方自动检测脚本。"
+    : result.os === "macos" && !result.arch ? "已识别 macOS。请在苹果菜单 → 关于本机查看芯片，选择 Apple Silicon 或 Intel。"
       : result.os === "mobile" ? "Cleo 目前提供桌面版，请在电脑上下载，或为你的电脑选择安装包。"
         : result.arch ? "当前系统架构尚无原生安装包。你仍可为其他电脑选择安装包。"
           : "浏览器未提供完整系统信息，请选择安装包，或使用下方自动检测脚本。";

@@ -51,12 +51,15 @@ Windows 委派现有 `build-release.ps1`；macOS/Linux 使用 `build-release.py`
 和浏览器工具。macOS 使用系统 `ditto`、`sips`、`iconutil`、`codesign`；Linux 需要 `unzip`、
 `tar`、`dpkg-deb`。若 `release/Cleo` 或 `release/Cleo.app` 已存在，先将上次产物移走再构建。
 
-Windows/macOS 完成便携包构建后，运行 `python scripts/build-installers.py` 生成图形安装器。
+正式发布使用联网模式：Windows 构建传入 `-Online`，macOS/Linux 传入 `--online`。
+Windows/macOS 完成程序包构建后，运行 `python scripts/build-installers.py` 生成轻量图形安装器。
 Windows 需要 Inno Setup 6（`ISCC.exe` 位于 PATH 或默认安装目录）；macOS 使用系统 `pkgbuild`。
-Linux 构建直接生成 `.deb`。基础 Python、Node、Codex/Claude CLI 和后端必须通过离线检查；
-macOS 还检查 Mach-O 的动态库与搜索路径，拒绝依赖构建机的 Homebrew 或临时目录。
-`cryptography` 只接受二进制 wheel；解析器按平台选择可用版本，避免 Intel Mac 回退到
-源码编译后引用 `/usr/local/opt/openssl@3`。运行时更新沿用该限制。
+Linux 构建直接生成轻量 `.deb`。CI 自动执行完整流程，不需要手动为各平台装配依赖。
+构建时先验证依赖，再将 Python、Node、SDK 和 node_modules 从发布程序包中移除，留下
+应用 wheel、带哈希的 Python 锁文件、npm 锁文件及运行环境下载清单。
+每次构建选择最新稳定且兼容的平台组合；安装时使用该份已验证清单。
+依赖必须提供二进制 wheel，避免 Intel Mac 将 `cryptography` 源码编译后引用 Homebrew OpenSSL。
+默认的本地开发构建仍可产生完整便携包，供本机进化验证使用。
 
 macOS 当前构建产物采用 ad-hoc 签名，用于本地运行和 CI 验证，**不等同于 Developer ID 签名
 及 Apple 公证的正式分发包**。macOS 附件以开发签名构建提供；要生成经过公证的
@@ -76,22 +79,31 @@ macOS 脚本会识别 Rosetta，选择原生 Apple Silicon 包。Windows ARM64�
 系统会停止并提示，不退回到 x64。已有不同内容的同名文件不会被覆盖，失败下载会清理。
 源码中的入口为 `download/site/download.ps1`（`-OutputDirectory` 可指定目录）及
 `download/site/download.sh`（第一个参数可指定目录），默认保存到用户主目录下的 `Downloads`。
+这些高级入口只下载程序包；新版首次安装请使用 EXE、PKG 或 DEB，以便先准备运行环境。
+
+联网安装器先下载并验证主程序，再从官方源下载 Python、Node 和锁定的依赖。Python/Node
+归档使用 SHA-256，Python 依赖使用 `--require-hashes`，npm 使用锁文件的完整性校验。
+下载、安装或运行检查失败时不会标记环境就绪，可以重试；校验通过的下载和相同清单的环境可复用。
+Windows 用户可以在向导中选择程序目录；依赖环境默认保存在 `%LOCALAPPDATA%\Cleo\runtimes\online`。
+macOS PKG 使用 `/Library/Application Support/Cleo/runtimes/online`，Linux DEB 使用
+`/var/lib/cleo/runtimes/online`。应用内更新在用户数据目录下准备环境，兼容已有系统缓存；
+依赖不写入签名后的 `.app`。卸载程序保留用户数据和依赖缓存。
 
 - macOS：M 系列选择 ARM64 PKG，Intel 选择 x64 PKG，双击后按系统安装向导安装到
-  `/Applications`。安装器会拒绝错误芯片的包，并在完成前验证内置运行环境。PKG 安装需
+  `/Applications`。安装器会拒绝错误芯片的包，并在完成前下载、验证运行环境。PKG 安装需
   管理员授权；系统所有的安装目录可通过新版 PKG 更新。便携包用户将 `Cleo.app` 放入可写的
   `~/Applications` 或 `/Applications`。只读磁盘映像、
   App Translocation 或无写权限的位置会拒绝更新，原程序保持打开；需要先移动应用。
 - Linux：Ubuntu/Debian 双击 `.deb`，在系统软件安装程序中安装；没有图形包管理器时使用
   `sudo apt install ./Cleo-linux-x64.deb`。系统依赖由包管理器处理，桌面入口随包安装，
-  配置阶段验证内置运行环境，失败会返回安装错误。
+  配置阶段联网准备并验证运行环境，失败会返回安装错误；网络恢复后可重试配置。
   该包正确设置 Electron sandbox helper 的所有权与权限，通过包管理器安装新版进行更新。
   `.deb` 附件另有 `Cleo-linux-x64.deb.sha256` 校验文件。
-  便携包可解压到用户可写目录运行；系统需允许 Electron 的用户命名空间 sandbox。
+  本地构建的完整便携包可解压到用户可写目录运行；系统需允许 Electron 的用户命名空间 sandbox。
   不会自动添加 `--no-sandbox` 或修改系统安全设置。
 - Windows：双击 EXE 安装向导，默认安装到 `%LOCALAPPDATA%\Programs\Cleo`，无需管理员权限。
-  安装器先解压到临时目录验证运行环境，成功后安装并创建开始菜单入口；卸载保留用户数据。
-  保留原有脚本与 `release.json` 供旧版兼容；桌面内更新使用统一版本切换流程。
+  轻量安装器先下载主程序及运行环境，验证成功后安装并创建开始菜单入口。
+  原有源码安装脚本也支持联网准备；桌面内更新使用统一版本切换流程。
 
 macOS 尚未通过 Apple 公证。如果系统提示无法验证安装器或应用，先点「完成」，在确认包来自
 官方发布后进入「系统设置 → 隐私与安全性 → 仍要打开」并确认。
@@ -103,6 +115,8 @@ macOS/Linux 便携包通过各自的 manifest 选择更新，校验平台、架�
 与 Windows 共用进化构建区、版本切换交易和独立恢复控制器。普通更新及进化入口复用同一安装包，
 不会互相覆盖本地候选构建。未保存的进化需要先处理；切换失败恢复原程序及源码基准，保留当前用户数据。
 旧 POSIX 安装器继续保留用于兼容；`.deb` 安装不会尝试自更新系统目录。
+联网程序包使用 `schema_version: 2`、`evolution_protocol: 3`，新版客户端会先准备依赖再允许切换；
+旧版客户端会拒绝不认识的格式，首次迁移需运行新版图形安装器。协议 2 的完整包仍可由新版读取。
 
 发布附件须成组上传：
 
@@ -115,7 +129,8 @@ macOS/Linux 便携包通过各自的 manifest 选择更新，校验平台、架�
 
 各 manifest 的版本必须与对应包内 metadata 一致。不得把某个平台的 manifest 重命名成另一个
 平台的清单；客户端会拒绝不匹配的包。Linux `.deb` 附件由包管理器安装，不使用便携包的 manifest。
-EXE 与两个 PKG 各自附带同名加 `.sha256` 的校验文件；发布必须同时包含便携包及安装器。
+EXE 与两个 PKG 各自附带同名加 `.sha256` 的校验文件；发布同时包含精简程序包和轻量安装器。
+附件由发布工作流统一校验、上传；无需上传 Python、Node、SDK 或 node_modules 的独立包。
 
 ## 验证
 

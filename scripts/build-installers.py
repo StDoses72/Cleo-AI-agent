@@ -6,7 +6,6 @@ import argparse
 import hashlib
 import json
 import os
-import plistlib
 import shutil
 import subprocess
 import sys
@@ -20,10 +19,21 @@ def run(*args: str | Path) -> None:
     subprocess.run(list(map(str, args)), check=True)
 
 
+def bootstrap_manifest(release: Path, target: str) -> dict:
+    name = "release.json" if target == "windows-x64" else f"release-{target}.json"
+    manifest = json.loads((release / name).read_text(encoding="utf-8-sig"))
+    version = manifest["version"]
+    tag = f"alpha-{version[:-6]}" if version.endswith("-alpha") else f"v{version}"
+    return {**manifest, "url": "https://github.com/StDoses72/Cleo-AI-agent/releases/download/"
+            f"{tag}/{manifest['archive']}"}
+
+
 def build(release: Path) -> Path:
     if sys.platform == "win32":
         bundle = release / "Cleo"
         metadata = json.loads((bundle / "release.json").read_text(encoding="utf-8-sig"))
+        if not (bundle / "resources/runtime-plan.json").is_file():
+            raise ValueError("Build the Windows package with -Online before creating an installer.")
         compiler = shutil.which("ISCC.exe")
         if not compiler:
             compiler = str(Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)"))
@@ -31,39 +41,40 @@ def build(release: Path) -> Path:
         if not Path(compiler).is_file():
             raise FileNotFoundError("Inno Setup 6 is required to build the Windows installer.")
         output = release / "Cleo-windows-x64-setup.exe"
-        run(compiler, f"/DBundle={bundle}", f"/DOutput={release}",
-            f"/DAppVersion={metadata['version']}",
-            ROOT / "scripts/installers/windows.iss")
+        with tempfile.TemporaryDirectory(prefix="cleo-installer-") as temporary:
+            bootstrap = Path(temporary)
+            (bootstrap / "bootstrap.json").write_text(
+                json.dumps(bootstrap_manifest(release, "windows-x64")))
+            shutil.copy2(ROOT / "scripts/installers/windows-bootstrap.ps1", bootstrap)
+            size = sum(path.stat().st_size for path in bundle.rglob("*") if path.is_file())
+            run(compiler, f"/DBootstrap={bootstrap}", f"/DBundleSize={size}",
+                f"/DOutput={release}", f"/DAppVersion={metadata['version']}",
+                ROOT / "scripts/installers/windows.iss")
     elif sys.platform == "darwin":
         bundle = release / "Cleo.app"
         metadata = json.loads((bundle / "Contents/Resources/release.json").read_text())
+        if not (bundle / "Contents/Resources/runtime-plan.json").is_file():
+            raise ValueError("Build the macOS package with --online before creating its installer.")
         target = metadata["platform"]
         if target not in {"macos-arm64", "macos-x64"}:
             raise ValueError(f"Unexpected macOS platform: {target}")
         output = release / f"Cleo-{target}.pkg"
+        manifest = bootstrap_manifest(release, target)
         with tempfile.TemporaryDirectory(prefix="cleo-installer-") as temporary:
             scratch = Path(temporary)
             scripts = scratch / "scripts"
             scripts.mkdir()
             for name in ("preinstall", "postinstall"):
-                source = ROOT / "scripts/installers" / f"macos-{name}"
-                (scripts / name).write_text(source.read_text().replace("@TARGET@", target))
+                source = ROOT / "scripts/installers" / (
+                    "macos-preinstall" if name == "preinstall" else "macos-online-postinstall")
+                text = source.read_text().replace("@TARGET@", target)
+                for key in ("archive", "sha256", "url"):
+                    text = text.replace(f"@{key.upper()}@", manifest[key])
+                (scripts / name).write_text(text)
                 (scripts / name).chmod(0o755)
-            components = scratch / "components.plist"
-            with components.open("wb") as stream:
-                plistlib.dump([{
-                    "RootRelativeBundlePath": "Cleo.app", "BundleIsRelocatable": False,
-                    "BundleIsVersionChecked": True, "BundleOverwriteAction": "upgrade",
-                    "BundleHasStrictIdentifier": True,
-                }], stream)
-            # Stage only this app, not the other release archives beside it.
-            payload = scratch / "payload"
-            payload.mkdir()
-            run("ditto", bundle, payload / "Cleo.app")
-            run("pkgbuild", "--root", payload, "--component-plist", components,
+            run("pkgbuild", "--nopayload",
                 "--scripts", scripts, "--identifier", "ai.cleo.desktop",
-                "--version", metadata["version"].split("-")[0],
-                "--install-location", "/Applications", output)
+                "--version", metadata["version"].split("-")[0], output)
     else:
         raise ValueError("Linux uses the deb already produced by build-release.py.")
     with output.open("rb") as stream:

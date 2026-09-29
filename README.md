@@ -52,7 +52,7 @@ Cleo 是一套本地优先的 AI 工作空间：它把通用对话、开发者�
 打开 **[Cleo 统一下载页](https://stdoses72.github.io/Cleo-AI-agent/)**，根据浏览器提供的系统与架构信息选择安装包，也可手动切换 Windows x64、macOS Apple Silicon / Intel、Linux x64 或 Debian / Ubuntu deb。
 
 有对应附件时，下载页优先提供双击安装的 Windows EXE、macOS PKG、Debian / Ubuntu DEB。
-基础运行环境随包提供，安装阶段验证后再打开应用；旧版只有 ZIP 时会标明便携包。
+安装器联网下载主程序和经过验证的依赖组合，成功后再打开应用；旧版只有 ZIP 时会标明便携包。
 
 浏览器无法判断 Mac 芯片时，下载页会提示选择，并提供直接读取系统架构的下载脚本。脚本无需 Python 或 Node.js，将匹配当前系统的包下载到「下载」目录、校验 SHA-256 后交付，不自动安装。macOS 包目前采用开发签名，尚未通过 Apple 公证。详见[安装与平台说明](docs/PLATFORMS.md)。
 

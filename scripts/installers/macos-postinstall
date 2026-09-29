@@ -1,4 +1,0 @@
-#!/bin/sh
-set -eu
-/Applications/Cleo.app/Contents/Resources/python/bin/python3 -I -B \
-    /Applications/Cleo.app/Contents/Resources/installer-check.py

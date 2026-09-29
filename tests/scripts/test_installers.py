@@ -2,7 +2,6 @@
 
 import importlib.util
 import os
-import plistlib
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -86,27 +85,33 @@ def test_macos_installer_has_architecture_guard_and_complete_bundle_replacement(
     resources = tmp_path / "Cleo.app/Contents/Resources"
     resources.mkdir(parents=True)
     (resources / "release.json").write_text('{"platform":"macos-arm64","version":"0.6.1"}')
+    (resources / "runtime-plan.json").write_text('{}')
+    (tmp_path / "release-macos-arm64.json").write_text(
+        '{"platform":"macos-arm64","version":"0.6.1",'
+        '"archive":"Cleo-macos-arm64.zip","sha256":"' + "a" * 64 + '"}',
+    )
     commands = []
 
     def run(*command):
         commands.append(command)
         if command[0] != "pkgbuild":
             return
-        component_path = Path(command[command.index("--component-plist") + 1])
-        properties = plistlib.loads(component_path.read_bytes())
-        assert properties[0]["BundleIsRelocatable"] is False
-        assert properties[0]["BundleOverwriteAction"] == "upgrade"
+        assert "--nopayload" in command
         scripts = Path(command[command.index("--scripts") + 1])
         assert "'macos-arm64'" in (scripts / "preinstall").read_text()
         assert "hw.optional.arm64" in (scripts / "preinstall").read_text()
-        assert "installer-check.py" in (scripts / "postinstall").read_text()
+        postinstall = (scripts / "postinstall").read_text()
+        assert 'online-runtime.mjs" --system' in postinstall
+        assert "/v0.6.1/Cleo-macos-arm64.zip" in postinstall
+        assert "a" * 64 in postinstall
+        assert "previous.app" in postinstall
         Path(command[-1]).write_bytes(b"native package fixture")
 
     monkeypatch.setattr(builder, "run", run)
     output = builder.build(tmp_path)
     assert output.name == "Cleo-macos-arm64.pkg"
     assert output.with_name(output.name + ".sha256").read_text().endswith(f"  {output.name}\n")
-    assert [command[0] for command in commands] == ["ditto", "pkgbuild"]
+    assert [command[0] for command in commands] == ["pkgbuild"]
 
 
 @pytest.mark.skipif(os.name == "nt", reason="Native POSIX installer script")

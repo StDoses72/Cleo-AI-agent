@@ -156,7 +156,7 @@ def update(root: Path, base_python: Path, base_browser: Path, current: str | Non
             run([
                 sys.executable, "-I", "-m", "uv", "pip", "compile", "--upgrade", "--refresh",
                 "--prerelease=disallow",
-                "--only-binary=claude-agent-sdk,openai-codex-cli-bin,cryptography",
+                "--only-binary=:all:",
                 "--python", python, "--no-header", "--no-annotate", "--no-emit-index-url",
                 "--output-file", lock, requirements,
             ])
@@ -192,7 +192,7 @@ def update(root: Path, base_python: Path, base_browser: Path, current: str | Non
             target_python = python_executable(candidate / "python")
             run([sys.executable, "-I", "-m", "uv", "pip", "install", "--python",
                  target_python, "--break-system-packages", "--upgrade", "-r", lock,
-                 "--only-binary=claude-agent-sdk,openai-codex-cli-bin,cryptography", "--no-cache"])
+                 "--only-binary=:all:", "--no-cache"])
             for name in ("package.json", "package-lock.json"):
                 shutil.copy2(browser_plan / name, candidate / "browser" / name)
             run([node, npm, "ci", "--no-audit", "--no-fund"], cwd=candidate / "browser")

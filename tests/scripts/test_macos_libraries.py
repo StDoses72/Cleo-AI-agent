@@ -25,7 +25,6 @@ def binary(tmp_path):
 @pytest.mark.parametrize("command,field,dependency", [
     ("LC_LOAD_DYLIB", "name", "/usr/local/opt/openssl@3/lib/libssl.3.dylib"),
     ("LC_LOAD_WEAK_DYLIB", "name", "/opt/homebrew/lib/libcrypto.3.dylib"),
-    ("LC_RPATH", "path", "/private/tmp/build environment/lib"),
 ])
 def test_external_libraries_and_search_paths_fail_even_when_present(
     binary, monkeypatch, command, field, dependency,
@@ -38,7 +37,7 @@ def test_external_libraries_and_search_paths_fail_even_when_present(
 
     monkeypatch.setattr(builder.subprocess, "check_output", otool)
     with pytest.raises(ValueError, match="Non-portable macOS dependency") as error:
-        builder.verify_macos_libraries(bundle)
+        builder.prepare_macos_libraries(bundle)
     assert dependency in str(error.value)
 
 
@@ -57,7 +56,7 @@ def test_system_libraries_and_bundle_relative_paths_are_allowed(binary, monkeypa
         ])
     )
     monkeypatch.setattr(builder.subprocess, "check_output", lambda *a, **kw: output)
-    builder.verify_macos_libraries(bundle)
+    builder.prepare_macos_libraries(bundle)
 
 
 def test_native_inspection_failure_does_not_pass(binary, monkeypatch):
@@ -66,4 +65,19 @@ def test_native_inspection_failure_does_not_pass(binary, monkeypatch):
 
     monkeypatch.setattr(builder.subprocess, "check_output", fail)
     with pytest.raises(subprocess.CalledProcessError):
-        builder.verify_macos_libraries(binary[0])
+        builder.prepare_macos_libraries(binary[0])
+
+
+def test_unused_build_rpaths_are_removed_once_before_signing(binary, monkeypatch):
+    bundle, path = binary
+    rpath = "/Users/runner/work/Pillow/Pillow/build/deps/darwin/lib"
+    # Universal binaries can repeat the same path for each architecture.
+    output = f" cmd LC_RPATH\n path {rpath} (offset 12)\n" * 2
+    monkeypatch.setattr(builder.subprocess, "check_output", lambda *a, **kw: output)
+    calls = []
+    monkeypatch.setattr(builder, "run", lambda *args, **kw: calls.append((args, kw)))
+    builder.prepare_macos_libraries(bundle)
+    assert calls == [
+        (("install_name_tool", "-delete_rpath", rpath, path), {"cwd": bundle}),
+        (("codesign", "--force", "--sign", "-", path), {"cwd": bundle}),
+    ]

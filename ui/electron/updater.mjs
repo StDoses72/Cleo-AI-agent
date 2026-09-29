@@ -71,7 +71,8 @@ export function validateManifest(value, target = desktopPlatform()) {
   };
   parseVersion(manifest.version);
   if (
-    manifest.schemaVersion !== 1 ||
+    ![1, 2].includes(manifest.schemaVersion) ||
+    (manifest.schemaVersion === 2 && value.evolution_protocol !== 3) ||
     manifest.app !== "Cleo" ||
     manifest.platform !== target.id ||
     manifest.archive !== target.archive ||

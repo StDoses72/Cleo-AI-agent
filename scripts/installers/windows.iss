@@ -14,14 +14,18 @@ OutputBaseFilename=Cleo-windows-x64-setup
 Compression=lzma2/fast
 SolidCompression=yes
 WizardStyle=modern
+DisableWelcomePage=no
 DisableProgramGroupPage=yes
 UninstallDisplayIcon={app}\Cleo.exe
 CloseApplications=yes
 RestartApplications=no
 
+[Messages]
+WelcomeLabel2=This will install Cleo on your computer.%n%nAn internet connection is required to download the application and its runtime. Your existing conversations and settings are preserved.
+
 [Files]
-Source: "{#Bundle}\*"; DestDir: "{tmp}\Cleo"; Flags: dontcopy recursesubdirs createallsubdirs
-Source: "{tmp}\Cleo\*"; DestDir: "{app}"; Flags: external recursesubdirs createallsubdirs ignoreversion
+Source: "{#Bootstrap}\*"; DestDir: "{tmp}\Cleo-bootstrap"; Flags: dontcopy
+Source: "{tmp}\Cleo\*"; DestDir: "{app}"; ExternalSize: {#BundleSize}; Flags: external recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
 Name: "{userprograms}\Cleo"; Filename: "{app}\Cleo.exe"
@@ -39,14 +43,15 @@ var
 begin
   Result := '';
   if RuntimeReady then exit;
-  WizardForm.PreparingLabel.Caption := 'Checking bundled Python, Node and Cleo backend...';
-  ExtractTemporaryFiles('{tmp}\Cleo\*');
-  if not Exec(ExpandConstant('{tmp}\Cleo\resources\python\python.exe'),
-    '-I -B "' + ExpandConstant('{tmp}\Cleo\resources\installer-check.py') + '"',
+  WizardForm.PreparingLabel.Caption := 'Downloading and preparing the Cleo runtime...';
+  ExtractTemporaryFiles('{tmp}\Cleo-bootstrap\*');
+  if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+    '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{tmp}\Cleo-bootstrap\windows-bootstrap.ps1') +
+    '" -Stage "' + ExpandConstant('{tmp}\Cleo') + '" -SourceDirectory "' + ExpandConstant('{src}') + '"',
     ExpandConstant('{tmp}'), SW_HIDE, ewWaitUntilTerminated, ExitCode) then
-    Result := 'Cannot start the bundled runtime. Download the installer again.'
+    Result := 'Cannot start the installer runtime. Download the installer again.'
   else if ExitCode <> 0 then
-    Result := 'Cleo runtime verification failed. Nothing was installed. Download a corrected installer.'
+    Result := 'Runtime preparation failed. Check your internet connection and retry.'
   else
     RuntimeReady := True;
 end;

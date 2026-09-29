@@ -85,10 +85,10 @@ jobs:
           sudo apt-get install -y xvfb libgtk-3-0t64 libnss3 libgbm1 libasound2t64
       - name: Build native POSIX package
         if: runner.os != 'Windows'
-        run: npm --prefix ui run package:portable -- --locked-dependencies
+        run: npm --prefix ui run package:portable -- --locked-dependencies --online
       - name: Build native Windows package
         if: runner.os == 'Windows'
-        run: ./scripts/build-release.ps1 -LockedDependencies -ElectronMirror '' -PythonIndex 'https://pypi.org/simple/'
+        run: ./scripts/build-release.ps1 -LockedDependencies -Online -ElectronMirror '' -PythonIndex 'https://pypi.org/simple/'
       - name: Build graphical installer
         if: runner.os != 'Linux'
         run: python scripts/build-installers.py
@@ -111,6 +111,9 @@ jobs:
       - name: Verify Linux package installs and starts
         if: runner.os == 'Linux'
         run: |
+          sudo mkdir -p /var/cache/cleo
+          digest=$(cut -d ' ' -f 1 release/Cleo-linux-x64.sha256)
+          sudo cp release/Cleo-linux-x64.tar.gz "/var/cache/cleo/$digest.tar.gz"
           sudo apt-get install -y ./release/Cleo-linux-x64.deb
           CLEO_EXECUTABLE=/opt/Cleo/Cleo xvfb-run -a npm --prefix ui run smoke:package-launch
       - uses: actions/upload-artifact@v4

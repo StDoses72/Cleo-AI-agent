@@ -7,6 +7,7 @@ import { stripVTControlCharacters } from "node:util";
 import { EvolutionStore, exists, fileHash, readJson, writeJson, ownedPath } from "./evolution-store.mjs";
 import { EvolutionTools, run, fetchRelease, extract } from "./evolution-tools.mjs";
 import { ReleaseDownloads } from "./release-downloads.mjs";
+import { installRuntime } from "./online-runtime.mjs";
 import { desktopPlatform, installationRoot } from "./platform.mjs";
 import { createContributionSnapshot, assertSnapshotTarget, removeContributionSnapshot } from "./evolution-snapshot.mjs";
 import { compareVersions, validateManifest } from "./updater.mjs";
@@ -278,7 +279,7 @@ export class EvolutionManager {
     const source = installationRoot(this.executable, this.target);
     const resources = join(source, this.target.resources);
     const metadata = await readJson(join(this.target.platform === "darwin" ? resources : source, "release.json"));
-    if (metadata?.app !== "Cleo" || metadata.platform !== this.target.id || metadata.evolution_protocol !== 2
+    if (metadata?.app !== "Cleo" || metadata.platform !== this.target.id || ![2, 3].includes(metadata.evolution_protocol)
         || metadata.version !== this.app.getVersion() || !/^\d+\.\d+\.\d+(?:-alpha)?$/.test(metadata.version)
         || (metadata.build_kind && metadata.build_kind !== "official")) return null;
     if (metadata.version.endsWith("-alpha") !== Boolean(active.version?.endsWith("-alpha"))) return null;
@@ -607,7 +608,7 @@ export class EvolutionManager {
       const release = releases.find((item) => item.tag === tag);
       if (!release) throw new Error("请先检查正式版本，并选择已发布的版本。");
       const rawManifest = await fetchRelease(release.manifestUrl, true, { signal });
-      if (rawManifest.evolution_protocol !== 2) throw new Error("该版本尚不支持保留当前用户数据的版本切换，无法通过进化入口应用。");
+      if (![2, 3].includes(rawManifest.evolution_protocol)) throw new Error("该版本尚不支持保留当前用户数据的版本切换，无法通过进化入口应用。");
       const manifest = validateManifest(rawManifest, this.target);
       if (manifest.version !== versionForReleaseTag(tag)) throw new Error("版本清单与所选 release 不一致。");
       const archive = await this.downloads.get(manifest, {
@@ -620,6 +621,8 @@ export class EvolutionManager {
           const directory = ownedPath(this.store.root, "builds", build.id);
           if (!await exists(ownedPath(directory, build.executable))) continue;
           await this.store.build(build.id);
+          await installRuntime({ resources: join(directory, this.target.bundle, this.target.resources),
+            root: join(this.store.dataHome, "runtimes/online"), signal, log: text => this.log(text) });
           await this.store.update({ downloadedOfficial: build.id });
           return build.id;
         }
@@ -628,6 +631,8 @@ export class EvolutionManager {
       const directory = ownedPath(this.store.root, "builds", id);
       try {
         await this.extractArchive(archive, directory, { signal });
+        await installRuntime({ resources: join(directory, this.target.bundle, this.target.resources),
+          root: join(this.store.dataHome, "runtimes/online"), signal, log: text => this.log(text) });
         signal.throwIfAborted();
         const record = { id, kind: "official", version: manifest.version, baseTag: tag, sha256: manifest.sha256,
           executable: `${this.target.bundle}/${this.target.executable}`, createdAt: new Date().toISOString() };

@@ -2,6 +2,7 @@
 param(
     [string]$PythonVersion = "3.12",
     [switch]$LockedDependencies,
+    [switch]$Online,
     [string]$ElectronMirror = "https://registry.npmmirror.com/-/binary/electron",
     [string]$PythonIndex = "https://pypi.org/simple/"
 )
@@ -322,8 +323,8 @@ try {
         "-I", "-B", (Join-Path $resourcesPath "installer-check.py")
     )
     $releaseMetadata = [ordered]@{
-        schema_version = 1
-        evolution_protocol = 2
+        schema_version = if ($Online) { 2 } else { 1 }
+        evolution_protocol = if ($Online) { 3 } else { 2 }
         build_kind = if ($env:CLEO_EVOLUTION_BASE_TAG) { "local" } else { "official" }
         app = "Cleo"
         version = $version
@@ -333,6 +334,12 @@ try {
         created_at = [DateTimeOffset]::UtcNow.ToString("o")
     }
     $releaseMetadata | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $appBuildPath "release.json") -Encoding UTF8
+    if ($Online) {
+        Invoke-Checked -FilePath $runtimePython.FullName -WorkingDirectory $scratchRoot -Arguments @(
+            (Join-Path $PSScriptRoot "prepare-online-package.py"),
+            "--resources", $resourcesPath, "--source", $pythonSourceRoot, "--target", "windows-x64"
+        )
+    }
 
     $runningApp = Get-CimInstance Win32_Process | Where-Object {
         $_.ExecutablePath -and $_.ExecutablePath.StartsWith(
