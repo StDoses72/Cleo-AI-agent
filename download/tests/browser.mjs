@@ -83,7 +83,9 @@ if (process.argv.includes("--serve")) {
     await page.goto(url);
     await page.locator("#target").selectOption("windows-x64");
     await page.waitForFunction(() => document.querySelector("#release-status").textContent.length > 0);
-    assert.match(await page.locator("#download").getAttribute("href"), /\/latest\/download\/Cleo-windows-x64.zip$/);
+    assert.match(await page.locator("#download").getAttribute("href"), /\/releases\/latest$/);
+    assert.match(await page.locator("#download").textContent(), /官方发布页/);
+    assert.equal(await page.locator("#checksum").isVisible(), false);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     if (process.env.CLEO_DOWNLOAD_SCREENSHOT) await page.screenshot({ path: process.env.CLEO_DOWNLOAD_SCREENSHOT, fullPage: true });
     console.log("Download page browser checks passed: 6 platform cases, manual selection, offline fallback, mobile layout.");

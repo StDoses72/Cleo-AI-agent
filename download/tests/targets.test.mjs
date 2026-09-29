@@ -59,7 +59,9 @@ test("downloads stay pinned to one release and require both the package and chec
   release.assets.delete(TARGETS["linux-x64"].checksum);
   assert.equal(downloadLinks("linux-x64", release), null);
   assert.equal(downloadLinks("unsupported", release), null);
-  assert.match(downloadLinks("windows-x64").archive, /releases\/latest\/download\/Cleo-windows-x64.zip$/);
+  assert.match(downloadLinks("windows-x64").archive, /releases\/latest$/);
+  assert.equal(downloadLinks("windows-x64").kind, "release");
+  assert.equal(downloadLinks("windows-x64").checksum, null);
   for (const value of [{ tag_name: "https://other.test", assets: [] }, { tag_name: "v0.3.0", prerelease: true, assets: [] }]) {
     assert.throws(() => releaseInfo(value));
   }

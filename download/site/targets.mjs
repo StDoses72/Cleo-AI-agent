@@ -40,6 +40,7 @@ export function releaseInfo(value) {
 export function downloadLinks(target, release = null) {
   const selected = TARGETS[target];
   if (!selected) return null;
+  if (!release) return { archive: `${REPOSITORY}/releases/latest`, checksum: null, kind: "release" };
   const installer = selected.installer && release?.assets.has(selected.installer)
     && release.assets.has(`${selected.installer}.sha256`);
   const file = installer ? selected.installer : selected.file;
