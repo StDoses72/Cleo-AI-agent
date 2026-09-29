@@ -49,7 +49,7 @@ def prepare(resources: Path, source: Path, target: str) -> None:
     metadata_url = (f"https://raw.githubusercontent.com/astral-sh/uv/{uv_version}/"
                     "crates/uv-python/download-metadata.json")
     with urllib.request.urlopen(metadata_url, timeout=60) as response:
-        python_metadata = json.load(response)[candidate["key"]]
+        python_metadata = json.load(response)[candidate["key"].replace("-macos-", "-darwin-")]
     python_url, python_sha = python_metadata["url"], python_metadata["sha256"]
     node_platform = {"win32": "win", "darwin": "darwin", "linux": "linux"}[sys.platform]
     node_arch = "arm64" if target.endswith("arm64") else "x64"

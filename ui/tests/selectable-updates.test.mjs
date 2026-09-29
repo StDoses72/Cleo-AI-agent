@@ -65,6 +65,26 @@ test("catalog includes prereleases, historical versions and platform incompatibi
   });
 });
 
+test("an online runtime preparation failure cannot register or activate the new version", async () => {
+  await fixture(async ({ root, manager, updater, program, hooks, applied }) => {
+    hooks.manifest = { schema_version: 2, evolution_protocol: 3 };
+    const extract = manager.extractArchive;
+    manager.extractArchive = async (...args) => {
+      await extract(...args);
+      const resources = join(args[1], manager.target.bundle, manager.target.resources);
+      await mkdir(resources, { recursive: true });
+      await writeFile(join(resources, "runtime-plan.json"), JSON.stringify({ schema: 1, platform: "wrong-platform" }));
+    };
+    await program.check();
+    await assert.rejects(prepareSelectedRelease(manager, updater, "v0.9.0"), /does not match/);
+    assert.deepEqual(applied, []);
+    const state = await manager.store.read();
+    assert.equal(state.active, "base");
+    assert.equal(state.builds.length, 1);
+    assert.deepEqual(await readdir(join(root, "evolution/builds")), []);
+  });
+});
+
 test("alpha experiments require explicit selection and prerelease metadata", async () => {
   await fixture(async ({ program, updater, catalog, manager, applied }) => {
     catalog.push({ tag_name: "alpha-0.0.1", prerelease: true, assets: [{ name: updater.target.manifest }, { name: updater.target.archive }] });
