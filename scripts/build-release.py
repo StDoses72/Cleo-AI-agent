@@ -282,8 +282,6 @@ def build(*, locked_dependencies: bool = False) -> None:
             "--root", ROOT, "--python", resources / "python/bin/python3",
             "--browser", browser, "--output", resources / "dependencies.json", cwd=scratch)
         shutil.copy2(ROOT / "scripts/installer-check.py", resources / "installer-check.py")
-        run(resources / "python/bin/python3", "-I", "-B", resources / "installer-check.py",
-            cwd=scratch)
         update = resources / "update"
         update.mkdir()
         for name in ("posix-installer.mjs", "platform.mjs"):
@@ -302,6 +300,8 @@ def build(*, locked_dependencies: bool = False) -> None:
             shutil.copy2(ROOT / source, defaults / destination)
         if (ROOT / "skills").exists():
             shutil.copytree(ROOT / "skills", defaults / "skills")
+        run(resources / "python/bin/python3", "-I", "-B", resources / "installer-check.py",
+            cwd=scratch)
         run(node, ROOT / "scripts/bundle-evolution-source.mjs", resources, cwd=ROOT)
         metadata = {
             "schema_version": 1,

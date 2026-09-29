@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -15,6 +16,8 @@ def check(resources: Path) -> None:
     browser = resources / "browser"
     node = browser / ("node.exe" if windows else "node")
     with tempfile.TemporaryDirectory(prefix="cleo-install-check-") as temporary:
+        # Desktop startup seeds these defaults before importing its backend.
+        shutil.copytree(resources / "defaults/config", Path(temporary) / "config")
         env = {key: value for key, value in os.environ.items()
                if not key.startswith(("PYTHON", "CLEO_", "DYLD_", "LD_"))}
         env.update(HOME=temporary, USERPROFILE=temporary, CLEO_HOME=temporary,

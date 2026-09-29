@@ -23,9 +23,18 @@ checker = load("installer-check")
 builder = load("build-installers")
 
 
+@pytest.fixture
+def runtime_resources(tmp_path):
+    config = tmp_path / "defaults/config"
+    config.mkdir(parents=True)
+    (config / "cleo.json").write_text('{"profiles":{}}')
+    (config / "harnesses.json").write_text('{"providers":{}}')
+    return tmp_path
+
+
 @pytest.mark.parametrize("failed_step", [None, 0, 1, 2])
 def test_runtime_check_validates_all_bundled_tools_and_cleans_up(
-    tmp_path, monkeypatch, failed_step,
+    runtime_resources, monkeypatch, failed_step,
 ):
     calls = []
     monkeypatch.setenv("PYTHONPATH", "must-not-be-used")
@@ -36,24 +45,28 @@ def test_runtime_check_validates_all_bundled_tools_and_cleans_up(
         assert Path(cwd).is_dir()
         assert env["HOME"] == env["CLEO_HOME"] == cwd
         assert not {"PYTHONPATH", "CLEO_PYTHON", "DYLD_LIBRARY_PATH"} & env.keys()
-        assert Path(command[0]).is_relative_to(tmp_path)
+        assert Path(command[0]).is_relative_to(runtime_resources)
+        for name in ("cleo.json", "harnesses.json"):
+            assert (Path(cwd) / "config" / name).read_bytes() == (
+                runtime_resources / "defaults/config" / name
+            ).read_bytes()
         calls.append((command, cwd))
         return SimpleNamespace(returncode=int(len(calls) - 1 == failed_step),
                                stdout="", stderr="missing libssl.3.dylib")
 
     monkeypatch.setattr(checker.subprocess, "run", execute)
     if failed_step is None:
-        checker.check(tmp_path)
+        checker.check(runtime_resources)
         assert len(calls) == 3
     else:
         with pytest.raises(RuntimeError, match="missing libssl"):
-            checker.check(tmp_path)
+            checker.check(runtime_resources)
         assert len(calls) == failed_step + 1
     assert all(not Path(cwd).exists() for _, cwd in calls)
     assert "from cleo.desktop.server import main" in calls[0][0][-1]
 
 
-def test_timeout_does_not_pass_and_removes_the_test_profile(tmp_path, monkeypatch):
+def test_timeout_does_not_pass_and_removes_the_test_profile(runtime_resources, monkeypatch):
     directories = []
 
     def timeout(command, *, cwd, **kwargs):
@@ -62,7 +75,7 @@ def test_timeout_does_not_pass_and_removes_the_test_profile(tmp_path, monkeypatc
 
     monkeypatch.setattr(checker.subprocess, "run", timeout)
     with pytest.raises(subprocess.TimeoutExpired):
-        checker.check(tmp_path)
+        checker.check(runtime_resources)
     assert all(not Path(path).exists() for path in directories)
 
 
