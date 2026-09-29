@@ -135,7 +135,12 @@ jobs:
           with deb.open('rb') as stream:
               digest = hashlib.file_digest(stream, 'sha256').hexdigest()
           assert (output / 'Cleo-linux-x64.deb.sha256').read_text().split() == [digest, deb.name]
-          assert len(list(output.iterdir())) == 14
+          for filename in ('Cleo-windows-x64-setup.exe', 'Cleo-macos-arm64.pkg', 'Cleo-macos-x64.pkg'):
+              installer = output / filename
+              with installer.open('rb') as stream:
+                  digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+              assert (output / (filename + '.sha256')).read_text().split() == [digest, filename]
+          assert len(list(output.iterdir())) == 20
           (temporary / 'release-notes.md').write_text(os.environ['RELEASE_NOTES'], encoding='utf-8')
           PY
       - name: Upload draft, verify uploaded assets, and publish

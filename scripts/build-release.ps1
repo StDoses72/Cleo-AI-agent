@@ -242,7 +242,7 @@ try {
             "--no-cache",
             "--compile-bytecode",
             "--constraint", (Join-Path $sourceRoot "requirements.txt"),
-            "--only-binary", "claude-agent-sdk,openai-codex-cli-bin",
+            "--only-binary", "claude-agent-sdk,openai-codex-cli-bin,cryptography",
             $pythonSourceRoot
         )
     } finally {
@@ -317,6 +317,10 @@ try {
         "--output", (Join-Path $resourcesPath "dependencies.json")
     )
     $version = (Get-Content -LiteralPath (Join-Path $uiRoot "package.json") -Raw | ConvertFrom-Json).version
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot "installer-check.py") -Destination $resourcesPath
+    Invoke-Checked -FilePath (Join-Path $resourcesPath "python\python.exe") -WorkingDirectory $scratchRoot -Arguments @(
+        "-I", "-B", (Join-Path $resourcesPath "installer-check.py")
+    )
     $releaseMetadata = [ordered]@{
         schema_version = 1
         evolution_protocol = 2

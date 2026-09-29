@@ -16,7 +16,8 @@ cffi==2.1.1 ; platform_python_implementation != 'PyPy'
 charset-normalizer==3.5.1
 claude-agent-sdk==0.2.158
 click==8.5.0
-cryptography==50.0.1
+cryptography==48.0.1 ; platform_machine == 'x86_64' and sys_platform == 'darwin'
+cryptography==50.0.1 ; platform_machine != 'x86_64' or sys_platform != 'darwin'
 cyclopts==4.25.3
 deepagents==0.7.17
 distro==1.9.0

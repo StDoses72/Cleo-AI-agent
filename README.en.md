@@ -55,6 +55,8 @@ General assistants and coding agents usually keep separate histories, permission
 
 Open the **[Cleo download page](https://stdoses72.github.io/Cleo-AI-agent/)** to select a package using the system and architecture information available to your browser. You can also choose Windows x64, macOS Apple Silicon / Intel, Linux x64, or the Debian / Ubuntu deb package manually.
 
+When available, the page prefers double-click installers: Windows EXE, macOS PKG, and Debian/Ubuntu DEB. Basic runtimes are bundled and verified during installation before opening the app. Older releases remain explicitly labeled as portable packages.
+
 When a browser cannot identify a Mac's chip, the page asks you to select it and offers a native detection script. The scripts need no Python or Node.js; they download the matching package to your Downloads directory, verify SHA-256, and leave installation to you. macOS packages currently use development signing without Apple notarization. See [platform and installation details](docs/PLATFORMS.en.md).
 
 Direct downloads remain available on [GitHub Releases](https://github.com/StDoses72/Cleo-AI-agent/releases/latest). Windows users can also run the existing verified installer from a source checkout:

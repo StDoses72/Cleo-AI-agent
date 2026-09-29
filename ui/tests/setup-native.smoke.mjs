@@ -21,6 +21,11 @@ try {
     args: [ui, `--user-data-dir=${join(scratch, "profile")}`], env });
   const page = await app.firstWindow(); page.setDefaultTimeout(60000);
   const dialog = page.getByRole("dialog", { name: "运行环境", exact: true });
+  await page.getByTestId("composer-input").waitFor();
+  assert.equal(await dialog.count(), 0);
+  assert.deepEqual((await page.evaluate(() => window.cleoDesktop.setup("status"))).items, [],
+    "Opening Cleo must not start dependency provisioning");
+  await page.evaluate(() => window.dispatchEvent(new Event("cleo:open-setup")));
   await dialog.waitFor();
   await dialog.getByText("Cleo 基础运行环境", { exact: true }).waitFor();
   const state = await page.evaluate(() => window.cleoDesktop.setup("status"));

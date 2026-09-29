@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+if [ "$1" = configure ]; then
+    /opt/Cleo/resources/python/bin/python3 -I -B /opt/Cleo/resources/installer-check.py
+fi

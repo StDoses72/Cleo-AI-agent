@@ -4,7 +4,7 @@ import { detectTarget, downloadLinks, releaseInfo, TARGETS } from "../site/targe
 
 for (const [platform, architecture, target] of [
   ["Windows", "x86", "windows-x64"], ["macOS", "arm", "macos-arm64"],
-  ["macOS", "x86", "macos-x64"], ["Linux", "x86", "linux-x64"],
+  ["macOS", "x86", "macos-x64"], ["Linux", "x86", "linux-deb"],
 ]) {
   test(`browser architecture hints select ${target}`, () => {
     assert.equal(detectTarget({ hints: { platform, architecture, bitness: "64" } }).target, target);
@@ -27,8 +27,21 @@ test("unsupported ARM and 32-bit systems never default to x64", () => {
 });
 test("desktop UA fallback and denied hints preserve useful platform selection", () => {
   assert.equal(detectTarget({ platform: "Win32", userAgent: "Windows NT 10.0; Win64; x64" }).target, "windows-x64");
-  assert.equal(detectTarget({ platform: "Linux x86_64", userAgent: "X11; Linux x86_64" }).target, "linux-x64");
+  assert.equal(detectTarget({ platform: "Linux x86_64", userAgent: "X11; Linux x86_64" }).target, "linux-deb");
   assert.equal(detectTarget({ hints: { platform: "macOS" } }).target, null);
+});
+
+test("native installers are preferred only when their matching checksum is published", () => {
+  const target = TARGETS["macos-arm64"];
+  const release = releaseInfo({ tag_name: "v0.6.1", assets: [
+    { name: target.file }, { name: target.checksum }, { name: target.installer },
+  ] });
+  assert.equal(downloadLinks("macos-arm64", release).kind, "portable");
+  release.assets.set(`${target.installer}.sha256`, 90);
+  const links = downloadLinks("macos-arm64", release);
+  assert.equal(links.kind, "installer");
+  assert.match(links.archive, /\/v0.6.1\/Cleo-macos-arm64.pkg$/);
+  assert.match(links.checksum, /Cleo-macos-arm64.pkg.sha256$/);
 });
 test("Android and iPad desktop mode are not mistaken for supported desktops", () => {
   assert.equal(detectTarget({ userAgent: "Linux; Android 15; x86_64", platform: "Linux" }).os, "mobile");

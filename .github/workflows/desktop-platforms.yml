@@ -89,6 +89,22 @@ jobs:
       - name: Build native Windows package
         if: runner.os == 'Windows'
         run: ./scripts/build-release.ps1 -LockedDependencies -ElectronMirror '' -PythonIndex 'https://pypi.org/simple/'
+      - name: Build graphical installer
+        if: runner.os != 'Linux'
+        run: python scripts/build-installers.py
+      - name: Install Windows package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $destination = Join-Path $env:RUNNER_TEMP 'Cleo-installed'
+          $process = Start-Process ./release/Cleo-windows-x64-setup.exe -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$destination`"") -WindowStyle Hidden -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
+          "CLEO_EXECUTABLE=$destination\Cleo.exe" >> $env:GITHUB_ENV
+      - name: Install macOS package
+        if: runner.os == 'macOS'
+        run: |
+          sudo installer -pkg ./release/Cleo-${{ matrix.target }}.pkg -target /
+          echo "CLEO_EXECUTABLE=/Applications/Cleo.app/Contents/MacOS/Cleo" >> "$GITHUB_ENV"
       - name: Verify packaged application starts
         if: runner.os != 'Linux'
         run: npm --prefix ui run smoke:package-launch
@@ -107,5 +123,7 @@ jobs:
             release/*.zip
             release/*.tar.gz
             release/*.deb
+            release/*-setup.exe
+            release/*.pkg
             release/*.sha256
             release/release*.json

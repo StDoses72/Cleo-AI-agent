@@ -8,6 +8,7 @@ import json
 import os
 import platform
 import plistlib
+import re
 import shutil
 import subprocess
 import sys
@@ -28,6 +29,35 @@ def download(url: str, path: Path) -> None:
     print(f"Downloading {url}", flush=True)
     with urllib.request.urlopen(url, timeout=120) as response, path.open("wb") as output:
         shutil.copyfileobj(response, output)
+
+
+def verify_macos_libraries(bundle: Path) -> None:
+    """Reject build-host libraries even when they happen to exist on the CI runner."""
+    magic = {bytes.fromhex(value) for value in (
+        "feedface", "cefaedfe", "feedfacf", "cffaedfe",
+        "cafebabe", "bebafeca", "cafebabf", "bfbafeca",
+    )}
+    commands = {"LC_LOAD_DYLIB", "LC_LOAD_WEAK_DYLIB", "LC_REEXPORT_DYLIB",
+                "LC_LOAD_UPWARD_DYLIB", "LC_LAZY_LOAD_DYLIB", "LC_RPATH"}
+    for path in bundle.rglob("*"):
+        if path.is_symlink() or not path.is_file():
+            continue
+        with path.open("rb") as stream:
+            if stream.read(4) not in magic:
+                continue
+        output = subprocess.check_output(["otool", "-l", str(path)], text=True)
+        command = ""
+        for line in output.splitlines():
+            if line.strip().startswith("cmd "):
+                command = line.strip().split()[1]
+            match = re.match(r"\s+(?:name|path) (.+) \(offset \d+\)", line)
+            if command in commands and match:
+                dependency = match[1]
+                if not dependency.startswith(("/usr/lib/", "/System/Library/",
+                                              "@rpath/", "@loader_path/", "@executable_path/")):
+                    raise ValueError(
+                        f"Non-portable macOS dependency: {path.relative_to(bundle)}: {dependency}"
+                    )
 
 
 def package_macos(bundle: Path, version: str, icon: Path, scratch: Path) -> None:
@@ -220,7 +250,8 @@ def build(*, locked_dependencies: bool = False) -> None:
             "--compile-bytecode",
             "--constraint", "requirements.txt",
             python_source,
-            "--only-binary", "claude-agent-sdk,openai-codex-cli-bin",
+            "--only-binary", "claude-agent-sdk,openai-codex-cli-bin,cryptography",
+            "--no-cache",
             cwd=scratch,
         )
         shutil.copytree(python.parent.parent, resources / "python", symlinks=True)
@@ -250,6 +281,9 @@ def build(*, locked_dependencies: bool = False) -> None:
         run(resources / "python/bin/python3", ROOT / "scripts/release_dependencies.py",
             "--root", ROOT, "--python", resources / "python/bin/python3",
             "--browser", browser, "--output", resources / "dependencies.json", cwd=scratch)
+        shutil.copy2(ROOT / "scripts/installer-check.py", resources / "installer-check.py")
+        run(resources / "python/bin/python3", "-I", "-B", resources / "installer-check.py",
+            cwd=scratch)
         update = resources / "update"
         update.mkdir()
         for name in ("posix-installer.mjs", "platform.mjs"):
@@ -289,6 +323,7 @@ def build(*, locked_dependencies: bool = False) -> None:
         )
         metadata_file.write_text(json.dumps(metadata, indent=2) + "\n")
         if sys.platform == "darwin":
+            verify_macos_libraries(staged_bundle)
             package_macos(staged_bundle, version, ui / "public/cleo.png", scratch)
         final = release / target["bundle"]
         if final.exists():
@@ -325,6 +360,8 @@ def build(*, locked_dependencies: bool = False) -> None:
                 "libasound2 | libasound2t64, libxss1, libxtst6, libx11-xcb1\n"
                 "Description: Cleo local AI workspace\n"
             )
+            shutil.copy2(ROOT / "scripts/installers/linux-postinst", control / "postinst")
+            (control / "postinst").chmod(0o755)
             applications = deb / "usr/share/applications"
             applications.mkdir(parents=True)
             (applications / "cleo.desktop").write_text(

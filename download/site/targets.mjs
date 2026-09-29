@@ -1,8 +1,8 @@
 export const REPOSITORY = "https://github.com/StDoses72/Cleo-AI-agent";
 export const TARGETS = {
-  "windows-x64": { label: "Windows · x64", file: "Cleo-windows-x64.zip", checksum: "Cleo-windows-x64.sha256" },
-  "macos-arm64": { label: "macOS · Apple Silicon", file: "Cleo-macos-arm64.zip", checksum: "Cleo-macos-arm64.sha256" },
-  "macos-x64": { label: "macOS · Intel", file: "Cleo-macos-x64.zip", checksum: "Cleo-macos-x64.sha256" },
+  "windows-x64": { label: "Windows · x64", file: "Cleo-windows-x64.zip", checksum: "Cleo-windows-x64.sha256", installer: "Cleo-windows-x64-setup.exe" },
+  "macos-arm64": { label: "macOS · Apple Silicon", file: "Cleo-macos-arm64.zip", checksum: "Cleo-macos-arm64.sha256", installer: "Cleo-macos-arm64.pkg" },
+  "macos-x64": { label: "macOS · Intel", file: "Cleo-macos-x64.zip", checksum: "Cleo-macos-x64.sha256", installer: "Cleo-macos-x64.pkg" },
   "linux-x64": { label: "Linux · x64", file: "Cleo-linux-x64.tar.gz", checksum: "Cleo-linux-x64.sha256" },
   "linux-deb": { label: "Debian / Ubuntu · x64", file: "Cleo-linux-x64.deb", checksum: "Cleo-linux-x64.deb.sha256" },
 };
@@ -27,7 +27,7 @@ export function detectTarget({ userAgent = "", platform = "", maxTouchPoints = 0
     else if (/i[3-6]86/i.test(userAgent)) arch = "unsupported";
   }
   // Safari reports "Intel Mac" on Apple Silicon too; it cannot establish the chip.
-  const target = os && arch ? `${os}-${arch}` : null;
+  const target = os === "linux" && arch === "x64" ? "linux-deb" : os && arch ? `${os}-${arch}` : null;
   return { os, arch, target: Object.hasOwn(TARGETS, target) ? target : null };
 }
 
@@ -40,8 +40,13 @@ export function releaseInfo(value) {
 export function downloadLinks(target, release = null) {
   const selected = TARGETS[target];
   if (!selected) return null;
-  if (release && (!release.assets.has(selected.file) || !release.assets.has(selected.checksum))) return null;
+  const installer = selected.installer && release?.assets.has(selected.installer)
+    && release.assets.has(`${selected.installer}.sha256`);
+  const file = installer ? selected.installer : selected.file;
+  const checksum = installer ? `${file}.sha256` : selected.checksum;
+  if (release && (!release.assets.has(file) || !release.assets.has(checksum))) return null;
   const base = release ? `${REPOSITORY}/releases/download/${release.tag}` : `${REPOSITORY}/releases/latest/download`;
-  return { archive: `${base}/${selected.file}`, checksum: `${base}/${selected.checksum}`,
-    bytes: release?.assets.get(selected.file) };
+  return { archive: `${base}/${file}`, checksum: `${base}/${checksum}`,
+    kind: installer || target === "linux-deb" ? "installer" : "portable",
+    bytes: release?.assets.get(file) };
 }

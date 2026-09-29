@@ -13,17 +13,18 @@ function render() {
   const target = select.value;
   const links = downloadLinks(target, release);
   button.setAttribute("aria-disabled", String(!links));
-  button.textContent = links ? `下载 ${TARGETS[target].label} ↓` : target ? "当前版本暂无此安装包" : "请选择安装包 ↓";
+  button.textContent = links ? `下载 ${TARGETS[target].label} ${links.kind === "installer" ? "安装器" : "便携包"} ↓` : target ? "当前版本暂无此安装包" : "请选择安装包 ↓";
   button.removeAttribute("href");
   checksum.hidden = !links;
   if (links) { button.href = links.archive; checksum.href = links.checksum; }
   document.querySelector("#version").textContent = `${release?.tag || "最新稳定版"}${links?.bytes ? ` · ${Math.round(links.bytes / 1_000_000)} MB` : ""}`;
   note.hidden = !target;
   note.textContent = target.startsWith("macos")
-    ? "将 Cleo.app 放入「应用程序」。当前 macOS 包采用开发签名，尚未通过 Apple 公证，系统可能阻止首次打开。"
-    : target === "linux-deb" ? "适用于 Debian / Ubuntu x64。使用 sudo apt install ./Cleo-linux-x64.deb 安装；后续通过新版 deb 更新。"
+    ? `${links?.kind === "installer" ? "双击 PKG，按系统安装向导安装到「应用程序」，完成前会验证基础运行环境。" : "此版本提供 ZIP：解压后将 Cleo.app 放入「应用程序」。"} 尚未通过 Apple 公证；若提示无法验证，请在确认来源后前往「系统设置 → 隐私与安全性 → 仍要打开」。M 系列芯片请选择 Apple Silicon。`
+    : target === "linux-deb" ? "适用于 Debian / Ubuntu x64。双击 DEB，在软件安装程序中完成安装，系统依赖由包管理器处理。也可运行 sudo apt install ./Cleo-linux-x64.deb；其他发行版请选便携包。"
       : target === "linux-x64" ? "解压后运行 Cleo/Cleo。需要桌面环境、Electron 运行库及可用的系统 sandbox；Ubuntu / Debian 可选择 deb 包。"
-        : "解压 ZIP 后运行 Cleo/Cleo.exe。已安装 Cleo 的用户也可以直接在应用内检查更新。";
+        : links?.kind === "installer" ? "双击 EXE 安装向导。安装前会验证内置 Python、Node 和后端，安装完成后从开始菜单打开 Cleo。"
+          : "此版本提供 ZIP：解压后运行 Cleo/Cleo.exe。已安装 Cleo 的用户也可以直接在应用内检查更新。";
 }
 
 function renderCommand() {

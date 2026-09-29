@@ -19,9 +19,15 @@ The download page uses the system information available to the browser and allow
 
 The page also offers PowerShell and shell download scripts. They detect native architecture, select assets from one release, verify SHA-256, and save the package to Downloads. They do not install or launch it. The shell script detects Rosetta; unsupported architectures stop without selecting an x64 fallback.
 
+New releases include graphical installers: `Cleo-windows-x64-setup.exe`, `Cleo-macos-arm64.pkg`, `Cleo-macos-x64.pkg`, and the Linux `.deb`. Double-click the matching installer. The page prefers installers with published checksums and explicitly labels portable downloads on older releases.
+
+Windows installs for the current user and checks the bundled runtime before copying into the destination. macOS installs into `/Applications` with administrator authorization, rejects the wrong chip architecture, and checks the runtime before completing. Debian/Ubuntu software installers resolve system dependencies and check the bundled runtime during package configuration. Basic Python, Node and backend dependencies are included; no first-launch dependency dialog is shown. Optional Docker/desktop setup and runtime repair remain available in settings. Uninstalling the application preserves user data.
+
+macOS installers and apps are not notarized. For a trusted official download that macOS blocks, use **System Settings → Privacy & Security → Open Anyway** after attempting to open it. See [Apple's instructions](https://support.apple.com/102445). Installers do not remove quarantine attributes or disable Gatekeeper.
+
 - **Windows**: the source-checkout installer `scripts/download.ps1` installs under `%LOCALAPPDATA%\Programs\Cleo`. The app provides official updates through its version-switching flow.
-- **macOS**: place `Cleo.app` in a writable `~/Applications` or `/Applications` directory before updating. Packages use ad-hoc signing and are not Apple-notarized distribution builds.
-- **Debian/Ubuntu**: run `sudo apt install ./Cleo-linux-x64.deb`. Install subsequent versions through the package manager. The package configures the Electron sandbox helper and includes a desktop launcher.
+- **macOS**: use the ARM64 PKG on Apple Silicon and x64 PKG on Intel. Use a new PKG to update a system-owned installation; portable users can place `Cleo.app` in a writable `~/Applications` or `/Applications` directory for in-app updates. Apps use ad-hoc signing.
+- **Debian/Ubuntu**: double-click the DEB to use the system software installer, or run `sudo apt install ./Cleo-linux-x64.deb`. Install subsequent versions through the package manager. The package configures the Electron sandbox helper and includes a desktop launcher.
 - **Linux portable**: extract the archive into a writable directory and run `Cleo/Cleo`. The system must support Electron's user-namespace sandbox.
 
 Portable updates verify platform, architecture, length, and SHA-256 before switching programs. Resolve unsaved evolution changes first. If startup fails, recovery returns to the earlier program while preserving current user data. The Debian package does not self-update system directories.
@@ -51,6 +57,8 @@ npm --prefix ui run package:portable
 
 Windows uses `scripts/build-release.ps1`; macOS/Linux use `scripts/build-release.py`. Packages include Python, Node, agent SDKs, and browser tools. macOS builds use `ditto`, `sips`, `iconutil`, and `codesign`; Linux needs `unzip`, `tar`, and `dpkg-deb`.
 
+After building the portable package, run `python scripts/build-installers.py` on Windows/macOS. Windows needs Inno Setup 6 (`ISCC.exe` on PATH or in its default location); macOS uses `pkgbuild`. Linux already produces the DEB. Builds validate bundled runtimes offline. macOS additionally rejects Mach-O libraries and search paths tied to a build host. Dependency resolution and runtime updates require a binary `cryptography` wheel, selecting a compatible version per platform instead of compiling against Homebrew OpenSSL.
+
 ## Release assets
 
 | Platform | Manifest | Checksum |
@@ -62,8 +70,10 @@ Windows uses `scripts/build-release.ps1`; macOS/Linux use `scripts/build-release
 
 Upload each package with its matching manifest and checksum. The Debian package has its own `Cleo-linux-x64.deb.sha256` and uses the package manager rather than a portable manifest. See [development and releases (Chinese)](DEVELOPMENT.md) for maintainer details.
 
+Each EXE and PKG also requires a checksum named after the complete filename plus `.sha256`. Publication requires all installers and portable packages together.
+
 ## Release validation
 
-`Desktop platforms` builds all four native targets and checks that each packaged application opens a rendered window with a fresh temporary profile. Linux also checks `.deb` installation. Publication verifies the tag, versions, dependency snapshot, assets and SHA-256 checksums.
+`Desktop platforms` builds all four native targets, runs each EXE/PKG/DEB installer, and checks that the installed application renders and connects to its bundled backend with a fresh temporary profile. An error page alone cannot pass. Publication verifies the tag, versions, dependency snapshot, assets and SHA-256 checksums.
 
 Feature tests remain available for development but are not release gates. Adding or removing product features does not require preserving old buttons or workflows. Automatic repair runs `npm --prefix ui run check:release` for compilation only and must preserve the selected version's behavior.

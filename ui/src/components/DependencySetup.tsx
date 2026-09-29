@@ -11,7 +11,7 @@ export interface SetupState {
 }
 
 /** Purpose: Explain prerequisites and collect an explicit installation selection.
- * Input: native setup bridge. Output: first-run or settings dialog; scan never installs anything.
+ * Input: native setup bridge. Output: settings dialog; installers prepare the base runtime.
  */
 export function DependencySetup() {
   const [state, setState] = useState<SetupState | null>(null);
@@ -25,18 +25,17 @@ export function DependencySetup() {
   useEffect(() => {
     if (!native) return;
     let alive = true;
-    const inspect = async (show = false) => {
+    const inspect = async () => {
       const current = ++revision.current;
-      if (show) setOpen(true);
+      setOpen(true);
       try {
-        const next = await native(show ? "scan" : "startup");
+        const next = await native("scan");
         if (!alive || current !== revision.current) return;
-        setState(next); if (show || next.showOnStartup) setOpen(true);
+        setState(next);
       } catch (failure) { if (alive) { setError(String(failure)); setOpen(true); } }
     };
-    const show = () => { void inspect(true); };
+    const show = () => { void inspect(); };
     window.addEventListener("cleo:open-setup", show);
-    void inspect();
     return () => { alive = false; window.removeEventListener("cleo:open-setup", show); };
   }, [native]);
   useEffect(() => {

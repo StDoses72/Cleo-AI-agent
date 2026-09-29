@@ -12,6 +12,10 @@ Cleo 提供以下原生安装包，可从 [Cleo 统一下载页](https://stdoses
 | macOS Intel | `Cleo.app` | `Cleo-macos-x64.zip` | `~/Library/Application Support/Cleo` |
 | Linux x64 | `Cleo/Cleo` | `Cleo-linux-x64.tar.gz`、`Cleo-linux-x64.deb` | `$XDG_DATA_HOME/Cleo`，默认 `~/.local/share/Cleo` |
 
+新发布同时提供双击安装入口：Windows 的 `Cleo-windows-x64-setup.exe`、macOS 的
+`Cleo-macos-arm64.pkg` / `Cleo-macos-x64.pkg`，以及 Debian / Ubuntu 的 `.deb`。
+下载页优先提供已发布且带校验文件的安装器；旧版本缺少安装器时会明确显示「便携包」。
+
 Linux ARM64、Windows ARM64 原生包不在本次范围内。Linux GUI 需要桌面环境和 Electron
 运行库；原生 CI 以 Ubuntu 24.04 验证。`CLEO_HOME` 可以覆盖数据位置，更新只替换程序目录。
 
@@ -47,6 +51,13 @@ Windows 委派现有 `build-release.ps1`；macOS/Linux 使用 `build-release.py`
 和浏览器工具。macOS 使用系统 `ditto`、`sips`、`iconutil`、`codesign`；Linux 需要 `unzip`、
 `tar`、`dpkg-deb`。若 `release/Cleo` 或 `release/Cleo.app` 已存在，先将上次产物移走再构建。
 
+Windows/macOS 完成便携包构建后，运行 `python scripts/build-installers.py` 生成图形安装器。
+Windows 需要 Inno Setup 6（`ISCC.exe` 位于 PATH 或默认安装目录）；macOS 使用系统 `pkgbuild`。
+Linux 构建直接生成 `.deb`。基础 Python、Node、Codex/Claude CLI 和后端必须通过离线检查；
+macOS 还检查 Mach-O 的动态库与搜索路径，拒绝依赖构建机的 Homebrew 或临时目录。
+`cryptography` 只接受二进制 wheel；解析器按平台选择可用版本，避免 Intel Mac 回退到
+源码编译后引用 `/usr/local/opt/openssl@3`。运行时更新沿用该限制。
+
 macOS 当前构建产物采用 ad-hoc 签名，用于本地运行和 CI 验证，**不等同于 Developer ID 签名
 及 Apple 公证的正式分发包**。macOS 附件以开发签名构建提供；要生成经过公证的
 分发包，需要发行者配置 Apple 凭据、签名和公证流程，
@@ -66,14 +77,27 @@ macOS 脚本会识别 Rosetta，选择原生 Apple Silicon 包。Windows ARM64�
 源码中的入口为 `download/site/download.ps1`（`-OutputDirectory` 可指定目录）及
 `download/site/download.sh`（第一个参数可指定目录），默认保存到用户主目录下的 `Downloads`。
 
-- macOS：将 `Cleo.app` 放入可写的 `~/Applications` 或 `/Applications`。只读磁盘映像、
+- macOS：M 系列选择 ARM64 PKG，Intel 选择 x64 PKG，双击后按系统安装向导安装到
+  `/Applications`。安装器会拒绝错误芯片的包，并在完成前验证内置运行环境。PKG 安装需
+  管理员授权；系统所有的安装目录可通过新版 PKG 更新。便携包用户将 `Cleo.app` 放入可写的
+  `~/Applications` 或 `/Applications`。只读磁盘映像、
   App Translocation 或无写权限的位置会拒绝更新，原程序保持打开；需要先移动应用。
-- Linux：Ubuntu/Debian 推荐 `sudo apt install ./Cleo-linux-x64.deb`，桌面入口随包安装。
+- Linux：Ubuntu/Debian 双击 `.deb`，在系统软件安装程序中安装；没有图形包管理器时使用
+  `sudo apt install ./Cleo-linux-x64.deb`。系统依赖由包管理器处理，桌面入口随包安装，
+  配置阶段验证内置运行环境，失败会返回安装错误。
   该包正确设置 Electron sandbox helper 的所有权与权限，通过包管理器安装新版进行更新。
   `.deb` 附件另有 `Cleo-linux-x64.deb.sha256` 校验文件。
   便携包可解压到用户可写目录运行；系统需允许 Electron 的用户命名空间 sandbox。
   不会自动添加 `--no-sandbox` 或修改系统安全设置。
-- Windows：保留现有安装器与 `release.json` 供旧版兼容；v0.4 桌面内更新使用统一版本切换流程。
+- Windows：双击 EXE 安装向导，默认安装到 `%LOCALAPPDATA%\Programs\Cleo`，无需管理员权限。
+  安装器先解压到临时目录验证运行环境，成功后安装并创建开始菜单入口；卸载保留用户数据。
+  保留原有脚本与 `release.json` 供旧版兼容；桌面内更新使用统一版本切换流程。
+
+macOS 尚未通过 Apple 公证。如果系统提示无法验证安装器或应用，先点「完成」，在确认包来自
+官方发布后进入「系统设置 → 隐私与安全性 → 仍要打开」并确认。
+参见 [Apple 操作说明](https://support.apple.com/102445)。安装器不会移除隔离属性或关闭 Gatekeeper。
+基础运行环境由安装器准备，应用不再自动弹出依赖安装向导；Docker 和独立桌面等可选功能，
+以及运行环境修复，仍可从设置中手动打开。
 
 macOS/Linux 便携包通过各自的 manifest 选择更新，校验平台、架构、长度和 SHA-256 后，
 与 Windows 共用进化构建区、版本切换交易和独立恢复控制器。普通更新及进化入口复用同一安装包，
@@ -91,11 +115,13 @@ macOS/Linux 便携包通过各自的 manifest 选择更新，校验平台、架�
 
 各 manifest 的版本必须与对应包内 metadata 一致。不得把某个平台的 manifest 重命名成另一个
 平台的清单；客户端会拒绝不匹配的包。Linux `.deb` 附件由包管理器安装，不使用便携包的 manifest。
+EXE 与两个 PKG 各自附带同名加 `.sha256` 的校验文件；发布必须同时包含便携包及安装器。
 
 ## 验证
 
 `Desktop platforms` CI 分别在 Windows x64、macOS ARM64、macOS Intel、Ubuntu x64 上构建
-原生安装包，并用独立的临时用户目录验证程序能打开并渲染窗口。Linux 还验证 `.deb` 安装。
+原生安装包，实际执行 EXE、PKG、DEB 安装，再用独立的临时用户目录验证安装后的程序能
+渲染窗口并连接内置后端。仅渲染出错误页面不能通过验证。
 发布门禁只覆盖依赖、编译、打包、包完整性和基本启动，不要求具体按钮或产品功能存在。
 Python、Node 和界面功能测试保留供开发时按需运行，不阻止主动增删功能的版本发布。
 自动修复先运行 `npm --prefix ui run check:release`（仅编译），不能为了旧功能测试恢复已删除功能。
