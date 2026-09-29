@@ -15,7 +15,7 @@ spec.loader.exec_module(builder)
 
 @pytest.fixture
 def binary(tmp_path):
-    path = tmp_path / "Cleo.app/Contents/Resources/python/_rust.abi3.so"
+    path = tmp_path / "Cleo.app/Contents/Frameworks/Electron Helper (Renderer)"
     path.parent.mkdir(parents=True)
     path.write_bytes(bytes.fromhex("cffaedfe") + b"fixture")
     (path.parent / "data.txt").write_text("not Mach-O")
@@ -32,7 +32,7 @@ def test_external_libraries_and_search_paths_fail_even_when_present(
     bundle, path = binary
 
     def otool(args, **kwargs):
-        assert list(map(str, args)) == ["otool", "-l", str(path)]
+        assert list(map(str, args)) == ["otool", "-m", "-l", str(path)]
         return f"{path}:\nLoad command 0\n cmd {command}\n {field} {dependency} (offset 24)\n"
 
     monkeypatch.setattr(builder.subprocess, "check_output", otool)

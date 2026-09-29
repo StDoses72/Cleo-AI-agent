@@ -45,7 +45,7 @@ def prepare_macos_libraries(bundle: Path) -> None:
         with path.open("rb") as stream:
             if stream.read(4) not in magic:
                 continue
-        output = subprocess.check_output(["otool", "-l", str(path)], text=True)
+        output = subprocess.check_output(["otool", "-m", "-l", str(path)], text=True)
         command = ""
         stale_rpaths = set()
         for line in output.splitlines():
