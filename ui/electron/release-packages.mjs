@@ -67,6 +67,10 @@ export async function checkedRunResult(manager, tools, params, run) {
   const expected = targets.flatMap(target => [`Cleo-${target}${target === "linux-x64" ? ".tar.gz" : ".zip"}`,
     `Cleo-${target}.sha256`, target === "windows-x64" ? "release.json" : `release-${target}.json`]);
   expected.push("Cleo-linux-x64.deb", "Cleo-linux-x64.deb.sha256");
+  const installers = ["Cleo-windows-x64-setup.exe", "Cleo-macos-arm64.pkg", "Cleo-macos-x64.pkg"]
+    .flatMap(name => [name, `${name}.sha256`]);
+  // Legacy releases have no installer assets; a new release must have the whole set.
+  if (installers.some(name => names.has(name))) expected.push(...installers);
   if (!release || release.draft || release.name !== params.title?.trim() || (release.body || "") !== params.body
       || release.prerelease !== params.prerelease || !expected.every(name => names.has(name)) || names.size !== expected.length
       || release.assets.length !== expected.length

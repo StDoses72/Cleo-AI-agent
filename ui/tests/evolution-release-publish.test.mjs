@@ -253,6 +253,13 @@ test("failed runs can retry; successful runs do not claim completion without all
     remote.releases[params.tag].draft = false;
     const status = await releasePackageStatus(manager, params);
     assert.equal(status.status, "completed"); assert.match(status.releaseUrl, /releases\/tag/);
+    const installers = ["Cleo-windows-x64-setup.exe", "Cleo-macos-arm64.pkg", "Cleo-macos-x64.pkg"]
+      .flatMap(name => [name, `${name}.sha256`]);
+    const asset = name => ({ name, size: 100, digest: `sha256:${"a".repeat(64)}` });
+    remote.releases[params.tag].assets.push(asset(installers[0]));
+    assert.equal((await releasePackageStatus(manager, params)).status, "incomplete");
+    remote.releases[params.tag].assets.push(...installers.slice(1).map(asset));
+    assert.equal((await releasePackageStatus(manager, params)).status, "completed");
     await publishReleasePackages(manager, params);
     assert.equal(actions.dispatches.length, 2);
     remote.tags[params.tag] = "b".repeat(40);
