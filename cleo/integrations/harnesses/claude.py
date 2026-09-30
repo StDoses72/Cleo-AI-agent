@@ -5,6 +5,7 @@ import json
 import os
 import secrets
 import subprocess
+import sys
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
@@ -29,6 +30,7 @@ from cleo.harnesses.control import HarnessModel, SessionOptions
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 from cleo.harnesses.provider import ProviderSession, ProviderTurn
 from cleo.harnesses.questions import QuestionBroker, normalize_questions
+from cleo.harnesses.rewind import CLAUDE_TRANSCRIPT_SCRIPT, locate_turn
 from cleo.integrations.harness_home import (
     CLAUDE_LOGIN_HINT,
     claude_environment,
@@ -290,6 +292,60 @@ class ClaudeProvider:
         runtime.approvals = replacement.approvals
         runtime.permission_verified = replacement.permission_verified
         runtime.needs_reconnect = False
+
+    async def rewind(self, session_id: str, *, prompt: str, later: list[str],
+                     native_turn_id: str | None = None) -> str | None:
+        """Purpose: Continue a session from just before one earlier user message.
+
+        Input: Session, the edited turn's prompt and later prompts, oldest first.
+        Output: Native ID of a fork truncated before that message, or None when the first
+        message was edited; the original transcript is kept.
+        """
+        runtime = self._sessions[session_id]
+        if runtime.active:
+            raise RuntimeError("Claude 仍在运行，暂不能编辑之前的消息。")
+        async with runtime.lock:
+            source = runtime.native_session_id
+            if not source:
+                raise ValueError("Claude 会话尚未开始，无法编辑之前的消息。")
+            rows = await self._transcript(runtime, {"action": "list", "session": source})
+            entries = [(index, row["text"]) for index, row in reversed(list(enumerate(rows)))
+                       if row.get("text")]
+            index = locate_turn(entries, prompt, later)
+            forked = None if index == 0 else (await self._transcript(runtime, {
+                "action": "fork", "session": source, "message": rows[index - 1]["uuid"],
+            }))["session"]
+            runtime.native_session_id = forked
+            options = runtime.options
+            await self._reconnect_runtime(
+                runtime, options.model, options.effort, options.approval_mode,
+            )
+        return forked
+
+    async def _transcript(self, runtime: _ClaudeRuntime, request: dict[str, Any]) -> Any:
+        """Purpose: Read or fork a transcript under this session's Claude directory.
+
+        Input: Runtime and a list/fork request. Output: Parsed script result.
+        """
+        from cleo.integrations.claude_cli import process_options, stop_process
+
+        process = await asyncio.create_subprocess_exec(
+            sys.executable, "-c", CLAUDE_TRANSCRIPT_SCRIPT,
+            cwd=runtime.cwd,
+            env=claude_environment(dict(os.environ), external=runtime.external_home),
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            **process_options(),
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(json.dumps({**request, "cwd": runtime.cwd}).encode()), 60,
+            )
+        finally:
+            await stop_process(process)
+        if process.returncode:
+            detail = diagnostic_text(stderr.decode("utf-8", errors="replace"))
+            raise RuntimeError("无法读取 Claude 会话记录，未作修改。" + detail)
+        return json.loads(stdout)
 
     async def list_models(self, project_path: str = ".") -> tuple[HarnessModel, ...]:
         """Purpose: Combine live Claude choices with explicitly configured model IDs.

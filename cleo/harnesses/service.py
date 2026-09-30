@@ -598,6 +598,9 @@ class AgentService:
                 "type": f"session_{turn.status}",
                 "actor": "system",
                 "content": turn.error,
+                # Lets a later edit rewind the native conversation to this exact turn.
+                "data": {"turn_id": turn_key,
+                         **({"native_turn_id": turn.turn_id} if turn.turn_id else {})},
             }
         )
         self._store.append_events(
@@ -792,6 +795,33 @@ class AgentService:
             project=route.project,
             parent_session_id=session_id,
         )
+
+    def can_rewind(self, session_id: str) -> bool:
+        """Purpose: Report whether earlier user messages can be edited in place.
+
+        Input: Session handle. Output: True for live routes whose provider can rewind.
+        """
+        route = self._sessions.get(session_id)
+        return (route is not None and not route.handoff_id
+                and callable(getattr(route.provider, "rewind", None)))
+
+    async def rewind(self, session_id: str, *, prompt: str, later: list[str],
+                     native_turn_id: str | None = None) -> None:
+        """Purpose: Rewind the native conversation to just before one earlier user turn.
+
+        Input: Session, the turn's model prompt, later turns' prompts oldest first, and the
+        recorded native turn ID when known. Output: None; the route and manifest keep the
+        native session that now continues the conversation.
+        """
+        route = self._route(session_id)
+        if route.handoff_id:
+            raise ValueError("交接尚未完成，暂不能编辑之前的消息。")
+        method = self._capability(route.provider, "rewind")
+        async with self._session_locks.setdefault(session_id, asyncio.Lock()):
+            native = await method(route.provider_session_id, prompt=prompt, later=later,
+                                  native_turn_id=native_turn_id)
+            route.native_session_id = native
+            self._store.update_manifest(session_id, native_session_id=native)
 
     async def rename_session(self, session_id: str, name: str) -> None:
         """重命名会话(provider 侧与本地 manifest 同步)。"""

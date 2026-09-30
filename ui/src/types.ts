@@ -199,6 +199,8 @@ export interface HarnessSyncResult {
 
 export interface Thread {
   canUndo?: boolean;
+  /** User turns the current native session can rewind; editing one resends from there. */
+  editableTurnIds?: string[];
   currentTiming?: TimingSummary | null;
   timingError?: string | null;
   steerReady?: boolean;
@@ -229,6 +231,13 @@ export interface Attachment {
   mimeType: string;
   size: number;
   base64?: string;
+}
+
+/** A message typed while a run is active; sent next unless steered into the run first. */
+export interface QueuedMessage {
+  id: string;
+  text: string;
+  attachments: Attachment[];
 }
 
 export type ApprovalDecision = "accept" | "acceptForSession" | "decline" | "cancel";
@@ -581,6 +590,7 @@ export interface CleoClient {
   streamTurn(threadId: string, prompt: string, attachments?: Attachment[], runId?: string): AsyncGenerator<StreamEvent>;
   cancelRun(threadId: string, runId?: string): Promise<boolean>;
   steerRun(threadId: string, runId: string, requestId: string, text: string, retry?: boolean): Promise<TimelineItem>;
+  rewindThread(threadId: string, itemId: string): Promise<Thread>;
   resolveApproval(threadId: string, approvalId: string, decision: ApprovalDecision): Promise<void>;
   updateRuntime(threadId: string, update: RuntimeUpdate): Promise<RuntimeProfile>;
   switchHarness(threadId: string, provider: string, model: string, effort?: RuntimeProfile["effort"]): Promise<RuntimeProfile>;

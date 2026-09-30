@@ -72,6 +72,7 @@ export class MockCleoClient implements CleoClient {
       const { items, ...history } = await this.loadTimeline(thread.id);
       thread.items = items;
       thread.history = history;
+      thread.editableTurnIds = this.editableTurns(thread.id);
     }
     return result;
   }
@@ -86,7 +87,21 @@ export class MockCleoClient implements CleoClient {
     const thread = snapshot.threads.find((candidate) => candidate.id === threadId);
     if (!thread) throw new Error(`Unknown thread: ${threadId}`);
     const { items, ...history } = await this.loadTimeline(threadId);
-    return { ...clone(thread), items, history };
+    return { ...clone(thread), items, history, editableTurnIds: this.editableTurns(threadId) };
+  }
+
+  private editableTurns(threadId: string): string[] {
+    const stored = this.histories.get(threadId) ?? snapshot.threads.find(t => t.id === threadId)?.items ?? [];
+    return stored.filter(item => item.type === "message" && item.role === "user" && !item.steer).map(item => item.id);
+  }
+
+  async rewindThread(threadId: string, itemId: string): Promise<Thread> {
+    await delay(80);
+    if (this.activeRuns.has(threadId)) throw new Error("请等待当前运行结束后再编辑消息。");
+    if (!this.editableTurns(threadId).includes(itemId)) throw new Error("这条消息不能编辑。");
+    const items = this.histories.get(threadId) ?? clone(snapshot.threads.find(t => t.id === threadId)?.items ?? []);
+    this.histories.set(threadId, items.slice(0, items.findIndex(item => item.id === itemId)));
+    return this.loadThread(threadId);
   }
 
   async loadTimeline(threadId: string, direction: "latest" | "before" | "after" = "latest", cursor?: string): Promise<TimelinePage> {
@@ -169,6 +184,7 @@ export class MockCleoClient implements CleoClient {
             access: "workspace-write",
             approval: "user",
             editable: true,
+            steerMode: "native",
           },
     };
     snapshot.threads.unshift(clone(created));
@@ -522,8 +538,15 @@ export class MockCleoClient implements CleoClient {
     request.resolve(decision);
   }
 
-  async steerRun(): Promise<TimelineItem> {
-    throw new Error("演示模式无法向运行中的模型投递指令。");
+  async steerRun(threadId: string, runId: string, requestId: string, text: string): Promise<TimelineItem> {
+    await delay(120);
+    if (this.activeRuns.get(threadId) !== runId) throw new Error("这一轮已结束，指令未投递。");
+    const item: TimelineItem = { id: `steer-${requestId}`, type: "message", role: "user", content: text,
+      time: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
+      steer: { id: requestId, threadId, runId, text, mode: "native", status: "received", revision: 1,
+        retryable: false, createdAt: new Date().toISOString() } };
+    this.histories.get(threadId)?.push(item);
+    return clone(item);
   }
 
   async updateRuntime(

@@ -58,7 +58,8 @@ try {
     };
     const load = () => {
       const { items, ...history } = pageOf();
-      return { ...base, id: "layout", title: "检查聊天、输入框与侧栏布局", runtime, items, history };
+      return { ...base, id: "layout", title: "检查聊天、输入框与侧栏布局", runtime, items, history,
+        editableTurnIds: ["layout-158"] };
     };
     window.cleoDesktop = {
       async request(method, params = {}) {
@@ -66,6 +67,8 @@ try {
         if (method === "load_memory") return structuredClone({ memories: snapshot.memories, memoryOverview: snapshot.memoryOverview });
         if (method === "load_thread") return load();
         if (method === "load_timeline") return pageOf(params.direction, params.cursor);
+        if (method === "rewind_thread") { (window.__edits ??= []).push({ rewind: params.item_id }); return load(); }
+        if (method === "stream_turn") { (window.__edits ??= []).push({ prompt: params.prompt }); return null; }
         if (method === "get_pending_questions") return [];
         if (method === "get_runtime_catalog") return { nonProductivityProfiles: [], defaultNonProductivityProfile: "", defaultProductivityProvider: "codex",
           productivityProviders: [{ id: "codex", type: "codex_sdk", defaultModel: runtime.model, modelSource: "config" }] };
@@ -247,6 +250,13 @@ try {
 
   await jumpLatest();
   const lastMessage = page.locator('[data-row-id="layout-159"] .message-text');
+  const actions = lastMessage.locator(".message-actions");
+  assert.equal(await actions.evaluate(element => getComputedStyle(element).opacity), "0", "Message actions show without hover");
+  await lastMessage.hover();
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('[data-row-id="layout-159"] .message-actions')).opacity === "1");
+  assert.equal(await lastMessage.getByRole("button", { name: "编辑" }).count(), 0, "Replies cannot be edited");
+  assert.equal(await actions.locator("button").evaluateAll(buttons => buttons.every(button => !button.textContent.trim())), true,
+    "Message actions should be icons with names in tooltips");
   await lastMessage.getByRole("button", { name: "复制" }).click();
   assert.match(await page.evaluate(() => window.__copiedMessage), /最后一条消息应完整显示/);
   await lastMessage.evaluate(element => {
@@ -258,22 +268,14 @@ try {
   });
   await lastMessage.getByRole("button", { name: "复制" }).click();
   assert.equal(await page.evaluate(() => window.__copiedMessage), "最后一条消息应完整显示在输入框上方。");
-  await lastMessage.getByRole("button", { name: "编辑" }).click();
-  await lastMessage.getByRole("textbox", { name: "编辑消息文本" }).fill("调整后的段落");
-  await lastMessage.getByRole("button", { name: "保存" }).click();
-  assert.equal(await lastMessage.locator(".message-copy").innerText(), "调整后的段落");
-  await page.reload();
-  await page.getByText("调整后的段落", { exact: true }).waitFor();
-  await page.locator('[data-row-id="layout-159"] .message-text').getByRole("button", { name: "恢复原文" }).click();
+  const userMessage = page.locator('[data-row-id="layout-158"] .message-text');
+  await userMessage.hover();
+  await userMessage.getByRole("button", { name: "编辑" }).click();
+  await userMessage.getByRole("textbox", { name: "编辑消息" }).fill("调整后的需求");
+  await userMessage.getByRole("button", { name: "发送", exact: true }).click();
+  await page.waitForFunction(() => window.__edits?.some(edit => edit.prompt === "调整后的需求"));
+  assert.deepEqual(await page.evaluate(() => window.__edits), [{ rewind: "layout-158" }, { prompt: "调整后的需求" }]);
   await page.getByText("最后一条消息应完整显示在输入框上方。", { exact: true }).waitFor();
-  const editKey = "cleo:message-display-edit:v1:layout:layout-159";
-  await page.evaluate(key => localStorage.setItem(key, "{broken"), editKey);
-  await page.reload();
-  const protectedMessage = page.locator('[data-row-id="layout-159"] .message-text');
-  await protectedMessage.getByText(/显示修改无法识别/).waitFor();
-  assert.equal(await protectedMessage.getByRole("button", { name: "编辑" }).count(), 0);
-  assert.equal(await page.evaluate(key => localStorage.getItem(key), editKey), "{broken");
-  await protectedMessage.getByRole("button", { name: "恢复原文" }).click();
 
   await openInspector();
   await inspector.locator(".inspector-tabs").getByRole("button", { name: "文件" }).click();

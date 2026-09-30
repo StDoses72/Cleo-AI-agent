@@ -361,10 +361,7 @@ export function App() {
       || (!workspace.running && (preparingTurn || openingEvolutionUi || evolution.pending)))) {
     composerBlocked = "请等待当前操作完成…";
   }
-  if (!composerBlocked && (workspace.startingRun || workspace.steeringBusy)) composerBlocked = "正在提交，请稍候…";
-  if (!composerBlocked && workspace.running && activeRuntime.steerMode && !conversationThread?.steerReady) {
-    composerBlocked = "正在准备任务，输入会保留…";
-  }
+  if (!composerBlocked && workspace.startingRun) composerBlocked = "正在提交，请稍候…";
   const appClasses = [
     "app-shell",
     evolutionOpen ? "evolution-open" : "",
@@ -463,8 +460,14 @@ export function App() {
           }}
           onToggleInspector={() => setInspectorOpen((open) => !open)}
           onOpenCommand={() => setCommandOpen(true)}
-          onSend={(prompt) => void (workspace.running ? workspace.sendSteer(prompt)
+          onSend={(prompt) => void (workspace.running ? workspace.queueMessage(prompt)
             : evolutionOpen ? sendEvolutionPrompt(prompt) : workspace.sendPrompt(prompt))}
+          queuedMessages={workspace.queuedMessages}
+          onSteerQueued={id => void workspace.steerQueued(id)}
+          onSendQueued={workspace.sendQueued}
+          onEditQueued={workspace.editQueued}
+          onRemoveQueued={workspace.removeQueued}
+          onEditMessage={evolutionOpen ? undefined : workspace.editMessage}
           onRetrySteer={receipt => void workspace.retrySteer(receipt)}
           onRestoreSteer={workspace.restoreSteer}
           steeringBusy={workspace.steeringBusy}

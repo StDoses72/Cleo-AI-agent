@@ -6,7 +6,7 @@ on:
       - 'download/**'
       - '.github/workflows/download-page.yml'
       - 'README.md'
-      - 'README.en.md'
+      - 'README.zh-CN.md'
       - 'docs/**'
   workflow_dispatch:
 

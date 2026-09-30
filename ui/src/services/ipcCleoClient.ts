@@ -172,6 +172,10 @@ export class IpcCleoClient implements CleoClient {
     });
   }
 
+  rewindThread(threadId: string, itemId: string): Promise<Thread> {
+    return this.bridge.request("rewind_thread", { thread_id: threadId, item_id: itemId });
+  }
+
   async resolveApproval(
     threadId: string,
     approvalId: string,

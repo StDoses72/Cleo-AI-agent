@@ -2108,3 +2108,83 @@ def test_stale_permission_selection_does_not_apply_to_new_harness(tmp_path):
             })
         assert adapter.updated_with is None
     asyncio.run(scenario())
+
+
+def test_chat_rewind_rebuilds_the_agent_without_later_messages(tmp_path):
+    service = _service(tmp_path)
+    service.store.create_session(session_id="chat", space="non_productivity", project="general",
+                                 provider="cleo", owner_type="user")
+    events = []
+    for turn, question, reply in (("a", "one", "r1"), ("b", "two", "r2")):
+        events.append({"id": turn, "type": "user_message", "actor": "user", "content": question,
+                       "message": {"type": "human", "data": {"content": question, "id": turn}}})
+        events.append({"id": f"{turn}:ai", "type": "ai", "actor": "cleo", "content": reply,
+                       "message": {"type": "ai", "data": {"content": reply, "id": f"{turn}:ai"}}})
+    service.store.append_events(session_id="chat", space="non_productivity", project="general",
+                                events=events)
+    service._chat_agents["chat"] = object()
+    service._chat_agents_restored.add("chat")
+    before = asyncio.run(service.load_thread(thread_id="chat"))
+    assert before["editableTurnIds"] == ["a", "b"]
+    thread = asyncio.run(service.rewind_thread(thread_id="chat", item_id="b"))
+    assert "chat" not in service._chat_agents and "chat" not in service._chat_agents_restored
+    assert [message.content for message in service.store.load_langchain_messages("chat")] == [
+        "one", "r1"]
+    assert [item["content"] for item in thread["items"]] == ["one", "r1"]
+    assert thread["editableTurnIds"] == ["a"]
+
+
+def test_productivity_rewind_passes_prompts_and_native_turn_then_hides_them(tmp_path):
+    service = _service(tmp_path)
+    service.store.create_session(
+        session_id="task", space="productivity", project="workspace", provider="codex",
+        owner_type="user", cwd=str(tmp_path / "workspace"),
+    )
+    service.store.append_events(session_id="task", space="productivity", project="workspace",
+                                events=[
+        {"id": "t1", "type": "user_message", "actor": "agent", "content": "first"},
+        {"type": "session_completed", "actor": "system",
+         "data": {"turn_id": "t1", "native_turn_id": "native-1"}},
+        {"id": "t2", "type": "user_message", "actor": "agent", "content": "second"},
+        {"id": "t3", "type": "user_message", "actor": "agent", "content": "steered",
+         "data": {"steer_ids": ["s"]}},
+    ])
+    calls = []
+
+    class Adapter(FakeAdapter):
+        async def rewind(self, session_id, **kwargs):
+            calls.append((session_id, kwargs))
+
+    service._adapter_instance = Adapter(service.store)
+    service._ensure_productivity_session = AsyncMock()
+    thread = asyncio.run(service.rewind_thread(thread_id="task", item_id="t1"))
+    assert calls == [("task", {"prompt": "first", "later": ["second", "steered"],
+                               "native_turn_id": "native-1"})]
+    assert thread["items"] == [] and thread["editableTurnIds"] == []
+    with pytest.raises(ValueError):
+        asyncio.run(service.rewind_thread(thread_id="task", item_id="t2"))
+
+
+def test_rewind_refuses_running_steered_and_unsupported_tasks(tmp_path):
+    service = _service(tmp_path)
+    service.store.create_session(
+        session_id="task", space="productivity", project="workspace", provider="codex",
+        owner_type="user", cwd=str(tmp_path / "workspace"),
+    )
+    service.store.append_events(session_id="task", space="productivity", project="workspace",
+                                events=[
+        {"id": "t1", "type": "user_message", "actor": "agent", "content": "first"},
+        {"id": "t2", "type": "user_message", "actor": "agent", "content": "steered",
+         "data": {"steer_ids": ["s"]}},
+    ])
+    with pytest.raises(ValueError, match="不能编辑"):
+        asyncio.run(service.rewind_thread(thread_id="task", item_id="t2"))
+    service._run_tasks["task"] = SimpleNamespace(done=lambda: False)
+    with pytest.raises(RuntimeError):
+        asyncio.run(service.rewind_thread(thread_id="task", item_id="t1"))
+    service._run_tasks.clear()
+    acp = SimpleNamespace(**{**vars(FakeProductivity.providers["codex"]), "type": "acp"})
+    service._productivity_provider = lambda _: acp
+    with pytest.raises(ValueError, match="不支持"):
+        asyncio.run(service.rewind_thread(thread_id="task", item_id="t1"))
+    assert asyncio.run(service.load_thread(thread_id="task"))["editableTurnIds"] == []

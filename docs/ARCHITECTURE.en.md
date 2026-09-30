@@ -202,6 +202,12 @@ memory/
 and metadata. `events.jsonl` is the authoritative append-only record. Completed
 semantic messages are persisted rather than individual streaming token deltas.
 
+Editing an earlier user message never rewrites the log. Cleo appends a `rewind`
+event whose `data.turn_id` names the edited turn. The timeline, chat history
+restore, harness handoff context, and memory compaction skip every event from that
+turn up to the `rewind` marker, while sequence numbers and source hashes still
+cover the full log.
+
 `compact.json` merges tool calls and results, redacts secrets, omits low-value
 bulk output, and records source event IDs, source hash, and sequence range. A
 compact projection is accepted only when its scope, hash, and final sequence
@@ -273,7 +279,18 @@ Codex rich control plane
   → model/list + account/read (capability discovery)
   → per-turn model / effort / sandbox / approval
   → thread/fork / name/set / compact / archive
+
+AgentAdapter.rewind (editing an earlier user message)
+  → Codex: thread/revert drops that turn and every later turn
+  → Claude: fork the native transcript offline before that message and switch to it
+  → rewind event + a new turn with the edited text
 ```
+
+Each `session_<status>` event records the turn's native ID so a Codex edit can
+target it directly; otherwise native turns are matched to prompts from newest to
+oldest. Only turns after the latest harness handoff can be edited, and ACP and
+evolution tasks do not offer editing. Editing rewinds the conversation only; files
+already written to the workspace are not reverted.
 
 `/productivity` in the main chat is the interactive terminal entry point; leaving
 it restores the prior Cleo space/project/thread. `main.py --productivity` remains
