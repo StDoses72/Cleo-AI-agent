@@ -1,0 +1,4 @@
+{
+  "extends": "../tsconfig.json",
+  "include": ["interaction-fixture.tsx", "../src/vite-env.d.ts"]
+}

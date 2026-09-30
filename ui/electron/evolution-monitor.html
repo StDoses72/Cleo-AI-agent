@@ -1,0 +1,11 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'">
+<title>Cleo · 进化伴随窗口</title><link rel="stylesheet" href="evolution-monitor.css">
+<header><div class="brand"><b>C</b><span>进化 <small>同一个 agent，同一个会话</small></span></div><div class="header-actions"><button id="check" class="quiet" title="检查并构建本轮改动">检查改动</button><button id="apply" class="primary" hidden>应用</button><button id="save" class="primary" hidden>保存版本</button><button id="recovery" class="quiet">版本与恢复</button></div></header>
+<form id="save-form" class="save-form" hidden><label for="version-name">版本名称</label><input id="version-name" maxlength="80" autocomplete="off"><button type="submit" class="primary">保存</button><button type="button" id="save-cancel" class="quiet">取消</button><p id="save-hint">留空则使用默认名称。</p></form>
+<section class="status"><span id="light"></span><div><strong id="phase" role="status">连接中…</strong><p id="detail"></p></div></section>
+<main id="conversation" aria-label="进化对话"><div id="timeline"></div><div id="messages"></div><div id="questions"></div></main>
+<section class="diagnostics"><details><summary>构建与重启日志</summary><pre id="logs"></pre><button id="emergency" class="quiet" type="button">主程序无响应？打开独立恢复入口</button></details><p id="control-status" role="status"></p><p id="error" role="alert"></p></section>
+<footer><div class="controls"><button id="stop" class="quiet">■ 停止执行</button><button id="resume" class="quiet" hidden>继续处理消息</button><button id="discard" class="danger">放弃本轮改动</button></div>
+<form id="form"><label class="sr-only" for="body">补充需求</label><textarea id="body" maxlength="30000" placeholder="告诉 Cleo 还想怎么改…" rows="2"></textarea><button id="send" title="发送补充需求" aria-label="发送补充需求">↑</button></form><p id="hint">回复与工具过程实时显示；重启期间，补充需求会保留。</p></footer>
+<script src="evolution-monitor-renderer.js"></script></html>

@@ -1,0 +1,229 @@
+# Cleo AI Agent
+
+[English](README.en.md) | [文档中心](docs/README.md) | [架构说明](docs/ARCHITECTURE.md)
+
+Cleo 是一套本地优先的 AI 工作空间：它把通用对话、开发者代理、会话恢复和可追溯记忆统一在一个桌面端与 CLI 中，同时允许团队按自己的模型、工具和数据边界部署。
+
+项目提供 Windows、macOS、Linux 桌面构建支持，以及 Python CLI、Textual TUI 和 stdio MCP 入口。用户数据默认保存在本机；模型推理由用户配置的 API provider 或外部 agent harness 提供。
+
+> 当前版本：[v0.5.6](https://github.com/StDoses72/Cleo-AI-agent/releases/tag/v0.5.6) · [下载桌面版](https://stdoses72.github.io/Cleo-AI-agent/)
+
+## Cleo 解决什么问题
+
+多数 AI 助手只覆盖一次对话，代码代理又各自维护独立的任务、权限和历史。Cleo 在它们之上提供一层统一的产品体验：
+
+- **一个工作入口**：在桌面端或终端中切换通用聊天与 Productivity 开发工作流。
+- **可恢复的会话**：把不同 provider 的输出归一化为本地事件，支持项目、标题、历史与恢复。
+- **有边界的长期记忆**：当前偏好按 `space + project` 保存为 Markdown，变更由内嵌 Git 记录；工作事实回查原始会话。
+- **可替换的模型与 harness**：前台 Cleo、DreamAgent、Codex、Claude SDK 与 ACP agent 可独立配置。
+- **本地可审计**：配置、会话、工具日志和记忆留在用户设备，不依赖 Cleo 自建的云端账户系统。
+
+## 产品形态
+
+| 入口 | 面向对象 | 主要用途 |
+| --- | --- | --- |
+| Cleo Desktop | 日常用户、开发者 | 会话与项目管理、通用聊天、Productivity、记忆查看、模型设置、版本更新和本地进化 |
+| Cleo Chat CLI / TUI | 终端用户 | 一次性提问、连续对话、图片附件、项目记忆与会话恢复 |
+| Productivity TUI | 软件开发者 | 通过 Codex、Claude SDK 或 ACP agent 在指定目录中执行开发任务 |
+| `cleo-codex-mcp` | 工具集成方 | 通过 stdio MCP 暴露 `codex` 与 `codex-reply` 两个工具 |
+
+## 核心能力
+
+- 流式通用对话与一次性任务，支持 JPEG、PNG、WebP 和 GIF 附件。
+- Codex 订阅对话可直接发送图片，继续使用 Codex 额度；恢复历史与后续追问保留图片上下文。
+- 历史消息分页加载、过程折叠，以及 Codex/Claude 的原生提问交互。
+- 原生 Claude/Codex 开发会话中的本机 skills 发现、搜索与调用。
+- 本地进化：从需求描述、源码修改、检查构建到应用体验、验收与版本保存。
+- 通过独立接收分支贡献源码快照，查看 PR 状态并发起合并调查与修复。
+- 面向代码工作的统一 harness adapter，包含 provider-neutral 数据面和可选的 Codex 控制面。
+- append-only `events.jsonl` 会话事实源、原子 manifest 和可重建 SQLite 索引。
+- `non_productivity` 与 `productivity` 两个 memory space；读取偏好时显式限定项目范围。
+- 规则压缩、敏感信息清理，以及校验证据、处理冲突并发布偏好编辑的 DreamAgent。
+- 项目偏好、手动整理时可替换的单个交接快照与历史片段检索；兼容现有 persona，停止自动提取新 persona。
+- 带 allowlist、路径边界、超时、输出上限和审计日志的本地 shell 工具。
+- 每个 thread 独立的浏览器会话，以及公网/私网和域名访问边界。
+- Windows、macOS 与 Linux 原生桌面包，按平台校验更新并保留用户数据。
+- SDK 与浏览器工具每天后台检查更新，验证后在下次启动生效；界面和 Electron 随新版 Cleo 更新。详见[依赖管理](docs/DEVELOPMENT.md#依赖管理)。
+
+## 5 分钟开始
+
+### 下载桌面版
+
+打开 **[Cleo 统一下载页](https://stdoses72.github.io/Cleo-AI-agent/)**，根据浏览器提供的系统与架构信息选择安装包，也可手动切换 Windows x64、macOS Apple Silicon / Intel、Linux x64 或 Debian / Ubuntu deb。
+
+浏览器无法判断 Mac 芯片时，下载页会提示选择，并提供直接读取系统架构的下载脚本。脚本无需 Python 或 Node.js，将匹配当前系统的包下载到「下载」目录、校验 SHA-256 后交付，不自动安装。macOS 包目前采用开发签名，尚未通过 Apple 公证。详见[安装与平台说明](docs/PLATFORMS.md)。
+
+也可以从 [GitHub Releases](https://github.com/StDoses72/Cleo-AI-agent/releases/latest) 手动下载。Windows 用户还可以在源码仓库中运行原有的带校验安装器：
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\download.ps1 -Launch
+```
+
+该 Windows 安装器将程序安装到 `%LOCALAPPDATA%\Programs\Cleo`，配置、会话、记忆和模型缓存保存在 `%LOCALAPPDATA%\Cleo`。升级只替换程序目录，不覆盖用户数据。
+
+首次进入应用后，在“设置 → 模型”中配置 provider、模型、API Key 和可选 Base URL，再分别选择 Cleo 与 DreamAgent 使用的 profile。API Key 只写入本地配置，桌面读取接口不会回传明文。
+
+使用 Codex 开发对话时，可在输入框旁选择标准速度或快速模式；选择按对话保存。快速模式消耗更多额度，可用性取决于模型和账号。
+
+新建 Codex/Claude 会话的登录、配置、历史和 skills 保存在 Cleo 专用目录（`data/codex`、`data/claude`），不写入默认应用的会话列表；本机已有的 skills、指令和设置会自动补充导入，登录需在 Cleo 内单独完成一次。已有会话沿用原目录，详见[配置说明](docs/CONFIGURATION.md)。
+
+### 从源码运行
+
+要求 Python 3.12+；使用浏览器工具时还需要 Node.js 和 `agent-browser`。
+
+```powershell
+git clone https://github.com/StDoses72/Cleo-AI-agent.git
+Set-Location Cleo-AI-agent
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e ".[dev]"
+npm install -g agent-browser@0.33.1
+Copy-Item cleo\config\templates\cleo.example.json config\cleo.json
+Copy-Item cleo\config\templates\harnesses.example.json config\harnesses.json
+```
+
+编辑 `config/cleo.json`，至少填写一个真实可用的 agent profile，然后启动：
+
+```powershell
+cleo
+cleo "总结这个项目的架构"
+cleo --productivity --cwd .
+```
+
+Linux/macOS 使用相同的 Python 包和 JSON 配置。原生桌面构建、安装格式与签名边界见[平台支持](docs/PLATFORMS.md)；预构建附件以当前 GitHub Release 为准。
+
+## 常用工作流
+
+### 桌面端
+
+- **开发与 skills**：选择工作目录及 Claude/Codex harness，在输入框键入 `/` 搜索本机 skill，选择后补充参数并发送。安装新 skill 后重新打开会话以刷新列表；详见[本地 skills](docs/local-skills.md)。
+- **本地进化**：进入进化页描述修改需求，等待实际检查与构建通过后应用。体验后可直接点击验收，反馈为可选项；应用本身不代表验收通过。满意后保存，不满意可继续修改或放弃本轮修改。详见[本地进化](docs/cleo-evolution.md)和[直接验收](docs/direct-acceptance.md)。
+- **更新版本**：在设置的更新页检查正式版本；本地进化中的版本入口可选择正式或已保存的本地版本。切换程序版本不会把聊天、记忆和配置还原到旧快照。
+- **贡献源码**：从「提交 PR」选择已检查的本地版本和维护者创建的空接收分支；没有目标分支时先提交分支申请。程序提交完整源码快照，排除本机配置、对话和运行数据；由维护者决定合并与发布。详见[贡献目标与合并辅助](docs/contribution-targets.md)。
+
+### 终端
+
+```powershell
+# 在 general 项目中打开连续对话
+cleo
+
+# 把通用对话与记忆绑定到逻辑项目
+cleo --project product-planning
+
+# 执行一次性任务
+cleo "把下面的需求整理成验收标准"
+
+# 在当前代码目录启动默认开发 harness
+cleo --productivity --cwd .
+
+# 选择已注册的 provider 和模型
+cleo --productivity --provider codex --model gpt-5.5 --cwd .
+
+# 恢复 Cleo 管理的会话
+cleo --resume <session-id>
+cleo --productivity --resume <session-id>
+```
+
+交互界面支持 `/help`、`/new`、`/project`、`/sessions`、`/resume`、`/rename`、`/attach` 和 `/productivity`。Productivity 还提供 `/cwd`、`/cd`、`/git`、`/diff`、`/model`、`/effort`、`/access`、`/approval`、`/native` 与 `/resume-native`；可用命令会随 provider 能力变化。
+
+## 系统如何工作
+
+```text
+Desktop / CLI / TUI / MCP
+            │
+            ├── Cleo Chat ─────── Deep Agents + configured LLM
+            │
+            └── Productivity ──── AgentAdapter ─── Codex / Claude / ACP
+                                      │
+                                      ▼
+                SessionStore: manifest + append-only event log
+                                      │
+                       compact projection + local indexes
+                                      │
+                         DreamAgent consolidation
+                                      │
+                    project memory + evidence + persona
+```
+
+最重要的边界是：
+
+1. `events.jsonl` 是会话事实源；manifest、compact、SQLite 和 Markdown 都是投影。
+2. 每条 session 与 memory 数据都属于 `space + project + session_id`。
+3. provider 原生事件先转换成 Cleo canonical event，存储层不依赖特定 SDK。
+4. 自动记忆不会修改 `AGENTS.md`、授予权限或创建 skill。
+
+完整说明见[架构文档](docs/ARCHITECTURE.md)。
+
+## 数据、隐私与安全边界
+
+Cleo 是 local-first，不等于完全离线：
+
+- 配置、会话、记忆、runtime state 和工具审计默认在本地保存。
+- prompt、附件和工具上下文会发送给你选择的模型或 harness provider；应遵守该服务的隐私政策。
+- 浏览器工具可能访问网络；默认拒绝 localhost、局域网、链路本地和云 metadata 地址。
+- shell 与 coding harness 能修改文件或运行命令；权限取决于 `cleo.json`、`harnesses.json` 和 provider 自身的 sandbox/approval 设置。
+- `config/cleo.json` 包含 API Key，不应提交到 Git 或共享给其他用户。
+
+部署前请阅读[配置与安全边界](docs/CONFIGURATION.md)，并按使用场景收紧命令、目录、域名和 provider 权限。
+
+## 仓库结构
+
+```text
+Cleo-AI-agent/
+├── cleo/                 # Python 产品核心：agent、CLI、desktop service、session、memory、harness
+├── ui/                   # Electron + React 桌面客户端
+├── config/               # 本地配置（默认忽略提交）
+├── docs/                 # 用户、架构、开发与设计决策文档
+├── memory/               # 记忆策略和本地运行数据
+├── scripts/              # 依赖、发布、下载、卸载与清理脚本
+├── skills/               # Cleo 可加载的本地 skills
+├── tests/                # 按生产模块映射的测试
+├── compose.yaml          # 本地容器运行入口
+├── pyproject.toml        # Python 项目元数据和直接依赖
+└── README.md
+```
+
+## 文档导航
+
+- [快速开始](docs/GETTING_STARTED.md)：安装、首次配置和第一条任务。
+- [配置与安全边界](docs/CONFIGURATION.md)：模型、目录、工具、harness 与数据路径。
+- [架构说明](docs/ARCHITECTURE.md) / [English](docs/ARCHITECTURE.en.md)：组件、数据流和持久化模型。
+- [开发与发布](docs/DEVELOPMENT.md)：本地环境、测试、依赖锁定、Docker 和 Windows 发布。
+- [后端代码导读](docs/BACKEND_CODE_REVIEW.md)：面向贡献者的阅读顺序与 review 清单。
+- [运行时与数据维护指南](docs/Cleo_Runtime_State_Maintenance_Guide.docx)：变更 runtime、session 或 memory 时的操作手册。
+- [记忆系统设计记录](docs/CASTMIND_MEMORY_MIGRATION.md)：分层记忆方案的来源与取舍。
+- [双向记忆读取](docs/MEMORY_READING.md)：跨空间检索、会话续读和仅限 SDK 子进程的 MCP 接入。
+- [本地进化](docs/cleo-evolution.md)：修改、检查、应用、保存与恢复。
+- [本地 skills](docs/local-skills.md)：支持的 harness、目录与调用方式。
+- [源码贡献](docs/contribution-targets.md)：空接收分支、源码快照与 PR 合并辅助。
+
+## 开发与验证
+
+更新依赖时运行 `python scripts/update_project.py --local-resolver --skip-build`：刷新项目锁文件，并自动升级已有 `.venv` 中的稳定开发依赖。`--check` 只检查，不修改环境。
+
+```powershell
+pip install -e ".[dev]"
+ruff check cleo tests
+pytest -q
+
+Set-Location ui
+npm install
+npm run typecheck
+npm run test:backend
+npm run smoke
+```
+
+在目标操作系统和架构的 `ui/` 目录运行 `npm run package:portable`，产物生成到仓库根目录 `release/`。参见[开发与发布](docs/DEVELOPMENT.md)和 [Desktop 子系统说明](ui/README.md)。
+
+## 参与项目
+
+完成任务也包括清理临时产物：测试、调试和构建文件应集中在一个明确的临时目录，不得散落在
+项目父目录或其他仓库旁。验证通过并生成目标交付物后，删除临时测试数据、运行程序副本、
+日志、截图、PR 草稿、补丁／归档副本和过时的 build/review/backup 目录；仅保留用户要求的
+正式产物。版本与审查使用 Git 管理，不另存“保险备份”。清理前核对路径并保护用户数据、
+真实仓库、开发依赖和正在使用的资源，结束前复查 Git 状态与目录；无法删除的项目必须明确报告。
+
+欢迎提交 issue 和 pull request。开始改动前请先阅读 [AGENTS.md](AGENTS.md)、[开发文档](docs/DEVELOPMENT.md)和相关测试；变更 session、memory 或 provider 协议时，应同时更新对应文档与回归测试。
+
+本项目采用 [MIT License](LICENSE)。

@@ -1,0 +1,327 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Cleo 自迭代架构 · 本地工作区",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1340,
+      760
+    ],
+    "views": [
+      {
+        "id": "edit",
+        "label": "需求 → 修改 → 构建",
+        "focus": [
+          "evolution-ui",
+          "coding-service",
+          "source-workspace",
+          "evolution-manager",
+          "build-gate",
+          "version-registry"
+        ],
+        "note": "模型修改受管源码；前端在对话完成后触发检查构建。"
+      },
+      {
+        "id": "activate",
+        "label": "应用与故障恢复",
+        "focus": [
+          "evolution-manager",
+          "version-registry",
+          "program-builds",
+          "restart-controller",
+          "running-cleo",
+          "shared-data"
+        ],
+        "note": "用户点击应用，独立窗口先显示；新 UI 与后端确认就绪后才结束切换。"
+      },
+      {
+        "id": "release",
+        "label": "本地保存与正式发布",
+        "focus": [
+          "source-workspace",
+          "github-release",
+          "version-registry",
+          "program-builds"
+        ],
+        "note": "本地保存不会发布；PR 合并与 Release 发布仍由维护者决定。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "evolution-ui",
+      "type": "frontend",
+      "label": "进化聊天界面",
+      "sublabel": "版本选择 · 应用 / 保存 / 放弃",
+      "pos": [
+        40,
+        70
+      ],
+      "size": [
+        230,
+        86
+      ]
+    },
+    {
+      "id": "coding-service",
+      "type": "backend",
+      "label": "编码会话与 Harness",
+      "sublabel": "DesktopService · 模型选择",
+      "tag": "Codex / Claude / ACP",
+      "pos": [
+        385,
+        70
+      ],
+      "size": [
+        230,
+        86
+      ]
+    },
+    {
+      "id": "source-workspace",
+      "type": "database",
+      "label": "当前迭代源码",
+      "sublabel": "evolution/source · Git 工作区",
+      "pos": [
+        730,
+        70
+      ],
+      "size": [
+        230,
+        86
+      ]
+    },
+    {
+      "id": "github-release",
+      "type": "external",
+      "label": "GitHub · PR / Release",
+      "sublabel": "维护者审查与正式发布",
+      "pos": [
+        1075,
+        70
+      ],
+      "size": [
+        230,
+        86
+      ]
+    },
+    {
+      "id": "evolution-manager",
+      "type": "backend",
+      "label": "本机迭代管理器",
+      "sublabel": "准备 · 保存 · 放弃 · 切换",
+      "pos": [
+        40,
+        320
+      ],
+      "size": [
+        230,
+        86
+      ]
+    },
+    {
+      "id": "build-gate",
+      "type": "security",
+      "label": "检查与打包",
+      "sublabel": "保护文件校验 · 测试 · 构建",
+      "tag": "管理器内的构建流程",
+      "pos": [
+        385,
+        320
+      ],
+      "size": [
+        230,
+        86
+      ]
+    },
+    {
+      "id": "version-registry",
+      "type": "database",
+      "label": "版本状态与事务",
+      "sublabel": "EvolutionStore · state.json",
+      "pos": [
+        730,
+        320
+      ],
+      "size": [
+        230,
+        86
+      ]
+    },
+    {
+      "id": "program-builds",
+      "type": "database",
+      "label": "保留的程序副本",
+      "sublabel": "基础版 · 当前构建 · 最近保存",
+      "tag": "独立保底额外保留",
+      "pos": [
+        1075,
+        320
+      ],
+      "size": [
+        230,
+        86
+      ]
+    },
+    {
+      "id": "restart-controller",
+      "type": "security",
+      "label": "独立重启与恢复",
+      "sublabel": "先显示窗口，再退出旧程序",
+      "tag": "失败 → 上一版本 → 保底",
+      "pos": [
+        40,
+        595
+      ],
+      "size": [
+        230,
+        86
+      ]
+    },
+    {
+      "id": "running-cleo",
+      "type": "backend",
+      "label": "选中版本的 Cleo",
+      "sublabel": "bootstrap → UI + Python",
+      "tag": "保存不重启；应用后检查就绪",
+      "pos": [
+        385,
+        595
+      ],
+      "size": [
+        230,
+        86
+      ]
+    },
+    {
+      "id": "shared-data",
+      "type": "database",
+      "label": "共享的用户数据",
+      "sublabel": "CLEO_HOME + userData",
+      "tag": "聊天 / 记忆 / 配置持续保留",
+      "pos": [
+        730,
+        595
+      ],
+      "size": [
+        230,
+        86
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "chat-request",
+      "from": "evolution-ui",
+      "to": "coding-service",
+      "label": "IPC → JSON-RPC",
+      "variant": "emphasis"
+    },
+    {
+      "id": "agent-edits",
+      "from": "coding-service",
+      "to": "source-workspace",
+      "label": "Harness 修改",
+      "variant": "emphasis"
+    },
+    {
+      "id": "explicit-pr",
+      "from": "source-workspace",
+      "to": "github-release",
+      "label": "确认后提交 PR",
+      "variant": "dashed"
+    },
+    {
+      "id": "user-actions",
+      "from": "evolution-ui",
+      "to": "evolution-manager",
+      "label": "IPC 用户操作",
+      "variant": "emphasis",
+      "labelDy": 95
+    },
+    {
+      "id": "build-trigger",
+      "from": "evolution-manager",
+      "to": "build-gate",
+      "label": "回合完成触发",
+      "variant": "emphasis"
+    },
+    {
+      "id": "read-source",
+      "from": "source-workspace",
+      "to": "build-gate",
+      "label": "读取源码"
+    },
+    {
+      "id": "candidate-record",
+      "from": "build-gate",
+      "to": "version-registry",
+      "label": "登记候选版本",
+      "variant": "emphasis",
+      "labelDy": 32
+    },
+    {
+      "id": "retain-programs",
+      "from": "version-registry",
+      "to": "program-builds",
+      "label": "索引与清理"
+    },
+    {
+      "id": "download-release",
+      "from": "github-release",
+      "to": "program-builds",
+      "label": "用户选择下载",
+      "variant": "dashed",
+      "labelDy": 95
+    },
+    {
+      "id": "apply-handoff",
+      "from": "evolution-manager",
+      "to": "restart-controller",
+      "label": "应用 / 已应用后放弃",
+      "variant": "security",
+      "labelDy": 95
+    },
+    {
+      "id": "boot-selected",
+      "from": "restart-controller",
+      "to": "running-cleo",
+      "label": "启动并等待就绪",
+      "variant": "security"
+    },
+    {
+      "id": "use-current-data",
+      "from": "running-cleo",
+      "to": "shared-data",
+      "label": "读写当前数据"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "用户控制迭代结果",
+      "items": [
+        "先选版本 → 提需求 → 自动检查 → 应用体验 → 保存或放弃。",
+        "保存替换最近本地版；放弃回到本轮起点。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "保护边界需评估",
+      "items": [
+        "恢复代码由哈希校验保护，并非操作系统级隔离。",
+        "共享数据不会随版本回滚；格式兼容尚不能自动证明。"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "验收与磁盘边界",
+      "items": [
+        "UI、打包启动、失败回退与退出已有测试；真实模型全链路待验。",
+        "程序副本有限保留；源码历史、备份和工具缓存另计。"
+      ]
+    }
+  ]
+}

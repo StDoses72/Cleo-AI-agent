@@ -1,0 +1,18 @@
+{
+  "provenance": "本次开发由编码助手手工准备并冻结的验收材料；不是尚未应用的新功能自动创建的案例",
+  "frozen": true,
+  "revision": 1,
+  "cases": [
+    {"id":"prepare-before-edit","requirement":"明确需求在修改业务代码前自动生成并保存验收案例","current":"尚未验证。静态证据：App.tsx sendEvolutionPrompt 直接 begin 后发送编辑任务，没有需求分析阶段。","trigger":"发送：把侧栏按钮改成显示文字标签","expected":"先持久化原请求，显示分析中，读取相关代码，冻结包含需求、当前行为证据、操作、预期和方法的案例，然后才允许编辑任务启动","method":"自动：隔离编排测试；人工：应用后发送下一条真实需求"},
+    {"id":"ordinary-not-dream","requirement":"普通界面需求不得误建 Dream 格式案例","current":"尚未验证。现有 create 支持 manual/dream-format，Dream 必须有完整 fixture。","trigger":"发送普通侧栏需求且没有 Dream 回放 fixture","expected":"创建人工行为案例，不制造 Dream 失败输出或回放 fixture","method":"自动"},
+    {"id":"manual-stays-pending","requirement":"没有可靠检查器时待人工验收","current":"已有自动测试证据：evolution-acceptance.test.mjs 的人工案例需记录观察；编译不会自动通过。","trigger":"完成构建并比较普通界面案例","expected":"待人工验收，agent 完成、源码变化、构建通过均不能生成通过记录","method":"自动"},
+    {"id":"retry-idempotent","requirement":"重试、刷新、重启恢复同轮案例且不重复","current":"尚未验证。现有 create 每次生成 randomUUID，无请求记录。","trigger":"用相同请求标识并发重试，再重建管理对象恢复","expected":"原请求、冻结案例及标识不变；中断有明确可恢复状态；已提交任务不自动重复发送","method":"自动"},
+    {"id":"generation-failure","requirement":"分析失败保留请求和原因，支持重试，禁止继续编辑","current":"尚未验证。现有发送链没有分析错误阶段。","trigger":"分析器失败或返回无效案例，再重试","expected":"持久化失败原因和原文；编辑和构建均未调用；重试恢复同一请求","method":"自动"},
+    {"id":"question-only","requirement":"单纯提问不创建修改轮次和案例，不自动构建","current":"尚未验证。App.tsx 对进化会话发送会 begin，完成后会 build。","trigger":"发送：解释这个按钮，不要修改代码","expected":"只读回答，不调用编辑任务、begin 或 build；不创建验收案例","method":"自动；人工：应用后观察会话"},
+    {"id":"regression-dream","requirement":"既有 Dream 回归继续执行，新增案例单独标识","current":"已有自动测试证据：compare 对启用的 dream-format 案例执行版本回放。","trigger":"先有 Dream 回归，再新增普通需求并比较候选版本","expected":"Dream 回放仍执行；旧案例标为回归，本轮新案例标为新增","method":"自动"},
+    {"id":"immutable-revisions","requirement":"冻结预期不能自动重写；用户调整需求保留旧案例和原因","current":"尚未验证。已有案例只支持归档和新建。","trigger":"重试分析已经冻结的案例；用户提交修正及原因","expected":"重试保持原预期；修正生成新版本并保留旧预期、标识及原因","method":"自动"},
+    {"id":"binding","requirement":"源码、构建或案例变化后旧结果不得放行","current":"已有自动测试证据：status 校验 suiteHash/sourceHash/candidate/draftDirty。","trigger":"通过后分别更换源码、构建或修正案例","expected":"旧报告失效，仍由现有验收入口阻止放行","method":"自动"},
+    {"id":"ambiguity","requirement":"仅影响实现的歧义需要询问","current":"尚未验证。没有需求分析器。","trigger":"分析明确需求；分析存在互斥实现且未说明选择的需求","expected":"明确需求直接冻结；歧义显示问题并等待补充，期间不编辑，保留补充原因","method":"自动：注入分析结果；人工：真实模型语义质量"},
+    {"id":"compatibility","requirement":"旧案例及未知字段不得丢失，不改写真实用户数据","current":"静态证据：suite 数组 create/归档保留其他记录，未知顶层扩展无现有 schema。","trigger":"用旧读写器对隔离的非空 suite/report 及新请求记录往返","expected":"旧格式不变，新增请求元数据独立存储；旧写入不删除新增元数据；损坏或未知格式不被默认空值覆盖","method":"自动"}
+  ]
+}
