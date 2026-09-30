@@ -2,6 +2,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -74,6 +75,13 @@ def test_runtime_plan_uses_upstream_hashes_and_omits_bundled_dependencies(
     assert plan["python"]["url"] == python_url
     assert not (resources / "python").exists()
     assert not (resources / "browser").exists()
+    # Installers run these modules outside the app bundle, so every relative import must ship.
+    modules = list(resources.rglob("*.mjs"))
+    assert resources / "online-runtime.mjs" in modules
+    for module in modules:
+        for target in re.findall(r"""(?:from|import)\s*\(?\s*["'](\.{1,2}/[^"']+)["']""",
+                                 module.read_text(encoding="utf-8")):
+            assert (module.parent / target).is_file(), f"{module.name} imports missing {target}"
     assert plan["files"] == {
         path.name: hashlib.sha256(path.read_bytes()).hexdigest()
         for path in (resources / "runtime").iterdir()

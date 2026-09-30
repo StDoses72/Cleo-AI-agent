@@ -81,8 +81,11 @@ def prepare(resources: Path, source: Path, target: str) -> None:
                 "node": artifact(f"{node_base}/{node_file}", node_version, node_sha, scratch),
                 "wheel": {"archive": wheel.name},
                 "files": {path.name: sha(path) for path in runtime.iterdir()}}
+    # platform.mjs imports computer/startup.mjs, which imports computer/schemes.mjs.
     for name in ("online-runtime.mjs", "release-downloads.mjs", "platform.mjs",
-                 "evolution-tools.mjs", "evolution-store.mjs"):
+                 "evolution-tools.mjs", "evolution-store.mjs",
+                 "computer/startup.mjs", "computer/schemes.mjs"):
+        (resources / name).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / "ui/electron" / name, resources / name)
     (resources / "runtime-plan.json").write_text(json.dumps(plan, indent=2) + "\n")
     # Only these two builder-owned runtime directories are omitted from the release.

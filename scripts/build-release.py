@@ -292,8 +292,11 @@ def build(*, locked_dependencies: bool = False, online: bool = False) -> None:
         shutil.copy2(ROOT / "scripts/installer-check.py", resources / "installer-check.py")
         update = resources / "update"
         update.mkdir()
+        # platform.mjs imports computer/startup.mjs, which imports computer/schemes.mjs.
         for name in ("posix-installer.mjs", "platform.mjs", "online-runtime.mjs",
-                     "release-downloads.mjs", "evolution-tools.mjs", "evolution-store.mjs"):
+                     "release-downloads.mjs", "evolution-tools.mjs", "evolution-store.mjs",
+                     "computer/startup.mjs", "computer/schemes.mjs"):
+            (update / name).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(ROOT / "ui/electron" / name, update / name)
         defaults = resources / "defaults"
         for name in ("assets", "config", "memory"):
