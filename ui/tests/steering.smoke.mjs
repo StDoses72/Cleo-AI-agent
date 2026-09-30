@@ -35,7 +35,7 @@ try {
       }
     }
     const listeners = new Set();
-    const control = window.steerTest = { calls: [], injections: [], runs: new Map(), receipts: new Map(),
+    const control = window.steerTest = { calls: [], injections: [], prompts: [], runs: new Map(), receipts: new Map(),
       holdNext: false, dropNext: false, failNext: false, suppressNext: false, release: null, fixture };
     for (const thread of fixture.threads) for (const item of thread.items) if (item.steer) {
       control.receipts.set(item.steer.id, structuredClone(item.steer));
@@ -92,6 +92,7 @@ try {
         if (method === "stream_turn") return new Promise(resolve => {
           const thread = threadOf(params.thread_id);
           const run = { runId: params.run_id, streamId, resolve, turnId: `turn-${params.run_id}` };
+          control.prompts.push({ threadId: thread.id, prompt: params.prompt });
           control.runs.set(thread.id, run);
           Object.assign(thread, { status: "running", activeRunId: params.run_id, steerReady: true });
           emit(thread.id, { type: "turn-started", item: { id: run.turnId, turnId: run.turnId,
@@ -140,18 +141,32 @@ try {
   }, snapshot);
   await page.goto(server.resolvedUrls.local[0]);
   const input = page.getByTestId("composer-input");
-  const steer = page.getByTestId("steer-button");
-  const send = async text => {
+  const rows = page.locator('[data-testid="queued-messages"] .queued-message');
+  const row = text => rows.filter({ hasText: text });
+  // Enter during a run only queues; the queued row's Steer button delivers it into the run.
+  const queue = async text => {
     await input.fill(text);
-    await steer.and(page.locator(":enabled")).waitFor();
-    await steer.click();
+    await input.press("Enter");
+    await row(text).waitFor();
+    assert.equal(await input.inputValue(), "");
   };
+  const steerRow = async text => {
+    const button = row(text).getByTestId("steer-queued");
+    await button.and(page.locator(":enabled")).waitFor();
+    await button.click();
+  };
+  const send = async text => { await queue(text); await steerRow(text); };
   await input.fill("原始任务：修改前端");
   await page.getByTestId("send-button").click();
-  await steer.waitFor();
+  await page.getByTestId("stop-button").waitFor();
   await input.fill("中文输入仍在组合");
   await input.evaluate(el => el.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", isComposing: true, bubbles: true })));
+  assert.equal(await rows.count(), 0);
   assert.equal(await page.evaluate(() => window.steerTest.calls.length), 0);
+  await queue("排队后还没引导");
+  assert.equal(await page.evaluate(() => window.steerTest.calls.length), 0, "Queueing delivered a steer");
+  await row("排队后还没引导").getByRole("button", { name: "移除", exact: true }).click();
+  await row("排队后还没引导").waitFor({ state: "detached" });
   await page.evaluate(() => { window.steerTest.holdNext = true; });
   await send("先不要改样式，只处理历史加载逻辑");
   await page.waitForFunction(() => Boolean(window.steerTest.release));
@@ -175,9 +190,9 @@ try {
   await page.evaluate(() => { window.steerTest.dropNext = true; window.steerTest.suppressNext = true; });
   await send("断线后也只能投递一次");
   await page.getByRole("alert").getByText(/传输连接中断/).waitFor();
-  assert.equal(await input.inputValue(), "断线后也只能投递一次");
-  await steer.click();
-  await page.waitForFunction(() => document.querySelector('[data-testid="composer-input"]').value === "");
+  await row("断线后也只能投递一次").waitFor();
+  await steerRow("断线后也只能投递一次");
+  await row("断线后也只能投递一次").waitFor({ state: "detached" });
   assert.equal(await page.evaluate(() => window.steerTest.injections.length), 3);
   assert.equal(await page.evaluate(() => {
     const calls = window.steerTest.calls; return calls.at(-1).request_id === calls.at(-2).request_id;
@@ -197,15 +212,23 @@ try {
   await page.getByTestId("send-button").click();
   await send("B 在本轮结束后接收的指令");
   await page.getByTestId("steer-receipt").getByText("当前回复结束后发送", { exact: true }).waitFor();
+  await queue("B 停止后仍保留的消息");
   await page.getByTestId("stop-button").click();
   const cancelled = page.getByTestId("steer-receipt").filter({ hasText: "已取消投递" });
   await cancelled.waitFor();
+  await row("B 停止后仍保留的消息").waitFor();
+  assert.equal(await page.evaluate(() => window.steerTest.prompts.some(p => p.prompt === "B 停止后仍保留的消息")), false,
+    "A stopped run sent its queued message");
   await input.fill("已有草稿");
   const beforeRestore = await page.evaluate(() => window.steerTest.calls.length);
   await cancelled.getByRole("button", { name: "放回输入框", exact: true }).click();
   assert.equal(await input.inputValue(), "已有草稿\n\nB 在本轮结束后接收的指令");
   assert.equal(await page.evaluate(() => window.steerTest.calls.length), beforeRestore);
   assert.equal(await page.evaluate(() => window.steerTest.runs.has("desktop-ui")), true);
+  await row("B 停止后仍保留的消息").getByRole("button", { name: "发送", exact: true }).click();
+  await page.waitForFunction(() => window.steerTest.prompts.some(p => p.threadId === "session-hub"
+    && p.prompt === "B 停止后仍保留的消息"));
+  await page.evaluate(() => window.steerTest.finish("session-hub"));
 
   await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
   const viewport = page.getByLabel("对话历史", { exact: true });
@@ -218,7 +241,13 @@ try {
   assert.ok(Math.abs(await viewport.evaluate(el => el.scrollTop) - position) < 3, "Steer acknowledgement stole the reading position");
   await page.getByRole("button", { name: "回到最新", exact: true }).click();
   await page.getByText("阅读历史时补充要求", { exact: true }).waitFor();
+  await queue("本轮结束后自动发送");
+  await queue("连同这一条");
   if (process.env.CLEO_SMOKE_OUTPUT) await page.screenshot({ path: join(process.env.CLEO_SMOKE_OUTPUT, "steer-running.png") });
+  await page.evaluate(() => window.steerTest.finish("desktop-ui"));
+  await page.waitForFunction(() => window.steerTest.prompts.at(-1)?.prompt === "本轮结束后自动发送\n\n连同这一条");
+  await rows.first().waitFor({ state: "detached" });
+  await page.waitForFunction(() => window.steerTest.runs.has("desktop-ui"));
   await page.evaluate(() => {
     window.steerTest.finish("desktop-ui");
     sessionStorage.setItem("steer-fixture", JSON.stringify(window.steerTest.fixture));
@@ -229,7 +258,7 @@ try {
   await page.getByText("阅读历史时补充要求", { exact: true }).waitFor();
   assert.equal(await page.getByTestId("steer-receipt").last().getAttribute("data-status"), "received");
   assert.deepEqual(errors, []);
-  console.log("PASS: native/boundary steering, independent stop, FIFO input, late receipts, idempotent retry, task isolation, preserved drafts, cancellation, history anchoring and reload");
+  console.log("PASS: queued input, manual native/boundary steering, auto-send after finish, queue kept on stop, late receipts, idempotent retry, task isolation, preserved drafts, cancellation, history anchoring and reload");
 } catch (error) {
   if (page && process.env.CLEO_SMOKE_OUTPUT) await page.screenshot({ path: join(process.env.CLEO_SMOKE_OUTPUT, "steer-failure.png") });
   if (page) console.log(await page.evaluate(() => ({ receipts: [...window.steerTest.receipts.values()],

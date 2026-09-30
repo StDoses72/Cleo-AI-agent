@@ -18,6 +18,7 @@ from typing import Any
 
 from cleo.memory.compaction import _redact_text
 from cleo.memory.paths import session_directory
+from cleo.sessions.rewind import active_events
 
 VERSION = 1
 DEFAULT_INLINE_BYTES = 24_000
@@ -286,7 +287,8 @@ class ConversationContext:
         if inline_bytes < 4096 or inline_bytes > 128_000:
             raise ValueError("Invalid context budget")
         manifest = self.store.load_manifest(session_id)
-        records = project(events)
+        # Rewound turns are not history; source_hash still covers the raw log.
+        records = project(active_events(events))
         signals = []
         for record in records:
             if record["type"] not in {

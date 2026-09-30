@@ -36,6 +36,7 @@ from cleo.memory.state import (
     touch_session_source,
 )
 from cleo.memory.store import delete_conversation_chunks, replace_conversation_chunks
+from cleo.sessions.rewind import active_events
 
 MANIFEST_SCHEMA_VERSION = 1
 EVENT_SCHEMA_VERSION = 1
@@ -702,7 +703,7 @@ class SessionStore:
         """
         serialized = [
             event["message"]
-            for event in self.read_events(session_id)
+            for event in active_events(self.read_events(session_id))
             if isinstance(event.get("message"), dict)
         ]
         return messages_from_dict(serialized)

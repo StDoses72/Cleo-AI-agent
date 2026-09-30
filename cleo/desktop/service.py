@@ -60,6 +60,7 @@ from cleo.memory.state import (
     mark_consolidation_started,
 )
 from cleo.runtime.usage import ContextWindowUsage
+from cleo.sessions.rewind import REWIND_EVENT, active_events
 
 Emit = Callable[[dict[str, Any]], Awaitable[None]]
 
@@ -1121,6 +1122,55 @@ class DesktopService:
             error="目标运行已结束或正在切换服务，指令未投递。",
         )
         return await receipt_view(self.store, manifest, receipt)
+
+    def _rewindable(self, manifest: dict[str, Any]) -> bool:
+        if self._is_evolution(manifest):
+            return False
+        if manifest["space"] != "productivity":
+            return True
+        provider = self._productivity_provider(str(manifest["provider"]))
+        return provider.type in {"codex_sdk", "claude_sdk"}
+
+    async def rewind_thread(self, *, thread_id: str, item_id: str) -> dict[str, Any]:
+        """Purpose: Remove one earlier user message and everything after it before a resend.
+
+        Input: Thread and the edited message's timeline ID. Output: Refreshed thread. The raw
+        log keeps the removed turns behind a rewind marker; file changes are not reverted.
+        """
+        active = self._run_tasks.get(thread_id)
+        if active is not None and not active.done():
+            raise RuntimeError("请等待当前运行结束后再编辑消息。")
+        manifest = self.store.load_manifest(thread_id)
+        if not self._rewindable(manifest):
+            raise ValueError("当前任务不支持编辑之前的消息。")
+        turns = await asyncio.to_thread(TimelineIndex(self.store, manifest).editable_turns)
+        if item_id not in turns:
+            raise ValueError("这条消息不能编辑。")
+        if manifest["space"] == "productivity":
+            events = active_events(await asyncio.to_thread(self.store.read_events, thread_id))
+            messages = [event for event in events if event.get("type") == "user_message"
+                        and not (event.get("data") or {}).get("steer_id")]
+            position = next(index for index, event in enumerate(messages)
+                            if event.get("id") == item_id)
+            native = next((data["native_turn_id"] for event in events
+                           if (data := event.get("data") or {}).get("turn_id") == item_id
+                           and data.get("native_turn_id")), None)
+            await self._ensure_productivity_session(manifest)
+            await self._adapter().rewind(
+                thread_id, prompt=str(messages[position].get("content") or ""),
+                later=[str(event.get("content") or "") for event in messages[position + 1:]],
+                native_turn_id=native,
+            )
+        else:
+            # The next turn rebuilds the agent from the log without the rewound messages.
+            self._chat_agents.pop(thread_id, None)
+            self._chat_agents_restored.discard(thread_id)
+        await asyncio.to_thread(
+            self.store.append_event, space=manifest["space"], project=manifest["project"],
+            session_id=thread_id, event_type=REWIND_EVENT, actor="user",
+            data={"turn_id": item_id},
+        )
+        return await self._thread(self.store.load_manifest(thread_id))
 
     def _workspace_root(self, manifest: dict[str, Any]) -> str:
         cwd = manifest.get("cwd") or str(self.settings.active_directory_profile.root_path)
@@ -2497,6 +2547,10 @@ class DesktopService:
                            and not self._steering_runs[manifest["id"]].closed
                            and self._steering_runs[manifest["id"]].ready.is_set()),
             "pendingApprovals": list(self._pending_approvals.get(manifest["id"], {}).values()),
+            "editableTurnIds": (
+                await asyncio.to_thread(TimelineIndex(self.store, manifest).editable_turns)
+                if include_history and self._rewindable(manifest) else []
+            ),
             "items": items if include_history else [],
             "history": {key: value for key, value in page.items() if key != "items"},
             "pendingQuestions": await self.get_pending_questions(thread_id=manifest["id"]),

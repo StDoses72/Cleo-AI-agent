@@ -29,6 +29,8 @@ from openai_codex.errors import JsonRpcError
 from openai_codex.generated.v2_all import (
     ConfigRequirementsReadResponse,
     GetAccountRateLimitsResponse,
+    ThreadRevertResponse,
+    ThreadTurnsListResponse,
 )
 
 from cleo.harnesses.control import (
@@ -42,6 +44,7 @@ from cleo.harnesses.control import (
 )
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 from cleo.harnesses.provider import NativeSessionNotFoundError, ProviderSession, ProviderTurn
+from cleo.harnesses.rewind import locate_turn
 from cleo.integrations import codex_sandbox_credentials
 from cleo.integrations.codex_home import isolated_codex_config
 from cleo.integrations.harnesses.codex_approvals import CodexApprovalBroker
@@ -740,6 +743,52 @@ class CodexProvider:
             has_started_turn=True,
         )
         return ProviderSession(id=thread.id, native_id=thread.id)
+
+    async def rewind(self, session_id: str, *, prompt: str, later: list[str],
+                     native_turn_id: str | None = None) -> str:
+        """Purpose: Drop one earlier turn and every later turn from the Codex thread.
+
+        Input: Session, the edited turn's prompt, later prompts (oldest first), and its
+        recorded native turn ID when known. Output: The unchanged native thread ID.
+        """
+        runtime = self._sessions[session_id]
+        if runtime.active_turn is not None:
+            raise RuntimeError("Codex 仍在运行，暂不能编辑之前的消息。")
+        async with runtime.lock:
+            target = native_turn_id or await self._turn_for_prompt(runtime, prompt, later)
+            await runtime.client._client.request(
+                "thread/revert", {"threadId": runtime.thread.id, "beforeTurnId": target},
+                response_model=ThreadRevertResponse,
+            )
+        return runtime.thread.id
+
+    @staticmethod
+    async def _turn_for_prompt(runtime: _CodexRuntime, prompt: str, later: list[str]) -> str:
+        """Purpose: Match a Cleo turn to a Codex turn when its native ID was not recorded.
+
+        Input: Live runtime, the turn's prompt and later prompts. Output: Codex turn ID.
+        """
+        entries: list[tuple[str, str]] = []
+        cursor = None
+        while True:
+            page = await runtime.client._client.request(
+                "thread/turns/list",
+                {"threadId": runtime.thread.id, "itemsView": "summary", "limit": 100,
+                 **({"cursor": cursor} if cursor else {})},
+                response_model=ThreadTurnsListResponse,
+            )
+            for turn in page.data:
+                # The first user message is the prompt; later ones are native steers.
+                first = next((item for item in turn.model_dump(mode="json", by_alias=True)
+                              .get("items") or [] if item.get("type") == "userMessage"), None)
+                if first:
+                    entries.append((turn.id, "\n".join(
+                        part.get("text", "") for part in first.get("content") or []
+                        if part.get("type") == "text")))
+            cursor = page.next_cursor
+            if not cursor or len(entries) > 10_000:
+                break
+        return locate_turn(entries, prompt, later)
 
     async def rename_session(self, session_id: str, name: str) -> None:
         """重命名 thread(原生侧名称)。

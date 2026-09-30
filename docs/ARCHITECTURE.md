@@ -200,6 +200,10 @@ space/project/session 绑定、actor、type、时间和 payload。
 计划、状态和错误以独立规范事件保存。大型输出应使用 `data/session_artifacts/`，event
 只保存引用。
 
+编辑一条较早的用户消息时，日志不删改原记录，而是追加一条 `rewind` 事件，`data.turn_id`
+指向被编辑的回合。时间线、聊天历史恢复、harness 交接上下文和记忆压缩都会跳过从该回合
+到 `rewind` 之前的全部事件；seq 与 source hash 仍覆盖完整日志。
+
 ### Compact Projection
 
 `compact.json` 是可重建派生层：
@@ -284,7 +288,16 @@ Codex rich control plane
   → model/list + account/read（能力发现）
   → per-turn model / effort / sandbox / approval
   → thread/fork / name/set / compact / archive
+
+AgentAdapter.rewind（编辑较早的用户消息）
+  → Codex: thread/revert，移除该回合及之后的回合
+  → Claude: 在该消息之前离线 fork 原生会话，并切换到新会话
+  → rewind 事件 + 以编辑后的文本发送新回合
 ```
+
+`session_<status>` 事件记录本回合的原生 turn ID，Codex 编辑时可直接定位；缺少记录时
+按提示文本从新到旧对齐原生回合。只有最近一次 harness 交接之后的回合可以编辑，ACP 与
+进化任务不提供编辑。编辑只回退对话，不回退已写入工作区的文件。
 
 主聊天中的 `/productivity` 是交互式终端入口，退出后会恢复原 Cleo space/project/thread。
 `main.py --productivity` 仍作为直接启动和脚本入口。两者都通过 provider factory 读取

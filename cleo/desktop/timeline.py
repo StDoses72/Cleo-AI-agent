@@ -9,12 +9,16 @@ import uuid
 from contextlib import closing
 
 from cleo.desktop.projection import timeline_from_events
+from cleo.harnesses.handoff import DELIVERED_EVENT, SWITCH_EVENT
 from cleo.memory.paths import events_path
+from cleo.sessions.rewind import REWIND_EVENT
 
 PAGE_SIZE = 80
 PREVIEW_CHARS = 8192
 PAGE_BYTES = 512 * 1024
 PROJECTION_VERSION = 6
+# A harness switch hands history to a new native session, which cannot rewind across it.
+HANDOFF_BOUNDARIES = (SWITCH_EVENT, DELIVERED_EVENT, "cleo/handoff_submitted")
 
 
 def _json(value):
@@ -110,6 +114,15 @@ class TimelineIndex:
                     if (not isinstance(event, dict) or event.get("schema_version", 1) != 1
                             or type(event.get("seq")) is not int):
                         raise ValueError("无法读取此版本的会话历史。")
+                    if event.get("type") == REWIND_EVENT:
+                        position, turn_id = self._rewind(db, event, position, turn_id)
+                        epoch = uuid.uuid4().hex  # Cursors into removed items are stale.
+                        db.execute(
+                            "INSERT INTO events VALUES (?,?,?)",
+                            (line_start, REWIND_EVENT, _json(event)),
+                        )
+                        offset = stream.tell()
+                        continue
                     changed = []
                     state = {"turn_id": turn_id, "changed": changed}
                     kinds = ("tools", "plans", "thoughts", "questions", "answers", "steers")
@@ -164,6 +177,54 @@ class TimelineIndex:
         db.execute("INSERT OR REPLACE INTO metadata VALUES (1,?)", (_json(meta),))
         db.commit()
         return meta
+
+    @staticmethod
+    def _rewind(db, event, position, turn_id):
+        """Purpose: Drop a rewound turn and every later item from the projection.
+
+        Input: Open index, rewind event, current position and turn. Output: New position and turn.
+        """
+        target = (event.get("data") or {}).get("turn_id")
+        row = db.execute("SELECT min(position) FROM items WHERE turn_id=?", (target,)).fetchone()
+        if not row or row[0] is None:
+            return position, turn_id
+        turns = [value for (value,) in db.execute(
+            "SELECT DISTINCT turn_id FROM items WHERE position>=?", (row[0],))]
+        db.execute("DELETE FROM items WHERE position>=?", (row[0],))
+        for value in turns:
+            db.execute("DELETE FROM turns WHERE id=?", (value,))
+            db.execute("DELETE FROM relations WHERE turn_id=?", (value,))
+        db.execute("DELETE FROM relations WHERE item_id NOT IN (SELECT id FROM items)")
+        last = db.execute("SELECT turn_id FROM items ORDER BY position DESC LIMIT 1").fetchone()
+        return row[0] - 1, last[0] if last else "initial"
+
+    def editable_turns(self):
+        """Purpose: List visible user turns that the current native session can rewind.
+
+        Input: None. Output: Turn IDs after the latest harness handoff, oldest first.
+        """
+        with closing(self._connect()) as db, db:
+            self._sync(db)
+            rows = db.execute(
+                "SELECT type,json_extract(body,'$.id'),"
+                "json_extract(body,'$.data.provider_event_type'),"
+                "json_extract(body,'$.data.turn_id'),"
+                "json_extract(body,'$.data.steer_id') IS NOT NULL "
+                "OR json_extract(body,'$.data.steer_ids') IS NOT NULL "
+                "FROM events WHERE type IN ('user_message','provider_event',?) ORDER BY offset",
+                (REWIND_EVENT,),
+            )
+            turns = []
+            for kind, event_id, provider_type, target, steered in rows:
+                if kind == REWIND_EVENT:
+                    if target in turns:
+                        del turns[turns.index(target):]
+                elif kind == "provider_event":
+                    if provider_type in HANDOFF_BOUNDARIES:
+                        turns.clear()
+                elif event_id and not steered:
+                    turns.append(event_id)
+            return turns
 
     @staticmethod
     def _cursor(epoch, position):

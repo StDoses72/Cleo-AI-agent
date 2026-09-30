@@ -18,6 +18,7 @@ import type {
   RuntimeCatalog,
   RuntimeProfile,
   RuntimeUpdate,
+  QueuedMessage,
   SteerReceipt,
   Thread,
   ThreadSpace,
@@ -152,9 +153,12 @@ export function useCleoWorkspace(evolutionOpen = false) {
   const [draftEffort, setDraftEffort] = useState<RuntimeProfile["effort"]>(null);
   const [draftServiceTier, setDraftServiceTier] = useState<"default" | "fast">("default");
   const cancellingRuns = useRef(new Set<string>());
-  const steeringRequests = useRef(new Map<string, { id: string; runId: string; text: string; draftText: string }>());
+  const steeringRequests = useRef(new Map<string, { id: string; runId: string; text: string }>());
   const steeringLocks = useRef(new Set<string>());
   const [steeringThreads, setSteeringThreads] = useState<string[]>([]);
+  const [queues, setQueues] = useState<Record<string, QueuedMessage[]>>({});
+  const queuesRef = useRef(queues);
+  queuesRef.current = queues;
   const selectionRef = useRef(0);
   const evolutionSelectionRef = useRef(0);
   const viewRef = useRef(evolutionOpen);
@@ -340,11 +344,9 @@ export function useCleoWorkspace(evolutionOpen = false) {
     if (!pending || pending.id !== receipt.id || pending.runId !== receipt.runId
         || pending.text !== receipt.text) return;
     steeringRequests.current.delete(receipt.threadId);
-    const accepted = ["queued", "sending", "received"].includes(receipt.status);
-    updateDraft(receipt.threadId, current => ({ ...current,
-      prompt: accepted && current.prompt === pending.draftText ? "" : current.prompt,
-      error: accepted ? undefined : receipt.error ?? undefined,
-    }));
+    if (!["queued", "sending", "received"].includes(receipt.status)) {
+      updateDraft(receipt.threadId, current => ({ ...current, error: receipt.error ?? undefined }));
+    }
   };
   const upsertTimelineItem = (threadId: string, projected: TimelineItem) => {
     if (projected.type === "message" && projected.steer && projected.steer.threadId !== threadId) return;
@@ -647,7 +649,8 @@ export function useCleoWorkspace(evolutionOpen = false) {
    * Input: prompt, optional task, and draft preservation for controller-generated diagnostics.
    * Output: updated task timeline; diagnostic follow-ups leave draft text and attachments untouched.
    */
-  const sendPrompt = async (rawPrompt: string, targetThread?: Thread, { preserveDraft = false, deliveryId = "" } = {}) => {
+  const sendPrompt = async (rawPrompt: string, targetThread?: Thread, { preserveDraft = false, deliveryId = "",
+    attachments }: { preserveDraft?: boolean; deliveryId?: string; attachments?: Attachment[] } = {}) => {
     const prompt = rawPrompt.trim();
     const lockKey = targetThread?.id ?? activeThread?.id ?? draftKey;
     if (!prompt || runLocks.current.has(lockKey)
@@ -657,7 +660,9 @@ export function useCleoWorkspace(evolutionOpen = false) {
     runLocks.current.set(lockKey, token);
     setStartingKeys(keys => [...keys, lockKey]);
     const sourceDraftKey = draftKey;
-    const pendingAttachments = preserveDraft ? [] : draft.attachments;
+    // Queued and edited messages carry their own attachments and leave the composer alone.
+    const fromDraft = !preserveDraft && !attachments;
+    const pendingAttachments = attachments ?? (preserveDraft ? [] : draft.attachments);
     updateDraft(sourceDraftKey, (current) => ({ ...current, error: undefined }));
 
     let thread = targetThread ?? activeThread;
@@ -696,7 +701,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
     userItem.turnId = turnId;
     setRuns(current => ({ ...current, [threadId]: token }));
     setStartingKeys(keys => keys.filter(key => key !== lockKey));
-    if (!preserveDraft) updateDraft(sourceDraftKey, (current) => ({
+    if (fromDraft) updateDraft(sourceDraftKey, (current) => ({
       prompt: current.prompt === draft.prompt ? "" : current.prompt,
       attachments: current.attachments.filter((item) => !pendingAttachments.some((sent) => sent.path === item.path)),
     }));
@@ -842,6 +847,15 @@ export function useCleoWorkspace(evolutionOpen = false) {
         questions.finish(threadId);
         void refreshMemory();
         if (history.isActive(threadId) && history.isFollowing(threadId) && thread.history) await history.load("latest");
+        // Messages queued during a run go next; a stopped or failed run keeps them for the user.
+        if (!failed && !cancellingRuns.current.has(token) && queuesRef.current[threadId]?.length
+            && !runLocks.current.has(threadId)) {
+          const queued = queuesRef.current[threadId];
+          setQueues(current => ({ ...current, [threadId]: [] }));
+          void sendPrompt(queued.map(item => item.text).filter(Boolean).join("\n\n") || "请分析这些附件。", thread, {
+            attachments: queued.flatMap(item => item.attachments),
+          });
+        }
       }
     }
   };
@@ -955,32 +969,96 @@ export function useCleoWorkspace(evolutionOpen = false) {
     return item;
   };
 
+  /** Purpose: Deliver one message into the active run. Input: text. Output: whether it was submitted. */
   const sendSteer = async (text: string) => {
     const threadId = activeThreadId;
     const runId = threadId ? runLocks.current.get(threadId) : undefined;
-    if (!threadId || !runId || !text.trim() || steeringLocks.current.has(threadId)) return;
-    if (draft.attachments.length) {
-      updateDraft(threadId, current => ({ ...current, error: "运行中追加指令暂不支持附件，附件可在本轮结束后发送。" }));
-      return;
-    }
+    if (!threadId || !runId || !text.trim() || steeringLocks.current.has(threadId)) return false;
     const previous = steeringRequests.current.get(threadId);
-    const draftText = draft.prompt;
     const requestId = previous?.runId === runId && previous.text === text ? previous.id : crypto.randomUUID();
-    steeringRequests.current.set(threadId, { id: requestId, runId, text, draftText });
+    steeringRequests.current.set(threadId, { id: requestId, runId, text });
     steeringLocks.current.add(threadId);
     setSteeringThreads(current => [...current, threadId]);
     updateDraft(threadId, current => ({ ...current, error: undefined }));
     try {
       await submitSteer(threadId, runId, text, requestId);
+      return true;
     } catch (error) {
       if (steeringRequests.current.get(threadId)?.id === requestId) {
         updateDraft(threadId, current => ({ ...current, error: error instanceof Error
           ? `${error.message}；重试会核对同一条消息。` : "尚未确认提交结果，重试会核对同一条消息。" }));
       }
+      return false;
     } finally {
       steeringLocks.current.delete(threadId);
       setSteeringThreads(current => current.filter(id => id !== threadId));
     }
+  };
+
+  const updateQueue = (threadId: string, update: (queue: QueuedMessage[]) => QueuedMessage[]) => {
+    setQueues(current => ({ ...current, [threadId]: update(current[threadId] ?? []) }));
+  };
+
+  /** Purpose: Hold a message typed during a run. Input: composer text. Output: queue entry; draft cleared. */
+  const queueMessage = (text: string) => {
+    const threadId = activeThreadId;
+    const prompt = text.trim();
+    if (!threadId || (!prompt && !draft.attachments.length)) return;
+    updateQueue(threadId, queue => [...queue, { id: crypto.randomUUID(), text: prompt, attachments: draft.attachments }]);
+    updateDraft(draftKey, current => ({ ...current, prompt: "", attachments: [], error: undefined }));
+  };
+
+  const takeQueued = (id: string) => {
+    const threadId = activeThreadId;
+    const queued = threadId ? queuesRef.current[threadId]?.find(item => item.id === id) : undefined;
+    if (!threadId || !queued) return null;
+    updateQueue(threadId, queue => queue.filter(item => item.id !== id));
+    return { threadId, queued };
+  };
+
+  const removeQueued = (id: string) => { takeQueued(id); };
+
+  /** Purpose: Return a queued message to the composer for further editing. */
+  const editQueued = (id: string) => {
+    const taken = takeQueued(id);
+    if (!taken) return;
+    updateDraft(taken.threadId, current => ({ ...current, error: undefined,
+      prompt: current.prompt.trim() ? `${current.prompt}\n\n${taken.queued.text}` : taken.queued.text,
+      attachments: mergeAttachments(current.attachments, taken.queued.attachments) }));
+  };
+
+  /** Purpose: Steer a queued message into the active run; it returns to the queue if submission fails. */
+  const steerQueued = async (id: string) => {
+    const threadId = activeThreadId;
+    const queue = threadId ? queuesRef.current[threadId] ?? [] : [];
+    const position = queue.findIndex(item => item.id === id);
+    if (!threadId || position < 0 || queue[position].attachments.length || steeringLocks.current.has(threadId)) return;
+    const queued = queue[position];
+    updateQueue(threadId, current => current.filter(item => item.id !== id));
+    if (!await sendSteer(queued.text)) {
+      updateQueue(threadId, current => [...current.slice(0, position), queued, ...current.slice(position)]);
+    }
+  };
+
+  /** Purpose: Send a queued message now when no run is active (for example after a stop). */
+  const sendQueued = (id: string) => {
+    const taken = runLocks.current.has(activeThreadId ?? "") ? null : takeQueued(id);
+    if (!taken) return;
+    const thread = snapshotRef.current?.threads.find(item => item.id === taken.threadId);
+    void sendPrompt(taken.queued.text || "请分析这些附件。", thread, { attachments: taken.queued.attachments });
+  };
+
+  /** Purpose: Resend an earlier user message after rewinding the conversation to just before it.
+   * Input: message ID and edited text. Output: rewound thread and a new turn; refusals throw.
+   */
+  const editMessage = async (itemId: string, text: string) => {
+    const threadId = activeThreadId;
+    const prompt = text.trim();
+    if (!threadId || !prompt) return;
+    if (runLocks.current.has(threadId)) throw new Error("请等待当前运行结束后再编辑消息。");
+    const rewound = await cleoClient.rewindThread(threadId, itemId);
+    updateThread(threadId, () => rewound);
+    await sendPrompt(prompt, rewound, { attachments: [] });
   };
 
   const retrySteer = async (receipt: SteerReceipt) => {
@@ -1348,7 +1426,13 @@ export function useCleoWorkspace(evolutionOpen = false) {
     openEvolutionThread,
     beginEvolutionDraft,
     sendPrompt,
-    sendSteer,
+    queuedMessages: activeThreadId ? queues[activeThreadId] ?? [] : [],
+    queueMessage,
+    steerQueued,
+    sendQueued,
+    editQueued,
+    removeQueued,
+    editMessage,
     retrySteer,
     restoreSteer,
     steeringBusy: activeThreadId ? steeringThreads.includes(activeThreadId) : false,

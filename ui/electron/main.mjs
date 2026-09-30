@@ -285,6 +285,7 @@ const allowedMethods = new Set([
   "restore_chat_backups",
   "stream_turn",
   "steer_run",
+  "rewind_thread",
   "cancel_run",
   "resolve_approval",
   "resolve_question",

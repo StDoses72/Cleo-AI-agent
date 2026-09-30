@@ -40,6 +40,7 @@ import {
   PanelLeftClose,
   PanelRightClose,
   Copy,
+  CornerDownRight,
   Pencil,
   RotateCcw,
   Sparkles,
@@ -62,6 +63,7 @@ import type {
   TimelineItem,
   ApprovalDecision,
   ApprovalRequest,
+  QueuedMessage,
 } from "../types";
 import { PermissionSelector } from "./PermissionSelector";
 import { ApprovalPrompt } from "./ApprovalPrompt";
@@ -98,6 +100,12 @@ interface ConversationProps {
   onToggleInspector: () => void;
   onOpenCommand: () => void;
   onSend: (prompt: string) => void;
+  queuedMessages?: QueuedMessage[];
+  onSteerQueued?: (id: string) => void;
+  onSendQueued?: (id: string) => void;
+  onEditQueued?: (id: string) => void;
+  onRemoveQueued?: (id: string) => void;
+  onEditMessage?: (itemId: string, text: string) => Promise<void>;
   onCancel: () => void;
   steeringBusy?: boolean;
   onRetrySteer?: (receipt: SteerReceipt) => void;
@@ -160,6 +168,12 @@ export function Conversation({
   onToggleInspector,
   onOpenCommand,
   onSend,
+  queuedMessages = [],
+  onSteerQueued,
+  onSendQueued,
+  onEditQueued,
+  onRemoveQueued,
+  onEditMessage,
   onCancel,
   steeringBusy = false,
   onRetrySteer,
@@ -301,6 +315,7 @@ export function Conversation({
     return () => cancelAnimationFrame(frame);
   }, [thread?.id, thread?.items.length, thread?.history?.before, thread?.history?.after, history?.busy, history?.error, bottomInset]);
 
+  const editableTurns = useMemo(() => new Set(thread?.editableTurnIds ?? []), [thread?.editableTurnIds]);
   const renderRow = (row: TimelineRow) => {
     let item: TimelineItem | undefined;
     let content: ReactNode;
@@ -316,6 +331,8 @@ export function Conversation({
         open={expansion[stateKey(row.id)]?.open ?? false} onToggle={open => toggle(row.id, open)} /></div>;
     } else { item = row; content = <TimelineEntry item={row} projectPath={project?.path ?? null} onOpenPath={onOpenPath}
       threadId={thread?.id ?? ""} activeTurnId={running ? thread?.currentTiming?.turnId : null}
+      editable={!running && !waitingForAnswer && Boolean(onEditMessage) && editableTurns.has(row.id)}
+      onEditMessage={onEditMessage}
       steeringBusy={steeringBusy} onRetrySteer={onRetrySteer} onRestoreSteer={onRestoreSteer} />; }
     return <>{content}{item?.more && Object.keys(item.more).map(field => <button className="history-content-link" key={field}
       onClick={() => void readContent(item!, field)}>{field === "output" ? "展开输出" : "展开全文"}</button>)}</>;
@@ -400,6 +417,13 @@ export function Conversation({
         runtimeModelsError={runtimeModelsError}
         running={running}
         onSend={onSend}
+        queuedMessages={queuedMessages}
+        onSteerQueued={onSteerQueued}
+        onSendQueued={onSendQueued}
+        onEditQueued={onEditQueued}
+        onRemoveQueued={onRemoveQueued}
+        steerReady={thread?.steerReady}
+        steeringBusy={steeringBusy}
         onCancel={onCancel}
         onSelectNonProductivityProfile={onSelectNonProductivityProfile}
         onLoadProductivityModels={onLoadProductivityModels}
@@ -655,9 +679,13 @@ function TimelineEntry({
   onRetrySteer,
   onRestoreSteer,
   activeTurnId,
+  editable = false,
+  onEditMessage,
 }: {
   item: TimelineBlock;
   threadId: string;
+  editable?: boolean;
+  onEditMessage?: ConversationProps["onEditMessage"];
   projectPath: string | null;
   onOpenPath: ConversationProps["onOpenPath"];
   steeringBusy?: boolean;
@@ -682,8 +710,8 @@ function TimelineEntry({
           {item.role === "assistant" && <span>Cleo</span>}
           <time>{item.time}</time>
         </div>}
-        <EditableMessage key={`${threadId}:${item.id}:${item.content}`} item={item} threadId={threadId}
-          projectPath={projectPath} onOpenPath={onOpenPath} disabled={Boolean(item.more?.content) || item.turnId === activeTurnId} />
+        <MessageText key={`${threadId}:${item.id}`} item={item} threadId={threadId}
+          projectPath={projectPath} onOpenPath={onOpenPath} onEdit={editable ? onEditMessage : undefined} />
         {item.steer && <div className="steer-receipt" data-testid="steer-receipt" data-status={item.steer.status}>
           <span>{({ queued: item.steer.mode === "native" ? "等待投递" : "当前回复结束后发送",
             sending: "正在投递", received: "已接收", failed: "未投递",
@@ -717,72 +745,81 @@ function TimelineEntry({
 
 type MessageItem = Extract<TimelineItem, { type: "message" }>;
 
-/** Purpose: Reject unreadable or newer display edits without replacing their stored data. */
-function readMessageEdit(key: string, source: string): { text: string | null; blocked: boolean } {
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw === null) return { text: null, blocked: false };
-    const saved: unknown = JSON.parse(raw);
-    if (!saved || typeof saved !== "object" || Array.isArray(saved)) return { text: null, blocked: true };
-    const fields = Object.keys(saved);
-    if (fields.length !== 2 || !fields.includes("source") || !fields.includes("text")) return { text: null, blocked: true };
-    const record = saved as { source: unknown; text: unknown };
-    if (typeof record.source !== "string" || typeof record.text !== "string" || record.source !== source) {
-      return { text: null, blocked: true };
-    }
-    return { text: record.text, blocked: false };
-  } catch { return { text: null, blocked: true }; }
+/** Purpose: Read a message's full text when the timeline only holds a preview of it. */
+async function fullMessageText(threadId: string, item: MessageItem) {
+  if (!item.more?.content) return item.content;
+  let text = "";
+  for (let offset = 0; ;) {
+    const page = await cleoClient.readTimelineContent(threadId, item.id, "content", offset);
+    text += page.text;
+    offset = page.next;
+    if (!page.text || offset >= page.total) return text;
+  }
 }
 
-/** Purpose: Keep user display edits separate from the append-only session history. */
-function EditableMessage({ item, threadId, projectPath, onOpenPath, disabled }: {
+/** Purpose: Show a message with hover-only icon actions; editing a user turn resends it in place.
+ * Input: message, and an edit handler when that turn can be rewound. Output: message, actions, inline editor.
+ */
+function MessageText({ item, threadId, projectPath, onOpenPath, onEdit }: {
   item: MessageItem;
   threadId: string;
   projectPath: string | null;
   onOpenPath: ConversationProps["onOpenPath"];
-  disabled: boolean;
+  onEdit?: ConversationProps["onEditMessage"];
 }) {
-  const storageKey = `cleo:message-display-edit:v1:${threadId}:${item.id}`;
   const article = useRef<HTMLDivElement>(null);
-  const [saved, setSaved] = useState(() => readMessageEdit(storageKey, item.content));
+  const copiedTimer = useRef<number | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
-  const content = saved.text ?? item.content;
+  useEffect(() => () => { if (copiedTimer.current) window.clearTimeout(copiedTimer.current); }, []);
 
   const copy = async () => {
     const selection = window.getSelection();
-    const selected = selection && article.current?.contains(selection.anchorNode)
+    const selected = selection && !selection.isCollapsed && article.current?.contains(selection.anchorNode)
       && article.current?.contains(selection.focusNode) ? selection.toString() : "";
-    try { await cleoClient.copyText(selected || (draft ?? content)); setError(""); }
-    catch { setError("复制失败，请选中文本后使用快捷键复制。"); }
-  };
-  const save = () => {
-    if (draft === null) return;
     try {
-      localStorage.setItem(storageKey, JSON.stringify({ source: item.content, text: draft }));
-      setSaved({ text: draft, blocked: false });
-      setDraft(null);
+      await cleoClient.copyText(selected || await fullMessageText(threadId, item));
       setError("");
-    } catch { setError("无法保存本地文本修改。"); }
+      setCopied(true);
+      if (copiedTimer.current) window.clearTimeout(copiedTimer.current);
+      copiedTimer.current = window.setTimeout(() => setCopied(false), 1500);
+    } catch { setError("复制失败"); }
   };
-  const restore = () => {
-    try { localStorage.removeItem(storageKey); setSaved({ text: null, blocked: false }); setError(""); }
-    catch { setError("无法恢复原文。"); }
+  const startEdit = async () => {
+    try { setDraft(await fullMessageText(threadId, item)); setError(""); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "无法读取消息"); }
+  };
+  const submit = async () => {
+    if (!onEdit || !draft?.trim() || busy) return;
+    setBusy(true);
+    setError("");
+    try { await onEdit(item.id, draft); setDraft(null); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "无法编辑这条消息"); }
+    finally { setBusy(false); }
   };
 
   return <div className="message-text" ref={article}>
-    {draft === null ? <div className="message-copy"><MarkdownContent content={content} projectPath={projectPath} onOpenPath={onOpenPath} /></div>
-      : <div className="message-edit"><textarea aria-label="编辑消息文本" value={draft} onChange={event => setDraft(event.target.value)}
-          onKeyDown={event => { if (event.key === "Escape") setDraft(null); if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) save(); }} />
-        <p>此修改仅影响 Cleo 中显示的文本，不会改写原始会话或 AI 的历史上下文。</p>
-        <div><button type="button" onClick={() => setDraft(null)}>取消</button><button type="button" onClick={save}>保存</button></div>
+    {draft === null ? <div className="message-copy"><MarkdownContent content={item.content} projectPath={projectPath} onOpenPath={onOpenPath} /></div>
+      : <div className="message-edit"><textarea aria-label="编辑消息" autoFocus value={draft} disabled={busy}
+          onChange={event => setDraft(event.target.value)}
+          onKeyDown={event => {
+            if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+            if (event.key === "Escape") { event.preventDefault(); if (!busy) setDraft(null); }
+            if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submit(); }
+          }} />
+        <div>
+          <button type="button" disabled={busy} onClick={() => setDraft(null)}>取消</button>
+          <button type="button" className="primary" disabled={busy || !draft.trim()} onClick={() => void submit()}>{busy ? "发送中…" : "发送"}</button>
+        </div>
       </div>}
-    <div className="message-actions">
-      <button type="button" onClick={() => void copy()} title="有选中文本时复制选中内容，否则复制当前显示的消息"><Copy size={13} />复制</button>
-      {draft === null && !disabled && !saved.blocked && <button type="button" onClick={() => setDraft(content)}><Pencil size={13} />编辑</button>}
-      {draft === null && (saved.text !== null || saved.blocked) && <button type="button" onClick={restore}>恢复原文</button>}
-    </div>
-    {saved.blocked && <p className="message-edit-error" role="alert">已有的显示修改无法识别或原文已变化；记录已保留。恢复原文可清除该记录。</p>}
+    {draft === null && <div className="message-actions">
+      <button type="button" aria-label="复制" title={copied ? "已复制" : "复制"} onClick={() => void copy()}>
+        {copied ? <Check size={14} /> : <Copy size={14} />}
+      </button>
+      {onEdit && <button type="button" aria-label="编辑" title="编辑" onClick={() => void startEdit()}><Pencil size={14} /></button>}
+    </div>}
     {error && <p className="message-edit-error" role="alert">{error}</p>}
   </div>;
 }
@@ -1063,6 +1100,13 @@ function Composer({
   runtimeModelsError,
   running,
   onSend,
+  queuedMessages = [],
+  onSteerQueued,
+  onSendQueued,
+  onEditQueued,
+  onRemoveQueued,
+  steerReady,
+  steeringBusy,
   onCancel,
   onSelectNonProductivityProfile,
   onLoadProductivityModels,
@@ -1096,6 +1140,12 @@ function Composer({
   | "runtimeModelsError"
   | "running"
   | "onSend"
+  | "queuedMessages"
+  | "onSteerQueued"
+  | "onSendQueued"
+  | "onEditQueued"
+  | "onRemoveQueued"
+  | "steeringBusy"
   | "onCancel"
   | "onSelectNonProductivityProfile"
   | "onLoadProductivityModels"
@@ -1114,7 +1164,7 @@ function Composer({
   | "approvalPending"
   | "approvalError"
   | "onResolveApproval"
->) {
+> & { steerReady?: boolean }) {
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [draggingFiles, setDraggingFiles] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -1142,9 +1192,10 @@ function Composer({
 
   const submit = () => {
     const content = prompt.trim() || (attachments.length ? "请分析这些附件。" : "");
-    if (!content || (running && !runtime.steerMode) || sendBlocked) return;
+    if (!content || sendBlocked) return;
     onSend(content);
   };
+  const canSteer = running && Boolean(runtime.steerMode) && Boolean(steerReady);
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (composing.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
     if (candidates.length && !event.shiftKey) {
@@ -1164,7 +1215,7 @@ function Composer({
     }
   };
   const addFiles = async (files: File[]) => {
-    if (!files.length || running) return;
+    if (!files.length) return;
     setAttachmentError(null);
     try {
       await onPrepareAttachments(files);
@@ -1290,6 +1341,21 @@ function Composer({
             })}
           </div>
         ) : null}
+        {queuedMessages.length ? <ul className="queued-messages" aria-label="待发送消息" data-testid="queued-messages">
+          {queuedMessages.map(message => <li key={message.id} className="queued-message">
+            <span className="queued-text" title={message.text}>{message.text || message.attachments.map(item => item.name).join("、")}</span>
+            {message.attachments.length ? <span className="queued-attachments" title={message.attachments.map(item => item.name).join("\n")}>
+              <Paperclip size={12} />{message.attachments.length}</span> : null}
+            {canSteer && !message.attachments.length && onSteerQueued && <button type="button" className="queued-steer"
+              title="立即插入当前运行" disabled={steeringBusy} onClick={() => onSteerQueued(message.id)} data-testid="steer-queued">
+              <CornerDownRight size={13} />Steer</button>}
+            {!running && onSendQueued && <button type="button" aria-label="发送" title="发送" disabled={Boolean(sendBlocked)}
+              onClick={() => onSendQueued(message.id)}><ArrowUp size={13} /></button>}
+            {onEditQueued && <button type="button" aria-label="编辑" title="编辑" onClick={() => { onEditQueued(message.id); inputRef.current?.focus(); }}>
+              <Pencil size={13} /></button>}
+            {onRemoveQueued && <button type="button" aria-label="移除" title="移除" onClick={() => onRemoveQueued(message.id)}><X size={13} /></button>}
+          </li>)}
+        </ul> : null}
         {attachmentError ? <div className="attachment-error" role="alert">{attachmentError}</div> : null}
         {harnessSwitchStatus ? <div className="harness-switch-status" role="status">{harnessSwitchStatus}</div> : null}
         {!harnessSwitchStatus && runtime?.handoffStatus === "prepared" ? <div className="harness-switch-status" role="status">交接已准备，随下一条消息提交</div> : null}
@@ -1319,12 +1385,12 @@ function Composer({
           onPaste={onPaste}
           rows={1}
           aria-label={space === "chat" ? "消息" : "任务描述"}
-          placeholder={running ? runtime.steerMode ? "补充或调整这项任务…" : "草拟下一条消息…" : space === "chat" ? "向 Cleo 发送消息…" : "描述你想完成的事情"}
+          placeholder={running ? "排队下一条消息" : space === "chat" ? "向 Cleo 发送消息…" : "描述你想完成的事情"}
           data-testid="composer-input"
         />
         <div className="composer-footer">
           <div className="composer-tools">
-            <button type="button" aria-label="添加附件" title="添加 PDF、Office、图片或代码文件" disabled={running} onClick={() => void pickFiles()}>
+            <button type="button" aria-label="添加附件" title="添加 PDF、Office、图片或代码文件" onClick={() => void pickFiles()}>
               <Paperclip size={16} />
             </button>
             <button type="button" aria-label="查看上下文" title="查看上下文" onClick={onShowContext}>
@@ -1380,19 +1446,17 @@ function Composer({
               <Square size={13} fill="currentColor" />
             </button>
           )}
-          {(!running || runtime.steerMode) && (
-            <button
-              className="send-button"
-              type="button"
-              aria-label={running ? "追加指令" : "发送"}
-              title={sendBlocked || (running ? runtime.steerMode === "native" ? "追加指令 · Enter" : "当前回复结束后发送 · Enter" : "发送 · Enter")}
-              disabled={Boolean(sendBlocked) || (!prompt.trim() && attachments.length === 0)}
-              onClick={submit}
-              data-testid={running ? "steer-button" : "send-button"}
-            >
-              <ArrowUp size={16} />
-            </button>
-          )}
+          <button
+            className="send-button"
+            type="button"
+            aria-label={running ? "加入队列" : "发送"}
+            title={sendBlocked || (running ? "加入队列 · Enter" : "发送 · Enter")}
+            disabled={Boolean(sendBlocked) || (!prompt.trim() && attachments.length === 0)}
+            onClick={submit}
+            data-testid={running ? "queue-button" : "send-button"}
+          >
+            <ArrowUp size={16} />
+          </button>
           </div>
         </div>
       </div>

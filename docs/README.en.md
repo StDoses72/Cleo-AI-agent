@@ -1,6 +1,6 @@
 # Cleo documentation
 
-[中文](README.md) | [Project overview](../README.en.md)
+[中文](README.md) | [Project overview](../README.md)
 
 Guides for installing, configuring, and using Cleo Desktop and its terminal workflows.
 

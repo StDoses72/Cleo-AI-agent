@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from cleo.memory.paths import compact_path, events_path, manifest_path
+from cleo.sessions.rewind import active_events
 
 SCHEMA_VERSION = 2
 
@@ -431,9 +432,11 @@ def compact_events(
         被 write_compact_events 落盘为 compact.json, 也被
         sessions/store.py refresh_compact 传给 replace_conversation_chunks。
     """
+    # Rewound turns are left out of memory; source hashes still cover the raw log.
+    visible = active_events([event for event in events if isinstance(event, dict)])
     normalized_messages = [
         message
-        for index, event in enumerate(events)
+        for index, event in enumerate(visible)
         if isinstance(event, dict)
         if (message := _normalize_message_event(event, index)) is not None
     ]
@@ -481,7 +484,7 @@ def compact_events(
         for compacted in compacted_events
         for event_id in compacted.get("source_event_ids") or []
     }
-    for event in events:
+    for event in visible:
         event_id = str(event.get("id") or "")
         event_type = str(event.get("type") or "")
         if not event_id or event_id in represented_ids:
