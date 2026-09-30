@@ -18,14 +18,16 @@ archive="$temporary/program.zip"
 nearby="$(dirname "$1")/@ARCHIVE@"
 if [ -f "$nearby" ]; then cp "$nearby" "$archive"; fi
 if [ ! -f "$archive" ] || [ "$(shasum -a 256 "$archive" | cut -d ' ' -f 1)" != '@SHA256@' ]; then
+    echo 'Cleo installer: Downloading Cleo'
     curl -fL --retry 3 --connect-timeout 30 --max-time 1800 --proto '=https' --proto-redir '=https' \
         '@URL@' -o "$archive"
 fi
 [ "$(shasum -a 256 "$archive" | cut -d ' ' -f 1)" = '@SHA256@' ] || { echo 'Program checksum mismatch.' >&2; exit 1; }
+echo 'Cleo installer: Extracting Cleo'
 ditto -x -k "$archive" "$temporary"
 candidate="$temporary/Cleo.app"
 codesign --verify --deep --strict "$candidate"
-ELECTRON_RUN_AS_NODE=1 "$candidate/Contents/MacOS/Cleo" "$candidate/Contents/Resources/online-runtime.mjs" --system
+CLEO_INSTALL_PROGRESS_STDOUT=1 ELECTRON_RUN_AS_NODE=1 "$candidate/Contents/MacOS/Cleo" "$candidate/Contents/Resources/online-runtime.mjs" --system
 if pgrep -x Cleo >/dev/null; then echo 'Quit Cleo and retry installation.' >&2; exit 1; fi
 [ ! -L "$destination" ] || { echo 'Refusing to replace a linked application.' >&2; exit 1; }
 if [ -e "$destination" ]; then

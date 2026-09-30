@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
@@ -10,6 +10,80 @@ import { ReleaseDownloads } from "./release-downloads.mjs";
 import { run as execute } from "./evolution-tools.mjs";
 
 const digest = data => createHash("sha256").update(data).digest("hex");
+const pause = milliseconds => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+
+/** Stages shared with the native installers, in order; labels appear in their English UI. */
+export const INSTALL_STAGES = Object.freeze({
+  "program-download": "Downloading Cleo",
+  extract: "Extracting Cleo",
+  "runtime-check": "Checking the Cleo runtime",
+  "runtime-ready": "Using prepared runtime",
+  "python-download": "Downloading Python",
+  "node-download": "Downloading Node.js",
+  "python-packages": "Installing Python packages",
+  "browser-components": "Installing browser components",
+  "backend-validation": "Validating the backend",
+  done: "Runtime ready",
+});
+
+/** Purpose: Publish installer stages without affecting installation.
+ * Input: Optional JSON file path (replaced atomically) and whether to print one line per stage.
+ * Output: A `(stage, { done, total, bytes, totalBytes })` reporter that never throws.
+ */
+export function installProgress(path, { stdout = false, print = text => process.stdout.write(text) } = {}) {
+  let current = null;
+  let failures = 0;
+  return (stage, { done = null, total = null, bytes = null, totalBytes = null } = {}) => {
+    const label = INSTALL_STAGES[stage] ?? stage;
+    if (stdout && stage !== current) {
+      try { print(`Cleo installer: ${label}${totalBytes ? ` (${(totalBytes / 1048576).toFixed(1)} MB)` : ""}\n`); }
+      catch { /* Output is informational. */ }
+    }
+    current = stage;
+    // An unwritable location stops further attempts instead of slowing installation.
+    if (!path || failures >= 3) return;
+    const temporary = `${path}.${process.pid}.tmp`;
+    try { writeFileSync(temporary, JSON.stringify({ stage, label, done, total, bytes, totalBytes, updatedAt: Date.now() })); }
+    catch { failures++; return; }
+    failures = 0;
+    // Windows readers briefly lock the destination; a later update replaces a skipped one.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try { renameSync(temporary, path); return; } catch { pause(20); }
+    }
+    try { rmSync(temporary, { force: true }); } catch { /* Best effort. */ }
+  };
+}
+
+/** Purpose: Abort when a native installer creates its cancel file. Input: path, AbortController. Output: stop function. */
+export function watchCancellation(path, controller, interval = 250) {
+  if (!path) return () => {};
+  const check = () => { if (existsSync(path)) controller.abort(new Error("Installation cancelled.")); };
+  check();
+  const timer = setInterval(check, interval);
+  return () => clearInterval(timer);
+}
+
+/** Purpose: Count requirements pip has collected. Input: locked requirements text, reporter. Output: an output callback. */
+export function pipProgress(requirements, report) {
+  let total = requirements.split(/\r?\n/).filter(line => /^[A-Za-z0-9]/.test(line)).length;
+  let done = 0;
+  let pending = "";
+  let installing = false;
+  report("python-packages", { done, total });
+  return text => {
+    const lines = (pending + text).split(/\r?\n/);
+    pending = lines.pop();
+    for (const line of lines) {
+      if (installing) return;
+      // Requirements whose environment markers do not match are announced before collection starts.
+      if (line.startsWith("Ignoring ")) total = Math.max(done, total - 1);
+      else if (/^(Collecting|Requirement already satisfied:) /.test(line)) done = Math.min(done + 1, total);
+      else if (line.startsWith("Installing collected packages")) installing = true;
+      else continue;
+      report("python-packages", installing ? {} : { done, total });
+    }
+  };
+}
 
 export function readRuntimePlan(resources) {
   const path = join(resources, "runtime-plan.json");
@@ -59,12 +133,18 @@ export function findInstalledRuntime(resources, dataHome) {
 }
 
 /** Install immutable runtimes outside the application bundle, then atomically mark them ready. */
-export async function installRuntime({ resources, root = defaultRuntimeRoot(), signal, log = () => {} }) {
+export async function installRuntime({ resources, root = defaultRuntimeRoot(), signal, log = () => {}, progress = () => {} }) {
   const plan = readRuntimePlan(resources);
   if (!plan) return resources;
+  const report = (stage, detail) => { try { progress(stage, detail); } catch { /* Progress is informational. */ } };
+  report("runtime-check");
   root = resolve(root);
   const destination = join(root, plan.key);
-  if (ready(destination, plan.key)) return destination;
+  if (ready(destination, plan.key)) {
+    report("runtime-ready");
+    report("done");
+    return destination;
+  }
   for (const [name, hash] of Object.entries(plan.files)) {
     if (!/^[\w.-]+$/.test(name) || digest(await readFile(join(resources, "runtime", name))) !== hash)
       throw new Error(`Invalid installation file: ${name}`);
@@ -85,12 +165,13 @@ export async function installRuntime({ resources, root = defaultRuntimeRoot(), s
       PIP_CACHE_DIR: join(root, "pip-cache"), npm_config_cache: join(root, "npm-cache"),
       PYTHONUTF8: "1", PYTHONDONTWRITEBYTECODE: "1" };
     delete env.PYTHONHOME; delete env.PYTHONPATH; delete env.ELECTRON_RUN_AS_NODE;
-    const run = (command, args, cwd = scratch) => execute(command, args,
-      { cwd, env, signal, log, timeout: 900000, outputMode: "tail" });
+    const run = (command, args, cwd = scratch, output = log) => execute(command, args,
+      { cwd, env, signal, log: output, timeout: 900000, outputMode: "tail" });
     for (const name of ["python", "node"]) {
       log(`Downloading ${name} ${plan[name].version}…\n`);
       const artifact = { ...plan[name], platform: plan.platform };
-      const archive = await downloads.get(artifact, { url: artifact.url });
+      const archive = await downloads.get(artifact, { url: artifact.url,
+        onProgress: (bytes, totalBytes) => report(`${name}-download`, { bytes, totalBytes }) });
       const extracted = join(scratch, name);
       await mkdir(extracted);
       await run(tar, ["-xf", archive, "-C", extracted]);
@@ -110,19 +191,26 @@ export async function installRuntime({ resources, root = defaultRuntimeRoot(), s
     for (const key of Object.keys(env)) if (key.toLowerCase() === "path") delete env[key];
     env.PATH = [dirname(python), browser, process.env.PATH].join(process.platform === "win32" ? ";" : ":");
     log("Installing locked Python dependencies…\n");
+    report("python-packages");
     await run(python, ["-I", "-m", "ensurepip"]);
+    const requirements = join(resources, "runtime/requirements.txt");
+    const collected = pipProgress(await readFile(requirements, "utf8"), report);
     await run(python, ["-I", "-m", "pip", "install", "--break-system-packages", "--disable-pip-version-check", "--require-hashes",
-      "--only-binary=:all:", "--index-url", "https://pypi.org/simple", "-r", join(resources, "runtime/requirements.txt")]);
+      "--only-binary=:all:", "--index-url", "https://pypi.org/simple", "-r", requirements], scratch,
+    text => { log(text); collected(text); });
+    report("python-packages");
     await run(python, ["-I", "-m", "pip", "install", "--break-system-packages", "--disable-pip-version-check", "--no-deps",
       join(resources, "runtime", plan.wheel.archive)]);
     for (const name of ["package.json", "package-lock.json"])
       await cp(join(resources, "runtime", name), join(browser, name));
     const npm = join(scratch, "node-tools", process.platform === "win32" ? "node_modules/npm/bin/npm-cli.js" : "lib/node_modules/npm/bin/npm-cli.js");
     log("Installing locked Node dependencies…\n");
+    report("browser-components");
     await run(node, [npm, "ci", "--no-audit", "--no-fund", "--omit=dev"], browser);
     await cp(join(resources, "defaults"), join(candidate, "defaults"), { recursive: true });
     await cp(join(resources, "installer-check.py"), join(candidate, "installer-check.py"));
     log("Verifying the installed backend…\n");
+    report("backend-validation");
     await run(python, ["-I", "-B", join(candidate, "installer-check.py")]);
     await writeFile(join(candidate, "ready.json"), JSON.stringify({ key: plan.key, version: plan.version }));
     signal?.throwIfAborted();
@@ -136,6 +224,7 @@ export async function installRuntime({ resources, root = defaultRuntimeRoot(), s
       }
     }
     log("Cleo runtime installation complete.\n");
+    report("done");
     return destination;
   } finally {
     signal?.removeEventListener("abort", cancel);
@@ -148,9 +237,13 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const controller = new AbortController();
   const cancel = () => controller.abort(new Error("Installation cancelled."));
   process.once("SIGINT", cancel); process.once("SIGTERM", cancel);
+  // Hidden Windows processes receive no signals, so the installer requests cancellation with a file.
+  const unwatch = watchCancellation(process.env.CLEO_INSTALL_CANCEL, controller);
   installRuntime({ resources: dirname(fileURLToPath(import.meta.url)),
     root: defaultRuntimeRoot(process.argv.includes("--system")), signal: controller.signal,
-    log: text => process.stdout.write(text) }).catch(error => {
+    log: text => process.stdout.write(text),
+    progress: installProgress(process.env.CLEO_INSTALL_PROGRESS,
+      { stdout: process.env.CLEO_INSTALL_PROGRESS_STDOUT === "1" }) }).catch(error => {
     console.error(`Cleo installation failed: ${error.message}`); process.exitCode = 1;
-  });
+  }).finally(unwatch);
 }
