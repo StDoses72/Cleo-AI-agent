@@ -248,6 +248,21 @@ try {
     if ($Version -ne "latest" -and (($Version -replace '^v', '') -ne $installedVersion)) {
         throw "Requested Cleo $Version, but the package contains version $installedVersion."
     }
+    if (Test-Path -LiteralPath (Join-Path $packageRoot 'resources/runtime-plan.json')) {
+        $previousNodeMode = $env:ELECTRON_RUN_AS_NODE
+        try {
+            $env:ELECTRON_RUN_AS_NODE = '1'
+            $runtimeScript = Join-Path $packageRoot 'resources/online-runtime.mjs'
+            $runtimeLog = Join-Path $temporaryRoot 'runtime.log'
+            $runtimeError = Join-Path $temporaryRoot 'runtime-error.log'
+            $runtimeProcess = Start-Process -FilePath (Join-Path $packageRoot 'Cleo.exe') -ArgumentList @("`"$runtimeScript`"") -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $runtimeLog -RedirectStandardError $runtimeError
+            if ($runtimeProcess.ExitCode -ne 0) {
+                throw "Cleo runtime installation failed: $([IO.File]::ReadAllText($runtimeError))"
+            }
+        } finally {
+            $env:ELECTRON_RUN_AS_NODE = $previousNodeMode
+        }
+    }
 
     $WhatIfPreference = $requestedWhatIf
     if (-not $PSCmdlet.ShouldProcess($InstallRoot, "Install verified Cleo desktop package")) {

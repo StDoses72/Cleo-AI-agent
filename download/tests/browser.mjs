@@ -36,7 +36,7 @@ if (process.argv.includes("--serve")) {
       ["Mac ARM", "MacIntel", { platform: "macOS", architecture: "arm", bitness: "64" }, "macos-arm64"],
       ["Mac Intel", "MacIntel", { platform: "macOS", architecture: "x86", bitness: "64" }, "macos-x64"],
       ["Safari without hints", "MacIntel", null, ""],
-      ["Linux", "Linux x86_64", { platform: "Linux", architecture: "x86", bitness: "64" }, "linux-x64"],
+      ["Linux", "Linux x86_64", { platform: "Linux", architecture: "x86", bitness: "64" }, "linux-deb"],
       ["unsupported Windows ARM", "Win32", { platform: "Windows", architecture: "arm", bitness: "64" }, ""],
     ]) {
       const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
@@ -66,11 +66,26 @@ if (process.argv.includes("--serve")) {
       await context.close();
     }
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await page.route("https://api.github.com/**", route => route.fulfill({ json: {
+      ...release, assets: [...release.assets, ...Object.values(TARGETS).filter(t => t.installer)
+        .flatMap(t => [{ name: t.installer }, { name: `${t.installer}.sha256` }])],
+    } }));
+    await page.goto(url);
+    await page.waitForFunction(() => document.querySelector("#version").textContent.includes("v0.3.0"));
+    for (const target of ["windows-x64", "macos-arm64", "macos-x64"]) {
+      await page.locator("#target").selectOption(target);
+      assert((await page.locator("#download").getAttribute("href")).endsWith(TARGETS[target].installer));
+      assert.match(await page.locator("#download").textContent(), /安装器/);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    }
+    await page.unroute("https://api.github.com/**");
     await page.route("https://api.github.com/**", (route) => route.abort());
     await page.goto(url);
     await page.locator("#target").selectOption("windows-x64");
     await page.waitForFunction(() => document.querySelector("#release-status").textContent.length > 0);
-    assert.match(await page.locator("#download").getAttribute("href"), /\/latest\/download\/Cleo-windows-x64.zip$/);
+    assert.match(await page.locator("#download").getAttribute("href"), /\/releases\/latest$/);
+    assert.match(await page.locator("#download").textContent(), /官方发布页/);
+    assert.equal(await page.locator("#checksum").isVisible(), false);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     if (process.env.CLEO_DOWNLOAD_SCREENSHOT) await page.screenshot({ path: process.env.CLEO_DOWNLOAD_SCREENSHOT, fullPage: true });
     console.log("Download page browser checks passed: 6 platform cases, manual selection, offline fallback, mobile layout.");

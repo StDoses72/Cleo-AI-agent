@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+case "$1" in
+    remove|purge)
+        if [ ! -L /opt/Cleo ] && [ -f /opt/Cleo/resources/package-manager ]; then
+            rm -rf /opt/Cleo
+        fi ;;
+esac
+# Keep dependency caches and user data for reinstall and retained versions.

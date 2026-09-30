@@ -8,6 +8,7 @@ import json
 import os
 import platform
 import plistlib
+import re
 import shutil
 import subprocess
 import sys
@@ -28,6 +29,43 @@ def download(url: str, path: Path) -> None:
     print(f"Downloading {url}", flush=True)
     with urllib.request.urlopen(url, timeout=120) as response, path.open("wb") as output:
         shutil.copyfileobj(response, output)
+
+
+def prepare_macos_libraries(bundle: Path) -> None:
+    """Remove stale build search paths and reject dependencies on build-host libraries."""
+    magic = {bytes.fromhex(value) for value in (
+        "feedface", "cefaedfe", "feedfacf", "cffaedfe",
+        "cafebabe", "bebafeca", "cafebabf", "bfbafeca",
+    )}
+    commands = {"LC_LOAD_DYLIB", "LC_LOAD_WEAK_DYLIB", "LC_REEXPORT_DYLIB",
+                "LC_LOAD_UPWARD_DYLIB", "LC_LAZY_LOAD_DYLIB", "LC_RPATH"}
+    for path in bundle.rglob("*"):
+        if path.is_symlink() or not path.is_file():
+            continue
+        with path.open("rb") as stream:
+            if stream.read(4) not in magic:
+                continue
+        output = subprocess.check_output(["otool", "-m", "-l", str(path)], text=True)
+        command = ""
+        stale_rpaths = set()
+        for line in output.splitlines():
+            if line.strip().startswith("cmd "):
+                command = line.strip().split()[1]
+            match = re.match(r"\s+(?:name|path) (.+) \(offset \d+\)", line)
+            if command in commands and match:
+                dependency = match[1]
+                if not dependency.startswith(("/usr/lib/", "/System/Library/",
+                                              "@rpath/", "@loader_path/", "@executable_path/")):
+                    if command == "LC_RPATH":
+                        stale_rpaths.add(dependency)
+                        continue
+                    raise ValueError(
+                        f"Non-portable macOS dependency: {path.relative_to(bundle)}: {dependency}"
+                    )
+        for rpath in sorted(stale_rpaths):
+            run("install_name_tool", "-delete_rpath", rpath, path, cwd=bundle)
+        if stale_rpaths:
+            run("codesign", "--force", "--sign", "-", path, cwd=bundle)
 
 
 def package_macos(bundle: Path, version: str, icon: Path, scratch: Path) -> None:
@@ -76,7 +114,7 @@ def package_macos(bundle: Path, version: str, icon: Path, scratch: Path) -> None
     run("codesign", "--verify", "--deep", "--strict", bundle, cwd=scratch)
 
 
-def build(*, locked_dependencies: bool = False) -> None:
+def build(*, locked_dependencies: bool = False, online: bool = False) -> None:
     if sys.platform not in {"darwin", "linux"}:
         raise SystemExit("Use build-release.ps1 on Windows.")
     node = shutil.which("node")
@@ -220,7 +258,8 @@ def build(*, locked_dependencies: bool = False) -> None:
             "--compile-bytecode",
             "--constraint", "requirements.txt",
             python_source,
-            "--only-binary", "claude-agent-sdk,openai-codex-cli-bin",
+            "--only-binary", "claude-agent-sdk,openai-codex-cli-bin,cryptography",
+            "--no-cache",
             cwd=scratch,
         )
         shutil.copytree(python.parent.parent, resources / "python", symlinks=True)
@@ -250,9 +289,11 @@ def build(*, locked_dependencies: bool = False) -> None:
         run(resources / "python/bin/python3", ROOT / "scripts/release_dependencies.py",
             "--root", ROOT, "--python", resources / "python/bin/python3",
             "--browser", browser, "--output", resources / "dependencies.json", cwd=scratch)
+        shutil.copy2(ROOT / "scripts/installer-check.py", resources / "installer-check.py")
         update = resources / "update"
         update.mkdir()
-        for name in ("posix-installer.mjs", "platform.mjs"):
+        for name in ("posix-installer.mjs", "platform.mjs", "online-runtime.mjs",
+                     "release-downloads.mjs", "evolution-tools.mjs", "evolution-store.mjs"):
             shutil.copy2(ROOT / "ui/electron" / name, update / name)
         defaults = resources / "defaults"
         for name in ("assets", "config", "memory"):
@@ -270,8 +311,8 @@ def build(*, locked_dependencies: bool = False) -> None:
             shutil.copytree(ROOT / "skills", defaults / "skills")
         run(node, ROOT / "scripts/bundle-evolution-source.mjs", resources, cwd=ROOT)
         metadata = {
-            "schema_version": 1,
-            "evolution_protocol": 2,
+            "schema_version": 2 if online else 1,
+            "evolution_protocol": 3 if online else 2,
             "build_kind": "local" if os.environ.get("CLEO_EVOLUTION_BASE_TAG") else "official",
             "app": "Cleo",
             "version": version,
@@ -288,7 +329,14 @@ def build(*, locked_dependencies: bool = False) -> None:
             else staged_bundle / "release.json"
         )
         metadata_file.write_text(json.dumps(metadata, indent=2) + "\n")
+        run(resources / "python/bin/python3", "-I", "-B", resources / "installer-check.py",
+            cwd=scratch)
+        if online:
+            run(sys.executable, ROOT / "scripts/prepare-online-package.py",
+                "--resources", resources, "--source", python_source, "--target", target["id"],
+                cwd=scratch)
         if sys.platform == "darwin":
+            prepare_macos_libraries(staged_bundle)
             package_macos(staged_bundle, version, ui / "public/cleo.png", scratch)
         final = release / target["bundle"]
         if final.exists():
@@ -312,9 +360,10 @@ def build(*, locked_dependencies: bool = False) -> None:
         if sys.platform == "linux":
             deb = scratch / "deb"
             installed = deb / "opt/Cleo"
-            shutil.copytree(final, installed, symlinks=True)
-            (installed / "chrome-sandbox").chmod(0o4755)
-            (installed / "resources/package-manager").write_text("deb\n")
+            if not online:
+                shutil.copytree(final, installed, symlinks=True)
+                (installed / "chrome-sandbox").chmod(0o4755)
+                (installed / "resources/package-manager").write_text("deb\n")
             control = deb / "DEBIAN"
             control.mkdir(parents=True)
             (control / "control").write_text(
@@ -322,9 +371,23 @@ def build(*, locked_dependencies: bool = False) -> None:
                 "Architecture: amd64\n"
                 "Maintainer: Cleo contributors\nSection: utils\nPriority: optional\n"
                 "Depends: libgtk-3-0 | libgtk-3-0t64, libnss3, libgbm1, "
-                "libasound2 | libasound2t64, libxss1, libxtst6, libx11-xcb1\n"
-                "Description: Cleo local AI workspace\n"
+                "libasound2 | libasound2t64, libxss1, libxtst6, libx11-xcb1, "
+                "curl, ca-certificates\n"
+                "Description: Cleo desktop installer\n"
+                " Internet access is required for online installations.\n"
             )
+            if online:
+                script = (ROOT / "scripts/installers/linux-online-postinst").read_text()
+                tag = f"alpha-{version[:-6]}" if version.endswith("-alpha") else f"v{version}"
+                url = ("https://github.com/StDoses72/Cleo-AI-agent/releases/download/"
+                       f"{tag}/{target['archive']}")
+                (control / "postinst").write_text(script.replace("@SHA256@", digest)
+                                                 .replace("@URL@", url))
+                shutil.copy2(ROOT / "scripts/installers/linux-online-postrm", control / "postrm")
+                (control / "postrm").chmod(0o755)
+            else:
+                shutil.copy2(ROOT / "scripts/installers/linux-postinst", control / "postinst")
+            (control / "postinst").chmod(0o755)
             applications = deb / "usr/share/applications"
             applications.mkdir(parents=True)
             (applications / "cleo.desktop").write_text(
@@ -353,4 +416,6 @@ def build(*, locked_dependencies: bool = False) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--locked-dependencies", action="store_true")
-    build(locked_dependencies=parser.parse_args().locked_dependencies)
+    parser.add_argument("--online", action="store_true")
+    args = parser.parse_args()
+    build(locked_dependencies=args.locked_dependencies, online=args.online)

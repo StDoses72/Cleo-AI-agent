@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { desktopPlatform } from "../electron/platform.mjs";
 
-// Distribution check only: a fresh installation must open a rendered window.
+// Distribution check: a fresh installation must render and reach its bundled backend.
 // Product buttons, workflows and optional integrations are deliberately not required.
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const target = desktopPlatform();
@@ -34,6 +34,16 @@ try {
     return body && body.getBoundingClientRect().height > 0
       && (body.innerText.trim().length > 0 || body.querySelector("canvas, svg, img"));
   }, null, { timeout: 30_000 });
+  const connected = await window.evaluate(async () => {
+    let timer;
+    try {
+      return await Promise.race([
+        window.cleoDesktop.request("load_workspace").then(state => state.backend?.connected),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("Backend startup timed out")), 30000); }),
+      ]);
+    } finally { clearTimeout(timer); }
+  });
+  if (!connected) throw new Error("The packaged backend did not become ready.");
   // Let startup settle; this checks process health without exercising features.
   await window.waitForTimeout(3_000);
   if (window.isClosed() || crashes.length) throw new Error(crashes.join("; ") || "Application closed during startup");

@@ -39,18 +39,11 @@ try {
   const connected = await window.evaluate(async () =>
     (await window.cleoDesktop.request("load_workspace")).backend.connected);
   if (!connected) throw new Error("Packaged backend is not connected.");
-  // A fresh installation scans optional tools before opening its first-run dialog.
-  // Await that same scan so it cannot appear later and intercept navigation clicks.
-  const setup = await window.evaluate(() => window.cleoDesktop.setup("startup"));
+  // Installation prepares the base runtime; optional setup is opened manually.
+  const setup = await window.evaluate(() => window.cleoDesktop.setup("scan"));
   assert.equal(setup.items.find(item => item.id === "runtime")?.ready, true,
     `Packaged Python runtime is not ready: ${JSON.stringify(setup.items)}`);
-  if (setup.showOnStartup) {
-    const onboarding = window.getByRole("dialog", { name: "运行环境", exact: true });
-    await onboarding.waitFor();
-    await onboarding.getByRole("button", { name: "稍后再说", exact: true }).click();
-    await onboarding.waitFor({ state: "hidden" });
-    assert.equal(await window.evaluate(async () => (await window.cleoDesktop.setup("status")).dismissed), true);
-  }
+  assert.equal(await window.getByRole("dialog", { name: "运行环境", exact: true }).count(), 0);
   await window.getByRole("button", { name: "进化", exact: true }).click();
   await window.locator('.evolution-toolbar[aria-label="进化操作"]').waitFor();
   const evolution = await window.evaluate(() => window.cleoDesktop.getEvolutionState());

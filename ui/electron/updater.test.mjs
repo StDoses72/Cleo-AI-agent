@@ -33,6 +33,11 @@ test("semantic version comparison handles prereleases", () => {
   assert.equal(compareVersions("1.0.0+build.2", "1.0.0+build.1"), 0);
 });
 
+test("online update archives declare the new schema and dependency preparation protocol", () => {
+  assert.equal(validateManifest({ ...manifest, schema_version: 2, evolution_protocol: 3 }).schemaVersion, 2);
+  assert.throws(() => validateManifest({ ...manifest, schema_version: 2, evolution_protocol: 2 }), /unexpected/);
+});
+
 test("release manifests must describe the expected verified Windows archive", () => {
   assert.equal(validateManifest(manifest).version, "0.2.0");
   assert.throws(

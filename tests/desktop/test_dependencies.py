@@ -56,6 +56,9 @@ def test_update_publishes_only_a_validated_independent_runtime(runtime_update, m
     assert not (active / "python/user-data.txt").exists()
     assert (python / "user-data.txt").read_text() == "preserve base"
     assert any("--upgrade" in command for command in calls)
+    install = next(command for command in calls if "pip" in command and "install" in command)
+    assert "--only-binary=:all:" in install
+    assert "--no-cache" in install
     assert not (root / "state.json.tmp").exists()
 
 

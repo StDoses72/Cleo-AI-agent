@@ -19,7 +19,7 @@ try {
   const errors = []; page.on("pageerror", error => errors.push(error.message));
   await page.addInitScript(fixture => {
     localStorage.setItem("cleo-view", "evolution");
-    const control = window.evolutionTest = { calls: [], installs: [], next: null, installFail: true };
+    const control = window.evolutionTest = { calls: [], installs: [], setupCalls: [], next: null, installFail: true };
     const thread = fixture.threads[0];
     thread.projectId = "productivity:cleo-evolution"; thread.space = "productivity"; thread.items = [];
     thread.runtime = fixture.runtime;
@@ -33,6 +33,7 @@ try {
     let listener;
     window.cleoDesktop = {
       setup: async (action, params) => {
+        control.setupCalls.push(action);
         if (action === "dismiss") setup.dismissed = true;
         if (action === "install") {
           control.installs.push(params);
@@ -76,7 +77,12 @@ try {
     };
   }, snapshot);
   await page.goto(server.resolvedUrls.local[0]);
+  await page.getByTestId("composer-input").waitFor();
   const setup = page.getByRole("dialog", { name: "运行环境", exact: true });
+  assert.equal(await setup.count(), 0, "Installation must not become a first-launch dialog");
+  assert.deepEqual(await page.evaluate(() => window.evolutionTest.setupCalls), [],
+    "Startup must not request an environment scan");
+  await page.evaluate(() => window.dispatchEvent(new Event("cleo:open-setup")));
   await setup.waitFor();
   assert.equal(await page.evaluate(() => window.evolutionTest.installs.length), 0);
   await setup.getByRole("checkbox", { name: "安装 Docker", exact: true }).check();

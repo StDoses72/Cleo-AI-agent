@@ -7,6 +7,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { desktopPlatform } from "./platform.mjs";
+import { installRuntime } from "./online-runtime.mjs";
 
 const run = promisify(execFile);
 
@@ -101,6 +102,7 @@ export async function installUpdate(request, {
     }
     await access(join(replacement, target.executable), constants.X_OK);
     if (platform === "darwin") await run("codesign", ["--verify", "--deep", "--strict", replacement]);
+    await installRuntime({ resources: join(replacement, target.resources) });
     await ready();
     await waitForParent(request.parentPid);
     backup = join(staging, "previous");

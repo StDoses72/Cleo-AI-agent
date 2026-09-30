@@ -1,0 +1,38 @@
+#!/bin/sh
+set -eu
+[ "$1" = configure ] || exit 0
+mkdir -p /var/cache/cleo /opt
+archive=/var/cache/cleo/@SHA256@.tar.gz
+temporary=$(mktemp -d /opt/.cleo-install.XXXXXXXX)
+complete=false
+cleanup() {
+    if [ -d "$temporary/previous" ] && [ "$complete" != true ]; then
+        if [ -e /opt/Cleo ] || ! mv "$temporary/previous" /opt/Cleo; then
+            echo "Previous Cleo retained at $temporary/previous" >&2
+            return
+        fi
+    fi
+    rm -rf "$temporary"
+}
+trap cleanup 0
+trap 'exit 1' HUP INT TERM
+if [ ! -f "$archive" ] || [ "$(sha256sum "$archive" | cut -d ' ' -f 1)" != '@SHA256@' ]; then
+    curl -fL --retry 3 --connect-timeout 30 --max-time 1800 --proto '=https' --proto-redir '=https' \
+        '@URL@' -o "$temporary/program.tar.gz"
+    [ "$(sha256sum "$temporary/program.tar.gz" | cut -d ' ' -f 1)" = '@SHA256@' ] || { echo 'Program checksum mismatch.' >&2; exit 1; }
+    mv "$temporary/program.tar.gz" "$archive"
+fi
+tar -xzf "$archive" -C "$temporary"
+candidate="$temporary/Cleo"
+ELECTRON_RUN_AS_NODE=1 "$candidate/Cleo" "$candidate/resources/online-runtime.mjs" --system
+if pgrep -x Cleo >/dev/null; then echo 'Quit Cleo and retry installation.' >&2; exit 1; fi
+[ ! -L /opt/Cleo ] || { echo 'Refusing to replace a linked application.' >&2; exit 1; }
+if [ -e /opt/Cleo ]; then
+    [ -f /opt/Cleo/resources/package-manager ] || { echo 'Move the existing portable installation before installing this package.' >&2; exit 1; }
+    mv /opt/Cleo "$temporary/previous"
+fi
+chown root:root "$candidate/chrome-sandbox"
+chmod 4755 "$candidate/chrome-sandbox"
+printf 'deb\n' > "$candidate/resources/package-manager"
+mv "$candidate" /opt/Cleo
+complete=true

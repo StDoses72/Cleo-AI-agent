@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
+import { join } from "node:path";
 import { rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { DesktopUpdater, compareVersions, validateManifest } from "./updater.mjs";
 import { ProgramUpdates } from "./program-updates.mjs";
+import { installRuntime } from "./online-runtime.mjs";
 import { exists, ownedPath } from "./evolution-store.mjs";
 import { alphaTagPattern, versionForReleaseTag } from "./release-channel.mjs";
 
@@ -72,7 +74,7 @@ export class SelectableUpdater extends DesktopUpdater {
       const release = this.checkedRelease;
       const raw = await this.json(release.manifestUrl);
       const manifest = validateManifest(raw, this.target);
-      if (raw.evolution_protocol !== 2) throw new Error("该版本不支持保留当前数据的版本切换。");
+      if (![2, 3].includes(raw.evolution_protocol)) throw new Error("该版本不支持保留当前数据的版本切换。");
       if (manifest.version !== versionForReleaseTag(release.tag)) throw new Error("版本清单与所选版本不一致。");
       this.manifest = manifest;
       const available = Boolean(this.selectedRelease) || compareVersions(manifest.version, this.state.currentVersion) > 0;
@@ -119,6 +121,8 @@ export async function prepareSelectedRelease(manager, updater, tag, { onProgress
       const directory = ownedPath(manager.store.root, "builds", build.id);
       if (!await exists(ownedPath(directory, build.executable))) continue;
       await manager.store.build(build.id);
+      await installRuntime({ resources: join(directory, manager.target.bundle, manager.target.resources),
+        root: join(manager.store.dataHome, "runtimes/online"), signal, log: text => manager.log(text) });
       await manager.store.update({ downloadedOfficial: build.id });
       return build.id;
     }
@@ -126,6 +130,9 @@ export async function prepareSelectedRelease(manager, updater, tag, { onProgress
     const directory = ownedPath(manager.store.root, "builds", id);
     try {
       await manager.extractArchive(archive, directory, { signal });
+      await installRuntime({ resources: join(directory, manager.target.bundle, manager.target.resources),
+        root: join(manager.store.dataHome, "runtimes/online"), signal,
+        log: text => manager.log(text) });
       signal.throwIfAborted();
       const record = { id, kind: "official", version: manifest.version, baseTag: tag, sha256: manifest.sha256,
         executable: `${manager.target.bundle}/${manager.target.executable}`, createdAt: new Date().toISOString() };

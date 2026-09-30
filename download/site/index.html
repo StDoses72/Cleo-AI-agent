@@ -15,15 +15,15 @@
     <section class="download" aria-labelledby="title">
       <p class="eyebrow">DESKTOP</p>
       <h1 id="title">下载 <span>Cleo</span></h1>
-      <p class="intro">你的对话、项目与记忆，在同一个工作空间。</p>
+      <p class="intro">下载对应系统的安装器，双击安装，自动下载所需运行环境。</p>
       <p id="detection" class="detection" role="status">正在识别系统与架构…</p>
       <div class="selector"><label for="target">选择安装包</label><select id="target">
         <option value="">请选择系统与架构</option>
         <option value="windows-x64">Windows · x64</option>
         <option value="macos-arm64">macOS · Apple Silicon（M 系列）</option>
         <option value="macos-x64">macOS · Intel</option>
-        <option value="linux-x64">Linux · x64 便携版</option>
         <option value="linux-deb">Debian / Ubuntu · x64（deb）</option>
+        <option value="linux-x64">Linux · x64 程序包（已有运行环境）</option>
       </select></div>
       <a id="download" class="primary" aria-disabled="true">请选择安装包 <span aria-hidden="true">↓</span></a>
       <div class="release-meta"><span id="version">最新稳定版</span><a id="checksum" hidden>SHA-256 校验文件</a></div>
@@ -32,7 +32,7 @@
       <noscript><p>浏览器未启用 JavaScript，请在 <a href="https://github.com/StDoses72/Cleo-AI-agent/releases/latest">GitHub Release</a> 中选择对应平台的安装包。</p></noscript>
     </section>
     <section class="terminal" aria-labelledby="terminal-title">
-      <div><p class="eyebrow">自动检测下载</p><h2 id="terminal-title">不确定你的芯片？</h2><p class="muted">在终端运行脚本，直接读取系统架构，下载并校验对应安装包。无需 Python 或 Node.js。</p></div>
+      <div><p class="eyebrow">高级下载</p><h2 id="terminal-title">已有运行环境？</h2><p class="muted">终端脚本可自动识别架构，下载并校验程序更新包。首次使用请下载上方安装器；运行环境需要联网准备。</p></div>
       <div class="commands">
         <label for="shell">终端类型</label><select id="shell"><option value="posix">macOS / Linux</option><option value="windows">Windows PowerShell</option></select>
         <div class="command"><code id="command"></code><button id="copy" type="button">复制</button></div>
