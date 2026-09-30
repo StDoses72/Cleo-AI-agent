@@ -1,0 +1,66 @@
+.computer-panel { padding: 12px 14px; min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 9px; overflow: hidden; }
+.computer-panel.is-expanded { position: fixed; inset: 58px 18px 18px 80px; z-index: 100; background: var(--sidebar); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 18px 70px #0008; }
+.computer-panel-header { display: flex; align-items: center; gap: 8px; }
+.computer-panel-header > strong { font-size: 13px; flex: 1; }
+.computer-mode-switch { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.computer-mode-switch button { display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; font-size: 11px; background: transparent; color: var(--muted); border: 0; }
+.computer-mode-switch button.active { background: var(--surface-raised); color: var(--text); }
+.computer-mode-switch button.active.host { color: #ff9b8f; }
+.computer-mode-switch button:disabled { opacity: .55; }
+.computer-panel-hint { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.computer-panel-error { margin: 0; display: flex; align-items: flex-start; gap: 6px; color: var(--warning); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.computer-panel-error svg { flex-shrink: 0; margin-top: 2px; }
+.computer-authorization, .computer-host-confirm, .browser-banner { display: flex; gap: 10px; padding: 10px 12px; border-radius: 8px; border: 1px solid #a4524a; background: #3a1d1b66; font-size: 12px; line-height: 1.6; }
+.computer-authorization p, .browser-banner p { margin: 2px 0 6px; color: var(--muted); overflow-wrap: anywhere; }
+.computer-host-confirm { flex-direction: column; }
+.computer-host-confirm ul { margin: 0; padding-left: 18px; color: var(--muted); }
+.computer-authorization-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.computer-authorization-actions button, .computer-host-panel > button, .computer-shortcut button { border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; background: var(--surface-raised); color: var(--text); font-size: 12px; }
+.computer-authorization-actions button.danger { background: #8a2a22; border-color: #b8463c; color: #fff; }
+.browser-banner { border-color: var(--border); background: var(--surface-raised); }
+.browser-banner input { width: 100%; margin-bottom: 6px; background: var(--sidebar); border: 1px solid var(--border); border-radius: 5px; padding: 5px; color: inherit; }
+.browser-tabs { display: flex; gap: 4px; overflow-x: auto; flex-shrink: 0; }
+.browser-tab { display: flex; align-items: center; max-width: 170px; min-width: 70px; border: 1px solid var(--border); border-radius: 7px; background: transparent; }
+.browser-tab.active { background: var(--surface-raised); }
+.browser-tab-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; padding: 4px 6px; font-size: 11px; background: transparent; border: 0; color: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.browser-tab-close, .browser-tab-new { background: transparent; border: 0; color: var(--muted); padding: 3px 5px; display: inline-flex; align-items: center; }
+.browser-toolbar { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.browser-toolbar input { flex: 1; min-width: 0; background: var(--surface-raised); border: 1px solid var(--border); border-radius: 7px; padding: 6px 9px; color: inherit; font-size: 12px; }
+.browser-toolbar .icon-button { position: relative; }
+.browser-zoom { font-size: 11px; background: transparent; border: 1px solid var(--border); border-radius: 5px; color: var(--muted); padding: 3px 6px; }
+.browser-download-dot { position: absolute; top: 2px; right: 2px; width: 6px; height: 6px; border-radius: 50%; background: #67d9df; }
+.browser-downloads { display: flex; flex-direction: column; gap: 4px; max-height: 150px; overflow: auto; font-size: 11px; }
+.browser-downloads p { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+.browser-downloads button { display: flex; justify-content: space-between; gap: 8px; text-align: left; background: var(--surface-raised); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; color: inherit; }
+.browser-downloads small { color: var(--muted); white-space: nowrap; }
+.browser-viewport { position: relative; flex: 1; min-height: 240px; border: 1px solid var(--border); border-radius: 8px; background: #fff; overflow: hidden; }
+.browser-empty { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 10px; align-items: center; justify-content: center; padding: 20px; text-align: center; color: #6b7682; background: var(--sidebar); font-size: 12px; line-height: 1.7; }
+.computer-host-panel { display: flex; flex-direction: column; gap: 10px; padding: 18px 16px; border: 1px solid #a4524a; border-radius: 8px; background: var(--surface-raised); overflow: auto; }
+.computer-host-panel > svg { color: #ff9b8f; }
+.computer-host-panel strong { font-size: 14px; font-weight: 550; }
+.computer-host-panel p, .computer-host-panel small { margin: 0; color: var(--muted); line-height: 1.7; font-size: 12px; }
+.computer-shortcut { display: flex; align-items: flex-end; gap: 8px; }
+.computer-shortcut label { flex: 1; display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--muted); }
+.computer-shortcut input { background: var(--sidebar); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; color: inherit; font-size: 12px; }
+.computer-control-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; flex-shrink: 0; }
+.computer-control-bar > span, .computer-control-bar button { display: inline-flex; align-items: center; gap: 6px; }
+.computer-control-bar > div { display: flex; gap: 6px; }
+.computer-control-bar i { height: 7px; width: 7px; background: var(--muted); border-radius: 50%; }
+.computer-control-bar i.is-running { background: #67d9df; }
+.computer-control-bar i.is-user { background: #f2c14e; }
+.computer-control-bar button { border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; background: var(--surface-raised); color: var(--text); }
+.computer-control-bar button.stop { border-color: #b8463c; color: #ff9b8f; }
+.computer-control-bar button:disabled { opacity: .5; }
+.computer-steps { flex-shrink: 0; max-height: 150px; overflow: auto; }
+.computer-steps h3 { margin: 4px 0 6px; font-size: 12px; font-weight: 550; }
+.computer-steps > p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.computer-step { display: flex; align-items: flex-start; gap: 9px; padding: 7px 0; border-top: 1px solid var(--border, #30363d); }
+.computer-step > i { width: 6px; height: 6px; margin-top: 5px; border-radius: 50%; background: #84909d; flex-shrink: 0; }
+.computer-step.running > i { background: #67d9df; }
+.computer-step.error > i { background: #e4a378; }
+.computer-step > div { min-width: 0; flex: 1; }
+.computer-step strong { display: block; font-size: 11px; font-weight: 500; }
+.computer-step small { font-size: 10px; color: var(--muted); white-space: nowrap; }
+.computer-panel.is-expanded .computer-steps { display: none; }
+.spin { animation: computer-spin 1s linear infinite; }
+@keyframes computer-spin { to { transform: rotate(360deg); } }

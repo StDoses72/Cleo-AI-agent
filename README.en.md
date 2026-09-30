@@ -1,0 +1,232 @@
+# Cleo AI Agent
+
+[中文](README.md) | [Documentation](docs/README.en.md) | [Architecture](docs/ARCHITECTURE.en.md)
+
+Cleo is a local-first AI workspace that brings general chat, developer agents, resumable sessions, and evidence-backed memory into one desktop and CLI experience. Teams can supply their own models, tools, harnesses, and data boundaries.
+
+The project supports native desktop builds for Windows, macOS and Linux, plus a Python CLI, Textual TUIs, and a stdio MCP entry point. User data stays on the local device by default; inference is provided by the API provider or external agent harness selected by the user.
+
+> Current version: [v0.5.6](https://github.com/StDoses72/Cleo-AI-agent/releases/tag/v0.5.6) · [Download the desktop app](https://stdoses72.github.io/Cleo-AI-agent/)
+
+Codex development conversations offer Standard and Fast speed beside the composer, saved per conversation. Fast mode consumes more credits; availability depends on the model and account.
+
+New Codex conversations use Cleo's own state directory and stay out of the default Codex app's history. Sign in separately inside Cleo; existing conversations retain their original storage. See the [configuration guide](docs/CONFIGURATION.md).
+
+## What Cleo solves
+
+General assistants and coding agents usually keep separate histories, permissions, and project context. Cleo adds a consistent product layer across them:
+
+- **One workspace** for general chat and Productivity development workflows.
+- **Resumable sessions** with normalized provider events, projects, titles, history, and recovery.
+- **Scoped memory** with current preferences in Markdown per `space + project`, changes recorded in embedded Git, and work facts retrieved from original sessions.
+- **Replaceable models and harnesses** for foreground Cleo, DreamAgent, Codex, Claude SDK, and ACP agents.
+- **Local auditability** for configuration, sessions, tool logs, and memory without a Cleo-hosted account service.
+
+## Product surfaces
+
+| Surface | Audience | Primary use |
+| --- | --- | --- |
+| Cleo Desktop | End users and developers | Conversation and project management, chat, Productivity, memory inspection, model settings, updates, and local evolution |
+| Cleo Chat CLI / TUI | Terminal users | One-shot prompts, continuous chat, image attachments, project memory, and session resume |
+| Productivity TUI | Software developers | Run Codex, Claude SDK, or ACP agents in a selected working directory |
+| `cleo-codex-mcp` | Integrators | Expose `codex` and `codex-reply` over stdio MCP |
+
+## Highlights
+
+- Streaming chat and one-shot tasks with JPEG, PNG, WebP, and GIF attachments.
+- Codex subscription chat sends images through the Codex runtime and retains image context when restoring history or asking follow-up questions.
+- Paginated message history, collapsible intermediate activity, and native Codex/Claude questions.
+- Local skill discovery, search, and invocation in native Claude/Codex development sessions.
+- Local evolution from requirements and source edits through build checks, application, acceptance, and version saving.
+- Source snapshot contributions through independent receiving branches, with PR status and merge investigation and repair.
+- A provider-neutral coding-harness data plane plus optional Codex-specific controls.
+- An append-only `events.jsonl` source of truth, atomic manifests, and rebuildable SQLite indexes.
+- `non_productivity` and `productivity` memory spaces, with explicit project filters for applicable preferences.
+- Deterministic compaction, secret redaction, and DreamAgent preference edits with evidence validation and conflict handling.
+- Project preferences, one replaceable handoff snapshot on manual consolidation, and history retrieval; existing persona remains compatible, with no new automatic persona extraction.
+- Local shell controls for allowlists, path boundaries, timeouts, output limits, and audit logging.
+- Per-thread browser sessions with public/private-network and domain boundaries.
+- Self-contained platform-specific desktop packages with verified updates and separate user data.
+- Daily background SDK and browser-tool updates, validated before activation on the next launch; UI and Electron updates arrive with new Cleo releases. See [dependency management](docs/DEVELOPMENT.md#依赖管理).
+
+## Start in five minutes
+
+### Download the desktop app
+
+Open the **[Cleo download page](https://stdoses72.github.io/Cleo-AI-agent/)** to select a package using the system and architecture information available to your browser. You can also choose Windows x64, macOS Apple Silicon / Intel, Linux x64, or the Debian / Ubuntu deb package manually.
+
+When a browser cannot identify a Mac's chip, the page asks you to select it and offers a native detection script. The scripts need no Python or Node.js; they download the matching package to your Downloads directory, verify SHA-256, and leave installation to you. macOS packages currently use development signing without Apple notarization. See [platform and installation details](docs/PLATFORMS.en.md).
+
+Direct downloads remain available on [GitHub Releases](https://github.com/StDoses72/Cleo-AI-agent/releases/latest). Windows users can also run the existing verified installer from a source checkout:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\download.ps1 -Launch
+```
+
+This Windows installer places program files under `%LOCALAPPDATA%\Programs\Cleo`. Configuration, sessions, memory, and model caches live under `%LOCALAPPDATA%\Cleo`; updates replace the program directory without overwriting user data.
+
+On first launch, open **Settings → Models**, configure a provider, model, API key, and optional base URL, then select profiles for Cleo and DreamAgent. API keys are written only to local configuration and are never returned in plaintext by the desktop read API.
+
+### Run from source
+
+Python 3.12+ is required. Node.js and `agent-browser` are needed for browser tools.
+
+```powershell
+git clone https://github.com/StDoses72/Cleo-AI-agent.git
+Set-Location Cleo-AI-agent
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e ".[dev]"
+npm install -g agent-browser@0.33.1
+Copy-Item cleo\config\templates\cleo.example.json config\cleo.json
+Copy-Item cleo\config\templates\harnesses.example.json config\harnesses.json
+```
+
+Add at least one working agent profile to `config/cleo.json`, then run:
+
+```powershell
+cleo
+cleo "Summarize this repository's architecture."
+cleo --productivity --cwd .
+```
+
+Linux and macOS use the same Python package and JSON formats. See [platform support](docs/PLATFORMS.en.md) for native builds, installation formats and signing boundaries. Available prebuilt assets depend on the current GitHub Release.
+
+## Common workflows
+
+### Desktop
+
+- **Development and skills**: select a working directory and a Claude/Codex harness, type `/` to find a local skill, then select it, add arguments, and send. Reopen the session after installing a skill to refresh the catalog. See [local skills](docs/local-skills.en.md).
+- **Local evolution**: describe a change in the evolution view, wait for checks and packaging to pass, then apply it. After trying the build, confirm acceptance directly; feedback is optional, and applying alone does not count as acceptance. Save a version you like, continue editing, or discard the current changes. See [local evolution](docs/cleo-evolution.en.md) and [direct acceptance](docs/direct-acceptance.en.md).
+- **Version updates**: check official releases in Settings → Updates. The evolution version picker also offers official and saved local versions. Switching program versions does not roll chats, memory, or configuration back to an earlier snapshot.
+- **Source contributions**: open the PR dialog and select a checked local build and an empty receiving branch created by a maintainer. Request a branch first if needed. Contributions contain a full source snapshot excluding local configuration, conversations, and runtime data; maintainers decide when to merge and release. See [contribution targets and merge assistance](docs/contribution-targets.en.md).
+
+### Terminal
+
+```powershell
+# Continuous general chat
+cleo
+
+# Bind chat and memory to a logical project
+cleo --project product-planning
+
+# One-shot task
+cleo "Turn these requirements into acceptance criteria."
+
+# Start the default coding harness in the current directory
+cleo --productivity --cwd .
+
+# Select a registered provider and model
+cleo --productivity --provider codex --model gpt-5.5 --cwd .
+
+# Resume a Cleo-managed session
+cleo --resume <session-id>
+cleo --productivity --resume <session-id>
+```
+
+The chat UI supports `/help`, `/new`, `/project`, `/sessions`, `/resume`, `/rename`, `/attach`, and `/productivity`. Productivity also exposes `/cwd`, `/cd`, `/git`, `/diff`, `/model`, `/effort`, `/access`, `/approval`, `/native`, and `/resume-native`; commands vary with provider capabilities.
+
+## Architecture at a glance
+
+```text
+Desktop / CLI / TUI / MCP
+            │
+            ├── Cleo Chat ─────── Deep Agents + configured LLM
+            │
+            └── Productivity ──── AgentAdapter ─── Codex / Claude / ACP
+                                      │
+                                      ▼
+                SessionStore: manifest + append-only event log
+                                      │
+                       compact projection + local indexes
+                                      │
+                         DreamAgent consolidation
+                                      │
+                    project memory + evidence + persona
+```
+
+Four rules define the system:
+
+1. `events.jsonl` is the session source of truth; manifests, compact views, SQLite, and Markdown are projections.
+2. Every session and memory record belongs to `space + project + session_id`.
+3. Provider-native output is translated into canonical Cleo events before storage.
+4. Automatic memory never edits `AGENTS.md`, grants permissions, or creates skills.
+
+See the [architecture guide](docs/ARCHITECTURE.en.md) for component and data-flow details.
+
+## Data, privacy, and security boundaries
+
+Local-first does not mean fully offline:
+
+- Configuration, sessions, memory, runtime state, and tool audits are stored locally by default.
+- Prompts, attachments, and tool context are sent to the selected model or harness provider and remain subject to that service's policies.
+- Browser tools can access the network; localhost, private networks, link-local addresses, and cloud metadata endpoints are denied by default.
+- Shell and coding harnesses can run commands or modify files according to `cleo.json`, `harnesses.json`, and provider sandbox/approval settings.
+- `config/cleo.json` contains API keys and must not be committed or shared.
+
+Review [configuration and security boundaries](docs/CONFIGURATION.en.md) before deployment.
+
+## Repository map
+
+```text
+Cleo-AI-agent/
+├── cleo/                 # Python product core: agents, CLI, desktop service, sessions, memory, harnesses
+├── ui/                   # Electron + React desktop client
+├── config/               # Local configuration, ignored by default
+├── docs/                 # User, architecture, development, and design-decision docs
+├── memory/               # Memory policy and local runtime data
+├── scripts/              # Dependency, release, download, uninstall, and cleanup scripts
+├── skills/               # Local skills loadable by Cleo
+├── tests/                # Tests organized by production responsibility
+├── compose.yaml          # Local container entry point
+└── pyproject.toml        # Python metadata and direct dependencies
+```
+
+## Documentation
+
+- [Documentation index](docs/README.en.md)
+- [Getting started](docs/GETTING_STARTED.en.md)
+- [Configuration and security](docs/CONFIGURATION.en.md)
+- [Architecture](docs/ARCHITECTURE.en.md)
+- [Development and releases](docs/DEVELOPMENT.md)
+- [Backend contributor guide](docs/BACKEND_CODE_REVIEW.md)
+- [Runtime and data maintenance guide](docs/Cleo_Runtime_State_Maintenance_Guide.docx)
+- [Memory-system design record](docs/CASTMIND_MEMORY_MIGRATION.md)
+- [Local evolution and recovery](docs/cleo-evolution.en.md)
+- [Local skills](docs/local-skills.en.md)
+- [Source contributions and merge assistance](docs/contribution-targets.en.md)
+
+The main usage guides are available in Chinese and English. Internal development references and research notes retain their original language.
+
+## Development
+
+Run `python scripts/update_project.py --local-resolver --skip-build` to refresh dependency locks and upgrade stable development dependencies in an existing `.venv`. `--check` leaves the environment unchanged.
+
+```powershell
+pip install -e ".[dev]"
+ruff check cleo tests
+pytest -q
+
+Set-Location ui
+npm install
+npm run typecheck
+npm run test:backend
+npm run smoke
+```
+
+On the target OS and architecture, run `npm run package:portable` from `ui/` to build the full release into the repository-level `release/` directory. See the [development guide](docs/DEVELOPMENT.md) and [desktop subsystem guide](ui/README.md).
+
+## Contributing
+
+Task completion includes cleanup. Keep test, debug, and build scratch files in one designated
+temporary directory, never scattered alongside repositories or in the workspace's parent.
+After verification and delivery, remove temporary test data, throwaway applications, logs,
+screenshots, PR drafts, patch/archive copies, and obsolete build/review/backup directories.
+Retain only requested deliverables; use Git for versioning and review instead of extra backups.
+Verify deletion targets and preserve user data, real repositories, development dependencies,
+and active resources. Recheck Git status and directories; explicitly report any blocked cleanup.
+
+Issues and pull requests are welcome. Before changing the code, read [AGENTS.md](AGENTS.md), the [development guide](docs/DEVELOPMENT.md), and the relevant tests. Changes to session, memory, or provider protocols should include focused regression tests and documentation updates.
+
+Licensed under the [MIT License](LICENSE).

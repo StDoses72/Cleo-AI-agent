@@ -1,0 +1,290 @@
+import { spawn } from "node:child_process";
+import {
+  copyFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
+import { createInterface } from "node:readline";
+import { delimiter, join, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
+import { bundledPython, desktopDataHome, harnessPath } from "./platform.mjs";
+
+export class BackendBridge {
+  constructor({ app, here, spawnImpl = spawn }) {
+    this.app = app;
+    this.here = here;
+    this.process = null;
+    this.pending = new Map();
+    this.stderr = "";
+    this.closing = false;
+    this.stopped = false;
+    this.closePromise = null;
+    this.spawnImpl = spawnImpl;
+    this.runtime = null;
+  }
+
+  request(method, params = {}, onEvent = null) {
+    if (this.stopped || this.closing) return Promise.reject(new Error("Cleo 后端正在退出，不能开始新的请求。"));
+    this.start();
+    return this.#send(this.process, method, params, onEvent);
+  }
+
+  #send(child, method, params = {}, onEvent = null) {
+    const id = randomUUID();
+    this.debug(`request ${method} ${id}`);
+    return new Promise((resolveRequest, rejectRequest) => {
+      this.pending.set(id, { resolve: resolveRequest, reject: rejectRequest, onEvent });
+      child.stdin.write(`${JSON.stringify({ id, method, params })}\n`, "utf8", (error) => {
+        if (!error) return;
+        this.pending.delete(id);
+        rejectRequest(error);
+      });
+    });
+  }
+
+  start() {
+    if (this.stopped || this.closing) throw new Error("Cleo 后端正在退出，不能启动新进程。");
+    if (this.process && !this.process.killed) return;
+    const paths = this.runtimePaths();
+    this.prepareHome(paths);
+    const python = process.env.CLEO_PYTHON || paths.python || (process.platform === "win32" ? "python" : "python3");
+    const pythonPath = this.app.isPackaged
+      ? ""
+      : [paths.backendRoot, process.env.PYTHONPATH].filter(Boolean).join(delimiter);
+    const runtimePath = this.runtimePath(paths);
+    this.stderr = "";
+    const child = this.spawnImpl(python, ["-m", "cleo.desktop.server"], {
+      cwd: paths.backendRoot,
+      windowsHide: true,
+      stdio: ["pipe", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        PYTHONIOENCODING: "utf-8",
+        PYTHONUTF8: "1",
+        PYTHONPATH: pythonPath,
+        PATH: runtimePath,
+        CLEO_HOME: process.env.CLEO_HOME || paths.cleoHome,
+        CLEO_CONFIG_PATH: process.env.CLEO_CONFIG_PATH || paths.configPath,
+        CLEO_HARNESSES_CONFIG_PATH: process.env.CLEO_HARNESSES_CONFIG_PATH || paths.harnessesPath,
+        HF_HOME: process.env.HF_HOME || paths.modelsRoot,
+        ...(paths.codexBin ? { CLEO_CODEX_BIN: paths.codexBin } : {}),
+      },
+    });
+    this.process = child;
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    createInterface({ input: child.stdout }).on("line", (line) => this.handleLine(line));
+    child.stderr.on("data", (chunk) => {
+      this.stderr = `${this.stderr}${chunk}`.slice(-8000);
+      this.debug(`stderr ${chunk}`);
+    });
+    child.on("exit", (code) => {
+      this.debug(`exit ${code}`);
+      if (this.process !== child) return;
+      const detail = this.stderr.trim();
+      const message = detail || `Cleo backend exited with code ${code ?? "unknown"}.`;
+      for (const pending of this.pending.values()) pending.reject(new Error(message));
+      this.pending.clear();
+      if (this.process === child) this.process = null;
+    });
+    child.on("error", (error) => {
+      if (this.process !== child) return;
+      for (const pending of this.pending.values()) pending.reject(error);
+      this.pending.clear();
+    });
+  }
+
+  runtimePath(paths, environment = process.env, platform = process.platform) {
+    return harnessPath(paths, environment, platform, environment.HOME || environment.USERPROFILE);
+  }
+
+  handleLine(line) {
+    this.debug(line.includes("viewerUrl") ? "stdout [private desktop connection]" : `stdout ${line.slice(0, 240)}`);
+    let message;
+    try {
+      message = JSON.parse(line);
+    } catch {
+      return;
+    }
+    const pending = this.pending.get(message.id);
+    if (!pending) return;
+    if (message.type === "event") {
+      pending.onEvent?.(message.event);
+      return;
+    }
+    this.pending.delete(message.id);
+    if (message.type === "error") {
+      pending.reject(new Error(message.error?.message || "Cleo backend request failed."));
+    } else {
+      pending.resolve(message.result);
+    }
+  }
+
+  runtimePaths() {
+    if (!this.app.isPackaged) {
+      const sourceRoot = resolve(this.here, "../..");
+      return { backendRoot: sourceRoot, cleoHome: sourceRoot };
+    }
+    const electronUserData = this.app.getPath("userData");
+    const cleoHome = desktopDataHome({
+      platform: process.platform, environment: process.env,
+      home: this.app.getPath("home"), userData: electronUserData,
+    });
+    return {
+      backendRoot: process.resourcesPath,
+      cleoHome,
+      legacyCleoHome: process.env.CLEO_HOME ? null : electronUserData,
+      python: bundledPython(process.resourcesPath),
+      defaultsRoot: join(process.resourcesPath, "defaults"),
+      browserRoot: join(process.resourcesPath, "browser"),
+      configPath: join(cleoHome, "config", "cleo.json"),
+      harnessesPath: join(cleoHome, "config", "harnesses.json"),
+      modelsRoot: join(cleoHome, "models"),
+      ...this.runtime,
+    };
+  }
+
+  prepareHome(paths) {
+    if (!paths.defaultsRoot) return;
+    this.migrateLegacyHome(paths);
+    for (const directory of ["assets", "config", "data", "memory", "skills", "workspace", "models"]) {
+      mkdirSync(join(paths.cleoHome, directory), { recursive: true });
+    }
+    const defaults = [
+      ["config/cleo.json", "config/cleo.json"],
+      ["config/harnesses.json", "config/harnesses.json"],
+      ["memory/MEMORY_POLICY.md", "memory/MEMORY_POLICY.md"],
+      ["assets/startup.png", "assets/startup.png"],
+      ["AGENTS.md", "AGENTS.md"],
+      ["PERSONA.md", "PERSONA.md"],
+    ];
+    for (const [source, destination] of defaults) {
+      const target = join(paths.cleoHome, destination);
+      if (!existsSync(target)) copyFileSync(join(paths.defaultsRoot, source), target);
+    }
+    const defaultSkills = join(paths.defaultsRoot, "skills");
+    if (existsSync(defaultSkills)) {
+      cpSync(defaultSkills, join(paths.cleoHome, "skills"), {
+        recursive: true,
+        force: false,
+        errorOnExist: false,
+      });
+    }
+  }
+
+  migrateLegacyHome(paths) {
+    const legacy = paths.legacyCleoHome;
+    if (!legacy || resolve(legacy) === resolve(paths.cleoHome) || !existsSync(legacy)) return;
+    const marker = join(paths.cleoHome, ".desktop-home-migrated-v1");
+    if (existsSync(marker)) return;
+
+    mkdirSync(paths.cleoHome, { recursive: true });
+    for (const name of ["assets", "config", "data", "memory", "skills", "workspace", "models", "PERSONA.md"]) {
+      const source = join(legacy, name);
+      if (!existsSync(source)) continue;
+      cpSync(source, join(paths.cleoHome, name), {
+        recursive: true,
+        force: false,
+        errorOnExist: false,
+      });
+    }
+    this.mergeNamedConfig(
+      join(legacy, "config", "cleo.json"),
+      join(paths.cleoHome, "config", "cleo.json"),
+      ["profiles", "agents"],
+    );
+    this.mergeNamedConfig(
+      join(legacy, "config", "harnesses.json"),
+      join(paths.cleoHome, "config", "harnesses.json"),
+      ["providers"],
+    );
+    writeFileSync(marker, `${new Date().toISOString()}\n`, "utf8");
+  }
+
+  mergeNamedConfig(source, destination, sectionPath) {
+    if (!existsSync(source) || !existsSync(destination)) return;
+    const incoming = JSON.parse(readFileSync(source, "utf8"));
+    const current = JSON.parse(readFileSync(destination, "utf8"));
+    let sourceSection = incoming;
+    let targetSection = current;
+    for (const key of sectionPath) {
+      sourceSection = sourceSection?.[key];
+      targetSection[key] ||= {};
+      targetSection = targetSection[key];
+    }
+    if (!sourceSection || typeof sourceSection !== "object") return;
+    let changed = false;
+    for (const [name, value] of Object.entries(sourceSection)) {
+      if (Object.hasOwn(targetSection, name)) continue;
+      targetSection[name] = value;
+      changed = true;
+    }
+    if (!changed) return;
+    const temporary = `${destination}.${randomUUID()}.tmp`;
+    writeFileSync(temporary, `${JSON.stringify(current, null, 2)}\n`, "utf8");
+    renameSync(temporary, destination);
+  }
+
+  debug(message) {
+    if (process.env.CLEO_DESKTOP_DEBUG === "1") {
+      console.error(`[cleo-backend] ${message}`);
+    }
+  }
+
+  close() {
+    if (this.closePromise) return this.closePromise;
+    this.closing = true;
+    const completion = Promise.withResolvers();
+    this.closePromise = completion.promise;
+    const active = this.process;
+    if (active) void this.#closeProcess(active).then(completion.resolve, error => {
+      this.closePromise = null;
+      completion.reject(error);
+    });
+    else completion.resolve();
+    return this.closePromise;
+  }
+
+  shutdown() {
+    this.stopped = true;
+    return this.close();
+  }
+
+  async #closeProcess(active) {
+    if (active.exitCode !== null || active.signalCode !== null) return;
+    let onExit;
+    const exited = new Promise(done => { onExit = done; active.once("exit", onExit); });
+    let timer;
+    try {
+      try {
+        await Promise.race([
+          this.#send(active, "shutdown"), exited,
+          new Promise(done => { timer = setTimeout(done, 1800); }),
+        ]);
+      } catch {
+        // The process may exit before the final protocol response is read.
+      } finally { clearTimeout(timer); }
+      if (active.exitCode === null && active.signalCode === null) {
+        active.kill();
+        await Promise.race([exited, new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error("后端未能退出，已停止应用改动。")), 10000);
+        })]);
+      }
+    } finally {
+      clearTimeout(timer);
+      active.removeListener("exit", onExit);
+    }
+  }
+
+  async restart() {
+    await this.close();
+    if (this.stopped) return;
+    this.process = null;
+    this.closing = false;
+    this.closePromise = null;
+  }
+}

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="下载 Cleo 桌面版。为 Windows、macOS 和 Linux 选择匹配的安装包。">
+  <title>下载 Cleo</title>
+  <link rel="icon" href="./cleo.png">
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./app.mjs"></script>
+</head>
+<body>
+  <header><a class="brand" href="https://github.com/StDoses72/Cleo-AI-agent"><img src="./cleo.png" width="36" height="36" alt="">Cleo</a><a href="https://github.com/StDoses72/Cleo-AI-agent/releases/latest">版本说明 ↗</a></header>
+  <main>
+    <section class="download" aria-labelledby="title">
+      <p class="eyebrow">DESKTOP</p>
+      <h1 id="title">下载 <span>Cleo</span></h1>
+      <p class="intro">你的对话、项目与记忆，在同一个工作空间。</p>
+      <p id="detection" class="detection" role="status">正在识别系统与架构…</p>
+      <div class="selector"><label for="target">选择安装包</label><select id="target">
+        <option value="">请选择系统与架构</option>
+        <option value="windows-x64">Windows · x64</option>
+        <option value="macos-arm64">macOS · Apple Silicon（M 系列）</option>
+        <option value="macos-x64">macOS · Intel</option>
+        <option value="linux-x64">Linux · x64 便携版</option>
+        <option value="linux-deb">Debian / Ubuntu · x64（deb）</option>
+      </select></div>
+      <a id="download" class="primary" aria-disabled="true">请选择安装包 <span aria-hidden="true">↓</span></a>
+      <div class="release-meta"><span id="version">最新稳定版</span><a id="checksum" hidden>SHA-256 校验文件</a></div>
+      <p id="release-status" class="muted" role="status"></p>
+      <p id="install-note" class="install-note" hidden></p>
+      <noscript><p>浏览器未启用 JavaScript，请在 <a href="https://github.com/StDoses72/Cleo-AI-agent/releases/latest">GitHub Release</a> 中选择对应平台的安装包。</p></noscript>
+    </section>
+    <section class="terminal" aria-labelledby="terminal-title">
+      <div><p class="eyebrow">自动检测下载</p><h2 id="terminal-title">不确定你的芯片？</h2><p class="muted">在终端运行脚本，直接读取系统架构，下载并校验对应安装包。无需 Python 或 Node.js。</p></div>
+      <div class="commands">
+        <label for="shell">终端类型</label><select id="shell"><option value="posix">macOS / Linux</option><option value="windows">Windows PowerShell</option></select>
+        <div class="command"><code id="command"></code><button id="copy" type="button">复制</button></div>
+        <p class="muted">保存到「下载」目录，不自动安装。<a id="script">查看脚本 ↗</a></p>
+        <p id="copy-status" role="status"></p>
+      </div>
+    </section>
+    <footer><span>Windows x64 · macOS Apple Silicon / Intel · Linux x64</span><a href="https://github.com/StDoses72/Cleo-AI-agent/blob/main/docs/PLATFORMS.md">安装帮助 ↗</a></footer>
+  </main>
+</body>
+</html>

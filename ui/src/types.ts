@@ -1,0 +1,645 @@
+export type WorkspaceSpace = "chat" | "productivity" | "memory";
+export type ThreadSpace = Exclude<WorkspaceSpace, "memory">;
+export type ThreadStatus = "idle" | "running" | "completed" | "attention";
+
+export type UpdatePhase =
+  | "unsupported"
+  | "idle"
+  | "checking"
+  | "up-to-date"
+  | "available"
+  | "downloading"
+  | "ready"
+  | "installing"
+  | "updated"
+  | "install-failed"
+  | "error";
+
+export interface UpdateState {
+  checkedAt?: number;
+  releases?: { tag: string; title: string; prerelease: boolean; reason: string | null }[];
+  selectedTag?: string | null;
+  selectedPrerelease?: boolean;
+  currentPrerelease?: boolean;
+  phase: UpdatePhase;
+  currentVersion: string;
+  latestVersion: string | null;
+  downloadedBytes: number;
+  totalBytes: number;
+  error: string | null;
+  operationBusy?: boolean;
+  blocksTasks?: boolean;
+  installBlocked?: string | null;
+  installStage?: "preparing" | "restarting" | null;
+  dependencies?: { phase: string; error: string | null };
+}
+
+export interface Project {
+  id: string;
+  space?: ThreadSpace;
+  name: string;
+  path: string;
+  branch?: string;
+  dirtyFiles?: number;
+  accent: string;
+  removable?: boolean;
+}
+
+export interface PlanStep {
+  label: string;
+  status: "pending" | "running" | "done";
+}
+
+export interface UserQuestion {
+  id: string;
+  header: string;
+  question: string;
+  multiple: boolean;
+  secret?: boolean;
+  options: { label: string; description: string }[];
+}
+
+export interface QuestionRequest {
+  order?: number;
+  cursor?: string;
+  id: string;
+  threadId: string;
+  provider: string;
+  nativeId?: string;
+  questions: UserQuestion[];
+  status: "pending" | "answered" | "cancelled" | "unavailable";
+  answers?: Record<string, string[]>;
+}
+
+export interface TimelinePageInfo {
+  before: string;
+  after: string;
+  hasBefore: boolean;
+  hasAfter: boolean;
+  total: number;
+  revision: string;
+}
+export interface TimelinePage extends TimelinePageInfo { items: TimelineItem[] }
+export interface TimelineContent { text: string; offset: number; next: number; total: number }
+
+export interface SteerReceipt {
+  id: string;
+  threadId: string;
+  runId: string;
+  turnId?: string | null;
+  text: string;
+  mode: "native" | "boundary";
+  status: "queued" | "sending" | "received" | "failed" | "cancelled" | "uncertain";
+  revision: number;
+  retryable: boolean;
+  error?: string | null;
+  createdAt: string;
+}
+
+export type TimelineItem = {
+  timing?: TimingSummary;
+  timingError?: string | null;
+  order?: number;
+  turnId?: string;
+  turnHasAnswer?: boolean;
+  cursor?: string;
+  more?: Record<string, number>;
+} & (
+  | {
+      id: string;
+      type: "message";
+      role: "user" | "assistant";
+      content: string;
+      time: string;
+      steer?: SteerReceipt;
+    }
+  | {
+      id: string;
+      type: "thought";
+      content: string;
+      status: "running" | "done";
+    }
+  | {
+      id: string;
+      type: "plan";
+      title: string;
+      steps: PlanStep[];
+    }
+  | {
+      id: string;
+      type: "tool";
+      name: string;
+      command: string;
+      status: "running" | "done" | "error";
+      output?: string;
+      permission?: { source: string; policy: string; decision: string };
+      approvalAudit?: boolean;
+    }
+  | {
+      id: string;
+      type: "notice";
+      tone: "info" | "success" | "warning";
+      title: string;
+      detail: string;
+    }
+  | { id: string; type: "question"; request: QuestionRequest }
+);
+
+export interface ChangeFile {
+  path: string;
+  status: "added" | "modified" | "deleted";
+  additions: number;
+  deletions: number;
+  diff: string;
+}
+
+export interface ChangeSet {
+  id: string;
+  title: string;
+  createdAt: string;
+  changes: ChangeFile[];
+}
+
+export interface Usage {
+  used: number | null;
+  limit: number;
+  input: number | null;
+  output: number | null;
+}
+
+export interface LocalSkill {
+  name: string;
+  command: string;
+  source: string;
+  path: string;
+}
+
+/** One skill, agent, command, rule, prompt or instruction file compared across both sides. */
+export interface HarnessSyncItem {
+  id: string;
+  kind: string;
+  name: string;
+  state: "same" | "different" | "local_only" | "cleo_only";
+}
+
+/** Cleo's own harness directory compared with the local Claude/Codex setup. */
+export interface HarnessSyncStatus {
+  harness: "claude" | "codex";
+  localPath: string;
+  localExists: boolean;
+  cleoPath: string;
+  items: HarnessSyncItem[];
+  settings: { file: string; missingInCleo: string[] };
+}
+
+export interface HarnessSyncResult {
+  copied: string[];
+  skipped: string[];
+}
+
+export interface Thread {
+  canUndo?: boolean;
+  currentTiming?: TimingSummary | null;
+  timingError?: string | null;
+  steerReady?: boolean;
+  activeRunId?: string | null;
+  pendingApprovals?: ApprovalRequest[];
+  waitingFor?: "approval" | "question";
+  skills?: LocalSkill[];
+  id: string;
+  space: ThreadSpace;
+  projectId: string;
+  title: string;
+  summary: string;
+  updatedAt: string;
+  status: ThreadStatus;
+  items: TimelineItem[];
+  history?: TimelinePageInfo;
+  pendingQuestions?: QuestionRequest[];
+  changes: ChangeFile[];
+  changeHistory?: ChangeSet[];
+  usage: Usage;
+  runtime?: RuntimeProfile;
+  terminal?: string[];
+}
+
+export interface Attachment {
+  name: string;
+  path: string;
+  mimeType: string;
+  size: number;
+  base64?: string;
+}
+
+export type ApprovalDecision = "accept" | "acceptForSession" | "decline" | "cancel";
+
+export interface ApprovalRequest {
+  title?: string;
+  decisionLabels?: Partial<Record<ApprovalDecision, string>>;
+  id: string;
+  kind: "command" | "file_change" | "permissions" | "elicitation";
+  method: string;
+  threadId: string;
+  turnId: string;
+  itemId: string;
+  command: string;
+  cwd: string;
+  reason: string;
+  availableDecisions: ApprovalDecision[];
+  commandActions: Array<Record<string, unknown>>;
+  permissions: Record<string, unknown> | null;
+  grantRoot: string | null;
+  startedAtMs: number | null;
+  mode?: string;
+  url?: string | null;
+  unsupportedReason?: string | null;
+}
+
+export type ReasoningEffort =
+  | "none"
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh"
+  | "max"
+  | "ultra";
+
+export interface MemoryEntry {
+  id: string;
+  scope: "persona" | "project" | "preference";
+  title: string;
+  content: string;
+  source: string;
+  updatedAt: string;
+}
+
+export interface RuntimeProfile {
+  steerMode?: "native" | "boundary";
+  settingsRevision?: number;
+  permissionOptions?: {
+    access: { value: string; label: string; description: string; disabledReason?: string | null }[];
+    approval: { value: string; label: string; description: string; disabledReason?: string | null }[];
+    presets?: { value: string; label: string; description: string;
+      update: { approval: string; access?: string }; disabledReason?: string | null }[];
+    reason?: string;
+  };
+  pendingPermissions?: { provider: string; access?: string | null; approval?: string | null } | null;
+  handoffStatus?: "prepared" | "submitted" | "completed" | null;
+  supportsQuestions?: boolean;
+  profileId?: string;
+  provider: string;
+  model: string;
+  models?: string[];
+  effort: ReasoningEffort | null;
+  serviceTier?: "default" | "fast" | null;
+  supportsFastMode?: boolean;
+  access: string;
+  approval: string;
+  contextWindow?: number;
+  editable?: boolean;
+}
+
+export type RuntimeUpdate = Partial<Pick<RuntimeProfile, "model" | "effort" | "serviceTier" | "access" | "approval" | "profileId">> & {
+  discardPendingPermissions?: boolean;
+  permissionProvider?: string;
+};
+
+export interface RuntimeModelOption {
+  id: string;
+  label: string;
+  description: string;
+  isDefault: boolean;
+  defaultEffort: ReasoningEffort | null;
+  supportedEfforts: ReasoningEffort[];
+}
+
+export interface NonProductivityProfileOption {
+  id: string;
+  label?: string;
+  provider: string;
+  model: string;
+  maxTokens: number;
+  active: boolean;
+}
+
+export type ProductivityProviderType = "codex_sdk" | "claude_sdk" | "acp";
+
+export interface ProductivityProviderOption {
+  id: string;
+  type: ProductivityProviderType;
+  defaultModel: string | null;
+  modelSource: "dynamic" | "config";
+}
+
+export interface RuntimeCatalog {
+  nonProductivityProfiles: NonProductivityProfileOption[];
+  productivityProviders: ProductivityProviderOption[];
+  defaultNonProductivityProfile: string;
+  defaultProductivityProvider: string;
+}
+
+export interface ProductivityModelCatalog {
+  provider: string;
+  source: "sdk" | "acp" | "config";
+  models: RuntimeModelOption[];
+}
+
+export interface CreateThreadOptions {
+  projectPath?: string;
+  provider?: string;
+  model?: string;
+  effort?: ReasoningEffort;
+  serviceTier?: "default" | "fast";
+  profileId?: string;
+}
+
+export interface ModelProfileSummary {
+  displayName?: string;
+  models?: string[];
+  backend?: string;
+  executable?: string;
+  name: string;
+  provider: string;
+  model: string;
+  baseUrl: string | null;
+  maxTokens: number;
+  hasApiKey: boolean;
+}
+
+export interface ModelSettings {
+  activeDreamModel?: string;
+  dreamEnabled?: boolean;
+  profiles: ModelProfileSummary[];
+  activeAgent: string;
+  activeDreamAgent: string;
+}
+
+export interface AgentInstructions {
+  path: string;
+  content: string;
+  exists: boolean;
+}
+
+export interface ModelProfileInput {
+  displayName?: string;
+  models?: string[];
+  backend?: string;
+  executable?: string;
+  name: string;
+  provider: string;
+  model: string;
+  apiKey: string;
+  baseUrl: string;
+  maxTokens: number;
+  activateAgent: boolean;
+  activateDreamAgent: boolean;
+}
+
+export interface SubscriptionRuntime {
+  backend: string;
+  label: string;
+  login: string;
+  docs: string;
+}
+
+export interface SubscriptionLogin {
+  id: string;
+  status: "pending" | "completed" | "failed" | "cancelled";
+  output: string;
+  url: string | null;
+}
+
+export interface ModelConnectionInput {
+  displayName: string;
+  backend: string;
+  provider: string;
+  apiKey: string;
+  baseUrl: string;
+  executable: string;
+  models: string[];
+}
+
+export interface ModelConnectionProbe {
+  status: "connected" | "manual";
+  models: string[];
+  message?: string;
+}
+
+export type ApplyModelSettings = (operation: () => Promise<ModelSettings>) => Promise<ModelSettings>;
+
+export interface MemoryOverviewEntry {
+  history?: Array<{ commit: string; created_at: string; summary: string }>;
+  id: string;
+  scope: "project" | "persona";
+  space: "non_productivity" | "productivity" | null;
+  project: string | null;
+  category: string;
+  title: string;
+  content: string;
+  confidence: number;
+  importance: number;
+  tags: string[];
+  evidence: MemoryEvidence[];
+  evidence_count: number;
+  updated_at: string;
+}
+
+export interface MemoryEvidence {
+  space: "non_productivity" | "productivity";
+  project: string;
+  session_id: string;
+  event_id: string;
+  observed_at: string;
+}
+
+export interface MemoryProjectSummary {
+  space: "non_productivity" | "productivity";
+  project: string;
+  memory_count: number;
+  updated_at: string;
+}
+
+export interface MemoryReviewSource {
+  title?: string;
+  id: string;
+  space: "non_productivity" | "productivity";
+  project: string;
+  session_id: string;
+  status: "pending" | "failed";
+  source_version: number;
+  last_event_seq: number;
+  failure_count: number;
+  last_error: string | null;
+  updated_at: string;
+}
+
+export interface MemoryReviewEvent {
+  id: string;
+  type: string;
+  content: unknown;
+  created_at: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface MemoryReviewDetails {
+  id: string;
+  source_version: number;
+  event_count: number;
+  events: MemoryReviewEvent[];
+  omitted_events: Array<{
+    id: string;
+    seq: number;
+    type: string;
+    actor: string;
+    created_at: string | null;
+  }>;
+}
+
+export type MemoryViewMode = "all" | "projects" | "pending";
+export type MemoryReviewAction = "consolidate" | "skip";
+
+export interface MemoryOverview {
+  timings?: TimingSummary[];
+  timingError?: string | null;
+  schema_version: 1;
+  issues?: Array<{ space: string; project: string; error: string; questions?: string[] }>;
+  summary: {
+    active_memories: number;
+    project_memories: number;
+    project_scopes: number;
+    persona_traits: number;
+    pending_sources: number;
+  };
+  dream_agent: {
+    status: "idle" | "running" | "attention";
+    last_processed_at: string | null;
+    pending_count: number;
+    running_count: number;
+    failed_count: number;
+  };
+  project_summaries: MemoryProjectSummary[];
+  review_sources: MemoryReviewSource[];
+  entries: MemoryOverviewEntry[];
+}
+
+export interface WorkspaceSnapshot {
+  selectedProjectId?: string;
+  projects: Project[];
+  threads: Thread[];
+  memories: MemoryEntry[];
+  memoryOverview: MemoryOverview;
+  runtime: RuntimeProfile;
+  activeThreadId?: string | null;
+  activeSpace?: ThreadSpace;
+  backend?: {
+    connected: boolean;
+    mode: "local" | "mock";
+    commands: Record<ThreadSpace, string[]>;
+    recoverableChatBackups?: number;
+  };
+}
+
+export interface UndoChangesResult {
+  restoredFiles: number;
+  workspace: WorkspaceSnapshot;
+}
+
+export type StreamEvent =
+  | { type: "timing"; timing: TimingSummary }
+  | { type: "upsert-item"; item: TimelineItem }
+  | { type: "turn-started"; item: TimelineItem }
+  | { type: "question-request"; request: QuestionRequest }
+  | { type: "question-resolved"; request: Pick<QuestionRequest, "id" | "status" | "answers"> }
+  | { type: "changes"; changes: ChangeFile[] }
+  | { type: "change-history"; changeSet: ChangeSet }
+  | { type: "usage"; usage: Usage }
+  | { type: "runtime"; runtime: RuntimeProfile }
+  | { type: "terminal"; chunk: string }
+  | { type: "refresh"; activeThreadId: string; space: ThreadSpace }
+  | { type: "navigate-space"; space: ThreadSpace }
+  | { type: "request-attachment" }
+  | { type: "approval-request"; request: ApprovalRequest }
+  | { type: "approval-resolved"; response: { id: string; decision: ApprovalDecision } }
+  | { type: "done"; summary: string }
+  | { type: "error"; message: string };
+
+export interface CleoClient {
+  getTiming(timingId: string): Promise<TimingDetails>;
+  loadWorkspace(): Promise<WorkspaceSnapshot>;
+  loadMemory(): Promise<Pick<WorkspaceSnapshot, "memories" | "memoryOverview">>;
+  loadThread(threadId: string, activate?: boolean): Promise<Thread>;
+  loadTimeline(threadId: string, direction?: "latest" | "before" | "after", cursor?: string): Promise<TimelinePage>;
+  readTimelineContent(threadId: string, itemId: string, field: string, offset: number): Promise<TimelineContent>;
+  getPendingQuestions(threadId: string): Promise<QuestionRequest[]>;
+  resolveQuestion(threadId: string, questionId: string, answers: Record<string, string[]>): Promise<void>;
+  createThread(space: ThreadSpace, projectId: string, options?: CreateThreadOptions): Promise<Thread>;
+  deleteThread(threadId: string): Promise<WorkspaceSnapshot>;
+  addProject(space: ThreadSpace, projectPath: string): Promise<WorkspaceSnapshot>;
+  removeProject(projectId: string): Promise<WorkspaceSnapshot>;
+  restoreChatBackups(): Promise<WorkspaceSnapshot>;
+  streamTurn(threadId: string, prompt: string, attachments?: Attachment[], runId?: string): AsyncGenerator<StreamEvent>;
+  cancelRun(threadId: string, runId?: string): Promise<boolean>;
+  steerRun(threadId: string, runId: string, requestId: string, text: string, retry?: boolean): Promise<TimelineItem>;
+  resolveApproval(threadId: string, approvalId: string, decision: ApprovalDecision): Promise<void>;
+  updateRuntime(threadId: string, update: RuntimeUpdate): Promise<RuntimeProfile>;
+  switchHarness(threadId: string, provider: string, model: string, effort?: RuntimeProfile["effort"]): Promise<RuntimeProfile>;
+  pickAttachments(): Promise<Attachment[]>;
+  prepareAttachments(files: File[]): Promise<Attachment[]>;
+  pickWorkspace(): Promise<string | null>;
+  copyText(value: string): Promise<void>;
+  revealPath(value: string): Promise<void>;
+  openLocalPath(href: string, workspacePath: string): Promise<void>;
+  getConfigTemplates(): Promise<{ cleo: string; harnesses: string }>;
+  getAgentInstructions(): Promise<AgentInstructions>;
+  getModelSettings(): Promise<ModelSettings>;
+  getRuntimeCatalog(): Promise<RuntimeCatalog>;
+  getProductivityModels(provider: string, projectPath?: string): Promise<ProductivityModelCatalog>;
+  getLocalSkills(provider: string, projectPath?: string): Promise<LocalSkill[]>;
+  getHarnessSync(): Promise<HarnessSyncStatus[]>;
+  syncHarnessItems(harness: string, direction: "import" | "export", items: string[], settings?: boolean): Promise<HarnessSyncResult>;
+  saveModelProfile(profile: ModelProfileInput): Promise<ModelSettings>;
+  saveDreamSettings(selection: string, model?: string): Promise<ModelSettings>;
+  checkModelConnection(connection: Partial<ModelConnectionInput> & { profileId?: string }): Promise<ModelConnectionProbe>;
+  createModelConnection(connection: ModelConnectionInput): Promise<ModelSettings>;
+  selectChatModel(profileId: string, model: string): Promise<ModelSettings>;
+  renameModelConnection(profileId: string, label: string): Promise<ModelSettings>;
+  removeModelConnection(profileId: string): Promise<ModelSettings>;
+  getSubscriptionCatalog(): Promise<SubscriptionRuntime[]>;
+  checkSubscription(profile: ModelProfileInput): Promise<{ status: string; models: string[] }>;
+  startSubscriptionLogin(profile: ModelProfileInput): Promise<SubscriptionLogin>;
+  readSubscriptionLogin(loginId: string): Promise<SubscriptionLogin>;
+  cancelSubscriptionLogin(loginId: string): Promise<SubscriptionLogin>;
+  saveAgentInstructions(content: string): Promise<AgentInstructions>;
+  getMemoryReviewDetails(source: MemoryReviewSource): Promise<MemoryReviewDetails>;
+  reviewMemorySource(
+    source: MemoryReviewSource,
+    action: MemoryReviewAction,
+  ): Promise<WorkspaceSnapshot>;
+  undoChanges(threadId: string): Promise<UndoChangesResult>;
+  resetWorkspace(): Promise<void>;
+}
+
+export interface TimingSummary {
+  title?: string | null;
+  id: string;
+  sessionId: string;
+  space: string;
+  project: string;
+  kind: "reply" | "dream";
+  turnId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  status: "running" | "completed" | "failed" | "cancelled" | "unconfirmed" | "skipped" | "needs_clarification" | "pending";
+  elapsedMs: number;
+  phase: string | null;
+  unavailable: string[];
+  persistenceError: string | null;
+}
+
+export interface TimingDetails extends TimingSummary {
+  accumulatedMs: number;
+  attempts: TimingSummary[];
+  spans: { id: string; ordinal: number; label: string; category: string; parentId: string | null;
+    elapsedMs: number; status: TimingSummary["status"] }[];
+}

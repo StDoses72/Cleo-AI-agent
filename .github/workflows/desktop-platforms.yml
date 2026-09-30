@@ -1,0 +1,111 @@
+name: Desktop platforms
+
+on:
+  pull_request:
+    paths-ignore:
+      - 'download/**'
+      - '.github/workflows/download-page.yml'
+      - 'README.md'
+      - 'README.en.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dependencies:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v6
+      - name: Resolve latest stable dependencies once for all platforms
+        run: python scripts/update_project.py --local-resolver --skip-build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dependency-locks
+          if-no-files-found: error
+          path: |
+            requirements.txt
+            ui/package-lock.json
+            ui/runtime/package-lock.json
+
+  desktop:
+    needs: dependencies
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: windows-x64
+          - os: macos-14
+            target: macos-arm64
+          - os: macos-15-intel
+            target: macos-x64
+          - os: ubuntu-24.04
+            target: linux-x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dependency-locks
+          path: .
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - uses: actions/setup-python@v5
+        id: python
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v6
+      # Release gates cover distribution only. Feature suites remain opt-in for development.
+      - name: Install launch-check tooling
+        run: npm ci --prefix ui --ignore-scripts --no-audit --no-fund
+      - name: Linux desktop libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgtk-3-0t64 libnss3 libgbm1 libasound2t64
+      - name: Build native POSIX package
+        if: runner.os != 'Windows'
+        run: npm --prefix ui run package:portable -- --locked-dependencies
+      - name: Build native Windows package
+        if: runner.os == 'Windows'
+        run: ./scripts/build-release.ps1 -LockedDependencies -ElectronMirror '' -PythonIndex 'https://pypi.org/simple/'
+      - name: Verify packaged application starts
+        if: runner.os != 'Linux'
+        run: npm --prefix ui run smoke:package-launch
+      - name: Verify Linux package installs and starts
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y ./release/Cleo-linux-x64.deb
+          CLEO_EXECUTABLE=/opt/Cleo/Cleo xvfb-run -a npm --prefix ui run smoke:package-launch
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-${{ matrix.target }}
+          if-no-files-found: error
+          path: |
+            ui/output/playwright/
+            release/*.zip
+            release/*.tar.gz
+            release/*.deb
+            release/*.sha256
+            release/release*.json

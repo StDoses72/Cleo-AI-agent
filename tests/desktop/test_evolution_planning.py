@@ -1,0 +1,275 @@
+import asyncio
+import json
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pytest
+
+from cleo.desktop.evolution_planning import (
+    INSTRUCTIONS,
+    analyze_request,
+    parse_object,
+    plan_request,
+    source_inventory,
+)
+
+REQUEST = "给侧栏按钮显示文字"
+
+
+@pytest.mark.parametrize("reply", [
+    '```json\n{"paths": []}\n```\n\n目录中没有相关模块。',
+    '所选源码如下：\n```JSON\r\n{"paths": []}\r\n```',
+    '分析结果：\n{"paths": []}\n以上是相关文件。',
+])
+def test_planner_accepts_one_json_object_with_model_commentary(reply):
+    assert parse_object(reply) == {"paths": []}
+
+
+@pytest.mark.parametrize("reply", ['', '没有结果', '{"paths": []} {"paths": ["other"]}'])
+def test_planner_reports_unusable_or_ambiguous_output(reply):
+    with pytest.raises(ValueError, match="分析.*JSON"):
+        parse_object(reply)
+
+
+def fixture(tmp_path):
+    source = tmp_path / "ui" / "src"
+    source.mkdir(parents=True)
+    (source / "Button.tsx").write_text(
+        "<button aria-label='侧栏'><Icon /></button>\n", encoding="utf-8"
+    )
+    return {"intent": "change", "cases": [{"title": "显示标签", "requirement": REQUEST,
+        "current": "按钮只有图标", "trigger": "打开侧栏", "expectation": "文字标签可见",
+        "references": [{"path": "ui/src/Button.tsx", "line": 1}]}]}
+
+
+def run_plan(root, result):
+    calls = []
+
+    async def complete(instructions, prompt):
+        calls.append((instructions, json.loads(prompt)))
+        return json.dumps({"paths": ["ui/src/Button.tsx"]} if len(calls) == 1 else result)
+
+    return asyncio.run(plan_request(root, REQUEST, complete)), calls
+
+
+def test_reads_related_code_before_preparing_grounded_manual_cases(tmp_path):
+    result, calls = run_plan(tmp_path, fixture(tmp_path))
+    assert "<button" in calls[1][1]["sources"]["ui/src/Button.tsx"]
+    case = result["cases"][0]
+    assert case["current"].startswith("尚未验证")
+    assert case["method"] == "manual"
+    assert case["requirement"] == REQUEST
+    assert "Button.tsx:1:" in case["evidence"]
+    assert "fixture" not in case
+
+
+def test_repeated_steps_are_deduplicated_without_merging_distinct_outcomes(tmp_path):
+    plan = fixture(tmp_path)
+    plan["cases"].append(dict(plan["cases"][0]))
+    plan["cases"].append({**plan["cases"][0], "expectation": "键盘可以聚焦按钮"})
+    result, _ = run_plan(tmp_path, plan)
+    assert len(result["cases"]) == 2
+    assert result["cases"][1]["expectation"] == "键盘可以聚焦按钮"
+
+
+@pytest.mark.parametrize("requirement", ["给侧栏按钮 显示文字", "让侧栏按钮带有文字标签"])
+def test_requirement_summary_does_not_need_to_quote_request(tmp_path, requirement):
+    """Purpose: Allow formatted or paraphrased requirement summaries.
+
+    Input: A valid case whose summary differs from the original request.
+    Output: An accepted case with the original request still passed to the model.
+    """
+    plan = fixture(tmp_path)
+    plan["cases"][0]["requirement"] = requirement
+    result, calls = run_plan(tmp_path, plan)
+    assert result["cases"][0]["requirement"] == requirement
+    assert calls[1][1]["request"] == REQUEST
+
+
+def test_existing_steps_are_given_as_context_without_rewriting_request(tmp_path):
+    plan = fixture(tmp_path)
+    previous = [{"trigger": "打开侧栏", "expectation": "文字标签可见"}]
+    calls = []
+
+    async def complete(_instructions, prompt):
+        calls.append(json.loads(prompt))
+        return json.dumps({"paths": ["ui/src/Button.tsx"]} if len(calls) == 1 else plan)
+
+    asyncio.run(plan_request(tmp_path, REQUEST, complete, previous))
+    assert calls[1]["existing_cases"] == previous
+    assert calls[1]["request"] == REQUEST
+
+
+def test_investigation_can_reach_editing_without_ci_logs_or_source_references(tmp_path):
+    """Purpose: Prepare a clear repair request before its agent fetches missing CI evidence.
+
+    Input: A PR repair request and a planner that has not accessed its logs.
+    Output: Manual criteria suitable for dispatch, without invented source evidence.
+    """
+    request = "https://github.com/example/repo/pull/40/checks 查明四个检查失败的原因并修复"
+    replies = iter([
+        {"paths": []},
+        {"intent": "investigate", "cases": [{
+            "title": "调查并修复 CI", "requirement": "查明四个检查失败的原因并修复",
+            "current": "尚未获取检查日志，失败原因待调查", "trigger": request,
+            "expectation": "获取检查日志，报告根因并修复；运行相关测试并报告实际结果",
+            "references": [],
+        }]},
+    ])
+
+    async def complete(_instructions, _prompt):
+        return json.dumps(next(replies))
+
+    result = asyncio.run(plan_request(tmp_path, request, complete))
+    assert result["intent"] == "change"
+    assert result["cases"][0]["current"].startswith("尚未验证（待调查）")
+    assert "用户需求" in result["cases"][0]["evidence"]
+    assert result["cases"][0]["method"] == "manual"
+
+
+def test_inventory_includes_ci_configuration_and_regression_tests(tmp_path):
+    fixture(tmp_path)
+    for name in [".github/workflows/checks.yml", "tests/desktop/test_ci.py", "ui/package.json"]:
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}", encoding="utf-8")
+    assert {
+        ".github/workflows/checks.yml", "tests/desktop/test_ci.py", "ui/package.json"
+    } <= set(source_inventory(tmp_path))
+
+
+@pytest.mark.parametrize("intent", ["question", "clarification"])
+def test_nonediting_intents_return_no_cases(tmp_path, intent):
+    fixture(tmp_path)
+    result, _ = run_plan(
+        tmp_path, {"intent": intent, "answer": "解释或澄清问题", "cases": ["ignored"]}
+    )
+    assert result["intent"] == intent
+    assert result["cases"] == []
+
+
+@pytest.mark.parametrize(
+    "change", ["line", "path", "empty-requirement", "missing-trigger", "empty-cases"]
+)
+def test_rejects_fabricated_evidence_and_incomplete_cases(tmp_path, change):
+    result = fixture(tmp_path)
+    if change == "line":
+        result["cases"][0]["references"][0]["line"] = 200
+    elif change == "path":
+        result["cases"][0]["references"][0]["path"] = "unread.tsx"
+    elif change == "empty-requirement":
+        result["cases"][0]["requirement"] = ""
+    elif change == "missing-trigger":
+        del result["cases"][0]["trigger"]
+    else:
+        result["cases"] = []
+    with pytest.raises(ValueError):
+        run_plan(tmp_path, result)
+
+
+def test_source_inventory_excludes_user_data_and_rejects_unselected_paths(tmp_path):
+    fixture(tmp_path)
+    for folder in ["memory", "data", "config", "ui/src/node_modules"]:
+        directory = tmp_path / folder
+        directory.mkdir(parents=True)
+        (directory / "private.py").write_text("private content", encoding="utf-8")
+    assert source_inventory(tmp_path) == ["ui/src/Button.tsx"]
+    model = AsyncMock(return_value=json.dumps({"paths": ["../memory/private.py"]}))
+    with pytest.raises(ValueError, match="有效的相关源码"):
+        asyncio.run(plan_request(tmp_path, REQUEST, model))
+    assert model.await_count == 1
+
+
+def test_subscription_analysis_uses_isolated_cwd_and_no_session_writes(monkeypatch, tmp_path):
+    result = fixture(tmp_path)
+    seen = []
+
+    closed = []
+
+    class Provider:
+        async def create_session(self, root, model):
+            assert Path(root) != tmp_path
+            return SimpleNamespace(id="temporary")
+
+        async def prompt(self, session_id, prompt, *, on_event):
+            response = {"paths": ["ui/src/Button.tsx"]} if len(seen) == 1 else result
+            return SimpleNamespace(status="completed", response=json.dumps(response))
+
+        async def close(self, session_id):
+            closed.append(session_id)
+
+    def transport(profile, mcp):
+        seen.append((mcp.project_path, mcp.mode, profile.backend, mcp.instructions))
+        assert mcp.mode == "dream_extract"
+        return Provider()
+
+    monkeypatch.setattr("cleo.integrations.subscriptions.create_runtime", transport)
+    def forbid_store(*args, **kwargs):
+        raise AssertionError("Read-only preparation must not initialize a live session index")
+    monkeypatch.setattr("cleo.sessions.store.SessionStore", forbid_store)
+    settings = SimpleNamespace(productivity=SimpleNamespace(providers={"task": SimpleNamespace(
+        type="codex_sdk", enabled=True, model="default")}))
+    before = (tmp_path / "ui/src/Button.tsx").read_bytes()
+    plan = asyncio.run(analyze_request(settings, {"provider": "task"}, tmp_path, REQUEST))
+    assert plan["intent"] == "change"
+    assert len(seen) == 2
+    assert closed == ["temporary", "temporary"]
+    assert all(not root.exists() for root, *_ in seen)
+    assert (tmp_path / "ui/src/Button.tsx").read_bytes() == before
+
+
+def test_unsupported_readonly_connection_fails_before_any_runtime(tmp_path):
+    settings = SimpleNamespace(productivity=SimpleNamespace(providers={}),
+                               active_agent_profile=SimpleNamespace(backend="unknown"))
+    with pytest.raises(ValueError, match="只读分析"):
+        asyncio.run(analyze_request(settings, {}, tmp_path, REQUEST))
+
+
+def test_subscription_failure_closes_transport_without_creating_history(monkeypatch, tmp_path):
+    from cleo.desktop.evolution_planning import subscription_text
+
+    provider = SimpleNamespace(
+        create_session=AsyncMock(return_value=SimpleNamespace(id="temporary")),
+        prompt=AsyncMock(return_value=SimpleNamespace(status="failed", error="connection lost")),
+        close=AsyncMock(),
+    )
+    monkeypatch.setattr("cleo.integrations.subscriptions.create_runtime", lambda *_: provider)
+    with pytest.raises(ValueError, match="connection lost"):
+        asyncio.run(
+            subscription_text(SimpleNamespace(model="default"), tmp_path, "instructions", "request")
+        )
+    provider.close.assert_awaited_once_with("temporary")
+
+
+def test_timeout_has_a_recoverable_reason(monkeypatch, tmp_path):
+    fixture(tmp_path)
+    settings = SimpleNamespace(productivity=SimpleNamespace(providers={"task": SimpleNamespace(
+        type="codex_sdk", enabled=True, model="default")}))
+    monkeypatch.setattr(
+        "cleo.desktop.evolution_planning.subscription_text", AsyncMock(side_effect=TimeoutError)
+    )
+    with pytest.raises(ValueError, match="180 秒.*原需求已保留"):
+        asyncio.run(analyze_request(settings, {"provider": "task"}, tmp_path, REQUEST))
+
+
+def test_service_only_analyzes_managed_evolution_threads(monkeypatch, tmp_path):
+    from cleo.desktop.service import DesktopService
+    service = DesktopService.__new__(DesktopService)
+    service.settings = object()
+    service.store = SimpleNamespace(load_manifest=lambda _: {"cwd": str(tmp_path)})
+    monkeypatch.setenv("CLEO_EVOLUTION_WORKSPACE", str(tmp_path))
+    analyze = AsyncMock(return_value={"intent": "question", "answer": "read only", "cases": []})
+    monkeypatch.setattr("cleo.desktop.evolution_planning.analyze_request", analyze)
+    assert asyncio.run(service.is_evolution_thread(thread_id="test"))
+    asyncio.run(service.analyze_evolution_request(thread_id="test", request="解释这个按钮"))
+    analyze.assert_awaited_once()
+    monkeypatch.setenv("CLEO_EVOLUTION_WORKSPACE", str(tmp_path / "different"))
+    with pytest.raises(ValueError, match="进化会话"):
+        asyncio.run(service.analyze_evolution_request(thread_id="test", request="change"))
+
+
+def test_planning_policy_never_claims_executed_baseline_or_per_case_approval():
+    assert "不得声称运行过旧版" in INSTRUCTIONS
+    assert "明确的修改需求直接准备具体验收" in INSTRUCTIONS
+    assert "普通界面需求" in INSTRUCTIONS

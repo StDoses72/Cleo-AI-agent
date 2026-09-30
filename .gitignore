@@ -1,0 +1,66 @@
+.env
+.env.*
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+.venv-*/
+
+# Local uv resolution; this project locks deploy dependencies in requirements.txt.
+/uv.lock
+
+# Python packaging outputs.
+/build/
+/dist/
+/*.egg-info/
+
+# Local model/provider profile with real API keys.
+config/cleo.json
+config/harnesses.json
+/cleo/config/cleo.json
+/cleo/config/harnesses.json
+
+# Runtime state, logs, and generated local data.
+data/*
+!data/.gitkeep
+!data/runtime_example.json
+
+# Session event logs, indexes, and generated long-term memory.
+memory/thread_objects/
+memory/threads.jsonl
+memory/projects/
+memory/non_productivity/
+memory/productivity/
+memory/sessions.sqlite3*
+memory/persona.sqlite3*
+memory/.memory-git.lock
+data/session_artifacts/
+
+# User projects mounted into the local Docker workspace.
+/workspace/
+
+# Temporary test backups created during local validation.
+.codex-test-backup-*/
+.codex-test-tmp-*/
+/tests/.tmp-*/
+/tests/.diagnostic-deps/
+/.local-preview-*/
+
+# Cleo desktop UI dependencies and renderer artifacts.
+/ui/node_modules/
+/ui/.npm-cache/
+/.test-deps/
+/ui/runtime/node_modules/
+/ui/dist/
+/ui/output/
+/ui/*.tsbuildinfo
+
+# Clean desktop release workspace and final distributables.
+/.release-build/
+/release/
+
+# Generated architecture validation reports and screenshots.
+/docs/architecture/*.visual-check.*
+/docs/architecture/*.receipt.json
