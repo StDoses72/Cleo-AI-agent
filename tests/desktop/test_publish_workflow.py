@@ -251,6 +251,15 @@ class PublishWorkflowTests(unittest.TestCase):
                     with zipfile.ZipFile(archive, "w") as bundle:
                         for name, data in entries.items():
                             bundle.writestr(name, data)
+                installer = {
+                    "windows-x64": "Cleo-windows-x64-setup.exe",
+                    "macos-arm64": "Cleo-macos-arm64.pkg",
+                    "macos-x64": "Cleo-macos-x64.pkg",
+                }.get(target)
+                if installer:
+                    (folder / installer).write_bytes(b"isolated installer fixture")
+                    checksum = hashlib.sha256((folder / installer).read_bytes()).hexdigest()
+                    (folder / f"{installer}.sha256").write_text(checksum + " " + installer)
                 digest = hashlib.sha256(archive.read_bytes()).hexdigest()
                 (folder / f"Cleo-{target}.sha256").write_text(digest + " " + archive.name)
                 manifest = "release.json" if target == "windows-x64" else f"release-{target}.json"
@@ -267,7 +276,7 @@ class PublishWorkflowTests(unittest.TestCase):
                         exec(workflow_script("Verify complete packages and checksums"), {})
                 else:
                     exec(workflow_script("Verify complete packages and checksums"), {})
-                    self.assertEqual(len(list((Path(temporary) / "release-files").iterdir())), 14)
+                    self.assertEqual(len(list((Path(temporary) / "release-files").iterdir())), 20)
 
     def test_dependency_drift_blocks_release_even_when_archive_checksums_match(self):
         for kind in ("lock", "sdk"):
