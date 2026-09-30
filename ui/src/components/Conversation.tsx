@@ -1221,8 +1221,8 @@ function Composer({
         ) : null}
         {attachmentError ? <div className="attachment-error" role="alert">{attachmentError}</div> : null}
         {harnessSwitchStatus ? <div className="harness-switch-status" role="status">{harnessSwitchStatus}</div> : null}
-        {!harnessSwitchStatus && runtime?.handoffStatus === "prepared" ? <div className="harness-switch-status" role="status">交接材料已准备；发送下一条消息时提交给当前 Harness。完整历史仍可查阅。</div> : null}
-        {!harnessSwitchStatus && runtime?.handoffStatus === "submitted" ? <div className="harness-switch-status" role="status">交接请求已提交，尚无首轮完成记录；继续前请核对已有操作，避免重复执行。</div> : null}
+        {!harnessSwitchStatus && runtime?.handoffStatus === "prepared" ? <div className="harness-switch-status" role="status">交接已准备，随下一条消息提交</div> : null}
+        {!harnessSwitchStatus && runtime?.handoffStatus === "submitted" ? <div className="harness-switch-status" role="status">交接已提交但尚未完成首轮，继续前请核对已执行的操作</div> : null}
         {sendError ? <div className="attachment-error" role="alert">{sendError}</div> : null}
         {computerUseSelected && <div className="attachment-row"><span className="attachment-chip computer-use-chip">
           <span>Computer Use</span>
@@ -1475,7 +1475,7 @@ function RuntimeSelector({
             <>
               <div className="runtime-menu-heading">
                 <span>选择运行方式</span>
-                <small>{running ? "当前轮结束后切换 · 历史保留" : "当前会话生效 · 历史保留"}</small>
+                {running && <small>当前轮结束后切换</small>}
               </div>
               <div className="runtime-menu-list">
                 {providers.map((provider) => (

@@ -153,7 +153,7 @@ export function ThreadSidebar({
                   disabled={choosingWorkspace}
                 >
                   <span className="project-glyph compact"><FolderOpen size={14} /></span>
-                  <span><strong>{space === "productivity" ? "新项目" : "打开工作目录"}</strong><small>选择或新建本地文件夹</small></span>
+                  <span><strong>{space === "productivity" ? "新项目" : "打开工作目录"}</strong></span>
                 </button>
                 {projects
                   .filter((project) =>
@@ -239,7 +239,7 @@ export function ThreadSidebar({
             ) : (
               <div className="sidebar-empty">
                 <FileClock size={20} />
-                <span>{query ? "没有匹配的任务" : "还没有对话记录"}</span>
+                <span>{space === "chat" ? query ? "没有匹配的对话" : "还没有对话" : query ? "没有匹配的任务" : "还没有任务"}</span>
               </div>
             )}
           </div>

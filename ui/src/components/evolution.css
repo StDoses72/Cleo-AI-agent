@@ -104,7 +104,6 @@
 .evolution-pr-history article p { margin:6px 0; font-size: var(--font-size-control); }
 .evolution-pr-history small { color:var(--muted); font-size: var(--font-size-caption); }
 .evolution-pr-history article button { flex-shrink:0; }
-.evolution-contribution-hint { font-size: var(--font-size-control); color: var(--text-muted, #a0a9b4); line-height: 1.6; }
 
 .evolution-case-evidence { white-space: pre-wrap; overflow-wrap: anywhere; }
 .evolution-feedback { margin-top: 14px; }

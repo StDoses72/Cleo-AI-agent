@@ -375,7 +375,7 @@ export function App() {
   return (
     <div ref={inspectorResize.setShell} className={appClasses} style={inspectorResize.style} data-theme={theme}>
       <TitleBar
-        projectName={evolutionOpen ? "Cleo 进化" : workspace.activeSpace === "memory" ? "记忆" : workspace.activeProject?.name ?? "Cleo"}
+        projectName={evolutionOpen ? "Cleo" : workspace.activeSpace === "memory" ? "记忆" : workspace.activeProject?.name ?? "Cleo"}
         mode={evolutionOpen ? "进化" : workspace.activeSpace === "productivity" ? "开发" : workspace.activeSpace === "chat" ? "对话" : "记忆"}
       />
       {workspace.loadingError && <div className="workspace-error" role="alert">
@@ -638,7 +638,7 @@ function TitleBar({ projectName, mode }: { projectName: string; mode: string }) 
   return (
     <header className="titlebar">
       <div className="titlebar-brand"><span className="mini-brand">C</span><strong>Cleo</strong></div>
-      <div className="titlebar-context"><span>{projectName}</span><Minus size={11} /><small>{mode}</small></div>
+      <div className="titlebar-context"><span>{projectName}</span>{mode !== projectName && <><Minus size={11} /><small>{mode}</small></>}</div>
     </header>
   );
 }

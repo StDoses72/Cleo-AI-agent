@@ -110,7 +110,6 @@ export function ReleasePublisher({ state, busy, initialUrl = "", buildId, onActi
     finally { inFlight.current = false; setPending(null); onBusy?.(false); }
   };
   return <section ref={check.root} className="release-publisher" aria-label="创建 GitHub Release">
-    <p>自动构建各平台安装包，失败时尝试修复，完成后发布到 GitHub。</p>
     <label>发布本地版本<select aria-label="发布本地版本" disabled={locked} value={choice} onChange={event => {
       const next = [...locals, ...others].find(item => item.key === event.target.value);
       setChoice(event.target.value); setUrl(next?.pr?.url || ""); setResult(false); setError("");
@@ -123,8 +122,8 @@ export function ReleasePublisher({ state, busy, initialUrl = "", buildId, onActi
         {others.map(item => <option key={item.key} value={item.key}>{sourceLabel(item.pr!, state?.builds || [])} · {item.pr!.merged ? "已合并" : "合并状态待核验"}</option>)}
       </optgroup>}
     </select></label>
-    {!locals.length && !others.length && <p role="status">暂无可发布的本地版本，请先保存版本并通过 PR 合并。</p>}
-    {source?.build && !source.pr && <p role="status" className="release-needs-pr">此版本还没有 PR。Release 只发布已合并到 GitHub 仓库的源码，请先为它提交 PR，合并后再发布。
+    {!locals.length && !others.length && <p role="status">暂无可发布的本地版本</p>}
+    {source?.build && !source.pr && <p role="status" className="release-needs-pr">此版本还没有 PR，合并后才能发布。
       {onContribute && <button type="button" disabled={locked} onClick={() => onContribute(source.build!.id)}>为此版本新建 PR</button>}</p>}
     {receipt && <a href={url} target="_blank" rel="noreferrer">查看 PR</a>}
     <form noValidate onSubmit={event => { event.preventDefault(); void publish(); }}>
@@ -146,6 +145,6 @@ export function ReleasePublisher({ state, busy, initialUrl = "", buildId, onActi
     </form>
     {pending === "startRelease" && <p role="status">{state?.logs.trim().split("\n").at(-1) || "正在检查发布权限、PR 合并状态及提交源码…"}</p>}
     {error && <p role="alert">{error}</p>}
-    {result && <p role="status">发布任务已启动，可关闭此窗口。在进化页面顶部查看构建、修复和发布进度。</p>}
+    {result && <p role="status">发布任务已启动</p>}
   </section>;
 }

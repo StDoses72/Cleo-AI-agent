@@ -98,7 +98,6 @@ function ChangesPanel({ thread, onNotify, onCopyText }: { thread: Thread | null;
       <div className="inspector-empty">
         <GitBranch size={22} />
         <strong>没有文件变更</strong>
-        <span>Agent 的修改会在这里按文件展示。</span>
       </div>
     );
   }
@@ -125,7 +124,6 @@ function ChangesPanel({ thread, onNotify, onCopyText }: { thread: Thread | null;
         <div className="inspector-empty change-snapshot-empty">
           <GitBranch size={22} />
           <strong>当前工作区没有变更</strong>
-          <span>可从上方选择之前的 Agent 修改继续审查。</span>
         </div>
       ) : (
         <>
@@ -221,14 +219,14 @@ function RunPanel({ thread, project }: { thread: Thread | null; project: Project
     <div className="run-panel">
       <section className="run-status">
         <span className={running ? "running" : hasIssue ? "issue" : completed ? "complete" : "idle"}>{running ? <Circle size={12} /> : hasIssue ? <CircleAlert size={12} /> : completed ? <Check size={12} /> : <Clock3 size={12} />}</span>
-        <div><strong>{running ? "Agent 正在执行" : hasIssue ? "上次运行需要查看" : completed ? "上次运行已完成" : "尚未运行"}</strong><small>{running || hasIssue || completed ? thread?.updatedAt : "发送第一条消息后，可在这里查看进度。"}</small></div>
+        <div><strong>{running ? "Agent 正在执行" : hasIssue ? "上次运行需要查看" : completed ? "上次运行已完成" : "尚未运行"}</strong>{(running || hasIssue || completed) && <small>{thread?.updatedAt}</small>}</div>
       </section>
       <Timing key={thread?.currentTiming?.id ?? thread?.id} summary={thread?.currentTiming} error={thread?.timingError} />
       <div className="terminal-head"><Terminal size={14} /><span>cleo · {project?.name ?? "workspace"}</span></div>
       <pre className="terminal-output" tabIndex={0} role="region" aria-label="终端输出">{thread?.terminal?.length ? thread.terminal.join("") : <span className="muted">暂无运行输出</span>}{running && <span className="cursor">▋</span>}</pre>
       <div className="run-events">
-        {thread?.items.filter((item) => item.type === "tool").slice(-8).map((item) => item.type === "tool" ? <div className={item.status === "error" ? "issue" : ""} key={item.id}>{item.status === "error" ? <CircleAlert size={14} /> : item.status === "running" ? <Circle size={14} /> : <CircleCheck size={14} />}<span>{item.name}</span><time>{item.status === "running" ? "running" : item.status}</time></div> : null)}
-        {!thread?.items.some((item) => item.type === "tool") ? <div><Clock3 size={14} /><span>尚无工具运行</span><time>—</time></div> : null}
+        {thread?.items.filter((item) => item.type === "tool").slice(-8).map((item) => item.type === "tool" ? <div className={item.status === "error" ? "issue" : ""} key={item.id}>{item.status === "error" ? <CircleAlert size={14} /> : item.status === "running" ? <Circle size={14} /> : <CircleCheck size={14} />}<span>{item.name}</span><time>{item.status === "running" ? "运行中" : item.status === "error" ? "失败" : "完成"}</time></div> : null)}
+        {!thread?.items.some((item) => item.type === "tool") ? <div><Clock3 size={14} /><span>尚无工具运行</span></div> : null}
       </div>
     </div>
   );

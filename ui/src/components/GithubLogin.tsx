@@ -13,7 +13,7 @@ export function GithubLogin({ auth, busy, onAction, onContribute }: {
 }) {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [failedCopy, setFailedCopy] = useState<string | null>(null);
-  auth = auth || { status: "disconnected", message: "在这里连接 GitHub。Cleo 自动准备登录组件，无需安装工具或填写令牌。" };
+  auth = auth || { status: "disconnected", message: "" };
   const pending = auth.status === "starting" || auth.status === "waiting" || auth.status === "checking";
   const retry = auth.status === "failed" || auth.status === "cancelled";
   const copyCode = async () => {
@@ -25,7 +25,7 @@ export function GithubLogin({ auth, busy, onAction, onContribute }: {
   };
   return <section className="evolution-github" aria-label="GitHub 登录">
     <div className="evolution-github-heading"><GitBranch size={16} /><strong>GitHub 连接</strong></div>
-    <p role="status">{auth.message}</p>
+    {auth.message && <p role="status">{auth.message}</p>}
     {auth.status === "connected" && <p role="status" aria-label="仓库发布权限">
       {auth.repositoryAccess?.login && <strong>{auth.repositoryAccess.login} · {auth.repositoryAccess.role} · </strong>}
       {auth.repositoryAccess?.message || "仓库发布权限尚未确认。"}
@@ -36,7 +36,7 @@ export function GithubLogin({ auth, busy, onAction, onContribute }: {
         <code aria-label="GitHub 一次性验证码">{auth.code}</code>
         <button onClick={() => void copyCode()}>{copiedCode === auth.code ? <Check size={14} /> : <Copy size={14} />}{copiedCode === auth.code ? "已复制" : "复制验证码"}</button>
       </div>
-      <p>打开 github.com/login/device，输入上面的验证码。授权完成后 Cleo 会自动确认。</p>
+      <p>在 github.com/login/device 输入此验证码</p>
       {auth.browserError && <p className="evolution-github-hint">{auth.browserError}</p>}
       {failedCopy === auth.code && <p className="evolution-github-hint">复制失败，请手动选择并复制验证码。</p>}
     </>}
