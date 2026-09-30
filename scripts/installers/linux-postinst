@@ -2,7 +2,7 @@
 set -eu
 if [ "$1" = configure ]; then
     if [ -f /opt/Cleo/resources/runtime-plan.json ]; then
-        ELECTRON_RUN_AS_NODE=1 /opt/Cleo/Cleo /opt/Cleo/resources/online-runtime.mjs --system
+        CLEO_INSTALL_PROGRESS_STDOUT=1 ELECTRON_RUN_AS_NODE=1 /opt/Cleo/Cleo /opt/Cleo/resources/online-runtime.mjs --system
     else
         /opt/Cleo/resources/python/bin/python3 -I -B /opt/Cleo/resources/installer-check.py
     fi

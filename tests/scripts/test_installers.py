@@ -2,6 +2,7 @@
 
 import importlib.util
 import os
+import re
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -102,6 +103,8 @@ def test_macos_installer_has_architecture_guard_and_complete_bundle_replacement(
         assert "hw.optional.arm64" in (scripts / "preinstall").read_text()
         postinstall = (scripts / "postinstall").read_text()
         assert 'online-runtime.mjs" --system' in postinstall
+        assert "CLEO_INSTALL_PROGRESS_STDOUT=1 ELECTRON_RUN_AS_NODE=1" in postinstall
+        assert "echo 'Cleo installer: Extracting Cleo'" in postinstall
         assert "/v0.6.1/Cleo-macos-arm64.zip" in postinstall
         assert "a" * 64 in postinstall
         assert "previous.app" in postinstall
@@ -114,6 +117,57 @@ def test_macos_installer_has_architecture_guard_and_complete_bundle_replacement(
     assert [command[0] for command in commands] == ["pkgbuild"]
 
 
+def source(path):
+    return (ROOT / path).read_text(encoding="utf-8")
+
+
+def test_windows_installer_waits_silently_and_polls_cancellable_progress_interactively():
+    script = source("scripts/installers/windows.iss")
+    code = script.split("[Code]", 1)[1]
+    # No local compiler runs in tests, so check block balance with strings and comments removed.
+    stripped = re.sub(r"'(?:[^']|'')*'|\{[^}]*\}|//[^\n]*", "''", code).lower()
+    words = re.findall(r"\b(begin|try|case|end)\b", stripped)
+    assert words.count("end") * 2 == len(words)
+    # ISPP would read a continuation line such as "#13#10 + ..." as a preprocessor directive.
+    assert not re.search(r"^\s*#", code, re.MULTILINE)
+    # CI installs with /VERYSILENT: keep the blocking wait and its exit code, and touch no UI.
+    silent = code.split("if WizardSilent then begin", 1)[1].split("end else", 1)[0]
+    assert "StartBootstrap(ewWaitUntilTerminated, ExitCode)" in silent
+    assert not re.search(r"RuntimePage|MsgBox|WizardForm", silent)
+    assert "Started := RunBootstrapWithProgress(ExitCode)" in code
+    assert "StartBootstrap(ewNoWait, ResultCode)" in code
+    assert "CreateOutputProgressPage(" in code
+    assert "RuntimePage.Hide" in code.split("finally", 1)[1]
+    assert "CancelButtonClick(CurPageID: Integer; var Cancel, Confirm: Boolean);" in code
+    assert "Cancel := False;" in code and "WizardForm.CancelButton.Enabled := True;" in code
+    # Cancellation asks the bootstrap to stop, force-stops its tree, then removes staging.
+    assert "SaveStringToFile(BootstrapFile('cancel')" in code
+    assert "'/PID ' + IntToStr(Pid) + ' /T /F'" in code
+    assert "DelTree(ExpandConstant('{tmp}\\Cleo'), True, True, True);" in code
+    assert "' Failed step: ' + RuntimeStageLabel" in code
+    assert "Details are in the log file:" in code and "PreparingLabel" not in code
+    start = code.split("function StartBootstrap", 1)[1].split("function ReadExitMarker", 1)[0]
+    declared = re.search(r"^param\((.*)\)$", source("scripts/installers/windows-bootstrap.ps1"),
+                         re.MULTILINE).group(1)
+    assert set(re.findall(r'" (-\w+) "', start)) == {
+        f"-{name}" for name in re.findall(r"\[string\]\$(\w+)", declared)}
+
+
+def test_installer_stage_labels_match_across_platform_scripts():
+    table = source("ui/electron/online-runtime.mjs").split("INSTALL_STAGES", 1)[1].split("});")[0]
+    stages = dict(re.findall(r'^\s+"?([\w-]+)"?: "([^"]+)",$', table, re.MULTILINE))
+    assert list(stages)[:2] == ["program-download", "extract"] and list(stages)[-1] == "done"
+    bootstrap = source("scripts/installers/windows-bootstrap.ps1")
+    assert dict(re.findall(r"'([\w-]+)' = '([^']+)'", bootstrap)) == {
+        key: stages[key] for key in ("program-download", "extract")}
+    for name in ("linux-online-postinst", "macos-online-postinstall"):
+        script = source(f"scripts/installers/{name}")
+        for key in ("program-download", "extract"):
+            assert f"echo 'Cleo installer: {stages[key]}'" in script
+        assert "CLEO_INSTALL_PROGRESS_STDOUT=1 ELECTRON_RUN_AS_NODE=1" in script
+    assert "CLEO_INSTALL_PROGRESS_STDOUT=1" in source("scripts/installers/linux-postinst")
+
+
 @pytest.mark.skipif(os.name == "nt", reason="Native POSIX installer script")
 @pytest.mark.parametrize("machine,apple_silicon,expected", [
     ("arm64", True, 0), ("x86_64", True, 0), ("x86_64", False, 1),
@@ -122,7 +176,7 @@ def test_mac_preinstall_rejects_wrong_chip_including_rosetta(
     tmp_path, machine, apple_silicon, expected,
 ):
     script = tmp_path / "preinstall"
-    script.write_text((ROOT / "scripts/installers/macos-preinstall").read_text()
+    script.write_text((ROOT / "scripts/installers/macos-preinstall").read_text(encoding="utf-8")
                       .replace("@TARGET@", "macos-arm64"))
     for name, body in {"uname": f"echo {machine}",
                        "sysctl": f"echo {int(apple_silicon)}", "pgrep": "exit 1"}.items():
