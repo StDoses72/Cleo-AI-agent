@@ -45,7 +45,6 @@ export function HarnessImportPage({ active, onRevealPath }: { active: boolean; o
   };
 
   return <div className="settings-page harness-sync">
-    <p className="settings-note">Cleo 在自己的目录中保存 Claude 与 Codex 的技能、指令和设置。这里可以对比本机 harness 的配置，把新增内容导入 Cleo，或把 Cleo 中新增的内容导出回本机。复制只补充缺少的项目，不会覆盖任何一方已有的文件；登录凭据、插件和会话历史不在同步范围内。</p>
     <div className="harness-sync-toolbar">
       <button type="button" disabled={loading || busy} onClick={() => void load()}><RefreshCw size={14} />{loading ? "正在检查…" : "重新检查"}</button>
     </div>
@@ -89,7 +88,6 @@ export function HarnessImportPage({ active, onRevealPath }: { active: boolean; o
         </div>}
         {different.length > 0 && <div className="harness-sync-group">
           <h4>同名但内容不同</h4>{list(different, false)}
-          <p className="settings-note">两边都保留，不会自动覆盖。如需统一，请打开对应目录手动替换。</p>
         </div>}
         {status.localExists && status.settings.missingInCleo.length > 0 && <div className="harness-sync-group">
           <h4>本机 {status.settings.file} 中 Cleo 缺少的设置</h4>

@@ -137,7 +137,7 @@ export function MemoryView({
   }, [expandedSource?.id, expandedSource?.source_version, detailsRetry]);
 
   const dreamStatus = reviewingId ? "正在整理"
-    : reviewError ? "整理失败，可继续重试" : dreamStatusLabel(dreamAgent);
+    : reviewError ? "整理失败" : dreamStatusLabel(dreamAgent);
 
   return (
     <main className="memory-view" data-testid="memory-view" data-mode={mode}>
@@ -170,14 +170,14 @@ export function MemoryView({
         {dreamAgent.last_processed_at && <span>上次整理 {formatRelativeTime(dreamAgent.last_processed_at)}</span>}
       </div>
 
-      <details className="memory-timing-history">
+      {(overview.timingError || Boolean(overview.timings?.length)) && <details className="memory-timing-history">
         <summary>整理耗时</summary>
         {overview.timingError ? <p role="alert">{overview.timingError}</p>
-          : overview.timings?.length ? overview.timings.map(timing => <div key={timing.id}>
+          : overview.timings?.map(timing => <div key={timing.id}>
             <span>{timing.title || timing.sessionId} · {timing.project} · {new Date(timing.createdAt).toLocaleString()}</span>
             <Timing summary={timing} />
-          </div>) : <p>耗时未记录</p>}
-      </details>
+          </div>)}
+      </details>}
 
       {mode === "projects" ? (
         <nav className="memory-project-filter" aria-label="筛选记忆项目">

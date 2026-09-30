@@ -18,7 +18,6 @@ export function QuestionDialog({ questions }: { questions: ReturnType<typeof use
       onKeyDown={handleDialogKeyDown} onCancel={event => { event.preventDefault(); questions.collapse(); }}>
       {request && <form onSubmit={event => { event.preventDefault(); void questions.submit(); }}>
         <header><h2>Agent 提问</h2><button type="button" aria-label="收起提问" onClick={questions.collapse}><X size={18} /></button></header>
-        <p>提交后继续原任务。收起窗口不会提交答案。</p>
         {request.questions.map(question => {
           const value = questions.draft[question.id] ?? { selected: [], text: "" };
           const change = (next: typeof value) => questions.setDraft({ ...questions.draft, [question.id]: next });

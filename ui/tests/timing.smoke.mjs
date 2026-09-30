@@ -81,8 +81,9 @@ try {
     };
   }, snapshot);
   await page.goto(server.resolvedUrls.local[0]);
-  await page.getByText("耗时未记录", { exact: true }).first().waitFor();
   const timing = page.locator(".conversation-shell .timing").first();
+  await timing.waitFor();
+  assert.equal(await page.locator(".conversation-shell .timing-unrecorded").count(), 0, "Unmeasured replies must not show a timing placeholder");
   assert.equal(await page.evaluate(() => window.timingTest.requests.length), 0, "Collapsed diagnostics loaded eagerly");
   await timing.locator("summary").click();
   await timing.getByText("最慢", { exact: true }).waitFor();

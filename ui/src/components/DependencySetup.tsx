@@ -64,8 +64,7 @@ export function DependencySetup() {
   };
   return <Modal open className="setup-overlay" label="运行环境" onClose={busy ? undefined : () => void close()}>
     <section className="setup-dialog">
-      <header><div><small>CLEO / SETUP</small><h2>准备你的工作环境</h2></div><button className="icon-button" aria-label="关闭运行环境" disabled={busy} onClick={() => void close()}><X size={18} /></button></header>
-      <p>已检查本机依赖。选择需要的功能，再授权安装；独立桌面可以稍后准备。</p>
+      <header><div><h2>准备你的工作环境</h2></div><button className="icon-button" aria-label="关闭运行环境" disabled={busy} onClick={() => void close()}><X size={18} /></button></header>
       {!state?.items.length && <p role="status">正在检查运行环境…</p>}
       <div className="setup-items">{state?.items.map(item => <label className="setup-item" key={item.id}>
         {item.ready ? <Check size={18} className="setup-ready" /> : <input type="checkbox" aria-label={item.action} checked={selected.includes(item.id)} disabled={busy}

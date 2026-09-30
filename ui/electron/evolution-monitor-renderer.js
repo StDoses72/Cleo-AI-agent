@@ -37,7 +37,7 @@ function renderTimeline(items) {
   }
   for (const [id, entry] of nodes) if (!keep.has(id)) { entry.node.remove(); nodes.delete(id); }
   let empty = pane.querySelector(".empty");
-  if (!nodes.size && !empty) { empty = text("div", "在主窗口选择 harness 并开始进化。\n这里同步展示对话和工具过程。", "empty"); pane.append(empty); }
+  if (!nodes.size && !empty) { empty = text("div", "暂无对话", "empty"); pane.append(empty); }
   else if (nodes.size) empty?.remove();
 }
 function renderQuestions(requests) {
@@ -88,7 +88,7 @@ async function refresh() {
     element("stop").disabled = !state.connected;
     element("discard").disabled = !state.connected || !state.canDiscard;
     element("resume").hidden = !state.paused;
-    element("hint").textContent = state.paused ? "已暂停自动继续。补充需求会保留，点击继续处理消息后执行。" : "同一会话 · 回复与工具实时同步 · 重启期间消息保留";
+    element("hint").textContent = state.paused ? "已暂停，点击继续处理消息后执行" : "";
     renderTimeline(state.thread?.items || []);
     renderQuestions(state.connected ? state.thread?.pendingQuestions || [] : []);
     element("messages").replaceChildren(...state.messages.filter(message => ["queued", "interrupted", "cancelled"].includes(message.status)).slice(-5).map(message => {
@@ -123,8 +123,6 @@ function renderActions(state) {
   element("save").disabled = !idle;
   if (!actions?.canSave) element("save-form").hidden = true;
   element("version-name").placeholder = actions?.suggestedName ? `默认：${actions.suggestedName}` : "版本名称";
-  element("save-hint").textContent = actions?.suggestedName
-    ? `留空则使用 ${actions.suggestedName}（上一个版本号末位加 1）。` : "留空则使用默认名称。";
 }
 const actionNames = { check: "build", apply: "apply", stop: "stop", discard: "discard", recovery: "recovery", resume: "resume", emergency: "emergency" };
 for (const [id, action] of Object.entries(actionNames)) element(id).addEventListener("click", async () => {

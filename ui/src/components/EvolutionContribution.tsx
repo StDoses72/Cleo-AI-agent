@@ -63,10 +63,9 @@ export function EvolutionContribution({ state, busy, onAction, onBusy, onSubmitt
   };
   return <section ref={catalog.root} aria-label="贡献提交">
     {state?.githubAuth?.repositoryAccess?.canRelease && onRelease && <div className="evolution-release-entry">
-      <span>有仓库发布权限：可以把本地版本直接发布为 GitHub Release。</span>
+      <span>发布版本</span>
       <button type="button" className="evolution-primary" disabled={locked} onClick={() => onRelease(buildId)}><Upload size={14} />Release</button>
     </div>}
-    <p>提交至 StDoses72/Cleo-AI-agent，由维护者审查。</p>
     <label>提交方式<select aria-label="提交方式" value={mode} disabled={pending} onChange={(e) => { change(); setMode(e.target.value); setTarget(""); }}>
       <option value="existing">向已有分支提交 PR</option>
       <option value="request">申请新建目标分支</option>
@@ -75,9 +74,8 @@ export function EvolutionContribution({ state, busy, onAction, onBusy, onSubmitt
       <option value="" disabled>请选择本地版本</option>
       {versions.map((b) => <option key={b.id} value={b.id}>{b.name || `本地版本 · ${b.id}`}{!b.sourceHash ? " · 待准备源码" : ""}</option>)}
     </select></label>
-    {version && buildId !== (state?.candidate || state?.active) && <p>提交 PR 前，请先在顶部“选择版本”切换到此版本并准备源码；申请新分支无需切换。</p>}
+    {mode === "existing" && version && buildId !== (state?.candidate || state?.active) && <p>请先切换到此版本并准备源码。</p>}
     {(!state?.prepared || !version?.sourceHash) && <button disabled={locked || buildId !== state?.active} onClick={() => onAction("prepare")}>准备当前版本源码</button>}
-    <p>只提交程序源码，不上传本机配置、对话和记忆。</p>
     {catalog.error && <p role="alert">{catalog.error} <button disabled={locked || catalog.pending} onClick={() => void catalog.retry()}>重试</button></p>}
     <form onSubmit={(e) => { e.preventDefault(); void submit(); }}>
       {mode === "existing" ? <>
@@ -86,10 +84,9 @@ export function EvolutionContribution({ state, busy, onAction, onBusy, onSubmitt
           {target && !branches.includes(target) && <option value={target} disabled>{target} · 不可用</option>}
           {branches.map((branch) => <option key={branch} value={branch}>{branch}</option>)}
         </select></label>
-        {catalog.data && !branches.length && <p>暂无接收分支，可选择“申请新建目标分支”。</p>}
+        {catalog.data && !branches.length && <p>暂无接收分支</p>}
         <label>PR 标题<input aria-label="PR 标题" value={title} disabled={pending} onChange={(e) => { change(); setTitle(e.target.value); }} required /></label>
       </> : <>
-        <p>将创建 GitHub Issue 申请；分支就绪后，再提交 PR。</p>
         <label>申请分支名称<input aria-label="申请分支名称" value={target} maxLength={200} disabled={pending} onChange={(e) => { change(); setTarget(e.target.value); }} required /></label>
       </>}
       <label>{mode === "existing" ? "PR 说明" : "申请说明"}<textarea aria-label={mode === "existing" ? "PR 说明" : "申请说明"} value={body} disabled={pending} maxLength={20000} onChange={(e) => { change(); setBody(e.target.value); }} required /></label>
@@ -102,10 +99,6 @@ export function EvolutionContribution({ state, busy, onAction, onBusy, onSubmitt
         {pending ? "正在提交…" : mode === "existing" ? "创建新 PR" : "提交分支申请"}
       </button>
     </form>
-    <details className="evolution-contribution-hint"><summary>提交规则</summary>
-      <p>通过自己的 fork 提交完整源码。接收分支须由维护者从 submission-base 创建并保持为空；main 与模板分支不可直接提交。</p>
-      {version?.sourceOrigin === "bundled-import" && <p>此版本的随包源码已核验；这不代表后续构建和测试已通过。</p>}
-    </details>
     {receipt?.url && <p role="status">申请已提交，目标分支尚待创建。<a href={receipt.url} target="_blank" rel="noreferrer">查看申请</a></p>}
     {Boolean(state?.branchRequests?.length) && <div className="evolution-pr-history" aria-label="目标分支申请">
       <h3>目标分支申请</h3>

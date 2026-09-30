@@ -26,7 +26,7 @@ export function Timing({ summary, error }: { summary?: TimingSummary | null; err
   const slowest = details?.spans.filter(span => !parentIds.has(span.id))
     .reduce<(typeof details.spans)[number] | undefined>((best, span) =>
       !best || span.elapsedMs > best.elapsedMs ? span : best, undefined);
-  if (!summary) return <span className="timing-unrecorded">{error || "耗时未记录"}</span>;
+  if (!summary) return error ? <span className="timing-unrecorded">{error}</span> : null;
   return <details className="timing" onToggle={event => setOpen(event.currentTarget.open)}>
     <summary>{running ? `${summary.phase || "正在处理"} · ` : "耗时 "}{duration(summary.elapsedMs)}
       {summary.status !== "completed" && !running && <span> · {statusText[summary.status]}</span>}
@@ -49,10 +49,8 @@ export function Timing({ summary, error }: { summary?: TimingSummary | null; err
             <span>{duration(span.elapsedMs)}{span.status !== "completed" && ` · ${statusText[span.status]}`}</span>
           </li>)}
         </ol>
-        <p>阶段可能重叠，总时长独立计量。{details.unavailable.length > 0 && `${details.unavailable.join("、")}不可用。`}</p>
-        {details.attempts.length > 1 && <p>{details.kind === "dream" ? "此会话各次整理" : "此回复各次尝试"}
-          耗时之和 {duration(details.accumulatedMs)}，不含尝试之间的暂停时间。</p>}
-        {details.status === "unconfirmed" && <p>显示最后一次实测值，未计入失联或应用关闭期间。</p>}
+        {details.unavailable.length > 0 && <p>{details.unavailable.join("、")}不可用</p>}
+        {details.attempts.length > 1 && <p>累计 {duration(details.accumulatedMs)}</p>}
       </>}
       {summary.persistenceError && <p role="alert">{summary.persistenceError}</p>}
     </section>

@@ -171,7 +171,6 @@ export function EvolutionPanel({ children, state, error, busy, running, otherTas
       </>}
       {sheet === "versions" && <section ref={releases.root}>
         {failure && <p role="alert">{failure}</p>}
-        <p>切换版本会保留聊天、记忆与配置。</p>
         {state?.iteration && <p className="evolution-notice">请先保存或放弃本轮修改，再切换版本。</p>}
         <div className="evolution-version-list">{versions.map((build) => <button key={build.id} disabled={blocked || Boolean(state?.iteration) || build.id === state?.active} onClick={() => act("select", { id: build.id })}>
           <span>{versionLabel(build, state?.releaseTypes?.[build.baseTag || ""])}<small>{build.kind === "local" ? `基于 ${build.baseTag || "所选版本"}` : "GitHub Release"}</small></span><small>{build.id === state?.active ? "正在使用" : "使用此版本"}</small>
@@ -194,11 +193,11 @@ export function EvolutionPanel({ children, state, error, busy, running, otherTas
         <button disabled={blocked || !state?.baseline} onClick={() => act("recovery")}><ShieldCheck size={16} />独立版本恢复</button>
       </section>}
       {sheet === "save" && <form onSubmit={(event) => { event.preventDefault(); act("save", { name }); }}>
-        <p>保存当前效果，替换上一次保存的本地版本。基础版本继续保留。</p>
+        <p>将替换上一次保存的本地版本。</p>
         <label>名称（可选）<input autoFocus aria-label="本地版本名称" value={name} onChange={(event) => setName(event.target.value)} placeholder={state?.suggestedVersionName ? `留空使用 ${state.suggestedVersionName}` : "留空使用默认名称"} maxLength={80} /></label>
         <button className="evolution-primary" disabled={blocked || !canSave}>确认保存</button>
       </form>}
-      {sheet === "discard" && <><p>放弃本轮修改，回到「{versionLabel(base)}」。聊天、记忆和配置不变。{active?.id !== base?.id ? "Cleo 会自动重启。" : ""}</p><button className="evolution-primary" disabled={blocked} onClick={() => act("discard")}>确认放弃</button></>}
+      {sheet === "discard" && <><p>回到「{versionLabel(base)}」{active?.id !== base?.id ? "，Cleo 会自动重启" : ""}。</p><button className="evolution-primary" disabled={blocked} onClick={() => act("discard")}>确认放弃</button></>}
       {sheet === "contribute" && <>
         {state?.githubAuth?.status === "connected" ? <EvolutionContribution state={state} busy={busy || running || otherTasksRunning || Boolean(state?.transaction)} onAction={contributionAction}
           initialBuildId={contributionBuild} onRelease={id => openRelease(id)}

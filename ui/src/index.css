@@ -2079,6 +2079,7 @@ small { font-size: var(--font-size-caption); }
 select.text-control {
   border: 0;
   background: transparent;
+  field-sizing: content;
 }
 
 select.text-control:hover {
@@ -3251,9 +3252,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 .segmented-control { display: flex; padding: 3px; border-radius: 7px; background: var(--surface); }
 .segmented-control button { min-width: 36px; height: 30px; border-radius: 5px; color: var(--muted); font-size: var(--font-size-caption); }
 .segmented-control button.active { color: var(--text); background: var(--surface-active); }
-.settings-note { display: flex; gap: 10px; margin-top: 24px; padding: 13px; border-left: 2px solid var(--purple); background: color-mix(in srgb, var(--purple) 6%, transparent); }
-.settings-note svg { flex: 0 0 auto; color: var(--purple); }
-.settings-note p { margin: 0; color: var(--muted); font-size: var(--font-size-caption); line-height: 1.65; }
 .settings-actions { display: flex; gap: 6px; }
 .settings-actions button,
 .settings-action { padding: 9px 13px; border: 1px solid var(--border); border-radius: 7px; color: var(--text-soft); background: var(--surface); font-size: var(--font-size-control); }
@@ -3270,7 +3268,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 .update-actions button { height: 38px; padding: 0 13px; border: 1px solid var(--border); border-radius: 7px; color: var(--text-soft); background: var(--surface); font-size: var(--font-size-control); }
 .update-actions button:first-child:not(:disabled) { border-color: transparent; color: var(--canvas); background: var(--accent); font-weight: 600; }
 .update-actions button:disabled { cursor: default; opacity: .5; }
-.update-data-note { margin: 10px 0 0; color: var(--muted); font-size: var(--font-size-caption); }
 .update-version-picker { margin-top: 24px; color: var(--muted); font-size: var(--font-size-control); }
 .update-version-picker summary { cursor: pointer; }
 .update-version-picker label { display: grid; gap: 8px; margin-top: 14px; }
@@ -3285,7 +3282,8 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 .update-notice button:disabled { opacity: .45; cursor: default; }
 
 .agent-instructions-page { display: flex; height: 100%; min-height: 455px; flex-direction: column; }
-.agent-instructions-intro { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.agent-instructions-intro { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 10px; }
+.agent-instructions-intro .agent-instructions-path { min-width: 0; margin: 0; }
 .agent-instructions-intro strong { color: var(--text-soft); font-size: var(--font-size-control); font-weight: 500; }
 .agent-instructions-intro p { max-width: 600px; margin: 5px 0 0; color: var(--muted); font-size: var(--font-size-caption); line-height: 1.65; }
 .agent-instructions-intro button,
@@ -3468,7 +3466,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 .memory-timing-history > div { padding: 10px 0; border-bottom: 1px solid var(--border); }
 
 /* Settings -> Import: compare Cleo's harness directories with the local setup. */
-.harness-sync .settings-note { display: block; margin-top: 0; color: var(--muted); font-size: var(--font-size-caption); line-height: 1.65; }
 .harness-sync-toolbar { display: flex; justify-content: flex-end; margin: 14px 0; }
 .harness-sync-toolbar button, .harness-sync-group > button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid var(--border-strong); border-radius: 7px; }
 .harness-sync-group > button.settings-primary { border-color: transparent; }

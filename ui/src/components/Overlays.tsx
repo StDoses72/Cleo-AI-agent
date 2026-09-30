@@ -7,6 +7,7 @@ import { accessLabel, approvalLabel, effortLabels } from "../runtime-labels";
 import {
   ArrowDownToLine,
   ArrowRight,
+  Boxes,
   Brain,
   Check,
   ChevronRight,
@@ -115,7 +116,7 @@ export function CommandPalette({ open, actions, onClose }: CommandPaletteProps) 
         </label>
         <div className="command-results" id="command-results" role="listbox" aria-label="命令">
           <span className="command-section-label">建议</span>
-          {filtered.map(({ id, label, hint, icon: Icon, shortcut, run }, index) => (
+          {filtered.map(({ id, label, icon: Icon, shortcut, run }, index) => (
             <button
               className={index === selectedIndex ? "focused" : ""}
               id={`command-${id}`}
@@ -130,7 +131,7 @@ export function CommandPalette({ open, actions, onClose }: CommandPaletteProps) 
               }}
             >
               <span className="command-icon"><Icon size={16} /></span>
-              <span><strong>{label}</strong><small>{hint}</small></span>
+              <span><strong>{label}</strong></span>
               {shortcut ? <kbd>{shortcut}</kbd> : <ArrowRight size={14} />}
             </button>
           ))}
@@ -224,8 +225,7 @@ export function DeleteThreadDialog({
         <div>
           <h2 id="delete-thread-title">删除“{threadTitle}”？</h2>
           <p id="delete-thread-detail">
-            永久删除此任务的本地对话记录，无法撤销。
-            {productivity ? "外部客户端中的会话会保留。" : ""}
+            此操作无法撤销。{productivity ? "外部客户端中的会话会保留。" : ""}
           </p>
         </div>
         {error && <p className="dialog-error" role="alert">{error}</p>}
@@ -266,10 +266,7 @@ export function RemoveProjectDialog({
         <span className="delete-thread-icon"><Trash2 size={18} /></span>
         <div>
           <h2 id="remove-project-title">移除“{project.name}”？</h2>
-          <p id="remove-project-detail">
-            项目会从侧边栏移除，但不会删除本地文件或 Cleo 保存的历史任务。
-            以后重新打开此目录即可恢复。
-          </p>
+          <p id="remove-project-detail">本地文件和历史任务不会被删除。</p>
         </div>
         {error && <p className="dialog-error" role="alert">{error}</p>}
         <footer>
@@ -374,7 +371,7 @@ export function SettingsModal({
             <button className={page === "appearance" ? "active" : ""} aria-current={page === "appearance" ? "page" : undefined} type="button" onClick={() => setPage("appearance")}><Sparkles size={16} />外观</button>
             <button className={page === "agent" ? "active" : ""} aria-current={page === "agent" ? "page" : undefined} type="button" onClick={() => setPage("agent")}><SlidersHorizontal size={16} />运行设置</button>
             <button className={page === "instructions" ? "active" : ""} aria-current={page === "instructions" ? "page" : undefined} type="button" onClick={() => setPage("instructions")}><FileText size={16} />对话指令</button>
-            <button className="settings-model-group" type="button" onClick={() => setPage("models")}><Plus size={16} />模型</button>
+            <button className="settings-model-group" type="button" onClick={() => setPage("models")}><Boxes size={16} />模型</button>
             <div className="settings-model-subnav">
               <button className={page === "models" ? "active" : ""} aria-current={page === "models" ? "page" : undefined} onClick={() => setPage("models")}><SlidersHorizontal size={15} />当前配置</button>
               <button className={page === "models-add" ? "active" : ""} aria-current={page === "models-add" ? "page" : undefined} onClick={() => setPage("models-add")}><Plus size={15} />新增连接</button>
@@ -438,7 +435,7 @@ export function SettingsModal({
               <SettingsRow title="记忆整理"><span className="settings-value">{dreamStatusLabel(dreamAgent)}</span></SettingsRow>
               <details className="settings-advanced"><summary>高级设置</summary>
                 <SettingsRow title="配置模板"><div className="settings-actions"><button type="button" onClick={() => onCopyConfigTemplate("cleo")}>复制 Cleo 配置</button><button type="button" onClick={() => onCopyConfigTemplate("harnesses")}>复制运行配置</button></div></SettingsRow>
-                <SettingsRow title="重置工作区" description="回到本地 main，删除未提交的改动；保留配置。"><button className="settings-action danger" type="button" onClick={() => { if (window.confirm("将仓库重置到本地 main 并清理未跟踪文件？此操作不可撤销。")) onResetWorkspace(); }}>重置工作区</button></SettingsRow>
+                <SettingsRow title="重置工作区"><button className="settings-action danger" type="button" onClick={() => { if (window.confirm("将仓库重置到本地 main 并清理未跟踪文件？此操作不可撤销。")) onResetWorkspace(); }}>重置工作区</button></SettingsRow>
               </details>
             </div>
           )}
@@ -476,8 +473,8 @@ function RuntimePermissions({ runtime, threadId, onChange }: {
       const choices = runtime.permissionOptions?.[field] ?? [];
       const value = (sameProvider && pending?.[field]) || runtime[field];
       const choice = choices.find(choice => choice.value === value);
-      return <SettingsRow key={field} title={title} description={choice?.description}>
-        {threadId && onChange && choices.length ? <select aria-label={title} value={value} disabled={saving}
+      return <SettingsRow key={field} title={title}>
+        {threadId && onChange && choices.length ? <select aria-label={title} title={choice?.description} value={value} disabled={saving}
           onChange={event => void change({ [field]: event.target.value })}>
           {!choice && <option value={value}>{label(value)}</option>}
           {choices.map(choice => <option key={choice.value} value={choice.value} disabled={Boolean(choice.disabledReason)}
@@ -486,7 +483,7 @@ function RuntimePermissions({ runtime, threadId, onChange }: {
       </SettingsRow>;
     })}
     {pending && <div className="settings-permission-pending" role="status">
-      <p>{sameProvider ? `下次运行使用所选权限。当前（含补充指令）：${accessLabel(runtime.access)} · ${approvalLabel(runtime.approval)}。`
+      <p>{sameProvider ? `下次运行生效 · 当前：${accessLabel(runtime.access)} · ${approvalLabel(runtime.approval)}`
         : "待生效权限属于之前的服务，请重新选择或取消更改。"}</p>
       <button className="settings-action" disabled={saving} onClick={() => void change({ discardPendingPermissions: true })}>取消更改</button>
     </div>}
@@ -506,7 +503,7 @@ function updateDescription(state: UpdateState) {
   if (state.phase === "ready" && state.error) return state.error;
   if (state.operationBusy && !["checking", "downloading", "installing"].includes(state.phase)) return "另一项版本操作正在进行。";
   switch (state.phase) {
-    case "unsupported": return state.error || "开发模式不会连接发布服务器；安装后的 Cleo 会自动检查。";
+    case "unsupported": return state.error || "开发版本不检查更新";
     case "idle": return "正在获取版本信息…";
     case "checking": return "正在检查更新…";
     case "up-to-date": return state.selectedTag ? `正在使用所选版本（${state.latestVersion}）。` : state.latestVersion ? `已是最新版本（${state.latestVersion}）。` : "已是最新版本。";
@@ -596,7 +593,6 @@ function UpdateSettingsPage({
       {action && <div className="update-actions">
         <button type="button" disabled={busy || (state.phase === "ready" && Boolean(state.installBlocked))} onClick={action.run}>{action.label}</button>
       </div>}
-      {["available", "ready"].includes(state.phase) && <p className="update-data-note">更新会保留聊天、记忆与配置。</p>}
       <UpdateVersionPicker state={state} busy={Boolean(busy)} onSelect={tag => void check(tag)} />
       {state.dependencies && <details className="settings-advanced"><summary>运行依赖{state.dependencies.phase === "error" ? " · 更新未完成" : ""}</summary><p>{
         state.dependencies.phase === "ready" ? "运行依赖已更新并通过检查，下次启动自动生效。"
@@ -638,7 +634,7 @@ export function UpdateNotice({
       <span className="update-notice-icon"><RefreshCw size={16} /></span>
       <div>
         <strong>{titles[state.phase] ?? `正在下载更新 · ${percent}%`}</strong>
-        <small>{result || state.phase === "installing" || state.phase === "ready" || state.operationBusy ? updateDescription(state) : state.phase === "available" ? "下载并校验后可安装" : `${formatBytes(state.downloadedBytes)} / ${formatBytes(state.totalBytes)}`}</small>
+        {state.phase !== "available" || state.operationBusy ? <small>{result || state.phase === "installing" || state.phase === "ready" || state.operationBusy ? updateDescription(state) : `${formatBytes(state.downloadedBytes)} / ${formatBytes(state.totalBytes)}`}</small> : null}
       </div>
       {state.phase === "available" ? <button type="button" disabled={state.operationBusy} onClick={onDownload}>下载</button> : null}
       {state.phase === "ready" ? <button type="button" disabled={state.operationBusy || Boolean(state.installBlocked)} onClick={onInstall}>重启安装</button> : null}
@@ -689,12 +685,9 @@ function AgentInstructionsPage({
   return (
     <form className="settings-page agent-instructions-page" onSubmit={submit}>
       <div className="agent-instructions-intro">
-        <div>
-          <p>仅用于普通对话，不影响开发任务。</p>
-        </div>
+        <code className="agent-instructions-path">{instructions?.path ?? (loading ? "正在读取…" : "尚未读取指令")}</code>
         <button type="button" disabled={!instructions?.path} onClick={() => instructions?.path && onRevealPath(instructions.path)}><FolderOpen size={14} />打开位置</button>
       </div>
-      <code className="agent-instructions-path">{instructions?.path ?? (loading ? "正在读取…" : "尚未读取指令")}</code>
       <textarea
         aria-label="对话指令内容"
         spellCheck={false}
@@ -710,7 +703,7 @@ function AgentInstructionsPage({
         }}
       />
       <footer>
-        <span className={error ? "error" : ""}>{error ?? (saved ? "已保存，后续对话生效。" : instructions?.exists === false ? "保存后会创建 AGENTS.md。" : dirty ? "有未保存修改" : "未修改")}</span>
+        <span className={error ? "error" : ""}>{error ?? (saved ? "已保存" : dirty ? "有未保存修改" : "")}</span>
         <div>
           <button type="button" disabled={!dirty || loading} onClick={() => { setDraft(baseline); setError(null); setSaved(false); }}><RotateCcw size={14} />撤销修改</button>
           <button className="primary" type="submit" disabled={!dirty || loading}><Save size={14} />{loading ? "保存中…" : "保存"}</button>
