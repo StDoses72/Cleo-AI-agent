@@ -39,6 +39,8 @@ import {
   Paperclip,
   PanelLeftClose,
   PanelRightClose,
+  Copy,
+  Pencil,
   RotateCcw,
   Sparkles,
   Square,
@@ -313,7 +315,7 @@ export function Conversation({
       content = <div className="tool-process-list virtual-process-row"><ToolProcess tool={row.item} index={row.index}
         open={expansion[stateKey(row.id)]?.open ?? false} onToggle={open => toggle(row.id, open)} /></div>;
     } else { item = row; content = <TimelineEntry item={row} projectPath={project?.path ?? null} onOpenPath={onOpenPath}
-      activeTurnId={running ? thread?.currentTiming?.turnId : null}
+      threadId={thread?.id ?? ""} activeTurnId={running ? thread?.currentTiming?.turnId : null}
       steeringBusy={steeringBusy} onRetrySteer={onRetrySteer} onRestoreSteer={onRestoreSteer} />; }
     return <>{content}{item?.more && Object.keys(item.more).map(field => <button className="history-content-link" key={field}
       onClick={() => void readContent(item!, field)}>{field === "output" ? "展开输出" : "展开全文"}</button>)}</>;
@@ -646,6 +648,7 @@ export function groupTimelineItems(items: TimelineItem[]): TimelineBlock[] {
 
 function TimelineEntry({
   item,
+  threadId,
   projectPath,
   onOpenPath,
   steeringBusy,
@@ -654,6 +657,7 @@ function TimelineEntry({
   activeTurnId,
 }: {
   item: TimelineBlock;
+  threadId: string;
   projectPath: string | null;
   onOpenPath: ConversationProps["onOpenPath"];
   steeringBusy?: boolean;
@@ -678,13 +682,8 @@ function TimelineEntry({
           {item.role === "assistant" && <span>Cleo</span>}
           <time>{item.time}</time>
         </div>}
-        <div className="message-copy">
-          <MarkdownContent
-            content={item.content}
-            projectPath={projectPath}
-            onOpenPath={onOpenPath}
-          />
-        </div>
+        <EditableMessage key={`${threadId}:${item.id}:${item.content}`} item={item} threadId={threadId}
+          projectPath={projectPath} onOpenPath={onOpenPath} disabled={Boolean(item.more?.content) || item.turnId === activeTurnId} />
         {item.steer && <div className="steer-receipt" data-testid="steer-receipt" data-status={item.steer.status}>
           <span>{({ queued: item.steer.mode === "native" ? "等待投递" : "当前回复结束后发送",
             sending: "正在投递", received: "已接收", failed: "未投递",
@@ -714,6 +713,78 @@ function TimelineEntry({
       </div>
     </div>
   );
+}
+
+type MessageItem = Extract<TimelineItem, { type: "message" }>;
+
+/** Purpose: Reject unreadable or newer display edits without replacing their stored data. */
+function readMessageEdit(key: string, source: string): { text: string | null; blocked: boolean } {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null) return { text: null, blocked: false };
+    const saved: unknown = JSON.parse(raw);
+    if (!saved || typeof saved !== "object" || Array.isArray(saved)) return { text: null, blocked: true };
+    const fields = Object.keys(saved);
+    if (fields.length !== 2 || !fields.includes("source") || !fields.includes("text")) return { text: null, blocked: true };
+    const record = saved as { source: unknown; text: unknown };
+    if (typeof record.source !== "string" || typeof record.text !== "string" || record.source !== source) {
+      return { text: null, blocked: true };
+    }
+    return { text: record.text, blocked: false };
+  } catch { return { text: null, blocked: true }; }
+}
+
+/** Purpose: Keep user display edits separate from the append-only session history. */
+function EditableMessage({ item, threadId, projectPath, onOpenPath, disabled }: {
+  item: MessageItem;
+  threadId: string;
+  projectPath: string | null;
+  onOpenPath: ConversationProps["onOpenPath"];
+  disabled: boolean;
+}) {
+  const storageKey = `cleo:message-display-edit:v1:${threadId}:${item.id}`;
+  const article = useRef<HTMLDivElement>(null);
+  const [saved, setSaved] = useState(() => readMessageEdit(storageKey, item.content));
+  const [draft, setDraft] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const content = saved.text ?? item.content;
+
+  const copy = async () => {
+    const selection = window.getSelection();
+    const selected = selection && article.current?.contains(selection.anchorNode)
+      && article.current?.contains(selection.focusNode) ? selection.toString() : "";
+    try { await cleoClient.copyText(selected || (draft ?? content)); setError(""); }
+    catch { setError("复制失败，请选中文本后使用快捷键复制。"); }
+  };
+  const save = () => {
+    if (draft === null) return;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify({ source: item.content, text: draft }));
+      setSaved({ text: draft, blocked: false });
+      setDraft(null);
+      setError("");
+    } catch { setError("无法保存本地文本修改。"); }
+  };
+  const restore = () => {
+    try { localStorage.removeItem(storageKey); setSaved({ text: null, blocked: false }); setError(""); }
+    catch { setError("无法恢复原文。"); }
+  };
+
+  return <div className="message-text" ref={article}>
+    {draft === null ? <div className="message-copy"><MarkdownContent content={content} projectPath={projectPath} onOpenPath={onOpenPath} /></div>
+      : <div className="message-edit"><textarea aria-label="编辑消息文本" value={draft} onChange={event => setDraft(event.target.value)}
+          onKeyDown={event => { if (event.key === "Escape") setDraft(null); if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) save(); }} />
+        <p>此修改仅影响 Cleo 中显示的文本，不会改写原始会话或 AI 的历史上下文。</p>
+        <div><button type="button" onClick={() => setDraft(null)}>取消</button><button type="button" onClick={save}>保存</button></div>
+      </div>}
+    <div className="message-actions">
+      <button type="button" onClick={() => void copy()} title="有选中文本时复制选中内容，否则复制当前显示的消息"><Copy size={13} />复制</button>
+      {draft === null && !disabled && !saved.blocked && <button type="button" onClick={() => setDraft(content)}><Pencil size={13} />编辑</button>}
+      {draft === null && (saved.text !== null || saved.blocked) && <button type="button" onClick={restore}>恢复原文</button>}
+    </div>
+    {saved.blocked && <p className="message-edit-error" role="alert">已有的显示修改无法识别或原文已变化；记录已保留。恢复原文可清除该记录。</p>}
+    {error && <p className="message-edit-error" role="alert">{error}</p>}
+  </div>;
 }
 
 function MarkdownContent({

@@ -2,6 +2,33 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import test from "node:test";
 import { configureReleaseChannel, releaseTagForVersion, versionForReleaseTag } from "../electron/release-channel.mjs";
+import { FILE_SCHEME, registerComputerSchemes } from "../electron/computer/schemes.mjs";
+
+test("preview scheme registers before ready and permits a later main replay", () => {
+  let ready = false;
+  const calls = [];
+  const protocol = { registerSchemesAsPrivileged(schemes) {
+    assert.equal(ready, false, "Electron refuses first registration after ready");
+    calls.push(schemes);
+  } };
+  registerComputerSchemes(protocol);
+  ready = true;
+  registerComputerSchemes(protocol);
+  assert.deepEqual(calls, [[{ scheme: FILE_SCHEME, privileges: {
+    standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: false,
+  } }]]);
+});
+
+test("a failed registration remains retryable", () => {
+  let attempts = 0;
+  const protocol = { registerSchemesAsPrivileged() {
+    if (++attempts === 1) throw new Error("registration failed");
+  } };
+  assert.throws(() => registerComputerSchemes(protocol), /registration failed/);
+  registerComputerSchemes(protocol);
+  registerComputerSchemes(protocol);
+  assert.equal(attempts, 2);
+});
 
 test("alpha tags have their own numbering and round-trip to package versions", () => {
   assert.equal(versionForReleaseTag("alpha-0.0.1"), "0.0.1-alpha");

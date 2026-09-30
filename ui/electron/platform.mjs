@@ -1,4 +1,5 @@
 import { posix, win32 } from "node:path";
+import { initializeComputerStartup } from "./computer/startup.mjs";
 
 export function desktopPlatform(platform = process.platform, arch = process.arch) {
   if (!((platform === "win32" && arch === "x64")
@@ -19,7 +20,12 @@ export function desktopPlatform(platform = process.platform, arch = process.arch
   };
 }
 
+/** Purpose: Resolve the data home and initialize prerequisites before bootstrap reads state.
+ * Input: Platform, environment and home/profile paths. Output: The core data directory.
+ */
 export function desktopDataHome({ platform, environment, home, userData }) {
+  // Bootstrap resolves this synchronously before its first await; main may import after ready.
+  initializeComputerStartup();
   const path = platform === "win32" ? win32 : posix;
   if (environment.CLEO_HOME) {
     const value = environment.CLEO_HOME;

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cleo-ai-agent"
-version = "0.6.0"
+version = "0.6.1"
 description = "A local-first AI workspace for chat, developer agents, resumable sessions, and scoped memory."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -21,6 +21,7 @@ dependencies = [
   "httpx",
   "langgraph",
   "openai-codex>=0.155.1",
+  "pillow>=11",
   "platformdirs>=4.4",
   "pydantic",
   "rich",
@@ -48,7 +49,6 @@ py-modules = ["main"]
 include = ["cleo*"]
 
 [tool.setuptools.package-data]
-"cleo.computer_desktop" = ["Dockerfile"]
 "cleo.config" = ["templates/*.json"]
 "cleo.images" = ["assets/*.png"]
 

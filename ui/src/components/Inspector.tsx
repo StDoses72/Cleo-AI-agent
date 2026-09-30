@@ -17,9 +17,10 @@ import {
 import type { MemoryEntry, Project, RuntimeProfile, Thread } from "../types";
 import { accessLabel, approvalLabel, effortLabels } from "../runtime-labels";
 import { Timing } from "./Timing";
-import { ComputerPreview } from "./ComputerPreview";
+import { ComputerPanel } from "./ComputerPanel";
+import { FilesPanel, type FileReveal } from "./FilesPanel";
 
-export type InspectorTab = "changes" | "context" | "run" | "computer";
+export type InspectorTab = "changes" | "context" | "run" | "files" | "computer";
 
 interface InspectorProps {
   running: boolean;
@@ -35,6 +36,8 @@ interface InspectorProps {
   onNotify: (message: string) => void;
   onCopyText: (value: string) => void;
   onRevealPath: (value: string) => void;
+  fileReveal?: FileReveal | null;
+  onOpenExternalPath?: (absolutePath: string) => void;
 }
 
 export function Inspector({
@@ -51,6 +54,8 @@ export function Inspector({
   onNotify,
   onCopyText,
   onRevealPath,
+  fileReveal = null,
+  onOpenExternalPath,
 }: InspectorProps) {
   return (
     <aside className="inspector" data-testid="inspector">
@@ -60,12 +65,17 @@ export function Inspector({
           <button className={activeTab === "changes" ? "active" : ""} type="button" onClick={() => onTabChange("changes")}>变更 {thread?.changes.length ? <small>{thread.changes.length}</small> : null}</button>
           <button className={activeTab === "context" ? "active" : ""} type="button" onClick={() => onTabChange("context")}>上下文</button>
           <button className={activeTab === "run" ? "active" : ""} type="button" onClick={() => onTabChange("run")}>运行</button>
+          <button className={activeTab === "files" ? "active" : ""} type="button" onClick={() => onTabChange("files")}>文件</button>
           <button className={activeTab === "computer" ? "active" : ""} type="button" onClick={() => onTabChange("computer")}>电脑</button>
         </div>
         <button className="icon-button" type="button" aria-label="关闭检查器" onClick={onClose}><X size={16} /></button>
       </header>
       {activeTab === "computer" ? (
-        <ComputerPreview thread={thread} running={running} onStop={onStop} />
+        <ComputerPanel thread={thread} running={running} onStop={onStop} />
+      ) : activeTab === "files" ? (
+        <FilesPanel root={project?.path || null} reveal={fileReveal} onNotify={onNotify} onCopyText={onCopyText}
+          onOpenExternal={(path) => (onOpenExternalPath ? onOpenExternalPath(path) : onRevealPath(path))}
+          onOpenBrowser={() => onTabChange("computer")} />
       ) : activeTab === "changes" ? (
         <ChangesPanel thread={thread} onNotify={onNotify} onCopyText={onCopyText} />
       ) : activeTab === "context" ? (

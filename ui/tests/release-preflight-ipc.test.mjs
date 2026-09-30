@@ -18,6 +18,8 @@ test("automatic release preflight leaves conversations available and never dispa
   let finish;
   let publications = 0;
   const evolution = { phase: "idle", readOnlyOperation: false, store: { read: async () => ({}) } };
+  const turns = [];
+  const computer = { broker: { turnStarted: thread => turns.push(["start", thread]), turnEnded: thread => turns.push(["end", thread]) } };
   vm.runInNewContext(`${allowlist}\n${main.slice(requestStart, requestEnd)}\n${main.slice(start, end)}`, {
     ipcMain: { handle: (name, callback) => { handlers.set(name, callback); } },
     programUpdates: program,
@@ -30,6 +32,7 @@ test("automatic release preflight leaves conversations available and never dispa
       throw new Error(`Unexpected request: ${method}`);
     } },
     evolution,
+    computer,
     checkReleasePermission: async () => ({ canRelease: true }),
     previewMergedRelease: async (_manager, params) => new Promise(resolve => {
       evolution.phase = "checking"; evolution.readOnlyOperation = true;
@@ -44,6 +47,8 @@ test("automatic release preflight leaves conversations available and never dispa
   assert.equal(program.blocksTasks, false);
   assert.equal(updates.at(-1).blocksTasks, false);
   assert.equal(await request({}, { method: "stream_turn", params: { thread_id: "ordinary" } }), "ordinary task started");
+  // Computer use binds tool calls to running turns; the turn is released when it ends.
+  assert.deepEqual(turns, [["start", "ordinary"], ["end", "ordinary"]]);
   assert.equal(await request({}, { method: "steer_run", params: { thread_id: "ordinary" } }), "steer forwarded to existing task");
   await assert.rejects(request({}, { method: "stream_turn", params: { thread_id: "evolution" } }), /等待/);
   evolution.readOnlyOperation = false;

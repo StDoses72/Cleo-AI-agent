@@ -76,6 +76,10 @@ try {
         throw new Error(`Unhandled layout fixture method: ${method}`);
       },
       onStreamEvent: () => () => {},
+      copyText: async value => { window.__copiedMessage = value; },
+      files: async (operation) => operation === "list"
+        ? { entries: [{ path: "sample.pdf", name: "sample.pdf", kind: "file", size: 12 }], truncated: false }
+        : { path: "sample.pdf", kind: "pdf", url: "about:blank", size: 12 },
       getEvolutionState: async () => ({ phase: "idle", builds: [], releases: [], supported: false }),
       onEvolutionState: () => () => {},
       getUpdateState: async () => ({ phase: "unsupported", currentVersion: "test" }),
@@ -241,6 +245,60 @@ try {
     await menu.waitFor({ state: "detached" });
   }
 
+  await jumpLatest();
+  const lastMessage = page.locator('[data-row-id="layout-159"] .message-text');
+  await lastMessage.getByRole("button", { name: "复制" }).click();
+  assert.match(await page.evaluate(() => window.__copiedMessage), /最后一条消息应完整显示/);
+  await lastMessage.evaluate(element => {
+    const paragraph = element.querySelector(".message-copy p:last-child");
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+  });
+  await lastMessage.getByRole("button", { name: "复制" }).click();
+  assert.equal(await page.evaluate(() => window.__copiedMessage), "最后一条消息应完整显示在输入框上方。");
+  await lastMessage.getByRole("button", { name: "编辑" }).click();
+  await lastMessage.getByRole("textbox", { name: "编辑消息文本" }).fill("调整后的段落");
+  await lastMessage.getByRole("button", { name: "保存" }).click();
+  assert.equal(await lastMessage.locator(".message-copy").innerText(), "调整后的段落");
+  await page.reload();
+  await page.getByText("调整后的段落", { exact: true }).waitFor();
+  await page.locator('[data-row-id="layout-159"] .message-text').getByRole("button", { name: "恢复原文" }).click();
+  await page.getByText("最后一条消息应完整显示在输入框上方。", { exact: true }).waitFor();
+  const editKey = "cleo:message-display-edit:v1:layout:layout-159";
+  await page.evaluate(key => localStorage.setItem(key, "{broken"), editKey);
+  await page.reload();
+  const protectedMessage = page.locator('[data-row-id="layout-159"] .message-text');
+  await protectedMessage.getByText(/显示修改无法识别/).waitFor();
+  assert.equal(await protectedMessage.getByRole("button", { name: "编辑" }).count(), 0);
+  assert.equal(await page.evaluate(key => localStorage.getItem(key), editKey), "{broken");
+  await protectedMessage.getByRole("button", { name: "恢复原文" }).click();
+
+  await openInspector();
+  await inspector.locator(".inspector-tabs").getByRole("button", { name: "文件" }).click();
+  await inspector.getByRole("button", { name: "sample.pdf" }).click();
+  await inspector.locator(".files-pdf").waitFor();
+  const divider = inspector.getByRole("separator", { name: "上下拖动调整 PDF 预览高度" });
+  const initialHeight = await inspector.locator(".files-tree").evaluate(element => element.getBoundingClientRect().height);
+  const initialPdfHeight = await inspector.locator(".files-pdf").evaluate(element => element.getBoundingClientRect().height);
+  await divider.focus();
+  await page.keyboard.press("ArrowDown");
+  const raisedHeight = await inspector.locator(".files-tree").evaluate(element => element.getBoundingClientRect().height);
+  assert(raisedHeight >= initialHeight + 19, "File preview height separator did not move");
+  const raisedPdfHeight = await inspector.locator(".files-pdf").evaluate(element => element.getBoundingClientRect().height);
+  assert(raisedPdfHeight <= initialPdfHeight - 19, "PDF preview did not shrink when its top edge moved down");
+  const dividerBox = await divider.boundingBox();
+  await page.mouse.move(dividerBox.x + dividerBox.width / 2, dividerBox.y + dividerBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(dividerBox.x + dividerBox.width / 2, dividerBox.y + dividerBox.height / 2 + 35, { steps: 4 });
+  await page.mouse.up();
+  const draggedHeight = await inspector.locator(".files-tree").evaluate(element => element.getBoundingClientRect().height);
+  assert(draggedHeight >= raisedHeight + 30, "Pointer drag did not resize the file preview");
+  const draggedPdfHeight = await inspector.locator(".files-pdf").evaluate(element => element.getBoundingClientRect().height);
+  assert(draggedPdfHeight <= raisedPdfHeight - 30, "PDF preview did not resize with the pointer drag");
+  await inspector.locator(".inspector-tabs").getByRole("button", { name: /^变更/ }).click();
+
   const scenarios = [
     { name: "wide", width: 1600, height: 1000, zoom: 1 },
     { name: "compact", width: 1080, height: 760, zoom: 1 },
@@ -275,7 +333,7 @@ try {
     }
   }
   assert.deepEqual(errors, [], "Renderer errors during layout checks");
-  console.log(JSON.stringify({ status: "passed", scenarios: scenarios.length * 2, checks: ["panels", "header", "composer", "scroll", "hit-targets", "tabs", "runtime-menu"] }));
+  console.log(JSON.stringify({ status: "passed", scenarios: scenarios.length * 2, checks: ["panels", "header", "composer", "scroll", "hit-targets", "tabs", "runtime-menu", "message-edit", "file-preview-resize"] }));
 } catch (error) {
   if (page && !page.isClosed()) {
     console.error(await page.evaluate(() => {

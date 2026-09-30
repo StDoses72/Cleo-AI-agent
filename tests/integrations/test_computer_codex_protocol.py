@@ -7,6 +7,7 @@ import os
 import threading
 from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 import pytest
 from openai_codex import AsyncCodex
@@ -20,46 +21,34 @@ from cleo.integrations.harnesses.memory import MemoryMcp
 @pytest.mark.skipif(not os.environ.get("CLEO_TEST_CODEX_BIN"), reason="Requires opt-in Codex CLI")
 @pytest.mark.parametrize("require_prompt", [False, True])
 @pytest.mark.parametrize("session_mode", ["deny_all", "user"])
-@pytest.mark.parametrize("desktop_runtime", ["isolated", "host"])
-@pytest.mark.parametrize(
-    "real_desktop",
-    [
-        False,
-        pytest.param(
-            True,
-            marks=pytest.mark.skipif(
-                not os.environ.get("CLEO_TEST_REAL_DESKTOP"),
-                reason="Requires opt-in Docker desktop",
-            ),
-        ),
-    ],
-)
+@pytest.mark.parametrize("legacy_runtime", ["isolated", "host"])
 def test_agent_can_use_owned_computer_tools_without_approval(
     tmp_path,
     monkeypatch,
     require_prompt,
-    real_desktop,
     session_mode,
-    desktop_runtime,
+    legacy_runtime,
 ):
     """Purpose: Reproduce the actual never-policy MCP rejection without an external model.
 
     Input: Production MCP configuration and the installed Codex CLI.
-    Output: Scoped grants succeed; an explicit prompt policy still blocks both tools.
-    Optional Docker validation uses a disposable desktop with no user accounts or files.
+    Output: Scoped grants succeed; an explicit prompt policy still blocks both tools. The
+    browser itself is covered by test_computer_browser_native; here tool execution is faked.
     """
     monkeypatch.setattr("cleo.config.settings.APP_HOME", tmp_path / "cleo")
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     computer_path = tmp_path / "computer-use.json"
-    if real_desktop and desktop_runtime == "host":
-        pytest.skip("Host protocol tests use the fake desktop; never operate the user's desktop")
-    computer_path.write_text(json.dumps({"runtime": desktop_runtime}))
+    computer_path.write_text(json.dumps({"runtime": legacy_runtime}))
     memory = MemoryMcp(tmp_path / "memory", computer_config_path=computer_path)
     overrides = memory.codex_config(approval_mode=session_mode).config_overrides
     # Keep production server metadata/configuration, replacing only desktop execution.
+    # Codex does not forward PYTHONPATH to MCP servers; bootstrap from the source root like
+    # production server_configuration does.
+    root = str(Path(__file__).resolve().parents[2])
     bootstrap = (
         "from pathlib import Path\n"
+        f"import sys; sys.path.insert(0, {root!r})\n"
         "import cleo.mcp.computer_server as bridge\n"
         "async def fake_invoke(*args, **kwargs):\n"
         "    return [{'type': 'text', 'text': 'CLEO_COMPUTER_OK'}]\n"
@@ -69,18 +58,18 @@ def test_agent_can_use_owned_computer_tools_without_approval(
     overrides = tuple(
         value for value in overrides if not value.startswith("mcp_servers.cleo_memory.")
     )
-    if not real_desktop:
-        overrides = tuple(
-            value for value in overrides if not value.startswith("mcp_servers.cleo_computer.args=")
-        )
-        overrides += ("mcp_servers.cleo_computer.args=" + json.dumps(["-c", bootstrap]),)
+    overrides = tuple(
+        value for value in overrides if not value.startswith("mcp_servers.cleo_computer.args=")
+    )
+    overrides += ("mcp_servers.cleo_computer.args=" + json.dumps(["-c", bootstrap]),)
     if require_prompt:
         overrides += tuple(
             f'mcp_servers.cleo_computer.tools.{name}.approval_mode="prompt"'
             for name in ("computer_tools", "computer_call")
         )
     requests = []
-    calls = [("computer_tools", {}), ("computer_call", {"name": "Snapshot", "arguments": {}})]
+    calls = [("computer_tools", {}),
+             ("computer_call", {"name": "browser_screenshot", "arguments": {}})]
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_args):
@@ -252,20 +241,8 @@ def test_agent_can_use_owned_computer_tools_without_approval(
             assert all("requires approval" in str(result) for result in outputs.values())
         else:
             assert all("requires approval" not in str(result) for result in outputs.values())
-            if real_desktop:
-                assert "Snapshot" in str(outputs["call_0"])
-                assert any(block.get("type") == "input_image" for block in outputs["call_1"])
-            else:
-                assert all("CLEO_COMPUTER_OK" in str(result) for result in outputs.values())
+            assert all("CLEO_COMPUTER_OK" in str(result) for result in outputs.values())
     finally:
         server.shutdown()
         server.server_close()
         worker.join(timeout=2)
-        if real_desktop:
-            from cleo.computer_desktop.runtime import desktop_action, docker, identity, inspect
-
-            # inspect validates ownership; these resources belong only to this pytest directory.
-            if inspect(computer_path):
-                asyncio.run(desktop_action(computer_path, "stop"))
-                docker("rm", identity(computer_path))
-                docker("volume", "rm", identity(computer_path) + "-home")

@@ -288,6 +288,8 @@ class _AcpRuntime:
     options: SessionOptions = field(default_factory=SessionOptions)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     active: bool = False
+    # Identifies this session's computer MCP server to the desktop broker.
+    computer_client: str = ""
 
 
 class AcpProvider:
@@ -492,10 +494,13 @@ class AcpProvider:
             由 AgentAdapter 记录并用于后续 ``prompt`` / ``close`` 路由。
         """
         connection, manager, host, _initialize = await self._connect(project_path)
+        computer_client = secrets.token_hex(16)
         try:
             created = await connection.new_session(
                 cwd=project_path,
-                mcp_servers=self._memory_mcp.acp_servers() if self._memory_mcp else [],
+                mcp_servers=(
+                    self._memory_mcp.acp_servers(computer_client) if self._memory_mcp else []
+                ),
             )
             config_options = tuple(created.config_options or ())
             model_option = self._config_option(
@@ -525,6 +530,7 @@ class AcpProvider:
                 SessionOptions(model=model, approval_mode=host.approval_mode),
                 self._spec.model_config_id,
             ),
+            computer_client=computer_client,
         )
         return ProviderSession(id=created.session_id, native_id=created.session_id)
 
@@ -553,11 +559,14 @@ class AcpProvider:
             raise SessionResumeUnsupported(
                 f"ACP provider {self.name} does not support session/load"
             )
+        computer_client = secrets.token_hex(16)
         try:
             loaded = await connection.load_session(
                 cwd=project_path,
                 session_id=native_session_id,
-                mcp_servers=self._memory_mcp.acp_servers() if self._memory_mcp else [],
+                mcp_servers=(
+                    self._memory_mcp.acp_servers(computer_client) if self._memory_mcp else []
+                ),
             )
         except BaseException:
             await manager.__aexit__(None, None, None)
@@ -574,8 +583,16 @@ class AcpProvider:
                 SessionOptions(model=model, approval_mode=host.approval_mode),
                 self._spec.model_config_id,
             ),
+            computer_client=computer_client,
         )
         return ProviderSession(id=native_session_id, native_id=native_session_id)
+
+    def computer_session(self, client_key: str) -> str | None:
+        """Purpose: Find the session whose computer MCP server uses a key. Output: session id."""
+        for session_id, runtime in self._sessions.items():
+            if runtime.computer_client == client_key:
+                return session_id
+        return None
 
     def session_options(self, session_id: str) -> SessionOptions:
         """Return the model and effort exposed by the ACP session."""

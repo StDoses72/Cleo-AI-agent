@@ -1,6 +1,28 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { bundledPython, desktopDataHome, desktopPlatform, harnessPath, installationRoot } from "./platform.mjs";
+import { initializeComputerStartup } from "./computer/startup.mjs";
+
+test("computer startup leaves plain Node callers independent of Electron", () => {
+  initializeComputerStartup({ electronVersion: null, loadElectron: () => {
+    assert.fail("Plain Node callers must not load Electron");
+  } });
+});
+
+test("computer startup registers synchronously and its late replay is harmless", () => {
+  let ready = false;
+  let registrations = 0;
+  const protocol = { registerSchemesAsPrivileged() {
+    assert.equal(ready, false);
+    registrations += 1;
+  } };
+  const runtime = { electronVersion: "test", loadElectron: () => ({ protocol }) };
+  initializeComputerStartup(runtime);
+  assert.equal(registrations, 1, "Privileges must exist before startup awaits");
+  ready = true;
+  initializeComputerStartup(runtime);
+  assert.equal(registrations, 1);
+});
 
 test("inherited CLI paths take precedence over fallback npm installations", () => {
   const currentCodex = "C:\\Apps\\Codex\\bin";

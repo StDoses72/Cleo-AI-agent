@@ -13,7 +13,13 @@ if (!process.argv.includes("--cleo-desktop-mock")) {
       return () => ipcRenderer.removeListener("cleo:companion-thread", handler);
     },
     setup: (action, params = {}) => ipcRenderer.invoke("cleo:setup", action, params),
-    computerDesktop: (action = "status", text = "") => ipcRenderer.invoke("cleo:computer-desktop", action, text),
+    computer: (action = "state", params = {}) => ipcRenderer.invoke("cleo:computer", action, params),
+    onComputerState: (listener) => {
+      const handler = (_event, state) => listener(state);
+      ipcRenderer.on("cleo:computer:state", handler);
+      return () => ipcRenderer.removeListener("cleo:computer:state", handler);
+    },
+    files: (op, params = {}) => ipcRenderer.invoke("cleo:files", op, params),
     request: (method, params = {}, streamId = null) =>
       ipcRenderer.invoke("cleo:request", { method, params, streamId }),
     onStreamEvent: (listener) => {

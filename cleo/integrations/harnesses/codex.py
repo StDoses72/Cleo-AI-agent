@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import os
+import secrets
+import sys
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 from openai_codex import (
@@ -39,6 +42,7 @@ from cleo.harnesses.control import (
 )
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 from cleo.harnesses.provider import NativeSessionNotFoundError, ProviderSession, ProviderTurn
+from cleo.integrations import codex_sandbox_credentials
 from cleo.integrations.codex_home import isolated_codex_config
 from cleo.integrations.harnesses.codex_approvals import CodexApprovalBroker
 from cleo.integrations.harnesses.memory import MemoryMcp
@@ -818,6 +822,7 @@ class CodexProvider:
     ) -> AsyncTurnHandle:
         runtime.has_started_turn = True
         options = runtime.options
+        await self._prepare_sandbox_credentials(runtime)
         if options.approval_mode != "user" and options.service_tier != "default":
             return await runtime.thread.turn(
                 prompt,
@@ -856,6 +861,25 @@ class CodexProvider:
         )
         return AsyncTurnHandle(runtime.client, runtime.thread.id, started.turn.id)
 
+    def computer_session(self, client_key: str) -> str | None:
+        """Purpose: Find the session whose computer MCP server uses a key. Output: session id."""
+        for session_id, runtime in self._sessions.items():
+            if getattr(runtime.client, "_cleo_computer_client", None) == client_key:
+                return session_id
+        return None
+
+    @staticmethod
+    async def _prepare_sandbox_credentials(runtime: _CodexRuntime) -> None:
+        """Keep Cleo's shared Windows sandbox account credentials working before a turn.
+
+        Only Cleo's isolated home with the elevated native sandbox is coordinated; legacy
+        sessions use the standalone Codex home directly, and full access runs no sandbox.
+        """
+        home = getattr(runtime.client, "_cleo_sandbox_credentials_home", None)
+        if not home or runtime.legacy_home or runtime.options.sandbox == "full-access":
+            return
+        await asyncio.to_thread(codex_sandbox_credentials.prepare_for_turn, home)
+
     @staticmethod
     def _client(config: CodexConfig | None = None, *, legacy: bool = False) -> AsyncCodex:
         if not legacy:
@@ -866,7 +890,13 @@ class CodexProvider:
         ):
             config = config or CodexConfig()
             config.codex_bin = codex_bin
-        return AsyncCodex(config=config) if config is not None else AsyncCodex()
+        client = AsyncCodex(config=config) if config is not None else AsyncCodex()
+        home = (config.env or {}).get("CODEX_HOME") if config is not None and not legacy else None
+        if home and sys.platform == "win32" and codex_sandbox_credentials.windows_sandbox_mode(
+            Path(home), config.config_overrides,
+        ) == "elevated":
+            client._cleo_sandbox_credentials_home = Path(home)
+        return client
 
     def _client_with_approvals(
         self, approvals: CodexApprovalBroker, *, context=None, legacy: bool = False,
@@ -877,9 +907,13 @@ class CodexProvider:
             if context and self._memory_mcp
             else self._memory_mcp
         )
-        config = (memory.codex_config(approval_mode=approval_mode or self._approval_mode)
+        # A per-client key lets the desktop broker attribute computer tool calls to this session.
+        computer_client = secrets.token_hex(16)
+        config = (memory.codex_config(approval_mode=approval_mode or self._approval_mode,
+                                      computer_client=computer_client)
                   if memory else None)
         client = self._client(config, legacy=legacy)
+        client._cleo_computer_client = computer_client
         async_client = getattr(client, "_client", None)
         sync_client = getattr(async_client, "_sync", None)
         if sync_client is None or not hasattr(sync_client, "_approval_handler"):

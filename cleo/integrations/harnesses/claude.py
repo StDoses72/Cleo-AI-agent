@@ -72,6 +72,8 @@ class _ClaudeRuntime:
     permission_verified: bool = False
     # Sessions created before isolation keep resuming from the user's own Claude directory.
     external_home: bool = False
+    # Identifies this session's computer MCP server to the desktop broker.
+    computer_client: str = ""
 
 
 class ClaudeProvider:
@@ -579,6 +581,7 @@ class ClaudeProvider:
             if context and self._memory_mcp
             else self._memory_mcp
         )
+        computer_client = secrets.token_hex(16)
         options = ClaudeAgentOptions(
             max_buffer_size=CLAUDE_MESSAGE_BUFFER_BYTES,
             cwd=project_path,
@@ -592,7 +595,7 @@ class ClaudeProvider:
             resume=resume,
             # The SDK overlays this onto the inherited environment.
             env=claude_environment(external=external_home),
-            mcp_servers=memory.claude_servers() if memory else {},
+            mcp_servers=memory.claude_servers(computer_client) if memory else {},
             can_use_tool=can_use_tool,
             hooks={"PreToolUse": [HookMatcher(matcher="AskUserQuestion", hooks=[ask_hook])]},
         )
@@ -649,7 +652,15 @@ class ClaudeProvider:
             permission_verified=verified,
             context_binding=context,
             external_home=external_home,
+            computer_client=computer_client,
         )
+
+    def computer_session(self, client_key: str) -> str | None:
+        """Purpose: Find the session whose computer MCP server uses a key. Output: session id."""
+        for session_id, runtime in self._sessions.items():
+            if runtime.computer_client == client_key:
+                return session_id
+        return None
 
     def _block_event(self, block: object) -> AgentEvent | None:
         """把 SDK 消息 block 映射为统一的 ``AgentEvent``。

@@ -1,4 +1,11 @@
-"""Optional Windows-MCP connection, with independent backward-compatible settings."""
+"""Computer-use tools for every harness: Cleo's built-in browser or the local Windows desktop.
+
+Both built-in targets are served by the running Cleo desktop app (see ``cleo.computer.bridge``);
+this module only relays tool calls and never needs Docker. ``computer-use.json`` keeps its old
+schema and is read, never rewritten: the target is chosen per task in the desktop UI, and an old
+``runtime`` value never grants local-computer control. A user-configured custom MCP ``command``
+is still honoured as before.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +13,6 @@ import asyncio
 import json
 import os
 import sys
-import tempfile
 from pathlib import Path
 from typing import Literal
 from weakref import WeakKeyDictionary
@@ -15,10 +21,14 @@ from fastmcp import Client
 from fastmcp.client.transports import StdioTransport
 from pydantic import BaseModel, ConfigDict, Field
 
+from cleo.computer import bridge
+
 
 class ComputerSettings(BaseModel):
     model_config = ConfigDict(extra="allow")
     schema_version: int = 1
+    # Older versions used this to pick Docker ("isolated") or Windows-MCP ("host"). It is kept
+    # for compatibility and only informs the UI; it never authorizes local-computer control.
     runtime: Literal["isolated", "host"] = "isolated"
     command: str = ""
     args: list[str] = Field(default_factory=list)
@@ -46,8 +56,12 @@ def read_settings(path: Path | None = None) -> ComputerSettings:
         raise ValueError(f"电脑操作配置无法读取，已保留原文件：{path}") from exc
 
 
-def server_configuration(path: Path | None) -> dict:
-    """Purpose: Attach tools to any harness. Input: independent config. Output: stdio MCP entry."""
+def server_configuration(path: Path | None, client_key: str | None = None) -> dict:
+    """Purpose: Attach tools to any harness. Input: settings path and the session's client key.
+
+    Output: stdio MCP entry. The key lets the desktop broker map calls to the owning Cleo task;
+    the bridge descriptor path (not its secret) comes from the desktop app's environment.
+    """
     if path is None:
         return {}
     try:
@@ -60,82 +74,24 @@ def server_configuration(path: Path | None) -> dict:
         f"import sys; sys.path.insert(0, {root!r}); "
         "from cleo.mcp.computer_server import main; main()"
     )
-    return {
-        "cleo_computer": {
-            "command": sys.executable,
-            "args": ["-I", "-c", bootstrap, "--config", str(path)],
-        }
-    }
-
-
-def select_runtime(runtime: str, path: Path) -> ComputerSettings:
-    """Purpose: Persist a desktop choice atomically, preserving unrelated settings.
-
-    Input: Built-in runtime and configuration path. Output: saved settings.
-    """
-    if runtime not in {"isolated", "host"}:
-        raise ValueError("请选择独立桌面或本机桌面。")
-    if runtime == "host" and sys.platform != "win32":
-        raise ValueError("本机桌面目前仅支持 Windows。")
-    settings = read_settings(path)
-    if settings.command:
-        raise ValueError("当前配置了自定义电脑工具；请先在 computer-use.json 中移除 command。")
-    settings.runtime = runtime
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = None
-    try:
-        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
-                                         prefix=path.name, suffix=".tmp", delete=False) as output:
-            temporary = Path(output.name)
-            json.dump(settings.model_dump(), output, ensure_ascii=False, indent=2)
-            output.flush()
-            os.fsync(output.fileno())
-        os.replace(temporary, path)
-    finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
-    return settings
-
-
-def desktop_target(settings: ComputerSettings) -> str:
-    """Purpose: Describe the actual tool destination. Input: settings. Output: model guidance."""
-    if settings.command:
-        return "当前使用用户配置的自定义电脑工具连接；先查看工具返回的环境再操作。"
-    if settings.runtime == "host":
-        return ("当前操作用户的真实 Windows 本机桌面，可以打开和切换浏览器及其他应用，"
-                "使用实际鼠标和键盘；操作不局限于 Cleo 窗口或右侧面板。"
-                "用户需要登录或手动输入时，先停止操作并等待用户告知继续。")
-    return ("当前操作右侧的独立 Linux 桌面，不要改用主机浏览器或主机键鼠操作。"
-            "用户接管时等待交回控制。")
+    args = ["-I", "-c", bootstrap, "--config", str(path)]
+    if client_key:
+        args.extend(["--client-key", client_key])
+    if descriptor := os.environ.get(bridge.ENVIRONMENT):
+        args.extend(["--bridge", descriptor])
+    return {"cleo_computer": {"command": sys.executable, "args": args}}
 
 
 class ComputerConnection:
-    """One persistent upstream session keeps Snapshot labels valid between tool calls."""
+    """A user-configured custom computer MCP server (kept for compatibility)."""
 
     def __init__(self, settings: ComputerSettings):
         """Purpose: Prepare lazy stdio transport. Input: settings. Output: unstarted connection."""
-        command = settings.command or sys.executable
-        args = (
-            settings.args
-            if settings.command
-            else [
-                "-m",
-                "uv",
-                "tool",
-                "run",
-                "--python",
-                "3.14",
-                "--from",
-                "windows-mcp==0.8.5",
-                "windows-mcp",
-                "serve",
-            ]
-        )
         self.settings = settings
         self.transport = StdioTransport(
-            command=command,
-            args=args,
-            env={**os.environ, "PYTHONUTF8": "1", "ANONYMIZED_TELEMETRY": "false"},
+            command=settings.command,
+            args=settings.args,
+            env={**os.environ, "PYTHONUTF8": "1"},
             keep_alive=True,
         )
         self.client = Client(
@@ -167,11 +123,11 @@ _connections: WeakKeyDictionary = WeakKeyDictionary()
 
 
 async def connection(session: str, path: Path | None = None) -> ComputerConnection:
-    """Purpose: Reuse one desktop snapshot per task. Input: session/config. Output: live adapter."""
+    """Purpose: Reuse one custom connection per task. Input: session/config. Output: adapter."""
     path = path or config_path()
     settings = read_settings(path)
     if sys.platform != "win32":
-        raise ValueError("Windows-MCP 仅支持 Windows；当前平台可以继续使用普通聊天。")
+        raise ValueError("自定义电脑工具仅支持 Windows；当前平台可以继续使用普通聊天。")
     sessions = _connections.setdefault(asyncio.get_running_loop(), {})
     key = (str(path.resolve()), session)
     existing = sessions.get(key)
@@ -190,52 +146,71 @@ async def close_connections() -> None:
         await client.close()
 
 
-async def invoke(
-    session: str, name: str | None = None, arguments: dict | None = None, path: Path | None = None
+async def _custom(
+    session: str, name: str | None, arguments: dict | None, path: Path | None
 ) -> list[dict]:
-    """Purpose: Preserve text and vision results. Input: tool call. Output: content blocks."""
-    try:
-        settings = read_settings(path)
-        if settings.runtime == "isolated" and not settings.command:
-            from cleo.computer_desktop.runtime import invoke as invoke_desktop
-            blocks = await invoke_desktop(path or config_path(), name, arguments)
-            if name is None:
-                blocks.append({"type": "text", "text": desktop_target(settings)})
-            return blocks
-        client = await connection(session, path)
-        result = await client.invoke(name, arguments)
-        if name is None:
-            return [
-                {
-                    "type": "text",
-                    "text": json.dumps(
-                        [
-                            {
-                                "name": tool.name,
-                                "description": tool.description,
-                                "inputSchema": tool.input_schema,
-                            }
-                            for tool in result
-                        ],
-                        ensure_ascii=False,
-                    ),
-                },
-                {"type": "text", "text": desktop_target(settings)},
-            ]
-        blocks = []
-        for block in result.content:
-            if block.type == "text":
-                blocks.append({"type": "text", "text": block.text})
-            elif block.type == "image":
-                blocks.append({"type": "image", "base64": block.data, "mime_type": block.mime_type})
-        if result.is_error:
-            blocks.insert(0, {"type": "text", "text": "Windows-MCP 操作失败，未确认完成。"})
-        return blocks
-    except Exception as exc:
+    client = await connection(session, path)
+    result = await client.invoke(name, arguments)
+    if name is None:
         return [
             {
                 "type": "text",
-                "text": f"电脑操作未完成：{exc or '连接超时'}。"
-                "请在 Cleo 的电脑面板检查所选操作环境后重试；可继续普通聊天。",
-            }
+                "text": json.dumps(
+                    [
+                        {
+                            "name": tool.name,
+                            "description": tool.description,
+                            "inputSchema": tool.input_schema,
+                        }
+                        for tool in result
+                    ],
+                    ensure_ascii=False,
+                ),
+            },
+            {
+                "type": "text",
+                "text": "当前使用用户配置的自定义电脑工具连接；先查看工具返回的环境再操作。",
+            },
         ]
+    blocks = []
+    for block in result.content:
+        if block.type == "text":
+            blocks.append({"type": "text", "text": block.text})
+        elif block.type == "image":
+            blocks.append({"type": "image", "base64": block.data, "mime_type": block.mime_type})
+    if result.is_error:
+        blocks.insert(0, {"type": "text", "text": "自定义电脑工具操作失败，未确认完成。"})
+    return blocks
+
+
+async def invoke(
+    identity: dict | str,
+    name: str | None = None,
+    arguments: dict | None = None,
+    path: Path | None = None,
+    *,
+    bridge_file: str | Path | None = None,
+) -> list[dict]:
+    """Purpose: Relay one tool call to the chosen target. Input: task identity and tool call.
+
+    Output: content blocks. Failures are reported as text and never claimed as success.
+    """
+    identity = {"thread_id": identity} if isinstance(identity, str) else dict(identity or {})
+    try:
+        settings = read_settings(path)
+        if settings.command:
+            session = str(identity.get("thread_id") or identity.get("client_key") or "harness")
+            return await _custom(session, name, arguments, path)
+        payload = (
+            {"op": "tools", "identity": identity}
+            if name is None
+            else {
+                "op": "call",
+                "identity": identity,
+                "name": name,
+                "arguments": arguments or {},
+            }
+        )
+        return await bridge.request(payload, bridge=bridge_file)
+    except Exception as exc:  # noqa: BLE001 - the model needs the reason, never a false success
+        return [{"type": "text", "text": f"电脑操作未完成：{exc or '连接超时'}"}]

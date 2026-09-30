@@ -9,7 +9,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Minus } from "lucide-react";
 import { Conversation } from "./components/Conversation";
 import { Inspector, type InspectorTab } from "./components/Inspector";
-import { isComputerTool } from "./components/ComputerPreview";
+import { isComputerTool } from "./components/ComputerPanel";
+import type { FileReveal } from "./components/FilesPanel";
 import { MemoryView } from "./components/MemoryView";
 import {
   CommandPalette,
@@ -147,6 +148,7 @@ export function App() {
     }));
   };
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("changes");
+  const [fileReveal, setFileReveal] = useState<FileReveal | null>(null);
   const previewOpenedFor = useRef<string | null>(null);
   const computerRun = workspace.running && workspace.activeThread?.items.some(
     item => isComputerTool(item) && item.status === "running",
@@ -154,11 +156,12 @@ export function App() {
   useEffect(() => {
     if (!computerRun || previewOpenedFor.current === computerRun) return;
     let cancelled = false;
-    // Only the isolated desktop needs an embedded viewer; host tools act on real windows.
-    void window.cleoDesktop?.computerDesktop().then(state => {
+    // Browser tasks show the shared built-in browser; local-computer tasks act on real windows.
+    const threadId = computerRun.split(":")[0];
+    void window.cleoDesktop?.computer?.("state").then(state => {
       if (cancelled) return;
       previewOpenedFor.current = computerRun;
-      if (state.runtime === "host" || state.runtime === "custom" || state.phase === "external") return;
+      if (state.threads[threadId]?.mode === "host") return;
       setInspectorTab("computer");
       setInspectorBySpace(current => ({ ...current, [inspectorSpace]: true }));
     }).catch(() => { /* The task timeline reports connection failures. */ });
@@ -512,7 +515,19 @@ export function App() {
           }}
           onRevealPath={(path) => void workspace.revealPath(path)}
           onOpenPath={(href, workspacePath) => {
-            void workspace.openLocalPath(href, workspacePath).catch((error: unknown) => {
+            void (async () => {
+              // Files inside the task workspace open in the Files sidebar; others use the system app.
+              const located = workspacePath && window.cleoDesktop?.files
+                ? await window.cleoDesktop.files<{ path: string; line: number | null } | null>("locate", { root: workspacePath, href }).catch(() => null)
+                : null;
+              if (located) {
+                setFileReveal({ ...located, nonce: Date.now() });
+                setInspectorTab("files");
+                setInspectorOpen(true);
+                return;
+              }
+              await workspace.openLocalPath(href, workspacePath);
+            })().catch((error: unknown) => {
               notify(error instanceof Error ? error.message : "无法打开本地文件", "error");
             });
           }}
@@ -541,6 +556,10 @@ export function App() {
           onNotify={notify}
           onCopyText={(value) => void workspace.copyText(value)}
           onRevealPath={(value) => void workspace.revealPath(value)}
+          fileReveal={fileReveal}
+          onOpenExternalPath={(path) => void workspace.openLocalPath(path, conversationProject?.path ?? "").catch((error: unknown) => {
+            notify(error instanceof Error ? error.message : "无法打开本地文件", "error");
+          })}
         />
       ) : null}
       <CommandPalette open={commandOpen} actions={commandActions} onClose={() => setCommandOpen(false)} />

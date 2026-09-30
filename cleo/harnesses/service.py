@@ -824,6 +824,14 @@ class AgentService:
         self._sessions.pop(session_id, None)
         self._store.set_status(session_id, "archived")
 
+    def computer_owner(self, client_key: str) -> str | None:
+        """Purpose: Find the session whose computer MCP server uses a key. Output: handle."""
+        for handle, route in self._sessions.items():
+            finder = getattr(route.provider, "computer_session", None)
+            if callable(finder) and finder(client_key) == route.provider_session_id:
+                return handle
+        return None
+
     async def cancel(self, session_id: str) -> None:
         """取消进行中的 turn,状态置 cancelled。"""
         route = self._route(session_id)

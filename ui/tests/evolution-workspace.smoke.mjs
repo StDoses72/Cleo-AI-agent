@@ -28,7 +28,7 @@ try {
       acceptance: { fresh: false, cases: [{ id: "old-case", enabled: true, kind: "manual" }] } };
     const setup = { showOnStartup: true, busy: false, checking: false, dismissed: false, message: "", logs: "", items: [
       { id: "runtime", title: "Cleo 基础运行环境", ready: true, detail: "Python 已就绪", optional: false, action: "修复运行环境" },
-      { id: "docker", title: "Docker Desktop", ready: false, detail: "独立桌面使用；普通聊天可以跳过。", optional: true, action: "安装 Docker" },
+      { id: "tools", title: "自我迭代工具", ready: false, detail: "Git、Node.js、uv；普通聊天可以跳过。", optional: true, action: "准备构建工具" },
     ] };
     let listener;
     window.cleoDesktop = {
@@ -85,13 +85,13 @@ try {
   await page.evaluate(() => window.dispatchEvent(new Event("cleo:open-setup")));
   await setup.waitFor();
   assert.equal(await page.evaluate(() => window.evolutionTest.installs.length), 0);
-  await setup.getByRole("checkbox", { name: "安装 Docker", exact: true }).check();
+  await setup.getByRole("checkbox", { name: "准备构建工具", exact: true }).check();
   const install = setup.getByRole("button", { name: "安装所选依赖", exact: true });
   assert.equal(await install.isDisabled(), true);
   await setup.getByRole("checkbox", { name: /允许下载并安装/ }).check();
   await install.click();
   await setup.getByRole("alert").getByText("下载中断，可以重试", { exact: true }).waitFor();
-  assert.deepEqual(await page.evaluate(() => window.evolutionTest.installs[0]), { ids: ["docker"], consent: true });
+  assert.deepEqual(await page.evaluate(() => window.evolutionTest.installs[0]), { ids: ["tools"], consent: true });
   if (process.env.CLEO_SMOKE_OUTPUT) await page.screenshot({ path: join(process.env.CLEO_SMOKE_OUTPUT, "dependency-setup.png") });
   await setup.getByRole("button", { name: "稍后再说", exact: true }).click();
   const composer = page.getByTestId("composer-input");

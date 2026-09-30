@@ -6,8 +6,11 @@ import { listContributionBranches, requestTargetBranch, refreshTargetBranch } fr
 import { checkContribution, submitContribution, inspectPullRequest, contributionRepairPrompt } from "./evolution-merge-assistance.mjs";
 import { runEvolutionTurn } from "./evolution-editing.mjs";
 import { rmSync } from "node:fs";
-import { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, shell } from "electron";
+import {
+  app, BrowserWindow, Menu, WebContentsView, clipboard, dialog, globalShortcut, ipcMain, nativeImage, protocol, screen, session, shell,
+} from "electron";
 import { trustedPreviewSender } from "./computer-preview.mjs";
+import { ComputerUse, registerComputerSchemes } from "./computer/index.mjs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
@@ -45,6 +48,7 @@ if (process.argv.includes("--cleo-evolution-monitor")) {
 } else {
 const here = dirname(fileURLToPath(import.meta.url));
 const alphaChannel = configureReleaseChannel(app);
+registerComputerSchemes(protocol);
 if (app.isPackaged) {
   if (process.platform === "win32") {
     const paths = installationPaths(app.getPath("temp"), process.execPath);
@@ -53,6 +57,10 @@ if (app.isPackaged) {
   if (!acquireSingleInstance(app, () => BrowserWindow.getAllWindows())) app.exit(0);
 }
 const backend = new BackendBridge({ app, here });
+const computer = new ComputerUse({
+  app, backend,
+  electron: { BrowserWindow, WebContentsView, dialog, globalShortcut, nativeImage, screen, session, shell },
+});
 const evolutionRoot = join(app.getPath("userData"), "evolution");
 const releaseDownloads = new ReleaseDownloads({
   root: join(evolutionRoot, "downloads"),
@@ -106,7 +114,6 @@ const setup = new SetupManager({ root: join(process.env.CLEO_HOME || backend.run
   version: app.getVersion(),
   toolsRoot: join(evolutionRoot, "tools"), python: process.env.CLEO_PYTHON || backend.runtimePaths().python || (process.platform === "win32" ? "python" : "python3"),
   resourcesPath: process.resourcesPath,
-  desktop: action => backend.request("computer_desktop", { action, target: "isolated" }),
   repairRuntime: async () => {
     if (!dependencies.runtime) throw new Error("随应用安装的运行环境无法启动，请重新安装 Cleo 后重试。");
     await dependencies.check();
@@ -242,6 +249,7 @@ async function monitoredEvolutionTurn(params, onEvent) {
   let completed = false;
   let failed = false;
   editingThread = params.thread_id;
+  computer.broker.turnStarted(params.thread_id, params.run_id);
   editingDetail = "用户补充可以继续发送；有取舍问题时请在会话中回答。";
   try {
     await companion.load(params.thread_id).catch(error => console.error("Companion history:", error.message));
@@ -260,6 +268,7 @@ async function monitoredEvolutionTurn(params, onEvent) {
     if (queued) await monitorStore.receipt(queued.id, completed && !failed ? "completed" : "interrupted");
     await companion.load(params.thread_id).catch(error => console.error("Companion history:", error.message));
     editingThread = null; editingDetail = "";
+    computer.broker.turnEnded(params.thread_id);
     await publishMonitor().catch(error => console.error("Evolution monitor:", error.message));
   }
 }
@@ -350,11 +359,15 @@ function createWindow() {
     if (url !== window.webContents.getURL()) event.preventDefault();
   });
   window.once("ready-to-show", () => window.show());
+  computer.attachWindow(window);
   void window.loadFile(join(here, "../dist/index.html"));
 }
 
 app.setAppUserModelId(alphaChannel ? "ai.cleo.desktop.alpha" : "ai.cleo.desktop");
 app.whenReady().then(async () => {
+  // The computer bridge must exist before the backend starts so tool processes can find it.
+  // A failure here disables computer use only; Cleo itself must still start.
+  await computer.start().catch(error => console.error("Computer use:", error.message));
   ipcMain.handle("cleo:setup", async (event, action, params = {}) => {
     if (!trustedPreviewSender(event, pathToFileURL(join(here, "../dist/index.html")).href)) throw new Error("请在 Cleo 主窗口管理依赖。");
     if (action === "status") return setup.state();
@@ -367,12 +380,19 @@ app.whenReady().then(async () => {
     }
     throw new Error("未知依赖操作。");
   });
-  ipcMain.handle("cleo:computer-desktop", (event, action = "status", text = "") => {
-    if (!trustedPreviewSender(event, pathToFileURL(join(here, "../dist/index.html")).href)) {
-      throw new Error("独立桌面仅供 Cleo 主窗口使用。");
-    }
-    return backend.request("computer_desktop", { action, text });
+  const appUrl = pathToFileURL(join(here, "../dist/index.html")).href;
+  ipcMain.handle("cleo:computer", (event, action = "state", params = {}) => {
+    if (!trustedPreviewSender(event, appUrl)) throw new Error("电脑操作面板仅供 Cleo 主窗口使用。");
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (!window) throw new Error("找不到 Cleo 主窗口。");
+    return computer.handle(window, String(action), params && typeof params === "object" ? params : {});
   });
+  ipcMain.handle("cleo:files", (event, op, params = {}) => {
+    if (!trustedPreviewSender(event, appUrl)) throw new Error("文件侧栏仅供 Cleo 主窗口使用。");
+    return computer.handleFiles(String(op), params && typeof params === "object" ? params : {});
+  });
+  // Take-over and stop clicks from Cleo's own overlay page and host status bar.
+  ipcMain.on("cleo:computer:overlay", (event, action) => computer.overlay(event.sender, String(action)));
   const attachmentTempRoot = join(app.getPath("temp"), "Cleo", "attachments", randomUUID());
   app.once("will-quit", () => {
     try {
@@ -412,15 +432,23 @@ app.whenReady().then(async () => {
     if (programUpdates.closed) throw new Error("Cleo 正在退出，请稍后重试。");
     const isEvolution = controlsRun && await backend.request("is_evolution_thread", { thread_id: params.thread_id });
     if (programUpdates.closed) throw new Error("Cleo 正在退出，请稍后重试。");
+    const tracksTurn = method === "stream_turn" && !isEvolution && typeof params.thread_id === "string";
     if (controlsRun) {
       const transaction = (await evolution.store.read()).transaction;
       if (programUpdates.blocksTasks || transaction || (evolution.phase !== "idle" && (!evolution.readOnlyOperation || isEvolution)))
         throw new Error("请等待当前版本操作完成。");
     }
     if (isEvolution && programUpdates.busy) throw new Error("请等待当前版本操作完成。");
-    const result = isEvolution && method === "stream_turn"
-      ? await monitoredEvolutionTurn(params, onEvent)
-      : await backend.request(method, params, onEvent);
+    if (tracksTurn) computer.broker.turnStarted(params.thread_id, params.run_id);
+    let result;
+    try {
+      result = isEvolution && method === "stream_turn"
+        ? await monitoredEvolutionTurn(params, onEvent)
+        : await backend.request(method, params, onEvent);
+    } finally {
+      // Queued computer actions of a finished turn must never run in a later one.
+      if (tracksTurn) computer.broker.turnEnded(params.thread_id);
+    }
     if (["save_model_profile", "save_dream_settings", "create_model_connection",
       "select_chat_model", "rename_model_connection", "remove_model_connection"].includes(method)) {
       await backend.restart();
@@ -603,7 +631,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", createQuitBarrier({
-  close: [() => setup.close(), () => releaseJobs.close(), () => programUpdates.close(), () => backend.shutdown(), () => dependencies.close(),
+  close: [() => setup.close(), () => computer.close(), () => releaseJobs.close(), () => programUpdates.close(), () => backend.shutdown(), () => dependencies.close(),
     () => releaseDownloads.close(), () => evolution.close(), () => evolution.cancelLogin()],
   onError: error => console.error("Cleo shutdown failed:", error),
   quit: () => app.quit(),

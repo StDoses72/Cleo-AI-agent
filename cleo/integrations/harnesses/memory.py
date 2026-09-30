@@ -48,18 +48,25 @@ class MemoryMcp:
             args.extend(["--session-index-path", str(self.index_path.expanduser().resolve())])
         return args
 
-    def codex_config(self, *, approval_mode: str = "deny_all") -> CodexConfig:
+    def codex_config(
+        self, *, approval_mode: str = "deny_all", computer_client: str | None = None,
+    ) -> CodexConfig:
         """Purpose: Match owned desktop tool grants to the session's native approval policy.
 
-        Input: Bound settings and approval mode. Output: Process-local Codex MCP overrides.
-        Native user/auto review requests must not be bypassed by the deny-all desktop grant.
+        Input: Bound settings, approval mode and the session's computer client key.
+        Output: Process-local Codex MCP overrides. Native user/auto review requests must not
+        be bypassed by the deny-all desktop grant.
         """
         from cleo.integrations.computer import read_settings, server_configuration
         computer = tuple(
             f"mcp_servers.{name}.{key}={json.dumps(value)}"
-            for name, config in server_configuration(self.computer_config_path).items()
+            for name, config in server_configuration(
+                self.computer_config_path, computer_client).items()
             for key, value in config.items()
         )
+        if computer:
+            # Waiting for a user takeover or an authorization prompt may take several minutes.
+            computer += ("mcp_servers.cleo_computer.tool_timeout_sec=660",)
         computer_permissions = ()
         if computer:
             settings = read_settings(self.computer_config_path)
@@ -94,7 +101,7 @@ class MemoryMcp:
             )
         )
 
-    def claude_servers(self) -> dict:
+    def claude_servers(self, computer_client: str | None = None) -> dict:
         """Purpose: Compose local tools. Input: bound settings. Output: Claude stdio entries."""
         from cleo.integrations.computer import server_configuration
         servers = {"cleo_memory": {"type": "stdio", "command": sys.executable, "args": self.args}}
@@ -104,11 +111,12 @@ class MemoryMcp:
                 "command": sys.executable,
                 "args": self.context_args,
             }
-        return {**servers, **server_configuration(self.computer_config_path)}
+        return {**servers, **server_configuration(self.computer_config_path, computer_client)}
 
-    def acp_servers(self) -> list[McpServerStdio]:
+    def acp_servers(self, computer_client: str | None = None) -> list[McpServerStdio]:
         """Purpose: Compose local tools. Input: bound settings. Output: ACP stdio entries."""
         from cleo.integrations.computer import server_configuration
         return [McpServerStdio(name="cleo_memory", command=sys.executable, args=self.args, env=[]),
                 *(McpServerStdio(name=name, env=[], **config)
-                  for name, config in server_configuration(self.computer_config_path).items())]
+                  for name, config in server_configuration(
+                      self.computer_config_path, computer_client).items())]

@@ -72,7 +72,7 @@ export function DependencySetup() {
         <span><strong>{item.title}</strong><small>{item.detail}</small></span><em>{item.ready ? "已就绪" : item.optional ? "可选" : "需要处理"}</em>
       </label>)}</div>
       {selected.length > 0 && <label className="setup-consent"><input type="checkbox" checked={consent} disabled={busy} onChange={event => setConsent(event.target.checked)} />
-        <span>允许下载并安装所选依赖。WSL / Docker 可能要求系统授权或重启；安装 Docker 需同意其许可协议及软件源协议，账号登录由我完成。</span></label>}
+        <span>允许下载并安装所选依赖到 Cleo 管理目录；账号登录由我完成。</span></label>}
       {state?.restartRequired && <p className="setup-notice">如 Windows 要求重启，请重启电脑后重新打开此向导。安装进度会保留。</p>}
       {!error && (state?.message || busy) && <p role="status">{state?.message || "正在检查…"}</p>}
       {error && <p role="alert" className="setup-error">{error}</p>}
