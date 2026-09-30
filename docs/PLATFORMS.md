@@ -84,6 +84,7 @@ macOS 脚本会识别 Rosetta，选择原生 Apple Silicon 包。Windows ARM64�
 联网安装器先下载并验证主程序，再从官方源下载 Python、Node 和锁定的依赖。Python/Node
 归档使用 SHA-256，Python 依赖使用 `--require-hashes`，npm 使用锁文件的完整性校验。
 下载、安装或运行检查失败时不会标记环境就绪，可以重试；校验通过的下载和相同清单的环境可复用。
+macOS 的安装日志和 Linux 的 `apt` 输出会逐行显示当前准备步骤。
 Windows 用户可以在向导中选择程序目录；依赖环境默认保存在 `%LOCALAPPDATA%\Cleo\runtimes\online`。
 macOS PKG 使用 `/Library/Application Support/Cleo/runtimes/online`，Linux DEB 使用
 `/var/lib/cleo/runtimes/online`。应用内更新在用户数据目录下准备环境，兼容已有系统缓存；
@@ -103,6 +104,8 @@ macOS PKG 使用 `/Library/Application Support/Cleo/runtimes/online`，Linux DEB
   不会自动添加 `--no-sandbox` 或修改系统安全设置。
 - Windows：双击 EXE 安装向导，默认安装到 `%LOCALAPPDATA%\Programs\Cleo`，无需管理员权限。
   轻量安装器先下载主程序及运行环境，验证成功后安装并创建开始菜单入口。
+  准备过程通常需要数分钟，向导会逐步显示当前步骤、下载大小和 Python 依赖安装进度，可随时取消；
+  取消会清理已下载和未完成的文件。失败时提示出错的步骤，详细记录在 `%TEMP%\Cleo-install.log`。
   原有源码安装脚本也支持联网准备；桌面内更新使用统一版本切换流程。
 
 macOS 尚未通过 Apple 公证。如果系统提示无法验证安装器或应用，先点「完成」，在确认包来自

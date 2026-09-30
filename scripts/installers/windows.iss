@@ -162,7 +162,7 @@ function StartBootstrap(const Wait: TExecWait; var ResultCode: Integer): Boolean
 begin
   Result := Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
     '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + BootstrapFile('windows-bootstrap.ps1') +
-    '" -Stage "' + ExpandConstant('{tmp}\Cleo') + '" -SourceDirectory "' + RemoveBackslash(ExpandConstant('{src}')) +
+    '" -Stage "' + ExpandConstant('{tmp}\Cleo') + '" -SourceDirectory "' + AddBackslash(ExpandConstant('{src}')) + '.' +
     '" -Progress "' + BootstrapFile('progress.json') + '" -Cancel "' + BootstrapFile('cancel') +
     '" -Log "' + RuntimeLog + '"', ExpandConstant('{tmp}'), SW_HIDE, Wait, ResultCode);
 end;
