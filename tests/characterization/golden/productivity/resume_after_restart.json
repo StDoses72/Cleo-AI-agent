@@ -1,0 +1,220 @@
+{
+  "native_session_id": "acp-session-1",
+  "stream": [
+    {
+      "item": {
+        "content": "second task message",
+        "cursor": "<cursor:1>",
+        "id": "<turn:1>",
+        "order": 4,
+        "role": "user",
+        "time": "",
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      "type": "turn-started"
+    },
+    {
+      "item": {
+        "content": "Thinking about the request.",
+        "cursor": "<cursor:2>",
+        "id": "<turn:1>:thought:1",
+        "order": 5,
+        "status": "done",
+        "turnId": "<turn:1>",
+        "type": "thought"
+      },
+      "type": "upsert-item"
+    },
+    {
+      "item": {
+        "content": "ACP reply: second task message",
+        "id": "<turn:1>:answer",
+        "role": "assistant",
+        "time": "",
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      "type": "upsert-item"
+    },
+    {
+      "runtime": {
+        "access": "default",
+        "approval": "deny_all",
+        "contextWindow": 128000,
+        "editable": true,
+        "effort": "high",
+        "handoffStatus": null,
+        "model": "fake-model-a",
+        "models": [
+          "fake-model-a"
+        ],
+        "pendingPermissions": null,
+        "permissionOptions": {
+          "access": [],
+          "approval": [
+            {
+              "description": "由你选择服务提供的允许或拒绝选项。",
+              "label": "人工审批",
+              "value": "user"
+            },
+            {
+              "description": "自动选择服务提供的允许选项；不改变服务自身的文件访问限制。",
+              "label": "自动允许请求",
+              "value": "auto_allow"
+            },
+            {
+              "description": "自动选择拒绝选项；服务没有提供拒绝选项时取消请求。",
+              "label": "自动拒绝请求",
+              "value": "deny_all"
+            }
+          ],
+          "reason": "此服务不提供统一权限档位，请使用高级审批设置。"
+        },
+        "provider": "scripted",
+        "serviceTier": null,
+        "settingsRevision": 0,
+        "steerMode": "boundary",
+        "supportsFastMode": false,
+        "supportsQuestions": false
+      },
+      "type": "runtime"
+    },
+    {
+      "changes": [],
+      "type": "changes"
+    },
+    {
+      "timing": {
+        "createdAt": "<time>",
+        "elapsedMs": "<number>",
+        "id": "<hex:1>",
+        "kind": "reply",
+        "persistenceError": null,
+        "phase": null,
+        "project": "workspace",
+        "sessionId": "<agent:1>",
+        "space": "productivity",
+        "status": "completed",
+        "turnId": "<turn:1>",
+        "unavailable": [
+          "模型服务内部阶段"
+        ],
+        "updatedAt": "<time>"
+      },
+      "type": "timing"
+    },
+    {
+      "summary": "ACP reply: second task message",
+      "type": "done"
+    }
+  ],
+  "timeline": {
+    "after": "<after:1>",
+    "before": "<before:1>",
+    "hasAfter": false,
+    "hasBefore": false,
+    "items": [
+      {
+        "content": "first task message",
+        "cursor": "<cursor:3>",
+        "id": "<turn:2>",
+        "order": 1,
+        "role": "user",
+        "time": "<clock-time>",
+        "turnHasAnswer": true,
+        "turnId": "<turn:2>",
+        "type": "message"
+      },
+      {
+        "content": "Thinking about the request.",
+        "cursor": "<cursor:4>",
+        "id": "<turn:2>:thought:1",
+        "order": 2,
+        "status": "done",
+        "turnHasAnswer": true,
+        "turnId": "<turn:2>",
+        "type": "thought"
+      },
+      {
+        "content": "ACP reply: first task message",
+        "cursor": "<cursor:5>",
+        "id": "<turn:2>:answer",
+        "order": 3,
+        "role": "assistant",
+        "time": "<clock-time>",
+        "timing": {
+          "createdAt": "<time>",
+          "elapsedMs": "<number>",
+          "id": "<hex:2>",
+          "kind": "reply",
+          "persistenceError": null,
+          "phase": null,
+          "project": "workspace",
+          "sessionId": "<agent:1>",
+          "space": "productivity",
+          "status": "completed",
+          "turnId": "<turn:2>",
+          "unavailable": [
+            "模型服务内部阶段"
+          ],
+          "updatedAt": "<time>"
+        },
+        "turnHasAnswer": true,
+        "turnId": "<turn:2>",
+        "type": "message"
+      },
+      {
+        "content": "second task message",
+        "cursor": "<cursor:1>",
+        "id": "<turn:1>",
+        "order": 4,
+        "role": "user",
+        "time": "<clock-time>",
+        "turnHasAnswer": true,
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      {
+        "content": "Thinking about the request.",
+        "cursor": "<cursor:2>",
+        "id": "<turn:1>:thought:1",
+        "order": 5,
+        "status": "done",
+        "turnHasAnswer": true,
+        "turnId": "<turn:1>",
+        "type": "thought"
+      },
+      {
+        "content": "ACP reply: second task message",
+        "cursor": "<cursor:6>",
+        "id": "<turn:1>:answer",
+        "order": 6,
+        "role": "assistant",
+        "time": "<clock-time>",
+        "timing": {
+          "createdAt": "<time>",
+          "elapsedMs": "<number>",
+          "id": "<hex:1>",
+          "kind": "reply",
+          "persistenceError": null,
+          "phase": null,
+          "project": "workspace",
+          "sessionId": "<agent:1>",
+          "space": "productivity",
+          "status": "completed",
+          "turnId": "<turn:1>",
+          "unavailable": [
+            "模型服务内部阶段"
+          ],
+          "updatedAt": "<time>"
+        },
+        "turnHasAnswer": true,
+        "turnId": "<turn:1>",
+        "type": "message"
+      }
+    ],
+    "revision": "<revision:1>",
+    "total": 6
+  }
+}

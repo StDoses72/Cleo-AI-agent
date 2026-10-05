@@ -1,0 +1,41 @@
+{
+  "active_after_delete": true,
+  "index_ids": [
+    true
+  ],
+  "missing": "FileNotFoundError",
+  "runtime.json": {
+    "current_project": null,
+    "current_space": "non_productivity",
+    "current_thread_id": "<thread:1>",
+    "project_paths": {
+      "non_productivity": {
+        "general": "<HOME>"
+      },
+      "productivity": {}
+    },
+    "projects": {
+      "non_productivity": [
+        "general"
+      ],
+      "productivity": []
+    },
+    "recent_threads": {
+      "non_productivity": [
+        "<thread:1>"
+      ],
+      "productivity": []
+    },
+    "removed_projects": {
+      "non_productivity": [],
+      "productivity": []
+    },
+    "schema_version": 3
+  },
+  "session_dirs": [
+    true
+  ],
+  "threads": [
+    true
+  ]
+}

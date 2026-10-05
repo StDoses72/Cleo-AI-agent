@@ -1,0 +1,26 @@
+{
+  "changes": [
+    {
+      "additions": 1,
+      "deletions": 1,
+      "diff": "diff --git a/a.txt b/a.txt\nindex 1..2 100644\n--- a/a.txt\n+++ b/a.txt\n@@ -1,2 +1,2 @@\n-old\n+new\n same",
+      "path": "a.txt",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "diff": "diff --git a/new.txt b/new.txt\nnew file mode 100644\n--- /dev/null\n+++ b/new.txt\n@@ -0,0 +1 @@\n+hello",
+      "path": "new.txt",
+      "status": "added"
+    },
+    {
+      "additions": 0,
+      "deletions": 1,
+      "diff": "diff --git a/gone.txt b/gone.txt\ndeleted file mode 100644\n--- a/gone.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-bye",
+      "path": "gone.txt",
+      "status": "deleted"
+    }
+  ],
+  "empty": []
+}

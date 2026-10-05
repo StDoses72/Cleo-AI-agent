@@ -1,0 +1,63 @@
+{
+  "schema_version": 2,
+  "space": "non_productivity",
+  "project": "general",
+  "session_id": "cleo_9a0dfe9ca97d",
+  "source": {
+    "relative_path": "non_productivity/projects/general/sessions/cleo_9a0dfe9ca97d/events.jsonl",
+    "event_count": 9,
+    "from_seq": 1,
+    "to_seq": 9,
+    "source_content_hash": "sha256:d57114fd10bcb67e862bc6dc965e039810bc131a8aebcbc788207c9895ea2b58",
+    "source_version": 3
+  },
+  "compression": {
+    "compressed_at": "2026-10-03T23:10:32.197440+00:00",
+    "raw_characters": 5048,
+    "compact_characters": 1107,
+    "omitted_tool_characters": 0,
+    "tool_event_count": 0
+  },
+  "events": [
+    {
+      "id": "turn-058a0c2c3ed363c92c5b9c9d",
+      "type": "human",
+      "content": "Plan my week, I like concise weekly plans [[prefer]]",
+      "created_at": "2026-10-03T23:10:31.561753+00:00",
+      "source_event_ids": [
+        "turn-058a0c2c3ed363c92c5b9c9d"
+      ],
+      "source_message_id": "turn-058a0c2c3ed363c92c5b9c9d"
+    },
+    {
+      "id": "evt_46f73c043db14650ac338b4f989cf837",
+      "type": "ai",
+      "content": "Echo: Plan my week, I like concise weekly plans [[prefer]]",
+      "created_at": "2026-10-03T23:10:31.682782+00:00",
+      "source_event_ids": [
+        "evt_46f73c043db14650ac338b4f989cf837"
+      ],
+      "source_message_id": "lc_run--01a10408-8cae-79e2-b9c3-2f2a6fe89a0a"
+    },
+    {
+      "id": "turn-64892ab266812ac3fa26027c",
+      "type": "human",
+      "content": "Add a gym session on Saturday",
+      "created_at": "2026-10-03T23:10:32.101803+00:00",
+      "source_event_ids": [
+        "turn-64892ab266812ac3fa26027c"
+      ],
+      "source_message_id": "turn-64892ab266812ac3fa26027c"
+    },
+    {
+      "id": "evt_0c2c37c7bcbc473bafa494b109dd69d5",
+      "type": "ai",
+      "content": "Echo: Add a gym session on Saturday",
+      "created_at": "2026-10-03T23:10:32.169389+00:00",
+      "source_event_ids": [
+        "evt_0c2c37c7bcbc473bafa494b109dd69d5"
+      ],
+      "source_message_id": "lc_run--01a10408-8ec1-7920-9bf2-6e1deb3fefd8"
+    }
+  ]
+}

@@ -1,0 +1,161 @@
+{
+  "disk": {
+    "MEMORY.md": "# User Preferences\n- Prefers concise weekly plans\n",
+    "files": [
+      ".memory-git.lock",
+      ".timings-v1.sqlite3",
+      "MEMORY_POLICY.md",
+      "non_productivity/memory.sqlite3",
+      "non_productivity/memory_state.json",
+      "non_productivity/projects/general/.dream.lock",
+      "non_productivity/projects/general/MEMORY.md",
+      "non_productivity/projects/general/sessions/<thread:1>/compact.json",
+      "non_productivity/projects/general/sessions/<thread:1>/dream.json",
+      "non_productivity/projects/general/sessions/<thread:1>/events.jsonl",
+      "non_productivity/projects/general/sessions/<thread:1>/manifest.json",
+      "persona.sqlite3",
+      "sessions.sqlite3"
+    ],
+    "memory_git_log": [
+      "Consolidate preferences from <thread:1>",
+      "non_productivity/projects/general/MEMORY.md"
+    ],
+    "memory_state": {
+      "schema_version": 2,
+      "sources": {
+        "session:non_productivity:general:<thread:1>": {
+          "consolidated_hash": "sha256:<hex:4>",
+          "consolidated_version": 1,
+          "durable_memory_count": 1,
+          "failure_count": 0,
+          "last_consolidated_at": "<time>",
+          "last_error": null,
+          "last_event_seq": 4,
+          "last_processed_at": "<time>",
+          "last_started_at": "<time>",
+          "last_updated_at": "<time>",
+          "no_durable_memory_reason": null,
+          "processed_hash": "sha256:<hex:4>",
+          "processed_version": 1,
+          "processing_decision": "consolidated",
+          "processing_phase": "complete",
+          "processing_reason": null,
+          "project": "general",
+          "review_result": null,
+          "session_id": "<thread:1>",
+          "source_hash": "sha256:<hex:4>",
+          "source_version": 1,
+          "space": "non_productivity",
+          "status": "complete"
+        }
+      },
+      "updated_at": "<time>"
+    }
+  },
+  "dream_checkpoint": {
+    "committed_hash": "sha256:<hex:4>",
+    "committed_seq": 4,
+    "memory_hash": "<hex:5>",
+    "pending": null,
+    "summary": "",
+    "version": 2
+  },
+  "dream_request": {
+    "count": 1,
+    "max_tokens": 20000,
+    "model": "fake-chat",
+    "roles": [
+      "system",
+      "user"
+    ]
+  },
+  "memories": [
+    {
+      "content": "Prefers concise weekly plans",
+      "id": "<hex:1>",
+      "scope": "preference",
+      "source": "non_productivity/general",
+      "title": "Prefers concise weekly plans",
+      "updatedAt": "<relative-time>"
+    }
+  ],
+  "memoryOverview": {
+    "dream_agent": {
+      "failed_count": 0,
+      "last_processed_at": "<time>",
+      "pending_count": 0,
+      "running_count": 0,
+      "status": "idle"
+    },
+    "entries": [
+      {
+        "category": "preference",
+        "confidence": 1,
+        "content": "Prefers concise weekly plans",
+        "evidence": [],
+        "evidence_count": 0,
+        "history": [
+          {
+            "commit": "<hex:2>",
+            "created_at": "<time>",
+            "summary": "Consolidate preferences from <thread:1>"
+          }
+        ],
+        "id": "<hex:1>",
+        "importance": 3,
+        "project": "general",
+        "scope": "project",
+        "space": "non_productivity",
+        "tags": [],
+        "title": "Prefers concise weekly plans",
+        "updated_at": "<time>"
+      }
+    ],
+    "issues": [],
+    "project_summaries": [
+      {
+        "memory_count": 1,
+        "project": "general",
+        "space": "non_productivity",
+        "updated_at": "<time>"
+      }
+    ],
+    "review_sources": [],
+    "schema_version": 1,
+    "summary": {
+      "active_memories": 1,
+      "pending_sources": 0,
+      "persona_traits": 0,
+      "project_memories": 1,
+      "project_scopes": 1
+    },
+    "timingError": null,
+    "timings": [
+      {
+        "createdAt": "<time>",
+        "elapsedMs": "<number>",
+        "id": "<hex:3>",
+        "kind": "dream",
+        "persistenceError": null,
+        "phase": null,
+        "project": "general",
+        "sessionId": "<thread:1>",
+        "space": "non_productivity",
+        "status": "completed",
+        "title": "I like concise weekly plans [[prefer]]",
+        "turnId": null,
+        "unavailable": [
+          "模型服务内部阶段"
+        ],
+        "updatedAt": "<time>"
+      }
+    ]
+  },
+  "memory_db_schema_tables": [
+    "conversation_chunks",
+    "memory_consolidations",
+    "memory_entries",
+    "memory_evidence",
+    "sqlite_sequence"
+  ]
+}

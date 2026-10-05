@@ -1,0 +1,57 @@
+{
+  "disk": {
+    "MEMORY.md": "# User Preferences\n- Prefers concise weekly plans\n",
+    "files": [
+      ".memory-git.lock",
+      ".timings-v1.sqlite3",
+      "MEMORY_POLICY.md",
+      "non_productivity/memory.sqlite3",
+      "non_productivity/memory_state.json",
+      "non_productivity/projects/general/.dream.lock",
+      "non_productivity/projects/general/MEMORY.md",
+      "non_productivity/projects/general/sessions/<thread:1>/compact.json",
+      "non_productivity/projects/general/sessions/<thread:1>/dream.json",
+      "non_productivity/projects/general/sessions/<thread:1>/events.jsonl",
+      "non_productivity/projects/general/sessions/<thread:1>/manifest.json",
+      "persona.sqlite3",
+      "sessions.sqlite3"
+    ],
+    "memory_git_log": [
+      "Consolidate preferences from <thread:1>",
+      "non_productivity/projects/general/MEMORY.md"
+    ],
+    "memory_state": {
+      "schema_version": 2,
+      "sources": {
+        "session:non_productivity:general:<thread:1>": {
+          "consolidated_hash": "sha256:<hex:1>",
+          "consolidated_version": 1,
+          "durable_memory_count": 1,
+          "failure_count": 0,
+          "last_consolidated_at": "<time>",
+          "last_error": null,
+          "last_event_seq": 4,
+          "last_processed_at": "<time>",
+          "last_started_at": "<time>",
+          "last_updated_at": "<time>",
+          "no_durable_memory_reason": null,
+          "processed_hash": "sha256:<hex:1>",
+          "processed_version": 1,
+          "processing_decision": "consolidated",
+          "processing_phase": "complete",
+          "processing_reason": null,
+          "project": "general",
+          "review_result": null,
+          "session_id": "<thread:1>",
+          "source_hash": "sha256:<hex:1>",
+          "source_version": 1,
+          "space": "non_productivity",
+          "status": "complete"
+        }
+      },
+      "updated_at": "<time>"
+    }
+  },
+  "dream_requests": 1,
+  "new_events_written_on_shutdown": []
+}

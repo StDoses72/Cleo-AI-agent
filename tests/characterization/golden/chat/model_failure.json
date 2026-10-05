@@ -1,0 +1,84 @@
+{
+  "manifest_status": "interrupted",
+  "persisted_event_types": [
+    "session_created",
+    "user_message",
+    "session_interrupted",
+    "error"
+  ],
+  "reloaded_items": [
+    {
+      "content": "this will [[fail]]",
+      "cursor": "<cursor:1>",
+      "id": "<turn:1>",
+      "order": 1,
+      "role": "user",
+      "time": "<clock-time>",
+      "timing": {
+        "createdAt": "<time>",
+        "elapsedMs": "<number>",
+        "id": "<hex:1>",
+        "kind": "reply",
+        "persistenceError": null,
+        "phase": null,
+        "project": "general",
+        "sessionId": "<thread:1>",
+        "space": "non_productivity",
+        "status": "failed",
+        "turnId": "<turn:1>",
+        "unavailable": [
+          "模型服务内部阶段"
+        ],
+        "updatedAt": "<time>"
+      },
+      "turnHasAnswer": false,
+      "turnId": "<turn:1>",
+      "type": "message"
+    },
+    {
+      "cursor": "<cursor:2>",
+      "detail": "Error code: 500 - {'error': {'message': 'fake upstream failure', 'type': 'server_error'}}",
+      "id": "<turn:1>:<event:1>",
+      "order": 2,
+      "title": "运行需要查看",
+      "tone": "warning",
+      "turnHasAnswer": false,
+      "turnId": "<turn:1>",
+      "type": "notice"
+    }
+  ],
+  "reply_type": "error",
+  "stream": [
+    {
+      "item": {
+        "content": "this will [[fail]]",
+        "id": "<turn:1>",
+        "role": "user",
+        "time": "",
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      "type": "turn-started"
+    },
+    {
+      "timing": {
+        "createdAt": "<time>",
+        "elapsedMs": "<number>",
+        "id": "<hex:1>",
+        "kind": "reply",
+        "persistenceError": null,
+        "phase": null,
+        "project": "general",
+        "sessionId": "<thread:1>",
+        "space": "non_productivity",
+        "status": "failed",
+        "turnId": "<turn:1>",
+        "unavailable": [
+          "模型服务内部阶段"
+        ],
+        "updatedAt": "<time>"
+      },
+      "type": "timing"
+    }
+  ]
+}

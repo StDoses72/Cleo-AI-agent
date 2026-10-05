@@ -1,0 +1,924 @@
+{
+  "created": {
+    "activeRunId": null,
+    "canUndo": false,
+    "changeHistory": [],
+    "changes": [],
+    "currentTiming": null,
+    "editableTurnIds": [],
+    "history": {
+      "after": "<after:1>",
+      "before": "<before:1>",
+      "hasAfter": false,
+      "hasBefore": false,
+      "revision": "<revision:1>",
+      "total": 0
+    },
+    "id": "<agent:1>",
+    "items": [],
+    "pendingApprovals": [],
+    "pendingQuestions": [],
+    "projectId": "productivity:workspace",
+    "runtime": {
+      "access": "default",
+      "approval": "deny_all",
+      "contextWindow": 128000,
+      "editable": true,
+      "effort": "high",
+      "handoffStatus": null,
+      "model": "fake-model-a",
+      "models": [
+        "fake-model-a"
+      ],
+      "pendingPermissions": null,
+      "permissionOptions": {
+        "access": [],
+        "approval": [
+          {
+            "description": "由你选择服务提供的允许或拒绝选项。",
+            "label": "人工审批",
+            "value": "user"
+          },
+          {
+            "description": "自动选择服务提供的允许选项；不改变服务自身的文件访问限制。",
+            "label": "自动允许请求",
+            "value": "auto_allow"
+          },
+          {
+            "description": "自动选择拒绝选项；服务没有提供拒绝选项时取消请求。",
+            "label": "自动拒绝请求",
+            "value": "deny_all"
+          }
+        ],
+        "reason": "此服务不提供统一权限档位，请使用高级审批设置。"
+      },
+      "provider": "scripted",
+      "serviceTier": null,
+      "settingsRevision": 0,
+      "steerMode": "boundary",
+      "supportsFastMode": false,
+      "supportsQuestions": false
+    },
+    "skills": [],
+    "space": "productivity",
+    "status": "idle",
+    "steerReady": false,
+    "summary": "等待第一条消息",
+    "terminal": [],
+    "timingError": null,
+    "title": "新任务",
+    "updatedAt": "<relative-time>",
+    "usage": {
+      "input": null,
+      "limit": 128000,
+      "output": null,
+      "used": null
+    }
+  },
+  "disk": {
+    "index": [
+      {
+        "created_at": "<time>",
+        "cwd": "<WORKSPACE>",
+        "id": "<agent:1>",
+        "last_event_seq": 12,
+        "manifest_path": "<HOME>/memory/productivity/projects/workspace/sessions/<agent:1>/manifest.json",
+        "native_session_id": "acp-session-1",
+        "owner_id": null,
+        "owner_type": "agent",
+        "parent_session_id": null,
+        "project": "workspace",
+        "provider": "scripted",
+        "space": "productivity",
+        "status": "completed",
+        "title": "Update notes [[plan]] [[tool]] [[write]]",
+        "updated_at": "<time>"
+      }
+    ],
+    "session": {
+      "compact.json": {
+        "compression": {
+          "compact_characters": "<path-dependent>",
+          "compressed_at": "<time>",
+          "omitted_tool_characters": 0,
+          "raw_characters": "<path-dependent>",
+          "tool_event_count": 2
+        },
+        "events": [
+          {
+            "content": "Update notes [[plan]] [[tool]] [[write]]",
+            "created_at": "<time>",
+            "id": "<turn:1>",
+            "source_event_ids": [
+              "<turn:1>"
+            ],
+            "source_message_id": "<turn:1>",
+            "type": "human"
+          },
+          {
+            "args": {},
+            "created_at": "<time>",
+            "id": "<event:2>",
+            "name": "unknown",
+            "source_event_ids": [
+              "<event:2>"
+            ],
+            "status": "success",
+            "type": "tool_event"
+          },
+          {
+            "args": {},
+            "created_at": "<time>",
+            "id": "<event:3>",
+            "name": "unknown",
+            "source_event_ids": [
+              "<event:3>"
+            ],
+            "status": "success",
+            "type": "tool_event"
+          },
+          {
+            "content": "ACP reply: Update notes [[plan]] [[tool]] [[write]]",
+            "created_at": "<time>",
+            "id": "<turn:1>:answer",
+            "source_event_ids": [
+              "<turn:1>:answer"
+            ],
+            "source_message_id": "<turn:1>:answer",
+            "type": "ai"
+          },
+          {
+            "content": null,
+            "created_at": "<time>",
+            "data": {
+              "payload": {
+                "entries": [
+                  {
+                    "content": "<omitted:21 chars>",
+                    "priority": "medium",
+                    "status": "completed"
+                  },
+                  {
+                    "content": "<omitted:16 chars>",
+                    "priority": "medium",
+                    "status": "in_progress"
+                  }
+                ],
+                "sessionUpdate": "plan"
+              },
+              "provider": "scripted",
+              "provider_event_type": "plan",
+              "schema_version": 1,
+              "timeline_id": "<turn:1>:plan",
+              "turn_id": "<turn:1>"
+            },
+            "id": "<event:7>",
+            "source_event_ids": [
+              "<event:7>"
+            ],
+            "type": "plan_update"
+          },
+          {
+            "content": null,
+            "created_at": "<time>",
+            "data": {
+              "payload": {
+                "kind": "read",
+                "rawInput": {
+                  "path": "README.md"
+                },
+                "sessionUpdate": "tool_call",
+                "status": "in_progress",
+                "title": "Read README.md",
+                "toolCallId": "tool-read-1"
+              },
+              "provider": "scripted",
+              "provider_event_type": "tool_call",
+              "schema_version": 1,
+              "timeline_id": "<turn:1>:tool:tool-read-1",
+              "turn_id": "<turn:1>"
+            },
+            "id": "<event:8>",
+            "source_event_ids": [
+              "<event:8>"
+            ],
+            "type": "tool_call"
+          },
+          {
+            "content": null,
+            "created_at": "<time>",
+            "data": {
+              "payload": {
+                "kind": "edit",
+                "rawInput": {
+                  "path": "notes.txt"
+                },
+                "sessionUpdate": "tool_call",
+                "status": "in_progress",
+                "title": "Write notes.txt",
+                "toolCallId": "tool-write-1"
+              },
+              "provider": "scripted",
+              "provider_event_type": "tool_call",
+              "schema_version": 1,
+              "timeline_id": "<turn:1>:tool:tool-write-1",
+              "turn_id": "<turn:1>"
+            },
+            "id": "<event:9>",
+            "source_event_ids": [
+              "<event:9>"
+            ],
+            "type": "tool_call"
+          }
+        ],
+        "project": "workspace",
+        "schema_version": 2,
+        "session_id": "<agent:1>",
+        "source": {
+          "event_count": 11,
+          "from_seq": 1,
+          "relative_path": "productivity/projects/workspace/sessions/<agent:1>/events.jsonl",
+          "source_content_hash": "sha256:<hex:2>",
+          "source_version": 1,
+          "to_seq": 11
+        },
+        "space": "productivity"
+      },
+      "events.jsonl": [
+        {
+          "actor": "system",
+          "created_at": "<time>",
+          "data": {
+            "cwd": "<WORKSPACE>",
+            "native_session_id": "acp-session-1",
+            "owner_id": null,
+            "owner_type": "agent",
+            "parent_session_id": null,
+            "provider": "scripted",
+            "tags": []
+          },
+          "id": "<event:4>",
+          "project": "workspace",
+          "schema_version": 1,
+          "seq": 1,
+          "session_id": "<agent:1>",
+          "space": "productivity",
+          "type": "session_created"
+        },
+        {
+          "actor": "agent",
+          "content": "Update notes [[plan]] [[tool]] [[write]]",
+          "created_at": "<time>",
+          "id": "<turn:1>",
+          "project": "workspace",
+          "schema_version": 1,
+          "seq": 2,
+          "session_id": "<agent:1>",
+          "space": "productivity",
+          "type": "user_message"
+        },
+        {
+          "actor": "system",
+          "created_at": "<time>",
+          "id": "<event:5>",
+          "project": "workspace",
+          "schema_version": 1,
+          "seq": 3,
+          "session_id": "<agent:1>",
+          "space": "productivity",
+          "type": "session_running"
+        },
+        {
+          "actor": "scripted",
+          "content": "Thinking about the request.",
+          "created_at": "<time>",
+          "data": {
+            "payload": {
+              "content": {
+                "text": "Thinking about the request.",
+                "type": "text"
+              },
+              "sessionUpdate": "agent_thought_chunk"
+            },
+            "provider": "scripted",
+            "provider_event_type": "agent_thought_chunk",
+            "schema_version": 1,
+            "timeline_id": "<turn:1>:thought:1",
+            "turn_id": "<turn:1>"
+          },
+          "id": "<event:6>",
+          "project": "workspace",
+          "schema_version": 1,
+          "seq": 4,
+          "session_id": "<agent:1>",
+          "space": "productivity",
+          "type": "thought"
+        },
+        {
+          "actor": "scripted",
+          "created_at": "<time>",
+          "data": {
+            "payload": {
+              "entries": [
+                {
+                  "content": "Inspect the workspace",
+                  "priority": "medium",
+                  "status": "completed"
+                },
+                {
+                  "content": "Write the answer",
+                  "priority": "medium",
+                  "status": "in_progress"
+                }
+              ],
+              "sessionUpdate": "plan"
+            },
+            "provider": "scripted",
+            "provider_event_type": "plan",
+            "schema_version": 1,
+            "timeline_id": "<turn:1>:plan",
+            "turn_id": "<turn:1>"
+          },
+          "id": "<event:7>",
+          "project": "workspace",
+          "schema_version": 1,
+          "seq": 5,
+          "session_id": "<agent:1>",
+          "space": "productivity",
+          "type": "plan_update"
+        },
+        {
+          "actor": "scripted",
+          "created_at": "<time>",
+          "data": {
+            "payload": {
+              "kind": "read",
+              "rawInput": {
+                "path": "README.md"
+              },
+              "sessionUpdate": "tool_call",
+              "status": "in_progress",
+              "title": "Read README.md",
+              "toolCallId": "tool-read-1"
+            },
+            "provider": "scripted",
+            "provider_event_type": "tool_call",
+            "schema_version": 1,
+            "timeline_id": "<turn:1>:tool:tool-read-1",
+            "turn_id": "<turn:1>"
+          },
+          "id": "<event:8>",
+          "project": "workspace",
+          "schema_version": 1,
+          "seq": 6,
+          "session_id": "<agent:1>",
+          "space": "productivity",
+          "type": "tool_call"
+        },
+        {
+          "actor": "scripted",
+          "created_at": "<time>",
+          "data": {
+            "payload": {
+              "content": [
+                {
+                  "content": {
+                    "text": "# Fixture workspace",
+                    "type": "text"
+                  },
+                  "type": "content"
+                }
+              ],
+              "rawOutput": {
+                "lines": 1
+              },
+              "sessionUpdate": "tool_call_update",
+              "status": "completed",
+              "toolCallId": "tool-read-1"
+            },
+            "provider": "scripted",
+            "provider_event_type": "tool_call_update",
+            "schema_version": 1,
+            "timeline_id": "<turn:1>:tool:tool-read-1",
+            "turn_id": "<turn:1>"
+          },
+          "id": "<event:2>",
+          "project": "workspace",
+          "schema_version": 1,
+          "seq": 7,
+          "session_id": "<agent:1>",
+          "space": "productivity",
+          "type": "tool_result"
+        },
+        {
+          "actor": "scripted",
+          "created_at": "<time>",
+          "data": {
+            "payload": {
+              "kind": "edit",
+              "rawInput": {
+                "path": "notes.txt"
+              },
+              "sessionUpdate": "tool_call",
+              "status": "in_progress",
+              "title": "Write notes.txt",
+              "toolCallId": "tool-write-1"
+            },
+            "provider": "scripted",
+            "provider_event_type": "tool_call",
+            "schema_version": 1,
+            "timeline_id": "<turn:1>:tool:tool-write-1",
+            "turn_id": "<turn:1>"
+          },
+          "id": "<event:9>",
+          "project": "workspace",
+          "schema_version": 1,
+          "seq": 8,
+          "session_id": "<agent:1>",
+          "space": "productivity",
+          "type": "tool_call"
+        },
+        {
+          "actor": "scripted",
+          "created_at": "<time>",
+          "data": {
+            "payload": {
+              "content": [
+                {
+                  "newText": "scripted note\n",
+                  "path": "notes.txt",
+                  "type": "diff"
+                }
+              ],
+              "sessionUpdate": "tool_call_update",
+              "status": "completed",
+              "toolCallId": "tool-write-1"
+            },
+            "provider": "scripted",
+            "provider_event_type": "tool_call_update",
+            "schema_version": 1,
+            "timeline_id": "<turn:1>:tool:tool-write-1",
+            "turn_id": "<turn:1>"
+          },
+          "id": "<event:3>",
+          "project": "workspace",
+          "schema_version": 1,
+          "seq": 9,
+          "session_id": "<agent:1>",
+          "space": "productivity",
+          "type": "tool_result"
+        },
+        {
+          "actor": "scripted",
+          "content": "ACP reply: Update notes [[plan]] [[tool]] [[write]]",
+          "created_at": "<time>",
+          "id": "<turn:1>:answer",
+          "project": "workspace",
+          "schema_version": 1,
+          "seq": 10,
+          "session_id": "<agent:1>",
+          "space": "productivity",
+          "type": "assistant_message"
+        },
+        {
+          "actor": "system",
+          "created_at": "<time>",
+          "data": {
+            "native_turn_id": "<acp-turn:1>",
+            "turn_id": "<turn:1>"
+          },
+          "id": "<event:10>",
+          "project": "workspace",
+          "schema_version": 1,
+          "seq": 11,
+          "session_id": "<agent:1>",
+          "space": "productivity",
+          "type": "session_completed"
+        },
+        {
+          "actor": "scripted",
+          "content": "diff --git a/notes.txt b/notes.txt\nnew file mode 100644\nindex 0000000..e8a0e97\n--- /dev/null\n+++ b/notes.txt\n@@ -0,0 +1 @@\n+scripted note",
+          "created_at": "<time>",
+          "data": {
+            "title": "Update notes [[plan]] [[tool]] [[write]]"
+          },
+          "id": "<event:1>",
+          "project": "workspace",
+          "schema_version": 1,
+          "seq": 12,
+          "session_id": "<agent:1>",
+          "space": "productivity",
+          "type": "turn_diff"
+        }
+      ],
+      "files": [
+        "compact.json",
+        "context-v1",
+        "events.jsonl",
+        "manifest.json"
+      ],
+      "manifest.json": {
+        "created_at": "<time>",
+        "cwd": "<WORKSPACE>",
+        "error": null,
+        "id": "<agent:1>",
+        "last_compacted_seq": 11,
+        "last_event_seq": 12,
+        "native_session_id": "acp-session-1",
+        "owner_id": null,
+        "owner_type": "agent",
+        "parent_session_id": null,
+        "project": "workspace",
+        "provider": "scripted",
+        "runtime_options": {
+          "approval_mode": "deny_all",
+          "effort": "high",
+          "model": "fake-model-a",
+          "sandbox": null,
+          "service_tier": null
+        },
+        "schema_version": 1,
+        "source_hash": "sha256:<hex:2>",
+        "source_version": 1,
+        "space": "productivity",
+        "status": "completed",
+        "tags": [],
+        "title": "Update notes [[plan]] [[tool]] [[write]]",
+        "undo_checkpoint": {
+          "after_index": "<hex:8>",
+          "after_worktree": "<hex:7>",
+          "before_index": "<hex:6>",
+          "before_worktree": "<hex:5>",
+          "head": "<hex:4>",
+          "ref": "refs/cleo/undo/<hex:3>",
+          "repo_root": "<WORKSPACE>",
+          "version": 1
+        },
+        "undo_checkpoint_shared": false,
+        "updated_at": "<time>"
+      }
+    }
+  },
+  "reloaded_thread": {
+    "activeRunId": null,
+    "canUndo": true,
+    "changeHistory": [
+      {
+        "changes": [
+          {
+            "additions": 1,
+            "deletions": 0,
+            "diff": "diff --git a/notes.txt b/notes.txt\nnew file mode 100644\nindex 0000000..e8a0e97\n--- /dev/null\n+++ b/notes.txt\n@@ -0,0 +1 @@\n+scripted note",
+            "path": "notes.txt",
+            "status": "added"
+          }
+        ],
+        "createdAt": "<relative-time>",
+        "id": "<event:1>",
+        "title": "Update notes [[plan]] [[tool]] [[write]]"
+      }
+    ],
+    "changes": [],
+    "currentTiming": {
+      "createdAt": "<time>",
+      "elapsedMs": "<number>",
+      "id": "<hex:1>",
+      "kind": "reply",
+      "persistenceError": null,
+      "phase": null,
+      "project": "workspace",
+      "sessionId": "<agent:1>",
+      "space": "productivity",
+      "status": "completed",
+      "turnId": "<turn:1>",
+      "unavailable": [
+        "模型服务内部阶段"
+      ],
+      "updatedAt": "<time>"
+    },
+    "editableTurnIds": [],
+    "history": {
+      "after": "<after:2>",
+      "before": "<before:1>",
+      "hasAfter": false,
+      "hasBefore": false,
+      "revision": "<revision:2>",
+      "total": 7
+    },
+    "id": "<agent:1>",
+    "items": [
+      {
+        "content": "Update notes [[plan]] [[tool]] [[write]]",
+        "cursor": "<cursor:1>",
+        "id": "<turn:1>",
+        "order": 1,
+        "role": "user",
+        "time": "<clock-time>",
+        "turnHasAnswer": true,
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      {
+        "content": "Thinking about the request.",
+        "cursor": "<cursor:2>",
+        "id": "<turn:1>:thought:1",
+        "order": 2,
+        "status": "done",
+        "turnHasAnswer": true,
+        "turnId": "<turn:1>",
+        "type": "thought"
+      },
+      {
+        "command": "",
+        "cursor": "<cursor:3>",
+        "id": "<turn:1>:tool:tool-read-1",
+        "name": "tool",
+        "order": 3,
+        "output": "任务已结束，但没有收到该工具的完成事件。",
+        "status": "error",
+        "turnHasAnswer": true,
+        "turnId": "<turn:1>",
+        "type": "tool"
+      },
+      {
+        "command": "",
+        "cursor": "<cursor:5>",
+        "id": "<turn:1>:tool-result-<event:2>",
+        "name": "tool",
+        "order": 4,
+        "status": "done",
+        "turnHasAnswer": true,
+        "turnId": "<turn:1>",
+        "type": "tool"
+      },
+      {
+        "command": "",
+        "cursor": "<cursor:4>",
+        "id": "<turn:1>:tool:tool-write-1",
+        "name": "tool",
+        "order": 5,
+        "output": "任务已结束，但没有收到该工具的完成事件。",
+        "status": "error",
+        "turnHasAnswer": true,
+        "turnId": "<turn:1>",
+        "type": "tool"
+      },
+      {
+        "command": "",
+        "cursor": "<cursor:6>",
+        "id": "<turn:1>:tool-result-<event:3>",
+        "name": "tool",
+        "order": 6,
+        "status": "done",
+        "turnHasAnswer": true,
+        "turnId": "<turn:1>",
+        "type": "tool"
+      },
+      {
+        "content": "ACP reply: Update notes [[plan]] [[tool]] [[write]]",
+        "cursor": "<cursor:7>",
+        "id": "<turn:1>:answer",
+        "order": 7,
+        "role": "assistant",
+        "time": "<clock-time>",
+        "timing": {
+          "createdAt": "<time>",
+          "elapsedMs": "<number>",
+          "id": "<hex:1>",
+          "kind": "reply",
+          "persistenceError": null,
+          "phase": null,
+          "project": "workspace",
+          "sessionId": "<agent:1>",
+          "space": "productivity",
+          "status": "completed",
+          "turnId": "<turn:1>",
+          "unavailable": [
+            "模型服务内部阶段"
+          ],
+          "updatedAt": "<time>"
+        },
+        "turnHasAnswer": true,
+        "turnId": "<turn:1>",
+        "type": "message"
+      }
+    ],
+    "pendingApprovals": [],
+    "pendingQuestions": [],
+    "projectId": "productivity:workspace",
+    "runtime": {
+      "access": "default",
+      "approval": "deny_all",
+      "contextWindow": 128000,
+      "editable": true,
+      "effort": "high",
+      "handoffStatus": null,
+      "model": "fake-model-a",
+      "models": [
+        "fake-model-a"
+      ],
+      "pendingPermissions": null,
+      "permissionOptions": {
+        "access": [],
+        "approval": [
+          {
+            "description": "由你选择服务提供的允许或拒绝选项。",
+            "label": "人工审批",
+            "value": "user"
+          },
+          {
+            "description": "自动选择服务提供的允许选项；不改变服务自身的文件访问限制。",
+            "label": "自动允许请求",
+            "value": "auto_allow"
+          },
+          {
+            "description": "自动选择拒绝选项；服务没有提供拒绝选项时取消请求。",
+            "label": "自动拒绝请求",
+            "value": "deny_all"
+          }
+        ],
+        "reason": "此服务不提供统一权限档位，请使用高级审批设置。"
+      },
+      "provider": "scripted",
+      "serviceTier": null,
+      "settingsRevision": 0,
+      "steerMode": "boundary",
+      "supportsFastMode": false,
+      "supportsQuestions": false
+    },
+    "skills": [],
+    "space": "productivity",
+    "status": "completed",
+    "steerReady": false,
+    "summary": "ACP reply: Update notes [[plan]] [[tool]] [[write]]",
+    "terminal": [],
+    "timingError": null,
+    "title": "Update notes [[plan]] [[tool]] [[write]]",
+    "updatedAt": "<relative-time>",
+    "usage": {
+      "input": null,
+      "limit": 128000,
+      "output": null,
+      "used": null
+    }
+  },
+  "stream": [
+    {
+      "item": {
+        "content": "Update notes [[plan]] [[tool]] [[write]]",
+        "cursor": "<cursor:1>",
+        "id": "<turn:1>",
+        "order": 1,
+        "role": "user",
+        "time": "",
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      "type": "turn-started"
+    },
+    {
+      "item": {
+        "content": "Thinking about the request.",
+        "cursor": "<cursor:2>",
+        "id": "<turn:1>:thought:1",
+        "order": 2,
+        "status": "done",
+        "turnId": "<turn:1>",
+        "type": "thought"
+      },
+      "type": "upsert-item"
+    },
+    {
+      "item": {
+        "command": "",
+        "cursor": "<cursor:3>",
+        "id": "<turn:1>:tool:tool-read-1",
+        "name": "tool",
+        "order": 3,
+        "status": "done",
+        "turnId": "<turn:1>",
+        "type": "tool"
+      },
+      "type": "upsert-item"
+    },
+    {
+      "changes": [],
+      "type": "changes"
+    },
+    {
+      "item": {
+        "command": "",
+        "cursor": "<cursor:4>",
+        "id": "<turn:1>:tool:tool-write-1",
+        "name": "tool",
+        "order": 5,
+        "status": "done",
+        "turnId": "<turn:1>",
+        "type": "tool"
+      },
+      "type": "upsert-item"
+    },
+    {
+      "item": {
+        "content": "ACP reply: Update notes [[plan]] [[tool]] [[write]]",
+        "id": "<turn:1>:answer",
+        "role": "assistant",
+        "time": "",
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      "type": "upsert-item"
+    },
+    {
+      "changeSet": {
+        "changes": [
+          {
+            "additions": 1,
+            "deletions": 0,
+            "diff": "diff --git a/notes.txt b/notes.txt\nnew file mode 100644\nindex 0000000..e8a0e97\n--- /dev/null\n+++ b/notes.txt\n@@ -0,0 +1 @@\n+scripted note",
+            "path": "notes.txt",
+            "status": "added"
+          }
+        ],
+        "createdAt": "<relative-time>",
+        "id": "<event:1>",
+        "title": "Update notes [[plan]] [[tool]] [[write]]"
+      },
+      "type": "change-history"
+    },
+    {
+      "runtime": {
+        "access": "default",
+        "approval": "deny_all",
+        "contextWindow": 128000,
+        "editable": true,
+        "effort": "high",
+        "handoffStatus": null,
+        "model": "fake-model-a",
+        "models": [
+          "fake-model-a"
+        ],
+        "pendingPermissions": null,
+        "permissionOptions": {
+          "access": [],
+          "approval": [
+            {
+              "description": "由你选择服务提供的允许或拒绝选项。",
+              "label": "人工审批",
+              "value": "user"
+            },
+            {
+              "description": "自动选择服务提供的允许选项；不改变服务自身的文件访问限制。",
+              "label": "自动允许请求",
+              "value": "auto_allow"
+            },
+            {
+              "description": "自动选择拒绝选项；服务没有提供拒绝选项时取消请求。",
+              "label": "自动拒绝请求",
+              "value": "deny_all"
+            }
+          ],
+          "reason": "此服务不提供统一权限档位，请使用高级审批设置。"
+        },
+        "provider": "scripted",
+        "serviceTier": null,
+        "settingsRevision": 0,
+        "steerMode": "boundary",
+        "supportsFastMode": false,
+        "supportsQuestions": false
+      },
+      "type": "runtime"
+    },
+    {
+      "changes": [],
+      "type": "changes"
+    },
+    {
+      "timing": {
+        "createdAt": "<time>",
+        "elapsedMs": "<number>",
+        "id": "<hex:1>",
+        "kind": "reply",
+        "persistenceError": null,
+        "phase": null,
+        "project": "workspace",
+        "sessionId": "<agent:1>",
+        "space": "productivity",
+        "status": "completed",
+        "turnId": "<turn:1>",
+        "unavailable": [
+          "模型服务内部阶段"
+        ],
+        "updatedAt": "<time>"
+      },
+      "type": "timing"
+    },
+    {
+      "summary": "ACP reply: Update notes [[plan]] [[tool]] [[write]]",
+      "type": "done"
+    }
+  ],
+  "workspace_git_status": [
+    "?? notes.txt"
+  ]
+}

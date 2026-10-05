@@ -1,0 +1,270 @@
+{
+  "commands": {
+    "/approval": {
+      "error": null,
+      "events": [
+        {
+          "item": {
+            "detail": "deny_all",
+            "id": "<notice:7>",
+            "title": "Approval",
+            "tone": "info",
+            "type": "notice"
+          },
+          "type": "upsert-item"
+        },
+        {
+          "summary": "Approval",
+          "type": "done"
+        }
+      ],
+      "reply": "result"
+    },
+    "/back": {
+      "error": null,
+      "events": [
+        {
+          "space": "chat",
+          "type": "navigate-space"
+        }
+      ],
+      "reply": "result"
+    },
+    "/cwd": {
+      "error": null,
+      "events": [
+        {
+          "item": {
+            "detail": "<WORKSPACE>",
+            "id": "<notice:2>",
+            "title": "工作目录",
+            "tone": "info",
+            "type": "notice"
+          },
+          "type": "upsert-item"
+        },
+        {
+          "summary": "工作目录",
+          "type": "done"
+        }
+      ],
+      "reply": "result"
+    },
+    "/diff": {
+      "error": null,
+      "events": [
+        {
+          "changes": [],
+          "type": "changes"
+        },
+        {
+          "item": {
+            "detail": "已刷新右侧变更面板。",
+            "id": "<notice:5>",
+            "title": "工作区差异",
+            "tone": "success",
+            "type": "notice"
+          },
+          "type": "upsert-item"
+        },
+        {
+          "summary": "工作区差异",
+          "type": "done"
+        }
+      ],
+      "reply": "result"
+    },
+    "/effort": {
+      "error": null,
+      "events": [
+        {
+          "item": {
+            "detail": "high",
+            "id": "<notice:6>",
+            "title": "Effort",
+            "tone": "info",
+            "type": "notice"
+          },
+          "type": "upsert-item"
+        },
+        {
+          "summary": "Effort",
+          "type": "done"
+        }
+      ],
+      "reply": "result"
+    },
+    "/effort low": {
+      "error": null,
+      "events": [
+        {
+          "runtime": {
+            "access": "default",
+            "approval": "deny_all",
+            "contextWindow": 128000,
+            "editable": true,
+            "effort": "low",
+            "handoffStatus": null,
+            "model": "fake-model-a",
+            "models": [
+              "fake-model-a"
+            ],
+            "pendingPermissions": null,
+            "permissionOptions": {
+              "access": [],
+              "approval": [
+                {
+                  "description": "由你选择服务提供的允许或拒绝选项。",
+                  "label": "人工审批",
+                  "value": "user"
+                },
+                {
+                  "description": "自动选择服务提供的允许选项；不改变服务自身的文件访问限制。",
+                  "label": "自动允许请求",
+                  "value": "auto_allow"
+                },
+                {
+                  "description": "自动选择拒绝选项；服务没有提供拒绝选项时取消请求。",
+                  "label": "自动拒绝请求",
+                  "value": "deny_all"
+                }
+              ],
+              "reason": "此服务不提供统一权限档位，请使用高级审批设置。"
+            },
+            "provider": "scripted",
+            "serviceTier": null,
+            "settingsRevision": 1,
+            "steerMode": "boundary",
+            "supportsFastMode": false,
+            "supportsQuestions": false
+          },
+          "type": "runtime"
+        },
+        {
+          "item": {
+            "detail": "effort = low",
+            "id": "<notice:10>",
+            "title": "运行参数已更新",
+            "tone": "success",
+            "type": "notice"
+          },
+          "type": "upsert-item"
+        },
+        {
+          "summary": "运行参数已更新",
+          "type": "done"
+        }
+      ],
+      "reply": "result"
+    },
+    "/git": {
+      "error": null,
+      "events": [
+        {
+          "item": {
+            "detail": "main · 1 个变更\n?? notes.txt",
+            "id": "<notice:4>",
+            "title": "Git 状态",
+            "tone": "info",
+            "type": "notice"
+          },
+          "type": "upsert-item"
+        },
+        {
+          "summary": "Git 状态",
+          "type": "done"
+        }
+      ],
+      "reply": "result"
+    },
+    "/help": {
+      "error": null,
+      "events": [
+        {
+          "item": {
+            "detail": "/new · /cwd · /project · /git · /diff · /model · /effort · /access · /approval · /cd · /resume · /resume-native · /native · /sessions · /account · /fork · /rename · /compact · /archive · /back · /quit",
+            "id": "<notice:1>",
+            "title": "开发任务命令",
+            "tone": "info",
+            "type": "notice"
+          },
+          "type": "upsert-item"
+        },
+        {
+          "summary": "开发任务命令",
+          "type": "done"
+        }
+      ],
+      "reply": "result"
+    },
+    "/model": {
+      "error": "AcpProvider.list_models() missing 1 required positional argument: 'project_path'",
+      "events": [],
+      "reply": "error"
+    },
+    "/project": {
+      "error": null,
+      "events": [
+        {
+          "item": {
+            "detail": "workspace",
+            "id": "<notice:3>",
+            "title": "项目",
+            "tone": "info",
+            "type": "notice"
+          },
+          "type": "upsert-item"
+        },
+        {
+          "summary": "项目",
+          "type": "done"
+        }
+      ],
+      "reply": "result"
+    },
+    "/quit": {
+      "error": null,
+      "events": [
+        {
+          "item": {
+            "detail": "可以切换空间或直接关闭窗口。",
+            "id": "<notice:9>",
+            "title": "桌面应用保持运行",
+            "tone": "info",
+            "type": "notice"
+          },
+          "type": "upsert-item"
+        },
+        {
+          "summary": "桌面应用保持运行",
+          "type": "done"
+        }
+      ],
+      "reply": "result"
+    },
+    "/sessions": {
+      "error": null,
+      "events": [
+        {
+          "item": {
+            "detail": "<agent:1> · first [[write]] · workspace",
+            "id": "<notice:8>",
+            "title": "Sessions",
+            "tone": "info",
+            "type": "notice"
+          },
+          "type": "upsert-item"
+        },
+        {
+          "summary": "Sessions",
+          "type": "done"
+        }
+      ],
+      "reply": "result"
+    }
+  },
+  "unknown": [
+    "ValueError",
+    "未知开发命令：/bogus。输入 /help 查看命令。"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "missing_required_param": "TypeError",
+  "private": [
+    "ValueError",
+    "unsupported desktop method: _thread"
+  ],
+  "unexpected_param": "TypeError",
+  "unknown": [
+    "ValueError",
+    "unsupported desktop method: no_such_method"
+  ]
+}

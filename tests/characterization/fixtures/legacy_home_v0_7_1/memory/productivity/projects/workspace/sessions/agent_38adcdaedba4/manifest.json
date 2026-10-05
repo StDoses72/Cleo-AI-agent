@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "id": "agent_38adcdaedba4",
+  "space": "productivity",
+  "project": "workspace",
+  "provider": "scripted",
+  "native_session_id": "acp-session-1",
+  "owner_type": "agent",
+  "owner_id": null,
+  "status": "completed",
+  "title": "Write the notes file [[plan]] [[tool]] [[write]]",
+  "cwd": "{{WORKSPACE}}",
+  "parent_session_id": null,
+  "tags": [],
+  "last_event_seq": 17,
+  "last_compacted_seq": 17,
+  "source_hash": "sha256:3a118dea3a8f72555af5a1be1bdbe19c91da6313768a5f9a1f3087707a72e35a",
+  "source_version": 2,
+  "created_at": "2026-10-03T23:10:33.987008+00:00",
+  "updated_at": "2026-10-03T23:10:35.951113+00:00",
+  "runtime_options": {
+    "model": "fake-model-a",
+    "effort": "high",
+    "approval_mode": "deny_all",
+    "sandbox": null,
+    "service_tier": null
+  },
+  "undo_checkpoint_shared": false,
+  "undo_checkpoint": {
+    "version": 1,
+    "repo_root": "{{WORKSPACE}}",
+    "ref": "refs/cleo/undo/24b2a352135b8f40c21e435a05eccf258c27e08e46c00777049013055d7ecf31",
+    "head": "4ebc902d687672cb1f272051c712c73a6c6ef130",
+    "before_worktree": "3fb64328afc5569d92030ff3d31cf9b8174014af",
+    "before_index": "d2ca69bd80fa388e2cd2f30c2ad564adc110b354",
+    "after_worktree": "c80b2b6d65213f136a9238ef7c5a04e04896b5a0",
+    "after_index": "a6ed4933890effc695e227bd556a404a341f016c"
+  },
+  "error": null
+}

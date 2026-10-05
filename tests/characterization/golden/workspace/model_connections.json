@@ -1,0 +1,347 @@
+{
+  "after_restart": {
+    "catalog": {
+      "defaultNonProductivityProfile": "connection_<hex:1>",
+      "defaultProductivityProvider": "scripted",
+      "nonProductivityProfiles": [
+        {
+          "active": true,
+          "id": "connection_<hex:1>",
+          "label": "Renamed",
+          "maxTokens": 100000,
+          "model": "fake-chat-mini",
+          "provider": "openai"
+        },
+        {
+          "active": false,
+          "id": "fake_chat",
+          "label": "fake_chat",
+          "maxTokens": 64000,
+          "model": "fake-chat",
+          "provider": "openai"
+        }
+      ],
+      "productivityProviders": [
+        {
+          "defaultModel": null,
+          "id": "scripted",
+          "modelSource": "dynamic",
+          "type": "acp"
+        },
+        {
+          "defaultModel": null,
+          "id": "claude",
+          "modelSource": "dynamic",
+          "type": "claude_sdk"
+        },
+        {
+          "defaultModel": null,
+          "id": "gemini",
+          "modelSource": "dynamic",
+          "type": "acp"
+        },
+        {
+          "defaultModel": null,
+          "id": "copilot",
+          "modelSource": "dynamic",
+          "type": "acp"
+        },
+        {
+          "defaultModel": null,
+          "id": "grok",
+          "modelSource": "dynamic",
+          "type": "acp"
+        },
+        {
+          "defaultModel": null,
+          "id": "opencode",
+          "modelSource": "dynamic",
+          "type": "acp"
+        }
+      ]
+    },
+    "runtime": {
+      "access": ".",
+      "approval": "Cleo 工具策略",
+      "contextWindow": 100000,
+      "editable": false,
+      "effort": "high",
+      "model": "fake-chat-mini",
+      "models": [
+        "fake-chat",
+        "fake-chat-mini"
+      ],
+      "profileId": "connection_<hex:1>",
+      "provider": "openai",
+      "steerMode": "boundary",
+      "supportsQuestions": false
+    }
+  },
+  "check": {
+    "models": [
+      "fake-chat",
+      "fake-chat-mini"
+    ],
+    "status": "connected"
+  },
+  "config_on_disk": {
+    "active_profiles": {
+      "agent": "connection_<hex:1>",
+      "directory": "default",
+      "dream_agent": null,
+      "dream_enabled": false,
+      "dream_model": null,
+      "shell": "default",
+      "tools": "default"
+    },
+    "profiles": {
+      "agents": {
+        "connection_<hex:1>": {
+          "api_key": "sk-new-connection",
+          "backend": "api",
+          "base_url": "<LLM_URL>",
+          "display_name": "Renamed",
+          "executable": null,
+          "max_tokens": 100000,
+          "model": "fake-chat-mini",
+          "models": [
+            "fake-chat",
+            "fake-chat-mini"
+          ],
+          "provider": "openai",
+          "temperature": 0.7
+        },
+        "fake_chat": {
+          "api_key": "sk-characterization-secret",
+          "base_url": "<LLM_URL>",
+          "max_tokens": 64000,
+          "model": "fake-chat",
+          "provider": "openai",
+          "temperature": 0
+        }
+      },
+      "directories": {
+        "default": {
+          "data_dir": "data",
+          "memory_dir": "memory",
+          "memory_policy_path": "memory/MEMORY_POLICY.md",
+          "persona_path": "PERSONA.md",
+          "root_dir": ".",
+          "runtime_state_path": "data/runtime.json",
+          "session_artifacts_dir": "data/session_artifacts",
+          "session_index_path": "memory/sessions.sqlite3",
+          "skills_dir": "skills",
+          "workspace_dir": "workspace"
+        }
+      },
+      "shell": {
+        "default": {
+          "allowed_commands": [
+            "python",
+            "git"
+          ],
+          "audit_log_path": "data/shell_audit.log",
+          "denied_patterns": [
+            "&&",
+            "||",
+            ";",
+            "|"
+          ],
+          "enforce_sandbox": true,
+          "include_platform_defaults": false,
+          "max_output_chars": 12000,
+          "require_allowlist": true,
+          "require_approval": false,
+          "sandbox_root": ".",
+          "timeout_seconds": 30
+        }
+      },
+      "tools": {
+        "default": {
+          "browser": {
+            "enabled": false
+          },
+          "codex_model": "gpt-5.5",
+          "tavily_api_key": null
+        }
+      }
+    }
+  },
+  "created": {
+    "activeAgent": "fake_chat",
+    "activeDreamAgent": "",
+    "activeDreamModel": "",
+    "dreamEnabled": true,
+    "profiles": [
+      {
+        "backend": "api",
+        "baseUrl": "<LLM_URL>",
+        "displayName": "Second fake",
+        "executable": "",
+        "hasApiKey": true,
+        "maxTokens": 100000,
+        "model": "fake-chat",
+        "models": [
+          "fake-chat",
+          "fake-chat-mini"
+        ],
+        "name": "connection_<hex:1>",
+        "provider": "openai"
+      },
+      {
+        "backend": "api",
+        "baseUrl": "<LLM_URL>",
+        "displayName": "fake_chat",
+        "executable": "",
+        "hasApiKey": true,
+        "maxTokens": 64000,
+        "model": "fake-chat",
+        "models": [
+          "fake-chat"
+        ],
+        "name": "fake_chat",
+        "provider": "openai"
+      }
+    ]
+  },
+  "dream": {
+    "activeAgent": "connection_<hex:1>",
+    "activeDreamAgent": "",
+    "activeDreamModel": "",
+    "dreamEnabled": false,
+    "profiles": [
+      {
+        "backend": "api",
+        "baseUrl": "<LLM_URL>",
+        "displayName": "Renamed",
+        "executable": "",
+        "hasApiKey": true,
+        "maxTokens": 100000,
+        "model": "fake-chat-mini",
+        "models": [
+          "fake-chat-mini",
+          "fake-chat"
+        ],
+        "name": "connection_<hex:1>",
+        "provider": "openai"
+      },
+      {
+        "backend": "api",
+        "baseUrl": "<LLM_URL>",
+        "displayName": "fake_chat",
+        "executable": "",
+        "hasApiKey": true,
+        "maxTokens": 64000,
+        "model": "fake-chat",
+        "models": [
+          "fake-chat"
+        ],
+        "name": "fake_chat",
+        "provider": "openai"
+      }
+    ]
+  },
+  "errors": {
+    "duplicate": "这个连接名称已被使用。",
+    "in_use": "这个连接正在被使用。切换所用模型后，才可移除。",
+    "no_models": "请至少选择或填写一个模型。",
+    "wrong_model": "模型不属于所选连接。"
+  },
+  "removed_original": {
+    "activeAgent": "connection_<hex:1>",
+    "activeDreamAgent": "",
+    "activeDreamModel": "",
+    "dreamEnabled": false,
+    "profiles": [
+      {
+        "backend": "api",
+        "baseUrl": "<LLM_URL>",
+        "displayName": "Renamed",
+        "executable": "",
+        "hasApiKey": true,
+        "maxTokens": 100000,
+        "model": "fake-chat-mini",
+        "models": [
+          "fake-chat-mini",
+          "fake-chat"
+        ],
+        "name": "connection_<hex:1>",
+        "provider": "openai"
+      }
+    ]
+  },
+  "renamed": {
+    "activeAgent": "fake_chat",
+    "activeDreamAgent": "",
+    "activeDreamModel": "",
+    "dreamEnabled": true,
+    "profiles": [
+      {
+        "backend": "api",
+        "baseUrl": "<LLM_URL>",
+        "displayName": "Renamed",
+        "executable": "",
+        "hasApiKey": true,
+        "maxTokens": 100000,
+        "model": "fake-chat",
+        "models": [
+          "fake-chat",
+          "fake-chat-mini"
+        ],
+        "name": "connection_<hex:1>",
+        "provider": "openai"
+      },
+      {
+        "backend": "api",
+        "baseUrl": "<LLM_URL>",
+        "displayName": "fake_chat",
+        "executable": "",
+        "hasApiKey": true,
+        "maxTokens": 64000,
+        "model": "fake-chat",
+        "models": [
+          "fake-chat"
+        ],
+        "name": "fake_chat",
+        "provider": "openai"
+      }
+    ]
+  },
+  "selected": {
+    "activeAgent": "connection_<hex:1>",
+    "activeDreamAgent": "",
+    "activeDreamModel": "",
+    "dreamEnabled": true,
+    "profiles": [
+      {
+        "backend": "api",
+        "baseUrl": "<LLM_URL>",
+        "displayName": "Renamed",
+        "executable": "",
+        "hasApiKey": true,
+        "maxTokens": 100000,
+        "model": "fake-chat-mini",
+        "models": [
+          "fake-chat-mini",
+          "fake-chat"
+        ],
+        "name": "connection_<hex:1>",
+        "provider": "openai"
+      },
+      {
+        "backend": "api",
+        "baseUrl": "<LLM_URL>",
+        "displayName": "fake_chat",
+        "executable": "",
+        "hasApiKey": true,
+        "maxTokens": 64000,
+        "model": "fake-chat",
+        "models": [
+          "fake-chat"
+        ],
+        "name": "fake_chat",
+        "provider": "openai"
+      }
+    ]
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "active_event_seqs": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "compact": {
+    "compression": {
+      "compact_characters": 515,
+      "compressed_at": "<time>",
+      "omitted_tool_characters": 0,
+      "raw_characters": 1961,
+      "tool_event_count": 0
+    },
+    "events": [
+      {
+        "content": "Collect reading notes",
+        "created_at": "<time>",
+        "id": "<turn:1>",
+        "source_event_ids": [
+          "<turn:1>"
+        ],
+        "source_message_id": "<turn:1>",
+        "type": "human"
+      },
+      {
+        "content": "Echo: Collect reading notes",
+        "created_at": "<time>",
+        "id": "<event:1>",
+        "source_event_ids": [
+          "<event:1>"
+        ],
+        "source_message_id": "lc_run--<uuid:1>",
+        "type": "ai"
+      }
+    ],
+    "project": "research",
+    "schema_version": 2,
+    "session_id": "<thread:1>",
+    "source": {
+      "event_count": 4,
+      "from_seq": 1,
+      "relative_path": "non_productivity/projects/research/sessions/<thread:1>/events.jsonl",
+      "source_content_hash": "sha256:<hex:1>",
+      "source_version": 1,
+      "to_seq": 4
+    },
+    "space": "non_productivity"
+  },
+  "has_user_interaction": true,
+  "timeline": [
+    {
+      "content": "Collect reading notes",
+      "id": "<turn:1>",
+      "role": "user",
+      "time": "<clock-time>",
+      "turnHasAnswer": true,
+      "turnId": "<turn:1>",
+      "type": "message"
+    },
+    {
+      "content": "Echo: Collect reading notes",
+      "id": "<event:1>",
+      "role": "assistant",
+      "time": "<clock-time>",
+      "turnHasAnswer": true,
+      "turnId": "<turn:1>",
+      "type": "message"
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "schema_version": 3,
+  "current_space": "non_productivity",
+  "current_project": null,
+  "current_thread_id": "cleo_9a0dfe9ca97d",
+  "projects": {
+    "non_productivity": [
+      "general",
+      "research"
+    ],
+    "productivity": [
+      "workspace"
+    ]
+  },
+  "recent_threads": {
+    "non_productivity": [
+      "cleo_03dfeadcefad",
+      "cleo_9a0dfe9ca97d"
+    ],
+    "productivity": [
+      "agent_38adcdaedba4"
+    ]
+  },
+  "project_paths": {
+    "non_productivity": {
+      "general": "{{HOME}}",
+      "research": "{{RESEARCH}}"
+    },
+    "productivity": {
+      "workspace": "{{WORKSPACE}}"
+    }
+  },
+  "removed_projects": {
+    "non_productivity": [],
+    "productivity": []
+  }
+}

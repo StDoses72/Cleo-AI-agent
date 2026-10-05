@@ -1,0 +1,112 @@
+{
+  "active_event_seqs": [
+    1,
+    2,
+    3,
+    4,
+    8,
+    9
+  ],
+  "compact": {
+    "compression": {
+      "compact_characters": 1107,
+      "compressed_at": "<time>",
+      "omitted_tool_characters": 0,
+      "raw_characters": 4990,
+      "tool_event_count": 0
+    },
+    "events": [
+      {
+        "content": "Plan my week, I like concise weekly plans [[prefer]]",
+        "created_at": "<time>",
+        "id": "<turn:1>",
+        "source_event_ids": [
+          "<turn:1>"
+        ],
+        "source_message_id": "<turn:1>",
+        "type": "human"
+      },
+      {
+        "content": "Echo: Plan my week, I like concise weekly plans [[prefer]]",
+        "created_at": "<time>",
+        "id": "<event:1>",
+        "source_event_ids": [
+          "<event:1>"
+        ],
+        "source_message_id": "lc_run--<uuid:1>",
+        "type": "ai"
+      },
+      {
+        "content": "Add a gym session on Saturday",
+        "created_at": "<time>",
+        "id": "<turn:2>",
+        "source_event_ids": [
+          "<turn:2>"
+        ],
+        "source_message_id": "<turn:2>",
+        "type": "human"
+      },
+      {
+        "content": "Echo: Add a gym session on Saturday",
+        "created_at": "<time>",
+        "id": "<event:2>",
+        "source_event_ids": [
+          "<event:2>"
+        ],
+        "source_message_id": "lc_run--<uuid:2>",
+        "type": "ai"
+      }
+    ],
+    "project": "general",
+    "schema_version": 2,
+    "session_id": "<thread:1>",
+    "source": {
+      "event_count": 9,
+      "from_seq": 1,
+      "relative_path": "non_productivity/projects/general/sessions/<thread:1>/events.jsonl",
+      "source_content_hash": "sha256:<hex:1>",
+      "source_version": 1,
+      "to_seq": 9
+    },
+    "space": "non_productivity"
+  },
+  "has_user_interaction": true,
+  "timeline": [
+    {
+      "content": "Plan my week, I like concise weekly plans [[prefer]]",
+      "id": "<turn:1>",
+      "role": "user",
+      "time": "<clock-time>",
+      "turnHasAnswer": true,
+      "turnId": "<turn:1>",
+      "type": "message"
+    },
+    {
+      "content": "Echo: Plan my week, I like concise weekly plans [[prefer]]",
+      "id": "<event:1>",
+      "role": "assistant",
+      "time": "<clock-time>",
+      "turnHasAnswer": true,
+      "turnId": "<turn:1>",
+      "type": "message"
+    },
+    {
+      "content": "Add a gym session on Saturday",
+      "id": "<turn:2>",
+      "role": "user",
+      "time": "<clock-time>",
+      "turnHasAnswer": true,
+      "turnId": "<turn:2>",
+      "type": "message"
+    },
+    {
+      "content": "Echo: Add a gym session on Saturday",
+      "id": "<event:2>",
+      "role": "assistant",
+      "time": "<clock-time>",
+      "turnHasAnswer": true,
+      "turnId": "<turn:2>",
+      "type": "message"
+    }
+  ]
+}

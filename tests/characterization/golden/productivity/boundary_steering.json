@@ -1,0 +1,481 @@
+{
+  "duplicate_request_id": "请求标识已被另一条指令使用。",
+  "late_receipt": {
+    "content": "too late",
+    "cursor": "<cursor:5>",
+    "id": "steer-steer-2",
+    "order": 7,
+    "role": "user",
+    "steer": {
+      "createdAt": "<time>",
+      "error": "目标运行已结束或正在切换服务，指令未投递。",
+      "id": "steer-2",
+      "mode": "boundary",
+      "retryable": false,
+      "revision": 0,
+      "runId": "run-steer",
+      "status": "failed",
+      "text": "too late",
+      "threadId": "<agent:1>",
+      "turnId": null
+    },
+    "time": "<clock-time>",
+    "type": "message"
+  },
+  "receipt": {
+    "content": "also do the second step",
+    "cursor": "<cursor:1>",
+    "id": "steer-steer-1",
+    "order": 3,
+    "role": "user",
+    "steer": {
+      "createdAt": "<time>",
+      "error": null,
+      "id": "steer-1",
+      "mode": "boundary",
+      "retryable": false,
+      "revision": 0,
+      "runId": "run-steer",
+      "status": "queued",
+      "text": "also do the second step",
+      "threadId": "<agent:1>",
+      "turnId": "<turn:1>"
+    },
+    "time": "<clock-time>",
+    "turnId": "<turn:1>",
+    "type": "message"
+  },
+  "stream": [
+    {
+      "item": {
+        "content": "first step [[delay]]",
+        "cursor": "<cursor:2>",
+        "id": "<turn:1>",
+        "order": 1,
+        "role": "user",
+        "time": "",
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      "type": "turn-started"
+    },
+    {
+      "item": {
+        "content": "Thinking about the request.",
+        "cursor": "<cursor:3>",
+        "id": "<turn:1>:thought:1",
+        "order": 2,
+        "status": "done",
+        "turnId": "<turn:1>",
+        "type": "thought"
+      },
+      "type": "upsert-item"
+    },
+    {
+      "item": {
+        "content": "also do the second step",
+        "cursor": "<cursor:1>",
+        "id": "steer-steer-1",
+        "order": 3,
+        "role": "user",
+        "steer": {
+          "createdAt": "<time>",
+          "error": null,
+          "id": "steer-1",
+          "mode": "boundary",
+          "retryable": false,
+          "revision": 0,
+          "runId": "run-steer",
+          "status": "queued",
+          "text": "also do the second step",
+          "threadId": "<agent:1>",
+          "turnId": "<turn:1>"
+        },
+        "time": "<clock-time>",
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      "type": "upsert-item"
+    },
+    {
+      "item": {
+        "content": "ACP reply: first step [[delay]]",
+        "id": "<turn:1>:answer",
+        "role": "assistant",
+        "time": "",
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      "type": "upsert-item"
+    },
+    {
+      "runtime": {
+        "access": "default",
+        "approval": "deny_all",
+        "contextWindow": 128000,
+        "editable": true,
+        "effort": "high",
+        "handoffStatus": null,
+        "model": "fake-model-a",
+        "models": [
+          "fake-model-a"
+        ],
+        "pendingPermissions": null,
+        "permissionOptions": {
+          "access": [],
+          "approval": [
+            {
+              "description": "由你选择服务提供的允许或拒绝选项。",
+              "label": "人工审批",
+              "value": "user"
+            },
+            {
+              "description": "自动选择服务提供的允许选项；不改变服务自身的文件访问限制。",
+              "label": "自动允许请求",
+              "value": "auto_allow"
+            },
+            {
+              "description": "自动选择拒绝选项；服务没有提供拒绝选项时取消请求。",
+              "label": "自动拒绝请求",
+              "value": "deny_all"
+            }
+          ],
+          "reason": "此服务不提供统一权限档位，请使用高级审批设置。"
+        },
+        "provider": "scripted",
+        "serviceTier": null,
+        "settingsRevision": 0,
+        "steerMode": "boundary",
+        "supportsFastMode": false,
+        "supportsQuestions": false
+      },
+      "type": "runtime"
+    },
+    {
+      "changes": [],
+      "type": "changes"
+    },
+    {
+      "timing": {
+        "createdAt": "<time>",
+        "elapsedMs": "<number>",
+        "id": "<hex:1>",
+        "kind": "reply",
+        "persistenceError": null,
+        "phase": null,
+        "project": "workspace",
+        "sessionId": "<agent:1>",
+        "space": "productivity",
+        "status": "completed",
+        "turnId": "<turn:1>",
+        "unavailable": [
+          "模型服务内部阶段"
+        ],
+        "updatedAt": "<time>"
+      },
+      "type": "timing"
+    },
+    {
+      "item": {
+        "content": "also do the second step",
+        "cursor": "<cursor:1>",
+        "id": "steer-steer-1",
+        "order": 3,
+        "role": "user",
+        "steer": {
+          "createdAt": "<time>",
+          "error": null,
+          "id": "steer-1",
+          "mode": "boundary",
+          "retryable": false,
+          "revision": 1,
+          "runId": "run-steer",
+          "status": "sending",
+          "text": "also do the second step",
+          "threadId": "<agent:1>",
+          "turnId": "<turn:1>"
+        },
+        "time": "<clock-time>",
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      "type": "upsert-item"
+    },
+    {
+      "item": {
+        "content": "also do the second step",
+        "id": "<turn:2>",
+        "role": "user",
+        "time": "",
+        "turnId": "<turn:2>",
+        "type": "message"
+      },
+      "type": "turn-started"
+    },
+    {
+      "item": {
+        "content": "also do the second step",
+        "cursor": "<cursor:1>",
+        "id": "steer-steer-1",
+        "order": 3,
+        "role": "user",
+        "steer": {
+          "createdAt": "<time>",
+          "error": null,
+          "id": "steer-1",
+          "mode": "boundary",
+          "retryable": false,
+          "revision": 2,
+          "runId": "run-steer",
+          "status": "received",
+          "text": "also do the second step",
+          "threadId": "<agent:1>",
+          "turnId": "<turn:2>"
+        },
+        "time": "<clock-time>",
+        "turnId": "<turn:2>",
+        "type": "message"
+      },
+      "type": "upsert-item"
+    },
+    {
+      "item": {
+        "content": "Thinking about the request.",
+        "cursor": "<cursor:4>",
+        "id": "<turn:2>:thought:1",
+        "order": 5,
+        "status": "done",
+        "turnId": "<turn:2>",
+        "type": "thought"
+      },
+      "type": "upsert-item"
+    },
+    {
+      "item": {
+        "content": "ACP reply: also do the second step",
+        "id": "<turn:2>:answer",
+        "role": "assistant",
+        "time": "",
+        "turnId": "<turn:2>",
+        "type": "message"
+      },
+      "type": "upsert-item"
+    },
+    {
+      "runtime": {
+        "access": "default",
+        "approval": "deny_all",
+        "contextWindow": 128000,
+        "editable": true,
+        "effort": "high",
+        "handoffStatus": null,
+        "model": "fake-model-a",
+        "models": [
+          "fake-model-a"
+        ],
+        "pendingPermissions": null,
+        "permissionOptions": {
+          "access": [],
+          "approval": [
+            {
+              "description": "由你选择服务提供的允许或拒绝选项。",
+              "label": "人工审批",
+              "value": "user"
+            },
+            {
+              "description": "自动选择服务提供的允许选项；不改变服务自身的文件访问限制。",
+              "label": "自动允许请求",
+              "value": "auto_allow"
+            },
+            {
+              "description": "自动选择拒绝选项；服务没有提供拒绝选项时取消请求。",
+              "label": "自动拒绝请求",
+              "value": "deny_all"
+            }
+          ],
+          "reason": "此服务不提供统一权限档位，请使用高级审批设置。"
+        },
+        "provider": "scripted",
+        "serviceTier": null,
+        "settingsRevision": 0,
+        "steerMode": "boundary",
+        "supportsFastMode": false,
+        "supportsQuestions": false
+      },
+      "type": "runtime"
+    },
+    {
+      "changes": [],
+      "type": "changes"
+    },
+    {
+      "timing": {
+        "createdAt": "<time>",
+        "elapsedMs": "<number>",
+        "id": "<hex:2>",
+        "kind": "reply",
+        "persistenceError": null,
+        "phase": null,
+        "project": "workspace",
+        "sessionId": "<agent:1>",
+        "space": "productivity",
+        "status": "completed",
+        "turnId": "<turn:2>",
+        "unavailable": [
+          "模型服务内部阶段"
+        ],
+        "updatedAt": "<time>"
+      },
+      "type": "timing"
+    },
+    {
+      "summary": "ACP reply: also do the second step",
+      "type": "done"
+    }
+  ],
+  "timeline": {
+    "after": "<after:1>",
+    "before": "<before:1>",
+    "hasAfter": false,
+    "hasBefore": false,
+    "items": [
+      {
+        "content": "first step [[delay]]",
+        "cursor": "<cursor:2>",
+        "id": "<turn:1>",
+        "order": 1,
+        "role": "user",
+        "time": "<clock-time>",
+        "turnHasAnswer": true,
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      {
+        "content": "Thinking about the request.",
+        "cursor": "<cursor:3>",
+        "id": "<turn:1>:thought:1",
+        "order": 2,
+        "status": "done",
+        "turnHasAnswer": true,
+        "turnId": "<turn:1>",
+        "type": "thought"
+      },
+      {
+        "content": "also do the second step",
+        "cursor": "<cursor:1>",
+        "id": "steer-steer-1",
+        "order": 3,
+        "role": "user",
+        "steer": {
+          "createdAt": "<time>",
+          "error": null,
+          "id": "steer-1",
+          "mode": "boundary",
+          "retryable": false,
+          "revision": 2,
+          "runId": "run-steer",
+          "status": "received",
+          "text": "also do the second step",
+          "threadId": "<agent:1>",
+          "turnId": "<turn:2>"
+        },
+        "time": "<clock-time>",
+        "turnHasAnswer": true,
+        "turnId": "<turn:2>",
+        "type": "message"
+      },
+      {
+        "content": "ACP reply: first step [[delay]]",
+        "cursor": "<cursor:6>",
+        "id": "<turn:1>:answer",
+        "order": 4,
+        "role": "assistant",
+        "time": "<clock-time>",
+        "timing": {
+          "createdAt": "<time>",
+          "elapsedMs": "<number>",
+          "id": "<hex:1>",
+          "kind": "reply",
+          "persistenceError": null,
+          "phase": null,
+          "project": "workspace",
+          "sessionId": "<agent:1>",
+          "space": "productivity",
+          "status": "completed",
+          "turnId": "<turn:1>",
+          "unavailable": [
+            "模型服务内部阶段"
+          ],
+          "updatedAt": "<time>"
+        },
+        "turnHasAnswer": true,
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      {
+        "content": "Thinking about the request.",
+        "cursor": "<cursor:4>",
+        "id": "<turn:2>:thought:1",
+        "order": 5,
+        "status": "done",
+        "turnHasAnswer": true,
+        "turnId": "<turn:2>",
+        "type": "thought"
+      },
+      {
+        "content": "ACP reply: also do the second step",
+        "cursor": "<cursor:7>",
+        "id": "<turn:2>:answer",
+        "order": 6,
+        "role": "assistant",
+        "time": "<clock-time>",
+        "timing": {
+          "createdAt": "<time>",
+          "elapsedMs": "<number>",
+          "id": "<hex:2>",
+          "kind": "reply",
+          "persistenceError": null,
+          "phase": null,
+          "project": "workspace",
+          "sessionId": "<agent:1>",
+          "space": "productivity",
+          "status": "completed",
+          "turnId": "<turn:2>",
+          "unavailable": [
+            "模型服务内部阶段"
+          ],
+          "updatedAt": "<time>"
+        },
+        "turnHasAnswer": true,
+        "turnId": "<turn:2>",
+        "type": "message"
+      },
+      {
+        "content": "too late",
+        "cursor": "<cursor:5>",
+        "id": "steer-steer-2",
+        "order": 7,
+        "role": "user",
+        "steer": {
+          "createdAt": "<time>",
+          "error": "目标运行已结束或正在切换服务，指令未投递。",
+          "id": "steer-2",
+          "mode": "boundary",
+          "retryable": false,
+          "revision": 0,
+          "runId": "run-steer",
+          "status": "failed",
+          "text": "too late",
+          "threadId": "<agent:1>",
+          "turnId": null
+        },
+        "time": "<clock-time>",
+        "turnHasAnswer": true,
+        "turnId": "<turn:2>",
+        "type": "message"
+      }
+    ],
+    "revision": "<revision:1>",
+    "total": 7
+  }
+}

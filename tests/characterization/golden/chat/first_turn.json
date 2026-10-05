@@ -1,0 +1,528 @@
+{
+  "created": {
+    "activeRunId": null,
+    "canUndo": false,
+    "changeHistory": [],
+    "changes": [],
+    "currentTiming": null,
+    "editableTurnIds": [],
+    "history": {
+      "after": "<after:1>",
+      "before": "<before:1>",
+      "hasAfter": false,
+      "hasBefore": false,
+      "revision": "<revision:1>",
+      "total": 0
+    },
+    "id": "<thread:1>",
+    "items": [],
+    "pendingApprovals": [],
+    "pendingQuestions": [],
+    "projectId": "chat:general",
+    "runtime": {
+      "access": ".",
+      "approval": "Cleo 工具策略",
+      "contextWindow": 64000,
+      "editable": false,
+      "effort": "high",
+      "model": "fake-chat",
+      "models": [
+        "fake-chat"
+      ],
+      "profileId": "fake_chat",
+      "provider": "openai",
+      "steerMode": "boundary",
+      "supportsQuestions": false
+    },
+    "skills": [],
+    "space": "chat",
+    "status": "idle",
+    "steerReady": false,
+    "summary": "等待第一条消息",
+    "terminal": [],
+    "timingError": null,
+    "title": "新对话",
+    "updatedAt": "<relative-time>",
+    "usage": {
+      "input": null,
+      "limit": 64000,
+      "output": null,
+      "used": null
+    }
+  },
+  "disk": {
+    "index": [
+      {
+        "created_at": "<time>",
+        "cwd": "<HOME>",
+        "id": "<thread:1>",
+        "last_event_seq": 4,
+        "manifest_path": "<HOME>/memory/non_productivity/projects/general/sessions/<thread:1>/manifest.json",
+        "native_session_id": null,
+        "owner_id": null,
+        "owner_type": "user",
+        "parent_session_id": null,
+        "project": "general",
+        "provider": "cleo",
+        "space": "non_productivity",
+        "status": "completed",
+        "title": "Hello Cleo, plan my week",
+        "updated_at": "<time>"
+      }
+    ],
+    "memory_state": {
+      "schema_version": 2,
+      "sources": {
+        "session:non_productivity:general:<thread:1>": {
+          "consolidated_hash": null,
+          "consolidated_version": 0,
+          "failure_count": 0,
+          "last_consolidated_at": null,
+          "last_error": null,
+          "last_event_seq": 4,
+          "last_processed_at": null,
+          "last_updated_at": "<time>",
+          "processed_hash": null,
+          "processed_version": 0,
+          "processing_decision": null,
+          "processing_phase": null,
+          "processing_reason": null,
+          "project": "general",
+          "review_result": null,
+          "session_id": "<thread:1>",
+          "source_hash": "sha256:<hex:2>",
+          "source_version": 1,
+          "space": "non_productivity",
+          "status": "pending"
+        }
+      },
+      "updated_at": "<time>"
+    },
+    "runtime.json": {
+      "current_project": null,
+      "current_space": "non_productivity",
+      "current_thread_id": "<thread:1>",
+      "project_paths": {
+        "non_productivity": {
+          "general": "<HOME>"
+        },
+        "productivity": {}
+      },
+      "projects": {
+        "non_productivity": [
+          "general"
+        ],
+        "productivity": []
+      },
+      "recent_threads": {
+        "non_productivity": [
+          "<thread:1>"
+        ],
+        "productivity": []
+      },
+      "removed_projects": {
+        "non_productivity": [],
+        "productivity": []
+      },
+      "schema_version": 3
+    },
+    "session": {
+      "compact.json": {
+        "compression": {
+          "compact_characters": "<path-dependent>",
+          "compressed_at": "<time>",
+          "omitted_tool_characters": 0,
+          "raw_characters": "<path-dependent>",
+          "tool_event_count": 0
+        },
+        "events": [
+          {
+            "content": "Hello Cleo, plan my week",
+            "created_at": "<time>",
+            "id": "<turn:1>",
+            "source_event_ids": [
+              "<turn:1>"
+            ],
+            "source_message_id": "<turn:1>",
+            "type": "human"
+          },
+          {
+            "content": "Echo: Hello Cleo, plan my week",
+            "created_at": "<time>",
+            "id": "<event:1>",
+            "source_event_ids": [
+              "<event:1>"
+            ],
+            "source_message_id": "lc_run--<uuid:1>",
+            "type": "ai"
+          }
+        ],
+        "project": "general",
+        "schema_version": 2,
+        "session_id": "<thread:1>",
+        "source": {
+          "event_count": 4,
+          "from_seq": 1,
+          "relative_path": "non_productivity/projects/general/sessions/<thread:1>/events.jsonl",
+          "source_content_hash": "sha256:<hex:2>",
+          "source_version": 1,
+          "to_seq": 4
+        },
+        "space": "non_productivity"
+      },
+      "events.jsonl": [
+        {
+          "actor": "system",
+          "created_at": "<time>",
+          "data": {
+            "cwd": "<HOME>",
+            "native_session_id": null,
+            "owner_id": null,
+            "owner_type": "user",
+            "parent_session_id": null,
+            "provider": "cleo",
+            "tags": []
+          },
+          "id": "<event:2>",
+          "project": "general",
+          "schema_version": 1,
+          "seq": 1,
+          "session_id": "<thread:1>",
+          "space": "non_productivity",
+          "type": "session_created"
+        },
+        {
+          "actor": "user",
+          "content": "Hello Cleo, plan my week",
+          "created_at": "<time>",
+          "id": "<turn:1>",
+          "message": {
+            "data": {
+              "additional_kwargs": {},
+              "content": "Hello Cleo, plan my week",
+              "id": "<turn:1>",
+              "name": null,
+              "response_metadata": {},
+              "type": "human"
+            },
+            "type": "human"
+          },
+          "project": "general",
+          "schema_version": 1,
+          "seq": 2,
+          "session_id": "<thread:1>",
+          "source_message_id": "<turn:1>",
+          "space": "non_productivity",
+          "type": "user_message"
+        },
+        {
+          "actor": "assistant",
+          "content": "Echo: Hello Cleo, plan my week",
+          "created_at": "<time>",
+          "id": "<event:1>",
+          "message": {
+            "data": {
+              "additional_kwargs": {},
+              "content": "Echo: Hello Cleo, plan my week",
+              "id": "lc_run--<uuid:1>",
+              "invalid_tool_calls": [],
+              "name": null,
+              "response_metadata": {
+                "finish_reason": "stop",
+                "model_name": "fake-chat",
+                "model_provider": "openai"
+              },
+              "tool_calls": [],
+              "type": "ai",
+              "usage_metadata": {
+                "input_token_details": {},
+                "input_tokens": 120,
+                "output_token_details": {},
+                "output_tokens": 30,
+                "total_tokens": 150
+              }
+            },
+            "type": "ai"
+          },
+          "project": "general",
+          "schema_version": 1,
+          "seq": 3,
+          "session_id": "<thread:1>",
+          "source_message_id": "lc_run--<uuid:1>",
+          "space": "non_productivity",
+          "type": "assistant_message"
+        },
+        {
+          "actor": "system",
+          "created_at": "<time>",
+          "data": {
+            "previous_status": "created"
+          },
+          "id": "<event:3>",
+          "project": "general",
+          "schema_version": 1,
+          "seq": 4,
+          "session_id": "<thread:1>",
+          "space": "non_productivity",
+          "type": "session_completed"
+        }
+      ],
+      "files": [
+        "compact.json",
+        "events.jsonl",
+        "manifest.json"
+      ],
+      "manifest.json": {
+        "created_at": "<time>",
+        "cwd": "<HOME>",
+        "id": "<thread:1>",
+        "last_compacted_seq": 4,
+        "last_event_seq": 4,
+        "native_session_id": null,
+        "owner_id": null,
+        "owner_type": "user",
+        "parent_session_id": null,
+        "project": "general",
+        "provider": "cleo",
+        "runtime_options": {
+          "agent_profile": "fake_chat",
+          "chat_profile": {
+            "backend": "api",
+            "base_url": "<LLM_URL>",
+            "display_name": null,
+            "executable": null,
+            "max_tokens": 64000,
+            "model": "fake-chat",
+            "models": [],
+            "provider": "openai",
+            "temperature": 0.0
+          }
+        },
+        "schema_version": 1,
+        "source_hash": "sha256:<hex:2>",
+        "source_version": 1,
+        "space": "non_productivity",
+        "status": "completed",
+        "tags": [],
+        "title": "Hello Cleo, plan my week",
+        "undo_checkpoint_shared": false,
+        "updated_at": "<time>"
+      }
+    }
+  },
+  "llm_requests": [
+    {
+      "messages": [
+        {
+          "includes_agents_md": true,
+          "includes_memory_policy": true,
+          "role": "system"
+        },
+        {
+          "content": "Hello Cleo, plan my week",
+          "role": "user"
+        }
+      ],
+      "model": "fake-chat",
+      "stream": true,
+      "stream_options": null,
+      "temperature": 0.0,
+      "tools": [
+        "codex",
+        "codex_reply",
+        "computer_call",
+        "computer_tools",
+        "delete",
+        "edit_file",
+        "glob",
+        "grep",
+        "list_threads",
+        "ls",
+        "memory_history",
+        "read_file",
+        "read_project_memory",
+        "read_thread",
+        "run_shell_command",
+        "search_conversation_history",
+        "search_long_term_memory",
+        "task",
+        "write_file"
+      ]
+    }
+  ],
+  "reloaded_thread": {
+    "activeRunId": null,
+    "canUndo": false,
+    "changeHistory": [],
+    "changes": [],
+    "currentTiming": {
+      "createdAt": "<time>",
+      "elapsedMs": "<number>",
+      "id": "<hex:1>",
+      "kind": "reply",
+      "persistenceError": null,
+      "phase": null,
+      "project": "general",
+      "sessionId": "<thread:1>",
+      "space": "non_productivity",
+      "status": "completed",
+      "turnId": "<turn:1>",
+      "unavailable": [
+        "模型服务内部阶段"
+      ],
+      "updatedAt": "<time>"
+    },
+    "editableTurnIds": [
+      "<turn:1>"
+    ],
+    "history": {
+      "after": "<after:2>",
+      "before": "<before:1>",
+      "hasAfter": false,
+      "hasBefore": false,
+      "revision": "<revision:2>",
+      "total": 2
+    },
+    "id": "<thread:1>",
+    "items": [
+      {
+        "content": "Hello Cleo, plan my week",
+        "cursor": "<cursor:1>",
+        "id": "<turn:1>",
+        "order": 1,
+        "role": "user",
+        "time": "<clock-time>",
+        "turnHasAnswer": true,
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      {
+        "content": "Echo: Hello Cleo, plan my week",
+        "cursor": "<cursor:2>",
+        "id": "<event:1>",
+        "order": 2,
+        "role": "assistant",
+        "time": "<clock-time>",
+        "timing": {
+          "createdAt": "<time>",
+          "elapsedMs": "<number>",
+          "id": "<hex:1>",
+          "kind": "reply",
+          "persistenceError": null,
+          "phase": null,
+          "project": "general",
+          "sessionId": "<thread:1>",
+          "space": "non_productivity",
+          "status": "completed",
+          "turnId": "<turn:1>",
+          "unavailable": [
+            "模型服务内部阶段"
+          ],
+          "updatedAt": "<time>"
+        },
+        "turnHasAnswer": true,
+        "turnId": "<turn:1>",
+        "type": "message"
+      }
+    ],
+    "pendingApprovals": [],
+    "pendingQuestions": [],
+    "projectId": "chat:general",
+    "runtime": {
+      "access": ".",
+      "approval": "Cleo 工具策略",
+      "contextWindow": 64000,
+      "editable": false,
+      "effort": "high",
+      "model": "fake-chat",
+      "models": [
+        "fake-chat"
+      ],
+      "profileId": "fake_chat",
+      "provider": "openai",
+      "steerMode": "boundary",
+      "supportsQuestions": false
+    },
+    "skills": [],
+    "space": "chat",
+    "status": "completed",
+    "steerReady": false,
+    "summary": "Echo: Hello Cleo, plan my week",
+    "terminal": [],
+    "timingError": null,
+    "title": "Hello Cleo, plan my week",
+    "updatedAt": "<relative-time>",
+    "usage": {
+      "input": null,
+      "limit": 64000,
+      "output": null,
+      "used": null
+    }
+  },
+  "stream": [
+    {
+      "item": {
+        "content": "Hello Cleo, plan my week",
+        "id": "<turn:1>",
+        "role": "user",
+        "time": "",
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      "type": "turn-started"
+    },
+    {
+      "item": {
+        "content": "Echo: Hello Cleo, plan my week",
+        "id": "<turn:1>:answer",
+        "role": "assistant",
+        "time": "",
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      "type": "upsert-item"
+    },
+    {
+      "type": "usage",
+      "usage": {
+        "input": 120,
+        "limit": 64000,
+        "output": 30,
+        "used": 150
+      }
+    },
+    {
+      "timing": {
+        "createdAt": "<time>",
+        "elapsedMs": "<number>",
+        "id": "<hex:1>",
+        "kind": "reply",
+        "persistenceError": null,
+        "phase": null,
+        "project": "general",
+        "sessionId": "<thread:1>",
+        "space": "non_productivity",
+        "status": "completed",
+        "turnId": "<turn:1>",
+        "unavailable": [
+          "模型服务内部阶段"
+        ],
+        "updatedAt": "<time>"
+      },
+      "type": "timing"
+    },
+    {
+      "summary": "Echo: Hello Cleo, plan my week",
+      "type": "done"
+    }
+  ],
+  "workspace_threads": [
+    {
+      "id": "<thread:1>",
+      "space": "chat",
+      "status": "completed",
+      "summary": "Echo: Hello Cleo, plan my week",
+      "title": "Hello Cleo, plan my week"
+    }
+  ]
+}

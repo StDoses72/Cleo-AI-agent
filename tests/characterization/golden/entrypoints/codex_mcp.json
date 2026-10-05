@@ -1,0 +1,59 @@
+[
+  {
+    "annotations": null,
+    "description": "Run a complete Codex turn in a new thread and return its final result.\n\n由 fastmcp 框架注册为名为 ``codex`` 的 MCP tool; MCP client(如其他\nagent)通过 JSON-RPC ``tools/call`` 调用, 参数由 client 按 tool schema\n提供。\n参数:\n    prompt: 交给 Codex 的任务描述, 由 MCP client 提供。\n    project_path: Codex 工作目录, 由 MCP client 提供, 默认当前目录。\n    model: 可选模型 id, 由 MCP client 提供。\n返回:\n    ``CodexResult.model_dump()`` 字典(含 thread_id/status/response\n    等), 由 fastmcp 序列化为 tool 响应回传给 MCP client; thread_id\n    可传给 ``codex-reply`` 继续会话。",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "project_path": {
+          "default": ".",
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "prompt"
+      ],
+      "type": "object"
+    },
+    "name": "codex"
+  },
+  {
+    "annotations": null,
+    "description": "Run a complete follow-up turn on an existing Codex thread.\n\n由 fastmcp 框架注册为名为 ``codex-reply`` 的 MCP tool; MCP client 通过\nJSON-RPC ``tools/call`` 调用。\n参数:\n    thread_id: ``codex`` 工具上次返回的 thread_id, 由 MCP client 提供。\n    prompt: 后续任务描述, 由 MCP client 提供。\n    project_path: Codex 工作目录, 由 MCP client 提供。\n返回:\n    ``CodexResult.model_dump()`` 字典, 由 fastmcp 序列化后回传给\n    MCP client。",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "project_path": {
+          "default": ".",
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "thread_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "thread_id",
+        "prompt"
+      ],
+      "type": "object"
+    },
+    "name": "codex-reply"
+  }
+]

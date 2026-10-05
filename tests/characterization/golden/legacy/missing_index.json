@@ -1,0 +1,13 @@
+{
+  "index_after": [
+    "<thread:2>",
+    "<thread:1>",
+    "<agent:1>"
+  ],
+  "threads_after_opening_one": [
+    "<agent:1>",
+    "<thread:1>",
+    "<thread:2>"
+  ],
+  "threads_before_opening": []
+}

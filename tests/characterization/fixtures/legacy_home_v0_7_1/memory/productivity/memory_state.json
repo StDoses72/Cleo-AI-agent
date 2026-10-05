@@ -1,0 +1,28 @@
+{
+  "schema_version": 2,
+  "updated_at": "2026-10-03T23:10:35.649307+00:00",
+  "sources": {
+    "session:productivity:workspace:agent_38adcdaedba4": {
+      "space": "productivity",
+      "project": "workspace",
+      "session_id": "agent_38adcdaedba4",
+      "source_version": 2,
+      "source_hash": "sha256:3a118dea3a8f72555af5a1be1bdbe19c91da6313768a5f9a1f3087707a72e35a",
+      "last_event_seq": 17,
+      "consolidated_version": 0,
+      "consolidated_hash": null,
+      "processed_version": 0,
+      "processed_hash": null,
+      "processing_decision": null,
+      "processing_reason": null,
+      "processing_phase": null,
+      "review_result": null,
+      "status": "pending",
+      "failure_count": 0,
+      "last_error": null,
+      "last_updated_at": "2026-10-03T23:10:35.649307+00:00",
+      "last_consolidated_at": null,
+      "last_processed_at": null
+    }
+  }
+}

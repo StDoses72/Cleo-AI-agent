@@ -1,0 +1,168 @@
+{
+  "schema_version": 2,
+  "space": "productivity",
+  "project": "workspace",
+  "session_id": "agent_38adcdaedba4",
+  "source": {
+    "relative_path": "productivity/projects/workspace/sessions/agent_38adcdaedba4/events.jsonl",
+    "event_count": 17,
+    "from_seq": 1,
+    "to_seq": 17,
+    "source_content_hash": "sha256:3a118dea3a8f72555af5a1be1bdbe19c91da6313768a5f9a1f3087707a72e35a",
+    "source_version": 2
+  },
+  "compression": {
+    "compressed_at": "2026-10-03T23:10:35.650308+00:00",
+    "raw_characters": 7446,
+    "compact_characters": 3157,
+    "omitted_tool_characters": 0,
+    "tool_event_count": 2
+  },
+  "events": [
+    {
+      "id": "turn-bb7cf93e5033fa189baaa243",
+      "type": "human",
+      "content": "Write the notes file [[plan]] [[tool]] [[write]]",
+      "created_at": "2026-10-03T23:10:34.523617+00:00",
+      "source_event_ids": [
+        "turn-bb7cf93e5033fa189baaa243"
+      ],
+      "source_message_id": "turn-bb7cf93e5033fa189baaa243"
+    },
+    {
+      "id": "evt_42f705229fdc4c80bebda2f3dfb0d61a",
+      "type": "tool_event",
+      "name": "unknown",
+      "args": {},
+      "status": "success",
+      "source_event_ids": [
+        "evt_42f705229fdc4c80bebda2f3dfb0d61a"
+      ],
+      "created_at": "2026-10-03T23:10:34.614433+00:00"
+    },
+    {
+      "id": "evt_688026b9e6c742b08d518b24655558ef",
+      "type": "tool_event",
+      "name": "unknown",
+      "args": {},
+      "status": "success",
+      "source_event_ids": [
+        "evt_688026b9e6c742b08d518b24655558ef"
+      ],
+      "created_at": "2026-10-03T23:10:34.647943+00:00"
+    },
+    {
+      "id": "turn-bb7cf93e5033fa189baaa243:answer",
+      "type": "ai",
+      "content": "ACP reply: Write the notes file [[plan]] [[tool]] [[write]]",
+      "created_at": "2026-10-03T23:10:34.726073+00:00",
+      "source_event_ids": [
+        "turn-bb7cf93e5033fa189baaa243:answer"
+      ],
+      "source_message_id": "turn-bb7cf93e5033fa189baaa243:answer"
+    },
+    {
+      "id": "turn-8896ee1da0f894c1c2f614f8",
+      "type": "human",
+      "content": "Summarize what changed",
+      "created_at": "2026-10-03T23:10:35.556371+00:00",
+      "source_event_ids": [
+        "turn-8896ee1da0f894c1c2f614f8"
+      ],
+      "source_message_id": "turn-8896ee1da0f894c1c2f614f8"
+    },
+    {
+      "id": "turn-8896ee1da0f894c1c2f614f8:answer",
+      "type": "ai",
+      "content": "ACP reply: Summarize what changed",
+      "created_at": "2026-10-03T23:10:35.623313+00:00",
+      "source_event_ids": [
+        "turn-8896ee1da0f894c1c2f614f8:answer"
+      ],
+      "source_message_id": "turn-8896ee1da0f894c1c2f614f8:answer"
+    },
+    {
+      "id": "evt_cf3c0c02049d485b846a5621563b4407",
+      "type": "plan_update",
+      "content": null,
+      "data": {
+        "provider": "scripted",
+        "schema_version": 1,
+        "provider_event_type": "plan",
+        "payload": {
+          "entries": [
+            {
+              "content": "<omitted:21 chars>",
+              "priority": "medium",
+              "status": "completed"
+            },
+            {
+              "content": "<omitted:16 chars>",
+              "priority": "medium",
+              "status": "in_progress"
+            }
+          ],
+          "sessionUpdate": "plan"
+        },
+        "turn_id": "turn-bb7cf93e5033fa189baaa243",
+        "timeline_id": "turn-bb7cf93e5033fa189baaa243:plan"
+      },
+      "created_at": "2026-10-03T23:10:34.573876+00:00",
+      "source_event_ids": [
+        "evt_cf3c0c02049d485b846a5621563b4407"
+      ]
+    },
+    {
+      "id": "evt_cd63c65e792343859d3b559ddf1dc268",
+      "type": "tool_call",
+      "content": null,
+      "data": {
+        "provider": "scripted",
+        "schema_version": 1,
+        "provider_event_type": "tool_call",
+        "payload": {
+          "toolCallId": "tool-read-1",
+          "title": "Read README.md",
+          "kind": "read",
+          "status": "in_progress",
+          "rawInput": {
+            "path": "README.md"
+          },
+          "sessionUpdate": "tool_call"
+        },
+        "turn_id": "turn-bb7cf93e5033fa189baaa243",
+        "timeline_id": "turn-bb7cf93e5033fa189baaa243:tool:tool-read-1"
+      },
+      "created_at": "2026-10-03T23:10:34.596174+00:00",
+      "source_event_ids": [
+        "evt_cd63c65e792343859d3b559ddf1dc268"
+      ]
+    },
+    {
+      "id": "evt_9c187b54e4ee4dbfb1367e493d98bd20",
+      "type": "tool_call",
+      "content": null,
+      "data": {
+        "provider": "scripted",
+        "schema_version": 1,
+        "provider_event_type": "tool_call",
+        "payload": {
+          "toolCallId": "tool-write-1",
+          "title": "Write notes.txt",
+          "kind": "edit",
+          "status": "in_progress",
+          "rawInput": {
+            "path": "notes.txt"
+          },
+          "sessionUpdate": "tool_call"
+        },
+        "turn_id": "turn-bb7cf93e5033fa189baaa243",
+        "timeline_id": "turn-bb7cf93e5033fa189baaa243:tool:tool-write-1"
+      },
+      "created_at": "2026-10-03T23:10:34.631241+00:00",
+      "source_event_ids": [
+        "evt_9c187b54e4ee4dbfb1367e493d98bd20"
+      ]
+    }
+  ]
+}

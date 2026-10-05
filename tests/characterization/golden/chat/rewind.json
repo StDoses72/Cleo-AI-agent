@@ -1,0 +1,390 @@
+{
+  "compact_after_edit": {
+    "compression": {
+      "compact_characters": "<path-dependent>",
+      "compressed_at": "<time>",
+      "omitted_tool_characters": 0,
+      "raw_characters": "<path-dependent>",
+      "tool_event_count": 0
+    },
+    "events": [
+      {
+        "content": "keep this",
+        "created_at": "<time>",
+        "id": "<turn:1>",
+        "source_event_ids": [
+          "<turn:1>"
+        ],
+        "source_message_id": "<turn:1>",
+        "type": "human"
+      },
+      {
+        "content": "Echo: keep this",
+        "created_at": "<time>",
+        "id": "<event:1>",
+        "source_event_ids": [
+          "<event:1>"
+        ],
+        "source_message_id": "lc_run--<uuid:1>",
+        "type": "ai"
+      },
+      {
+        "content": "edited text",
+        "created_at": "<time>",
+        "id": "<turn:3>",
+        "source_event_ids": [
+          "<turn:3>"
+        ],
+        "source_message_id": "<turn:3>",
+        "type": "human"
+      },
+      {
+        "content": "Echo: edited text",
+        "created_at": "<time>",
+        "id": "<event:2>",
+        "source_event_ids": [
+          "<event:2>"
+        ],
+        "source_message_id": "lc_run--<uuid:2>",
+        "type": "ai"
+      }
+    ],
+    "project": "general",
+    "schema_version": 2,
+    "session_id": "<thread:1>",
+    "source": {
+      "event_count": 9,
+      "from_seq": 1,
+      "relative_path": "non_productivity/projects/general/sessions/<thread:1>/events.jsonl",
+      "source_content_hash": "sha256:<hex:3>",
+      "source_version": 3,
+      "to_seq": 9
+    },
+    "space": "non_productivity"
+  },
+  "editable_before": [
+    "<turn:1>",
+    "<turn:2>"
+  ],
+  "events_after_edit": [
+    {
+      "actor": "system",
+      "content": null,
+      "data": {
+        "cwd": "<HOME>",
+        "native_session_id": null,
+        "owner_id": null,
+        "owner_type": "user",
+        "parent_session_id": null,
+        "provider": "cleo",
+        "tags": []
+      },
+      "seq": 1,
+      "type": "session_created"
+    },
+    {
+      "actor": "user",
+      "content": "keep this",
+      "data": null,
+      "seq": 2,
+      "type": "user_message"
+    },
+    {
+      "actor": "assistant",
+      "content": "Echo: keep this",
+      "data": null,
+      "seq": 3,
+      "type": "assistant_message"
+    },
+    {
+      "actor": "system",
+      "content": null,
+      "data": {
+        "previous_status": "created"
+      },
+      "seq": 4,
+      "type": "session_completed"
+    },
+    {
+      "actor": "user",
+      "content": "edit this",
+      "data": null,
+      "seq": 5,
+      "type": "user_message"
+    },
+    {
+      "actor": "assistant",
+      "content": "Echo: edit this",
+      "data": null,
+      "seq": 6,
+      "type": "assistant_message"
+    },
+    {
+      "actor": "user",
+      "content": null,
+      "data": {
+        "turn_id": "<turn:2>"
+      },
+      "seq": 7,
+      "type": "rewind"
+    },
+    {
+      "actor": "user",
+      "content": "edited text",
+      "data": null,
+      "seq": 8,
+      "type": "user_message"
+    },
+    {
+      "actor": "assistant",
+      "content": "Echo: edited text",
+      "data": null,
+      "seq": 9,
+      "type": "assistant_message"
+    }
+  ],
+  "not_editable": "这条消息不能编辑。",
+  "request_after_edit": {
+    "messages": [
+      {
+        "includes_agents_md": true,
+        "includes_memory_policy": true,
+        "role": "system"
+      },
+      {
+        "content": "keep this",
+        "role": "user"
+      },
+      {
+        "content": "Echo: keep this",
+        "role": "assistant"
+      },
+      {
+        "content": "edited text",
+        "role": "user"
+      }
+    ],
+    "model": "fake-chat",
+    "stream": true,
+    "stream_options": null,
+    "temperature": 0.0,
+    "tools": [
+      "codex",
+      "codex_reply",
+      "computer_call",
+      "computer_tools",
+      "delete",
+      "edit_file",
+      "glob",
+      "grep",
+      "list_threads",
+      "ls",
+      "memory_history",
+      "read_file",
+      "read_project_memory",
+      "read_thread",
+      "run_shell_command",
+      "search_conversation_history",
+      "search_long_term_memory",
+      "task",
+      "write_file"
+    ]
+  },
+  "rewound_thread": {
+    "activeRunId": null,
+    "canUndo": false,
+    "changeHistory": [],
+    "changes": [],
+    "currentTiming": {
+      "createdAt": "<time>",
+      "elapsedMs": "<number>",
+      "id": "<hex:1>",
+      "kind": "reply",
+      "persistenceError": null,
+      "phase": null,
+      "project": "general",
+      "sessionId": "<thread:1>",
+      "space": "non_productivity",
+      "status": "completed",
+      "turnId": "<turn:2>",
+      "unavailable": [
+        "模型服务内部阶段"
+      ],
+      "updatedAt": "<time>"
+    },
+    "editableTurnIds": [
+      "<turn:1>"
+    ],
+    "history": {
+      "after": "<after:1>",
+      "before": "<before:1>",
+      "hasAfter": false,
+      "hasBefore": false,
+      "revision": "<revision:1>",
+      "total": 2
+    },
+    "id": "<thread:1>",
+    "items": [
+      {
+        "content": "keep this",
+        "cursor": "<cursor:1>",
+        "id": "<turn:1>",
+        "order": 1,
+        "role": "user",
+        "time": "<clock-time>",
+        "turnHasAnswer": true,
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      {
+        "content": "Echo: keep this",
+        "cursor": "<cursor:2>",
+        "id": "<event:1>",
+        "order": 2,
+        "role": "assistant",
+        "time": "<clock-time>",
+        "timing": {
+          "createdAt": "<time>",
+          "elapsedMs": "<number>",
+          "id": "<hex:2>",
+          "kind": "reply",
+          "persistenceError": null,
+          "phase": null,
+          "project": "general",
+          "sessionId": "<thread:1>",
+          "space": "non_productivity",
+          "status": "completed",
+          "turnId": "<turn:1>",
+          "unavailable": [
+            "模型服务内部阶段"
+          ],
+          "updatedAt": "<time>"
+        },
+        "turnHasAnswer": true,
+        "turnId": "<turn:1>",
+        "type": "message"
+      }
+    ],
+    "pendingApprovals": [],
+    "pendingQuestions": [],
+    "projectId": "chat:general",
+    "runtime": {
+      "access": ".",
+      "approval": "Cleo 工具策略",
+      "contextWindow": 64000,
+      "editable": false,
+      "effort": "high",
+      "model": "fake-chat",
+      "models": [
+        "fake-chat"
+      ],
+      "profileId": "fake_chat",
+      "provider": "openai",
+      "steerMode": "boundary",
+      "supportsQuestions": false
+    },
+    "skills": [],
+    "space": "chat",
+    "status": "completed",
+    "steerReady": false,
+    "summary": "Echo: keep this",
+    "terminal": [],
+    "timingError": null,
+    "title": "keep this",
+    "updatedAt": "<relative-time>",
+    "usage": {
+      "input": null,
+      "limit": 64000,
+      "output": null,
+      "used": null
+    }
+  },
+  "timeline_after_edit": {
+    "after": "<after:2>",
+    "before": "<before:1>",
+    "hasAfter": false,
+    "hasBefore": false,
+    "items": [
+      {
+        "content": "keep this",
+        "cursor": "<cursor:1>",
+        "id": "<turn:1>",
+        "order": 1,
+        "role": "user",
+        "time": "<clock-time>",
+        "turnHasAnswer": true,
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      {
+        "content": "Echo: keep this",
+        "cursor": "<cursor:2>",
+        "id": "<event:1>",
+        "order": 2,
+        "role": "assistant",
+        "time": "<clock-time>",
+        "timing": {
+          "createdAt": "<time>",
+          "elapsedMs": "<number>",
+          "id": "<hex:2>",
+          "kind": "reply",
+          "persistenceError": null,
+          "phase": null,
+          "project": "general",
+          "sessionId": "<thread:1>",
+          "space": "non_productivity",
+          "status": "completed",
+          "turnId": "<turn:1>",
+          "unavailable": [
+            "模型服务内部阶段"
+          ],
+          "updatedAt": "<time>"
+        },
+        "turnHasAnswer": true,
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      {
+        "content": "edited text",
+        "cursor": "<cursor:3>",
+        "id": "<turn:3>",
+        "order": 3,
+        "role": "user",
+        "time": "<clock-time>",
+        "turnHasAnswer": true,
+        "turnId": "<turn:3>",
+        "type": "message"
+      },
+      {
+        "content": "Echo: edited text",
+        "cursor": "<cursor:4>",
+        "id": "<event:2>",
+        "order": 4,
+        "role": "assistant",
+        "time": "<clock-time>",
+        "timing": {
+          "createdAt": "<time>",
+          "elapsedMs": "<number>",
+          "id": "<hex:4>",
+          "kind": "reply",
+          "persistenceError": null,
+          "phase": null,
+          "project": "general",
+          "sessionId": "<thread:1>",
+          "space": "non_productivity",
+          "status": "completed",
+          "turnId": "<turn:3>",
+          "unavailable": [
+            "模型服务内部阶段"
+          ],
+          "updatedAt": "<time>"
+        },
+        "turnHasAnswer": true,
+        "turnId": "<turn:3>",
+        "type": "message"
+      }
+    ],
+    "revision": "<revision:2>",
+    "total": 4
+  }
+}

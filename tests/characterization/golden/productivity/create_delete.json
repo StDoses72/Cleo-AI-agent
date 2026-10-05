@@ -1,0 +1,14 @@
+{
+  "errors": {
+    "bad_space": "不支持的项目空间：elsewhere",
+    "fast_mode": "速度档位仅支持 Codex 的标准或快速模式。",
+    "missing_dir": "工作目录不存在或不是文件夹：<ROOT>/missing",
+    "unknown_project": "项目“unknown”没有有效的工作目录，请重新打开该目录。",
+    "unknown_provider": [
+      "KeyError",
+      "'does-not-exist'"
+    ]
+  },
+  "index_after_delete": [],
+  "threads_after_delete": []
+}

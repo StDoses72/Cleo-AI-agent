@@ -1,0 +1,126 @@
+{
+  "after_update": {
+    "access": "default",
+    "approval": "deny_all",
+    "contextWindow": 128000,
+    "editable": true,
+    "effort": "high",
+    "handoffStatus": null,
+    "model": "fake-model-a",
+    "models": [
+      "fake-model-a"
+    ],
+    "pendingPermissions": null,
+    "permissionOptions": {
+      "access": [],
+      "approval": [
+        {
+          "description": "由你选择服务提供的允许或拒绝选项。",
+          "label": "人工审批",
+          "value": "user"
+        },
+        {
+          "description": "自动选择服务提供的允许选项；不改变服务自身的文件访问限制。",
+          "label": "自动允许请求",
+          "value": "auto_allow"
+        },
+        {
+          "description": "自动选择拒绝选项；服务没有提供拒绝选项时取消请求。",
+          "label": "自动拒绝请求",
+          "value": "deny_all"
+        }
+      ],
+      "reason": "此服务不提供统一权限档位，请使用高级审批设置。"
+    },
+    "provider": "scripted",
+    "serviceTier": null,
+    "settingsRevision": 1,
+    "steerMode": "boundary",
+    "supportsFastMode": false,
+    "supportsQuestions": false
+  },
+  "chat_ignores_task_options": {
+    "access": ".",
+    "approval": "Cleo 工具策略",
+    "contextWindow": 64000,
+    "editable": false,
+    "effort": "high",
+    "model": "fake-chat",
+    "models": [
+      "fake-chat"
+    ],
+    "profileId": "fake_chat",
+    "provider": "openai",
+    "steerMode": "boundary",
+    "supportsQuestions": false
+  },
+  "created_runtime": {
+    "access": "default",
+    "approval": "deny_all",
+    "contextWindow": 128000,
+    "editable": true,
+    "effort": "low",
+    "handoffStatus": null,
+    "model": "fake-model-b",
+    "models": [
+      "fake-model-b"
+    ],
+    "pendingPermissions": null,
+    "permissionOptions": {
+      "access": [],
+      "approval": [
+        {
+          "description": "由你选择服务提供的允许或拒绝选项。",
+          "label": "人工审批",
+          "value": "user"
+        },
+        {
+          "description": "自动选择服务提供的允许选项；不改变服务自身的文件访问限制。",
+          "label": "自动允许请求",
+          "value": "auto_allow"
+        },
+        {
+          "description": "自动选择拒绝选项；服务没有提供拒绝选项时取消请求。",
+          "label": "自动拒绝请求",
+          "value": "deny_all"
+        }
+      ],
+      "reason": "此服务不提供统一权限档位，请使用高级审批设置。"
+    },
+    "provider": "scripted",
+    "serviceTier": null,
+    "settingsRevision": 0,
+    "steerMode": "boundary",
+    "supportsFastMode": false,
+    "supportsQuestions": false
+  },
+  "errors": {
+    "bad_approval": [
+      "ValueError",
+      "不支持的权限选项：approval=sometimes"
+    ],
+    "fast_mode_unsupported": [
+      "ValueError",
+      "速度档位仅支持 Codex 的标准或快速模式。"
+    ],
+    "provider_mismatch": [
+      "ValueError",
+      "运行后端已切换，请重新选择权限。"
+    ],
+    "sandbox_unsupported": [
+      "ValueError",
+      "不支持的权限选项：access=read-only"
+    ],
+    "unknown_model": [
+      "ValueError",
+      "ACP provider 'scripted' does not support model 'nope'."
+    ]
+  },
+  "manifest_runtime_options": {
+    "approval_mode": "deny_all",
+    "effort": "high",
+    "model": "fake-model-a",
+    "sandbox": null,
+    "service_tier": null
+  }
+}

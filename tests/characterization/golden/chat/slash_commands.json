@@ -1,0 +1,176 @@
+{
+  "commands": {
+    "/attach": {
+      "events": [
+        {
+          "type": "request-attachment"
+        }
+      ],
+      "reply": "result"
+    },
+    "/help": {
+      "events": [
+        {
+          "item": {
+            "detail": "/new · /project [name] · /project move <name> · /sessions · /resume <id> · /rename <title> · /attach · /computeruse <操作需求> · /productivity · /quit",
+            "id": "<notice:1>",
+            "title": "Cleo 对话命令",
+            "tone": "info",
+            "type": "notice"
+          },
+          "type": "upsert-item"
+        },
+        {
+          "summary": "Cleo 对话命令",
+          "type": "done"
+        }
+      ],
+      "reply": "result"
+    },
+    "/new": {
+      "events": [
+        {
+          "activeThreadId": "<thread:2>",
+          "space": "chat",
+          "type": "refresh"
+        }
+      ],
+      "reply": "result"
+    },
+    "/productivity": {
+      "events": [
+        {
+          "space": "productivity",
+          "type": "navigate-space"
+        }
+      ],
+      "reply": "result"
+    },
+    "/project": {
+      "events": [
+        {
+          "item": {
+            "detail": "general",
+            "id": "<notice:3>",
+            "title": "记忆项目",
+            "tone": "info",
+            "type": "notice"
+          },
+          "type": "upsert-item"
+        },
+        {
+          "summary": "记忆项目",
+          "type": "done"
+        }
+      ],
+      "reply": "result"
+    },
+    "/project research": {
+      "events": [],
+      "reply": "error"
+    },
+    "/quit": {
+      "events": [
+        {
+          "item": {
+            "detail": "可以直接关闭窗口，Cleo 会在退出时整理记忆。",
+            "id": "<notice:5>",
+            "title": "桌面应用保持运行",
+            "tone": "info",
+            "type": "notice"
+          },
+          "type": "upsert-item"
+        },
+        {
+          "summary": "桌面应用保持运行",
+          "type": "done"
+        }
+      ],
+      "reply": "result"
+    },
+    "/rename  Weekly plan ": {
+      "events": [
+        {
+          "item": {
+            "detail": "Weekly plan",
+            "id": "<notice:4>",
+            "title": "已重命名",
+            "tone": "success",
+            "type": "notice"
+          },
+          "type": "upsert-item"
+        },
+        {
+          "summary": "已重命名",
+          "type": "done"
+        },
+        {
+          "activeThreadId": "<thread:1>",
+          "space": "chat",
+          "type": "refresh"
+        }
+      ],
+      "reply": "result"
+    },
+    "/sessions": {
+      "events": [
+        {
+          "item": {
+            "detail": "<thread:1> · start a conversation · general",
+            "id": "<notice:2>",
+            "title": "Sessions",
+            "tone": "info",
+            "type": "notice"
+          },
+          "type": "upsert-item"
+        },
+        {
+          "summary": "Sessions",
+          "type": "done"
+        }
+      ],
+      "reply": "result"
+    }
+  },
+  "moved_manifest_dir": [
+    "non_productivity/projects/archive/sessions/<thread:1>",
+    "non_productivity/projects/general/sessions/<thread:2>"
+  ],
+  "project_move": [
+    {
+      "item": {
+        "detail": "当前对话已移动到 archive。",
+        "id": "<notice:6>",
+        "title": "项目已迁移",
+        "tone": "success",
+        "type": "notice"
+      },
+      "type": "upsert-item"
+    },
+    {
+      "summary": "项目已迁移",
+      "type": "done"
+    },
+    {
+      "activeThreadId": "<thread:1>",
+      "space": "chat",
+      "type": "refresh"
+    }
+  ],
+  "projects_after": [
+    "chat:archive",
+    "chat:general",
+    "productivity:home"
+  ],
+  "threads_after": [
+    {
+      "projectId": "chat:archive",
+      "space": "chat",
+      "title": "Weekly plan"
+    }
+  ],
+  "unknown": [
+    "ValueError",
+    "未知对话命令：/bogus。输入 /help 查看命令。"
+  ]
+}

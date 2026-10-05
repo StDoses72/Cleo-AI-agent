@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "id": "cleo_9a0dfe9ca97d",
+  "space": "non_productivity",
+  "project": "general",
+  "provider": "cleo",
+  "native_session_id": null,
+  "owner_type": "user",
+  "owner_id": null,
+  "status": "completed",
+  "title": "Weekly plan",
+  "cwd": "{{HOME}}",
+  "parent_session_id": null,
+  "tags": [],
+  "last_event_seq": 9,
+  "last_compacted_seq": 9,
+  "source_hash": "sha256:d57114fd10bcb67e862bc6dc965e039810bc131a8aebcbc788207c9895ea2b58",
+  "source_version": 3,
+  "created_at": "2026-10-03T23:10:28.869172+00:00",
+  "updated_at": "2026-10-03T23:10:32.239556+00:00",
+  "runtime_options": {
+    "agent_profile": "fake_chat",
+    "chat_profile": {
+      "provider": "openai",
+      "model": "fake-chat",
+      "display_name": null,
+      "models": [],
+      "backend": "api",
+      "executable": null,
+      "base_url": "{{LLM_URL}}",
+      "max_tokens": 64000,
+      "temperature": 0.0
+    }
+  },
+  "undo_checkpoint_shared": false
+}

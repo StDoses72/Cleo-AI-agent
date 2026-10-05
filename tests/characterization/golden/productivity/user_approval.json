@@ -1,0 +1,340 @@
+{
+  "items": [
+    {
+      "content": "needs approval [[permission]]",
+      "cursor": "<cursor:1>",
+      "id": "<turn:1>",
+      "order": 1,
+      "role": "user",
+      "time": "<clock-time>",
+      "turnHasAnswer": true,
+      "turnId": "<turn:1>",
+      "type": "message"
+    },
+    {
+      "content": "Thinking about the request.",
+      "cursor": "<cursor:2>",
+      "id": "<turn:1>:thought:1",
+      "order": 2,
+      "status": "done",
+      "turnHasAnswer": true,
+      "turnId": "<turn:1>",
+      "type": "thought"
+    },
+    {
+      "approvalAudit": true,
+      "approvalPending": false,
+      "command": "Run fixture command",
+      "cursor": "<cursor:3>",
+      "id": "<turn:1>:approval:approval-<hex:1>",
+      "name": "人工审批 · 已允许",
+      "order": 3,
+      "output": "来源：scripted · 人工审批\n结果：已允许\n原因：由当前 ACP 服务请求。\n请求参数：{\"command\": \"fixture --check\"}",
+      "status": "done",
+      "turnHasAnswer": true,
+      "turnId": "<turn:1>",
+      "type": "tool"
+    },
+    {
+      "content": "ACP reply: needs approval [[permission]] (permission: allow)",
+      "cursor": "<cursor:4>",
+      "id": "<turn:1>:answer",
+      "order": 4,
+      "role": "assistant",
+      "time": "<clock-time>",
+      "timing": {
+        "createdAt": "<time>",
+        "elapsedMs": "<number>",
+        "id": "<hex:2>",
+        "kind": "reply",
+        "persistenceError": null,
+        "phase": null,
+        "project": "workspace",
+        "sessionId": "<agent:1>",
+        "space": "productivity",
+        "status": "completed",
+        "turnId": "<turn:1>",
+        "unavailable": [
+          "模型服务内部阶段"
+        ],
+        "updatedAt": "<time>"
+      },
+      "turnHasAnswer": true,
+      "turnId": "<turn:1>",
+      "type": "message"
+    }
+  ],
+  "pending_while_waiting": [
+    {
+      "availableDecisions": [
+        "accept",
+        "decline",
+        "cancel"
+      ],
+      "command": "Run fixture command",
+      "commandActions": [],
+      "cwd": "<WORKSPACE>",
+      "decisionLabels": {
+        "accept": "Allow once",
+        "decline": "Reject"
+      },
+      "grantRoot": null,
+      "id": "approval-<hex:1>",
+      "itemId": "tool-perm-1",
+      "kind": "permissions",
+      "method": "session/request_permission",
+      "permissions": {
+        "command": "fixture --check"
+      },
+      "provider": "scripted",
+      "reason": "由当前 ACP 服务请求。",
+      "startedAtMs": null,
+      "threadId": "<agent:1>",
+      "title": "允许此工具操作？",
+      "turnId": "",
+      "turn_id": "<turn:1>"
+    }
+  ],
+  "resolved": {
+    "decision": "accept",
+    "id": "approval-<hex:1>"
+  },
+  "runtime_after_update": {
+    "access": "default",
+    "approval": "user",
+    "contextWindow": 128000,
+    "editable": true,
+    "effort": "high",
+    "handoffStatus": null,
+    "model": "fake-model-a",
+    "models": [
+      "fake-model-a"
+    ],
+    "pendingPermissions": null,
+    "permissionOptions": {
+      "access": [],
+      "approval": [
+        {
+          "description": "由你选择服务提供的允许或拒绝选项。",
+          "label": "人工审批",
+          "value": "user"
+        },
+        {
+          "description": "自动选择服务提供的允许选项；不改变服务自身的文件访问限制。",
+          "label": "自动允许请求",
+          "value": "auto_allow"
+        },
+        {
+          "description": "自动选择拒绝选项；服务没有提供拒绝选项时取消请求。",
+          "label": "自动拒绝请求",
+          "value": "deny_all"
+        }
+      ],
+      "reason": "此服务不提供统一权限档位，请使用高级审批设置。"
+    },
+    "provider": "scripted",
+    "serviceTier": null,
+    "settingsRevision": 1,
+    "steerMode": "boundary",
+    "supportsFastMode": false,
+    "supportsQuestions": false
+  },
+  "status_while_waiting": "running",
+  "stream": [
+    {
+      "item": {
+        "content": "needs approval [[permission]]",
+        "cursor": "<cursor:1>",
+        "id": "<turn:1>",
+        "order": 1,
+        "role": "user",
+        "time": "",
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      "type": "turn-started"
+    },
+    {
+      "item": {
+        "content": "Thinking about the request.",
+        "cursor": "<cursor:2>",
+        "id": "<turn:1>:thought:1",
+        "order": 2,
+        "status": "done",
+        "turnId": "<turn:1>",
+        "type": "thought"
+      },
+      "type": "upsert-item"
+    },
+    {
+      "request": {
+        "availableDecisions": [
+          "accept",
+          "decline",
+          "cancel"
+        ],
+        "command": "Run fixture command",
+        "commandActions": [],
+        "cwd": "<WORKSPACE>",
+        "decisionLabels": {
+          "accept": "Allow once",
+          "decline": "Reject"
+        },
+        "grantRoot": null,
+        "id": "approval-<hex:1>",
+        "itemId": "tool-perm-1",
+        "kind": "permissions",
+        "method": "session/request_permission",
+        "permissions": {
+          "command": "fixture --check"
+        },
+        "provider": "scripted",
+        "reason": "由当前 ACP 服务请求。",
+        "startedAtMs": null,
+        "threadId": "acp-session-1",
+        "title": "允许此工具操作？",
+        "turnId": "",
+        "turn_id": "<turn:1>"
+      },
+      "type": "approval-request"
+    },
+    {
+      "response": {
+        "decision": "accept",
+        "id": "approval-<hex:1>",
+        "policy": null,
+        "request": {
+          "availableDecisions": [
+            "accept",
+            "decline",
+            "cancel"
+          ],
+          "command": "Run fixture command",
+          "commandActions": [],
+          "cwd": "<WORKSPACE>",
+          "decisionLabels": {
+            "accept": "Allow once",
+            "decline": "Reject"
+          },
+          "grantRoot": null,
+          "id": "approval-<hex:1>",
+          "itemId": "tool-perm-1",
+          "kind": "permissions",
+          "method": "session/request_permission",
+          "permissions": {
+            "command": "fixture --check"
+          },
+          "provider": "scripted",
+          "reason": "由当前 ACP 服务请求。",
+          "startedAtMs": null,
+          "threadId": "acp-session-1",
+          "title": "允许此工具操作？",
+          "turnId": ""
+        },
+        "source": "user",
+        "timeline_id": "<turn:1>:approval:approval-<hex:1>",
+        "turn_id": "<turn:1>"
+      },
+      "type": "approval-resolved"
+    },
+    {
+      "item": {
+        "approvalAudit": true,
+        "approvalPending": false,
+        "command": "Run fixture command",
+        "cursor": "<cursor:3>",
+        "id": "<turn:1>:approval:approval-<hex:1>",
+        "name": "人工审批 · 已允许",
+        "order": 3,
+        "output": "来源：scripted · 人工审批\n结果：已允许\n原因：由当前 ACP 服务请求。\n请求参数：{\"command\": \"fixture --check\"}",
+        "status": "done",
+        "turnId": "<turn:1>",
+        "type": "tool"
+      },
+      "type": "upsert-item"
+    },
+    {
+      "item": {
+        "content": "ACP reply: needs approval [[permission]] (permission: allow)",
+        "id": "<turn:1>:answer",
+        "role": "assistant",
+        "time": "",
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      "type": "upsert-item"
+    },
+    {
+      "runtime": {
+        "access": "default",
+        "approval": "user",
+        "contextWindow": 128000,
+        "editable": true,
+        "effort": "high",
+        "handoffStatus": null,
+        "model": "fake-model-a",
+        "models": [
+          "fake-model-a"
+        ],
+        "pendingPermissions": null,
+        "permissionOptions": {
+          "access": [],
+          "approval": [
+            {
+              "description": "由你选择服务提供的允许或拒绝选项。",
+              "label": "人工审批",
+              "value": "user"
+            },
+            {
+              "description": "自动选择服务提供的允许选项；不改变服务自身的文件访问限制。",
+              "label": "自动允许请求",
+              "value": "auto_allow"
+            },
+            {
+              "description": "自动选择拒绝选项；服务没有提供拒绝选项时取消请求。",
+              "label": "自动拒绝请求",
+              "value": "deny_all"
+            }
+          ],
+          "reason": "此服务不提供统一权限档位，请使用高级审批设置。"
+        },
+        "provider": "scripted",
+        "serviceTier": null,
+        "settingsRevision": 1,
+        "steerMode": "boundary",
+        "supportsFastMode": false,
+        "supportsQuestions": false
+      },
+      "type": "runtime"
+    },
+    {
+      "changes": [],
+      "type": "changes"
+    },
+    {
+      "timing": {
+        "createdAt": "<time>",
+        "elapsedMs": "<number>",
+        "id": "<hex:2>",
+        "kind": "reply",
+        "persistenceError": null,
+        "phase": null,
+        "project": "workspace",
+        "sessionId": "<agent:1>",
+        "space": "productivity",
+        "status": "completed",
+        "turnId": "<turn:1>",
+        "unavailable": [
+          "模型服务内部阶段"
+        ],
+        "updatedAt": "<time>"
+      },
+      "type": "timing"
+    },
+    {
+      "summary": "ACP reply: needs approval [[permission]] (permission: allow)",
+      "type": "done"
+    }
+  ],
+  "wrong_space": "Only productivity tasks can request tool approval."
+}

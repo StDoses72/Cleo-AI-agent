@@ -1,0 +1,50 @@
+{
+  "event_types": [
+    "turn-started",
+    "upsert-item",
+    "upsert-item",
+    "runtime",
+    "changes",
+    "done"
+  ],
+  "manifest": {
+    "created_at": "<time>",
+    "cwd": "<WORKSPACE>",
+    "error": null,
+    "id": "<agent:1>",
+    "last_compacted_seq": 22,
+    "last_event_seq": 22,
+    "native_session_id": "acp-session-1",
+    "owner_id": null,
+    "owner_type": "agent",
+    "parent_session_id": null,
+    "project": "workspace",
+    "provider": "scripted",
+    "runtime_options": {
+      "approval_mode": "deny_all",
+      "effort": "high",
+      "model": "fake-model-a",
+      "sandbox": null,
+      "service_tier": null
+    },
+    "schema_version": 1,
+    "source_hash": "sha256:<hex:1>",
+    "source_version": 3,
+    "space": "productivity",
+    "status": "completed",
+    "tags": [],
+    "title": "Write the notes file [[plan]] [[tool]] [[write]]",
+    "undo_checkpoint": {
+      "after_index": "<hex:7>",
+      "after_worktree": "<hex:6>",
+      "before_index": "<hex:5>",
+      "before_worktree": "<hex:4>",
+      "head": "<hex:3>",
+      "ref": "refs/cleo/undo/<hex:2>",
+      "repo_root": "<WORKSPACE>",
+      "version": 1
+    },
+    "undo_checkpoint_shared": false,
+    "updated_at": "<time>"
+  }
+}

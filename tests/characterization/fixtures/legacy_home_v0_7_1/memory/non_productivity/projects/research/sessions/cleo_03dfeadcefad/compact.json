@@ -1,0 +1,43 @@
+{
+  "schema_version": 2,
+  "space": "non_productivity",
+  "project": "research",
+  "session_id": "cleo_03dfeadcefad",
+  "source": {
+    "relative_path": "non_productivity/projects/research/sessions/cleo_03dfeadcefad/events.jsonl",
+    "event_count": 4,
+    "from_seq": 1,
+    "to_seq": 4,
+    "source_content_hash": "sha256:763268768031bf93548638cd1d95896869f7c713076b8f6f65a580666e6d9c90",
+    "source_version": 1
+  },
+  "compression": {
+    "compressed_at": "2026-10-03T23:10:33.167693+00:00",
+    "raw_characters": 2019,
+    "compact_characters": 515,
+    "omitted_tool_characters": 0,
+    "tool_event_count": 0
+  },
+  "events": [
+    {
+      "id": "turn-636724779f9615fd2f83bf14",
+      "type": "human",
+      "content": "Collect reading notes",
+      "created_at": "2026-10-03T23:10:33.081003+00:00",
+      "source_event_ids": [
+        "turn-636724779f9615fd2f83bf14"
+      ],
+      "source_message_id": "turn-636724779f9615fd2f83bf14"
+    },
+    {
+      "id": "evt_15a8da43ccbf49db9edc10b486026038",
+      "type": "ai",
+      "content": "Echo: Collect reading notes",
+      "created_at": "2026-10-03T23:10:33.143462+00:00",
+      "source_event_ids": [
+        "evt_15a8da43ccbf49db9edc10b486026038"
+      ],
+      "source_message_id": "lc_run--01a10408-9293-7fa3-8e18-e2949f4e1ef1"
+    }
+  ]
+}
