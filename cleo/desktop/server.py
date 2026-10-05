@@ -98,7 +98,9 @@ class ProtocolServer:
 
 
 async def amain() -> None:
-    await ProtocolServer().run()
+    from cleo.bootstrap.container import build_desktop_service
+
+    await ProtocolServer(build_desktop_service()).run()
 
 
 def main() -> None:

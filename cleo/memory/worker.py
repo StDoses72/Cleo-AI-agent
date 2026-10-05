@@ -68,6 +68,9 @@ def main() -> int:
         jobs = _parse_jobs(sys.argv[1])
     except (TypeError, ValueError, json.JSONDecodeError):
         return 2
+    from cleo.config.settings import current_settings
+
+    current_settings()  # An unusable configuration stops the worker before any job starts.
     asyncio.run(_run_jobs(jobs))
     return 0
 
