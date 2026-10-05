@@ -158,7 +158,6 @@ export class BackendBridge {
       ["config/cleo.json", "config/cleo.json"],
       ["config/harnesses.json", "config/harnesses.json"],
       ["memory/MEMORY_POLICY.md", "memory/MEMORY_POLICY.md"],
-      ["assets/startup.png", "assets/startup.png"],
       ["AGENTS.md", "AGENTS.md"],
       ["PERSONA.md", "PERSONA.md"],
     ];

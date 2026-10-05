@@ -1,5 +1,8 @@
 # Cleo 产品架构
 
+> **注意**：本文描述的是 v0.7.1 的架构。终端 CLI/TUI 与 Docker 运行方式已在 v0.8 移除，后端只作为桌面端的本地服务运行；重构后的目标架构见 [docs/refactor/BACKEND_ARCHITECTURE_V2.md](refactor/BACKEND_ARCHITECTURE_V2.md)。
+
+
 本文面向集成方和贡献者，描述 Cleo 已实现的产品边界、运行时、harness adapter、session storage 与 memory pipeline。阅读后应能够判断一个请求由哪个入口处理、数据写到哪里、provider 如何扩展，以及哪些投影可以安全重建。
 
 Cleo 的架构目标是：本地数据可控、不同 agent 体验一致、会话可以恢复、长期记忆可以回查证据。本文不把规划能力写成已完成能力。

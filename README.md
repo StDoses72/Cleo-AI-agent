@@ -2,9 +2,9 @@
 
 [中文](README.zh-CN.md) | [Documentation](docs/README.en.md) | [Architecture](docs/ARCHITECTURE.en.md)
 
-Cleo is a local-first AI workspace that brings general chat, developer agents, resumable sessions, and evidence-backed memory into one desktop and CLI experience. Teams can supply their own models, tools, harnesses, and data boundaries.
+Cleo is a local-first AI workspace that brings general chat, developer agents, resumable sessions, and evidence-backed memory into one desktop experience. Teams can supply their own models, tools, harnesses, and data boundaries.
 
-The project supports native desktop builds for Windows, macOS and Linux, plus a Python CLI, Textual TUIs, and a stdio MCP entry point. User data stays on the local device by default; inference is provided by the API provider or external agent harness selected by the user.
+The project supports native desktop builds for Windows, macOS and Linux, backed by a local Python service, plus a stdio MCP entry point. User data stays on the local device by default; inference is provided by the API provider or external agent harness selected by the user.
 
 > Current version: [v0.7.1](https://github.com/StDoses72/Cleo-AI-agent/releases/tag/v0.7.1) · [Download the desktop app](https://stdoses72.github.io/Cleo-AI-agent/)
 
@@ -27,8 +27,6 @@ General assistants and coding agents usually keep separate histories, permission
 | Surface | Audience | Primary use |
 | --- | --- | --- |
 | Cleo Desktop | End users and developers | Conversation and project management, chat, Productivity, memory inspection, model settings, updates, and local evolution |
-| Cleo Chat CLI / TUI | Terminal users | One-shot prompts, continuous chat, image attachments, project memory, and session resume |
-| Productivity TUI | Software developers | Run Codex, Claude SDK, or ACP agents in a selected working directory |
 | `cleo-codex-mcp` | Integrators | Expose `codex` and `codex-reply` over stdio MCP |
 
 ## Highlights
@@ -86,13 +84,15 @@ Copy-Item cleo\config\templates\cleo.example.json config\cleo.json
 Copy-Item cleo\config\templates\harnesses.example.json config\harnesses.json
 ```
 
-Add at least one working agent profile to `config/cleo.json`, then run:
+Add at least one working agent profile to `config/cleo.json`, then start the desktop app against this checkout:
 
 ```powershell
-cleo
-cleo "Summarize this repository's architecture."
-cleo --productivity --cwd .
+Set-Location ui
+npm install
+npm start
 ```
+
+The desktop app starts the Python backend (`python -m cleo.desktop.server`) from the source tree. Cleo no longer ships a terminal CLI; the backend is used only through the desktop app and the MCP entry points.
 
 Linux and macOS use the same Python package and JSON formats. See [platform support](docs/PLATFORMS.en.md) for native builds, installation formats and signing boundaries. Available prebuilt assets depend on the current GitHub Release.
 
@@ -107,35 +107,10 @@ Linux and macOS use the same Python package and JSON formats. See [platform supp
 - **Version updates**: check official releases in Settings → Updates. The evolution version picker also offers official and saved local versions. Switching program versions does not roll chats, memory, or configuration back to an earlier snapshot.
 - **Source contributions**: open the PR dialog and select a checked local build and an empty receiving branch created by a maintainer. Request a branch first if needed. Contributions contain a full source snapshot excluding local configuration, conversations, and runtime data; maintainers decide when to merge and release. See [contribution targets and merge assistance](docs/contribution-targets.en.md).
 
-### Terminal
-
-```powershell
-# Continuous general chat
-cleo
-
-# Bind chat and memory to a logical project
-cleo --project product-planning
-
-# One-shot task
-cleo "Turn these requirements into acceptance criteria."
-
-# Start the default coding harness in the current directory
-cleo --productivity --cwd .
-
-# Select a registered provider and model
-cleo --productivity --provider codex --model gpt-5.5 --cwd .
-
-# Resume a Cleo-managed session
-cleo --resume <session-id>
-cleo --productivity --resume <session-id>
-```
-
-The chat UI supports `/help`, `/new`, `/project`, `/sessions`, `/resume`, `/rename`, `/attach`, and `/productivity`. Productivity also exposes `/cwd`, `/cd`, `/git`, `/diff`, `/model`, `/effort`, `/access`, `/approval`, `/native`, and `/resume-native`; commands vary with provider capabilities.
-
 ## Architecture at a glance
 
 ```text
-Desktop / CLI / TUI / MCP
+Desktop / MCP
             │
             ├── Cleo Chat ─────── Deep Agents + configured LLM
             │
@@ -176,7 +151,7 @@ Review [configuration and security boundaries](docs/CONFIGURATION.en.md) before 
 
 ```text
 Cleo-AI-agent/
-├── cleo/                 # Python product core: agents, CLI, desktop service, sessions, memory, harnesses
+├── cleo/                 # Python backend service: agents, desktop service, sessions, memory, harnesses
 ├── ui/                   # Electron + React desktop client
 ├── config/               # Local configuration, ignored by default
 ├── docs/                 # User, architecture, development, and design-decision docs
@@ -184,7 +159,6 @@ Cleo-AI-agent/
 ├── scripts/              # Dependency, release, download, uninstall, and cleanup scripts
 ├── skills/               # Local skills loadable by Cleo
 ├── tests/                # Tests organized by production responsibility
-├── compose.yaml          # Local container entry point
 └── pyproject.toml        # Python metadata and direct dependencies
 ```
 
@@ -206,7 +180,7 @@ The main usage guides are available in Chinese and English. Internal development
 
 ## Development
 
-Run `python scripts/update_project.py --local-resolver --skip-build` to refresh dependency locks and upgrade stable development dependencies in an existing `.venv`. `--check` leaves the environment unchanged.
+Run `python scripts/update_project.py --local-resolver` to refresh dependency locks and upgrade stable development dependencies in an existing `.venv`. `--check` leaves the environment unchanged.
 
 ```powershell
 pip install -e ".[dev]"

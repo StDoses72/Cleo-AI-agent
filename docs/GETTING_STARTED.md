@@ -9,8 +9,7 @@
 | 方式 | 适合场景 | 前置条件 |
 | --- | --- | --- |
 | Windows 桌面版 | 日常使用、最少环境配置 | Windows x64；一个可用的模型 API |
-| Python 源码 | 开发、调试、Linux/macOS 使用 | Python 3.12+；可选 Node.js |
-| Docker | 隔离运行、复现环境 | Docker；宿主机配置文件和持久化 volume |
+| Python 源码 | 开发、调试、Linux/macOS 使用 | Python 3.12+；Node.js（运行桌面端） |
 
 ## Windows 桌面版
 
@@ -108,44 +107,14 @@ cp cleo/config/templates/harnesses.example.json config/harnesses.json
 
 编辑 `config/cleo.json`，替换模板中的 API Key 和模型信息。配置文件缺失时，Cleo 也会生成默认模板并终止启动，提示用户补全配置。
 
-### 3. 验证入口
+### 3. 启动桌面端
 
 ```bash
-cleo --help
-cleo "用三句话介绍 Cleo"
-cleo
-cleo --productivity --cwd .
+npm ci --prefix ui
+npm --prefix ui start
 ```
 
-根目录 `python main.py` 与 `cleo` 等价，保留用于兼容旧脚本。
-
-## 用 Docker 运行
-
-仓库内 Compose 复用同一套 JSON 配置：
-
-```bash
-docker compose build
-docker compose run --rm cleo
-docker compose run --rm cleo "总结当前工作区"
-```
-
-默认挂载 `config/cleo.json`、`config/harnesses.json` 和 `workspace/`，并用 named volume 持久化 `data/`、`memory/` 与 Codex home。Cleo 当前没有 HTTP 服务，因此 Compose 不开放端口。
-
-## 常用 CLI 选项
-
-| 选项 | 用途 |
-| --- | --- |
-| `cleo [message]` | 无 message 进入交互聊天；有 message 执行一次性任务 |
-| `--project NAME` | 绑定通用聊天的逻辑 memory project |
-| `--resume ID` | 恢复 Cleo 管理的聊天或 Productivity session |
-| `--productivity` | 进入开发者 harness 模式 |
-| `--provider NAME` | 选择 `harnesses.json` 中已启用的 provider |
-| `--cwd PATH` | 指定 Productivity 的真实工作目录 |
-| `--model NAME` | 临时覆盖 Productivity 模型 |
-| `--print-config-template` | 向 stdout 输出便携的 `cleo.json` 模板 |
-| `--print-harnesses-template` | 向 stdout 输出 `harnesses.json` 模板 |
-
-`--provider`、`--cwd` 和 `--model` 只能与 `--productivity` 一起使用。`--thread-id` 只为 Cleo chat 指定新的 thread key，不会读取保存的 session；恢复已有会话应使用 `--resume`。
+桌面端会从源码目录启动 Python 后端（`python -m cleo.desktop.server`）。Cleo 不再提供终端 CLI，后端只通过桌面端和 MCP 入口使用；配置模板可以直接从 `cleo/config/templates/` 复制。
 
 ## 第一次使用后的检查
 

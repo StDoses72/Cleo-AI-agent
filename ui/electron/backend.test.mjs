@@ -65,7 +65,6 @@ test("desktop home receives user-editable AGENTS guidance without overwriting it
       "# Memory Policy\n",
       "utf8",
     );
-    await writeFile(join(defaultsRoot, "assets", "startup.png"), "image", "utf8");
     await writeFile(join(defaultsRoot, "AGENTS.md"), "# Default Guidance\n", "utf8");
     await writeFile(join(defaultsRoot, "PERSONA.md"), "# Persona\n", "utf8");
 

@@ -16,7 +16,7 @@ run unchanged. Behaviour is selected by markers in the user's request:
 When ``CHAR_ACP_LOG`` is set, every session and prompt request is appended to that file as
 JSON lines, so tests can pin exactly what Cleo hands to a harness.
 
-Notifications are paced (``CHAR_ACP_PACE`` seconds, default 0.1) like a model-backed agent.
+Notifications are paced (``CHAR_ACP_PACE`` seconds, default 0.25) like a model-backed agent.
 Cleo v0.7.1 handles each ACP ``session/update`` in its own task, so a burst of updates has
 no ordering guarantee (docs/refactor/CHARACTERIZATION_TESTS.md, Q11). Pacing keeps the
 snapshots clear of that window without changing the backend.
@@ -57,7 +57,8 @@ from acp.schema import (
 )
 
 REQUEST_MARKER = "Current user request:\n"
-PACE = float(os.environ.get("CHAR_ACP_PACE", "0.1"))
+PACE = float(os.environ.get("CHAR_ACP_PACE", "0.25"))
+TOOL_PACE = float(os.environ.get("CHAR_ACP_TOOL_PACE", "1.0"))
 
 
 def _log(entry: dict[str, Any]) -> None:
@@ -138,9 +139,14 @@ class ScriptedAgent:
     async def cancel(self, session_id: str, **_kwargs: Any) -> None:
         self._cancelled.setdefault(session_id, asyncio.Event()).set()
 
-    async def _send(self, session_id: str, update: Any) -> None:
+    async def _send(self, session_id: str, update: Any, pause: float = PACE) -> None:
         await self._conn.session_update(session_id=session_id, update=update)
-        await asyncio.sleep(PACE)
+        await asyncio.sleep(pause)
+
+    async def _start_tool(self, session_id: str, update: Any) -> None:
+        # Cleo looks up the timeline position of each new item off the event loop before
+        # emitting it; a completion sent too soon can overtake its own start (Q11).
+        await self._send(session_id, update, pause=max(PACE, TOOL_PACE))
 
     async def prompt(self, session_id: str, prompt: list[Any], **_kwargs: Any) -> PromptResponse:
         request = _request_text(prompt)
@@ -154,7 +160,7 @@ class ScriptedAgent:
                 plan_entry("Write the answer", status="in_progress"),
             ]))
         if "[[tool]]" in request:
-            await self._send(session_id, start_tool_call(
+            await self._start_tool(session_id, start_tool_call(
                 "tool-read-1", "Read README.md", kind="read", status="in_progress",
                 raw_input={"path": "README.md"},
             ))
@@ -164,7 +170,7 @@ class ScriptedAgent:
                 raw_output={"lines": 1},
             ))
         if "[[write]]" in request:
-            await self._send(session_id, start_tool_call(
+            await self._start_tool(session_id, start_tool_call(
                 "tool-write-1", "Write notes.txt", kind="edit", status="in_progress",
                 raw_input={"path": "notes.txt"},
             ))

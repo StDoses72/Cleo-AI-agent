@@ -9,8 +9,6 @@ from unittest.mock import AsyncMock
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
-from cleo.cli.chat_tui import COMMANDS as CHAT_TUI_COMMANDS
-from cleo.cli.productivity_tui import COMMANDS as PRODUCTIVITY_TUI_COMMANDS
 from cleo.desktop.service import CHAT_COMMANDS, PRODUCTIVITY_COMMANDS, DesktopService
 from cleo.harnesses.control import HarnessModel, SessionOptions
 from cleo.harnesses.models import AgentEvent
@@ -868,21 +866,6 @@ def test_remove_connection_blocks_the_current_conversation(tmp_path):
             await service.remove_model_connection(profile_id="secondary")
 
     asyncio.run(exercise())
-
-
-def _normalized_commands(commands: tuple[str, ...]) -> tuple[str, ...]:
-    return tuple(dict.fromkeys(command.rstrip() for command in commands))
-
-
-def test_desktop_exposes_every_cli_slash_command() -> None:
-    desktop_computer_commands = {"/computeruse"}
-    for desktop, terminal in (
-        (CHAT_COMMANDS, CHAT_TUI_COMMANDS),
-        (PRODUCTIVITY_COMMANDS, PRODUCTIVITY_TUI_COMMANDS),
-    ):
-        assert desktop_computer_commands <= set(desktop)
-        assert tuple(command for command in desktop if command not in desktop_computer_commands) \
-            == _normalized_commands(terminal)
 
 
 def test_agent_instructions_use_active_non_productivity_root(tmp_path: Path) -> None:

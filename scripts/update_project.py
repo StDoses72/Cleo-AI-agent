@@ -247,38 +247,23 @@ def _sync_development_environment(index_url: str, extra_index_url: str) -> None:
     _run(command)
 
 
-def _build_image(index_url: str, extra_index_url: str, *, pull: bool) -> None:
-    command = [
-        "docker",
-        "compose",
-        "build",
-    ]
-    if pull:
-        command.append("--pull")
-    command.extend(["--build-arg", f"PIP_INDEX_URL={index_url}"])
-    if extra_index_url:
-        command.extend(["--build-arg", f"PIP_EXTRA_INDEX_URL={extra_index_url}"])
-    _run(command)
-
-
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Refresh Python and desktop npm locks to the latest stable dependencies "
-            "and rebuild the Cleo Docker image."
+            "Refresh Python and desktop npm locks to the latest stable dependencies."
         )
     )
     parser.add_argument(
         "--skip-build",
         action="store_true",
-        help="Update dependency locks without rebuilding the Docker image.",
+        help="Accepted for existing callers; no image is built since the CLI image was removed.",
     )
     parser.add_argument(
         "--local-resolver",
         action="store_true",
         help=(
             "Resolve the cross-platform Python lock with local uv instead of the "
-            "Docker resolver image. Docker is still required unless --skip-build is set."
+            "Docker resolver image."
         ),
     )
     parser.add_argument(
@@ -287,15 +272,10 @@ def _parse_args() -> argparse.Namespace:
         help="Exit with status 1 when dependency locks are stale; do not modify files or build.",
     )
     parser.add_argument(
-        "--pull",
-        action="store_true",
-        help="Refresh base images before building instead of using the local Docker cache.",
-    )
-    parser.add_argument(
         "--index-url",
         default=DEFAULT_INDEX_URL,
         help=(
-            "Python package index used by uv and Docker builds. Defaults to "
+            "Python package index used by uv and the Docker resolver. Defaults to "
             "CLEO_PYPI_INDEX_URL or https://pypi.org/simple."
         ),
     )
@@ -332,18 +312,11 @@ def main() -> int:
         if args.check:
             return 1 if stale or node_stale else 0
         _sync_development_environment(args.index_url, args.extra_index_url)
-        if not args.skip_build:
-            if args.local_resolver:
-                _check_docker()
-            _build_image(args.index_url, args.extra_index_url, pull=args.pull)
     except (OSError, RuntimeError, subprocess.CalledProcessError) as exc:
         print(f"Update failed: {exc}", file=sys.stderr)
         return 1
 
-    if args.skip_build:
-        print("Dependency lock is ready; Docker image build was skipped.")
-    else:
-        print("Dependency lock and Docker image are ready.")
+    print("Dependency lock is ready.")
     return 0
 
 

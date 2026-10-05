@@ -12,7 +12,6 @@ Cleo 使用两个经过 Pydantic 校验的 JSON 文件：`cleo.json` 管理通�
 | Windows 桌面版 | `%LOCALAPPDATA%\Cleo\config\cleo.json` | `%LOCALAPPDATA%\Cleo\config\harnesses.json` | `%LOCALAPPDATA%\Cleo` |
 | macOS 桌面版 | `~/Library/Application Support/Cleo/config/cleo.json` | 同目录 `harnesses.json` | `~/Library/Application Support/Cleo` |
 | Linux 桌面版 | `~/.local/share/Cleo/config/cleo.json` | 同目录 `harnesses.json` | `$XDG_DATA_HOME/Cleo`，默认 `~/.local/share/Cleo` |
-| Docker Compose | `/config/cleo.json` | `/config/harnesses.json` | `/app`，相关目录由 volume 持久化 |
 
 可用 `CLEO_CONFIG_PATH` 与 `CLEO_HARNESSES_CONFIG_PATH` 指定配置文件。打包应用由 Electron 显式设置 `CLEO_HOME`；源码 checkout 会以仓库为相对路径根。
 
@@ -100,7 +99,7 @@ Directory profile 定义产品数据布局。相对路径基于 `root_dir`：
 | `persona_path` | `PERSONA.md` | persona 的人类可读投影 |
 | `session_index_path` | `memory/sessions.sqlite3` | 全局 session metadata registry |
 | `session_artifacts_dir` | `data/session_artifacts` | 大型 browser/tool 产物 |
-| `runtime_state_path` | `data/runtime.json` | 当前 UI/CLI 导航状态 |
+| `runtime_state_path` | `data/runtime.json` | 当前界面导航状态 |
 
 把数据目录迁移到新位置时，应整体迁移相关文件并保持 scope 结构，不要只复制 Markdown 记忆投影。
 
@@ -173,7 +172,7 @@ Browser 子配置的重要边界：
 Codex 的 `approval_mode` 支持 `deny_all`、`auto_review` 和 `user`。`user` 会把
 app-server 的命令、文件修改和额外权限请求交给调用端决定。Cleo Desktop 会把
 `auto_review` 切换成可交互的 `user` 模式并在输入区上方显示审批面板；显式配置的
-`deny_all` 仍保持拒绝。CLI 继续遵循 `harnesses.json` 中配置的模式。
+`deny_all` 仍保持拒绝。
 
 只有 `enabled: true` 的 provider 会注册。`default_provider` 必须存在且启用，否则配置校验失败。
 
