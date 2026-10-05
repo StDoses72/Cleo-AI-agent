@@ -1,6 +1,9 @@
 import json
 import os
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -1023,15 +1026,35 @@ def load_settings(
 
 _current_settings: SettingsModel | None = None
 _settings_lock = threading.Lock()
+# A running turn binds the snapshot it started with; hot reloads apply from the next turn.
+_run_settings: ContextVar[SettingsModel | None] = ContextVar("cleo_run_settings", default=None)
+
+
+@contextmanager
+def bound_settings(model: SettingsModel) -> Iterator[SettingsModel]:
+    """Purpose: Make ``current_settings()`` return ``model`` inside this context only.
+
+    Input: The snapshot a run started with. Output: The same model while the block runs;
+    tasks and ``asyncio.to_thread`` calls started inside it inherit the binding.
+    """
+    token = _run_settings.set(model)
+    try:
+        yield model
+    finally:
+        _run_settings.reset(token)
 
 
 def current_settings() -> SettingsModel:
     """Purpose: Return the process configuration, loading it from disk on first use.
 
-    Input: None. Output: The loaded ``SettingsModel``. Raises like ``load_settings`` when the
-    configuration is missing or invalid; entry points call this at startup so that such a
-    failure still happens before any work begins.
+    Input: None. Output: The run-bound snapshot inside a running turn, otherwise the latest
+    loaded ``SettingsModel``. Raises like ``load_settings`` when the configuration is missing
+    or invalid; entry points call this at startup so that such a failure still happens
+    before any work begins.
     """
+    bound = _run_settings.get()
+    if bound is not None:
+        return bound
     global _current_settings
     if _current_settings is None:
         with _settings_lock:

@@ -234,3 +234,17 @@ test("a failed close keeps requests blocked but a later close can retry the same
   assert.equal(bridge.process, null);
   assert.deepEqual(child.messages.map(message => message.method), ["shutdown", "shutdown"]);
 });
+
+test("a fresh backend process starts without the previous process's hot-reload flag", async t => {
+  const { bridge, children } = mockBackend(t);
+  bridge.start();
+  bridge.hotReload = true;
+  const restarting = bridge.restart();
+  children[0].reply(0);
+  await new Promise(setImmediate);
+  children[0].finish();
+  await restarting;
+  bridge.start();
+  assert.equal(children.length, 2);
+  assert.equal(bridge.hotReload, false, "An older backend must be restarted after config changes");
+});

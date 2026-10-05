@@ -13,8 +13,10 @@ from cleo.desktop.service import DesktopService
 
 
 class ProtocolServer:
-    def __init__(self, service: DesktopService | None = None) -> None:
+    def __init__(self, service: DesktopService | None = None, config: Any | None = None) -> None:
         self.service = service or DesktopService()
+        # Hot reload: pick up configuration edited outside the app before each request.
+        self._config = config
         self._write_lock = asyncio.Lock()
         self._tasks: set[asyncio.Task[Any]] = set()
         self._stopping = False
@@ -37,6 +39,8 @@ class ProtocolServer:
                 request = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            if self._config is not None:
+                self._config.refresh_if_changed()
             if request.get("method") == "shutdown":
                 await self._handle(request)
                 break
@@ -98,9 +102,10 @@ class ProtocolServer:
 
 
 async def amain() -> None:
-    from cleo.bootstrap.container import build_desktop_service
+    from cleo.bootstrap.container import build_config_service, build_desktop_service
 
-    await ProtocolServer(build_desktop_service()).run()
+    config = build_config_service()
+    await ProtocolServer(build_desktop_service(config), config=config).run()
 
 
 def main() -> None:

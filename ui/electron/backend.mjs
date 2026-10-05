@@ -25,6 +25,8 @@ export class BackendBridge {
     this.closePromise = null;
     this.spawnImpl = spawnImpl;
     this.runtime = null;
+    // Set from load_workspace: the running backend applies configuration changes live.
+    this.hotReload = false;
   }
 
   request(method, params = {}, onEvent = null) {
@@ -57,6 +59,7 @@ export class BackendBridge {
       : [paths.backendRoot, process.env.PYTHONPATH].filter(Boolean).join(delimiter);
     const runtimePath = this.runtimePath(paths);
     this.stderr = "";
+    this.hotReload = false;
     const child = this.spawnImpl(python, ["-m", "cleo.desktop.server"], {
       cwd: paths.backendRoot,
       windowsHide: true,

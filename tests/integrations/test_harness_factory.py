@@ -103,3 +103,30 @@ def test_factory_builds_configured_provider_types(tmp_path: Path) -> None:
 def test_productivity_default_provider_must_be_enabled(payload: dict) -> None:
     with pytest.raises(ValidationError):
         ProductivitySettings.model_validate(payload)
+
+
+def test_sync_providers_swaps_changed_harnesses_for_new_sessions(tmp_path: Path) -> None:
+    def productivity(args, *, gemini_enabled=True):
+        return ProductivitySettings.model_validate({
+            "default_provider": "codex",
+            "providers": {
+                "codex": {"type": "codex_sdk", "model": "gpt-test"},
+                "agent": {"type": "acp", "options": {"command": "agent", "args": args}},
+                "gemini": {"type": "acp", "enabled": gemini_enabled,
+                           "options": {"command": "gemini"}},
+            },
+        })
+
+    from cleo.integrations.harnesses.factory import sync_providers
+
+    adapter = build_agent_adapter(tmp_path, productivity(["acp"]))
+    codex = adapter.provider_control("codex")
+    agent = adapter.provider_control("agent")
+
+    changed = sync_providers(adapter, productivity(["acp", "--fast"], gemini_enabled=False))
+
+    assert changed == ["agent", "gemini"]
+    assert adapter.provider_control("codex") is codex
+    assert adapter.provider_control("agent") is not agent
+    assert adapter.providers == ("codex", "agent")
+    assert sync_providers(adapter, productivity(["acp", "--fast"], gemini_enabled=False)) == []

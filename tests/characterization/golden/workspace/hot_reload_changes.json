@@ -1,0 +1,75 @@
+{
+  "after_external_edit": {
+    "catalog": [
+      {
+        "active": true,
+        "id": "connection_<hex:1>",
+        "model": "fake-chat"
+      },
+      {
+        "active": false,
+        "id": "fake_chat",
+        "model": "fake-chat"
+      }
+    ],
+    "chat_model": "fake-chat",
+    "config": {
+      "error": null,
+      "restartRequired": false,
+      "version": 4
+    }
+  },
+  "after_save": {
+    "catalog": [
+      {
+        "active": true,
+        "id": "connection_<hex:1>",
+        "model": "fake-chat-mini"
+      },
+      {
+        "active": false,
+        "id": "fake_chat",
+        "model": "fake-chat"
+      }
+    ],
+    "chat_model": "fake-chat-mini",
+    "config": {
+      "error": null,
+      "restartRequired": false,
+      "version": 3
+    }
+  },
+  "first_model": "fake-chat",
+  "initial": {
+    "error": null,
+    "restartRequired": false,
+    "version": 1
+  },
+  "same_thread": {
+    "config_during_run": {
+      "error": null,
+      "restartRequired": false,
+      "version": 5
+    },
+    "new_chat_model": "fake-chat-mini",
+    "next_turn": {
+      "browser_tools": [
+        "browser_click",
+        "browser_close",
+        "browser_fill",
+        "browser_history",
+        "browser_open",
+        "browser_press",
+        "browser_screenshot",
+        "browser_snapshot",
+        "browser_tab",
+        "browser_wait"
+      ],
+      "model": "fake-chat"
+    },
+    "running_turn": {
+      "browser_tools": [],
+      "model": "fake-chat"
+    }
+  }
+}

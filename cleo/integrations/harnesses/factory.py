@@ -109,7 +109,34 @@ def build_agent_adapter(
         session_store.index_path if session_store is not None else None,
         computer_config_path=computer_config_path,
     )
-    for name, provider_settings in productivity.providers.items():
-        if provider_settings.enabled:
-            adapter.register(create_provider(name, provider_settings, memory_mcp=memory_mcp))
+    adapter.memory_mcp = memory_mcp
+    adapter.provider_settings = {}
+    sync_providers(adapter, productivity)
     return adapter
+
+
+def sync_providers(adapter: AgentAdapter, productivity: ProductivitySettings) -> list[str]:
+    """Purpose: Apply changed harness settings to new sessions without touching live ones.
+
+    Input: An adapter from ``build_agent_adapter`` and the new productivity settings.
+    Output: Names whose provider was added, replaced or removed. Live sessions keep the
+    provider instance they were created with until they close.
+    """
+    known = adapter.provider_settings
+    changed = []
+    for name, provider_settings in productivity.providers.items():
+        if not provider_settings.enabled or known.get(name) == provider_settings:
+            continue
+        adapter.register(
+            create_provider(name, provider_settings, memory_mcp=adapter.memory_mcp),
+            replace=name in known,
+        )
+        known[name] = provider_settings
+        changed.append(name)
+    for name in list(known):
+        provider_settings = productivity.providers.get(name)
+        if provider_settings is None or not provider_settings.enabled:
+            adapter.unregister(name)
+            del known[name]
+            changed.append(name)
+    return changed

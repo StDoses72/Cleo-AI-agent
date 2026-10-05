@@ -450,7 +450,9 @@ app.whenReady().then(async () => {
       // Queued computer actions of a finished turn must never run in a later one.
       if (tracksTurn) computer.broker.turnEnded(params.thread_id);
     }
-    if (["save_model_profile", "save_dream_settings", "create_model_connection",
+    if (method === "load_workspace") backend.hotReload = result?.backend?.hotReload === true;
+    // Backends without hot reload (older versions selected by evolution) still need a restart.
+    if (!backend.hotReload && ["save_model_profile", "save_dream_settings", "create_model_connection",
       "select_chat_model", "rename_model_connection", "remove_model_connection"].includes(method)) {
       await backend.restart();
     }

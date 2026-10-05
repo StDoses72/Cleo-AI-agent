@@ -929,7 +929,7 @@ flowchart LR
 | --- | --- | --- | --- |
 | S0b | 移除终端 CLI/TUI、`cleo/images`、`main.py` 与 Docker 应用镜像；后台记忆整理进程迁到 `cleo/memory/worker.py`；打包不再带 CLI 启动图 | 遗漏依赖 CLI 的代码 | 特征测试中 CLI 入口快照改为后端进程入口快照，其余不变 |
 | S1 | 新建 `bootstrap/container.py`，`load_settings()` 改为显式调用；保留 `cleo.config.settings.settings` 作为惰性兼容属性。Clock 和 ID 生成器的注入推迟到 S3/S4，在真正改到那些代码时再做 | 导入顺序 | 全部特征测试；`tests/test_boundaries.py` |
-| S1b | `ConfigService` 与 `SettingsSnapshot`；`settings` 兼容对象改为按 `ContextVar` 解析的代理；`load_workspace.backend` 增加 `hotReload` 与 `config` 状态；Electron 按标记停止重启后端 | 运行中读到新旧配置混用；provider 旧实例泄漏 | 全部特征测试保持不变，另加 4 个热加载测试（第 15 节） |
+| S1b | `ConfigService` 与 `SettingsSnapshot`；`settings` 兼容对象改为按 `ContextVar` 解析的代理；`load_workspace.backend` 增加 `hotReload` 与 `config` 状态；Electron 按标记停止重启后端 | 运行中读到新旧配置混用；provider 旧实例泄漏 | 全部特征测试保持不变（`load_workspace` 快照只多出 `hotReload` 与 `config` 字段），另加 `test_hot_reload.py`（第 15 节） |
 | S2 | `ProtocolServer` 改用注册表；`DesktopService` 的方法作为 handler 原样注册 | 漏注册方法 | `protocol/*`；对照 `allowedMethods` 自动生成注册表测试 |
 | S3 | `SessionStore` 门面保留，内部委托给新端口；副作用改为事件总线订阅 | 落盘顺序、fsync 规则 | `*/disk`、`legacy/*`、`formats/*` |
 | S4 | 把 `_run_tasks` 等迁入 `RunSupervisor` | 取消与清理竞态 | `protocol/cancel_chat_run`、`productivity/cancel_and_refusal`、`productivity/boundary_steering` |
@@ -952,10 +952,10 @@ flowchart LR
 
 ## 15. 配置热加载
 
-### 现状
+### 重构前（v0.7.1）
 
 - 21 个模块在导入时直接读全局配置 `cleo.config.settings.settings`；`agents/cleo.py` 甚至在模块加载时把当前模型固定为 `active_profile`。
-- Electron 每次修改模型连接或 DreamAgent 设置后都会重启后端（`ui/electron/main.mjs:453`）。
+- Electron 每次修改模型连接或 DreamAgent 设置后都会重启后端（S1b 起只对没有 `hotReload` 标记的后端这样做，见 `ui/electron/main.mjs:455`）。
 - 只有 AGENTS.md 已经是即时生效的：保存后清空聊天 agent 缓存，下一回合从日志重建。
 
 ### 哪些可以热加载
@@ -971,19 +971,37 @@ flowchart LR
 | 快照 | `ConfigService` 持有不可变的 `SettingsSnapshot(version, settings)`。写入流程是：加锁，重读文件，应用修改，整体校验，原子写入，版本加 1，替换快照，发布 `SettingsChanged(diff)` |
 | 外部编辑 | 每个 RPC 请求进来时先 `stat` 两个配置文件，比较 mtime 和大小，有变化就重载；校验失败保留旧快照，并通过 `load_workspace.backend.config.error` 告诉界面。不需要额外的文件监视线程 |
 | 按运行绑定 | RunSupervisor 启动运行时把快照写进 `ContextVar`；`cleo.config.settings.settings` 改为代理对象：运行内读这次运行的快照，运行外读最新快照。`asyncio.to_thread` 会复制上下文，工具线程读到的版本也一致；21 个旧导入点不必逐个修改 |
-| 聊天引擎 | 缓存的聊天 agent 记录自己创建时的配置版本；模型或工具配置变化后，下一回合重建 agent，历史从日志恢复 |
+| 聊天引擎 | 缓存的聊天 agent 记录自己创建时的配置版本；配置变化后，下一回合重建 agent，历史从日志恢复。已有线程的模型由其 `chat_profile` 固定（v0.7.1 起如此），只有 API Key 等凭据跟随连接更新 |
 | Harness | `HarnessCatalog` 对 provider 配置做 diff：新增或修改的生成新实例，供新会话使用；已打开的原生会话继续使用旧实例，关闭后释放；被禁用的 provider 不能再创建新任务。harness 启动的 MCP 子进程从下一个会话起使用新配置 |
 | 并发写入 | 写入时带上版本号；如果文件已被外部修改，先重载再应用修改，避免两个窗口互相覆盖 |
 | Electron 兼容 | 后端在 `load_workspace.backend` 中声明 `hotReload: true`，Electron 看到后不再重启后端。进化功能可能切换到较旧的后端版本，旧版本没有这个标记，Electron 就继续重启 |
 
+### S1b 实现情况
+
+S1b 按上表落地，但先用现有模块承载，后续步骤再搬到目标位置：
+
+| 目标设计 | S1b 中的位置 |
+| --- | --- |
+| `ConfigService` / `SettingsSnapshot` | `cleo/config/service.py`；在组合根 `cleo/bootstrap/container.py` 创建 |
+| 发布 `SettingsChanged(diff)` | `subscribe(listener)`，回调参数为 `(old, new)`；回调出错时写入 `config.error`，不影响服务 |
+| RunSupervisor 绑定快照 | 暂由 `DesktopService.stream_turn` 调用 `ConfigService.bind_run()`；S5 移到 RunSupervisor |
+| `HarnessCatalog` diff | `integrations/harnesses/factory.py::sync_providers`，配合 `AgentService.register(replace=True)` / `unregister` |
+| 外部编辑检测 | `ProtocolServer` 在分发每个请求前调用 `refresh_if_changed()` |
+| 并发写入 | 六个配置写入方法本来就先从磁盘读文件再修改，外部编辑不会被覆盖；暂不引入版本号令牌 |
+
+配置文件被删除时只报告错误，不会像启动时那样写入默认模板。
+
 ### 测试
 
-现有的 `workspace/model_connections` 测试在修改后会重启后端，热加载上线后照样通过。上线时新增四个测试：
+现有的 `workspace/model_connections` 测试在修改后会重启后端，热加载上线后照样通过，用来确认修改已经落盘。`load_workspace` 快照多了 `backend.hotReload` 与 `backend.config` 两个字段。新增的 `test_hot_reload.py` 覆盖：
 
-1. 创建连接后，不重启即可在 runtime catalog 中看到；
-2. 运行中的回合继续使用旧模型，下一回合使用新模型；
-3. 外部写入无效 JSON 时保留旧配置，并在 workspace 中报告错误；
-4. 修改数据目录时回报需要重启，当前进程行为不变。
+1. 协议保存的连接和外部编辑，不重启即可进入 runtime catalog 和下一回合；
+2. 运行中的回合继续使用开始时的配置；同一线程的下一回合重建 agent，工具设置随新配置变化，模型仍按线程创建时记录的 `chat_profile`（v0.7.1 行为），新对话使用新模型；
+3. 外部写入无效 JSON 或无效取值时保留旧配置，并在 workspace 中报告错误，错误中不含输入值；
+4. 修改数据目录时回报需要重启，当前进程行为不变，改回后标记清除；
+5. `harnesses.json` 新增的 provider 可以直接建任务，禁用后不能再建。
+
+`tests/config/test_config_service.py` 与 `tests/integrations/test_harness_factory.py` 从单元层面覆盖同样的规则。
 
 "运行中禁止修改连接"这条现有限制（`_require_idle_configuration`），S1b 先保留。有了快照隔离之后可以放开，但放开属于行为变更，在 S9 单独提交。
 
