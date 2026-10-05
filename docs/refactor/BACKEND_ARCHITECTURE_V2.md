@@ -915,8 +915,8 @@ flowchart LR
     s0[S0 基线<br/>特征测试 51 个通过] --> s0b[S0b 移除 CLI]
     s0b --> s1[S1 Composition root<br/>Settings 延迟加载与注入]
     s1 --> s1b[S1b 配置快照与热加载]
-    s1b --> s2[S2 显式 RpcRegistry<br/>ErrorMapper / Presenters]
-    s2 --> s3[S3 拆 SessionStore<br/>EventStore / ThreadRepo / Index / 投影订阅]
+    s1b --> s2[S2 显式 RpcRegistry<br/>ErrorMapper]
+    s2 --> s3[S3 拆 SessionStore<br/>EventStore / ThreadRepo / Index / 投影订阅 / Presenters]
     s3 --> s4[S4 RunSupervisor<br/>收拢 11 个运行期字典与集合]
     s4 --> s5[S5 AgentSystem 接口<br/>先实现单 agent]
     s5 --> s6[S6 CommandRegistry + TurnHooks<br/>evolution / skills / computer / timing]
@@ -930,8 +930,8 @@ flowchart LR
 | S0b | 移除终端 CLI/TUI、`cleo/images`、`main.py` 与 Docker 应用镜像；后台记忆整理进程迁到 `cleo/memory/worker.py`；打包不再带 CLI 启动图 | 遗漏依赖 CLI 的代码 | 特征测试中 CLI 入口快照改为后端进程入口快照，其余不变 |
 | S1 | 新建 `bootstrap/container.py`，`load_settings()` 改为显式调用；保留 `cleo.config.settings.settings` 作为惰性兼容属性。Clock 和 ID 生成器的注入推迟到 S3/S4，在真正改到那些代码时再做 | 导入顺序 | 全部特征测试；`tests/test_boundaries.py` |
 | S1b | `ConfigService` 与 `SettingsSnapshot`；`settings` 兼容对象改为按 `ContextVar` 解析的代理；`load_workspace.backend` 增加 `hotReload` 与 `config` 状态；Electron 按标记停止重启后端 | 运行中读到新旧配置混用；provider 旧实例泄漏 | 全部特征测试保持不变（`load_workspace` 快照只多出 `hotReload` 与 `config` 字段），另加 `test_hot_reload.py`（第 15 节） |
-| S2 | `ProtocolServer` 改用注册表；`DesktopService` 的方法作为 handler 原样注册 | 漏注册方法 | `protocol/*`；对照 `allowedMethods` 自动生成注册表测试 |
-| S3 | `SessionStore` 门面保留，内部委托给新端口；副作用改为事件总线订阅 | 落盘顺序、fsync 规则 | `*/disk`、`legacy/*`、`formats/*` |
+| S2 | `ProtocolServer` 改用 `cleo/desktop/rpc.py` 的显式方法表：每个方法标明调用方（`renderer` / `main` / `unused`）和是否流式；handler 仍是 `DesktopService` 的同名方法，调用时查找，参数原样传入，所以参数错误仍是原来的 `TypeError`。Pydantic 参数模型会改变错误名，留到 S9。没有调用方的 `analyze_evolution_request` 暂时保留并标为 `unused` | 漏注册方法 | `protocol/*`；`tests/desktop/test_rpc_registry.py` 核对方法表与 `DesktopService` 公开方法、`allowedMethods` 以及 Electron 主进程中的调用 |
+| S3 | `SessionStore` 门面保留，内部委托给新端口；副作用改为事件总线订阅；Workspace/Thread 的 UI 映射移到 Presenters | 落盘顺序、fsync 规则 | `*/disk`、`legacy/*`、`formats/*` |
 | S4 | 把 `_run_tasks` 等迁入 `RunSupervisor` | 取消与清理竞态 | `protocol/cancel_chat_run`、`productivity/cancel_and_refusal`、`productivity/boundary_steering` |
 | S5 | `_stream_chat` / `_stream_productivity` 变为成员执行方式（`AgentRuntime`），外面包一层 `AgentSystem` 接口，只实现 `SingleAgentSystem`（第 16 节 M0） | 事件顺序 | `chat/*`、`productivity/*` |
 | S6 | 两段 if/elif 命令链改为 `Command` 类；evolution 等改为 hook | 命令文案 | `*/slash_commands` |
