@@ -23,6 +23,14 @@ from cleo.desktop.configuration import (
     save_model_profile,
     select_chat_model,
 )
+from cleo.desktop.presenters import (
+    backend_view,
+    project_list,
+    thread_view,
+    ui_space,
+    usage_view,
+    workspace_view,
+)
 from cleo.desktop.projection import (
     change_history_from_events,
     changes_from_diff,
@@ -168,7 +176,7 @@ class DesktopService:
             ),
             attachment=lambda item: self._chat_attachment(item),
             sync=lambda agent, manifest, status: self._sync_chat(agent, manifest, status),
-            usage=self._usage_dict,
+            usage=usage_view,
             config_version=lambda: (
                 self._config.snapshot.version if self._config is not None else None
             ),
@@ -222,27 +230,22 @@ class DesktopService:
             ),
             manifests[0] if manifests else None,
         )
-        return {
-            "projects": projects,
-            "threads": threads,
-            **memory,
-            "runtime": self._runtime_profile(active_manifest),
-            "activeThreadId": active_manifest["id"] if active_manifest else None,
-            "activeSpace": self._ui_space(active_manifest["space"])
-            if active_manifest
-            else "productivity",
-            "backend": {
-                "connected": True,
-                "mode": "local",
-                "commands": {
+        return workspace_view(
+            projects=projects,
+            threads=threads,
+            memory=memory,
+            runtime=self._runtime_profile(active_manifest),
+            active=active_manifest,
+            backend=backend_view(
+                commands={
                     "chat": list(CHAT_COMMANDS),
                     "productivity": list(PRODUCTIVITY_COMMANDS),
                 },
-                "recoverableChatBackups": len(self._chat_backup_candidates()),
-                "hotReload": self._config is not None,
-                "config": self._config.status() if self._config is not None else None,
-            },
-        }
+                recoverable_chat_backups=len(self._chat_backup_candidates()),
+                hot_reload=self._config is not None,
+                config_status=self._config.status() if self._config is not None else None,
+            ),
+        )
 
     async def load_memory(self) -> dict[str, Any]:
         """Refresh memory without reloading or activating any conversation."""
@@ -1894,7 +1897,7 @@ class DesktopService:
                 if status in {"completed", "failed"}:
                     await refresh_changes()
             if usage.used_tokens is not None:
-                await emit({"type": "usage", "usage": self._usage_dict(usage)})
+                await emit({"type": "usage", "usage": usage_view(usage)})
 
         try:
             result = await self._adapter().prompt(
@@ -2113,7 +2116,7 @@ class DesktopService:
         for manifest in manifests:
             if self._is_removed_project(manifest):
                 continue
-            space = self._ui_space(manifest["space"])
+            space = ui_space(manifest["space"])
             name = str(manifest["project"])
             raw_path = manifest.get("cwd")
             if not raw_path:
@@ -2140,38 +2143,15 @@ class DesktopService:
                 path = self.runtime.project_path(memory_space, name)
                 if path is not None:
                     candidates[project_id(memory_space, name)] = (
-                        self._ui_space(memory_space),
+                        ui_space(memory_space),
                         name,
                         path,
                     )
 
-        projects = []
-        project_counts = {
-            space: sum(
-                1
-                for candidate_space, _name, _path in candidates.values()
-                if candidate_space == space
-            )
-            for space in ("chat", "productivity")
+        self._project_paths = {
+            identifier: path for identifier, (_space, _name, path) in candidates.items()
         }
-        self._project_paths = {}
-        for identifier, (space, name, path) in candidates.items():
-            git = inspect_git_status(path) if space == "productivity" else None
-            self._project_paths[identifier] = path
-            projects.append(
-                {
-                    "id": identifier,
-                    "space": space,
-                    "name": name,
-                    "path": path,
-                    "branch": git.branch if git else None,
-                    "dirtyFiles": git.dirty_count if git else 0,
-                    "accent": self._accent(identifier),
-                    "removable": project_counts[space] > 1
-                    and not (space == "chat" and name == "general"),
-                }
-            )
-        return sorted(projects, key=lambda item: (item["space"], item["name"].casefold()))
+        return project_list(candidates, inspect_git_status)
 
     @staticmethod
     def _has_chat_history(events: list[dict[str, Any]]) -> bool:
@@ -2257,15 +2237,6 @@ class DesktopService:
         page = await self.load_timeline(
             thread_id=manifest["id"], limit=80 if include_history else 1,
         )
-        items = page["items"]
-        summary = next(
-            (
-                item["content"][:100]
-                for item in reversed(items)
-                if item["type"] == "message" and item["content"]
-            ),
-            manifest.get("title") or "等待第一条消息",
-        )
         changes = []
         if include_history and manifest["space"] == "productivity" and manifest.get("cwd"):
             diff = read_git_diff(manifest["cwd"])
@@ -2274,55 +2245,38 @@ class DesktopService:
                 if diff is None
                 else changes_from_diff(diff)
             )
-        usage = self._usage_from_events(events, self._runtime_profile(manifest)["contextWindow"])
+        runtime = self._runtime_profile(manifest)
         timings, timing_error = await self._timing_summaries(
             session_id=manifest["id"], kind="reply", limit=1,
         )
-        return {
-            "id": manifest["id"],
-            "currentTiming": timings[0] if timings else None,
-            "timingError": timing_error,
-            "space": self._ui_space(manifest["space"]),
-            "projectId": project_id(manifest["space"], manifest["project"]),
-            "title": self._visible_title(manifest.get("title")) or "新对话"
-            if manifest["space"] == "non_productivity"
-            else self._visible_title(manifest.get("title")) or "新任务",
-            "summary": summary,
-            "canUndo": await asyncio.to_thread(self._can_undo, manifest),
-            "updatedAt": relative_time(manifest.get("updated_at")),
-            "status": "running" if self._runs.is_running(manifest["id"]) else (
-                "attention" if manifest.get("status") == "running"
-                else self._thread_status(manifest.get("status"))
-            ),
-            "activeRunId": self._runs.run_id(manifest["id"]),
-            "steerReady": self._runs.steer_ready(manifest["id"]),
-            "pendingApprovals": self._runs.pending_approvals(manifest["id"]),
-            "editableTurnIds": (
-                await asyncio.to_thread(TimelineIndex(self.store, manifest).editable_turns)
-                if include_history and self._rewindable(manifest) else []
-            ),
-            "items": items if include_history else [],
-            "history": {key: value for key, value in page.items() if key != "items"},
-            "pendingQuestions": await self.get_pending_questions(thread_id=manifest["id"]),
-            "changes": changes,
-            "changeHistory": change_history_from_events(events),
-            "usage": usage,
-            "runtime": self._runtime_profile(manifest),
-            "terminal": self._terminal_from_events(events),
-            "skills": [skill.entry() for skill in self._local_skills(manifest)],
-        }
-
-    @staticmethod
-    def _visible_title(title: Any) -> str | None:
-        """Purpose: Keep titles saved from internal evolution prompts out of the UI.
-
-        Input: Persisted manifest title. Output: Display title; the stored value is unchanged.
-        """
-        if isinstance(title, str) and title.startswith(
-            ("Cleo self-iteration requirements", "[[CLEO_ACCEPTANCE_REQUEST:"),
-        ):
-            return "进化会话"
-        return title or None
+        can_undo = await asyncio.to_thread(self._can_undo, manifest)
+        thread_id = manifest["id"]
+        running = self._runs.is_running(thread_id)
+        active_run_id = self._runs.run_id(thread_id)
+        steer_ready = self._runs.steer_ready(thread_id)
+        pending_approvals = self._runs.pending_approvals(thread_id)
+        editable_turn_ids = (
+            await asyncio.to_thread(TimelineIndex(self.store, manifest).editable_turns)
+            if include_history and self._rewindable(manifest) else []
+        )
+        return thread_view(
+            manifest,
+            page=page,
+            events=events,
+            include_history=include_history,
+            running=running,
+            active_run_id=active_run_id,
+            steer_ready=steer_ready,
+            pending_approvals=pending_approvals,
+            runtime=runtime,
+            timing=timings[0] if timings else None,
+            timing_error=timing_error,
+            can_undo=can_undo,
+            editable_turn_ids=editable_turn_ids,
+            pending_questions=await self.get_pending_questions(thread_id=thread_id),
+            changes=changes,
+            skills=[skill.entry() for skill in self._local_skills(manifest)],
+        )
 
     @staticmethod
     def _can_undo(manifest: dict) -> bool:
@@ -2672,47 +2626,6 @@ class DesktopService:
         }
 
     @staticmethod
-    def _usage_from_events(events: list[dict[str, Any]], limit: int) -> dict[str, int | None]:
-        usage = {"used": None, "limit": limit, "input": None, "output": None}
-        for event in events:
-            data = event.get("data") if isinstance(event.get("data"), dict) else {}
-            payload = data.get("payload") if isinstance(data.get("payload"), dict) else data
-            token_usage = payload.get("tokenUsage") if isinstance(payload, dict) else None
-            if not isinstance(token_usage, dict):
-                continue
-            total = token_usage.get("total") if isinstance(token_usage.get("total"), dict) else {}
-            last = token_usage.get("last") if isinstance(token_usage.get("last"), dict) else {}
-            for key, value in {
-                "used": total.get("totalTokens"),
-                "limit": token_usage.get("modelContextWindow"),
-                "input": last.get("inputTokens"),
-                "output": last.get("outputTokens"),
-            }.items():
-                if isinstance(value, int):
-                    usage[key] = value
-        return usage
-
-    @staticmethod
-    def _usage_dict(usage: ContextWindowUsage) -> dict[str, int | None]:
-        return {
-            "used": usage.used_tokens,
-            "limit": usage.window_tokens or 128_000,
-            "input": usage.input_tokens,
-            "output": usage.output_tokens,
-        }
-
-    @staticmethod
-    def _terminal_from_events(events: list[dict[str, Any]]) -> list[str]:
-        output = []
-        for event in events[-100:]:
-            if event.get("type") != "terminal_output":
-                continue
-            content = event.get("content")
-            if isinstance(content, str) and content:
-                output.append(content)
-        return output
-
-    @staticmethod
     async def _chat_attachment(item: dict[str, Any]) -> dict[str, str]:
         path = Path(str(item.get("path") or "")).expanduser()
         if not path.is_absolute():
@@ -2738,26 +2651,6 @@ class DesktopService:
             "base64": base64.b64encode(data).decode("ascii"),
             "mime_type": mime_type,
         }
-
-    @staticmethod
-    def _ui_space(space: str) -> str:
-        return "chat" if space == "non_productivity" else "productivity"
-
-    @staticmethod
-    def _thread_status(status: Any) -> str:
-        value = str(status or "idle")
-        if value == "running":
-            return "running"
-        if value in {"failed", "cancelled", "interrupted"}:
-            return "attention"
-        if value in {"completed", "closed", "archived"}:
-            return "completed"
-        return "idle"
-
-    @staticmethod
-    def _accent(value: str) -> str:
-        palette = ("#6be4ed", "#a78bfa", "#f2b36c", "#72d69c", "#ef7ea8")
-        return palette[sum(value.encode("utf-8")) % len(palette)]
 
     @staticmethod
     def _debug(message: str) -> None:
