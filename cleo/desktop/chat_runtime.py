@@ -56,6 +56,8 @@ class ChatRuntime:
         Input: The turn and the event sink. Output: None. Emits ``turn-started``, growing
         ``upsert-item`` answers, ``usage`` and ``done``; persists the user message first and
         the LangGraph history at the end, also when the model fails or the run is cancelled.
+        A model failure ends the turn with an ``error`` event carrying the same diagnostic
+        text that is saved to the log (Q10); cancellation still propagates.
         """
         manifest, prompt, attachments = turn.manifest, turn.prompt, turn.attachments
         steer_ids, display_prompt = turn.steer_ids, turn.display_prompt
@@ -130,17 +132,20 @@ class ChatRuntime:
                 "cancelled" if isinstance(error, asyncio.CancelledError) else "failed"
             ))
             await self._sync(agent, manifest, "interrupted")
-            if isinstance(error, Exception):
-                from cleo.integrations.runtime_diagnostics import diagnostic_text
+            if not isinstance(error, Exception):
+                phase(None)
+                raise
+            from cleo.integrations.runtime_diagnostics import diagnostic_text
 
-                detail = diagnostic_text(str(error), prompt=prompt) or type(error).__name__
-                await asyncio.to_thread(
-                    self._store.append_event, session_id=manifest["id"],
-                    space=manifest["space"], project=manifest["project"], event_type="error",
-                    actor="system", content=detail,
-                )
+            detail = diagnostic_text(str(error), prompt=prompt) or type(error).__name__
+            await asyncio.to_thread(
+                self._store.append_event, session_id=manifest["id"],
+                space=manifest["space"], project=manifest["project"], event_type="error",
+                actor="system", content=detail,
+            )
             phase(None)
-            raise
+            await emit({"type": "error", "message": detail})
+            return
         else:
             phase("保存回复与会话状态")
             await self._sync(agent, manifest, "completed")

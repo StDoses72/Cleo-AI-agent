@@ -808,7 +808,8 @@ export function useCleoWorkspace(evolutionOpen = false) {
                 id: `${threadId}-error-${Date.now()}`,
                 type: "notice",
                 tone: "warning",
-                title: "任务已暂停",
+                // Same title as the persisted error notice shows after a reload.
+                title: "运行需要查看",
                 detail: event.message,
               },
             ],
