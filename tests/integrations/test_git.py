@@ -4,6 +4,7 @@ import subprocess
 
 import pytest
 
+from cleo.desktop.projection import changes_from_diff
 from cleo.integrations.git import (
     create_git_checkpoint,
     finalize_git_checkpoint,
@@ -55,7 +56,7 @@ def test_undo_visibility_uses_tree_changes_instead_of_checkpoint_commit_ids(tmp_
     assert not DesktopService._can_undo({})
 
 
-def test_read_git_diff_includes_tracked_patch_and_untracked_names(tmp_path) -> None:
+def test_read_git_diff_shows_untracked_files_as_new_files(tmp_path) -> None:
     _git(tmp_path, "init")
     _git(tmp_path, "config", "user.email", "test@example.com")
     _git(tmp_path, "config", "user.name", "Test User")
@@ -72,8 +73,33 @@ def test_read_git_diff_includes_tracked_patch_and_untracked_names(tmp_path) -> N
     assert diff is not None
     assert "-before" in diff
     assert "+after" in diff
-    assert "Untracked files (contents not included):" in diff
-    assert "new.txt" in diff
+    assert "diff --git a/new.txt b/new.txt\nnew file mode" in diff
+    assert "+new" in diff
+    assert "Untracked files (contents not included):" not in diff
+    assert [change["path"] for change in changes_from_diff(diff)] == ["tracked.txt", "new.txt"]
+    assert changes_from_diff(diff)[1]["status"] == "added"
+
+
+def test_read_git_diff_lists_large_untracked_files_by_name(tmp_path, monkeypatch) -> None:
+    import cleo.integrations.git as git_module
+
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "test@example.com")
+    _git(tmp_path, "config", "user.name", "Test User")
+    (tmp_path / "tracked.txt").write_text("before\n", encoding="utf-8")
+    _git(tmp_path, "add", "tracked.txt")
+    _git(tmp_path, "commit", "-m", "initial")
+    (tmp_path / "big.log").write_text("x" * 64, encoding="utf-8")
+    (tmp_path / ".gitignore").write_text("ignored.txt\n", encoding="utf-8")
+    (tmp_path / "ignored.txt").write_text("secret\n", encoding="utf-8")
+    monkeypatch.setattr(git_module, "_UNTRACKED_DIFF_BYTES", 32)
+
+    diff = read_git_diff(str(tmp_path))
+
+    assert diff is not None
+    assert "Untracked files (contents not included):\n  big.log" in diff
+    assert "diff --git a/.gitignore b/.gitignore" in diff
+    assert "diff --git a/ignored.txt" not in diff
 
 
 def test_turn_checkpoint_undo_preserves_changes_that_existed_before_the_answer(
