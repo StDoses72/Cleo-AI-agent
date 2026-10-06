@@ -225,10 +225,10 @@ class ConversationContextTests(unittest.IsolatedAsyncioTestCase):
             pass
 
     async def test_manifest_failure_after_log_commit_is_recoverable(self):
-        import cleo.sessions.store as module
+        import cleo.sessions.manifests as module
 
         before = self.store.load_manifest(self.id)
-        original = module._atomic_write_json
+        original = module.atomic_write_json
         failed = False
 
         def write(path, value):
@@ -238,7 +238,7 @@ class ConversationContextTests(unittest.IsolatedAsyncioTestCase):
                 raise OSError("fixture disk failure after event append")
             return original(path, value)
 
-        with patch.object(module, "_atomic_write_json", side_effect=write):
+        with patch.object(module, "atomic_write_json", side_effect=write):
             with self.assertRaisesRegex(OSError, "disk failure"):
                 await self.adapter.switch_session(self.id, "b")
         current = self.store.load_manifest(self.id)

@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
-import cleo.sessions.store as store_module
+import cleo.sessions.manifests as manifests_module
 from cleo.memory.paths import compact_path, events_path, manifest_path
 from cleo.memory.state import get_session_source, mark_consolidated
 from cleo.memory.store import search_conversation_history
@@ -24,7 +24,7 @@ def test_append_recovers_after_event_write_outlives_manifest(
         raise OSError("manifest write failed")
 
     with monkeypatch.context() as patch:
-        patch.setattr(store_module, "_atomic_write_json", fail_manifest)
+        patch.setattr(manifests_module, "atomic_write_json", fail_manifest)
         with pytest.raises(OSError, match="manifest write failed"):
             store.append_events(**scope, events=[event])
 
@@ -55,7 +55,7 @@ def test_projections_recover_sequence_from_event_log(tmp_path, monkeypatch, oper
         raise OSError("manifest write failed")
 
     with monkeypatch.context() as patch:
-        patch.setattr(store_module, "_atomic_write_json", fail_manifest)
+        patch.setattr(manifests_module, "atomic_write_json", fail_manifest)
         with pytest.raises(OSError, match="manifest write failed"):
             store.append_event(
                 **scope, event_type="user_message", actor="user", content="hello",
