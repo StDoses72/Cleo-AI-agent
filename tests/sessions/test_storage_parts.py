@@ -78,3 +78,18 @@ def test_listing_rebuilds_an_index_that_went_missing(tmp_path) -> None:
     store.index_path.unlink()
     reopened = SessionStore(tmp_path / "memory")
     assert [row["id"] for row in reopened.list_sessions(space="productivity")] == ["s1"]
+
+
+@pytest.mark.parametrize("reopen", [False, True])
+def test_creating_session_recovers_missing_index_before_writing(tmp_path, reopen) -> None:
+    store = SessionStore(tmp_path / "memory")
+    for session_id in ("s1", "s2"):
+        store.create_session(**{**SCOPE, "session_id": session_id}, provider="fake",
+                             owner_type="user")
+    store.index_path.unlink()
+
+    store.create_session(**{**SCOPE, "session_id": "s3"}, provider="fake", owner_type="user")
+    if reopen:
+        store = SessionStore(tmp_path / "memory")
+
+    assert {row["id"] for row in store.list_sessions()} == {"s1", "s2", "s3"}

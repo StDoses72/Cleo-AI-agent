@@ -86,6 +86,7 @@ class SessionStore:
         owner_type = validate_name(owner_type, "owner_type")
         path = self._manifests.path(space, project, session_id)
         with self._lock:
+            self._ensure_index()
             if path.exists() or self._index.row(session_id) is not None:
                 raise ValueError(f"session already exists: {session_id}")
             now = now_iso()
@@ -145,6 +146,7 @@ class SessionStore:
         """
         session_id = validate_name(session_id, "session_id")
         with self._lock:
+            self._ensure_index()
             row = self._index.row(session_id)
             if row is None:
                 self.rebuild_index()
@@ -486,12 +488,13 @@ class SessionStore:
 
     def _ensure_index(self) -> None:
         """Purpose: Open the index; when its file was missing, rebuild it from the manifests."""
-        if self._index.ensure():
-            self.rebuild_index()
+        with self._lock:
+            if self._index.ensure():
+                self.rebuild_index()
 
     def rebuild_index(self) -> int:
-        manifests = self._manifests.scan()
         with self._lock:
+            manifests = self._manifests.scan()
             self._index.ensure()
             self._index.clear()
             for manifest, path in manifests:
