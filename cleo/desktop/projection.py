@@ -171,8 +171,8 @@ def timeline_from_events(
             item = {
                 "id": data.get("timeline_id") or f"tool-{tool_id}",
                 "type": "tool",
-                "name": str(source.get("tool") or source.get("name") or "tool"),
-                "command": str(source.get("command") or source.get("input") or ""),
+                "name": _tool_name(source),
+                "command": _tool_command(source),
                 "status": "running",
             }
             tools[f"{current_turn_key}:{tool_id}"] = item
@@ -187,7 +187,7 @@ def timeline_from_events(
                 item = {
                     "id": f"tool-result-{event_id}",
                     "type": "tool",
-                    "name": str(source.get("tool") or "tool"),
+                    "name": str(source.get("tool") or source.get("title") or "tool"),
                     "command": "",
                     "status": "done",
                 }
@@ -511,8 +511,8 @@ def stream_event_item(event: AgentEvent, state: dict[str, Any]) -> list[dict[str
         tool = {
             "id": f"live-tool-{event_key}",
             "type": "tool",
-            "name": str(item.get("tool") or item.get("name") or "tool"),
-            "command": str(item.get("command") or item.get("input") or ""),
+            "name": _tool_name(item),
+            "command": _tool_command(item),
             "status": "running",
         }
         state[f"tool:{event_key}"] = tool
@@ -523,7 +523,7 @@ def stream_event_item(event: AgentEvent, state: dict[str, Any]) -> list[dict[str
             tool = {
                 "id": f"live-tool-{event_key}",
                 "type": "tool",
-                "name": str(item.get("tool") or "tool"),
+                "name": str(item.get("tool") or item.get("title") or "tool"),
                 "command": "",
             }
         tool = dict(tool)
@@ -653,6 +653,31 @@ def steer_item(receipt: dict[str, Any]) -> dict[str, Any]:
     if receipt.get("turnId"):
         item["turnId"] = receipt["turnId"]
     return item
+
+
+def _tool_name(source: dict[str, Any]) -> str:
+    """Purpose: Tool label; ACP sends a readable ``title`` instead of a tool name (Q4)."""
+    return str(source.get("tool") or source.get("name") or source.get("title") or "tool")
+
+
+_RAW_INPUT_KEYS = ("command", "cmd", "path", "file_path", "abs_path", "url", "query")
+
+
+def _tool_command(source: dict[str, Any]) -> str:
+    """Purpose: What the tool was asked to do; ACP puts it in ``rawInput`` (Q4)."""
+    command = source.get("command") or source.get("input")
+    if command:
+        return str(command)
+    raw = source.get("rawInput")
+    if isinstance(raw, str):
+        return raw
+    if not isinstance(raw, dict) or not raw:
+        return ""
+    for key in _RAW_INPUT_KEYS:
+        value = raw.get(key)
+        if value:
+            return " ".join(map(str, value)) if isinstance(value, list) else str(value)
+    return json.dumps(raw, ensure_ascii=False)
 
 
 def _plan_step(value: Any) -> dict[str, str] | None:

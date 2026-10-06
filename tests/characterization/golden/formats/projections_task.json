@@ -206,9 +206,9 @@
       "type": "thought"
     },
     {
-      "command": "",
+      "command": "README.md",
       "id": "<turn:1>:tool:tool-read-1",
-      "name": "tool",
+      "name": "Read README.md",
       "output": "任务已结束，但没有收到该工具的完成事件。",
       "status": "error",
       "turnHasAnswer": true,
@@ -225,9 +225,9 @@
       "type": "tool"
     },
     {
-      "command": "",
+      "command": "notes.txt",
       "id": "<turn:1>:tool:tool-write-1",
-      "name": "tool",
+      "name": "Write notes.txt",
       "output": "任务已结束，但没有收到该工具的完成事件。",
       "status": "error",
       "turnHasAnswer": true,
