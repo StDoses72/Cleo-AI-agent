@@ -217,7 +217,9 @@ async def _task_model(context: CommandContext) -> None:
         await emit({"type": "runtime", "runtime": runtime})
         await service._notice(emit, "模型已更新", argument, "success")
     else:
-        models = await context.adapter.list_models(manifest["provider"])
+        models = await context.adapter.list_models(
+            manifest["provider"], context.session.project_path,
+        )
         await service._notice(
             emit,
             "可用模型",

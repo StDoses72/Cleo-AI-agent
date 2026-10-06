@@ -6,7 +6,7 @@
         {
           "item": {
             "detail": "deny_all",
-            "id": "<notice:7>",
+            "id": "<notice:8>",
             "title": "Approval",
             "tone": "info",
             "type": "notice"
@@ -80,7 +80,7 @@
         {
           "item": {
             "detail": "high",
-            "id": "<notice:6>",
+            "id": "<notice:7>",
             "title": "Effort",
             "tone": "info",
             "type": "notice"
@@ -143,7 +143,7 @@
         {
           "item": {
             "detail": "effort = low",
-            "id": "<notice:10>",
+            "id": "<notice:11>",
             "title": "运行参数已更新",
             "tone": "success",
             "type": "notice"
@@ -198,9 +198,24 @@
       "reply": "result"
     },
     "/model": {
-      "error": "AcpProvider.list_models() missing 1 required positional argument: 'project_path'",
-      "events": [],
-      "reply": "error"
+      "error": null,
+      "events": [
+        {
+          "item": {
+            "detail": "fake-model-a — Fake Model A\nfake-model-b — Fake Model B",
+            "id": "<notice:6>",
+            "title": "可用模型",
+            "tone": "info",
+            "type": "notice"
+          },
+          "type": "upsert-item"
+        },
+        {
+          "summary": "可用模型",
+          "type": "done"
+        }
+      ],
+      "reply": "result"
     },
     "/project": {
       "error": null,
@@ -228,7 +243,7 @@
         {
           "item": {
             "detail": "可以切换空间或直接关闭窗口。",
-            "id": "<notice:9>",
+            "id": "<notice:10>",
             "title": "桌面应用保持运行",
             "tone": "info",
             "type": "notice"
@@ -248,7 +263,7 @@
         {
           "item": {
             "detail": "<agent:1> · first [[write]] · workspace",
-            "id": "<notice:8>",
+            "id": "<notice:9>",
             "title": "Sessions",
             "tone": "info",
             "type": "notice"

@@ -562,10 +562,11 @@ class CodexProvider:
     async def enable_questions(self, session_id: str) -> None:
         self._sessions[session_id].approvals.questions.enabled = True
 
-    async def list_models(self) -> tuple[HarnessModel, ...]:
+    async def list_models(self, project_path: str = ".") -> tuple[HarnessModel, ...]:
         """查询 Codex 账号可用的模型列表。
 
-        由 ``AgentAdapter.list_models`` 调用, CLI 用其展示可选模型。
+        由 ``AgentAdapter.list_models`` 调用(开发任务的 ``/model`` 命令)。``project_path``
+        只为与其他 provider 接口一致, Codex 按账号列出模型, 与目录无关。
         返回:
             ``HarnessModel`` 元组, 含 display name、默认/支持的
             reasoning effort 等; 使用临时 client, 不依赖活动 session。

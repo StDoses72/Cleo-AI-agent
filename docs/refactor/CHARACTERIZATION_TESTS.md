@@ -96,7 +96,7 @@ CLEO_UPDATE_GOLDEN=1 .venv/Scripts/python.exe -m pytest tests/characterization -
 
 | # | 行为 | 位置（快照） | 根因线索 |
 | --- | --- | --- | --- |
-| Q1 | ACP 任务里不带参数的 `/model` 返回 `TypeError: AcpProvider.list_models() missing 1 required positional argument: 'project_path'` | `productivity/slash_commands` | `AgentService.list_models()` 调 `provider.list_models()` 时没有传 `project_path` |
+| Q1 | **已修复（S9）**：原先 ACP 任务里不带参数的 `/model` 返回 `TypeError: AcpProvider.list_models() missing 1 required positional argument: 'project_path'`；现在列出该 harness 在任务目录下探测到的模型 | `productivity/slash_commands` | `AgentService.list_models()` 现在把任务目录传给 provider；Codex 接受并忽略这个参数 |
 | Q2 | ACP 工具调用：实时流显示"完成"，重新加载后显示"失败：运行已结束，但没有收到该工具的完成记录"，外加一条孤立的结果项 | `productivity/tool_turn` | 实时投影（`stream_event_item`）与持久化投影（`timeline_from_events`）对 `tool_call_update` 的关联规则不一致 |
 | Q3 | ACP `plan` 更新已持久化，但实时和重新加载时都不显示 | `productivity/tool_turn` | 投影只认 Codex 的计划 payload 格式 |
 | Q4 | ACP 工具名一律显示为 `tool`，命令为空 | `productivity/*` | ACP payload 的 `title`/`rawInput` 没有映射 |
