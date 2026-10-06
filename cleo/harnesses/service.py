@@ -775,9 +775,16 @@ class AgentService:
         await method(route.provider_session_id, text, expected_turn_id)
 
     async def enable_user_approvals(self, session_id: str) -> None:
+        """Route permission requests to the user; save the options if that changed them."""
         route = self._route(session_id)
         method = self._capability(route.provider, "enable_user_approvals")
+        read_options = getattr(route.provider, "session_options", None)
+        before = read_options(route.provider_session_id) if callable(read_options) else None
         await method(route.provider_session_id)
+        if callable(read_options):
+            after = read_options(route.provider_session_id)
+            if after != before:
+                self._persist_options(session_id, after)
 
     async def resolve_question(self, session_id: str, question_id: str, answers: dict) -> dict:
         route = self._route(session_id)

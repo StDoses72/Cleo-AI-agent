@@ -71,16 +71,31 @@ def test_undo_restores_the_latest_turn(
     }, replacements)
 
 
-def test_default_policy_denies_permission_requests(
+def test_deny_all_policy_denies_permission_requests(
     backend: Backend, cleo_home: CleoHome, replacements: dict,
 ) -> None:
     thread = _new_task(backend, cleo_home)
+    backend.call("update_runtime", thread_id=thread["id"], update={"approval": "deny_all"})
     stream = backend.stream_turn(thread["id"], "needs approval [[permission]]")
     stream.result()
     assert_golden("productivity/permission_denied_by_policy", {
         "stream": collapse_stream(stream.events),
         "items": backend.call("load_thread", thread_id=thread["id"])["items"],
     }, replacements)
+
+
+def test_acp_tasks_ask_the_user_by_default(
+    backend: Backend, cleo_home: CleoHome,
+) -> None:
+    """Q6 (fixed in S9): ACP permission requests used to be denied unless the user switched."""
+    thread = _new_task(backend, cleo_home)
+    assert thread["runtime"]["approval"] == "user"
+    stream = backend.stream_turn(thread["id"], "needs approval [[permission]]")
+    request = stream.wait_for(lambda event: event["type"] == "approval-request")["request"]
+    backend.call("resolve_approval", thread_id=thread["id"], approval_id=request["id"],
+                 decision="decline")
+    stream.result()
+    assert backend.call("load_thread", thread_id=thread["id"])["runtime"]["approval"] == "user"
 
 
 def test_user_approval_round_trip(

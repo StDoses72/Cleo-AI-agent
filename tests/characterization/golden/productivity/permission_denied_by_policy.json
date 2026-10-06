@@ -192,7 +192,7 @@
         },
         "provider": "scripted",
         "serviceTier": null,
-        "settingsRevision": 0,
+        "settingsRevision": 1,
         "steerMode": "boundary",
         "supportsFastMode": false,
         "supportsQuestions": false

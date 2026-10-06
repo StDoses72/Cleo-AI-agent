@@ -977,3 +977,30 @@ def test_agent_adapter_persists_rich_session_controls(tmp_path) -> None:
     assert provider.renamed == ["Focused work"]
     assert provider.compacted == ["provider-fork"]
     assert provider.archived == ["provider-fork"]
+
+
+@pytest.mark.parametrize(("auto_approve", "chosen", "expected"), [
+    (False, None, "user"),
+    (True, None, "auto_allow"),
+    (False, "deny_all", "deny_all"),
+])
+def test_acp_user_approvals_keep_configured_or_chosen_modes(
+    tmp_path, auto_approve, chosen, expected,
+) -> None:
+    """Q6: enabling desktop approvals used to leave ACP tasks on the implicit deny-all."""
+    from cleo.harnesses.control import SessionOptions
+
+    provider = AcpProvider("test-acp", AcpAgentSpec(command="test-acp",
+                                                    auto_approve=auto_approve))
+    host = _AcpClientHost("test-acp", str(tmp_path), auto_approve)
+    provider._sessions["s"] = SimpleNamespace(
+        host=host, options=SessionOptions(approval_mode=host.approval_mode),
+        lock=asyncio.Lock(), config_options=(),
+    )
+    if chosen is not None:
+        asyncio.run(provider.update_session_options("s", approval_mode=chosen))
+    asyncio.run(provider.enable_user_approvals("s"))
+
+    assert host.approvals.enabled is True
+    assert host.approval_mode == expected
+    assert provider._sessions["s"].options.approval_mode == expected

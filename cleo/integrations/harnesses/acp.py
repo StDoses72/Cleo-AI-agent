@@ -76,6 +76,9 @@ class _AcpClientHost:
         self._provider = provider
         self._root = Path(project_path).resolve()
         self.approval_mode = "auto_allow" if auto_approve else "deny_all"
+        # Configured auto-approval and any mode chosen for the session are kept when the
+        # desktop turns on user approvals; the implicit deny-all default is not (Q6).
+        self.approval_mode_explicit = auto_approve
         self.approvals = PermissionBroker(provider)
         self._turn_active = False
         self._callback: EventCallback | None = None
@@ -657,11 +660,20 @@ class AcpProvider:
             )
             if approval_mode is not None:
                 runtime.host.approval_mode = approval_mode
+                runtime.host.approval_mode_explicit = True
                 runtime.options = replace(runtime.options, approval_mode=approval_mode)
             return runtime.options
 
     async def enable_user_approvals(self, session_id: str) -> None:
-        self._sessions[session_id].host.approvals.enabled = True
+        """Purpose: Route permission requests to the user, as Codex and Claude do.
+
+        Input: Session id. Output: None. A configured or chosen approval mode is kept.
+        """
+        runtime = self._sessions[session_id]
+        runtime.host.approvals.enabled = True
+        if not runtime.host.approval_mode_explicit:
+            runtime.host.approval_mode = "user"
+            runtime.options = replace(runtime.options, approval_mode="user")
 
     async def resolve_approval(self, session_id: str, approval_id: str, decision: str) -> dict:
         return await self._sessions[session_id].host.approvals.resolve(approval_id, decision)

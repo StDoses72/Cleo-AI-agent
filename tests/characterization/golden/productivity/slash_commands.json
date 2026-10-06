@@ -5,7 +5,7 @@
       "events": [
         {
           "item": {
-            "detail": "deny_all",
+            "detail": "user",
             "id": "<notice:8>",
             "title": "Approval",
             "tone": "info",
@@ -108,7 +108,7 @@
         {
           "runtime": {
             "access": "default",
-            "approval": "deny_all",
+            "approval": "user",
             "contextWindow": 128000,
             "editable": true,
             "effort": "low",
