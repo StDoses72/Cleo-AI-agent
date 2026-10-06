@@ -100,7 +100,7 @@ CLEO_UPDATE_GOLDEN=1 .venv/Scripts/python.exe -m pytest tests/characterization -
 | Q2 | ACP 工具调用：实时流显示"完成"，重新加载后显示"失败：运行已结束，但没有收到该工具的完成记录"，外加一条孤立的结果项 | `productivity/tool_turn` | 实时投影（`stream_event_item`）与持久化投影（`timeline_from_events`）对 `tool_call_update` 的关联规则不一致 |
 | Q3 | ACP `plan` 更新已持久化，但实时和重新加载时都不显示 | `productivity/tool_turn` | 投影只认 Codex 的计划 payload 格式 |
 | Q4 | ACP 工具名一律显示为 `tool`，命令为空 | `productivity/*` | ACP payload 的 `title`/`rawInput` 没有映射 |
-| Q5 | 缺少 `sessions.sqlite3` 时 `load_workspace` 返回空线程列表，直到某个线程被按 ID 打开才重建索引 | `legacy/missing_index` | 只有 `load_manifest` 未命中时才 `rebuild_index`；与架构文档"可由 manifest 重建"不符 |
+| Q5 | **已修复（S9）**：原先缺少 `sessions.sqlite3` 时 `load_workspace` 返回空线程列表，直到某个线程被按 ID 打开才重建索引；现在后端打开存储时发现索引文件不存在就从 manifest 重建，列线程和按原生会话查找前也会检查 | `legacy/missing_index` | `SqliteSessionIndex.ensure()` 报告是否新建了数据库文件，`SessionStore` 据此重建 |
 | Q6 | ACP 任务默认审批是 `deny_all`，桌面虽然调用了 `enable_user_approvals`，权限请求仍被自动拒绝，用户要手动改成 `user` | `productivity/permission_denied_by_policy` | approval broker 的 enabled 与 host 的 approval_mode 是两个独立开关 |
 | Q7 | 通过 ACP `fs/write_text_file` 新建的文件不出现在 `changes`，却出现在 change history | `productivity/tool_turn` | `read_git_diff` 不含未跟踪文件，checkpoint diff 含 |
 | Q8 | **已修复（S9）**：原先未知 provider 创建任务时，界面收到原始的 `KeyError: 'does-not-exist'`，已禁用的 provider 则是 `KeyError: 'Unknown agent provider: …'`；现在分别提示“未找到开发任务 harness：…。请先在设置中添加。”和“Harness '…' 已禁用或不可用。” | `productivity/create_delete`、`workspace/hot_reload_harnesses` | `_productivity_provider` 对未知名称抛 `ValueError`；`create_thread` 在创建会话前检查 provider 已启用并已注册 |

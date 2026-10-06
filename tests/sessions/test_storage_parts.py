@@ -67,3 +67,14 @@ def test_index_is_rebuilt_from_manifests_after_it_is_deleted(tmp_path) -> None:
     assert store.load_manifest("s1")["id"] == "s1"
     index = SqliteSessionIndex(store.index_path, RLock())
     assert [row["id"] for row in index.rows(space="productivity")] == ["s1"]
+
+
+def test_listing_rebuilds_an_index_that_went_missing(tmp_path) -> None:
+    store = SessionStore(tmp_path / "memory")
+    store.create_session(**SCOPE, provider="fake", owner_type="user")
+    store.index_path.unlink()
+    assert [row["id"] for row in store.list_sessions()] == ["s1"]
+
+    store.index_path.unlink()
+    reopened = SessionStore(tmp_path / "memory")
+    assert [row["id"] for row in reopened.list_sessions(space="productivity")] == ["s1"]

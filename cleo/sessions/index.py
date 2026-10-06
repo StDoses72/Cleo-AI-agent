@@ -20,13 +20,17 @@ class SqliteSessionIndex:
         self._lock = lock
         self._ready = False
 
-    def ensure(self) -> None:
-        """Purpose: Create the table once per instance, again if the file was deleted."""
+    def ensure(self) -> bool:
+        """Purpose: Create the table once per instance, again if the file was deleted.
+
+        Output: Whether the database file was created by this call (it is then empty).
+        """
         if self._ready and self.path.exists():
-            return
+            return False
         with self._lock:
             if self._ready and self.path.exists():
-                return
+                return False
+            created = not self.path.exists()
             self.path.parent.mkdir(parents=True, exist_ok=True)
             with closing(sqlite3.connect(self.path)) as conn, conn:
                 conn.execute("PRAGMA journal_mode = WAL")
@@ -61,6 +65,7 @@ class SqliteSessionIndex:
                 if "title" not in columns:
                     conn.execute("ALTER TABLE sessions ADD COLUMN title TEXT")
             self._ready = True
+            return created
 
     def upsert(self, manifest: dict[str, Any], manifest_path: Path) -> None:
         """Purpose: Insert or refresh the row of one manifest stored at ``manifest_path``."""

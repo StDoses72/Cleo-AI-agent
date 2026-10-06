@@ -109,10 +109,10 @@ def test_legacy_workspace_threads_and_memory_load_unchanged(
     }, legacy_replacements)
 
 
-def test_missing_session_index_hides_threads_until_each_is_opened(
+def test_missing_session_index_is_rebuilt_from_the_manifests(
     legacy_home: CleoHome, legacy_replacements: dict,
 ) -> None:
-    """Pinned quirk: listing does not rebuild the index; loading one thread by id does."""
+    """Q5 (fixed in S9): a missing index is rebuilt when the backend opens the store."""
     (legacy_home.memory / "sessions.sqlite3").unlink()
     backend = Backend(legacy_home).start()
     try:
