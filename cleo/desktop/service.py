@@ -39,6 +39,14 @@ from cleo.desktop.projection import (
 from cleo.desktop.runs import RunSupervisor
 from cleo.desktop.task_harnesses import task_providers
 from cleo.desktop.timeline import TimelineIndex
+from cleo.desktop.turn_hooks import (
+    ComputerUseHook,
+    EvolutionPolicy,
+    SkillExpander,
+    TurnHook,
+    TurnRequest,
+    timed_reply,
+)
 from cleo.harnesses.control import HarnessModel
 from cleo.integrations.background import launch_dream_agent_worker
 from cleo.integrations.git import (
@@ -942,28 +950,17 @@ class DesktopService:
         if not prompt:
             raise ValueError("prompt cannot be empty")
         manifest = self.store.load_manifest(thread_id)
-        if self._is_evolution(manifest) and prompt.startswith("/"):
-            command = prompt.split(" ", 1)[0]
-            allowed = {
-                "/help", "/cwd", "/git", "/diff", "/model", "/effort", "/rename", "/compact",
-                "/computeruse",
-            }
-            if command not in allowed:
-                raise ValueError("进化任务不能切换工作目录、任务或放宽权限，请使用进化页面操作。")
+        request = TurnRequest(manifest, prompt, emit)
+        hooks = self._turn_hooks()
+        for hook in hooks:
+            hook.check(request)
         if self._runs.unfinished(thread_id) is not None:
             raise RuntimeError("当前运行尚未结束，请等待停止操作完成后重试。")
         self._activate(manifest)
-        display_prompt = None
-        if prompt.split(maxsplit=1)[0] == "/computeruse":
-            display_prompt = "Computer use：" + prompt.removeprefix("/computeruse").strip()
-            prompt = await self._computer_command(manifest, prompt, emit)
-            if prompt is None:
+        for hook in hooks:
+            if not await hook.prepare(request):
                 return
-        if prompt.startswith("/"):
-            skill = next((skill for skill in self._local_skills(manifest)
-                          if skill.command == prompt.split()[0]), None)
-            if skill is not None:
-                prompt = skill.expand(prompt)
+        prompt, display_prompt = request.prompt, request.display_prompt
         active_run_id = self._runs.start(thread_id, asyncio.current_task(), run_id)
         steering = None
         try:
@@ -1020,46 +1017,9 @@ class DesktopService:
             while True:
                 terminal = None
                 system = self._agent_system(manifest)
-                from cleo.runtime.timing import measure
-
-                async def timing_event(summary):
-                    await emit({"type": "timing", "timing": summary})
-
-                async with measure(
-                    self.settings.MEMORY_DIR, session_id=thread_id, space=manifest["space"],
-                    project=manifest["project"], kind="reply", emit=timing_event,
-                ) as timing:
-                    timing.phase("准备上下文与任务")
-                    timing.summary["unavailable"] = ["模型服务内部阶段"]
-                    observed = {}
-
-                    async def timed_event(event, timing=timing, observed=observed):
-                        if event["type"] == "turn-started":
-                            timing.summary["turnId"] = event["item"]["id"]
-                        elif event["type"] == "error":
-                            timing.summary["status"] = "failed"
-                        elif event["type"] == "upsert-item" and event["item"]["type"] == "tool":
-                            item = event["item"]
-                            key = item["id"]
-                            if item["status"] == "running" and key not in observed:
-                                observed[key] = timing.start(item["name"], category="tool")
-                            elif item["status"] in {"done", "error"}:
-                                timing.end(observed.get(key),
-                                           "failed" if item["status"] == "error" else "completed")
-                        elif event["type"] in {"approval-request", "question-request"}:
-                            request = event["request"]
-                            key = event["type"].split("-")[0] + request["id"]
-                            if key not in observed:
-                                observed[key] = timing.start(
-                                    "等待审批" if event["type"] == "approval-request"
-                                    else "等待回答",
-                                    category="wait",
-                                )
-                        elif event["type"] in {"approval-resolved", "question-resolved"}:
-                            result = event.get("response") or event["request"]
-                            timing.end(observed.get(event["type"].split("-")[0] + result["id"]))
-                        await run_event(event)
-
+                async with timed_reply(
+                    self.settings.MEMORY_DIR, manifest, emit, run_event,
+                ) as timed_event:
                     await system.run_turn(TurnInput(
                         manifest, prompt, attachments or [],
                         steer_ids=steer_ids, display_prompt=display_prompt,
@@ -1097,6 +1057,14 @@ class DesktopService:
                         self._debug(f"Shared checkpoint cleanup failed for {thread_id}: {exc}")
                     finally:
                         self._runs.finish(thread_id)
+
+    def _turn_hooks(self) -> list[TurnHook]:
+        """Purpose: The steps around every turn, in order (see ``turn_hooks``)."""
+        return [
+            EvolutionPolicy(self._is_evolution),
+            ComputerUseHook(self._computer_command),
+            SkillExpander(self._local_skills),
+        ]
 
     def _agent_system(self, manifest: dict[str, Any]) -> AgentSystem:
         """Purpose: The agent system that runs this session's turns.
