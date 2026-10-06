@@ -467,9 +467,13 @@ class AgentService:
         previous_type = ""
         live_events: set[int] = set()
         last_message: tuple[str, str] | None = None
+        closing = False
+        delivery_error: Exception | asyncio.CancelledError | None = None
 
         async def relay(event: AgentEvent) -> None:
             nonlocal thought_number, previous_type, last_message
+            if closing:
+                return
             payload = event_payload(event)
             source = payload.get("item") if isinstance(payload.get("item"), dict) else payload
             key = (
@@ -508,13 +512,17 @@ class AgentService:
             pending.put_nowait((event, projected, stored, done))
             await done
 
-        pending: asyncio.Queue[tuple[AgentEvent, AgentEvent, dict | None, asyncio.Future]] = (
-            asyncio.Queue()
-        )
+        pending: asyncio.Queue[
+            tuple[AgentEvent, AgentEvent, dict | None, asyncio.Future] | None
+        ] = asyncio.Queue()
 
         async def deliver() -> None:
+            nonlocal delivery_error
             while True:
-                event, projected, stored, done = await pending.get()
+                item = await pending.get()
+                if item is None:
+                    return
+                event, projected, stored, done = item
                 try:
                     if stored is not None:
                         await asyncio.to_thread(
@@ -531,19 +539,22 @@ class AgentService:
                         # A durable answer is final even if its UI notification closes.
                         if event.type != "question_response" or stored is None:
                             raise
-                except asyncio.CancelledError:
-                    done.cancel()
-                    raise
-                except Exception as exc:
+                except (Exception, asyncio.CancelledError) as exc:
+                    # ACP notification tasks are independent of prompt: their errors
+                    # must also fail the turn, even if nobody awaits that callback.
+                    if delivery_error is None:
+                        delivery_error = exc
                     if not done.done():
-                        done.set_exception(exc)
+                        if isinstance(exc, asyncio.CancelledError):
+                            done.cancel()
+                        else:
+                            done.set_exception(exc)
                 else:
                     if not done.done():
                         done.set_result(None)
-                finally:
-                    pending.task_done()
 
         consumer: asyncio.Task[None] | None = None
+        prompt_error: Exception | asyncio.CancelledError | None = None
 
         try:
             from cleo.runtime.timing import phase
@@ -577,112 +588,133 @@ class AgentService:
                 context + "\n\nCurrent user request:\n" + prompt if context else prompt,
                 relay if on_event is not None else None,
             )
+        except (Exception, asyncio.CancelledError) as exc:
+            prompt_error = exc
+
+        async def finalize() -> AgentResult:
+            nonlocal closing
+            # ACP schedules each received notification separately; give those already
+            # dispatched one turn to enqueue before closing the FIFO with a sentinel.
+            await asyncio.sleep(0)
+            closing = True
             if consumer is not None:
-                # Let notifications that arrived with the response enqueue, then finish them
-                # before the terminal events are written (Q11).
-                await asyncio.sleep(0)
-                await pending.join()
+                pending.put_nowait(None)
+                await consumer
+            if delivery_error is not None:
+                raise delivery_error
+            if prompt_error is not None:
+                raise prompt_error
+            phase("保存回复与会话状态", previous_status=(
+                "cancelled" if turn.status == "cancelled"
+                else "failed" if turn.error else "completed"
+            ))
+            route.native_session_id = turn.native_session_id
+            stored_events = [
+                translated
+                for event in turn.events
+                if id(event) not in live_events
+                if (translated := self._stored_provider_event(event)) is not None
+            ]
+            if turn.response:
+                answer_id = f"{turn_key}:answer"
+                if last_message and last_message[0] == turn.response:
+                    answer_id = last_message[1]
+                else:
+                    last_text = next((event for event in reversed(stored_events)
+                                      if event["type"] == "assistant_message"), None)
+                    if last_text and last_text["content"] == turn.response:
+                        last_text["data"]["timeline_id"] = answer_id
+                stored_events.append(
+                    {
+                        "id": answer_id,
+                        "type": "assistant_message",
+                        "actor": route.provider.name,
+                        "content": turn.response,
+                    }
+                )
+            if route.handoff_id and turn.status == "completed":
+                stored_events.append(
+                    {
+                        "type": "provider_event",
+                        "actor": "system",
+                        "data": {
+                            "provider_event_type": DELIVERED_EVENT,
+                            "payload": {
+                                "version": 1,
+                                "switch_id": route.handoff_id,
+                                "context_version": 1,
+                                "manifest_updates": {
+                                    "status": turn.status,
+                                    "error": turn.error,
+                                    "native_session_id": turn.native_session_id,
+                                },
+                            },
+                        },
+                    }
+                )
+            stored_events.append(
+                {
+                    "type": f"session_{turn.status}",
+                    "actor": "system",
+                    "content": turn.error,
+                    # Lets a later edit rewind the native conversation to this exact turn.
+                    "data": {"turn_id": turn_key,
+                             **({"native_turn_id": turn.turn_id} if turn.turn_id else {})},
+                }
+            )
+            self._store.append_events(
+                space=self._space,
+                project=route.project,
+                session_id=session_id,
+                events=stored_events,
+                manifest_updates={
+                    "status": turn.status,
+                    "native_session_id": turn.native_session_id,
+                    "error": turn.error,
+                },
+            )
+            self._store.refresh_compact(session_id)
+            # Deterministic working-state checkpoint; failure must not undo a completed model turn.
+            try:
+                await asyncio.to_thread(
+                    self._context.prepare, session_id, self._store.read_events(session_id)
+                )
+            except (OSError, ValueError):
+                # Source remains authoritative; the next switch rebuilds or reports the error.
+                pass
+            if turn.status == "completed":
+                route.handoff = ""
+                route.handoff_id = None
+            return AgentResult(
+                session_id=session_id,
+                provider=route.provider.name,
+                native_session_id=turn.native_session_id,
+                turn_id=turn.turn_id,
+                status=turn.status,
+                response=turn.response,
+                error=turn.error,
+                events=list(turn.events),
+                space=self._space,
+                project=route.project,
+            )
+
+        # Own all cleanup through terminal/handoff persistence. Cancelling an outer
+        # waiter must neither abandon accepted writes nor cancel a completed turn.
+        finalizer = asyncio.create_task(finalize())
+        try:
+            while not finalizer.done():
+                try:
+                    await asyncio.shield(finalizer)
+                except asyncio.CancelledError:
+                    if not finalizer.cancelled():
+                        asyncio.current_task().uncancel()
+            return finalizer.result()
         except asyncio.CancelledError:
             self._store.set_status(session_id, "cancelled")
             raise
         except Exception as exc:
             self._store.set_status(session_id, "failed", error=str(exc))
             raise
-        finally:
-            if consumer is not None:
-                consumer.cancel()
-                await asyncio.gather(consumer, return_exceptions=True)
-        phase("保存回复与会话状态", previous_status=(
-            "cancelled" if turn.status == "cancelled" else "failed" if turn.error else "completed"
-        ))
-        route.native_session_id = turn.native_session_id
-        stored_events = [
-            translated
-            for event in turn.events
-            if id(event) not in live_events
-            if (translated := self._stored_provider_event(event)) is not None
-        ]
-        if turn.response:
-            answer_id = f"{turn_key}:answer"
-            if last_message and last_message[0] == turn.response:
-                answer_id = last_message[1]
-            else:
-                last_text = next((event for event in reversed(stored_events)
-                                  if event["type"] == "assistant_message"), None)
-                if last_text and last_text["content"] == turn.response:
-                    last_text["data"]["timeline_id"] = answer_id
-            stored_events.append(
-                {
-                    "id": answer_id,
-                    "type": "assistant_message",
-                    "actor": route.provider.name,
-                    "content": turn.response,
-                }
-            )
-        if route.handoff_id and turn.status == "completed":
-            stored_events.append(
-                {
-                    "type": "provider_event",
-                    "actor": "system",
-                    "data": {
-                        "provider_event_type": DELIVERED_EVENT,
-                        "payload": {
-                            "version": 1,
-                            "switch_id": route.handoff_id,
-                            "context_version": 1,
-                            "manifest_updates": {
-                                "status": turn.status,
-                                "error": turn.error,
-                                "native_session_id": turn.native_session_id,
-                            },
-                        },
-                    },
-                }
-            )
-        stored_events.append(
-            {
-                "type": f"session_{turn.status}",
-                "actor": "system",
-                "content": turn.error,
-                # Lets a later edit rewind the native conversation to this exact turn.
-                "data": {"turn_id": turn_key,
-                         **({"native_turn_id": turn.turn_id} if turn.turn_id else {})},
-            }
-        )
-        self._store.append_events(
-            space=self._space,
-            project=route.project,
-            session_id=session_id,
-            events=stored_events,
-            manifest_updates={
-                "status": turn.status,
-                "native_session_id": turn.native_session_id,
-                "error": turn.error,
-            },
-        )
-        self._store.refresh_compact(session_id)
-        # Deterministic working-state checkpoint; failure must not undo a completed model turn.
-        try:
-            await asyncio.to_thread(
-                self._context.prepare, session_id, self._store.read_events(session_id)
-            )
-        except (OSError, ValueError):
-            pass  # Source remains authoritative; next switch rebuilds or returns the actual error.
-        if turn.status == "completed":
-            route.handoff = ""
-            route.handoff_id = None
-        return AgentResult(
-            session_id=session_id,
-            provider=route.provider.name,
-            native_session_id=turn.native_session_id,
-            turn_id=turn.turn_id,
-            status=turn.status,
-            response=turn.response,
-            error=turn.error,
-            events=list(turn.events),
-            space=self._space,
-            project=route.project,
-        )
 
     async def run(
         self,

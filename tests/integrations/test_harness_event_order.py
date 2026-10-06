@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import time
+import threading
 
 from cleo.harnesses.models import AgentEvent
 from cleo.harnesses.provider import ProviderSession, ProviderTurn
@@ -36,11 +36,14 @@ class ConcurrentProvider:
 def test_concurrent_callbacks_keep_their_arrival_order(tmp_path) -> None:
     store = SessionStore(tmp_path / "memory")
     append = store.append_events
+    writing = threading.Event()
+    release_write = threading.Event()
 
     def slow_first_write(**kwargs):
         # The "running" update takes longer to persist than the "completed" one behind it.
         if any(event.get("type") == "tool_call" for event in kwargs["events"]):
-            time.sleep(0.2)
+            writing.set()
+            assert release_write.wait(10), "test did not release blocked write"
         return append(**kwargs)
 
     store.append_events = slow_first_write
@@ -53,8 +56,15 @@ def test_concurrent_callbacks_keep_their_arrival_order(tmp_path) -> None:
 
     async def scenario():
         session = await service.create_session("concurrent", project_path=str(tmp_path))
-        result = await service.prompt(session.id, "go", on_event)
-        return session.id, result
+        task = asyncio.create_task(service.prompt(session.id, "go", on_event))
+        try:
+            assert await asyncio.to_thread(writing.wait, 5)
+            release_write.set()
+            return session.id, await asyncio.wait_for(task, 5)
+        finally:
+            release_write.set()
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
 
     session_id, result = asyncio.run(scenario())
     logged = [event["type"] for event in store.read_events(session_id)]
