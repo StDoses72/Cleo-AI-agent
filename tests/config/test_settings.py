@@ -10,6 +10,20 @@ import cleo.config.settings as settings_module
 from cleo.config.settings import SettingsModel
 
 
+@pytest.mark.parametrize("value", [[], None, True, 42, 1.5, "sk-config-secret"])
+def test_load_settings_rejects_non_object_json(tmp_path: Path, value) -> None:
+    config_path = tmp_path / "cleo.json"
+    harnesses_path = tmp_path / "harnesses.json"
+    content = json.dumps(value)
+    config_path.write_text(content, encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"^cleo.json must contain a JSON object\.$"):
+        settings_module.load_settings(config_path, harnesses_path)
+
+    assert config_path.read_text(encoding="utf-8") == content
+    assert not harnesses_path.exists()
+
+
 def test_app_home_prefers_explicit_override(
     tmp_path: Path,
     monkeypatch,

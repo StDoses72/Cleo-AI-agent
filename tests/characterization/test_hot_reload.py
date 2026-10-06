@@ -147,6 +147,33 @@ def test_broken_edits_keep_the_working_configuration(
     }, replacements)
 
 
+def test_non_object_config_keeps_backend_running_and_can_be_repaired(
+    backend: Backend, cleo_home: CleoHome, fake_llm: FakeLLM,
+) -> None:
+    valid = cleo_home.config_path.read_text(encoding="utf-8")
+    initial = backend.call("get_config_status")
+    for content in ("[]", "null"):
+        _write(cleo_home.config_path, content)
+        status = backend.call("get_config_status", timeout=10)
+        assert status["version"] == initial["version"]
+        assert "cleo.json must contain a JSON object." in status["error"]
+        assert not status["restartRequired"]
+        assert backend.returncode is None
+        assert _chat_model(backend, fake_llm) == "fake-chat"
+        assert cleo_home.config_path.read_text(encoding="utf-8") == content
+
+    _write(cleo_home.config_path, valid)
+    repaired = backend.call("get_config_status")
+    assert repaired == {"version": initial["version"] + 1, "error": None,
+                        "restartRequired": False}
+    assert _chat_model(backend, fake_llm) == "fake-chat"
+    # Release chat agents so shutdown does not launch a detached memory worker.
+    for thread in backend.call("load_workspace")["threads"]:
+        backend.call("delete_thread", thread_id=thread["id"])
+    assert backend.call("shutdown") == {"stopped": True}
+    assert backend.wait_exit(30) == 0
+
+
 def test_harness_changes_reach_new_sessions(
     backend: Backend, cleo_home: CleoHome, replacements: dict,
 ) -> None:
