@@ -22,7 +22,9 @@ def service_for_source(monkeypatch, tmp_path, provider_type="codex_sdk"):
     service.settings = SimpleNamespace(
         productivity=SimpleNamespace(provider=lambda _: SimpleNamespace(type=provider_type))
     )
-    adapter = SimpleNamespace(update_session_options=AsyncMock())
+    adapter = SimpleNamespace(
+        update_session_options=AsyncMock(), session_provider_type=lambda _: provider_type,
+    )
     service._adapter_instance = adapter
     manifest = {"id": "evolution", "cwd": str(source), "provider": "codex"}
     return service, manifest, adapter

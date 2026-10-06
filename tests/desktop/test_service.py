@@ -502,6 +502,7 @@ def test_desktop_preserves_codex_approval_policy(tmp_path, entry, approval):
         adapter = SimpleNamespace(
             provider_type="codex_sdk",
             capabilities=DesktopService._capabilities("codex_sdk"),
+            session_capabilities=lambda _: DesktopService._capabilities("codex_sdk"),
             session_options=lambda _: SessionOptions(
                 approval_mode=approval, sandbox="workspace-write"
             ),

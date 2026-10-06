@@ -260,7 +260,7 @@ async def _task_cd(context: CommandContext) -> None:
         project_path=target,
         project=path_name(target, manifest["project"]),
     )
-    context.service._productivity_sessions[next_session.id] = next_session
+    await context.service._adopt_productivity_session(next_session)
     await _refresh(context, next_session.id, "productivity")
 
 
@@ -277,7 +277,7 @@ async def _task_resume_native(context: CommandContext) -> None:
         project_path=context.session.project_path,
         project=context.manifest["project"],
     )
-    context.service._productivity_sessions[resumed.id] = resumed
+    await context.service._adopt_productivity_session(resumed)
     await _refresh(context, resumed.id, "productivity")
 
 
@@ -311,7 +311,7 @@ async def _task_account(context: CommandContext) -> None:
 
 async def _task_fork(context: CommandContext) -> None:
     forked = await context.adapter.fork_session(context.manifest["id"])
-    context.service._productivity_sessions[forked.id] = forked
+    await context.service._adopt_productivity_session(forked)
     await _refresh(context, forked.id, "productivity")
 
 

@@ -20,30 +20,43 @@ class QuestionProvider:
 
     name = "codex"
     provider_type = "codex_sdk"
-    capabilities = frozenset({Capability.QUESTIONS, Capability.USER_APPROVALS})
+    capabilities = frozenset({Capability.QUESTIONS, Capability.USER_APPROVALS, Capability.FORK})
 
     def __init__(self) -> None:
         self.brokers: dict[str, QuestionBroker] = {}
         self.options = SessionOptions(model="gpt-test", approval_mode="on-request")
+        self.session_settings: dict[str, SessionOptions] = {}
         self.approvals_enabled: list[str] = []
+        self.closed: list[str] = []
 
     async def create_session(self, project_path: str, model: str | None = None):
-        self.brokers["provider-new"] = QuestionBroker(self.name)
-        return ProviderSession(id="provider-new", native_id="native-task")
+        session_id = "provider-new" if not self.brokers else f"provider-new-{len(self.brokers)}"
+        self.brokers[session_id] = QuestionBroker(self.name)
+        self.session_settings[session_id] = self.options
+        return ProviderSession(id=session_id, native_id=f"native-{session_id}")
 
     async def resume_session(self, native_session_id: str, project_path: str, model=None):
         self.brokers["provider-resumed"] = QuestionBroker(self.name)
+        self.session_settings["provider-resumed"] = self.options
         return ProviderSession(id="provider-resumed", native_id=native_session_id)
+
+    async def fork_session(self, session_id: str):
+        child = await self.create_session(".")
+        self.session_settings[child.id] = self.session_settings[session_id]
+        return child
 
     async def prompt(self, session_id, prompt, on_event=None):  # pragma: no cover - unused here
         raise NotImplementedError
 
-    def session_options(self, _session_id: str) -> SessionOptions:
-        return self.options
+    def session_options(self, session_id: str) -> SessionOptions:
+        return self.session_settings[session_id]
 
-    async def update_session_options(self, _session_id: str, **changes) -> SessionOptions:
-        self.options = SessionOptions(**{**self.options.as_dict(), **changes})
-        return self.options
+    async def update_session_options(self, session_id: str, **changes) -> SessionOptions:
+        self.session_settings[session_id] = SessionOptions(**{
+            **self.session_settings[session_id].as_dict(),
+            **{key: value for key, value in changes.items() if value is not None},
+        })
+        return self.session_settings[session_id]
 
     async def enable_user_approvals(self, session_id: str) -> None:
         self.approvals_enabled.append(session_id)
@@ -61,7 +74,8 @@ class QuestionProvider:
         pass
 
     async def close(self, session_id: str) -> None:
-        pass
+        self.closed.append(session_id)
+        await self.brokers[session_id].cancel_all()
 
 
 class _Runtime:
@@ -207,5 +221,101 @@ def test_reopened_development_task_can_ask_and_receive_an_answer(tmp_path: Path)
             thread_id=thread["id"], question_id=pending[0]["id"], answers={"scope": ["ui"]},
         )
         assert await asyncio.wait_for(task, 2) == {"scope": ["ui"]}
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("command", ["/cd", "/resume-native", "/fork"])
+def test_command_sessions_enable_questions_and_preserve_saved_permissions(tmp_path, command):
+    async def scenario():
+        service, provider, workspace = _service(tmp_path)
+        source = await service.create_thread(space="productivity", project_path=str(workspace),
+                                             project_id_value="productivity:workspace")
+        argument = str(workspace) if command == "/cd" else ""
+        if command == "/resume-native":
+            target = await service._adapter().create_session("codex", str(workspace))
+            await service._adapter().update_session_options(target.id, approval_mode="deny_all")
+            await service._adapter().close(target.id)
+            argument = target.native_session_id
+        elif command == "/fork":
+            await service.update_runtime(thread_id=source["id"], update={"approval": "deny_all"})
+        emitted = []
+
+        async def emit(event):
+            emitted.append(event)
+
+        await service._run_productivity_command(
+            service.store.load_manifest(source["id"]), command, argument, emit,
+        )
+        adopted_id = next(event["activeThreadId"] for event in emitted
+                          if event["type"] == "refresh")
+        native_id = "provider-resumed" if command == "/resume-native" else "provider-new-1"
+        broker = provider.brokers[native_id]
+        assert broker.enabled
+        assert native_id in provider.approvals_enabled
+        assert adopted_id in service._productivity_sessions
+        if command != "/cd":
+            assert provider.session_options(native_id).approval_mode == "deny_all"
+        pending_task = await _ask(broker)
+        pending = await service.get_pending_questions(thread_id=adopted_id)
+        await service.resolve_question(thread_id=adopted_id, question_id=pending[0]["id"],
+                                       answers={"scope": ["adopted"]})
+        assert await asyncio.wait_for(pending_task, 2) == {"scope": ["adopted"]}
+        await service._adapter().aclose()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("entry", ["create", "/cd", "/resume-native", "/fork"])
+@pytest.mark.parametrize("failure", ["error", "cancel"])
+def test_failed_session_setup_releases_route_without_publishing_cache(tmp_path, entry, failure):
+    async def scenario():
+        service, provider, workspace = _service(tmp_path)
+        source = None
+        if entry != "create":
+            source = await service.create_thread(
+                space="productivity", project_id_value="productivity:workspace",
+                project_path=str(workspace),
+            )
+        entered = asyncio.Event()
+
+        async def fail(_session_id):
+            entered.set()
+            if failure == "cancel":
+                await asyncio.Event().wait()
+            raise ValueError("setup failed")
+
+        provider.enable_questions = fail
+
+        async def emit(_event):
+            pass
+
+        operation = (service.create_thread(
+            space="productivity", project_id_value="productivity:workspace",
+            project_path=str(workspace),
+        ) if entry == "create" else service._run_productivity_command(
+            service.store.load_manifest(source["id"]), entry,
+            str(workspace) if entry == "/cd" else "external-native", emit,
+        ))
+        task = asyncio.create_task(operation)
+        if failure == "cancel":
+            await asyncio.wait_for(entered.wait(), 2)
+            new_id = next(row["id"] for row in service.store.list_sessions()
+                          if source is None or row["id"] != source["id"])
+            assert new_id not in service._productivity_sessions
+            task.cancel()
+        with pytest.raises(asyncio.CancelledError if failure == "cancel" else ValueError):
+            await task
+        retained = [row for row in service.store.list_sessions()
+                    if source is None or row["id"] != source["id"]]
+        assert len(retained) == 1
+        assert retained[0]["id"] not in service._productivity_sessions
+        assert retained[0]["status"] == "closed"
+        with pytest.raises(KeyError, match="Unknown agent session"):
+            service._adapter().session_provider_type(retained[0]["id"])
+        assert provider.closed
+        if source is not None:
+            assert source["id"] in service._productivity_sessions
+        await service._adapter().aclose()
 
     asyncio.run(scenario())

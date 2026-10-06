@@ -748,7 +748,7 @@ class DesktopService:
         """
         if not self._is_evolution(manifest):
             return
-        provider_type = self._session_provider_type(manifest)
+        provider_type = self._adapter().session_provider_type(manifest["id"])
         if provider_type == "codex_sdk":
             await self._adapter().update_session_options(
                 str(manifest["id"]), sandbox="full-access", approval_mode="deny_all",
@@ -909,13 +909,9 @@ class DesktopService:
                 model=selected_model,
                 project=project or path_name(project_path, "general"),
             )
-            self._productivity_sessions[session.id] = session
-            await self._restrict_evolution(self.store.load_manifest(session.id))
-            await self._enable_desktop_approvals(session.id, provider_name)
-            if effort is not None:
-                await adapter.update_session_options(session.id, effort=effort)
-            if service_tier is not None:
-                await adapter.update_session_options(session.id, service_tier=service_tier)
+            await self._adopt_productivity_session(
+                session, effort=effort, service_tier=service_tier,
+            )
             manifest = self.store.load_manifest(session.id)
         self._activate(manifest)
         return await self._thread(manifest)
@@ -2477,6 +2473,25 @@ class DesktopService:
             "supportedEfforts": list(model.supported_efforts),
         }
 
+    async def _adopt_productivity_session(
+        self, session: Any, *, effort: str | None = None, service_tier: str | None = None,
+    ) -> Any:
+        """Initialize a returned harness route before publishing it to desktop callers."""
+        adapter = self._adapter()
+        try:
+            manifest = self.store.load_manifest(session.id)
+            await self._restrict_evolution(manifest)
+            await self._enable_desktop_approvals(session.id, str(manifest["provider"]))
+            if effort is not None:
+                await adapter.update_session_options(session.id, effort=effort)
+            if service_tier is not None:
+                await adapter.update_session_options(session.id, service_tier=service_tier)
+        except BaseException:
+            await adapter.close(session.id)
+            raise
+        self._productivity_sessions[session.id] = session
+        return session
+
     async def _ensure_productivity_session(self, manifest: dict[str, Any]) -> Any:
         existing = self._productivity_sessions.get(manifest["id"])
         if existing is not None:
@@ -2505,10 +2520,7 @@ class DesktopService:
             model=self._runtime_profile(manifest)["model"],
             project=str(manifest["project"]),
         )
-        self._productivity_sessions[manifest["id"]] = session
-        await self._restrict_evolution(manifest)
-        await self._enable_desktop_approvals(manifest["id"], str(manifest["provider"]))
-        return session
+        return await self._adopt_productivity_session(session)
 
     async def _enable_desktop_approvals(self, session_id: str, provider: str) -> None:
         enable_questions = getattr(self._adapter(), "enable_questions", None)
@@ -2517,7 +2529,7 @@ class DesktopService:
         manifest = self.store.load_manifest(session_id)
         if self._is_evolution(manifest):
             return
-        if Capability.USER_APPROVALS not in self._session_capabilities(manifest):
+        if Capability.USER_APPROVALS not in self._adapter().session_capabilities(session_id):
             return
         await self._adapter().enable_user_approvals(session_id)
 

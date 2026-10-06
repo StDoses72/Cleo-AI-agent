@@ -137,7 +137,9 @@ class TaskHarnessTests(unittest.IsolatedAsyncioTestCase):
         service._enable_desktop_approvals = AsyncMock()
         service._activate = lambda _: None
         service._thread = AsyncMock(return_value={"id": "new-task"})
-        service.store = SimpleNamespace(load_manifest=lambda _: {"id": "new-task"})
+        service.store = SimpleNamespace(
+            load_manifest=lambda _: {"id": "new-task", "provider": "claude"},
+        )
         create_session = AsyncMock(return_value=SimpleNamespace(id="new-task"))
         service._adapter_instance = SimpleNamespace(
             create_session=create_session, providers=("claude",),
