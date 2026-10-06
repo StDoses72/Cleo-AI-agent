@@ -206,19 +206,26 @@
       "type": "thought"
     },
     {
+      "id": "<turn:1>:plan",
+      "steps": [
+        {
+          "label": "Inspect the workspace",
+          "status": "done"
+        },
+        {
+          "label": "Write the answer",
+          "status": "running"
+        }
+      ],
+      "title": "执行计划",
+      "turnHasAnswer": true,
+      "turnId": "<turn:1>",
+      "type": "plan"
+    },
+    {
       "command": "README.md",
       "id": "<turn:1>:tool:tool-read-1",
       "name": "Read README.md",
-      "output": "任务已结束，但没有收到该工具的完成事件。",
-      "status": "error",
-      "turnHasAnswer": true,
-      "turnId": "<turn:1>",
-      "type": "tool"
-    },
-    {
-      "command": "",
-      "id": "tool-result-<event:1>",
-      "name": "tool",
       "status": "done",
       "turnHasAnswer": true,
       "turnId": "<turn:1>",
@@ -228,16 +235,6 @@
       "command": "notes.txt",
       "id": "<turn:1>:tool:tool-write-1",
       "name": "Write notes.txt",
-      "output": "任务已结束，但没有收到该工具的完成事件。",
-      "status": "error",
-      "turnHasAnswer": true,
-      "turnId": "<turn:1>",
-      "type": "tool"
-    },
-    {
-      "command": "",
-      "id": "tool-result-<event:2>",
-      "name": "tool",
       "status": "done",
       "turnHasAnswer": true,
       "turnId": "<turn:1>",

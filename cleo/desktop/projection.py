@@ -147,9 +147,7 @@ def timeline_from_events(
             else:
                 thought["content"] += content
         elif event_type == "plan_update":
-            plan = payload.get("plan") if isinstance(payload, dict) else None
-            steps = [_plan_step(step) for step in plan] if isinstance(plan, list) else []
-            steps = [step for step in steps if step is not None]
+            steps = _plan_steps(payload)
             if steps:
                 plan_key = str(payload.get("turnId") or payload.get("turn_id") or current_turn_key)
                 plan_item = plans.get(plan_key)
@@ -167,7 +165,7 @@ def timeline_from_events(
         elif event_type == "tool_call":
             source = payload.get("item") if isinstance(payload, dict) else None
             source = source if isinstance(source, dict) else payload
-            tool_id = str(source.get("id") or source.get("tool_use_id") or event_id)
+            tool_id = str(_tool_key(source, payload) or event_id)
             item = {
                 "id": data.get("timeline_id") or f"tool-{tool_id}",
                 "type": "tool",
@@ -180,8 +178,7 @@ def timeline_from_events(
         elif event_type == "tool_result":
             source = payload.get("item") if isinstance(payload, dict) else None
             source = source if isinstance(source, dict) else payload
-            tool_id = str(source.get("id") or source.get("toolCallId")
-                          or source.get("tool_use_id") or "")
+            tool_id = str(_tool_key(source, payload) or "")
             item = tools.get(f"{current_turn_key}:{tool_id}")
             if item is None:
                 item = {
@@ -382,13 +379,7 @@ def stream_event_item(event: AgentEvent, state: dict[str, Any]) -> list[dict[str
             "turnId": payload["turnId"],
         }}]
     item = payload.get("item") if isinstance(payload.get("item"), dict) else payload
-    event_identifier = (
-        item.get("id")
-        or payload.get("itemId")
-        or item.get("toolCallId")
-        or item.get("tool_use_id")
-        or payload.get("turnId")
-    )
+    event_identifier = _tool_key(item, payload) or payload.get("turnId")
     event_key = str(event_identifier or len(state))
     if event.type != "thought":
         state.pop("thought:active_id", None)
@@ -482,9 +473,7 @@ def stream_event_item(event: AgentEvent, state: dict[str, Any]) -> list[dict[str
             }
         )
     elif event.type == "plan_update":
-        plan = payload.get("plan")
-        steps = [_plan_step(step) for step in plan] if isinstance(plan, list) else []
-        steps = [step for step in steps if step is not None]
+        steps = _plan_steps(payload)
         if steps:
             plan_id = state.get("plan:id")
             if not isinstance(plan_id, str):
@@ -680,10 +669,32 @@ def _tool_command(source: dict[str, Any]) -> str:
     return json.dumps(raw, ensure_ascii=False)
 
 
+def _tool_key(source: dict[str, Any], payload: dict[str, Any]) -> Any:
+    """Purpose: The id that ties a tool's start to its result, live and after a reload.
+
+    Codex and Claude send ``id`` / ``itemId`` / ``tool_use_id``; ACP sends ``toolCallId``.
+    The persisted projection used to skip ``toolCallId`` for calls, so ACP results became
+    orphans and their calls ended as failed (Q2).
+    """
+    return (source.get("id") or payload.get("itemId") or source.get("toolCallId")
+            or source.get("tool_use_id"))
+
+
+def _plan_steps(payload: Any) -> list[dict[str, str]]:
+    """Purpose: Plan steps from Codex ``plan`` (``step``) or ACP ``entries`` (``content``, Q3)."""
+    if not isinstance(payload, dict):
+        return []
+    entries = payload.get("plan")
+    if not isinstance(entries, list):
+        entries = payload.get("entries")
+    steps = [_plan_step(entry) for entry in entries] if isinstance(entries, list) else []
+    return [step for step in steps if step is not None]
+
+
 def _plan_step(value: Any) -> dict[str, str] | None:
     if not isinstance(value, dict):
         return None
-    label = str(value.get("step") or value.get("label") or "").strip()
+    label = str(value.get("step") or value.get("label") or value.get("content") or "").strip()
     if not label:
         return None
     raw_status = str(value.get("status") or "pending")

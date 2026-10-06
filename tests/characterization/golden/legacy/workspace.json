@@ -241,7 +241,7 @@
             }
           ],
           "createdAt": "<relative-time>",
-          "id": "<event:6>",
+          "id": "<event:4>",
           "title": "Write the notes file [[plan]] [[tool]] [[write]]"
         }
       ],
@@ -253,7 +253,7 @@
         "hasAfter": false,
         "hasBefore": false,
         "revision": "<revision:1>",
-        "total": 10
+        "total": 9
       },
       "id": "<agent:1>",
       "items": [
@@ -279,22 +279,29 @@
           "type": "thought"
         },
         {
-          "command": "README.md",
           "cursor": "<cursor:9>",
-          "id": "<turn:4>:tool:tool-read-1",
-          "name": "Read README.md",
+          "id": "<turn:4>:plan",
           "order": 3,
-          "output": "任务已结束，但没有收到该工具的完成事件。",
-          "status": "error",
+          "steps": [
+            {
+              "label": "Inspect the workspace",
+              "status": "done"
+            },
+            {
+              "label": "Write the answer",
+              "status": "running"
+            }
+          ],
+          "title": "执行计划",
           "turnHasAnswer": true,
           "turnId": "<turn:4>",
-          "type": "tool"
+          "type": "plan"
         },
         {
-          "command": "",
+          "command": "README.md",
           "cursor": "<cursor:10>",
-          "id": "<turn:4>:tool-result-<event:4>",
-          "name": "tool",
+          "id": "<turn:4>:tool:tool-read-1",
+          "name": "Read README.md",
           "order": 4,
           "status": "done",
           "turnHasAnswer": true,
@@ -307,18 +314,6 @@
           "id": "<turn:4>:tool:tool-write-1",
           "name": "Write notes.txt",
           "order": 5,
-          "output": "任务已结束，但没有收到该工具的完成事件。",
-          "status": "error",
-          "turnHasAnswer": true,
-          "turnId": "<turn:4>",
-          "type": "tool"
-        },
-        {
-          "command": "",
-          "cursor": "<cursor:12>",
-          "id": "<turn:4>:tool-result-<event:5>",
-          "name": "tool",
-          "order": 6,
           "status": "done",
           "turnHasAnswer": true,
           "turnId": "<turn:4>",
@@ -326,9 +321,9 @@
         },
         {
           "content": "ACP reply: Write the notes file [[plan]] [[tool]] [[write]]",
-          "cursor": "<cursor:13>",
+          "cursor": "<cursor:12>",
           "id": "<turn:4>:answer",
-          "order": 7,
+          "order": 6,
           "role": "assistant",
           "time": "<clock-time>",
           "turnHasAnswer": true,
@@ -337,9 +332,9 @@
         },
         {
           "content": "Summarize what changed",
-          "cursor": "<cursor:14>",
+          "cursor": "<cursor:13>",
           "id": "<turn:5>",
-          "order": 8,
+          "order": 7,
           "role": "user",
           "time": "<clock-time>",
           "turnHasAnswer": true,
@@ -348,9 +343,9 @@
         },
         {
           "content": "Thinking about the request.",
-          "cursor": "<cursor:15>",
+          "cursor": "<cursor:14>",
           "id": "<turn:5>:thought:1",
-          "order": 9,
+          "order": 8,
           "status": "done",
           "turnHasAnswer": true,
           "turnId": "<turn:5>",
@@ -358,9 +353,9 @@
         },
         {
           "content": "ACP reply: Summarize what changed",
-          "cursor": "<cursor:16>",
+          "cursor": "<cursor:15>",
           "id": "<turn:5>:answer",
-          "order": 10,
+          "order": 9,
           "role": "assistant",
           "time": "<clock-time>",
           "turnHasAnswer": true,
@@ -623,7 +618,7 @@
           "hasAfter": false,
           "hasBefore": true,
           "revision": "<revision:1>",
-          "total": 10
+          "total": 9
         },
         "id": "<agent:1>",
         "items": [],

@@ -910,6 +910,8 @@ stateDiagram-v2
 
 ## 13. 迁移路线（Strangler Fig，每一步都保持特征测试为绿）
 
+**状态（2026-10-05）**：S0–S9 已完成（S7 并入 S9），每一步一个 PR，按顺序叠加。多 agent 的 M1–M3 不在本次重构范围内，另行安排；M0（`AgentSystem` 接口）已随 S5 完成。
+
 ```mermaid
 flowchart LR
     s0[S0 基线<br/>特征测试 51 个通过] --> s0b[S0b 移除 CLI]
