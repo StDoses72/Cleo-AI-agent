@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import codecs
 import json
 import re
 from collections.abc import Iterable
@@ -12,7 +13,7 @@ from typing import Any
 from cleo.harnesses.events import event_payload
 from cleo.harnesses.models import AgentEvent
 
-_DIFF_HEADER = re.compile(r"^diff --git a/(.+?) b/(.+)$")
+_DIFF_HEADER = re.compile(r'^diff --git ("(?:\\.|[^"])*"|a/.+?) ("(?:\\.|[^"])*"|b/.+)$')
 _INCOMPLETE_TOOL_OUTPUT = "任务已结束，但没有收到该工具的完成事件。"
 
 
@@ -271,6 +272,15 @@ def changes_from_diff(diff: str | None) -> list[dict[str, Any]]:
                 current["diff"] = "\n".join(current_lines)
                 files.append(current)
             path = match.group(2)
+            if path.startswith('"'):
+                try:
+                    path = json.loads(path)
+                except json.JSONDecodeError:
+                    # Git also uses octal escapes for non-ASCII filename bytes.
+                    path = codecs.escape_decode(path[1:-1].encode("utf-8"))[0].decode(
+                        "utf-8", errors="replace",
+                    )
+            path = path.removeprefix("b/")
             current = {
                 "path": path,
                 "status": "modified",

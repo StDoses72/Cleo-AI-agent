@@ -97,9 +97,69 @@ def test_read_git_diff_lists_large_untracked_files_by_name(tmp_path, monkeypatch
     diff = read_git_diff(str(tmp_path))
 
     assert diff is not None
-    assert "Untracked files (contents not included):\n  big.log" in diff
+    changes = {change["path"]: change for change in changes_from_diff(diff)}
+    assert set(changes) == {".gitignore", "big.log"}
+    assert changes["big.log"]["status"] == "added"
+    assert "contents not included" in changes["big.log"]["diff"]
+    assert "big.log" not in changes[".gitignore"]["diff"]
     assert "diff --git a/.gitignore b/.gitignore" in diff
     assert "diff --git a/ignored.txt" not in diff
+
+
+@pytest.mark.parametrize("path", ["big.log", "folder name/报告.log", "folder b/file.log",
+                                 "line\u2028break.log", "line\u0085break.log"])
+def test_omitted_untracked_file_keeps_its_exact_path(tmp_path, monkeypatch, path) -> None:
+    import cleo.integrations.git as git_module
+
+    _git(tmp_path, "init")
+    file = tmp_path / path
+    file.parent.mkdir(parents=True, exist_ok=True)
+    file.write_text("not included\n", encoding="utf-8")
+    monkeypatch.setattr(git_module, "_UNTRACKED_DIFF_BYTES", 1)
+
+    changes = changes_from_diff(read_git_diff(str(tmp_path)))
+
+    assert len(changes) == 1
+    assert changes[0]["path"] == path
+    assert changes[0]["status"] == "added"
+    assert changes[0]["additions"] == changes[0]["deletions"] == 0
+    assert "contents not included" in changes[0]["diff"]
+
+
+def test_untracked_file_limit_keeps_every_file_card(tmp_path) -> None:
+    _git(tmp_path, "init")
+    paths = [f"new-{index:02}.txt" for index in range(51)]
+    for path in paths:
+        (tmp_path / path).write_text("new\n", encoding="utf-8")
+
+    changes = changes_from_diff(read_git_diff(str(tmp_path)))
+
+    assert [change["path"] for change in changes] == paths
+    assert all(change["status"] == "added" for change in changes)
+    assert changes[0]["additions"] == 1
+    assert "contents not included" in changes[-1]["diff"]
+
+
+def test_unreadable_untracked_file_keeps_its_file_card(tmp_path, monkeypatch) -> None:
+    from pathlib import Path
+
+    _git(tmp_path, "init")
+    file = tmp_path / "unreadable.txt"
+    file.write_text("private\n", encoding="utf-8")
+    stat = Path.stat
+
+    def unreadable(path, *args, **kwargs):
+        if path == file:
+            raise PermissionError("test read denied")
+        return stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", unreadable)
+    changes = changes_from_diff(read_git_diff(str(tmp_path)))
+
+    assert len(changes) == 1
+    assert changes[0]["path"] == "unreadable.txt"
+    assert changes[0]["status"] == "added"
+    assert "contents not included" in changes[0]["diff"]
 
 
 def test_turn_checkpoint_undo_preserves_changes_that_existed_before_the_answer(

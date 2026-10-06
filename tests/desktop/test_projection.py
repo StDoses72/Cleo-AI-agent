@@ -1,3 +1,7 @@
+import json
+
+import pytest
+
 from cleo.desktop.projection import (
     change_history_from_events,
     changes_from_diff,
@@ -71,6 +75,32 @@ deleted file mode 100644
             ),
         },
     ]
+
+
+@pytest.mark.parametrize("path", ["folder b/file.log", 'a"b.log', "line\nbreak.log",
+                                 "制表\t路径.log", "a\\b.log", "line\u2028break.log",
+                                 "line\u0085break.log"])
+def test_changes_from_diff_reads_quoted_placeholder_paths(path) -> None:
+    left, right = (json.dumps(prefix + path) for prefix in ("a/", "b/"))
+    diff = f"diff --git {left} {right}\nnew file mode 100644\nFile contents not included."
+
+    changes = changes_from_diff(diff)
+
+    assert len(changes) == 1
+    assert changes[0]["path"] == path
+    assert changes[0]["status"] == "added"
+
+
+def test_changes_from_diff_reads_git_octal_filename_bytes() -> None:
+    diff = r'diff --git "a/\303\251.txt" "b/\303\251.txt"' + "\nnew file mode 100644"
+
+    assert changes_from_diff(diff)[0]["path"] == "é.txt"
+
+
+def test_changes_from_diff_displays_non_utf8_filename_bytes() -> None:
+    diff = r'diff --git "a/\377.txt" "b/\377.txt"' + "\nnew file mode 100644"
+
+    assert changes_from_diff(diff)[0]["path"] == "\ufffd.txt"
 
 
 def test_timeline_from_events_projects_messages_and_tools() -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import subprocess
@@ -179,7 +180,7 @@ def _untracked_diffs(repo_root: str) -> tuple[list[str], list[str]]:
 def read_git_diff(cwd: str) -> str | None:
     """Return the current diff, with untracked files shown as new files.
 
-    Untracked files that are too many, too large or unreadable are listed by name only.
+    Untracked files that are too many, too large or unreadable retain a file diff header.
     """
     status = inspect_git_status(cwd)
     if status is None:
@@ -206,11 +207,11 @@ def read_git_diff(cwd: str) -> str | None:
 
     untracked, skipped = _untracked_diffs(status.repo_root)
     diff = "\n".join(part for part in (diff, *untracked) if part)
-    if skipped:
-        note = "Untracked files (contents not included):\n" + "\n".join(
-            f"  {path}" for path in skipped
-        )
-        diff = f"{diff}\n\n{note}".strip()
+    for path in skipped:
+        left, right = (json.dumps(prefix + path) for prefix in ("a/", "b/"))
+        placeholder = (f"diff --git {left} {right}\nnew file mode 100644\n"
+                       "File contents not included (size, count or read limit).")
+        diff = "\n".join(part for part in (diff, placeholder) if part)
     return diff
 
 
