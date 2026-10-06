@@ -15,6 +15,7 @@ import type {
   SubscriptionLogin,
   ProductivityModelCatalog,
   RuntimeCatalog,
+  ConfigStatus,
   MemoryReviewAction,
   MemoryReviewDetails,
   MemoryReviewSource,
@@ -237,6 +238,10 @@ export class IpcCleoClient implements CleoClient {
 
   getRuntimeCatalog(): Promise<RuntimeCatalog> {
     return this.bridge.request("get_runtime_catalog");
+  }
+
+  getConfigStatus(): Promise<ConfigStatus | null> {
+    return this.bridge.request("get_config_status");
   }
 
   getProductivityModels(

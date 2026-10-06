@@ -19,6 +19,7 @@ import {
   RemoveProjectDialog,
   SettingsModal,
   Toast,
+  ConfigNotice,
   UpdateNotice,
   commandIcons,
   type CommandAction,
@@ -26,7 +27,8 @@ import {
 import { ThreadSidebar } from "./components/ThreadSidebar";
 import { WorkspaceRail } from "./components/WorkspaceRail";
 import { useCleoWorkspace } from "./useCleoWorkspace";
-import type { MemoryViewMode, Project, Thread, UpdateState } from "./types";
+import { cleoClient } from "./services/cleoClient";
+import type { ConfigStatus, MemoryViewMode, Project, Thread, UpdateState } from "./types";
 
 export function App() {
   const evolution = useEvolution();
@@ -201,6 +203,23 @@ export function App() {
       : unfinishedEvolution ? "请先保存或放弃本轮进化，再安装更新。" : null,
   };
   const toastTimerRef = useRef<number | null>(null);
+  // Configuration edits apply live; surface the ones that did not load or need a restart.
+  const [configStatus, setConfigStatus] = useState<ConfigStatus | null>(null);
+  const snapshotConfig = workspace.snapshot?.backend?.config;
+  const hotReload = workspace.snapshot?.backend?.hotReload === true;
+  useEffect(() => {
+    setConfigStatus(snapshotConfig ?? null);
+  }, [snapshotConfig?.version, snapshotConfig?.error, snapshotConfig?.restartRequired]);
+  const refreshConfigStatus = () => {
+    void cleoClient.getConfigStatus().then(setConfigStatus).catch(() => {});
+  };
+  useEffect(() => {
+    if (!hotReload) return;
+    // Returning to Cleo after editing a configuration file applies and checks the edit.
+    const refresh = () => { if (!document.hidden) refreshConfigStatus(); };
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [hotReload]);
 
   const notify = (message: string, tone: "success" | "error" = "success") => {
     setToast({ message, tone });
@@ -646,6 +665,7 @@ export function App() {
             .finally(() => setRemovingProject(false));
         }}
       />
+      <ConfigNotice status={configStatus} onRecheck={refreshConfigStatus} />
       <UpdateNotice
         state={displayedUpdateState}
         onDownload={() => runUpdateAction("download")}

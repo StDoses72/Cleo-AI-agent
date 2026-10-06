@@ -546,7 +546,16 @@ export interface WorkspaceSnapshot {
     mode: "local" | "mock";
     commands: Record<ThreadSpace, string[]>;
     recoverableChatBackups?: number;
+    // Set by backends that apply configuration changes without restarting.
+    hotReload?: boolean;
+    config?: ConfigStatus | null;
   };
+}
+
+export interface ConfigStatus {
+  version: number;
+  error: string | null;
+  restartRequired: boolean;
 }
 
 export interface UndoChangesResult {
@@ -604,6 +613,7 @@ export interface CleoClient {
   getAgentInstructions(): Promise<AgentInstructions>;
   getModelSettings(): Promise<ModelSettings>;
   getRuntimeCatalog(): Promise<RuntimeCatalog>;
+  getConfigStatus(): Promise<ConfigStatus | null>;
   getProductivityModels(provider: string, projectPath?: string): Promise<ProductivityModelCatalog>;
   getLocalSkills(provider: string, projectPath?: string): Promise<LocalSkill[]>;
   getHarnessSync(): Promise<HarnessSyncStatus[]>;

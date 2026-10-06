@@ -14,6 +14,7 @@ import type {
   SubscriptionLogin,
   ProductivityModelCatalog,
   RuntimeCatalog,
+  ConfigStatus,
   MemoryReviewAction,
   MemoryReviewDetails,
   MemoryReviewSource,
@@ -611,6 +612,10 @@ export class MockCleoClient implements CleoClient {
 
   async getModelSettings(): Promise<ModelSettings> {
     return clone(this.modelSettings);
+  }
+
+  async getConfigStatus(): Promise<ConfigStatus | null> {
+    return { version: 1, error: null, restartRequired: false };
   }
 
   async getRuntimeCatalog(): Promise<RuntimeCatalog> {

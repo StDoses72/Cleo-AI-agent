@@ -299,6 +299,7 @@ const allowedMethods = new Set([
   "get_agent_instructions",
   "get_model_settings",
   "get_runtime_catalog",
+  "get_config_status",
   "get_productivity_models",
   "get_local_skills",
   "get_harness_sync",
