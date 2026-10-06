@@ -178,7 +178,7 @@ class DesktopService:
             sync=lambda agent, manifest, status: self._sync_chat(agent, manifest, status),
             usage=usage_view,
             config_version=lambda: (
-                self._config.snapshot.version if self._config is not None else None
+                self._config.current_snapshot.version if self._config is not None else None
             ),
             max_attachments=MAX_CHAT_ATTACHMENT_COUNT,
         )

@@ -12,6 +12,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -67,6 +68,9 @@ class ConfigService:
         self._lock = threading.RLock()
         self._listeners: list[Listener] = []
         self._snapshot = SettingsSnapshot(1, initial or current_settings())
+        self._run_snapshot: ContextVar[SettingsSnapshot | None] = ContextVar(
+            "cleo_run_snapshot", default=None,
+        )
         configure_settings(self._snapshot.settings)
         self._running_directory = _directory_fields(self._snapshot.settings)
         self._signature = self._file_signature()
@@ -76,6 +80,11 @@ class ConfigService:
     @property
     def snapshot(self) -> SettingsSnapshot:
         return self._snapshot
+
+    @property
+    def current_snapshot(self) -> SettingsSnapshot:
+        """Return the run-bound settings and version, or the latest snapshot outside a run."""
+        return self._run_snapshot.get() or self._snapshot
 
     def status(self) -> dict[str, Any]:
         """Purpose: Describe the live configuration for the desktop app.
@@ -94,8 +103,12 @@ class ConfigService:
     def bind_run(self) -> Iterator[SettingsSnapshot]:
         """Purpose: Pin the current snapshot for one run; later reloads apply next turn."""
         snapshot = self._snapshot
-        with bound_settings(snapshot.settings):
-            yield snapshot
+        token = self._run_snapshot.set(snapshot)
+        try:
+            with bound_settings(snapshot.settings):
+                yield snapshot
+        finally:
+            self._run_snapshot.reset(token)
 
     def refresh_if_changed(self) -> bool:
         """Purpose: Reload after an external edit, detected by file size and mtime.
