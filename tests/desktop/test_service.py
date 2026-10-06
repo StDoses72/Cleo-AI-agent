@@ -1161,6 +1161,48 @@ def test_productivity_turn_emits_streamed_history_without_git_checkpoint(
     asyncio.run(scenario())
 
 
+def test_productivity_turn_warns_when_the_undo_record_cannot_be_saved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Q12: a failed Git checkpoint used to be logged only for debugging."""
+
+    async def scenario() -> None:
+        service = _service(tmp_path)
+        session_id = "checkpoint-failure"
+        service.store.create_session(
+            session_id=session_id, space="productivity", project="workspace",
+            provider="codex", owner_type="user", cwd=str(tmp_path / "workspace"),
+        )
+        service._productivity_sessions[session_id] = object()
+
+        def fail(*_args):
+            raise RuntimeError("Git 无法保存回退记录。Filename too long")
+
+        monkeypatch.setattr("cleo.desktop.service.create_git_checkpoint", fail)
+        monkeypatch.setattr("cleo.desktop.service.read_git_diff", lambda _cwd: None)
+
+        class Adapter:
+            async def prompt(self, _session_id, _prompt, *, on_event):
+                return SimpleNamespace(response="done", status="completed", error=None)
+
+        service._adapter_instance = Adapter()
+        emitted: list[dict] = []
+
+        async def emit(event):
+            emitted.append(event)
+
+        await service._stream_productivity(
+            service.store.load_manifest(session_id), "change a file", [], emit,
+        )
+        notice = next(event["item"] for event in emitted if event["type"] == "upsert-item"
+                      and event["item"].get("type") == "notice")
+        assert notice["title"] == "这一轮无法撤销" and notice["tone"] == "warning"
+        assert "Filename too long" in notice["detail"]
+        assert emitted[-1]["type"] == "done"
+
+    asyncio.run(scenario())
+
+
 def test_acp_completed_tool_refreshes_changes_before_turn_finishes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

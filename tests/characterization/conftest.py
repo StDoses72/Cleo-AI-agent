@@ -39,9 +39,9 @@ def fake_llm() -> Iterator[FakeLLM]:
 def short_root() -> Iterator[Path]:
     """A short, fixed-length root for the test home and workspace.
 
-    On Windows, Git cannot lock ``refs/cleo/undo/<64 hex>`` once the workspace path passes
-    roughly 170 characters, and v0.7.1 then silently drops the undo checkpoint (Q12). Deep
-    pytest temp directories would make snapshots depend on that threshold.
+    Deep pytest temp directories would make snapshots depend on how close a machine's paths
+    come to Windows' 260-character limit; v0.7.1 silently dropped the undo checkpoint past
+    about 170 characters (Q12, fixed in S9 and covered by a long-path test of its own).
     ``CLEO_CHAR_TMP`` picks another parent directory when the system temp is unsuitable.
     """
     root = Path(tempfile.mkdtemp(prefix="cleo-char-", dir=os.environ.get("CLEO_CHAR_TMP")))

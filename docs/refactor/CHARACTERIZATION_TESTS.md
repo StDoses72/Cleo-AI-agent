@@ -66,7 +66,7 @@ Characterization test（特征测试 / golden master）记录的是系统**当�
 
 条目最终内容和出现顺序仍被固定。另有断言单独检查流式确实是增量的。
 
-**短路径**：每个测试的 home 与工作区放在系统临时目录下的 `cleo-char-xxxxxxxx`（约 50 字符），不使用很深的 pytest 临时目录。原因是 Q12：在长路径下，v0.7.1 的撤销记录会因 Windows 路径上限而失败，快照就会随机器和目录深度变化。这是在验证阶段换用更长的临时目录后发现并复现的。可以用 `CLEO_CHAR_TMP` 指定其他父目录。
+**短路径**：每个测试的 home 与工作区放在系统临时目录下的 `cleo-char-xxxxxxxx`（约 50 字符），不使用很深的 pytest 临时目录。原因是 Q12：在长路径下，v0.7.1 的撤销记录会因 Windows 路径上限而失败，快照就会随机器和目录深度变化。这是在验证阶段换用更长的临时目录后发现并复现的。Q12 已在 S9 修复，并由 `test_long_workspace_paths_keep_the_undo_record` 单独覆盖；短路径仍保留，让其余快照不受机器目录深度影响。可以用 `CLEO_CHAR_TMP` 指定其他父目录。
 
 **ACP 通知节奏**：`fake_acp_agent.py` 每发一条 `session/update` 后等待 0.25 秒（`CHAR_ACP_PACE`），工具开始后等待 1 秒（`CHAR_ACP_TOOL_PACE`），模拟真实的模型驱动 agent，同时避开 Q11 的竞态窗口。
 
@@ -107,7 +107,7 @@ CLEO_UPDATE_GOLDEN=1 .venv/Scripts/python.exe -m pytest tests/characterization -
 | Q9 | （已随 CLI 在 v0.8 移除）`python -m cleo.cli.application` 什么都不做 | — | CLI 整体移除后不再适用 |
 | Q10 | 模型调用失败不会产生 `error` 流事件，而是协议级错误回复；持久化的错误文本是 SDK 原文 | `chat/model_failure` | `_stream_chat` 只把 `CancelledError` 转成事件 |
 | Q11 | **竞态（已观察到）**：ACP `session/update` 通知被并发处理，落盘与实时推送的顺序没有保证。在机器高负载时实际观察到：同一个工具调用"运行中"的更新晚于"完成"到达，实时界面上这个工具一直显示运行中，重新加载后才变化。`prompt` 响应也可能先于最后几条通知处理完 | 无（假 agent 以 0.25 秒间隔发通知规避，见 `fake_acp_agent.PACE`；高负载下仍可能偶发） | `acp/connection.py:158` 为每条通知单独创建任务；`AgentService._prompt` 的 relay 在各任务里 `to_thread` 追加事件 |
-| Q12 | **已复现**：Windows 上工作区路径超过约 170 字符时，开发任务这一轮的撤销与变更历史会被静默丢弃：`canUndo` 为 false，没有 `turn_diff`，也没有任何用户可见的提示 | 无（测试改用短路径规避，见 `conftest.short_root`） | undo ref 名使用完整 sha256：`<工作区>/.git/refs/cleo/undo/<64 位 hex>.lock` 超过 260 字符，`git update-ref` 报 `Filename too long`；`_stream_productivity` 只在调试日志里记录 "Git checkpoint unavailable" |
+| Q12 | **已修复（S9）**：原先 Windows 上工作区路径超过约 170 字符时，开发任务这一轮的撤销与变更历史会被静默丢弃：`canUndo` 为 false，没有 `turn_diff`，也没有任何用户可见的提示 | `productivity` 的 `test_long_workspace_paths_keep_the_undo_record` | undo ref 名使用完整 sha256：`<工作区>/.git/refs/cleo/undo/<64 位 hex>.lock` 超过 260 字符，`git update-ref` 报 `Filename too long`；`_stream_productivity` 只在调试日志里记录 "Git checkpoint unavailable"。修复：git 调用带 `core.longpaths=true`，ref 名改用 16 位 hash；创建回退记录失败时在对话中显示“这一轮无法撤销”警告 |
 
 ## 7. 本轮未覆盖的范围
 
