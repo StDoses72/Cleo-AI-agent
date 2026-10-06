@@ -260,7 +260,7 @@ def test_chat_computer_prompt_keeps_instructions_out_of_live_and_saved_display(t
             prompts.append(prompt)
             yield "done"
 
-        service._chat_agents[manifest["id"]] = SimpleNamespace(
+        service._chat.agents[manifest["id"]] = SimpleNamespace(
             stream_text=stream, context_usage=SimpleNamespace(
                 used_tokens=None, window_tokens=64000, input_tokens=None, output_tokens=None,
             ),
@@ -292,7 +292,7 @@ def test_chat_error_detail_survives_history_reload(tmp_path):
             session_id="failed-chat", space="non_productivity", project="general",
             provider="cleo", owner_type="user",
         )
-        service._chat_agents["failed-chat"] = SimpleNamespace(stream_text=fail)
+        service._chat.agents["failed-chat"] = SimpleNamespace(stream_text=fail)
         service._sync_chat = AsyncMock()
         with pytest.raises(ValueError, match="Image input rejected"):
             await service._stream_chat(manifest, "describe", [], AsyncMock())
@@ -881,8 +881,8 @@ def test_agent_instructions_use_active_non_productivity_root(tmp_path: Path) -> 
             "exists": True,
         }
 
-        service._chat_agents["chat-thread"] = object()
-        service._chat_agents_restored.add("chat-thread")
+        service._chat.agents["chat-thread"] = object()
+        service._chat.restored.add("chat-thread")
         saved = await service.save_agent_instructions(content="# Updated instructions\n")
 
         assert saved == {
@@ -892,8 +892,8 @@ def test_agent_instructions_use_active_non_productivity_root(tmp_path: Path) -> 
         }
         assert path.read_bytes() == b"# Updated instructions\n"
         assert path.read_text(encoding="utf-8") == "# Updated instructions\n"
-        assert service._chat_agents == {}
-        assert service._chat_agents_restored == set()
+        assert service._chat.agents == {}
+        assert service._chat.restored == set()
 
     asyncio.run(scenario())
 
@@ -1612,15 +1612,15 @@ def test_runtime_catalog_and_profile_selection_use_configured_models(tmp_path: P
         assert thread["runtime"]["profileId"] == "secondary"
         assert thread["runtime"]["model"] == "chat-secondary"
 
-        service._chat_agents[thread["id"]] = object()
-        service._chat_agents_restored.add(thread["id"])
+        service._chat.agents[thread["id"]] = object()
+        service._chat.restored.add(thread["id"])
         runtime = await service.update_runtime(
             thread_id=thread["id"],
             update={"profileId": "primary"},
         )
         assert runtime["profileId"] == "primary"
-        assert thread["id"] not in service._chat_agents
-        assert thread["id"] not in service._chat_agents_restored
+        assert thread["id"] not in service._chat.agents
+        assert thread["id"] not in service._chat.restored
 
     asyncio.run(scenario())
 
@@ -2105,12 +2105,12 @@ def test_chat_rewind_rebuilds_the_agent_without_later_messages(tmp_path):
                        "message": {"type": "ai", "data": {"content": reply, "id": f"{turn}:ai"}}})
     service.store.append_events(session_id="chat", space="non_productivity", project="general",
                                 events=events)
-    service._chat_agents["chat"] = object()
-    service._chat_agents_restored.add("chat")
+    service._chat.agents["chat"] = object()
+    service._chat.restored.add("chat")
     before = asyncio.run(service.load_thread(thread_id="chat"))
     assert before["editableTurnIds"] == ["a", "b"]
     thread = asyncio.run(service.rewind_thread(thread_id="chat", item_id="b"))
-    assert "chat" not in service._chat_agents and "chat" not in service._chat_agents_restored
+    assert "chat" not in service._chat.agents and "chat" not in service._chat.restored
     assert [message.content for message in service.store.load_langchain_messages("chat")] == [
         "one", "r1"]
     assert [item["content"] for item in thread["items"]] == ["one", "r1"]
