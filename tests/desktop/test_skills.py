@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from cleo.desktop.runs import RunSupervisor
 from cleo.desktop.service import PRODUCTIVITY_COMMANDS, DesktopService
 from cleo.desktop.skills import discover_skills
 
@@ -97,13 +98,7 @@ def test_desktop_dispatch_uses_selected_harness_and_keeps_builtins(skill_home, t
     service._activate = lambda _: None
     service._is_evolution = lambda _: False
     service._productivity_provider = lambda name: SimpleNamespace(type=f"{name}_sdk")
-    service._run_tasks = {}
-    service._steering_runs = {}
-    service._runtime_locks = {}
-    service._run_ids = {}
-    service._pending_approvals = {}
-    service._run_workspaces = {}
-    service._workspace_guard = asyncio.Lock()
+    service._runs = RunSupervisor()
     service._stream_productivity = AsyncMock()
     service._run_command = AsyncMock()
     emit = AsyncMock()

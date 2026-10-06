@@ -429,7 +429,7 @@ def test_steer_boundary_runs_serially_and_keeps_all_instructions(tmp_path, space
                     "id": "late-old-output", "turnId": "turn-0", "type": "message",
                     "role": "assistant", "content": "old callback", "time": "",
                 }})
-                assert service._steering_runs[manifest["id"]].records["one"]["status"] == "sending"
+                assert service._runs.steering[manifest["id"]].records["one"]["status"] == "sending"
             await emit({"type": "upsert-item", "item": {
                 "id": turn + ":answer", "turnId": turn, "type": "message", "role": "assistant",
                 "content": "response", "time": "",
@@ -457,7 +457,7 @@ def test_steer_boundary_runs_serially_and_keeps_all_instructions(tmp_path, space
             first = await service.steer_run(thread_id=manifest["id"], run_id="original-run",
                                             request_id="one", text="first constraint")
             assert first["steer"]["status"] == "received"
-            assert not service._run_tasks and not service._steering_runs
+            assert not service._runs.tasks and not service._runs.steering
         finally:
             release.set()
             if not task.done():
@@ -511,10 +511,10 @@ def test_native_steer_targets_current_run_without_bypassing_pending_approval(tmp
             await asyncio.wait_for(ready.wait(), 3)
             await service.steer_run(thread_id="permissions", run_id="original-run",
                                     request_id="one", text="keep original goal, change direction")
-            await asyncio.wait_for(asyncio.shield(service._steering_runs["permissions"].worker), 3)
+            await asyncio.wait_for(asyncio.shield(service._runs.steering["permissions"].worker), 3)
             assert adapter.steered == ["keep original goal, change direction"]
             assert adapter.resolved == []
-            assert "approval" in service._pending_approvals["permissions"]
+            assert "approval" in service._runs.approvals["permissions"]
             assert not task.done() and adapter.prompts == ["original goal"]
             stale = await service.steer_run(thread_id="permissions", run_id="wrong-run",
                                             request_id="stale", text="must not run")
@@ -570,7 +570,7 @@ def test_permission_changes_are_independent_persisted_and_task_scoped(tmp_path):
 def test_running_permissions_merge_then_apply_before_next_turn(tmp_path):
     async def scenario():
         service, adapter = _permission_service(tmp_path)
-        service._run_tasks["permissions"] = asyncio.current_task()
+        service._runs.tasks["permissions"] = asyncio.current_task()
         await service.update_runtime(thread_id="permissions", update={"access": "read-only"})
         result = await service.update_runtime(
             thread_id="permissions", update={"approval": "user"},
@@ -580,7 +580,7 @@ def test_running_permissions_merge_then_apply_before_next_turn(tmp_path):
         assert result["pendingPermissions"] == {
             "provider": "codex", "access": "read-only", "approval": "user",
         }
-        service._run_tasks.clear()
+        service._runs.tasks.clear()
         events = []
 
         async def stream(manifest, *_):
@@ -595,7 +595,7 @@ def test_running_permissions_merge_then_apply_before_next_turn(tmp_path):
         )
         assert events[0]["runtime"]["settingsRevision"] == 3
         assert events[0]["runtime"]["pendingPermissions"] is None
-        assert not service._run_tasks
+        assert not service._runs.tasks
 
     asyncio.run(scenario())
 
@@ -603,7 +603,7 @@ def test_running_permissions_merge_then_apply_before_next_turn(tmp_path):
 def test_pending_permissions_can_be_discarded_and_old_snapshot_cannot_reapply(tmp_path):
     async def scenario():
         service, adapter = _permission_service(tmp_path)
-        service._run_tasks["permissions"] = asyncio.current_task()
+        service._runs.tasks["permissions"] = asyncio.current_task()
         await service.update_runtime(thread_id="permissions", update={"access": "full-access"})
         reserved = service.store.load_manifest("permissions")
         result = await service.update_runtime(
@@ -625,9 +625,9 @@ def test_pending_permissions_can_be_discarded_and_old_snapshot_cannot_reapply(tm
 def test_permission_failure_preserves_pending_choice_and_blocks_turn(tmp_path):
     async def scenario():
         service, adapter = _permission_service(tmp_path)
-        service._run_tasks["permissions"] = asyncio.current_task()
+        service._runs.tasks["permissions"] = asyncio.current_task()
         await service.update_runtime(thread_id="permissions", update={"access": "read-only"})
-        service._run_tasks.clear()
+        service._runs.tasks.clear()
         adapter.update_session_options = AsyncMock(
             side_effect=ValueError("runtime rejected policy"),
         )
@@ -640,7 +640,7 @@ def test_permission_failure_preserves_pending_choice_and_blocks_turn(tmp_path):
         result = service._runtime_profile(service.store.load_manifest("permissions"))
         assert result["access"] == "workspace-write"
         assert result["pendingPermissions"]["access"] == "read-only"
-        assert not service._run_tasks
+        assert not service._runs.tasks
 
     asyncio.run(scenario())
 
@@ -724,7 +724,7 @@ def test_concurrent_streams_and_late_cancellation_are_task_scoped(tmp_path, monk
             await asyncio.gather(one, two)
             assert any(event.get("summary") == "one" for event in messages["one"])
             assert not any(event.get("summary") == "one" for event in messages["two"])
-            assert service._run_tasks == {}
+            assert service._runs.tasks == {}
         finally:
             for task in [one, two]:
                 if not task.done():
@@ -776,7 +776,7 @@ def test_parallel_workspace_edits_do_not_create_a_cross_task_undo(tmp_path):
         ]
         try:
             await asyncio.wait_for(asyncio.gather(*(event.wait() for event in ready.values())), 5)
-            assert len(set(service._run_workspaces.values())) == 1
+            assert len(set(service._runs.workspaces.values())) == 1
             with pytest.raises(ValueError, match="正在运行"):
                 await service.undo_changes(thread_id="one")
             with pytest.raises(ValueError, match="正在运行"):
@@ -814,8 +814,8 @@ def test_workspace_restores_an_active_empty_chat_beyond_the_recent_limit(tmp_pat
                 session_id=f"recent-{index}", space="productivity", project="workspace",
                 provider="codex", owner_type="user", cwd=str(tmp_path / "workspace"),
             )
-        service._run_tasks["running-chat"] = asyncio.current_task()
-        service._run_ids["running-chat"] = "still-running"
+        service._runs.tasks["running-chat"] = asyncio.current_task()
+        service._runs.run_ids["running-chat"] = "still-running"
         service.runtime.current_thread_id = "recent-99"
         snapshot = await service.load_workspace()
         thread = next(thread for thread in snapshot["threads"] if thread["id"] == "running-chat")
@@ -841,7 +841,7 @@ def test_deleted_connection_does_not_hide_saved_conversation(tmp_path):
 
 def test_model_connection_mutations_refuse_to_restart_an_active_task(tmp_path):
     service = _service(tmp_path)
-    service._run_tasks["active"] = object()
+    service._runs.tasks["active"] = object()
 
     async def exercise():
         with pytest.raises(ValueError, match="任务完成"):
@@ -1545,10 +1545,10 @@ def test_delete_thread_handles_chat_and_productivity_sessions(tmp_path: Path) ->
             content="Delete this active thread",
         )
 
-        service._run_tasks[second["id"]] = asyncio.current_task()
+        service._runs.tasks[second["id"]] = asyncio.current_task()
         with pytest.raises(ValueError, match="正在运行"):
             await service.delete_thread(thread_id=second["id"])
-        service._run_tasks.pop(second["id"])
+        service._runs.tasks.pop(second["id"])
         assert service.store.load_manifest(second["id"])["id"] == second["id"]
 
         chat_snapshot = await service.delete_thread(thread_id=second["id"])
@@ -2162,10 +2162,10 @@ def test_rewind_refuses_running_steered_and_unsupported_tasks(tmp_path):
     ])
     with pytest.raises(ValueError, match="不能编辑"):
         asyncio.run(service.rewind_thread(thread_id="task", item_id="t2"))
-    service._run_tasks["task"] = SimpleNamespace(done=lambda: False)
+    service._runs.tasks["task"] = SimpleNamespace(done=lambda: False)
     with pytest.raises(RuntimeError):
         asyncio.run(service.rewind_thread(thread_id="task", item_id="t1"))
-    service._run_tasks.clear()
+    service._runs.tasks.clear()
     acp = SimpleNamespace(**{**vars(FakeProductivity.providers["codex"]), "type": "acp"})
     service._productivity_provider = lambda _: acp
     with pytest.raises(ValueError, match="不支持"):

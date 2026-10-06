@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from cleo.desktop.runs import RunSupervisor
 from cleo.desktop.service import DesktopService
 
 
@@ -17,6 +18,7 @@ def service_for_source(monkeypatch, tmp_path, provider_type="codex_sdk"):
     source.mkdir()
     monkeypatch.setenv("CLEO_EVOLUTION_WORKSPACE", str(source))
     service = DesktopService.__new__(DesktopService)
+    service._runs = RunSupervisor()
     service.settings = SimpleNamespace(
         productivity=SimpleNamespace(provider=lambda _: SimpleNamespace(type=provider_type))
     )

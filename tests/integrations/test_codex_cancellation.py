@@ -6,6 +6,7 @@ from openai_codex import AsyncTurnHandle
 from openai_codex.async_client import AsyncCodexClient
 from openai_codex.generated.v2_all import TurnCompletedNotification
 
+from cleo.desktop.runs import RunSupervisor
 from cleo.desktop.service import DesktopService
 from cleo.integrations.harnesses.codex import CodexProvider, _CodexRuntime
 
@@ -32,10 +33,10 @@ def test_desktop_cancel_waits_for_cleanup_without_interrupting_twice():
         service = object.__new__(DesktopService)
         service.store = SimpleNamespace(load_manifest=lambda _: {"space": "productivity"})
         service._productivity_sessions = {"thread": object()}
-        service._steering_runs = {}
+        service._runs = RunSupervisor()
         service._adapter = lambda: SimpleNamespace(cancel=interrupt)
         task = asyncio.create_task(run())
-        service._run_tasks = {"thread": task}
+        service._runs.tasks["thread"] = task
         await ready.wait()
         cancellation = asyncio.create_task(service.cancel_run(thread_id="thread"))
         repeated = None
@@ -67,7 +68,8 @@ def test_new_turn_cannot_replace_a_stream_still_cancelling():
             await release.wait()
 
         task = asyncio.create_task(run())
-        service._run_tasks = {"thread": task}
+        service._runs = RunSupervisor()
+        service._runs.tasks["thread"] = task
         await ready.wait()
         try:
             try:
@@ -78,7 +80,7 @@ def test_new_turn_cannot_replace_a_stream_still_cancelling():
                 assert "当前运行尚未结束" in str(error)
             else:
                 raise AssertionError("A second stream replaced the active task")
-            assert service._run_tasks["thread"] is task
+            assert service._runs.tasks["thread"] is task
         finally:
             release.set()
             await task
