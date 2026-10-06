@@ -1082,7 +1082,7 @@ class DesktopService:
         mode (a later version's multi-agent preset) run through their main agent.
         """
         return SingleAgentSystem({
-            "non_productivity": CallableRuntime(self._stream_chat),
+            "non_productivity": self._chat,
             "productivity": CallableRuntime(self._stream_productivity),
         })
 
@@ -1786,20 +1786,6 @@ class DesktopService:
                 await self._adapter_instance.aclose()
             except Exception:
                 pass
-
-    async def _stream_chat(
-        self,
-        manifest: dict[str, Any],
-        prompt: str,
-        attachments: list[dict[str, Any]],
-        emit: Emit,
-        *,
-        steer_ids: list[str] | None = None,
-        display_prompt: str | None = None,
-    ) -> None:
-        await self._chat.stream(TurnInput(
-            manifest, prompt, attachments, steer_ids=steer_ids, display_prompt=display_prompt,
-        ), emit)
 
     async def _stream_productivity(
         self,

@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
+from cleo.desktop.agent_system import CallableRuntime, TurnInput
 from cleo.desktop.presenters import usage_from_events, usage_view
 from cleo.desktop.service import CHAT_COMMANDS, PRODUCTIVITY_COMMANDS, DesktopService
 from cleo.harnesses.control import HarnessModel, SessionOptions
@@ -398,9 +399,9 @@ def test_chat_computer_prompt_keeps_instructions_out_of_live_and_saved_display(t
         )
         service._sync_chat = AsyncMock()
         events = []
-        await service._stream_chat(manifest, "internal instructions", [],
-                                   AsyncMock(side_effect=events.append),
-                                   display_prompt="Computer use：打开浏览器")
+        await service._chat.stream(TurnInput(
+            manifest, "internal instructions", display_prompt="Computer use：打开浏览器",
+        ), AsyncMock(side_effect=events.append))
         assert prompts == ["internal instructions"]
         assert events[0]["item"]["content"] == "Computer use：打开浏览器"
         assert timeline_from_events(service.store.read_events(manifest["id"]))[0]["content"] == (
@@ -426,7 +427,7 @@ def test_chat_error_detail_survives_history_reload(tmp_path):
         service._chat.agents["failed-chat"] = SimpleNamespace(stream_text=fail)
         service._sync_chat = AsyncMock()
         emit = AsyncMock()
-        await service._stream_chat(manifest, "describe", [], emit)
+        await service._chat.stream(TurnInput(manifest, "describe"), emit)
         # Q10: the failure ends the turn with an error event, the same text as after reload.
         assert emit.await_args_list[-1].args[0] == {
             "type": "error", "message": "Image input rejected"}
@@ -470,7 +471,7 @@ def test_reply_timing_survives_reload_and_tracks_tools_and_waits(tmp_path, outco
                 raise asyncio.CancelledError()
             await emit({"type": "error", "message": "test failure"} if outcome == "failed"
                        else {"type": "done", "summary": "finished"})
-        service._stream_chat = stream
+        service._chat = CallableRuntime(stream)
         events = []
         await service.stream_turn(
             thread_id="measured", prompt="test", attachments=[],
@@ -574,7 +575,8 @@ def test_steer_boundary_runs_serially_and_keeps_all_instructions(tmp_path, space
             }})
             await emit({"type": "done", "summary": "response"})
 
-        service._stream_chat = service._stream_productivity = stream
+        service._chat = CallableRuntime(stream)
+        service._stream_productivity = stream
         task = asyncio.create_task(service.stream_turn(
             thread_id=manifest["id"], run_id="original-run", prompt="original goal",
             attachments=[], emit=AsyncMock(side_effect=events.append),
