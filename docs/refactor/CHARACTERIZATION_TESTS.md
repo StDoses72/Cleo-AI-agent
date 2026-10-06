@@ -68,9 +68,9 @@ Characterization test（特征测试 / golden master）记录的是系统**当�
 
 **短路径**：每个测试的 home 与工作区放在系统临时目录下的 `cleo-char-xxxxxxxx`（约 50 字符），不使用很深的 pytest 临时目录。原因是 Q12：在长路径下，v0.7.1 的撤销记录会因 Windows 路径上限而失败，快照就会随机器和目录深度变化。这是在验证阶段换用更长的临时目录后发现并复现的。Q12 已在 S9 修复，并由 `test_long_workspace_paths_keep_the_undo_record` 单独覆盖；短路径仍保留，让其余快照不受机器目录深度影响。可以用 `CLEO_CHAR_TMP` 指定其他父目录。
 
-**ACP 通知节奏**：`fake_acp_agent.py` 每发一条 `session/update` 后等待 0.25 秒（`CHAR_ACP_PACE`），工具开始后等待 1 秒（`CHAR_ACP_TOOL_PACE`），模拟真实的模型驱动 agent，同时避开 Q11 的竞态窗口。
+**ACP 通知节奏**：`fake_acp_agent.py` 每发一条 `session/update` 后等待 0.25 秒（`CHAR_ACP_PACE`），工具开始后等待 1 秒（`CHAR_ACP_TOOL_PACE`），模拟真实的模型驱动 agent。
 
-工具开始后要多等一会，是因为 Cleo 在推送每个新条目之前，会先在线程里查一次时间线索引（SQLite）来计算位置。"开始"和"完成"两条通知由不同任务处理，查询慢时"完成"会先于"开始"到达界面。只用 0.25 秒间隔时，曾在 6 次整模块运行中出现过 1 次 `productivity/tool_turn` 的顺序差异，这就是 Q11 本身。节奏只改变替身的时序，不改变后端代码。
+工具开始后要多等一会，是因为 Cleo 在推送每个新条目之前，会先在线程里查一次时间线索引（SQLite）来计算位置。"开始"和"完成"两条通知由不同任务处理，查询慢时"完成"会先于"开始"到达界面。只用 0.25 秒间隔时，曾在 6 次整模块运行中出现过 1 次 `productivity/tool_turn` 的顺序差异，这就是 Q11 本身。S9 修复 Q11 后，不加节奏也不会再乱序（落盘事件完全相同），但替身自己写文件的时机会提前，第一次 changes 刷新就能看到新文件，快照内容随之变化；所以节奏仍保留，用来固定替身的时序。
 
 **验证方式**：快照录制后，在三个不同的 pytest 临时目录下连续运行三次全量验证，结果一致才算确定。compact 的字符统计包含路径长度，因此 `raw_characters` / `compact_characters` 记为 `<path-dependent>`。
 
@@ -106,7 +106,7 @@ CLEO_UPDATE_GOLDEN=1 .venv/Scripts/python.exe -m pytest tests/characterization -
 | Q8 | **已修复（S9）**：原先未知 provider 创建任务时，界面收到原始的 `KeyError: 'does-not-exist'`，已禁用的 provider 则是 `KeyError: 'Unknown agent provider: …'`；现在分别提示“未找到开发任务 harness：…。请先在设置中添加。”和“Harness '…' 已禁用或不可用。” | `productivity/create_delete`、`workspace/hot_reload_harnesses` | `_productivity_provider` 对未知名称抛 `ValueError`；`create_thread` 在创建会话前检查 provider 已启用并已注册 |
 | Q9 | （已随 CLI 在 v0.8 移除）`python -m cleo.cli.application` 什么都不做 | — | CLI 整体移除后不再适用 |
 | Q10 | **已修复（S9）**：原先模型调用失败不会产生 `error` 流事件，而是协议级错误回复，实时显示未脱敏的异常原文，重新加载后显示脱敏文本；现在回合以对话中的 `error` 事件结束，实时与重新加载显示同一条脱敏后的文本，请求本身正常结束；桌面端实时错误提示的标题也改为与重新加载一致的“运行需要查看” | `chat/model_failure`（含实时与重新加载文本一致的断言） | `ChatRuntime.stream` 对普通异常保存会话与错误事件后发出 `error` 事件并返回；取消仍向上传播 |
-| Q11 | **竞态（已观察到）**：ACP `session/update` 通知被并发处理，落盘与实时推送的顺序没有保证。在机器高负载时实际观察到：同一个工具调用"运行中"的更新晚于"完成"到达，实时界面上这个工具一直显示运行中，重新加载后才变化。`prompt` 响应也可能先于最后几条通知处理完 | 无（假 agent 以 0.25 秒间隔发通知规避，见 `fake_acp_agent.PACE`；高负载下仍可能偶发） | `acp/connection.py:158` 为每条通知单独创建任务；`AgentService._prompt` 的 relay 在各任务里 `to_thread` 追加事件 |
+| Q11 | **已修复（S9）**：原先 ACP `session/update` 通知被并发处理，落盘与实时推送的顺序没有保证；高负载下曾观察到同一工具“运行中”的更新晚于“完成”到达，实时界面一直显示运行中，`prompt` 响应也可能先于最后几条通知处理完。现在每次运行的事件经一个有序队列按到达顺序落盘并推送，`prompt` 返回后先排空队列再写终态事件 | `tests/integrations/test_harness_event_order.py`（并发回调，第一条写入更慢时仍按到达顺序落盘与推送）；特征测试仍用 `fake_acp_agent.PACE` 固定替身写文件的时机 | `AgentService._prompt` 的 relay 只同步计算时间线 ID 并入队，单个消费者任务依次 `append_events` 与推送；桌面端逐条处理，时间线位置查询也随之串行 |
 | Q12 | **已修复（S9）**：原先 Windows 上工作区路径超过约 170 字符时，开发任务这一轮的撤销与变更历史会被静默丢弃：`canUndo` 为 false，没有 `turn_diff`，也没有任何用户可见的提示 | `productivity` 的 `test_long_workspace_paths_keep_the_undo_record` | undo ref 名使用完整 sha256：`<工作区>/.git/refs/cleo/undo/<64 位 hex>.lock` 超过 260 字符，`git update-ref` 报 `Filename too long`；`_stream_productivity` 只在调试日志里记录 "Git checkpoint unavailable"。修复：git 调用带 `core.longpaths=true`，ref 名改用 16 位 hash；创建回退记录失败时在对话中显示“这一轮无法撤销”警告 |
 
 ## 7. 本轮未覆盖的范围
