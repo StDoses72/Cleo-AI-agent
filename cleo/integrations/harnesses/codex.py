@@ -86,6 +86,7 @@ class CodexProvider:
     """
 
     name = "codex"
+    provider_type = "codex_sdk"
     capabilities = frozenset({
         Capability.REWIND, Capability.NATIVE_STEER, Capability.QUESTIONS,
         Capability.USER_APPROVALS, Capability.SERVICE_TIER, Capability.FORK,

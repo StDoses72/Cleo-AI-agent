@@ -87,6 +87,7 @@ class ClaudeProvider:
     """
 
     name = "claude"
+    provider_type = "claude_sdk"
     capabilities = frozenset({
         Capability.REWIND, Capability.QUESTIONS, Capability.USER_APPROVALS,
     })

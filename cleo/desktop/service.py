@@ -55,7 +55,7 @@ from cleo.desktop.turn_hooks import (
     TurnRequest,
     timed_reply,
 )
-from cleo.harnesses.capabilities import Capability
+from cleo.harnesses.capabilities import Capability, capabilities_of
 from cleo.harnesses.control import HarnessModel
 from cleo.integrations.background import launch_dream_agent_worker
 from cleo.integrations.git import (
@@ -748,12 +748,12 @@ class DesktopService:
         """
         if not self._is_evolution(manifest):
             return
-        settings = self._productivity_provider(str(manifest["provider"]))
-        if settings.type == "codex_sdk":
+        provider_type = self._session_provider_type(manifest)
+        if provider_type == "codex_sdk":
             await self._adapter().update_session_options(
                 str(manifest["id"]), sandbox="full-access", approval_mode="deny_all",
             )
-        elif settings.type == "claude_sdk":
+        elif provider_type == "claude_sdk":
             await self._adapter().update_session_options(
                 str(manifest["id"]), approval_mode="bypassPermissions",
             )
@@ -889,7 +889,9 @@ class DesktopService:
             if not provider_settings.enabled or provider_name not in adapter.providers:
                 raise ValueError(f"Harness {provider_name!r} 已禁用或不可用。")
             if service_tier is not None:
-                self._validate_service_tier(provider_settings.type, service_tier)
+                self._validate_service_tier(
+                    self._capabilities(provider_settings.type), service_tier,
+                )
             selected_model = model or provider_settings.model
             if provider_name not in self.settings.productivity.providers:
                 from cleo.config.settings import HARNESSES_CONFIG_PATH
@@ -1086,8 +1088,7 @@ class DesktopService:
 
     def _steer_mode(self, manifest):
         if (manifest["space"] == "productivity"
-                and Capability.NATIVE_STEER in self._capabilities(
-                    self._productivity_provider(manifest["provider"]).type)):
+                and Capability.NATIVE_STEER in self._session_capabilities(manifest)):
             return "native"
         return "boundary"
 
@@ -1139,8 +1140,7 @@ class DesktopService:
             return False
         if manifest["space"] != "productivity":
             return True
-        provider = self._productivity_provider(str(manifest["provider"]))
-        return Capability.REWIND in self._capabilities(provider.type)
+        return Capability.REWIND in self._session_capabilities(manifest)
 
     async def rewind_thread(self, *, thread_id: str, item_id: str) -> dict[str, Any]:
         """Purpose: Remove one earlier user message and everything after it before a resend.
@@ -1218,15 +1218,14 @@ class DesktopService:
 
     async def _prepare_harness(self, manifest, provider, implementation, session_id, effort=None):
         """Apply desktop controls to a candidate before making it the current route."""
-        settings = self._productivity_provider(provider)
         account = getattr(implementation, "account_status", None)
         if callable(account) and not (await account()).authenticated:
             raise ValueError(f"{provider} 尚未登录，请先完成登录。")
         options = {}
         if self._is_evolution(manifest):
-            if settings.type == "codex_sdk":
+            if implementation.provider_type == "codex_sdk":
                 options.update(sandbox="full-access", approval_mode="deny_all")
-            elif settings.type == "claude_sdk":
+            elif implementation.provider_type == "claude_sdk":
                 options["approval_mode"] = "bypassPermissions"
         if effort is not None:
             options["effort"] = effort
@@ -1236,7 +1235,7 @@ class DesktopService:
         if callable(questions):
             await questions(session_id)
         if (not self._is_evolution(manifest)
-                and Capability.USER_APPROVALS in self._capabilities(settings.type)):
+                and Capability.USER_APPROVALS in capabilities_of(implementation)):
             await implementation.enable_user_approvals(session_id)
 
     async def switch_harness(
@@ -1371,7 +1370,7 @@ class DesktopService:
             options["effort"] = str(update["effort"])
         if "serviceTier" in update:
             self._validate_service_tier(
-                self._productivity_provider(manifest["provider"]).type, update["serviceTier"],
+                self._session_capabilities(manifest), update["serviceTier"],
             )
             options["service_tier"] = update["serviceTier"]
         if "access" in update:
@@ -1382,7 +1381,7 @@ class DesktopService:
         if permission_update:
             from cleo.desktop.runtime_permissions import validate_permissions
 
-            validate_permissions(self._productivity_provider(manifest["provider"]).type, update)
+            validate_permissions(self._session_provider_type(manifest), update)
         await self._ensure_productivity_session(manifest)
         if permission_update and self._runs.is_running(thread_id) and not command:
             if set(options) - {"sandbox", "approval_mode"}:
@@ -1852,7 +1851,7 @@ class DesktopService:
         usage = ContextWindowUsage(
             window_tokens=self._runtime_profile(manifest)["contextWindow"],
         )
-        provider_settings = self._productivity_provider(str(manifest["provider"]))
+        provider_type = self._session_provider_type(manifest)
 
         async def refresh_changes(*, force: bool = False) -> None:
             diff = await asyncio.to_thread(read_git_diff, manifest.get("cwd") or ".")
@@ -1898,7 +1897,7 @@ class DesktopService:
                     if state[key]:
                         visible.update(state[key])
                 await emit(projected)
-            if provider_settings.type == "acp" and event.type == "tool_result":
+            if provider_type == "acp" and event.type == "tool_result":
                 payload = event.data.get("payload")
                 status = payload.get("status") if isinstance(payload, dict) else None
                 if status in {"completed", "failed"}:
@@ -2226,8 +2225,7 @@ class DesktopService:
 
         if manifest["space"] != "productivity" or self._is_evolution(manifest):
             return []
-        provider = str(manifest.get("provider") or self.settings.productivity.default_provider)
-        kind = self._productivity_provider(provider).type
+        kind = self._session_provider_type(manifest)
         harness = {"codex_sdk": "codex", "claude_sdk": "claude"}.get(kind, "")
         return discover_skills(harness, manifest.get("cwd") or ".", PRODUCTIVITY_COMMANDS)
 
@@ -2302,8 +2300,8 @@ class DesktopService:
             return False
 
     @staticmethod
-    def _validate_service_tier(provider_type: str, value: Any) -> None:
-        if (Capability.SERVICE_TIER not in DesktopService._capabilities(provider_type)
+    def _validate_service_tier(capabilities: frozenset[Capability], value: Any) -> None:
+        if (Capability.SERVICE_TIER not in capabilities
                 or value not in ("default", "fast")):
             raise ValueError("速度档位仅支持 Codex 的标准或快速模式。")
 
@@ -2340,20 +2338,29 @@ class DesktopService:
                 "steerMode": "boundary",
             }
         provider = str(manifest.get("provider") or self.settings.productivity.default_provider)
-        provider_settings = self._productivity_provider(provider)
+        provider_type = self._session_provider_type(manifest)
+        provider_settings = (
+            self.settings.productivity.providers.get(provider)
+            if manifest["id"] in self._productivity_sessions
+            else self._productivity_provider(provider)
+        )
+        if provider_settings is not None and provider_settings.type != provider_type:
+            provider_settings = None
+        default_model = provider_settings.model if provider_settings is not None else None
+        defaults = provider_settings.options if provider_settings is not None else None
         options = (
             manifest.get("runtime_options")
             if isinstance(manifest.get("runtime_options"), dict)
             else {}
         )
-        model = str(options.get("model") or provider_settings.model or "default")
-        capabilities = self._capabilities(getattr(provider_settings, "type", None))
+        model = str(options.get("model") or default_model or "default")
+        capabilities = self._session_capabilities(manifest)
         return {
             "provider": provider,
             "model": model,
             "models": list(
                 dict.fromkeys(
-                    [model, provider_settings.model] if provider_settings.model else [model]
+                    [model, default_model] if default_model else [model]
                 )
             ),
             "effort": str(options["effort"]) if options.get("effort") else None,
@@ -2361,17 +2368,17 @@ class DesktopService:
             if Capability.SERVICE_TIER in capabilities else None,
             "supportsFastMode": Capability.SERVICE_TIER in capabilities,
             "access": str(
-                options.get("sandbox") or getattr(provider_settings.options, "sandbox", "default")
+                options.get("sandbox") or getattr(defaults, "sandbox", "default")
             ),
             "approval": str(
                 options.get("approval_mode")
-                or getattr(provider_settings.options, "approval_mode", None)
-                or getattr(provider_settings.options, "permission_mode", None)
-                or ("auto_allow" if getattr(provider_settings.options, "auto_approve", False)
+                or getattr(defaults, "approval_mode", None)
+                or getattr(defaults, "permission_mode", None)
+                or ("auto_allow" if getattr(defaults, "auto_approve", False)
                     # ACP tasks ask the user once the desktop enables approvals (Q6);
                     # evolution tasks never enable them.
                     else ("deny_all" if self._is_evolution(manifest) else "user")
-                    if provider_settings.type == "acp" else "default")
+                    if provider_type == "acp" else "default")
             ),
             "contextWindow": 128_000,
             "handoffStatus": handoff_status(self.store.read_events(manifest["id"])),
@@ -2379,7 +2386,7 @@ class DesktopService:
             "supportsQuestions": Capability.QUESTIONS in capabilities,
             "settingsRevision": manifest.get("runtime_settings_revision", 0),
             "steerMode": self._steer_mode(manifest),
-            "permissionOptions": self._permission_options(manifest, provider_settings),
+            "permissionOptions": self._permission_options(manifest, provider_type),
             "pendingPermissions": self._pending_permissions_profile(manifest),
         }
 
@@ -2390,7 +2397,17 @@ class DesktopService:
 
         return provider_capabilities(provider_type)
 
-    def _permission_options(self, manifest, provider_settings):
+    def _session_capabilities(self, manifest: dict[str, Any]) -> frozenset[Capability]:
+        if manifest["id"] in self._productivity_sessions:
+            return self._adapter().session_capabilities(manifest["id"])
+        return self._capabilities(self._productivity_provider(manifest["provider"]).type)
+
+    def _session_provider_type(self, manifest: dict[str, Any]) -> str:
+        if manifest["id"] in self._productivity_sessions:
+            return self._adapter().session_provider_type(manifest["id"])
+        return self._productivity_provider(manifest["provider"]).type
+
+    def _permission_options(self, manifest, provider_type):
         """Purpose: Project native session restrictions into the permission selector.
 
         Input: Manifest and provider configuration. Output: Presets and advanced choices.
@@ -2402,7 +2419,7 @@ class DesktopService:
             describe = getattr(self._adapter(), "permission_capabilities", None)
             if callable(describe):
                 support = describe(manifest["id"])
-        return permission_choices(provider_settings.type, fixed=self._is_evolution(manifest),
+        return permission_choices(provider_type, fixed=self._is_evolution(manifest),
                                   support=support)
 
     @staticmethod
@@ -2511,10 +2528,10 @@ class DesktopService:
         enable_questions = getattr(self._adapter(), "enable_questions", None)
         if enable_questions is not None:
             await enable_questions(session_id)
-        if self._is_evolution(self.store.load_manifest(session_id)):
+        manifest = self.store.load_manifest(session_id)
+        if self._is_evolution(manifest):
             return
-        settings = self._productivity_provider(provider)
-        if Capability.USER_APPROVALS not in self._capabilities(settings.type):
+        if Capability.USER_APPROVALS not in self._session_capabilities(manifest):
             return
         await self._adapter().enable_user_approvals(session_id)
 

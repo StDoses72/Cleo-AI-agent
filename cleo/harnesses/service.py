@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from cleo.harnesses.capabilities import Capability, capabilities_of
 from cleo.harnesses.context import ContextBinding, ConversationContext
 from cleo.harnesses.control import (
     HarnessAccount,
@@ -885,6 +886,14 @@ class AgentService:
             project=route.project,
             parent_session_id=session_id,
         )
+
+    def session_capabilities(self, session_id: str) -> frozenset[Capability]:
+        """Return the capabilities of the provider actually bound to this session."""
+        return capabilities_of(self._route(session_id).provider)
+
+    def session_provider_type(self, session_id: str) -> str:
+        """Return the bound provider type, even after its configuration is replaced."""
+        return self._route(session_id).provider.provider_type
 
     def can_rewind(self, session_id: str) -> bool:
         """Purpose: Report whether earlier user messages can be edited in place.

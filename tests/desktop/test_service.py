@@ -132,7 +132,17 @@ class FakeProductivity:
         return cls.providers[name]
 
 
-class FakeAdapter:
+class FakeProviderMetadata:
+    provider_type = "codex_sdk"
+
+    def session_provider_type(self, _session_id):
+        return self.provider_type
+
+    def session_capabilities(self, _session_id):
+        return DesktopService._capabilities(self.provider_type)
+
+
+class FakeAdapter(FakeProviderMetadata):
     def __init__(self, store: SessionStore) -> None:
         self.store = store
         self.created_with = None
@@ -244,6 +254,126 @@ def _service(tmp_path: Path) -> DesktopService:
 
 async def _async_none() -> None:
     pass
+
+
+async def _replaced_live_provider(tmp_path, monkeypatch):
+    from cleo.config.settings import (
+        AcpHarnessOptions,
+        AcpHarnessSettings,
+        CodexHarnessSettings,
+        ProductivitySettings,
+    )
+    from cleo.harnesses.provider import ProviderSession
+    from cleo.harnesses.service import AgentService
+    from cleo.integrations.harnesses.acp import AcpAgentSpec, AcpProvider
+    from cleo.integrations.harnesses.codex import CodexProvider
+
+    service = _service(tmp_path)
+    settings = ProductivitySettings(default_provider="shared", providers={
+        "shared": AcpHarnessSettings(
+            model="old-model", options=AcpHarnessOptions(command="unused"),
+        ),
+    })
+    service.settings.productivity = settings
+    adapter = AgentService(tmp_path / "workspace", session_store=service.store)
+    service._adapter_instance = adapter
+    old = AcpProvider("shared", AcpAgentSpec(command="unused"))
+    new = CodexProvider("new-model", name="shared")
+    for provider, native, initial in (
+        (old, "old-native", SessionOptions(model="old-model", approval_mode="user")),
+        (new, "new-native", SessionOptions(model="new-model", approval_mode="deny_all",
+                                         sandbox="workspace-write")),
+    ):
+        options = {"value": initial}
+
+        async def update(_session_id, _options=options, **changes):
+            _options["value"] = SessionOptions(**{
+                **_options["value"].as_dict(),
+                **{key: value for key, value in changes.items() if value is not None},
+            })
+            return _options["value"]
+
+        monkeypatch.setattr(provider, "create_session", AsyncMock(
+            return_value=ProviderSession(id=native, native_id=native),
+        ))
+        monkeypatch.setattr(provider, "session_options", lambda _, state=options: state["value"])
+        monkeypatch.setattr(provider, "update_session_options", update)
+        monkeypatch.setattr(provider, "enable_user_approvals", AsyncMock())
+        monkeypatch.setattr(provider, "close", AsyncMock())
+    monkeypatch.setattr(new, "enable_questions", AsyncMock())
+    monkeypatch.setattr(new, "pending_questions", lambda _: [])
+    monkeypatch.setattr(new, "permission_capabilities", lambda _: {})
+    monkeypatch.setattr(new, "session_native_id", lambda session_id: session_id)
+    adapter.register(old)
+    old_thread = await service.create_thread(
+        space="productivity", project_id_value="productivity:workspace", provider="shared",
+    )
+    settings.providers["shared"] = CodexHarnessSettings(model="new-model")
+    adapter.register(new, replace=True)
+    return service, old_thread["id"], old, new
+
+
+def test_live_capabilities_and_permissions_survive_same_name_provider_replacement(
+    tmp_path, monkeypatch,
+):
+    async def scenario():
+        service, old_id, old, _new = await _replaced_live_provider(tmp_path, monkeypatch)
+        manifest = service.store.load_manifest(old_id)
+        profile = service._runtime_profile(manifest)
+        assert not service._rewindable(manifest)
+        assert profile["steerMode"] == "boundary"
+        assert not profile["supportsQuestions"] and not profile["supportsFastMode"]
+        assert profile["permissionOptions"]["access"] == []
+        assert {item["value"] for item in profile["permissionOptions"]["approval"]} == {
+            "user", "auto_allow", "deny_all",
+        }
+        assert (profile["model"], profile["access"], profile["approval"]) == (
+            "old-model", "default", "user",
+        )
+        assert profile["models"] == ["old-model"]
+        with pytest.raises(ValueError, match="不支持编辑"):
+            await service.rewind_thread(thread_id=old_id, item_id="unused")
+        changed = await service.update_runtime(thread_id=old_id, update={"approval": "auto_allow"})
+        assert changed["approval"] == "auto_allow"
+        await service._enable_desktop_approvals(old_id, "shared")
+        assert old.enable_user_approvals.await_count == 2
+
+        new_thread = await service.create_thread(
+            space="productivity", project_id_value="productivity:workspace", provider="shared",
+        )
+        new_manifest = service.store.load_manifest(new_thread["id"])
+        assert service._rewindable(new_manifest)
+        assert new_thread["runtime"]["steerMode"] == "native"
+        assert new_thread["runtime"]["supportsQuestions"]
+        assert new_thread["runtime"]["supportsFastMode"]
+        assert new_thread["runtime"]["permissionOptions"]["access"]
+        assert new_thread["runtime"]["approval"] == "deny_all"
+        changed = await service.update_runtime(
+            thread_id=new_thread["id"], update={"model": "selected-model"},
+        )
+        assert changed["models"] == ["selected-model", "new-model"]
+
+        del service.settings.productivity.providers["shared"]
+        service._adapter().unregister("shared")
+        assert service._runtime_profile(manifest)["steerMode"] == "boundary"
+        assert service._runtime_profile(new_manifest)["steerMode"] == "native"
+        assert service._local_skills(manifest) == []
+        await service._adapter().aclose()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("update", [
+    {"serviceTier": "fast"}, {"access": "workspace-write"}, {"approval": "auto_review"},
+])
+def test_live_provider_rejects_replacement_only_runtime_options(tmp_path, monkeypatch, update):
+    async def scenario():
+        service, old_id, _old, _new = await _replaced_live_provider(tmp_path, monkeypatch)
+        with pytest.raises(ValueError):
+            await service.update_runtime(thread_id=old_id, update=update)
+        await service._adapter().aclose()
+
+    asyncio.run(scenario())
 
 
 def test_chat_computer_prompt_keeps_instructions_out_of_live_and_saved_display(tmp_path):
@@ -369,6 +499,8 @@ def test_desktop_preserves_codex_approval_policy(tmp_path, entry, approval):
             provider="codex", owner_type="user", cwd=str(tmp_path / "workspace"),
         )
         adapter = SimpleNamespace(
+            provider_type="codex_sdk",
+            capabilities=DesktopService._capabilities("codex_sdk"),
             session_options=lambda _: SessionOptions(
                 approval_mode=approval, sandbox="workspace-write"
             ),
@@ -763,7 +895,7 @@ def test_parallel_workspace_edits_do_not_create_a_cross_task_undo(tmp_path):
                                          provider="codex", owner_type="user", cwd=str(cwd))
             service._productivity_sessions[name] = object()
 
-        class Adapter:
+        class Adapter(FakeProviderMetadata):
             async def prompt(self, session_id, _prompt, *, on_event):
                 ready[session_id].set()
                 await release.wait()
@@ -1080,7 +1212,7 @@ def test_productivity_turn_persists_and_emits_exact_change_history(
         monkeypatch.setattr("cleo.desktop.service.read_git_checkpoint_diff", lambda _value: diff)
         monkeypatch.setattr("cleo.desktop.service.read_git_diff", lambda _cwd: "")
 
-        class Adapter:
+        class Adapter(FakeProviderMetadata):
             async def prompt(self, _session_id, _prompt, *, on_event):
                 return SimpleNamespace(response="done", status="completed", error=None)
 
@@ -1134,7 +1266,7 @@ def test_productivity_turn_emits_streamed_history_without_git_checkpoint(
         monkeypatch.setattr("cleo.desktop.service.create_git_checkpoint", lambda *_args: None)
         monkeypatch.setattr("cleo.desktop.service.read_git_diff", lambda _cwd: None)
 
-        class Adapter:
+        class Adapter(FakeProviderMetadata):
             async def prompt(self, _session_id, _prompt, *, on_event):
                 await on_event(
                     AgentEvent(
@@ -1186,7 +1318,7 @@ def test_productivity_turn_warns_when_the_undo_record_cannot_be_saved(
         monkeypatch.setattr("cleo.desktop.service.create_git_checkpoint", fail)
         monkeypatch.setattr("cleo.desktop.service.read_git_diff", lambda _cwd: None)
 
-        class Adapter:
+        class Adapter(FakeProviderMetadata):
             async def prompt(self, _session_id, _prompt, *, on_event):
                 return SimpleNamespace(response="done", status="completed", error=None)
 
@@ -1246,7 +1378,9 @@ def test_acp_completed_tool_refreshes_changes_before_turn_finishes(
 +after
 """
 
-        class Adapter:
+        class Adapter(FakeProviderMetadata):
+            provider_type = "acp"
+
             async def prompt(self, _session_id, _prompt, *, on_event):
                 await on_event(
                     AgentEvent(
@@ -1411,9 +1545,11 @@ def test_codex_speed_is_created_updated_and_projected_from_saved_options(tmp_pat
         manifest = service.store.load_manifest(thread["id"])
         assert manifest["runtime_options"]["service_tier"] == "default"
         assert service._runtime_profile(manifest)["serviceTier"] == "default"
+        for tier in ("default", "fast"):
+            service._validate_service_tier(service._capabilities("codex_sdk"), tier)
         for provider, tier in [("claude_sdk", "fast"), ("codex_sdk", "invalid")]:
             with pytest.raises(ValueError, match="速度档位"):
-                service._validate_service_tier(provider, tier)
+                service._validate_service_tier(service._capabilities(provider), tier)
 
     asyncio.run(scenario())
 

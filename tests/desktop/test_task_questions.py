@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from cleo.desktop.service import DesktopService
+from cleo.harnesses.capabilities import Capability
 from cleo.harnesses.control import SessionOptions
 from cleo.harnesses.provider import ProviderSession
 from cleo.harnesses.questions import QuestionBroker, normalize_questions
@@ -18,6 +19,8 @@ class QuestionProvider:
     """A harness whose sessions own a real QuestionBroker, like Codex and Claude do."""
 
     name = "codex"
+    provider_type = "codex_sdk"
+    capabilities = frozenset({Capability.QUESTIONS, Capability.USER_APPROVALS})
 
     def __init__(self) -> None:
         self.brokers: dict[str, QuestionBroker] = {}
