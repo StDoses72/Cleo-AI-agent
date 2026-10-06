@@ -26,6 +26,7 @@ from claude_agent_sdk import (
 )
 
 from cleo.harnesses.approvals import PermissionBroker
+from cleo.harnesses.capabilities import Capability
 from cleo.harnesses.control import HarnessModel, SessionOptions
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 from cleo.harnesses.provider import ProviderSession, ProviderTurn
@@ -86,6 +87,9 @@ class ClaudeProvider:
     """
 
     name = "claude"
+    capabilities = frozenset({
+        Capability.REWIND, Capability.QUESTIONS, Capability.USER_APPROVALS,
+    })
 
     def __init__(
         self,
