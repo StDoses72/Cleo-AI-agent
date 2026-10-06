@@ -7,8 +7,8 @@
     "provider": "second_agent"
   },
   "before": {
-    "message": "'second_agent'",
-    "name": "KeyError"
+    "message": "未找到开发任务 harness：second_agent。请先在设置中添加。",
+    "name": "ValueError"
   },
   "config": {
     "error": null,
@@ -16,8 +16,8 @@
     "version": 3
   },
   "disabled": {
-    "message": "'Unknown agent provider: second_agent'",
-    "name": "KeyError"
+    "message": "Harness 'second_agent' 已禁用或不可用。",
+    "name": "ValueError"
   },
   "initial": [
     "scripted",

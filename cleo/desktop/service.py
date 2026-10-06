@@ -886,6 +886,8 @@ class DesktopService:
             if not Path(project_path).is_dir():
                 raise ValueError(f"工作目录不存在或不是文件夹：{project_path}")
             provider_settings = self._productivity_provider(provider_name)
+            if not provider_settings.enabled or provider_name not in adapter.providers:
+                raise ValueError(f"Harness {provider_name!r} 已禁用或不可用。")
             if service_tier is not None:
                 self._validate_service_tier(provider_settings.type, service_tier)
             selected_model = model or provider_settings.model
@@ -2512,11 +2514,15 @@ class DesktopService:
         """Purpose: Resolve configured or built-in task settings without writing defaults.
 
         Input: Stable provider name. Output: Existing configuration or runtime-only preset.
+        Raises ValueError for a name that is neither configured nor a built-in preset.
         """
         try:
             return self.settings.productivity.provider(name)
         except KeyError:
-            return task_providers(self.settings.productivity)[name]
+            presets = task_providers(self.settings.productivity)
+        if name not in presets:
+            raise ValueError(f"未找到开发任务 harness：{name}。请先在设置中添加。")
+        return presets[name]
 
     def _adapter(self) -> Any:
         if self._adapter_instance is None:
