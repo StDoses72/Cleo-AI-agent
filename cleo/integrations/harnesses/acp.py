@@ -84,6 +84,7 @@ class _AcpClientHost:
         self._callback: EventCallback | None = None
         self.events: list[AgentEvent] = []
         self.response_parts: list[str] = []
+        self._todo_tool_ids: set[str] = set()
 
     def begin_turn(self, callback: EventCallback | None) -> None:
         """开始一次新 turn, 重置事件与响应缓冲。
@@ -96,6 +97,7 @@ class _AcpClientHost:
         self._callback = callback
         self.events.clear()
         self.response_parts.clear()
+        self._todo_tool_ids.clear()
         self._turn_active = True
         self.approvals.callback = self._permission_event
         self.approvals.reviewed_items.clear()
@@ -132,6 +134,22 @@ class _AcpClientHost:
             "tool_call_update": "tool_result",
             "plan": "plan_update",
         }.get(native_event_type, "provider_event")
+        plan_event = None
+        if native_event_type in {"tool_call", "tool_call_update"}:
+            # OpenCode reports TodoWrite as a tool; later updates can omit its title.
+            tool_id = data.get("toolCallId")
+            if tool_id and str(data.get("title") or "").casefold() == "todowrite":
+                self._todo_tool_ids.add(tool_id)
+            raw_input = data.get("rawInput")
+            todos = raw_input.get("todos") if isinstance(raw_input, dict) else None
+            if (tool_id in self._todo_tool_ids and data.get("status") != "failed"
+                    and isinstance(todos, list)):
+                plan_event = AgentEvent(
+                    provider=self._provider, type="plan_update", data={"plan": [
+                        {"step": todo.get("content"), "status": todo.get("status")}
+                        for todo in todos if isinstance(todo, dict)
+                    ]},
+                )
         content = data.get("content") or {}
         text = content.get("text") if isinstance(content, dict) else None
         data = {
@@ -140,10 +158,13 @@ class _AcpClientHost:
             "payload": data,
         }
         event = AgentEvent(provider=self._provider, type=event_type, text=text, data=data)
-        self.events.append(event)
+        outgoing = [event] if plan_event is None else [event, plan_event]
+        self.events.extend(outgoing)
         if native_event_type == "agent_message_chunk" and text:
             self.response_parts.append(text)
-        await emit_event(self._callback, event)
+        callback = self._callback
+        for emitted in outgoing:
+            await emit_event(callback, emitted)
 
     async def request_permission(
         self,
