@@ -99,14 +99,15 @@
 
 .approval-options {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
   gap: 8px;
 }
 
 .approval-option {
+  position: relative;
   display: flex;
   min-width: 0;
-  min-height: 56px;
+  min-height: 60px;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -116,28 +117,31 @@
   color: var(--text);
   background: var(--surface);
   text-align: left;
-  transition: background 140ms ease, transform 140ms ease, box-shadow 140ms ease;
+  transition: background 140ms ease, box-shadow 140ms ease;
 }
 
-.approval-option:hover {
+.approval-option:not(.primary):hover:not(:disabled) {
   background: var(--surface-hover);
   box-shadow: var(--shadow-sm);
-  transform: translateY(-1px);
 }
 
 .approval-option:disabled {
   cursor: wait;
   opacity: 0.6;
-  transform: none;
   box-shadow: none;
 }
+
+.approval-option.danger:hover:not(:disabled) {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+}
+
+.approval-option.danger:hover:not(:disabled) small { color: color-mix(in srgb, var(--danger) 70%, var(--muted)); }
 
 .approval-option.primary {
   color: var(--accent-ink);
   background: var(--accent);
 }
-
-.approval-option.primary:hover { background: var(--accent-strong); }
 
 .approval-option span { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
 .approval-option strong { overflow: hidden; color: inherit; font-size: var(--font-size-control); font-weight: 650; text-overflow: ellipsis; white-space: normal; }
@@ -148,6 +152,90 @@
   border-color: color-mix(in srgb, var(--accent-ink) 25%, transparent);
   color: color-mix(in srgb, var(--accent-ink) 85%, transparent);
   background: color-mix(in srgb, var(--accent-ink) 12%, transparent);
+}
+
+/* Allow is a split control: the main button runs the chosen mode, the chevron switches it. */
+.approval-allow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  overflow: visible;
+}
+
+.approval-allow:hover { box-shadow: var(--shadow-sm); }
+
+.approval-allow-main,
+.approval-allow-toggle {
+  display: flex;
+  align-items: center;
+  color: inherit;
+  transition: background 140ms ease;
+}
+
+.approval-allow-main {
+  min-width: 0;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px 10px 14px;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+  text-align: left;
+}
+
+.approval-allow-toggle {
+  width: 40px;
+  justify-content: center;
+  border-left: 1px solid color-mix(in srgb, var(--accent-ink) 18%, transparent);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+
+.approval-allow-main:hover:not(:disabled),
+.approval-allow-toggle:hover:not(:disabled),
+.approval-allow.menu-open .approval-allow-toggle { background: color-mix(in srgb, var(--accent-ink) 10%, transparent); }
+.approval-allow-main:disabled,
+.approval-allow-toggle:disabled { cursor: wait; opacity: 0.6; }
+.approval-allow-toggle svg { transition: transform 160ms ease; }
+.approval-allow.menu-open .approval-allow-toggle svg { transform: rotate(180deg); }
+
+.approval-allow-options {
+  position: absolute;
+  z-index: 30;
+  right: 0;
+  bottom: calc(100% + 6px);
+  left: 0;
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: none;
+  animation: pop-in 140ms ease both;
+}
+
+.approval-option .approval-allow-options button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  text-align: left;
+}
+
+.approval-option .approval-allow-options button:hover { background: var(--surface-hover); }
+.approval-option .approval-allow-options button[aria-checked="true"] { background: var(--surface); }
+.approval-option .approval-allow-options button > svg { flex: 0 0 auto; color: var(--text); }
+.approval-option .approval-allow-options span { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.approval-option .approval-allow-options strong { color: var(--text); font-size: var(--font-size-control); font-weight: 600; }
+.approval-option .approval-allow-options small { color: var(--muted); font-size: var(--font-size-caption); }
+.approval-option .approval-allow-options kbd {
+  border-color: var(--border);
+  color: var(--muted);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
 }
 
 .approval-footer {

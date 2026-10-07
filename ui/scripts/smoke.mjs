@@ -290,6 +290,8 @@ try {
   await window.getByTestId("send-button").click();
   await window.getByTestId("approval-prompt").waitFor({ timeout: 10_000 });
   await window.screenshot({ path: join(outputDir, "04b-approval-request.png") });
+  await window.getByTestId("approval-allow-menu").click();
+  await window.getByTestId("approval-session-choice").click();
   await window.getByTestId("approval-session").click();
   await window.getByTestId("approval-prompt").waitFor({ state: "detached" });
   await window.getByTestId("composer-input").waitFor({ state: "visible", timeout: 20_000 });
