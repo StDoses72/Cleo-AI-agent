@@ -139,7 +139,9 @@ class TaskHarnessTests(unittest.IsolatedAsyncioTestCase):
         service._thread = AsyncMock(return_value={"id": "new-task"})
         service.store = SimpleNamespace(load_manifest=lambda _: {"id": "new-task"})
         create_session = AsyncMock(return_value=SimpleNamespace(id="new-task"))
-        service._adapter_instance = SimpleNamespace(create_session=create_session)
+        service._adapter_instance = SimpleNamespace(
+            create_session=create_session, providers=("claude",),
+        )
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "harnesses.json"
             path.write_text('{}', encoding="utf-8")

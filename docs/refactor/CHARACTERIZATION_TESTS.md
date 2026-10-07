@@ -103,7 +103,7 @@ CLEO_UPDATE_GOLDEN=1 .venv/Scripts/python.exe -m pytest tests/characterization -
 | Q5 | 缺少 `sessions.sqlite3` 时 `load_workspace` 返回空线程列表，直到某个线程被按 ID 打开才重建索引 | `legacy/missing_index` | 只有 `load_manifest` 未命中时才 `rebuild_index`；与架构文档"可由 manifest 重建"不符 |
 | Q6 | ACP 任务默认审批是 `deny_all`，桌面虽然调用了 `enable_user_approvals`，权限请求仍被自动拒绝，用户要手动改成 `user` | `productivity/permission_denied_by_policy` | approval broker 的 enabled 与 host 的 approval_mode 是两个独立开关 |
 | Q7 | 通过 ACP `fs/write_text_file` 新建的文件不出现在 `changes`，却出现在 change history | `productivity/tool_turn` | `read_git_diff` 不含未跟踪文件，checkpoint diff 含 |
-| Q8 | 未知 provider 创建任务时，界面收到原始的 `KeyError: 'does-not-exist'` | `productivity/create_delete` | `_productivity_provider` 直接抛出 `KeyError` |
+| Q8 | **已修复（S9）**：原先未知 provider 创建任务时，界面收到原始的 `KeyError: 'does-not-exist'`，已禁用的 provider 则是 `KeyError: 'Unknown agent provider: …'`；现在分别提示“未找到开发任务 harness：…。请先在设置中添加。”和“Harness '…' 已禁用或不可用。” | `productivity/create_delete`、`workspace/hot_reload_harnesses` | `_productivity_provider` 对未知名称抛 `ValueError`；`create_thread` 在创建会话前检查 provider 已启用并已注册 |
 | Q9 | （已随 CLI 在 v0.8 移除）`python -m cleo.cli.application` 什么都不做 | — | CLI 整体移除后不再适用 |
 | Q10 | 模型调用失败不会产生 `error` 流事件，而是协议级错误回复；持久化的错误文本是 SDK 原文 | `chat/model_failure` | `_stream_chat` 只把 `CancelledError` 转成事件 |
 | Q11 | **竞态（已观察到）**：ACP `session/update` 通知被并发处理，落盘与实时推送的顺序没有保证。在机器高负载时实际观察到：同一个工具调用"运行中"的更新晚于"完成"到达，实时界面上这个工具一直显示运行中，重新加载后才变化。`prompt` 响应也可能先于最后几条通知处理完 | 无（假 agent 以 0.25 秒间隔发通知规避，见 `fake_acp_agent.PACE`；高负载下仍可能偶发） | `acp/connection.py:158` 为每条通知单独创建任务；`AgentService._prompt` 的 relay 在各任务里 `to_thread` 追加事件 |
