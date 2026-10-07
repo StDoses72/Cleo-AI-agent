@@ -232,7 +232,7 @@ export function Conversation({
   const stateKey = (id: string) => `${thread?.id}:${id}`;
   const isOpen = (block: TimelineBlock) => {
     const saved = expansion[stateKey(block.id)];
-    if (block.type === "thought-group") return block.hasAnswer && !saved?.answered ? false : saved?.open ?? !block.hasAnswer;
+    if (block.type === "thought-group") return block.hasAnswer && !saved?.answered ? false : saved?.open ?? false;
     return saved?.open ?? false;
   };
   const toggle = (id: string, open: boolean, answered = false) => setExpansion(current => {
@@ -913,10 +913,12 @@ function ThoughtGroupEntry({
   headerOnly?: boolean;
   active?: boolean;
 }) {
-  const [localExpanded, setExpanded] = useState(!item.hasAnswer);
+  const [localExpanded, setExpanded] = useState(false);
   const expanded = controlled ?? localExpanded;
   const running = active ?? item.thoughts.some((thought) => thought.status === "running");
   const summary = `${item.thoughts.length} 条`;
+  const runningThought = item.thoughts.findLast((thought) => thought.status === "running");
+  const live = runningThought && !expanded ? liveLine(runningThought.content) : "";
 
   return (
     <section className={`thought-group ${running ? "running" : "done"}`} data-testid="thought-group">
@@ -931,6 +933,7 @@ function ThoughtGroupEntry({
         <span className="tool-group-copy">
           <strong>思考过程</strong>
           <small>{summary}</small>
+          {live ? <span className="tool-group-live" aria-live="polite">{live}</span> : null}
         </span>
         <span className="tool-group-actions">
           {running ? <LoaderCircle className="spin" size={15} /> : null}
@@ -1005,6 +1008,8 @@ function ToolGroupEntry({ item, expanded: controlled, onToggle, headerOnly = fal
   const errorCount = item.tools.filter((tool) => tool.status === "error" && !tool.approvalAudit).length;
   const status = (active ?? Boolean(runningCount)) ? "running" : errorCount ? "error" : "done";
   const summary = errorCount ? `${item.tools.length} 项 · ${errorCount} 项失败` : `${item.tools.length} 项`;
+  const runningTool = !expanded ? item.tools.findLast((tool) => tool.status === "running") : undefined;
+  const live = runningTool ? liveLine([runningTool.name, runningTool.command].filter(Boolean).join(" · ")) : "";
   return (
     <section className={`tool-group ${status}`} data-testid="tool-group">
       <button
@@ -1016,6 +1021,7 @@ function ToolGroupEntry({ item, expanded: controlled, onToggle, headerOnly = fal
         <span className="tool-group-copy">
           <strong>工具过程</strong>
           <small>{summary}</small>
+          {live ? <span className="tool-group-live" aria-live="polite">{live}</span> : null}
         </span>
         <span className="tool-group-actions">
           {status === "running" ? <LoaderCircle className="spin" size={15} /> : null}
@@ -1031,6 +1037,16 @@ function ToolGroupEntry({ item, expanded: controlled, onToggle, headerOnly = fal
       ) : null}
     </section>
   );
+}
+
+/** Purpose: One quiet line of what the harness is doing right now, without markdown or line breaks. */
+function liveLine(content: string | undefined) {
+  if (!content) return "";
+  const line = content
+    .split(/\r?\n/)
+    .map((part) => part.replace(/^[#>*\-\s`]+/, "").replace(/[*_`]+/g, "").trim())
+    .find(Boolean) ?? "";
+  return line.length > 72 ? `${line.slice(0, 72)}…` : line;
 }
 
 function ToolProcess({ tool, index, open, onToggle }: { tool: ToolTimelineItem; index: number; open?: boolean; onToggle?: (open: boolean) => void }) {

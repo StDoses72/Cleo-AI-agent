@@ -56,7 +56,7 @@ tests/                        与上述 Python 责任域对应的测试
 
 `load_timeline` 按逻辑条目提供 `latest` / `before` / `after` 游标分页，默认每页 80 条。会话目录中的 `.desktop-timeline-v1.sqlite3` 是可重建索引；`events.jsonl` 仍是事实源。索引只增量读取追加事件，工具结果、计划、提问和回答按稳定 ID 更新原条目。索引重建会使旧游标失效，界面可通过“回到最新”恢复。
 
-Renderer 最多缓存 500 条、约 4 MiB 的预览内容，动态高度虚拟列表只挂载可见行和缓冲行。长正文通过 `read_timeline_content` 分段读取。浏览历史时不会自动跳到新消息；页面查找和跨屏选择只覆盖挂载的内容。这些限制不改变模型上下文或删除持久历史。过程文字在同一轮首次出现非空最终回答时自动收起一次，随后保留用户的展开选择。
+Renderer 最多缓存 500 条、约 4 MiB 的预览内容，动态高度虚拟列表只挂载可见行和缓冲行。长正文通过 `read_timeline_content` 分段读取。浏览历史时不会自动跳到新消息；页面查找和跨屏选择只覆盖挂载的内容。这些限制不改变模型上下文或删除持久历史。思考与工具过程组默认收起，运行中只在组标题里显示一行当前步骤的摘要，不会随着事件到达弹出新的卡片；用户展开后，同一轮首次出现非空最终回答时自动收起一次，随后保留用户的展开选择。
 
 Codex `item/tool/requestUserInput` 与 Claude `AskUserQuestion` 接入独立的 `QuestionBroker`，通过 `question_request` / `question_response` 持久化，桌面端使用 `get_pending_questions` / `resolve_question`。必须显式提交所有问题；权限自动批准策略、弹窗收起和超时都不会代答。取消运行会释放等待，重启后旧问题显示连接失效；不支持原生提问的入口继续使用文本对话。Claude 支持原生多选，Codex 使用其当前单选/文本协议。
 

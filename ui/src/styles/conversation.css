@@ -699,6 +699,18 @@
   gap: 8px;
 }
 
+/* Live summary of the running step: one muted line, no layout change when it updates. */
+.tool-group-live {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--font-size-caption);
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .tool-group-copy strong {
   color: var(--text);
   font-size: var(--font-size-control);
@@ -757,9 +769,28 @@
 }
 
 .virtual-process-row {
-  margin: 0 0 12px 30px;
-  padding: 12px 16px;
+  margin: 0 0 8px 30px;
+  padding: 6px 14px 6px 16px;
   border-left: 2px solid var(--border);
+}
+
+/* Expanded process rows read as quiet notes, never as cards: no fill, body-sized text, plain headings. */
+.virtual-process-row .thought-copy,
+.thought-process-list .thought-copy {
+  color: var(--muted);
+  font-size: var(--font-size-control);
+  line-height: 1.6;
+}
+
+.thought-copy h1,
+.thought-copy h2,
+.thought-copy h3,
+.thought-copy h4 {
+  margin: 0 0 4px;
+  color: var(--text-soft);
+  font-size: inherit;
+  font-weight: 600;
+  line-height: inherit;
 }
 
 .tool-process {

@@ -70,7 +70,7 @@
 :root .thread-status-label { color: var(--highlight-ink); background: var(--highlight); font-weight: 600; }
 :root .thread-status-label.attention { color: var(--highlight-ink); background: var(--highlight); }
 :root .thread-delete-button { border-radius: 50%; box-shadow: var(--shadow-sm); }
-:root .sidebar-empty { border: 0; background: var(--surface-active); }
+:root .sidebar-empty { min-height: 120px; border: 1px dashed var(--border-strong); background: transparent; color: var(--muted-2); }
 :root .sidebar-footer::before { background: var(--highlight); }
 :root .memory-nav-row { border-radius: var(--radius-md); font-weight: 500; }
 :root .memory-nav-row.active { background: var(--canvas); box-shadow: var(--shadow-sm); }
@@ -113,14 +113,15 @@
 :root .thought-group:hover,
 :root .tool-group:hover { border-color: transparent; background: var(--surface-hover); }
 :root .thought-group.running,
-:root .tool-group.running { border: 0; box-shadow: inset 0 0 0 2px var(--highlight); }
+:root .tool-group.running { border: 0; box-shadow: none; }
 :root .thought-icon,
 :root .tool-icon { border-radius: 8px; background: var(--canvas); box-shadow: var(--shadow-sm); }
 :root .thought-group.running .thought-icon,
 :root .tool-group.running .tool-icon { color: var(--highlight-ink); background: var(--highlight); box-shadow: none; }
 :root .tool-group-copy small { background: var(--canvas); }
 :root .tool-process-list,
-:root .thought-process-list,
+:root .thought-process-list { background: transparent; }
+:root .thought-process-list.virtual-process-row { background: transparent; border-left-color: var(--surface-active); }
 :root .tool-process pre { background: color-mix(in srgb, var(--surface-active) 60%, transparent); }
 :root .timeline-section-heading svg,
 :root .section-kicker svg,
@@ -164,7 +165,7 @@
 }
 :root[data-theme="dark"] .composer { border-color: var(--border-strong); }
 :root .composer:focus-within { border-color: var(--border-strong); box-shadow: var(--shadow-lg); }
-:root .composer.running { border-color: var(--highlight); }
+:root .composer.running { border-color: var(--border); }
 :root .composer textarea { font-size: 15px; }
 :root .text-control { height: 32px; padding: 0 12px; background: var(--surface); font-weight: 500; }
 :root .text-control:hover,
