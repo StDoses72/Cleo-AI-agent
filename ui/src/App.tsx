@@ -183,7 +183,7 @@ export function App() {
   const [undoingChanges, setUndoingChanges] = useState(false);
   const [memoryView, setMemoryView] = useState<MemoryViewMode>("all");
   const [theme, setTheme] = useState<"dark" | "light">(() =>
-    localStorage.getItem("cleo-theme") === "light" ? "light" : "dark",
+    localStorage.getItem("cleo-theme") === "dark" ? "dark" : "light",
   );
   const [motionEnabled, setMotionEnabled] = useState(() => localStorage.getItem("cleo-motion") !== "reduced");
   const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);

@@ -1,12 +1,12 @@
 /*
- * Cleo design tokens.
+ * Cleo design tokens — "linen" palette.
  *
- * Layering model (dark shown, light mirrors it):
- *   chrome   → window frame, rail, sidebar, title bar (deepest layer)
- *   canvas   → raised work panels: conversation, inspector, memory
- *   surface  → cards, inputs, menus that sit on a panel
- *   raised   → popovers, dialogs, composer (highest layer)
- * The old variable names stay valid so component stylesheets keep working.
+ * One restrained colour family per theme:
+ *   linen (chrome)  → window frame, rail, sidebar
+ *   paper (canvas)  → work panels: conversation, inspector, memory
+ *   charcoal        → text and the single primary action colour
+ *   sage            → the one highlight for running / attention states
+ * Everything else is a tint of those four. Light is the primary mode.
  */
 :root {
   --font-ui: "Inter", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI",
@@ -15,23 +15,23 @@
   --font-code: "JetBrains Mono", "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   --mono: var(--font-code);
 
-  --font-size-body: 14px;
-  --font-size-control: 13px;
-  --font-size-caption: 12px;
+  --font-size-body: 15px;
+  --font-size-control: 13.5px;
+  --font-size-caption: 12.5px;
   --font-size-dialog-title: 18px;
-  --font-size-page-title: 26px;
-  --line-height-body: 1.65;
+  --font-size-page-title: 28px;
+  --line-height-body: 1.7;
 
-  --radius-xs: 6px;
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 20px;
+  --radius-xs: 8px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 22px;
   --radius-pill: 999px;
 
-  --gutter: 8px;
-  --rail-width: 60px;
-  --titlebar-height: 40px;
+  --gutter: 10px;
+  --rail-width: 64px;
+  --titlebar-height: 44px;
 
   --ease-out: cubic-bezier(0.2, 0.75, 0.2, 1);
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
@@ -41,81 +41,83 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 
-  /* Dark theme (default) */
-  color: #eef2f7;
-  background: #0b0d11;
+  /* Light theme (default) */
+  color: #2b2a27;
+  background: #f1f0ec;
 
-  --chrome: #0b0d11;
-  --sidebar: #0b0d11;
-  --canvas: #15181e;
-  --surface: #1b1f27;
-  --surface-raised: #20252e;
-  --surface-hover: #262c36;
-  --surface-active: #2d3440;
-  --panel-border: rgba(150, 166, 190, 0.12);
-  --border: rgba(150, 166, 190, 0.1);
-  --border-strong: rgba(150, 166, 190, 0.2);
+  --chrome: #f1f0ec;
+  --sidebar: #f1f0ec;
+  --canvas: #fcfbf9;
+  --surface: #f4f3ef;
+  --surface-raised: #ffffff;
+  --surface-hover: #ebe9e4;
+  --surface-active: #e3e0d9;
+  --panel-border: transparent;
+  --border: rgba(43, 42, 39, 0.07);
+  --border-strong: rgba(43, 42, 39, 0.13);
 
-  --text: #eef2f7;
-  --text-soft: #c9d1dc;
-  --muted: #8d97a7;
-  --muted-2: #6f7a8c;
+  --text: #2b2a27;
+  --text-soft: #4b4945;
+  --muted: #7f7c75;
+  --muted-2: #a29f98;
   --text-muted: var(--muted);
 
-  --accent: #5fe3ec;
-  --accent-strong: #a4f3f7;
-  --accent-soft: rgba(95, 227, 236, 0.12);
-  --accent-ink: #052226;
-  --accent-gradient: linear-gradient(135deg, #8df3f6 0%, #4fd4e6 52%, #4aa6ee 100%);
-  --accent-glow: 0 0 0 1px rgba(95, 227, 236, 0.28), 0 0 24px rgba(95, 227, 236, 0.14);
+  --accent: #4f4d48;
+  --accent-strong: #3b3936;
+  --accent-soft: rgba(79, 77, 72, 0.08);
+  --accent-ink: #faf9f6;
+  --accent-gradient: linear-gradient(#4f4d48, #4f4d48);
+  --accent-glow: none;
+  --highlight: #d3dfb8;
+  --highlight-ink: #33401f;
 
-  --success: #74d89d;
-  --warning: #f0b96c;
-  --danger: #f3838c;
-  --purple: #b3a6f2;
+  --success: #5f9a6e;
+  --warning: #c0923a;
+  --danger: #c96b63;
+  --purple: #8a7fc4;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 10px rgba(0, 0, 0, 0.18);
-  --shadow: 0 18px 48px rgba(0, 0, 0, 0.42), 0 2px 8px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 30px 90px rgba(0, 0, 0, 0.55), 0 4px 16px rgba(0, 0, 0, 0.35);
-  --panel-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 10px 30px rgba(0, 0, 0, 0.22);
-  --canvas-glow: radial-gradient(900px 420px at 18% -10%, rgba(95, 227, 236, 0.07), transparent 60%);
+  --shadow-sm: 0 1px 2px rgba(43, 42, 39, 0.04), 0 2px 8px rgba(43, 42, 39, 0.04);
+  --shadow: 0 12px 36px rgba(43, 42, 39, 0.08), 0 1px 2px rgba(43, 42, 39, 0.04);
+  --shadow-lg: 0 30px 80px rgba(43, 42, 39, 0.14);
+  --panel-shadow: 0 1px 2px rgba(43, 42, 39, 0.03), 0 10px 30px rgba(43, 42, 39, 0.04);
+  --canvas-glow: none;
 }
 
-:root[data-theme="light"] {
-  color: #0f1a2b;
-  background: #e6e9ef;
+:root[data-theme="dark"] {
+  color: #e6e4df;
+  background: #1c1c1a;
 
-  --chrome: #e6e9ef;
-  --sidebar: #e6e9ef;
-  --canvas: #ffffff;
-  --surface: #f3f5f8;
-  --surface-raised: #ffffff;
-  --surface-hover: #e9edf2;
-  --surface-active: #dde3eb;
-  --panel-border: rgba(15, 26, 43, 0.09);
-  --border: rgba(15, 26, 43, 0.08);
-  --border-strong: rgba(15, 26, 43, 0.15);
+  --chrome: #1c1c1a;
+  --sidebar: #1c1c1a;
+  --canvas: #242422;
+  --surface: #2b2b28;
+  --surface-raised: #2f2f2c;
+  --surface-hover: #343431;
+  --surface-active: #3c3c38;
+  --panel-border: transparent;
+  --border: rgba(230, 228, 223, 0.07);
+  --border-strong: rgba(230, 228, 223, 0.14);
 
-  --text: #0f1a2b;
-  --text-soft: #2d3a4e;
-  --muted: #5f6b7d;
-  --muted-2: #7a8597;
+  --text: #e6e4df;
+  --text-soft: #c9c7c1;
+  --muted: #95938c;
+  --muted-2: #6f6d67;
 
-  --accent: #0b8f9e;
-  --accent-strong: #066a76;
-  --accent-soft: rgba(11, 143, 158, 0.1);
-  --accent-ink: #ffffff;
-  --accent-gradient: linear-gradient(135deg, #1cb7c6 0%, #0b96b4 55%, #1479d0 100%);
-  --accent-glow: 0 0 0 1px rgba(11, 143, 158, 0.3), 0 0 20px rgba(11, 143, 158, 0.12);
+  --accent: #d6d3cc;
+  --accent-strong: #e9e7e1;
+  --accent-soft: rgba(214, 211, 204, 0.08);
+  --accent-ink: #22221f;
+  --accent-gradient: linear-gradient(#d6d3cc, #d6d3cc);
+  --highlight: #b8c795;
+  --highlight-ink: #263118;
 
-  --success: #1f8a52;
-  --warning: #a86a12;
-  --danger: #c7404c;
-  --purple: #6353c2;
+  --success: #86b792;
+  --warning: #d2a95a;
+  --danger: #d98a82;
+  --purple: #a8a0d6;
 
-  --shadow-sm: 0 1px 2px rgba(15, 26, 43, 0.08), 0 2px 10px rgba(15, 26, 43, 0.06);
-  --shadow: 0 18px 48px rgba(15, 26, 43, 0.16), 0 2px 8px rgba(15, 26, 43, 0.08);
-  --shadow-lg: 0 30px 90px rgba(15, 26, 43, 0.22), 0 4px 16px rgba(15, 26, 43, 0.1);
-  --panel-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 8px 24px rgba(15, 26, 43, 0.06);
-  --canvas-glow: radial-gradient(900px 420px at 18% -10%, rgba(11, 143, 158, 0.06), transparent 60%);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow: 0 12px 36px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 30px 80px rgba(0, 0, 0, 0.5);
+  --panel-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
 }

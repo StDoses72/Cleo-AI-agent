@@ -15,11 +15,5 @@
 @import "./styles/settings.css";
 @import "./styles/overlays.css";
 @import "./styles/responsive.css";
+@import "./styles/theme.css";
 @import "./styles/motion.css";
-
-/* Review-only style switcher and the selectable style variants (data-style on <html>). */
-@import "./styles/style-picker.css";
-@import "./styles/variants/paper.css";
-@import "./styles/variants/console.css";
-@import "./styles/variants/slate.css";
-@import "./styles/variants/linen.css";
