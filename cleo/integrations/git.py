@@ -201,7 +201,9 @@ def create_git_checkpoint(cwd: str, checkpoint_id: str) -> GitCheckpoint | None:
         before_index,
         "before worktree",
     )
-    digest = hashlib.sha256(checkpoint_id.encode("utf-8")).hexdigest()
+    # 16 hex digits identify a session's checkpoint within one repository; a full digest
+    # pushed ".git/refs/cleo/undo/<ref>.lock" past Windows' 260-character limit (Q12).
+    digest = hashlib.sha256(checkpoint_id.encode("utf-8")).hexdigest()[:16]
     ref = f"refs/cleo/undo/{digest}"
     updated = _git(status.repo_root, "update-ref", ref, before_worktree)
     if updated.returncode != 0:
@@ -480,7 +482,8 @@ def _git(
     """
     try:
         return subprocess.run(
-            ["git", "-C", cwd, *args],
+            # core.longpaths lets Git for Windows work past MAX_PATH; others ignore it.
+            ["git", "-c", "core.longpaths=true", "-C", cwd, *args],
             stdin=subprocess.DEVNULL if input_text is None else None,
             input=input_text,
             capture_output=True,

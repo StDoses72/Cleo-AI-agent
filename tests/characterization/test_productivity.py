@@ -12,7 +12,7 @@ from typing import Any
 
 from .support.backend import Backend
 from .support.golden import assert_golden
-from .support.home import CleoHome
+from .support.home import CleoHome, _git
 from .support.views import collapse_stream, index_rows, session_files
 
 
@@ -264,3 +264,32 @@ def test_create_and_delete_task_errors(
         "threads_after_delete": deleted["threads"],
         "index_after_delete": index_rows(cleo_home),
     }, replacements)
+
+
+def test_long_workspace_paths_keep_the_undo_record(
+    backend: Backend, cleo_home: CleoHome,
+) -> None:
+    """Q12 (fixed in S9): a long workspace path used to drop the turn's undo record silently.
+
+    At about 190 characters the old ``refs/cleo/undo/<sha256>.lock`` path passed Windows'
+    260-character limit, while the repository itself still worked.
+    """
+    root = cleo_home.root
+    workspace = root / ("p" * (190 - len(str(root)) - len("workspace") - 2)) / "workspace"
+    workspace.mkdir(parents=True)
+    assert len(str(workspace)) == 190
+    _git(workspace, "init", "-q", "-b", "main")
+    (workspace / "README.md").write_text("# Long path\n", encoding="utf-8")
+    _git(workspace, "add", "README.md")
+    _git(workspace, "commit", "-q", "-m", "fixture")
+
+    thread = backend.call("create_thread", space="productivity",
+                          project_id_value="productivity:workspace",
+                          project_path=str(workspace))
+    events = backend.run_turn(thread["id"], "write it [[write]]")
+    reloaded = backend.call("load_thread", thread_id=thread["id"])
+
+    assert reloaded["canUndo"] is True
+    assert [change["title"] for change in reloaded["changeHistory"]]
+    assert not [event for event in events if event.get("type") == "upsert-item"
+                and event["item"].get("title") == "这一轮无法撤销"]

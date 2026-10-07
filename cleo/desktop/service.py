@@ -1837,6 +1837,11 @@ class DesktopService:
             )
         except (OSError, RuntimeError, ValueError) as exc:
             self._debug(f"Git checkpoint unavailable for {manifest['id']}: {exc}")
+            await self._notice(
+                emit, "这一轮无法撤销",
+                f"Git 未能保存回退记录：{exc}\n改动会照常进行，但这一轮不能用撤销还原。",
+                "warning",
+            )
         if attachments:
             paths = [str(item.get("path") or "") for item in attachments if item.get("path")]
             if paths:
