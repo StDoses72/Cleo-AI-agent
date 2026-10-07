@@ -1,0 +1,21 @@
+/* Motion preferences. */
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after {
+  animation-duration: 1ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 1ms !important;
+  scroll-behavior: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}
+

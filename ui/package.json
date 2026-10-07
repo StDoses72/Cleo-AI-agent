@@ -43,11 +43,14 @@
     "check:release": "npm run build"
   },
   "dependencies": {
+    "katex": "latest",
     "lucide-react": "latest",
     "react": "latest",
     "react-dom": "latest",
     "react-markdown": "latest",
-    "remark-gfm": "latest"
+    "rehype-katex": "latest",
+    "remark-gfm": "latest",
+    "remark-math": "latest"
   },
   "devDependencies": {
     "@electron/asar": "latest",

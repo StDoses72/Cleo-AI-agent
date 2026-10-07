@@ -6,6 +6,7 @@ import { useEvolution } from "./useEvolution";
 import { useInspectorResize } from "./useInspectorResize";
 import "./components/evolution.css";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { renderBadge } from "./badge";
 import { Minus } from "lucide-react";
 import { Conversation } from "./components/Conversation";
 import { Inspector, type InspectorTab } from "./components/Inspector";
@@ -183,7 +184,7 @@ export function App() {
   const [undoingChanges, setUndoingChanges] = useState(false);
   const [memoryView, setMemoryView] = useState<MemoryViewMode>("all");
   const [theme, setTheme] = useState<"dark" | "light">(() =>
-    localStorage.getItem("cleo-theme") === "light" ? "light" : "dark",
+    localStorage.getItem("cleo-theme") === "dark" ? "dark" : "light",
   );
   const [motionEnabled, setMotionEnabled] = useState(() => localStorage.getItem("cleo-motion") !== "reduced");
   const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
@@ -226,6 +227,12 @@ export function App() {
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
     toastTimerRef.current = window.setTimeout(() => setToast(null), 2600);
   };
+
+  // Finished replies the user has not opened yet show as a count on the app icon.
+  useEffect(() => {
+    const count = workspace.unreadThreadIds.length;
+    window.cleoWindow?.setBadge?.(count, count ? renderBadge(count) : null);
+  }, [workspace.unreadThreadIds]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -432,6 +439,7 @@ export function App() {
         memoryView={memoryView}
         onMemoryViewChange={setMemoryView}
         backendMode={workspace.snapshot.backend?.mode ?? "mock"}
+        unreadThreadIds={workspace.unreadThreadIds}
       />}
       {!evolutionOpen && workspace.activeSpace === "memory" ? (
         <MemoryView

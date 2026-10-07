@@ -1,0 +1,18 @@
+/* Shared one-line helpers kept from the previous stylesheet. */
+
+small { font-size: var(--font-size-caption); }
+[role="alert"] { user-select: text; overflow-wrap: anywhere; }
+.property-list dd, .ms-detail-info dd, .settings-value, .evolution-dialog p { user-select: text; }
+.titlebar-context > span { max-width: min(40vw, 480px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-process[open] .tool-main code { white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.memory-summary { display: flex; flex-wrap: wrap; gap: 8px 24px; padding: 12px 0; color: var(--muted); font-size: var(--font-size-caption); }
+.memory-context details { padding: 9px 0; border-bottom: 1px solid var(--border); }
+.memory-context summary { cursor: pointer; color: var(--text-soft); font-size: var(--font-size-control); }
+.memory-context p, .memory-review-text { margin: 8px 0; color: var(--text-soft); font-size: var(--font-size-body); line-height: var(--line-height-body); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.memory-copy { overflow-wrap: anywhere; }
+.memory-review-title strong { min-width: 0; overflow-wrap: anywhere; }
+.memory-review-title > span { flex-shrink: 0; }
+.memory-review-summary footer > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-advanced { margin-top: 24px; }
+.settings-advanced > summary { color: var(--muted); font-size: var(--font-size-control); cursor: pointer; }
+.memory-review-event details > summary, .memory-review-omitted > summary { color: var(--muted); font-size: var(--font-size-caption); cursor: pointer; }

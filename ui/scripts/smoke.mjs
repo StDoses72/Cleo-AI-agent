@@ -215,8 +215,9 @@ try {
   await window.getByTestId("send-button").click();
   await window.waitForFunction(() => document.querySelectorAll(".attachment-chip").length === 0);
   await window.getByTestId("stop-button").waitFor();
-  await window.getByRole("heading", { name: "正在整理", exact: true }).waitFor({ timeout: 20_000 });
-  await window.getByTestId("thought-group").waitFor({ timeout: 5_000 });
+  await window.getByTestId("thought-group").waitFor({ timeout: 20_000 });
+  // Process groups stay collapsed while running; the header carries a one-line live summary instead of popping rows.
+  await window.getByTestId("thought-group").locator(".tool-group-live").getByText("正在整理", { exact: true }).waitFor({ timeout: 20_000 });
   await window.getByTestId("tool-group").getByText("2 项", { exact: false }).waitFor({ timeout: 5_000 });
   const streamingLayout = await window.evaluate(() => {
     const timeline = document.querySelector('[data-testid="timeline"]');
@@ -239,8 +240,8 @@ try {
     streamingLayout.thoughtIndex >= 0
       && streamingLayout.toolIndex >= 0
       && streamingLayout.assistantIndex === -1
-      && streamingLayout.thoughtExpanded === "true",
-    "Process text was hidden before a final answer arrived",
+      && streamingLayout.thoughtExpanded === "false",
+    "Process groups should stay collapsed while streaming and show progress in their header",
   );
   assert(streamingLayout.distanceFromBottom < 24, "Streaming timeline did not follow the latest text");
   await window.getByRole("heading", { name: "运行完成", exact: true }).waitFor({ timeout: 20_000 });
@@ -290,6 +291,8 @@ try {
   await window.getByTestId("send-button").click();
   await window.getByTestId("approval-prompt").waitFor({ timeout: 10_000 });
   await window.screenshot({ path: join(outputDir, "04b-approval-request.png") });
+  await window.getByTestId("approval-allow-menu").click();
+  await window.getByTestId("approval-session-choice").click();
   await window.getByTestId("approval-session").click();
   await window.getByTestId("approval-prompt").waitFor({ state: "detached" });
   await window.getByTestId("composer-input").waitFor({ state: "visible", timeout: 20_000 });
@@ -383,7 +386,8 @@ try {
   await window.getByText("开始新任务").waitFor();
   await window.getByTestId("composer-input").fill("请模拟失败状态");
   await window.getByTestId("send-button").click();
-  await window.getByText("任务已暂停").waitFor({ timeout: 20_000 });
+  // Failed turns end with an error notice (Q10); the mock message is the stable anchor.
+  await window.getByText("这是一条可恢复的 mock 失败", { exact: false }).first().waitFor({ timeout: 20_000 });
   await window.getByTestId("composer-input").waitFor({ state: "visible" });
   await window.screenshot({ path: join(outputDir, "08-recoverable-error.png") });
 

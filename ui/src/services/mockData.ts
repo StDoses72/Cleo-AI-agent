@@ -116,6 +116,7 @@ export const projects: Project[] = [
 export const threads: Thread[] = [
   {
     id: "desktop-ui",
+    runtime: { provider: "codex", model: "gpt-5.6-sol", effort: null, access: "workspace-write", approval: "user" },
     space: "productivity",
     projectId: "cleo-agent",
     title: "完成独立桌面 UI",
@@ -185,6 +186,7 @@ export const threads: Thread[] = [
   },
   {
     id: "session-hub",
+    runtime: { provider: "claude", model: "claude-opus-5-5", effort: null, access: "workspace-write", approval: "user" },
     space: "productivity",
     projectId: "cleo-agent",
     title: "统一 managed 与 native sessions",
@@ -212,6 +214,7 @@ export const threads: Thread[] = [
   },
   {
     id: "limits",
+    runtime: { provider: "codex", model: "gpt-5.6-sol", effort: null, access: "workspace-write", approval: "user" },
     space: "productivity",
     projectId: "cleo-agent",
     title: "修正 Codex 用量显示",
@@ -232,6 +235,7 @@ export const threads: Thread[] = [
   },
   {
     id: "weekly-plan",
+    runtime: { provider: "deepseek", model: "deepseek-v4-flash", effort: null, access: "workspace-write", approval: "user" },
     space: "chat",
     projectId: "general",
     title: "这周真正重要的三件事",
@@ -260,6 +264,7 @@ export const threads: Thread[] = [
   },
   {
     id: "product-tone",
+    runtime: { provider: "deepseek", model: "deepseek-v4-flash", effort: null, access: "workspace-write", approval: "user" },
     space: "chat",
     projectId: "general",
     title: "Cleo 的产品语气",

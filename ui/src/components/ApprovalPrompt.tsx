@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { GitBranch, LoaderCircle, ShieldCheck, Terminal, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Check, ChevronDown, GitBranch, LoaderCircle, ShieldCheck, Terminal, X } from "lucide-react";
 import type { ApprovalDecision, ApprovalRequest } from "../types";
 
 interface ApprovalPromptProps {
@@ -16,11 +16,28 @@ const titleByKind: Record<ApprovalRequest["kind"], string> = {
   elicitation: "工具请求你的授权",
 };
 
+type AllowMode = "accept" | "acceptForSession";
+
 export function ApprovalPrompt({ request, pending, error, onResolve }: ApprovalPromptProps) {
   const decisions = new Set(request?.availableDecisions ?? []);
   const denyDecision: ApprovalDecision | null = decisions.has("decline")
     ? "decline"
     : decisions.has("cancel") ? "cancel" : null;
+  const [allowMode, setAllowMode] = useState<AllowMode>("accept");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // A new request starts from the conservative choice again.
+  useEffect(() => { setAllowMode("accept"); setMenuOpen(false); }, [request?.id]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    return () => document.removeEventListener("pointerdown", closeOutside);
+  }, [menuOpen]);
 
   useEffect(() => {
     const decideFromKeyboard = (event: globalThis.KeyboardEvent) => {
@@ -30,6 +47,7 @@ export function ApprovalPrompt({ request, pending, error, onResolve }: ApprovalP
         || event.target instanceof HTMLTextAreaElement
         || event.target instanceof HTMLSelectElement
         || (event.target instanceof HTMLElement && event.target.isContentEditable)) return;
+      if (event.key === "Escape" && menuOpen) { setMenuOpen(false); return; }
       if (event.key === "1" && decisions.has("accept")) onResolve("accept");
       if (event.key === "2" && decisions.has("acceptForSession")) {
         onResolve("acceptForSession");
@@ -41,7 +59,7 @@ export function ApprovalPrompt({ request, pending, error, onResolve }: ApprovalP
     };
     window.addEventListener("keydown", decideFromKeyboard);
     return () => window.removeEventListener("keydown", decideFromKeyboard);
-  }, [decisions, denyDecision, onResolve, pending, request]);
+  }, [decisions, denyDecision, menuOpen, onResolve, pending, request]);
 
   if (!request) return null;
 
@@ -60,6 +78,20 @@ export function ApprovalPrompt({ request, pending, error, onResolve }: ApprovalP
         ? "这项文件修改超出了当前会话已经授予的写入范围。"
         : "当前服务请求你的确认。"
   );
+
+  const onceLabel = request.decisionLabels?.accept
+    || (request.mode === "url" ? "已完成授权" : request.kind === "elicitation" ? "允许" : "仅允许这一次");
+  const onceHint = request.kind === "elicitation" ? "继续此工具请求" : "继续当前操作，不保存规则";
+  const sessionLabel = request.decisionLabels?.acceptForSession || "本次会话始终允许";
+  const sessionHint = request.decisionLabels ? "采用服务提供的权限范围" : "相同请求在本次会话中不再询问";
+  const canChooseMode = decisions.has("accept") && decisions.has("acceptForSession");
+  const activeMode: AllowMode = decisions.has("accept") ? (canChooseMode ? allowMode : "accept") : "acceptForSession";
+  const allowLabel = activeMode === "accept" ? onceLabel : sessionLabel;
+  const allowHint = activeMode === "accept" ? onceHint : sessionHint;
+  const allowTestId = activeMode === "accept" ? "approval-once" : "approval-session";
+  // The deny card is the peer of the allow card; cancel stays in the footer unless it is the only way out.
+  const denyCard: ApprovalDecision | null = decisions.has("decline") ? "decline" : decisions.has("cancel") ? "cancel" : null;
+  const footerCancel = denyCard === "decline" && decisions.has("cancel");
 
   return (
     <section className="approval-prompt" aria-labelledby="approval-title" data-testid="approval-prompt">
@@ -94,36 +126,87 @@ export function ApprovalPrompt({ request, pending, error, onResolve }: ApprovalP
       ) : null}
 
       <div className="approval-options">
-        {decisions.has("accept") ? (
-          <button className="approval-option primary" type="button" disabled={pending} onClick={() => onResolve("accept")} data-testid="approval-once">
-            <span>
-              <strong>{request.decisionLabels?.accept || (request.mode === "url" ? "已完成授权" : request.kind === "elicitation" ? "允许" : "仅允许这一次")}</strong>
-              <small>{request.kind === "elicitation" ? "继续此工具请求" : "继续当前操作，不保存规则"}</small>
-            </span>
-            {pending ? <LoaderCircle className="approval-spinner" size={13} /> : <kbd>1</kbd>}
-          </button>
+        {decisions.has("accept") || decisions.has("acceptForSession") ? (
+          <div className={`approval-option primary approval-allow ${menuOpen ? "menu-open" : ""}`} ref={menuRef}>
+            <button
+              className="approval-allow-main"
+              type="button"
+              disabled={pending}
+              onClick={() => onResolve(activeMode)}
+              data-testid={allowTestId}
+            >
+              <span>
+                <strong>{allowLabel}</strong>
+                <small>{allowHint}</small>
+              </span>
+              {pending ? <LoaderCircle className="approval-spinner" size={14} /> : <kbd>{activeMode === "accept" ? "1" : "2"}</kbd>}
+            </button>
+            {canChooseMode ? (
+              <>
+                <button
+                  className="approval-allow-toggle"
+                  type="button"
+                  disabled={pending}
+                  aria-label="选择允许方式"
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpen}
+                  onClick={() => setMenuOpen((open) => !open)}
+                  data-testid="approval-allow-menu"
+                >
+                  <ChevronDown size={16} />
+                </button>
+                {menuOpen ? (
+                  <div className="approval-allow-options surface-popover" role="menu" aria-label="允许方式">
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={activeMode === "accept"}
+                      onClick={() => { setAllowMode("accept"); setMenuOpen(false); }}
+                    >
+                      <span><strong>{onceLabel}</strong><small>{onceHint}</small></span>
+                      {activeMode === "accept" ? <Check size={14} /> : <kbd>1</kbd>}
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={activeMode === "acceptForSession"}
+                      onClick={() => { setAllowMode("acceptForSession"); setMenuOpen(false); }}
+                      data-testid={activeMode === "accept" ? "approval-session-choice" : undefined}
+                    >
+                      <span><strong>{sessionLabel}</strong><small>{sessionHint}</small></span>
+                      {activeMode === "acceptForSession" ? <Check size={14} /> : <kbd>2</kbd>}
+                    </button>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+          </div>
         ) : null}
-        {decisions.has("acceptForSession") ? (
-          <button className="approval-option" type="button" disabled={pending} onClick={() => onResolve("acceptForSession")} data-testid="approval-session">
-            <span><strong>{request.decisionLabels?.acceptForSession || "本次会话始终允许"}</strong><small>{request.decisionLabels ? "采用服务提供的权限范围" : "相同请求在本次会话中不再询问"}</small></span>
-            <kbd>2</kbd>
+        {denyCard ? (
+          <button
+            className="approval-option danger"
+            type="button"
+            disabled={pending}
+            onClick={() => onResolve(denyCard)}
+            data-testid={denyCard === "decline" ? "approval-deny" : "approval-cancel"}
+          >
+            <span>
+              <strong>{denyCard === "decline" ? (request.decisionLabels?.decline || "拒绝") : "取消此次请求"}</strong>
+              <small>{denyCard === "decline" ? "不执行这项操作" : "放弃等待，结束这次请求"}</small>
+            </span>
+            {footerCancel ? <X size={15} /> : <kbd>Esc</kbd>}
           </button>
         ) : null}
       </div>
 
       <footer className="approval-footer">
-        {decisions.has("decline") ? (
-          <button type="button" disabled={pending} onClick={() => onResolve("decline")} data-testid="approval-deny">
-            <X size={13} />{request.decisionLabels?.decline || "拒绝"}
-          </button>
-        ) : <span />}
-        {decisions.has("cancel") ? (
+        {footerCancel ? (
           <button type="button" disabled={pending} onClick={() => onResolve("cancel")} data-testid="approval-cancel">
             取消此次请求
           </button>
-        ) : null}
+        ) : <span />}
         <span className={error ? "approval-error" : ""}>
-          {error || (request.cwd ? request.cwd : "请求暂停中")} {!error ? <kbd>Esc</kbd> : null}
+          {error || (request.cwd ? request.cwd : "请求暂停中")} {!error && footerCancel ? <kbd>Esc</kbd> : null}
         </span>
       </footer>
     </section>

@@ -56,11 +56,15 @@ tests/                        与上述 Python 责任域对应的测试
 
 `load_timeline` 按逻辑条目提供 `latest` / `before` / `after` 游标分页，默认每页 80 条。会话目录中的 `.desktop-timeline-v1.sqlite3` 是可重建索引；`events.jsonl` 仍是事实源。索引只增量读取追加事件，工具结果、计划、提问和回答按稳定 ID 更新原条目。索引重建会使旧游标失效，界面可通过“回到最新”恢复。
 
-Renderer 最多缓存 500 条、约 4 MiB 的预览内容，动态高度虚拟列表只挂载可见行和缓冲行。长正文通过 `read_timeline_content` 分段读取。浏览历史时不会自动跳到新消息；页面查找和跨屏选择只覆盖挂载的内容。这些限制不改变模型上下文或删除持久历史。过程文字在同一轮首次出现非空最终回答时自动收起一次，随后保留用户的展开选择。
+Renderer 最多缓存 500 条、约 4 MiB 的预览内容，动态高度虚拟列表只挂载可见行和缓冲行。长正文通过 `read_timeline_content` 分段读取。浏览历史时不会自动跳到新消息；页面查找和跨屏选择只覆盖挂载的内容。这些限制不改变模型上下文或删除持久历史。思考与工具过程组默认收起，运行中只在组标题里显示一行当前步骤的摘要，不会随着事件到达弹出新的卡片；用户展开后，同一轮首次出现非空最终回答时自动收起一次，随后保留用户的展开选择。
 
 Codex `item/tool/requestUserInput` 与 Claude `AskUserQuestion` 接入独立的 `QuestionBroker`，通过 `question_request` / `question_response` 持久化，桌面端使用 `get_pending_questions` / `resolve_question`。必须显式提交所有问题；权限自动批准策略、弹窗收起和超时都不会代答。取消运行会释放等待，重启后旧问题显示连接失效；不支持原生提问的入口继续使用文本对话。Claude 支持原生多选，Codex 使用其当前单选/文本协议。
 
-UI 沿用 `index.css` 的 `--font-ui` 与 `--font-code`，正文、控件、说明和弹窗标题使用统一字号变量，避免新面板自行覆盖字体栈。
+UI 样式入口是 `ui/src/index.css`，它按顺序 `@import` `ui/src/styles/` 下的模块：`tokens.css` 定义颜色、字号、圆角、阴影等设计变量（含浅色主题覆盖），`base.css` 是全局重置，`shell.css` / `sidebar.css` / `conversation.css` / `composer.css` / `inspector.css` 分别对应窗口框架、侧栏、对话、输入框和检查器，`memory.css`、`settings.css`、`inspector-panels.css` 承载各面板，`overlays.css` 负责弹窗、命令面板和提示，`responsive.css` 与 `motion.css` 收尾。新面板沿用 `--font-ui` 与 `--font-code` 和统一字号变量，颜色只引用 tokens，不自行写死色值。
+
+对话正文、思考过程和文件预览里的 Markdown 都经 `remark-math` + `rehype-katex` 渲染数学公式：渲染前经 `ui/src/markdown-math.ts` 归一化：`\(` `\)` 转为 `$...$`，`\[` `\]` 转为 `$$...$$`，代码块与行内代码不处理；位于词首且紧跟数字的 `$`（如 `$5`）视为货币并转义。KaTeX 的样式与字体随 Vite 打包进 `dist/assets`，满足 CSP 的 `font-src 'self'`；公式语法错误时按原文显示，不中断渲染。
+
+侧栏线程卡片显示该会话使用的 harness：开发任务显示编码 harness（Codex / Claude / ACP 客户端名），对话显示模型名，数据来自线程的 `runtime.provider` / `runtime.model`。回复完成时若用户没有停留在该线程（或窗口不在前台），线程记为未读：卡片加粗并显示"新回复"，Renderer 通过 `cleoWindow.setBadge(count, overlayPng)` 把未读数交给主进程，macOS / Linux 用 `app.setBadgeCount`，Windows 用 `setOverlayIcon` 叠加 Renderer 绘制的数字；打开线程或窗口回到前台即视为已读，归零时恢复原图标。未读状态只保存在内存中，不写入会话。
 
 `npm --prefix ui run smoke:history` 在系统临时目录构建并清理独立测试应用，覆盖万条记录翻页、虚拟列表、滚动锚点、提问和过程折叠。设置 `CLEO_SMOKE_REGRESSION=1` 可同时运行原有桌面、审批和自我迭代 smoke；设置 `TEMP` / `TMP` 可将全部临时内容集中到指定测试目录。
 

@@ -57,6 +57,8 @@ try {
     await prompt.waitFor({ state: "detached" });
   }
   await request("git commit approval after cancellation");
+  await page.getByTestId("approval-allow-menu").click();
+  await page.getByTestId("approval-session-choice").click();
   await page.getByTestId("approval-session").click();
   await stop.waitFor({ state: "detached" });
   assert.deepEqual(errors, []);

@@ -1,0 +1,123 @@
+/*
+ * Cleo design tokens — "linen" palette (clean neutral greys, white panels).
+ *
+ * One restrained colour family per theme:
+ *   linen (chrome)  → window frame, rail, sidebar
+ *   paper (canvas)  → work panels: conversation, inspector, memory
+ *   charcoal        → text and the single primary action colour
+ *   sage            → the one highlight for running / attention states
+ * Everything else is a tint of those four. Light is the primary mode.
+ */
+:root {
+  --font-ui: "Inter", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI",
+    "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", sans-serif;
+  --font-display: var(--font-ui);
+  --font-code: "JetBrains Mono", "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --mono: var(--font-code);
+
+  --font-size-body: 15px;
+  --font-size-control: 13.5px;
+  --font-size-caption: 12.5px;
+  --font-size-dialog-title: 18px;
+  --font-size-page-title: 28px;
+  --line-height-body: 1.7;
+
+  --radius-xs: 8px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 22px;
+  --radius-pill: 999px;
+
+  --gutter: 10px;
+  --rail-width: 64px;
+  --titlebar-height: 44px;
+
+  --ease-out: cubic-bezier(0.2, 0.75, 0.2, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+
+  font-family: var(--font-ui);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+
+  /* Light theme (default) */
+  color: #27272a;
+  background: #f4f4f2;
+
+  --chrome: #f4f4f2;
+  --sidebar: #f4f4f2;
+  --canvas: #ffffff;
+  --surface: #f6f6f4;
+  --surface-raised: #ffffff;
+  --surface-hover: #eeeeeb;
+  --surface-active: #e5e5e1;
+  --panel-border: transparent;
+  --border: rgba(39, 39, 42, 0.06);
+  --border-strong: rgba(39, 39, 42, 0.12);
+
+  --text: #27272a;
+  --text-soft: #4b4b4f;
+  --muted: #7d7d82;
+  --muted-2: #a4a4a8;
+  --text-muted: var(--muted);
+
+  --accent: #45454a;
+  --accent-strong: #333337;
+  --accent-soft: rgba(69, 69, 74, 0.07);
+  --accent-ink: #ffffff;
+  --accent-gradient: linear-gradient(#45454a, #45454a);
+  --accent-glow: none;
+  --highlight: #d8e9b8;
+  --highlight-ink: #2f3d1c;
+
+  --success: #5aa070;
+  --warning: #c4953a;
+  --danger: #d06b66;
+  --purple: #8b82cc;
+
+  --shadow-sm: 0 1px 2px rgba(39, 39, 42, 0.04), 0 2px 8px rgba(39, 39, 42, 0.03);
+  --shadow: 0 12px 36px rgba(39, 39, 42, 0.07), 0 1px 2px rgba(39, 39, 42, 0.03);
+  --shadow-lg: 0 30px 80px rgba(39, 39, 42, 0.12);
+  --panel-shadow: 0 1px 2px rgba(39, 39, 42, 0.02), 0 8px 28px rgba(39, 39, 42, 0.035);
+  --canvas-glow: none;
+}
+
+:root[data-theme="dark"] {
+  color: #ececea;
+  background: #18181b;
+
+  --chrome: #18181b;
+  --sidebar: #18181b;
+  --canvas: #212124;
+  --surface: #28282c;
+  --surface-raised: #2d2d31;
+  --surface-hover: #323237;
+  --surface-active: #3a3a40;
+  --panel-border: transparent;
+  --border: rgba(236, 236, 234, 0.07);
+  --border-strong: rgba(236, 236, 234, 0.14);
+
+  --text: #ececea;
+  --text-soft: #cfcfcd;
+  --muted: #98989e;
+  --muted-2: #6f6f76;
+
+  --accent: #e2e2e0;
+  --accent-strong: #f2f2f0;
+  --accent-soft: rgba(226, 226, 224, 0.08);
+  --accent-ink: #1f1f22;
+  --accent-gradient: linear-gradient(#e2e2e0, #e2e2e0);
+  --highlight: #bfd59a;
+  --highlight-ink: #24301a;
+
+  --success: #88bf97;
+  --warning: #d6ad5c;
+  --danger: #de8e88;
+  --purple: #aba4dc;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow: 0 12px 36px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 30px 80px rgba(0, 0, 0, 0.5);
+  --panel-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+}

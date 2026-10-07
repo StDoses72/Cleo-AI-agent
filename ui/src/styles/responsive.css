@@ -1,0 +1,40 @@
+/* Viewport breakpoints for the shell and work panels. */
+@media (max-width: 1180px) {
+  .app-shell { --sidebar-width: 256px; }
+  .timeline { padding-right: 32px; padding-left: 32px; }
+  .composer-dock { padding-right: 22px; padding-left: 22px; }
+  .branch-button span { max-width: 80px; }
+}
+
+@media (max-width: 1010px) {
+  .header-actions .branch-button { display: none; }
+  .timeline { padding-right: 24px; padding-left: 24px; }
+  .memory-view { padding-right: 36px; padding-left: 36px; }
+  .memory-review-list article { grid-template-columns: 34px minmax(0, 1fr); }
+  .memory-review-actions { grid-column: 2; justify-content: flex-end; }
+  .approval-options { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 760px) {
+  .app-shell { --rail-width: 52px; --gutter: 6px; }
+  .rail-button { width: 36px; height: 36px; }
+  .brand-mark { width: 32px; height: 32px; }
+  .timeline { padding: 24px 18px 40px; }
+  .message-entry.assistant .message-copy,
+  .thought-group,
+  .tool-group,
+  .plan-entry,
+  .notice-entry,
+  .question-history,
+  .virtual-process-row,
+  .turn-activity { margin-left: 0; padding-left: 0; }
+  .thought-group,
+  .tool-group,
+  .plan-entry,
+  .notice-entry,
+  .question-history { padding-left: 12px; }
+  .message-entry.user .message-text,
+  .message-entry.user .message-meta { width: 100%; }
+  .suggestion-list { grid-template-columns: 1fr; }
+  .welcome-state h2 { font-size: 24px; }
+}
