@@ -1,0 +1,204 @@
+/* Inspector frame: resize handle, header, tabs, empty state, plus panel refinements. */
+.app-shell.inspector-resizing { transition: none; cursor: col-resize; user-select: none; }
+.app-shell.inspector-resizing * { cursor: col-resize !important; }
+
+.inspector-resize-handle {
+  position: absolute;
+  z-index: 3;
+  inset: 0 auto 0 0;
+  width: 7px;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+  border-radius: 14px 0 0 14px;
+  transition: background 120ms ease, opacity 120ms ease;
+}
+
+.inspector-resize-handle:hover,
+.inspector-resize-handle:focus-visible,
+.inspector-resizing .inspector-resize-handle {
+  background: var(--accent);
+  opacity: 0.6;
+}
+
+.inspector {
+  position: relative;
+  display: flex;
+  grid-column: 4;
+  grid-row: 2;
+  min-width: 0;
+  min-height: 0;
+  margin: 0 var(--gutter) var(--gutter) 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.inspector-header {
+  display: flex;
+  container-type: inline-size;
+  height: 54px;
+  flex: 0 0 54px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 10px 0 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.inspector-header > .icon-button {
+  flex-shrink: 0;
+}
+
+.inspector-tabs {
+  display: flex;
+  min-width: 0;
+  height: 32px;
+  align-items: center;
+  gap: 1px;
+  padding: 3px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  scrollbar-width: none;
+}
+
+.inspector-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.inspector-tabs button {
+  position: relative;
+  display: flex;
+  height: 26px;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  color: var(--muted);
+  font-size: var(--font-size-caption);
+  font-weight: 500;
+  white-space: nowrap;
+  transition: color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+
+.inspector-tabs button:hover {
+  color: var(--text-soft);
+}
+
+.inspector-tabs button.active {
+  color: var(--text);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-sm);
+}
+
+.inspector-tabs small {
+  display: grid;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  place-items: center;
+  border-radius: var(--radius-pill);
+  color: var(--accent-ink);
+  background: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* Narrow inspectors (small windows or high zoom) keep every tab inside the pill without scrolling. */
+@container (max-width: 340px) {
+  .inspector-tabs { gap: 1px; padding: 2px; }
+  .inspector-tabs button { padding: 0 7px; gap: 4px; }
+}
+
+.inspector-empty {
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  padding: 30px;
+}
+
+.inspector-empty svg {
+  color: var(--muted-2);
+}
+
+.inspector-empty strong {
+  margin-top: 6px;
+  color: var(--text-soft);
+  font-size: var(--font-size-control);
+  font-weight: 600;
+}
+
+.inspector-empty span {
+  max-width: 240px;
+  font-size: var(--font-size-caption);
+  line-height: 1.55;
+}
+
+/* ----- Panel refinements layered on top of inspector-panels.css ----- */
+.section-kicker {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+
+.property-list dd {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-track {
+  height: 6px;
+  background: var(--surface-active);
+}
+
+.usage-track span {
+  background: var(--accent-gradient);
+}
+
+.changed-files button {
+  height: 32px;
+  border-radius: var(--radius-sm);
+}
+
+.change-history-picker select {
+  border-radius: var(--radius-sm);
+}
+
+.terminal-head {
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+.terminal-output {
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  background: #0a0c10;
+}
+
+.run-status > span {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+}
+
+.run-status strong {
+  color: var(--text);
+  font-size: var(--font-size-control);
+  font-weight: 600;
+}
+
+.workspace-context-row {
+  padding: 8px;
+  margin: -8px;
+  width: calc(100% + 16px);
+  border-radius: var(--radius-sm);
+}
+
+.workspace-context-row:hover {
+  background: var(--surface-hover);
+}
+
+.workspace-context-row strong {
+  color: var(--text);
+}
