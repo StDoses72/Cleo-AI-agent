@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import json
 import mimetypes
 import os
 import secrets
@@ -51,7 +50,6 @@ from cleo.integrations.git import (
     read_git_diff,
     undo_git_checkpoint,
 )
-from cleo.integrations.workspace import resolve_productivity_cwd
 from cleo.memory.compaction import load_events
 from cleo.memory.dream_source import read_dream_source, validate_dream_state
 from cleo.memory.overview import build_memory_overview
@@ -2118,57 +2116,9 @@ class DesktopService:
         argument: str,
         emit: Emit,
     ) -> None:
-        if command == "/help":
-            await self._notice(
-                emit,
-                "Cleo 对话命令",
-                "/new · /project [name] · /project move <name> · /sessions · "
-                "/resume <id> · /rename <title> · /attach · /computeruse <操作需求> · "
-                "/productivity · /quit",
-            )
-        elif command == "/new":
-            thread = await self.create_thread(
-                space="chat", project_id_value=project_id("non_productivity", manifest["project"])
-            )
-            await emit({"type": "refresh", "activeThreadId": thread["id"], "space": "chat"})
-        elif command == "/project":
-            if argument.startswith("move "):
-                target = argument.removeprefix("move ").strip()
-                moved = self.store.move_session(manifest["id"], target)
-                await self._notice(
-                    emit, "项目已迁移", f"当前对话已移动到 {moved['project']}。", "success"
-                )
-                await emit({"type": "refresh", "activeThreadId": manifest["id"], "space": "chat"})
-            elif argument:
-                thread = await self.create_thread(
-                    space="chat", project_id_value=project_id("non_productivity", argument)
-                )
-                await emit({"type": "refresh", "activeThreadId": thread["id"], "space": "chat"})
-            else:
-                await self._notice(
-                    emit, "记忆项目", " · ".join(self.runtime.projects_for("non_productivity"))
-                )
-        elif command == "/sessions":
-            await self._session_list("non_productivity", emit)
-        elif command == "/resume" and argument:
-            target = self.store.load_manifest(argument)
-            if target["space"] != "non_productivity":
-                raise ValueError("目标不是 Cleo 对话 session。")
-            await emit({"type": "refresh", "activeThreadId": argument, "space": "chat"})
-        elif command == "/rename" and argument:
-            self.store.rename_session(manifest["id"], argument)
-            await self._notice(emit, "已重命名", argument, "success")
-            await emit({"type": "refresh", "activeThreadId": manifest["id"], "space": "chat"})
-        elif command == "/attach":
-            await emit({"type": "request-attachment"})
-        elif command == "/productivity":
-            await emit({"type": "navigate-space", "space": "productivity"})
-        elif command in {"/quit", "/exit"}:
-            await self._notice(
-                emit, "桌面应用保持运行", "可以直接关闭窗口，Cleo 会在退出时整理记忆。"
-            )
-        else:
-            raise ValueError(f"未知对话命令：{command}。输入 /help 查看命令。")
+        from cleo.desktop.commands import CHAT, CommandContext
+
+        await CHAT.run(CommandContext(self, manifest, command, argument, emit))
 
     async def _run_productivity_command(
         self,
@@ -2177,143 +2127,13 @@ class DesktopService:
         argument: str,
         emit: Emit,
     ) -> None:
+        from cleo.desktop.commands import PRODUCTIVITY, CommandContext
+
         session = await self._ensure_productivity_session(manifest)
         adapter = self._adapter()
-        if command == "/help":
-            await self._notice(
-                emit,
-                "开发任务命令",
-                "/new · /cwd · /project · /git · /diff · /model · /effort · "
-                "/access · /approval · /cd · /resume · /resume-native · /native · "
-                "/sessions · /account · /fork · /rename · /compact · /archive · /back · /quit",
-            )
-        elif command == "/new":
-            thread = await self.create_thread(
-                space="productivity",
-                project_id_value=project_id("productivity", manifest["project"]),
-                provider=manifest["provider"],
-            )
-            await emit({"type": "refresh", "activeThreadId": thread["id"], "space": "productivity"})
-        elif command == "/cwd":
-            await self._notice(emit, "工作目录", str(manifest.get("cwd") or session.project_path))
-        elif command == "/project":
-            await self._notice(emit, "项目", str(manifest["project"]))
-        elif command == "/git":
-            status = await asyncio.to_thread(inspect_git_status, session.project_path)
-            detail = (
-                "当前目录不是 Git 仓库。"
-                if status is None
-                else f"{status.branch} · {status.dirty_count} 个变更\n" + "\n".join(status.changes)
-            )
-            await self._notice(emit, "Git 状态", detail)
-        elif command == "/diff":
-            diff = await asyncio.to_thread(read_git_diff, session.project_path)
-            await emit({"type": "changes", "changes": changes_from_diff(diff)})
-            await self._notice(emit, "工作区差异", "已刷新右侧变更面板。", "success")
-        elif command == "/model":
-            if argument:
-                async with self._runtime_lock(manifest["id"]):
-                    runtime = await self._update_runtime(
-                        thread_id=manifest["id"], update={"model": argument}, command=True,
-                    )
-                await emit({"type": "runtime", "runtime": runtime})
-                await self._notice(emit, "模型已更新", argument, "success")
-            else:
-                models = await adapter.list_models(manifest["provider"])
-                await self._notice(
-                    emit,
-                    "可用模型",
-                    "\n".join(f"{model.id} — {model.display_name}" for model in models),
-                )
-        elif command in {"/effort", "/access", "/approval"}:
-            field = {"/effort": "effort", "/access": "sandbox", "/approval": "approval_mode"}[
-                command
-            ]
-            if not argument:
-                options = adapter.session_options(manifest["id"])
-                await self._notice(
-                    emit,
-                    command.removeprefix("/").title(),
-                    str(getattr(options, field) or "default"),
-                )
-            else:
-                ui_field = {"sandbox": "access", "approval_mode": "approval"}.get(field, field)
-                async with self._runtime_lock(manifest["id"]):
-                    runtime = await self._update_runtime(
-                        thread_id=manifest["id"], update={ui_field: argument}, command=True,
-                    )
-                await emit({"type": "runtime", "runtime": runtime})
-                await self._notice(emit, "运行参数已更新", f"{field} = {argument}", "success")
-        elif command == "/cd":
-            target = resolve_productivity_cwd(argument, session.project_path)
-            next_session = await adapter.create_session(
-                manifest["provider"],
-                project_path=target,
-                project=path_name(target, manifest["project"]),
-            )
-            self._productivity_sessions[next_session.id] = next_session
-            await emit(
-                {"type": "refresh", "activeThreadId": next_session.id, "space": "productivity"}
-            )
-        elif command == "/resume" and argument:
-            target = self.store.load_manifest(argument)
-            await self._ensure_productivity_session(target)
-            await emit({"type": "refresh", "activeThreadId": argument, "space": "productivity"})
-        elif command == "/resume-native" and argument:
-            resumed = await adapter.resume_session(
-                manifest["provider"],
-                argument,
-                project_path=session.project_path,
-                project=manifest["project"],
-            )
-            self._productivity_sessions[resumed.id] = resumed
-            await emit({"type": "refresh", "activeThreadId": resumed.id, "space": "productivity"})
-        elif command == "/native" and argument:
-            detail = await adapter.read_native_session(manifest["provider"], argument)
-            await self._notice(
-                emit,
-                detail.session.name or detail.session.id,
-                json.dumps(list(detail.turns), ensure_ascii=False, indent=2)[:12_000],
-            )
-        elif command == "/sessions":
-            await self._session_list("productivity", emit)
-        elif command == "/account":
-            account = await adapter.account_status(manifest["provider"])
-            await self._notice(
-                emit,
-                f"{manifest['provider']} 账号",
-                f"authenticated: {account.authenticated}\n"
-                f"type: {account.account_type or '—'}\n"
-                f"email: {account.email or '—'}\n"
-                f"plan: {account.plan or '—'}",
-            )
-        elif command == "/fork":
-            forked = await adapter.fork_session(manifest["id"])
-            self._productivity_sessions[forked.id] = forked
-            await emit({"type": "refresh", "activeThreadId": forked.id, "space": "productivity"})
-        elif command == "/rename" and argument:
-            await adapter.rename_session(manifest["id"], argument)
-            await self._notice(emit, "已重命名", argument, "success")
-            await emit(
-                {"type": "refresh", "activeThreadId": manifest["id"], "space": "productivity"}
-            )
-        elif command == "/compact":
-            await adapter.compact_session(manifest["id"])
-            await self._notice(emit, "上下文整理已启动", "Provider 原生上下文正在压缩。", "success")
-        elif command == "/archive":
-            await adapter.archive_session(manifest["id"])
-            thread = await self.create_thread(
-                space="productivity",
-                project_id_value=project_id("productivity", manifest["project"]),
-                provider=manifest["provider"],
-            )
-            await emit({"type": "refresh", "activeThreadId": thread["id"], "space": "productivity"})
-        elif command == "/back":
-            await emit({"type": "navigate-space", "space": "chat"})
-        elif command in {"/quit", "/exit"}:
-            await self._notice(emit, "桌面应用保持运行", "可以切换空间或直接关闭窗口。")
-        else:
-            raise ValueError(f"未知开发命令：{command}。输入 /help 查看命令。")
+        await PRODUCTIVITY.run(CommandContext(
+            self, manifest, command, argument, emit, session=session, adapter=adapter,
+        ))
 
     async def _projects(self, manifests: list[dict[str, Any]]) -> list[dict[str, Any]]:
         candidates: dict[str, tuple[str, str, str]] = {}
