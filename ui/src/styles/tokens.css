@@ -1,5 +1,5 @@
 /*
- * Cleo design tokens — "linen" palette.
+ * Cleo design tokens — "linen" palette (clean neutral greys, white panels).
  *
  * One restrained colour family per theme:
  *   linen (chrome)  → window frame, rail, sidebar
@@ -42,79 +42,79 @@
   -webkit-font-smoothing: antialiased;
 
   /* Light theme (default) */
-  color: #2b2a27;
-  background: #f1f0ec;
+  color: #27272a;
+  background: #f4f4f2;
 
-  --chrome: #f1f0ec;
-  --sidebar: #f1f0ec;
-  --canvas: #fcfbf9;
-  --surface: #f4f3ef;
+  --chrome: #f4f4f2;
+  --sidebar: #f4f4f2;
+  --canvas: #ffffff;
+  --surface: #f6f6f4;
   --surface-raised: #ffffff;
-  --surface-hover: #ebe9e4;
-  --surface-active: #e3e0d9;
+  --surface-hover: #eeeeeb;
+  --surface-active: #e5e5e1;
   --panel-border: transparent;
-  --border: rgba(43, 42, 39, 0.07);
-  --border-strong: rgba(43, 42, 39, 0.13);
+  --border: rgba(39, 39, 42, 0.06);
+  --border-strong: rgba(39, 39, 42, 0.12);
 
-  --text: #2b2a27;
-  --text-soft: #4b4945;
-  --muted: #7f7c75;
-  --muted-2: #a29f98;
+  --text: #27272a;
+  --text-soft: #4b4b4f;
+  --muted: #7d7d82;
+  --muted-2: #a4a4a8;
   --text-muted: var(--muted);
 
-  --accent: #4f4d48;
-  --accent-strong: #3b3936;
-  --accent-soft: rgba(79, 77, 72, 0.08);
-  --accent-ink: #faf9f6;
-  --accent-gradient: linear-gradient(#4f4d48, #4f4d48);
+  --accent: #45454a;
+  --accent-strong: #333337;
+  --accent-soft: rgba(69, 69, 74, 0.07);
+  --accent-ink: #ffffff;
+  --accent-gradient: linear-gradient(#45454a, #45454a);
   --accent-glow: none;
-  --highlight: #d3dfb8;
-  --highlight-ink: #33401f;
+  --highlight: #d8e9b8;
+  --highlight-ink: #2f3d1c;
 
-  --success: #5f9a6e;
-  --warning: #c0923a;
-  --danger: #c96b63;
-  --purple: #8a7fc4;
+  --success: #5aa070;
+  --warning: #c4953a;
+  --danger: #d06b66;
+  --purple: #8b82cc;
 
-  --shadow-sm: 0 1px 2px rgba(43, 42, 39, 0.04), 0 2px 8px rgba(43, 42, 39, 0.04);
-  --shadow: 0 12px 36px rgba(43, 42, 39, 0.08), 0 1px 2px rgba(43, 42, 39, 0.04);
-  --shadow-lg: 0 30px 80px rgba(43, 42, 39, 0.14);
-  --panel-shadow: 0 1px 2px rgba(43, 42, 39, 0.03), 0 10px 30px rgba(43, 42, 39, 0.04);
+  --shadow-sm: 0 1px 2px rgba(39, 39, 42, 0.04), 0 2px 8px rgba(39, 39, 42, 0.03);
+  --shadow: 0 12px 36px rgba(39, 39, 42, 0.07), 0 1px 2px rgba(39, 39, 42, 0.03);
+  --shadow-lg: 0 30px 80px rgba(39, 39, 42, 0.12);
+  --panel-shadow: 0 1px 2px rgba(39, 39, 42, 0.02), 0 8px 28px rgba(39, 39, 42, 0.035);
   --canvas-glow: none;
 }
 
 :root[data-theme="dark"] {
-  color: #e6e4df;
-  background: #1c1c1a;
+  color: #ececea;
+  background: #18181b;
 
-  --chrome: #1c1c1a;
-  --sidebar: #1c1c1a;
-  --canvas: #242422;
-  --surface: #2b2b28;
-  --surface-raised: #2f2f2c;
-  --surface-hover: #343431;
-  --surface-active: #3c3c38;
+  --chrome: #18181b;
+  --sidebar: #18181b;
+  --canvas: #212124;
+  --surface: #28282c;
+  --surface-raised: #2d2d31;
+  --surface-hover: #323237;
+  --surface-active: #3a3a40;
   --panel-border: transparent;
-  --border: rgba(230, 228, 223, 0.07);
-  --border-strong: rgba(230, 228, 223, 0.14);
+  --border: rgba(236, 236, 234, 0.07);
+  --border-strong: rgba(236, 236, 234, 0.14);
 
-  --text: #e6e4df;
-  --text-soft: #c9c7c1;
-  --muted: #95938c;
-  --muted-2: #6f6d67;
+  --text: #ececea;
+  --text-soft: #cfcfcd;
+  --muted: #98989e;
+  --muted-2: #6f6f76;
 
-  --accent: #d6d3cc;
-  --accent-strong: #e9e7e1;
-  --accent-soft: rgba(214, 211, 204, 0.08);
-  --accent-ink: #22221f;
-  --accent-gradient: linear-gradient(#d6d3cc, #d6d3cc);
-  --highlight: #b8c795;
-  --highlight-ink: #263118;
+  --accent: #e2e2e0;
+  --accent-strong: #f2f2f0;
+  --accent-soft: rgba(226, 226, 224, 0.08);
+  --accent-ink: #1f1f22;
+  --accent-gradient: linear-gradient(#e2e2e0, #e2e2e0);
+  --highlight: #bfd59a;
+  --highlight-ink: #24301a;
 
-  --success: #86b792;
-  --warning: #d2a95a;
-  --danger: #d98a82;
-  --purple: #a8a0d6;
+  --success: #88bf97;
+  --warning: #d6ad5c;
+  --danger: #de8e88;
+  --purple: #aba4dc;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
   --shadow: 0 12px 36px rgba(0, 0, 0, 0.35);
