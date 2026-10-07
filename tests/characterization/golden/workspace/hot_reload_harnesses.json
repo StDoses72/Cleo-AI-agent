@@ -1,0 +1,52 @@
+{
+  "added": {
+    "model": "fake-model-a",
+    "models": [
+      "fake-model-a"
+    ],
+    "provider": "second_agent"
+  },
+  "before": {
+    "message": "'second_agent'",
+    "name": "KeyError"
+  },
+  "config": {
+    "error": null,
+    "restartRequired": false,
+    "version": 3
+  },
+  "disabled": {
+    "message": "'Unknown agent provider: second_agent'",
+    "name": "KeyError"
+  },
+  "initial": [
+    "scripted",
+    "claude",
+    "gemini",
+    "copilot",
+    "grok",
+    "opencode"
+  ],
+  "listed_after_add": [
+    "scripted",
+    "second_agent",
+    "claude",
+    "gemini",
+    "copilot",
+    "grok",
+    "opencode"
+  ],
+  "listed_after_disable": [
+    "scripted",
+    "claude",
+    "gemini",
+    "copilot",
+    "grok",
+    "opencode"
+  ],
+  "turn_items": [
+    "message",
+    "thought",
+    "message"
+  ]
+}

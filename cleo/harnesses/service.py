@@ -89,11 +89,19 @@ class AgentService:
         """Return registered provider names in registration order."""
         return tuple(self._providers)
 
-    def register(self, provider: AgentProvider) -> None:
-        """注册一个 provider,重名抛 ValueError。"""
-        if provider.name in self._providers:
+    def register(self, provider: AgentProvider, *, replace: bool = False) -> None:
+        """注册一个 provider,重名抛 ValueError。
+
+        ``replace=True`` swaps the instance new sessions use; live sessions keep the
+        provider they were created with until they close.
+        """
+        if provider.name in self._providers and not replace:
             raise ValueError(f"Provider already registered: {provider.name}")
         self._providers[provider.name] = provider
+
+    def unregister(self, name: str) -> None:
+        """Stop offering a provider to new sessions; live sessions are unaffected."""
+        self._providers.pop(name, None)
 
     def provider_control(self, name: str) -> AgentProvider:
         """Return a provider so richer clients can inspect optional capabilities."""

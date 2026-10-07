@@ -118,6 +118,9 @@ def _create_default_dream_agent():
 class DesktopService:
     """Application-facing facade over SessionStore, Agent, and AgentAdapter."""
 
+    # Hot reload (ConfigService); None keeps the old restart-to-apply behaviour.
+    _config: Any | None = None
+
     def __init__(
         self,
         *,
@@ -127,6 +130,7 @@ class DesktopService:
         agent_factory: Callable[..., Any] | None = None,
         dream_agent_factory: Callable[[], Any] | None = None,
         adapter: Any | None = None,
+        config: Any | None = None,
     ) -> None:
         if settings_model is None:
             from cleo.config.settings import settings as settings_model
@@ -159,6 +163,10 @@ class DesktopService:
         self._runtime_locks: dict[str, asyncio.Lock] = {}
         self._harness_switches: set[str] = set()
         self._project_paths: dict[str, str] = {}
+        self._config = config
+        self._chat_agent_versions: dict[str, int] = {}
+        if config is not None:
+            config.subscribe(self._settings_changed)
 
     async def load_workspace(self) -> dict[str, Any]:
         self._debug("load rows")
@@ -215,6 +223,8 @@ class DesktopService:
                     "productivity": list(PRODUCTIVITY_COMMANDS),
                 },
                 "recoverableChatBackups": len(self._chat_backup_candidates()),
+                "hotReload": self._config is not None,
+                "config": self._config.status() if self._config is not None else None,
             },
         }
 
@@ -890,6 +900,27 @@ class DesktopService:
         return await self._thread(manifest)
 
     async def stream_turn(
+        self,
+        *,
+        thread_id: str,
+        prompt: str,
+        attachments: list[dict[str, Any]] | None,
+        emit: Emit,
+        run_id: str | None = None,
+    ) -> None:
+        """Purpose: Run one turn against the configuration snapshot it started with.
+
+        Input: Thread, prompt, attachments, event sink and optional run id.
+        Output: None; events are emitted. Reloads during the turn apply to the next one.
+        """
+        if self._config is None:
+            return await self._stream_turn(thread_id=thread_id, prompt=prompt,
+                                           attachments=attachments, emit=emit, run_id=run_id)
+        with self._config.bind_run():
+            return await self._stream_turn(thread_id=thread_id, prompt=prompt,
+                                           attachments=attachments, emit=emit, run_id=run_id)
+
+    async def _stream_turn(
         self,
         *,
         thread_id: str,
@@ -1580,14 +1611,14 @@ class DesktopService:
             await self.check_subscription(profile=profile)
             if self._run_tasks:
                 raise ValueError("请等待当前任务完成后再修改模型连接。")
-        return save_model_profile(self.settings.PROFILE_DIR, profile)
+        return self._reloaded(save_model_profile(self.settings.PROFILE_DIR, profile))
 
     async def save_dream_settings(
         self, *, selection: str, model: str | None = None,
     ) -> dict[str, Any]:
         if self._run_tasks:
             raise ValueError("请等待当前任务完成后再修改 DreamAgent 设置。")
-        return save_dream_settings(self.settings.PROFILE_DIR, selection, model)
+        return self._reloaded(save_dream_settings(self.settings.PROFILE_DIR, selection, model))
 
     def _require_idle_configuration(self) -> None:
         if self._run_tasks:
@@ -1621,15 +1652,16 @@ class DesktopService:
         if connection.get("backend", "api") != "api":
             await self.check_model_connection(connection=connection)
             self._require_idle_configuration()
-        return create_model_connection(self.settings.PROFILE_DIR, connection)
+        return self._reloaded(create_model_connection(self.settings.PROFILE_DIR, connection))
 
     async def select_chat_model(self, *, profile_id: str, model: str) -> dict[str, Any]:
         self._require_idle_configuration()
-        return select_chat_model(self.settings.PROFILE_DIR, profile_id, model)
+        return self._reloaded(select_chat_model(self.settings.PROFILE_DIR, profile_id, model))
 
     async def rename_model_connection(self, *, profile_id: str, label: str) -> dict[str, Any]:
         self._require_idle_configuration()
-        return rename_model_connection(self.settings.PROFILE_DIR, profile_id, label)
+        return self._reloaded(rename_model_connection(self.settings.PROFILE_DIR, profile_id,
+                                                      label))
 
     async def remove_model_connection(self, *, profile_id: str) -> dict[str, Any]:
         self._require_idle_configuration()
@@ -1642,7 +1674,7 @@ class DesktopService:
                 manifest.get("runtime_options") or {}
             ).get("agent_profile") == profile_id:
                 raise ValueError("当前对话正在使用这个连接。切换所用模型后，才可移除。")
-        return remove_model_connection(self.settings.PROFILE_DIR, profile_id)
+        return self._reloaded(remove_model_connection(self.settings.PROFILE_DIR, profile_id))
 
     async def get_subscription_catalog(self) -> list[dict[str, Any]]:
         from cleo.integrations.subscriptions import RUNTIMES
@@ -1744,6 +1776,30 @@ class DesktopService:
         self.store.update_manifest(thread_id, undo_checkpoint=None)
         return {"restoredFiles": result.restored_count}
 
+    def _reloaded(self, result: Any) -> Any:
+        """Purpose: Apply a configuration file the desktop just wrote, then pass its result on."""
+        if self._config is not None:
+            self._config.reload()
+        return result
+
+    def _settings_changed(self, old: Any, new: Any) -> None:
+        """Purpose: Point long-lived objects at a reloaded configuration.
+
+        Input: Previous and new settings. Output: None. Chat agents are rebuilt lazily on their
+        next turn (see ``_stream_chat``); harness providers are swapped for new sessions while
+        live sessions keep theirs.
+        """
+        adapter = self._adapter_instance
+        if adapter is None or not hasattr(adapter, "provider_settings"):
+            return
+        if old.productivity == new.productivity:
+            return
+        from cleo.integrations.harnesses.factory import sync_providers
+
+        sync_providers(adapter, new.productivity.model_copy(update={
+            "providers": task_providers(new.productivity),
+        }))
+
     async def shutdown(self) -> None:
         from cleo.computer.host import controller
         from cleo.integrations.computer import close_connections
@@ -1777,6 +1833,12 @@ class DesktopService:
         steer_ids: list[str] | None = None,
         display_prompt: str | None = None,
     ) -> None:
+        version = self._config.snapshot.version if self._config is not None else None
+        if version is not None and self._chat_agent_versions.get(
+            manifest["id"], version,
+        ) != version:
+            self._chat_agents.pop(manifest["id"], None)
+            self._chat_agents_restored.discard(manifest["id"])
         agent = self._chat_agents.get(manifest["id"])
         if agent is None:
             agent = self._new_agent(
@@ -1786,6 +1848,8 @@ class DesktopService:
                 project_path=self._manifest_project_path(manifest),
             )
             self._chat_agents[manifest["id"]] = agent
+            if version is not None:
+                self._chat_agent_versions[manifest["id"]] = version
         loaded = None
         if manifest["id"] not in self._chat_agents_restored:
             loaded = self.store.load_langchain_messages(manifest["id"])

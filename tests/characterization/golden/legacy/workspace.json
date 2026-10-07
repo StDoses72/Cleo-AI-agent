@@ -472,7 +472,13 @@
           "/quit"
         ]
       },
+      "config": {
+        "error": null,
+        "restartRequired": false,
+        "version": 1
+      },
       "connected": true,
+      "hotReload": true,
       "mode": "local",
       "recoverableChatBackups": 0
     },

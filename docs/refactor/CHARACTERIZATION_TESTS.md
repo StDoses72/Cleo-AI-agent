@@ -43,6 +43,7 @@ Characterization test（特征测试 / golden master）记录的是系统**当�
 | --- | --- | --- | --- |
 | B1 | `test_protocol.py` | 未知方法、私有方法、缺参与多余参数时的错误封包；畸形行被忽略；非 dict 参数视作空参数；请求并发处理；`cancel_run` 只作用于指定 run；`shutdown` 先回复再退出；stdin 关闭即退出；stdout 只有 JSON；API key 从不越过协议（每个测试 teardown 都检查） | Electron 只认这个封包；重构最容易在这里出错，例如把日志打到 stdout |
 | B2 | `test_workspace_config.py` | 空 home 的 workspace 快照；只读目录（runtime catalog、模型设置、订阅目录、harness 同步、本地 skills、ACP 模型列表）；项目登记/移除/恢复与 `runtime.json`；AGENTS.md 读写；模型连接 CRUD、cleo.json 落盘格式、重启后生效 | 设置页和项目栏的全部数据来源；配置文件是用户资产 |
+| B2b | `test_hot_reload.py`（S1b 新增） | 不重启后端：协议保存的连接与外部编辑立即进入 catalog 和下一回合；运行中的回合用开始时的配置，同一线程下一回合重建 agent（工具设置更新，模型仍按线程的 `chat_profile`）；无效 JSON / 无效取值保留旧配置并报告错误（不回显输入值）；数据目录变化回报 `restartRequired`，改回后清除；`harnesses.json` 新增 provider 可建任务、禁用后不能再建 | 热加载是 S1b 新增的行为，Electron 依赖 `hotReload` 标记决定是否重启后端 |
 | B3 | `test_chat.py` | 首轮流式事件、发给 LLM 的请求（角色、工具列表、system prompt 含 AGENTS.md/MEMORY_POLICY）、manifest/events/compact/索引/memory_state 落盘；进程被杀后恢复历史；模型失败的持久化与重新加载；输入校验错误；**编辑历史消息（rewind，0.7 新增）**；附件；全部聊天 slash 命令；删除；空线程隐藏 | 主聊天的完整生命周期 |
 | B4 | `test_productivity.py` | 带计划/工具/写文件的任务轮次、Git checkpoint 与 change history；撤销；默认策略自动拒绝权限；用户审批往返；取消与非 completed 结束原因；重启后恢复原生会话；运行参数（model/effort/approval）及校验；全部开发 slash 命令；boundary steering（运行中追加指令）；ACP 不提供 rewind；创建/删除错误 | 开发任务的完整生命周期，经过真实 ACP provider |
 | B5 | `test_memory.py` | 待确认记忆队列、证据详情、跳过；DreamAgent 手动整理（MEMORY.md、memory 仓库 git 提交、状态机）；**优雅关闭时把聊过的线程交给后台 DreamAgent 进程** | 长期记忆的唯一写入路径，有状态机和证据约束 |

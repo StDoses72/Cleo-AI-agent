@@ -1,0 +1,39 @@
+{
+  "broken_json": {
+    "chat_model": "fake-chat",
+    "config": {
+      "error": "配置未生效，继续使用上一份有效配置：JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)",
+      "restartRequired": false,
+      "version": 1
+    }
+  },
+  "config_on_disk_untouched": true,
+  "directory_change": {
+    "chat_model": "fake-chat",
+    "config": {
+      "error": null,
+      "restartRequired": true,
+      "version": 3
+    }
+  },
+  "directory_reverted": {
+    "error": null,
+    "restartRequired": false,
+    "version": 4
+  },
+  "initial": {
+    "error": null,
+    "restartRequired": false,
+    "version": 1
+  },
+  "invalid_value": {
+    "error": "配置未生效，继续使用上一份有效配置：profiles.agents.fake_chat.max_tokens: Input should be a valid integer, unable to parse string as an integer",
+    "restartRequired": false,
+    "version": 1
+  },
+  "repaired": {
+    "error": null,
+    "restartRequired": false,
+    "version": 2
+  }
+}

@@ -1,8 +1,8 @@
 """B2 — Workspace bootstrap, projects and local configuration over the protocol.
 
-Configuration writes are followed by a backend restart because that is what the desktop
-shell does after every connection change (``ui/electron/main.mjs``): settings are read
-once per backend process.
+Configuration writes are followed by a backend restart to show the change was persisted;
+before S1b the desktop shell restarted after every connection change. Live application of
+changes is covered by ``test_hot_reload.py``.
 """
 
 from __future__ import annotations
