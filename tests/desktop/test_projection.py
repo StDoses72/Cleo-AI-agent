@@ -463,3 +463,31 @@ def test_codex_commentary_is_replaced_by_thought_before_final_answer() -> None:
     assert commentary[0]["item"]["status"] == "done"
     assert final[0]["item"]["type"] == "message"
     assert state["assistant"] == "done"
+
+
+def test_acp_tool_calls_show_their_title_and_raw_input() -> None:
+    """Q4: ACP payloads carry ``title`` and ``rawInput`` instead of a tool name."""
+    acp = {"toolCallId": "t1", "title": "Read README.md", "kind": "read",
+           "rawInput": {"path": "README.md"}, "status": "in_progress"}
+    events = [
+        {"id": "u", "type": "user_message", "actor": "user", "content": "go"},
+        {"id": "c1", "type": "tool_call", "actor": "scripted", "data": {"payload": acp}},
+        {"id": "c2", "type": "tool_call", "actor": "scripted", "data": {"payload": {
+            "toolCallId": "t2", "title": "Run tests",
+            "rawInput": {"command": ["pytest", "-q"]}}}},
+        {"id": "c3", "type": "tool_call", "actor": "scripted", "data": {"payload": {
+            "toolCallId": "t3", "title": "Fetch", "rawInput": {"limit": 3}}}},
+        {"id": "c4", "type": "tool_call", "actor": "codex", "data": {"payload": {
+            "item": {"id": "x", "tool": "shell", "command": "ls -la"}}}},
+    ]
+    tools = [item for item in timeline_from_events(events) if item["type"] == "tool"]
+    assert [(tool["name"], tool["command"]) for tool in tools] == [
+        ("Read README.md", "README.md"),
+        ("Run tests", "pytest -q"),
+        ("Fetch", '{"limit": 3}'),
+        ("shell", "ls -la"),
+    ]
+    live = stream_event_item(AgentEvent(provider="scripted", type="tool_call",
+                                        data={"payload": acp}), {})
+    assert (live[0]["item"]["name"], live[0]["item"]["command"]) == (
+        "Read README.md", "README.md")

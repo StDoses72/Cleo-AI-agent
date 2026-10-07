@@ -629,10 +629,10 @@
         "type": "thought"
       },
       {
-        "command": "",
+        "command": "README.md",
         "cursor": "<cursor:3>",
         "id": "<turn:1>:tool:tool-read-1",
-        "name": "tool",
+        "name": "Read README.md",
         "order": 3,
         "output": "任务已结束，但没有收到该工具的完成事件。",
         "status": "error",
@@ -652,10 +652,10 @@
         "type": "tool"
       },
       {
-        "command": "",
+        "command": "notes.txt",
         "cursor": "<cursor:4>",
         "id": "<turn:1>:tool:tool-write-1",
-        "name": "tool",
+        "name": "Write notes.txt",
         "order": 5,
         "output": "任务已结束，但没有收到该工具的完成事件。",
         "status": "error",
@@ -790,10 +790,10 @@
     },
     {
       "item": {
-        "command": "",
+        "command": "README.md",
         "cursor": "<cursor:3>",
         "id": "<turn:1>:tool:tool-read-1",
-        "name": "tool",
+        "name": "Read README.md",
         "order": 3,
         "status": "done",
         "turnId": "<turn:1>",
@@ -807,10 +807,10 @@
     },
     {
       "item": {
-        "command": "",
+        "command": "notes.txt",
         "cursor": "<cursor:4>",
         "id": "<turn:1>:tool:tool-write-1",
-        "name": "tool",
+        "name": "Write notes.txt",
         "order": 5,
         "status": "done",
         "turnId": "<turn:1>",
