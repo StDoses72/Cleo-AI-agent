@@ -26,6 +26,7 @@ from acp.schema import (
 )
 
 from cleo.harnesses.approvals import PermissionBroker
+from cleo.harnesses.capabilities import Capability
 from cleo.harnesses.control import HarnessModel, SessionOptions
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 from cleo.harnesses.provider import ProviderSession, ProviderTurn
@@ -298,6 +299,8 @@ class AcpProvider:
     由 ``create_provider``(factory.py) 按 ``acp`` 类型配置实例化并注册进
     ``AgentAdapter``; 上层通过 ``AgentAdapter`` 调用其 create/prompt/close 等方法。
     """
+
+    capabilities = frozenset({Capability.USER_APPROVALS})
 
     def __init__(
         self, name: str, spec: AcpAgentSpec, *, memory_mcp: MemoryMcp | None = None,

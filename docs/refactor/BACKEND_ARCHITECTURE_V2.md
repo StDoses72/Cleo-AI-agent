@@ -882,7 +882,7 @@ stateDiagram-v2
 | --- | --- | --- |
 | RPC 分发 | 反射 vs 显式注册表 | **显式注册表 + Pydantic 参数模型**。方法名不变，所以特征测试不受影响；`ErrorMapper` 保持现有 `name`（例如 `ValueError`、`FileNotFoundError`），因为快照固定了它 |
 | 聊天持久化 | 回合结束后同步 LangChain 状态 vs 实时记录 | 第一阶段**保留** `sync_langchain_messages` 的落盘形状（快照固定了 `message` 字段与 `lc_run--` ID）；把它封装进 `ChatEngine` 的 `TurnCompleted` 事件，由 `EventRecorder` 统一写入 |
-| 投影 | 两份 vs 一份 | **一份 `TimelineProjector`**。重构阶段先让新实现逐字复现两种旧输出，再作为独立行为变更修复 Q2/Q3 并更新快照 |
+| 投影 | 两份 vs 一份 | **一份 `TimelineProjector`**，在 S9 中与 Q2/Q3 的修复一起完成并更新快照。两种投影已经共用消息、计划步骤、审批、内容提取和未完成工具收尾这些构造函数；剩下的差异是 ID 与状态的关联规则，也就是 Q2/Q3 本身，所以统一必然改变输出，不再单独做“逐字复现”的一步（原 S7） |
 | 配置 | 全局单例 vs 注入 vs 热加载快照 | **带版本号的配置快照加热加载**（第 15 节）。每个 Run 绑定启动时的快照；数据目录类字段仍需重启。Electron 在后端声明 `hotReload` 后不再重启后端 |
 | harness 能力 | 鸭子类型 vs 声明 | **能力协议 + `capabilities()`**。runtime profile 的 `editable`、`supportsQuestions`、`steerMode`、`permissionOptions` 由能力推导 |
 | 进化 / computer use / skills | 写在核心里 vs 插件 | **`TurnHook` 插件**。核心回合管线不再出现 evolution 分支 |
@@ -921,9 +921,8 @@ flowchart LR
     s4 --> s4b[S4b Presenters<br/>Workspace / Thread 视图]
     s4b --> s5[S5 AgentSystem 接口<br/>先实现单 agent]
     s5 --> s6[S6 CommandRegistry + TurnHooks<br/>evolution / skills / computer / timing]
-    s6 --> s7[S7 TimelineProjector 单一实现]
-    s7 --> s8[S8 能力协议<br/>runtime profile 由能力推导]
-    s8 --> s9[S9 行为修复<br/>Q1–Q12 逐项更新快照]
+    s6 --> s8[S8 能力协议<br/>runtime profile 由能力推导]
+    s8 --> s9[S9 行为修复<br/>Q1–Q12 逐项更新快照<br/>含统一时间线投影（原 S7）]
 ```
 
 | 步骤 | 主要移动 | 风险 | 验证 |
@@ -932,14 +931,14 @@ flowchart LR
 | S1 | 新建 `bootstrap/container.py`，`load_settings()` 改为显式调用；保留 `cleo.config.settings.settings` 作为惰性兼容属性。Clock 和 ID 生成器的注入推迟到 S3/S4，在真正改到那些代码时再做 | 导入顺序 | 全部特征测试；`tests/test_boundaries.py` |
 | S1b | `ConfigService` 与 `SettingsSnapshot`；`settings` 兼容对象改为按 `ContextVar` 解析的代理；`load_workspace.backend` 增加 `hotReload` 与 `config` 状态；Electron 按标记停止重启后端 | 运行中读到新旧配置混用；provider 旧实例泄漏 | 全部特征测试保持不变（`load_workspace` 快照只多出 `hotReload` 与 `config` 字段），另加 `test_hot_reload.py`（第 15 节） |
 | S2 | `ProtocolServer` 改用 `cleo/desktop/rpc.py` 的显式方法表：每个方法标明调用方（`renderer` / `main` / `unused`）和是否流式；handler 仍是 `DesktopService` 的同名方法，调用时查找，参数原样传入，所以参数错误仍是原来的 `TypeError`。Pydantic 参数模型会改变错误名，留到 S9。没有调用方的 `analyze_evolution_request` 暂时保留并标为 `unused` | 漏注册方法 | `protocol/*`；`tests/desktop/test_rpc_registry.py` 核对方法表与 `DesktopService` 公开方法、`allowedMethods` 以及 Electron 主进程中的调用 |
-| S3 | `SessionStore` 门面保留，存储拆到 `cleo/sessions/` 下的 `manifests.JsonManifestRepository`、`event_log.JsonlEventStore`、`index.SqliteSessionIndex`、`compact.CompactProjection` 与 `messages`；门面只保留跨存储的规则：事件与 manifest 的写入顺序、fsync、身份校验、何时刷新投影。投影刷新改为事件总线订阅会改变 `compact.json` 的更新时机，与 S5 的 `EventRecorder` 一起做 | 落盘顺序、fsync 规则 | `*/disk`、`legacy/*`、`formats/*`；`tests/sessions/test_storage_parts.py` |
+| S3 | `SessionStore` 门面保留，存储拆到 `cleo/sessions/` 下的 `manifests.JsonManifestRepository`、`event_log.JsonlEventStore`、`index.SqliteSessionIndex`、`compact.CompactProjection` 与 `messages`；门面只保留跨存储的规则：事件与 manifest 的写入顺序、fsync、身份校验、何时刷新投影。投影刷新改为事件总线订阅会改变 `compact.json` 的更新时机，与 S9 的每运行有序事件队列（`EventRecorder`，修复 Q11）一起做 | 落盘顺序、fsync 规则 | `*/disk`、`legacy/*`、`formats/*`；`tests/sessions/test_storage_parts.py` |
 | S4 | `cleo/desktop/runs.py` 的 `RunSupervisor` 接管原先散在 `DesktopService` 上的 8 项运行期状态（任务、run id、steering、待审批、各运行的工作区及其锁、运行参数锁、进行中的 harness 切换），以及开始/结束/取消运行、切换互斥、工作区占用判断。回合管线仍在 `stream_turn` 中，S5 再拆；聊天 agent 缓存和开发会话缓存属于执行引擎，随 S5 移动 | 取消与清理竞态 | `protocol/cancel_chat_run`、`productivity/cancel_and_refusal`、`productivity/boundary_steering` |
 | S4b | Workspace / Thread 的 UI 映射从 `DesktopService` 移到 Presenters。线程视图要读运行状态（运行中、steering、待审批），所以放在 RunSupervisor 之后，通过它的只读接口取得 | 字段遗漏 | `workspace/*`、`legacy/workspace`、所有 `reloaded_*` |
 | S5 | `cleo/desktop/agent_system.py` 提供 `AgentSystem` / `AgentRuntime` 接口、`TurnInput` 与 `SingleAgentSystem`，`stream_turn` 改为通过它执行回合（第 16 节 M0）。聊天执行连同 agent 缓存移到 `chat_runtime.ChatRuntime`；开发任务执行（`_stream_productivity`）暂时经 `CallableRuntime` 接入，因为它和 harness 会话缓存还被提问、删除、切换 harness 共用，等这些会话管理拆出后再移动。manifest 的 `agent_system` 缺省为 `single`，其他模式（以后版本的多 agent 预设）在本版本中按主 agent 运行；事件可选带 `data.agent_id` | 事件顺序 | `chat/*`、`productivity/*`；`tests/desktop/test_agent_system.py`（v0.7.1 日志加上 `agent_id` 后投影不变）、`test_chat_runtime.py` |
 | S6 | S6a：两段 if/elif 命令链改为 `cleo/desktop/commands.py` 的 `CommandRegistry`（每个命令一行，别名共用，缺参数的命令仍按未知处理）。S6b：evolution 命令限制、`/computeruse` 展开、本地 skill 展开改为 `cleo/desktop/turn_hooks.py` 的 `TurnHook`（`check` 在占用运行前、`prepare` 在激活会话后），回复计时改为包住每次引擎调用的 `timed_reply` | 命令文案、钩子顺序 | `*/slash_commands`、evolution 与 computer use 单元测试；`tests/desktop/test_commands.py`、`test_turn_hooks.py` |
-| S7 | 统一投影；先逐字复现旧输出 | 实时与重新加载差异 | `reloaded_*`、`legacy/timeline_paging` |
-| S8 | provider 声明能力 | runtime profile 字段 | `workspace/catalogs`、`productivity/runtime_options` |
-| S9 | 修复 Q1–Q12（含 Run 有序事件队列、undo ref 缩短与 Git 失败提示），每项独立 PR，并审阅快照 diff | 有意的行为变更 | 更新对应快照 |
+| S7 | 并入 S9（见第 11 节“投影”一行） | — | — |
+| S8 | `cleo/harnesses/capabilities.py` 定义 `Capability`（rewind、原生 steer、提问、用户审批、速度档位、fork、原生历史、compact），各 provider 类声明 `capabilities`；`factory.provider_capabilities(type)` 按配置类型查询。`DesktopService` 中的可编辑轮次、`steerMode`、`supportsQuestions`、`supportsFastMode` / `serviceTier`、速度档位校验和开启用户审批改为按能力判断，不再比较类型名。evolution 的权限选项、skill 方言、模型来源属于各 harness 的配置细节，保持原样 | runtime profile 字段 | `workspace/catalogs`、`productivity/runtime_options`；`tests/integrations/test_harness_capabilities.py` 核对声明与实现的方法一致 |
+| S9 | 修复 Q1–Q12（含 Run 有序事件队列、undo ref 缩短与 Git 失败提示，以及 Q2/Q3 对应的统一时间线投影），每项独立 PR，并审阅快照 diff | 有意的行为变更 | 更新对应快照 |
 
 ## 14. 不变量清单（重构期间必须保持）
 

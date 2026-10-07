@@ -47,6 +47,7 @@ from cleo.desktop.turn_hooks import (
     TurnRequest,
     timed_reply,
 )
+from cleo.harnesses.capabilities import Capability
 from cleo.harnesses.control import HarnessModel
 from cleo.integrations.background import launch_dream_agent_worker
 from cleo.integrations.git import (
@@ -1080,7 +1081,8 @@ class DesktopService:
 
     def _steer_mode(self, manifest):
         if (manifest["space"] == "productivity"
-                and self._productivity_provider(manifest["provider"]).type == "codex_sdk"):
+                and Capability.NATIVE_STEER in self._capabilities(
+                    self._productivity_provider(manifest["provider"]).type)):
             return "native"
         return "boundary"
 
@@ -1133,7 +1135,7 @@ class DesktopService:
         if manifest["space"] != "productivity":
             return True
         provider = self._productivity_provider(str(manifest["provider"]))
-        return provider.type in {"codex_sdk", "claude_sdk"}
+        return Capability.REWIND in self._capabilities(provider.type)
 
     async def rewind_thread(self, *, thread_id: str, item_id: str) -> dict[str, Any]:
         """Purpose: Remove one earlier user message and everything after it before a resend.
@@ -1228,7 +1230,8 @@ class DesktopService:
         questions = getattr(implementation, "enable_questions", None)
         if callable(questions):
             await questions(session_id)
-        if not self._is_evolution(manifest) and settings.type in {"codex_sdk", "claude_sdk", "acp"}:
+        if (not self._is_evolution(manifest)
+                and Capability.USER_APPROVALS in self._capabilities(settings.type)):
             await implementation.enable_user_approvals(session_id)
 
     async def switch_harness(
@@ -2339,7 +2342,8 @@ class DesktopService:
 
     @staticmethod
     def _validate_service_tier(provider_type: str, value: Any) -> None:
-        if provider_type != "codex_sdk" or value not in ("default", "fast"):
+        if (Capability.SERVICE_TIER not in DesktopService._capabilities(provider_type)
+                or value not in ("default", "fast")):
             raise ValueError("速度档位仅支持 Codex 的标准或快速模式。")
 
     def _runtime_profile(self, manifest: dict[str, Any] | None) -> dict[str, Any]:
@@ -2382,6 +2386,7 @@ class DesktopService:
             else {}
         )
         model = str(options.get("model") or provider_settings.model or "default")
+        capabilities = self._capabilities(getattr(provider_settings, "type", None))
         return {
             "provider": provider,
             "model": model,
@@ -2392,8 +2397,8 @@ class DesktopService:
             ),
             "effort": str(options["effort"]) if options.get("effort") else None,
             "serviceTier": options.get("service_tier")
-            if provider_settings.type == "codex_sdk" else None,
-            "supportsFastMode": provider_settings.type == "codex_sdk",
+            if Capability.SERVICE_TIER in capabilities else None,
+            "supportsFastMode": Capability.SERVICE_TIER in capabilities,
             "access": str(
                 options.get("sandbox") or getattr(provider_settings.options, "sandbox", "default")
             ),
@@ -2407,14 +2412,19 @@ class DesktopService:
             "contextWindow": 128_000,
             "handoffStatus": handoff_status(self.store.read_events(manifest["id"])),
             "editable": True,
-            "supportsQuestions": getattr(provider_settings, "type", None) in {
-                "codex_sdk", "claude_sdk",
-            },
+            "supportsQuestions": Capability.QUESTIONS in capabilities,
             "settingsRevision": manifest.get("runtime_settings_revision", 0),
             "steerMode": self._steer_mode(manifest),
             "permissionOptions": self._permission_options(manifest, provider_settings),
             "pendingPermissions": self._pending_permissions_profile(manifest),
         }
+
+    @staticmethod
+    def _capabilities(provider_type: str | None) -> frozenset[Capability]:
+        """Purpose: What a configured harness type can do (declared by its provider)."""
+        from cleo.integrations.harnesses.factory import provider_capabilities
+
+        return provider_capabilities(provider_type)
 
     def _permission_options(self, manifest, provider_settings):
         """Purpose: Project native session restrictions into the permission selector.
@@ -2540,7 +2550,7 @@ class DesktopService:
         if self._is_evolution(self.store.load_manifest(session_id)):
             return
         settings = self._productivity_provider(provider)
-        if settings.type not in {"codex_sdk", "claude_sdk", "acp"}:
+        if Capability.USER_APPROVALS not in self._capabilities(settings.type):
             return
         await self._adapter().enable_user_approvals(session_id)
 

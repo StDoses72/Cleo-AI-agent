@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from openai_codex import Sandbox
 
 from cleo.harnesses.adapter import AgentAdapter
+from cleo.harnesses.capabilities import Capability, capabilities_of
 from cleo.harnesses.provider import AgentProvider
 from cleo.integrations.harnesses.acp import AcpAgentSpec, AcpProvider
 from cleo.integrations.harnesses.claude import ClaudeProvider
@@ -15,6 +16,23 @@ from cleo.sessions.store import SessionStore
 
 if TYPE_CHECKING:
     from cleo.config.settings import ProductivityProviderSettings, ProductivitySettings
+
+
+_PROVIDER_CLASSES = {
+    "codex_sdk": CodexProvider,
+    "claude_sdk": ClaudeProvider,
+    "acp": AcpProvider,
+}
+
+
+def provider_capabilities(provider_type: str | None) -> frozenset[Capability]:
+    """Purpose: What a configured harness type can do, as its provider class declares.
+
+    Input: ``ProductivityProviderSettings.type``. Output: The capabilities; none for an
+    unknown type.
+    """
+    provider_class = _PROVIDER_CLASSES.get(provider_type or "")
+    return capabilities_of(provider_class) if provider_class is not None else frozenset()
 
 
 def create_provider(
