@@ -697,6 +697,11 @@ def _plan_steps(payload: Any) -> list[dict[str, str]]:
     entries = payload.get("plan")
     if not isinstance(entries, list):
         entries = payload.get("entries")
+    item = payload.get("item")
+    if not isinstance(entries, list) and isinstance(item, dict):
+        entries = item.get("plan")
+        if not isinstance(entries, list):
+            entries = item.get("entries")
     steps = [_plan_step(entry) for entry in entries] if isinstance(entries, list) else []
     return [step for step in steps if step is not None]
 
@@ -708,7 +713,9 @@ def _plan_step(value: Any) -> dict[str, str] | None:
     if not label:
         return None
     raw_status = str(value.get("status") or "pending")
-    status = {"completed": "done", "in_progress": "running"}.get(raw_status, raw_status)
+    status = {"completed": "done", "in_progress": "running", "inProgress": "running"}.get(
+        raw_status, raw_status,
+    )
     if status not in {"pending", "running", "done"}:
         status = "pending"
     return {"label": label, "status": status}
