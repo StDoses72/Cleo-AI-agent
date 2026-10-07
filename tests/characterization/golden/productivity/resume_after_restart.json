@@ -40,7 +40,7 @@
     {
       "runtime": {
         "access": "default",
-        "approval": "deny_all",
+        "approval": "user",
         "contextWindow": 128000,
         "editable": true,
         "effort": "high",

@@ -1,7 +1,7 @@
 {
   "after_update": {
     "access": "default",
-    "approval": "deny_all",
+    "approval": "user",
     "contextWindow": 128000,
     "editable": true,
     "effort": "high",
@@ -56,7 +56,7 @@
   },
   "created_runtime": {
     "access": "default",
-    "approval": "deny_all",
+    "approval": "user",
     "contextWindow": 128000,
     "editable": true,
     "effort": "low",
@@ -117,7 +117,7 @@
     ]
   },
   "manifest_runtime_options": {
-    "approval_mode": "deny_all",
+    "approval_mode": "user",
     "effort": "high",
     "model": "fake-model-a",
     "sandbox": null,

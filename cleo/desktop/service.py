@@ -2368,7 +2368,10 @@ class DesktopService:
                 or getattr(provider_settings.options, "approval_mode", None)
                 or getattr(provider_settings.options, "permission_mode", None)
                 or ("auto_allow" if getattr(provider_settings.options, "auto_approve", False)
-                    else "deny_all" if provider_settings.type == "acp" else "default")
+                    # ACP tasks ask the user once the desktop enables approvals (Q6);
+                    # evolution tasks never enable them.
+                    else ("deny_all" if self._is_evolution(manifest) else "user")
+                    if provider_settings.type == "acp" else "default")
             ),
             "contextWindow": 128_000,
             "handoffStatus": handoff_status(self.store.read_events(manifest["id"])),
