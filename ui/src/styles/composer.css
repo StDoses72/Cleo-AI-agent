@@ -10,61 +10,49 @@
 /* ---------- Approval prompt ---------- */
 .approval-prompt {
   position: relative;
-  width: min(100%, 860px);
-  margin: 0 auto 10px;
+  width: min(100%, 780px);
+  margin: 0 auto 12px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--purple) 38%, var(--border-strong));
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--surface-raised) 96%, var(--purple) 4%);
-  box-shadow: var(--shadow), 0 0 0 1px color-mix(in srgb, var(--purple) 8%, transparent);
+  padding: 18px 20px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
   animation: rise-in 220ms var(--ease-out) both;
-}
-
-.approval-prompt::before {
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: 0;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, var(--purple) 24%, var(--purple) 76%, transparent);
-  content: "";
-  opacity: 0.8;
 }
 
 .approval-header {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
-  padding: 14px 16px 10px;
+  gap: 14px;
+  margin-bottom: 14px;
 }
 
 .approval-mark {
   display: grid;
-  width: 34px;
-  height: 34px;
+  width: 38px;
+  height: 38px;
   place-items: center;
-  border-radius: 10px;
-  color: var(--purple);
-  background: color-mix(in srgb, var(--purple) 14%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--purple) 24%, transparent);
+  border-radius: 12px;
+  color: var(--highlight-ink, var(--accent-ink));
+  background: var(--highlight, var(--accent));
 }
 
 .approval-kicker {
   display: block;
-  margin-bottom: 2px;
-  color: var(--purple);
-  font-size: 11px;
+  margin-bottom: 3px;
+  color: var(--muted);
+  font-size: var(--font-size-caption);
   font-weight: 600;
-  letter-spacing: 0.11em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .approval-header h3 {
   margin: 0;
   color: var(--text);
-  font-size: var(--font-size-body);
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 650;
   letter-spacing: -0.01em;
 }
 
@@ -72,93 +60,103 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 5px 9px;
+  padding: 4px 10px;
   border-radius: var(--radius-pill);
   color: var(--muted);
   background: var(--surface);
   font-size: var(--font-size-caption);
+  font-weight: 500;
 }
 
 .approval-command {
   display: flex;
   max-height: min(24vh, 160px);
-  margin: 0 16px;
+  margin: 0;
   overflow: auto;
   align-items: flex-start;
-  gap: 9px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
   color: var(--muted);
-  background: color-mix(in srgb, var(--chrome) 70%, transparent);
+  background: var(--surface);
 }
 
-.approval-command svg { flex: 0 0 auto; margin-top: 1px; color: var(--purple); }
-.approval-command code { overflow-wrap: anywhere; color: var(--text-soft); font-size: var(--font-size-caption); line-height: 1.5; user-select: text; }
+.approval-command svg { flex: 0 0 auto; margin-top: 2px; color: var(--muted); }
+.approval-command code { overflow-wrap: anywhere; color: var(--text); font-size: var(--font-size-caption); line-height: 1.6; user-select: text; }
 
 .approval-reason {
-  margin: 8px 16px 12px;
+  margin: 12px 2px 14px;
   color: var(--muted);
-  font-size: var(--font-size-caption);
-  line-height: 1.5;
+  font-size: var(--font-size-control);
+  line-height: 1.55;
 }
 
 .approval-reason code { color: var(--text-soft); }
-.approval-details { margin: 8px 0; color: var(--muted); font-size: var(--font-size-caption); }
-.approval-details pre { max-height: 200px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.approval-reason a { color: var(--text); text-underline-offset: 3px; }
+.approval-details { margin: 0 2px 12px; color: var(--muted); font-size: var(--font-size-caption); }
+.approval-details summary { cursor: pointer; }
+.approval-details pre { max-height: 200px; margin: 8px 0 0; padding: 10px 12px; overflow: auto; border-radius: var(--radius-sm); background: var(--surface); white-space: pre-wrap; overflow-wrap: anywhere; }
 
 .approval-options {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-  padding: 0 16px;
 }
 
 .approval-option {
   display: flex;
   min-width: 0;
+  min-height: 56px;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--border-strong);
+  padding: 10px 14px;
+  border: 0;
   border-radius: var(--radius-md);
-  color: var(--text-soft);
+  color: var(--text);
   background: var(--surface);
   text-align: left;
-  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+  transition: background 140ms ease, transform 140ms ease, box-shadow 140ms ease;
 }
 
 .approval-option:hover {
-  border-color: color-mix(in srgb, var(--purple) 36%, var(--border-strong));
-  background: color-mix(in srgb, var(--surface-hover) 94%, var(--purple) 6%);
+  background: var(--surface-hover);
+  box-shadow: var(--shadow-sm);
   transform: translateY(-1px);
 }
 
 .approval-option:disabled {
   cursor: wait;
-  opacity: 0.68;
+  opacity: 0.6;
   transform: none;
+  box-shadow: none;
 }
 
 .approval-option.primary {
-  border-color: color-mix(in srgb, var(--purple) 42%, var(--border-strong));
-  background: color-mix(in srgb, var(--purple) 12%, var(--surface));
+  color: var(--accent-ink);
+  background: var(--accent);
 }
 
+.approval-option.primary:hover { background: var(--accent-strong); }
+
 .approval-option span { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
-.approval-option strong { overflow: hidden; color: var(--text); font-size: var(--font-size-caption); font-weight: 600; text-overflow: ellipsis; white-space: normal; }
+.approval-option strong { overflow: hidden; color: inherit; font-size: var(--font-size-control); font-weight: 650; text-overflow: ellipsis; white-space: normal; }
 .approval-option small { color: var(--muted); font-size: var(--font-size-caption); }
-.approval-option kbd { flex: 0 0 auto; color: color-mix(in srgb, var(--purple) 76%, var(--muted)); }
+.approval-option.primary small { color: color-mix(in srgb, var(--accent-ink) 72%, transparent); }
+.approval-option kbd { flex: 0 0 auto; }
+.approval-option.primary kbd {
+  border-color: color-mix(in srgb, var(--accent-ink) 25%, transparent);
+  color: color-mix(in srgb, var(--accent-ink) 85%, transparent);
+  background: color-mix(in srgb, var(--accent-ink) 12%, transparent);
+}
 
 .approval-footer {
   display: flex;
-  min-height: 36px;
-  margin-top: 12px;
+  min-height: 32px;
+  margin-top: 10px;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 16px;
-  border-top: 1px solid var(--border);
+  padding: 4px 2px 0;
   color: var(--muted-2);
   font-size: var(--font-size-caption);
   flex-wrap: wrap;
@@ -169,10 +167,11 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 5px 8px;
-  border-radius: var(--radius-xs);
+  padding: 5px 10px;
+  border-radius: var(--radius-pill);
   color: var(--muted);
   font-size: var(--font-size-caption);
+  font-weight: 500;
 }
 
 .approval-footer button:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, transparent); }
@@ -180,7 +179,7 @@
 .approval-footer span { display: flex; align-items: center; gap: 7px; }
 .approval-footer > span { min-width: 0; max-width: 72%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .approval-error { color: var(--danger); }
-.approval-spinner { color: var(--purple); animation: spin 850ms linear infinite; }
+.approval-spinner { color: currentColor; animation: spin 850ms linear infinite; }
 
 /* ---------- Composer card ---------- */
 .composer {
