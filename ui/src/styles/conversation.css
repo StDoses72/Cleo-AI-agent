@@ -430,6 +430,32 @@
   letter-spacing: 0.02em;
 }
 
+/* Math (KaTeX): inherits the text colour, display math scrolls instead of overflowing. */
+.message-copy .katex,
+.thought-copy .katex,
+.files-markdown .katex {
+  font-size: 1.06em;
+  color: inherit;
+}
+
+.message-copy .katex-display,
+.thought-copy .katex-display,
+.files-markdown .katex-display {
+  margin: 12px 0;
+  padding: 6px 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  user-select: text;
+}
+
+.katex-display > .katex {
+  text-align: left;
+}
+
+.katex .katex-mathml {
+  user-select: none;
+}
+
 .message-copy hr {
   margin: 22px 0;
   border: 0;

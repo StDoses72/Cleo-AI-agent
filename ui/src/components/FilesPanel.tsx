@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import { normalizeMath } from "../markdown-math";
 import { ChevronDown, ChevronRight, CircleAlert, Copy, ExternalLink, File, FolderClosed, FolderOpen, Globe, RefreshCw } from "lucide-react";
 import type { WorkspaceEntry, WorkspaceFilePreview } from "../computer-types";
 import "./files-panel.css";
@@ -191,11 +194,11 @@ export function FilesPanel({ root, reveal, onNotify, onCopyText, onOpenExternal,
         {preview.kind === "pdf" && <iframe className="files-pdf" title={preview.path} src={preview.url} />}
         {preview.kind === "binary" && <div className="inspector-empty"><File size={22} /><strong>二进制文件</strong><span>无法以文字预览，可用系统应用打开。</span></div>}
         {preview.kind === "markdown" && <div className="files-markdown">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={(url) => {
+          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: "ignore", errorColor: "#c96b63" }]]} urlTransform={(url) => {
             if (/^(https?:|mailto:|#)/i.test(url)) return url;
             try { return new URL(url, preview.url).href; } catch { return ""; }
           }} components={{ a: ({ node: _node, href, children, ...props }) => <a {...props} href={href} target="_blank" rel="noreferrer">{children}</a> }}>
-            {preview.text ?? ""}</ReactMarkdown>
+            {normalizeMath(preview.text ?? "")}</ReactMarkdown>
         </div>}
         {(preview.kind === "text" || preview.kind === "html") && <>
           {preview.kind === "html" && <p className="computer-panel-hint">HTML 源码；点击 <Globe size={11} /> 在内置浏览器中预览页面。</p>}
