@@ -9,7 +9,7 @@
         "content": "Summarize what changed",
         "cursor": "<cursor:1>",
         "id": "<turn:1>",
-        "order": 8,
+        "order": 7,
         "role": "user",
         "time": "<clock-time>",
         "turnHasAnswer": true,
@@ -20,7 +20,7 @@
         "content": "Thinking about the request.",
         "cursor": "<cursor:2>",
         "id": "<turn:1>:thought:1",
-        "order": 9,
+        "order": 8,
         "status": "done",
         "turnHasAnswer": true,
         "turnId": "<turn:1>",
@@ -30,7 +30,7 @@
         "content": "ACP reply: Summarize what changed",
         "cursor": "<cursor:3>",
         "id": "<turn:1>:answer",
-        "order": 10,
+        "order": 9,
         "role": "assistant",
         "time": "<clock-time>",
         "turnHasAnswer": true,
@@ -39,7 +39,7 @@
       }
     ],
     "revision": "<revision:1>",
-    "total": 10
+    "total": 9
   },
   "before": {
     "after": "<after:2>",
@@ -48,23 +48,22 @@
     "hasBefore": true,
     "items": [
       {
-        "command": "notes.txt",
+        "command": "README.md",
         "cursor": "<cursor:4>",
-        "id": "<turn:2>:tool:tool-write-1",
-        "name": "Write notes.txt",
-        "order": 5,
-        "output": "任务已结束，但没有收到该工具的完成事件。",
-        "status": "error",
+        "id": "<turn:2>:tool:tool-read-1",
+        "name": "Read README.md",
+        "order": 4,
+        "status": "done",
         "turnHasAnswer": true,
         "turnId": "<turn:2>",
         "type": "tool"
       },
       {
-        "command": "",
+        "command": "notes.txt",
         "cursor": "<cursor:5>",
-        "id": "<turn:2>:tool-result-<event:1>",
-        "name": "tool",
-        "order": 6,
+        "id": "<turn:2>:tool:tool-write-1",
+        "name": "Write notes.txt",
+        "order": 5,
         "status": "done",
         "turnHasAnswer": true,
         "turnId": "<turn:2>",
@@ -74,7 +73,7 @@
         "content": "ACP reply: Write the notes file [[plan]] [[tool]] [[write]]",
         "cursor": "<cursor:6>",
         "id": "<turn:2>:answer",
-        "order": 7,
+        "order": 6,
         "role": "assistant",
         "time": "<clock-time>",
         "turnHasAnswer": true,
@@ -83,7 +82,7 @@
       }
     ],
     "revision": "<revision:1>",
-    "total": 10
+    "total": 9
   },
   "content": {
     "next": 22,
@@ -101,7 +100,7 @@
         "content": "Summarize what changed",
         "cursor": "<cursor:1>",
         "id": "<turn:1>",
-        "order": 8,
+        "order": 7,
         "role": "user",
         "time": "<clock-time>",
         "turnHasAnswer": true,
@@ -112,7 +111,7 @@
         "content": "Thinking about the request.",
         "cursor": "<cursor:2>",
         "id": "<turn:1>:thought:1",
-        "order": 9,
+        "order": 8,
         "status": "done",
         "turnHasAnswer": true,
         "turnId": "<turn:1>",
@@ -122,7 +121,7 @@
         "content": "ACP reply: Summarize what changed",
         "cursor": "<cursor:3>",
         "id": "<turn:1>:answer",
-        "order": 10,
+        "order": 9,
         "role": "assistant",
         "time": "<clock-time>",
         "turnHasAnswer": true,
@@ -131,6 +130,6 @@
       }
     ],
     "revision": "<revision:1>",
-    "total": 10
+    "total": 9
   }
 }

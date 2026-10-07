@@ -29,7 +29,7 @@ Characterization test（特征测试 / golden master）记录的是系统**当�
 
 | 层 | 范围 | 本轮是否新增特征测试 | 理由 |
 | --- | --- | --- | --- |
-| **后端（Python）** | `cleo/` 全部：协议服务、use case、session/memory 持久化、harness 适配、MCP 服务器、后台记忆整理进程 | **是**，`tests/characterization/` 共 51 个测试 | 这是重构对象。对外契约有：JSONL 协议、磁盘格式、发给 LLM/harness 的请求、子进程入口 |
+| **后端（Python）** | `cleo/` 全部：协议服务、use case、session/memory 持久化、harness 适配、MCP 服务器、后台记忆整理进程 | **是**，`tests/characterization/` 共 56 个测试（v0.7.1 基线 51 个，重构期间新增热加载、长路径与 ACP 默认审批的测试） | 这是重构对象。对外契约有：JSONL 协议、磁盘格式、发给 LLM/harness 的请求、子进程入口 |
 | **前端·渲染层（React）** | `ui/src/` | 否 | 不在重构范围。它只通过 `CleoClient` 消费协议；协议快照（`golden/`）就是它依赖的契约，后端不变它就不受影响 |
 | **前端·Electron 主进程** | `ui/electron/*.mjs` | 否（保留现有 Node 测试作为回归门） | 虽然里面约 75% 是业务逻辑（自我进化、更新、发布、运行时安装），但它跑在另一个运行时，与 Python 只通过协议和少数一次性子进程交互。其中 bootstrap/recovery 必须先于可变代码加载，部分文件还被原样复制进安装包，不适合在本轮后端重构中移动 |
 
@@ -88,7 +88,7 @@ CLEO_UPDATE_GOLDEN=1 .venv/Scripts/python.exe -m pytest tests/characterization -
 
 `fixtures/legacy_home_v0_7_1/` 只能用 v0.7.1 代码生成（`python -m tests.characterization.fixtures.build_legacy_home`）。**重构后不要再重新生成**，否则"旧数据可读"的保证就失效了。
 
-整套 51 个测试在开发机上约 4 分钟（每个测试启动一个独立后端进程）。
+整套 56 个测试在开发机上约 5 分钟（每个测试启动一个独立后端进程）。
 
 ## 6. 快照中固定下来的现有缺陷与怪异行为
 
@@ -97,8 +97,8 @@ CLEO_UPDATE_GOLDEN=1 .venv/Scripts/python.exe -m pytest tests/characterization -
 | # | 行为 | 位置（快照） | 根因线索 |
 | --- | --- | --- | --- |
 | Q1 | **已修复（S9）**：原先 ACP 任务里不带参数的 `/model` 返回 `TypeError: AcpProvider.list_models() missing 1 required positional argument: 'project_path'`；现在列出该 harness 在任务目录下探测到的模型 | `productivity/slash_commands` | `AgentService.list_models()` 现在把任务目录传给 provider；Codex 接受并忽略这个参数 |
-| Q2 | ACP 工具调用：实时流显示"完成"，重新加载后显示"失败：运行已结束，但没有收到该工具的完成记录"，外加一条孤立的结果项 | `productivity/tool_turn` | 实时投影（`stream_event_item`）与持久化投影（`timeline_from_events`）对 `tool_call_update` 的关联规则不一致 |
-| Q3 | ACP `plan` 更新已持久化，但实时和重新加载时都不显示 | `productivity/tool_turn` | 投影只认 Codex 的计划 payload 格式 |
+| Q2 | **已修复（S9）**：原先 ACP 工具调用实时流显示“完成”，重新加载后显示“失败：运行已结束，但没有收到该工具的完成记录”，外加一条孤立的结果项；现在两边都显示“完成”，没有孤立项，旧会话重新加载时同样生效 | `productivity/tool_turn`、`legacy/workspace`、`legacy/timeline_paging`、`formats/projections_task`；`tests/desktop/test_projection_consistency.py` 让同一串事件分别经过实时与持久化投影，比较最终的工具与计划 | 两种投影共用 `_tool_key`（持久化投影原先对工具调用不认 ACP 的 `toolCallId`）；这同时完成了原 S7 的统一：两边已共用全部构造规则，一致性由测试固定 |
+| Q3 | **已修复（S9）**：原先 ACP `plan` 更新已持久化，但实时和重新加载时都不显示；现在两边都显示执行计划 | 同 Q2 | 两种投影共用 `_plan_steps`，同时识别 Codex 的 `plan`（`step`）与 ACP 的 `entries`（`content`） |
 | Q4 | **已修复（S9）**：原先 ACP 工具名一律显示为 `tool`，命令为空；现在名称取 `title`（如 “Read README.md”），命令取 `rawInput` 中的 command / path 等字段，没有时显示紧凑 JSON。实时与重新加载两种投影一致，旧会话重新加载时同样生效 | `productivity/tool_turn`、`legacy/workspace`、`legacy/timeline_paging`、`formats/projections_task` | 两种投影共用 `_tool_name` / `_tool_command`；Codex 与 Claude 原有的字段优先级不变 |
 | Q5 | **已修复（S9）**：原先缺少 `sessions.sqlite3` 时 `load_workspace` 返回空线程列表，直到某个线程被按 ID 打开才重建索引；现在后端打开存储时发现索引文件不存在就从 manifest 重建，列线程和按原生会话查找前也会检查 | `legacy/missing_index` | `SqliteSessionIndex.ensure()` 报告是否新建了数据库文件，`SessionStore` 据此重建 |
 | Q6 | **已修复（S9）**：原先 ACP 任务默认审批是 `deny_all`，桌面虽然调用了 `enable_user_approvals`，权限请求仍被自动拒绝，用户要手动改成 `user`；现在与 Codex / Claude 一致，默认询问用户。配置了 `auto_approve`、或在会话中选过审批模式的保持不变；v0.7.1 创建的任务已在 manifest 中保存了 `deny_all`，按已保存的选择保留，用户可在运行参数中改为“由你决定” | `productivity/*` 的 runtime（`approval: user`）、`test_acp_tasks_ask_the_user_by_default`；`permission_denied_by_policy` 改为显式设置 `deny_all` | ACP host 记录审批模式是否显式设定，`enable_user_approvals` 只替换隐式默认值；`AgentService.enable_user_approvals` 在选项变化时写回 manifest |

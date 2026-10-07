@@ -118,10 +118,10 @@
           {
             "args": {},
             "created_at": "<time>",
-            "id": "<event:2>",
+            "id": "<event:7>",
             "name": "unknown",
             "source_event_ids": [
-              "<event:2>"
+              "<event:7>"
             ],
             "status": "success",
             "type": "tool_event"
@@ -129,10 +129,10 @@
           {
             "args": {},
             "created_at": "<time>",
-            "id": "<event:3>",
+            "id": "<event:9>",
             "name": "unknown",
             "source_event_ids": [
-              "<event:3>"
+              "<event:9>"
             ],
             "status": "success",
             "type": "tool_event"
@@ -172,9 +172,9 @@
               "timeline_id": "<turn:1>:plan",
               "turn_id": "<turn:1>"
             },
-            "id": "<event:7>",
+            "id": "<event:5>",
             "source_event_ids": [
-              "<event:7>"
+              "<event:5>"
             ],
             "type": "plan_update"
           },
@@ -198,9 +198,9 @@
               "timeline_id": "<turn:1>:tool:tool-read-1",
               "turn_id": "<turn:1>"
             },
-            "id": "<event:8>",
+            "id": "<event:6>",
             "source_event_ids": [
-              "<event:8>"
+              "<event:6>"
             ],
             "type": "tool_call"
           },
@@ -224,9 +224,9 @@
               "timeline_id": "<turn:1>:tool:tool-write-1",
               "turn_id": "<turn:1>"
             },
-            "id": "<event:9>",
+            "id": "<event:8>",
             "source_event_ids": [
-              "<event:9>"
+              "<event:8>"
             ],
             "type": "tool_call"
           }
@@ -257,7 +257,7 @@
             "provider": "scripted",
             "tags": []
           },
-          "id": "<event:4>",
+          "id": "<event:2>",
           "project": "workspace",
           "schema_version": 1,
           "seq": 1,
@@ -280,7 +280,7 @@
         {
           "actor": "system",
           "created_at": "<time>",
-          "id": "<event:5>",
+          "id": "<event:3>",
           "project": "workspace",
           "schema_version": 1,
           "seq": 3,
@@ -306,7 +306,7 @@
             "timeline_id": "<turn:1>:thought:1",
             "turn_id": "<turn:1>"
           },
-          "id": "<event:6>",
+          "id": "<event:4>",
           "project": "workspace",
           "schema_version": 1,
           "seq": 4,
@@ -339,7 +339,7 @@
             "timeline_id": "<turn:1>:plan",
             "turn_id": "<turn:1>"
           },
-          "id": "<event:7>",
+          "id": "<event:5>",
           "project": "workspace",
           "schema_version": 1,
           "seq": 5,
@@ -367,7 +367,7 @@
             "timeline_id": "<turn:1>:tool:tool-read-1",
             "turn_id": "<turn:1>"
           },
-          "id": "<event:8>",
+          "id": "<event:6>",
           "project": "workspace",
           "schema_version": 1,
           "seq": 6,
@@ -402,7 +402,7 @@
             "timeline_id": "<turn:1>:tool:tool-read-1",
             "turn_id": "<turn:1>"
           },
-          "id": "<event:2>",
+          "id": "<event:7>",
           "project": "workspace",
           "schema_version": 1,
           "seq": 7,
@@ -430,7 +430,7 @@
             "timeline_id": "<turn:1>:tool:tool-write-1",
             "turn_id": "<turn:1>"
           },
-          "id": "<event:9>",
+          "id": "<event:8>",
           "project": "workspace",
           "schema_version": 1,
           "seq": 8,
@@ -460,7 +460,7 @@
             "timeline_id": "<turn:1>:tool:tool-write-1",
             "turn_id": "<turn:1>"
           },
-          "id": "<event:3>",
+          "id": "<event:9>",
           "project": "workspace",
           "schema_version": 1,
           "seq": 9,
@@ -611,7 +611,7 @@
       "hasAfter": false,
       "hasBefore": false,
       "revision": "<revision:2>",
-      "total": 7
+      "total": 6
     },
     "id": "<agent:1>",
     "items": [
@@ -637,22 +637,29 @@
         "type": "thought"
       },
       {
-        "command": "README.md",
         "cursor": "<cursor:3>",
-        "id": "<turn:1>:tool:tool-read-1",
-        "name": "Read README.md",
+        "id": "<turn:1>:plan",
         "order": 3,
-        "output": "任务已结束，但没有收到该工具的完成事件。",
-        "status": "error",
+        "steps": [
+          {
+            "label": "Inspect the workspace",
+            "status": "done"
+          },
+          {
+            "label": "Write the answer",
+            "status": "running"
+          }
+        ],
+        "title": "执行计划",
         "turnHasAnswer": true,
         "turnId": "<turn:1>",
-        "type": "tool"
+        "type": "plan"
       },
       {
-        "command": "",
-        "cursor": "<cursor:5>",
-        "id": "<turn:1>:tool-result-<event:2>",
-        "name": "tool",
+        "command": "README.md",
+        "cursor": "<cursor:4>",
+        "id": "<turn:1>:tool:tool-read-1",
+        "name": "Read README.md",
         "order": 4,
         "status": "done",
         "turnHasAnswer": true,
@@ -661,22 +668,10 @@
       },
       {
         "command": "notes.txt",
-        "cursor": "<cursor:4>",
+        "cursor": "<cursor:5>",
         "id": "<turn:1>:tool:tool-write-1",
         "name": "Write notes.txt",
         "order": 5,
-        "output": "任务已结束，但没有收到该工具的完成事件。",
-        "status": "error",
-        "turnHasAnswer": true,
-        "turnId": "<turn:1>",
-        "type": "tool"
-      },
-      {
-        "command": "",
-        "cursor": "<cursor:6>",
-        "id": "<turn:1>:tool-result-<event:3>",
-        "name": "tool",
-        "order": 6,
         "status": "done",
         "turnHasAnswer": true,
         "turnId": "<turn:1>",
@@ -684,9 +679,9 @@
       },
       {
         "content": "ACP reply: Update notes [[plan]] [[tool]] [[write]]",
-        "cursor": "<cursor:7>",
+        "cursor": "<cursor:6>",
         "id": "<turn:1>:answer",
-        "order": 7,
+        "order": 6,
         "role": "assistant",
         "time": "<clock-time>",
         "timing": {
@@ -798,11 +793,32 @@
     },
     {
       "item": {
-        "command": "README.md",
         "cursor": "<cursor:3>",
+        "id": "<turn:1>:plan",
+        "order": 3,
+        "steps": [
+          {
+            "label": "Inspect the workspace",
+            "status": "done"
+          },
+          {
+            "label": "Write the answer",
+            "status": "running"
+          }
+        ],
+        "title": "执行计划",
+        "turnId": "<turn:1>",
+        "type": "plan"
+      },
+      "type": "upsert-item"
+    },
+    {
+      "item": {
+        "command": "README.md",
+        "cursor": "<cursor:4>",
         "id": "<turn:1>:tool:tool-read-1",
         "name": "Read README.md",
-        "order": 3,
+        "order": 4,
         "status": "done",
         "turnId": "<turn:1>",
         "type": "tool"
@@ -816,7 +832,7 @@
     {
       "item": {
         "command": "notes.txt",
-        "cursor": "<cursor:4>",
+        "cursor": "<cursor:5>",
         "id": "<turn:1>:tool:tool-write-1",
         "name": "Write notes.txt",
         "order": 5,
