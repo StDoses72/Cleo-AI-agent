@@ -99,6 +99,8 @@ def test_desktop_dispatch_uses_selected_harness_and_keeps_builtins(skill_home, t
     service._is_evolution = lambda _: False
     service._productivity_provider = lambda name: SimpleNamespace(type=f"{name}_sdk")
     service._runs = RunSupervisor()
+    service._productivity_sessions = {}
+    service._chat = SimpleNamespace(stream=AsyncMock())
     service._stream_productivity = AsyncMock()
     service._run_command = AsyncMock()
     emit = AsyncMock()

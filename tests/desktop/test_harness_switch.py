@@ -36,6 +36,8 @@ def tearDownModule():
 
 
 class Provider:
+    provider_type = "codex_sdk"
+
     def __init__(self, name):
         self.name = name
         self.calls = []

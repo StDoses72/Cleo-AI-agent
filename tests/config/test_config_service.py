@@ -120,9 +120,29 @@ def test_a_running_turn_keeps_the_snapshot_it_started_with(files, tmp_path) -> N
         files[0].write_text(json.dumps(_cleo(tmp_path, model="model-b")), encoding="utf-8")
         assert service.reload() is True
         assert run.version == 1
+        assert service.current_snapshot is run
+        assert service.snapshot.version == service.status()["version"] == 2
         assert current_settings().active_agent_profile.model == "model-a"
         assert settings_module.settings.active_agent_profile.model == "model-a"
+    assert service.current_snapshot is service.snapshot
     assert current_settings().active_agent_profile.model == "model-b"
+
+
+def test_nested_run_restores_settings_and_version_after_failure(files, tmp_path) -> None:
+    service = _service(files)
+    with service.bind_run() as outer:
+        files[0].write_text(json.dumps(_cleo(tmp_path, model="model-b")), encoding="utf-8")
+        assert service.reload() is True
+        with pytest.raises(RuntimeError, match="run failed"):
+            with service.bind_run() as inner:
+                assert inner is service.snapshot
+                assert service.current_snapshot is inner
+                assert current_settings() is inner.settings
+                raise RuntimeError("run failed")
+        assert service.current_snapshot is outer
+        assert current_settings() is outer.settings
+    assert service.current_snapshot is service.snapshot
+    assert current_settings() is service.snapshot.settings
 
 
 def test_a_failing_listener_is_reported_instead_of_raising(files, tmp_path) -> None:

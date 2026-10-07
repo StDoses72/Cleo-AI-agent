@@ -55,6 +55,7 @@ class AgentProvider(Protocol):
     """
 
     name: str
+    provider_type: str
 
     async def create_session(
         self,

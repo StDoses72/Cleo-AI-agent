@@ -303,6 +303,7 @@ class AcpProvider:
     ``AgentAdapter``; 上层通过 ``AgentAdapter`` 调用其 create/prompt/close 等方法。
     """
 
+    provider_type = "acp"
     capabilities = frozenset({Capability.USER_APPROVALS})
 
     def __init__(

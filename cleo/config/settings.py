@@ -1000,6 +1000,8 @@ def load_settings(
 
     with open(config_path, encoding="utf-8") as f:
         raw_config = json.load(f)
+    if not isinstance(raw_config, dict):
+        raise ValueError("cleo.json must contain a JSON object.")
 
     # Older Cleo configs may still contain the removed local semantic gate.
     raw_config.pop("memory_gate", None)
