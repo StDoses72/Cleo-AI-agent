@@ -1468,6 +1468,15 @@ class DesktopService:
             "exists": path.is_file(),
         }
 
+    async def get_config_status(self) -> dict[str, Any] | None:
+        """Purpose: Report whether the latest configuration change applied.
+
+        Input: None. Output: ``{"version", "error", "restartRequired"}``, or None when this
+        backend applies configuration only at startup. The protocol server reloads edited
+        files before each request, so this call also applies an edit made outside the app.
+        """
+        return self._config.status() if self._config is not None else None
+
     async def get_runtime_catalog(self) -> dict[str, Any]:
         registered = set(self._adapter().providers)
         profiles = [

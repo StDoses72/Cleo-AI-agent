@@ -124,7 +124,8 @@ def test_broken_edits_keep_the_working_configuration(
     assert "sk-not-a-number" not in json.dumps(invalid_value)
 
     _write(cleo_home.config_path, valid)
-    repaired = _config_status(backend)
+    repaired = backend.call("get_config_status")  # Window focus: the first call applies it.
+    assert repaired == _config_status(backend)
 
     moved = json.loads(valid)
     moved["profiles"]["directories"]["default"]["data_dir"] = "data-moved"

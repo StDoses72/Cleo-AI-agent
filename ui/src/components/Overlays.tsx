@@ -41,6 +41,7 @@ import type {
   RuntimeProfile,
   RuntimeUpdate,
   UpdateState,
+  ConfigStatus,
   WorkspaceSpace,
 } from "../types";
 import { ModelSettingsPanel, type ModelsPage } from "./model-settings/ModelSettingsPanel";
@@ -601,6 +602,25 @@ function UpdateSettingsPage({
               : "当前使用已验证的运行依赖。"
       }</p></details>}
     </div>
+  );
+}
+
+export function ConfigNotice({ status, onRecheck }: { status: ConfigStatus | null; onRecheck: () => void }) {
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  if (!status || (!status.error && !status.restartRequired)) return null;
+  const key = `${status.version}:${status.error}:${status.restartRequired}`;
+  if (dismissed === key) return null;
+  const detail = status.error ?? "数据目录的修改已保存，重启 Cleo 后生效。";
+  return (
+    <aside className="update-notice config-notice" role="status">
+      <span className="update-notice-icon"><CircleAlert size={16} /></span>
+      <div>
+        <strong>{status.error ? "配置没有完全生效" : "需要重启 Cleo"}</strong>
+        <small title={detail}>{detail}</small>
+      </div>
+      <button type="button" onClick={onRecheck}>重新检查</button>
+      <button type="button" className="config-notice-close" aria-label="关闭配置提示" title="关闭配置提示" onClick={() => setDismissed(key)}><X size={14} /></button>
+    </aside>
   );
 }
 

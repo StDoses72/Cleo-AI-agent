@@ -3280,6 +3280,11 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 .update-notice small { color: var(--muted); font-size: var(--font-size-caption); }
 .update-notice button { height: 29px; flex: 0 0 auto; padding: 0 9px; border-radius: 7px; color: #071012; background: var(--accent); font-size: var(--font-size-caption); font-weight: 600; }
 .update-notice button:disabled { opacity: .45; cursor: default; }
+.config-notice { top: 56px; bottom: auto; }
+.config-notice .update-notice-icon { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+.config-notice small { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow-wrap: anywhere; }
+.config-notice .config-notice-close { display: grid; width: 29px; padding: 0; place-items: center; color: var(--muted); background: transparent; }
+.config-notice .config-notice-close:hover { color: var(--text-soft); background: var(--surface-hover); }
 
 .agent-instructions-page { display: flex; height: 100%; min-height: 455px; flex-direction: column; }
 .agent-instructions-intro { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 10px; }

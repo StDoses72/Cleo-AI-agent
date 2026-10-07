@@ -52,7 +52,7 @@ DESKTOP_METHODS: tuple[RpcMethod, ...] = (
     # Timeline.
     *_methods("renderer", "load_timeline", "read_timeline_content", "get_timing"),
     # Settings, catalogs and instructions.
-    *_methods("renderer", "get_config_templates", "get_agent_instructions",
+    *_methods("renderer", "get_config_status", "get_config_templates", "get_agent_instructions",
               "save_agent_instructions", "get_model_settings", "get_runtime_catalog",
               "get_productivity_models", "get_local_skills", "get_harness_sync",
               "sync_harness_items"),
