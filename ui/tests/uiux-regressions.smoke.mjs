@@ -463,6 +463,19 @@ try {
     assert.deepEqual(blocks.map(block => block.id), ["u1", "a1", "tool-group-t1", "u2", "tool-group-t2", "a2"]);
     assert.equal(new Set(blocks.map(block => block.id)).size, blocks.length);
   });
+  await check("Thought groups lead the turn even when a tool call arrives first", async page => {
+    const blocks = await page.evaluate(async () => {
+      const { groupTimelineItems } = await import("/src/components/Conversation.tsx");
+      return groupTimelineItems([
+        { id: "u1", type: "message", role: "user", content: "开始", turnId: "turn" },
+        { id: "t1", type: "tool", name: "Read", status: "done", turnId: "turn" },
+        { id: "th1", type: "thought", content: "先看看", status: "done", turnId: "turn" },
+        { id: "t2", type: "tool", name: "Edit", status: "running", turnId: "turn" },
+      ]);
+    });
+    assert.deepEqual(blocks.map(block => block.id), ["u1", "thought-group-t1", "tool-group-t1"]);
+    assert.equal(blocks[1].hasAnswer, false);
+  });
   if (process.env.CLEO_SMOKE_OUTPUT) await mkdir(process.env.CLEO_SMOKE_OUTPUT, { recursive: true });
   assert.deepEqual(failures, []);
 } finally {

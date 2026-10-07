@@ -236,7 +236,8 @@ export function Conversation({
   const stateKey = (id: string) => `${thread?.id}:${id}`;
   const isOpen = (block: TimelineBlock) => {
     const saved = expansion[stateKey(block.id)];
-    if (block.type === "thought-group") return block.hasAnswer && !saved?.answered ? false : saved?.open ?? false;
+    // Thoughts stay open until the turn's final answer arrives, then collapse once; a manual toggle after that wins.
+    if (block.type === "thought-group") return block.hasAnswer && !saved?.answered ? false : saved?.open ?? !block.hasAnswer;
     return saved?.open ?? false;
   };
   const toggle = (id: string, open: boolean, answered = false) => setExpansion(current => {
@@ -636,7 +637,8 @@ export function groupTimelineItems(items: TimelineItem[]): TimelineBlock[] {
     let addedToolGroup = false;
 
     for (const item of turn) {
-      if (item.type === "thought" && !addedThoughtGroup) {
+      // The thought group always leads the turn's process blocks, even when a tool call arrived before the first thought.
+      if ((item.type === "thought" || item.type === "tool") && thoughts.length && !addedThoughtGroup) {
         blocks.push({
           id: `thought-group-${turn[0].id}`,
           type: "thought-group",
@@ -644,7 +646,8 @@ export function groupTimelineItems(items: TimelineItem[]): TimelineBlock[] {
           hasAnswer: turn.some(item => item.turnHasAnswer),
         });
         addedThoughtGroup = true;
-      } else if (item.type === "tool" && !addedToolGroup) {
+      }
+      if (item.type === "tool" && !addedToolGroup) {
         blocks.push({
           id: `tool-group-${turn[0].id}`,
           type: "tool-group",
@@ -918,7 +921,7 @@ function ThoughtGroupEntry({
   headerOnly?: boolean;
   active?: boolean;
 }) {
-  const [localExpanded, setExpanded] = useState(false);
+  const [localExpanded, setExpanded] = useState(!item.hasAnswer);
   const expanded = controlled ?? localExpanded;
   const running = active ?? item.thoughts.some((thought) => thought.status === "running");
   const summary = `${item.thoughts.length} 条`;
