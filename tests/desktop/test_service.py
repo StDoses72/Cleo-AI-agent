@@ -295,8 +295,13 @@ def test_chat_error_detail_survives_history_reload(tmp_path):
         )
         service._chat.agents["failed-chat"] = SimpleNamespace(stream_text=fail)
         service._sync_chat = AsyncMock()
-        with pytest.raises(ValueError, match="Image input rejected"):
-            await service._stream_chat(manifest, "describe", [], AsyncMock())
+        emit = AsyncMock()
+        await service._stream_chat(manifest, "describe", [], emit)
+        # Q10: the failure ends the turn with an error event, the same text as after reload.
+        assert emit.await_args_list[-1].args[0] == {
+            "type": "error", "message": "Image input rejected"}
+        service._sync_chat.assert_awaited_once()
+        assert service._sync_chat.await_args.args[2] == "interrupted"
         items = timeline_from_events(service.store.read_events("failed-chat"))
         assert items[-1]["type"] == "notice"
         assert items[-1]["detail"] == "Image input rejected"

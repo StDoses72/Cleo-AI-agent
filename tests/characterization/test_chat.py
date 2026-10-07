@@ -110,13 +110,17 @@ def test_failed_model_call_is_persisted_as_interrupted(
     reply = stream.finish()
     manifest = {**thread, "space": "non_productivity", "project": "general"}
     files = session_files(cleo_home, manifest)
+    reloaded = backend.call("load_thread", thread_id=thread["id"])["items"]
+    # Q10: the live error and the reloaded notice carry the same diagnostic text.
+    live_error = next(event for event in stream.events if event["type"] == "error")
+    assert live_error["message"] == reloaded[-1]["detail"]
     assert_golden("chat/model_failure", {
         # The exception class comes from the model SDK; the UI only shows the message.
         "reply_type": reply["type"],
         "stream": collapse_stream(stream.events),
         "persisted_event_types": [event["type"] for event in files["events.jsonl"]],
         "manifest_status": files["manifest.json"]["status"],
-        "reloaded_items": backend.call("load_thread", thread_id=thread["id"])["items"],
+        "reloaded_items": reloaded,
     }, replacements)
 
 

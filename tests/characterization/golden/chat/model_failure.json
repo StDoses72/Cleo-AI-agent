@@ -47,7 +47,7 @@
       "type": "notice"
     }
   ],
-  "reply_type": "error",
+  "reply_type": "result",
   "stream": [
     {
       "item": {
@@ -59,6 +59,10 @@
         "type": "message"
       },
       "type": "turn-started"
+    },
+    {
+      "message": "Error code: 500 - {'error': {'message': 'fake upstream failure', 'type': 'server_error'}}",
+      "type": "error"
     },
     {
       "timing": {

@@ -273,7 +273,7 @@ export class MockCleoClient implements CleoClient {
           if (at >= 0) items[at] = clone(event.item); else items.push(clone(event.item));
         } else if (event.type === "error") {
           storedThread.status = "attention";
-          items.push({ id: `${turnId}:error`, turnId, type: "notice", tone: "warning", title: "任务已暂停", detail: event.message });
+          items.push({ id: `${turnId}:error`, turnId, type: "notice", tone: "warning", title: "运行需要查看", detail: event.message });
         }
         yield event;
       }
