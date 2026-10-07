@@ -216,8 +216,9 @@ try {
   await window.waitForFunction(() => document.querySelectorAll(".attachment-chip").length === 0);
   await window.getByTestId("stop-button").waitFor();
   await window.getByTestId("thought-group").waitFor({ timeout: 20_000 });
-  // Process groups stay collapsed while running; the header carries a one-line live summary instead of popping rows.
-  await window.getByTestId("thought-group").locator(".tool-group-live").getByText("正在整理", { exact: true }).waitFor({ timeout: 20_000 });
+  // The thought group opens on its own until the final answer lands; tool groups stay collapsed with a live header line.
+  // Expanded thought rows render as virtual rows after the group header, so look them up on the timeline.
+  await window.getByTestId("timeline").locator(".thought-entry").getByText("正在整理", { exact: false }).first().waitFor({ timeout: 20_000 });
   await window.getByTestId("tool-group").getByText("2 项", { exact: false }).waitFor({ timeout: 5_000 });
   const streamingLayout = await window.evaluate(() => {
     const timeline = document.querySelector('[data-testid="timeline"]');
@@ -240,9 +241,10 @@ try {
     streamingLayout.thoughtIndex >= 0
       && streamingLayout.toolIndex >= 0
       && streamingLayout.assistantIndex === -1
-      && streamingLayout.thoughtExpanded === "false",
-    "Process groups should stay collapsed while streaming and show progress in their header",
+      && streamingLayout.thoughtExpanded === "true",
+    "Process text was hidden before a final answer arrived",
   );
+  assert(streamingLayout.thoughtIndex < streamingLayout.toolIndex, "Thought group should sit above the tool group");
   assert(streamingLayout.distanceFromBottom < 24, "Streaming timeline did not follow the latest text");
   await window.getByRole("heading", { name: "运行完成", exact: true }).waitFor({ timeout: 20_000 });
   await window.getByText("真实后端接入后，这些事件会保持同一结构从 IPC bridge 流入").waitFor({ timeout: 20_000 });
