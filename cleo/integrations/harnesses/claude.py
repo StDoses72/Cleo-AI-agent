@@ -435,6 +435,18 @@ class ClaudeProvider:
                             if event.type == "agent_message" and event.text:
                                 response_parts.append(event.text)
                             await emit_event(on_event, event)
+                            if isinstance(block, ToolUseBlock) and block.name == "TodoWrite":
+                                todos = block.input.get("todos")
+                                if isinstance(todos, list):
+                                    plan = AgentEvent(
+                                        provider=self.name, type="plan_update", data={"plan": [
+                                            {"step": todo.get("content"),
+                                             "status": todo.get("status")}
+                                            for todo in todos if isinstance(todo, dict)
+                                        ]},
+                                    )
+                                    events.append(plan)
+                                    await emit_event(on_event, plan)
                     elif isinstance(message, UserMessage) and isinstance(message.content, list):
                         # SDK tool results arrive as user messages, not assistant blocks.
                         for block in message.content:

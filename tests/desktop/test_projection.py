@@ -130,7 +130,8 @@ def test_timeline_from_events_projects_messages_and_tools() -> None:
     assert items[1]["output"] == "clean"
 
 
-def test_timeline_from_events_updates_one_plan_per_turn() -> None:
+@pytest.mark.parametrize("running_status", ["inProgress", "in_progress"])
+def test_timeline_from_events_updates_one_plan_per_turn(running_status) -> None:
     events = [
         {"id": "u1", "type": "user_message", "content": "inspect"},
         {
@@ -140,7 +141,7 @@ def test_timeline_from_events_updates_one_plan_per_turn() -> None:
                 "payload": {
                     "turnId": "turn-1",
                     "plan": [
-                        {"step": "inspect", "status": "in_progress"},
+                        {"step": "inspect", "status": running_status},
                         {"step": "verify", "status": "pending"},
                     ],
                 }
@@ -154,7 +155,7 @@ def test_timeline_from_events_updates_one_plan_per_turn() -> None:
                     "turnId": "turn-1",
                     "plan": [
                         {"step": "inspect", "status": "completed"},
-                        {"step": "verify", "status": "in_progress"},
+                        {"step": "verify", "status": running_status},
                     ],
                 }
             },
@@ -185,13 +186,14 @@ def test_timeline_from_events_closes_orphaned_tools_at_session_end() -> None:
     assert items[0]["output"] == "任务已结束，但没有收到该工具的完成事件。"
 
 
-def test_live_plan_updates_share_an_id_and_orphaned_tools_are_closed() -> None:
+@pytest.mark.parametrize("running_status", ["inProgress", "in_progress"])
+def test_live_plan_updates_share_an_id_and_orphaned_tools_are_closed(running_status) -> None:
     state: dict[str, object] = {"run_id": "run-1"}
     first = stream_event_item(
         AgentEvent(
             provider="codex",
             type="plan_update",
-            data={"payload": {"plan": [{"step": "inspect", "status": "pending"}]}},
+            data={"payload": {"plan": [{"step": "inspect", "status": running_status}]}},
         ),
         state,
     )
@@ -215,7 +217,79 @@ def test_live_plan_updates_share_an_id_and_orphaned_tools_are_closed() -> None:
     finalized = finalize_stream_tools(state)
 
     assert first[0]["item"]["id"] == second[0]["item"]["id"] == "live-plan-run-1"
+    assert first[0]["item"]["steps"] == [{"label": "inspect", "status": "running"}]
+    assert second[0]["item"]["steps"] == [{"label": "inspect", "status": "done"}]
     assert finalized[0]["item"]["status"] == "error"
+
+
+@pytest.mark.parametrize("entries_key,label_key", [("plan", "step"), ("entries", "content")])
+def test_codex_plan_items_update_live_and_history(entries_key, label_key) -> None:
+    from cleo.harnesses.service import AgentService
+    from cleo.integrations.harnesses.codex import CodexProvider
+
+    provider = CodexProvider(default_model="test-model")
+    state = {}
+    stored = []
+    live = []
+    for method, status in [("item/started", "inProgress"), ("item/completed", "completed")]:
+        event = provider._event_from_notification(method, {
+            "turnId": "turn-1",
+            "item": {"id": "plan-1", "type": "plan",
+                     entries_key: [{label_key: "inspect", "status": status}]},
+        })
+        assert event.type == "plan_update"
+        stored.append(AgentService._stored_provider_event(event))
+        live.extend(stream_event_item(event, state))
+
+    assert len(live) == 2
+    assert live[0]["item"]["id"] == live[1]["item"]["id"]
+    assert live[0]["item"]["steps"] == [{"label": "inspect", "status": "running"}]
+    assert live[1]["item"]["steps"] == [{"label": "inspect", "status": "done"}]
+    history = timeline_from_events(stored)
+    assert len(history) == 1
+    assert history[0]["type"] == "plan"
+    assert history[0]["steps"] == live[1]["item"]["steps"]
+
+
+def test_plan_status_defaults_are_consistent_live_and_in_history() -> None:
+    from cleo.harnesses.service import AgentService
+
+    entries = [
+        {"step": "pending", "status": "pending"},
+        {"step": "unknown", "status": "unexpected"},
+        {"step": "missing"},
+        {"step": "running", "status": "running"},
+        {"step": "done", "status": "done"},
+    ]
+    event = AgentEvent(provider="codex", type="plan_update", data={"plan": entries})
+    live = stream_event_item(event, {})[0]["item"]
+    history = timeline_from_events([AgentService._stored_provider_event(event)])[0]
+    assert live["steps"] == history["steps"]
+    assert [step["status"] for step in live["steps"]] == [
+        "pending", "pending", "pending", "running", "done",
+    ]
+
+
+@pytest.mark.parametrize("payload", [
+    {"item": {"id": "plan-1", "type": "plan", "text": "Inspect the code"}},
+    {"delta": "Inspect"},
+    {"plan": []},
+])
+def test_unstructured_plan_updates_preserve_existing_steps(payload) -> None:
+    from cleo.harnesses.service import AgentService
+
+    first = AgentEvent(provider="codex", type="plan_update", data={
+        "plan": [{"step": "Inspect", "status": "inProgress"}],
+    })
+    second = AgentEvent(provider="codex", type="plan_update", data={"payload": payload})
+    state = {}
+    live = stream_event_item(first, state)[0]["item"]
+    assert stream_event_item(second, state) == []
+    history = timeline_from_events([
+        AgentService._stored_provider_event(event) for event in (first, second)
+    ])
+    assert len(history) == 1
+    assert history[0]["steps"] == live["steps"] == [{"label": "Inspect", "status": "running"}]
 
 
 def test_acp_thought_chunks_share_one_item_until_the_next_event() -> None:
