@@ -502,21 +502,48 @@ class AgentService:
                     data["timeline_id"] = f"{turn_key}:answer"
             projected = event.model_copy(update={"data": data})
             stored = self._stored_provider_event(projected)
-            if stored is not None:
-                await asyncio.to_thread(
-                    self._store.append_events,
-                    space=self._space,
-                    project=route.project,
-                    session_id=session_id,
-                    events=[stored],
-                )
-                live_events.add(id(event))
-            try:
-                await emit_event(on_event, projected)
-            except Exception:
-                # A durable answer is final even if its UI notification connection closes.
-                if event.type != "question_response" or stored is None:
+            # Providers may call back from concurrent tasks (ACP handles every notification
+            # in its own task); one consumer keeps the log and the client in arrival order.
+            done = asyncio.get_running_loop().create_future()
+            pending.put_nowait((event, projected, stored, done))
+            await done
+
+        pending: asyncio.Queue[tuple[AgentEvent, AgentEvent, dict | None, asyncio.Future]] = (
+            asyncio.Queue()
+        )
+
+        async def deliver() -> None:
+            while True:
+                event, projected, stored, done = await pending.get()
+                try:
+                    if stored is not None:
+                        await asyncio.to_thread(
+                            self._store.append_events,
+                            space=self._space,
+                            project=route.project,
+                            session_id=session_id,
+                            events=[stored],
+                        )
+                        live_events.add(id(event))
+                    try:
+                        await emit_event(on_event, projected)
+                    except Exception:
+                        # A durable answer is final even if its UI notification closes.
+                        if event.type != "question_response" or stored is None:
+                            raise
+                except asyncio.CancelledError:
+                    done.cancel()
                     raise
+                except Exception as exc:
+                    if not done.done():
+                        done.set_exception(exc)
+                else:
+                    if not done.done():
+                        done.set_result(None)
+                finally:
+                    pending.task_done()
+
+        consumer: asyncio.Task[None] | None = None
 
         try:
             from cleo.runtime.timing import phase
@@ -543,17 +570,28 @@ class AgentService:
                     },
                 )
             phase("模型运行（含工具与等待）")
+            if on_event is not None:
+                consumer = asyncio.create_task(deliver())
             turn = await route.provider.prompt(
                 route.provider_session_id,
                 context + "\n\nCurrent user request:\n" + prompt if context else prompt,
                 relay if on_event is not None else None,
             )
+            if consumer is not None:
+                # Let notifications that arrived with the response enqueue, then finish them
+                # before the terminal events are written (Q11).
+                await asyncio.sleep(0)
+                await pending.join()
         except asyncio.CancelledError:
             self._store.set_status(session_id, "cancelled")
             raise
         except Exception as exc:
             self._store.set_status(session_id, "failed", error=str(exc))
             raise
+        finally:
+            if consumer is not None:
+                consumer.cancel()
+                await asyncio.gather(consumer, return_exceptions=True)
         phase("保存回复与会话状态", previous_status=(
             "cancelled" if turn.status == "cancelled" else "failed" if turn.error else "completed"
         ))

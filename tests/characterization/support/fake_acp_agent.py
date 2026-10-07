@@ -17,9 +17,9 @@ When ``CHAR_ACP_LOG`` is set, every session and prompt request is appended to th
 JSON lines, so tests can pin exactly what Cleo hands to a harness.
 
 Notifications are paced (``CHAR_ACP_PACE`` seconds, default 0.25) like a model-backed agent.
-Cleo v0.7.1 handles each ACP ``session/update`` in its own task, so a burst of updates has
-no ordering guarantee (docs/refactor/CHARACTERIZATION_TESTS.md, Q11). Pacing keeps the
-snapshots clear of that window without changing the backend.
+Since S9 Cleo keeps ACP updates in arrival order even in a burst (Q11); the pacing now only
+fixes when this agent's own file writes land relative to Cleo's mid-turn change refreshes,
+which decides what the ``changes`` snapshots contain.
 """
 
 from __future__ import annotations
@@ -144,8 +144,8 @@ class ScriptedAgent:
         await asyncio.sleep(pause)
 
     async def _start_tool(self, session_id: str, update: Any) -> None:
-        # Cleo looks up the timeline position of each new item off the event loop before
-        # emitting it; a completion sent too soon can overtake its own start (Q11).
+        # Keeps a tool's file write and Cleo's refresh after it in a fixed order, so the
+        # snapshots see the same intermediate changes on every run.
         await self._send(session_id, update, pause=max(PACE, TOOL_PACE))
 
     async def prompt(self, session_id: str, prompt: list[Any], **_kwargs: Any) -> PromptResponse:
