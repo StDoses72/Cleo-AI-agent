@@ -145,8 +145,42 @@ def inspect_git_status(cwd: str) -> GitStatus | None:
     )
 
 
+_UNTRACKED_DIFF_FILES = 50
+_UNTRACKED_DIFF_BYTES = 1024 * 1024
+
+
+def _untracked_diffs(repo_root: str) -> tuple[list[str], list[str]]:
+    """Purpose: New-file diffs for untracked files, as ``git diff`` shows staged ones.
+
+    Input: Repository root. Output: The diffs, and the untracked paths left out (beyond
+    the first 50 files, over 1 MB, or unreadable). Ignored files are not listed.
+    """
+    listed = _git(repo_root, "ls-files", "--others", "--exclude-standard", "-z")
+    paths = [path for path in listed.stdout.split("\0") if path] if listed.returncode == 0 else []
+    diffs: list[str] = []
+    skipped = paths[_UNTRACKED_DIFF_FILES:]
+    for path in paths[:_UNTRACKED_DIFF_FILES]:
+        try:
+            too_large = (Path(repo_root) / path).stat().st_size > _UNTRACKED_DIFF_BYTES
+        except OSError:
+            too_large = True
+        result = None if too_large else _git(
+            repo_root, "diff", "--no-ext-diff", "--no-color", "--no-index", "--",
+            "/dev/null", path,
+        )
+        # --no-index exits with 1 when the files differ, which is always the case here.
+        if result is not None and result.returncode in {0, 1} and result.stdout.strip():
+            diffs.append(result.stdout.rstrip())
+        else:
+            skipped.append(path)
+    return diffs, skipped
+
+
 def read_git_diff(cwd: str) -> str | None:
-    """Return the current tracked diff plus an explicit untracked-file list."""
+    """Return the current diff, with untracked files shown as new files.
+
+    Untracked files that are too many, too large or unreadable are listed by name only.
+    """
     status = inspect_git_status(cwd)
     if status is None:
         return None
@@ -170,14 +204,11 @@ def read_git_diff(cwd: str) -> str | None:
             if part.strip()
         )
 
-    untracked = tuple(
-        change[3:].strip()
-        for change in status.changes
-        if change.startswith("?? ") and change[3:].strip()
-    )
-    if untracked:
+    untracked, skipped = _untracked_diffs(status.repo_root)
+    diff = "\n".join(part for part in (diff, *untracked) if part)
+    if skipped:
         note = "Untracked files (contents not included):\n" + "\n".join(
-            f"  {path}" for path in untracked
+            f"  {path}" for path in skipped
         )
         diff = f"{diff}\n\n{note}".strip()
     return diff

@@ -578,7 +578,15 @@
         "title": "Update notes [[plan]] [[tool]] [[write]]"
       }
     ],
-    "changes": [],
+    "changes": [
+      {
+        "additions": 1,
+        "deletions": 0,
+        "diff": "diff --git a/notes.txt b/notes.txt\nnew file mode 100644\nindex 0000000..e8a0e97\n--- /dev/null\n+++ b/notes.txt\n@@ -0,0 +1 @@\n+scripted note",
+        "path": "notes.txt",
+        "status": "added"
+      }
+    ],
     "currentTiming": {
       "createdAt": "<time>",
       "elapsedMs": "<number>",
@@ -819,6 +827,18 @@
       "type": "upsert-item"
     },
     {
+      "changes": [
+        {
+          "additions": 1,
+          "deletions": 0,
+          "diff": "diff --git a/notes.txt b/notes.txt\nnew file mode 100644\nindex 0000000..e8a0e97\n--- /dev/null\n+++ b/notes.txt\n@@ -0,0 +1 @@\n+scripted note",
+          "path": "notes.txt",
+          "status": "added"
+        }
+      ],
+      "type": "changes"
+    },
+    {
       "item": {
         "content": "ACP reply: Update notes [[plan]] [[tool]] [[write]]",
         "id": "<turn:1>:answer",
@@ -890,7 +910,15 @@
       "type": "runtime"
     },
     {
-      "changes": [],
+      "changes": [
+        {
+          "additions": 1,
+          "deletions": 0,
+          "diff": "diff --git a/notes.txt b/notes.txt\nnew file mode 100644\nindex 0000000..e8a0e97\n--- /dev/null\n+++ b/notes.txt\n@@ -0,0 +1 @@\n+scripted note",
+          "path": "notes.txt",
+          "status": "added"
+        }
+      ],
       "type": "changes"
     },
     {
