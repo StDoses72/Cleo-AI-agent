@@ -130,3 +130,32 @@ def test_browser_tool_unknown_configuration_is_rejected() -> None:
 
     with pytest.raises(ValidationError, match="unknown_option"):
         SettingsModel.model_validate(payload)
+
+
+def test_settings_proxy_resolves_the_installed_configuration(monkeypatch) -> None:
+    monkeypatch.setattr(settings_module, "_current_settings", None)
+    model = SettingsModel.model_validate(_settings_payload(dream_agent="dream"))
+
+    settings_module.configure_settings(model)
+
+    assert settings_module.current_settings() is model
+    assert settings_module.settings.active_profiles is model.active_profiles
+    assert settings_module.settings.active_dream_agent_profile.model == "dream-model"
+
+
+def test_settings_proxy_loads_from_disk_on_first_use(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "cleo.json"
+    config_path.write_text(json.dumps(_settings_payload(dream_agent=None)), encoding="utf-8")
+    real_load = settings_module.load_settings
+    calls = []
+
+    def load_once():
+        calls.append(config_path)
+        return real_load(config_path, tmp_path / "harnesses.json")
+
+    monkeypatch.setattr(settings_module, "_current_settings", None)
+    monkeypatch.setattr(settings_module, "load_settings", load_once)
+
+    assert settings_module.settings.active_agent_profile.model == "foreground-model"
+    assert settings_module.settings.active_profiles.agent == "foreground"
+    assert calls == [config_path]

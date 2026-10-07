@@ -1,5 +1,6 @@
 import ast
 import inspect
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -64,3 +65,33 @@ def test_primary_runtime_boundaries_are_async() -> None:
     assert inspect.iscoroutinefunction(DreamAgent.invoke)
     assert inspect.iscoroutinefunction(CodexAdapter.start)
     assert inspect.iscoroutinefunction(CodexAdapter.reply)
+
+
+def test_importing_the_backend_does_not_load_configuration(tmp_path) -> None:
+    """Entry points load configuration at startup; importing a module never reads or writes it."""
+    home = tmp_path / "home"
+    home.mkdir()
+    script = """
+import importlib
+for name in (
+    "cleo.desktop.server", "cleo.desktop.service", "cleo.agents", "cleo.agents.dream",
+    "cleo.agents.tools.codex_tools", "cleo.integrations.harnesses.factory",
+    "cleo.mcp.agent_server", "cleo.mcp.codex_server", "cleo.mcp.memory_server",
+    "cleo.memory.worker", "cleo.bootstrap.container",
+):
+    importlib.import_module(name)
+import cleo.config.settings as module
+assert module._current_settings is None, "configuration was loaded during import"
+"""
+    env = {key: value for key, value in os.environ.items() if not key.startswith("CLEO_")}
+    env.update(
+        CLEO_HOME=str(home),
+        CLEO_CONFIG_PATH=str(home / "config" / "cleo.json"),
+        CLEO_HARNESSES_CONFIG_PATH=str(home / "config" / "harnesses.json"),
+    )
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        cwd=ROOT, env=env, text=True, capture_output=True, timeout=120,
+    )
+    assert result.returncode == 0, result.stderr
+    assert not (home / "config").exists(), "importing the backend created configuration files"

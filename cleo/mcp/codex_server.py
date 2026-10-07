@@ -1,17 +1,24 @@
 """Expose the async Codex adapter through a stdio MCP server."""
 
+from functools import cache
+
 from fastmcp import FastMCP
 
-from cleo.config.settings import settings
+from cleo.config.settings import current_settings, settings
 from cleo.integrations import CodexAdapter
 
 mcp = FastMCP("cleo-codex")
-_adapter = CodexAdapter(
-    default_model=settings.active_tools_profile.codex_model,
-    project_root=settings.active_directory_profile.root_path,
-    memory_root=settings.MEMORY_DIR,
-    session_index_path=settings.SESSION_INDEX_PATH,
-)
+
+
+@cache
+def _default_adapter() -> CodexAdapter:
+    """Adapter shared by both tools, built on first use instead of at import."""
+    return CodexAdapter(
+        default_model=settings.active_tools_profile.codex_model,
+        project_root=settings.active_directory_profile.root_path,
+        memory_root=settings.MEMORY_DIR,
+        session_index_path=settings.SESSION_INDEX_PATH,
+    )
 
 
 @mcp.tool(name="codex")
@@ -34,7 +41,7 @@ async def codex(
         等), 由 fastmcp 序列化为 tool 响应回传给 MCP client; thread_id
         可传给 ``codex-reply`` 继续会话。
     """
-    return (await _adapter.start(prompt, project_path, model)).model_dump()
+    return (await _default_adapter().start(prompt, project_path, model)).model_dump()
 
 
 @mcp.tool(name="codex-reply")
@@ -55,7 +62,7 @@ async def codex_reply(
         ``CodexResult.model_dump()`` 字典, 由 fastmcp 序列化后回传给
         MCP client。
     """
-    return (await _adapter.reply(thread_id, prompt, project_path)).model_dump()
+    return (await _default_adapter().reply(thread_id, prompt, project_path)).model_dump()
 
 
 def main() -> None:
@@ -64,6 +71,7 @@ def main() -> None:
     作为 console script 入口 ``cleo-codex-mcp``(pyproject.toml)及
     ``python -m`` 直接执行的入口被调用; 无参数, 无返回值。
     """
+    current_settings()  # Fail at startup, as before, when the configuration is unusable.
     mcp.run(transport="stdio", show_banner=False)
 
 

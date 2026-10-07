@@ -4,6 +4,7 @@
 Agent.tool_list), 由 deepagents 框架按 LLM 的 tool call 调用。
 """
 
+from functools import cache
 from pathlib import Path
 
 from langchain.tools import tool
@@ -11,12 +12,16 @@ from langchain.tools import tool
 from cleo.config.settings import settings
 from cleo.integrations import CodexAdapter
 
-_adapter = CodexAdapter(
-    default_model=settings.active_tools_profile.codex_model,
-    project_root=settings.active_directory_profile.root_path,
-    memory_root=settings.MEMORY_DIR,
-    session_index_path=settings.SESSION_INDEX_PATH,
-)
+
+@cache
+def _default_adapter() -> CodexAdapter:
+    """Adapter for the module-level tools, built on first use instead of at import."""
+    return CodexAdapter(
+        default_model=settings.active_tools_profile.codex_model,
+        project_root=settings.active_directory_profile.root_path,
+        memory_root=settings.MEMORY_DIR,
+        session_index_path=settings.SESSION_INDEX_PATH,
+    )
 
 
 @tool("codex")
@@ -45,7 +50,7 @@ async def codex_tool(
         error); 由 langchain tool 框架序列化回 LLM 作为 tool message,
         其中 thread_id 供后续 `codex_reply` 复用。
     """
-    return (await _adapter.start(prompt, project_path, model)).model_dump()
+    return (await _default_adapter().start(prompt, project_path, model)).model_dump()
 
 
 @tool("codex_reply")
@@ -68,7 +73,7 @@ async def codex_reply_tool(
         CodexResult.model_dump() dict; 由 langchain 框架作为 tool
         message 回传给 LLM, 供其组织最终回复。
     """
-    return (await _adapter.reply(thread_id, prompt, project_path)).model_dump()
+    return (await _default_adapter().reply(thread_id, prompt, project_path)).model_dump()
 
 
 def create_codex_tools(project_root: str | Path):

@@ -1,5 +1,6 @@
 import json
 import os
+import threading
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -1020,4 +1021,53 @@ def load_settings(
     return SettingsModel.model_validate(raw_config)
 
 
-settings: SettingsModel = load_settings()
+_current_settings: SettingsModel | None = None
+_settings_lock = threading.Lock()
+
+
+def current_settings() -> SettingsModel:
+    """Purpose: Return the process configuration, loading it from disk on first use.
+
+    Input: None. Output: The loaded ``SettingsModel``. Raises like ``load_settings`` when the
+    configuration is missing or invalid; entry points call this at startup so that such a
+    failure still happens before any work begins.
+    """
+    global _current_settings
+    if _current_settings is None:
+        with _settings_lock:
+            if _current_settings is None:
+                _current_settings = load_settings()
+    return _current_settings
+
+
+def configure_settings(model: SettingsModel | None) -> None:
+    """Purpose: Install an explicitly built configuration for the composition root or tests.
+
+    Input: A ``SettingsModel``, or None to load from disk again on next use. Output: None.
+    """
+    global _current_settings
+    with _settings_lock:
+        _current_settings = model
+
+
+class _SettingsProxy:
+    """Stand-in for the former import-time singleton.
+
+    ``from cleo.config.settings import settings`` keeps working: every attribute access
+    resolves against ``current_settings()``, so importing a module no longer reads or
+    creates configuration files.
+    """
+
+    __slots__ = ()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(current_settings(), name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        setattr(current_settings(), name, value)
+
+    def __repr__(self) -> str:
+        return f"<lazy {current_settings()!r}>"
+
+
+settings: SettingsModel = _SettingsProxy()  # type: ignore[assignment]

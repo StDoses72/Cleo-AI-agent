@@ -66,8 +66,8 @@ async def repair_release(request: dict, settings, create_provider) -> None:
 
 
 if __name__ == "__main__":
-    from cleo.config.settings import settings
+    from cleo.bootstrap.container import load_configuration
     from cleo.integrations.harnesses.factory import create_provider
 
     asyncio.run(repair_release(json.loads(Path(sys.argv[1]).read_text(encoding="utf-8")),
-                               settings, create_provider))
+                               load_configuration(), create_provider))
