@@ -9,12 +9,19 @@ import sys
 from threading import Thread
 from typing import Any
 
+from cleo.desktop.rpc import RpcRegistry, wire_error
 from cleo.desktop.service import DesktopService
 
 
 class ProtocolServer:
-    def __init__(self, service: DesktopService | None = None, config: Any | None = None) -> None:
+    def __init__(
+        self,
+        service: DesktopService | None = None,
+        config: Any | None = None,
+        registry: RpcRegistry | None = None,
+    ) -> None:
         self.service = service or DesktopService()
+        self._registry = registry or RpcRegistry()
         # Hot reload: pick up configuration edited outside the app before each request.
         self._config = config
         self._write_lock = asyncio.Lock()
@@ -64,29 +71,17 @@ class ProtocolServer:
             await self._write({"id": request_id, "type": "event", "event": event})
 
         try:
-            if method_name == "stream_turn":
-                await self.service.stream_turn(emit=emit, **params)
-                result: Any = None
-            elif method_name == "shutdown":
+            if method_name == "shutdown":
                 self._stopping = True
-                result = {"stopped": True}
+                result: Any = {"stopped": True}
             else:
-                method = getattr(self.service, method_name, None)
-                if not callable(method) or method_name.startswith("_"):
-                    raise ValueError(f"unsupported desktop method: {method_name}")
-                result = await method(**params)
+                result = await self._registry.dispatch(self.service, method_name, params, emit)
             self._debug(f"complete {method_name} {request_id}")
             await self._write({"id": request_id, "type": "result", "result": result})
         except asyncio.CancelledError:
             await self._write({"id": request_id, "type": "result", "result": None})
         except Exception as exc:
-            await self._write(
-                {
-                    "id": request_id,
-                    "type": "error",
-                    "error": {"name": type(exc).__name__, "message": str(exc)},
-                }
-            )
+            await self._write({"id": request_id, "type": "error", "error": wire_error(exc)})
 
     @staticmethod
     def _debug(message: str) -> None:
