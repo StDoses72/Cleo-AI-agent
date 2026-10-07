@@ -59,7 +59,7 @@ class SessionStore:
         self._events = JsonlEventStore(self.memory_root)
         self._index = SqliteSessionIndex(self.index_path, self._lock)
         self._compact = CompactProjection(self.memory_root)
-        self._index.ensure()
+        self._ensure_index()
 
     def create_session(
         self,
@@ -464,6 +464,7 @@ class SessionStore:
         native_session_id: str,
         space: str = "productivity",
     ) -> dict[str, Any] | None:
+        self._ensure_index()
         path = self._index.native_manifest_path(
             provider=provider, native_session_id=native_session_id, space=validate_space(space),
         )
@@ -476,11 +477,17 @@ class SessionStore:
         project: str | None = None,
         status: str | None = None,
     ) -> list[dict[str, Any]]:
+        self._ensure_index()
         return self._index.rows(
             space=validate_space(space) if space is not None else None,
             project=validate_name(project, "project") if project is not None else None,
             status=status,
         )
+
+    def _ensure_index(self) -> None:
+        """Purpose: Open the index; when its file was missing, rebuild it from the manifests."""
+        if self._index.ensure():
+            self.rebuild_index()
 
     def rebuild_index(self) -> int:
         manifests = self._manifests.scan()

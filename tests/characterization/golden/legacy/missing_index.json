@@ -9,5 +9,9 @@
     "<thread:1>",
     "<thread:2>"
   ],
-  "threads_before_opening": []
+  "threads_before_opening": [
+    "<agent:1>",
+    "<thread:1>",
+    "<thread:2>"
+  ]
 }
