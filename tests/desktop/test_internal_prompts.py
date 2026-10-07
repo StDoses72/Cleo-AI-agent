@@ -2,6 +2,7 @@
 
 import pytest
 
+from cleo.desktop.presenters import visible_title
 from cleo.desktop.projection import internal_prompt_display, timeline_from_events
 
 REQUIREMENTS = (
@@ -58,7 +59,6 @@ def test_older_saved_messages_without_display_metadata_are_cleaned_on_read():
 
 
 def test_titles_come_from_visible_text(tmp_path):
-    from cleo.desktop.service import DesktopService
     from cleo.sessions.store import SessionStore
 
     store = SessionStore(tmp_path / "memory", tmp_path / "index.sqlite")
@@ -70,7 +70,7 @@ def test_titles_come_from_visible_text(tmp_path):
     ])
     assert store.load_manifest("evo")["title"] == "改标题"
     internal = "Cleo self-iteration requirements: - Work only"
-    assert DesktopService._visible_title(internal) == "进化会话"
-    assert DesktopService._visible_title("[[CLEO_ACCEPTANCE_REQUEST:x]] 需求") == "进化会话"
-    assert DesktopService._visible_title("我的任务") == "我的任务"
-    assert DesktopService._visible_title("") is None
+    assert visible_title(internal) == "进化会话"
+    assert visible_title("[[CLEO_ACCEPTANCE_REQUEST:x]] 需求") == "进化会话"
+    assert visible_title("我的任务") == "我的任务"
+    assert visible_title("") is None

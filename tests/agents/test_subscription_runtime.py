@@ -6,6 +6,7 @@ from langchain_core.messages import HumanMessage
 from cleo.agents import runtime as module
 from cleo.agents.profiles import dream_profile, profile_snapshot, session_profile
 from cleo.config.settings import AgentProfile, SettingsModel
+from cleo.desktop.presenters import usage_from_events, usage_view
 from cleo.harnesses.models import AgentEvent, emit_event
 from cleo.harnesses.provider import ProviderSession, ProviderTurn
 from cleo.integrations.harnesses.acp import SessionResumeUnsupported
@@ -320,7 +321,6 @@ def test_dream_starts_separate_runtime_and_does_not_replace_chat_id(tmp_path, mo
 
 def test_subscription_usage_reaches_agent_and_saved_history(tmp_path, monkeypatch):
     from cleo.agents import Agent
-    from cleo.desktop.service import DesktopService
     from cleo.runtime.usage import ContextWindowUsage
 
     graph, provider, store = setup_runtime(tmp_path, monkeypatch)
@@ -341,5 +341,5 @@ def test_subscription_usage_reaches_agent_and_saved_history(tmp_path, monkeypatc
 
     assert asyncio.run(exercise()) == ["hello"]
     expected = {"used": 1400, "limit": 256000, "input": 120, "output": 30}
-    assert DesktopService._usage_dict(agent.context_usage) == expected
-    assert DesktopService._usage_from_events(store.read_events("chat"), 100000) == expected
+    assert usage_view(agent.context_usage) == expected
+    assert usage_from_events(store.read_events("chat"), 100000) == expected
