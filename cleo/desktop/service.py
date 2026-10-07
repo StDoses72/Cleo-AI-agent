@@ -13,6 +13,8 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
+from cleo.desktop.agent_system import AgentSystem, CallableRuntime, SingleAgentSystem, TurnInput
+from cleo.desktop.chat_runtime import ChatRuntime
 from cleo.desktop.configuration import (
     create_model_connection,
     read_model_settings,
@@ -149,8 +151,22 @@ class DesktopService:
         self._agent_factory = agent_factory
         self._dream_agent_factory = dream_agent_factory
         self._adapter_instance = adapter
-        self._chat_agents: dict[str, Any] = {}
-        self._chat_agents_restored: set[str] = set()
+        self._chat = ChatRuntime(
+            store=store,
+            new_agent=lambda manifest: self._new_agent(
+                project=manifest["project"],
+                space=manifest["space"],
+                profile=self._chat_profile(manifest),
+                project_path=self._manifest_project_path(manifest),
+            ),
+            attachment=lambda item: self._chat_attachment(item),
+            sync=lambda agent, manifest, status: self._sync_chat(agent, manifest, status),
+            usage=self._usage_dict,
+            config_version=lambda: (
+                self._config.snapshot.version if self._config is not None else None
+            ),
+            max_attachments=MAX_CHAT_ATTACHMENT_COUNT,
+        )
         from cleo.desktop.subscription_login import SubscriptionLogins
 
         self._subscription_logins = SubscriptionLogins()
@@ -158,7 +174,6 @@ class DesktopService:
         self._runs = RunSupervisor()
         self._project_paths: dict[str, str] = {}
         self._config = config
-        self._chat_agent_versions: dict[str, int] = {}
         if config is not None:
             config.subscribe(self._settings_changed)
 
@@ -343,8 +358,7 @@ class DesktopService:
         if manifest["space"] == "productivity" and thread_id in self._productivity_sessions:
             await self._adapter().close(thread_id)
             self._productivity_sessions.pop(thread_id, None)
-        self._chat_agents.pop(thread_id, None)
-        self._chat_agents_restored.discard(thread_id)
+        self._chat.forget(thread_id)
         checkpoint = manifest.get("undo_checkpoint")
         if isinstance(checkpoint, dict):
             try:
@@ -451,8 +465,7 @@ class DesktopService:
             if memory_space == "productivity" and thread_id in self._productivity_sessions:
                 await self._adapter().close(thread_id)
                 self._productivity_sessions.pop(thread_id, None)
-            self._chat_agents.pop(thread_id, None)
-            self._chat_agents_restored.discard(thread_id)
+            self._chat.forget(thread_id)
         self.runtime.remove_project(memory_space, name)
         self._project_paths.pop(project_id_value, None)
         return await self.load_workspace()
@@ -1008,8 +1021,7 @@ class DesktopService:
             steer_ids = None
             while True:
                 terminal = None
-                stream = (self._stream_chat if manifest["space"] == "non_productivity"
-                          else self._stream_productivity)
+                system = self._agent_system(manifest)
                 from cleo.runtime.timing import measure
 
                 async def timing_event(summary):
@@ -1050,9 +1062,10 @@ class DesktopService:
                             timing.end(observed.get(event["type"].split("-")[0] + result["id"]))
                         await run_event(event)
 
-                    await stream(manifest, prompt, attachments or [], timed_event,
-                                 **({"display_prompt": display_prompt} if display_prompt else {}),
-                                 **({"steer_ids": steer_ids} if steer_ids else {}))
+                    await system.run_turn(TurnInput(
+                        manifest, prompt, attachments or [],
+                        steer_ids=steer_ids, display_prompt=display_prompt,
+                    ), timed_event)
                 if not terminal or terminal["type"] != "done" or steering.mode != "boundary":
                     break
                 next_message = await steering.next_boundary()
@@ -1086,6 +1099,18 @@ class DesktopService:
                         self._debug(f"Shared checkpoint cleanup failed for {thread_id}: {exc}")
                     finally:
                         self._runs.finish(thread_id)
+
+    def _agent_system(self, manifest: dict[str, Any]) -> AgentSystem:
+        """Purpose: The agent system that runs this session's turns.
+
+        Input: Session manifest. Output: A ``SingleAgentSystem`` for now: the chat agent for
+        chat sessions, the session's harness for development tasks. Sessions bound to another
+        mode (a later version's multi-agent preset) run through their main agent.
+        """
+        return SingleAgentSystem({
+            "non_productivity": CallableRuntime(self._stream_chat),
+            "productivity": CallableRuntime(self._stream_productivity),
+        })
 
     def _steer_mode(self, manifest):
         if (manifest["space"] == "productivity"
@@ -1175,8 +1200,7 @@ class DesktopService:
             )
         else:
             # The next turn rebuilds the agent from the log without the rewound messages.
-            self._chat_agents.pop(thread_id, None)
-            self._chat_agents_restored.discard(thread_id)
+            self._chat.forget(thread_id)
         await asyncio.to_thread(
             self.store.append_event, space=manifest["space"], project=manifest["project"],
             session_id=thread_id, event_type=REWIND_EVENT, actor="user",
@@ -1359,8 +1383,7 @@ class DesktopService:
                     "chat_profile": profile_snapshot(selected), "chat_native_id": None,
                 },
             )
-            self._chat_agents.pop(thread_id, None)
-            self._chat_agents_restored.discard(thread_id)
+            self._chat.forget(thread_id)
             return self._runtime_profile(self.store.load_manifest(thread_id))
         options: dict[str, Any] = {}
         if self._is_evolution(manifest):
@@ -1692,8 +1715,7 @@ class DesktopService:
         temporary_path = path.with_name(f".{path.name}.tmp")
         temporary_path.write_text(content, encoding="utf-8", newline="")
         temporary_path.replace(path)
-        self._chat_agents.clear()
-        self._chat_agents_restored.clear()
+        self._chat.forget_all()
         return {
             "path": str(path),
             "content": content,
@@ -1755,7 +1777,7 @@ class DesktopService:
         """Purpose: Point long-lived objects at a reloaded configuration.
 
         Input: Previous and new settings. Output: None. Chat agents are rebuilt lazily on their
-        next turn (see ``_stream_chat``); harness providers are swapped for new sessions while
+        next turn (see ``ChatRuntime.stream``); harness providers are swapped for new sessions while
         live sessions keep theirs.
         """
         adapter = self._adapter_instance
@@ -1777,7 +1799,7 @@ class DesktopService:
         await controller().stop("exit")
         await self._subscription_logins.close()
         jobs = []
-        for thread_id, agent in self._chat_agents.items():
+        for thread_id, agent in self._chat.agents.items():
             try:
                 manifest = self.store.load_manifest(thread_id)
                 await self._sync_chat(agent, manifest, "completed")
@@ -1802,101 +1824,9 @@ class DesktopService:
         steer_ids: list[str] | None = None,
         display_prompt: str | None = None,
     ) -> None:
-        version = self._config.snapshot.version if self._config is not None else None
-        if version is not None and self._chat_agent_versions.get(
-            manifest["id"], version,
-        ) != version:
-            self._chat_agents.pop(manifest["id"], None)
-            self._chat_agents_restored.discard(manifest["id"])
-        agent = self._chat_agents.get(manifest["id"])
-        if agent is None:
-            agent = self._new_agent(
-                project=manifest["project"],
-                space=manifest["space"],
-                profile=self._chat_profile(manifest),
-                project_path=self._manifest_project_path(manifest),
-            )
-            self._chat_agents[manifest["id"]] = agent
-            if version is not None:
-                self._chat_agent_versions[manifest["id"]] = version
-        loaded = None
-        if manifest["id"] not in self._chat_agents_restored:
-            loaded = self.store.load_langchain_messages(manifest["id"])
-            self._chat_agents_restored.add(manifest["id"])
-        if len(attachments) > MAX_CHAT_ATTACHMENT_COUNT:
-            raise ValueError(f"A message can include at most {MAX_CHAT_ATTACHMENT_COUNT} files.")
-        chat_attachments = await asyncio.gather(
-            *(self._chat_attachment(item) for item in attachments)
-        )
-        from langchain_core.messages import HumanMessage, message_to_dict
-
-        from cleo.agents.cleo import _build_user_content
-
-        turn_id = f"turn-{secrets.token_hex(12)}"
-        user_message = HumanMessage(
-            id=turn_id, content=_build_user_content(prompt, chat_attachments),
-        )
-        await asyncio.to_thread(
-            self.store.append_events, session_id=manifest["id"], space=manifest["space"],
-            project=manifest["project"], events=[{
-                "id": turn_id, "type": "user_message", "actor": "user",
-                "content": user_message.content,
-                "source_message_id": turn_id, "message": message_to_dict(user_message),
-                "data": {**({"steer_ids": steer_ids} if steer_ids else {}),
-                         **({"display_prompt": display_prompt} if display_prompt else {})},
-            }],
-        )
-        await emit({"type": "turn-started", "item": {
-            "id": turn_id, "turnId": turn_id, "type": "message", "role": "user",
-            "content": display_prompt or prompt, "time": "",
-        }})
-        text = ""
-        from cleo.runtime.timing import phase
-
-        phase("模型响应（含工具与等待）")
-        try:
-            async for chunk in agent.stream_text(
-                prompt,
-                manifest["id"],
-                loaded_info=loaded or None,
-                images=chat_attachments,
-                message_id=turn_id,
-            ):
-                text += chunk
-                await emit(
-                    {
-                        "type": "upsert-item",
-                        "item": {
-                            "id": f"{turn_id}:answer",
-                            "turnId": turn_id,
-                            "type": "message",
-                            "role": "assistant",
-                            "content": text,
-                            "time": "",
-                        },
-                    }
-                )
-        except BaseException as error:
-            phase("保存中断回复", previous_status=(
-                "cancelled" if isinstance(error, asyncio.CancelledError) else "failed"
-            ))
-            await self._sync_chat(agent, manifest, "interrupted")
-            if isinstance(error, Exception):
-                from cleo.integrations.runtime_diagnostics import diagnostic_text
-
-                detail = diagnostic_text(str(error), prompt=prompt) or type(error).__name__
-                await asyncio.to_thread(
-                    self.store.append_event, session_id=manifest["id"], space=manifest["space"],
-                    project=manifest["project"], event_type="error", actor="system", content=detail,
-                )
-            phase(None)
-            raise
-        else:
-            phase("保存回复与会话状态")
-            await self._sync_chat(agent, manifest, "completed")
-        usage = agent.context_usage
-        await emit({"type": "usage", "usage": self._usage_dict(usage)})
-        await emit({"type": "done", "summary": (text or prompt)[:80]})
+        await self._chat.stream(TurnInput(
+            manifest, prompt, attachments, steer_ids=steer_ids, display_prompt=display_prompt,
+        ), emit)
 
     async def _stream_productivity(
         self,
