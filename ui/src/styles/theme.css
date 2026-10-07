@@ -250,6 +250,86 @@
 :root .loading-brand { border-radius: 16px; }
 :root .loading-line i { background: var(--highlight); }
 
+/* ----- Evolution: toolbar, sheets and forms follow the same pills, cards and quiet surfaces ----- */
+:root .evolution-toolbar { background: transparent; border-bottom-color: var(--border); }
+:root .evolution-topline { min-height: 60px; padding: 10px 16px 10px 14px; }
+:root .evolution-topline > strong { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+:root .evolution-accent { color: var(--text); }
+:root .evolution-toolbar button { border-radius: var(--radius-pill); font-weight: 500; }
+:root .evolution-version-trigger { height: 36px; padding: 0 12px 0 12px; border: 0; background: var(--surface); }
+:root .evolution-version-trigger:hover:not(:disabled) { background: var(--surface-hover); }
+:root .evolution-version-trigger b { font-weight: 600; }
+:root .evolution-top-actions { gap: 4px; }
+:root .evolution-top-actions button { height: 34px; padding: 0 12px; color: var(--muted); }
+:root .evolution-top-actions button:hover,
+:root .evolution-top-actions button[aria-pressed="true"] { color: var(--text); background: var(--surface-hover); }
+:root .evolution-top-actions button[aria-label="新建 PR"],
+:root .evolution-top-actions button[aria-label="继续连接 GitHub"] { color: var(--accent-ink); background: var(--accent); font-weight: 600; }
+:root .evolution-top-actions button[aria-label="新建 PR"]:hover:not(:disabled),
+:root .evolution-top-actions button[aria-label="继续连接 GitHub"]:hover:not(:disabled) { color: var(--accent-ink); background: var(--accent-strong); }
+:root .evolution-actionbar { padding: 4px 16px 14px; }
+:root .evolution-status strong { color: var(--text); font-weight: 600; }
+:root .evolution-actions button { height: 36px; padding: 0 14px; border: 0; background: var(--surface); }
+:root .evolution-actions button:hover:not(:disabled) { background: var(--surface-hover); }
+:root .evolution-primary,
+:root .evolution-toolbar .evolution-primary,
+:root .evolution-dialog .evolution-primary { border: 0; color: var(--accent-ink); background: var(--accent); font-weight: 600; }
+:root .evolution-toolbar .evolution-primary:hover:not(:disabled),
+:root .evolution-dialog .evolution-primary:hover:not(:disabled) { background: var(--accent-strong); }
+:root .evolution-spin { color: var(--text); }
+:root .evolution-error { margin: 0 16px 12px; padding: 12px 14px; border-radius: var(--radius-md); }
+:root .evolution-error button { border: 0; border-radius: var(--radius-pill); padding: 5px 12px; color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
+:root .evolution-notice,
+:root .evolution-log { margin-left: 16px; margin-right: 16px; }
+:root .evolution-pr-notice { padding: 6px 16px 12px; color: var(--text); }
+:root .evolution-pr-notice a,
+:root .evolution-pr-history a,
+:root .evolution-dialog a { color: var(--text); text-decoration-color: var(--border-strong); text-underline-offset: 3px; }
+:root .evolution-github { margin: 0 16px 14px; border: 0; border-radius: var(--radius-md); background: var(--surface); }
+:root .evolution-github button { border: 0; border-radius: var(--radius-pill); background: var(--canvas); box-shadow: var(--shadow-sm); }
+:root .evolution-cases { background: transparent; }
+:root .evolution-cases button { border: 0; border-radius: var(--radius-pill); background: var(--surface); }
+:root .evolution-cases button:hover:not(:disabled) { background: var(--surface-hover); }
+:root .evolution-case { border-top-color: var(--border); }
+:root .evolution-manual-review textarea { border: 0; border-radius: var(--radius-sm); background: var(--surface); }
+:root .evolution-preparation button { border: 0; border-radius: var(--radius-pill); }
+
+:root .evolution-dialog { border: 0; border-radius: var(--radius-xl); padding: 24px; box-shadow: var(--shadow-lg); }
+:root .evolution-dialog::backdrop { background: rgba(39, 39, 42, 0.35); backdrop-filter: blur(8px); }
+:root[data-theme="dark"] .evolution-dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
+:root .evolution-dialog-title h2 { font-weight: 650; letter-spacing: -0.01em; }
+:root .evolution-dialog-title button { border-radius: var(--radius-pill); color: var(--muted); }
+:root .evolution-dialog-title button:hover { color: var(--text); background: var(--surface-hover); }
+:root .evolution-dialog label { color: var(--text-soft); font-weight: 500; }
+:root .evolution-dialog input,
+:root .evolution-dialog select,
+:root .evolution-dialog textarea { border: 1px solid transparent; border-radius: var(--radius-sm); background: var(--surface); transition: border-color 140ms ease, background 140ms ease; }
+:root .evolution-dialog input:focus,
+:root .evolution-dialog select:focus,
+:root .evolution-dialog textarea:focus { outline: 0; border-color: var(--border-strong); background: var(--canvas); }
+:root .evolution-dialog button:not(.evolution-dialog-title button) { border: 0; border-radius: var(--radius-sm); background: var(--surface); font-weight: 500; }
+:root .evolution-dialog button:not(.evolution-dialog-title button):hover:not(:disabled) { background: var(--surface-hover); }
+:root .evolution-dialog .evolution-primary:hover:not(:disabled) { background: var(--accent-strong); }
+:root .evolution-toolbar button:disabled,
+:root .evolution-dialog button:disabled { opacity: 1; color: var(--muted-2); cursor: not-allowed; }
+:root .evolution-dialog button:not(.evolution-dialog-title button):disabled { background: var(--surface); }
+:root .evolution-dialog .evolution-primary:disabled,
+:root .evolution-toolbar .evolution-primary:disabled { color: var(--muted-2); background: var(--surface-active); }
+:root .evolution-top-actions button:disabled { color: var(--muted-2); background: transparent; }
+:root .evolution-top-actions button[aria-label="新建 PR"]:disabled { color: var(--muted-2); background: var(--surface-active); }
+:root .evolution-version-list { gap: 8px; }
+:root .evolution-version-list button { padding: 12px 14px; border-radius: var(--radius-md); }
+:root .evolution-version-list button:disabled { opacity: 0.55; }
+:root .evolution-release { border-top-color: var(--border); }
+:root .evolution-release-entry { border: 0; border-radius: var(--radius-md); background: var(--surface); }
+:root .evolution-pr-history article { border-top-color: var(--border); }
+:root .evolution-feedback form { border-color: var(--border); border-radius: var(--radius-md); background: var(--surface); }
+:root .evolution-feedback form:focus-within { border-color: var(--border-strong); background: var(--canvas); }
+:root .evolution-feedback-history p { border-radius: var(--radius-md); }
+:root .evolution-feedback-user { background: var(--surface-active); }
+:root .update-version-picker select,
+:root .update-version-picker button { border: 0; border-radius: var(--radius-sm); background: var(--surface); }
+
 /* Compact conversation panels (small windows, high zoom): tighten rhythm so the last turn stays above the composer. */
 @container (max-width: 560px) {
   :root .timeline { padding-bottom: 12px; }
