@@ -59,7 +59,6 @@ flowchart LR
         renderer[React Renderer]
         electron[Electron Main<br/>进化 / 更新 / 安装 / computer 宿主]
     end
-    cli[Cleo CLI / TUI]
     core[[Cleo Backend Core<br/>Python]]
     llm[(LLM API<br/>OpenAI 兼容 / Anthropic / Gemini)]
     harness[(编码 Harness<br/>Codex / Claude / ACP agents)]
@@ -67,10 +66,8 @@ flowchart LR
     git[(用户 Git 工作区)]
 
     user --> renderer
-    user --> cli
     renderer -- preload IPC --> electron
     electron -- JSONL stdio --> core
-    cli --> core
     core -- HTTPS --> llm
     core -- stdio / SDK --> harness
     harness -- stdio MCP --> core
@@ -124,7 +121,7 @@ flowchart TB
 ```mermaid
 flowchart TB
     boot["bootstrap.container（composition root）<br/>读取 Settings，组装全部对象"]
-    ifc["interfaces · 驱动适配器<br/>desktop RPC server / registry / presenters · cli · mcp"]
+    ifc["interfaces · 驱动适配器<br/>desktop RPC server / registry / presenters · mcp"]
     app["application · 用例<br/>conversation · runs · workspace · memory · configuration · extensions"]
     dom["domain · 纯模型与规则（无 I/O）<br/>Scope · Thread · SessionEvent · Turn · Run · SteerReceipt · MemorySource"]
     prt["ports · 接口<br/>EventStore · ThreadRepository · SessionIndex · TurnEngine · HarnessProvider + 能力<br/>GitWorkspace · MemoryRepository · DreamExtractor · SettingsStore · Clock · IdGenerator · JobLauncher"]
@@ -152,7 +149,7 @@ cleo/
 ├── memory/            审阅队列、整理编排、DreamAgent 提取、Markdown+git 仓库、compact 投影
 ├── configuration/     设置模型、模型连接、harness 目录、AGENTS.md
 ├── extensions/        evolution / computer_use / skills / subscriptions / timing（插件）
-├── interfaces/        desktop（RPC + presenters）/ cli / mcp
+├── interfaces/        desktop（RPC + presenters）/ mcp
 └── bootstrap/         container.py（组装）、app.py（CleoApplication 门面）
 ```
 
@@ -180,7 +177,8 @@ cleo/
 | `runtime/state.py` | `workspace/infrastructure/runtime_json_store.py`（项目与最近线程） |
 | `runtime/timing.py` | `extensions/timing` |
 | `computer/*`、`integrations/computer.py` | `extensions/computer_use` |
-| `mcp/*`、`cli/*` | `interfaces/mcp`、`interfaces/cli`（`cleo` / `cleo-*-mcp` 脚本入口不变） |
+| `mcp/*` | `interfaces/mcp`（`cleo-*-mcp` 脚本入口不变） |
+| `cli/*`、`images/*`、`main.py`、Docker 应用镜像 | 已在 S0b 移除；后台记忆整理进程迁到 `cleo/memory/worker.py` |
 
 ## 5. 组件图
 
@@ -914,7 +912,8 @@ stateDiagram-v2
 
 ```mermaid
 flowchart LR
-    s0[S0 基线<br/>特征测试 51 个通过] --> s1[S1 Composition root<br/>Settings / Clock / Ids 注入]
+    s0[S0 基线<br/>特征测试 51 个通过] --> s0b[S0b 移除 CLI]
+    s0b --> s1[S1 Composition root<br/>Settings 延迟加载与注入]
     s1 --> s1b[S1b 配置快照与热加载]
     s1b --> s2[S2 显式 RpcRegistry<br/>ErrorMapper / Presenters]
     s2 --> s3[S3 拆 SessionStore<br/>EventStore / ThreadRepo / Index / 投影订阅]
@@ -928,7 +927,8 @@ flowchart LR
 
 | 步骤 | 主要移动 | 风险 | 验证 |
 | --- | --- | --- | --- |
-| S1 | 新建 `bootstrap/container.py`，`load_settings()` 改为显式调用；保留 `cleo.config.settings.settings` 作为惰性兼容属性 | 导入顺序 | 全部特征测试；`tests/test_boundaries.py` |
+| S0b | 移除终端 CLI/TUI、`cleo/images`、`main.py` 与 Docker 应用镜像；后台记忆整理进程迁到 `cleo/memory/worker.py`；打包不再带 CLI 启动图 | 遗漏依赖 CLI 的代码 | 特征测试中 CLI 入口快照改为后端进程入口快照，其余不变 |
+| S1 | 新建 `bootstrap/container.py`，`load_settings()` 改为显式调用；保留 `cleo.config.settings.settings` 作为惰性兼容属性。Clock 和 ID 生成器的注入推迟到 S3/S4，在真正改到那些代码时再做 | 导入顺序 | 全部特征测试；`tests/test_boundaries.py` |
 | S1b | `ConfigService` 与 `SettingsSnapshot`；`settings` 兼容对象改为按 `ContextVar` 解析的代理；`load_workspace.backend` 增加 `hotReload` 与 `config` 状态；Electron 按标记停止重启后端 | 运行中读到新旧配置混用；provider 旧实例泄漏 | 全部特征测试保持不变，另加 4 个热加载测试（第 15 节） |
 | S2 | `ProtocolServer` 改用注册表；`DesktopService` 的方法作为 handler 原样注册 | 漏注册方法 | `protocol/*`；对照 `allowedMethods` 自动生成注册表测试 |
 | S3 | `SessionStore` 门面保留，内部委托给新端口；副作用改为事件总线订阅 | 落盘顺序、fsync 规则 | `*/disk`、`legacy/*`、`formats/*` |

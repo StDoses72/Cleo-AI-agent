@@ -208,7 +208,7 @@ try {
     New-Item -ItemType Directory -Path $electronDist -Force | Out-Null
     Expand-Archive -LiteralPath $electronArchive -DestinationPath $electronDist
 
-    foreach ($relativePath in @("pyproject.toml", "README.md", "main.py", "LICENSE")) {
+    foreach ($relativePath in @("pyproject.toml", "README.md", "LICENSE")) {
         $source = Join-Path $sourceRoot $relativePath
         if (Test-Path -LiteralPath $source) {
             Copy-Item -LiteralPath $source -Destination $pythonSourceRoot
@@ -285,7 +285,6 @@ try {
 
     $defaultsPath = Join-Path $resourcesPath "defaults"
     New-Item -ItemType Directory -Path (Join-Path $defaultsPath "assets"), (Join-Path $defaultsPath "config"), (Join-Path $defaultsPath "memory") | Out-Null
-    Copy-Item -LiteralPath (Join-Path $sourceRoot "cleo\images\assets\cleo-startup.png") -Destination (Join-Path $defaultsPath "assets\startup.png")
     Copy-Item -LiteralPath (Join-Path $sourceRoot "cleo\config\templates\cleo.example.json") -Destination (Join-Path $defaultsPath "config\cleo.json")
     Copy-Item -LiteralPath (Join-Path $sourceRoot "cleo\config\templates\harnesses.example.json") -Destination (Join-Path $defaultsPath "config\harnesses.json")
     Copy-Item -LiteralPath (Join-Path $sourceRoot "memory\MEMORY_POLICY.md") -Destination (Join-Path $defaultsPath "memory\MEMORY_POLICY.md")

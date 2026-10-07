@@ -12,6 +12,7 @@ import shutil
 import stat
 import sys
 import tempfile
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -47,7 +48,13 @@ def short_root() -> Iterator[Path]:
     try:
         yield root
     finally:
-        shutil.rmtree(root, onexc=_remove_read_only)
+        for _ in range(10):
+            shutil.rmtree(root, onexc=_remove_read_only)
+            if not root.exists():
+                break
+            # A harness child can keep the workspace as its cwd for a moment after the
+            # backend is killed; Windows refuses to delete a directory in use.
+            time.sleep(0.5)
 
 
 def _remove_read_only(function, path, _error) -> None:

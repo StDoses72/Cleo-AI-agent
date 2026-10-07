@@ -95,7 +95,8 @@ def test_agent_tool_server_catalogs(cleo_home: CleoHome, replacements: dict) -> 
     assert_golden("entrypoints/agent_tool_servers", catalogs, replacements)
 
 
-def test_desktop_probes_and_cli_surface(cleo_home: CleoHome, replacements: dict) -> None:
+def test_backend_process_entrypoints(cleo_home: CleoHome, replacements: dict) -> None:
+    """Processes started outside the desktop protocol. The terminal CLI was removed in v0.8."""
     env = {**_isolated_env(cleo_home), "PYTHONPATH": str(REPO_ROOT)}
 
     def run(*args: str) -> dict[str, Any]:
@@ -103,15 +104,11 @@ def test_desktop_probes_and_cli_surface(cleo_home: CleoHome, replacements: dict)
                                 capture_output=True, text=True, encoding="utf-8", timeout=120)
         return {"exit": result.returncode, "stdout": result.stdout.replace("\r\n", "\n")}
 
-    assert_golden("entrypoints/cli", {
+    assert_golden("entrypoints/processes", {
         # ui/electron/dependencies.mjs and setup-manager.mjs import-probe the backend.
         "server_import_probe": run("-c", "from cleo.desktop.server import main")["exit"],
-        # The ``cleo`` console script calls cleo.cli.application:main.
-        "console_script_help": run("-c", "import sys; sys.argv = ['cleo', '--help']; "
-                                   "from cleo.cli.application import main; main()"),
-        # Pinned quirk: the module has no __main__ guard, so ``-m`` does nothing.
-        "module_run_help": run("-m", "cleo.cli.application", "--help"),
-        "main_py_help": run("main.py", "--help"),
-        "dream_worker_bad_args": run("-m", "cleo.cli.dream_worker")["exit"],
-        "dream_worker_bad_json": run("-m", "cleo.cli.dream_worker", "not-json")["exit"],
+        # The desktop backend starts this worker on shutdown (integrations/background.py).
+        "dream_worker_bad_args": run("-m", "cleo.memory.worker")["exit"],
+        "dream_worker_bad_json": run("-m", "cleo.memory.worker", "not-json")["exit"],
+        "cli_module_removed": run("-c", "import cleo.cli")["exit"],
     }, replacements)

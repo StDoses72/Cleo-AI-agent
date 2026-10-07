@@ -44,7 +44,7 @@ def launch_dream_agent_worker(
     command = [
         sys.executable,
         "-m",
-        "cleo.cli.dream_worker",
+        "cleo.memory.worker",
         json.dumps(unique_jobs, ensure_ascii=False),
     ]
     kwargs: dict[str, object] = {

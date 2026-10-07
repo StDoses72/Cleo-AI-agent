@@ -2,9 +2,9 @@
 
 [English](README.md) | [文档中心](docs/README.md) | [架构说明](docs/ARCHITECTURE.md)
 
-Cleo 是一套本地优先的 AI 工作空间：它把通用对话、开发者代理、会话恢复和可追溯记忆统一在一个桌面端与 CLI 中，同时允许团队按自己的模型、工具和数据边界部署。
+Cleo 是一套本地优先的 AI 工作空间：它把通用对话、开发者代理、会话恢复和可追溯记忆统一在一个桌面端中，同时允许团队按自己的模型、工具和数据边界部署。
 
-项目提供 Windows、macOS、Linux 桌面构建支持，以及 Python CLI、Textual TUI 和 stdio MCP 入口。用户数据默认保存在本机；模型推理由用户配置的 API provider 或外部 agent harness 提供。
+项目提供 Windows、macOS、Linux 桌面构建支持，由本地 Python 后端服务驱动，另有 stdio MCP 入口。用户数据默认保存在本机；模型推理由用户配置的 API provider 或外部 agent harness 提供。
 
 > 当前版本：[v0.7.1](https://github.com/StDoses72/Cleo-AI-agent/releases/tag/v0.7.1) · [下载桌面版](https://stdoses72.github.io/Cleo-AI-agent/)
 
@@ -12,7 +12,7 @@ Cleo 是一套本地优先的 AI 工作空间：它把通用对话、开发者�
 
 多数 AI 助手只覆盖一次对话，代码代理又各自维护独立的任务、权限和历史。Cleo 在它们之上提供一层统一的产品体验：
 
-- **一个工作入口**：在桌面端或终端中切换通用聊天与 Productivity 开发工作流。
+- **一个工作入口**：在桌面端切换通用聊天与 Productivity 开发工作流。
 - **可恢复的会话**：把不同 provider 的输出归一化为本地事件，支持项目、标题、历史与恢复。
 - **有边界的长期记忆**：当前偏好按 `space + project` 保存为 Markdown，变更由内嵌 Git 记录；工作事实回查原始会话。
 - **可替换的模型与 harness**：前台 Cleo、DreamAgent、Codex、Claude SDK 与 ACP agent 可独立配置。
@@ -23,8 +23,6 @@ Cleo 是一套本地优先的 AI 工作空间：它把通用对话、开发者�
 | 入口 | 面向对象 | 主要用途 |
 | --- | --- | --- |
 | Cleo Desktop | 日常用户、开发者 | 会话与项目管理、通用聊天、Productivity、记忆查看、模型设置、版本更新和本地进化 |
-| Cleo Chat CLI / TUI | 终端用户 | 一次性提问、连续对话、图片附件、项目记忆与会话恢复 |
-| Productivity TUI | 软件开发者 | 通过 Codex、Claude SDK 或 ACP agent 在指定目录中执行开发任务 |
 | `cleo-codex-mcp` | 工具集成方 | 通过 stdio MCP 暴露 `codex` 与 `codex-reply` 两个工具 |
 
 ## 核心能力
@@ -87,13 +85,15 @@ Copy-Item cleo\config\templates\cleo.example.json config\cleo.json
 Copy-Item cleo\config\templates\harnesses.example.json config\harnesses.json
 ```
 
-编辑 `config/cleo.json`，至少填写一个真实可用的 agent profile，然后启动：
+编辑 `config/cleo.json`，至少填写一个真实可用的 agent profile，然后从源码启动桌面端：
 
 ```powershell
-cleo
-cleo "总结这个项目的架构"
-cleo --productivity --cwd .
+Set-Location ui
+npm install
+npm start
 ```
+
+桌面端会从源码目录启动 Python 后端（`python -m cleo.desktop.server`）。Cleo 不再提供终端 CLI，后端只通过桌面端和 MCP 入口使用。
 
 Linux/macOS 使用相同的 Python 包和 JSON 配置。原生桌面构建、安装格式与签名边界见[平台支持](docs/PLATFORMS.md)；预构建附件以当前 GitHub Release 为准。
 
@@ -108,35 +108,10 @@ Linux/macOS 使用相同的 Python 包和 JSON 配置。原生桌面构建、安
 - **更新版本**：在设置的更新页检查正式版本；本地进化中的版本入口可选择正式或已保存的本地版本。切换程序版本不会把聊天、记忆和配置还原到旧快照。
 - **贡献源码**：从「提交 PR」选择已检查的本地版本和维护者创建的空接收分支；没有目标分支时先提交分支申请。程序提交完整源码快照，排除本机配置、对话和运行数据；由维护者决定合并与发布。详见[贡献目标与合并辅助](docs/contribution-targets.md)。
 
-### 终端
-
-```powershell
-# 在 general 项目中打开连续对话
-cleo
-
-# 把通用对话与记忆绑定到逻辑项目
-cleo --project product-planning
-
-# 执行一次性任务
-cleo "把下面的需求整理成验收标准"
-
-# 在当前代码目录启动默认开发 harness
-cleo --productivity --cwd .
-
-# 选择已注册的 provider 和模型
-cleo --productivity --provider codex --model gpt-5.5 --cwd .
-
-# 恢复 Cleo 管理的会话
-cleo --resume <session-id>
-cleo --productivity --resume <session-id>
-```
-
-交互界面支持 `/help`、`/new`、`/project`、`/sessions`、`/resume`、`/rename`、`/attach` 和 `/productivity`。Productivity 还提供 `/cwd`、`/cd`、`/git`、`/diff`、`/model`、`/effort`、`/access`、`/approval`、`/native` 与 `/resume-native`；可用命令会随 provider 能力变化。
-
 ## 系统如何工作
 
 ```text
-Desktop / CLI / TUI / MCP
+Desktop / MCP
             │
             ├── Cleo Chat ─────── Deep Agents + configured LLM
             │
@@ -177,7 +152,7 @@ Cleo 是 local-first，不等于完全离线：
 
 ```text
 Cleo-AI-agent/
-├── cleo/                 # Python 产品核心：agent、CLI、desktop service、session、memory、harness
+├── cleo/                 # Python 后端服务：agent、desktop service、session、memory、harness
 ├── ui/                   # Electron + React 桌面客户端
 ├── config/               # 本地配置（默认忽略提交）
 ├── docs/                 # 用户、架构、开发与设计决策文档
@@ -185,7 +160,6 @@ Cleo-AI-agent/
 ├── scripts/              # 依赖、发布、下载、卸载与清理脚本
 ├── skills/               # Cleo 可加载的本地 skills
 ├── tests/                # 按生产模块映射的测试
-├── compose.yaml          # 本地容器运行入口
 ├── pyproject.toml        # Python 项目元数据和直接依赖
 └── README.md
 ```
@@ -206,7 +180,7 @@ Cleo-AI-agent/
 
 ## 开发与验证
 
-更新依赖时运行 `python scripts/update_project.py --local-resolver --skip-build`：刷新项目锁文件，并自动升级已有 `.venv` 中的稳定开发依赖。`--check` 只检查，不修改环境。
+更新依赖时运行 `python scripts/update_project.py --local-resolver`：刷新项目锁文件，并自动升级已有 `.venv` 中的稳定开发依赖。`--check` 只检查，不修改环境。
 
 ```powershell
 pip install -e ".[dev]"

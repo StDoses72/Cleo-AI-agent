@@ -4,16 +4,17 @@ import subprocess
 import sys
 from pathlib import Path
 
-import cleo.cli.application as application
 from cleo.agents import Agent, DreamAgent
 from cleo.integrations.codex import CodexAdapter
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_desktop_does_not_import_terminal_presentation() -> None:
+def test_backend_has_no_terminal_frontend() -> None:
+    """The CLI was removed; the backend is served only through the desktop protocol."""
+    terminal = ("cleo.cli", "cleo.images", "textual", "textual_image", "rich")
     violations = []
-    for path in (ROOT / "cleo" / "desktop").glob("*.py"):
+    for path in (ROOT / "cleo").rglob("*.py"):
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             imports = (
                 [node.module or ""] if isinstance(node, ast.ImportFrom)
@@ -21,9 +22,10 @@ def test_desktop_does_not_import_terminal_presentation() -> None:
                 else []
             )
             for name in imports:
-                if name == "cleo.cli" or name.startswith("cleo.cli."):
+                if any(name == prefix or name.startswith(prefix + ".") for prefix in terminal):
                     violations.append(f"{path.relative_to(ROOT)}:{node.lineno}: {name}")
-    assert not violations, "Desktop must use shared services:\n" + "\n".join(violations)
+    assert not violations, "Backend must not import terminal UI code:\n" + "\n".join(violations)
+    assert not (ROOT / "cleo" / "cli").exists()
 
 
 def test_harness_core_imports_without_infrastructure() -> None:
@@ -58,8 +60,6 @@ from cleo.sessions.policy import has_user_interaction
 
 
 def test_primary_runtime_boundaries_are_async() -> None:
-    assert inspect.iscoroutinefunction(application.amain)
-    assert not inspect.iscoroutinefunction(application.main)
     assert inspect.isasyncgenfunction(Agent.stream_text)
     assert inspect.iscoroutinefunction(DreamAgent.invoke)
     assert inspect.iscoroutinefunction(CodexAdapter.start)

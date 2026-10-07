@@ -21,7 +21,7 @@
 
 ## 我想参与开发
 
-1. [开发与发布](DEVELOPMENT.md)：环境、测试、依赖锁定、Docker 与 Windows 桌面发布。
+1. [开发与发布](DEVELOPMENT.md)：环境、测试、依赖锁定与桌面发布。
 2. [后端代码导读](BACKEND_CODE_REVIEW.md)：从入口到 session、harness、memory 和 desktop 的阅读路线。
 3. [Desktop 子系统说明](../ui/README.md)：Electron/React 边界、IPC、构建和 smoke test。
 4. [仓库贡献规则](../AGENTS.md)：代码修改和 review 的长期约束。

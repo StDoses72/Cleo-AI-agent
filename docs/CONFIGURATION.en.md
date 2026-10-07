@@ -12,7 +12,6 @@
 | Windows desktop | `%LOCALAPPDATA%\Cleo\config` | `%LOCALAPPDATA%\Cleo` |
 | macOS desktop | `~/Library/Application Support/Cleo/config` | `~/Library/Application Support/Cleo` |
 | Linux desktop | `$XDG_DATA_HOME/Cleo/config` | `$XDG_DATA_HOME/Cleo`, default `~/.local/share/Cleo` |
-| Docker Compose | `/config` | Mounted directories and named volumes |
 
 Use `CLEO_CONFIG_PATH` and `CLEO_HARNESSES_CONFIG_PATH` to select configuration files. Packaged applications set `CLEO_HOME`; source checkouts resolve relative paths from the repository.
 
@@ -125,6 +124,6 @@ Start with [the harness template](../cleo/config/templates/harnesses.example.jso
 | `claude_sdk` | Model and permission mode |
 | `acp` | Command, arguments, environment, auto-approval |
 
-The default provider must exist and be enabled. Codex supports `deny_all`, `auto_review`, and `user` approval modes. Desktop maps `auto_review` to interactive `user` approvals; explicitly configured `deny_all` remains unchanged. CLI follows its configured mode. Capabilities and permissions vary by harness.
+The default provider must exist and be enabled. Codex supports `deny_all`, `auto_review`, and `user` approval modes. Desktop maps `auto_review` to interactive `user` approvals; explicitly configured `deny_all` remains unchanged. Capabilities and permissions vary by harness.
 
 Keep credentials, event logs, and artifacts private. Model requests go to the selected provider. When moving data, preserve the complete scoped directory structure and stop Cleo before copying files that may be actively written.

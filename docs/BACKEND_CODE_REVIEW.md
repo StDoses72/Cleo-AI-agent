@@ -1,5 +1,8 @@
 # Cleo 后端贡献者导读与 Code Review 清单
 
+> **注意**：本文描述的是 v0.7.1 的架构。终端 CLI/TUI 与 Docker 运行方式已在 v0.8 移除，后端只作为桌面端的本地服务运行；重构后的目标架构见 [docs/refactor/BACKEND_ARCHITECTURE_V2.md](refactor/BACKEND_ARCHITECTURE_V2.md)。
+
+
 这份文档面向准备修改 Cleo core、接入新 provider 或进行完整 review 的开发者。目标不是机械地逐行阅读 Python，而是建立可验证的系统模型，并能够回答三个问题：一次普通聊天如何落盘、一次 Productivity 请求如何穿过 provider、一次会话如何变成 evidence-backed 长期记忆。
 
 前端不在主阅读路线中。理解 Desktop 时先读 Python 的协议边界与 service，再读 Electron bridge 和 React renderer。

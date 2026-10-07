@@ -63,40 +63,9 @@ Fill in your model and credentials in `config/cleo.json`. Browser tools also nee
 
 ```bash
 npm install -g agent-browser@0.33.1
-cleo --help
-cleo "Introduce Cleo in three sentences."
-cleo
-cleo --productivity --cwd .
 ```
 
-For the desktop UI, install its dependencies with `npm ci --prefix ui`, then run `npm --prefix ui start`. See [platform requirements](PLATFORMS.en.md).
+Then install the desktop dependencies with `npm ci --prefix ui` and run `npm --prefix ui start`. The desktop app starts the Python backend (`python -m cleo.desktop.server`) from the source tree. Cleo no longer ships a terminal CLI; configuration templates can be copied from `cleo/config/templates/`. See [platform requirements](PLATFORMS.en.md).
 
-## Terminal options
-
-| Option | Purpose |
-| --- | --- |
-| `cleo [message]` | Interactive chat without a message; a one-shot task with one |
-| `--project NAME` | Select the chat memory project |
-| `--resume ID` | Resume a Cleo-managed session |
-| `--productivity` | Start a development harness |
-| `--provider NAME` | Select an enabled harness |
-| `--cwd PATH` | Set the development working directory |
-| `--model NAME` | Override the development model |
-| `--print-config-template` | Print the main configuration template |
-| `--print-harnesses-template` | Print the harness configuration template |
-
-Use `--provider`, `--cwd`, and `--model` with `--productivity`. To resume saved history, use `--resume`; `--thread-id` assigns a new chat thread key. `python main.py` remains an alternative to `cleo`.
-
-## Docker
-
-After preparing the JSON configuration:
-
-```bash
-docker compose build
-docker compose run --rm cleo
-docker compose run --rm cleo "Summarize this workspace."
-```
-
-Compose mounts configuration and the workspace, and persists data, memory, and Codex home in named volumes. It does not expose an HTTP service.
 
 Next: explore [local skills](local-skills.en.md) or [local evolution](cleo-evolution.en.md).

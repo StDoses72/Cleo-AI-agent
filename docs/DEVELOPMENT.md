@@ -4,9 +4,8 @@
 
 ## 技术栈
 
-- Python 3.12+：产品核心、CLI/TUI、session、memory、harness 与 desktop backend。
+- Python 3.12+：后端服务，包括 session、memory、harness 与 desktop backend。Cleo 不再提供终端 CLI。
 - Deep Agents、LangChain/LangGraph：通用聊天 agent runtime。
-- Textual 与 Rich：终端交互和一次性输出。
 - FastMCP：stdio MCP server。
 - React 19、TypeScript、Vite、Electron：Windows、macOS、Linux 桌面客户端。
 - Pytest、Ruff、Node test runner、Playwright smoke scripts：回归验证。
@@ -40,13 +39,12 @@ npm start
 ```text
 cleo/agents/                  通用 Cleo 与 DreamAgent
 cleo/agents/tools/            shell、browser、memory、Codex 等 agent tools
-cleo/cli/                     参数、chat/productivity TUI、生命周期和渲染
 cleo/config/                  Pydantic 配置模型、加载器和模板
 cleo/desktop/                 JSONL stdio 协议、use case service 和 UI projection
 cleo/harnesses/               provider-neutral model、data plane 与 control plane
 cleo/integrations/harnesses/  Codex、Claude 与 ACP provider 实现
-cleo/memory/                  compaction、store、persona、state 与路径
-cleo/sessions/                session 事实源、registry 与 managed/native 聚合
+cleo/memory/                  compaction、store、persona、state、路径与后台整理进程（worker）
+cleo/sessions/                session 事实源与 registry
 cleo/runtime/                 当前交互状态与 context usage
 ui/                           Electron main/preload、React renderer 和 smoke tests
 tests/                        与上述 Python 责任域对应的测试
@@ -150,23 +148,19 @@ Codex Python SDK 使用官方配套的 `openai-codex-cli-bin`；桌面版通过 
 
 `requirements.txt` 是带平台条件的跨平台 Python 精确锁文件；两个 `package-lock.json` 记录对应的 npm 解析结果。这些文件由更新命令生成，不应手工编辑。仓库忽略的 `uv.lock` 仅供本地使用。更新命令检测到已有 `.venv` 时，会自动通过 `uv sync --upgrade --extra dev --prerelease=disallow` 刷新本地锁文件并升级开发依赖，需要安装 `uv`。没有 `.venv` 的 CI 环境不会创建它；`--check` 不修改环境。最低版本约束仍表示兼容性要求，锁文件记录最新稳定且兼容的解析结果。
 
-更新锁文件并构建镜像：
+更新 Python 和两个 npm 锁文件（需要 Node/npm；默认在 Docker 解析镜像里解析 Python 依赖）：
 
 ```powershell
 python scripts\update_project.py
 ```
 
-只更新 Python 和两个 npm 锁文件（需要 Node/npm）：
-
-```powershell
-python scripts\update_project.py --skip-build
-```
-
 Docker 不可用但已安装 `uv` 时：
 
 ```powershell
-python scripts\update_project.py --local-resolver --skip-build
+python scripts\update_project.py --local-resolver
 ```
+
+`--skip-build` 仍可传入但不再有作用：应用镜像随 CLI 一起移除，这个脚本不再构建镜像。
 
 使用镜像源时可以同时保留官方 PyPI 作为缺失包 fallback：
 
@@ -183,19 +177,6 @@ python scripts\update_project.py `
 启动时，Cleo 从当前程序版本对应的独立 `runtimes/` 目录选择已经验证的 Python/工具运行时；导入或 Codex 版本检查失败会回到随应用打包的版本。启动后及持续运行期间每 24 小时自动检查依赖更新，通过验证后下次启动生效；失败保留当前运行版本。依赖更新与整包更新独立。
 
 安装版每六小时检查正式发布，下载和安装都需要用户操作。普通更新与进化版本管理共用 `ReleaseDownloads`：按用户配置目录、平台、版本和 SHA-256 隔离缓存；包完整校验后才可解压。同一个包的并发请求共享下载，旧缓存经过校验后可复用。下载完成不会在下次启动时自行安装。Linux `.deb` 的系统安装仍由包管理器维护。
-
-## Docker 开发
-
-```powershell
-docker compose build
-docker compose run --rm cleo --help
-docker compose run --rm cleo "运行一次 smoke task"
-```
-
-镜像通过 `requirements.txt` 安装依赖。DreamAgent 使用 `cleo.json` 中选择的模型，
-不再下载或常驻本地 embedding 模型。
-
-Compose 使用 bind mount 读取配置与 workspace，用 named volume 保存 data、memory 和 Codex home。测试后不要把 volume 中的用户数据复制回仓库。
 
 ## Windows 桌面发布
 

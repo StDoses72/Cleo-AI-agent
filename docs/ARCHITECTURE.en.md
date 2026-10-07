@@ -1,5 +1,8 @@
 # Cleo Product Architecture
 
+> **Note**: This document describes the v0.7.1 architecture. The terminal CLI/TUI and the Docker runtime were removed in v0.8; the backend now runs only as the desktop app's local service. See [docs/refactor/BACKEND_ARCHITECTURE_V2.md](refactor/BACKEND_ARCHITECTURE_V2.md) (Chinese) for the target architecture.
+
+
 This document is for integrators and contributors. It describes Cleo's implemented product boundaries, runtime, harness adapters, session storage, and memory pipeline. After reading it, you should be able to identify which entry point owns a request, where its data is written, how providers extend the system, and which projections can be rebuilt safely.
 
 Cleo is designed around local data control, a consistent experience across agents, resumable sessions, and evidence-backed long-term memory. Planned capabilities are not presented as shipped behavior.

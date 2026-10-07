@@ -212,7 +212,7 @@ def build(*, locked_dependencies: bool = False, online: bool = False) -> None:
         run(ui / "node_modules/.bin/asar", "pack", staging, resources / "app.asar", cwd=ui)
         python_source = scratch / "python-source"
         python_source.mkdir()
-        for name in ("pyproject.toml", "README.md", "main.py", "LICENSE"):
+        for name in ("pyproject.toml", "README.md", "LICENSE"):
             if (ROOT / name).exists():
                 shutil.copy2(ROOT / name, python_source / name)
         shutil.copytree(
@@ -302,7 +302,6 @@ def build(*, locked_dependencies: bool = False, online: bool = False) -> None:
         for name in ("assets", "config", "memory"):
             (defaults / name).mkdir(parents=True, exist_ok=True)
         for source, destination in (
-            ("cleo/images/assets/cleo-startup.png", "assets/startup.png"),
             ("cleo/config/templates/cleo.example.json", "config/cleo.json"),
             ("cleo/config/templates/harnesses.example.json", "config/harnesses.json"),
             ("memory/MEMORY_POLICY.md", "memory/MEMORY_POLICY.md"),

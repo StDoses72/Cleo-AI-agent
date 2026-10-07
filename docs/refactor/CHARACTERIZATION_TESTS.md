@@ -29,13 +29,13 @@ Characterization test（特征测试 / golden master）记录的是系统**当�
 
 | 层 | 范围 | 本轮是否新增特征测试 | 理由 |
 | --- | --- | --- | --- |
-| **后端（Python）** | `cleo/` 全部：协议服务、use case、session/memory 持久化、harness 适配、MCP 服务器、CLI 入口 | **是**，`tests/characterization/` 共 51 个测试 | 这是重构对象。对外契约有：JSONL 协议、磁盘格式、发给 LLM/harness 的请求、子进程入口 |
+| **后端（Python）** | `cleo/` 全部：协议服务、use case、session/memory 持久化、harness 适配、MCP 服务器、后台记忆整理进程 | **是**，`tests/characterization/` 共 51 个测试 | 这是重构对象。对外契约有：JSONL 协议、磁盘格式、发给 LLM/harness 的请求、子进程入口 |
 | **前端·渲染层（React）** | `ui/src/` | 否 | 不在重构范围。它只通过 `CleoClient` 消费协议；协议快照（`golden/`）就是它依赖的契约，后端不变它就不受影响 |
 | **前端·Electron 主进程** | `ui/electron/*.mjs` | 否（保留现有 Node 测试作为回归门） | 虽然里面约 75% 是业务逻辑（自我进化、更新、发布、运行时安装），但它跑在另一个运行时，与 Python 只通过协议和少数一次性子进程交互。其中 bootstrap/recovery 必须先于可变代码加载，部分文件还被原样复制进安装包，不适合在本轮后端重构中移动 |
 
 前端回归门沿用现有命令：`npm --prefix ui run typecheck`、`test:backend`、`test:evolution`、`smoke:real`（真实 JSONL IPC）。
 
-> Electron 主进程直接调用的 Python 入口（`cleo.desktop.server` 导入探测、`cleo.cli.dream_worker` 参数校验）属于后端契约，已放进 `test_entrypoints.py`。
+> Electron 主进程直接调用的 Python 入口（`cleo.desktop.server` 导入探测、`cleo.memory.worker` 参数校验）属于后端契约，已放进 `test_entrypoints.py`。
 
 ## 3. 行为目录
 
@@ -47,7 +47,7 @@ Characterization test（特征测试 / golden master）记录的是系统**当�
 | B4 | `test_productivity.py` | 带计划/工具/写文件的任务轮次、Git checkpoint 与 change history；撤销；默认策略自动拒绝权限；用户审批往返；取消与非 completed 结束原因；重启后恢复原生会话；运行参数（model/effort/approval）及校验；全部开发 slash 命令；boundary steering（运行中追加指令）；ACP 不提供 rewind；创建/删除错误 | 开发任务的完整生命周期，经过真实 ACP provider |
 | B5 | `test_memory.py` | 待确认记忆队列、证据详情、跳过；DreamAgent 手动整理（MEMORY.md、memory 仓库 git 提交、状态机）；**优雅关闭时把聊过的线程交给后台 DreamAgent 进程** | 长期记忆的唯一写入路径，有状态机和证据约束 |
 | B6 | `test_legacy_home.py` | v0.7.1 写出的冻结数据目录：workspace/线程/时间线分页/长内容读取/记忆加载；继续旧聊天时只回放有效历史（跳过 rewind 部分）；继续旧任务时 `session/load` 原生会话；缺失索引时的行为 | 重构后用户已有数据必须原样可读 |
-| B7 | `test_entrypoints.py` | 交给 harness 的 MCP 服务器命令行、工作目录和 prompt 封装；各 MCP 服务器的工具目录（名称/描述/schema）；agent tool server 三种模式；控制台脚本帮助、Electron 导入探测、dream worker 参数校验 | harness 与 Electron 以命令行调用这些入口，不经过协议 |
+| B7 | `test_entrypoints.py` | 交给 harness 的 MCP 服务器命令行、工作目录和 prompt 封装；各 MCP 服务器的工具目录（名称/描述/schema）；agent tool server 三种模式；Electron 导入探测、后台记忆整理进程的参数校验、CLI 已移除 | harness 与 Electron 以命令行调用这些入口，不经过协议 |
 | B8 | `test_formats.py` | v0.7.1 日志的 `event_content_hash` 必须可复现；compact / timeline 投影；secret 脱敏与工具输出截断；git diff 投影 | `source_hash` 已写进用户的 manifest 和 memory_state，算法一变，所有旧会话都会被当成"已修改"并重新整理 |
 
 ## 4. 确定性处理
@@ -67,7 +67,9 @@ Characterization test（特征测试 / golden master）记录的是系统**当�
 
 **短路径**：每个测试的 home 与工作区放在系统临时目录下的 `cleo-char-xxxxxxxx`（约 50 字符），不使用很深的 pytest 临时目录。原因是 Q12：在长路径下，v0.7.1 的撤销记录会因 Windows 路径上限而失败，快照就会随机器和目录深度变化。这是在验证阶段换用更长的临时目录后发现并复现的。可以用 `CLEO_CHAR_TMP` 指定其他父目录。
 
-**ACP 通知节奏**：`fake_acp_agent.py` 每发一条 `session/update` 后等待 0.1 秒（`CHAR_ACP_PACE`），模拟真实的模型驱动 agent，同时避开 Q11 的潜在竞态窗口。节奏只改变替身的时序，不改变后端代码。
+**ACP 通知节奏**：`fake_acp_agent.py` 每发一条 `session/update` 后等待 0.25 秒（`CHAR_ACP_PACE`），工具开始后等待 1 秒（`CHAR_ACP_TOOL_PACE`），模拟真实的模型驱动 agent，同时避开 Q11 的竞态窗口。
+
+工具开始后要多等一会，是因为 Cleo 在推送每个新条目之前，会先在线程里查一次时间线索引（SQLite）来计算位置。"开始"和"完成"两条通知由不同任务处理，查询慢时"完成"会先于"开始"到达界面。只用 0.25 秒间隔时，曾在 6 次整模块运行中出现过 1 次 `productivity/tool_turn` 的顺序差异，这就是 Q11 本身。节奏只改变替身的时序，不改变后端代码。
 
 **验证方式**：快照录制后，在三个不同的 pytest 临时目录下连续运行三次全量验证，结果一致才算确定。compact 的字符统计包含路径长度，因此 `raw_characters` / `compact_characters` 记为 `<path-dependent>`。
 
@@ -101,9 +103,9 @@ CLEO_UPDATE_GOLDEN=1 .venv/Scripts/python.exe -m pytest tests/characterization -
 | Q6 | ACP 任务默认审批是 `deny_all`，桌面虽然调用了 `enable_user_approvals`，权限请求仍被自动拒绝，用户要手动改成 `user` | `productivity/permission_denied_by_policy` | approval broker 的 enabled 与 host 的 approval_mode 是两个独立开关 |
 | Q7 | 通过 ACP `fs/write_text_file` 新建的文件不出现在 `changes`，却出现在 change history | `productivity/tool_turn` | `read_git_diff` 不含未跟踪文件，checkpoint diff 含 |
 | Q8 | 未知 provider 创建任务时，界面收到原始的 `KeyError: 'does-not-exist'` | `productivity/create_delete` | `_productivity_provider` 直接抛出 `KeyError` |
-| Q9 | `python -m cleo.cli.application` 什么都不做 | `entrypoints/cli` | 模块没有 `__main__` 守卫；控制台脚本和 `main.py` 正常 |
+| Q9 | （已随 CLI 在 v0.8 移除）`python -m cleo.cli.application` 什么都不做 | — | CLI 整体移除后不再适用 |
 | Q10 | 模型调用失败不会产生 `error` 流事件，而是协议级错误回复；持久化的错误文本是 SDK 原文 | `chat/model_failure` | `_stream_chat` 只把 `CancelledError` 转成事件 |
-| Q11 | **潜在竞态（代码审查发现，测试中未观察到）**：ACP `session/update` 通知被并发处理。agent 连续快速发通知时，事件落盘与实时推送的顺序没有保证；`prompt` 响应也可能先于最后几条通知处理完 | 无（假 agent 以 0.1 秒间隔发通知作为防御，见 `fake_acp_agent.PACE`） | `acp/connection.py:158` 为每条通知单独创建任务；`AgentService._prompt` 的 relay 在各任务里 `to_thread` 追加事件 |
+| Q11 | **竞态（已观察到）**：ACP `session/update` 通知被并发处理，落盘与实时推送的顺序没有保证。在机器高负载时实际观察到：同一个工具调用"运行中"的更新晚于"完成"到达，实时界面上这个工具一直显示运行中，重新加载后才变化。`prompt` 响应也可能先于最后几条通知处理完 | 无（假 agent 以 0.25 秒间隔发通知规避，见 `fake_acp_agent.PACE`；高负载下仍可能偶发） | `acp/connection.py:158` 为每条通知单独创建任务；`AgentService._prompt` 的 relay 在各任务里 `to_thread` 追加事件 |
 | Q12 | **已复现**：Windows 上工作区路径超过约 170 字符时，开发任务这一轮的撤销与变更历史会被静默丢弃：`canUndo` 为 false，没有 `turn_diff`，也没有任何用户可见的提示 | 无（测试改用短路径规避，见 `conftest.short_root`） | undo ref 名使用完整 sha256：`<工作区>/.git/refs/cleo/undo/<64 位 hex>.lock` 超过 260 字符，`git update-ref` 报 `Filename too long`；`_stream_productivity` 只在调试日志里记录 "Git checkpoint unavailable" |
 
 ## 7. 本轮未覆盖的范围
@@ -112,6 +114,5 @@ CLEO_UPDATE_GOLDEN=1 .venv/Scripts/python.exe -m pytest tests/characterization -
 | --- | --- | --- |
 | Codex/Claude SDK 专属能力：原生 steering、快速模式、Codex 审批语义、提问（questions）、productivity rewind、harness 切换 | 需要伪造 Codex app-server JSON-RPC 或 Claude CLI，协议面很大，而且与 SDK 版本强耦合 | `tests/integrations/test_codex_*`、`tests/desktop/test_rewind.py`、`test_steering.py`、`test_harness_switch.py`、`test_task_questions.py` |
 | 自我进化（evolution）、computer use、订阅登录、依赖更新、release repair | 依赖 Electron、GitHub、真实桌面或外部 CLI | `ui/tests/evolution-*`、`tests/desktop/test_evolution*.py`、`tests/integrations/test_computer*.py` |
-| Textual TUI 渲染 | 属于终端前端 | `tests/cli/test_*_tui.py` |
 
 建议的下一步：在 provider 端口（`AgentProvider` 及其能力接口）处加一个脚本化的 Codex 语义 provider，用于覆盖第一行的能力。这个接缝在新架构里会保留（见 `BACKEND_ARCHITECTURE_V2.md`）。

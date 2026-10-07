@@ -1,6 +1,6 @@
 # Cleo Desktop
 
-Cleo Desktop 是 Cleo 的 Windows、macOS 和 Linux 图形客户端，由 Electron、React、TypeScript 和 Vite 构建。它不是独立实现的第二套 agent：renderer 通过受控 IPC 调用随应用运行的 Python product core，因此 Desktop、CLI 与 TUI 共用 session、memory、harness 和配置语义。
+Cleo Desktop 是 Cleo 的 Windows、macOS 和 Linux 图形客户端，由 Electron、React、TypeScript 和 Vite 构建。它不是独立实现的第二套 agent：renderer 通过受控 IPC 调用随应用运行的 Python product core，session、memory、harness 和配置语义都由这个后端服务统一提供。
 
 ## 子系统边界
 
@@ -52,11 +52,10 @@ npm start
 如果 Python backend 无法启动，先在仓库根目录验证：
 
 ```powershell
-cleo --help
 python -m cleo.desktop.server
 ```
 
-第二条命令会进入 JSONL stdio 协议等待状态，手工检查后可用 Ctrl+C 退出。
+这条命令会进入 JSONL stdio 协议等待状态，手工检查后可用 Ctrl+C 退出。
 
 ## Client 适配层
 
