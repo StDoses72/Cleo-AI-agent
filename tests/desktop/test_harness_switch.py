@@ -9,6 +9,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+from cleo.desktop.runs import RunSupervisor
+
 
 def setUpModule():
     global fixture, environment
@@ -98,10 +100,7 @@ class HarnessSwitchTests(unittest.IsolatedAsyncioTestCase):
         service.store = self.store
         service._adapter_instance = self.adapter
         service._productivity_sessions = {self.id: self.session}
-        service._run_tasks = {}
-        service._steering_runs = {}
-        service._runtime_locks = {}
-        service._harness_switches = set()
+        service._runs = RunSupervisor()
         selected = SimpleNamespace(enabled=True, model="test")
         service._productivity_provider = lambda _: selected
         service.settings = SimpleNamespace(productivity=SimpleNamespace(
@@ -181,10 +180,10 @@ class HarnessSwitchTests(unittest.IsolatedAsyncioTestCase):
         service = self.desktop()
         finished = asyncio.Event()
         active = asyncio.create_task(finished.wait())
-        service._run_tasks[self.id] = active
+        service._runs.tasks[self.id] = active
         switch = asyncio.create_task(service.switch_harness(thread_id=self.id, provider="b"))
         await asyncio.sleep(0)
-        self.assertIn(self.id, service._harness_switches)
+        self.assertIn(self.id, service._runs.harness_switches)
         with self.assertRaisesRegex(ValueError, "交接"):
             await service.stream_turn(
                 thread_id=self.id, prompt="Continue", attachments=[], emit=AsyncMock(),
@@ -194,7 +193,7 @@ class HarnessSwitchTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.b.created, [])
         finished.set()
         self.assertEqual((await switch)["provider"], "b")
-        self.assertFalse(service._harness_switches)
+        self.assertFalse(service._runs.harness_switches)
 
     async def test_failure_preserves_old_route_then_retry_succeeds_without_duplicate_prompt(self):
         await self.adapter.prompt(self.id, "Keep this task")
@@ -272,7 +271,7 @@ class HarnessSwitchTests(unittest.IsolatedAsyncioTestCase):
         service = self.desktop()
         finished = asyncio.Event()
         active = asyncio.create_task(finished.wait())
-        service._run_tasks[self.id] = active
+        service._runs.tasks[self.id] = active
         switch = asyncio.create_task(service.switch_harness(thread_id=self.id, provider="b"))
         await asyncio.sleep(0)
         switch.cancel()
@@ -280,7 +279,7 @@ class HarnessSwitchTests(unittest.IsolatedAsyncioTestCase):
             await switch
         self.assertFalse(active.cancelled())
         self.assertFalse(active.done())
-        self.assertFalse(service._harness_switches)
+        self.assertFalse(service._runs.harness_switches)
         self.assertEqual(self.store.load_manifest(self.id)["provider"], "a")
         finished.set()
         await active

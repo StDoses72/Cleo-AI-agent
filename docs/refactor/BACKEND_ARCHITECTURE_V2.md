@@ -917,7 +917,7 @@ flowchart LR
     s1 --> s1b[S1b 配置快照与热加载]
     s1b --> s2[S2 显式 RpcRegistry<br/>ErrorMapper]
     s2 --> s3[S3 拆 SessionStore<br/>EventStore / Manifests / Index / 投影]
-    s3 --> s4[S4 RunSupervisor<br/>收拢 11 个运行期字典与集合]
+    s3 --> s4[S4 RunSupervisor<br/>收拢运行期状态]
     s4 --> s4b[S4b Presenters<br/>Workspace / Thread 视图]
     s4b --> s5[S5 AgentSystem 接口<br/>先实现单 agent]
     s5 --> s6[S6 CommandRegistry + TurnHooks<br/>evolution / skills / computer / timing]
@@ -933,7 +933,7 @@ flowchart LR
 | S1b | `ConfigService` 与 `SettingsSnapshot`；`settings` 兼容对象改为按 `ContextVar` 解析的代理；`load_workspace.backend` 增加 `hotReload` 与 `config` 状态；Electron 按标记停止重启后端 | 运行中读到新旧配置混用；provider 旧实例泄漏 | 全部特征测试保持不变（`load_workspace` 快照只多出 `hotReload` 与 `config` 字段），另加 `test_hot_reload.py`（第 15 节） |
 | S2 | `ProtocolServer` 改用 `cleo/desktop/rpc.py` 的显式方法表：每个方法标明调用方（`renderer` / `main` / `unused`）和是否流式；handler 仍是 `DesktopService` 的同名方法，调用时查找，参数原样传入，所以参数错误仍是原来的 `TypeError`。Pydantic 参数模型会改变错误名，留到 S9。没有调用方的 `analyze_evolution_request` 暂时保留并标为 `unused` | 漏注册方法 | `protocol/*`；`tests/desktop/test_rpc_registry.py` 核对方法表与 `DesktopService` 公开方法、`allowedMethods` 以及 Electron 主进程中的调用 |
 | S3 | `SessionStore` 门面保留，存储拆到 `cleo/sessions/` 下的 `manifests.JsonManifestRepository`、`event_log.JsonlEventStore`、`index.SqliteSessionIndex`、`compact.CompactProjection` 与 `messages`；门面只保留跨存储的规则：事件与 manifest 的写入顺序、fsync、身份校验、何时刷新投影。投影刷新改为事件总线订阅会改变 `compact.json` 的更新时机，与 S5 的 `EventRecorder` 一起做 | 落盘顺序、fsync 规则 | `*/disk`、`legacy/*`、`formats/*`；`tests/sessions/test_storage_parts.py` |
-| S4 | 把 `_run_tasks` 等迁入 `RunSupervisor` | 取消与清理竞态 | `protocol/cancel_chat_run`、`productivity/cancel_and_refusal`、`productivity/boundary_steering` |
+| S4 | `cleo/desktop/runs.py` 的 `RunSupervisor` 接管原先散在 `DesktopService` 上的 8 项运行期状态（任务、run id、steering、待审批、各运行的工作区及其锁、运行参数锁、进行中的 harness 切换），以及开始/结束/取消运行、切换互斥、工作区占用判断。回合管线仍在 `stream_turn` 中，S5 再拆；聊天 agent 缓存和开发会话缓存属于执行引擎，随 S5 移动 | 取消与清理竞态 | `protocol/cancel_chat_run`、`productivity/cancel_and_refusal`、`productivity/boundary_steering` |
 | S4b | Workspace / Thread 的 UI 映射从 `DesktopService` 移到 Presenters。线程视图要读运行状态（运行中、steering、待审批），所以放在 RunSupervisor 之后，通过它的只读接口取得 | 字段遗漏 | `workspace/*`、`legacy/workspace`、所有 `reloaded_*` |
 | S5 | `_stream_chat` / `_stream_productivity` 变为成员执行方式（`AgentRuntime`），外面包一层 `AgentSystem` 接口，只实现 `SingleAgentSystem`（第 16 节 M0） | 事件顺序 | `chat/*`、`productivity/*` |
 | S6 | 两段 if/elif 命令链改为 `Command` 类；evolution 等改为 hook | 命令文案 | `*/slash_commands` |
