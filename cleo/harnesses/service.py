@@ -659,11 +659,16 @@ class AgentService:
         session = await self.create_session(provider, project_path, model, project)
         return await self.prompt(session.id, prompt, on_event)
 
-    async def list_models(self, provider: str) -> tuple[HarnessModel, ...]:
-        """列出 provider 支持的模型(可选能力,缺失时抛 NotImplementedError)。"""
+    async def list_models(
+        self, provider: str, project_path: str = ".",
+    ) -> tuple[HarnessModel, ...]:
+        """列出 provider 支持的模型(可选能力,缺失时抛 NotImplementedError)。
+
+        ``project_path`` 是探测模型时使用的任务目录(ACP 与 Claude 需要在目录里开会话)。
+        """
         implementation = self._provider(provider)
         method = self._capability(implementation, "list_models")
-        return await method()
+        return await method(project_path)
 
     async def list_native_sessions(
         self,
