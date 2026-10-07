@@ -136,6 +136,12 @@
 /* ----- Welcome ----- */
 :root .welcome-state h2 { font-size: 32px; font-weight: 800; letter-spacing: -0.04em; }
 :root .welcome-mark { box-shadow: var(--shadow-sm); }
+
+/* Jump-to-latest: a quiet floating disc that never competes with the text under it. */
+:root .history-latest { width: 36px; height: 36px; border: 0; color: var(--text); background: var(--surface-raised); box-shadow: var(--shadow); }
+:root .history-latest:hover { background: var(--surface-hover); }
+:root .history-latest[data-unread]::after { top: 2px; right: 2px; width: 8px; height: 8px; background: var(--highlight); box-shadow: 0 0 0 2px var(--surface-raised); }
+:root .history-loading { width: 28px; height: 28px; color: var(--muted); background: var(--surface-raised); box-shadow: var(--shadow-sm); }
 :root .suggestion-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; width: min(100%, 640px); }
 :root .suggestion-list button {
   width: auto;
