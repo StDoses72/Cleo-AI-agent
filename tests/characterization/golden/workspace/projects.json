@@ -1,0 +1,157 @@
+{
+  "added": {
+    "projects": [
+      {
+        "accent": "#72d69c",
+        "branch": null,
+        "dirtyFiles": 0,
+        "id": "chat:general",
+        "name": "general",
+        "path": "<HOME>",
+        "removable": false,
+        "space": "chat"
+      },
+      {
+        "accent": "#f2b36c",
+        "branch": null,
+        "dirtyFiles": 0,
+        "id": "productivity:home",
+        "name": "home",
+        "path": "<HOME>",
+        "removable": true,
+        "space": "productivity"
+      },
+      {
+        "accent": "#f2b36c",
+        "branch": "main",
+        "dirtyFiles": 0,
+        "id": "productivity:workspace",
+        "name": "workspace",
+        "path": "<WORKSPACE>",
+        "removable": true,
+        "space": "productivity"
+      }
+    ],
+    "selectedProjectId": "productivity:workspace"
+  },
+  "after_readd": [
+    {
+      "accent": "#72d69c",
+      "branch": null,
+      "dirtyFiles": 0,
+      "id": "chat:general",
+      "name": "general",
+      "path": "<HOME>",
+      "removable": false,
+      "space": "chat"
+    },
+    {
+      "accent": "#f2b36c",
+      "branch": null,
+      "dirtyFiles": 0,
+      "id": "productivity:home",
+      "name": "home",
+      "path": "<HOME>",
+      "removable": true,
+      "space": "productivity"
+    },
+    {
+      "accent": "#f2b36c",
+      "branch": "main",
+      "dirtyFiles": 1,
+      "id": "productivity:workspace",
+      "name": "workspace",
+      "path": "<WORKSPACE>",
+      "removable": true,
+      "space": "productivity"
+    }
+  ],
+  "after_remove": [
+    {
+      "accent": "#72d69c",
+      "branch": null,
+      "dirtyFiles": 0,
+      "id": "chat:general",
+      "name": "general",
+      "path": "<HOME>",
+      "removable": false,
+      "space": "chat"
+    },
+    {
+      "accent": "#f2b36c",
+      "branch": null,
+      "dirtyFiles": 0,
+      "id": "productivity:home",
+      "name": "home",
+      "path": "<HOME>",
+      "removable": false,
+      "space": "productivity"
+    }
+  ],
+  "dirty_projects": [
+    {
+      "accent": "#72d69c",
+      "branch": null,
+      "dirtyFiles": 0,
+      "id": "chat:general",
+      "name": "general",
+      "path": "<HOME>",
+      "removable": false,
+      "space": "chat"
+    },
+    {
+      "accent": "#f2b36c",
+      "branch": null,
+      "dirtyFiles": 0,
+      "id": "productivity:home",
+      "name": "home",
+      "path": "<HOME>",
+      "removable": true,
+      "space": "productivity"
+    },
+    {
+      "accent": "#f2b36c",
+      "branch": "main",
+      "dirtyFiles": 1,
+      "id": "productivity:workspace",
+      "name": "workspace",
+      "path": "<WORKSPACE>",
+      "removable": true,
+      "space": "productivity"
+    }
+  ],
+  "errors": {
+    "bad_space": "不支持的项目空间：other",
+    "missing": "工作目录不存在或不是文件夹：<ROOT>/missing",
+    "remove_general": "默认的 general 项目不能移除。",
+    "remove_invalid": "无效的项目 ID。"
+  },
+  "runtime.json": {
+    "current_project": null,
+    "current_space": "non_productivity",
+    "current_thread_id": null,
+    "project_paths": {
+      "non_productivity": {},
+      "productivity": {
+        "workspace": "<WORKSPACE>"
+      }
+    },
+    "projects": {
+      "non_productivity": [
+        "general"
+      ],
+      "productivity": [
+        "workspace"
+      ]
+    },
+    "recent_threads": {
+      "non_productivity": [],
+      "productivity": []
+    },
+    "removed_projects": {
+      "non_productivity": [],
+      "productivity": []
+    },
+    "schema_version": 3
+  }
+}

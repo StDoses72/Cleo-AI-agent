@@ -1,0 +1,26 @@
+{
+  "default_provider": "scripted",
+  "providers": {
+    "scripted": {
+      "type": "acp",
+      "enabled": true,
+      "options": {
+        "command": "{{PYTHON}}",
+        "args": [
+          "-u",
+          "{{FAKE_ACP_AGENT}}"
+        ],
+        "auto_approve": false
+      }
+    },
+    "codex": {
+      "type": "codex_sdk",
+      "enabled": false,
+      "model": "gpt-5.5",
+      "options": {
+        "approval_mode": "deny_all",
+        "sandbox": "workspace-write"
+      }
+    }
+  }
+}

@@ -1,0 +1,137 @@
+{
+  "active_thread_after_restart": true,
+  "second_request": {
+    "messages": [
+      {
+        "includes_agents_md": true,
+        "includes_memory_policy": true,
+        "role": "system"
+      },
+      {
+        "content": "first message",
+        "role": "user"
+      },
+      {
+        "content": "Echo: first message",
+        "role": "assistant"
+      },
+      {
+        "content": "second message",
+        "role": "user"
+      }
+    ],
+    "model": "fake-chat",
+    "stream": true,
+    "stream_options": null,
+    "temperature": 0.0,
+    "tools": [
+      "codex",
+      "codex_reply",
+      "computer_call",
+      "computer_tools",
+      "delete",
+      "edit_file",
+      "glob",
+      "grep",
+      "list_threads",
+      "ls",
+      "memory_history",
+      "read_file",
+      "read_project_memory",
+      "read_thread",
+      "run_shell_command",
+      "search_conversation_history",
+      "search_long_term_memory",
+      "task",
+      "write_file"
+    ]
+  },
+  "timeline": {
+    "after": "<after:1>",
+    "before": "<before:1>",
+    "hasAfter": false,
+    "hasBefore": false,
+    "items": [
+      {
+        "content": "first message",
+        "cursor": "<cursor:1>",
+        "id": "<turn:1>",
+        "order": 1,
+        "role": "user",
+        "time": "<clock-time>",
+        "turnHasAnswer": true,
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      {
+        "content": "Echo: first message",
+        "cursor": "<cursor:2>",
+        "id": "<event:1>",
+        "order": 2,
+        "role": "assistant",
+        "time": "<clock-time>",
+        "timing": {
+          "createdAt": "<time>",
+          "elapsedMs": "<number>",
+          "id": "<hex:1>",
+          "kind": "reply",
+          "persistenceError": null,
+          "phase": null,
+          "project": "general",
+          "sessionId": "<thread:1>",
+          "space": "non_productivity",
+          "status": "completed",
+          "turnId": "<turn:1>",
+          "unavailable": [
+            "模型服务内部阶段"
+          ],
+          "updatedAt": "<time>"
+        },
+        "turnHasAnswer": true,
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      {
+        "content": "second message",
+        "cursor": "<cursor:3>",
+        "id": "<turn:2>",
+        "order": 3,
+        "role": "user",
+        "time": "<clock-time>",
+        "turnHasAnswer": true,
+        "turnId": "<turn:2>",
+        "type": "message"
+      },
+      {
+        "content": "Echo: second message",
+        "cursor": "<cursor:4>",
+        "id": "<event:2>",
+        "order": 4,
+        "role": "assistant",
+        "time": "<clock-time>",
+        "timing": {
+          "createdAt": "<time>",
+          "elapsedMs": "<number>",
+          "id": "<hex:2>",
+          "kind": "reply",
+          "persistenceError": null,
+          "phase": null,
+          "project": "general",
+          "sessionId": "<thread:1>",
+          "space": "non_productivity",
+          "status": "completed",
+          "turnId": "<turn:2>",
+          "unavailable": [
+            "模型服务内部阶段"
+          ],
+          "updatedAt": "<time>"
+        },
+        "turnHasAnswer": true,
+        "turnId": "<turn:2>",
+        "type": "message"
+      }
+    ],
+    "revision": "<revision:1>",
+    "total": 4
+  }
+}

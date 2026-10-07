@@ -1,0 +1,833 @@
+{
+  "index": [
+    {
+      "created_at": "<time>",
+      "cwd": "<HOME>",
+      "id": "<thread:2>",
+      "last_event_seq": 9,
+      "manifest_path": "<HOME>/memory/non_productivity/projects/general/sessions/<thread:2>/manifest.json",
+      "native_session_id": null,
+      "owner_id": null,
+      "owner_type": "user",
+      "parent_session_id": null,
+      "project": "general",
+      "provider": "cleo",
+      "space": "non_productivity",
+      "status": "completed",
+      "title": "Weekly plan",
+      "updated_at": "<time>"
+    },
+    {
+      "created_at": "<time>",
+      "cwd": "<RESEARCH>",
+      "id": "<thread:1>",
+      "last_event_seq": 4,
+      "manifest_path": "<HOME>/memory/non_productivity/projects/research/sessions/<thread:1>/manifest.json",
+      "native_session_id": null,
+      "owner_id": null,
+      "owner_type": "user",
+      "parent_session_id": null,
+      "project": "research",
+      "provider": "cleo",
+      "space": "non_productivity",
+      "status": "completed",
+      "title": "Collect reading notes",
+      "updated_at": "<time>"
+    },
+    {
+      "created_at": "<time>",
+      "cwd": "<WORKSPACE>",
+      "id": "<agent:1>",
+      "last_event_seq": 17,
+      "manifest_path": "<HOME>/memory/productivity/projects/workspace/sessions/<agent:1>/manifest.json",
+      "native_session_id": "acp-session-1",
+      "owner_id": null,
+      "owner_type": "agent",
+      "parent_session_id": null,
+      "project": "workspace",
+      "provider": "scripted",
+      "space": "productivity",
+      "status": "completed",
+      "title": "Write the notes file [[plan]] [[tool]] [[write]]",
+      "updated_at": "<time>"
+    }
+  ],
+  "threads": {
+    "chat": {
+      "activeRunId": null,
+      "canUndo": false,
+      "changeHistory": [],
+      "changes": [],
+      "editableTurnIds": [
+        "<turn:1>",
+        "<turn:2>"
+      ],
+      "history": {
+        "after": "<after:3>",
+        "before": "<before:3>",
+        "hasAfter": false,
+        "hasBefore": false,
+        "revision": "<revision:3>",
+        "total": 4
+      },
+      "id": "<thread:2>",
+      "items": [
+        {
+          "content": "Plan my week, I like concise weekly plans [[prefer]]",
+          "cursor": "<cursor:1>",
+          "id": "<turn:1>",
+          "order": 1,
+          "role": "user",
+          "time": "<clock-time>",
+          "turnHasAnswer": true,
+          "turnId": "<turn:1>",
+          "type": "message"
+        },
+        {
+          "content": "Echo: Plan my week, I like concise weekly plans [[prefer]]",
+          "cursor": "<cursor:2>",
+          "id": "<event:1>",
+          "order": 2,
+          "role": "assistant",
+          "time": "<clock-time>",
+          "turnHasAnswer": true,
+          "turnId": "<turn:1>",
+          "type": "message"
+        },
+        {
+          "content": "Add a gym session on Saturday",
+          "cursor": "<cursor:3>",
+          "id": "<turn:2>",
+          "order": 3,
+          "role": "user",
+          "time": "<clock-time>",
+          "turnHasAnswer": true,
+          "turnId": "<turn:2>",
+          "type": "message"
+        },
+        {
+          "content": "Echo: Add a gym session on Saturday",
+          "cursor": "<cursor:4>",
+          "id": "<event:2>",
+          "order": 4,
+          "role": "assistant",
+          "time": "<clock-time>",
+          "turnHasAnswer": true,
+          "turnId": "<turn:2>",
+          "type": "message"
+        }
+      ],
+      "pendingApprovals": [],
+      "pendingQuestions": [],
+      "projectId": "chat:general",
+      "runtime": {
+        "access": ".",
+        "approval": "Cleo 工具策略",
+        "contextWindow": 64000,
+        "editable": false,
+        "effort": "high",
+        "model": "fake-chat",
+        "models": [
+          "fake-chat"
+        ],
+        "profileId": "fake_chat",
+        "provider": "openai",
+        "steerMode": "boundary",
+        "supportsQuestions": false
+      },
+      "skills": [],
+      "space": "chat",
+      "status": "completed",
+      "steerReady": false,
+      "summary": "Echo: Add a gym session on Saturday",
+      "terminal": [],
+      "timingError": null,
+      "title": "Weekly plan",
+      "updatedAt": "<relative-time>",
+      "usage": {
+        "input": null,
+        "limit": 64000,
+        "output": null,
+        "used": null
+      }
+    },
+    "research": {
+      "activeRunId": null,
+      "canUndo": false,
+      "changeHistory": [],
+      "changes": [],
+      "editableTurnIds": [
+        "<turn:3>"
+      ],
+      "history": {
+        "after": "<after:2>",
+        "before": "<before:4>",
+        "hasAfter": false,
+        "hasBefore": false,
+        "revision": "<revision:2>",
+        "total": 2
+      },
+      "id": "<thread:1>",
+      "items": [
+        {
+          "content": "Collect reading notes",
+          "cursor": "<cursor:5>",
+          "id": "<turn:3>",
+          "order": 1,
+          "role": "user",
+          "time": "<clock-time>",
+          "turnHasAnswer": true,
+          "turnId": "<turn:3>",
+          "type": "message"
+        },
+        {
+          "content": "Echo: Collect reading notes",
+          "cursor": "<cursor:6>",
+          "id": "<event:3>",
+          "order": 2,
+          "role": "assistant",
+          "time": "<clock-time>",
+          "turnHasAnswer": true,
+          "turnId": "<turn:3>",
+          "type": "message"
+        }
+      ],
+      "pendingApprovals": [],
+      "pendingQuestions": [],
+      "projectId": "chat:research",
+      "runtime": {
+        "access": ".",
+        "approval": "Cleo 工具策略",
+        "contextWindow": 64000,
+        "editable": false,
+        "effort": "high",
+        "model": "fake-chat",
+        "models": [
+          "fake-chat"
+        ],
+        "profileId": "fake_chat",
+        "provider": "openai",
+        "steerMode": "boundary",
+        "supportsQuestions": false
+      },
+      "skills": [],
+      "space": "chat",
+      "status": "completed",
+      "steerReady": false,
+      "summary": "Echo: Collect reading notes",
+      "terminal": [],
+      "timingError": null,
+      "title": "Collect reading notes",
+      "updatedAt": "<relative-time>",
+      "usage": {
+        "input": null,
+        "limit": 64000,
+        "output": null,
+        "used": null
+      }
+    },
+    "task": {
+      "activeRunId": null,
+      "canUndo": false,
+      "changeHistory": [
+        {
+          "changes": [
+            {
+              "additions": 1,
+              "deletions": 0,
+              "diff": "diff --git a/notes.txt b/notes.txt\nnew file mode 100644\nindex 0000000..e8a0e97\n--- /dev/null\n+++ b/notes.txt\n@@ -0,0 +1 @@\n+scripted note",
+              "path": "notes.txt",
+              "status": "added"
+            }
+          ],
+          "createdAt": "<relative-time>",
+          "id": "<event:6>",
+          "title": "Write the notes file [[plan]] [[tool]] [[write]]"
+        }
+      ],
+      "changes": [],
+      "editableTurnIds": [],
+      "history": {
+        "after": "<after:1>",
+        "before": "<before:5>",
+        "hasAfter": false,
+        "hasBefore": false,
+        "revision": "<revision:1>",
+        "total": 10
+      },
+      "id": "<agent:1>",
+      "items": [
+        {
+          "content": "Write the notes file [[plan]] [[tool]] [[write]]",
+          "cursor": "<cursor:7>",
+          "id": "<turn:4>",
+          "order": 1,
+          "role": "user",
+          "time": "<clock-time>",
+          "turnHasAnswer": true,
+          "turnId": "<turn:4>",
+          "type": "message"
+        },
+        {
+          "content": "Thinking about the request.",
+          "cursor": "<cursor:8>",
+          "id": "<turn:4>:thought:1",
+          "order": 2,
+          "status": "done",
+          "turnHasAnswer": true,
+          "turnId": "<turn:4>",
+          "type": "thought"
+        },
+        {
+          "command": "",
+          "cursor": "<cursor:9>",
+          "id": "<turn:4>:tool:tool-read-1",
+          "name": "tool",
+          "order": 3,
+          "output": "任务已结束，但没有收到该工具的完成事件。",
+          "status": "error",
+          "turnHasAnswer": true,
+          "turnId": "<turn:4>",
+          "type": "tool"
+        },
+        {
+          "command": "",
+          "cursor": "<cursor:10>",
+          "id": "<turn:4>:tool-result-<event:4>",
+          "name": "tool",
+          "order": 4,
+          "status": "done",
+          "turnHasAnswer": true,
+          "turnId": "<turn:4>",
+          "type": "tool"
+        },
+        {
+          "command": "",
+          "cursor": "<cursor:11>",
+          "id": "<turn:4>:tool:tool-write-1",
+          "name": "tool",
+          "order": 5,
+          "output": "任务已结束，但没有收到该工具的完成事件。",
+          "status": "error",
+          "turnHasAnswer": true,
+          "turnId": "<turn:4>",
+          "type": "tool"
+        },
+        {
+          "command": "",
+          "cursor": "<cursor:12>",
+          "id": "<turn:4>:tool-result-<event:5>",
+          "name": "tool",
+          "order": 6,
+          "status": "done",
+          "turnHasAnswer": true,
+          "turnId": "<turn:4>",
+          "type": "tool"
+        },
+        {
+          "content": "ACP reply: Write the notes file [[plan]] [[tool]] [[write]]",
+          "cursor": "<cursor:13>",
+          "id": "<turn:4>:answer",
+          "order": 7,
+          "role": "assistant",
+          "time": "<clock-time>",
+          "turnHasAnswer": true,
+          "turnId": "<turn:4>",
+          "type": "message"
+        },
+        {
+          "content": "Summarize what changed",
+          "cursor": "<cursor:14>",
+          "id": "<turn:5>",
+          "order": 8,
+          "role": "user",
+          "time": "<clock-time>",
+          "turnHasAnswer": true,
+          "turnId": "<turn:5>",
+          "type": "message"
+        },
+        {
+          "content": "Thinking about the request.",
+          "cursor": "<cursor:15>",
+          "id": "<turn:5>:thought:1",
+          "order": 9,
+          "status": "done",
+          "turnHasAnswer": true,
+          "turnId": "<turn:5>",
+          "type": "thought"
+        },
+        {
+          "content": "ACP reply: Summarize what changed",
+          "cursor": "<cursor:16>",
+          "id": "<turn:5>:answer",
+          "order": 10,
+          "role": "assistant",
+          "time": "<clock-time>",
+          "turnHasAnswer": true,
+          "turnId": "<turn:5>",
+          "type": "message"
+        }
+      ],
+      "pendingApprovals": [],
+      "pendingQuestions": [],
+      "projectId": "productivity:workspace",
+      "runtime": {
+        "access": "default",
+        "approval": "deny_all",
+        "contextWindow": 128000,
+        "editable": true,
+        "effort": "high",
+        "handoffStatus": null,
+        "model": "fake-model-a",
+        "models": [
+          "fake-model-a"
+        ],
+        "pendingPermissions": null,
+        "permissionOptions": {
+          "access": [],
+          "approval": [
+            {
+              "description": "由你选择服务提供的允许或拒绝选项。",
+              "label": "人工审批",
+              "value": "user"
+            },
+            {
+              "description": "自动选择服务提供的允许选项；不改变服务自身的文件访问限制。",
+              "label": "自动允许请求",
+              "value": "auto_allow"
+            },
+            {
+              "description": "自动选择拒绝选项；服务没有提供拒绝选项时取消请求。",
+              "label": "自动拒绝请求",
+              "value": "deny_all"
+            }
+          ],
+          "reason": "此服务不提供统一权限档位，请使用高级审批设置。"
+        },
+        "provider": "scripted",
+        "serviceTier": null,
+        "settingsRevision": 0,
+        "steerMode": "boundary",
+        "supportsFastMode": false,
+        "supportsQuestions": false
+      },
+      "skills": [],
+      "space": "productivity",
+      "status": "completed",
+      "steerReady": false,
+      "summary": "ACP reply: Summarize what changed",
+      "terminal": [],
+      "timingError": null,
+      "title": "Write the notes file [[plan]] [[tool]] [[write]]",
+      "updatedAt": "<relative-time>",
+      "usage": {
+        "input": null,
+        "limit": 128000,
+        "output": null,
+        "used": null
+      }
+    }
+  },
+  "workspace": {
+    "activeSpace": "chat",
+    "activeThreadId": "<thread:2>",
+    "backend": {
+      "commands": {
+        "chat": [
+          "/help",
+          "/computeruse",
+          "/new",
+          "/project",
+          "/project move",
+          "/sessions",
+          "/resume",
+          "/rename",
+          "/attach",
+          "/productivity",
+          "/quit"
+        ],
+        "productivity": [
+          "/help",
+          "/computeruse",
+          "/new",
+          "/cwd",
+          "/project",
+          "/git",
+          "/diff",
+          "/model",
+          "/effort",
+          "/access",
+          "/approval",
+          "/cd",
+          "/resume",
+          "/resume-native",
+          "/native",
+          "/sessions",
+          "/account",
+          "/fork",
+          "/rename",
+          "/compact",
+          "/archive",
+          "/back",
+          "/quit"
+        ]
+      },
+      "connected": true,
+      "mode": "local",
+      "recoverableChatBackups": 0
+    },
+    "memories": [
+      {
+        "content": "Prefers concise weekly plans",
+        "id": "<hex:1>",
+        "scope": "preference",
+        "source": "non_productivity/general",
+        "title": "Prefers concise weekly plans",
+        "updatedAt": "<relative-time>"
+      }
+    ],
+    "memoryOverview": {
+      "dream_agent": {
+        "failed_count": 0,
+        "last_processed_at": "<time>",
+        "pending_count": 1,
+        "running_count": 0,
+        "status": "idle"
+      },
+      "entries": [
+        {
+          "category": "preference",
+          "confidence": 1,
+          "content": "Prefers concise weekly plans",
+          "evidence": [],
+          "evidence_count": 0,
+          "history": [],
+          "id": "<hex:1>",
+          "importance": 3,
+          "project": "general",
+          "scope": "project",
+          "space": "non_productivity",
+          "tags": [],
+          "title": "Prefers concise weekly plans",
+          "updated_at": "<time>"
+        }
+      ],
+      "issues": [],
+      "project_summaries": [
+        {
+          "memory_count": 1,
+          "project": "general",
+          "space": "non_productivity",
+          "updated_at": "<time>"
+        }
+      ],
+      "review_sources": [
+        {
+          "failure_count": 0,
+          "id": "productivity:workspace:<agent:1>",
+          "last_error": null,
+          "last_event_seq": 17,
+          "project": "workspace",
+          "session_id": "<agent:1>",
+          "source_version": 2,
+          "space": "productivity",
+          "status": "pending",
+          "title": "Write the notes file [[plan]] [[tool]] [[write]]",
+          "updated_at": "<time>"
+        }
+      ],
+      "schema_version": 1,
+      "summary": {
+        "active_memories": 1,
+        "pending_sources": 1,
+        "persona_traits": 0,
+        "project_memories": 1,
+        "project_scopes": 1
+      },
+      "timingError": null,
+      "timings": []
+    },
+    "projects": [
+      {
+        "accent": "#72d69c",
+        "branch": null,
+        "dirtyFiles": 0,
+        "id": "chat:general",
+        "name": "general",
+        "path": "<HOME>",
+        "removable": false,
+        "space": "chat"
+      },
+      {
+        "accent": "#ef7ea8",
+        "branch": null,
+        "dirtyFiles": 0,
+        "id": "chat:research",
+        "name": "research",
+        "path": "<RESEARCH>",
+        "removable": true,
+        "space": "chat"
+      },
+      {
+        "accent": "#f2b36c",
+        "branch": null,
+        "dirtyFiles": 0,
+        "id": "productivity:home",
+        "name": "home",
+        "path": "<HOME>",
+        "removable": true,
+        "space": "productivity"
+      },
+      {
+        "accent": "#f2b36c",
+        "branch": "main",
+        "dirtyFiles": 0,
+        "id": "productivity:workspace",
+        "name": "workspace",
+        "path": "<WORKSPACE>",
+        "removable": true,
+        "space": "productivity"
+      }
+    ],
+    "runtime": {
+      "access": ".",
+      "approval": "Cleo 工具策略",
+      "contextWindow": 64000,
+      "editable": false,
+      "effort": "high",
+      "model": "fake-chat",
+      "models": [
+        "fake-chat"
+      ],
+      "profileId": "fake_chat",
+      "provider": "openai",
+      "steerMode": "boundary",
+      "supportsQuestions": false
+    },
+    "threads": [
+      {
+        "activeRunId": null,
+        "canUndo": false,
+        "changeHistory": [],
+        "changes": [],
+        "editableTurnIds": [],
+        "history": {
+          "after": "<after:1>",
+          "before": "<before:1>",
+          "hasAfter": false,
+          "hasBefore": true,
+          "revision": "<revision:1>",
+          "total": 10
+        },
+        "id": "<agent:1>",
+        "items": [],
+        "pendingApprovals": [],
+        "pendingQuestions": [],
+        "projectId": "productivity:workspace",
+        "runtime": {
+          "access": "default",
+          "approval": "deny_all",
+          "contextWindow": 128000,
+          "editable": true,
+          "effort": "high",
+          "handoffStatus": null,
+          "model": "fake-model-a",
+          "models": [
+            "fake-model-a"
+          ],
+          "pendingPermissions": null,
+          "permissionOptions": {
+            "access": [],
+            "approval": [
+              {
+                "description": "由你选择服务提供的允许或拒绝选项。",
+                "label": "人工审批",
+                "value": "user"
+              },
+              {
+                "description": "自动选择服务提供的允许选项；不改变服务自身的文件访问限制。",
+                "label": "自动允许请求",
+                "value": "auto_allow"
+              },
+              {
+                "description": "自动选择拒绝选项；服务没有提供拒绝选项时取消请求。",
+                "label": "自动拒绝请求",
+                "value": "deny_all"
+              }
+            ],
+            "reason": "此服务不提供统一权限档位，请使用高级审批设置。"
+          },
+          "provider": "scripted",
+          "serviceTier": null,
+          "settingsRevision": 0,
+          "steerMode": "boundary",
+          "supportsFastMode": false,
+          "supportsQuestions": false
+        },
+        "skills": [],
+        "space": "productivity",
+        "status": "completed",
+        "steerReady": false,
+        "summary": "ACP reply: Summarize what changed",
+        "terminal": [],
+        "timingError": null,
+        "title": "Write the notes file [[plan]] [[tool]] [[write]]",
+        "updatedAt": "<relative-time>",
+        "usage": {
+          "input": null,
+          "limit": 128000,
+          "output": null,
+          "used": null
+        }
+      },
+      {
+        "activeRunId": null,
+        "canUndo": false,
+        "changeHistory": [],
+        "changes": [],
+        "editableTurnIds": [],
+        "history": {
+          "after": "<after:2>",
+          "before": "<before:2>",
+          "hasAfter": false,
+          "hasBefore": true,
+          "revision": "<revision:2>",
+          "total": 2
+        },
+        "id": "<thread:1>",
+        "items": [],
+        "pendingApprovals": [],
+        "pendingQuestions": [],
+        "projectId": "chat:research",
+        "runtime": {
+          "access": ".",
+          "approval": "Cleo 工具策略",
+          "contextWindow": 64000,
+          "editable": false,
+          "effort": "high",
+          "model": "fake-chat",
+          "models": [
+            "fake-chat"
+          ],
+          "profileId": "fake_chat",
+          "provider": "openai",
+          "steerMode": "boundary",
+          "supportsQuestions": false
+        },
+        "skills": [],
+        "space": "chat",
+        "status": "completed",
+        "steerReady": false,
+        "summary": "Echo: Collect reading notes",
+        "terminal": [],
+        "timingError": null,
+        "title": "Collect reading notes",
+        "updatedAt": "<relative-time>",
+        "usage": {
+          "input": null,
+          "limit": 64000,
+          "output": null,
+          "used": null
+        }
+      },
+      {
+        "activeRunId": null,
+        "canUndo": false,
+        "changeHistory": [],
+        "changes": [],
+        "editableTurnIds": [
+          "<turn:1>",
+          "<turn:2>"
+        ],
+        "history": {
+          "after": "<after:3>",
+          "before": "<before:3>",
+          "hasAfter": false,
+          "hasBefore": false,
+          "revision": "<revision:3>",
+          "total": 4
+        },
+        "id": "<thread:2>",
+        "items": [
+          {
+            "content": "Plan my week, I like concise weekly plans [[prefer]]",
+            "cursor": "<cursor:1>",
+            "id": "<turn:1>",
+            "order": 1,
+            "role": "user",
+            "time": "<clock-time>",
+            "turnHasAnswer": true,
+            "turnId": "<turn:1>",
+            "type": "message"
+          },
+          {
+            "content": "Echo: Plan my week, I like concise weekly plans [[prefer]]",
+            "cursor": "<cursor:2>",
+            "id": "<event:1>",
+            "order": 2,
+            "role": "assistant",
+            "time": "<clock-time>",
+            "turnHasAnswer": true,
+            "turnId": "<turn:1>",
+            "type": "message"
+          },
+          {
+            "content": "Add a gym session on Saturday",
+            "cursor": "<cursor:3>",
+            "id": "<turn:2>",
+            "order": 3,
+            "role": "user",
+            "time": "<clock-time>",
+            "turnHasAnswer": true,
+            "turnId": "<turn:2>",
+            "type": "message"
+          },
+          {
+            "content": "Echo: Add a gym session on Saturday",
+            "cursor": "<cursor:4>",
+            "id": "<event:2>",
+            "order": 4,
+            "role": "assistant",
+            "time": "<clock-time>",
+            "turnHasAnswer": true,
+            "turnId": "<turn:2>",
+            "type": "message"
+          }
+        ],
+        "pendingApprovals": [],
+        "pendingQuestions": [],
+        "projectId": "chat:general",
+        "runtime": {
+          "access": ".",
+          "approval": "Cleo 工具策略",
+          "contextWindow": 64000,
+          "editable": false,
+          "effort": "high",
+          "model": "fake-chat",
+          "models": [
+            "fake-chat"
+          ],
+          "profileId": "fake_chat",
+          "provider": "openai",
+          "steerMode": "boundary",
+          "supportsQuestions": false
+        },
+        "skills": [],
+        "space": "chat",
+        "status": "completed",
+        "steerReady": false,
+        "summary": "Echo: Add a gym session on Saturday",
+        "terminal": [],
+        "timingError": null,
+        "title": "Weekly plan",
+        "updatedAt": "<relative-time>",
+        "usage": {
+          "input": null,
+          "limit": 64000,
+          "output": null,
+          "used": null
+        }
+      }
+    ]
+  }
+}

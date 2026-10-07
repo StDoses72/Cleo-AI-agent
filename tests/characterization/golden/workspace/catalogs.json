@@ -1,0 +1,206 @@
+{
+  "agent_instructions": {
+    "content": "# Characterization home\n\nDeterministic instructions for tests.\n",
+    "exists": true,
+    "path": "<HOME>/AGENTS.md"
+  },
+  "config_template_keys": [
+    "cleo",
+    "harnesses"
+  ],
+  "harness_sync": [
+    {
+      "cleoPath": "<HOME>/data/claude",
+      "harness": "claude",
+      "items": [],
+      "localExists": true,
+      "localPath": "<USER>/.claude",
+      "settings": {
+        "file": "settings.json",
+        "missingInCleo": []
+      }
+    },
+    {
+      "cleoPath": "<HOME>/data/codex",
+      "harness": "codex",
+      "items": [],
+      "localExists": true,
+      "localPath": "<USER>/.codex",
+      "settings": {
+        "file": "config.toml",
+        "missingInCleo": []
+      }
+    }
+  ],
+  "is_evolution_thread_unknown": "FileNotFoundError",
+  "local_skills": [],
+  "model_settings": {
+    "activeAgent": "fake_chat",
+    "activeDreamAgent": "",
+    "activeDreamModel": "",
+    "dreamEnabled": true,
+    "profiles": [
+      {
+        "backend": "api",
+        "baseUrl": "<LLM_URL>",
+        "displayName": "fake_chat",
+        "executable": "",
+        "hasApiKey": true,
+        "maxTokens": 64000,
+        "model": "fake-chat",
+        "models": [
+          "fake-chat"
+        ],
+        "name": "fake_chat",
+        "provider": "openai"
+      }
+    ]
+  },
+  "productivity_models": {
+    "models": [
+      {
+        "defaultEffort": "high",
+        "description": "Default scripted model",
+        "id": "fake-model-a",
+        "isDefault": true,
+        "label": "Fake Model A",
+        "supportedEfforts": [
+          "low",
+          "high"
+        ]
+      },
+      {
+        "defaultEffort": "high",
+        "description": "Alternate scripted model",
+        "id": "fake-model-b",
+        "isDefault": false,
+        "label": "Fake Model B",
+        "supportedEfforts": [
+          "low",
+          "high"
+        ]
+      }
+    ],
+    "provider": "scripted",
+    "source": "acp"
+  },
+  "runtime_catalog": {
+    "defaultNonProductivityProfile": "fake_chat",
+    "defaultProductivityProvider": "scripted",
+    "nonProductivityProfiles": [
+      {
+        "active": true,
+        "id": "fake_chat",
+        "label": "fake_chat",
+        "maxTokens": 64000,
+        "model": "fake-chat",
+        "provider": "openai"
+      }
+    ],
+    "productivityProviders": [
+      {
+        "defaultModel": null,
+        "id": "scripted",
+        "modelSource": "dynamic",
+        "type": "acp"
+      },
+      {
+        "defaultModel": null,
+        "id": "claude",
+        "modelSource": "dynamic",
+        "type": "claude_sdk"
+      },
+      {
+        "defaultModel": null,
+        "id": "gemini",
+        "modelSource": "dynamic",
+        "type": "acp"
+      },
+      {
+        "defaultModel": null,
+        "id": "copilot",
+        "modelSource": "dynamic",
+        "type": "acp"
+      },
+      {
+        "defaultModel": null,
+        "id": "grok",
+        "modelSource": "dynamic",
+        "type": "acp"
+      },
+      {
+        "defaultModel": null,
+        "id": "opencode",
+        "modelSource": "dynamic",
+        "type": "acp"
+      }
+    ]
+  },
+  "subscription_catalog": [
+    {
+      "args": [],
+      "backend": "codex",
+      "command": "codex",
+      "docs": "https://learn.chatgpt.com/docs/auth",
+      "label": "Codex（ChatGPT 登录，使用 Codex 额度）",
+      "login": "codex login"
+    },
+    {
+      "args": [
+        "--acp",
+        "--approval-mode",
+        "default",
+        "--allowed-tools",
+        "mcp_cleo-tools_*",
+        "--allowed-mcp-server-names",
+        "cleo-tools"
+      ],
+      "backend": "gemini",
+      "command": "gemini",
+      "docs": "https://geminicli.com/docs/get-started/authentication/",
+      "label": "Google · Gemini CLI",
+      "login": "gemini（选择 Sign in with Google）"
+    },
+    {
+      "args": [
+        "--acp",
+        "--stdio",
+        "--allow-tool=cleo-tools",
+        "--deny-tool=shell",
+        "--deny-tool=write"
+      ],
+      "backend": "copilot",
+      "command": "copilot",
+      "docs": "https://docs.github.com/en/copilot/how-tos/copilot-cli",
+      "label": "GitHub Copilot",
+      "login": "copilot login"
+    },
+    {
+      "args": [
+        "--allow",
+        "mcp__cleo-tools__*",
+        "--permission-mode",
+        "dontAsk",
+        "--deny",
+        "Bash",
+        "--deny",
+        "Edit",
+        "agent",
+        "stdio"
+      ],
+      "backend": "grok",
+      "command": "grok",
+      "docs": "https://docs.x.ai/build/overview",
+      "label": "Grok · Grok Build",
+      "login": "grok login"
+    },
+    {
+      "args": [],
+      "backend": "claude_code",
+      "command": "claude",
+      "docs": "https://code.claude.com/docs/en/setup",
+      "label": "Claude Code（官方 CLI）",
+      "login": "claude auth login"
+    }
+  ]
+}

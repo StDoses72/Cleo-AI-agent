@@ -1,0 +1,131 @@
+{
+  "reloaded_items": [
+    {
+      "content": "Review these\nAttachment 1: brief.txt\nAttachment 2: pixel.png",
+      "cursor": "<cursor:1>",
+      "id": "<turn:1>",
+      "order": 1,
+      "role": "user",
+      "time": "<clock-time>",
+      "turnHasAnswer": true,
+      "turnId": "<turn:1>",
+      "type": "message"
+    },
+    {
+      "content": "Echo: Review these Attachment 1: brief.txt [read_file: the requested file was not attached because this model does not support file content (text/plain).] Attachment 2: pixel.png",
+      "cursor": "<cursor:2>",
+      "id": "<event:1>",
+      "order": 2,
+      "role": "assistant",
+      "time": "<clock-time>",
+      "timing": {
+        "createdAt": "<time>",
+        "elapsedMs": "<number>",
+        "id": "<hex:1>",
+        "kind": "reply",
+        "persistenceError": null,
+        "phase": null,
+        "project": "general",
+        "sessionId": "<thread:1>",
+        "space": "non_productivity",
+        "status": "completed",
+        "turnId": "<turn:1>",
+        "unavailable": [
+          "模型服务内部阶段"
+        ],
+        "updatedAt": "<time>"
+      },
+      "turnHasAnswer": true,
+      "turnId": "<turn:1>",
+      "type": "message"
+    }
+  ],
+  "stream": [
+    {
+      "item": {
+        "content": "Review these",
+        "id": "<turn:1>",
+        "role": "user",
+        "time": "",
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      "type": "turn-started"
+    },
+    {
+      "item": {
+        "content": "Echo: Review these Attachment 1: brief.txt [read_file: the requested file was not attached because this model does not support file content (text/plain).] Attachment 2: pixel.png",
+        "id": "<turn:1>:answer",
+        "role": "assistant",
+        "time": "",
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      "type": "upsert-item"
+    },
+    {
+      "type": "usage",
+      "usage": {
+        "input": 120,
+        "limit": 64000,
+        "output": 30,
+        "used": 150
+      }
+    },
+    {
+      "timing": {
+        "createdAt": "<time>",
+        "elapsedMs": "<number>",
+        "id": "<hex:1>",
+        "kind": "reply",
+        "persistenceError": null,
+        "phase": null,
+        "project": "general",
+        "sessionId": "<thread:1>",
+        "space": "non_productivity",
+        "status": "completed",
+        "turnId": "<turn:1>",
+        "unavailable": [
+          "模型服务内部阶段"
+        ],
+        "updatedAt": "<time>"
+      },
+      "type": "timing"
+    },
+    {
+      "summary": "Echo: Review these Attachment 1: brief.txt [read_file: the requested file was no",
+      "type": "done"
+    }
+  ],
+  "too_many": [
+    "ValueError",
+    "A message can include at most 20 files."
+  ],
+  "user_message_sent": {
+    "content": [
+      {
+        "text": "Review these",
+        "type": "text"
+      },
+      {
+        "text": "Attachment 1: brief.txt",
+        "type": "text"
+      },
+      {
+        "text": "[read_file: the requested file was not attached because this model does not support file content (text/plain).]",
+        "type": "text"
+      },
+      {
+        "text": "Attachment 2: pixel.png",
+        "type": "text"
+      },
+      {
+        "image_url": {
+          "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII="
+        },
+        "type": "image_url"
+      }
+    ],
+    "role": "user"
+  }
+}

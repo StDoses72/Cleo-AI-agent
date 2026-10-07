@@ -1,0 +1,165 @@
+{
+  "after_skip": {
+    "memories": [],
+    "memoryOverview": {
+      "dream_agent": {
+        "failed_count": 0,
+        "last_processed_at": "<time>",
+        "pending_count": 0,
+        "running_count": 0,
+        "status": "idle"
+      },
+      "entries": [],
+      "issues": [],
+      "project_summaries": [],
+      "review_sources": [],
+      "schema_version": 1,
+      "summary": {
+        "active_memories": 0,
+        "pending_sources": 0,
+        "persona_traits": 0,
+        "project_memories": 0,
+        "project_scopes": 0
+      },
+      "timingError": null,
+      "timings": []
+    }
+  },
+  "details": {
+    "event_count": 4,
+    "events": [
+      {
+        "content": "Remember that I review plans on Sunday",
+        "created_at": "<time>",
+        "id": "<turn:1>",
+        "metadata": {
+          "from_seq": 2,
+          "method": "",
+          "to_seq": 2
+        },
+        "type": "human"
+      },
+      {
+        "content": "Echo: Remember that I review plans on Sunday",
+        "created_at": "<time>",
+        "id": "<event:1>",
+        "metadata": {
+          "from_seq": 3,
+          "method": "",
+          "to_seq": 3
+        },
+        "type": "ai"
+      }
+    ],
+    "id": "non_productivity:general:<thread:1>",
+    "omitted_events": [
+      {
+        "actor": "system",
+        "created_at": "<time>",
+        "id": "<event:2>",
+        "seq": 1,
+        "type": "session_created"
+      },
+      {
+        "actor": "system",
+        "created_at": "<time>",
+        "id": "<event:3>",
+        "seq": 4,
+        "type": "session_completed"
+      }
+    ],
+    "source_version": 1
+  },
+  "disk": {
+    "MEMORY.md": null,
+    "files": [
+      ".timings-v1.sqlite3",
+      "MEMORY_POLICY.md",
+      "non_productivity/memory.sqlite3",
+      "non_productivity/memory_state.json",
+      "non_productivity/projects/general/sessions/<thread:1>/compact.json",
+      "non_productivity/projects/general/sessions/<thread:1>/events.jsonl",
+      "non_productivity/projects/general/sessions/<thread:1>/manifest.json",
+      "persona.sqlite3",
+      "sessions.sqlite3"
+    ],
+    "memory_git_log": [],
+    "memory_state": {
+      "schema_version": 2,
+      "sources": {
+        "session:non_productivity:general:<thread:1>": {
+          "consolidated_hash": null,
+          "consolidated_version": 0,
+          "failure_count": 0,
+          "last_consolidated_at": null,
+          "last_error": null,
+          "last_event_seq": 4,
+          "last_processed_at": "<time>",
+          "last_updated_at": "<time>",
+          "processed_hash": "sha256:<hex:1>",
+          "processed_version": 1,
+          "processing_decision": "skipped",
+          "processing_phase": "complete",
+          "processing_reason": "用户在桌面待确认队列中忽略了本次来源。",
+          "project": "general",
+          "review_result": {
+            "decision": "skip",
+            "provider": "manual",
+            "reason": "用户在桌面待确认队列中忽略了本次来源。"
+          },
+          "session_id": "<thread:1>",
+          "source_hash": "sha256:<hex:1>",
+          "source_version": 1,
+          "space": "non_productivity",
+          "status": "skipped"
+        }
+      },
+      "updated_at": "<time>"
+    }
+  },
+  "errors": {
+    "bad_action": "不支持的记忆处理动作：delete",
+    "details_after_skip": "待确认的记忆来源不存在或已被处理",
+    "skip_twice": "这个记忆来源已被处理，请刷新后重试"
+  },
+  "pending": {
+    "memories": [],
+    "memoryOverview": {
+      "dream_agent": {
+        "failed_count": 0,
+        "last_processed_at": null,
+        "pending_count": 1,
+        "running_count": 0,
+        "status": "idle"
+      },
+      "entries": [],
+      "issues": [],
+      "project_summaries": [],
+      "review_sources": [
+        {
+          "failure_count": 0,
+          "id": "non_productivity:general:<thread:1>",
+          "last_error": null,
+          "last_event_seq": 4,
+          "project": "general",
+          "session_id": "<thread:1>",
+          "source_version": 1,
+          "space": "non_productivity",
+          "status": "pending",
+          "title": "Remember that I review plans on Sunday",
+          "updated_at": "<time>"
+        }
+      ],
+      "schema_version": 1,
+      "summary": {
+        "active_memories": 0,
+        "pending_sources": 1,
+        "persona_traits": 0,
+        "project_memories": 0,
+        "project_scopes": 0
+      },
+      "timingError": null,
+      "timings": []
+    }
+  }
+}

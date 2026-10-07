@@ -1,0 +1,111 @@
+{
+  "activeSpace": "productivity",
+  "activeThreadId": null,
+  "backend": {
+    "commands": {
+      "chat": [
+        "/help",
+        "/computeruse",
+        "/new",
+        "/project",
+        "/project move",
+        "/sessions",
+        "/resume",
+        "/rename",
+        "/attach",
+        "/productivity",
+        "/quit"
+      ],
+      "productivity": [
+        "/help",
+        "/computeruse",
+        "/new",
+        "/cwd",
+        "/project",
+        "/git",
+        "/diff",
+        "/model",
+        "/effort",
+        "/access",
+        "/approval",
+        "/cd",
+        "/resume",
+        "/resume-native",
+        "/native",
+        "/sessions",
+        "/account",
+        "/fork",
+        "/rename",
+        "/compact",
+        "/archive",
+        "/back",
+        "/quit"
+      ]
+    },
+    "connected": true,
+    "mode": "local",
+    "recoverableChatBackups": 0
+  },
+  "memories": [],
+  "memoryOverview": {
+    "dream_agent": {
+      "failed_count": 0,
+      "last_processed_at": null,
+      "pending_count": 0,
+      "running_count": 0,
+      "status": "idle"
+    },
+    "entries": [],
+    "issues": [],
+    "project_summaries": [],
+    "review_sources": [],
+    "schema_version": 1,
+    "summary": {
+      "active_memories": 0,
+      "pending_sources": 0,
+      "persona_traits": 0,
+      "project_memories": 0,
+      "project_scopes": 0
+    },
+    "timingError": null,
+    "timings": []
+  },
+  "projects": [
+    {
+      "accent": "#72d69c",
+      "branch": null,
+      "dirtyFiles": 0,
+      "id": "chat:general",
+      "name": "general",
+      "path": "<HOME>",
+      "removable": false,
+      "space": "chat"
+    },
+    {
+      "accent": "#f2b36c",
+      "branch": null,
+      "dirtyFiles": 0,
+      "id": "productivity:home",
+      "name": "home",
+      "path": "<HOME>",
+      "removable": false,
+      "space": "productivity"
+    }
+  ],
+  "runtime": {
+    "access": ".",
+    "approval": "Cleo 工具策略",
+    "contextWindow": 64000,
+    "editable": false,
+    "effort": "high",
+    "model": "fake-chat",
+    "models": [
+      "fake-chat"
+    ],
+    "profileId": "fake_chat",
+    "provider": "openai",
+    "steerMode": "boundary",
+    "supportsQuestions": false
+  },
+  "threads": []
+}

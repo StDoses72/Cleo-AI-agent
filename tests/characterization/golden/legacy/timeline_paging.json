@@ -1,0 +1,136 @@
+{
+  "after": {
+    "after": "<after:1>",
+    "before": "<before:1>",
+    "hasAfter": false,
+    "hasBefore": true,
+    "items": [
+      {
+        "content": "Summarize what changed",
+        "cursor": "<cursor:1>",
+        "id": "<turn:1>",
+        "order": 8,
+        "role": "user",
+        "time": "<clock-time>",
+        "turnHasAnswer": true,
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      {
+        "content": "Thinking about the request.",
+        "cursor": "<cursor:2>",
+        "id": "<turn:1>:thought:1",
+        "order": 9,
+        "status": "done",
+        "turnHasAnswer": true,
+        "turnId": "<turn:1>",
+        "type": "thought"
+      },
+      {
+        "content": "ACP reply: Summarize what changed",
+        "cursor": "<cursor:3>",
+        "id": "<turn:1>:answer",
+        "order": 10,
+        "role": "assistant",
+        "time": "<clock-time>",
+        "turnHasAnswer": true,
+        "turnId": "<turn:1>",
+        "type": "message"
+      }
+    ],
+    "revision": "<revision:1>",
+    "total": 10
+  },
+  "before": {
+    "after": "<after:2>",
+    "before": "<before:2>",
+    "hasAfter": true,
+    "hasBefore": true,
+    "items": [
+      {
+        "command": "",
+        "cursor": "<cursor:4>",
+        "id": "<turn:2>:tool:tool-write-1",
+        "name": "tool",
+        "order": 5,
+        "output": "任务已结束，但没有收到该工具的完成事件。",
+        "status": "error",
+        "turnHasAnswer": true,
+        "turnId": "<turn:2>",
+        "type": "tool"
+      },
+      {
+        "command": "",
+        "cursor": "<cursor:5>",
+        "id": "<turn:2>:tool-result-<event:1>",
+        "name": "tool",
+        "order": 6,
+        "status": "done",
+        "turnHasAnswer": true,
+        "turnId": "<turn:2>",
+        "type": "tool"
+      },
+      {
+        "content": "ACP reply: Write the notes file [[plan]] [[tool]] [[write]]",
+        "cursor": "<cursor:6>",
+        "id": "<turn:2>:answer",
+        "order": 7,
+        "role": "assistant",
+        "time": "<clock-time>",
+        "turnHasAnswer": true,
+        "turnId": "<turn:2>",
+        "type": "message"
+      }
+    ],
+    "revision": "<revision:1>",
+    "total": 10
+  },
+  "content": {
+    "next": 22,
+    "offset": 0,
+    "text": "Summarize what changed",
+    "total": 22
+  },
+  "latest": {
+    "after": "<after:1>",
+    "before": "<before:1>",
+    "hasAfter": false,
+    "hasBefore": true,
+    "items": [
+      {
+        "content": "Summarize what changed",
+        "cursor": "<cursor:1>",
+        "id": "<turn:1>",
+        "order": 8,
+        "role": "user",
+        "time": "<clock-time>",
+        "turnHasAnswer": true,
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      {
+        "content": "Thinking about the request.",
+        "cursor": "<cursor:2>",
+        "id": "<turn:1>:thought:1",
+        "order": 9,
+        "status": "done",
+        "turnHasAnswer": true,
+        "turnId": "<turn:1>",
+        "type": "thought"
+      },
+      {
+        "content": "ACP reply: Summarize what changed",
+        "cursor": "<cursor:3>",
+        "id": "<turn:1>:answer",
+        "order": 10,
+        "role": "assistant",
+        "time": "<clock-time>",
+        "turnHasAnswer": true,
+        "turnId": "<turn:1>",
+        "type": "message"
+      }
+    ],
+    "revision": "<revision:1>",
+    "total": 10
+  }
+}

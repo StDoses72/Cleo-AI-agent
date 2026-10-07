@@ -1,0 +1,57 @@
+{
+  "schema_version": 2,
+  "updated_at": "2026-10-03T23:10:33.209276+00:00",
+  "sources": {
+    "session:non_productivity:general:cleo_9a0dfe9ca97d": {
+      "space": "non_productivity",
+      "project": "general",
+      "session_id": "cleo_9a0dfe9ca97d",
+      "source_version": 3,
+      "source_hash": "sha256:d57114fd10bcb67e862bc6dc965e039810bc131a8aebcbc788207c9895ea2b58",
+      "last_event_seq": 9,
+      "consolidated_version": 3,
+      "consolidated_hash": "sha256:d57114fd10bcb67e862bc6dc965e039810bc131a8aebcbc788207c9895ea2b58",
+      "processed_version": 3,
+      "processed_hash": "sha256:d57114fd10bcb67e862bc6dc965e039810bc131a8aebcbc788207c9895ea2b58",
+      "processing_decision": "consolidated",
+      "processing_reason": null,
+      "processing_phase": "complete",
+      "review_result": null,
+      "status": "complete",
+      "failure_count": 0,
+      "last_error": null,
+      "last_updated_at": "2026-10-03T23:10:32.196433+00:00",
+      "last_consolidated_at": "2026-10-03T23:10:32.711923+00:00",
+      "last_processed_at": "2026-10-03T23:10:32.711923+00:00",
+      "last_started_at": "2026-10-03T23:10:32.463035+00:00",
+      "durable_memory_count": 1,
+      "no_durable_memory_reason": null
+    },
+    "session:non_productivity:research:cleo_03dfeadcefad": {
+      "space": "non_productivity",
+      "project": "research",
+      "session_id": "cleo_03dfeadcefad",
+      "source_version": 1,
+      "source_hash": "sha256:763268768031bf93548638cd1d95896869f7c713076b8f6f65a580666e6d9c90",
+      "last_event_seq": 4,
+      "consolidated_version": 0,
+      "consolidated_hash": null,
+      "processed_version": 1,
+      "processed_hash": "sha256:763268768031bf93548638cd1d95896869f7c713076b8f6f65a580666e6d9c90",
+      "processing_decision": "skipped",
+      "processing_reason": "用户在桌面待确认队列中忽略了本次来源。",
+      "processing_phase": "complete",
+      "review_result": {
+        "provider": "manual",
+        "decision": "skip",
+        "reason": "用户在桌面待确认队列中忽略了本次来源。"
+      },
+      "status": "skipped",
+      "failure_count": 0,
+      "last_error": null,
+      "last_updated_at": "2026-10-03T23:10:33.167693+00:00",
+      "last_consolidated_at": null,
+      "last_processed_at": "2026-10-03T23:10:33.209276+00:00"
+    }
+  }
+}

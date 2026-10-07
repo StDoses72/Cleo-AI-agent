@@ -1,0 +1,282 @@
+{
+  "active_event_seqs": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17
+  ],
+  "compact": {
+    "compression": {
+      "compact_characters": 3157,
+      "compressed_at": "<time>",
+      "omitted_tool_characters": 0,
+      "raw_characters": 7388,
+      "tool_event_count": 2
+    },
+    "events": [
+      {
+        "content": "Write the notes file [[plan]] [[tool]] [[write]]",
+        "created_at": "<time>",
+        "id": "<turn:1>",
+        "source_event_ids": [
+          "<turn:1>"
+        ],
+        "source_message_id": "<turn:1>",
+        "type": "human"
+      },
+      {
+        "args": {},
+        "created_at": "<time>",
+        "id": "<event:1>",
+        "name": "unknown",
+        "source_event_ids": [
+          "<event:1>"
+        ],
+        "status": "success",
+        "type": "tool_event"
+      },
+      {
+        "args": {},
+        "created_at": "<time>",
+        "id": "<event:2>",
+        "name": "unknown",
+        "source_event_ids": [
+          "<event:2>"
+        ],
+        "status": "success",
+        "type": "tool_event"
+      },
+      {
+        "content": "ACP reply: Write the notes file [[plan]] [[tool]] [[write]]",
+        "created_at": "<time>",
+        "id": "<turn:1>:answer",
+        "source_event_ids": [
+          "<turn:1>:answer"
+        ],
+        "source_message_id": "<turn:1>:answer",
+        "type": "ai"
+      },
+      {
+        "content": "Summarize what changed",
+        "created_at": "<time>",
+        "id": "<turn:2>",
+        "source_event_ids": [
+          "<turn:2>"
+        ],
+        "source_message_id": "<turn:2>",
+        "type": "human"
+      },
+      {
+        "content": "ACP reply: Summarize what changed",
+        "created_at": "<time>",
+        "id": "<turn:2>:answer",
+        "source_event_ids": [
+          "<turn:2>:answer"
+        ],
+        "source_message_id": "<turn:2>:answer",
+        "type": "ai"
+      },
+      {
+        "content": null,
+        "created_at": "<time>",
+        "data": {
+          "payload": {
+            "entries": [
+              {
+                "content": "<omitted:21 chars>",
+                "priority": "medium",
+                "status": "completed"
+              },
+              {
+                "content": "<omitted:16 chars>",
+                "priority": "medium",
+                "status": "in_progress"
+              }
+            ],
+            "sessionUpdate": "plan"
+          },
+          "provider": "scripted",
+          "provider_event_type": "plan",
+          "schema_version": 1,
+          "timeline_id": "<turn:1>:plan",
+          "turn_id": "<turn:1>"
+        },
+        "id": "<event:3>",
+        "source_event_ids": [
+          "<event:3>"
+        ],
+        "type": "plan_update"
+      },
+      {
+        "content": null,
+        "created_at": "<time>",
+        "data": {
+          "payload": {
+            "kind": "read",
+            "rawInput": {
+              "path": "README.md"
+            },
+            "sessionUpdate": "tool_call",
+            "status": "in_progress",
+            "title": "Read README.md",
+            "toolCallId": "tool-read-1"
+          },
+          "provider": "scripted",
+          "provider_event_type": "tool_call",
+          "schema_version": 1,
+          "timeline_id": "<turn:1>:tool:tool-read-1",
+          "turn_id": "<turn:1>"
+        },
+        "id": "<event:4>",
+        "source_event_ids": [
+          "<event:4>"
+        ],
+        "type": "tool_call"
+      },
+      {
+        "content": null,
+        "created_at": "<time>",
+        "data": {
+          "payload": {
+            "kind": "edit",
+            "rawInput": {
+              "path": "notes.txt"
+            },
+            "sessionUpdate": "tool_call",
+            "status": "in_progress",
+            "title": "Write notes.txt",
+            "toolCallId": "tool-write-1"
+          },
+          "provider": "scripted",
+          "provider_event_type": "tool_call",
+          "schema_version": 1,
+          "timeline_id": "<turn:1>:tool:tool-write-1",
+          "turn_id": "<turn:1>"
+        },
+        "id": "<event:5>",
+        "source_event_ids": [
+          "<event:5>"
+        ],
+        "type": "tool_call"
+      }
+    ],
+    "project": "workspace",
+    "schema_version": 2,
+    "session_id": "<agent:1>",
+    "source": {
+      "event_count": 17,
+      "from_seq": 1,
+      "relative_path": "productivity/projects/workspace/sessions/<agent:1>/events.jsonl",
+      "source_content_hash": "sha256:<hex:1>",
+      "source_version": 1,
+      "to_seq": 17
+    },
+    "space": "productivity"
+  },
+  "has_user_interaction": true,
+  "timeline": [
+    {
+      "content": "Write the notes file [[plan]] [[tool]] [[write]]",
+      "id": "<turn:1>",
+      "role": "user",
+      "time": "<clock-time>",
+      "turnHasAnswer": true,
+      "turnId": "<turn:1>",
+      "type": "message"
+    },
+    {
+      "content": "Thinking about the request.",
+      "id": "<turn:1>:thought:1",
+      "status": "done",
+      "turnHasAnswer": true,
+      "turnId": "<turn:1>",
+      "type": "thought"
+    },
+    {
+      "command": "",
+      "id": "<turn:1>:tool:tool-read-1",
+      "name": "tool",
+      "output": "任务已结束，但没有收到该工具的完成事件。",
+      "status": "error",
+      "turnHasAnswer": true,
+      "turnId": "<turn:1>",
+      "type": "tool"
+    },
+    {
+      "command": "",
+      "id": "tool-result-<event:1>",
+      "name": "tool",
+      "status": "done",
+      "turnHasAnswer": true,
+      "turnId": "<turn:1>",
+      "type": "tool"
+    },
+    {
+      "command": "",
+      "id": "<turn:1>:tool:tool-write-1",
+      "name": "tool",
+      "output": "任务已结束，但没有收到该工具的完成事件。",
+      "status": "error",
+      "turnHasAnswer": true,
+      "turnId": "<turn:1>",
+      "type": "tool"
+    },
+    {
+      "command": "",
+      "id": "tool-result-<event:2>",
+      "name": "tool",
+      "status": "done",
+      "turnHasAnswer": true,
+      "turnId": "<turn:1>",
+      "type": "tool"
+    },
+    {
+      "content": "ACP reply: Write the notes file [[plan]] [[tool]] [[write]]",
+      "id": "<turn:1>:answer",
+      "role": "assistant",
+      "time": "<clock-time>",
+      "turnHasAnswer": true,
+      "turnId": "<turn:1>",
+      "type": "message"
+    },
+    {
+      "content": "Summarize what changed",
+      "id": "<turn:2>",
+      "role": "user",
+      "time": "<clock-time>",
+      "turnHasAnswer": true,
+      "turnId": "<turn:2>",
+      "type": "message"
+    },
+    {
+      "content": "Thinking about the request.",
+      "id": "<turn:2>:thought:1",
+      "status": "done",
+      "turnHasAnswer": true,
+      "turnId": "<turn:2>",
+      "type": "thought"
+    },
+    {
+      "content": "ACP reply: Summarize what changed",
+      "id": "<turn:2>:answer",
+      "role": "assistant",
+      "time": "<clock-time>",
+      "turnHasAnswer": true,
+      "turnId": "<turn:2>",
+      "type": "message"
+    }
+  ]
+}

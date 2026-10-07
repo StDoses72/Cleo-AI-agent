@@ -1,0 +1,66 @@
+{
+  "active_profiles": {
+    "agent": "fake_chat",
+    "dream_agent": null,
+    "directory": "default",
+    "shell": "default",
+    "tools": "default"
+  },
+  "profiles": {
+    "agents": {
+      "fake_chat": {
+        "provider": "openai",
+        "model": "fake-chat",
+        "temperature": 0,
+        "max_tokens": 64000,
+        "api_key": "sk-characterization-secret",
+        "base_url": "{{LLM_URL}}"
+      }
+    },
+    "directories": {
+      "default": {
+        "root_dir": ".",
+        "data_dir": "data",
+        "skills_dir": "skills",
+        "workspace_dir": "workspace",
+        "memory_dir": "memory",
+        "memory_policy_path": "memory/MEMORY_POLICY.md",
+        "persona_path": "PERSONA.md",
+        "session_index_path": "memory/sessions.sqlite3",
+        "session_artifacts_dir": "data/session_artifacts",
+        "runtime_state_path": "data/runtime.json"
+      }
+    },
+    "shell": {
+      "default": {
+        "sandbox_root": ".",
+        "audit_log_path": "data/shell_audit.log",
+        "require_allowlist": true,
+        "enforce_sandbox": true,
+        "require_approval": false,
+        "timeout_seconds": 30,
+        "max_output_chars": 12000,
+        "allowed_commands": [
+          "python",
+          "git"
+        ],
+        "include_platform_defaults": false,
+        "denied_patterns": [
+          "&&",
+          "||",
+          ";",
+          "|"
+        ]
+      }
+    },
+    "tools": {
+      "default": {
+        "codex_model": "gpt-5.5",
+        "tavily_api_key": null,
+        "browser": {
+          "enabled": false
+        }
+      }
+    }
+  }
+}

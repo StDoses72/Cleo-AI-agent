@@ -1,0 +1,73 @@
+{
+  "memories": [
+    {
+      "content": "Prefers concise weekly plans",
+      "id": "<hex:1>",
+      "scope": "preference",
+      "source": "non_productivity/general",
+      "title": "Prefers concise weekly plans",
+      "updatedAt": "<relative-time>"
+    }
+  ],
+  "memoryOverview": {
+    "dream_agent": {
+      "failed_count": 0,
+      "last_processed_at": "<time>",
+      "pending_count": 1,
+      "running_count": 0,
+      "status": "idle"
+    },
+    "entries": [
+      {
+        "category": "preference",
+        "confidence": 1,
+        "content": "Prefers concise weekly plans",
+        "evidence": [],
+        "evidence_count": 0,
+        "history": [],
+        "id": "<hex:1>",
+        "importance": 3,
+        "project": "general",
+        "scope": "project",
+        "space": "non_productivity",
+        "tags": [],
+        "title": "Prefers concise weekly plans",
+        "updated_at": "<time>"
+      }
+    ],
+    "issues": [],
+    "project_summaries": [
+      {
+        "memory_count": 1,
+        "project": "general",
+        "space": "non_productivity",
+        "updated_at": "<time>"
+      }
+    ],
+    "review_sources": [
+      {
+        "failure_count": 0,
+        "id": "productivity:workspace:<agent:1>",
+        "last_error": null,
+        "last_event_seq": 17,
+        "project": "workspace",
+        "session_id": "<agent:1>",
+        "source_version": 2,
+        "space": "productivity",
+        "status": "pending",
+        "title": "Write the notes file [[plan]] [[tool]] [[write]]",
+        "updated_at": "<time>"
+      }
+    ],
+    "schema_version": 1,
+    "summary": {
+      "active_memories": 1,
+      "pending_sources": 1,
+      "persona_traits": 0,
+      "project_memories": 1,
+      "project_scopes": 1
+    },
+    "timingError": null,
+    "timings": []
+  }
+}

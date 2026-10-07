@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "id": "cleo_03dfeadcefad",
+  "space": "non_productivity",
+  "project": "research",
+  "provider": "cleo",
+  "native_session_id": null,
+  "owner_type": "user",
+  "owner_id": null,
+  "status": "completed",
+  "title": "Collect reading notes",
+  "cwd": "{{RESEARCH}}",
+  "parent_session_id": null,
+  "tags": [],
+  "last_event_seq": 4,
+  "last_compacted_seq": 4,
+  "source_hash": "sha256:763268768031bf93548638cd1d95896869f7c713076b8f6f65a580666e6d9c90",
+  "source_version": 1,
+  "created_at": "2026-10-03T23:10:32.865858+00:00",
+  "updated_at": "2026-10-03T23:10:33.180387+00:00",
+  "runtime_options": {
+    "agent_profile": "fake_chat",
+    "chat_profile": {
+      "provider": "openai",
+      "model": "fake-chat",
+      "display_name": null,
+      "models": [],
+      "backend": "api",
+      "executable": null,
+      "base_url": "{{LLM_URL}}",
+      "max_tokens": 64000,
+      "temperature": 0.0
+    }
+  },
+  "undo_checkpoint_shared": false
+}

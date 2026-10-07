@@ -1,0 +1,9 @@
+{
+  "before_first_turn": "最近一次回答没有可回退的 Git 改动记录。",
+  "can_undo_after_turn": true,
+  "can_undo_after_undo": false,
+  "chat_undo": "只有开发任务可以回退 Git 改动。",
+  "git_status_after_undo": [],
+  "restored": 1,
+  "second_undo": "最近一次回答没有可回退的 Git 改动记录。"
+}

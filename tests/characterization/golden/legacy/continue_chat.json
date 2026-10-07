@@ -1,0 +1,80 @@
+{
+  "appended_events": [
+    {
+      "actor": "assistant",
+      "content": "Echo: Add a gym session on Saturday",
+      "seq": 9,
+      "type": "assistant_message"
+    },
+    {
+      "actor": "user",
+      "content": "What is on Saturday?",
+      "seq": 10,
+      "type": "user_message"
+    },
+    {
+      "actor": "assistant",
+      "content": "Echo: What is on Saturday?",
+      "seq": 11,
+      "type": "assistant_message"
+    }
+  ],
+  "manifest": {
+    "created_at": "<time>",
+    "cwd": "<HOME>",
+    "id": "<thread:1>",
+    "last_compacted_seq": 11,
+    "last_event_seq": 11,
+    "native_session_id": null,
+    "owner_id": null,
+    "owner_type": "user",
+    "parent_session_id": null,
+    "project": "general",
+    "provider": "cleo",
+    "runtime_options": {
+      "agent_profile": "fake_chat",
+      "chat_profile": {
+        "backend": "api",
+        "base_url": "<LLM_URL>",
+        "display_name": null,
+        "executable": null,
+        "max_tokens": 64000,
+        "model": "fake-chat",
+        "models": [],
+        "provider": "openai",
+        "temperature": 0.0
+      }
+    },
+    "schema_version": 1,
+    "source_hash": "sha256:<hex:1>",
+    "source_version": 4,
+    "space": "non_productivity",
+    "status": "completed",
+    "tags": [],
+    "title": "Weekly plan",
+    "undo_checkpoint_shared": false,
+    "updated_at": "<time>"
+  },
+  "messages_sent": [
+    {
+      "content": "Plan my week, I like concise weekly plans [[prefer]]",
+      "role": "user"
+    },
+    {
+      "content": "Echo: Plan my week, I like concise weekly plans [[prefer]]",
+      "role": "assistant"
+    },
+    {
+      "content": "Add a gym session on Saturday",
+      "role": "user"
+    },
+    {
+      "content": "Echo: Add a gym session on Saturday",
+      "role": "assistant"
+    },
+    {
+      "content": "What is on Saturday?",
+      "role": "user"
+    }
+  ]
+}

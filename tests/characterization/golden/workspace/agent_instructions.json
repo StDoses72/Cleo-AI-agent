@@ -1,0 +1,14 @@
+{
+  "non_text": "TypeError",
+  "on_disk": "# New rules\r\nBe brief.\n",
+  "reloaded": {
+    "content": "# New rules\nBe brief.\n",
+    "exists": true,
+    "path": "<HOME>/AGENTS.md"
+  },
+  "saved": {
+    "content": "# New rules\r\nBe brief.\n",
+    "exists": true,
+    "path": "<HOME>/AGENTS.md"
+  }
+}

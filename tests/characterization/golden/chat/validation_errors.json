@@ -1,0 +1,19 @@
+{
+  "already_running": [
+    "RuntimeError",
+    "当前运行尚未结束，请等待停止操作完成后重试。"
+  ],
+  "delete_while_running": [
+    "ValueError",
+    "正在运行或切换 harness 的 thread 不能删除，请先停止运行。"
+  ],
+  "empty_prompt": [
+    "ValueError",
+    "prompt cannot be empty"
+  ],
+  "invalid_run_id": [
+    "ValueError",
+    "无效的运行标识。"
+  ],
+  "unknown_thread": "FileNotFoundError"
+}

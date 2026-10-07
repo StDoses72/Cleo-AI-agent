@@ -1,0 +1,19 @@
+{
+  "active_run_id_while_running": "run-1",
+  "cancel": {
+    "cancelled": true
+  },
+  "cancel_with_wrong_run_id": {
+    "cancelled": false
+  },
+  "last_event": {
+    "message": "当前运行已取消。",
+    "type": "error"
+  },
+  "status_after": "attention",
+  "status_while_running": "running",
+  "stream_reply": {
+    "result": null,
+    "type": "result"
+  }
+}

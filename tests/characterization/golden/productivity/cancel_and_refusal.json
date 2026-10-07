@@ -1,0 +1,284 @@
+{
+  "cancel": {
+    "cancelled": true
+  },
+  "cancel_reply": "result",
+  "cancel_stream": [
+    {
+      "item": {
+        "content": "long job [[slow]]",
+        "cursor": "<cursor:1>",
+        "id": "<turn:1>",
+        "order": 1,
+        "role": "user",
+        "time": "",
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      "type": "turn-started"
+    },
+    {
+      "item": {
+        "content": "Thinking about the request.",
+        "cursor": "<cursor:2>",
+        "id": "<turn:1>:thought:1",
+        "order": 2,
+        "status": "done",
+        "turnId": "<turn:1>",
+        "type": "thought"
+      },
+      "type": "upsert-item"
+    },
+    {
+      "item": {
+        "content": "Working",
+        "id": "<turn:1>:answer",
+        "role": "assistant",
+        "time": "",
+        "turnId": "<turn:1>",
+        "type": "message"
+      },
+      "type": "upsert-item"
+    },
+    {
+      "runtime": {
+        "access": "default",
+        "approval": "deny_all",
+        "contextWindow": 128000,
+        "editable": true,
+        "effort": "high",
+        "handoffStatus": null,
+        "model": "fake-model-a",
+        "models": [
+          "fake-model-a"
+        ],
+        "pendingPermissions": null,
+        "permissionOptions": {
+          "access": [],
+          "approval": [
+            {
+              "description": "由你选择服务提供的允许或拒绝选项。",
+              "label": "人工审批",
+              "value": "user"
+            },
+            {
+              "description": "自动选择服务提供的允许选项；不改变服务自身的文件访问限制。",
+              "label": "自动允许请求",
+              "value": "auto_allow"
+            },
+            {
+              "description": "自动选择拒绝选项；服务没有提供拒绝选项时取消请求。",
+              "label": "自动拒绝请求",
+              "value": "deny_all"
+            }
+          ],
+          "reason": "此服务不提供统一权限档位，请使用高级审批设置。"
+        },
+        "provider": "scripted",
+        "serviceTier": null,
+        "settingsRevision": 0,
+        "steerMode": "boundary",
+        "supportsFastMode": false,
+        "supportsQuestions": false
+      },
+      "type": "runtime"
+    },
+    {
+      "timing": {
+        "createdAt": "<time>",
+        "elapsedMs": "<number>",
+        "id": "<hex:1>",
+        "kind": "reply",
+        "persistenceError": null,
+        "phase": null,
+        "project": "workspace",
+        "sessionId": "<agent:1>",
+        "space": "productivity",
+        "status": "cancelled",
+        "turnId": "<turn:1>",
+        "unavailable": [
+          "模型服务内部阶段"
+        ],
+        "updatedAt": "<time>"
+      },
+      "type": "timing"
+    },
+    {
+      "message": "当前运行已取消。",
+      "type": "error"
+    }
+  ],
+  "manifest_status": "refusal",
+  "persisted": [
+    {
+      "actor": "system",
+      "content": null,
+      "seq": 1,
+      "type": "session_created"
+    },
+    {
+      "actor": "agent",
+      "content": "long job [[slow]]",
+      "seq": 2,
+      "type": "user_message"
+    },
+    {
+      "actor": "system",
+      "content": null,
+      "seq": 3,
+      "type": "session_running"
+    },
+    {
+      "actor": "scripted",
+      "content": "Thinking about the request.",
+      "seq": 4,
+      "type": "thought"
+    },
+    {
+      "actor": "system",
+      "content": null,
+      "seq": 5,
+      "type": "session_cancelled"
+    },
+    {
+      "actor": "agent",
+      "content": "not allowed [[refuse]]",
+      "seq": 6,
+      "type": "user_message"
+    },
+    {
+      "actor": "system",
+      "content": null,
+      "seq": 7,
+      "type": "session_running"
+    },
+    {
+      "actor": "scripted",
+      "content": "Thinking about the request.",
+      "seq": 8,
+      "type": "thought"
+    },
+    {
+      "actor": "scripted",
+      "content": "I cannot do that.",
+      "seq": 9,
+      "type": "assistant_message"
+    },
+    {
+      "actor": "system",
+      "content": null,
+      "seq": 10,
+      "type": "session_refusal"
+    }
+  ],
+  "refusal_stream": [
+    {
+      "item": {
+        "content": "not allowed [[refuse]]",
+        "cursor": "<cursor:3>",
+        "id": "<turn:2>",
+        "order": 4,
+        "role": "user",
+        "time": "",
+        "turnId": "<turn:2>",
+        "type": "message"
+      },
+      "type": "turn-started"
+    },
+    {
+      "item": {
+        "content": "Thinking about the request.",
+        "cursor": "<cursor:4>",
+        "id": "<turn:2>:thought:1",
+        "order": 5,
+        "status": "done",
+        "turnId": "<turn:2>",
+        "type": "thought"
+      },
+      "type": "upsert-item"
+    },
+    {
+      "item": {
+        "content": "I cannot do that.",
+        "id": "<turn:2>:answer",
+        "role": "assistant",
+        "time": "",
+        "turnId": "<turn:2>",
+        "type": "message"
+      },
+      "type": "upsert-item"
+    },
+    {
+      "runtime": {
+        "access": "default",
+        "approval": "deny_all",
+        "contextWindow": 128000,
+        "editable": true,
+        "effort": "high",
+        "handoffStatus": null,
+        "model": "fake-model-a",
+        "models": [
+          "fake-model-a"
+        ],
+        "pendingPermissions": null,
+        "permissionOptions": {
+          "access": [],
+          "approval": [
+            {
+              "description": "由你选择服务提供的允许或拒绝选项。",
+              "label": "人工审批",
+              "value": "user"
+            },
+            {
+              "description": "自动选择服务提供的允许选项；不改变服务自身的文件访问限制。",
+              "label": "自动允许请求",
+              "value": "auto_allow"
+            },
+            {
+              "description": "自动选择拒绝选项；服务没有提供拒绝选项时取消请求。",
+              "label": "自动拒绝请求",
+              "value": "deny_all"
+            }
+          ],
+          "reason": "此服务不提供统一权限档位，请使用高级审批设置。"
+        },
+        "provider": "scripted",
+        "serviceTier": null,
+        "settingsRevision": 0,
+        "steerMode": "boundary",
+        "supportsFastMode": false,
+        "supportsQuestions": false
+      },
+      "type": "runtime"
+    },
+    {
+      "changes": [],
+      "type": "changes"
+    },
+    {
+      "message": "运行状态：refusal",
+      "type": "error"
+    },
+    {
+      "timing": {
+        "createdAt": "<time>",
+        "elapsedMs": "<number>",
+        "id": "<hex:2>",
+        "kind": "reply",
+        "persistenceError": null,
+        "phase": null,
+        "project": "workspace",
+        "sessionId": "<agent:1>",
+        "space": "productivity",
+        "status": "failed",
+        "turnId": "<turn:2>",
+        "unavailable": [
+          "模型服务内部阶段"
+        ],
+        "updatedAt": "<time>"
+      },
+      "type": "timing"
+    }
+  ],
+  "thread_status": "idle"
+}
