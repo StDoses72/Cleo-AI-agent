@@ -62,6 +62,9 @@
 :root .thread-row-select { padding: 12px 40px 12px 14px; }
 :root .thread-title-line strong { font-weight: 600; }
 :root .thread-status-dot { display: none; }
+:root .thread-row.unread .thread-status-dot { display: block; }
+:root .thread-harness { background: var(--surface-active); }
+:root .thread-row.active .thread-harness { background: var(--surface); }
 :root .thread-row[data-status="running"] .thread-copy,
 :root .thread-row[data-status="attention"] .thread-copy { position: relative; }
 :root .thread-status-label { color: var(--highlight-ink); background: var(--highlight); font-weight: 600; }
@@ -131,7 +134,7 @@
 
 /* ----- Welcome ----- */
 :root .welcome-state h2 { font-size: 32px; font-weight: 800; letter-spacing: -0.04em; }
-:root .welcome-portrait-wrap::before { display: none; }
+:root .welcome-mark { box-shadow: var(--shadow-sm); }
 :root .suggestion-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; width: min(100%, 640px); }
 :root .suggestion-list button {
   width: auto;

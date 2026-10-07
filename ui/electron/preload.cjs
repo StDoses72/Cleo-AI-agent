@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer, webUtils } = require("electron");
 contextBridge.exposeInMainWorld("cleoWindow", {
   platform: process.platform,
   setTheme: (theme) => ipcRenderer.send("cleo:window-theme", theme),
+  setBadge: (count, overlay) => ipcRenderer.send("cleo:window-badge", { count, overlay }),
 });
 
 if (!process.argv.includes("--cleo-desktop-mock")) {

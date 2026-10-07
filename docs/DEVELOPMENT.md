@@ -62,6 +62,8 @@ Codex `item/tool/requestUserInput` 与 Claude `AskUserQuestion` 接入独立的 
 
 UI 样式入口是 `ui/src/index.css`，它按顺序 `@import` `ui/src/styles/` 下的模块：`tokens.css` 定义颜色、字号、圆角、阴影等设计变量（含浅色主题覆盖），`base.css` 是全局重置，`shell.css` / `sidebar.css` / `conversation.css` / `composer.css` / `inspector.css` 分别对应窗口框架、侧栏、对话、输入框和检查器，`memory.css`、`settings.css`、`inspector-panels.css` 承载各面板，`overlays.css` 负责弹窗、命令面板和提示，`responsive.css` 与 `motion.css` 收尾。新面板沿用 `--font-ui` 与 `--font-code` 和统一字号变量，颜色只引用 tokens，不自行写死色值。
 
+侧栏线程卡片显示该会话使用的 harness：开发任务显示编码 harness（Codex / Claude / ACP 客户端名），对话显示模型名，数据来自线程的 `runtime.provider` / `runtime.model`。回复完成时若用户没有停留在该线程（或窗口不在前台），线程记为未读：卡片加粗并显示"新回复"，Renderer 通过 `cleoWindow.setBadge(count, overlayPng)` 把未读数交给主进程，macOS / Linux 用 `app.setBadgeCount`，Windows 用 `setOverlayIcon` 叠加 Renderer 绘制的数字；打开线程或窗口回到前台即视为已读，归零时恢复原图标。未读状态只保存在内存中，不写入会话。
+
 `npm --prefix ui run smoke:history` 在系统临时目录构建并清理独立测试应用，覆盖万条记录翻页、虚拟列表、滚动锚点、提问和过程折叠。设置 `CLEO_SMOKE_REGRESSION=1` 可同时运行原有桌面、审批和自我迭代 smoke；设置 `TEMP` / `TMP` 可将全部临时内容集中到指定测试目录。
 
 ## 配置开发环境

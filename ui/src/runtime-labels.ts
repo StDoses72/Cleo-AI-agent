@@ -1,4 +1,15 @@
-import type { ReasoningEffort } from "./types";
+import type { ReasoningEffort, RuntimeProfile, ThreadSpace } from "./types";
+
+/** Purpose: The short harness name a thread card shows: coding harness for tasks, model for chats. */
+export function harnessLabel(runtime: Pick<RuntimeProfile, "provider" | "model"> | undefined, space: ThreadSpace) {
+  if (!runtime) return "";
+  if (space === "chat") return runtime.model || runtime.provider || "";
+  const provider = (runtime.provider || "").toLowerCase();
+  if (provider.startsWith("codex")) return "Codex";
+  if (provider.startsWith("claude")) return "Claude";
+  if (provider.startsWith("acp:")) return runtime.provider.slice(4);
+  return runtime.provider || "";
+}
 
 export const effortLabels: Record<ReasoningEffort, string> = {
   none: "关闭", minimal: "最低", low: "低", medium: "中", high: "高",

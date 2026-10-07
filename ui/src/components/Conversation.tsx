@@ -1067,9 +1067,7 @@ function WelcomeState({ project, space, onUseSuggestion }: { project: Project | 
   const prompts = evolving ? ["让 Cleo 的界面更清晰一些", "为 Cleo 增加一个我需要的功能", "帮我改善 Cleo 的使用体验"] : suggestions[space];
   return (
     <div className="welcome-state">
-      <div className="welcome-portrait-wrap">
-        <img src="./cleo.png" alt="Cleo" />
-      </div>
+      <div className="welcome-mark" aria-hidden="true"><span>C</span></div>
       <h2>{evolving ? "你想让 Cleo 怎样改变？" : space === "chat" ? "今天想聊些什么？" : "开始新任务"}</h2>
       <div className="suggestion-list">
         {prompts.map((suggestion) => (

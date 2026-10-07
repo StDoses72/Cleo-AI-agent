@@ -406,6 +406,22 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(process.platform === "darwin" ? Menu.buildFromTemplate([
     { role: "appMenu" }, { role: "editMenu" }, { role: "viewMenu" }, { role: "windowMenu" },
   ]) : null);
+  // Finished replies the user has not opened: a dock badge where the OS has one, an overlay icon on Windows.
+  ipcMain.on("cleo:window-badge", (event, payload) => {
+    const count = Math.max(0, Math.floor(Number(payload?.count) || 0));
+    const overlay = typeof payload?.overlay === "string" && payload.overlay.startsWith("data:image/png;base64,") ? payload.overlay : null;
+    if (process.platform === "darwin" || process.platform === "linux") {
+      try { app.setBadgeCount(count); } catch { /* badge support depends on the desktop environment */ }
+      return;
+    }
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (!window || window.isDestroyed()) return;
+    if (!count || !overlay) {
+      window.setOverlayIcon(null, "");
+      return;
+    }
+    window.setOverlayIcon(nativeImage.createFromDataURL(overlay), `${count} 条已完成的回复`);
+  });
   ipcMain.on("cleo:window-theme", (event, theme) => {
     if (theme !== "light" && theme !== "dark") return;
     if (process.platform !== "win32" && process.platform !== "linux") return;

@@ -1,4 +1,5 @@
 import { modifierKey } from "../platform";
+import { harnessLabel } from "../runtime-labels";
 import { useMemo, useState, type CSSProperties } from "react";
 import {
   Brain,
@@ -35,6 +36,7 @@ interface ThreadSidebarProps {
   memoryView: MemoryViewMode;
   onMemoryViewChange: (view: MemoryViewMode) => void;
   backendMode: "local" | "mock";
+  unreadThreadIds?: string[];
 }
 
 const statusLabel = {
@@ -63,6 +65,7 @@ export function ThreadSidebar({
   memoryView,
   onMemoryViewChange,
   backendMode,
+  unreadThreadIds = [],
 }: ThreadSidebarProps) {
   const [query, setQuery] = useState("");
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
@@ -232,6 +235,7 @@ export function ThreadSidebar({
                   key={thread.id}
                   thread={thread}
                   active={thread.id === activeThreadId}
+                  unread={unreadThreadIds.includes(thread.id)}
                   onClick={() => onSelectThread(thread.id)}
                   onDelete={() => onDeleteThread(thread)}
                 />
@@ -254,18 +258,22 @@ export function ThreadSidebar({
 function ThreadRow({
   thread,
   active,
+  unread = false,
   onClick,
   onDelete,
 }: {
   thread: Thread;
   active: boolean;
+  unread?: boolean;
   onClick: () => void;
   onDelete: () => void;
 }) {
+  const harness = harnessLabel(thread.runtime, thread.space);
   return (
     <div
-      className={`thread-row ${active ? "active" : ""}`}
+      className={`thread-row ${active ? "active" : ""} ${unread ? "unread" : ""}`}
       data-status={thread.waitingFor ? "attention" : thread.status}
+      data-unread={unread || undefined}
     >
       <button className="thread-row-select" type="button" onClick={onClick}>
         <span className="thread-status-dot" />
@@ -275,10 +283,16 @@ function ThreadRow({
             <time>{thread.updatedAt}</time>
           </span>
           <span className="thread-summary">{thread.summary}</span>
-          {thread.waitingFor || statusLabel[thread.status] ? (
-            <span className={`thread-status-label ${thread.waitingFor ? "attention" : thread.status}`}>
-              {thread.status === "attention" ? <CircleAlert size={11} /> : null}
-              {thread.waitingFor === "approval" ? "等待审批" : thread.waitingFor === "question" ? "等待回答" : statusLabel[thread.status]}
+          {harness || thread.waitingFor || statusLabel[thread.status] || unread ? (
+            <span className="thread-tags">
+              {harness ? <span className="thread-harness" title={thread.runtime?.model ? `${thread.runtime.provider} · ${thread.runtime.model}` : undefined}>{harness}</span> : null}
+              {thread.waitingFor || statusLabel[thread.status] ? (
+                <span className={`thread-status-label ${thread.waitingFor ? "attention" : thread.status}`}>
+                  {thread.status === "attention" ? <CircleAlert size={11} /> : null}
+                  {thread.waitingFor === "approval" ? "等待审批" : thread.waitingFor === "question" ? "等待回答" : statusLabel[thread.status]}
+                </span>
+              ) : null}
+              {unread ? <span className="thread-status-label unread">新回复</span> : null}
             </span>
           ) : null}
         </span>

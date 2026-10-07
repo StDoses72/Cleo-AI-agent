@@ -529,12 +529,50 @@
   white-space: nowrap;
 }
 
+.thread-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  margin-top: 3px;
+}
+
+.thread-harness {
+  display: inline-flex;
+  align-items: center;
+  max-width: 140px;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  color: var(--muted);
+  background: color-mix(in srgb, var(--surface-active) 70%, transparent);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.thread-row.unread .thread-title-line strong {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.thread-row.unread .thread-status-dot {
+  background: var(--highlight, var(--accent));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--highlight, var(--accent)) 30%, transparent);
+}
+
+.thread-status-label.unread {
+  color: var(--highlight-ink, var(--accent));
+  background: var(--highlight, var(--accent-soft));
+}
+
 .thread-status-label {
   display: inline-flex;
   width: fit-content;
   align-items: center;
   gap: 4px;
-  margin-top: 2px;
   padding: 1px 7px;
   border-radius: var(--radius-pill);
   color: var(--accent);

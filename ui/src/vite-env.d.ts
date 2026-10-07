@@ -4,6 +4,8 @@ interface Window {
   cleoWindow?: {
     platform?: string;
     setTheme(theme: "dark" | "light"): void;
+    /** Unread-reply count for the app icon; `overlay` is a PNG data URL used where the OS has no native badge. */
+    setBadge?(count: number, overlay: string | null): void;
   };
   cleoDesktop?: {
     onCompanionThread?(listener: (thread: import("./types").Thread) => void): () => void;

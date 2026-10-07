@@ -53,6 +53,19 @@ const EVOLUTION_PROJECT = "productivity:cleo-evolution";
 
 export function useCleoWorkspace(evolutionOpen = false) {
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
+  /** Threads whose latest reply finished while the user was not looking at them. */
+  const [unreadThreadIds, setUnreadThreadIds] = useState<string[]>([]);
+  const focusRef = useRef<{ activeThreadId: string | null; attentive: () => boolean }>({ activeThreadId: null, attentive: () => true });
+  const markThreadRead = useCallback((threadId: string | null) => {
+    if (!threadId) return;
+    setUnreadThreadIds(current => (current.includes(threadId) ? current.filter(id => id !== threadId) : current));
+  }, []);
+  /** Purpose: Count a finished reply as unread unless the user is already looking at that thread. */
+  const markReplyFinished = useCallback((threadId: string) => {
+    const { activeThreadId: visible, attentive } = focusRef.current;
+    if (visible === threadId && attentive()) return;
+    setUnreadThreadIds(current => (current.includes(threadId) ? current : [...current, threadId]));
+  }, []);
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [memoryError, setMemoryError] = useState<string | null>(null);
   const [memoryRefreshing, setMemoryRefreshing] = useState(false);
@@ -295,6 +308,23 @@ export function useCleoWorkspace(evolutionOpen = false) {
     return () => { cancelled = true; };
   }, [activeThread?.id, activeSpace, evolutionOpen, skillKey, runtimeCatalog]);
 
+  useEffect(() => {
+    focusRef.current = {
+      activeThreadId,
+      attentive: () => document.hasFocus() && !document.hidden,
+    };
+  }, [activeThreadId]);
+  // Returning to the window while a finished thread is on screen counts as reading it.
+  useEffect(() => {
+    const settle = () => { if (document.hasFocus() && !document.hidden) markThreadRead(activeThreadId); };
+    window.addEventListener("focus", settle);
+    document.addEventListener("visibilitychange", settle);
+    return () => {
+      window.removeEventListener("focus", settle);
+      document.removeEventListener("visibilitychange", settle);
+    };
+  }, [activeThreadId, markThreadRead]);
+
   const updateThread = (threadId: string, update: (thread: Thread) => Thread) => {
     threadVersions.current.set(threadId, (threadVersions.current.get(threadId) ?? 0) + 1);
     setSnapshot((current) =>
@@ -502,6 +532,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
     setActiveSpace(thread.space);
     setActiveProjectId(thread.projectId);
     setActiveThreadId(threadId);
+    markThreadRead(threadId);
     void cleoClient
       .loadThread(threadId)
       .then((loaded) => {
@@ -797,6 +828,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
             summary: event.summary,
             status: "completed",
           }));
+          markReplyFinished(threadId);
         } else if (event.type === "error") {
           failed = true;
           updateThread(threadId, (current) => ({
@@ -839,6 +871,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
           updateThread(threadId, (current) =>
             current.status === "running" ? { ...current, status: cancellingRuns.current.has(token) ? "attention" : "completed" } : current,
           );
+          if (!cancellingRuns.current.has(token)) markReplyFinished(threadId);
         }
         runLocks.current.delete(threadId);
         setRuns(current => { const next = { ...current }; if (next[threadId] === token) delete next[threadId]; return next; });
@@ -1395,6 +1428,8 @@ export function useCleoWorkspace(evolutionOpen = false) {
     activeProjectId,
     activeThread,
     activeThreadId,
+    unreadThreadIds,
+    markThreadRead,
     running,
     runningThreadIds,
     anyRunning,

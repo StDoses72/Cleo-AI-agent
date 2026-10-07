@@ -917,37 +917,18 @@
   text-align: center;
 }
 
-.welcome-portrait-wrap {
-  position: relative;
-  width: 168px;
-  height: 134px;
-  margin-bottom: 18px;
-  overflow: hidden;
-  border-radius: 20px 20px 0 0;
-  mask-image: linear-gradient(to bottom, #000 68%, transparent 100%);
-}
-
-.welcome-portrait-wrap::before {
-  position: absolute;
-  inset: auto 10% -30% 10%;
-  height: 60%;
-  border-radius: 50%;
-  background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 36%, transparent), transparent);
-  content: "";
-  filter: blur(14px);
-}
-
-:root[data-theme="light"] .welcome-portrait-wrap::before {
-  background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 16%, transparent), transparent);
-}
-
-.welcome-portrait-wrap img {
-  position: absolute;
-  top: -4px;
-  left: -150px;
-  width: 378px;
-  max-width: none;
-  pointer-events: none;
+.welcome-mark {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 22px;
+  place-items: center;
+  border-radius: 18px;
+  color: var(--accent-ink);
+  background: var(--accent);
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
 }
 
 .welcome-state h2 {
