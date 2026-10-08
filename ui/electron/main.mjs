@@ -324,9 +324,11 @@ const allowedMethods = new Set([
 ]);
 
 function createWindow() {
+  // Windows reads multi-size .ico files for the taskbar and title bar; other platforms take the PNG.
+  const iconFile = process.platform === "win32" ? "cleo.ico" : "cleo.png";
   const iconPath = app.isPackaged
-    ? join(process.resourcesPath, "cleo.png")
-    : join(here, "../public/cleo.png");
+    ? join(process.resourcesPath, iconFile)
+    : join(here, "../public", iconFile);
 
   const window = new BrowserWindow({
     width: 1440,
