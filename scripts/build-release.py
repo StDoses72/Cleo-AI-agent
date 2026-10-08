@@ -397,9 +397,11 @@ def build(*, locked_dependencies: bool = False, online: bool = False) -> None:
                 "Exec=/opt/Cleo/Cleo --class=Cleo\nIcon=cleo\nTerminal=false\n"
                 "Categories=Development;Utility;\nStartupWMClass=Cleo\n"
             )
-            icons = deb / "usr/share/icons/hicolor/256x256/apps"
-            icons.mkdir(parents=True)
-            shutil.copy2(ui / "public/cleo.png", icons / "cleo.png")
+            hicolor = deb / "usr/share/icons/hicolor"
+            (hicolor / "256x256/apps").mkdir(parents=True)
+            (hicolor / "scalable/apps").mkdir(parents=True)
+            shutil.copy2(ui / "public/cleo-256.png", hicolor / "256x256/apps/cleo.png")
+            shutil.copy2(ui / "public/cleo.svg", hicolor / "scalable/apps/cleo.svg")
             run(
                 "dpkg-deb",
                 "--root-owner-group",

@@ -1,7 +1,7 @@
 <!doctype html><html lang="zh-CN"><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'">
 <title>Cleo · 进化伴随窗口</title><link rel="stylesheet" href="evolution-monitor.css">
-<header><div class="brand"><b>C</b><span>进化</span></div><div class="header-actions"><button id="check" class="quiet" title="检查并构建本轮改动">检查改动</button><button id="apply" class="primary" hidden>应用</button><button id="save" class="primary" hidden>保存版本</button><button id="recovery" class="quiet">版本与恢复</button></div></header>
+<header><div class="brand"><b aria-hidden="true"><svg viewBox="0 0 1024 1024" width="18" height="18"><path d="M701.5 322.5A268 268 0 1 0 701.5 701.5" fill="none" stroke="currentColor" stroke-width="120" stroke-linecap="round"/><circle cx="712" cy="512" r="68" fill="currentColor"/></svg></b><span>进化</span></div><div class="header-actions"><button id="check" class="quiet" title="检查并构建本轮改动">检查改动</button><button id="apply" class="primary" hidden>应用</button><button id="save" class="primary" hidden>保存版本</button><button id="recovery" class="quiet">版本与恢复</button></div></header>
 <form id="save-form" class="save-form" hidden><label for="version-name">版本名称</label><input id="version-name" maxlength="80" autocomplete="off"><button type="submit" class="primary">保存</button><button type="button" id="save-cancel" class="quiet">取消</button></form>
 <section class="status"><span id="light"></span><div><strong id="phase" role="status">连接中…</strong><p id="detail"></p></div></section>
 <main id="conversation" aria-label="进化对话"><div id="timeline"></div><div id="messages"></div><div id="questions"></div></main>
