@@ -687,7 +687,7 @@ export function App() {
 function TitleBar({ projectName, mode }: { projectName: string; mode: string }) {
   return (
     <header className="titlebar">
-      <div className="titlebar-brand"><span className="mini-brand">C</span><strong>Cleo</strong></div>
+      <div className="titlebar-brand"><span className="mini-brand" aria-hidden="true" /><strong>Cleo</strong></div>
       <div className="titlebar-context"><span>{projectName}</span>{mode !== projectName && <><Minus size={11} /><small>{mode}</small></>}</div>
     </header>
   );

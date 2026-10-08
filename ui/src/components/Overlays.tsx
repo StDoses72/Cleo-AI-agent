@@ -366,7 +366,7 @@ export function SettingsModal({
       <div className="settings-modal" onMouseDown={(event) => event.stopPropagation()}>
         <button className="icon-button settings-close" aria-label="关闭设置" onClick={onClose}><X size={17} /></button>
         <aside>
-          <div className="settings-brand"><span>C</span><strong>设置</strong></div>
+          <div className="settings-brand"><span aria-hidden="true" /><strong>设置</strong></div>
           {window.cleoDesktop?.setup && <button type="button" onClick={() => { onClose(); window.dispatchEvent(new Event("cleo:open-setup")); }}>检查运行环境</button>}
           <nav aria-label="设置导航">
             <button className={page === "appearance" ? "active" : ""} aria-current={page === "appearance" ? "page" : undefined} type="button" onClick={() => setPage("appearance")}><Sparkles size={16} />外观</button>
@@ -740,7 +740,7 @@ function SettingsRow({ title, description, children }: { title: string; descript
 export function LoadingScreen({ error, onRetry }: { error: string | null; onRetry?: () => void }) {
   return (
     <div className="loading-screen">
-      <div className="loading-brand"><span>C</span></div>
+      <div className="loading-brand" role="img" aria-label="Cleo" />
       {error ? <><strong>无法打开工作区</strong><p>{error}</p><button onClick={onRetry}>重试</button></> : <><div className="loading-line"><i /></div><span>正在打开本地工作区</span></>}
     </div>
   );

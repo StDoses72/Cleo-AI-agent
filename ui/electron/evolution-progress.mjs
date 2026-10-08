@@ -16,10 +16,10 @@ export async function createRestartWindow() {
   });
   const html = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><style>
     body{margin:0;padding:30px;background:#0c1014;color:#e8edef;font:14px 'Segoe UI','Microsoft YaHei',sans-serif}
-    .brand{color:#66d9df;font-size:12px;letter-spacing:3px}h1{font-size:21px;font-weight:550;margin:18px 0 10px}
+    .brand{display:inline-flex;align-items:center;gap:8px;color:#66d9df;font-size:12px;letter-spacing:3px}.brand i{display:grid;place-items:center;width:22px;height:22px;border-radius:6px;background:#66d9df;color:#0c1014}h1{font-size:21px;font-weight:550;margin:18px 0 10px}
     p{font-size:13px;line-height:1.8;color:#9aa6b1}a{display:inline-block;padding:9px 15px;background:#66d9df;color:#0c1014;border-radius:7px;text-decoration:none}
     [hidden]{display:none}
-    </style><span class="brand">CLEO</span><h1 id="title">正在重启 Cleo</h1><p id="detail">正在准备安全切换，当前窗口会一直保留。</p><a id="choose" href="cleo-restart:choose" hidden>选择可用版本</a></html>`;
+    </style><span class="brand"><i aria-hidden="true"><svg viewBox="0 0 1024 1024" width="16" height="16"><path d="M701.5 322.5A268 268 0 1 0 701.5 701.5" fill="none" stroke="currentColor" stroke-width="120" stroke-linecap="round"/><circle cx="712" cy="512" r="68" fill="currentColor"/></svg></i>CLEO</span><h1 id="title">正在重启 Cleo</h1><p id="detail">正在准备安全切换，当前窗口会一直保留。</p><a id="choose" href="cleo-restart:choose" hidden>选择可用版本</a></html>`;
   await window.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
   window.show();
   window.focus();

@@ -4,15 +4,15 @@
  * Rules are scoped to :root so they outrank the structural defaults without !important.
  */
 :root .titlebar-brand strong { font-weight: 700; }
+/* Every in-app Cleo mark is the app icon: the glyph token over an ink plate, no letter. */
 :root .mini-brand,
 :root .brand-mark,
 :root .loading-brand,
 :root .settings-brand > span,
 :root .message-entry.assistant .message-meta span::before {
-  color: var(--accent-ink);
-  background: var(--accent);
+  color: transparent;
+  background: var(--cleo-glyph) center / 100% 100% no-repeat, var(--accent);
   box-shadow: none;
-  font-weight: 800;
 }
 :root .brand-mark { width: 38px; height: 38px; border-radius: 12px; }
 :root .rail-button { width: 42px; height: 42px; border-radius: 13px; }
