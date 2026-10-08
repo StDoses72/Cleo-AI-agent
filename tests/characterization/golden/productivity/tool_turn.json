@@ -235,12 +235,12 @@
         "schema_version": 2,
         "session_id": "<agent:1>",
         "source": {
-          "event_count": 11,
+          "event_count": 12,
           "from_seq": 1,
           "relative_path": "productivity/projects/workspace/sessions/<agent:1>/events.jsonl",
           "source_content_hash": "sha256:<hex:2>",
-          "source_version": 1,
-          "to_seq": 11
+          "source_version": 2,
+          "to_seq": 12
         },
         "space": "productivity"
       },
@@ -522,7 +522,7 @@
         "cwd": "<WORKSPACE>",
         "error": null,
         "id": "<agent:1>",
-        "last_compacted_seq": 11,
+        "last_compacted_seq": 12,
         "last_event_seq": 12,
         "native_session_id": "acp-session-1",
         "owner_id": null,
@@ -539,7 +539,7 @@
         },
         "schema_version": 1,
         "source_hash": "sha256:<hex:2>",
-        "source_version": 1,
+        "source_version": 2,
         "space": "productivity",
         "status": "completed",
         "tags": [],

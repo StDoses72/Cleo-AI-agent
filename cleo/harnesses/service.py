@@ -674,15 +674,7 @@ class AgentService:
                     "error": turn.error,
                 },
             )
-            self._store.refresh_compact(session_id)
-            # Deterministic working-state checkpoint; failure must not undo a completed model turn.
-            try:
-                await asyncio.to_thread(
-                    self._context.prepare, session_id, self._store.read_events(session_id)
-                )
-            except (OSError, ValueError):
-                # Source remains authoritative; the next switch rebuilds or reports the error.
-                pass
+            await asyncio.to_thread(self._store.refresh_compact, session_id, materialize=False)
             if turn.status == "completed":
                 route.handoff = ""
                 route.handoff_id = None

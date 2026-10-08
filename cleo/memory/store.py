@@ -174,12 +174,25 @@ def ensure_memory_database(space: str, path: Path | None = None) -> Path:
                 created_at TEXT,
                 ended_at TEXT,
                 updated_at TEXT NOT NULL,
+                projection_kind TEXT NOT NULL DEFAULT 'legacy',
+                batch_seq INTEGER NOT NULL DEFAULT 0,
                 UNIQUE(space, project, session_id, chunk_index)
             );
             CREATE INDEX IF NOT EXISTS idx_conversation_chunks_scope
                 ON conversation_chunks(space, project, updated_at);
             """
         )
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(conversation_chunks)")}
+        if not {"projection_kind", "batch_seq"} <= columns:
+            conn.execute("BEGIN IMMEDIATE")
+            columns = {row["name"] for row in conn.execute(
+                "PRAGMA table_info(conversation_chunks)")}
+            if "projection_kind" not in columns:
+                conn.execute("ALTER TABLE conversation_chunks ADD COLUMN "
+                             "projection_kind TEXT NOT NULL DEFAULT 'legacy'")
+            if "batch_seq" not in columns:
+                conn.execute("ALTER TABLE conversation_chunks ADD COLUMN "
+                             "batch_seq INTEGER NOT NULL DEFAULT 0")
     return database_path
 
 
@@ -837,6 +850,222 @@ def replace_conversation_chunks(
     return len(chunks)
 
 
+def conversation_projection_matches(
+    space: str, project: str, session_id: str, source_hash: str, *, path: Path,
+) -> bool:
+    """Check the rebuildable index head without reading historical chunk bodies."""
+    if not path.exists():
+        return False
+    with closing(_connect(space, path)) as conn:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(conversation_chunks)")}
+        if "projection_kind" not in columns:
+            return False
+        row = conn.execute(
+            "SELECT source_hash FROM conversation_chunks "
+            "WHERE space=? AND project=? AND session_id=? AND chunk_index=-1 "
+            "AND projection_kind='head'", (space, project, session_id),
+        ).fetchone()
+        return row is not None and row["source_hash"] == source_hash
+
+
+def _projection_counts(content: str) -> tuple[int, int]:
+    counts = json.loads(content)
+    if not isinstance(counts, dict) or any(
+        type(counts.get(key)) is not int or counts[key] < 0
+        for key in ("normal_count", "fallback_count")
+    ):
+        raise ValueError("Invalid conversation chunk head")
+    return counts["normal_count"], counts["fallback_count"]
+
+
+def _join_chunks(first: dict[str, Any], second: dict[str, Any]) -> dict[str, Any]:
+    return {**first, "event_ids": list(dict.fromkeys(first["event_ids"] + second["event_ids"])),
+            "content": first["content"] + "\n" + second["content"],
+            "ended_at": second["ended_at"]}
+
+
+def update_conversation_chunks(
+    payload: dict[str, Any],
+    *,
+    normal: list[dict[str, Any]],
+    fallback: list[dict[str, Any]],
+    batch_key: int,
+    expected_prior_hash: str | None,
+    reset: bool = False,
+    path: Path | None = None,
+) -> int:
+    """Commit one projection batch without rewriting unchanged conversation chunks.
+
+    Normal events retain their human-delimited chunks. Fallback events are stored per
+    batch and joined to the last normal chunk when read, preserving the v2 event order.
+    The head binds all committed fragments to the current full source hash. A baseline
+    or rewind uses reset=True; an append must name the previously committed hash.
+    """
+    space = validate_space(str(payload.get("space") or ""))
+    project = str(payload.get("project") or "")
+    session_id = str(payload.get("session_id") or "")
+    source_hash = str((payload.get("source") or {}).get("source_content_hash") or "")
+    if not project or not session_id or not source_hash:
+        raise ValueError("compact payload is missing project, session id, or source hash")
+    if type(batch_key) is not int or batch_key < 0:
+        raise ValueError("Invalid conversation batch key")
+    if any(event.get("type") == "human" for event in fallback):
+        raise ValueError("Fallback conversation events cannot contain a human boundary")
+    normal_chunks = _conversation_chunks({"events": normal})
+    fallback_chunks = _conversation_chunks({"events": fallback})
+    scope = (space, project, session_id)
+    ensure_memory_database(space, path)
+    now = _now_iso()
+    with closing(_connect(space, path)) as conn, conn:
+        conn.execute("BEGIN IMMEDIATE")
+        head = conn.execute(
+            "SELECT * FROM conversation_chunks WHERE space=? AND project=? AND session_id=? "
+            "AND chunk_index=-1 AND projection_kind='head'", scope,
+        ).fetchone()
+        if reset:
+            conn.execute("DELETE FROM conversation_chunks "
+                         "WHERE space=? AND project=? AND session_id=?", scope)
+            normal_count = fallback_count = 0
+        elif head is not None:
+            normal_count, fallback_count = _projection_counts(head["content"])
+            if head["source_hash"] == source_hash and head["batch_seq"] == batch_key:
+                return normal_count or int(fallback_count > 0)
+            if head["source_hash"] != expected_prior_hash:
+                raise ValueError("Conversation chunk prior hash does not match")
+            if batch_key <= head["batch_seq"]:
+                raise ValueError("Conversation chunk batch key must advance")
+        else:
+            if expected_prior_hash is not None or conn.execute(
+                "SELECT 1 FROM conversation_chunks "
+                "WHERE space=? AND project=? AND session_id=? LIMIT 1", scope,
+            ).fetchone():
+                raise ValueError("Conversation chunk prior head is missing")
+            normal_count = fallback_count = 0
+
+        def write(kind: str, index: int, chunk: dict[str, Any]) -> None:
+            identity = f"cleo-chunk:{space}:{project}:{session_id}:{kind}:{index}"
+            conn.execute(
+                """INSERT INTO conversation_chunks(
+                    id,space,project,session_id,chunk_index,event_ids_json,content,source_hash,
+                    created_at,ended_at,updated_at,projection_kind,batch_seq)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(space,project,session_id,chunk_index) DO UPDATE SET
+                    event_ids_json=excluded.event_ids_json, content=excluded.content,
+                    source_hash=excluded.source_hash, created_at=excluded.created_at,
+                    ended_at=excluded.ended_at, updated_at=excluded.updated_at,
+                    projection_kind=excluded.projection_kind,batch_seq=excluded.batch_seq""",
+                (str(uuid.uuid5(uuid.NAMESPACE_URL, identity)), *scope, index,
+                 json.dumps(chunk["event_ids"], ensure_ascii=False), chunk["content"],
+                 source_hash, chunk["created_at"], chunk["ended_at"], now, kind, batch_key),
+            )
+
+        if normal_chunks and normal_count and normal[0].get("type") != "human":
+            tail = conn.execute(
+                "SELECT * FROM conversation_chunks WHERE space=? AND project=? AND session_id=? "
+                "AND projection_kind='normal' AND chunk_index=?", (*scope, normal_count - 1),
+            ).fetchone()
+            if tail is None:
+                raise ValueError("Conversation chunk prior tail is missing")
+            joined = _join_chunks({**dict(tail), "event_ids": json.loads(tail["event_ids_json"])},
+                                  normal_chunks.pop(0))
+            write("normal", normal_count - 1, joined)
+        for chunk in normal_chunks:
+            write("normal", normal_count, chunk)
+            normal_count += 1
+        if fallback_chunks:
+            write("fallback", -2 - batch_key, fallback_chunks[0])
+            fallback_count += 1
+        write("head", -1, {"event_ids": [], "created_at": None, "ended_at": None,
+                           "content": json.dumps({"normal_count": normal_count,
+                                                  "fallback_count": fallback_count})})
+    return normal_count or int(fallback_count > 0)
+
+
+def _logical_conversation_rows(space: str, project: str, path: Path | None) -> list[dict]:
+    """Read up to 1000 logical chunks in one SQLite snapshot, including all their fragments."""
+    with closing(_connect(space, path)) as conn, conn:
+        conn.execute("BEGIN")
+        candidates = conn.execute(
+            """SELECT c.*, h.source_hash AS head_hash, h.content AS head_content,
+                      h.batch_seq AS head_batch
+            FROM conversation_chunks c LEFT JOIN conversation_chunks h
+              ON h.space=c.space AND h.project=c.project AND h.session_id=c.session_id
+                 AND h.chunk_index=-1 AND h.projection_kind='head'
+            WHERE c.space=? AND c.project=? AND (
+                c.projection_kind IN ('legacy','normal') OR (
+                    c.projection_kind='head' AND NOT EXISTS (
+                        SELECT 1 FROM conversation_chunks n WHERE n.space=c.space
+                          AND n.project=c.project AND n.session_id=c.session_id
+                          AND n.projection_kind='normal') AND EXISTS (
+                        SELECT 1 FROM conversation_chunks f WHERE f.space=c.space
+                          AND f.project=c.project AND f.session_id=c.session_id
+                          AND f.projection_kind='fallback')))
+            ORDER BY COALESCE(h.updated_at,c.updated_at) DESC, c.session_id, c.chunk_index
+            LIMIT 1000""", (space, project),
+        ).fetchall()
+        heads: dict[str, tuple[int, list[sqlite3.Row]] | None] = {}
+        results = []
+        for candidate in candidates:
+            row = dict(candidate)
+            kind = row["projection_kind"]
+            if kind == "legacy":
+                if row["head_hash"] is None:
+                    results.append(row)
+                continue
+            session_id = row["session_id"]
+            if session_id not in heads:
+                heads[session_id] = None
+                if row["head_hash"] is None:
+                    continue
+                try:
+                    normal_count, fallback_count = _projection_counts(row["head_content"])
+                except (TypeError, ValueError):
+                    continue
+                fragments = conn.execute(
+                    """SELECT projection_kind,COUNT(*) AS count, MIN(chunk_index) AS first_index,
+                              MAX(chunk_index) AS last_index, MAX(batch_seq) AS last_batch
+                    FROM conversation_chunks WHERE space=? AND project=? AND session_id=?
+                    GROUP BY projection_kind""", (space, project, session_id),
+                ).fetchall()
+                counts = {item["projection_kind"]: item for item in fragments}
+                normals = counts.get("normal")
+                fallbacks_count = counts["fallback"]["count"] if "fallback" in counts else 0
+                if (counts.get("legacy") is not None
+                    or (normals["count"] if normals else 0) != normal_count
+                    or (normal_count and (normals["first_index"] != 0
+                                          or normals["last_index"] != normal_count - 1))
+                    or fallbacks_count != fallback_count
+                    or any(item["last_batch"] > row["head_batch"] for item in fragments)):
+                    continue
+                fallbacks = conn.execute(
+                    "SELECT * FROM conversation_chunks "
+                    "WHERE space=? AND project=? AND session_id=? AND projection_kind='fallback' "
+                    "ORDER BY batch_seq", (space, project, session_id),
+                ).fetchall()
+                heads[session_id] = (normal_count, fallbacks)
+            head = heads[session_id]
+            if head is None:
+                continue
+            normal_count, fallbacks = head
+            row["source_hash"] = row["head_hash"]
+            if kind == "head":
+                row.update(dict(fallbacks[0]), chunk_index=0, source_hash=row["head_hash"])
+                append = fallbacks[1:]
+            else:
+                append = fallbacks if row["chunk_index"] == normal_count - 1 else []
+            chunk = {**row, "event_ids": json.loads(row["event_ids_json"])}
+            if append:
+                extra = {"event_ids": list(dict.fromkeys(
+                    event_id for fragment in append
+                    for event_id in json.loads(fragment["event_ids_json"])
+                )), "content": "\n".join(fragment["content"] for fragment in append),
+                    "ended_at": append[-1]["ended_at"]}
+                chunk = _join_chunks(chunk, extra)
+            chunk["event_ids_json"] = json.dumps(chunk["event_ids"], ensure_ascii=False)
+            results.append(chunk)
+    return results
+
+
 def delete_conversation_chunks(
     *,
     space: str,
@@ -905,15 +1134,7 @@ def search_conversation_history(
     top_k = max(1, min(int(top_k), 20))
     root = memory_root or _settings().MEMORY_DIR
     selected_sessions = {str(item) for item in (session_ids or []) if str(item)}
-    with closing(_connect(space, path)) as conn, conn:
-        rows = conn.execute(
-            """
-            SELECT * FROM conversation_chunks
-            WHERE space = ? AND project = ?
-            ORDER BY updated_at DESC LIMIT 1000
-            """,
-            (space, project),
-        ).fetchall()
+    rows = _logical_conversation_rows(space, project, path)
 
     current_hashes: dict[str, str | None] = {}
     results: list[dict[str, Any]] = []

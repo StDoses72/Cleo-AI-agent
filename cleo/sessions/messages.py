@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Set
 from typing import Any
 
-from langchain_core.messages import BaseMessage, messages_from_dict, messages_to_dict
+from langchain_core.messages import BaseMessage, message_to_dict, messages_from_dict
 
 from cleo.sessions.rewind import active_events
 
@@ -69,7 +70,7 @@ _ACTORS = {"human": "user", "ai": "assistant", "system": "system", "tool": "tool
 
 
 def message_events(
-    messages: list[BaseMessage], existing_source_ids: set[str],
+    messages: list[BaseMessage], existing_source_ids: Set[str],
 ) -> list[dict[str, Any]]:
     """Purpose: Events for the messages not yet recorded, keyed by ``source_message_id``.
 
@@ -78,7 +79,11 @@ def message_events(
     ``provider_event``.
     """
     new_events: list[dict[str, Any]] = []
-    for index, serialized in enumerate(messages_to_dict(messages)):
+    for index, message in enumerate(messages):
+        source_message_id = str(message.id or f"{message.type}-{index}")
+        if source_message_id in existing_source_ids:
+            continue
+        serialized = message_to_dict(message)
         data = _message_data(serialized)
         message_type = _message_type(serialized)
         source_message_id = str(data.get("id") or f"{message_type}-{index}")
