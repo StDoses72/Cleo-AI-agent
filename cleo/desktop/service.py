@@ -9,16 +9,21 @@ import os
 import secrets
 import sys
 from collections.abc import Awaitable, Callable
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
 from cleo.desktop.agent_system import AgentSystem, CallableRuntime, SingleAgentSystem, TurnInput
+from cleo.desktop.background_memory import BackgroundMemory
 from cleo.desktop.chat_runtime import ChatRuntime
 from cleo.desktop.configuration import (
+    background_memory_settings,
     create_model_connection,
+    read_background_memory_settings,
     read_model_settings,
     remove_model_connection,
     rename_model_connection,
+    save_background_memory_settings,
     save_dream_settings,
     save_model_profile,
     select_chat_model,
@@ -57,7 +62,6 @@ from cleo.desktop.turn_hooks import (
 )
 from cleo.harnesses.capabilities import Capability, capabilities_of
 from cleo.harnesses.control import HarnessModel
-from cleo.integrations.background import launch_dream_agent_worker
 from cleo.integrations.git import (
     create_git_checkpoint,
     discard_git_checkpoint,
@@ -70,10 +74,12 @@ from cleo.integrations.git import (
 from cleo.memory.compaction import load_events
 from cleo.memory.dream_source import read_dream_source, validate_dream_state
 from cleo.memory.overview import build_memory_overview
-from cleo.memory.paths import memory_state_path
+from cleo.memory.paths import MEMORY_SPACES, memory_state_path
 from cleo.memory.state import (
     get_session_source,
+    list_session_sources,
     mark_consolidation_failed,
+    mark_consolidation_pending,
     mark_consolidation_skipped,
     mark_consolidation_started,
 )
@@ -187,6 +193,13 @@ class DesktopService:
         self._subscription_logins = SubscriptionLogins()
         self._productivity_sessions: dict[str, Any] = {}
         self._runs = RunSupervisor()
+        self._memory_operations = 0
+        self._background_memory = BackgroundMemory(
+            settings=self._background_memory_settings,
+            sources=self._background_memory_sources,
+            review=self._review_background_memory_source,
+            busy=lambda: self._runs.any_running() or bool(self._memory_operations),
+        )
         self._project_paths: dict[str, str] = {}
         self._config = config
         if config is not None:
@@ -359,6 +372,10 @@ class DesktopService:
                                        item_id, field, offset)
 
     async def delete_thread(self, *, thread_id: str) -> dict[str, Any]:
+        async with self._memory_operation():
+            return await self._delete_thread(thread_id=thread_id)
+
+    async def _delete_thread(self, *, thread_id: str) -> dict[str, Any]:
         """Delete one local thread after releasing any resident provider session."""
         manifest = self.store.load_manifest(thread_id)
         if self._runs.is_running(thread_id) or self._runs.is_switching(thread_id):
@@ -432,6 +449,10 @@ class DesktopService:
         return {**await self.load_workspace(), "selectedProjectId": project_id(memory_space, name)}
 
     async def remove_project(self, *, project_id_value: str) -> dict[str, Any]:
+        async with self._memory_operation():
+            return await self._remove_project(project_id_value=project_id_value)
+
+    async def _remove_project(self, *, project_id_value: str) -> dict[str, Any]:
         """Remove a project from navigation without deleting local data."""
         if project_id_value.startswith("chat:"):
             memory_space = "non_productivity"
@@ -548,6 +569,24 @@ class DesktopService:
         session_id: str,
         action: str,
     ) -> dict[str, Any]:
+        async with self._memory_operation():
+            return await self._review_memory_source(
+                space=space, project=project, session_id=session_id, action=action,
+            )
+
+    @asynccontextmanager
+    async def _memory_operation(self):
+        """Yield only after background publication stops, and prevent another batch."""
+        self._memory_operations += 1
+        try:
+            await self._background_memory.cancel()
+            yield
+        finally:
+            self._memory_operations -= 1
+
+    async def _review_memory_source(
+        self, *, space: str, project: str, session_id: str, action: str,
+    ) -> dict[str, Any]:
         """Resolve one source in the desktop memory review queue."""
         if action not in {"consolidate", "skip"}:
             raise ValueError(f"不支持的记忆处理动作：{action}")
@@ -599,6 +638,88 @@ class DesktopService:
                 raise
 
         return await self.load_workspace()
+
+    async def get_background_memory_state(self) -> dict[str, Any]:
+        return self._background_memory.state()
+
+    def _background_memory_settings(self) -> dict[str, Any]:
+        if self._config is not None:
+            return background_memory_settings(self._config.snapshot.settings.active_profiles)
+        return read_background_memory_settings(self.settings.PROFILE_DIR)
+
+    async def save_background_memory_settings(
+        self, *, enabled: bool, intervalMinutes: int | None = None,
+        pendingThreshold: int | None = None,
+    ) -> dict[str, Any]:
+        self._reloaded(save_background_memory_settings(
+            self.settings.PROFILE_DIR, enabled, intervalMinutes, pendingThreshold,
+        ))
+        if not enabled:
+            await self._background_memory.cancel()
+        self._background_memory.reset_schedule()
+        return self._background_memory.state()
+
+    async def run_background_memory_review(self) -> dict[str, Any]:
+        self._background_memory.start_if_due()
+        return self._background_memory.state()
+
+    async def cancel_background_memory_review(self) -> dict[str, Any]:
+        await self._background_memory.cancel()
+        return self._background_memory.state()
+
+    def _background_memory_sources(self) -> list[dict[str, Any]]:
+        sources = []
+        for space in MEMORY_SPACES:
+            for source in list_session_sources(
+                space, path=memory_state_path(self.settings.MEMORY_DIR, space),
+            ):
+                if source["status"] != "pending":
+                    continue
+                try:
+                    manifest = self.store.load_manifest(source["session_id"])
+                except (OSError, ValueError):
+                    continue
+                if (manifest.get("owner_type") == "user"
+                        and (manifest["space"], manifest["project"]) == (space, source["project"])
+                        and not self._is_removed_project(manifest)):
+                    sources.append(source)
+        return sorted(sources, key=lambda source: source.get("last_updated_at") or "")
+
+    async def _review_background_memory_source(
+        self, source: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        space, project, session_id = source["space"], source["project"], source["session_id"]
+        state_path = memory_state_path(self.settings.MEMORY_DIR, space)
+        try:
+            manifest = self.store.load_manifest(session_id)
+            if manifest.get("owner_type") != "user" or self._is_removed_project(manifest):
+                return
+            factory = self._dream_agent_factory or _create_default_dream_agent
+            agent = await asyncio.to_thread(factory)
+            # A foreground turn may have started while the model was being constructed.
+            settings = self._background_memory_settings()
+            if (self._runs.any_running() or self._memory_operations
+                    or not settings["enabled"] or not settings["dreamEnabled"]):
+                raise asyncio.CancelledError
+            return await agent.invoke(
+                space=space, project=project, session_id=session_id, force=False,
+            )
+        except asyncio.CancelledError:
+            current = get_session_source(space, project, session_id, path=state_path)
+            if (current and current["source_hash"] == source["source_hash"]
+                    and current["status"] in {"running", "failed"}):
+                mark_consolidation_pending(
+                    space, project, session_id, source["source_hash"], path=state_path,
+                )
+            raise
+        except Exception as error:
+            current = get_session_source(space, project, session_id, path=state_path)
+            if current and current["status"] != "failed":
+                mark_consolidation_failed(
+                    space, project, session_id, source["source_hash"], str(error),
+                    path=state_path,
+                )
+            raise
 
     async def get_memory_review_details(
         self,
@@ -968,6 +1089,7 @@ class DesktopService:
         active_run_id = self._runs.start(thread_id, asyncio.current_task(), run_id)
         steering = None
         try:
+            await self._background_memory.cancel()
             if prompt.startswith("/"):
                 await self._run_command(manifest, prompt, emit)
                 return
@@ -1579,6 +1701,7 @@ class DesktopService:
     ) -> dict[str, Any]:
         if self._runs.any_running():
             raise ValueError("请等待当前任务完成后再修改 DreamAgent 设置。")
+        await self._background_memory.cancel()
         return self._reloaded(save_dream_settings(self.settings.PROFILE_DIR, selection, model))
 
     def _require_idle_configuration(self) -> None:
@@ -1692,6 +1815,10 @@ class DesktopService:
         }
 
     async def reset_workspace(self) -> dict[str, Any]:
+        async with self._memory_operation():
+            return await self._reset_workspace()
+
+    async def _reset_workspace(self) -> dict[str, Any]:
         from cleo.integrations.workspace import reset_workspace_to_main
 
         async with self._runs.workspace_guard:
@@ -1749,6 +1876,9 @@ class DesktopService:
         next turn (see ``ChatRuntime.stream``); harness providers are swapped for new sessions while
         live sessions keep theirs.
         """
+        if (not new.active_profiles.background_memory_enabled
+                or not new.active_profiles.dream_enabled):
+            self._background_memory.request_cancel()
         adapter = self._adapter_instance
         if adapter is None or not hasattr(adapter, "provider_settings"):
             return
@@ -1761,22 +1891,19 @@ class DesktopService:
         }))
 
     async def shutdown(self) -> None:
+        await self._background_memory.cancel(close=True)
         from cleo.computer.host import controller
         from cleo.integrations.computer import close_connections
         await close_connections()
         # Release any key or button a local-desktop action still holds.
         await controller().stop("exit")
         await self._subscription_logins.close()
-        jobs = []
         for thread_id, agent in self._chat.agents.items():
             try:
                 manifest = self.store.load_manifest(thread_id)
                 await self._sync_chat(agent, manifest, "completed")
             except (FileNotFoundError, OSError, ValueError):
                 continue
-            jobs.append((thread_id, manifest["project"], manifest["space"]))
-        if jobs:
-            launch_dream_agent_worker(jobs, store=self.store)
         if self._adapter_instance is not None:
             try:
                 await self._adapter_instance.aclose()
