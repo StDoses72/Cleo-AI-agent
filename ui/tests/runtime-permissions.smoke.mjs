@@ -93,7 +93,14 @@ try {
   await page.getByRole("alert").getByText("权限未保存：服务暂时不可用").waitFor();
   await page.evaluate(() => { window.permissionTest.fail = false; window.permissionTest.running = true; });
   await preset.selectOption("review"); await presetSettled();
-  await page.getByText("下轮生效 · 当前：请求批准", { exact: true }).waitFor();
+  assert.equal(await preset.inputValue(), "review", "A pending preset is shown as the selected value");
+  assert.deepEqual(await page.evaluate(() => {
+    const runtime = window.permissionTest.fixture.threads.find(t => t.id === "desktop-ui").runtime;
+    return [runtime.approval, runtime.pendingPermissions];
+  }), ["user", { provider: "codex", approval: "auto_review", access: "workspace-write" }]);
+  assert.equal(await page.getByText(/下轮生效/).count(), 0, "The pending explanation must not take up composer space");
+  assert.match(await preset.getAttribute("title"), /下轮生效 · 当前：请求批准/);
+  assert.equal(await page.locator(".permission-selector small").count(), 0);
   await page.evaluate(() => { window.permissionTest.running = false; });
   await preset.selectOption("review"); await presetSettled();
   if (process.env.CLEO_SMOKE_OUTPUT) await page.screenshot({ path: join(process.env.CLEO_SMOKE_OUTPUT, "session-permissions.png") });

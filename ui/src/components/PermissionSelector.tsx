@@ -5,7 +5,7 @@ import "./permission-selector.css";
 
 /** Purpose: Select an atomic native permission preset without optimistic activation.
  * Input: Current/pending session settings and an awaited session-bound save callback.
- * Output: A compact selector, effective-state explanation and visible save errors.
+ * Output: A compact selector whose tooltip explains the effective state, plus visible save errors.
  */
 export function PermissionSelector({ runtime, onChange, disabled = false }: {
   runtime: RuntimeProfile;
@@ -38,7 +38,7 @@ export function PermissionSelector({ runtime, onChange, disabled = false }: {
   };
   return <div className="permission-selector">
     <select className="text-control" aria-label="会话权限" data-testid="permission-selector"
-      title={`${current?.description ?? actual}\n${runtime.permissionOptions?.reason ?? ""}`}
+      title={[current?.description ?? actual, pending ? `下轮生效 · 当前：${actual}` : "", runtime.permissionOptions?.reason ?? ""].filter(Boolean).join("\n")}
       value={current?.value ?? "custom"} disabled={disabled || saving}
       onChange={event => void save(event.target.value)}>
       {!current && <option value="custom" disabled>自定义权限</option>}
@@ -48,7 +48,6 @@ export function PermissionSelector({ runtime, onChange, disabled = false }: {
       </option>)}
     </select>
     {saving && <small role="status">正在核对权限…</small>}
-    {pending && <small role="status" title={`当前：${actual}`}>下轮生效 · 当前：{actual}</small>}
     {error && <span className="permission-selector-error" role="alert">{error}</span>}
   </div>;
 }
