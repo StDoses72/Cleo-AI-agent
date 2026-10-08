@@ -8,6 +8,8 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any
 
+from cleo.memory.compact_file import decode_compact, read_compact_file
+
 from .home import CleoHome
 
 
@@ -59,7 +61,8 @@ def session_files(home: CleoHome, manifest: dict[str, Any]) -> dict[str, Any]:
         "events.jsonl": read_jsonl(directory / "events.jsonl"),
     }
     if (directory / "compact.json").exists():
-        compact = read_json(directory / "compact.json")
+        # Keep the frozen v2 payload as the behavioral oracle across storage versions.
+        compact = decode_compact(read_compact_file(directory / "compact.json"))
         compression = compact.get("compression") or {}
         # These totals count characters of raw events, which embed the temp-dir path.
         for key in ("raw_characters", "compact_characters"):

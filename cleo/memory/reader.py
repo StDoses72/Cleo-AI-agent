@@ -192,14 +192,26 @@ class MemoryReader:
                 if state and state.get("upper") != upper:
                     return {**source, "status": "stale_cursor", "results": []}
             else:
-                events = self.store.read_events(session_id)
-                upper = state.get("upper", events[-1]["seq"] if events else 0)
-                payload = compact_events(
-                    space=manifest["space"],
-                    project=manifest["project"],
-                    session_id=session_id,
-                    events=[event for event in events if event["seq"] <= upper],
-                )
+                try:
+                    payload = load_validated_compact(
+                        memory_root=self.root, space=manifest["space"],
+                        project=manifest["project"], session_id=session_id,
+                    )
+                except (OSError, ValueError):
+                    payload = None
+                if payload is not None and state.get("upper", payload["source"]["to_seq"]) == (
+                    payload["source"]["to_seq"]
+                ):
+                    upper = payload["source"]["to_seq"]
+                else:
+                    # Active or older frozen prefixes still use the authoritative log.
+                    events = self.store.read_events(session_id)
+                    upper = state.get("upper", events[-1]["seq"] if events else 0)
+                    payload = compact_events(
+                        space=manifest["space"], project=manifest["project"],
+                        session_id=session_id,
+                        events=[event for event in events if event["seq"] <= upper],
+                    )
         except (OSError, ValueError) as exc:
             return {**source, "status": "read_error", "error": type(exc).__name__, "results": []}
         records = payload["events"]
@@ -292,7 +304,6 @@ class MemoryReader:
                 break
             try:
                 manifest = self.store.load_manifest(session_id)
-                events = self.store.read_events(session_id)
                 # Reuse the validated compact when available, otherwise project in memory.
                 try:
                     payload = load_validated_compact(
@@ -302,6 +313,7 @@ class MemoryReader:
                         session_id=session_id,
                     )
                 except (OSError, ValueError):
+                    events = self.store.read_events(session_id)
                     payload = compact_events(
                         space=manifest["space"],
                         project=manifest["project"],

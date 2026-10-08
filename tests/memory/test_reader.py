@@ -89,6 +89,32 @@ def test_read_snapshot_and_long_message_continuation(tmp_path):
     assert reader.read_thread("chat", limit=100)["snapshot_seq"] > page["snapshot_seq"]
 
 
+def test_completed_read_and_search_reuse_compact_and_old_cursor_stays_frozen(tmp_path, monkeypatch):
+    store = SessionStore(tmp_path)
+    content = "cached needle " * 1000
+    add_thread(store, "chat", "non_productivity", "general", content)
+    store.refresh_compact("chat", materialize=False)
+    reader = MemoryReader(tmp_path)
+    with monkeypatch.context() as patch:
+        def unexpected_projection(**_kwargs):
+            raise AssertionError("a completed compact was projected again")
+        patch.setattr("cleo.memory.reader.compact_events", unexpected_projection)
+        page = reader.read_thread("chat", limit=1)
+        assert page["status"] == "ok" and page["next_cursor"]
+        assert reader.search_conversation_history("needle")["results"]
+    before = page["snapshot_seq"]
+    parts = [page["results"][0]["content"]]
+    store.append_event(session_id="chat", space="non_productivity", project="general",
+                       event_type="assistant_message", actor="assistant", content="later answer")
+    store.refresh_compact("chat", materialize=False)
+    while page["next_cursor"]:
+        page = reader.read_thread("chat", cursor=page["next_cursor"], limit=1)
+        assert page["snapshot_seq"] == before
+        parts.extend(record["content"] for record in page["results"])
+    assert "".join(parts) == content
+    assert reader.read_thread("chat")["snapshot_seq"] > before
+
+
 def test_move_delete_and_stale_compact(tmp_path):
     store = SessionStore(tmp_path)
     add_thread(store, "chat", "non_productivity", "general", "old choice")

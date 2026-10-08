@@ -232,6 +232,7 @@ class SessionStore:
             output_path = self._events.path(space, project, session_id)
             output_path.parent.mkdir(parents=True, exist_ok=True)
             known_ids, last_written_seq = self._events.committed(session_id, output_path)
+            previous = self._events.revision(session_id, output_path)
             # The event log may be ahead of a manifest whose atomic write failed.
             appended, next_seq = self._events.prepare(
                 events, session_id=session_id, space=space, project=project,
@@ -240,10 +241,11 @@ class SessionStore:
             )
             durable_handoff = bool(appended) and is_durable_handoff(appended)
             if appended:
-                self._events.append(
+                revision = self._events.append(
                     session_id, output_path, appended, known_ids=known_ids, last_seq=next_seq,
                     fsync=durable_handoff or any(e["type"] == "steer" for e in appended),
                 )
+                self._compact.note_append(session_id, previous.signature, revision.signature)
                 if not manifest.get("title"):
                     title = title_from_events(appended)
                     if title:
@@ -285,7 +287,8 @@ class SessionStore:
         owner_type: str = "user",
         cwd: str | None = None,
         status: str = "active",
-    ) -> dict[str, Any]:
+        materialize: bool = True,
+    ) -> dict[str, Any] | None:
         """Purpose: Record a LangChain history as events, idempotent by message id.
 
         Input: Session scope, the full history, creation metadata and the target status
@@ -299,11 +302,10 @@ class SessionStore:
             owner_type=owner_type,
             cwd=cwd,
         )
-        existing_source_ids = {
-            str(event.get("source_message_id"))
-            for event in self.read_events(session_id)
-            if event.get("source_message_id")
-        }
+        with self._lock:
+            existing_source_ids = self._events.source_message_ids(
+                session_id, self._events.path(space, project, session_id),
+            )
         new_events = message_events(messages, existing_source_ids)
         if status != manifest.get("status"):
             new_events.append(
@@ -320,7 +322,7 @@ class SessionStore:
             events=new_events,
             manifest_updates={"status": status},
         )
-        return self.refresh_compact(session_id)
+        return self.refresh_compact(session_id, materialize=materialize)
 
     def load_langchain_messages(self, session_id: str) -> list[BaseMessage]:
         """Purpose: Rebuild the LangChain history from the events, skipping rewound turns."""
@@ -448,14 +450,21 @@ class SessionStore:
             self.refresh_compact(session_id)
             return self.load_manifest(session_id)
 
-    def refresh_compact(self, session_id: str) -> dict[str, Any]:
-        """Purpose: Rebuild the compact projection and record its hash in the manifest.
+    def refresh_compact(
+        self, session_id: str, *, materialize: bool = True,
+    ) -> dict[str, Any] | None:
+        """Update compact and its index; rebuild only when the incremental cache is invalid.
 
-        Output: The compact payload (also written as conversation chunks).
+        Output: The legacy logical payload, or None when only the commit is needed.
         """
         with self._lock:
             manifest = self.load_manifest(session_id)
-            refreshed = self._compact.refresh(manifest, self.read_events(session_id))
+            revision = self._events.revision(session_id, self._events.path(
+                manifest["space"], manifest["project"], session_id,
+            ))
+            refreshed = self._compact.refresh(
+                manifest, self._events, revision, materialize=materialize,
+            )
             self.update_manifest(session_id, **refreshed["manifest"])
             return refreshed["payload"]
 
@@ -471,6 +480,13 @@ class SessionStore:
             provider=provider, native_session_id=native_session_id, space=validate_space(space),
         )
         return None if path is None else self._manifests.read_raw(Path(path))
+
+    def export_legacy_compact(self, session_id: str) -> dict[str, Any]:
+        """Export v2 compact and legacy search rows before running an older application."""
+        with self._lock:
+            exported = self._compact.export_legacy(self.load_manifest(session_id), self._events)
+            self.update_manifest(session_id, **exported["manifest"])
+            return exported["payload"]
 
     def list_sessions(
         self,

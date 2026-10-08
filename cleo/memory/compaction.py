@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from cleo.memory.compact_file import decode_compact, read_compact_file
 from cleo.memory.paths import compact_path, events_path, manifest_path
 from cleo.sessions.rewind import active_events
 
@@ -405,32 +406,13 @@ def _tool_event(
     return ({key: value for key, value in event.items() if value is not None}, omitted_characters)
 
 
-def compact_events(
-    *,
-    space: str,
-    project: str,
-    session_id: str,
-    events: list[dict[str, Any]],
-    source_version: int | None = None,
+def project_compact_events(
+    events: list[dict[str, Any]], *, visible_index_base: int = 0,
 ) -> dict[str, Any]:
-    """Build a compact, redacted projection backed by raw event IDs.
+    """Project a complete batch into the existing normal and fallback lanes.
 
-    将 append-only 原始事件投影为脱敏、压缩的 compact payload, 每条记录通过
-    source_event_ids 回溯原始事件, 并附带 source/compression 元数据。
-
-    参数:
-        space: memory space; 来自 write_compact_events, 最终由
-            sessions/store.py refresh_compact 传入 manifest["space"]。
-        project: 项目名; 同上, 来自 manifest["project"]。
-        session_id: 会话 ID; 同上, 来自会话标识。
-        events: 原始事件列表; 来自 sessions/store.py read_events 的输出。
-        source_version: 事件源单调修订号; 来自 memory_state 中
-            touch_session_source 返回的 source_version。
-
-    返回:
-        完整 compact payload dict (schema_version/source/compression/events);
-        被 write_compact_events 落盘为 compact.json, 也被
-        sessions/store.py refresh_compact 传给 replace_conversation_chunks。
+    The caller falls back to full history for rewinds or tool associations crossing
+    batches. The index base preserves legacy IDs of messages without their own ID.
     """
     # Rewound turns are left out of memory; source hashes still cover the raw log.
     visible = active_events([event for event in events if isinstance(event, dict)])
@@ -438,7 +420,7 @@ def compact_events(
         message
         for index, event in enumerate(visible)
         if isinstance(event, dict)
-        if (message := _normalize_message_event(event, index)) is not None
+        if (message := _normalize_message_event(event, visible_index_base + index)) is not None
     ]
     results_by_call_id = {
         str(message["tool_call_id"]): message
@@ -484,6 +466,7 @@ def compact_events(
         for compacted in compacted_events
         for event_id in compacted.get("source_event_ids") or []
     }
+    fallback: list[dict[str, Any]] = []
     for event in visible:
         event_id = str(event.get("id") or "")
         event_type = str(event.get("type") or "")
@@ -503,7 +486,7 @@ def compact_events(
             "error",
             "provider_event",
         }:
-            compacted_events.append(
+            fallback.append(
                 {
                     "id": event_id,
                     "type": event_type,
@@ -514,6 +497,28 @@ def compact_events(
                 }
             )
 
+    records = [*compacted_events, *fallback]
+    return {
+        "normal": compacted_events,
+        "fallback": fallback,
+        "stats": {
+            "visible_event_count": len(visible),
+            "omitted_tool_characters": omitted_tool_characters,
+            "tool_event_count": tool_event_count,
+            "record_characters": sum(len(_canonical_json(record)) for record in records),
+            "totalrecords": len(records),
+        },
+    }
+
+
+def compact_events(
+    *, space: str, project: str, session_id: str, events: list[dict[str, Any]],
+    source_version: int | None = None,
+) -> dict[str, Any]:
+    """Build the complete v2 logical payload, including its original source hash."""
+    projected = project_compact_events(events)
+    compacted_events = [*projected["normal"], *projected["fallback"]]
+    stats = projected["stats"]
     source_hash = event_content_hash(events)
     raw_json = _canonical_json(events)
     compact_json = _canonical_json(compacted_events)
@@ -539,8 +544,8 @@ def compact_events(
             "compressed_at": _now_iso(),
             "raw_characters": len(raw_json),
             "compact_characters": len(compact_json),
-            "omitted_tool_characters": omitted_tool_characters,
-            "tool_event_count": tool_event_count,
+            "omitted_tool_characters": stats["omitted_tool_characters"],
+            "tool_event_count": stats["tool_event_count"],
         },
         "events": compacted_events,
     }
@@ -618,9 +623,9 @@ def load_validated_compact(
     manifest = json.loads(
         manifest_path(memory_root, space, project, session_id).read_text(encoding="utf-8-sig")
     )
-    payload = json.loads(
-        compact_path(memory_root, space, project, session_id).read_text(encoding="utf-8-sig")
-    )
+    payload = decode_compact(read_compact_file(
+        compact_path(memory_root, space, project, session_id),
+    ))
     source = payload.get("source") or {}
     expected_binding = (space, project, session_id)
     manifest_binding = (

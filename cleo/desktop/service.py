@@ -1981,6 +1981,18 @@ class DesktopService:
                 }
             )
         await refresh_changes(force=True)
+        # Git history may append a final event after the harness committed its answer.
+        publication = asyncio.create_task(asyncio.to_thread(
+            self.store.refresh_compact, manifest["id"], materialize=False,
+        ))
+        while not publication.done():
+            try:
+                await asyncio.shield(publication)
+            except asyncio.CancelledError:
+                if publication.cancelled():
+                    raise
+                asyncio.current_task().uncancel()
+        publication.result()
         if result.status == "completed":
             await emit({"type": "done", "summary": (result.response or prompt)[:80]})
         else:
@@ -1997,6 +2009,7 @@ class DesktopService:
             owner_type="user",
             cwd=manifest.get("cwd"),
             status=status,
+            materialize=False,
         )
         self.runtime.append_recent_threads(manifest["id"], manifest["space"])
 

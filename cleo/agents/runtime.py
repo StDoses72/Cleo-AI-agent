@@ -141,6 +141,7 @@ class RuntimeGraph:
                         owner_type="user",
                         cwd=str(self.root),
                         status="active",
+                        materialize=False,
                     )
                 native = options.get("chat_native_id") if self.mode == "chat" else None
                 mcp = AgentMcp(

@@ -10,6 +10,8 @@ from __future__ import annotations
 import subprocess
 from typing import Any
 
+from cleo.memory.compaction import event_content_hash, load_validated_compact
+
 from .support.backend import Backend
 from .support.golden import assert_golden
 from .support.home import CleoHome, _git
@@ -40,6 +42,14 @@ def test_task_turn_with_tools_plan_and_file_change(
     stream = backend.stream_turn(created["id"], "Update notes [[plan]] [[tool]] [[write]]")
     assert stream.result() is None
     files = session_files(cleo_home, _manifest(created))
+    manifest = files["manifest.json"]
+    source = load_validated_compact(
+        memory_root=cleo_home.memory, space=manifest["space"],
+        project=manifest["project"], session_id=manifest["id"],
+    )["source"]
+    assert source == files["compact.json"]["source"]
+    assert source["source_content_hash"] == event_content_hash(files["events.jsonl"])
+    assert source["to_seq"] == manifest["last_compacted_seq"] == files["events.jsonl"][-1]["seq"]
     assert_golden("productivity/tool_turn", {
         "created": created,
         "stream": collapse_stream(stream.events),
