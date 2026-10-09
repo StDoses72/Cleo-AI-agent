@@ -44,7 +44,9 @@ class BackgroundMemory:
         self._resume_due = False
 
     def _pending(self) -> list[dict[str, Any]]:
-        return [source for source in self._sources() if source["status"] == "pending"]
+        # A persisted running source may outlive its process. DreamAgent rechecks it
+        # under the existing project lock, so a live publisher keeps ownership.
+        return [source for source in self._sources() if source["status"] in {"pending", "running"}]
 
     @staticmethod
     def _key(source: dict[str, Any]) -> tuple[str, str, str]:

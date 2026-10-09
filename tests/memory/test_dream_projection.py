@@ -110,3 +110,14 @@ def test_langchain_tool_content_not_dropped_by_legacy_compactor():
                                                  "tool_call_id": "call"}}
     records = project_events([raw])
     assert records[0].body["message"]["data"]["content"] == "z" * 10000
+
+
+def test_projection_uses_active_history_after_multiple_rewinds():
+    first = event(1, "user_message", content="keep")
+    removed = event(2, "user_message", content="removed preference")
+    marker = {**event(4, "rewind"), "data": {"turn_id": removed["id"]}}
+    replacement = event(5, "user_message", content="replacement")
+    records = project_events([first, removed, delta(3, "removed output"), marker, replacement])
+    assert [record.seq for record in records] == [1, 5]
+    text = "\n".join(block.text for block in build_blocks(records))
+    assert "removed" not in text

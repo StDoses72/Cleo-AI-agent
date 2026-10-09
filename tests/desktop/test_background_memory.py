@@ -15,7 +15,12 @@ from cleo.desktop.configuration import (
 )
 from cleo.desktop.service import DesktopService
 from cleo.memory.paths import memory_state_path
-from cleo.memory.state import get_session_source, mark_consolidation_started, touch_session_source
+from cleo.memory.state import (
+    get_session_source,
+    mark_consolidation_failed,
+    mark_consolidation_started,
+    touch_session_source,
+)
 from cleo.sessions.store import SessionStore
 
 
@@ -272,6 +277,13 @@ def test_service_disable_waits_for_cancel_and_leaves_source_pending(tmp_path):
             entered.set()
             try:
                 await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                # Match DreamAgent's cancellation receipt after owning the source.
+                mark_consolidation_failed(
+                    "non_productivity", "general", "one", "hash",
+                    "Consolidation cancelled; 0/1 blocks checkpointed.", path=path,
+                )
+                raise
             finally:
                 cleaned.set()
 
@@ -328,7 +340,14 @@ def test_hot_reload_disabling_background_cancels_current_source(tmp_path):
         async def invoke(**_kwargs):
             mark_consolidation_started("non_productivity", "general", "one", "hash", path=path)
             entered.set()
-            await asyncio.Event().wait()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                mark_consolidation_failed(
+                    "non_productivity", "general", "one", "hash",
+                    "Consolidation cancelled; 0/1 blocks checkpointed.", path=path,
+                )
+                raise
 
         service, path = make_service(tmp_path, lambda: SimpleNamespace(invoke=invoke))
         await service.run_background_memory_review()
