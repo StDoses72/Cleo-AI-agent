@@ -7,7 +7,7 @@ name = "cleo-ai-agent"
 version = "0.8.2"
 description = "A local-first AI workspace for chat, developer agents, resumable sessions, and scoped memory."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
   "agent-client-protocol>=0.11",
   "claude-agent-sdk>=0.2",
@@ -55,6 +55,12 @@ select = ["E", "F", "I", "UP", "B"]
 testpaths = ["tests"]
 
 [tool.uv]
+environments = [
+  "python_version == '3.12' and sys_platform == 'win32' and platform_machine == 'AMD64'",
+  "python_version == '3.12' and sys_platform == 'darwin' and platform_machine == 'arm64'",
+  "python_version == '3.12' and sys_platform == 'darwin' and platform_machine == 'x86_64'",
+  "python_version == '3.12' and sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
 required-environments = [
   "sys_platform == 'win32' and platform_machine == 'AMD64'",
   "sys_platform == 'darwin' and platform_machine == 'arm64'",

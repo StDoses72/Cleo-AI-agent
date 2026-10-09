@@ -71,7 +71,7 @@ On first launch, open **Settings → Models**, configure a provider, model, API 
 
 ### Run from source
 
-Python 3.12+ is required. Node.js and `agent-browser` are needed for browser tools.
+Python 3.12 is required. Node.js and `agent-browser` are needed for browser tools.
 
 ```powershell
 git clone https://github.com/StDoses72/Cleo-AI-agent.git

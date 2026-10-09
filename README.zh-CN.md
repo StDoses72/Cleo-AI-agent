@@ -72,7 +72,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 ### 从源码运行
 
-要求 Python 3.12+；使用浏览器工具时还需要 Node.js 和 `agent-browser`。
+要求 Python 3.12；使用浏览器工具时还需要 Node.js 和 `agent-browser`。
 
 ```powershell
 git clone https://github.com/StDoses72/Cleo-AI-agent.git
