@@ -12,9 +12,11 @@ const tempRoot = resolve(process.env.CLEO_TEST_TEMP_DIR || tmpdir());
 const root = await mkdtemp(join(tempRoot, "cleo-close-smoke-"));
 const source = process.argv.includes("--source");
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const executablePath = resolve(process.env.CLEO_EXECUTABLE || "release/Cleo-evolution/Cleo.exe");
 let desktop;
 let desktopProcess;
 let tracked = [];
+let startupOutput = "";
 /** Purpose: Read only this test app's descendant process identities.
  * Input: Electron root pid. Output: pid/name/start time for checking cleanup without matching unrelated apps.
  */
@@ -24,6 +26,7 @@ async function descendants(pid) {
   return JSON.parse(stdout.trim() || "[]");
 }
 try {
+  await mkdir(join(root, "user"), { recursive: true });
   if (source) {
     const configRoot = join(root, "home", "config");
     await mkdir(configRoot, { recursive: true });
@@ -37,13 +40,18 @@ try {
     await copyFile(join(defaults, "harnesses.example.json"), join(configRoot, "harnesses.json"));
   }
   desktop = await electron.launch({
-    ...(source ? {} : { executablePath: resolve(process.env.CLEO_EXECUTABLE || "release/Cleo-evolution/Cleo.exe") }),
+    ...(source ? {} : { executablePath }),
+    cwd: source ? appDir : dirname(executablePath),
     args: [...(source ? [appDir] : []), `--user-data-dir=${join(root, "profile")}`],
     env: { ...process.env, CLEO_HOME: join(root, "home"), CLEO_CONFIG_PATH: "", CLEO_HARNESSES_CONFIG_PATH: "",
       HOME: join(root, "user"), USERPROFILE: join(root, "user"), CODEX_HOME: join(root, "user", ".codex") },
+    timeout: 60_000,
   });
   desktopProcess = desktop.process();
-  const window = await desktop.firstWindow();
+  for (const stream of [desktopProcess.stdout, desktopProcess.stderr]) {
+    stream?.on("data", chunk => { startupOutput = `${startupOutput}${chunk}`.slice(-8000); });
+  }
+  const window = await desktop.firstWindow({ timeout: 60_000 });
   await window.waitForFunction(() => Boolean(window.cleoDesktop), null, { timeout: 25000 });
   assert.equal(await window.evaluate(async () =>
     (await window.cleoDesktop.request("load_workspace")).backend.connected), true);
@@ -110,6 +118,10 @@ try {
     tracked.some((old) => old.ProcessId === item.ProcessId && old.CreationDate === item.CreationDate));
   console.log(JSON.stringify({ tracked: tracked.map(({ Name }) => Name), remaining }));
   assert.deepEqual(remaining, [], "Cleo or its backend/helper processes remained after explicit quit.");
+} catch (error) {
+  console.error(JSON.stringify({ check: "tray-background-settings", exitCode: desktopProcess?.exitCode,
+    startupOutput }));
+  throw error;
 } finally {
   const pid = desktopProcess?.pid;
   if (pid && desktopProcess.exitCode === null) {
