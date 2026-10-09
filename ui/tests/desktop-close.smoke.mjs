@@ -17,6 +17,7 @@ let desktop;
 let desktopProcess;
 let tracked = [];
 let startupOutput = "";
+let startupPaths;
 /** Purpose: Read only this test app's descendant process identities.
  * Input: Electron root pid. Output: pid/name/start time for checking cleanup without matching unrelated apps.
  */
@@ -43,14 +44,24 @@ try {
     ...(source ? {} : { executablePath }),
     cwd: source ? appDir : dirname(executablePath),
     args: [...(source ? [appDir] : []), `--user-data-dir=${join(root, "profile")}`],
+    // Isolate app/provider state without replacing Windows' registered OS profile.
     env: { ...process.env, CLEO_HOME: join(root, "home"), CLEO_CONFIG_PATH: "", CLEO_HARNESSES_CONFIG_PATH: "",
-      HOME: join(root, "user"), USERPROFILE: join(root, "user"), CODEX_HOME: join(root, "user", ".codex") },
+      CODEX_HOME: join(root, "user", ".codex") },
     timeout: 60_000,
   });
   desktopProcess = desktop.process();
   for (const stream of [desktopProcess.stdout, desktopProcess.stderr]) {
     stream?.on("data", chunk => { startupOutput = `${startupOutput}${chunk}`.slice(-8000); });
   }
+  desktop.on("console", message => { startupOutput = `${startupOutput}\n${message.text()}`.slice(-8000); });
+  startupPaths = await desktop.evaluate(({ app }) => {
+    const paths = {};
+    for (const name of ["home", "downloads", "userData", "temp"]) {
+      try { paths[name] = app.getPath(name); }
+      catch (error) { paths[name] = { error: error.message }; }
+    }
+    return paths;
+  });
   const window = await desktop.firstWindow({ timeout: 60_000 });
   await window.waitForFunction(() => Boolean(window.cleoDesktop), null, { timeout: 25000 });
   assert.equal(await window.evaluate(async () =>
@@ -120,7 +131,7 @@ try {
   assert.deepEqual(remaining, [], "Cleo or its backend/helper processes remained after explicit quit.");
 } catch (error) {
   console.error(JSON.stringify({ check: "tray-background-settings", exitCode: desktopProcess?.exitCode,
-    startupOutput }));
+    startupPaths, startupOutput }));
   throw error;
 } finally {
   const pid = desktopProcess?.pid;
