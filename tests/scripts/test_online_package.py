@@ -3,6 +3,7 @@ import importlib.util
 import io
 import json
 import re
+import urllib.error
 from pathlib import Path
 
 import pytest
@@ -20,8 +21,9 @@ spec.loader.exec_module(builder)
     ("darwin", "macos-x64", "x86_64", "macos"),
     ("linux", "linux-x64", "x86_64", "linux"),
 ])
+@pytest.mark.parametrize("metadata_directory", ["uv-python", "uv-python-managed"])
 def test_runtime_plan_uses_upstream_hashes_and_omits_bundled_dependencies(
-    tmp_path, monkeypatch, platform, target, arch, os_name,
+    tmp_path, monkeypatch, platform, target, arch, os_name, metadata_directory,
 ):
     resources = tmp_path / "resources"
     (resources / "python").mkdir(parents=True)
@@ -48,6 +50,9 @@ def test_runtime_plan_uses_upstream_hashes_and_omits_bundled_dependencies(
 
     def fetch(url, **kwargs):
         if url.endswith("download-metadata.json"):
+            assert url.startswith("https://raw.githubusercontent.com/astral-sh/uv/0.12.21/")
+            if f"/crates/{metadata_directory}/" not in url:
+                raise urllib.error.HTTPError(url, 404, "Not Found", None, None)
             data = json.dumps({key.replace("-macos-", "-darwin-"): {
                 "url": python_url, "sha256": digest,
             }}).encode()
