@@ -87,8 +87,13 @@ test("native POSIX update validates before quitting and preserves user data", {
     const resources = join(installRoot, target.resources);
     await mkdir(join(resources, "update"), { recursive: true });
     await mkdir(join(resources, "browser"), { recursive: true });
-    for (const file of ["posix-installer.mjs", "platform.mjs"]) {
-      await copyFile(new URL(file, import.meta.url), join(resources, "update", file));
+    // Match the standalone update modules shipped by scripts/build-release.py.
+    for (const file of ["posix-installer.mjs", "platform.mjs", "online-runtime.mjs",
+      "release-downloads.mjs", "evolution-tools.mjs", "evolution-store.mjs",
+      "computer/startup.mjs", "computer/schemes.mjs"]) {
+      const destination = join(resources, "update", file);
+      await mkdir(dirname(destination), { recursive: true });
+      await copyFile(new URL(file, import.meta.url), destination);
     }
     await copyFile(process.execPath, join(resources, "browser", "node"));
     const executable = join(installRoot, target.executable);

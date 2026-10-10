@@ -71,7 +71,7 @@ On first launch, open **Settings → Models**, configure a provider, model, API 
 
 ### Run from source
 
-Python 3.12+ is required. Node.js and `agent-browser` are needed for browser tools.
+Python 3.12 is required. Node.js and `agent-browser` are needed for browser tools.
 
 ```powershell
 git clone https://github.com/StDoses72/Cleo-AI-agent.git
@@ -100,6 +100,8 @@ Linux and macOS use the same Python package and JSON formats. See [platform supp
 
 ### Desktop
 
+- **System tray**: closing the main window keeps Cleo running in the Windows tray or macOS menu bar; Linux requires a desktop environment with tray support. Use the tray menu to reopen Cleo, open memory management, or explicitly quit.
+- **Background memory**: enable it in Settings → Models → Memory consolidation. It is off by default; manual consolidation remains available while it is off. Once enabled, consolidation starts every 30 minutes or when 5 eligible sessions are waiting, whichever comes first. Both thresholds are adjustable. Foreground conversations take priority; errors and pending sources remain visible in memory management. Explicitly quitting stops background consolidation without starting a separate worker; saved checkpoints allow it to resume when Cleo next runs with automatic consolidation enabled and a trigger is met. Consolidation uses the selected memory model and may incur provider charges.
 - **Messages**: hover a message to copy it. Hover one of your earlier messages and choose Edit to rewind the conversation to that point and resend the new text. This works for Cleo chat and for Codex and Claude development tasks after the latest harness switch; files already written by later turns are not reverted.
 - **While Cleo is working**: new messages go into a queue above the input. Press **Steer** to deliver a queued message into the running turn; otherwise the queue is sent as the next message when the turn finishes. A stopped or failed turn keeps the queue so you can send, edit, or remove each message.
 - **Development and skills**: select a working directory and a Claude/Codex harness, type `/` to find a local skill, then select it, add arguments, and send. Reopen the session after installing a skill to refresh the catalog. See [local skills](docs/local-skills.en.md).

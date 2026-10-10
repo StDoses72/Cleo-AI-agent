@@ -9,6 +9,8 @@ import type {
   CreateThreadOptions,
   ModelProfileInput,
   ModelSettings,
+  BackgroundMemorySettings,
+  BackgroundMemoryState,
   ModelConnectionInput,
   ModelConnectionProbe,
   SubscriptionRuntime,
@@ -260,6 +262,12 @@ export class IpcCleoClient implements CleoClient {
 
   saveDreamSettings(selection: string, model?: string): Promise<ModelSettings> {
     return this.bridge.request("save_dream_settings", { selection, model });
+  }
+  getBackgroundMemoryState(): Promise<BackgroundMemoryState> {
+    return this.bridge.request("get_background_memory_state");
+  }
+  saveBackgroundMemorySettings(settings: BackgroundMemorySettings): Promise<BackgroundMemoryState> {
+    return this.bridge.request("save_background_memory_settings", { ...settings });
   }
   checkModelConnection(connection: Partial<ModelConnectionInput> & { profileId?: string }): Promise<ModelConnectionProbe> {
     return this.bridge.request("check_model_connection", { connection });

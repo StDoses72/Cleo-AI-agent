@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import {
   copyFile,
+  cp,
   chmod,
   open,
   readFile,
@@ -422,9 +423,7 @@ export class DesktopUpdater {
 
   async launchPosixInstaller() {
     const staging = dirname(this.archivePath);
-    for (const file of ["posix-installer.mjs", "platform.mjs"]) {
-      await copyFile(join(this.resourcesPath, "update", file), join(staging, file));
-    }
+    await cp(join(this.resourcesPath, "update"), staging, { recursive: true });
     const node = join(staging, "node");
     await copyFile(join(this.resourcesPath, "browser", "node"), node);
     await chmod(node, 0o755);

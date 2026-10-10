@@ -14,7 +14,7 @@ from cleo.memory.compaction import event_content_hash
 from cleo.memory.consolidation import (
     Extraction,
     finish_write,
-    load_checkpoint,
+    invalidate_rewound_pending,
     project_lock,
     save_checkpoint,
 )
@@ -42,6 +42,7 @@ from cleo.memory.state import (
     needs_consolidation,
 )
 from cleo.runtime.timing import measure, phase, stage
+from cleo.sessions.rewind import REWIND_EVENT, active_events
 
 DREAM_AGENT_SYSTEM_PROMPT = """
 You maintain a small Markdown file of USER PREFERENCES. Return a JSON INSTANCE
@@ -214,7 +215,7 @@ class DreamAgent:
         checkpoint_path = (
             session_directory(settings.MEMORY_DIR, space, project, session_id) / "dream.json"
         )
-        checkpoint = load_checkpoint(checkpoint_path)
+        checkpoint = invalidate_rewound_pending(checkpoint_path, events)
         if (not needs_consolidation(space, project, session_id, current_hash)
                 and checkpoint.get("memory_hash") == digest(initial) and not refresh_snapshot):
             return {"status": "skipped", "reason": "session source is already processed",
@@ -256,9 +257,10 @@ class DreamAgent:
                 raise ValueError("pending DreamAgent snapshot changed; refusing stale evidence")
             if pending["projection_version"] != PROJECTION_VERSION:
                 raise ValueError("pending DreamAgent projection needs migration")
+            visible = active_events(snapshot)
             records = await asyncio.to_thread(
-                project_events, ([e for e in snapshot if e["seq"] > committed]
-                                 or (snapshot if refresh_snapshot else [])),
+                project_events, ([e for e in visible if e["seq"] > committed]
+                                 or (visible if refresh_snapshot else [])),
             )
             blocks = await asyncio.to_thread(build_blocks, records, budget=pending["budget"])
             total = len(blocks)
@@ -309,7 +311,9 @@ class DreamAgent:
             phase("发布前校验")
             latest = await asyncio.to_thread(store.read_events, session_id)
             latest_prefix = [e for e in latest if e["seq"] <= pending["to_seq"]]
-            if event_content_hash(latest_prefix) != source_hash:
+            if (event_content_hash(latest_prefix) != source_hash
+                    or any(e["type"] == REWIND_EVENT and e["seq"] > pending["to_seq"]
+                           for e in latest)):
                 raise ValueError("DreamAgent source changed before publication")
             latest_manifest = store.load_manifest(session_id)
             if (latest_manifest["space"], latest_manifest["project"]) != (space, project):

@@ -65,10 +65,12 @@ DESKTOP_METHODS: tuple[RpcMethod, ...] = (
               "start_subscription_login", "read_subscription_login",
               "cancel_subscription_login"),
     # Memory review.
-    *_methods("renderer", "get_memory_review_details", "review_memory_source"),
+    *_methods("renderer", "get_memory_review_details", "review_memory_source",
+              "get_background_memory_state", "save_background_memory_settings"),
     # Electron main process only: evolution guard, computer use and lifecycle.
     *_methods("main", "is_evolution_thread", "release_runtime", "computer_host",
-              "computer_host_stop", "computer_owner", "computer_scope"),
+              "computer_host_stop", "computer_owner", "computer_scope",
+              "run_background_memory_review", "cancel_background_memory_review"),
     RpcMethod("shutdown", "main", server=True),
     # No client calls these any more.
     *_methods("unused", "analyze_evolution_request"),

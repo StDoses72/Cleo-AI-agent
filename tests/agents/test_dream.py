@@ -1,6 +1,7 @@
 import asyncio
 import json
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
@@ -8,10 +9,13 @@ from pydantic import SecretStr, ValidationError
 
 import cleo.agents.dream as dream_module
 from cleo.config.settings import SettingsModel
-from cleo.memory.consolidation import Extraction
+from cleo.desktop.service import DesktopService
+from cleo.memory.consolidation import Extraction, load_checkpoint, project_lock
+from cleo.memory.paths import project_directory, session_directory
 from cleo.memory.reader import MemoryReader
 from cleo.memory.repository import MemoryRepository
-from cleo.memory.state import get_session_source
+from cleo.memory.state import get_session_source, mark_consolidation_started
+from cleo.sessions.rewind import active_events
 from cleo.sessions.store import SessionStore
 
 
@@ -556,7 +560,10 @@ def test_edited_committed_prefix_cannot_be_skipped(tmp_path, monkeypatch):
         invoke(dream_module.DreamAgent())
 
 
-def test_cancel_during_publication_waits_for_writer_before_retry(tmp_path, monkeypatch):
+@pytest.mark.parametrize("cancellations", [1, 2])
+def test_cancel_during_publication_waits_for_writer_before_retry(
+    tmp_path, monkeypatch, cancellations,
+):
     import threading
 
     setup(tmp_path, monkeypatch)
@@ -583,9 +590,10 @@ def test_cancel_during_publication_waits_for_writer_before_retry(tmp_path, monke
         ))
         try:
             assert await asyncio.to_thread(entered.wait, 10)
-            task.cancel()
-            await asyncio.sleep(0)
-            assert not task.done()
+            for _ in range(cancellations):
+                task.cancel()
+                await asyncio.sleep(0)
+                assert not task.done()
         finally:
             release.set()
         with pytest.raises(asyncio.CancelledError):
@@ -596,3 +604,368 @@ def test_cancel_during_publication_waits_for_writer_before_retry(tmp_path, monke
 
     asyncio.run(scenario())
     assert len(calls) == 1
+
+
+def background_service(config, store):
+    config.active_profiles.background_memory_enabled = True
+    config.active_profiles.background_memory_pending_threshold = 1
+    service = DesktopService(
+        settings_model=config, store=store,
+        runtime=SimpleNamespace(is_project_removed=lambda *_: False),
+        dream_agent_factory=dream_module.DreamAgent,
+        adapter=SimpleNamespace(rewind=AsyncMock()),
+    )
+    service._config = SimpleNamespace(snapshot=SimpleNamespace(settings=config))
+    service._ensure_productivity_session = AsyncMock()
+    service._rewindable = lambda _: True
+    service._thread = AsyncMock(return_value={})
+    return service
+
+
+def checkpoint_file(config):
+    directory = session_directory(config.MEMORY_DIR, "productivity", "cleo", "session-dream")
+    return directory / "dream.json"
+
+
+def append_turn(store, turn, text):
+    store.append_event(session_id="session-dream", space="productivity", project="cleo",
+                       event_id=turn, event_type="user_message", actor="user", content=text)
+    store.refresh_compact("session-dream")
+
+
+def test_background_extraction_is_drained_before_rewind_and_keeps_committed_memory(
+    tmp_path, monkeypatch,
+):
+    config, store = setup(tmp_path, monkeypatch, "committed evidence")
+    monkeypatch.setattr(dream_module, "BLOCK_BUDGET", 1200)
+
+    async def initial_extract(self, prompt):
+        return extracted(prompt, subject="Preserve this durable preference.")
+
+    monkeypatch.setattr(dream_module.DreamAgent, "_extract", initial_extract)
+    invoke(dream_module.DreamAgent())
+    committed = load_checkpoint(checkpoint_file(config))
+    append_turn(store, "removed", "unpublished removed preference " * 2000)
+    service = background_service(config, store)
+
+    async def scenario():
+        extracting = asyncio.Event()
+        calls = 0
+
+        async def extract(self, prompt):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                extracting.set()
+                await asyncio.Event().wait()
+            return extracted(prompt, subject="Unpublished removed preference.")
+
+        monkeypatch.setattr(dream_module.DreamAgent, "_extract", extract)
+        await service.run_background_memory_review()
+        await extracting.wait()
+        assert load_checkpoint(checkpoint_file(config))["pending"]["results"]
+        await service.rewind_thread(thread_id="session-dream", item_id="removed")
+        assert service._background_memory._task.cancelled()
+        checkpoint = load_checkpoint(checkpoint_file(config))
+        assert checkpoint["pending"] is None
+        assert checkpoint["committed_hash"] == committed["committed_hash"]
+        assert checkpoint["committed_seq"] == committed["committed_seq"]
+        assert "removed" not in json.dumps(active_events(store.read_events("session-dream")))
+        assert get_session_source("productivity", "cleo", "session-dream")["status"] == "pending"
+        assert (await dream_module.DreamAgent().invoke(
+            "session-dream", "cleo", "productivity",
+        ))["status"] == "complete"
+        assert calls == 2
+
+    asyncio.run(asyncio.wait_for(scenario(), 10))
+    memory = MemoryRepository(config.MEMORY_DIR).read("productivity", "cleo")
+    assert "Preserve this durable preference." in memory
+    assert "Unpublished removed preference." not in memory
+
+
+def test_persisted_checkpoint_followed_by_rewind_is_regenerated_on_restart(tmp_path, monkeypatch):
+    config, store = setup(tmp_path, monkeypatch, "removed old evidence " * 2000)
+    monkeypatch.setattr(dream_module, "BLOCK_BUDGET", 1200)
+    calls = []
+
+    async def interrupted(self, prompt):
+        calls.append(prompt)
+        if len(calls) == 2:
+            raise RuntimeError("offline")
+        return extracted(prompt, subject="Stale unpublished preference.")
+
+    monkeypatch.setattr(dream_module.DreamAgent, "_extract", interrupted)
+    with pytest.raises(RuntimeError, match="offline"):
+        invoke(dream_module.DreamAgent())
+    assert load_checkpoint(checkpoint_file(config))["pending"]["results"]
+    target = next(e["id"] for e in store.read_events("session-dream")
+                  if e["type"] == "user_message")
+    # Simulate a durable rewind followed by process death before checkpoint cleanup.
+    store.append_event(session_id="session-dream", space="productivity", project="cleo",
+                       event_type="rewind", actor="user", data={"turn_id": target})
+    append_turn(store, "replacement", "replacement active evidence")
+    prompts = []
+
+    async def resumed(self, prompt):
+        prompts.append(prompt)
+        return extracted(prompt, subject="Replacement preference.")
+
+    monkeypatch.setattr(dream_module.DreamAgent, "_extract", resumed)
+    assert invoke(dream_module.DreamAgent())["status"] == "complete"
+    assert len(prompts) == 1
+    evidence = prompts[0].split("Evidence records:\n", 1)[1]
+    assert "replacement active evidence" in evidence and "removed old evidence" not in evidence
+    memory = MemoryRepository(config.MEMORY_DIR).read("productivity", "cleo")
+    assert "Replacement preference." in memory and "Stale unpublished preference." not in memory
+
+
+def test_rewind_waits_for_publication_and_preserves_its_durable_memory(tmp_path, monkeypatch):
+    import threading
+
+    config, store = setup(tmp_path, monkeypatch)
+    target = next(e["id"] for e in store.read_events("session-dream")
+                  if e["type"] == "user_message")
+    entered, release = threading.Event(), threading.Event()
+    original = MemoryRepository.publish
+
+    async def extract(self, prompt):
+        return extracted(prompt)
+
+    def publish(self, *args, **kwargs):
+        entered.set()
+        assert release.wait(10)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(dream_module.DreamAgent, "_extract", extract)
+    monkeypatch.setattr(MemoryRepository, "publish", publish)
+    service = background_service(config, store)
+
+    async def scenario():
+        await service.run_background_memory_review()
+        operation = None
+        try:
+            assert await asyncio.to_thread(entered.wait, 10)
+            draining = asyncio.Event()
+            cancel = service._background_memory.request_cancel
+
+            def request_cancel():
+                task = cancel()
+                draining.set()
+                return task
+
+            monkeypatch.setattr(service._background_memory, "request_cancel", request_cancel)
+            operation = asyncio.create_task(service.rewind_thread(
+                thread_id="session-dream", item_id=target,
+            ))
+            await draining.wait()
+            assert not operation.done()
+            assert not any(e["type"] == "rewind" for e in store.read_events("session-dream"))
+            assert service._memory_operations == 1
+            assert (await service.run_background_memory_review())["running"]
+        finally:
+            release.set()
+            if operation is not None:
+                await operation
+        assert load_checkpoint(checkpoint_file(config))["pending"] is None
+
+    asyncio.run(asyncio.wait_for(scenario(), 10))
+    assert "Prefer concise answers." in MemoryRepository(config.MEMORY_DIR).read(
+        "productivity", "cleo",
+    )
+    assert not any(e["type"] == "user_message"
+                   for e in active_events(store.read_events("session-dream")))
+
+
+def test_failed_provider_rewind_keeps_local_events_and_checkpoint(tmp_path, monkeypatch):
+    config, store = setup(tmp_path, monkeypatch, "pending evidence " * 2000)
+    monkeypatch.setattr(dream_module, "BLOCK_BUDGET", 1200)
+    calls = 0
+
+    async def extract(self, prompt):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("offline")
+        return extracted(prompt)
+
+    monkeypatch.setattr(dream_module.DreamAgent, "_extract", extract)
+    with pytest.raises(RuntimeError, match="offline"):
+        invoke(dream_module.DreamAgent())
+    target = next(e["id"] for e in store.read_events("session-dream")
+                  if e["type"] == "user_message")
+    before_events = store.read_events("session-dream")
+    before_checkpoint = checkpoint_file(config).read_bytes()
+    before_source = get_session_source("productivity", "cleo", "session-dream")
+    before_memory = MemoryRepository(config.MEMORY_DIR).read("productivity", "cleo")
+    service = background_service(config, store)
+    service._adapter_instance.rewind.side_effect = RuntimeError("provider refused rewind")
+    with pytest.raises(RuntimeError, match="provider refused rewind"):
+        asyncio.run(service.rewind_thread(thread_id="session-dream", item_id=target))
+    assert store.read_events("session-dream") == before_events
+    assert checkpoint_file(config).read_bytes() == before_checkpoint
+    assert get_session_source("productivity", "cleo", "session-dream") == before_source
+    assert MemoryRepository(config.MEMORY_DIR).read("productivity", "cleo") == before_memory
+    assert service._memory_operations == 0
+
+
+def test_restart_recovers_abandoned_running_source_and_reuses_checkpoint(tmp_path, monkeypatch):
+    config, store = setup(tmp_path, monkeypatch, "checkpointed evidence " * 2000)
+    monkeypatch.setattr(dream_module, "BLOCK_BUDGET", 1200)
+    calls = []
+
+    async def extract(self, prompt):
+        calls.append(prompt)
+        if len(calls) == 2:
+            raise RuntimeError("interrupted process")
+        return extracted(prompt)
+
+    monkeypatch.setattr(dream_module.DreamAgent, "_extract", extract)
+    with pytest.raises(RuntimeError):
+        invoke(dream_module.DreamAgent())
+    source = get_session_source("productivity", "cleo", "session-dream")
+    mark_consolidation_started("productivity", "cleo", "session-dream", source["source_hash"])
+    service = background_service(config, SessionStore(config.MEMORY_DIR, config.SESSION_INDEX_PATH))
+
+    async def scenario():
+        assert (await service.run_background_memory_review())["running"]
+        await service._background_memory._task
+        assert get_session_source("productivity", "cleo", "session-dream")["status"] == "complete"
+
+    asyncio.run(asyncio.wait_for(scenario(), 10))
+    assert calls.count(calls[0]) == 1
+
+
+def test_recovery_waits_for_live_project_worker_and_cancellation_does_not_reset_it(
+    tmp_path, monkeypatch,
+):
+    from contextlib import asynccontextmanager
+
+    config, store = setup(tmp_path, monkeypatch)
+    source = get_session_source("productivity", "cleo", "session-dream")
+    mark_consolidation_started("productivity", "cleo", "session-dream", source["source_hash"])
+    source = get_session_source("productivity", "cleo", "session-dream")
+    service = background_service(config, store)
+
+    async def scenario():
+        waiting = asyncio.Event()
+
+        @asynccontextmanager
+        async def observed_lock(directory):
+            waiting.set()
+            async with project_lock(directory):
+                yield
+
+        monkeypatch.setattr(dream_module, "project_lock", observed_lock)
+        monkeypatch.setattr(dream_module.DreamAgent, "_extract", AsyncMock())
+        async with project_lock(project_directory(config.MEMORY_DIR, "productivity", "cleo")):
+            assert (await service.run_background_memory_review())["running"]
+            await waiting.wait()
+            assert get_session_source("productivity", "cleo", "session-dream") == source
+            await service.cancel_background_memory_review()
+            assert get_session_source("productivity", "cleo", "session-dream") == source
+            assert not checkpoint_file(config).exists()
+            dream_module.DreamAgent._extract.assert_not_awaited()
+
+    asyncio.run(asyncio.wait_for(scenario(), 10))
+
+
+def test_rewind_before_committed_cursor_drops_later_uncommitted_turns(tmp_path, monkeypatch):
+    config, store = setup(tmp_path, monkeypatch, "committed preference evidence")
+    prompts = []
+
+    async def extract(self, prompt):
+        prompts.append(prompt)
+        return extracted(prompt)
+
+    monkeypatch.setattr(dream_module.DreamAgent, "_extract", extract)
+    invoke(dream_module.DreamAgent())
+    committed = load_checkpoint(checkpoint_file(config))
+    append_turn(store, "later", "removed uncommitted evidence")
+    target = next(e["id"] for e in store.read_events("session-dream")
+                  if e["type"] == "user_message")
+    store.append_event(session_id="session-dream", space="productivity", project="cleo",
+                       event_type="rewind", actor="user", data={"turn_id": target})
+    append_turn(store, "replacement", "new active evidence")
+    assert invoke(dream_module.DreamAgent())["status"] == "complete"
+    evidence = prompts[-1].split("Evidence records:\n", 1)[1]
+    assert "removed uncommitted evidence" not in evidence
+    assert "committed preference evidence" not in evidence
+    assert "new active evidence" in evidence
+    checkpoint = load_checkpoint(checkpoint_file(config))
+    assert checkpoint["committed_seq"] > committed["committed_seq"]
+    assert "Prefer concise answers." in MemoryRepository(config.MEMORY_DIR).read(
+        "productivity", "cleo",
+    )
+
+
+def test_later_rewind_marker_blocks_publication_of_old_prefix(tmp_path, monkeypatch):
+    config, store = setup(tmp_path, monkeypatch)
+    target = next(e["id"] for e in store.read_events("session-dream")
+                  if e["type"] == "user_message")
+    calls = 0
+
+    async def extract(self, prompt):
+        nonlocal calls
+        calls += 1
+        store.append_event(session_id="session-dream", space="productivity", project="cleo",
+                           event_type="rewind", actor="user", data={"turn_id": target})
+        return extracted(prompt)
+
+    monkeypatch.setattr(dream_module.DreamAgent, "_extract", extract)
+    with pytest.raises(ValueError, match="source changed before publication"):
+        invoke(dream_module.DreamAgent())
+    assert memories() == []
+    resumed = AsyncMock(return_value=Extraction())
+    monkeypatch.setattr(dream_module.DreamAgent, "_extract", resumed)
+    assert invoke(dream_module.DreamAgent())["status"] == "complete"
+    assert calls == 1
+    for call in resumed.await_args_list:
+        assert "Remember this decision" not in call.args[0].split("Evidence records:\n", 1)[1]
+    assert load_checkpoint(checkpoint_file(config))["pending"] is None
+    assert memories() == []
+
+
+def test_repeated_cancel_during_local_rewind_drains_write_and_keeps_project_lock(
+    tmp_path, monkeypatch,
+):
+    import threading
+
+    config, store = setup(tmp_path, monkeypatch)
+    target = next(e["id"] for e in store.read_events("session-dream")
+                  if e["type"] == "user_message")
+    service = background_service(config, store)
+    entered, release, completed = (threading.Event() for _ in range(3))
+    original = service._record_rewind
+
+    def delayed(*args):
+        entered.set()
+        assert release.wait(10)
+        original(*args)
+        completed.set()
+
+    monkeypatch.setattr(service, "_record_rewind", delayed)
+
+    async def scenario():
+        operation = asyncio.create_task(service.rewind_thread(
+            thread_id="session-dream", item_id=target,
+        ))
+        try:
+            assert await asyncio.to_thread(entered.wait, 10)
+            for _ in range(2):
+                operation.cancel()
+                await asyncio.sleep(0)
+                assert not operation.done()
+            assert service._memory_operations == 1
+            assert not (await service.run_background_memory_review())["running"]
+            assert not completed.is_set()
+        finally:
+            release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await operation
+        assert completed.is_set() and service._memory_operations == 0
+        async with project_lock(project_directory(config.MEMORY_DIR, "productivity", "cleo")):
+            assert any(e["type"] == "rewind" for e in store.read_events("session-dream"))
+            source = get_session_source("productivity", "cleo", "session-dream")
+            assert source["status"] == "pending"
+
+    asyncio.run(asyncio.wait_for(scenario(), 10))
