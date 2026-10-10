@@ -69,6 +69,18 @@ def legacy_home(cleo_home: CleoHome, fake_llm: FakeLLM) -> CleoHome:
             target.write_text(text, encoding="utf-8", newline="\n")
         else:
             shutil.copyfile(source, target)
+    # The frozen Windows index must point at this restored home on the current OS.
+    with closing(sqlite3.connect(home.memory / "sessions.sqlite3")) as connection:
+        for session_id, space, project in connection.execute(
+            "SELECT id, space, project FROM sessions"
+        ).fetchall():
+            manifest = (
+                home.memory / space / "projects" / project / "sessions" / session_id
+                / "manifest.json"
+            )
+            connection.execute("UPDATE sessions SET manifest_path = ? WHERE id = ?",
+                               (str(manifest), session_id))
+        connection.commit()
     return home
 
 

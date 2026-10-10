@@ -38,7 +38,7 @@ Online packages use manifest schema 2 and evolution protocol 3. New clients prep
 
 ## Run and build from source
 
-For macOS/Linux desktop development, install Python 3.12+, Node.js 24+, and Git:
+For macOS/Linux desktop development, install Python 3.12, Node.js 24+, and Git:
 
 ```sh
 python3 -m venv .venv

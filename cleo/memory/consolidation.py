@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from cleo.memory.dream_projection import Block, canonical
 from cleo.memory.markdown import Edit
+from cleo.sessions.rewind import REWIND_EVENT
 
 
 class Conflict(BaseModel):
@@ -58,11 +59,16 @@ def save_checkpoint(path: Path, checkpoint: dict) -> None:
 async def finish_write(function, *args, **kwargs):
     """Do not release the publisher lock while a cancelled worker still writes."""
     task = asyncio.create_task(asyncio.to_thread(function, *args, **kwargs))
-    try:
-        return await asyncio.shield(task)
-    except asyncio.CancelledError:
-        await task
-        raise
+    cancelled = False
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            cancelled = True
+    result = task.result()
+    if cancelled:
+        raise asyncio.CancelledError
+    return result
 
 
 @asynccontextmanager
@@ -114,4 +120,20 @@ def load_checkpoint(path: Path) -> dict:
                 "summary": "", "pending": None}
     if checkpoint.get("version") != 2:
         raise ValueError("unsupported DreamAgent checkpoint version")
+    return checkpoint
+
+
+def invalidate_rewound_pending(path: Path, events: list[dict]) -> dict:
+    """Discard unpublished work after a rewind; committed memory/progress stays intact.
+
+    Call under the project lock, after the rewind is durable. Checking the raw log
+    also recovers a crash between appending the marker and clearing the checkpoint.
+    Ordinary appends keep the frozen snapshot and its completed extraction results.
+    """
+    checkpoint = load_checkpoint(path)
+    pending = checkpoint.get("pending")
+    if pending and any(event["seq"] > pending["to_seq"] and event["type"] == REWIND_EVENT
+                       for event in events):
+        checkpoint.update(pending=None, summary="")
+        save_checkpoint(path, checkpoint)
     return checkpoint

@@ -72,9 +72,10 @@ from cleo.integrations.git import (
     undo_git_checkpoint,
 )
 from cleo.memory.compaction import load_events
-from cleo.memory.dream_source import read_dream_source, validate_dream_state
+from cleo.memory.consolidation import finish_write, invalidate_rewound_pending, project_lock
+from cleo.memory.dream_source import read_dream_source, register_dream_source, validate_dream_state
 from cleo.memory.overview import build_memory_overview
-from cleo.memory.paths import MEMORY_SPACES, memory_state_path
+from cleo.memory.paths import MEMORY_SPACES, memory_state_path, project_directory, session_directory
 from cleo.memory.state import (
     get_session_source,
     list_session_sources,
@@ -673,7 +674,7 @@ class DesktopService:
             for source in list_session_sources(
                 space, path=memory_state_path(self.settings.MEMORY_DIR, space),
             ):
-                if source["status"] != "pending":
+                if source["status"] not in {"pending", "running"}:
                     continue
                 try:
                     manifest = self.store.load_manifest(source["session_id"])
@@ -706,8 +707,13 @@ class DesktopService:
             )
         except asyncio.CancelledError:
             current = get_session_source(space, project, session_id, path=state_path)
+            # A task cancelled while waiting for the project lock does not own a
+            # live worker's running state. DreamAgent records its own cancellation.
+            cancelled = str((current or {}).get("last_error") or "").startswith(
+                "Consolidation cancelled;",
+            )
             if (current and current["source_hash"] == source["source_hash"]
-                    and current["status"] in {"running", "failed"}):
+                    and current["status"] == "failed" and cancelled):
                 mark_consolidation_pending(
                     space, project, session_id, source["source_hash"], path=state_path,
                 )
@@ -1266,6 +1272,15 @@ class DesktopService:
         Input: Thread and the edited message's timeline ID. Output: Refreshed thread. The raw
         log keeps the removed turns behind a rewind marker; file changes are not reverted.
         """
+        # Drain before taking the project lock: the worker needs that lock to exit.
+        async with self._memory_operation():
+            manifest = self.store.load_manifest(thread_id)
+            async with project_lock(project_directory(
+                self.settings.MEMORY_DIR, manifest["space"], manifest["project"],
+            )):
+                return await self._rewind_thread(thread_id=thread_id, item_id=item_id)
+
+    async def _rewind_thread(self, *, thread_id: str, item_id: str) -> dict[str, Any]:
         if self._runs.unfinished(thread_id) is not None:
             raise RuntimeError("请等待当前运行结束后再编辑消息。")
         manifest = self.store.load_manifest(thread_id)
@@ -1292,12 +1307,21 @@ class DesktopService:
         else:
             # The next turn rebuilds the agent from the log without the rewound messages.
             self._chat.forget(thread_id)
-        await asyncio.to_thread(
-            self.store.append_event, space=manifest["space"], project=manifest["project"],
-            session_id=thread_id, event_type=REWIND_EVENT, actor="user",
-            data={"turn_id": item_id},
-        )
+        await finish_write(self._record_rewind, manifest, item_id)
         return await self._thread(self.store.load_manifest(thread_id))
+
+    def _record_rewind(self, manifest: dict[str, Any], item_id: str) -> None:
+        space, project, thread_id = manifest["space"], manifest["project"], manifest["id"]
+        self.store.append_event(
+            space=space, project=project, session_id=thread_id,
+            event_type=REWIND_EVENT, actor="user", data={"turn_id": item_id},
+        )
+        events = self.store.read_events(thread_id)
+        invalidate_rewound_pending(
+            session_directory(self.settings.MEMORY_DIR, space, project, thread_id) / "dream.json",
+            events,
+        )
+        register_dream_source(self.store, space, project, thread_id, events)
 
     def _workspace_root(self, manifest: dict[str, Any]) -> str:
         cwd = manifest.get("cwd") or str(self.settings.active_directory_profile.root_path)
