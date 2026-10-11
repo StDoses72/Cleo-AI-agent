@@ -6,6 +6,7 @@ import { billingLabel, isAccount, modelLabel, profileLabel, profileModels, provi
 import { ConnectionDetails, type ConnectionStatus } from "./ConnectionDetails";
 import { ConnectionWizard } from "./ConnectionWizard";
 import { ModelPicker, type ModelChoice } from "./ModelPicker";
+import { BackgroundMemorySettingsPanel } from "./BackgroundMemorySettingsPanel";
 import "./model-settings.css";
 
 export type ModelsPage = "current" | "add" | "dream";
@@ -89,6 +90,7 @@ export function ModelSettingsPanel({ page, settings, busy, activeProfileId, onAp
       ] as const).map(([mode, label, description, Icon]) => <button key={mode} role="radio" aria-checked={draft.mode === mode} className={draft.mode === mode ? "selected" : ""} disabled={busy} onClick={() => setDraft({ ...draft, mode })}><i className="ms-radio" /><span><strong>{label}{mode === "follow" && <em>默认</em>}</strong><small>{description}</small></span><Icon /></button>)}</div>
       {draft.mode === "fixed" && <div className="ms-dream-preview"><div className="ms-section-label">记忆整理模型</div><Summary profile={fixedDream} model={draft.model}><button className="ms-secondary" disabled={busy} onClick={() => setPicker({ target: "dream" })}>选择模型</button></Summary></div>}
       {changed && <div className="ms-save-footer"><span>有未保存的更改</span><button className="ms-quiet" disabled={busy} onClick={() => setDraft(dreamChoice(settings))}>取消更改</button><button className="ms-primary" disabled={busy} onClick={() => void saveDream()}>{busy ? "处理中…" : "保存设置"}</button></div>}
+      <BackgroundMemorySettingsPanel active={active} busy={busy} dreamEnabled={settings.dreamEnabled !== false} />
     </>}
     {error && !picker && <p className="ms-error" role="alert">{error}</p>}
     {notice && <div className="ms-notice" role="status"><Check />{notice}</div>}

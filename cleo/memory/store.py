@@ -193,6 +193,9 @@ def ensure_memory_database(space: str, path: Path | None = None) -> Path:
             if "batch_seq" not in columns:
                 conn.execute("ALTER TABLE conversation_chunks ADD COLUMN "
                              "batch_seq INTEGER NOT NULL DEFAULT 0")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_conversation_fragments "
+                     "ON conversation_chunks(space,project,session_id,projection_kind,"
+                     "chunk_index,batch_seq)")
     return database_path
 
 
@@ -853,19 +856,23 @@ def replace_conversation_chunks(
 def conversation_projection_matches(
     space: str, project: str, session_id: str, source_hash: str, *, path: Path,
 ) -> bool:
-    """Check the rebuildable index head without reading historical chunk bodies."""
+    """Check the head and fragment metadata in one snapshot, without historical bodies."""
     if not path.exists():
         return False
-    with closing(_connect(space, path)) as conn:
+    with closing(_connect(space, path)) as conn, conn:
+        conn.execute("BEGIN")
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(conversation_chunks)")}
-        if "projection_kind" not in columns:
+        if not {"projection_kind", "batch_seq"} <= columns:
             return False
         row = conn.execute(
-            "SELECT source_hash FROM conversation_chunks "
+            "SELECT source_hash,content,batch_seq FROM conversation_chunks "
             "WHERE space=? AND project=? AND session_id=? AND chunk_index=-1 "
             "AND projection_kind='head'", (space, project, session_id),
         ).fetchone()
-        return row is not None and row["source_hash"] == source_hash
+        return (row is not None and row["source_hash"] == source_hash
+                and _conversation_fragments_match(
+                    conn, (space, project, session_id), row["content"], row["batch_seq"],
+                ))
 
 
 def _projection_counts(content: str) -> tuple[int, int]:
@@ -876,6 +883,36 @@ def _projection_counts(content: str) -> tuple[int, int]:
     ):
         raise ValueError("Invalid conversation chunk head")
     return counts["normal_count"], counts["fallback_count"]
+
+
+def _conversation_fragments_match(
+    conn: sqlite3.Connection, scope: tuple[str, str, str], content: str, batch_seq: int,
+) -> bool:
+    """Validate fragment coverage using the covering index, never loading chunk bodies."""
+    try:
+        normal_count, fallback_count = _projection_counts(content)
+    except (TypeError, ValueError):
+        return False
+    fragments = conn.execute(
+        """SELECT projection_kind,COUNT(*) AS count, MIN(chunk_index) AS first_index,
+                  MAX(chunk_index) AS last_index, MAX(batch_seq) AS last_batch,
+                  SUM(CASE WHEN batch_seq < 0 OR
+                      (projection_kind='fallback' AND chunk_index != -2-batch_seq)
+                      THEN 1 ELSE 0 END) AS invalid
+        FROM conversation_chunks WHERE space=? AND project=? AND session_id=?
+        GROUP BY projection_kind""", scope,
+    ).fetchall()
+    counts = {item["projection_kind"]: item for item in fragments}
+    normals, fallbacks, head = counts.get("normal"), counts.get("fallback"), counts.get("head")
+    return (
+        not (set(counts) - {"normal", "fallback", "head"})
+        and head is not None and head["count"] == 1 and head["first_index"] == -1
+        and (normals["count"] if normals else 0) == normal_count
+        and (not normal_count or (normals["first_index"] == 0
+                                  and normals["last_index"] == normal_count - 1))
+        and (fallbacks["count"] if fallbacks else 0) == fallback_count
+        and all(item["last_batch"] <= batch_seq and not item["invalid"] for item in fragments)
+    )
 
 
 def _join_chunks(first: dict[str, Any], second: dict[str, Any]) -> dict[str, Any]:
@@ -927,6 +964,8 @@ def update_conversation_chunks(
                          "WHERE space=? AND project=? AND session_id=?", scope)
             normal_count = fallback_count = 0
         elif head is not None:
+            if not _conversation_fragments_match(conn, scope, head["content"], head["batch_seq"]):
+                raise ValueError("Conversation chunk prior fragments are incomplete")
             normal_count, fallback_count = _projection_counts(head["content"])
             if head["source_hash"] == source_hash and head["batch_seq"] == batch_key:
                 return normal_count or int(fallback_count > 0)
@@ -1021,21 +1060,9 @@ def _logical_conversation_rows(space: str, project: str, path: Path | None) -> l
                     normal_count, fallback_count = _projection_counts(row["head_content"])
                 except (TypeError, ValueError):
                     continue
-                fragments = conn.execute(
-                    """SELECT projection_kind,COUNT(*) AS count, MIN(chunk_index) AS first_index,
-                              MAX(chunk_index) AS last_index, MAX(batch_seq) AS last_batch
-                    FROM conversation_chunks WHERE space=? AND project=? AND session_id=?
-                    GROUP BY projection_kind""", (space, project, session_id),
-                ).fetchall()
-                counts = {item["projection_kind"]: item for item in fragments}
-                normals = counts.get("normal")
-                fallbacks_count = counts["fallback"]["count"] if "fallback" in counts else 0
-                if (counts.get("legacy") is not None
-                    or (normals["count"] if normals else 0) != normal_count
-                    or (normal_count and (normals["first_index"] != 0
-                                          or normals["last_index"] != normal_count - 1))
-                    or fallbacks_count != fallback_count
-                    or any(item["last_batch"] > row["head_batch"] for item in fragments)):
+                if not _conversation_fragments_match(
+                    conn, (space, project, session_id), row["head_content"], row["head_batch"],
+                ):
                     continue
                 fallbacks = conn.execute(
                     "SELECT * FROM conversation_chunks "

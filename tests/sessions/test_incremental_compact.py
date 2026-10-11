@@ -6,6 +6,7 @@ import json
 import sqlite3
 from contextlib import closing, contextmanager
 from pathlib import Path
+from threading import Event, Thread
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
@@ -13,7 +14,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from cleo.memory import compact_file
 from cleo.memory.compaction import compact_events, load_validated_compact
 from cleo.memory.paths import compact_path, events_path, memory_database_path
-from cleo.memory.store import search_conversation_history
+from cleo.memory.store import _conversation_chunks, search_conversation_history
 from cleo.sessions import compact as projection_module
 from cleo.sessions import messages as messages_module
 from cleo.sessions.store import SessionStore
@@ -332,3 +333,81 @@ def test_missing_derived_index_rebuilds_during_the_same_refresh(tmp_path, monkey
     assert {item["chunk_index"] for item in results} == {0, 1}
     if missing == "last_normal":
         assert any("needle continued" in item["content"] for item in results)
+
+
+@pytest.mark.parametrize("missing", ["older_normal", "older_fallback"])
+@pytest.mark.parametrize("new_turn", [False, True])
+def test_warm_refresh_recovers_missing_historical_fragments(tmp_path, missing, new_turn):
+    store = setup_store(tmp_path, [event("u1", "user_message"), event("a1"),
+                                   event("f1", "provider_event")])
+    store.append_events(**SCOPE, events=[event("u2", "user_message"), event("a2"),
+                                       event("f2", "provider_event")])
+    store.refresh_compact(SCOPE["session_id"], materialize=False)
+    database = memory_database_path(store.memory_root, SCOPE["space"])
+    with closing(sqlite3.connect(database)) as conn, conn:
+        if missing == "older_normal":
+            conn.execute("DELETE FROM conversation_chunks "
+                         "WHERE projection_kind='normal' AND chunk_index=0")
+        else:
+            conn.execute("DELETE FROM conversation_chunks WHERE projection_kind='fallback' "
+                         "AND batch_seq=(SELECT MIN(batch_seq) FROM conversation_chunks "
+                         "WHERE projection_kind='fallback')")
+    if new_turn:
+        store.append_events(**SCOPE, events=[event("u3", "user_message"), event("a3")])
+    raw, _ = paths(store)
+    source_before = raw.read_bytes()
+    store.refresh_compact(SCOPE["session_id"], materialize=False)
+    assert raw.read_bytes() == source_before
+    payload = assert_oracle(store)
+    actual = search_conversation_history(
+        space=SCOPE["space"], project=SCOPE["project"], query="needle",
+        path=database, memory_root=store.memory_root, top_k=20,
+    )
+    expected = _conversation_chunks(payload)
+    assert len(actual) == len(expected)
+    by_index = {item["chunk_index"]: item for item in actual}
+    for chunk in expected:
+        for key in ("event_ids", "content", "created_at", "ended_at"):
+            assert by_index[chunk["index"]][key] == chunk[key]
+
+
+def test_concurrent_append_invalidates_rebuild_and_retry_keeps_latest_source(tmp_path, monkeypatch):
+    store = setup_store(tmp_path, [event("u1", "user_message"), event("a1")])
+    writer = SessionStore(store.memory_root)
+    store._compact.forget(SCOPE["session_id"])
+    preparing, appended = Event(), Event()
+    project = projection_module.project_compact_events
+    errors = []
+
+    def append():
+        try:
+            assert preparing.wait(10)
+            writer.append_events(**SCOPE, events=[event("u2", "user_message"), event("a2")])
+        except BaseException as error:
+            errors.append(error)
+        finally:
+            appended.set()
+
+    def concurrent_project(events, **kwargs):
+        preparing.set()
+        assert appended.wait(10)
+        return project(events, **kwargs)
+
+    thread = Thread(target=append)
+    with monkeypatch.context() as patch:
+        patch.setattr(projection_module, "project_compact_events", concurrent_project)
+        thread.start()
+        try:
+            with pytest.raises(ValueError, match="source changed while preparing"):
+                store.refresh_compact(SCOPE["session_id"], materialize=False)
+        finally:
+            thread.join(10)
+    assert not thread.is_alive() and not errors
+    raw, _ = paths(store)
+    source_before = raw.read_bytes()
+    store.refresh_compact(SCOPE["session_id"], materialize=False)
+    assert raw.read_bytes() == source_before
+    assert {"u1", "a1", "u2", "a2"} <= {item["id"] for item in assert_oracle(store)["events"]}
+    assert store.load_manifest(SCOPE["session_id"])["last_event_seq"] == (
+        store.read_events(SCOPE["session_id"])[-1]["seq"]
+    )

@@ -271,8 +271,11 @@ def test_activity_hooks_ignore_injected_events_and_release_on_exit(monkeypatch):
         lambda handle: released.append(handle) or 1
     )
     monkeypatch.setattr(
-        ctypes, "WinDLL", lambda name, **_kwargs: kernel if name == "kernel32" else api
+        ctypes, "WinDLL", lambda name, **_kwargs: kernel if name == "kernel32" else api,
+        raising=False,
     )
+    monkeypatch.setattr(ctypes, "WINFUNCTYPE", getattr(ctypes, "WINFUNCTYPE", ctypes.CFUNCTYPE),
+                        raising=False)
 
     class KeyboardEvent(ctypes.Structure):
         _fields_ = [

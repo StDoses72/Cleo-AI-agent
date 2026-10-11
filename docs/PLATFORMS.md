@@ -21,7 +21,7 @@ Linux ARM64、Windows ARM64 原生包不在本次范围内。Linux GUI 需要桌
 
 ## macOS 与 Linux 源码运行
 
-准备 Python 3.12+、Node.js 24+、Git，运行：
+准备 Python 3.12、Node.js 24+、Git，运行：
 
 ```sh
 python3 -m venv .venv

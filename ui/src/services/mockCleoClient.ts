@@ -8,6 +8,8 @@ import type {
   CreateThreadOptions,
   ModelProfileInput,
   ModelSettings,
+  BackgroundMemorySettings,
+  BackgroundMemoryState,
   ModelConnectionInput,
   ModelConnectionProbe,
   SubscriptionRuntime,
@@ -38,6 +40,7 @@ const delay = (milliseconds: number) =>
 const clone = <T,>(value: T): T => structuredClone(value);
 
 export class MockCleoClient implements CleoClient {
+  private backgroundMemorySettings: BackgroundMemorySettings = { enabled: false, intervalMinutes: 30, pendingThreshold: 5 };
   private harnessSync: HarnessSyncStatus[] = [
     { harness: "claude", localPath: "C:\\Users\\demo\\.claude", localExists: true, cleoPath: "C:\\Users\\demo\\AppData\\Local\\Cleo\\data\\claude",
       items: [
@@ -612,6 +615,16 @@ export class MockCleoClient implements CleoClient {
 
   async getModelSettings(): Promise<ModelSettings> {
     return clone(this.modelSettings);
+  }
+
+  async getBackgroundMemoryState(): Promise<BackgroundMemoryState> {
+    return { ...this.backgroundMemorySettings, dreamEnabled: this.modelSettings.dreamEnabled !== false,
+      running: false, status: "idle", lastError: null, pendingCount: snapshot.memoryOverview.dream_agent.pending_count, lastRunAt: null };
+  }
+
+  async saveBackgroundMemorySettings(settings: BackgroundMemorySettings): Promise<BackgroundMemoryState> {
+    this.backgroundMemorySettings = { ...settings };
+    return this.getBackgroundMemoryState();
   }
 
   async getConfigStatus(): Promise<ConfigStatus | null> {

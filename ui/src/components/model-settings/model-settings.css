@@ -105,6 +105,11 @@
 .ms-dream-preview .ms-summary strong { font-size: var(--font-size-control); }
 .ms-save-footer { display:flex; align-items:center; gap:10px; padding:20px 0 0; margin-top:28px; border-top:1px solid var(--ms-line); }
 .ms-save-footer > span { margin-right:auto; color:var(--muted); font-size: var(--font-size-caption); }
+.ms-background-memory { margin-top:32px; padding-top:8px; border-top:1px solid var(--ms-line); }
+.ms-background-memory > .ms-muted { margin-top:12px; }
+.ms-background-triggers { display:flex; align-items:center; gap:14px; margin-top:20px; }
+.ms-background-triggers .ms-field { flex:1; min-width:0; }
+.ms-background-memory .ms-form-actions { flex-wrap:wrap; }
 .model-dialog { color:var(--text); background:var(--surface-raised); border:1px solid var(--border-strong); padding:0; width:min(530px,calc(100vw - 32px)); max-height:calc(100vh - 36px); border-radius:13px; box-shadow:var(--shadow); overflow:auto; }
 .model-dialog[open] { animation:ms-dialog-in .18s ease-out; }
 .model-dialog::backdrop { background:#05090cb3; backdrop-filter:blur(4px); }

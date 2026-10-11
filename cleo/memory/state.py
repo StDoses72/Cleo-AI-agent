@@ -461,9 +461,10 @@ def mark_consolidated(
 
 def mark_consolidation_pending(
     space: str, project: str, session_id: str, source_hash: str,
+    *, path: Path | None = None,
 ) -> None:
     """Leave a newer revision queued after finishing an older fixed snapshot."""
-    path = _state_path(space, None)
+    path = _state_path(space, path)
     with _STATE_LOCK:
         state = _load_unlocked(path)
         entry = state["sources"].get(_source_id(space, project, session_id))

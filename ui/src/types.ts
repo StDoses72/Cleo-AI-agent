@@ -384,6 +384,21 @@ export interface ModelSettings {
   activeDreamAgent: string;
 }
 
+export interface BackgroundMemorySettings {
+  enabled: boolean;
+  intervalMinutes: number;
+  pendingThreshold: number;
+}
+
+export interface BackgroundMemoryState extends BackgroundMemorySettings {
+  dreamEnabled: boolean;
+  running: boolean;
+  status: "idle" | "running" | "failed" | "cancelled";
+  lastError: string | null;
+  pendingCount: number;
+  lastRunAt: string | null;
+}
+
 export interface AgentInstructions {
   path: string;
   content: string;
@@ -620,6 +635,8 @@ export interface CleoClient {
   syncHarnessItems(harness: string, direction: "import" | "export", items: string[], settings?: boolean): Promise<HarnessSyncResult>;
   saveModelProfile(profile: ModelProfileInput): Promise<ModelSettings>;
   saveDreamSettings(selection: string, model?: string): Promise<ModelSettings>;
+  getBackgroundMemoryState(): Promise<BackgroundMemoryState>;
+  saveBackgroundMemorySettings(settings: BackgroundMemorySettings): Promise<BackgroundMemoryState>;
   checkModelConnection(connection: Partial<ModelConnectionInput> & { profileId?: string }): Promise<ModelConnectionProbe>;
   createModelConnection(connection: ModelConnectionInput): Promise<ModelSettings>;
   selectChatModel(profileId: string, model: string): Promise<ModelSettings>;

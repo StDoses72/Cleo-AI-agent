@@ -7,7 +7,7 @@ import { checkContribution, submitContribution, inspectPullRequest, contribution
 import { runEvolutionTurn } from "./evolution-editing.mjs";
 import { rmSync } from "node:fs";
 import {
-  app, BrowserWindow, Menu, WebContentsView, clipboard, dialog, globalShortcut, ipcMain, nativeImage, protocol, screen, session, shell,
+  app, BrowserWindow, Menu, Tray, WebContentsView, clipboard, dialog, globalShortcut, ipcMain, nativeImage, protocol, screen, session, shell,
 } from "electron";
 import { trustedPreviewSender } from "./computer-preview.mjs";
 import { ComputerUse, registerComputerSchemes } from "./computer/index.mjs";
@@ -30,6 +30,8 @@ import { ReleaseJobs } from "./release-jobs.mjs";
 import { GithubReleaseDriver } from "./release-driver.mjs";
 import { runReleaseRepair } from "./release-repair.mjs";
 import { createQuitBarrier } from "./shutdown.mjs";
+import { createTrayController } from "./tray.mjs";
+import { createBackgroundMemoryScheduler } from "./background-memory.mjs";
 import { DependencyUpdater } from "./dependencies.mjs";
 import {
   acquireSingleInstance, installationPaths, interceptUpdateStartup,
@@ -49,12 +51,16 @@ if (process.argv.includes("--cleo-evolution-monitor")) {
 const here = dirname(fileURLToPath(import.meta.url));
 const alphaChannel = configureReleaseChannel(app);
 registerComputerSchemes(protocol);
+let desktopTray;
 if (app.isPackaged) {
   if (process.platform === "win32") {
     const paths = installationPaths(app.getPath("temp"), process.execPath);
     if (await interceptUpdateStartup(paths)) app.exit(0);
   }
-  if (!acquireSingleInstance(app, () => BrowserWindow.getAllWindows())) app.exit(0);
+  if (!acquireSingleInstance(app, () => {
+    const window = desktopTray?.isQuitting() ? null : desktopTray?.getWindow();
+    return window ? [window] : [];
+  })) app.exit(0);
 }
 const backend = new BackendBridge({ app, here });
 const computer = new ComputerUse({
@@ -306,6 +312,8 @@ const allowedMethods = new Set([
   "sync_harness_items",
   "save_model_profile",
   "save_dream_settings",
+  "get_background_memory_state",
+  "save_background_memory_settings",
   "check_model_connection",
   "create_model_connection",
   "select_chat_model",
@@ -323,11 +331,26 @@ const allowedMethods = new Set([
   "reset_workspace",
 ]);
 
-function createWindow() {
-  const iconPath = app.isPackaged
-    ? join(process.resourcesPath, "cleo.png")
-    : join(here, "../public/cleo.png");
+const iconPath = app.isPackaged
+  ? join(process.resourcesPath, "cleo.png")
+  : join(here, "../public/cleo.png");
+desktopTray = createTrayController({
+  app, Menu, Tray, nativeImage, iconPath, createWindow,
+  canOpen: () => !programUpdates.closed,
+  onOpenMemory: window => {
+    const send = () => { if (!window.isDestroyed()) window.webContents.send("cleo:open-memory"); };
+    if (window.webContents.isLoading()) window.webContents.once("did-finish-load", send);
+    else send();
+  },
+});
+const backgroundMemory = createBackgroundMemoryScheduler({
+  backend,
+  canRun: () => !programUpdates.closed && !programUpdates.busy && !setup.busy
+    && evolution.phase === "idle" && !editingThread && backend.pending.size === 0,
+  onError: error => console.error("Background memory:", error.message),
+});
 
+function createWindow() {
   const window = new BrowserWindow({
     width: 1440,
     height: 920,
@@ -360,9 +383,13 @@ function createWindow() {
   window.webContents.on("will-navigate", (event, url) => {
     if (url !== window.webContents.getURL()) event.preventDefault();
   });
-  window.once("ready-to-show", () => window.show());
+  desktopTray.attachWindow(window);
+  window.once("ready-to-show", () => {
+    if (!desktopTray.isQuitting()) window.show();
+  });
   computer.attachWindow(window);
   void window.loadFile(join(here, "../dist/index.html"));
+  return window;
 }
 
 app.setAppUserModelId(alphaChannel ? "ai.cleo.desktop.alpha" : "ai.cleo.desktop");
@@ -621,7 +648,9 @@ app.whenReady().then(async () => {
   setup.python = process.env.CLEO_PYTHON || backend.runtimePaths().python || (process.platform === "win32" ? "python" : "python3");
   void releaseJobs.resume().catch(error => console.error("Release resume:", error.message));
   const hasInstallResult = await updater.restoreInstallationResult();
+  desktopTray.start();
   createWindow();
+  backgroundMemory.start();
   void evolution.store.read().then(state => companion.load(state.threadId)).catch(error => console.error("Companion history:", error.message));
   const monitorTimer = setInterval(() => {
     void publishMonitor().catch(error => console.error("Evolution monitor:", error.message));
@@ -641,17 +670,10 @@ app.whenReady().then(async () => {
   if (!hasInstallResult && !process.env.CLEO_EVOLUTION_TRANSACTION) setTimeout(() => void refresh(), 1500);
   const refreshTimer = setInterval(() => void refresh(), 6 * 60 * 60 * 1000);
   app.once("will-quit", () => clearInterval(refreshTimer));
-  app.on("activate", () => {
-    if (!programUpdates.closed && BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
-});
-
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
 });
 
 app.on("before-quit", createQuitBarrier({
-  close: [() => setup.close(), () => computer.close(), () => releaseJobs.close(), () => programUpdates.close(), () => backend.shutdown(), () => dependencies.close(),
+  close: [() => backgroundMemory.stop(), () => setup.close(), () => computer.close(), () => releaseJobs.close(), () => programUpdates.close(), () => backend.shutdown(), () => dependencies.close(),
     () => releaseDownloads.close(), () => evolution.close(), () => evolution.cancelLogin()],
   onError: error => console.error("Cleo shutdown failed:", error),
   quit: () => app.quit(),

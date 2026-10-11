@@ -192,3 +192,36 @@ def test_scope_filter_and_delete_remove_fragments_with_their_head(tmp_path, monk
     assert {row["project"] for row in rows(path)} == {"other"}
     assert store.search_conversation_history(space="productivity", project="p", query="needle",
                                              path=path, memory_root=tmp_path) == []
+
+
+@pytest.mark.parametrize("missing", ["normal", "fallback"])
+@pytest.mark.parametrize("replay", [False, True])
+def test_index_commit_rejects_partial_prior_generation_without_writing(tmp_path, missing, replay):
+    path = tmp_path / "memory.sqlite3"
+    store.update_conversation_chunks(payload(), normal=[event("u", "human")],
+                                    fallback=[event("f", "error")], batch_key=2,
+                                    expected_prior_hash=None, reset=True, path=path)
+    with sqlite3.connect(path) as conn:
+        conn.execute("DELETE FROM conversation_chunks WHERE projection_kind=?", (missing,))
+    before = rows(path)
+    assert not store.conversation_projection_matches("productivity", "p", "s", "hash-1",
+                                                     path=path)
+    with pytest.raises(ValueError, match="fragments are incomplete"):
+        store.update_conversation_chunks(payload() if replay else payload("hash-2"),
+                                        normal=[] if replay else [event("new", "human")],
+                                        fallback=[], batch_key=2 if replay else 3,
+                                        expected_prior_hash="hash-1", path=path)
+    assert rows(path) == before
+
+
+def test_fragment_check_uses_covering_index_without_historical_bodies(tmp_path):
+    path = tmp_path / "memory.sqlite3"
+    store.update_conversation_chunks(payload(), normal=[event("u", "human")], fallback=[],
+                                    batch_key=1, expected_prior_hash=None, reset=True, path=path)
+    with sqlite3.connect(path) as conn:
+        plan = conn.execute("EXPLAIN QUERY PLAN SELECT projection_kind,COUNT(*),"
+                            "MIN(chunk_index),MAX(chunk_index),MAX(batch_seq) "
+                            "FROM conversation_chunks WHERE space=? AND project=? AND session_id=? "
+                            "GROUP BY projection_kind", ("productivity", "p", "s")).fetchall()
+    assert any("COVERING INDEX idx_conversation_fragments" in row[3] for row in plan)
+    assert store.conversation_projection_matches("productivity", "p", "s", "hash-1", path=path)
