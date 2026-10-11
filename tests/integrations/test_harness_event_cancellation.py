@@ -140,7 +140,7 @@ def test_cancel_drains_accepted_acp_notifications_before_status_and_next_turn(tm
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize("cancel_during", ["event_drain", "context_checkpoint"])
+@pytest.mark.parametrize("cancel_during", ["event_drain", "compact_publish"])
 def test_cancel_after_acp_return_preserves_terminal_and_handoff_commit(tmp_path, cancel_during):
     async def scenario():
         service, store, connection = acp_service(tmp_path)
@@ -155,14 +155,22 @@ def test_cancel_after_acp_return_preserves_terminal_and_handoff_commit(tmp_path,
             started, release = block_first_write(store)
         else:
             started, release = threading.Event(), threading.Event()
-            prepare = service._context.prepare
+            published = threading.Event()
+            refresh = store.refresh_compact
+            event_loop_thread = threading.get_ident()
 
-            def prepare_context(*args):
+            def publish_compact(*args, **kwargs):
+                assert kwargs == {"materialize": False}
+                assert threading.get_ident() != event_loop_thread
                 started.set()
-                assert release.wait(10), "test did not release context checkpoint"
-                return prepare(*args)
+                assert release.wait(10), "test did not release compact publication"
+                result = refresh(*args, **kwargs)
+                published.set()
+                return result
 
-            service._context.prepare = prepare_context
+            # The old context-checkpoint case now covers the threaded compact publisher:
+            # removing eager snapshots must not remove the finalizer cancellation barrier.
+            store.refresh_compact = publish_compact
         task = asyncio.create_task(service.prompt(session.id, "go", lambda event: None))
         try:
             await asyncio.wait_for(connection.returned.wait(), 5)
@@ -172,8 +180,14 @@ def test_cancel_after_acp_return_preserves_terminal_and_handoff_commit(tmp_path,
             asyncio.get_running_loop().call_soon(cancelled.set)
             await cancelled.wait()
             task.cancel()
+            await asyncio.sleep(0)
+            assert not task.done(), "cancellation must still wait for the accepted writer"
+            if cancel_during == "compact_publish":
+                assert not published.is_set()
             release.set()
             result = await asyncio.wait_for(task, 5)
+            if cancel_during == "compact_publish":
+                assert published.is_set()
             assert result.status == "completed"
             assert not connection.cancelled.is_set()
             assert all(notification.done() for notification in connection.notifications)

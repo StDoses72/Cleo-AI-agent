@@ -69,7 +69,9 @@ class SessionRepository(Protocol):
         refresh_compact: bool = True,
     ) -> dict[str, Any]: ...
 
-    def refresh_compact(self, session_id: str) -> dict[str, Any]: ...
+    def refresh_compact(
+        self, session_id: str, *, materialize: bool = True,
+    ) -> dict[str, Any] | None: ...
 
     def find_by_native_session(
         self, *, provider: str, native_session_id: str, space: str = "productivity"

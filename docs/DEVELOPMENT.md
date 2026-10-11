@@ -70,6 +70,34 @@ UI 样式入口是 `ui/src/index.css`，它按顺序 `@import` `ui/src/styles/` 
 
 ## 配置开发环境
 
+### 增量 compact 缓存
+
+每轮保存只缓冲新增记录，`compact.json` 使用 v3 的 `batches` 数组和尾部元数据；
+追加时保留旧批次字节，不创建 compact 增量表或 delta 文件。读取入口还原为原有 v2
+逻辑记录顺序，也能读取旧 v2 文件。哈希仍是完整原始事件数组的 canonical JSON SHA-256，
+活跃进程缓存计算状态；冷启动、编辑回退、跨批工具关联和外部修改会校验或重建。
+搜索索引沿用现有 SQLite 表，普通记录和补充片段分开保存，按需组成原有逻辑 chunk。
+
+内存仅保留有数量上限的会话游标、统计、哈希及 ID 缓存，本轮正文在提交后释放。
+compact 原地追加由跨进程文件锁保护；写入中断时可重建派生缓存，原始日志不会被截断。
+正常回合不再预先生成无人读取的 context 快照；实际 harness 交接仍生成并严格验证快照。
+
+旧版本不认识 v3 缓存。降级前先关闭 Cleo，使用新版 Python 环境和相同 `CLEO_HOME`
+导出所需会话（或遍历全部会话）；这一步会生成完整 v2 文件及旧式搜索索引，仅在显式降级时执行：
+
+```python
+from cleo.config.settings import settings
+from cleo.sessions.store import SessionStore
+
+store = SessionStore(settings.MEMORY_DIR, settings.SESSION_INDEX_PATH)
+for session in store.list_sessions():
+    store.export_legacy_compact(session["id"])
+```
+
+导出不修改原始对话；新版下次更新该会话时可以重新建立 v3 缓存。相关回归位于
+`tests/sessions/test_incremental_compact.py`、`test_compact_downgrade.py` 和
+`tests/memory/test_compact_file.py`、`test_incremental_chunks.py`。
+
 从模板创建私有配置：
 
 ```powershell
