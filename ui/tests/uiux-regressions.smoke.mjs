@@ -232,7 +232,12 @@ try {
     await page.keyboard.press("Escape");
     await page.keyboard.press("Control+k");
     await search.fill("打开");
+    const selected = page.getByRole("option", { selected: true });
+    await selected.filter({ hasText: "打开 Cleo 对话" }).waitFor();
     await search.press("ArrowDown");
+    await selected.filter({ hasText: "打开开发任务" }).waitFor();
+    await search.press("ArrowUp");
+    await selected.filter({ hasText: "打开 Cleo 对话" }).waitFor();
     await search.press("Enter");
     await page.getByRole("heading", { name: "对话", exact: true }).waitFor();
   });
