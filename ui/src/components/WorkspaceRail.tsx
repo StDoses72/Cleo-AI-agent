@@ -21,9 +21,7 @@ export function WorkspaceRail({
 }: WorkspaceRailProps) {
   return (
     <nav className="workspace-rail" aria-label="工作区">
-      <div className="brand-mark" aria-label="Cleo">
-        <span>C</span>
-      </div>
+      <div className="brand-mark" role="img" aria-label="Cleo" />
       <div className="rail-spaces">
         {spaces.map(({ id, label, icon: Icon }) => (
           <button

@@ -331,9 +331,11 @@ const allowedMethods = new Set([
   "reset_workspace",
 ]);
 
+// Share the platform icon between the window and tray.
+const iconFile = process.platform === "win32" ? "cleo.ico" : "cleo.png";
 const iconPath = app.isPackaged
-  ? join(process.resourcesPath, "cleo.png")
-  : join(here, "../public/cleo.png");
+  ? join(process.resourcesPath, iconFile)
+  : join(here, "../public", iconFile);
 desktopTray = createTrayController({
   app, Menu, Tray, nativeImage, iconPath, createWindow,
   canOpen: () => !programUpdates.closed,

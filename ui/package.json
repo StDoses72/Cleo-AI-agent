@@ -41,7 +41,8 @@
     "smoke:real": "npm run build && node scripts/smoke-real.mjs",
     "smoke:packaged": "node scripts/smoke-packaged.mjs",
     "smoke:package-launch": "node scripts/smoke-package-launch.mjs",
-    "check:release": "npm run build"
+    "check:release": "npm run build",
+    "icons": "node scripts/build-icons.mjs"
   },
   "dependencies": {
     "katex": "latest",
@@ -61,6 +62,7 @@
     "@vitejs/plugin-react": "latest",
     "electron": "latest",
     "playwright": "latest",
+    "resedit": "latest",
     "typescript": "latest",
     "vite": "latest"
   }

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Cleo app icon: an ink plate with a linen "C" and a cursor dot in its opening. -->
+  <defs>
+    <linearGradient id="plate" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3b3b41"/>
+      <stop offset="1" stop-color="#222225"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.10"/>
+      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="1024" height="1024" rx="232" fill="url(#plate)"/>
+  <rect x="0" y="0" width="1024" height="1024" rx="232" fill="url(#sheen)"/>
+  <rect x="5" y="5" width="1014" height="1014" rx="228" fill="none" stroke="#ffffff" stroke-opacity="0.14" stroke-width="10"/>
+  <path d="M 701.5 322.5 A 268 268 0 1 0 701.5 701.5" fill="none" stroke="#f4f4f2" stroke-width="120" stroke-linecap="round"/>
+  <circle cx="712" cy="512" r="68" fill="#f4f4f2"/>
+</svg>
