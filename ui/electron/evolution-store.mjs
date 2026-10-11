@@ -152,6 +152,92 @@ export class EvolutionStore {
     return id;
   }
 
+  /** Keep three complete activation snapshots, including any still referenced by recovery.
+   * Call after journaling a backup or a healthy startup, while mutations are serialized.
+   * Partial deletions remain journaled for a later retry; unrelated data is never collected.
+   */
+  async pruneBackups() {
+    const state = await this.read();
+    const filesystem = process.versions.electron
+      ? createRequire(import.meta.url)("original-fs").promises : fs;
+    const parent = ownedPath(this.root, "backups");
+    let rootPath, parentPath, folders;
+    try {
+      const info = await filesystem.lstat(parent);
+      if (!info.isDirectory() || info.isSymbolicLink()) return [];
+      rootPath = await filesystem.realpath(this.root);
+      parentPath = await filesystem.realpath(parent);
+      if (parentPath !== join(rootPath, "backups")) return [];
+      folders = await filesystem.readdir(parent);
+    } catch (error) {
+      if (["ENOENT", "ENOTDIR", "EACCES", "EPERM"].includes(error.code)) return [];
+      throw error;
+    }
+    const managed = /^apply-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const protectedIds = new Set([state.transaction?.backup,
+      state.transaction?.id && `apply-${state.transaction.id}`, state.lastApplication?.backup]);
+    const livePaths = await Promise.all([this.dataHome, ...DATA_ENTRIES.map(name => join(this.dataHome, name))]
+      .map(async path => {
+        try { return await filesystem.realpath(path); }
+        catch (error) {
+          if (error.code === "ENOENT") return resolve(path);
+          if (["EACCES", "EPERM", "EBUSY"].includes(error.code)) return null;
+          throw error;
+        }
+      }));
+    if (livePaths.includes(null)) return [];
+    const backupPath = async id => {
+      const directory = ownedPath(parent, id);
+      if (await filesystem.realpath(parent) !== parentPath) throw new Error("Linked backups directory.");
+      try {
+        const info = await filesystem.lstat(directory);
+        if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("Invalid backup directory.");
+        if (await filesystem.realpath(directory) !== join(parentPath, id)) throw new Error("Linked backup directory.");
+      } catch (error) { if (error.code !== "ENOENT") throw error; }
+      const actual = join(parentPath, id);
+      // macOS can place evolution/backups inside dataHome, but never inside a live data entry.
+      const relations = [relative(actual, livePaths[0]), ...livePaths.slice(1)
+        .flatMap(path => [relative(actual, path), relative(path, actual)])];
+      if (relations.some(path => !path.startsWith("..") && !isAbsolute(path))) {
+        throw new Error("Refusing to clean a user-data path.");
+      }
+      return directory;
+    };
+    const complete = [];
+    for (const id of folders.filter(id => managed.test(id))) {
+      try {
+        const directory = await backupPath(id);
+        const marker = join(directory, "snapshot.json");
+        const info = await filesystem.lstat(marker);
+        if (!info.isFile() || info.isSymbolicLink()) continue;
+        const snapshot = await readJson(marker);
+        if (typeof snapshot?.createdAt !== "string" || !Number.isFinite(Date.parse(snapshot.createdAt))
+            || !Array.isArray(snapshot.entries) || !snapshot.entries.every(name => DATA_ENTRIES.includes(name))) continue;
+        const entries = await Promise.all(snapshot.entries.map(name => filesystem.lstat(join(directory, name))));
+        if (entries.some(entry => entry.isSymbolicLink())) continue;
+        complete.push({ id, createdAt: Date.parse(snapshot.createdAt) });
+      } catch { /* An unreadable, incomplete or unsafe snapshot is not a cleanup candidate. */ }
+    }
+    complete.sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id));
+    const keep = new Set(complete.filter(item => protectedIds.has(item.id)).map(item => item.id));
+    for (const { id } of complete) if (keep.size < 3) keep.add(id);
+    const previous = Array.isArray(state.backupCleanupPending) ? state.backupCleanupPending : [];
+    const pending = [...new Set([...previous, ...complete.map(item => item.id)])]
+      .filter(id => typeof id === "string" && managed.test(id) && !keep.has(id) && !protectedIds.has(id));
+    if (!pending.length && !previous.length) return [];
+    // Persist intent before removing anything: a partial rm may remove snapshot.json first.
+    await this.update({ backupCleanupPending: pending });
+    const removed = [], failures = [];
+    for (const id of pending) {
+      try {
+        await filesystem.rm(await backupPath(id), { recursive: true, force: true });
+        removed.push(id);
+      } catch { failures.push(id); }
+    }
+    await this.update({ backupCleanupPending: failures });
+    return removed;
+  }
+
   /** Purpose: Mark the start of editable work without losing the selected starting version.
    * Input: none. Output: persisted iteration base, retained across repeated apply/restart cycles.
    */
@@ -288,6 +374,7 @@ export class EvolutionStore {
       tx.backup = backup;
       await this.update({ transaction: tx });
     }
+    await this.pruneBackups();
     // Ignore legacy restore requests: switching programs must never replace current user data.
     delete tx.restore;
     const patch = {};
@@ -340,5 +427,6 @@ export class EvolutionStore {
     } else if (state.transaction) return;
     if (state.pendingImport?.to === state.active) await this.update({ pendingImport: null });
     await this.pruneBuilds();
+    await this.pruneBackups();
   }
 }
