@@ -173,9 +173,9 @@
 :root .composer:focus-within { border-color: var(--border-strong); box-shadow: var(--shadow-lg); }
 :root .composer.running { border-color: var(--border); }
 :root .composer textarea { font-size: 15px; }
-:root .text-control { height: 32px; padding: 0 12px; background: var(--surface); font-weight: 500; }
+:root .text-control { --control-height: 32px; --control-pad-x: 12px; background-color: var(--surface); font-weight: 500; }
 :root .text-control:hover,
-:root .composer-tools > button:hover { background: var(--surface-active); }
+:root .composer-tools > button:hover { background-color: var(--surface-active); }
 :root .send-button { width: 38px; height: 38px; box-shadow: none; }
 :root .send-button:hover:not(:disabled) { filter: none; box-shadow: var(--shadow); }
 :root .send-button.stop { color: var(--highlight-ink); background: var(--highlight); }

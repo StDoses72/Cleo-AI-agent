@@ -368,6 +368,7 @@
 
 .composer-tools {
   min-width: 0;
+  flex-wrap: wrap;
   gap: 3px;
 }
 
@@ -383,7 +384,7 @@
 .composer-tools > button:hover,
 .text-control:hover {
   color: var(--text);
-  background: var(--surface-hover);
+  background-color: var(--surface-hover);
 }
 
 .composer-tools > button:disabled {
@@ -397,11 +398,13 @@
 }
 
 .text-control {
+  --control-height: 30px;
+  --control-pad-x: 10px;
   display: flex;
-  height: 30px;
+  height: var(--control-height);
   align-items: center;
   gap: 5px;
-  padding: 0 10px;
+  padding: 0 var(--control-pad-x);
   border-radius: var(--radius-pill);
   color: var(--muted);
   font-size: var(--font-size-caption);
@@ -413,14 +416,34 @@
   opacity: 0.58;
 }
 
+/* Native select arrows sit flush against the right edge, so draw our own chevron.
+ * Its size, inset and the text gap are all ratios of the control height, so every
+ * pill select keeps the same proportions across sizes and zoom levels. */
 select.text-control {
+  --select-arrow-size: calc(var(--control-height) * 0.44);
+  --select-arrow-inset: calc(var(--control-height) * 0.375);
+  --select-arrow-gap: calc(var(--control-height) * 0.19);
+  --select-arrow-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237d7d82' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  padding-right: calc(var(--select-arrow-inset) + var(--select-arrow-size) + var(--select-arrow-gap));
   border: 0;
-  background: transparent;
+  appearance: none;
+  background-color: transparent;
+  background-image: var(--select-arrow-image);
+  background-repeat: no-repeat;
+  background-position: right var(--select-arrow-inset) center;
+  background-size: var(--select-arrow-size) var(--select-arrow-size);
   field-sizing: content;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:root[data-theme="dark"] select.text-control {
+  --select-arrow-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2398989e' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 }
 
 select.text-control:hover {
-  background: var(--surface-hover);
+  background-color: var(--surface-hover);
 }
 
 .composer-send-actions {
