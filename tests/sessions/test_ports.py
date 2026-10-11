@@ -58,7 +58,7 @@ def test_harness_turn_uses_injected_ports(tmp_path, service_type) -> None:
     assert batches[1].kwargs["manifest_updates"] == {
         "status": "completed", "native_session_id": "native-session", "error": None,
     }
-    repository.refresh_compact.assert_called_once_with(result.session_id)
+    repository.refresh_compact.assert_called_once_with(result.session_id, materialize=False)
     assert list(tmp_path.iterdir()) == []
 
 
