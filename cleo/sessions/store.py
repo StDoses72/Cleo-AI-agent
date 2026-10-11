@@ -35,6 +35,7 @@ from cleo.sessions.files import fsync_directory, fsync_file
 from cleo.sessions.index import SqliteSessionIndex
 from cleo.sessions.manifests import MANIFEST_SCHEMA_VERSION, JsonManifestRepository
 from cleo.sessions.messages import history_from_events, message_events, title_from_events
+from cleo.sessions.rewind import REWIND_EVENT
 
 __all__ = ["EVENT_SCHEMA_VERSION", "MANIFEST_SCHEMA_VERSION", "SessionStore"]
 
@@ -218,7 +219,7 @@ class SessionStore:
         Input: The session scope (must match the manifest), event requests (``type`` and
         ``actor`` required) and optional manifest fields to merge. Output: The events
         actually written; the first user message also titles an untitled session. Handoff
-        and steer events are fsynced; handoffs also fsync the manifest.
+        and steer/rewind events are fsynced; handoffs also fsync the manifest.
         """
         space = validate_space(space)
         project = validate_name(project, "project")
@@ -242,7 +243,9 @@ class SessionStore:
             if appended:
                 self._events.append(
                     session_id, output_path, appended, known_ids=known_ids, last_seq=next_seq,
-                    fsync=durable_handoff or any(e["type"] == "steer" for e in appended),
+                    fsync=durable_handoff or any(
+                        e["type"] in {"steer", REWIND_EVENT} for e in appended
+                    ),
                 )
                 if not manifest.get("title"):
                     title = title_from_events(appended)

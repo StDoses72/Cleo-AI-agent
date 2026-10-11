@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from cleo.config.settings import AgentProfile
+from cleo.config.settings import ActiveProfiles, AgentProfile
 
 _PROFILE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 
@@ -121,6 +121,43 @@ def save_dream_settings(
         active["dream_model"] = selected_model
     _atomic_write(path, raw)
     return read_model_settings(path)
+
+
+def read_background_memory_settings(config_path: Path | str) -> dict[str, Any]:
+    active = ActiveProfiles.model_validate(_read_config(config_path).get("active_profiles", {}))
+    return background_memory_settings(active)
+
+
+def background_memory_settings(active: ActiveProfiles) -> dict[str, Any]:
+    return {
+        "enabled": active.background_memory_enabled,
+        "dreamEnabled": active.dream_enabled,
+        "intervalMinutes": active.background_memory_interval_minutes,
+        "pendingThreshold": active.background_memory_pending_threshold,
+    }
+
+
+def save_background_memory_settings(
+    config_path: Path | str, enabled: bool,
+    interval_minutes: int | None = None, pending_threshold: int | None = None,
+) -> dict[str, Any]:
+    if type(enabled) is not bool:
+        raise ValueError("后台整理开关必须为布尔值。")
+    for value, maximum, label in (
+        (interval_minutes, 1440, "整理间隔"), (pending_threshold, 1000, "待整理数量"),
+    ):
+        if value is not None and (type(value) is not int or not 1 <= value <= maximum):
+            raise ValueError(f"{label}必须为 1–{maximum} 的整数。")
+    path = Path(config_path).expanduser().resolve()
+    raw = _read_config(path)
+    active = raw.setdefault("active_profiles", {})
+    active["background_memory_enabled"] = enabled
+    if interval_minutes is not None:
+        active["background_memory_interval_minutes"] = interval_minutes
+    if pending_threshold is not None:
+        active["background_memory_pending_threshold"] = pending_threshold
+    _atomic_write(path, raw)
+    return read_background_memory_settings(path)
 
 
 def create_model_connection(config_path: Path | str, connection: dict[str, Any]) -> dict[str, Any]:

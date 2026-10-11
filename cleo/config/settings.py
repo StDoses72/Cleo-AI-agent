@@ -580,6 +580,9 @@ class ActiveProfiles(BaseModel):
     dream_agent: str | None = None
     dream_model: str | None = Field(default=None, min_length=1)
     dream_enabled: bool = True
+    background_memory_enabled: bool = False
+    background_memory_interval_minutes: int = Field(default=30, ge=1, le=1440)
+    background_memory_pending_threshold: int = Field(default=5, ge=1, le=1000)
     directory: str = "default"
     shell: str = "default"
     tools: str = "default"

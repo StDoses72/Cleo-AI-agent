@@ -78,6 +78,8 @@ jobs:
       # Release gates cover distribution only. Feature suites remain opt-in for development.
       - name: Install launch-check tooling
         run: npm ci --prefix ui --ignore-scripts --no-audit --no-fund
+      - name: Check tray and background scheduler lifecycle
+        run: node --test ui/tests/tray.test.mjs ui/tests/background-memory.test.mjs ui/tests/shutdown.test.mjs
       - name: Linux desktop libraries
         if: runner.os == 'Linux'
         run: |
@@ -108,6 +110,9 @@ jobs:
       - name: Verify packaged application starts
         if: runner.os != 'Linux'
         run: npm --prefix ui run smoke:package-launch
+      - name: Verify Windows tray lifecycle and background settings
+        if: runner.os == 'Windows'
+        run: node ui/tests/desktop-close.smoke.mjs
       - name: Verify Linux package installs and starts
         if: runner.os == 'Linux'
         run: |

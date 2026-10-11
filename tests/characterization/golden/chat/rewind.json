@@ -57,7 +57,7 @@
       "from_seq": 1,
       "relative_path": "non_productivity/projects/general/sessions/<thread:1>/events.jsonl",
       "source_content_hash": "sha256:<hex:3>",
-      "source_version": 3,
+      "source_version": 4,
       "to_seq": 9
     },
     "space": "non_productivity"

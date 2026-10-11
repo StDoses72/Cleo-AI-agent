@@ -14,6 +14,7 @@ from functools import lru_cache
 from typing import Any
 
 from cleo.memory.compaction import _redact_text
+from cleo.sessions.rewind import active_events
 
 PROJECTION_VERSION = 1
 BLOCK_BUDGET = 20_000
@@ -97,7 +98,7 @@ def project_events(events: list[dict]) -> list[Record]:
     """Keep chronological records; merge only adjacent deltas with reliable IDs."""
     records: list[Record] = []
     previous_seq = 0
-    for event in events:
+    for event in active_events(events):
         seq = int(event["seq"])
         if seq <= previous_seq:
             raise ValueError("session event sequence is not strictly increasing")

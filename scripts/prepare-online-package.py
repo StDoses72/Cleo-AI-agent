@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -46,9 +47,17 @@ def prepare(resources: Path, source: Path, target: str) -> None:
                      if item["implementation"] == "cpython" and item["variant"] == "default"
                      and item["arch"] == arch and item["version"] == python_version)
     uv_version = subprocess.check_output(["uv", "--version"], text=True).split()[1]
-    metadata_url = (f"https://raw.githubusercontent.com/astral-sh/uv/{uv_version}/"
-                    "crates/uv-python/download-metadata.json")
-    with urllib.request.urlopen(metadata_url, timeout=60) as response:
+    metadata_root = f"https://raw.githubusercontent.com/astral-sh/uv/{uv_version}/crates/"
+    try:
+        response = urllib.request.urlopen(metadata_root + "uv-python/download-metadata.json",
+                                         timeout=60)
+    except urllib.error.HTTPError as error:
+        if error.code != 404:
+            raise
+        response = urllib.request.urlopen(
+            metadata_root + "uv-python-managed/download-metadata.json", timeout=60,
+        )
+    with response:
         python_metadata = json.load(response)[candidate["key"].replace("-macos-", "-darwin-")]
     python_url, python_sha = python_metadata["url"], python_metadata["sha256"]
     node_platform = {"win32": "win", "darwin": "darwin", "linux": "linux"}[sys.platform]

@@ -369,3 +369,27 @@ def test_session_store_deletes_thread_and_derived_conversation_state(tmp_path: P
     ) == []
     with pytest.raises(FileNotFoundError):
         store.load_manifest(session_id)
+
+
+def test_rewind_marker_is_fsynced_before_returning(tmp_path, monkeypatch):
+    import os
+
+    store = SessionStore(tmp_path / "memory")
+    store.create_session(session_id="rewind-durable", space="non_productivity", project="general",
+                         provider="cleo", owner_type="user")
+    store.append_event(session_id="rewind-durable", space="non_productivity", project="general",
+                       event_type="user_message", actor="user", event_id="turn", content="edit")
+    event_path = (tmp_path / "memory/non_productivity/projects/general"
+                  / "sessions/rewind-durable/events.jsonl")
+    synced = []
+    original = os.fsync
+
+    def fsync(fd):
+        synced.append(os.fstat(fd).st_ino)
+        original(fd)
+
+    monkeypatch.setattr(os, "fsync", fsync)
+    store.append_event(session_id="rewind-durable", space="non_productivity", project="general",
+                       event_type="rewind", actor="user", data={"turn_id": "turn"})
+    assert event_path.stat().st_ino in synced
+    assert SessionStore(tmp_path / "memory").read_events("rewind-durable")[-1]["type"] == "rewind"

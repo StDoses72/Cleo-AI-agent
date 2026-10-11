@@ -1,9 +1,21 @@
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
+const memoryListeners = new Set();
+let pendingOpenMemory = false;
+ipcRenderer.on("cleo:open-memory", () => {
+  if (!memoryListeners.size) pendingOpenMemory = true;
+  for (const listener of memoryListeners) listener();
+});
+
 contextBridge.exposeInMainWorld("cleoWindow", {
   platform: process.platform,
   setTheme: (theme) => ipcRenderer.send("cleo:window-theme", theme),
   setBadge: (count, overlay) => ipcRenderer.send("cleo:window-badge", { count, overlay }),
+  onOpenMemory: (listener) => {
+    memoryListeners.add(listener);
+    if (pendingOpenMemory) { pendingOpenMemory = false; listener(); }
+    return () => { memoryListeners.delete(listener); };
+  },
 });
 
 if (!process.argv.includes("--cleo-desktop-mock")) {

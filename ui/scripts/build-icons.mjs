@@ -2,8 +2,7 @@
  * Input: public/cleo.svg (1024×1024 artboard); an optional output directory as argv[2].
  * Output: cleo.png (1024), cleo-256.png, cleo.ico (Windows), cleo.icns (macOS) next to the SVG.
  * Run with `npm run icons` after editing the SVG; the generated files are checked in. */
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "playwright";
@@ -53,8 +52,8 @@ function icns(chunks) {
   return Buffer.concat([head, ...body]);
 }
 
-const scratch = await mkdtemp(join(tmpdir(), "cleo-icons-"));
-const browser = await chromium.launch({ headless: true });
+await mkdir(output, { recursive: true });
+const browser = await chromium.launch({ executablePath: process.env.CLEO_TEST_BROWSER, headless: true });
 try {
   const page = await browser.newPage({ deviceScaleFactor: 1 });
   const sizes = [16, 24, 32, 48, 64, 128, 256, 512, 1024];
@@ -71,5 +70,4 @@ try {
   console.log(`Icons written to ${pathToFileURL(output)}: cleo.png, cleo-256.png, cleo.ico, cleo.icns`);
 } finally {
   await browser.close();
-  await rm(scratch, { recursive: true, force: true });
 }

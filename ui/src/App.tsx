@@ -228,6 +228,14 @@ export function App() {
     toastTimerRef.current = window.setTimeout(() => setToast(null), 2600);
   };
 
+  useEffect(() => window.cleoWindow?.onOpenMemory?.(() => {
+    setEvolutionOpen(false);
+    setSettingsOpen(false);
+    setCommandOpen(false);
+    setMemoryView("all");
+    workspace.selectSpace("memory");
+  }), [workspace.selectSpace]);
+
   // Finished replies the user has not opened yet show as a count on the app icon.
   useEffect(() => {
     const count = workspace.unreadThreadIds.length;
