@@ -36,11 +36,13 @@ The control directory is `evolution` under Electron `userData`:
 | `source` | Current editing source |
 | `source-history-*`, `source-recovery-*` | Retained earlier workspaces |
 | `tools` | Private build tools |
-| `backups` | Data copies retained before application |
+| `backups` | Up to three complete automatic data snapshots retained before application |
 | `state.json` | Version selection and switching state |
 | `protected.json` | Protected controller source checks |
 
 Normally Cleo retains the workspace base, current changes, and latest saved local version, plus a protected fallback program when distinct. Superseded programs are cleaned after successful startup or saving. Files still in use are queued for later cleanup. Data, source history, backups, and tool caches are separate from program cleanup.
+
+Automatic data backups have a separate limit of three complete snapshots. Backups referenced by the current switching transaction and the last application take priority and count toward that limit; the remaining slots retain the newest snapshots by their recorded creation time. Cleanup runs after a new backup is complete and journaled, and after successful startup, including for accumulated older backups. Copying can temporarily add another snapshot; failed deletions are recorded and retried later. Only complete, Cleo-managed `apply-UUID` snapshots under `backups` are eligible. Unrelated directories, links, and snapshots whose completeness cannot be established are left untouched, as is the current `CLEO_HOME` data.
 
 ## Startup and recovery
 
