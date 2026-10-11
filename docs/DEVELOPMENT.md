@@ -197,6 +197,8 @@ npm run package:portable
 
 该命令调用 `scripts/build-release.ps1`，在隔离临时目录中执行全新 `npm ci`，下载独立 Python 3.12 runtime，从零安装 Cleo 依赖，并组合 Electron、Python、Node 与 `agent-browser`。
 
+应用图标的源文件是 `ui/public/cleo.svg`；修改后在 `ui/` 运行 `npm run icons`，用 Playwright 按每个尺寸重新栅格化并生成提交到仓库的 `cleo.png`（1024）、`cleo-256.png`、`cleo.ico` 与 `cleo.icns`。Windows 构建把 `electron.exe` 改名为 `Cleo.exe` 后，通过 `ui/scripts/apply-windows-icon.mjs`（`resedit`，纯 JS）替换可执行文件内置的图标组和版本信息，资源管理器、任务栏和文件属性才会显示 Cleo 而不是 Electron；macOS 包直接使用提交的 `cleo.icns`，Linux deb 安装 256px PNG 和可缩放 SVG。
+
 最终产物统一生成到仓库根目录：
 
 ```text

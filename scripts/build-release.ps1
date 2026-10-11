@@ -280,6 +280,7 @@ try {
     Copy-Item -Path (Join-Path $freshUiRoot "node_modules\electron\dist\*") -Destination $appBuildPath -Recurse
     Remove-Item -LiteralPath (Join-Path $resourcesPath "default_app.asar") -ErrorAction SilentlyContinue
     Copy-Item -LiteralPath (Join-Path $freshUiRoot "public\cleo.png") -Destination (Join-Path $resourcesPath "cleo.png")
+    Copy-Item -LiteralPath (Join-Path $freshUiRoot "public\cleo.ico") -Destination (Join-Path $resourcesPath "cleo.ico")
     Copy-Item -LiteralPath $runtimePython.DirectoryName -Destination (Join-Path $resourcesPath "python") -Recurse
     Copy-Item -LiteralPath $browserRoot -Destination (Join-Path $resourcesPath "browser") -Recurse
 
@@ -305,7 +306,16 @@ try {
     if (-not (Test-Path -LiteralPath $electronExecutable)) {
         throw "Electron runtime is missing electron.exe."
     }
+    $version = (Get-Content -LiteralPath (Join-Path $uiRoot "package.json") -Raw | ConvertFrom-Json).version
     Move-Item -LiteralPath $electronExecutable -Destination (Join-Path $appBuildPath "Cleo.exe")
+    # Electron ships with its own icon and version strings; replace them so Explorer, the taskbar and
+    # file properties show Cleo instead of Electron.
+    Invoke-Checked -FilePath $node.Source -WorkingDirectory $freshUiRoot -Arguments @(
+        (Join-Path $uiRoot "scripts\apply-windows-icon.mjs"),
+        "--exe", (Join-Path $appBuildPath "Cleo.exe"),
+        "--icon", (Join-Path $freshUiRoot "public\cleo.ico"),
+        "--version", $version
+    )
 
     Invoke-Checked -FilePath $node.Source -WorkingDirectory $sourceRoot -Arguments @(
         (Join-Path $sourceRoot "scripts\bundle-evolution-source.mjs"), $resourcesPath
@@ -316,7 +326,6 @@ try {
         "--browser", (Join-Path $resourcesPath "browser"),
         "--output", (Join-Path $resourcesPath "dependencies.json")
     )
-    $version = (Get-Content -LiteralPath (Join-Path $uiRoot "package.json") -Raw | ConvertFrom-Json).version
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "installer-check.py") -Destination $resourcesPath
     Invoke-Checked -FilePath (Join-Path $resourcesPath "python\python.exe") -WorkingDirectory $scratchRoot -Arguments @(
         "-I", "-B", (Join-Path $resourcesPath "installer-check.py")

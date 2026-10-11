@@ -66,6 +66,8 @@
   --accent-strong: #333337;
   --accent-soft: rgba(69, 69, 74, 0.07);
   --accent-ink: #ffffff;
+  /* Cleo mark glyph (the "C" and cursor dot from public/cleo.svg), drawn in --accent-ink over an --accent plate. */
+  --cleo-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1024 1024'%3E%3Cpath d='M701.5 322.5A268 268 0 1 0 701.5 701.5' fill='none' stroke='%23ffffff' stroke-width='120' stroke-linecap='round'/%3E%3Ccircle cx='712' cy='512' r='68' fill='%23ffffff'/%3E%3C/svg%3E");
   --accent-gradient: linear-gradient(#45454a, #45454a);
   --accent-glow: none;
   --highlight: #d8e9b8;
@@ -107,6 +109,7 @@
   --accent-strong: #f2f2f0;
   --accent-soft: rgba(226, 226, 224, 0.08);
   --accent-ink: #1f1f22;
+  --cleo-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1024 1024'%3E%3Cpath d='M701.5 322.5A268 268 0 1 0 701.5 701.5' fill='none' stroke='%231f1f22' stroke-width='120' stroke-linecap='round'/%3E%3Ccircle cx='712' cy='512' r='68' fill='%231f1f22'/%3E%3C/svg%3E");
   --accent-gradient: linear-gradient(#e2e2e0, #e2e2e0);
   --highlight: #bfd59a;
   --highlight-ink: #24301a;
