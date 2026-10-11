@@ -3,6 +3,7 @@ import importlib.util
 import io
 import json
 import re
+import urllib.error
 from pathlib import Path
 
 import pytest
@@ -20,8 +21,11 @@ spec.loader.exec_module(builder)
     ("darwin", "macos-x64", "x86_64", "macos"),
     ("linux", "linux-x64", "x86_64", "linux"),
 ])
+@pytest.mark.parametrize("uv_version,metadata_directory", [
+    ("0.12.19", "uv-python"), ("0.12.24", "uv-python-managed"),
+])
 def test_runtime_plan_uses_upstream_hashes_and_omits_bundled_dependencies(
-    tmp_path, monkeypatch, platform, target, arch, os_name,
+    tmp_path, monkeypatch, platform, target, arch, os_name, uv_version, metadata_directory,
 ):
     resources = tmp_path / "resources"
     (resources / "python").mkdir(parents=True)
@@ -43,11 +47,14 @@ def test_runtime_plan_uses_upstream_hashes_and_omits_bundled_dependencies(
             return json.dumps([{"key": key, "implementation": "cpython", "variant": "default",
                                 "arch": arch, "version": "3.12.14"}])
         if command == ["uv", "--version"]:
-            return "uv 0.12.21"
+            return f"uv {uv_version}"
         return "3.12.14" if "-c" in command else "v24.20.0"
 
     def fetch(url, **kwargs):
         if url.endswith("download-metadata.json"):
+            assert url.startswith(f"https://raw.githubusercontent.com/astral-sh/uv/{uv_version}/")
+            if f"/crates/{metadata_directory}/" not in url:
+                raise urllib.error.HTTPError(url, 404, "Not Found", None, None)
             data = json.dumps({key.replace("-macos-", "-darwin-"): {
                 "url": python_url, "sha256": digest,
             }}).encode()

@@ -9,7 +9,7 @@
 | 方式 | 适合场景 | 前置条件 |
 | --- | --- | --- |
 | Windows 桌面版 | 日常使用、最少环境配置 | Windows x64；一个可用的模型 API |
-| Python 源码 | 开发、调试、Linux/macOS 使用 | Python 3.12+；Node.js（运行桌面端） |
+| Python 源码 | 开发、调试、Linux/macOS 使用 | Python 3.12；Node.js（运行桌面端） |
 
 ## Windows 桌面版
 

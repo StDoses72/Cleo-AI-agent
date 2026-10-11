@@ -1,4 +1,4 @@
-"""B5 — Memory review queue, DreamAgent consolidation and the shutdown hand-off.
+"""B5 — Memory review queue, DreamAgent consolidation and shutdown persistence.
 
 DreamAgent talks to the same fake OpenAI-compatible server; its replies are schema-valid
 extractions, so the real projection, validation, Markdown publication and state machine
@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import subprocess
-import time
 from typing import Any
 
 from .support.backend import Backend
@@ -103,25 +102,18 @@ def test_manual_consolidation_publishes_a_preference(
     }, replacements)
 
 
-def test_graceful_shutdown_hands_chatted_threads_to_the_dream_worker(
-    backend: Backend, cleo_home: CleoHome, fake_llm: FakeLLM, replacements: dict,
+def test_graceful_shutdown_preserves_pending_sources_without_starting_dream(
+    backend: Backend, cleo_home: CleoHome, fake_llm: FakeLLM,
 ) -> None:
-    thread = _chat_turn(backend, "Shutdown should consolidate this [[prefer]]")
+    thread = _chat_turn(backend, "Shutdown should preserve this [[prefer]]")
     events_before = len(read_jsonl(session_dir(
         cleo_home, "non_productivity", "general", thread["id"]) / "events.jsonl"))
     backend.stop()  # Electron's normal exit path: a ``shutdown`` request.
     key = f"session:non_productivity:general:{thread['id']}"
-    deadline = time.monotonic() + 90
-    state = None
-    while time.monotonic() < deadline:
-        state = (memory_state(cleo_home, "non_productivity") or {}).get("sources", {}).get(key)
-        if state and state.get("status") not in {"pending", "running"}:
-            break
-        time.sleep(0.5)
+    state = memory_state(cleo_home, "non_productivity")["sources"][key]
     events_after = read_jsonl(session_dir(
         cleo_home, "non_productivity", "general", thread["id"]) / "events.jsonl")
-    assert_golden("memory/shutdown_worker", {
-        "new_events_written_on_shutdown": [event["type"] for event in events_after[events_before:]],
-        "dream_requests": len(_dream_requests(fake_llm)),
-        "disk": _memory_disk(cleo_home),
-    }, replacements)
+    assert len(events_after) == events_before
+    assert state["status"] == "pending"
+    assert not _dream_requests(fake_llm)
+    assert _memory_disk(cleo_home)["MEMORY.md"] is None

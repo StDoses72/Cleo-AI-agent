@@ -4,7 +4,7 @@ import importlib.util
 import signal
 import socket
 import subprocess
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -131,7 +131,7 @@ def test_windows_timeout_terminates_only_owned_tree_then_waits(
     runtime.process.wait.side_effect = [subprocess.TimeoutExpired("electron", 15), 0]
     harness.close()
     args, kwargs = runtime.run.call_args
-    assert Path(args[0][0]).is_absolute()
+    assert PureWindowsPath(args[0][0]).is_absolute()
     assert args[0][1:] == ["/PID", "54321", "/T", "/F"]
     assert kwargs["timeout"] == 15
     assert kwargs["creationflags"] == 0x08000000
