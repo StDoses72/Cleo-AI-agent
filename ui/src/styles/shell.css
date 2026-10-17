@@ -170,14 +170,21 @@ html[data-platform="darwin"] .titlebar {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
-.rail-button.active::before {
+/* Selection is shown by the button surface alone; the dot means unread replies in that space. */
+.rail-button[data-unread="true"]::after {
   position: absolute;
-  left: -10px;
-  width: 3px;
-  height: 18px;
-  border-radius: 0 3px 3px 0;
+  top: 7px;
+  right: 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
   background: var(--accent);
+  box-shadow: 0 0 0 2px var(--chrome);
   content: "";
+}
+
+.rail-button.active[data-unread="true"]::after {
+  box-shadow: 0 0 0 2px var(--canvas);
 }
 
 .icon-button {

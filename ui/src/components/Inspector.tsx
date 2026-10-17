@@ -15,7 +15,7 @@ import {
   X,
 } from "lucide-react";
 import type { MemoryEntry, Project, RuntimeProfile, Thread } from "../types";
-import { accessLabel, approvalLabel, effortLabels } from "../runtime-labels";
+import { accessLabel, approvalLabel, effortLabels, projectLabel, projectPathLabel } from "../runtime-labels";
 import { Timing } from "./Timing";
 import { ComputerPanel } from "./ComputerPanel";
 import { FilesPanel, type FileReveal } from "./FilesPanel";
@@ -209,7 +209,7 @@ function ContextPanel({
       </section>
       <section className="inspector-section">
         <div className="section-kicker"><ShieldCheck size={14} /><span>工作区</span></div>
-        <button className="workspace-context-row" type="button" onClick={() => project?.path && onRevealPath(project.path)}><span className="project-glyph compact" style={{ "--project-accent": project?.accent } as CSSProperties}>{project?.name.slice(0, 1)}</span><div><strong>{project?.name}</strong><small>{project?.path}</small></div></button>
+        <button className="workspace-context-row" type="button" onClick={() => project?.path && onRevealPath(project.path)}><span className="project-glyph compact" style={{ "--project-accent": project?.accent } as CSSProperties}>{projectLabel(project).slice(0, 1)}</span><div><strong>{projectLabel(project)}</strong><small>{projectPathLabel(project)}</small></div></button>
       </section>
       <section className="inspector-section memory-context">
         <div className="section-kicker"><CircleCheck size={14} /><span>记忆预览</span><small>{relevantMemories.length}</small></div>

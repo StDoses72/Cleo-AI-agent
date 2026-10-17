@@ -43,6 +43,8 @@ export interface Project {
   dirtyFiles?: number;
   accent: string;
   removable?: boolean;
+  /** Binds no user folder (the development general project); the path is Cleo-internal. */
+  managed?: boolean;
 }
 
 export interface PlanStep {
