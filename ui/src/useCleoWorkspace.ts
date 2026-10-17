@@ -49,6 +49,8 @@ interface ComposerDraft {
 
 const emptyDraft: ComposerDraft = { prompt: "", attachments: [] };
 
+/** Backend project id for development tasks started without a chosen folder. */
+const SCRATCH_PROJECT = "productivity:scratch";
 const EVOLUTION_PROJECT = "productivity:cleo-evolution";
 
 export function useCleoWorkspace(evolutionOpen = false) {
@@ -577,26 +579,35 @@ export function useCleoWorkspace(evolutionOpen = false) {
       (candidate) => candidate.id === activeProjectId && candidate.space === space
         && candidate.id !== EVOLUTION_PROJECT,
     ) ?? snapshot?.projects.find((candidate) => candidate.space === space && candidate.id !== EVOLUTION_PROJECT);
-    if (!project) throw new Error("请先打开一个工作目录。");
+    if (!project && space === "chat") throw new Error("请先打开一个工作目录。");
+    // Development work needs no chosen folder: the backend provides a managed scratch workspace.
     const thread = await cleoClient.createThread(
       space,
-      project.id,
+      project?.id ?? SCRATCH_PROJECT,
       space === "chat"
         ? {
-            projectPath: project.path,
+            projectPath: project?.path,
             profileId: draftProfileId || runtimeCatalog?.defaultNonProductivityProfile,
           }
         : {
-            projectPath: project.path,
+            projectPath: project?.path,
             provider: draftProvider || runtimeCatalog?.defaultProductivityProvider,
             model: draftModel || undefined,
             effort: draftEffort ?? undefined,
             serviceTier: draftRuntime.supportsFastMode ? draftServiceTier : undefined,
           },
     );
-    setSnapshot((current) =>
-      current ? { ...current, threads: [thread, ...current.threads] } : current,
-    );
+    if (!project) {
+      // The scratch project only exists after its first task; list it so the thread has a home.
+      await refreshWorkspace(() => cleoClient.loadWorkspace()).catch(() => {});
+      setSnapshot((current) => current && !current.threads.some(item => item.id === thread.id)
+        ? { ...current, threads: [thread, ...current.threads] } : current);
+      if (selectionRef.current === selection) setActiveProjectId(thread.projectId);
+    } else {
+      setSnapshot((current) =>
+        current ? { ...current, threads: [thread, ...current.threads] } : current,
+      );
+    }
     if (selectionRef.current === selection) setActiveThreadId(thread.id);
     return thread;
   };

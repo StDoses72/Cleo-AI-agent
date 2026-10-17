@@ -29,7 +29,7 @@ import { ThreadSidebar } from "./components/ThreadSidebar";
 import { WorkspaceRail } from "./components/WorkspaceRail";
 import { useCleoWorkspace } from "./useCleoWorkspace";
 import { cleoClient } from "./services/cleoClient";
-import type { ConfigStatus, MemoryViewMode, Project, Thread, UpdateState } from "./types";
+import type { ConfigStatus, MemoryViewMode, Project, Thread, UpdateState, WorkspaceSpace } from "./types";
 
 export function App() {
   const evolution = useEvolution();
@@ -241,6 +241,15 @@ export function App() {
     const count = workspace.unreadThreadIds.length;
     window.cleoWindow?.setBadge?.(count, count ? renderBadge(count) : null);
   }, [workspace.unreadThreadIds]);
+  // The same unread replies mark their space on the rail; selection alone shows no dot.
+  const unreadSpaces = useMemo(() => {
+    const spaces = new Set<WorkspaceSpace | "evolution">();
+    for (const id of workspace.unreadThreadIds) {
+      const thread = workspace.snapshot?.threads.find(item => item.id === id);
+      if (thread) spaces.add(thread.projectId === "productivity:cleo-evolution" ? "evolution" : thread.space);
+    }
+    return spaces;
+  }, [workspace.unreadThreadIds, workspace.snapshot?.threads]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -419,6 +428,7 @@ export function App() {
       <DependencySetup />
       <WorkspaceRail
         activeSpace={evolutionOpen ? "evolution" : workspace.activeSpace}
+        unreadSpaces={unreadSpaces}
         onSelectSpace={(space) => {
           setEvolutionOpen(space === "evolution");
           if (space === "evolution") {

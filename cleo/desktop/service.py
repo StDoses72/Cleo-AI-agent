@@ -133,6 +133,10 @@ PRODUCTIVITY_COMMANDS = (
 )
 
 
+# Development tasks started without a chosen folder work here; it lives beside the user's data.
+SCRATCH_PROJECT = "scratch"
+
+
 def _create_default_dream_agent():
     """Import and construct DreamAgent outside the desktop event-loop thread."""
     from cleo.agents.dream import DreamAgent
@@ -428,6 +432,18 @@ class DesktopService:
             if replacement is not None:
                 self._activate(replacement)
         return await self.load_workspace()
+
+    def _scratch_workspace(self) -> str:
+        """Purpose: Provide a working directory for development tasks started without a folder.
+
+        Input: none. Output: An existing directory under the Cleo root, registered as the
+        ``scratch`` productivity project so later tasks and the sidebar can find it.
+        """
+        path = Path(self.settings.active_directory_profile.root_path) / "workspaces" / SCRATCH_PROJECT
+        path.mkdir(parents=True, exist_ok=True)
+        self.runtime.register_project("productivity", SCRATCH_PROJECT, str(path))
+        self._project_paths[project_id("productivity", SCRATCH_PROJECT)] = str(path)
+        return str(path)
 
     async def add_project(self, *, space: str, project_path: str) -> dict[str, Any]:
         """Purpose: Register an existing directory as a workspace without starting a model.
@@ -1008,6 +1024,11 @@ class DesktopService:
                 project_path = self.runtime.project_path("productivity", project)
             if project_path is None and project == root_name:
                 project_path = root_path
+            if project_path is None and project in {"", SCRATCH_PROJECT}:
+                # No folder chosen: work in a Cleo-managed scratch directory instead of refusing.
+                project = SCRATCH_PROJECT
+                project_id_value = project_id("productivity", project)
+                project_path = self._scratch_workspace()
             if project_path is None:
                 raise ValueError(f"项目“{project}”没有有效的工作目录，请重新打开该目录。")
             if not Path(project_path).is_dir():
