@@ -86,6 +86,21 @@
 .settings-action:hover { border-color: var(--border-strong); background: var(--surface-hover); }
 .settings-action.danger { color: var(--danger); }
 
+.storage-settings .settings-actions { flex-wrap: wrap; justify-content: flex-end; }
+.storage-settings > .settings-scope,
+.storage-settings > .settings-error { margin: 10px 0 0; }
+.storage-details { margin-top: 16px; }
+.storage-table { width: 100%; margin-top: 12px; border-collapse: collapse; color: var(--text-soft); font-size: var(--font-size-caption); }
+.storage-table th { color: var(--muted); font-weight: 500; }
+.storage-table th, .storage-table td { padding: 6px 0; border-bottom: 1px solid var(--border); text-align: left; }
+.storage-table th:not(:first-child), .storage-table td:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.storage-entries { display: grid; gap: 10px; margin: 12px 0 0; padding: 0; list-style: none; }
+.storage-entries li { display: grid; gap: 2px; color: var(--muted); font-size: var(--font-size-caption); line-height: 1.55; }
+.storage-entries li strong { color: var(--text-soft); font-weight: 500; }
+.storage-entries li.reclaim strong { color: var(--accent); }
+.storage-entries button { justify-self: start; padding: 0; color: var(--text-soft); text-align: left; text-decoration: underline; }
+.storage-entries code { font-size: inherit; overflow-wrap: anywhere; user-select: text; }
+
 .update-hero { padding-bottom: 16px; border-bottom: 1px solid var(--border); }
 .update-hero h3 { margin: 0; color: var(--text-soft); font-size: var(--font-size-dialog-title); }
 .update-hero p { margin: 6px 0 0; color: var(--muted); font-size: var(--font-size-control); line-height: 1.65; }
