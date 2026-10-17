@@ -133,8 +133,9 @@ PRODUCTIVITY_COMMANDS = (
 )
 
 
-# Development tasks started without a chosen folder work here; it lives beside the user's data.
-SCRATCH_PROJECT = "scratch"
+# Development tasks that bind no folder belong to the ``general`` project, like chat does.
+# Harnesses still need a working directory, so Cleo keeps one out of sight beside its data.
+GENERAL_PROJECT = "general"
 
 
 def _create_default_dream_agent():
@@ -433,16 +434,15 @@ class DesktopService:
                 self._activate(replacement)
         return await self.load_workspace()
 
-    def _scratch_workspace(self) -> str:
-        """Purpose: Provide a working directory for development tasks started without a folder.
+    def _general_workspace(self) -> str:
+        """Purpose: The working directory behind the general development project.
 
-        Input: none. Output: An existing directory under the Cleo root, registered as the
-        ``scratch`` productivity project so later tasks and the sidebar can find it.
+        Input: none. Output: An existing directory under the Cleo root. It is not registered
+        as a user folder; the project list adds it as a managed entry without a visible path.
         """
-        path = Path(self.settings.active_directory_profile.root_path) / "workspaces" / SCRATCH_PROJECT
+        path = Path(self.settings.active_directory_profile.root_path) / "workspaces" / GENERAL_PROJECT
         path.mkdir(parents=True, exist_ok=True)
-        self.runtime.register_project("productivity", SCRATCH_PROJECT, str(path))
-        self._project_paths[project_id("productivity", SCRATCH_PROJECT)] = str(path)
+        self._project_paths[project_id("productivity", GENERAL_PROJECT)] = str(path)
         return str(path)
 
     async def add_project(self, *, space: str, project_path: str) -> dict[str, Any]:
@@ -480,7 +480,7 @@ class DesktopService:
         else:
             raise ValueError("无效的项目 ID。")
         name = project_name_from_id(project_id_value)
-        if memory_space == "non_productivity" and name == "general":
+        if name == GENERAL_PROJECT:
             raise ValueError("默认的 general 项目不能移除。")
         manifests = []
         for row in self.store.list_sessions(space=memory_space):
@@ -1024,11 +1024,9 @@ class DesktopService:
                 project_path = self.runtime.project_path("productivity", project)
             if project_path is None and project == root_name:
                 project_path = root_path
-            if project_path is None and project in {"", SCRATCH_PROJECT}:
-                # No folder chosen: work in a Cleo-managed scratch directory instead of refusing.
-                project = SCRATCH_PROJECT
-                project_id_value = project_id("productivity", project)
-                project_path = self._scratch_workspace()
+            if project_path is None and project == GENERAL_PROJECT:
+                # No folder bound: the managed general directory, never a user folder.
+                project_path = self._general_workspace()
             if project_path is None:
                 raise ValueError(f"项目“{project}”没有有效的工作目录，请重新打开该目录。")
             if not Path(project_path).is_dir():
@@ -2303,12 +2301,12 @@ class DesktopService:
                 "general",
                 root_path,
             )
-        if not self.runtime.is_project_removed("productivity", root_name):
-            candidates[project_id("productivity", root_name)] = (
-                "productivity",
-                root_name,
-                root_path,
-            )
+        # The general development project always exists, like chat's; it binds no user folder.
+        candidates[project_id("productivity", GENERAL_PROJECT)] = (
+            "productivity",
+            GENERAL_PROJECT,
+            self._general_workspace(),
+        )
         for memory_space in ("non_productivity", "productivity"):
             for name in self.runtime.projects_for(memory_space):
                 if self.runtime.is_project_removed(memory_space, name):

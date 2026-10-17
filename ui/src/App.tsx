@@ -7,6 +7,7 @@ import { useInspectorResize } from "./useInspectorResize";
 import "./components/evolution.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { renderBadge } from "./badge";
+import { projectLabel } from "./runtime-labels";
 import { Minus } from "lucide-react";
 import { Conversation } from "./components/Conversation";
 import { Inspector, type InspectorTab } from "./components/Inspector";
@@ -418,7 +419,7 @@ export function App() {
   return (
     <div ref={inspectorResize.setShell} className={appClasses} style={inspectorResize.style} data-theme={theme}>
       <TitleBar
-        projectName={evolutionOpen ? "Cleo" : workspace.activeSpace === "memory" ? "记忆" : workspace.activeProject?.name ?? "Cleo"}
+        projectName={evolutionOpen ? "Cleo" : workspace.activeSpace === "memory" ? "记忆" : (workspace.activeProject && projectLabel(workspace.activeProject)) || "Cleo"}
         mode={evolutionOpen ? "进化" : workspace.activeSpace === "productivity" ? "开发" : workspace.activeSpace === "chat" ? "对话" : "记忆"}
       />
       {workspace.loadingError && <div className="workspace-error" role="alert">

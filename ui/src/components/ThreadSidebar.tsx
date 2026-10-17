@@ -1,5 +1,5 @@
 import { modifierKey } from "../platform";
-import { harnessLabel } from "../runtime-labels";
+import { harnessLabel, projectLabel, projectPathLabel } from "../runtime-labels";
 import { useMemo, useState, type CSSProperties } from "react";
 import {
   Brain,
@@ -135,10 +135,10 @@ export function ThreadSidebar({
               onClick={() => setProjectMenuOpen((open) => !open)}
             >
               <span className="project-glyph" style={{ "--project-accent": activeProject?.accent } as CSSProperties}>
-                {activeProject?.name.slice(0, 1)}
+                {projectLabel(activeProject).slice(0, 1)}
               </span>
               <span className="project-picker-copy">
-                <strong>{activeProject?.name}</strong>
+                <strong>{projectLabel(activeProject)}</strong>
                 {activeProject?.branch && <small>{activeProject.branch}</small>}
               </span>
               <ChevronDown size={15} />
@@ -177,11 +177,11 @@ export function ThreadSidebar({
                         }}
                       >
                         <span className="project-glyph compact" style={{ "--project-accent": project.accent } as CSSProperties}>
-                          {project.name.slice(0, 1)}
+                          {projectLabel(project).slice(0, 1)}
                         </span>
                         <span>
-                          <strong>{project.name}</strong>
-                          <small>{project.path}</small>
+                          <strong>{projectLabel(project)}</strong>
+                          <small>{projectPathLabel(project)}</small>
                         </span>
                       </button>
                       {project.removable ? (

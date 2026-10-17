@@ -49,8 +49,8 @@ interface ComposerDraft {
 
 const emptyDraft: ComposerDraft = { prompt: "", attachments: [] };
 
-/** Backend project id for development tasks started without a chosen folder. */
-const SCRATCH_PROJECT = "productivity:scratch";
+/** The development project that binds no folder; chosen when nothing else is selected. */
+const GENERAL_PRODUCTIVITY_PROJECT = "productivity:general";
 const EVOLUTION_PROJECT = "productivity:cleo-evolution";
 
 export function useCleoWorkspace(evolutionOpen = false) {
@@ -578,12 +578,15 @@ export function useCleoWorkspace(evolutionOpen = false) {
     const project = snapshot?.projects.find(
       (candidate) => candidate.id === activeProjectId && candidate.space === space
         && candidate.id !== EVOLUTION_PROJECT,
-    ) ?? snapshot?.projects.find((candidate) => candidate.space === space && candidate.id !== EVOLUTION_PROJECT);
+    ) ?? (space === "productivity"
+      ? snapshot?.projects.find((candidate) => candidate.id === GENERAL_PRODUCTIVITY_PROJECT)
+      : undefined)
+      ?? snapshot?.projects.find((candidate) => candidate.space === space && candidate.id !== EVOLUTION_PROJECT);
     if (!project && space === "chat") throw new Error("请先打开一个工作目录。");
-    // Development work needs no chosen folder: the backend provides a managed scratch workspace.
+    // Development work binds no folder by default: it belongs to the general project.
     const thread = await cleoClient.createThread(
       space,
-      project?.id ?? SCRATCH_PROJECT,
+      project?.id ?? GENERAL_PRODUCTIVITY_PROJECT,
       space === "chat"
         ? {
             projectPath: project?.path,
@@ -598,7 +601,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
           },
     );
     if (!project) {
-      // The scratch project only exists after its first task; list it so the thread has a home.
+      // An older backend lists general only after its first task; reload so the thread has a home.
       await refreshWorkspace(() => cleoClient.loadWorkspace()).catch(() => {});
       setSnapshot((current) => current && !current.threads.some(item => item.id === thread.id)
         ? { ...current, threads: [thread, ...current.threads] } : current);
