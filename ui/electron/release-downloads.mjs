@@ -36,6 +36,9 @@ export class ReleaseDownloads {
     this.closed = false;
   }
 
+  /** True while any caller still waits on an archive; cleanup leaves the cache alone meanwhile. */
+  get busy() { return this.requests.size > 0; }
+
   pathFor(manifest) {
     for (const key of ["platform", "version", "archive"]) {
       if (!/^[a-zA-Z0-9][a-zA-Z0-9._+-]*$/.test(manifest[key] ?? "")) {

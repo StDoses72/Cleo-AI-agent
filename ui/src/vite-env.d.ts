@@ -30,6 +30,8 @@ interface Window {
     checkForUpdates(tag?: string): Promise<import("./types").UpdateState>;
     downloadUpdate(): Promise<import("./types").UpdateState>;
     installUpdate(): Promise<boolean>;
+    storageInventory?(): Promise<import("./types").StorageInventory>;
+    reclaimStorage?(): Promise<import("./types").StorageReclaimResult>;
     onUpdateState(listener: (state: import("./types").UpdateState) => void): () => void;
   };
 }
