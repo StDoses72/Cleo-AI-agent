@@ -286,6 +286,44 @@ test("a launcher directory that holds the data home or the registry is never swa
     await rm(join(linked.dataHome, "memory"), { recursive: true, force: true });
   }
   await rm(join(installRoot, "memory-store"), { recursive: true, force: true });
+  if (linkable) {
+    // The install root itself is a junction into the data home: only the real path reveals the overlap.
+    const realBundle = join(root, "linked-home", "apps", target.bundle);
+    await mkdir(dirname(realBundle), { recursive: true });
+    await fs.cp(installRoot, realBundle, { recursive: true });
+    const aliasRoot = join(root, "Alias", target.bundle);
+    await mkdir(dirname(aliasRoot), { recursive: true });
+    await symlink(realBundle, aliasRoot, "junction");
+    const aliasLauncher = join(aliasRoot, target.executable);
+    await linked.update({ installedReleases: { [key(aliasLauncher)]: "0.7.0" } });
+    const viaAlias = await refreshInstalledLauncher({ store: linked, executable: active, launchers: [], inUse: async () => false });
+    assert.equal(viaAlias.results[key(aliasLauncher)].reason, "contains-user-data");
+    assert.equal(await readFile(join(realBundle, target.executable), "utf8"), "installed executable 0.7.0");
+    assert.deepEqual(await readdir(dirname(aliasRoot)), [target.bundle], "nothing is staged beside an aliased root");
+    // The data home is a junction into the install root while the launcher is recorded through another alias.
+    const dataAlias = join(root, "data-alias");
+    await mkdir(join(installRoot, "home", "data"), { recursive: true });
+    await writeFile(join(installRoot, "home", "data", "sessions.jsonl"), "irreplaceable");
+    await symlink(join(installRoot, "home"), dataAlias, "junction");
+    const aliased = new EvolutionStore(store.root, dataAlias);
+    const programAlias = join(root, "Apps", target.bundle);
+    await mkdir(dirname(programAlias), { recursive: true });
+    await symlink(installRoot, programAlias, "junction");
+    await aliased.update({ installedReleases: { [key(join(programAlias, target.executable))]: "0.7.0" } });
+    const viaBoth = await refreshInstalledLauncher({ store: aliased, executable: active, launchers: [], inUse: async () => false });
+    assert.equal(viaBoth.results[key(join(programAlias, target.executable))].reason, "contains-user-data");
+    assert.equal(await readFile(join(installRoot, "home", "data", "sessions.jsonl"), "utf8"), "irreplaceable");
+    assert.equal(await readFile(launcher, "utf8"), "installed executable 0.7.0");
+    await rm(programAlias, { recursive: true, force: true });
+    await rm(dataAlias, { recursive: true, force: true });
+    await rm(aliasRoot, { recursive: true, force: true });
+    await rm(join(installRoot, "home"), { recursive: true, force: true });
+    // A root that cannot be resolved is refused rather than guessed at.
+    await store.update({ installedReleases: { [key(launcher)]: "0.7.0" } });
+    const unresolvable = { ...fs, realpath: async (path) => { if (key(path) === key(installRoot)) throw Object.assign(new Error("EIO"), { code: "EIO" }); return fs.realpath(path); } };
+    assert.equal((await refresh({ filesystem: unresolvable })).results[key(launcher)].reason, "contains-user-data");
+    assert.equal(await readFile(launcher, "utf8"), "installed executable 0.7.0");
+  }
   // With the data elsewhere the same launcher refreshes normally.
   assert.equal((await refresh()).results[key(launcher)].status, "refreshed");
   assert.equal(await readFile(launcher, "utf8"), `${builds[1].id} executable 0.9.0`);

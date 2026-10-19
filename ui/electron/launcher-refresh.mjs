@@ -41,9 +41,13 @@ function channelOf(version) {
 }
 
 /** Input: launcher root and store. Output: true when user data or the evolution registry would travel with the swap.
- * CLEO_HOME is a supported override, so the data home (or a linked data entry) can sit inside Programs\Cleo.
+ * CLEO_HOME is a supported override, so the data home (or a linked data entry) can sit inside Programs\Cleo, and either
+ * side may be reached through a junction: both are compared by real path, and a root that cannot be resolved is refused.
  */
-async function overlapsUserData(root, store, filesystem) {
+async function overlapsUserData(alias, store, filesystem) {
+  let root;
+  try { root = await filesystem.realpath(alias); }
+  catch { return true; }
   const live = [store.root, store.dataHome, ...DATA_ENTRIES.map((name) => join(store.dataHome, name)), join(store.dataHome, "models")];
   for (const path of live) {
     let actual;
@@ -213,6 +217,7 @@ async function cleanLeftovers(store, filesystem) {
     try {
       if (typeof path !== "string" || !SIBLING_PATTERN.test(path)) continue;
       if (!outside(store.root, path) || !outside(store.dataHome, path)) continue;
+      if (!await exists(path)) continue;
       if (await overlapsUserData(path, store, filesystem)) { failures.push(path); continue; }
       await filesystem.rm(path, { recursive: true, force: true });
     } catch { failures.push(path); }
