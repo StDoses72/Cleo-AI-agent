@@ -7,7 +7,7 @@ import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { EvolutionStore, exists } from "../electron/evolution-store.mjs";
 import { desktopPlatform } from "../electron/platform.mjs";
-import { createStorageQueue, namespaceKey, planKey, reclaimStorage, storageInventory, venvHome, versionKey } from "../electron/storage-reclaim.mjs";
+import { createStorageQueue, defaultLauncherPaths, namespaceKey, planKey, reclaimStorage, storageInventory, venvHome, versionKey } from "../electron/storage-reclaim.mjs";
 
 const target = desktopPlatform();
 const hex = length => randomUUID().replaceAll("-", "").padEnd(length, "0").slice(0, length);
@@ -411,4 +411,36 @@ test("queued storage requests resolve to their own results in order", async () =
   await assert.rejects(failing, /boom/);
   assert.deepEqual(await after, { entries: [1] });
   assert.deepEqual(order, ["reclaim", "inventory"]);
+});
+
+test("an installed launcher that never opened the evolution registry keeps its online runtime", async t => {
+  const f = await fixture(t);
+  // A chat-only installation of the other channel: a launcher on disk, no builds, no state.json, no snapshots.
+  const launcherRoot = join(f.root, "Programs", "Cleo");
+  const resources = join(launcherRoot, target.resources);
+  await mkdir(resources, { recursive: true });
+  await writeFile(join(launcherRoot, target.executable), "exe");
+  await writeFile(join(resources, "runtime-plan.json"), JSON.stringify({ schema: 1, plan: "stable-0.9.0" }));
+  await writeFile(join(target.platform === "darwin" ? resources : launcherRoot, "release.json"), JSON.stringify({ app: "Cleo", version: "0.9.0" }));
+  const runtime = await f.addOnlineRuntime(await planKey(resources), "0.9.0");
+  const orphan = await f.addOnlineRuntime(hex(64), "0.8.0");
+  const missing = join(f.root, "Programs", "Cleo Alpha", target.executable);
+
+  const result = await f.inventory({ installedExecutables: [join(launcherRoot, target.executable), missing] });
+  const find = path => result.entries.find(e => e.path === path);
+  assert.equal(find(runtime).action, "keep");
+  assert.match(find(runtime).reason, /已安装的 Cleo 0\.9\.0/);
+  assert.equal(find(orphan).action, "reclaim");
+  // Without any launcher candidate the same runtime would have been reclaimed: the default paths matter.
+  assert.equal((await f.inventory()).entries.find(e => e.path === runtime).action, "reclaim");
+});
+
+test("default launcher locations cover both channels on every platform", () => {
+  assert.deepEqual(defaultLauncherPaths("win32", { LOCALAPPDATA: "C:\\Users\\u\\AppData\\Local" }),
+    ["C:\\Users\\u\\AppData\\Local\\Programs\\Cleo\\Cleo.exe"]);
+  assert.deepEqual(defaultLauncherPaths("win32", {}), []);
+  const mac = defaultLauncherPaths("darwin", { HOME: "/Users/u" });
+  assert.ok(mac.includes(join("/Applications", "Cleo.app", "Contents", "MacOS", "Cleo")));
+  assert.ok(mac.includes(join("/Users/u/Applications", "Cleo Alpha.app", "Contents", "MacOS", "Cleo")));
+  assert.ok(defaultLauncherPaths("linux", {}).some(path => path.includes("Cleo Alpha")));
 });

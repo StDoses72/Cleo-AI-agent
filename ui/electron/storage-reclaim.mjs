@@ -135,6 +135,23 @@ async function snapshotHomes(fs, runtimesRoot) {
   return homes;
 }
 
+/** Purpose: Where the installers place a launcher, for either release channel, whether or not that
+ * installation ever opened the evolution registry (a chat-only install has no builds or journal).
+ * Input: platform and environment. Output: candidate executables; missing ones are ignored by the inventory.
+ */
+export function defaultLauncherPaths(platform = process.platform, environment = process.env) {
+  if (platform === "win32") {
+    // Both channels use the same Inno Setup AppId and directory.
+    return environment.LOCALAPPDATA ? [join(environment.LOCALAPPDATA, "Programs", "Cleo", "Cleo.exe")] : [];
+  }
+  const names = ["Cleo", "Cleo Alpha"];
+  if (platform === "darwin") {
+    const roots = ["/Applications", environment.HOME && join(environment.HOME, "Applications")].filter(Boolean);
+    return roots.flatMap(root => names.map(name => join(root, `${name}.app`, "Contents", "MacOS", "Cleo")));
+  }
+  return names.flatMap(name => [join("/opt", name, "Cleo"), join("/usr/lib", name, "Cleo")]);
+}
+
 /** Purpose: Run inventory and reclaim requests one at a time, each resolving to its own result.
  * Input: none. Output: a function that queues an action behind the previous one.
  */
@@ -180,8 +197,12 @@ async function liveResources({ fs, state, buildsRoot, target, currentResources, 
   }
   for (const executable of installedExecutables || []) {
     try {
+      // A launcher that never opened the evolution registry is still a program with a runtime.
+      if (!await probe(fs, executable)) continue;
       const resources = join(installationRoot(executable, target), target.resources);
-      add(resources, "已安装的 Cleo", await bundleVersion(fs, resources, target) || currentVersion);
+      const version = await bundleVersion(fs, resources, target);
+      add(resources, version ? `已安装的 Cleo ${version}` : "已安装的 Cleo", version
+        || (resolve(executable) === resolve(process.execPath) ? currentVersion : null));
     } catch { /* ignore */ }
   }
   // Another release channel (Cleo / Cleo Alpha) shares the online runtime root; its programs count too.
