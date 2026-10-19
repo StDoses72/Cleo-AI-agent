@@ -7,7 +7,7 @@ import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { EvolutionStore, exists } from "../electron/evolution-store.mjs";
 import { desktopPlatform } from "../electron/platform.mjs";
-import { namespaceKey, planKey, reclaimStorage, storageInventory, venvHome, versionKey } from "../electron/storage-reclaim.mjs";
+import { createStorageQueue, namespaceKey, planKey, reclaimStorage, storageInventory, venvHome, versionKey } from "../electron/storage-reclaim.mjs";
 
 const target = desktopPlatform();
 const hex = length => randomUUID().replaceAll("-", "").padEnd(length, "0").slice(0, length);
@@ -337,4 +337,78 @@ test("linked entries and anything overlapping user data are refused", async t =>
   assert.equal(inventory.entries.some(e => e.path === linked), false);
   await reclaimStorage({ dataHome: f.dataHome, store: f.store });
   assert.equal(await exists(join(outside, "precious.txt")), true);
+});
+
+test("another release channel's programs and snapshots keep the shared online runtime", async t => {
+  const f = await fixture(t);
+  // The sibling channel (Cleo Alpha) has its own registry and data home but installs into the same online root.
+  const sibling = { label: "Cleo Alpha", controlRoot: join(f.root, "alpha-userdata", "evolution"), dataHome: join(f.root, "alpha-home") };
+  const id = `official-${randomUUID()}`;
+  const resources = join(sibling.controlRoot, "builds", id, target.bundle, target.resources);
+  await mkdir(resources, { recursive: true });
+  await writeFile(join(resources, "runtime-plan.json"), JSON.stringify({ schema: 1, plan: "alpha-0.9.1" }));
+  await writeFile(join(sibling.controlRoot, "state.json"), JSON.stringify({ builds: [{ id, kind: "official", version: "0.9.1-alpha" }] }));
+  const byPlan = await f.addOnlineRuntime(await planKey(resources), "0.9.1-alpha");
+  const bySnapshot = await f.addOnlineRuntime(hex(64), "0.8.9-alpha");
+  const alphaRuntimes = join(sibling.dataHome, "runtimes", hex(24), hex(24), hex(32), "python");
+  await mkdir(alphaRuntimes, { recursive: true });
+  await writeFile(join(alphaRuntimes, "pyvenv.cfg"), `home = ${join(bySnapshot, "python")}\n`);
+  const orphan = await f.addOnlineRuntime(hex(64), "0.8.0");
+
+  const without = await f.inventory();
+  assert.equal(without.entries.find(e => e.path === byPlan).action, "reclaim", "the sibling is invisible unless declared");
+  const result = await f.inventory({ siblings: [sibling] });
+  const find = path => result.entries.find(e => e.path === path);
+  assert.equal(find(byPlan).action, "keep");
+  assert.match(find(byPlan).reason, /Cleo Alpha/);
+  assert.equal(find(bySnapshot).action, "keep");
+  assert.equal(find(orphan).action, "reclaim");
+});
+
+test("a runtimes directory linked to user data is never inventoried or reclaimed", async t => {
+  const f = await fixture(t);
+  await rm(f.runtimes, { recursive: true, force: true });
+  // Real memory data whose folder names happen to look like a runtime namespace and snapshot.
+  const lookalike = join(f.dataHome, "memory", hex(24), hex(24), hex(32), "python");
+  await mkdir(lookalike, { recursive: true });
+  await writeFile(join(lookalike, "pyvenv.cfg"), `home = ${join(f.root, "gone", "python")}\n`);
+  await writeFile(join(f.dataHome, "memory", "notes.md"), "irreplaceable");
+  try { await symlink(join(f.dataHome, "memory"), f.runtimes, "junction"); }
+  catch (error) { if (error.code === "EPERM") { t.skip("links unavailable"); return; } throw error; }
+
+  const inventory = await f.inventory();
+  assert.equal(inventory.entries.filter(e => e.kind === "runtime-namespace").length, 0);
+  assert.equal(inventory.reclaimableBytes, 0);
+  const result = await reclaimStorage({ dataHome: f.dataHome, store: f.store }, { manual: true });
+  assert.equal(result.removed.length, 0);
+  assert.equal(await exists(join(lookalike, "pyvenv.cfg")), true);
+  assert.equal(await exists(join(f.dataHome, "memory", "notes.md")), true);
+});
+
+test("an entry that resolves into user data through a link is refused at reclaim time", async t => {
+  const f = await fixture(t);
+  // The inventory decided on a plain orphan namespace; a link swapped in underneath must still not reach user data.
+  const orphan = await f.addNamespace(hex(24), join(f.root, "gone", "python"));
+  const fs = { ...nativeFs, realpath: async path => resolve(path) === resolve(orphan) ? join(f.dataHome, "memory") : nativeFs.realpath(path) };
+  const result = await reclaimStorage({ dataHome: f.dataHome, store: f.store, fs });
+  assert.equal(result.removed.length, 0);
+  assert.equal(result.failed.length, 0, "the inventory already refused it, so nothing was attempted");
+  const entry = result.inventory.entries.find(e => e.path === orphan);
+  assert.equal(entry.action, "keep");
+  assert.match(entry.reason, /用户数据/);
+  assert.equal(await exists(orphan), true);
+});
+
+test("queued storage requests resolve to their own results in order", async () => {
+  const queue = createStorageQueue();
+  const order = [];
+  const slow = queue(async () => { await new Promise(done => setTimeout(done, 30)); order.push("reclaim"); return { removed: [] }; });
+  const fast = queue(async () => { order.push("inventory"); return { entries: [] }; });
+  const failing = queue(async () => { throw new Error("boom"); });
+  const after = queue(async () => ({ entries: [1] }));
+  assert.deepEqual(await slow, { removed: [] });
+  assert.deepEqual(await fast, { entries: [] });
+  await assert.rejects(failing, /boom/);
+  assert.deepEqual(await after, { entries: [1] });
+  assert.deepEqual(order, ["reclaim", "inventory"]);
 });

@@ -43,7 +43,7 @@ import { EvolutionMonitorStore } from "./evolution-monitor-store.mjs";
 import { EvolutionCompanion } from "./evolution-companion.mjs";
 import { evolutionActions, nextVersionName } from "./evolution-actions.mjs";
 import { readJson } from "./evolution-store.mjs";
-import { reclaimStorage, storageInventory } from "./storage-reclaim.mjs";
+import { createStorageQueue, reclaimStorage, storageInventory } from "./storage-reclaim.mjs";
 import { defaultRuntimeRoot } from "./online-runtime.mjs";
 
 if (process.argv.includes("--cleo-evolution-monitor")) {
@@ -111,20 +111,22 @@ const programUpdates = new SelectableProgramUpdates({ updater, evolution, apply:
 /** Purpose: Describe Cleo-owned storage and reclaim what no retained program references.
  * Input: whether the user asked (manual also drops convenience caches). Output: inventory or reclaim result.
  */
+// The other release channel keeps its own data and registry but shares the online runtime root.
+const siblingChannel = () => {
+  const cleoHome = backend.runtimePaths().cleoHome;
+  const name = alphaChannel ? "Cleo" : "Cleo Alpha";
+  return { label: name, controlRoot: join(dirname(app.getPath("userData")), name, "evolution"),
+    dataHome: join(dirname(cleoHome), name) };
+};
 const storageOptions = () => ({
-  dataHome: backend.runtimePaths().cleoHome, store: evolution.store,
+  dataHome: backend.runtimePaths().cleoHome, store: evolution.store, siblings: [siblingChannel()],
   currentResources: process.resourcesPath, currentRuntimeNamespace: dependencies.installationRoot,
   currentBaseResources: dependencies.baseResources, onlineRoots: [defaultRuntimeRoot()],
   installedExecutables: [process.execPath], currentVersion: app.getVersion(),
   protectedVersions: [updater.getState().latestVersion, updater.getState().selectedTag?.replace(/^v/, "")].filter(Boolean),
   downloadsBusy: () => releaseDownloads.busy || programUpdates.busy || evolution.phase !== "idle" || setup.busy,
 });
-let storageTask = null;
-const storage = action => {
-  if (storageTask) return storageTask;
-  storageTask = action().finally(() => { storageTask = null; });
-  return storageTask;
-};
+const storage = createStorageQueue();
 app.on("cleo:healthy", (transactionId) => {
   // Reclaim after the program proved itself; locked entries stay journaled for the next start.
   void storage(() => reclaimStorage(storageOptions())).then(result => {

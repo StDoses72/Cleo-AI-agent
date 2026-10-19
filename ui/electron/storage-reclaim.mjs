@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { desktopPlatform, installationRoot } from "./platform.mjs";
 import { compareVersions } from "./updater.mjs";
+import { readJson } from "./evolution-store.mjs";
 
 /** Rebuildable package caches below this total are kept for faster reinstalls; above it they are reclaimed automatically. */
 export const PACKAGE_CACHE_LIMIT = 512 * 1024 * 1024;
@@ -101,10 +102,55 @@ function within(child, parent) {
   return path === "" || (!path.startsWith("..") && !isAbsolute(path));
 }
 
+/** Input: path. Output: its real location, or null when it is missing or unreadable. */
+async function realLocation(fs, path) {
+  try { return await fs.realpath(path); }
+  catch { return null; }
+}
+
+/** Input: directory. Output: true when it is a symbolic link or junction, or does not exist as a directory. */
+async function linkedDirectory(fs, path) {
+  const info = await probe(fs, path);
+  return !info || !info.isDirectory() || info.isSymbolicLink();
+}
+
+/** Input: a runtimes root. Output: existing pyvenv homes of every snapshot under it (links skipped). */
+async function snapshotHomes(fs, runtimesRoot) {
+  const homes = [];
+  if (await linkedDirectory(fs, runtimesRoot)) return homes;
+  for (const name of await listDirectory(fs, runtimesRoot)) {
+    const namespace = join(runtimesRoot, name);
+    if (!NAMESPACE.test(name) || await linkedDirectory(fs, namespace)) continue;
+    for (const version of await listDirectory(fs, namespace)) {
+      if (!NAMESPACE.test(version)) continue;
+      for (const snapshot of await listDirectory(fs, join(namespace, version))) {
+        if (!SNAPSHOT.test(snapshot)) continue;
+        try {
+          const home = venvHome(await fs.readFile(join(namespace, version, snapshot, "python", "pyvenv.cfg"), "utf8"));
+          if (home && await probe(fs, home)) homes.push(home);
+        } catch (error) { if (!["ENOENT", "ENOTDIR"].includes(error.code)) throw error; }
+      }
+    }
+  }
+  return homes;
+}
+
+/** Purpose: Run inventory and reclaim requests one at a time, each resolving to its own result.
+ * Input: none. Output: a function that queues an action behind the previous one.
+ */
+export function createStorageQueue() {
+  let tail = Promise.resolve();
+  return action => {
+    const run = tail.then(action, action);
+    tail = run.catch(() => {});
+    return run;
+  };
+}
+
 /** Purpose: Gather every program location whose runtimes must survive.
  * Input: evolution state, builds directory, current process, installed launchers. Output: resources paths with labels.
  */
-async function liveResources({ fs, state, buildsRoot, target, currentResources, currentVersion, installedExecutables }) {
+async function liveResources({ fs, state, buildsRoot, target, currentResources, currentVersion, installedExecutables, siblings = [] }) {
   const references = new Map();
   /** A reference with no known version keeps every version of its namespace. */
   const add = (path, label, version = null) => {
@@ -138,6 +184,25 @@ async function liveResources({ fs, state, buildsRoot, target, currentResources, 
       add(resources, "已安装的 Cleo", await bundleVersion(fs, resources, target) || currentVersion);
     } catch { /* ignore */ }
   }
+  // Another release channel (Cleo / Cleo Alpha) shares the online runtime root; its programs count too.
+  for (const sibling of siblings) {
+    const label = sibling.label || "另一渠道的 Cleo";
+    const siblingState = await readJson(join(sibling.controlRoot, "state.json"), {});
+    const siblingBuilds = join(sibling.controlRoot, "builds");
+    const registered = new Map((siblingState.builds || []).map(build => [build.id, build]));
+    for (const id of await listDirectory(fs, siblingBuilds)) {
+      if (!BUILD.test(id)) continue;
+      const resources = join(siblingBuilds, id, target.bundle, target.resources);
+      add(resources, `${label} 程序 ${registered.get(id)?.version || id}`,
+        registered.get(id)?.version || await bundleVersion(fs, resources, target));
+    }
+    for (const [executable, version] of Object.entries(siblingState.installedReleases || {})) {
+      try {
+        const resources = join(installationRoot(executable, target), target.resources);
+        add(resources, `${label} 已安装 ${version}`, await bundleVersion(fs, resources, target) || version);
+      } catch { /* ignore */ }
+    }
+  }
   return [...references.values()];
 }
 
@@ -157,7 +222,7 @@ async function bundleVersion(fs, resources, target) {
 export async function storageInventory({
   dataHome, store, currentResources = null, currentRuntimeNamespace = null, currentBaseResources = null,
   onlineRoots = [], installedExecutables = [], protectedVersions = [], currentVersion = null,
-  downloadsBusy = () => false, cacheLimit = PACKAGE_CACHE_LIMIT, measure = "all",
+  siblings = [], downloadsBusy = () => false, cacheLimit = PACKAGE_CACHE_LIMIT, measure = "all",
   target = desktopPlatform(), fs = filesystem(), signal, now = Date.now(),
 } = {}) {
   dataHome = resolve(dataHome);
@@ -167,7 +232,7 @@ export async function storageInventory({
   const size = path => directorySize(path, { fs, signal });
   // Startup passes measure only what they remove; walking retained programs and user data is for the UI.
   const push = async entry => { entries.push({ ...entry, bytes: measure === "all" || entry.action === "reclaim" ? await size(entry.path) : 0 }); };
-  const references = await liveResources({ fs, state, buildsRoot, target, currentResources, currentVersion, installedExecutables });
+  const references = await liveResources({ fs, state, buildsRoot, target, currentResources, currentVersion, installedExecutables, siblings });
   const liveNamespaces = new Map();
   const owner = (key, item) => {
     const entry = liveNamespaces.get(key) || { label: item.label, versions: new Set(), unknownVersion: false };
@@ -189,11 +254,32 @@ export async function storageInventory({
     livePlans.set(basename(resolve(currentBaseResources)), "当前运行的 Cleo");
   }
   const userData = new Set(USER_DATA_ENTRIES.map(name => resolve(dataHome, name)));
+  for (const path of [...userData]) {
+    const real = await realLocation(fs, path);
+    if (real) userData.add(real);
+  }
   const runtimesRoot = join(dataHome, "runtimes");
   const onlineRootSet = [...new Set([join(runtimesRoot, "online"), ...onlineRoots.map(root => resolve(root))])];
+  const protectHomes = (homes, reason) => {
+    for (const home of homes) {
+      for (const root of onlineRootSet) {
+        if (!within(home, root)) continue;
+        const key = relative(root, home).split(/[\\/]/)[0];
+        if (PLAN_KEY.test(key) && !livePlans.has(key)) livePlans.set(key, reason);
+      }
+    }
+  };
+  for (const sibling of siblings) {
+    if (sibling.dataHome) protectHomes(await snapshotHomes(fs, join(sibling.dataHome, "runtimes")), `${sibling.label || "另一渠道的 Cleo"} 的依赖快照`);
+  }
+  // A linked runtimes directory could point anywhere, including at user data: never inventory through it.
+  const runtimesLinked = await linkedDirectory(fs, runtimesRoot) && Boolean(await probe(fs, runtimesRoot));
+  if (runtimesLinked) {
+    entries.push({ id: "unknown:runtimes", kind: "unknown", path: runtimesRoot, bytes: 0, action: "keep", reason: "runtimes 目录是链接，不做清理" });
+  }
 
   // Dependency snapshots: one namespace per program location, each holding validated runtime copies.
-  for (const name of await listDirectory(fs, runtimesRoot)) {
+  for (const name of runtimesLinked ? [] : await listDirectory(fs, runtimesRoot)) {
     const path = join(runtimesRoot, name);
     if (name === "online" || onlineRootSet.includes(path)) continue;
     const info = await probe(fs, path);
@@ -212,16 +298,8 @@ export async function storageInventory({
       for (const home of homes) if (home && await probe(fs, home)) presentHomes.push(home);
       versions.push({ version, snapshots: homes.length, presentHomes });
     }
-    const protectPlans = (homes, reason) => {
-      // A kept snapshot keeps the online runtime it was derived from.
-      for (const home of homes) {
-        for (const root of onlineRootSet) {
-          if (!within(home, root)) continue;
-          const key = relative(root, home).split(/[\\/]/)[0];
-          if (PLAN_KEY.test(key) && !livePlans.has(key)) livePlans.set(key, reason);
-        }
-      }
-    };
+    // A kept snapshot keeps the online runtime it was derived from.
+    const protectPlans = protectHomes;
     const owned = liveNamespaces.get(name);
     if (owned) {
       // One install location upgraded in place leaves the previous versions' snapshots behind.
@@ -247,6 +325,10 @@ export async function storageInventory({
   let installing = false;
   const caches = [];
   for (const root of onlineRootSet) {
+    if (await linkedDirectory(fs, root)) {
+      if (await probe(fs, root)) entries.push({ id: `unknown:online/${basename(root)}`, kind: "unknown", path: root, bytes: 0, action: "keep", reason: "运行环境目录是链接，不做清理" });
+      continue;
+    }
     for (const name of await listDirectory(fs, root)) {
       const path = join(root, name);
       const info = await probe(fs, path);
@@ -355,8 +437,11 @@ export async function storageInventory({
     await push({ id: `user-data:${name}`, kind: "user-data", path, action: "keep", reason: "用户数据，不会清理" });
   }
   for (const entry of entries) {
-    // Nothing that overlaps protected user data may ever be reclaimed, whatever its category.
-    if (entry.action === "reclaim" && [...userData].some(path => within(entry.path, path) || within(path, entry.path))) {
+    // Nothing that overlaps protected user data may ever be reclaimed, whatever its category,
+    // whichever path (logical or real) reaches it.
+    if (entry.action !== "reclaim") continue;
+    const locations = [entry.path, await realLocation(fs, entry.path)].filter(Boolean);
+    if (locations.some(location => [...userData].some(path => within(location, path) || within(path, location)))) {
       Object.assign(entry, { action: "keep", reason: "与用户数据重叠，拒绝清理" });
     }
   }
@@ -385,6 +470,10 @@ export async function reclaimStorage(options, { manual = false } = {}) {
       return { removed: [], failed: [], freedBytes: 0, inventory };
     }
     await store.update({ storageCleanupPending: targets.map(entry => entry.id) });
+    const ownedRoots = (await Promise.all([
+      join(resolve(options.dataHome), "runtimes"), ...(options.onlineRoots || []), join(store.root, "downloads"),
+    ].map(root => realLocation(fs, root)))).filter(Boolean);
+    const protectedData = (await Promise.all(USER_DATA_ENTRIES.map(name => realLocation(fs, join(resolve(options.dataHome), name))))).filter(Boolean);
     const removed = [], failed = [];
     let freedBytes = 0;
     for (const entry of targets) {
@@ -393,7 +482,10 @@ export async function reclaimStorage(options, { manual = false } = {}) {
         const realParent = await fs.realpath(parent);
         const info = await fs.lstat(entry.path);
         if (info.isSymbolicLink()) throw new Error("Linked storage entry.");
-        if (await fs.realpath(entry.path) !== join(realParent, basename(entry.path))) throw new Error("Relocated storage entry.");
+        const real = await fs.realpath(entry.path);
+        if (real !== join(realParent, basename(entry.path))) throw new Error("Relocated storage entry.");
+        if (!ownedRoots.some(root => within(real, root))) throw new Error("Storage entry outside Cleo-owned roots.");
+        if (protectedData.some(path => within(real, path) || within(path, real))) throw new Error("Storage entry overlaps user data.");
         await fs.rm(entry.path, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
         removed.push(entry.id);
         freedBytes += entry.bytes;
