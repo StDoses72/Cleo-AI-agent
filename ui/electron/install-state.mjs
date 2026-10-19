@@ -1,48 +1,7 @@
-import { createHash, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
-import { setTimeout as delay } from "node:timers/promises";
-
-const ACTIVE_PHASES = new Set(["starting", "verifying", "extracting", "waiting", "replacing"]);
-
-export function installationPaths(tempRoot, executablePath) {
-  const identity = resolve(dirname(executablePath)).toLowerCase();
-  const key = createHash("sha256").update(identity).digest("hex").slice(0, 24);
-  const root = join(tempRoot, `cleo-install-${key}`);
-  return { root, status: join(root, "status.json"), attention: join(root, "attention") };
-}
-
-export async function readInstallation(path) {
-  try {
-    return JSON.parse((await readFile(path, "utf8")).replace(/^\uFEFF/, ""));
-  } catch (error) {
-    if (error.code === "ENOENT") return null;
-    if (error instanceof SyntaxError) {
-      return { phase: "failed", error: "更新状态文件损坏，安装未确认完成。请重新检查更新。" };
-    }
-    throw error;
-  }
-}
-
-export async function writeInstallation(path, state) {
-  await mkdir(dirname(path), { recursive: true });
-  const temporary = `${path}.${randomUUID()}.tmp`;
-  try {
-    await writeFile(temporary, JSON.stringify(state), "utf8");
-    for (let attempt = 0; ; attempt += 1) {
-      try { await rename(temporary, path); break; }
-      catch (error) {
-        if (process.platform !== "win32" || !["EPERM", "EACCES", "EBUSY"].includes(error.code)
-            || attempt >= 7) throw error;
-        await delay(50 * (attempt + 1));
-      }
-    }
-  } finally {
-    await rm(temporary, { force: true });
-  }
-}
+import * as fs from "node:fs/promises";
+import { join } from "node:path";
 
 export function processIsAlive(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return false;
@@ -66,26 +25,20 @@ export async function processStartTime(pid) {
   return stdout.trim() || null;
 }
 
-export async function activeInstallation(paths, identity = processStartTime) {
-  const state = await readInstallation(paths.status);
-  if (!state || !ACTIVE_PHASES.has(state.phase)) return null;
-  const running = state.processStartTime && await identity(state.pid) === state.processStartTime;
-  const latest = await readInstallation(paths.status);
-  if (!latest || latest.operationId !== state.operationId || latest.phase !== state.phase
-      || latest.pid !== state.pid) return activeInstallation(paths, identity);
-  if (running) return state;
-  await writeInstallation(paths.status, {
-    ...state, phase: "failed", error: "更新进程意外退出，安装未确认完成。请重新检查更新。",
-  });
-  return null;
-}
-
-export async function interceptUpdateStartup(paths, identity = processStartTime) {
-  if (!await activeInstallation(paths, identity)) return false;
-  // The short-lived attempted launch must release its executable immediately.
-  // The independent progress window observes this signal and takes focus.
-  await writeFile(paths.attention, String(Date.now()));
-  return true;
+/** Purpose: Detect an executable image that a running process still holds open.
+ * Input: executable path. Output: true while Windows refuses write access to it; a missing file is not in use.
+ * Windows maps a running program's image with a read-only share, so a write-mode open fails until it exits.
+ */
+export async function executableInUse(path, filesystem = fs) {
+  let handle;
+  try { handle = await filesystem.open(path, "r+"); }
+  catch (error) {
+    if (["EBUSY", "EPERM", "EACCES", "ETXTBSY"].includes(error.code)) return true;
+    if (error.code === "ENOENT") return false;
+    throw error;
+  }
+  await handle.close();
+  return false;
 }
 
 export function acquireSingleInstance(app, windows) {

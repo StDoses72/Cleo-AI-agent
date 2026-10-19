@@ -1,20 +1,6 @@
-import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import {
-  copyFile,
-  cp,
-  chmod,
-  open,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
-import { spawn } from "node:child_process";
-import { once } from "node:events";
-import { createInterface } from "node:readline";
-import { desktopPlatform, installationRoot } from "./platform.mjs";
-import { installationPaths, processStartTime, readInstallation, writeInstallation } from "./install-state.mjs";
+import { join } from "node:path";
+import { desktopPlatform } from "./platform.mjs";
 import { ReleaseDownloads } from "./release-downloads.mjs";
 import { releaseTagForVersion } from "./release-channel.mjs";
 
@@ -86,41 +72,25 @@ export function validateManifest(value, target = desktopPlatform()) {
   return manifest;
 }
 
-function delay(milliseconds) {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
-
-function powershellLiteral(value) {
-  return `'${value.replaceAll("'", "''")}'`;
-}
-
 export class DesktopUpdater {
   constructor({
     app,
     onState = () => {},
     fetchImpl = globalThis.fetch,
-    spawnImpl = spawn,
     manifestUrl,
     assetBaseUrl = RELEASE_ASSET_BASE_URL,
     resourcesPath,
-    executablePath = process.execPath,
-    processId = process.pid,
     platform = process.platform,
     arch = process.arch,
-    processIdentity = processStartTime,
     downloads,
   }) {
     this.app = app;
     this.onState = onState;
     this.fetchImpl = fetchImpl;
-    this.spawnImpl = spawnImpl;
     this.target = desktopPlatform(platform, arch);
     this.manifestUrl = manifestUrl || new URL(this.target.manifest, RELEASE_MANIFEST_URL).href;
     this.assetBaseUrl = assetBaseUrl;
     this.resourcesPath = resourcesPath;
-    this.executablePath = executablePath;
-    this.processId = processId;
-    this.processIdentity = processIdentity;
     this.downloads = downloads;
     this.manifest = null;
     this.archivePath = null;
@@ -141,11 +111,6 @@ export class DesktopUpdater {
     return { ...this.state };
   }
 
-  pendingPath() {
-    const key = createHash("sha256").update(this.executablePath).digest("hex").slice(0, 24);
-    return join(this.app.getPath("userData"), `pending-update-${key}.json`);
-  }
-
   archiveFor(manifest) {
     return this.releaseDownloads().pathFor(manifest);
   }
@@ -160,45 +125,6 @@ export class DesktopUpdater {
       },
     });
     return this.downloads;
-  }
-
-  /** Purpose: Discard legacy auto-install intent. Input: none. Output: never installs on launch. */
-  async installPending() {
-    await rm(this.pendingPath(), { force: true });
-    return false;
-  }
-
-  posixResultPath() {
-    const key = createHash("sha256").update(installationRoot(this.executablePath, this.target)).digest("hex").slice(0, 24);
-    return join(this.app.getPath("userData"), `update-result-${key}.json`);
-  }
-
-  async takeInstallResult() {
-    if (!this.app.isPackaged || this.target.platform === "win32") return null;
-    const path = this.posixResultPath();
-    try {
-      const value = JSON.parse(await readFile(path, "utf8"));
-      await rm(path);
-      return value;
-    } catch (error) {
-      if (error.code === "ENOENT") return null;
-      throw error;
-    }
-  }
-
-  async restoreInstallationResult() {
-    if (!this.app.isPackaged || this.target.platform !== "win32") return false;
-    const paths = installationPaths(this.app.getPath("temp"), this.executablePath);
-    const result = await readInstallation(paths.status);
-    if (!result || result.acknowledged || !["completed", "failed"].includes(result.phase)) return false;
-    const succeeded = result.phase === "completed" && result.version === this.app.getVersion();
-    this.setState({
-      phase: succeeded ? "updated" : "install-failed",
-      latestVersion: result.version || null,
-      error: succeeded ? null : result.error || "更新未完成，请重新检查更新。",
-    });
-    await writeInstallation(paths.status, { ...result, acknowledged: true });
-    return true;
   }
 
   setState(update) {
@@ -290,174 +216,25 @@ export class DesktopUpdater {
     }
   }
 
+  /** Purpose: Hand a verified download to the evolution version switch; Cleo never replaces itself in place.
+   * Input: switch callback receiving the manifest version. Output: true once the callback reports a completed switch.
+   */
   async install(installVersion) {
     if (!this.app.isPackaged || this.state.phase !== "ready" || !this.manifest || !this.archivePath) {
       return false;
     }
+    if (typeof installVersion !== "function") throw new Error("未完成版本切换，请重新检查更新后重试。");
     this.setState({ phase: "installing", error: null });
     try {
-      if (installVersion) {
-        const switched = await installVersion(this.manifest.version);
-        if (!switched) throw new Error("未完成版本切换，请重新检查更新后重试。");
-        return true;
-      }
-      await this.launchInstaller();
+      const switched = await installVersion(this.manifest.version);
+      if (!switched) throw new Error("未完成版本切换，请重新检查更新后重试。");
+      return true;
     } catch (error) {
       this.setState({
-        phase: installVersion ? "install-failed" : "ready",
+        phase: "install-failed",
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
-    setImmediate(() => this.app.quit());
-    return true;
-  }
-
-  async launchInstaller() {
-    if (this.target.platform !== "win32") return this.launchPosixInstaller();
-    const scriptSource = join(this.resourcesPath, "update.ps1");
-    const scriptPath = join(dirname(this.archivePath), "update.ps1");
-    await copyFile(scriptSource, scriptPath);
-    const progressPath = join(dirname(this.archivePath), "update-progress.ps1");
-    await copyFile(join(this.resourcesPath, "update-progress.ps1"), progressPath);
-    const installRoot = dirname(this.executablePath);
-    if (basename(this.executablePath).toLowerCase() !== "cleo.exe") {
-      throw new Error("Cleo can only update a packaged Cleo.exe installation.");
-    }
-    const systemRoot = process.env.SystemRoot || "C:\\Windows";
-    const powershell = join(
-      systemRoot,
-      "System32",
-      "WindowsPowerShell",
-      "v1.0",
-      "powershell.exe",
-    );
-    const paths = installationPaths(this.app.getPath("temp"), this.executablePath);
-    const operationId = randomUUID();
-    const installerArguments = [
-      "-NoLogo",
-      "-NoProfile",
-      "-NonInteractive",
-      "-ExecutionPolicy",
-      "Bypass",
-      "-File",
-      scriptPath,
-      "-PackagePath",
-      this.archivePath,
-      "-Sha256",
-      this.manifest.sha256,
-      "-InstallRoot",
-      installRoot,
-      "-WaitForProcessId",
-      String(this.processId),
-      "-RemovePackage",
-      "-Launch",
-      "-NoPause",
-      "-Version",
-      this.manifest.version,
-      "-StatusPath",
-      paths.status,
-      "-OperationId",
-      operationId,
-      "-ProgressScript",
-      progressPath,
-    ].map((argument) => `"${argument}"`).join(" ");
-    const stagingRoot = dirname(scriptPath);
-    const starting = {
-      operationId, phase: "starting", pid: this.processId,
-      version: this.manifest.version, installRoot, error: null,
-      processStartTime: await this.processIdentity(this.processId),
-    };
-    if (!starting.processStartTime) throw new Error("无法确认 Cleo 进程身份，请重试更新。");
-    await writeInstallation(paths.status, starting);
-    // Windows PowerShell can exit without running its script under Node's
-    // detached flag. Start-Process gives the installer an independent lifetime.
-    // Both processes must run outside the installation to avoid locking it.
-    const launchCommand = [
-      "$ErrorActionPreference = 'Stop'",
-      `Start-Process -FilePath ${powershellLiteral(powershell)}`
-        + ` -ArgumentList ${powershellLiteral(installerArguments)}`
-        + ` -WorkingDirectory ${powershellLiteral(stagingRoot)}`
-        + ` -RedirectStandardOutput ${powershellLiteral(join(stagingRoot, "install.log"))}`
-        + ` -RedirectStandardError ${powershellLiteral(join(stagingRoot, "install-error.log"))}`
-        + " -WindowStyle Hidden",
-    ].join("; ");
-    try {
-      const child = this.spawnImpl(
-        powershell,
-        [
-          "-NoLogo", "-NoProfile", "-NonInteractive", "-OutputFormat", "Text",
-          "-EncodedCommand", Buffer.from(launchCommand, "utf16le").toString("base64"),
-        ],
-        { cwd: stagingRoot, stdio: ["ignore", "ignore", "pipe"], windowsHide: true },
-      );
-      let launchError = "";
-      child.stderr.setEncoding("utf8");
-      child.stderr.on("data", (chunk) => { launchError = `${launchError}${chunk}`.slice(-8000); });
-      let code;
-      try {
-        [code] = await once(child, "exit");
-      } finally {
-        // The independent installer may inherit a pipe handle; do not wait for
-        // that pipe to close while the installer is waiting for Cleo to exit.
-        child.stderr.destroy();
-      }
-      if (code !== 0) {
-        throw new Error(launchError.trim() || `Unable to start the Cleo installer (exit code ${code}).`);
-      }
-      const deadline = Date.now() + 15_000;
-      while (Date.now() < deadline) {
-        const status = await readInstallation(paths.status);
-        if (status?.operationId === operationId && status.phase !== "starting") {
-          if (status.phase === "failed") throw new Error(status.error || "更新程序启动失败。");
-          if (status.pid !== this.processId) return;
-        }
-        await delay(100);
-      }
-      throw new Error("更新程序未确认启动，Cleo 将保持打开。请重试。");
-    } catch (error) {
-      await writeInstallation(paths.status, { ...starting, phase: "failed", error: error.message });
-      throw error;
-    }
-  }
-
-  async launchPosixInstaller() {
-    const staging = dirname(this.archivePath);
-    await cp(join(this.resourcesPath, "update"), staging, { recursive: true });
-    const node = join(staging, "node");
-    await copyFile(join(this.resourcesPath, "browser", "node"), node);
-    await chmod(node, 0o755);
-    const requestPath = join(staging, "install-request.json");
-    await writeFile(requestPath, JSON.stringify({
-      platform: this.target.id, version: this.manifest.version,
-      sha256: this.manifest.sha256, bytes: this.manifest.bytes,
-      archive: this.archivePath, parentPid: this.processId,
-      installRoot: installationRoot(this.executablePath, this.target), resultPath: this.posixResultPath(),
-    }));
-    const log = await open(join(staging, "install-error.log"), "w");
-    let child;
-    try {
-      child = this.spawnImpl(node, [join(staging, "posix-installer.mjs"), requestPath], {
-        cwd: staging, detached: true, stdio: ["ignore", "pipe", log.fd],
-      });
-    } finally {
-      await log.close();
-    }
-    await new Promise((done, reject) => {
-      const lines = createInterface({ input: child.stdout });
-      const failed = (error) => { lines.close(); reject(error); };
-      child.once("error", failed);
-      child.once("exit", (code) => failed(new Error(`Update preparation failed (exit ${code}).`)));
-      lines.on("line", (line) => {
-        let event;
-        try { event = JSON.parse(line); } catch { return; }
-        if (event.type === "ready") {
-          lines.close();
-          child.stdout.destroy();
-          child.unref();
-          done();
-        } else if (event.type === "error") failed(new Error(event.error));
-      });
-    });
   }
 }

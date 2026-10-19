@@ -41,7 +41,6 @@ function readyUpdater() {
   updater.manifest = { version: "0.3.11" };
   updater.archivePath = "verified-archive.zip";
   updater.setState({ phase: "ready", latestVersion: "0.3.11" });
-  updater.launchInstaller = async () => { throw new Error("unexpected legacy installer"); };
   return { updater, states };
 }
 

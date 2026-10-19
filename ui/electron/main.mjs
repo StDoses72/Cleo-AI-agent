@@ -33,9 +33,7 @@ import { createQuitBarrier } from "./shutdown.mjs";
 import { createTrayController } from "./tray.mjs";
 import { createBackgroundMemoryScheduler } from "./background-memory.mjs";
 import { DependencyUpdater } from "./dependencies.mjs";
-import {
-  acquireSingleInstance, installationPaths, interceptUpdateStartup,
-} from "./install-state.mjs";
+import { acquireSingleInstance } from "./install-state.mjs";
 
 import { SetupManager } from "./setup-manager.mjs";
 import { startEvolutionMonitor } from "./evolution-monitor.mjs";
@@ -53,10 +51,6 @@ const alphaChannel = configureReleaseChannel(app);
 registerComputerSchemes(protocol);
 let desktopTray;
 if (app.isPackaged) {
-  if (process.platform === "win32") {
-    const paths = installationPaths(app.getPath("temp"), process.execPath);
-    if (await interceptUpdateStartup(paths)) app.exit(0);
-  }
   if (!acquireSingleInstance(app, () => {
     const window = desktopTray?.isQuitting() ? null : desktopTray?.getWindow();
     return window ? [window] : [];
@@ -649,7 +643,6 @@ app.whenReady().then(async () => {
   catch (error) { updater.setState({ dependencies: { phase: "error", error: error.message } }); }
   setup.python = process.env.CLEO_PYTHON || backend.runtimePaths().python || (process.platform === "win32" ? "python" : "python3");
   void releaseJobs.resume().catch(error => console.error("Release resume:", error.message));
-  const hasInstallResult = await updater.restoreInstallationResult();
   desktopTray.start();
   createWindow();
   backgroundMemory.start();
@@ -660,16 +653,8 @@ app.whenReady().then(async () => {
   }, 1000);
   app.once("will-quit", () => clearInterval(monitorTimer));
   // External setup and internal runtime updates require a user-approved setup action.
-  const installResult = await updater.takeInstallResult();
-  if (installResult) {
-    void dialog.showMessageBox({
-      type: installResult.status === "installed" ? "info" : "error",
-      message: installResult.status === "installed" ? `Cleo 已更新至 ${installResult.version}` : "Cleo 更新未完成",
-      detail: installResult.error || "新版本已安装完成。",
-    });
-  }
   const refresh = () => programUpdates.check().catch((error) => console.error("Update check:", error.message));
-  if (!hasInstallResult && !process.env.CLEO_EVOLUTION_TRANSACTION) setTimeout(() => void refresh(), 1500);
+  if (!process.env.CLEO_EVOLUTION_TRANSACTION) setTimeout(() => void refresh(), 1500);
   const refreshTimer = setInterval(() => void refresh(), 6 * 60 * 60 * 1000);
   app.once("will-quit", () => clearInterval(refreshTimer));
 });
