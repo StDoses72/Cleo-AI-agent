@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
@@ -253,6 +253,126 @@ test("an unrecorded default launcher is adopted from its release metadata and re
   assert.equal(await readFile(launcher, "utf8"), `${builds[1].id} executable 0.9.0`);
   assert.equal(await readFile(join(second, target.executable), "utf8"), `${builds[1].id} executable 0.9.0`);
   assert.deepEqual(Object.keys((await store.read()).installedReleases).sort(), [key(launcher), key(join(second, target.executable))].sort());
+});
+
+test("a launcher directory that holds the data home or the registry is never swapped or deleted", async (t) => {
+  const { store, root, builds, launcher, installRoot, refresh, active } = await fixture(t);
+  const before = async () => [await readFile(launcher, "utf8"), await readFile(join(installRoot, "obsolete.txt"), "utf8")];
+  // CLEO_HOME inside Programs\Cleo: the whole session store would travel with the retired directory.
+  const inside = new EvolutionStore(store.root, join(installRoot, "home"));
+  await mkdir(join(inside.dataHome, "data"), { recursive: true });
+  await writeFile(join(inside.dataHome, "data", "sessions.jsonl"), "irreplaceable");
+  const refused = await refreshInstalledLauncher({ store: inside, executable: active, launchers: [], inUse: async () => false, registry: async () => assert.fail("no registry change") });
+  assert.equal(refused.results[key(launcher)].reason, "contains-user-data");
+  assert.deepEqual(await before(), ["installed executable 0.7.0", "stale file from the old launcher"]);
+  assert.equal(await readFile(join(inside.dataHome, "data", "sessions.jsonl"), "utf8"), "irreplaceable");
+  assert.deepEqual(await readdir(dirname(installRoot)), [target.bundle]);
+  assert.equal((await inside.read()).launcherRefresh, undefined, "a refused refresh is not journaled for retry");
+  // The install root inside the data home is refused the same way.
+  const enclosing = new EvolutionStore(store.root, dirname(installRoot));
+  assert.equal((await refreshInstalledLauncher({ store: enclosing, executable: active, launchers: [], inUse: async () => false })).results[key(launcher)].reason, "contains-user-data");
+  assert.deepEqual(await before(), ["installed executable 0.7.0", "stale file from the old launcher"]);
+  // A data entry linked into the install root is detected through its real path.
+  const linked = new EvolutionStore(store.root, join(root, "linked-home"));
+  await mkdir(linked.dataHome, { recursive: true });
+  await mkdir(join(installRoot, "memory-store"));
+  await writeFile(join(installRoot, "memory-store", "MEMORY.md"), "long-term memory");
+  let linkable = true;
+  try { await symlink(join(installRoot, "memory-store"), join(linked.dataHome, "memory"), "junction"); }
+  catch { linkable = false; }
+  if (linkable) {
+    assert.equal((await refreshInstalledLauncher({ store: linked, executable: active, launchers: [], inUse: async () => false })).results[key(launcher)].reason, "contains-user-data");
+    assert.equal(await readFile(join(installRoot, "memory-store", "MEMORY.md"), "utf8"), "long-term memory");
+    await rm(join(linked.dataHome, "memory"), { recursive: true, force: true });
+  }
+  await rm(join(installRoot, "memory-store"), { recursive: true, force: true });
+  // With the data elsewhere the same launcher refreshes normally.
+  assert.equal((await refresh()).results[key(launcher)].status, "refreshed");
+  assert.equal(await readFile(launcher, "utf8"), `${builds[1].id} executable 0.9.0`);
+});
+
+test("an alpha program never replaces the stable entry point, and channels must match", async (t) => {
+  const { store, builds, launcher, installRoot, refresh, registry } = await fixture(t, { activeVersion: "0.9.0-alpha" });
+  // The recorded stable launcher is left alone and the default location is not even considered.
+  const alpha = await refresh({ launchers: [launcher] });
+  assert.equal(alpha.results[key(launcher)].reason, "channel-mismatch");
+  assert.equal(alpha.results[key(launcher)].launcherChannel, "stable");
+  assert.equal(await readFile(launcher, "utf8"), "installed executable 0.7.0");
+  assert.equal(await exists(join(installRoot, "obsolete.txt")), true);
+  assert.equal(registry.length, 0);
+  await store.update({ installedReleases: {} });
+  assert.deepEqual((await refresh({ launchers: [launcher] })).results, {}, "the installer default is only a stable candidate");
+  // An alpha launcher recorded for the alpha channel is refreshed by the alpha program.
+  const alphaRoot = join(dirname(installRoot), "Cleo Alpha", target.bundle);
+  await mkdir(dirname(join(alphaRoot, target.executable)), { recursive: true });
+  await writeFile(join(alphaRoot, target.executable), "installed alpha 0.8.0-alpha");
+  await writeJson(join(target.platform === "darwin" ? join(alphaRoot, target.resources) : alphaRoot, "release.json"),
+    { app: "Cleo", version: "0.8.0-alpha", platform: target.id });
+  const alphaLauncher = join(alphaRoot, target.executable);
+  await store.update({ installedReleases: { [key(alphaLauncher)]: "0.8.0-alpha", [key(launcher)]: "0.7.0" } });
+  const result = await refresh({ launchers: [launcher] });
+  assert.equal(result.results[key(alphaLauncher)].status, "refreshed");
+  assert.equal(result.results[key(launcher)].reason, "channel-mismatch");
+  assert.equal(await readFile(alphaLauncher, "utf8"), `${builds[1].id} executable 0.9.0-alpha`);
+  assert.equal(await readFile(launcher, "utf8"), "installed executable 0.7.0");
+  // Conversely a stable program does not overwrite an alpha launcher.
+  const stable = { ...builds[1], id: "official-" + randomUUID(), version: "0.9.0" };
+  const bundle = join(store.root, "builds", stable.id, target.bundle);
+  await mkdir(dirname(join(bundle, target.executable)), { recursive: true });
+  await writeFile(join(bundle, target.executable), "stable executable");
+  await store.update({ active: stable.id, builds: [...(await store.read()).builds, stable] });
+  const back = await refresh({ executable: join(bundle, target.executable), launchers: [launcher] });
+  assert.equal(back.results[key(alphaLauncher)].reason, "channel-mismatch");
+  assert.equal(back.results[key(launcher)].status, "refreshed");
+  assert.equal(await readFile(alphaLauncher, "utf8"), `${builds[1].id} executable 0.9.0-alpha`);
+  assert.equal(await readFile(launcher, "utf8"), "stable executable");
+});
+
+test("a failed rollback leaves both copies in place and the entry point is restored on the next healthy startup", async (t) => {
+  const { store, builds, launcher, installRoot, refresh } = await fixture(t);
+  let promoteFails = true, rollbackFails = true;
+  const filesystem = { ...fs, rename: async (from, to) => {
+    const failing = key(to) === key(installRoot) && ((promoteFails && /\.refresh-/.test(from)) || (rollbackFails && /\.retired-/.test(from)));
+    if (failing) throw Object.assign(new Error("EPERM: locked"), { code: "EPERM" });
+    return fs.rename(from, to);
+  } };
+  const first = await refresh({ filesystem });
+  assert.equal(first.results[key(launcher)].reason, "entry-point-missing");
+  assert.equal(await exists(installRoot), false, "the swap was interrupted with the entry point missing");
+  let state = await store.read();
+  const entry = state.launcherRefresh[key(launcher)];
+  assert.equal(entry.phase, "replacing");
+  assert.match(entry.error, /rollback/);
+  assert.equal(await exists(entry.staging), true, "the new copy is kept");
+  assert.equal(await exists(entry.retired), true, "the old copy is kept");
+  // Still locked on the next startup: nothing is deleted, the journal survives, and the attempt budget is not consumed.
+  for (let attempt = 0; attempt < MAX_REFRESH_ATTEMPTS + 1; attempt += 1) {
+    const again = await refresh({ filesystem });
+    assert.equal(again.results[key(launcher)].reason, "entry-point-missing");
+  }
+  assert.equal(await exists(entry.staging), true);
+  assert.equal(await exists(entry.retired), true);
+  assert.deepEqual((await store.read()).launcherRefresh[key(launcher)], entry);
+  // Once the lock clears the staged program is promoted and bookkeeping completes.
+  promoteFails = false;
+  const restored = await refresh({ filesystem });
+  assert.equal(restored.results[key(launcher)].status, "recorded");
+  assert.equal(await readFile(launcher, "utf8"), `${builds[1].id} executable 0.9.0`);
+  assert.equal(await readFile(join(installRoot, "unins000.exe"), "utf8"), "inno uninstaller");
+  state = await store.read();
+  assert.deepEqual(state.launcherRefresh, {});
+  assert.equal(state.installedReleases[key(launcher)], "0.9.0");
+  assert.deepEqual(await readdir(dirname(installRoot)), [target.bundle]);
+  // When only the old copy survives, it is what comes back.
+  const id = randomUUID();
+  const retired = `${installRoot}.retired-${id}`;
+  await fs.rename(installRoot, retired);
+  await store.update({ launcherRefresh: { [key(launcher)]: { id, path: key(launcher), root: installRoot, build: builds[1].id, version: "0.9.0",
+    attempts: 1, staging: `${installRoot}.refresh-${id}`, retired, phase: "failed", startedAt: new Date().toISOString(), error: "crash", leftovers: [] } } });
+  assert.equal((await refresh()).results[key(launcher)].status, "recorded", "the stale journal is closed once the entry point is back");
+  assert.equal(await readFile(launcher, "utf8"), `${builds[1].id} executable 0.9.0`);
+  assert.deepEqual(await readdir(dirname(installRoot)), [target.bundle]);
+  assert.deepEqual((await store.read()).launcherRefresh, {});
 });
 
 test("the hard-coded uninstall key matches the Windows installer's AppId", async () => {

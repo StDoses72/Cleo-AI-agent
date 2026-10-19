@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { desktopPlatform, installationRoot } from "./platform.mjs";
-import { exists, ownedPath, readJson } from "./evolution-store.mjs";
+import { DATA_ENTRIES, exists, ownedPath, readJson } from "./evolution-store.mjs";
 import { copyProgramBundle } from "./evolution-tools.mjs";
 import { executableInUse } from "./install-state.mjs";
 
@@ -34,6 +34,27 @@ function normalize(path, platform) {
 function outside(parent, path) {
   const child = relative(resolve(parent), resolve(path));
   return !child || child.startsWith("..") || isAbsolute(child);
+}
+
+function channelOf(version) {
+  return typeof version === "string" ? (version.endsWith("-alpha") ? "alpha" : "stable") : null;
+}
+
+/** Input: launcher root and store. Output: true when user data or the evolution registry would travel with the swap.
+ * CLEO_HOME is a supported override, so the data home (or a linked data entry) can sit inside Programs\Cleo.
+ */
+async function overlapsUserData(root, store, filesystem) {
+  const live = [store.root, store.dataHome, ...DATA_ENTRIES.map((name) => join(store.dataHome, name)), join(store.dataHome, "models")];
+  for (const path of live) {
+    let actual;
+    try { actual = await filesystem.realpath(path); }
+    catch (error) {
+      if (error.code === "ENOENT") actual = resolve(path);
+      else return true;
+    }
+    if (!outside(root, actual) || !outside(actual, root)) return true;
+  }
+  return false;
 }
 
 function powershellLiteral(value) {
@@ -146,7 +167,9 @@ export async function refreshInstalledLauncher({
 
   await cleanLeftovers(store, filesystem);
   const recorded = Object.keys(state.installedReleases || {});
-  const candidates = [...new Set([...recorded, ...launchers.map((path) => normalize(path, platform))])];
+  // The installer default is the stable entry point; an alpha program never adopts it.
+  const defaults = channelOf(active.version) === "stable" ? launchers.map((path) => normalize(path, platform)) : [];
+  const candidates = [...new Set([...recorded, ...defaults])];
   const results = {};
   for (const path of candidates) {
     let root;
@@ -155,15 +178,27 @@ export async function refreshInstalledLauncher({
     if (!outside(store.root, path) || normalize(path, platform) === normalize(executable, platform)) {
       results[path] = { status: "skipped", reason: "managed-program" }; continue;
     }
-    if (platform === "win32") root = await onDiskCase(root, filesystem);
     const previous = state.launcherRefresh?.[path] || null;
-    await recoverInterruptedSwap(previous, root, filesystem);
+    // Keep the directory's own spelling; while it is missing, the journal recorded it before the swap.
+    if (platform === "win32") root = await exists(root) ? await onDiskCase(root, filesystem) : previous?.root || root;
+    // A missing entry point is restored from the journaled copies before any other bookkeeping.
+    const restored = await restoreEntryPoint(previous, root, filesystem, log);
+    if (restored) { results[path] = restored; continue; }
     if (!await exists(path)) { results[path] = { status: "skipped", reason: "missing" }; continue; }
+    const onDisk = await installedVersion(root, target);
     // A location the registry never recorded is adopted only when it carries Cleo release metadata.
-    if (!recorded.includes(path) && !previous && !await installedVersion(root, target)) {
+    if (!recorded.includes(path) && !previous && !onDisk) {
       results[path] = { status: "skipped", reason: "unidentified" }; continue;
     }
-    results[path] = await refreshLauncher({ store, path, root, previous, source, build: active, target, filesystem, copyBundle, inUse, registry, log });
+    const launcherChannel = channelOf(onDisk) || channelOf(state.installedReleases?.[path]);
+    if (launcherChannel !== channelOf(active.version)) {
+      results[path] = { status: "skipped", reason: "channel-mismatch", launcherChannel }; continue;
+    }
+    if (await overlapsUserData(root, store, filesystem)) {
+      log(`Launcher refresh refused: user data or the evolution registry lives inside ${root}.`);
+      results[path] = { status: "skipped", reason: "contains-user-data" }; continue;
+    }
+    results[path] = await refreshLauncher({ store, path, root, previous, onDisk, source, build: active, target, filesystem, copyBundle, inUse, registry, log });
   }
   return { status: "done", results };
 }
@@ -178,6 +213,7 @@ async function cleanLeftovers(store, filesystem) {
     try {
       if (typeof path !== "string" || !SIBLING_PATTERN.test(path)) continue;
       if (!outside(store.root, path) || !outside(store.dataHome, path)) continue;
+      if (await overlapsUserData(path, store, filesystem)) { failures.push(path); continue; }
       await filesystem.rm(path, { recursive: true, force: true });
     } catch { failures.push(path); }
   }
@@ -192,19 +228,27 @@ async function journal(store, path, entry) {
   });
 }
 
-/** Input: a launcher whose swap was interrupted. Output: the launcher directory present again, from the new or old copy. */
-async function recoverInterruptedSwap(journalEntry, root, filesystem) {
-  if (!journalEntry || !["replacing", "cleaning"].includes(journalEntry.phase)) return;
-  if (!await exists(root)) {
-    if (journalEntry.staging && await exists(journalEntry.staging)) await filesystem.rename(journalEntry.staging, root);
-    else if (journalEntry.retired && await exists(journalEntry.retired)) await filesystem.rename(journalEntry.retired, root);
+/** Input: the launcher's journal. Output: null when the entry point is present; otherwise the outcome of putting it back.
+ * Whatever phase the journal recorded, a missing install root with a journaled copy beside it is restored first:
+ * the staged new program when it exists, else the retired old one. A still-locked rename stays journaled and is retried.
+ */
+async function restoreEntryPoint(journalEntry, root, filesystem, log) {
+  if (!journalEntry || await exists(root)) return null;
+  const copies = [journalEntry.staging, journalEntry.retired].filter(Boolean);
+  for (const copy of copies) {
+    if (!await exists(copy)) continue;
+    try { await filesystem.rename(copy, root); return null; }
+    catch (error) {
+      log(`Launcher restore deferred: ${error.message}`);
+      return { status: "deferred", reason: "entry-point-missing", error: error.message };
+    }
   }
+  return null;
 }
 
-async function refreshLauncher({ store, path, root, previous, source, build, target, filesystem, copyBundle, inUse, registry, log }) {
+async function refreshLauncher({ store, path, root, previous, onDisk, source, build, target, filesystem, copyBundle, inUse, registry, log }) {
   const state = await store.read();
   const leftovers = [previous?.staging, previous?.retired, ...(previous?.leftovers || [])].filter(Boolean);
-  const onDisk = await installedVersion(root, target);
   const current = onDisk === build.version && state.installedReleases?.[path] === build.version;
   if (current && !previous) return { status: "current", version: build.version };
   if (onDisk === build.version) {
@@ -231,11 +275,24 @@ async function refreshLauncher({ store, path, root, previous, source, build, tar
     await journal(store, path, { ...entry, phase: "replacing" });
     await filesystem.rename(root, entry.retired);
     try { await filesystem.rename(entry.staging, root); }
-    catch (error) { await filesystem.rename(entry.retired, root); throw error; }
+    catch (error) {
+      try { await filesystem.rename(entry.retired, root); }
+      catch (rollback) {
+        // Both copies exist beside a missing entry point: keep them and let the next healthy startup restore one.
+        await journal(store, path, { ...entry, phase: "replacing", error: `${error.message}; rollback: ${rollback.message}` });
+        log(`Launcher refresh left the entry point missing; it will be restored on the next healthy startup: ${rollback.message}`);
+        return { status: "deferred", reason: "entry-point-missing", error: rollback.message };
+      }
+      throw error;
+    }
     await journal(store, path, { ...entry, phase: "cleaning" });
     const cleanup = [];
-    try { await filesystem.rm(entry.retired, { recursive: true, force: true, maxRetries: 3 }); }
-    catch { cleanup.push(entry.retired); }
+    // The retired copy is only removed when it provably holds no user data (it was checked before the swap, and again here).
+    if (await overlapsUserData(entry.retired, store, filesystem)) cleanup.push(entry.retired);
+    else {
+      try { await filesystem.rm(entry.retired, { recursive: true, force: true, maxRetries: 3 }); }
+      catch { cleanup.push(entry.retired); }
+    }
     const registryKeys = await registry(root, build.version).catch((error) => { log(`Uninstall entry: ${error.message}`); return []; });
     await finish({ store, path, root, build, leftovers: [...leftovers, ...cleanup], registryKeys, filesystem });
     return { status: "refreshed", version: build.version, registryKeys };
