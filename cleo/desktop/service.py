@@ -458,6 +458,10 @@ class DesktopService:
         if not path.is_dir():
             raise ValueError(f"工作目录不存在或不是文件夹：{path}")
         name = path_name(str(path), "workspace") or "workspace"
+        if memory_space == "productivity" and name == GENERAL_PROJECT:
+            raise ValueError(
+                f"“{GENERAL_PROJECT}”是 Cleo 保留的通用项目名，请为文件夹换一个名称后再添加。"
+            )
         existing = self.runtime.project_path(memory_space, name)
         if existing is not None and os.path.normcase(existing) != os.path.normcase(str(path)):
             raise ValueError(f"已有同名项目“{name}”映射到：{existing}")
@@ -976,7 +980,9 @@ class DesktopService:
             raise ValueError(f"不支持的项目空间：{space}")
         project = project_name_from_id(project_id_value)
         selected_path: str | None = None
-        if project_path is not None:
+        if project_path is not None and not (
+            memory_space == "productivity" and project == GENERAL_PROJECT
+        ):
             path = Path(project_path).expanduser().resolve()
             if not path.is_dir():
                 raise ValueError(f"工作目录不存在或不是文件夹：{path}")
@@ -2301,12 +2307,6 @@ class DesktopService:
                 "general",
                 root_path,
             )
-        # The general development project always exists, like chat's; it binds no user folder.
-        candidates[project_id("productivity", GENERAL_PROJECT)] = (
-            "productivity",
-            GENERAL_PROJECT,
-            self._general_workspace(),
-        )
         for memory_space in ("non_productivity", "productivity"):
             for name in self.runtime.projects_for(memory_space):
                 if self.runtime.is_project_removed(memory_space, name):
@@ -2318,6 +2318,13 @@ class DesktopService:
                         name,
                         path,
                     )
+        # The general development project always exists, like chat's, and binds no user folder:
+        # it is assigned last so an old registration or session under that name cannot redirect it.
+        candidates[project_id("productivity", GENERAL_PROJECT)] = (
+            "productivity",
+            GENERAL_PROJECT,
+            self._general_workspace(),
+        )
 
         self._project_paths = {
             identifier: path for identifier, (_space, _name, path) in candidates.items()

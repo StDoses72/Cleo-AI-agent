@@ -316,9 +316,11 @@ export function useCleoWorkspace(evolutionOpen = false) {
       attentive: () => document.hasFocus() && !document.hidden,
     };
   }, [activeThreadId]);
-  // Returning to the window while a finished thread is on screen counts as reading it.
+  // A finished thread on screen while the window has focus counts as read: on arrival
+  // (rail or project switch restores it) and on returning to the window.
   useEffect(() => {
     const settle = () => { if (document.hasFocus() && !document.hidden) markThreadRead(activeThreadId); };
+    settle();
     window.addEventListener("focus", settle);
     document.addEventListener("visibilitychange", settle);
     return () => {
@@ -593,7 +595,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
             profileId: draftProfileId || runtimeCatalog?.defaultNonProductivityProfile,
           }
         : {
-            projectPath: project?.path,
+            projectPath: project?.managed ? undefined : project?.path,
             provider: draftProvider || runtimeCatalog?.defaultProductivityProvider,
             model: draftModel || undefined,
             effort: draftEffort ?? undefined,
