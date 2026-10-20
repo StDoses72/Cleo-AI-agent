@@ -1,5 +1,6 @@
 import asyncio
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 from langchain_core.messages import AIMessageChunk
 from pydantic import SecretStr
@@ -113,6 +114,9 @@ def test_agent_backend_uses_configured_application_root(tmp_path, monkeypatch) -
         "create_deep_agent",
         lambda **kwargs: captured_options.update(kwargs) or SimpleNamespace(),
     )
+    tools = [object()]
+    create_tools = Mock(return_value=tools)
+    monkeypatch.setattr(agent_module, "chat_tools", create_tools)
 
     agent = agent_module.Agent(
         profile=SimpleNamespace(
@@ -126,6 +130,9 @@ def test_agent_backend_uses_configured_application_root(tmp_path, monkeypatch) -
     )
 
     assert agent.root_dir == tmp_path
+    create_tools.assert_called_once_with(tmp_path.resolve())
+    assert agent.tool_list is tools
+    assert captured_options["tools"] is tools
     assert agent.backend.ls("/skills").error is None
     assert agent.backend.read("/memory/MEMORY_POLICY.md").error is None
     assert agent.backend.read("/AGENTS.md").error is None
@@ -170,6 +177,9 @@ def test_agent_backend_uses_selected_project_and_mounts_cleo_context(tmp_path, m
         "create_deep_agent",
         lambda **kwargs: captured_options.update(kwargs) or SimpleNamespace(),
     )
+    tools = [object()]
+    create_tools = Mock(return_value=tools)
+    monkeypatch.setattr(agent_module, "chat_tools", create_tools)
 
     agent = agent_module.Agent(
         project_path=project_root,
@@ -184,6 +194,9 @@ def test_agent_backend_uses_selected_project_and_mounts_cleo_context(tmp_path, m
     )
 
     assert agent.root_dir == project_root.resolve()
+    create_tools.assert_called_once_with(project_root.resolve())
+    assert agent.tool_list is tools
+    assert captured_options["tools"] is tools
     assert agent.backend.read("/project.txt").file_data["content"] == "selected\n"
     assert agent.backend.read("/.cleo/memory/MEMORY_POLICY.md").error is None
     assert captured_options["memory"] == [
