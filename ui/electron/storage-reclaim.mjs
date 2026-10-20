@@ -1,9 +1,7 @@
 import { createHash } from "node:crypto";
-import { execFile } from "node:child_process";
 import * as nativeFs from "node:fs/promises";
 import { createRequire } from "node:module";
 import { basename, dirname, isAbsolute, join, posix, relative, resolve, win32 } from "node:path";
-import { promisify } from "node:util";
 import { desktopPlatform, installationRoot } from "./platform.mjs";
 import { compareVersions } from "./updater.mjs";
 import { readJson } from "./evolution-store.mjs";
@@ -19,8 +17,6 @@ const PLAN_KEY = /^[a-f0-9]{64}$/;
 const BUILD = /^(baseline|local|official)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BACKUP = /^apply-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CACHE_NAMES = ["pip-cache", "npm-cache", "downloads"];
-const executeFile = promisify(execFile);
-const WINDOWS_INSTALL_KEY = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{AD929A4D-0594-4D59-A698-5D8B26D72795}_is1";
 /** Real session, memory, model and configuration data; never a cleanup candidate. */
 export const USER_DATA_ENTRIES = ["memory", "data", "models", "config", "skills", "PERSONA.md", "AGENTS.md", "setup"];
 
@@ -156,38 +152,6 @@ export function defaultLauncherPaths(platform = process.platform, environment = 
   return names.flatMap(name => [posix.join("/opt", name, "Cleo"), posix.join("/usr/lib", name, "Cleo")]);
 }
 
-/** Include the currently registered Windows installer location, which can differ from its default.
- * Both channels share one AppId; unregistered moved/copied bundles are not discoverable here.
- * Registry failures propagate so cleanup cannot proceed with an incomplete owner inventory.
- */
-export async function installedLauncherPaths({ platform = process.platform, environment = process.env, execute = executeFile } = {}) {
-  const launchers = defaultLauncherPaths(platform, environment);
-  if (platform !== "win32") return launchers;
-  const script = `
-$ErrorActionPreference = 'Stop'
-[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
-$locations = @()
-foreach ($hive in @([Microsoft.Win32.Registry]::CurrentUser, [Microsoft.Win32.Registry]::LocalMachine)) {
-  $key = $hive.OpenSubKey('${WINDOWS_INSTALL_KEY}')
-  if ($null -eq $key) { continue }
-  try {
-    $paths = @('InstallLocation', 'Inno Setup: App Path') | ForEach-Object { $key.GetValue($_) } | Where-Object { $_ -ne $null -and $_ -ne '' }
-    if (!$paths) { throw 'The Cleo installer registration has no installation path.' }
-    $locations += $paths
-  } finally { $key.Dispose() }
-}
-ConvertTo-Json -InputObject @($locations) -Compress
-`;
-  const powershell = win32.join(environment.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
-  const { stdout } = await execute(powershell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand",
-    Buffer.from(script, "utf16le").toString("base64")], { windowsHide: true, timeout: 20000, maxBuffer: 1024 * 1024 });
-  const locations = JSON.parse(stdout.trim());
-  if (!Array.isArray(locations) || locations.some(path => typeof path !== "string" || !win32.isAbsolute(path))) {
-    throw new Error("The Cleo installer registration contains an invalid installation path.");
-  }
-  return [...new Set([...launchers, ...locations.map(path => win32.join(path, "Cleo.exe"))])];
-}
-
 /** Purpose: Run inventory and reclaim requests one at a time, each resolving to its own result.
  * Input: none. Output: a function that queues an action behind the previous one.
  */
@@ -289,8 +253,7 @@ export async function storageInventory({
   const size = path => directorySize(path, { fs, signal });
   // Startup passes measure only what they remove; walking retained programs and user data is for the UI.
   const push = async entry => { entries.push({ ...entry, bytes: measure === "all" || entry.action === "reclaim" ? await size(entry.path) : 0 }); };
-  const references = await liveResources({ fs, state, buildsRoot, target, currentResources, currentVersion,
-    installedExecutables: typeof installedExecutables === "function" ? await installedExecutables() : installedExecutables, siblings });
+  const references = await liveResources({ fs, state, buildsRoot, target, currentResources, currentVersion, installedExecutables, siblings });
   const liveNamespaces = new Map();
   const owner = (key, item) => {
     const entry = liveNamespaces.get(key) || { label: item.label, versions: new Set(), unknownVersion: false };

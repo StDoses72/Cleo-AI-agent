@@ -1,15 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { randomUUID } from "node:crypto";
-import { execFile } from "node:child_process";
 import * as nativeFs from "node:fs/promises";
 import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
-import { dirname, join, posix, resolve, win32 } from "node:path";
+import { dirname, join, posix, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { promisify } from "node:util";
 import { EvolutionStore, exists } from "../electron/evolution-store.mjs";
 import { desktopPlatform } from "../electron/platform.mjs";
-import { createStorageQueue, defaultLauncherPaths, installedLauncherPaths, namespaceKey, planKey, reclaimStorage, storageInventory, venvHome, versionKey } from "../electron/storage-reclaim.mjs";
+import { createStorageQueue, defaultLauncherPaths, namespaceKey, planKey, reclaimStorage, storageInventory, venvHome, versionKey } from "../electron/storage-reclaim.mjs";
 
 const target = desktopPlatform();
 const hex = length => randomUUID().replaceAll("-", "").padEnd(length, "0").slice(0, length);
@@ -447,26 +445,6 @@ test("default launcher locations cover both channels on every platform", () => {
   assert.ok(defaultLauncherPaths("linux", {}).some(path => path.includes("Cleo Alpha")));
 });
 
-test("a registered custom installation without evolution state keeps its shared runtime", { skip: process.platform !== "win32" }, async t => {
-  const f = await fixture(t);
-  const launcherRoot = join(f.root, "custom-install", target.bundle);
-  const resources = join(launcherRoot, target.resources);
-  await mkdir(resources, { recursive: true });
-  await writeFile(join(launcherRoot, target.executable), "exe");
-  await writeFile(join(resources, "runtime-plan.json"), JSON.stringify({ schema: 1, plan: "custom-stable" }));
-  const runtime = await f.addOnlineRuntime(await planKey(resources), "0.9.0");
-  const orphan = await f.addOnlineRuntime(hex(64), "0.8.0", { completed: false });
-  const installedExecutables = () => installedLauncherPaths({
-    environment: { SystemRoot: process.env.SystemRoot, LOCALAPPDATA: join(f.root, "local-appdata") },
-    execute: async () => ({ stdout: JSON.stringify([launcherRoot]) }),
-  });
-  const result = await f.inventory({ installedExecutables });
-  assert.equal(result.entries.find(entry => entry.path === runtime).action, "keep");
-  await reclaimStorage({ dataHome: f.dataHome, store: f.store, installedExecutables });
-  assert.equal(await exists(runtime), true);
-  assert.equal(await exists(orphan), false);
-});
-
 test("legacy script installations outside discoverable locations keep completed shared runtimes", async t => {
   const f = await fixture(t);
   const launcherRoot = join(f.root, "legacy-custom-install", target.bundle);
@@ -480,7 +458,7 @@ test("legacy script installations outside discoverable locations keep completed 
   const runtime = await f.addOnlineRuntime(await planKey(resources), "0.9.0");
   const alphaHome = join(f.root, "alpha-home");
   const store = new EvolutionStore(join(f.root, "alpha-control"), alphaHome);
-  const options = { dataHome: alphaHome, store, onlineRoots: [f.online], installedExecutables: async () => [] };
+  const options = { dataHome: alphaHome, store, onlineRoots: [f.online], installedExecutables: [] };
   const inventory = await storageInventory(options);
   assert.equal(inventory.entries.find(entry => entry.path === runtime).action, "keep");
   for (const manual of [false, true]) {
@@ -491,69 +469,29 @@ test("legacy script installations outside discoverable locations keep completed 
   }
 });
 
-test("Windows launcher discovery reads the installer's fixed AppId and both path values", async () => {
-  const installer = await nativeFs.readFile(new URL("../../scripts/installers/windows.iss", import.meta.url), "utf8");
-  const appId = /^AppId=\{(.+)$/m.exec(installer)[1].trim();
-  const key = `SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${appId}_is1`;
-  const environment = { SystemRoot: "C:\\Windows", LOCALAPPDATA: "C:\\Users\\u\\AppData\\Local" };
-  const custom = "D:\\Custom Apps\\Cleo";
-  const other = "E:\\Other Cleo";
-  const paths = await installedLauncherPaths({ platform: "win32", environment, execute: async (executable, args, options) => {
-    assert.equal(executable, "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
-    assert.equal(options.windowsHide, true);
-    const script = Buffer.from(args.at(-1), "base64").toString("utf16le");
-    assert.ok(script.includes(`OpenSubKey('${key}')`));
-    assert.ok(script.includes("'InstallLocation', 'Inno Setup: App Path'"));
-    return { stdout: `\uFEFF${JSON.stringify([custom + "\\", other, custom])}` };
-  } });
-  assert.deepEqual(paths, [...defaultLauncherPaths("win32", environment), win32.join(custom, "Cleo.exe"), win32.join(other, "Cleo.exe")]);
-  assert.deepEqual(await installedLauncherPaths({ platform: "win32", environment, execute: async () => ({ stdout: "[]" }) }),
-    defaultLauncherPaths("win32", environment));
-  assert.deepEqual(await installedLauncherPaths({ platform: "linux", environment: {}, execute: () => { throw new Error("must not query Windows"); } }),
-    defaultLauncherPaths("linux", {}));
-});
-
-test("unreadable or malformed installer ownership aborts cleanup before deletion", async t => {
+test("invalid completion markers do not retain incomplete runtime remnants", async t => {
   const f = await fixture(t);
-  const orphan = await f.addOnlineRuntime(hex(64), "0.8.0", { completed: false });
-  const denied = new Error("registry access denied");
-  const environment = { SystemRoot: "C:\\Windows" };
-  const installedExecutables = () => installedLauncherPaths({ platform: "win32", environment,
-    execute: async () => { throw denied; } });
-  await assert.rejects(reclaimStorage({ dataHome: f.dataHome, store: f.store, installedExecutables }), error => error === denied);
-  assert.equal(await exists(orphan), true);
-  assert.equal((await f.store.read()).storageCleanupPending, undefined);
-  await assert.rejects(installedLauncherPaths({ platform: "win32", environment,
-    execute: async () => ({ stdout: "invalid JSON" }) }), SyntaxError);
-  for (const value of [null, {}, ["relative\\Cleo"], [42]]) {
-    await assert.rejects(installedLauncherPaths({ platform: "win32", environment,
-      execute: async () => ({ stdout: JSON.stringify(value) }) }), /invalid installation path/);
-  }
+  const mismatched = await f.addOnlineRuntime(hex(64));
+  const malformed = await f.addOnlineRuntime(hex(64));
+  await writeFile(join(mismatched, "ready.json"), JSON.stringify({ key: hex(64), version: "0.8.0" }));
+  await writeFile(join(malformed, "ready.json"), "invalid JSON");
+  const result = await reclaimStorage({ dataHome: f.dataHome, store: f.store });
+  assert.equal(result.removed.length, 2);
+  assert.equal(await exists(mismatched), false);
+  assert.equal(await exists(malformed), false);
 });
 
-test("native Windows registry discovery reads custom paths and missing registration", { skip: process.platform !== "win32" }, async t => {
-  const execute = promisify(execFile);
-  const powershell = win32.join(process.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
-  const key = `SOFTWARE\\CleoStorageTests-${randomUUID()}`;
-  const quote = value => `'${value.replaceAll("'", "''")}'`;
-  const run = script => execute(powershell, ["-NoProfile", "-NonInteractive", "-EncodedCommand",
-    Buffer.from(`$ErrorActionPreference='Stop'; ${script}`, "utf16le").toString("base64")], { windowsHide: true });
-  const remove = () => run(`[Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree(${quote(key)}, $false)`);
-  t.after(remove);
-  const custom = "D:\\Custom Apps\\Cleo 测试's";
-  const discover = () => installedLauncherPaths({ execute: (executable, args, options) => {
-    const script = Buffer.from(args.at(-1), "base64").toString("utf16le").replace(
-      /SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\\{[^}]+\}_is1/g, key);
-    return execute(executable, [...args.slice(0, -1), Buffer.from(script, "utf16le").toString("base64")], options);
-  } });
-  const setPath = name => run(`$key=[Microsoft.Win32.Registry]::CurrentUser.CreateSubKey(${quote(key)}); try { $key.SetValue(${quote(name)}, ${quote(custom + "\\")}) } finally { $key.Dispose() }`);
-  await setPath("InstallLocation");
-  assert.ok((await discover()).includes(win32.join(custom, "Cleo.exe")));
-  await remove();
-  await setPath("Inno Setup: App Path");
-  assert.ok((await discover()).includes(win32.join(custom, "Cleo.exe")));
-  await remove();
-  assert.deepEqual(await discover(), defaultLauncherPaths());
-  await run(`$key=[Microsoft.Win32.Registry]::CurrentUser.CreateSubKey(${quote(key)}); $key.Dispose()`);
-  await assert.rejects(discover(), /no installation path/);
+test("an unreadable completion marker stops cleanup before deleting any runtime", async t => {
+  const f = await fixture(t);
+  const runtime = await f.addOnlineRuntime(hex(64));
+  const incomplete = await f.addOnlineRuntime(hex(64), "0.8.0", { completed: false });
+  const denied = Object.assign(new Error("completion marker access denied"), { code: "EACCES" });
+  const fs = { ...nativeFs, readFile: async (path, ...args) => {
+    if (resolve(path) === join(runtime, "ready.json")) throw denied;
+    return nativeFs.readFile(path, ...args);
+  } };
+  await assert.rejects(reclaimStorage({ dataHome: f.dataHome, store: f.store, fs }), error => error === denied);
+  assert.equal(await exists(runtime), true);
+  assert.equal(await exists(incomplete), true);
+  assert.equal((await f.store.read()).storageCleanupPending, undefined);
 });
