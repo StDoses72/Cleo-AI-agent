@@ -30,6 +30,7 @@ import {
   Sparkles,
   Sun,
   Trash2,
+  Wrench,
   X,
 } from "lucide-react";
 import type {
@@ -377,7 +378,6 @@ export function SettingsModal({
         <button className="icon-button settings-close" aria-label="关闭设置" onClick={onClose}><X size={17} /></button>
         <aside>
           <div className="settings-brand"><span aria-hidden="true" /><strong>设置</strong></div>
-          {window.cleoDesktop?.setup && <button type="button" onClick={() => { onClose(); window.dispatchEvent(new Event("cleo:open-setup")); }}>检查运行环境</button>}
           <nav aria-label="设置导航">
             <button className={page === "appearance" ? "active" : ""} aria-current={page === "appearance" ? "page" : undefined} type="button" onClick={() => setPage("appearance")}><Sparkles size={16} />外观</button>
             <button className={page === "agent" ? "active" : ""} aria-current={page === "agent" ? "page" : undefined} type="button" onClick={() => setPage("agent")}><SlidersHorizontal size={16} />运行设置</button>
@@ -392,6 +392,8 @@ export function SettingsModal({
             <button className={page === "updates" ? "active" : ""} aria-current={page === "updates" ? "page" : undefined} type="button" onClick={() => setPage("updates")}><RefreshCw size={16} />更新</button>
             <button className={page === "data" ? "active" : ""} aria-current={page === "data" ? "page" : undefined} type="button" onClick={() => setPage("data")}><Database size={16} />数据与记忆</button>
           </nav>
+          {window.cleoDesktop?.setup && <button className="settings-setup-link" type="button"
+            onClick={() => { onClose(); window.dispatchEvent(new Event("cleo:open-setup")); }}><Wrench size={16} />检查运行环境</button>}
         </aside>
         <section className="settings-content">
           <header className="settings-header">

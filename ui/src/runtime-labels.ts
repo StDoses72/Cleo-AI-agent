@@ -1,4 +1,16 @@
-import type { ReasoningEffort, RuntimeProfile, ThreadSpace } from "./types";
+import type { Project, ReasoningEffort, RuntimeProfile, ThreadSpace } from "./types";
+
+/** Purpose: The name shown for a project; the managed general project reads as 通用. */
+export function projectLabel(project: Pick<Project, "name" | "managed"> | null | undefined) {
+  if (!project) return "";
+  return project.managed ? "通用" : project.name;
+}
+
+/** Purpose: The secondary line under a project name; a managed project shows no folder. */
+export function projectPathLabel(project: Pick<Project, "path" | "managed"> | null | undefined) {
+  if (!project) return "";
+  return project.managed ? "不绑定文件夹" : project.path;
+}
 
 /** Purpose: The short harness name a thread card shows: coding harness for tasks, model for chats. */
 export function harnessLabel(runtime: Pick<RuntimeProfile, "provider" | "model"> | undefined, space: ThreadSpace) {

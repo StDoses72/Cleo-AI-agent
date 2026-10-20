@@ -133,6 +133,11 @@ PRODUCTIVITY_COMMANDS = (
 )
 
 
+# Development tasks that bind no folder belong to the ``general`` project, like chat does.
+# Harnesses still need a working directory, so Cleo keeps one out of sight beside its data.
+GENERAL_PROJECT = "general"
+
+
 def _create_default_dream_agent():
     """Import and construct DreamAgent outside the desktop event-loop thread."""
     from cleo.agents.dream import DreamAgent
@@ -429,6 +434,19 @@ class DesktopService:
                 self._activate(replacement)
         return await self.load_workspace()
 
+    def _general_workspace(self) -> str:
+        """Purpose: The working directory behind the general development project.
+
+        Input: none. Output: An existing directory under the Cleo root. It is not registered
+        as a user folder; the project list adds it as a managed entry without a visible path.
+        """
+        path = (
+            Path(self.settings.active_directory_profile.root_path) / "workspaces" / GENERAL_PROJECT
+        )
+        path.mkdir(parents=True, exist_ok=True)
+        self._project_paths[project_id("productivity", GENERAL_PROJECT)] = str(path)
+        return str(path)
+
     async def add_project(self, *, space: str, project_path: str) -> dict[str, Any]:
         """Purpose: Register an existing directory as a workspace without starting a model.
 
@@ -442,6 +460,10 @@ class DesktopService:
         if not path.is_dir():
             raise ValueError(f"工作目录不存在或不是文件夹：{path}")
         name = path_name(str(path), "workspace") or "workspace"
+        if memory_space == "productivity" and name == GENERAL_PROJECT:
+            raise ValueError(
+                f"“{GENERAL_PROJECT}”是 Cleo 保留的通用项目名，请为文件夹换一个名称后再添加。"
+            )
         existing = self.runtime.project_path(memory_space, name)
         if existing is not None and os.path.normcase(existing) != os.path.normcase(str(path)):
             raise ValueError(f"已有同名项目“{name}”映射到：{existing}")
@@ -464,7 +486,7 @@ class DesktopService:
         else:
             raise ValueError("无效的项目 ID。")
         name = project_name_from_id(project_id_value)
-        if memory_space == "non_productivity" and name == "general":
+        if name == GENERAL_PROJECT:
             raise ValueError("默认的 general 项目不能移除。")
         manifests = []
         for row in self.store.list_sessions(space=memory_space):
@@ -960,7 +982,9 @@ class DesktopService:
             raise ValueError(f"不支持的项目空间：{space}")
         project = project_name_from_id(project_id_value)
         selected_path: str | None = None
-        if project_path is not None:
+        if project_path is not None and not (
+            memory_space == "productivity" and project == GENERAL_PROJECT
+        ):
             path = Path(project_path).expanduser().resolve()
             if not path.is_dir():
                 raise ValueError(f"工作目录不存在或不是文件夹：{path}")
@@ -1008,6 +1032,9 @@ class DesktopService:
                 project_path = self.runtime.project_path("productivity", project)
             if project_path is None and project == root_name:
                 project_path = root_path
+            if project_path is None and project == GENERAL_PROJECT:
+                # No folder bound: the managed general directory, never a user folder.
+                project_path = self._general_workspace()
             if project_path is None:
                 raise ValueError(f"项目“{project}”没有有效的工作目录，请重新打开该目录。")
             if not Path(project_path).is_dir():
@@ -2264,7 +2291,6 @@ class DesktopService:
     async def _projects(self, manifests: list[dict[str, Any]]) -> list[dict[str, Any]]:
         candidates: dict[str, tuple[str, str, str]] = {}
         root_path = str(self.settings.active_directory_profile.root_path)
-        root_name = path_name(root_path, "workspace")
         for manifest in manifests:
             if self._is_removed_project(manifest):
                 continue
@@ -2282,12 +2308,6 @@ class DesktopService:
                 "general",
                 root_path,
             )
-        if not self.runtime.is_project_removed("productivity", root_name):
-            candidates[project_id("productivity", root_name)] = (
-                "productivity",
-                root_name,
-                root_path,
-            )
         for memory_space in ("non_productivity", "productivity"):
             for name in self.runtime.projects_for(memory_space):
                 if self.runtime.is_project_removed(memory_space, name):
@@ -2299,6 +2319,13 @@ class DesktopService:
                         name,
                         path,
                     )
+        # The general development project always exists, like chat's, and binds no user folder:
+        # it is assigned last so an old registration or session under that name cannot redirect it.
+        candidates[project_id("productivity", GENERAL_PROJECT)] = (
+            "productivity",
+            GENERAL_PROJECT,
+            self._general_workspace(),
+        )
 
         self._project_paths = {
             identifier: path for identifier, (_space, _name, path) in candidates.items()

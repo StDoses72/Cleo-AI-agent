@@ -7,6 +7,7 @@ import { useInspectorResize } from "./useInspectorResize";
 import "./components/evolution.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { renderBadge } from "./badge";
+import { projectLabel } from "./runtime-labels";
 import { Minus } from "lucide-react";
 import { Conversation } from "./components/Conversation";
 import { Inspector, type InspectorTab } from "./components/Inspector";
@@ -29,7 +30,7 @@ import { ThreadSidebar } from "./components/ThreadSidebar";
 import { WorkspaceRail } from "./components/WorkspaceRail";
 import { useCleoWorkspace } from "./useCleoWorkspace";
 import { cleoClient } from "./services/cleoClient";
-import type { ConfigStatus, MemoryViewMode, Project, Thread, UpdateState } from "./types";
+import type { ConfigStatus, MemoryViewMode, Project, Thread, UpdateState, WorkspaceSpace } from "./types";
 
 export function App() {
   const evolution = useEvolution();
@@ -241,6 +242,15 @@ export function App() {
     const count = workspace.unreadThreadIds.length;
     window.cleoWindow?.setBadge?.(count, count ? renderBadge(count) : null);
   }, [workspace.unreadThreadIds]);
+  // The same unread replies mark their space on the rail; selection alone shows no dot.
+  const unreadSpaces = useMemo(() => {
+    const spaces = new Set<WorkspaceSpace | "evolution">();
+    for (const id of workspace.unreadThreadIds) {
+      const thread = workspace.snapshot?.threads.find(item => item.id === id);
+      if (thread) spaces.add(thread.projectId === "productivity:cleo-evolution" ? "evolution" : thread.space);
+    }
+    return spaces;
+  }, [workspace.unreadThreadIds, workspace.snapshot?.threads]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -409,7 +419,7 @@ export function App() {
   return (
     <div ref={inspectorResize.setShell} className={appClasses} style={inspectorResize.style} data-theme={theme}>
       <TitleBar
-        projectName={evolutionOpen ? "Cleo" : workspace.activeSpace === "memory" ? "记忆" : workspace.activeProject?.name ?? "Cleo"}
+        projectName={evolutionOpen ? "Cleo" : workspace.activeSpace === "memory" ? "记忆" : (workspace.activeProject && projectLabel(workspace.activeProject)) || "Cleo"}
         mode={evolutionOpen ? "进化" : workspace.activeSpace === "productivity" ? "开发" : workspace.activeSpace === "chat" ? "对话" : "记忆"}
       />
       {workspace.loadingError && <div className="workspace-error" role="alert">
@@ -419,6 +429,7 @@ export function App() {
       <DependencySetup />
       <WorkspaceRail
         activeSpace={evolutionOpen ? "evolution" : workspace.activeSpace}
+        unreadSpaces={unreadSpaces}
         onSelectSpace={(space) => {
           setEvolutionOpen(space === "evolution");
           if (space === "evolution") {
