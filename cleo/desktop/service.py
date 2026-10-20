@@ -440,7 +440,9 @@ class DesktopService:
         Input: none. Output: An existing directory under the Cleo root. It is not registered
         as a user folder; the project list adds it as a managed entry without a visible path.
         """
-        path = Path(self.settings.active_directory_profile.root_path) / "workspaces" / GENERAL_PROJECT
+        path = (
+            Path(self.settings.active_directory_profile.root_path) / "workspaces" / GENERAL_PROJECT
+        )
         path.mkdir(parents=True, exist_ok=True)
         self._project_paths[project_id("productivity", GENERAL_PROJECT)] = str(path)
         return str(path)
@@ -2289,7 +2291,6 @@ class DesktopService:
     async def _projects(self, manifests: list[dict[str, Any]]) -> list[dict[str, Any]]:
         candidates: dict[str, tuple[str, str, str]] = {}
         root_path = str(self.settings.active_directory_profile.root_path)
-        root_name = path_name(root_path, "workspace")
         for manifest in manifests:
             if self._is_removed_project(manifest):
                 continue

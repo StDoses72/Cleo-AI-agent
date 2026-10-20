@@ -28,7 +28,8 @@ def test_development_task_without_folder_runs_in_the_general_workspace(tmp_path:
         second = await service.create_thread(
             space="productivity", project_id_value=f"productivity:{GENERAL_PROJECT}",
         )
-        assert os.path.normcase(service.store.load_manifest(second["id"])["cwd"]) == os.path.normcase(str(general))
+        second_cwd = service.store.load_manifest(second["id"])["cwd"]
+        assert os.path.normcase(second_cwd) == os.path.normcase(str(general))
 
     asyncio.run(scenario())
 
@@ -41,9 +42,11 @@ def test_a_user_folder_named_general_cannot_pose_as_the_managed_project(tmp_path
         with pytest.raises(ValueError, match="保留"):
             await service.add_project(space="productivity", project_path=str(folder))
         assert service.runtime.project_path("productivity", GENERAL_PROJECT) is None
-        # Passing that folder as the general project's path is ignored: the task still runs in the managed directory.
+        # Passing that folder as the general project's path is ignored:
+        # the task still runs in the managed directory.
         thread = await service.create_thread(
-            space="productivity", project_id_value=f"productivity:{GENERAL_PROJECT}", project_path=str(folder),
+            space="productivity", project_id_value=f"productivity:{GENERAL_PROJECT}",
+            project_path=str(folder),
         )
         cwd = service.store.load_manifest(thread["id"])["cwd"]
         assert os.path.normcase(cwd) == os.path.normcase(str(root / "workspaces" / GENERAL_PROJECT))
@@ -58,7 +61,9 @@ def test_unknown_project_without_folder_is_still_refused(tmp_path: Path) -> None
     async def scenario() -> None:
         service, _provider, root = _service(tmp_path)
         with pytest.raises(ValueError, match="没有有效的工作目录"):
-            await service.create_thread(space="productivity", project_id_value="productivity:unknown")
+            await service.create_thread(
+                space="productivity", project_id_value="productivity:unknown",
+            )
         assert not (root / "workspaces").exists()
 
     asyncio.run(scenario())

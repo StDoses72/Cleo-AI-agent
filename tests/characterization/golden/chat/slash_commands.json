@@ -160,7 +160,7 @@
   "projects_after": [
     "chat:archive",
     "chat:general",
-    "productivity:home"
+    "productivity:general"
   ],
   "threads_after": [
     {
