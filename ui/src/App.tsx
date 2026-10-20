@@ -640,6 +640,9 @@ export function App() {
         }}
         onDownloadUpdate={() => runUpdateAction("download")}
         onInstallUpdate={() => runUpdateAction("install")}
+        onStorageInventory={window.cleoDesktop?.storageInventory ? () => window.cleoDesktop!.storageInventory!() : undefined}
+        onReclaimStorage={window.cleoDesktop?.reclaimStorage ? () => window.cleoDesktop!.reclaimStorage!() : undefined}
+        storageBlocked={workspace.anyRunning ? "请先等待运行中的任务结束，再清理存储。" : null}
         onRevealPath={(path) => void workspace.revealPath(path)}
         onCopyConfigTemplate={(kind) => {
           void workspace.copyConfigTemplate(kind).then(() => notify("配置模板已复制"));

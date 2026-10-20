@@ -34,6 +34,43 @@ export interface UpdateState {
   dependencies?: { phase: string; error: string | null };
 }
 
+export type StorageEntryKind = "runtime-namespace" | "online-runtime" | "package-cache" | "install-scratch"
+  | "release-download" | "build" | "backup" | "user-data" | "unknown";
+
+/** One Cleo-owned directory with the desktop's keep-or-reclaim decision and its reason. */
+export interface StorageEntry {
+  id: string;
+  kind: StorageEntryKind;
+  path: string;
+  bytes: number;
+  action: "keep" | "reclaim";
+  /** Automatic entries go on every healthy startup; manual ones only when the user asks. */
+  policy?: "automatic" | "manual";
+  reason: string;
+  version?: string | null;
+  snapshots?: number;
+}
+
+export interface StorageInventory {
+  computedAt: number;
+  dataHome: string;
+  controlRoot: string;
+  entries: StorageEntry[];
+  totalBytes: number;
+  reclaimableBytes: number;
+  automaticBytes: number;
+  /** Entry ids whose last deletion failed (for example a Windows file lock); retried on the next cleanup. */
+  pending: string[];
+  lastCleanup: { at: number; removed: number; failed: number; freedBytes: number; manual: boolean } | null;
+}
+
+export interface StorageReclaimResult {
+  removed: string[];
+  failed: { id: string; error: string }[];
+  freedBytes: number;
+  inventory: StorageInventory;
+}
+
 export interface Project {
   id: string;
   space?: ThreadSpace;
