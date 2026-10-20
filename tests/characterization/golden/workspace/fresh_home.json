@@ -82,18 +82,20 @@
       "branch": null,
       "dirtyFiles": 0,
       "id": "chat:general",
+      "managed": false,
       "name": "general",
       "path": "<HOME>",
       "removable": false,
       "space": "chat"
     },
     {
-      "accent": "#f2b36c",
+      "accent": "#a78bfa",
       "branch": null,
       "dirtyFiles": 0,
-      "id": "productivity:home",
-      "name": "home",
-      "path": "<HOME>",
+      "id": "productivity:general",
+      "managed": true,
+      "name": "general",
+      "path": "<HOME>/workspaces/general",
       "removable": false,
       "space": "productivity"
     }
