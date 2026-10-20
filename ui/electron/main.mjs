@@ -41,6 +41,8 @@ import { EvolutionMonitorStore } from "./evolution-monitor-store.mjs";
 import { EvolutionCompanion } from "./evolution-companion.mjs";
 import { evolutionActions, nextVersionName } from "./evolution-actions.mjs";
 import { readJson } from "./evolution-store.mjs";
+import { createStorageQueue, installedLauncherPaths, reclaimStorage, storageInventory } from "./storage-reclaim.mjs";
+import { defaultRuntimeRoot } from "./online-runtime.mjs";
 
 if (process.argv.includes("--cleo-evolution-monitor")) {
   configureReleaseChannel(app);
@@ -100,7 +102,30 @@ const evolution = new EvolutionManager({
 });
 const programUpdates = new SelectableProgramUpdates({ updater, evolution, apply: applyEvolution,
   hasRunningTask: () => backend.pending.size > 0 || setup.busy });
+/** Purpose: Describe Cleo-owned storage and reclaim what no retained program references.
+ * Input: whether the user asked (manual also drops convenience caches). Output: inventory or reclaim result.
+ */
+// The other release channel keeps its own data and registry but shares the online runtime root.
+const siblingChannel = () => {
+  const cleoHome = backend.runtimePaths().cleoHome;
+  const name = alphaChannel ? "Cleo" : "Cleo Alpha";
+  return { label: name, controlRoot: join(dirname(app.getPath("userData")), name, "evolution"),
+    dataHome: join(dirname(cleoHome), name) };
+};
+const storageOptions = () => ({
+  dataHome: backend.runtimePaths().cleoHome, store: evolution.store, siblings: [siblingChannel()],
+  currentResources: process.resourcesPath, currentRuntimeNamespace: dependencies.installationRoot,
+  currentBaseResources: dependencies.baseResources, onlineRoots: [defaultRuntimeRoot()],
+  installedExecutables: async () => [process.execPath, ...await installedLauncherPaths()], currentVersion: app.getVersion(),
+  protectedVersions: [updater.getState().latestVersion, updater.getState().selectedTag?.replace(/^v/, "")].filter(Boolean),
+  downloadsBusy: () => releaseDownloads.busy || programUpdates.busy || evolution.phase !== "idle" || setup.busy,
+});
+const storage = createStorageQueue();
 app.on("cleo:healthy", (transactionId) => {
+  // Reclaim after the program proved itself; locked entries stay journaled for the next start.
+  void storage(() => reclaimStorage(storageOptions())).then(result => {
+    if (result.removed.length || result.failed.length) console.log(`Storage cleanup: removed ${result.removed.length}, failed ${result.failed.length}, freed ${result.freedBytes} bytes.`);
+  }).catch(error => console.error("Storage cleanup:", error.message));
   void evolution.store.read().then(state => {
     if (!transactionId || state.transaction || state.lastApplication?.id !== transactionId) return;
     const build = state.builds.find(item => item.id === state.active);
@@ -553,6 +578,11 @@ app.whenReady().then(async () => {
   ipcMain.handle("cleo:update:check", (_event, tag) => programUpdates.check(tag));
   ipcMain.handle("cleo:update:download", () => programUpdates.download());
   ipcMain.handle("cleo:update:install", () => programUpdates.install());
+  ipcMain.handle("cleo:storage:inventory", () => storage(() => storageInventory(storageOptions())));
+  ipcMain.handle("cleo:storage:reclaim", () => {
+    if (backend.pending.size) throw new Error("请先等待当前任务完成或停止任务，再清理存储。");
+    return storage(() => reclaimStorage(storageOptions(), { manual: true }));
+  });
   ipcMain.handle("cleo:evolution:state", () => evolutionState());
   ipcMain.handle("cleo:evolution:action", async (_event, payload) => {
     const { action, ...params } = payload || {};

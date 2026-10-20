@@ -41,6 +41,9 @@ import type {
   RuntimeProfile,
   RuntimeUpdate,
   UpdateState,
+  StorageEntryKind,
+  StorageInventory,
+  StorageReclaimResult,
   ConfigStatus,
   WorkspaceSpace,
 } from "../types";
@@ -307,6 +310,10 @@ interface SettingsModalProps {
   onCheckForUpdates: (tag?: string) => Promise<UpdateState | undefined>;
   onDownloadUpdate: () => void;
   onInstallUpdate: () => void;
+  onStorageInventory?: () => Promise<StorageInventory>;
+  onReclaimStorage?: () => Promise<StorageReclaimResult>;
+  /** Why cleanup cannot start right now (a running task); null when it can. */
+  storageBlocked?: string | null;
   onRevealPath: (path: string) => void;
   onCopyConfigTemplate: (kind: "cleo" | "harnesses") => void;
   onResetWorkspace: () => void;
@@ -345,6 +352,9 @@ export function SettingsModal({
   onCheckForUpdates,
   onDownloadUpdate,
   onInstallUpdate,
+  onStorageInventory,
+  onReclaimStorage,
+  storageBlocked = null,
   onRevealPath,
   onCopyConfigTemplate,
   onResetWorkspace,
@@ -434,6 +444,8 @@ export function SettingsModal({
           ) : (
             <div className="settings-page">
               <SettingsRow title="记忆整理"><span className="settings-value">{dreamStatusLabel(dreamAgent)}</span></SettingsRow>
+              {onStorageInventory && <StorageSettings active={open} onInventory={onStorageInventory} onReclaim={onReclaimStorage}
+                blocked={storageBlocked} onRevealPath={onRevealPath} />}
               <details className="settings-advanced"><summary>高级设置</summary>
                 <SettingsRow title="配置模板"><div className="settings-actions"><button type="button" onClick={() => onCopyConfigTemplate("cleo")}>复制 Cleo 配置</button><button type="button" onClick={() => onCopyConfigTemplate("harnesses")}>复制运行配置</button></div></SettingsRow>
                 <SettingsRow title="重置工作区"><button className="settings-action danger" type="button" onClick={() => { if (window.confirm("将仓库重置到本地 main 并清理未跟踪文件？此操作不可撤销。")) onResetWorkspace(); }}>重置工作区</button></SettingsRow>
@@ -492,6 +504,107 @@ function RuntimePermissions({ runtime, threadId, onChange }: {
     {saving && <p className="settings-scope" role="status">正在保存…</p>}
     {error && <p className="settings-error" role="alert">{error}</p>}
   </>;
+}
+
+function formatStorage(value: number) {
+  if (value >= 1024 ** 3) return `${(value / 1024 ** 3).toFixed(value >= 1024 ** 3 * 10 ? 1 : 2)} GB`;
+  return formatBytes(value);
+}
+
+const storageKindLabels: Record<StorageEntryKind, string> = {
+  "runtime-namespace": "依赖快照", "online-runtime": "运行环境", "package-cache": "下载缓存", "install-scratch": "安装临时目录",
+  "release-download": "安装包", build: "保留的程序", backup: "数据备份", "user-data": "用户数据", unknown: "其他",
+};
+const storageKindOrder = Object.keys(storageKindLabels) as StorageEntryKind[];
+
+/** Purpose: Show how much Cleo occupies, what can be reclaimed and why the rest stays; cleanup only on request. */
+function StorageSettings({ active, onInventory, onReclaim, blocked, onRevealPath }: {
+  active: boolean;
+  onInventory: () => Promise<StorageInventory>;
+  onReclaim?: () => Promise<StorageReclaimResult>;
+  blocked: string | null;
+  onRevealPath: (path: string) => void;
+}) {
+  const [inventory, setInventory] = useState<StorageInventory | null>(null);
+  const [busy, setBusy] = useState<"inventory" | "reclaim" | null>(null);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const current = useRef({ onInventory, onReclaim });
+  current.current = { onInventory, onReclaim };
+  const load = async () => {
+    if (busy) return;
+    setBusy("inventory"); setError("");
+    try { setInventory(await current.current.onInventory()); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "无法计算存储占用。"); }
+    finally { setBusy(null); }
+  };
+  useEffect(() => { if (active && !inventory && !busy) void load(); }, [active]);
+  const reclaim = async () => {
+    if (busy || !inventory || !current.current.onReclaim) return;
+    const confirmed = window.confirm(`将删除约 ${formatStorage(inventory.reclaimableBytes)} 可回收内容：已删除程序遗留的依赖快照、没有程序使用的运行环境、过期安装包和可重建的下载缓存。\n用户数据、数据备份和保留的程序不受影响。`);
+    if (!confirmed) return;
+    setBusy("reclaim"); setError(""); setNotice("");
+    try {
+      const result = await current.current.onReclaim();
+      setInventory(result.inventory);
+      setNotice(result.failed.length
+        ? `已释放 ${formatStorage(result.freedBytes)}；${result.failed.length} 项被占用未能删除，下次启动会重试。`
+        : `已释放 ${formatStorage(result.freedBytes)}。`);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "清理失败，请重试。"); }
+    finally { setBusy(null); }
+  };
+  const groups = useMemo(() => {
+    if (!inventory) return [];
+    const totals = new Map<StorageEntryKind, { bytes: number; count: number; reclaim: number }>();
+    for (const entry of inventory.entries) {
+      const group = totals.get(entry.kind) ?? { bytes: 0, count: 0, reclaim: 0 };
+      group.bytes += entry.bytes; group.count += 1;
+      if (entry.action === "reclaim") group.reclaim += entry.bytes;
+      totals.set(entry.kind, group);
+    }
+    return storageKindOrder.filter(kind => totals.has(kind)).map(kind => ({ kind, ...totals.get(kind)! }));
+  }, [inventory]);
+  const listed = useMemo(() => inventory ? [...inventory.entries]
+    .filter(entry => entry.kind !== "user-data")
+    .sort((a, b) => Number(b.action === "reclaim") - Number(a.action === "reclaim") || b.bytes - a.bytes) : [], [inventory]);
+  const description = !inventory ? (busy === "inventory" ? "正在统计 Cleo 自有文件的占用…" : "统计依赖快照、运行环境、安装包、备份与用户数据的占用。")
+    : `共 ${formatStorage(inventory.totalBytes)}，其中 ${formatStorage(inventory.reclaimableBytes)} 可回收${inventory.pending.length ? `；${inventory.pending.length} 项上次未能删除，将自动重试` : ""}。`;
+  return (
+    <section className="storage-settings" aria-label="存储占用">
+      <SettingsRow title="存储占用" description={description}>
+        <div className="settings-actions">
+          <button type="button" onClick={() => void load()} disabled={Boolean(busy)}>{busy === "inventory" ? "计算中…" : inventory ? "重新计算" : "计算占用"}</button>
+          {inventory && onReclaim && inventory.reclaimableBytes > 0 && (
+            <button type="button" onClick={() => void reclaim()} disabled={Boolean(busy) || Boolean(blocked)}
+              title={blocked ?? undefined}>{busy === "reclaim" ? "清理中…" : `清理 ${formatStorage(inventory.reclaimableBytes)}`}</button>
+          )}
+        </div>
+      </SettingsRow>
+      {blocked && inventory && inventory.reclaimableBytes > 0 && <p className="settings-scope">{blocked}</p>}
+      {error && <p className="settings-error" role="alert">{error}</p>}
+      {notice && <p className="settings-scope" role="status">{notice}</p>}
+      {inventory && inventory.lastCleanup && !notice && <p className="settings-scope">上次清理：{new Date(inventory.lastCleanup.at).toLocaleString()} · 释放 {formatStorage(inventory.lastCleanup.freedBytes)}{inventory.lastCleanup.failed ? ` · ${inventory.lastCleanup.failed} 项待重试` : ""}</p>}
+      {inventory && (
+        <details className="settings-advanced storage-details">
+          <summary>占用明细</summary>
+          <table className="storage-table">
+            <thead><tr><th>类别</th><th>条目</th><th>可回收</th><th>占用</th></tr></thead>
+            <tbody>{groups.map(group => <tr key={group.kind}><td>{storageKindLabels[group.kind]}</td><td>{group.count}</td><td>{group.reclaim ? formatStorage(group.reclaim) : "—"}</td><td>{formatStorage(group.bytes)}</td></tr>)}</tbody>
+          </table>
+          <ul className="storage-entries">
+            {listed.map(entry => (
+              <li key={entry.id} className={entry.action}>
+                <strong>{entry.action === "reclaim" ? "可回收" : "保留"} · {storageKindLabels[entry.kind]}{entry.version ? ` ${entry.version}` : ""} · {formatStorage(entry.bytes)}</strong>
+                <span>{entry.reason}{entry.action === "reclaim" && entry.policy === "manual" ? "（仅手动清理）" : ""}</span>
+                <button type="button" onClick={() => onRevealPath(entry.path)}><code>{entry.path}</code></button>
+              </li>
+            ))}
+          </ul>
+          <p className="settings-scope">数据目录 {inventory.dataHome} · 程序目录 {inventory.controlRoot}。大小为递归文件大小近似值。</p>
+        </details>
+      )}
+    </section>
+  );
 }
 
 function formatBytes(value: number) {

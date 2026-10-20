@@ -82,6 +82,8 @@ if (!process.argv.includes("--cleo-desktop-mock")) {
     checkForUpdates: (tag) => ipcRenderer.invoke("cleo:update:check", tag),
     downloadUpdate: () => ipcRenderer.invoke("cleo:update:download"),
     installUpdate: () => ipcRenderer.invoke("cleo:update:install"),
+    storageInventory: () => ipcRenderer.invoke("cleo:storage:inventory"),
+    reclaimStorage: () => ipcRenderer.invoke("cleo:storage:reclaim"),
     onUpdateState: (listener) => {
       const handler = (_event, state) => listener(state);
       ipcRenderer.on("cleo:update-state", handler);
