@@ -5,7 +5,7 @@ Cleo v0.10.0 adds storage usage and cleanup controls, development tasks without 
 ## Highlights
 
 - Inspect Cleo's storage usage in Settings → Data and memory. See which runtimes, dependency snapshots, caches, and downloaded packages can be reclaimed and why other entries are retained. Cleanup protects user data and retained programs, journals interrupted removals, and retries locked entries later.
-- Discover registered custom Windows installation locations, including installations that have never created an evolution registry or dependency snapshot. Retain complete shared runtimes whose ownership cannot be established, protecting older custom installations made with the PowerShell downloader as well.
+- Retain complete shared runtimes whose ownership cannot be established, protecting custom installations that have never created an evolution registry or dependency snapshot, including older installations made with the PowerShell downloader.
 - Start a development task without choosing a folder. These tasks use Cleo's managed general workspace, displayed as General / No folder. Existing sessions retain their saved working directories.
 - Show workspace rail dots for unread completed replies and clear them when their thread is opened. Move the runtime-check action into the settings navigation footer.
 - Refresh the installed Windows entry point after a healthy official update so its executable icon and version follow the active program. Channel checks, junction-aware data protection, and a recoverable directory swap preserve the existing installation when refresh cannot finish.
