@@ -73,7 +73,7 @@ import { PermissionSelector } from "./PermissionSelector";
 import { ApprovalPrompt } from "./ApprovalPrompt";
 import { RenameThreadDialog } from "./Overlays";
 import { handleDialogKeyDown } from "./Modal";
-import { approvalLabel, effortLabels } from "../runtime-labels";
+import { approvalLabel, effortLabels, projectLabel } from "../runtime-labels";
 
 interface ConversationProps {
   history?: ReturnType<typeof useTimelineHistory>;
@@ -530,7 +530,7 @@ function ConversationHeader({
           <PanelLeftClose size={17} />
         </button>
         <div className="breadcrumb">
-          <span className="breadcrumb-project">{project?.name ?? "Cleo"}</span>
+          <span className="breadcrumb-project">{(project && projectLabel(project)) || "Cleo"}</span>
           <ChevronRight size={13} />
           <strong>{thread?.title ?? (space === "chat" ? "新对话" : "新任务")}</strong>
         </div>

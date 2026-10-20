@@ -18,16 +18,8 @@
 :root .rail-button { width: 42px; height: 42px; border-radius: 13px; }
 :root .rail-button:hover { background: var(--surface-active); }
 :root .rail-button.active { color: var(--text); background: var(--canvas); box-shadow: var(--shadow-sm); }
-:root .rail-button.active::before {
-  left: auto;
-  top: 7px;
-  right: 7px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--highlight);
-  box-shadow: 0 0 0 2px var(--canvas);
-}
+/* Light theme uses the ink accent so the unread dot reads against the pale chrome; dark keeps the highlight. */
+:root[data-theme="dark"] .rail-button[data-unread="true"]::after { background: var(--highlight); }
 
 :root .conversation-shell,
 :root .inspector,

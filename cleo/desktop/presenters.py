@@ -159,7 +159,8 @@ def project_list(
     """Purpose: The project rail, sorted by space then name.
 
     Input: ``{project id: (ui space, name, path)}`` and a Git status reader. Output: Project
-    objects; a space's last project and the chat ``general`` project are not removable.
+    objects; a space's last project and either ``general`` project are not removable. The
+    development ``general`` project is managed: it binds no user folder, so its path is hidden.
     """
     counts = {
         space: sum(1 for candidate_space, _name, _path in candidates.values()
@@ -168,18 +169,19 @@ def project_list(
     }
     projects = []
     for identifier, (space, name, path) in candidates.items():
-        git = git_status(path) if space == "productivity" else None
+        managed = space == "productivity" and name == "general"
+        git = git_status(path) if space == "productivity" and not managed else None
         projects.append(
             {
                 "id": identifier,
                 "space": space,
                 "name": name,
                 "path": path,
+                "managed": managed,
                 "branch": git.branch if git else None,
                 "dirtyFiles": git.dirty_count if git else 0,
                 "accent": accent(identifier),
-                "removable": counts[space] > 1
-                and not (space == "chat" and name == "general"),
+                "removable": counts[space] > 1 and name != "general",
             }
         )
     return sorted(projects, key=lambda item: (item["space"], item["name"].casefold()))

@@ -3,6 +3,8 @@ import type { WorkspaceSpace } from "../types";
 
 interface WorkspaceRailProps {
   activeSpace: WorkspaceSpace | "evolution";
+  /** Spaces holding finished replies the user has not opened yet; they get the dot. */
+  unreadSpaces?: ReadonlySet<WorkspaceSpace | "evolution">;
   onSelectSpace: (space: WorkspaceSpace | "evolution") => void;
   onOpenSettings: () => void;
 }
@@ -16,6 +18,7 @@ const spaces = [
 
 export function WorkspaceRail({
   activeSpace,
+  unreadSpaces,
   onSelectSpace,
   onOpenSettings,
 }: WorkspaceRailProps) {
@@ -28,8 +31,9 @@ export function WorkspaceRail({
             className={`rail-button ${activeSpace === id ? "active" : ""}`}
             key={id}
             type="button"
-            aria-label={label}
-            title={label}
+            aria-label={unreadSpaces?.has(id) ? `${label}（有未读回复）` : label}
+            title={unreadSpaces?.has(id) ? `${label} · 有未读回复` : label}
+            data-unread={unreadSpaces?.has(id) ? "true" : undefined}
             onClick={() => onSelectSpace(id)}
           >
             <Icon size={18} strokeWidth={1.8} />
