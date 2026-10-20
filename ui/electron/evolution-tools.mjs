@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
-import { mkdir, rename, readdir, rm, open, access } from "node:fs/promises";
+import { cp, mkdir, rename, readdir, rm, open, access } from "node:fs/promises";
 import { constants } from "node:fs";
 import { homedir } from "node:os";
+import { createRequire } from "node:module";
 import { join, delimiter, dirname, win32, posix } from "node:path";
 import { exists, fileHash, readJson, writeJson } from "./evolution-store.mjs";
 
@@ -158,6 +159,25 @@ async function findTool(root, name) {
     if (entry.isDirectory()) { const found = await findTool(path, name); if (found) return found; }
   }
   return null;
+}
+
+/** Purpose: Retain an installation as physical files without Electron expanding ASAR archives.
+ * Input: installation root and destination. Output: byte-preserving bundle copy, including native symlinks.
+ */
+export async function copyProgramBundle(source, destination, { signal } = {}) {
+  signal?.throwIfAborted();
+  if (process.platform === "win32") {
+    // Native copying avoids ASAR expansion and per-file JS overhead in the large Python runtime.
+    await run("robocopy.exe", [source, destination, "/E", "/SL", "/COPY:DAT", "/R:0", "/W:0",
+      "/MT:8", "/NFL", "/NDL", "/NP", "/NJH", "/NJS"],
+    { successCodes: [0, 1, 2, 3, 4, 5, 6, 7], timeout: 600000, signal });
+    return;
+  }
+  const filesystem = process.versions.electron
+    ? createRequire(import.meta.url)("original-fs").promises
+    : { cp };
+  await filesystem.cp(source, destination, { recursive: true, verbatimSymlinks: true });
+  signal?.throwIfAborted();
 }
 
 /** Purpose: Provision private build tools without changing global installations. */

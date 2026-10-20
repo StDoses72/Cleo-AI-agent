@@ -132,13 +132,11 @@ Set-Location ui
 npm run typecheck
 npm run test:backend
 npm run smoke
-npm run smoke:update
 ```
 
 - `typecheck`：TypeScript project build check。
 - `test:backend`：Electron backend/updater 的 Node 单元测试。
 - `smoke`：使用确定性 mock 验证 renderer 主流程。
-- `smoke:update`：使用隔离目录验证更新期间的启动拦截、普通单实例，以及安装成功／失败提示。
 - `smoke:real`：验证源码模式的真实 JSONL IPC。
 - `smoke:packaged`：验证带独立 Python runtime 的最终发布包。
 - `smoke:approvals`：隔离的 mock 窗口验证浏览器确认、拒绝、取消与连续停止后重发。
@@ -260,7 +258,7 @@ v0.4 起，桌面“重启并安装”通过 `ProgramUpdates` 协调进化版本
 
 新程序保留在用户配置目录的进化构建区。控制器就绪后原程序退出；控制器持有单实例锁，记录可恢复交易、归档旧进化源码并准备新基准，再启动所选版本。健康确认完成交易；失败恢复原程序和源码基准，聊天、记忆与配置始终保留。退出应用会等待下载和解包/构建子进程停止。
 
-`update.ps1`、`update-progress.ps1` 和 POSIX 安装器继续随包保留，用于旧版本兼容和独立下载安装场景；当前桌面 IPC 不调用 `DesktopUpdater.install()`。安装器测试不能替代实际协调流程测试；`program-updates.test.mjs` 验证真实下载、版本管理与交易组合，`smoke-program-updates.mjs` 验证界面的忙碌、草稿保护和失败重试。
+桌面不再内置原地替换安装器：`DesktopUpdater.install()` 只把已校验的下载交给进化版本切换，`scripts/download.ps1` 仅用于源码目录的手动安装。正式版本健康启动后，`launcher-refresh.mjs` 会把 `%LOCALAPPDATA%\Programs\Cleo` 的启动器整体替换为当前运行的构建（保留 Inno 卸载程序），并更新卸载项的 DisplayVersion；Windows 文件锁会记入 `state.json` 的 `launcherRefresh`，下次健康启动重试。`program-updates.test.mjs` 验证真实下载、版本管理与交易组合，`smoke-program-updates.mjs` 验证界面的忙碌、草稿保护和失败重试。
 
 ## 变更契约
 

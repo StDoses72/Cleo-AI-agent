@@ -80,6 +80,12 @@ async function boot() {
   ipcMain.handle("cleo:evolution:healthy", async () => {
     await store.exclusive(() => store.healthy(transactionId));
     app.emit("cleo:healthy", transactionId);
+    if (process.platform === "win32") {
+      // The Start Menu entry (Programs\Cleo) must carry the icon and version of the program that actually runs.
+      void import("./launcher-refresh.mjs")
+        .then(({ refreshInstalledLauncher }) => refreshInstalledLauncher({ store, log: (text) => console.error(text) }))
+        .catch((error) => console.error("Launcher refresh:", error.message));
+    }
   });
   await import("./main.mjs");
 }
