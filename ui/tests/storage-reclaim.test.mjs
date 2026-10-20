@@ -58,10 +58,10 @@ async function fixture(t) {
     await writeFile(join(namespace, "state.json"), "{}");
     return namespace;
   };
-  const addOnlineRuntime = async (key, version = "0.8.0") => {
+  const addOnlineRuntime = async (key, version = "0.8.0", { completed = true } = {}) => {
     const directory = join(online, key);
     await mkdir(join(directory, "python"), { recursive: true });
-    await writeFile(join(directory, "ready.json"), JSON.stringify({ key, version }));
+    if (completed) await writeFile(join(directory, "ready.json"), JSON.stringify({ key, version }));
     await writeFile(join(directory, "python", "python.bin"), "y".repeat(2048));
     return directory;
   };
@@ -172,11 +172,11 @@ test("the running program's namespace and runtime are protected even when unregi
   const result = await f.inventory({ currentResources: current, currentRuntimeNamespace: namespace, currentBaseResources: runtime });
   assert.equal(result.entries.find(e => e.path.startsWith(namespace)).action, "keep");
   assert.equal(result.entries.find(e => e.path === runtime).action, "keep");
-  assert.equal(result.entries.find(e => e.path === other).action, "reclaim");
-  assert.match(result.entries.find(e => e.path === other).reason, /0\.8\.1/);
+  assert.equal(result.entries.find(e => e.path === other).action, "keep");
+  assert.match(result.entries.find(e => e.path === other).reason, /无法确认无人使用/);
 });
 
-test("online runtimes are kept for retained builds, retiring builds and kept namespaces, otherwise reclaimed", async t => {
+test("online runtimes retain known owners and unproven orphans, and reclaim incomplete orphans", async t => {
   const f = await fixture(t);
   const retained = await f.addBuild("official", "0.8.2", { plan: "0.8.2" });
   const retiring = await f.addBuild("official", "0.7.1", { plan: "0.7.1", register: false });
@@ -197,7 +197,7 @@ test("online runtimes are kept for retained builds, retiring builds and kept nam
   assert.equal(find(retainedRuntime).action, "keep");
   assert.match(find(retiringRuntime).reason, /等待退役/);
   assert.equal(find(retiringRuntime).action, "keep");
-  assert.equal(find(unreferenced).action, "reclaim");
+  assert.equal(find(unreferenced).action, "keep");
   assert.equal(find(derived).action, "keep");
   assert.equal(find(incomplete).action, "reclaim");
   assert.match(find(incomplete).reason, /未完成/);
@@ -280,7 +280,7 @@ test("reclaim journals intent, removes only reclaimable entries and retries fail
   const orphanA = await f.addNamespace(hex(24), join(f.root, "gone-a", "python"));
   const orphanB = await f.addNamespace(hex(24), join(f.root, "gone-b", "python"));
   const liveRuntime = await f.addOnlineRuntime(await planKey(live.resources), "0.8.2");
-  const deadRuntime = await f.addOnlineRuntime(hex(64), "0.8.0");
+  const incompleteRuntime = await f.addOnlineRuntime(hex(64), "0.8.0", { completed: false });
   await mkdir(join(f.online, "pip-cache")); await writeFile(join(f.online, "pip-cache", "blob"), "c".repeat(100));
   const oldArchive = await f.addArchive("0.5.6");
   await f.addArchive("0.9.0");
@@ -295,7 +295,7 @@ test("reclaim journals intent, removes only reclaimable entries and retries fail
   assert.deepEqual(first.failed.map(item => item.id), [`runtime-namespace:${orphanB.split(/[\\/]/).pop()}`]);
   assert.equal(first.removed.length, 3);
   assert.equal(await exists(orphanA), false);
-  assert.equal(await exists(deadRuntime), false);
+  assert.equal(await exists(incompleteRuntime), false);
   assert.equal(await exists(oldArchive), false);
   assert.equal(await exists(orphanB), true);
   // Convenience caches stay on an automatic pass.
@@ -355,10 +355,10 @@ test("another release channel's programs and snapshots keep the shared online ru
   const alphaRuntimes = join(sibling.dataHome, "runtimes", hex(24), hex(24), hex(32), "python");
   await mkdir(alphaRuntimes, { recursive: true });
   await writeFile(join(alphaRuntimes, "pyvenv.cfg"), `home = ${join(bySnapshot, "python")}\n`);
-  const orphan = await f.addOnlineRuntime(hex(64), "0.8.0");
+  const orphan = await f.addOnlineRuntime(hex(64), "0.8.0", { completed: false });
 
   const without = await f.inventory();
-  assert.equal(without.entries.find(e => e.path === byPlan).action, "reclaim", "the sibling is invisible unless declared");
+  assert.match(without.entries.find(e => e.path === byPlan).reason, /无法确认无人使用/, "the sibling owner is unknown unless declared");
   const result = await f.inventory({ siblings: [sibling] });
   const find = path => result.entries.find(e => e.path === path);
   assert.equal(find(byPlan).action, "keep");
@@ -425,7 +425,7 @@ test("an installed launcher that never opened the evolution registry keeps its o
   await writeFile(join(resources, "runtime-plan.json"), JSON.stringify({ schema: 1, plan: "stable-0.9.0" }));
   await writeFile(join(target.platform === "darwin" ? resources : launcherRoot, "release.json"), JSON.stringify({ app: "Cleo", version: "0.9.0" }));
   const runtime = await f.addOnlineRuntime(await planKey(resources), "0.9.0");
-  const orphan = await f.addOnlineRuntime(hex(64), "0.8.0");
+  const orphan = await f.addOnlineRuntime(hex(64), "0.8.0", { completed: false });
   const missing = join(f.root, "Programs", "Cleo Alpha", target.executable);
 
   const result = await f.inventory({ installedExecutables: [join(launcherRoot, target.executable), missing] });
@@ -433,8 +433,8 @@ test("an installed launcher that never opened the evolution registry keeps its o
   assert.equal(find(runtime).action, "keep");
   assert.match(find(runtime).reason, /已安装的 Cleo 0\.9\.0/);
   assert.equal(find(orphan).action, "reclaim");
-  // Without any launcher candidate the same runtime would have been reclaimed: the default paths matter.
-  assert.equal((await f.inventory()).entries.find(e => e.path === runtime).action, "reclaim");
+  // Completed runtimes without a known launcher remain protected, but cannot name their owner.
+  assert.match((await f.inventory()).entries.find(e => e.path === runtime).reason, /无法确认无人使用/);
 });
 
 test("default launcher locations cover both channels on every platform", () => {
@@ -455,7 +455,7 @@ test("a registered custom installation without evolution state keeps its shared 
   await writeFile(join(launcherRoot, target.executable), "exe");
   await writeFile(join(resources, "runtime-plan.json"), JSON.stringify({ schema: 1, plan: "custom-stable" }));
   const runtime = await f.addOnlineRuntime(await planKey(resources), "0.9.0");
-  const orphan = await f.addOnlineRuntime(hex(64), "0.8.0");
+  const orphan = await f.addOnlineRuntime(hex(64), "0.8.0", { completed: false });
   const installedExecutables = () => installedLauncherPaths({
     environment: { SystemRoot: process.env.SystemRoot, LOCALAPPDATA: join(f.root, "local-appdata") },
     execute: async () => ({ stdout: JSON.stringify([launcherRoot]) }),
@@ -465,6 +465,30 @@ test("a registered custom installation without evolution state keeps its shared 
   await reclaimStorage({ dataHome: f.dataHome, store: f.store, installedExecutables });
   assert.equal(await exists(runtime), true);
   assert.equal(await exists(orphan), false);
+});
+
+test("legacy script installations outside discoverable locations keep completed shared runtimes", async t => {
+  const f = await fixture(t);
+  const launcherRoot = join(f.root, "legacy-custom-install", target.bundle);
+  const resources = join(launcherRoot, target.resources);
+  await mkdir(resources, { recursive: true });
+  await writeFile(join(launcherRoot, target.executable), "exe");
+  await writeFile(join(resources, "runtime-plan.json"), JSON.stringify({ schema: 1, plan: "legacy-custom" }));
+  // download.ps1 -InstallRoot records installation metadata locally, without an Inno registration.
+  await writeFile(join(launcherRoot, "install.json"), JSON.stringify({ schema_version: 1, app: "Cleo", version: "0.9.0",
+    installed_at: new Date().toISOString(), sha256: hex(64) }));
+  const runtime = await f.addOnlineRuntime(await planKey(resources), "0.9.0");
+  const alphaHome = join(f.root, "alpha-home");
+  const store = new EvolutionStore(join(f.root, "alpha-control"), alphaHome);
+  const options = { dataHome: alphaHome, store, onlineRoots: [f.online], installedExecutables: async () => [] };
+  const inventory = await storageInventory(options);
+  assert.equal(inventory.entries.find(entry => entry.path === runtime).action, "keep");
+  for (const manual of [false, true]) {
+    const result = await reclaimStorage(options, { manual });
+    assert.equal(result.removed.length, 0);
+    assert.equal(await exists(runtime), true);
+    assert.equal(await exists(join(launcherRoot, target.executable)), true);
+  }
 });
 
 test("Windows launcher discovery reads the installer's fixed AppId and both path values", async () => {
@@ -491,7 +515,7 @@ test("Windows launcher discovery reads the installer's fixed AppId and both path
 
 test("unreadable or malformed installer ownership aborts cleanup before deletion", async t => {
   const f = await fixture(t);
-  const orphan = await f.addOnlineRuntime(hex(64));
+  const orphan = await f.addOnlineRuntime(hex(64), "0.8.0", { completed: false });
   const denied = new Error("registry access denied");
   const environment = { SystemRoot: "C:\\Windows" };
   const installedExecutables = () => installedLauncherPaths({ platform: "win32", environment,

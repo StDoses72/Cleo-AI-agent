@@ -404,12 +404,20 @@ export async function storageInventory({
         continue;
       }
       let version = null;
-      try { version = JSON.parse(await fs.readFile(join(path, "ready.json"), "utf8")).version ?? null; }
-      catch { /* An incomplete runtime has no version. */ }
+      let completed = false;
+      try {
+        const ready = JSON.parse(await fs.readFile(join(path, "ready.json"), "utf8"));
+        version = ready.version ?? null;
+        completed = ready.key === name;
+      } catch (error) {
+        if (!["ENOENT", "ENOTDIR"].includes(error.code) && !(error instanceof SyntaxError)) throw error;
+      }
       const owner = livePlans.get(name);
+      // Legacy script installers support custom locations without a registry entry; absence of an owner is not proof of disuse.
       await push({ id: `online-runtime:${name}`, kind: "online-runtime", path, version, policy: "automatic",
-        action: owner ? "keep" : "reclaim",
-        reason: owner ? `${owner} 使用的运行环境` : version ? `Cleo ${version} 的运行环境，没有保留的程序使用` : "未完成的运行环境，没有程序使用" });
+        action: owner || completed ? "keep" : "reclaim",
+        reason: owner ? `${owner} 使用的运行环境` : completed ? "已完成的运行环境；旧安装器支持自定义程序位置，无法确认无人使用"
+          : "未完成的运行环境，没有程序使用" });
     }
   }
   for (const cache of caches) {
