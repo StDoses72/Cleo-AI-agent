@@ -43,7 +43,7 @@ import { EvolutionMonitorStore } from "./evolution-monitor-store.mjs";
 import { EvolutionCompanion } from "./evolution-companion.mjs";
 import { evolutionActions, nextVersionName } from "./evolution-actions.mjs";
 import { readJson } from "./evolution-store.mjs";
-import { createStorageQueue, installedLauncherPaths, reclaimStorage, storageInventory } from "./storage-reclaim.mjs";
+import { createStorageQueue, defaultLauncherPaths, reclaimStorage, storageInventory } from "./storage-reclaim.mjs";
 import { defaultRuntimeRoot } from "./online-runtime.mjs";
 
 if (process.argv.includes("--cleo-evolution-monitor")) {
@@ -122,7 +122,7 @@ const storageOptions = () => ({
   dataHome: backend.runtimePaths().cleoHome, store: evolution.store, siblings: [siblingChannel()],
   currentResources: process.resourcesPath, currentRuntimeNamespace: dependencies.installationRoot,
   currentBaseResources: dependencies.baseResources, onlineRoots: [defaultRuntimeRoot()],
-  installedExecutables: async () => [process.execPath, ...await installedLauncherPaths()], currentVersion: app.getVersion(),
+  installedExecutables: [process.execPath, ...defaultLauncherPaths()], currentVersion: app.getVersion(),
   protectedVersions: [updater.getState().latestVersion, updater.getState().selectedTag?.replace(/^v/, "")].filter(Boolean),
   downloadsBusy: () => releaseDownloads.busy || programUpdates.busy || evolution.phase !== "idle" || setup.busy,
 });
