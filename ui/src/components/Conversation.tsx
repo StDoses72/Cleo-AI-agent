@@ -1789,6 +1789,9 @@ function RuntimeSelector({
                   max={supportedEfforts.length - 1}
                   step={1}
                   value={Math.max(0, supportedEfforts.indexOf(effort as ReasoningEffort))}
+                  // The track is filled up to the thumb; the share is the effort's position in the list.
+                  style={{ "--effort-fill": `${supportedEfforts.length > 1
+                    ? Math.max(0, supportedEfforts.indexOf(effort as ReasoningEffort)) / (supportedEfforts.length - 1) * 100 : 100}%` } as CSSProperties}
                   aria-label="思考深度"
                   aria-valuetext={effortLabel || undefined}
                   title={`思考深度：${effortLabel || "由模型决定"}`}

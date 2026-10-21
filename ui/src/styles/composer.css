@@ -638,6 +638,8 @@ select.text-control:hover {
   height: 34px;
   flex: 0 0 34px;
   place-items: center;
+  /* The generic menu-button rule spreads content with space-between; one icon must sit centred. */
+  justify-content: center;
   padding: 0;
   border-radius: var(--radius-sm);
   color: var(--muted);
@@ -729,10 +731,11 @@ select.text-control:hover {
   opacity: 0.5;
 }
 
+/* Filled up to the thumb (--effort-fill, set inline), plain beyond it. */
 .runtime-effort-slider::-webkit-slider-runnable-track {
   height: 30px;
   border-radius: var(--radius-pill);
-  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 35%, var(--surface-active)), var(--accent));
+  background: linear-gradient(90deg, var(--accent) 0 var(--effort-fill, 0%), var(--surface-active) var(--effort-fill, 0%) 100%);
 }
 
 .runtime-effort-slider::-webkit-slider-thumb {
