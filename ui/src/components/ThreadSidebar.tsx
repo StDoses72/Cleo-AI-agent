@@ -124,7 +124,8 @@ export function ThreadSidebar({
   const drafting = activeThreadId === null && space !== "memory";
   const draftProject = projects.find((project) => project.id === activeProjectId);
   const draftIsLoose = drafting && (!draftProject || isGeneralProject(draftProject));
-  const nothing = !loose.length && !folders.length && !drafting;
+  // A draft stands in for the empty state, except while a search finds nothing.
+  const nothing = !loose.length && !folders.length && (searching || !drafting);
 
   return (
     <aside className="thread-sidebar">

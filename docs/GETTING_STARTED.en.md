@@ -27,9 +27,9 @@ Start a Chat conversation, for example:
 Help me turn my product idea into requirements and acceptance criteria.
 ```
 
-Use projects to keep topics and memory organized. The default project is `general`; a chat project does not need a code directory.
+A new chat is standalone by default (the backend records it under `general`). To keep topics and memory apart, pick a project from the composer's project pill or choose 添加项目… to add one; a chat project does not need a code directory. The sidebar lists threads under their project, with standalone ones below.
 
-For development, switch to Productivity, select a working directory, and choose an enabled Codex, Claude, or ACP harness. Authentication belongs to the selected harness. The directory shown in the UI is where the development agent works.
+For development, a new task is standalone by default and runs in Cleo's own directory. To work inside a code directory, pick the project from the composer's project pill or add a folder there. Harness, model, reasoning effort and speed live in one runtime pill: open it to drag the effort slider, toggle fast mode with the lightning button (shown only when the harness and model support it), or click the model name to switch harness or model. Session permissions can be chosen before the task is created. Authentication belongs to the selected harness.
 
 ## Run from source
 

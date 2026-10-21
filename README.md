@@ -8,7 +8,7 @@ The project supports native desktop builds for Windows, macOS and Linux, backed 
 
 > Current version: [v0.10.0](https://github.com/StDoses72/Cleo-AI-agent/releases/tag/v0.10.0) · [Download the desktop app](https://stdoses72.github.io/Cleo-AI-agent/)
 
-Codex development conversations offer Standard and Fast speed beside the composer, saved per conversation. Fast mode consumes more credits; availability depends on the model and account.
+Codex development conversations toggle Fast mode with the lightning button on the runtime pill's card, saved per conversation. Fast mode consumes more credits; availability depends on the model and account, and the button is hidden where it is unsupported.
 
 New Codex conversations use Cleo's own state directory and stay out of the default Codex app's history. Sign in separately inside Cleo; existing conversations retain their original storage. See the [configuration guide](docs/CONFIGURATION.md).
 
