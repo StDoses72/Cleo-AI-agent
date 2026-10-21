@@ -122,16 +122,24 @@ try {
   const inspector = page.getByTestId("inspector");
   if (await inspector.count()) await inspector.getByRole("button", { name: "关闭检查器", exact: true }).click();
   const viewport = page.locator(".conversation-viewport");
-  const speed = page.getByRole("combobox", { name: "Codex 速度", exact: true });
-  assert.equal(await speed.inputValue(), "default");
-  await speed.selectOption("fast");
-  await page.waitForFunction(() => document.querySelector('[data-testid="speed-selector"]').value === "fast");
+  // Speed is the lightning toggle on the runtime pill's card; the pill reports the current value.
+  const pill = page.getByTestId("runtime-selector");
+  const setSpeed = async value => {
+    await pill.click();
+    const toggle = page.getByTestId("speed-toggle");
+    if ((await toggle.getAttribute("aria-pressed")) !== String(value === "fast")) await toggle.click();
+    await page.keyboard.press("Escape");
+    await page.getByTestId("runtime-menu").waitFor({ state: "detached" });
+  };
+  assert.equal(await pill.getAttribute("data-speed"), "default");
+  await setSpeed("fast");
+  await page.waitForFunction(() => document.querySelector('[data-testid="runtime-selector"]').dataset.speed === "fast");
   await page.getByText("交互提问", { exact: true }).click();
-  assert.equal(await speed.inputValue(), "default", "Fast mode leaked into another task");
+  assert.equal(await pill.getAttribute("data-speed"), "default", "Fast mode leaked into another task");
   await page.getByText("万条历史", { exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('[data-testid="speed-selector"]').value === "fast");
-  await speed.selectOption("default");
-  await page.waitForFunction(() => document.querySelector('[data-testid="speed-selector"]').value === "default");
+  await page.waitForFunction(() => document.querySelector('[data-testid="runtime-selector"]').dataset.speed === "fast");
+  await setSpeed("default");
+  await page.waitForFunction(() => document.querySelector('[data-testid="runtime-selector"]').dataset.speed === "default");
   // Small upward wheel movements must escape bottom-follow, including repeated
   // touchpad-sized deltas. Scrolling back to the bottom must restore following.
   for (const delta of [20, 40, 80]) {
@@ -279,7 +287,10 @@ try {
   await page.getByTestId("composer-input").fill("Start");
   await page.getByTestId("send-button").click();
   await page.waitForFunction(() => document.querySelector('[data-testid="stop-button"]'));
-  assert.equal(await speed.isDisabled(), true, "Speed must not change during a running turn");
+  await pill.click();
+  assert.equal(await page.getByTestId("speed-toggle").isDisabled(), true, "Speed must not change during a running turn");
+  await page.keyboard.press("Escape");
+  await page.getByTestId("runtime-menu").waitFor({ state: "detached" });
   const thought = { id: "thought-live", turnId: "live-turn", type: "thought", content: "正在分析当前问题", status: "done" };
   await page.evaluate(item => window.emitTest({ type: "upsert-item", item }), thought);
   await page.getByText(thought.content, { exact: true }).waitFor();

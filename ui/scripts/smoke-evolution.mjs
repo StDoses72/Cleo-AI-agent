@@ -142,10 +142,11 @@ try {
   assert.equal(await page.locator(".evolution-preparation,.evolution-cases").count(), 0);
   await page.getByTestId("runtime-selector").click();
   await page.getByTestId("runtime-menu").waitFor();
-  const harnesses = await page.locator(".runtime-menu strong").allTextContents();
+  await page.getByTestId("runtime-model-row").click();
+  const harnesses = await page.locator(".runtime-menu-list strong").allTextContents();
   assert.ok(harnesses.length >= 2, "Evolution must show the ordinary multi-harness picker.");
   await page.keyboard.press("Escape");
-  await page.getByTestId("runtime-selector").click().catch(() => {});
+  await page.getByTestId("runtime-menu").waitFor({ state: "detached" });
   await page.getByRole("button", { name: "应用", exact: true }).click();
   await page.waitForFunction(() => [...document.querySelectorAll("button")].some((button) => button.textContent === "保存" && !button.disabled));
   await page.screenshot({ path: join(output, "01-evolution-dark.png") });

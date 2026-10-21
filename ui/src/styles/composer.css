@@ -609,6 +609,154 @@ select.text-control:hover {
   font-weight: 400;
 }
 
+/* The runtime pill's card: fast toggle, effort over model, reset, and an effort slider. */
+.runtime-selector-extra {
+  flex: 0 0 auto;
+  color: var(--muted-2);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.runtime-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 6px 4px 8px;
+}
+
+.runtime-card-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.model-menu .runtime-card-fast,
+.model-menu .runtime-card-reset {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  place-items: center;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+}
+
+.model-menu .runtime-card-fast:hover:not(:disabled),
+.model-menu .runtime-card-reset:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.model-menu .runtime-card-fast.active,
+.model-menu .runtime-card-fast.active:hover {
+  color: var(--highlight-ink);
+  background: var(--highlight);
+}
+
+.model-menu .runtime-card-fast.active svg {
+  fill: currentColor;
+}
+
+.model-menu .runtime-card-fast:disabled,
+.model-menu .runtime-card-reset:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.runtime-card-spacer {
+  width: 34px;
+  flex: 0 0 34px;
+}
+
+.model-menu .runtime-card-model {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  text-align: center;
+}
+
+.model-menu .runtime-card-model:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.runtime-card-model strong {
+  overflow: hidden;
+  max-width: 100%;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runtime-card-model span {
+  display: inline-flex;
+  overflow: hidden;
+  max-width: 100%;
+  align-items: center;
+  gap: 2px;
+  color: var(--muted);
+  font-size: var(--font-size-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runtime-card-model span svg {
+  flex: 0 0 auto;
+}
+
+/* The slider runs from the lightest effort on the left to the heaviest on the right. */
+.runtime-effort-slider {
+  width: 100%;
+  height: 30px;
+  margin: 0;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.runtime-effort-slider:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.runtime-effort-slider::-webkit-slider-runnable-track {
+  height: 30px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 35%, var(--surface-active)), var(--accent));
+}
+
+.runtime-effort-slider::-webkit-slider-thumb {
+  width: 26px;
+  height: 26px;
+  margin-top: 2px;
+  border: 0;
+  border-radius: 50%;
+  appearance: none;
+  background: var(--canvas);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 120ms ease;
+}
+
+.runtime-effort-slider:hover:not(:disabled)::-webkit-slider-thumb {
+  transform: scale(1.06);
+}
+
+.runtime-effort-slider:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  outline-offset: 2px;
+  border-radius: var(--radius-pill);
+}
+
 .runtime-menu-status {
   display: flex;
   min-height: 62px;
