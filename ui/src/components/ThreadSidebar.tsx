@@ -8,7 +8,6 @@ import {
   Folder,
   FolderGit2,
   FolderOpen,
-  FolderPlus,
   History,
   MoreHorizontal,
   Plus,
@@ -30,8 +29,6 @@ interface ThreadSidebarProps {
   onDeleteThread: (thread: Thread) => void;
   /** Start an empty draft where the user currently is. */
   onCreateThread: () => void;
-  onChooseWorkspace: () => void;
-  choosingWorkspace?: boolean;
   recoverableChatBackups: number;
   onRestoreChatHistory: () => void;
   memoryOverview: MemoryOverview;
@@ -60,9 +57,10 @@ interface FolderGroup {
   threads: Thread[];
 }
 
-/** Purpose: The sidebar list, shaped like a coding agent's: threads that bind no folder are
- * ordinary rows at the top level, and each folder project is a header with its threads
- * indented beneath it. Nothing is boxed; indentation alone shows what belongs where.
+/** Purpose: The sidebar list, shaped like a coding agent's: each project is a header with its
+ * threads indented beneath it, and standalone threads (no project) are ordinary rows below.
+ * Nothing is boxed; indentation alone shows what belongs where. Projects are added from the
+ * composer's project pill or the command palette, not from here.
  */
 export function ThreadSidebar({
   space,
@@ -75,8 +73,6 @@ export function ThreadSidebar({
   onSelectThread,
   onDeleteThread,
   onCreateThread,
-  onChooseWorkspace,
-  choosingWorkspace = false,
   recoverableChatBackups,
   onRestoreChatHistory,
   memoryOverview,
@@ -254,8 +250,8 @@ export function ThreadSidebar({
                 </section>
               );
             })}
-            {/* Folder-less work sits under the folders; the label only separates it from them. */}
-            {folders.length && (loose.length || draftIsLoose) ? <div className="list-section-label">未绑定文件夹</div> : null}
+            {/* Standalone work sits under the projects; the label only separates it from them. */}
+            {folders.length && (loose.length || draftIsLoose) ? <div className="list-section-label">{`独立${noun}`}</div> : null}
             {draftIsLoose ? <DraftRow noun={noun} /> : null}
             <ThreadRows
               id="loose"
@@ -276,12 +272,6 @@ export function ThreadSidebar({
             ) : null}
           </div>
 
-          <button className="new-project-button sidebar-open-folder" type="button"
-            onClick={onChooseWorkspace} disabled={choosingWorkspace} data-testid="new-project"
-            title={space === "productivity" ? "把一个本地文件夹作为项目，任务在它的目录里运行" : "把一组对话和记忆归到一个目录"}>
-            <FolderPlus size={16} />
-            <span>{choosingWorkspace ? "正在选择文件夹…" : "打开文件夹…"}</span>
-          </button>
         </>
       )}
 

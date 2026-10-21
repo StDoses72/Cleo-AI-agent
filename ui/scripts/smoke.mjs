@@ -67,7 +67,7 @@ try {
   await window.screenshot({ path: join(outputDir, "01b-change-history.png") });
   await historyPicker.selectOption("workspace");
 
-  await window.getByTestId("new-project").waitFor();
+  await window.getByTestId("thread-list").waitFor();
 
   // Returning from another space must preserve the selected thread, not pick the first row.
   await window.getByRole("button", { name: /^统一 managed 与 native sessions/ }).click();

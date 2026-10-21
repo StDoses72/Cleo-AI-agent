@@ -287,17 +287,6 @@
   cursor: wait;
 }
 
-/* The folder action sits under the list, like "open project" in a coding agent's sidebar. */
-.sidebar-open-folder {
-  flex: 0 0 auto;
-  margin: 6px 4px 0;
-  color: var(--muted);
-}
-
-.sidebar-open-folder:hover:not(:disabled) {
-  color: var(--text-soft);
-}
-
 /* ----- Search ----- */
 .sidebar-search {
   display: flex;

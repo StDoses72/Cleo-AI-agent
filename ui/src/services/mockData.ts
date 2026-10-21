@@ -248,7 +248,7 @@ export const threads: Thread[] = [
     space: "productivity",
     projectId: "productivity:general",
     title: "把导出的 CSV 合并成一张表",
-    summary: "不绑定项目文件夹的一次性脚本",
+    summary: "不关联项目的一次性脚本",
     updatedAt: "前天",
     status: "completed",
     changes: [],

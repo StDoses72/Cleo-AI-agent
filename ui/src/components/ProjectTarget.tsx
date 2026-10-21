@@ -14,12 +14,12 @@ interface ProjectTargetProps {
   onRemoveProject?: (project: Project) => void;
 }
 
-/** Purpose: Show, and let the user change, which folder an unsent draft will run in.
+/** Purpose: Show, and let the user change, which project an unsent draft belongs to.
  * Input: the space's projects and the draft's current project. Output: a pill in the composer
- * that reads 不绑定文件夹 until a folder is chosen; the menu offers that, every folder project,
- * and opening a new folder. Binding no folder is not a project of its own in the interface:
- * the backend keeps those threads in its general project, which never appears here by name.
- * Existing threads keep their folder, so the pill only renders while drafting.
+ * that reads 不关联项目 until a project is chosen; the menu offers that, every project, and
+ * adding a project from a local folder. A standalone draft is not a project of its own in
+ * the interface: the backend keeps those threads in its general project, which never appears
+ * here by name. Existing threads keep their project, so the pill only renders while drafting.
  */
 export function ProjectTarget({
   space,
@@ -54,7 +54,7 @@ export function ProjectTarget({
     ?? ordered.find(isGeneralProject) ?? ordered[0];
   const noFolder = !active || isGeneralProject(active);
   const noun = space === "chat" ? "对话" : "任务";
-  const optionLabel = (project: Project) => (isGeneralProject(project) ? "不绑定文件夹" : projectLabel(project));
+  const optionLabel = (project: Project) => (isGeneralProject(project) ? "不关联项目" : projectLabel(project));
 
   return (
     <div className="project-target-wrap" ref={wrapRef}>
@@ -63,19 +63,20 @@ export function ProjectTarget({
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`${noun}位置：${noFolder ? "不绑定文件夹" : projectLabel(active)}`}
-        title={noFolder ? `这个${noun}不绑定文件夹；点击可选择一个项目` : active?.path}
+        aria-label={`${noun}所属项目：${noFolder ? "不关联项目" : projectLabel(active)}`}
+        title={noFolder ? `独立${noun}，不关联项目；点击可选择一个项目` : active?.path}
         disabled={disabled}
         onClick={() => setOpen((current) => !current)}
         data-testid="project-target"
+        data-choosing={choosing ? "true" : undefined}
       >
         {noFolder ? <FolderMinus size={14} /> : <FolderOpen size={14} />}
-        <span className="project-target-name">{noFolder ? "不绑定文件夹" : projectLabel(active)}</span>
+        <span className="project-target-name">{noFolder ? "不关联项目" : projectLabel(active)}</span>
         <ChevronDown size={13} />
       </button>
       {open ? (
-        <div className="project-target-menu surface-popover" role="menu" aria-label={`选择${noun}位置`}>
-          <div className="project-target-heading">{noun}在哪个文件夹里进行</div>
+        <div className="project-target-menu surface-popover" role="menu" aria-label={`选择${noun}所属项目`}>
+          <div className="project-target-heading">{`${noun}属于哪个项目`}</div>
           {ordered.map((project) => {
             const selected = project.id === active?.id;
             const general = isGeneralProject(project);
@@ -97,7 +98,7 @@ export function ProjectTarget({
                   </span>
                   <span className="project-target-copy">
                     <strong>{optionLabel(project)}</strong>
-                    <small>{general ? "一次性脚本、探索和提问" : projectPathLabel(project)}</small>
+                    <small>{general ? `独立${noun}：一次性脚本、探索和提问` : projectPathLabel(project)}</small>
                   </span>
                   {selected ? <Check size={14} /> : null}
                 </button>
@@ -131,8 +132,8 @@ export function ProjectTarget({
           >
             <span className="project-glyph compact"><FolderPlus size={13} /></span>
             <span className="project-target-copy">
-              <strong>{choosing ? "正在选择文件夹…" : "打开文件夹…"}</strong>
-              <small>{space === "chat" ? "把这组对话和记忆归到一个目录" : "绑定本地项目，任务在它的目录里运行"}</small>
+              <strong>{choosing ? "正在选择文件夹…" : "添加项目…"}</strong>
+              <small>{space === "chat" ? "选择一个目录来归档对话和记忆" : "选择本地文件夹作为项目，任务在它的目录里运行"}</small>
             </span>
           </button>
         </div>

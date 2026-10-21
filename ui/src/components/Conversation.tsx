@@ -1116,8 +1116,8 @@ function WelcomeState({ project, space, onUseSuggestion }: { project: Project | 
       <h2>{evolving ? "你想让 Cleo 怎样改变？" : space === "chat" ? "今天想聊些什么？" : "开始新任务"}</h2>
       {!evolving && project && space === "productivity" ? (
         <p>{isGeneralProject(project)
-          ? "没有绑定文件夹，适合一次性脚本、探索和提问。要改某个项目时，在下方选择它的文件夹。"
-          : `任务会在 ${projectLabel(project)} 的目录里运行。`}</p>
+          ? "这是独立任务，不关联项目，适合一次性脚本、探索和提问。要改某个项目时，在下方选择它。"
+          : `任务会在项目 ${projectLabel(project)} 的目录里运行。`}</p>
       ) : null}
       <div className="suggestion-list">
         {prompts.map((suggestion) => (

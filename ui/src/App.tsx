@@ -333,8 +333,8 @@ export function App() {
       },
       {
         id: "workspace",
-        label: "添加项目文件夹",
-        hint: "把本地文件夹作为项目，任务在它的目录里运行",
+        label: "添加项目",
+        hint: "选择本地文件夹作为项目，任务在它的目录里运行",
         icon: commandIcons.code,
         run: () => void workspace.chooseWorkspace().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法打开工作目录", "error")),
       },
@@ -450,8 +450,6 @@ export function App() {
         onSelectThread={workspace.selectThread}
         onDeleteThread={thread => { setDeleteError(null); setThreadPendingDeletion(thread); }}
         onCreateThread={() => void workspace.createThread()}
-        choosingWorkspace={workspace.choosingWorkspace}
-        onChooseWorkspace={() => void workspace.chooseWorkspace().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法打开工作目录", "error"))}
         recoverableChatBackups={workspace.snapshot.backend?.recoverableChatBackups ?? 0}
         onRestoreChatHistory={() => void workspace.restoreChatHistory().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法恢复旧对话", "error"))}
         memoryOverview={workspace.snapshot.memoryOverview}

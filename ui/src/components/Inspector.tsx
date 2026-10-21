@@ -210,7 +210,7 @@ function ContextPanel({
       </section>
       <section className="inspector-section">
         <div className="section-kicker"><ShieldCheck size={14} /><span>工作区</span></div>
-        <button className="workspace-context-row" type="button" onClick={() => project?.path && onRevealPath(project.path)}><span className={`project-glyph compact ${isGeneralProject(project) ? "plain" : ""}`} style={{ "--project-accent": project?.accent } as CSSProperties}>{isGeneralProject(project) ? <FolderMinus size={12} /> : projectLabel(project).slice(0, 1)}</span><div><strong>{projectLabel(project) || "不绑定文件夹"}</strong><small>{projectPathLabel(project) || "没有绑定本地项目"}</small></div></button>
+        <button className="workspace-context-row" type="button" onClick={() => project?.path && onRevealPath(project.path)}><span className={`project-glyph compact ${isGeneralProject(project) ? "plain" : ""}`} style={{ "--project-accent": project?.accent } as CSSProperties}>{isGeneralProject(project) ? <FolderMinus size={12} /> : projectLabel(project).slice(0, 1)}</span><div><strong>{projectLabel(project) || "不关联项目"}</strong><small>{projectPathLabel(project) || "独立任务，没有项目目录"}</small></div></button>
       </section>
       <section className="inspector-section memory-context">
         <div className="section-kicker"><CircleCheck size={14} /><span>记忆预览</span><small>{relevantMemories.length}</small></div>
