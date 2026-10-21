@@ -722,8 +722,39 @@ select.text-control:hover {
   flex: 0 0 auto;
 }
 
-/* The slider runs from the lightest effort on the left to the heaviest on the right. */
+/* The slider runs from the lightest effort on the left to the heaviest on the right. The track
+   and its fill are layers under a transparent range input: the fill is moved with a transform,
+   so a drag only re-composites it instead of repainting a gradient on every step. */
+.runtime-effort {
+  position: relative;
+  width: 100%;
+  height: 36px;
+}
+
+.runtime-effort.disabled {
+  opacity: 0.5;
+}
+
+.runtime-effort-track {
+  position: absolute;
+  inset: 4px 0;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--surface-active);
+  pointer-events: none;
+}
+
+/* Filled up to the thumb (--effort-fill, set on the wrapper), plain beyond it. */
+.runtime-effort-fill {
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  transform: translateX(calc(var(--effort-fill, 0%) - 100%));
+  will-change: transform;
+}
+
 .runtime-effort-slider {
+  position: relative;
   width: 100%;
   height: 36px;
   margin: 0;
@@ -734,14 +765,12 @@ select.text-control:hover {
 
 .runtime-effort-slider:disabled {
   cursor: default;
-  opacity: 0.5;
 }
 
-/* Filled up to the thumb (--effort-fill, set inline), plain beyond it. */
 .runtime-effort-slider::-webkit-slider-runnable-track {
   height: 28px;
   border-radius: var(--radius-pill);
-  background: linear-gradient(90deg, var(--accent) 0 var(--effort-fill, 0%), var(--surface-active) var(--effort-fill, 0%) 100%);
+  background: transparent;
 }
 
 /* The thumb is a little taller than the track, so the fill ends under it rather than beside it. */

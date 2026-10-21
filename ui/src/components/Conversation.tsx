@@ -1589,7 +1589,15 @@ function RuntimeSelector({
   onServiceTierChange?: (tier: "default" | "fast") => void;
 }) {
   const development = space === "productivity";
-  const effortLabel = development && effort ? effortLabels[effort] ?? effort : "";
+  // While the slider is dragged it previews its own value here, and the card follows it. The
+  // pick is committed on release, so the workspace re-renders and the backend hears about it
+  // once per drag rather than on every step. The preview outlives the commit until the
+  // committed effort arrives from the backend, so the thumb never snaps back meanwhile.
+  const [previewEffort, setPreviewEffort] = useState<ReasoningEffort | null>(null);
+  const committedEffort = useRef<ReasoningEffort | null>(null);
+  const sliderDragging = useRef(false);
+  const shownEffort = previewEffort ?? effort;
+  const effortLabel = development && shownEffort ? effortLabels[shownEffort] ?? shownEffort : "";
   const showSpeed = development && supportsFastMode && Boolean(onServiceTierChange);
   const settingsLocked = running || switching;
   const [open, setOpen] = useState(false);
@@ -1612,9 +1620,28 @@ function RuntimeSelector({
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [open]);
-  const canReset = (defaultEffort !== null && defaultEffort !== effort) || serviceTier === "fast";
+  useEffect(() => {
+    setPreviewEffort(null);
+    committedEffort.current = null;
+  }, [effort, open]);
+  const commitEffort = (value: ReasoningEffort | undefined) => {
+    if (!value || value === (committedEffort.current ?? effort)) return;
+    committedEffort.current = value;
+    onEffortChange?.(value);
+  };
+  const releaseSlider = (target: HTMLInputElement) => {
+    sliderDragging.current = false;
+    commitEffort(supportedEfforts[Number(target.value)]);
+  };
+  const effortIndex = Math.max(0, supportedEfforts.indexOf(shownEffort as ReasoningEffort));
+  // The track is filled up to the thumb; the share is the effort's position in the list.
+  const effortFill = supportedEfforts.length > 1 ? effortIndex / (supportedEfforts.length - 1) * 100 : 100;
+  const canReset = (defaultEffort !== null && defaultEffort !== shownEffort) || serviceTier === "fast";
   const resetSettings = () => {
-    if (defaultEffort !== null && defaultEffort !== effort) onEffortChange?.(defaultEffort);
+    if (defaultEffort !== null && defaultEffort !== shownEffort) {
+      setPreviewEffort(defaultEffort);
+      commitEffort(defaultEffort);
+    }
     if (serviceTier === "fast") onServiceTierChange?.("default");
   };
   const profiles = catalog?.nonProductivityProfiles ?? [];
@@ -1796,25 +1823,38 @@ function RuntimeSelector({
                 </button>
               </div>
               {supportedEfforts.length ? (
-                <input
-                  className="runtime-effort-slider"
-                  type="range"
-                  min={0}
-                  max={supportedEfforts.length - 1}
-                  step={1}
-                  value={Math.max(0, supportedEfforts.indexOf(effort as ReasoningEffort))}
-                  // The track is filled up to the thumb; the share is the effort's position in the list.
-                  style={{ "--effort-fill": `${supportedEfforts.length > 1
-                    ? Math.max(0, supportedEfforts.indexOf(effort as ReasoningEffort)) / (supportedEfforts.length - 1) * 100 : 100}%` } as CSSProperties}
-                  aria-label="思考深度"
-                  aria-valuetext={effortLabel || undefined}
-                  title={`思考深度：${effortLabel || "由模型决定"}`}
-                  disabled={settingsLocked}
-                  data-testid="effort-selector"
-                  data-value={effort}
-                  data-options={JSON.stringify(supportedEfforts)}
-                  onChange={(event) => onEffortChange?.(supportedEfforts[Number(event.target.value)])}
-                />
+                <div
+                  className={`runtime-effort${settingsLocked ? " disabled" : ""}`}
+                  style={{ "--effort-fill": `${effortFill}%` } as CSSProperties}
+                >
+                  <span className="runtime-effort-track" aria-hidden="true"><span className="runtime-effort-fill" /></span>
+                  <input
+                    className="runtime-effort-slider"
+                    type="range"
+                    min={0}
+                    max={supportedEfforts.length - 1}
+                    step={1}
+                    value={effortIndex}
+                    aria-label="思考深度"
+                    aria-valuetext={effortLabel || undefined}
+                    title={`思考深度：${effortLabel || "由模型决定"}`}
+                    disabled={settingsLocked}
+                    data-testid="effort-selector"
+                    data-value={shownEffort}
+                    data-options={JSON.stringify(supportedEfforts)}
+                    onPointerDown={() => { sliderDragging.current = true; }}
+                    onPointerUp={(event) => releaseSlider(event.currentTarget)}
+                    onPointerCancel={(event) => releaseSlider(event.currentTarget)}
+                    onLostPointerCapture={(event) => { if (sliderDragging.current) releaseSlider(event.currentTarget); }}
+                    onBlur={(event) => { if (sliderDragging.current) releaseSlider(event.currentTarget); }}
+                    onChange={(event) => {
+                      const next = supportedEfforts[Number(event.target.value)];
+                      setPreviewEffort(next ?? null);
+                      // Keyboard steps and scripted changes have no release; they commit at once.
+                      if (!sliderDragging.current) commitEffort(next);
+                    }}
+                  />
+                </div>
               ) : null}
             </div>
           )}
