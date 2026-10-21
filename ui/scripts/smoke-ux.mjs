@@ -83,7 +83,7 @@ try {
     await page.locator(".suggestion-list button").first().click();
     assert.ok((await input.inputValue()).length > 0, "Suggestion should populate an editable draft");
     assert.equal(await page.getByTestId("stop-button").count(), 0);
-    assert.equal(await page.getByTestId("effort-selector").count(), 0);
+    assert.equal(await page.getByTestId("runtime-selector").getAttribute("data-effort"), null, "Chat has no reasoning effort");
     await rail("运行记录").click();
     await page.locator(".run-status").getByText("尚未运行", { exact: true }).waitFor();
   });

@@ -67,9 +67,7 @@ try {
   await window.screenshot({ path: join(outputDir, "01b-change-history.png") });
   await historyPicker.selectOption("workspace");
 
-  await window.locator(".project-picker").click();
-  await window.getByTestId("choose-workspace").waitFor();
-  await window.locator(".project-picker").click();
+  await window.getByTestId("thread-list").waitFor();
 
   // Returning from another space must preserve the selected thread, not pick the first row.
   await window.getByRole("button", { name: /^统一 managed 与 native sessions/ }).click();
@@ -89,21 +87,19 @@ try {
   assert((await window.locator(".thread-row.active").innerText()).includes("Cleo 的产品语气"),
     "Returning to chat lost its selected thread");
   await window.getByRole("button", { name: "开发", exact: true }).click();
-  await window.locator(".project-picker").click();
-  await window.locator(".project-menu").getByRole("button", { name: /Orbit Notes.*orbit-notes/ }).click();
+  await window.getByRole("button", { name: "在 Orbit Notes 中新建任务" }).click();
   await window.getByTestId("composer-input").fill("Keep this workspace draft");
   for (const space of ["记忆", "对话"]) {
     await window.getByRole("button", { name: space, exact: true }).click();
     await window.getByRole("button", { name: "开发", exact: true }).click();
-    assert((await window.locator(".project-picker").innerText()).includes("Orbit Notes"),
+    assert((await window.locator('[data-testid="project-target"] .project-target-name').innerText()).includes("Orbit Notes"),
       `Returning from ${space} lost the selected empty workspace`);
     assert(await window.getByTestId("composer-input").inputValue() === "Keep this workspace draft",
       "Returning to an empty workspace lost its draft");
     assert(await window.locator(".thread-row.active").count() === 0,
       "Returning to an empty workspace selected an unrelated thread");
   }
-  await window.locator(".project-picker").click();
-  await window.locator(".project-menu").getByRole("button", { name: /Cleo AI agent.*Cleo-AI-agent/ }).click();
+  await window.getByRole("button", { name: "在 Cleo AI agent 中新建任务" }).click();
   await window.getByTestId("new-thread").click();
   await window.getByTestId("composer-input").fill("Unsent new task");
   await window.getByRole("button", { name: "记忆", exact: true }).click();
@@ -154,23 +150,29 @@ try {
   await window.getByTestId("conversation").waitFor();
   await window.getByTestId("new-thread").click();
   await window.getByText("开始新任务").waitFor();
+  // The pill opens on a settings card; the model row leads to the harness and model lists.
   await window.getByTestId("runtime-selector").click();
+  await window.getByTestId("runtime-model-row").click();
   await window.getByText("claude", { exact: true }).click();
   await window.getByText("Claude Opus 5", { exact: true }).waitFor();
   await window.getByText("Claude Opus 5", { exact: true }).click();
+  // Picking a model returns to the card, whose slider spans the model's efforts.
   assert(
-    JSON.stringify(await window.getByTestId("effort-selector").locator("option").evaluateAll(options => options.map(option => option.value)))
-      === JSON.stringify(["", "low", "medium", "high", "xhigh", "max"]),
+    await window.getByTestId("effort-selector").getAttribute("data-options")
+      === JSON.stringify(["low", "medium", "high", "xhigh", "max"]),
     "Claude effort options did not match the harness catalog",
   );
-  await window.getByTestId("runtime-selector").click();
+  await window.getByTestId("runtime-model-row").click();
   await window.getByText("codex", { exact: true }).click();
   await window.getByText("GPT-5.6-Terra", { exact: true }).waitFor();
   await window.screenshot({ path: join(outputDir, "03-runtime-selector.png") });
   await window.getByText("GPT-5.6-Terra", { exact: true }).click();
   await window.getByTestId("runtime-selector").getByText("codex · gpt-5.6-terra", { exact: true }).waitFor();
-  await window.getByTestId("effort-selector").selectOption("low");
-  assert(await window.getByTestId("effort-selector").inputValue() === "low", "Draft effort was not selectable");
+  await window.getByTestId("effort-selector").focus();
+  await window.keyboard.press("Home");
+  assert(await window.getByTestId("runtime-selector").getAttribute("data-effort") === "low", "Draft effort was not selectable");
+  await window.keyboard.press("Escape");
+  await window.getByTestId("runtime-menu").waitFor({ state: "detached" });
   await window.screenshot({ path: join(outputDir, "03-new-thread.png") });
 
   await window.evaluate(() => {
@@ -283,7 +285,7 @@ try {
     (await localFileLink.getAttribute("class"))?.includes("local-file-link"),
     "Local Markdown link did not receive the native-file affordance",
   );
-  assert(await window.getByTestId("effort-selector").inputValue() === "low", "Created thread did not keep draft effort");
+  assert(await window.getByTestId("runtime-selector").getAttribute("data-effort") === "low", "Created thread did not keep draft effort");
   await window.screenshot({ path: join(outputDir, "04a-process-expanded.png") });
   await thoughtGroupButton.click();
   await toolGroupButton.click();

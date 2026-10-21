@@ -66,7 +66,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 首次进入应用后，在“设置 → 模型”中配置 provider、模型、API Key 和可选 Base URL，再分别选择 Cleo 与 DreamAgent 使用的 profile。API Key 只写入本地配置，桌面读取接口不会回传明文。
 
-使用 Codex 开发对话时，可在输入框旁选择标准速度或快速模式；选择按对话保存。快速模式消耗更多额度，可用性取决于模型和账号。
+使用 Codex 开发对话时，可在运行药丸的卡片里用闪电按钮切换快速模式；选择按对话保存。快速模式消耗更多额度，可用性取决于模型和账号，不支持时不显示该按钮。
 
 新建 Codex/Claude 会话的登录、配置、历史和 skills 保存在 Cleo 专用目录（`data/codex`、`data/claude`），不写入默认应用的会话列表；本机已有的 skills、指令和设置会自动补充导入，登录需在 Cleo 内单独完成一次。已有会话沿用原目录，详见[配置说明](docs/CONFIGURATION.md)。
 

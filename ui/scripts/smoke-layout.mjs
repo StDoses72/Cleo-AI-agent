@@ -216,7 +216,7 @@ try {
         const shell = document.querySelector(".conversation-shell").getBoundingClientRect();
         const menu = document.querySelector(".runtime-menu").getBoundingClientRect();
         const list = document.querySelector(".runtime-menu-list");
-        return { shell: shell.toJSON(), menu: menu.toJSON(), scrollHeight: list.scrollHeight, clientHeight: list.clientHeight };
+        return { shell: shell.toJSON(), menu: menu.toJSON(), scrollHeight: list?.scrollHeight ?? 0, clientHeight: list?.clientHeight ?? 0 };
       });
       assert(state.menu.left >= state.shell.left - 2 && state.menu.right <= state.shell.right + 2
         && state.menu.top >= state.shell.top - 2 && state.menu.bottom <= state.shell.bottom + 2,
@@ -224,6 +224,8 @@ try {
       return state;
     };
     await trigger.click();
+    await checkBounds("card");
+    await menu.getByTestId("runtime-model-row").click();
     await checkBounds("harness");
     await menu.locator(".runtime-menu-row").filter({ hasText: "codex" }).click();
     await page.waitForFunction(() => document.querySelectorAll(".runtime-menu-row").length === 30);
@@ -240,10 +242,13 @@ try {
     // Select the current model to prove that a scrolled row receives a real click,
     // without leaving the historical conversation for a new draft task.
     await menu.getByRole("button", { name: /gpt-6-astra/ }).click();
+    // Picking a model returns to the settings card; Escape closes the menu.
+    await menu.getByTestId("runtime-card").waitFor();
+    await page.keyboard.press("Escape");
     await menu.waitFor({ state: "detached" });
     assert.equal(await trigger.getAttribute("aria-expanded"), "false");
     await trigger.click();
-    await checkBounds("reopened harness");
+    await checkBounds("reopened card");
     await trigger.click();
     await menu.waitFor({ state: "detached" });
   }

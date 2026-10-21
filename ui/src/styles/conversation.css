@@ -1004,6 +1004,10 @@
   line-height: 1.65;
 }
 
+.welcome-state > p + .suggestion-list {
+  margin-top: 0;
+}
+
 .suggestion-list {
   display: grid;
   width: min(100%, 620px);

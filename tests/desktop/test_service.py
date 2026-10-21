@@ -1778,12 +1778,16 @@ def test_runtime_catalog_and_profile_selection_use_configured_models(tmp_path: P
             "primary",
             "secondary",
         ]
+        from cleo.desktop.runtime_permissions import permission_choices
+
         assert catalog["productivityProviders"] == [
             {
                 "id": "codex",
                 "type": "codex_sdk",
                 "defaultModel": "gpt-test",
                 "modelSource": "dynamic",
+                # Drafts pick a preset before the session exists, so the catalog lists them.
+                "permissionOptions": permission_choices("codex_sdk"),
             }
         ]
 

@@ -1,14 +1,13 @@
 import { modifierKey } from "../platform";
-import { harnessLabel, projectLabel, projectPathLabel } from "../runtime-labels";
-import { useMemo, useState, type CSSProperties } from "react";
+import { harnessLabel, isGeneralProject, projectLabel, projectsInSpace } from "../runtime-labels";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Brain,
-  ChevronDown,
   CircleAlert,
   FileClock,
-  FolderOpen,
-  FolderPlus,
+  Folder,
   FolderGit2,
+  FolderOpen,
   History,
   MoreHorizontal,
   Plus,
@@ -23,13 +22,13 @@ interface ThreadSidebarProps {
   threads: Thread[];
   activeProjectId: string;
   activeThreadId: string | null;
-  onSelectProject: (projectId: string) => void;
+  /** Start an empty draft in a folder project (the "+" on its header). */
+  onStartThread: (projectId: string) => void;
   onRemoveProject: (project: Project) => void;
   onSelectThread: (threadId: string) => void;
   onDeleteThread: (thread: Thread) => void;
+  /** Start an empty draft where the user currently is. */
   onCreateThread: () => void;
-  onChooseWorkspace: () => void;
-  choosingWorkspace?: boolean;
   recoverableChatBackups: number;
   onRestoreChatHistory: () => void;
   memoryOverview: MemoryOverview;
@@ -39,26 +38,41 @@ interface ThreadSidebarProps {
   unreadThreadIds?: string[];
 }
 
-const statusLabel = {
-  idle: "",
-  running: "运行中",
-  completed: "",
-  attention: "需要查看",
-};
+const COLLAPSED_KEY = "cleo-collapsed-folders";
+/** Rows shown before "显示更多" takes over, at the top level and inside a folder. */
+const TOP_LIMIT = 8;
+const FOLDER_LIMIT = 5;
 
+function readCollapsed(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+interface FolderGroup {
+  project: Project;
+  threads: Thread[];
+}
+
+/** Purpose: The sidebar list, shaped like a coding agent's: each project is a header with its
+ * threads indented beneath it, and standalone threads (no project) are ordinary rows below.
+ * Nothing is boxed; indentation alone shows what belongs where. Projects are added from the
+ * composer's project pill or the command palette, not from here.
+ */
 export function ThreadSidebar({
   space,
   projects,
   threads,
   activeProjectId,
   activeThreadId,
-  onSelectProject,
+  onStartThread,
   onRemoveProject,
   onSelectThread,
   onDeleteThread,
   onCreateThread,
-  onChooseWorkspace,
-  choosingWorkspace = false,
   recoverableChatBackups,
   onRestoreChatHistory,
   memoryOverview,
@@ -68,21 +82,50 @@ export function ThreadSidebar({
   unreadThreadIds = [],
 }: ThreadSidebarProps) {
   const [query, setQuery] = useState("");
-  const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
-  const activeProject = projects.find((project) => project.id === activeProjectId) ?? projects[0];
-  const visibleThreads = useMemo(() => {
-    if (space === "memory") return [];
+  const [collapsed, setCollapsed] = useState<string[]>(readCollapsed);
+  const [expanded, setExpanded] = useState<string[]>([]);
+  const toggleFolder = (projectId: string) => {
+    setCollapsed((current) => {
+      const next = current.includes(projectId)
+        ? current.filter((value) => value !== projectId)
+        : [...current, projectId];
+      try { localStorage.setItem(COLLAPSED_KEY, JSON.stringify(next)); } catch { /* per-viewer convenience only */ }
+      return next;
+    });
+  };
+  // Landing in a collapsed folder (a thread, or a draft started there) opens it.
+  useEffect(() => {
+    if (activeProjectId && collapsed.includes(activeProjectId)) toggleFolder(activeProjectId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeProjectId, activeThreadId]);
+
+  const searching = Boolean(query.trim());
+  const noun = space === "chat" ? "对话" : "任务";
+  const { loose, folders } = useMemo(() => {
+    if (space === "memory") return { loose: [] as Thread[], folders: [] as FolderGroup[] };
     const normalized = query.trim().toLocaleLowerCase();
-    return threads.filter(
-      (thread) =>
-        thread.space === space &&
-        thread.projectId === activeProjectId &&
-        (!normalized ||
-          thread.title.toLocaleLowerCase().includes(normalized) ||
-          thread.summary.toLocaleLowerCase().includes(normalized)),
-    );
-  }, [activeProjectId, query, space, threads]);
+    const matches = (thread: Thread) =>
+      thread.space === space
+      && (!normalized
+        || thread.title.toLocaleLowerCase().includes(normalized)
+        || thread.summary.toLocaleLowerCase().includes(normalized));
+    const ordered = projectsInSpace(projects, space);
+    const folderProjects = ordered.filter((project) => !isGeneralProject(project));
+    const folderIds = new Set(folderProjects.map((project) => project.id));
+    // Folder-less threads, and threads whose folder is no longer listed, are plain rows.
+    const loose = threads.filter((thread) => !folderIds.has(thread.projectId) && matches(thread));
+    const folders = folderProjects
+      .map((project) => ({ project, threads: threads.filter((thread) => thread.projectId === project.id && matches(thread)) }))
+      .filter((group) => !normalized || group.threads.length);
+    return { loose, folders };
+  }, [projects, query, space, threads]);
+
+  const drafting = activeThreadId === null && space !== "memory";
+  const draftProject = projects.find((project) => project.id === activeProjectId);
+  const draftIsLoose = drafting && (!draftProject || isGeneralProject(draftProject));
+  // A draft stands in for the empty state, except while a search finds nothing.
+  const nothing = !loose.length && !folders.length && (searching || !drafting);
 
   return (
     <aside className="thread-sidebar">
@@ -127,95 +170,11 @@ export function ThreadSidebar({
         <MemorySidebar overview={memoryOverview} activeView={memoryView} onViewChange={onMemoryViewChange} />
       ) : (
         <>
-          <div className="project-picker-wrap">
-            <button
-              className="project-picker"
-              type="button"
-              aria-expanded={projectMenuOpen}
-              onClick={() => setProjectMenuOpen((open) => !open)}
-            >
-              <span className="project-glyph" style={{ "--project-accent": activeProject?.accent } as CSSProperties}>
-                {projectLabel(activeProject).slice(0, 1)}
-              </span>
-              <span className="project-picker-copy">
-                <strong>{projectLabel(activeProject)}</strong>
-                {activeProject?.branch && <small>{activeProject.branch}</small>}
-              </span>
-              <ChevronDown size={15} />
-            </button>
-            {projectMenuOpen ? (
-              <div className="project-menu surface-popover">
-                <button
-                  className="project-menu-action"
-                  type="button"
-                  onClick={() => {
-                    setProjectMenuOpen(false);
-                    onChooseWorkspace();
-                  }}
-                  data-testid="choose-workspace"
-                  disabled={choosingWorkspace}
-                >
-                  <span className="project-glyph compact"><FolderOpen size={14} /></span>
-                  <span><strong>{space === "productivity" ? "新项目" : "打开工作目录"}</strong></span>
-                </button>
-                {projects
-                  .filter((project) =>
-                    project.space
-                      ? project.space === space
-                      : space === "chat"
-                        ? project.id === "general"
-                        : project.id !== "general",
-                  )
-                  .map((project) => (
-                    <div className="project-menu-row" key={project.id}>
-                      <button
-                        className="project-menu-select"
-                        type="button"
-                        onClick={() => {
-                          onSelectProject(project.id);
-                          setProjectMenuOpen(false);
-                        }}
-                      >
-                        <span className="project-glyph compact" style={{ "--project-accent": project.accent } as CSSProperties}>
-                          {projectLabel(project).slice(0, 1)}
-                        </span>
-                        <span>
-                          <strong>{projectLabel(project)}</strong>
-                          <small>{projectPathLabel(project)}</small>
-                        </span>
-                      </button>
-                      {project.removable ? (
-                        <button
-                          className="project-menu-remove"
-                          type="button"
-                          aria-label={`移除项目 ${project.name}`}
-                          title="移除项目"
-                          onClick={() => {
-                            setProjectMenuOpen(false);
-                            onRemoveProject(project);
-                          }}
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      ) : null}
-                    </div>
-                  ))}
-              </div>
-            ) : null}
-          </div>
-
           <button className="new-thread-button" type="button" onClick={onCreateThread} data-testid="new-thread">
             <Plus size={16} />
             <span>{space === "chat" ? "新对话" : "新任务"}</span>
             <kbd>{modifierKey} N</kbd>
           </button>
-
-          {space === "productivity" && <button className="new-project-button" type="button"
-            onClick={onChooseWorkspace} disabled={choosingWorkspace} data-testid="new-project"
-            title="选择或新建本地文件夹，作为项目工作区">
-            <FolderPlus size={16} />
-            <span>{choosingWorkspace ? "正在选择文件夹…" : "新项目"}</span>
-          </button>}
 
           <label className="sidebar-search">
             <Search size={15} />
@@ -228,30 +187,158 @@ export function ThreadSidebar({
           </label>
 
           <div className="thread-list" data-testid="thread-list">
-            <div className="list-section-label">最近</div>
-            {visibleThreads.length ? (
-              visibleThreads.map((thread) => (
-                <ThreadRow
-                  key={thread.id}
-                  thread={thread}
-                  active={thread.id === activeThreadId}
-                  unread={unreadThreadIds.includes(thread.id)}
-                  onClick={() => onSelectThread(thread.id)}
-                  onDelete={() => onDeleteThread(thread)}
-                />
-              ))
-            ) : (
+            {folders.map((group) => {
+              const label = projectLabel(group.project);
+              const open = searching || !collapsed.includes(group.project.id);
+              const draftHere = drafting && draftProject?.id === group.project.id;
+              return (
+                <section className="folder-group" key={group.project.id} data-project-id={group.project.id} aria-label={label}>
+                  <div className="folder-group-header">
+                    <button
+                      className="folder-group-toggle"
+                      type="button"
+                      aria-expanded={open}
+                      title={group.project.path}
+                      onClick={() => toggleFolder(group.project.id)}
+                    >
+                      {open ? <FolderOpen size={15} /> : <Folder size={15} />}
+                      <strong>{label}</strong>
+                      {group.project.branch ? (
+                        <small title={group.project.dirtyFiles ? `${group.project.branch} · ${group.project.dirtyFiles} 个文件有改动` : group.project.branch}>
+                          {group.project.branch}{group.project.dirtyFiles ? ` · ${group.project.dirtyFiles}` : ""}
+                        </small>
+                      ) : null}
+                    </button>
+                    <div className="folder-group-actions">
+                      <button
+                        type="button"
+                        aria-label={`在 ${label} 中新建${noun}`}
+                        title={`在 ${label} 中新建${noun}`}
+                        onClick={() => onStartThread(group.project.id)}
+                        data-testid="new-thread-in-project"
+                      >
+                        <Plus size={14} />
+                      </button>
+                      {group.project.removable ? (
+                        <button
+                          className="folder-group-remove"
+                          type="button"
+                          aria-label={`移除项目 ${label}`}
+                          title="移除项目（不删除本地文件）"
+                          onClick={() => onRemoveProject(group.project)}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                  {open ? (
+                    <div className="thread-nested">
+                      {draftHere ? <DraftRow noun={noun} /> : null}
+                      {group.threads.length ? (
+                        <ThreadRows
+                          id={group.project.id}
+                          threads={group.threads}
+                          limit={searching ? Infinity : FOLDER_LIMIT}
+                          expanded={expanded}
+                          onExpand={(id) => setExpanded((current) => [...current, id])}
+                          activeThreadId={activeThreadId}
+                          unreadThreadIds={unreadThreadIds}
+                          onSelectThread={onSelectThread}
+                          onDeleteThread={onDeleteThread}
+                        />
+                      ) : draftHere ? null : (
+                        <div className="folder-empty">{`还没有${noun}`}</div>
+                      )}
+                    </div>
+                  ) : null}
+                </section>
+              );
+            })}
+            {/* Standalone work sits under the projects; the label only separates it from them. */}
+            {folders.length && (loose.length || draftIsLoose) ? <div className="list-section-label">{`独立${noun}`}</div> : null}
+            {draftIsLoose ? <DraftRow noun={noun} /> : null}
+            <ThreadRows
+              id="loose"
+              threads={loose}
+              limit={searching ? Infinity : TOP_LIMIT}
+              expanded={expanded}
+              onExpand={(id) => setExpanded((current) => [...current, id])}
+              activeThreadId={activeThreadId}
+              unreadThreadIds={unreadThreadIds}
+              onSelectThread={onSelectThread}
+              onDeleteThread={onDeleteThread}
+            />
+            {nothing ? (
               <div className="sidebar-empty">
                 <FileClock size={20} />
-                <span>{space === "chat" ? query ? "没有匹配的对话" : "还没有对话" : query ? "没有匹配的任务" : "还没有任务"}</span>
+                <span>{searching ? `没有匹配的${noun}` : `还没有${noun}`}</span>
               </div>
-            )}
+            ) : null}
           </div>
+
         </>
       )}
 
       {backendMode === "mock" && <footer className="sidebar-footer">演示模式</footer>}
     </aside>
+  );
+}
+
+/** The unsent draft reads as the row it is about to become; it scrolls into view so a draft
+ * parked below long folders is never out of sight. */
+function DraftRow({ noun }: { noun: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => { ref.current?.scrollIntoView({ block: "nearest" }); }, []);
+  return (
+    <div className="thread-draft-row" aria-current="true" data-testid="draft-row" ref={ref}>
+      <span className="thread-title-line"><strong>{`未发送的${noun}`}</strong></span>
+    </div>
+  );
+}
+
+function ThreadRows({
+  id,
+  threads,
+  limit,
+  expanded,
+  onExpand,
+  activeThreadId,
+  unreadThreadIds,
+  onSelectThread,
+  onDeleteThread,
+}: {
+  id: string;
+  threads: Thread[];
+  limit: number;
+  expanded: string[];
+  onExpand: (id: string) => void;
+  activeThreadId: string | null;
+  unreadThreadIds: string[];
+  onSelectThread: (threadId: string) => void;
+  onDeleteThread: (thread: Thread) => void;
+}) {
+  // The selected thread is never hidden behind "显示更多".
+  const activeIndex = threads.findIndex((thread) => thread.id === activeThreadId);
+  const shown = expanded.includes(id) || activeIndex >= limit ? threads : threads.slice(0, limit);
+  return (
+    <>
+      {shown.map((thread) => (
+        <ThreadRow
+          key={thread.id}
+          thread={thread}
+          active={thread.id === activeThreadId}
+          unread={unreadThreadIds.includes(thread.id)}
+          onClick={() => onSelectThread(thread.id)}
+          onDelete={() => onDeleteThread(thread)}
+        />
+      ))}
+      {shown.length < threads.length ? (
+        <button className="thread-more" type="button" onClick={() => onExpand(id)}>
+          {`显示更多（${threads.length - shown.length}）`}
+        </button>
+      ) : null}
+    </>
   );
 }
 
@@ -269,33 +356,32 @@ function ThreadRow({
   onDelete: () => void;
 }) {
   const harness = harnessLabel(thread.runtime, thread.space);
+  const status = thread.waitingFor ? "attention" : thread.status;
+  const hint = [thread.summary, thread.runtime?.model
+    ? `${thread.runtime.provider} · ${thread.runtime.model}` : harness, thread.updatedAt].filter(Boolean).join(" · ");
+  const stateLabel = thread.waitingFor === "approval" ? "等待审批"
+    : thread.waitingFor === "question" ? "等待回答"
+    : thread.status === "running" ? "运行中"
+    : thread.status === "attention" ? "需要查看"
+    : unread ? "新回复" : "";
   return (
     <div
       className={`thread-row ${active ? "active" : ""} ${unread ? "unread" : ""}`}
-      data-status={thread.waitingFor ? "attention" : thread.status}
+      data-status={status}
       data-unread={unread || undefined}
     >
-      <button className="thread-row-select" type="button" onClick={onClick}>
-        <span className="thread-status-dot" />
-        <span className="thread-copy">
-          <span className="thread-title-line">
-            <strong>{thread.title}</strong>
-            <time>{thread.updatedAt}</time>
+      <button className="thread-row-select" type="button" onClick={onClick} title={hint}
+        aria-label={stateLabel ? `${thread.title}（${stateLabel}）` : undefined}>
+        <span className="thread-title-line"><strong>{thread.title}</strong></span>
+        {/* Status sits before the harness so every harness label lines up at the right edge. */}
+        {stateLabel ? (
+          <span className="thread-meta" title={stateLabel}>
+            {status === "running" ? <span className="thread-status-dot" />
+              : status === "attention" ? <CircleAlert size={13} />
+              : <span className="thread-unread-dot" />}
           </span>
-          <span className="thread-summary">{thread.summary}</span>
-          {harness || thread.waitingFor || statusLabel[thread.status] || unread ? (
-            <span className="thread-tags">
-              {harness ? <span className="thread-harness" title={thread.runtime?.model ? `${thread.runtime.provider} · ${thread.runtime.model}` : undefined}>{harness}</span> : null}
-              {thread.waitingFor || statusLabel[thread.status] ? (
-                <span className={`thread-status-label ${thread.waitingFor ? "attention" : thread.status}`}>
-                  {thread.status === "attention" ? <CircleAlert size={11} /> : null}
-                  {thread.waitingFor === "approval" ? "等待审批" : thread.waitingFor === "question" ? "等待回答" : statusLabel[thread.status]}
-                </span>
-              ) : null}
-              {unread ? <span className="thread-status-label unread">新回复</span> : null}
-            </span>
-          ) : null}
-        </span>
+        ) : null}
+        {harness ? <small className="thread-harness">{harness}</small> : null}
       </button>
       <button
         className="thread-delete-button"

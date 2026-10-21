@@ -333,8 +333,8 @@ export function App() {
       },
       {
         id: "workspace",
-        label: "新项目",
-        hint: "选择或新建本地文件夹作为工作区",
+        label: "添加项目",
+        hint: "选择本地文件夹作为项目，任务在它的目录里运行",
         icon: commandIcons.code,
         run: () => void workspace.chooseWorkspace().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法打开工作目录", "error")),
       },
@@ -445,13 +445,11 @@ export function App() {
         threads={workspace.snapshot.threads.filter((thread) => thread.projectId !== "productivity:cleo-evolution")}
         activeProjectId={workspace.activeProjectId}
         activeThreadId={workspace.activeThreadId}
-        onSelectProject={workspace.selectProject}
+        onStartThread={(projectId) => workspace.createThread(projectId)}
         onRemoveProject={project => { setRemoveError(null); setProjectPendingRemoval(project); }}
         onSelectThread={workspace.selectThread}
         onDeleteThread={thread => { setDeleteError(null); setThreadPendingDeletion(thread); }}
         onCreateThread={() => void workspace.createThread()}
-        choosingWorkspace={workspace.choosingWorkspace}
-        onChooseWorkspace={() => void workspace.chooseWorkspace().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法打开工作目录", "error"))}
         recoverableChatBackups={workspace.snapshot.backend?.recoverableChatBackups ?? 0}
         onRestoreChatHistory={() => void workspace.restoreChatHistory().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法恢复旧对话", "error"))}
         memoryOverview={workspace.snapshot.memoryOverview}
@@ -489,6 +487,12 @@ export function App() {
           onRename={workspace.renameThread}
           thread={conversationThread}
           project={conversationProject}
+          projects={evolutionOpen ? [] : workspace.snapshot.projects.filter((project) => project.id !== "productivity:cleo-evolution")}
+          activeProjectId={workspace.activeProjectId}
+          onSelectProject={workspace.retargetDraft}
+          onChooseWorkspace={() => void workspace.chooseWorkspace().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法打开工作目录", "error"))}
+          onRemoveProject={project => { setRemoveError(null); setProjectPendingRemoval(project); }}
+          choosingWorkspace={workspace.choosingWorkspace}
           space={!evolutionOpen && workspace.activeSpace === "chat" ? "chat" : "productivity"}
           runtime={activeRuntime}
           runtimeCatalog={workspace.runtimeCatalog}
@@ -549,7 +553,8 @@ export function App() {
           }}
           onEffortChange={(effort) => workspace.updateRuntime({ effort })}
           onServiceTierChange={(serviceTier) => workspace.updateRuntime({ serviceTier })}
-          onPermissionChange={workspace.activeThread?.id ? (update) => workspace.updatePermissions(workspace.activeThread!.id, update) : undefined}
+          onPermissionChange={workspace.activeThread?.id ? (update) => workspace.updatePermissions(workspace.activeThread!.id, update)
+            : evolutionOpen ? undefined : workspace.setDraftPermissions}
           attachments={workspace.attachments}
           onPickAttachments={workspace.pickAttachments}
           onPrepareAttachments={workspace.prepareAttachments}

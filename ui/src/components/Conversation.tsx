@@ -47,6 +47,7 @@ import {
   CornerDownRight,
   Pencil,
   RotateCcw,
+  Zap,
   Sparkles,
   Square,
   Terminal,
@@ -59,6 +60,7 @@ import type {
   ProductivityModelCatalog,
   Project,
   RuntimeCatalog,
+  ReasoningEffort,
   RuntimeProfile,
   RuntimeUpdate,
   SteerReceipt,
@@ -73,7 +75,8 @@ import { PermissionSelector } from "./PermissionSelector";
 import { ApprovalPrompt } from "./ApprovalPrompt";
 import { RenameThreadDialog } from "./Overlays";
 import { handleDialogKeyDown } from "./Modal";
-import { approvalLabel, effortLabels, projectLabel } from "../runtime-labels";
+import { approvalLabel, effortLabels, isGeneralProject, projectLabel } from "../runtime-labels";
+import { ProjectTarget } from "./ProjectTarget";
 
 interface ConversationProps {
   history?: ReturnType<typeof useTimelineHistory>;
@@ -83,6 +86,13 @@ interface ConversationProps {
   header?: ReactNode;
   thread: Thread | null;
   project: Project | null;
+  /** Projects of this space; with onSelectProject, an unsent draft shows where it will run and can move. */
+  projects?: Project[];
+  activeProjectId?: string;
+  onSelectProject?: (projectId: string) => void;
+  onChooseWorkspace?: () => void;
+  onRemoveProject?: (project: Project) => void;
+  choosingWorkspace?: boolean;
   space: ThreadSpace;
   runtime: RuntimeProfile;
   runtimeCatalog: RuntimeCatalog | null;
@@ -151,6 +161,12 @@ export function Conversation({
   header,
   thread,
   project,
+  projects,
+  activeProjectId,
+  onSelectProject,
+  onChooseWorkspace,
+  onRemoveProject,
+  choosingWorkspace,
   space,
   runtime,
   runtimeCatalog,
@@ -415,6 +431,13 @@ export function Conversation({
         sendError={sendError}
         harnessSwitchStatus={harnessSwitchStatus}
         space={space}
+        drafting={!thread}
+        projects={projects}
+        activeProjectId={activeProjectId}
+        onSelectProject={onSelectProject}
+        onChooseWorkspace={onChooseWorkspace}
+        onRemoveProject={onRemoveProject}
+        choosingWorkspace={choosingWorkspace}
         runtime={runtime}
         runtimeCatalog={runtimeCatalog}
         productivityModels={productivityModels}
@@ -1093,6 +1116,11 @@ function WelcomeState({ project, space, onUseSuggestion }: { project: Project | 
     <div className="welcome-state">
       <div className="welcome-mark" aria-hidden="true"><span>C</span></div>
       <h2>{evolving ? "你想让 Cleo 怎样改变？" : space === "chat" ? "今天想聊些什么？" : "开始新任务"}</h2>
+      {!evolving && project && space === "productivity" ? (
+        <p>{isGeneralProject(project)
+          ? "这是独立任务，不关联项目，适合一次性脚本、探索和提问。要改某个项目时，在下方选择它。"
+          : `任务会在项目 ${projectLabel(project)} 的目录里运行。`}</p>
+      ) : null}
       <div className="suggestion-list">
         {prompts.map((suggestion) => (
           <button type="button" key={suggestion} onClick={() => {
@@ -1110,6 +1138,13 @@ function WelcomeState({ project, space, onUseSuggestion }: { project: Project | 
 
 function Composer({
   prompt,
+  drafting = false,
+  projects = [],
+  activeProjectId = "",
+  onSelectProject,
+  onChooseWorkspace,
+  onRemoveProject,
+  choosingWorkspace = false,
   onPromptChange: setPrompt,
   sendBlocked,
   sendError,
@@ -1186,7 +1221,13 @@ function Composer({
   | "approvalPending"
   | "approvalError"
   | "onResolveApproval"
-> & { steerReady?: boolean }) {
+  | "projects"
+  | "activeProjectId"
+  | "onSelectProject"
+  | "onChooseWorkspace"
+  | "onRemoveProject"
+  | "choosingWorkspace"
+> & { steerReady?: boolean; drafting?: boolean }) {
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [draggingFiles, setDraggingFiles] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -1412,6 +1453,21 @@ function Composer({
         />
         <div className="composer-footer">
           <div className="composer-tools">
+            {drafting && onSelectProject && onChooseWorkspace && projects.length ? (
+              <>
+                <ProjectTarget
+                  space={space}
+                  projects={projects}
+                  activeProjectId={activeProjectId}
+                  disabled={running || Boolean(harnessSwitchStatus)}
+                  choosing={choosingWorkspace}
+                  onSelect={onSelectProject}
+                  onChooseWorkspace={onChooseWorkspace}
+                  onRemoveProject={onRemoveProject}
+                />
+                <span className="composer-divider" />
+              </>
+            ) : null}
             <button type="button" aria-label="添加附件" title="添加 PDF、Office、图片或代码文件" onClick={() => void pickFiles()}>
               <Paperclip size={16} />
             </button>
@@ -1431,36 +1487,16 @@ function Composer({
               onSelectProfile={onSelectNonProductivityProfile}
               onLoadModels={onLoadProductivityModels}
               onSelectProductivityRuntime={onSelectProductivityRuntime}
+              effort={selectedEffort}
+              supportedEfforts={supportedEfforts}
+              defaultEffort={selectedModel?.defaultEffort ?? null}
+              onEffortChange={onEffortChange}
+              serviceTier={runtime.serviceTier ?? null}
+              supportsFastMode={Boolean(runtime.supportsFastMode)}
+              onServiceTierChange={onServiceTierChange}
             />
-            {space === "productivity" ? <select
-              className="text-control effort-selector"
-              value={selectedEffort}
-              disabled={running || Boolean(harnessSwitchStatus) || supportedEfforts.length === 0}
-              onChange={(event) => onEffortChange(
-                event.target.value as NonNullable<RuntimeProfile["effort"]>,
-              )}
-              aria-label="思考深度"
-              title="选择思考深度"
-              data-testid="effort-selector"
-            >
-              <option value="" disabled>由模型决定</option>
-              {supportedEfforts.map((effort) => <option key={effort} value={effort}>{effortLabels[effort] ?? effort}</option>)}
-            </select> : null}
             {space === "productivity" && <PermissionSelector key={runtime.provider} runtime={runtime}
               onChange={onPermissionChange} disabled={Boolean(harnessSwitchStatus)} />}
-            {space === "productivity" && runtime.supportsFastMode && onServiceTierChange && <select
-              className="text-control"
-              value={runtime.serviceTier ?? ""}
-              disabled={running || Boolean(harnessSwitchStatus)}
-              onChange={event => onServiceTierChange(event.target.value as "default" | "fast")}
-              aria-label="Codex 速度"
-              title="快速模式消耗更多额度；可用性取决于模型和账号。"
-              data-testid="speed-selector"
-            >
-              <option value="" disabled>速度随配置</option>
-              <option value="default">标准速度</option>
-              <option value="fast">快速 · 更多额度</option>
-            </select>}
           </div>
           <div className="composer-send-actions">
           {running && (
@@ -1492,8 +1528,13 @@ function formatAttachmentSize(size: number) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** Purpose: Share harness/model selection across development and evolution.
- * Input: live catalogs and selection callbacks. Output: accessible picker with retry.
+/** Purpose: One pill for how a task runs: harness, model, reasoning effort and speed.
+ * Input: live catalogs, the current runtime and selection callbacks. Output: the pill reads
+ * "harness · model · effort[ · 快速]". Its menu opens on a card: a fast-mode toggle (only when
+ * the harness and model support it), the current effort over the model name (which leads to
+ * the harness and model lists), a reset to the model's defaults, and an effort slider. Picking
+ * a model returns to the card so effort and speed can be set right away. Chat shows the
+ * model only.
  */
 function RuntimeSelector({
   space,
@@ -1507,6 +1548,13 @@ function RuntimeSelector({
   onSelectProfile,
   onLoadModels,
   onSelectProductivityRuntime,
+  effort = "",
+  supportedEfforts = [],
+  defaultEffort = null,
+  onEffortChange,
+  serviceTier = null,
+  supportsFastMode = false,
+  onServiceTierChange,
 }: {
   space: ThreadSpace;
   runtime: RuntimeProfile;
@@ -1519,9 +1567,43 @@ function RuntimeSelector({
   onSelectProfile: (profileId: string) => void;
   onLoadModels: (provider: string, refresh?: boolean) => Promise<ProductivityModelCatalog>;
   onSelectProductivityRuntime: (provider: string, model: string) => void;
+  effort?: ReasoningEffort | "";
+  supportedEfforts?: ReasoningEffort[];
+  defaultEffort?: ReasoningEffort | null;
+  onEffortChange?: (effort: ReasoningEffort) => void;
+  serviceTier?: "default" | "fast" | null;
+  supportsFastMode?: boolean;
+  onServiceTierChange?: (tier: "default" | "fast") => void;
 }) {
+  const development = space === "productivity";
+  const effortLabel = development && effort ? effortLabels[effort] ?? effort : "";
+  const showSpeed = development && supportsFastMode && Boolean(onServiceTierChange);
+  const settingsLocked = running || switching;
   const [open, setOpen] = useState(false);
   const [providerScreen, setProviderScreen] = useState<string | null>(null);
+  // The development menu opens on the settings card; the harness list is a screen behind it.
+  const [screen, setScreen] = useState<"card" | "providers">("card");
+  const wrapRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!wrapRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+  const canReset = (defaultEffort !== null && defaultEffort !== effort) || serviceTier === "fast";
+  const resetSettings = () => {
+    if (defaultEffort !== null && defaultEffort !== effort) onEffortChange?.(defaultEffort);
+    if (serviceTier === "fast") onServiceTierChange?.("default");
+  };
   const profiles = catalog?.nonProductivityProfiles ?? [];
   const providers = catalog?.productivityProviders ?? [];
   const selectedProfile = profiles.find(
@@ -1540,6 +1622,7 @@ function RuntimeSelector({
   const toggleMenu = () => {
     setOpen((current) => {
       if (current) setProviderScreen(null);
+      else setScreen("card");
       return !current;
     });
   };
@@ -1549,17 +1632,21 @@ function RuntimeSelector({
   };
 
   return (
-    <div className="model-menu-wrap runtime-selector">
+    <div className="model-menu-wrap runtime-selector" ref={wrapRef}>
       <button
         className="text-control runtime-selector-trigger"
         type="button"
         disabled={(running && space === "chat") || switching || !catalog}
-        aria-label={space === "productivity" ? "选择运行方式和模型" : "选择对话模型"}
+        aria-label={development ? "选择运行方式、模型、思考深度和速度" : "选择对话模型"}
         aria-expanded={open}
         onClick={toggleMenu}
         data-testid="runtime-selector"
+        data-effort={development ? effort || undefined : undefined}
+        data-speed={showSpeed ? serviceTier ?? "" : undefined}
       >
-        <span>{space === "productivity" ? `${runtime.provider} · ` : ""}{runtime.model}</span>
+        <span>{development ? `${runtime.provider} · ` : ""}{runtime.model}</span>
+        {effortLabel ? <small className="runtime-selector-extra">{`· ${effortLabel}`}</small> : null}
+        {showSpeed && serviceTier === "fast" ? <small className="runtime-selector-extra">· 快速</small> : null}
         <ChevronDown size={13} />
       </button>
       {open ? (
@@ -1592,7 +1679,7 @@ function RuntimeSelector({
           ) : providerScreen ? (
             <>
               <div className="runtime-menu-heading runtime-menu-heading-back">
-                <button type="button" aria-label="返回服务列表" onClick={() => setProviderScreen(null)}>
+                <button type="button" aria-label="返回服务列表" onClick={() => { setProviderScreen(null); setScreen("providers"); }}>
                   <ArrowLeft size={14} />
                 </button>
                 <span>{selectedProvider?.id ?? providerScreen}</span>
@@ -1614,8 +1701,8 @@ function RuntimeSelector({
                       key={model.id}
                       onClick={() => {
                         onSelectProductivityRuntime(providerScreen, model.id);
-                        setOpen(false);
                         setProviderScreen(null);
+                        setScreen("card");
                       }}
                     >
                       <span className="runtime-menu-copy">
@@ -1628,9 +1715,12 @@ function RuntimeSelector({
                 )}
               </div>
             </>
-          ) : (
+          ) : screen === "providers" ? (
             <>
-              <div className="runtime-menu-heading">
+              <div className="runtime-menu-heading runtime-menu-heading-back">
+                <button type="button" aria-label="返回当前设置" onClick={() => setScreen("card")}>
+                  <ArrowLeft size={14} />
+                </button>
                 <span>选择运行方式</span>
                 {running && <small>当前轮结束后切换</small>}
               </div>
@@ -1646,11 +1736,73 @@ function RuntimeSelector({
                       <strong>{provider.id}</strong>
                       <small>{providerTypeLabel(provider.type)}{provider.defaultModel ? ` · ${provider.defaultModel}` : ""}</small>
                     </span>
-                    <ChevronRight size={14} />
+                    {provider.id === runtime.provider ? <Check size={14} /> : <ChevronRight size={14} />}
                   </button>
                 ))}
               </div>
             </>
+          ) : (
+            <div className="runtime-card" data-testid="runtime-card">
+              <div className="runtime-card-top">
+                {showSpeed ? (
+                  <button
+                    className={`runtime-card-fast ${serviceTier === "fast" ? "active" : ""}`}
+                    type="button"
+                    aria-pressed={serviceTier === "fast"}
+                    aria-label="快速模式"
+                    title={serviceTier === "fast" ? "快速模式已开启：更快，消耗更多额度" : "开启快速模式：更快，消耗更多额度；可用性取决于模型和账号"}
+                    disabled={settingsLocked}
+                    data-testid="speed-toggle"
+                    onClick={() => onServiceTierChange?.(serviceTier === "fast" ? "default" : "fast")}
+                  >
+                    <Zap size={16} />
+                  </button>
+                ) : <span className="runtime-card-spacer" aria-hidden="true" />}
+                <button
+                  className="runtime-card-model"
+                  type="button"
+                  aria-label="更换运行方式或模型"
+                  title="更换运行方式或模型"
+                  data-testid="runtime-model-row"
+                  onClick={() => setScreen("providers")}
+                >
+                  <strong>{effortLabel || "由模型决定"}</strong>
+                  <span>{runtime.provider} · {runtime.model}<ChevronRight size={13} /></span>
+                </button>
+                <button
+                  className="runtime-card-reset"
+                  type="button"
+                  aria-label="恢复默认"
+                  title="恢复模型默认的思考深度和标准速度"
+                  disabled={settingsLocked || !canReset}
+                  data-testid="runtime-reset"
+                  onClick={resetSettings}
+                >
+                  <RotateCcw size={15} />
+                </button>
+              </div>
+              {supportedEfforts.length ? (
+                <input
+                  className="runtime-effort-slider"
+                  type="range"
+                  min={0}
+                  max={supportedEfforts.length - 1}
+                  step={1}
+                  value={Math.max(0, supportedEfforts.indexOf(effort as ReasoningEffort))}
+                  // The track is filled up to the thumb; the share is the effort's position in the list.
+                  style={{ "--effort-fill": `${supportedEfforts.length > 1
+                    ? Math.max(0, supportedEfforts.indexOf(effort as ReasoningEffort)) / (supportedEfforts.length - 1) * 100 : 100}%` } as CSSProperties}
+                  aria-label="思考深度"
+                  aria-valuetext={effortLabel || undefined}
+                  title={`思考深度：${effortLabel || "由模型决定"}`}
+                  disabled={settingsLocked}
+                  data-testid="effort-selector"
+                  data-value={effort}
+                  data-options={JSON.stringify(supportedEfforts)}
+                  onChange={(event) => onEffortChange?.(supportedEfforts[Number(event.target.value)])}
+                />
+              ) : null}
+            </div>
           )}
         </div>
       ) : null}

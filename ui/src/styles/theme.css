@@ -34,34 +34,14 @@
 /* ----- Sidebar: airy, big rounded rows ----- */
 :root .sidebar-heading { height: 60px; flex-basis: 60px; padding: 0 8px 0 16px; }
 :root .sidebar-heading h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.025em; }
-:root .project-picker { height: 56px; border: 0; background: var(--canvas); box-shadow: var(--shadow-sm); }
-:root .project-picker:hover,
-:root .project-picker[aria-expanded="true"] { background: var(--canvas); box-shadow: var(--shadow); }
 :root .project-glyph { border-radius: 10px; box-shadow: none; color: var(--accent-ink); background: var(--accent); }
-:root .new-thread-button { height: 44px; border-radius: var(--radius-pill); box-shadow: none; font-size: 14px; font-weight: 600; }
-:root .new-thread-button:hover { filter: none; box-shadow: var(--shadow); }
-:root .new-thread-button kbd { border-color: color-mix(in srgb, var(--accent-ink) 25%, transparent); background: color-mix(in srgb, var(--accent-ink) 12%, transparent); color: color-mix(in srgb, var(--accent-ink) 80%, transparent); }
-:root .new-project-button { border-radius: var(--radius-pill); padding: 0 14px; }
-:root .new-project-button svg { color: var(--muted); }
-:root .sidebar-search { height: 38px; border: 0; background: var(--surface-active); }
+:root .project-glyph.plain { color: var(--muted); background: var(--surface-active); }
+/* Rows stay borderless: text, a hover tint and a slightly stronger tint for the selected one. */
+:root .sidebar-search { height: 36px; border: 0; background: var(--surface-active); }
 :root .sidebar-search:focus-within { background: var(--canvas); border: 0; box-shadow: var(--shadow-sm); }
-:root .list-section-label { padding: 16px 14px 8px; font-size: 12px; letter-spacing: 0.04em; text-transform: none; font-weight: 600; color: var(--muted); }
-:root .thread-row { margin-bottom: 3px; border-radius: var(--radius-md); }
-:root .thread-row:hover,
-:root .thread-row:focus-within { background: var(--surface-active); }
-:root .thread-row.active { background: var(--canvas); box-shadow: var(--shadow-sm); }
-:root .thread-row.active::before { display: none; }
-:root .thread-row-select { padding: 12px 40px 12px 14px; }
-:root .thread-title-line strong { font-weight: 600; }
-:root .thread-status-dot { display: none; }
-:root .thread-row.unread .thread-status-dot { display: block; }
-:root .thread-harness { background: var(--surface-active); }
-:root .thread-row.active .thread-harness { background: var(--surface); }
-:root .thread-row[data-status="running"] .thread-copy,
-:root .thread-row[data-status="attention"] .thread-copy { position: relative; }
-:root .thread-status-label { color: var(--highlight-ink); background: var(--highlight); font-weight: 600; }
-:root .thread-status-label.attention { color: var(--highlight-ink); background: var(--highlight); }
-:root .thread-delete-button { border-radius: 50%; box-shadow: var(--shadow-sm); }
+:root .list-section-label { padding: 14px 10px 4px; font-size: 12px; letter-spacing: 0.02em; text-transform: none; font-weight: 600; color: var(--muted); }
+:root .thread-row { margin-bottom: 1px; }
+:root .thread-row.active { background: var(--surface-active); box-shadow: none; }
 :root .sidebar-empty { min-height: 120px; border: 1px dashed var(--border-strong); background: transparent; color: var(--muted-2); }
 :root .sidebar-footer::before { background: var(--highlight); }
 :root .memory-nav-row { border-radius: var(--radius-md); font-weight: 500; }

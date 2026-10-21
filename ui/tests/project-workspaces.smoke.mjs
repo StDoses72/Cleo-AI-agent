@@ -23,13 +23,25 @@ try {
     const control = window.projectTest = { calls: [], picked: null, picks: 0, fail: false, hold: false, release: null };
     window.cleoDesktop = {
       pickWorkspace: async () => { control.picks++; return control.picked; },
+      pickAttachments: async () => [{ name: "draft.txt", path: "C:\\fixtures\\draft.txt", mimeType: "text/plain", size: 4 }],
       request: async (method, params = {}) => {
         control.calls.push({ method, params });
         if (method === "load_workspace") return structuredClone(fixture);
         if (method === "load_memory") return { memories: fixture.memories, memoryOverview: fixture.memoryOverview };
         if (method === "load_thread") return structuredClone(fixture.threads.find(thread => thread.id === params.thread_id));
         if (method === "get_pending_questions" || method === "get_local_skills") return [];
-        if (method === "get_runtime_catalog") return { nonProductivityProfiles: [], defaultNonProductivityProfile: "", defaultProductivityProvider: "codex", productivityProviders: [] };
+        if (method === "get_runtime_catalog") return { nonProductivityProfiles: [], defaultNonProductivityProfile: "", defaultProductivityProvider: "codex", productivityProviders: [
+          // Presets listed per provider let a draft choose its permissions before the session exists.
+          { id: "codex", type: "codex_sdk", defaultModel: "gpt-test", modelSource: "dynamic", permissionOptions: { access: [], approval: [], presets: [
+            { value: "ask", label: "请求批准", description: "", update: { approval: "user", access: "workspace-write" } },
+            { value: "full", label: "完全访问", description: "", update: { approval: "deny_all", access: "full-access" } },
+          ] } },
+          // The draft inherits the harness of the thread on screen (Claude here), so list it too.
+          { id: "claude", type: "claude_sdk", defaultModel: "claude-test", modelSource: "dynamic", permissionOptions: { access: [], approval: [], presets: [
+            { value: "ask", label: "请求批准", description: "", update: { approval: "default" } },
+            { value: "full", label: "完全访问", description: "", update: { approval: "bypassPermissions" } },
+          ] } },
+        ] };
         if (method === "get_productivity_models") return { provider: "codex", source: "sdk", models: [] };
         if (method === "get_model_settings") return { profiles: [], connections: [], activeAgent: "", activeDreamAgent: "" };
         if (method === "get_agent_instructions") return { content: "", path: "AGENTS.md", exists: false };
@@ -59,47 +71,81 @@ try {
   }, snapshot);
   await page.goto(server.resolvedUrls.local[0]);
   const composer = page.getByTestId("composer-input");
-  const newProject = page.getByTestId("new-project");
-  const pickerName = page.locator(".project-picker-copy strong");
-  const settled = () => newProject.and(page.locator(":enabled")).waitFor();
+  // Projects are added from the draft's project pill (or the command palette); there is no sidebar button.
+  const addProject = async () => { await target.click(); await page.getByTestId("choose-workspace").click(); };
+  // The draft's project shows in the composer only while nothing has been sent yet.
+  const target = page.getByTestId("project-target");
+  const targetName = page.locator('[data-testid="project-target"] .project-target-name');
+  const settled = () => page.waitForFunction(() => !document.querySelector('[data-testid="project-target"][data-choosing]'));
   await composer.waitFor();
-  const originalProject = await pickerName.innerText();
   await page.getByTestId("new-thread").click();
+  const originalProject = await targetName.innerText();
   await composer.fill("保留的草稿");
+  // Unbinding the folder and binding it again keeps the draft's text; nothing is created until it is sent.
+  await target.click();
+  await page.getByRole("menuitemradio", { name: "不关联项目" }).click();
+  assert.equal(await targetName.innerText(), "不关联项目");
+  await page.getByTestId("draft-row").waitFor();
+  assert.equal(await composer.inputValue(), "保留的草稿", "Moving the draft lost its text");
+  await target.click();
+  await page.getByRole("menuitemradio", { name: new RegExp(originalProject.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) }).click();
+  assert.equal(await targetName.innerText(), originalProject);
   assert.equal(await page.evaluate(() => window.projectTest.picks), 0);
   assert.equal(await page.evaluate(() => window.projectTest.calls.filter(c => c.method === "create_thread").length), 0);
-  await newProject.click(); await settled();
-  assert.equal(await pickerName.innerText(), originalProject);
+  await addProject(); await settled();
+  assert.equal(await targetName.innerText(), originalProject);
   assert.equal(await composer.inputValue(), "保留的草稿");
   assert.equal(await page.evaluate(() => window.projectTest.calls.filter(c => c.method === "add_project").length), 0);
 
   await page.evaluate(() => { window.projectTest.picked = "C:\\Projects\\中文 文件夹"; window.projectTest.fail = true; });
-  await newProject.click(); await settled();
+  await addProject(); await settled();
   await page.getByRole("alert").getByText("项目文件夹无法访问").waitFor();
-  assert.equal(await pickerName.innerText(), originalProject);
+  assert.equal(await targetName.innerText(), originalProject);
   assert.equal(await composer.inputValue(), "保留的草稿");
 
   await page.evaluate(() => { window.projectTest.fail = false; window.projectTest.hold = true; });
-  await newProject.click();
+  await addProject();
   await page.waitForFunction(() => Boolean(window.projectTest.release));
-  assert.equal(await newProject.isDisabled(), true);
+  assert.equal(await target.getAttribute("data-choosing"), "true");
   await page.getByRole("button", { name: /^统一 managed 与 native sessions/ }).click();
   await page.evaluate(() => { window.projectTest.hold = false; window.projectTest.release(); });
   await settled();
-  assert.equal(await pickerName.innerText(), originalProject, "Slow folder registration stole navigation");
+  assert.ok((await page.locator(".thread-row.active").innerText()).includes("统一 managed"),
+    "Slow folder registration stole navigation");
 
-  await newProject.click(); await settled();
-  assert.equal(await pickerName.innerText(), "新建项目");
-  assert.equal(await composer.inputValue(), "");
+  await page.getByTestId("new-thread").click();
+  await composer.fill("添加项目时保留的草稿");
+  await page.getByRole("button", { name: "添加附件", exact: true }).click();
+  await page.getByRole("button", { name: "移除 draft.txt", exact: true }).waitFor();
+  await page.evaluate(() => { window.projectTest.hold = true; });
+  await addProject();
+  await page.waitForFunction(() => Boolean(window.projectTest.release));
+  await composer.fill("等待添加项目时继续编辑的草稿");
+  await page.evaluate(() => { window.projectTest.hold = false; window.projectTest.release(); });
+  await settled();
+  assert.equal(await targetName.innerText(), "新建项目");
+  assert.equal(await composer.inputValue(), "等待添加项目时继续编辑的草稿");
+  await page.getByRole("button", { name: "移除 draft.txt", exact: true }).waitFor();
+  // Moving again carries the current draft, including onto a project that had an older draft.
+  await target.click();
+  await page.getByRole("menuitemradio", { name: originalProject, exact: true }).click();
+  assert.equal(await composer.inputValue(), "等待添加项目时继续编辑的草稿");
+  await addProject(); await settled();
+  assert.equal(await targetName.innerText(), "新建项目");
+  assert.equal(await composer.inputValue(), "等待添加项目时继续编辑的草稿");
   if (process.env.CLEO_SMOKE_OUTPUT) await page.screenshot({ path: join(process.env.CLEO_SMOKE_OUTPUT, "project-workspaces.png") });
+  // The draft's permission preset is applied when the task is created, not after a first turn.
+  await page.getByTestId("permission-selector").selectOption("full");
   await composer.fill("检查这个工作区");
   await composer.press("Enter");
   await page.waitForFunction(() => window.projectTest.calls.some(c => c.method === "create_thread"));
   const created = await page.evaluate(() => window.projectTest.calls.find(c => c.method === "create_thread").params);
   assert.equal(created.project_id_value, "productivity:canonical-project");
   assert.equal(created.project_path, "C:\\Projects\\中文 文件夹");
+  assert.equal(created.provider, "claude", "the draft keeps the harness of the thread it was started from");
+  assert.deepEqual([created.access, created.approval], [undefined, "bypassPermissions"]);
   assert.deepEqual(errors, []);
-  console.log("PASS: quick empty task, cancellation preserves draft, failure recovery, busy picker, late response isolation, canonical project selection and new session working directory");
+  console.log("PASS: project selection and registration carry draft text, edits and attachments; cancellation, failure recovery, late response isolation, canonical project selection and draft permissions");
 } finally {
   await browser?.close(); await server.close();
   assert.equal(dirname(scratch), resolve(tmpdir()));

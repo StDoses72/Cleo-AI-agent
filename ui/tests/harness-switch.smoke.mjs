@@ -39,22 +39,27 @@ try {
   });
   const input = page.locator("textarea").first();
   const selected = await page.locator(".thread-row.active").innerText();
-  const originalRuntime = await page.getByTestId("runtime-selector").innerText();
+  // The pill's first line is "harness · model"; effort and speed follow once models load.
+  const pillModel = () => page.getByTestId("runtime-selector").locator("span").first().innerText();
+  const originalRuntime = await pillModel();
   const choose = async () => {
     await page.getByTestId("runtime-selector").click();
+    await page.getByTestId("runtime-model-row").click();
     await page.getByTestId("runtime-menu").getByRole("button", { name: /^claude/ }).click();
     await page.getByRole("button", { name: /Claude Opus 5/ }).click();
+    // The menu returns to the settings card after a model is picked; dismiss it.
+    await page.keyboard.press("Escape");
   };
   await input.fill("Unsent constraint: keep the draft");
   await choose();
   await page.getByRole("status").filter({ hasText: /正在连接 claude/ }).waitFor();
   assert.equal(await page.locator(".thread-row.active").innerText(), selected);
   assert.equal(await input.inputValue(), "Unsent constraint: keep the draft");
-  assert.equal(await page.getByTestId("runtime-selector").innerText(), originalRuntime);
+  assert.equal(await pillModel(), originalRuntime);
   assert.equal(await page.getByTestId("runtime-selector").isEnabled(), false);
   await page.evaluate(() => window.harnessFixture.reject(new Error("Harness login failed")));
   await page.getByRole("alert").filter({ hasText: "Harness login failed" }).waitFor();
-  assert.equal(await page.getByTestId("runtime-selector").innerText(), originalRuntime);
+  assert.equal(await pillModel(), originalRuntime);
   assert.equal(await input.inputValue(), "Unsent constraint: keep the draft");
   // Queue a switch while an original turn is still running.
   await input.fill("Finish the original step");
