@@ -104,6 +104,8 @@ interface ConversationProps {
   sendBlocked: string | null;
   sendError?: string;
   harnessSwitchStatus?: string | null;
+  /** A harness picked for this task that is handed off with its next message. */
+  pendingHarnessSwitch?: { provider: string; model: string } | null;
   prompt: string;
   onPromptChange: (prompt: string) => void;
   onRename: (name: string) => Promise<void>;
@@ -128,7 +130,7 @@ interface ConversationProps {
   onSelectNonProductivityProfile: (profileId: string) => void;
   onLoadProductivityModels: (provider: string, refresh?: boolean) => Promise<ProductivityModelCatalog>;
   onSelectProductivityRuntime: (provider: string, model: string) => void;
-  onEffortChange: (effort: NonNullable<RuntimeProfile["effort"]>) => void;
+  onEffortChange: (effort: NonNullable<RuntimeProfile["effort"]>) => void | Promise<void>;
   onPermissionChange?: (update: RuntimeUpdate) => Promise<void>;
   onServiceTierChange?: (tier: "default" | "fast") => void;
   attachments: Attachment[];
@@ -178,6 +180,7 @@ export function Conversation({
   sendBlocked,
   sendError,
   harnessSwitchStatus,
+  pendingHarnessSwitch,
   prompt,
   onPromptChange,
   onRename,
@@ -430,6 +433,7 @@ export function Conversation({
         sendBlocked={sendBlocked}
         sendError={sendError}
         harnessSwitchStatus={harnessSwitchStatus}
+        pendingHarnessSwitch={pendingHarnessSwitch}
         space={space}
         drafting={!thread}
         projects={projects}
@@ -1149,6 +1153,7 @@ function Composer({
   sendBlocked,
   sendError,
   harnessSwitchStatus,
+  pendingHarnessSwitch,
   space,
   runtime,
   runtimeCatalog,
@@ -1189,6 +1194,7 @@ function Composer({
   | "sendBlocked"
   | "sendError"
   | "harnessSwitchStatus"
+  | "pendingHarnessSwitch"
   | "runtime"
   | "space"
   | "runtimeCatalog"
@@ -1421,7 +1427,10 @@ function Composer({
         </ul> : null}
         {attachmentError ? <div className="attachment-error" role="alert">{attachmentError}</div> : null}
         {harnessSwitchStatus ? <div className="harness-switch-status" role="status">{harnessSwitchStatus}</div> : null}
-        {!harnessSwitchStatus && runtime?.handoffStatus === "prepared" ? <div className="harness-switch-status" role="status">交接已准备，随下一条消息提交</div> : null}
+        {!harnessSwitchStatus && pendingHarnessSwitch ? <div className="harness-switch-status" role="status" data-testid="harness-pending">
+          {`下一条消息将交接到 ${pendingHarnessSwitch.provider} · ${pendingHarnessSwitch.model}；选回当前运行方式可取消`}
+        </div> : null}
+        {!harnessSwitchStatus && !pendingHarnessSwitch && runtime?.handoffStatus === "prepared" ? <div className="harness-switch-status" role="status">交接已准备，随下一条消息提交</div> : null}
         {!harnessSwitchStatus && runtime?.handoffStatus === "submitted" ? <div className="harness-switch-status" role="status">交接已提交但尚未完成首轮，继续前请核对已执行的操作</div> : null}
         {sendError ? <div className="attachment-error" role="alert">{sendError}</div> : null}
         {computerUseSelected && <div className="attachment-row"><span className="attachment-chip computer-use-chip">
@@ -1484,6 +1493,7 @@ function Composer({
               error={runtimeModelsError}
               running={running}
               switching={Boolean(harnessSwitchStatus)}
+              pendingSwitch={Boolean(pendingHarnessSwitch)}
               onSelectProfile={onSelectNonProductivityProfile}
               onLoadModels={onLoadProductivityModels}
               onSelectProductivityRuntime={onSelectProductivityRuntime}
@@ -1496,7 +1506,7 @@ function Composer({
               onServiceTierChange={onServiceTierChange}
             />
             {space === "productivity" && <PermissionSelector key={runtime.provider} runtime={runtime}
-              onChange={onPermissionChange} disabled={Boolean(harnessSwitchStatus)} />}
+              onChange={onPermissionChange} disabled={Boolean(harnessSwitchStatus) || Boolean(pendingHarnessSwitch)} />}
           </div>
           <div className="composer-send-actions">
           {running && (
@@ -1545,6 +1555,7 @@ function RuntimeSelector({
   error,
   running,
   switching,
+  pendingSwitch = false,
   onSelectProfile,
   onLoadModels,
   onSelectProductivityRuntime,
@@ -1564,19 +1575,29 @@ function RuntimeSelector({
   error: string | null;
   running: boolean;
   switching: boolean;
+  /** A harness pick awaits the next message; the pill reads as it will after the handoff. */
+  pendingSwitch?: boolean;
   onSelectProfile: (profileId: string) => void;
   onLoadModels: (provider: string, refresh?: boolean) => Promise<ProductivityModelCatalog>;
   onSelectProductivityRuntime: (provider: string, model: string) => void;
   effort?: ReasoningEffort | "";
   supportedEfforts?: ReasoningEffort[];
   defaultEffort?: ReasoningEffort | null;
-  onEffortChange?: (effort: ReasoningEffort) => void;
+  onEffortChange?: (effort: ReasoningEffort) => void | Promise<void>;
   serviceTier?: "default" | "fast" | null;
   supportsFastMode?: boolean;
   onServiceTierChange?: (tier: "default" | "fast") => void;
 }) {
   const development = space === "productivity";
-  const effortLabel = development && effort ? effortLabels[effort] ?? effort : "";
+  // While the slider is dragged it previews its own value here, and the card follows it. The
+  // pick is committed on release, so the workspace re-renders and the backend hears about it
+  // once per drag rather than on every step. The preview outlives the commit until the
+  // committed effort arrives from the backend, so the thumb never snaps back meanwhile.
+  const [previewEffort, setPreviewEffort] = useState<ReasoningEffort | null>(null);
+  const committedEffort = useRef<{ effort: ReasoningEffort } | null>(null);
+  const sliderDragging = useRef(false);
+  const shownEffort = previewEffort ?? effort;
+  const effortLabel = development && shownEffort ? effortLabels[shownEffort] ?? shownEffort : "";
   const showSpeed = development && supportsFastMode && Boolean(onServiceTierChange);
   const settingsLocked = running || switching;
   const [open, setOpen] = useState(false);
@@ -1599,9 +1620,33 @@ function RuntimeSelector({
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [open]);
-  const canReset = (defaultEffort !== null && defaultEffort !== effort) || serviceTier === "fast";
+  useEffect(() => {
+    setPreviewEffort(null);
+    committedEffort.current = null;
+  }, [effort, open]);
+  const commitEffort = (value: ReasoningEffort | undefined) => {
+    if (!value || value === (committedEffort.current?.effort ?? effort)) return;
+    const commit = { effort: value };
+    committedEffort.current = commit;
+    void Promise.resolve(onEffortChange?.(value)).then(() => {
+      if (committedEffort.current !== commit) return;
+      setPreviewEffort(null);
+      committedEffort.current = null;
+    });
+  };
+  const releaseSlider = (target: HTMLInputElement) => {
+    sliderDragging.current = false;
+    commitEffort(supportedEfforts[Number(target.value)]);
+  };
+  const effortIndex = Math.max(0, supportedEfforts.indexOf(shownEffort as ReasoningEffort));
+  // The track is filled up to the thumb; the share is the effort's position in the list.
+  const effortFill = supportedEfforts.length > 1 ? effortIndex / (supportedEfforts.length - 1) * 100 : 100;
+  const canReset = (defaultEffort !== null && defaultEffort !== shownEffort) || serviceTier === "fast";
   const resetSettings = () => {
-    if (defaultEffort !== null && defaultEffort !== effort) onEffortChange?.(defaultEffort);
+    if (defaultEffort !== null && defaultEffort !== shownEffort) {
+      setPreviewEffort(defaultEffort);
+      commitEffort(defaultEffort);
+    }
     if (serviceTier === "fast") onServiceTierChange?.("default");
   };
   const profiles = catalog?.nonProductivityProfiles ?? [];
@@ -1643,6 +1688,7 @@ function RuntimeSelector({
         data-testid="runtime-selector"
         data-effort={development ? effort || undefined : undefined}
         data-speed={showSpeed ? serviceTier ?? "" : undefined}
+        data-pending-switch={pendingSwitch ? "true" : undefined}
       >
         <span>{development ? `${runtime.provider} · ` : ""}{runtime.model}</span>
         {effortLabel ? <small className="runtime-selector-extra">{`· ${effortLabel}`}</small> : null}
@@ -1722,7 +1768,7 @@ function RuntimeSelector({
                   <ArrowLeft size={14} />
                 </button>
                 <span>选择运行方式</span>
-                {running && <small>当前轮结束后切换</small>}
+                <small>随下一条消息交接</small>
               </div>
               <div className="runtime-menu-list">
                 {providers.map((provider) => (
@@ -1782,25 +1828,38 @@ function RuntimeSelector({
                 </button>
               </div>
               {supportedEfforts.length ? (
-                <input
-                  className="runtime-effort-slider"
-                  type="range"
-                  min={0}
-                  max={supportedEfforts.length - 1}
-                  step={1}
-                  value={Math.max(0, supportedEfforts.indexOf(effort as ReasoningEffort))}
-                  // The track is filled up to the thumb; the share is the effort's position in the list.
-                  style={{ "--effort-fill": `${supportedEfforts.length > 1
-                    ? Math.max(0, supportedEfforts.indexOf(effort as ReasoningEffort)) / (supportedEfforts.length - 1) * 100 : 100}%` } as CSSProperties}
-                  aria-label="思考深度"
-                  aria-valuetext={effortLabel || undefined}
-                  title={`思考深度：${effortLabel || "由模型决定"}`}
-                  disabled={settingsLocked}
-                  data-testid="effort-selector"
-                  data-value={effort}
-                  data-options={JSON.stringify(supportedEfforts)}
-                  onChange={(event) => onEffortChange?.(supportedEfforts[Number(event.target.value)])}
-                />
+                <div
+                  className={`runtime-effort${settingsLocked ? " disabled" : ""}`}
+                  style={{ "--effort-fill": `${effortFill}%` } as CSSProperties}
+                >
+                  <span className="runtime-effort-track" aria-hidden="true"><span className="runtime-effort-fill" /></span>
+                  <input
+                    className="runtime-effort-slider"
+                    type="range"
+                    min={0}
+                    max={supportedEfforts.length - 1}
+                    step={1}
+                    value={effortIndex}
+                    aria-label="思考深度"
+                    aria-valuetext={effortLabel || undefined}
+                    title={`思考深度：${effortLabel || "由模型决定"}`}
+                    disabled={settingsLocked}
+                    data-testid="effort-selector"
+                    data-value={shownEffort}
+                    data-options={JSON.stringify(supportedEfforts)}
+                    onPointerDown={() => { sliderDragging.current = true; }}
+                    onPointerUp={(event) => releaseSlider(event.currentTarget)}
+                    onPointerCancel={(event) => releaseSlider(event.currentTarget)}
+                    onLostPointerCapture={(event) => { if (sliderDragging.current) releaseSlider(event.currentTarget); }}
+                    onBlur={(event) => { if (sliderDragging.current) releaseSlider(event.currentTarget); }}
+                    onChange={(event) => {
+                      const next = supportedEfforts[Number(event.target.value)];
+                      setPreviewEffort(next ?? null);
+                      // Keyboard steps and scripted changes have no release; they commit at once.
+                      if (!sliderDragging.current) commitEffort(next);
+                    }}
+                  />
+                </div>
               ) : null}
             </div>
           )}

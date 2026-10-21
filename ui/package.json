@@ -6,7 +6,7 @@
   "type": "module",
   "main": "electron/bootstrap.mjs",
   "scripts": {
-    "test:context": "node --test tests/harness-switch-ipc.test.mjs tests/release-preflight-ipc.test.mjs",
+    "test:context": "node --test tests/harness-switch-ipc.test.mjs tests/harness-handoff.test.mjs tests/release-preflight-ipc.test.mjs",
     "start": "npm run build && electron .",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
