@@ -33,6 +33,13 @@ test("the pill reads as the task will run after the handoff, with the picked har
   assert.equal(codex.supportsFastMode, true);
 });
 
+test("a pending model on the same harness keeps its speed unless explicitly changed", () => {
+  const pick = { provider: "codex", model: "gpt-5.6-terra", effort: "medium" };
+  assert.equal(runtimeWithPendingSwitch(live, pick, catalog).serviceTier, "fast");
+  assert.equal(runtimeWithPendingSwitch(live, { ...pick, serviceTier: "default" }, catalog).serviceTier, "default");
+  assert.equal(runtimeWithPendingSwitch({ ...live, provider: "claude" }, pick, catalog).serviceTier, "default");
+});
+
 test("the renderer hands off in sendPrompt only, never when a harness is picked", async () => {
   const source = await readFile(new URL("../src/useCleoWorkspace.ts", import.meta.url), "utf8");
   const body = (name) => {

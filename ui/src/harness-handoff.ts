@@ -33,13 +33,15 @@ export function runtimeWithPendingSwitch(
   if (!pending) return runtime;
   const provider = catalog?.productivityProviders.find((candidate) => candidate.id === pending.provider);
   const supportsFastMode = provider?.type === "codex_sdk";
+  const serviceTier = pending.serviceTier
+    ?? (runtime.provider === pending.provider ? runtime.serviceTier : null) ?? "default";
   return {
     ...runtime,
     provider: pending.provider,
     model: pending.model,
     effort: pending.effort,
     supportsFastMode,
-    serviceTier: supportsFastMode ? pending.serviceTier ?? "default" : null,
+    serviceTier: supportsFastMode ? serviceTier : null,
     permissionOptions: provider?.permissionOptions ?? runtime.permissionOptions,
   };
 }

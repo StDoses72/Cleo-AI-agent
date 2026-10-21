@@ -771,19 +771,19 @@ export function useCleoWorkspace(evolutionOpen = false) {
 
   /** Purpose: Stream a user turn or diagnostic follow-up into a task.
    * Input: prompt, optional task, and draft preservation for controller-generated diagnostics.
-   * Output: updated task timeline; diagnostic follow-ups leave draft text and attachments untouched.
+   * Output: whether the turn was submitted; diagnostic follow-ups leave draft text and attachments untouched.
    */
   const sendPrompt = async (rawPrompt: string, targetThread?: Thread, { preserveDraft = false, deliveryId = "",
-    attachments }: { preserveDraft?: boolean; deliveryId?: string; attachments?: Attachment[] } = {}) => {
+    attachments }: { preserveDraft?: boolean; deliveryId?: string; attachments?: Attachment[] } = {}): Promise<boolean> => {
     const prompt = rawPrompt.trim();
     const lockKey = targetThread?.id ?? activeThread?.id ?? draftKey;
     if (!prompt || runLocks.current.has(lockKey)
-      || harnessSwitchRef.current.has(targetThread?.id ?? activeThreadId ?? "")) return;
+      || harnessSwitchRef.current.has(targetThread?.id ?? activeThreadId ?? "")) return false;
 
     const token = deliveryId || crypto.randomUUID();
     runLocks.current.set(lockKey, token);
     setStartingKeys(keys => [...keys, lockKey]);
-    const sourceDraftKey = draftKey;
+    const sourceDraftKey = targetThread?.id ?? draftKey;
     // Queued and edited messages carry their own attachments and leave the composer alone.
     const fromDraft = !preserveDraft && !attachments;
     const pendingAttachments = attachments ?? (preserveDraft ? [] : draft.attachments);
@@ -806,7 +806,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
       }));
       if (runLocks.current.get(lockKey) === token) runLocks.current.delete(lockKey);
       setStartingKeys(keys => keys.filter(key => key !== lockKey));
-      return;
+      return false;
     }
 
     const threadId = thread.id;
@@ -820,13 +820,13 @@ export function useCleoWorkspace(evolutionOpen = false) {
         let runtime = await cleoClient.switchHarness(
           threadId, pendingSwitch.provider, pendingSwitch.model, pendingSwitch.effort ?? undefined,
         );
-        if (pendingSwitch.serviceTier && runtime.supportsFastMode) {
-          runtime = await cleoClient.updateRuntime(threadId, { serviceTier: pendingSwitch.serviceTier })
-            .catch(() => runtime);
-        }
-        setPendingSwitch(threadId, null);
         updateThread(threadId, current => ({ ...current, runtime, skills: [] }));
         void refreshSkills(thread, pendingSwitch.provider);
+        if (pendingSwitch.serviceTier && runtime.supportsFastMode) {
+          runtime = await cleoClient.updateRuntime(threadId, { serviceTier: pendingSwitch.serviceTier });
+          updateThread(threadId, current => ({ ...current, runtime }));
+        }
+        setPendingSwitch(threadId, null);
       } catch (error) {
         setPendingSwitch(threadId, null);
         updateDraft(sourceDraftKey, (current) => ({
@@ -835,7 +835,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
         }));
         if (runLocks.current.get(lockKey) === token) runLocks.current.delete(lockKey);
         setStartingKeys(keys => keys.filter(key => key !== lockKey));
-        return;
+        return false;
       } finally {
         harnessSwitchRef.current.delete(threadId);
         setHarnessSwitches(current => {
@@ -875,7 +875,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
     let failed = false;
     try {
       for await (const event of cleoClient.streamTurn(threadId, prompt, pendingAttachments, token)) {
-        if (runLocks.current.get(threadId) !== token) return;
+        if (runLocks.current.get(threadId) !== token) return true;
         if (event.type === "turn-started") {
           turnId = event.item.turnId ?? event.item.id;
           updateThread(threadId, current => ({ ...current, steerReady: true,
@@ -975,7 +975,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
         }
       }
     } catch (error) {
-      if (runLocks.current.get(threadId) !== token) return;
+      if (runLocks.current.get(threadId) !== token) return true;
       failed = true;
       updateThread(threadId, (current) => ({
         ...current,
@@ -1012,12 +1012,18 @@ export function useCleoWorkspace(evolutionOpen = false) {
             && !runLocks.current.has(threadId)) {
           const queued = queuesRef.current[threadId];
           setQueues(current => ({ ...current, [threadId]: [] }));
-          void sendPrompt(queued.map(item => item.text).filter(Boolean).join("\n\n") || "请分析这些附件。", thread, {
-            attachments: queued.flatMap(item => item.attachments),
-          });
+          void sendQueuedMessages(thread, queued);
         }
       }
     }
+    return true;
+  };
+
+  const sendQueuedMessages = async (thread: Thread, queued: QueuedMessage[]) => {
+    const submitted = await sendPrompt(queued.map(item => item.text).filter(Boolean).join("\n\n") || "请分析这些附件。", thread, {
+      attachments: queued.flatMap(item => item.attachments),
+    });
+    if (!submitted) updateQueue(thread.id, current => [...queued, ...current]);
   };
 
   const cancelRun = async () => {
@@ -1205,7 +1211,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
     const taken = runLocks.current.has(activeThreadId ?? "") ? null : takeQueued(id);
     if (!taken) return;
     const thread = snapshotRef.current?.threads.find(item => item.id === taken.threadId);
-    void sendPrompt(taken.queued.text || "请分析这些附件。", thread, { attachments: taken.queued.attachments });
+    if (thread) void sendQueuedMessages(thread, [taken.queued]);
   };
 
   /** Purpose: Resend an earlier user message after rewinding the conversation to just before it.
@@ -1264,7 +1270,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
     const threadId = activeThreadId;
     if (!threadId) return;
     const selection = selectionRef.current;
-    void cleoClient
+    return cleoClient
       .updateRuntime(threadId, update)
       .then((runtime) => {
         updateThread(threadId, current => ({ ...current, runtime }));

@@ -130,7 +130,7 @@ interface ConversationProps {
   onSelectNonProductivityProfile: (profileId: string) => void;
   onLoadProductivityModels: (provider: string, refresh?: boolean) => Promise<ProductivityModelCatalog>;
   onSelectProductivityRuntime: (provider: string, model: string) => void;
-  onEffortChange: (effort: NonNullable<RuntimeProfile["effort"]>) => void;
+  onEffortChange: (effort: NonNullable<RuntimeProfile["effort"]>) => void | Promise<void>;
   onPermissionChange?: (update: RuntimeUpdate) => Promise<void>;
   onServiceTierChange?: (tier: "default" | "fast") => void;
   attachments: Attachment[];
@@ -1583,7 +1583,7 @@ function RuntimeSelector({
   effort?: ReasoningEffort | "";
   supportedEfforts?: ReasoningEffort[];
   defaultEffort?: ReasoningEffort | null;
-  onEffortChange?: (effort: ReasoningEffort) => void;
+  onEffortChange?: (effort: ReasoningEffort) => void | Promise<void>;
   serviceTier?: "default" | "fast" | null;
   supportsFastMode?: boolean;
   onServiceTierChange?: (tier: "default" | "fast") => void;
@@ -1594,7 +1594,7 @@ function RuntimeSelector({
   // once per drag rather than on every step. The preview outlives the commit until the
   // committed effort arrives from the backend, so the thumb never snaps back meanwhile.
   const [previewEffort, setPreviewEffort] = useState<ReasoningEffort | null>(null);
-  const committedEffort = useRef<ReasoningEffort | null>(null);
+  const committedEffort = useRef<{ effort: ReasoningEffort } | null>(null);
   const sliderDragging = useRef(false);
   const shownEffort = previewEffort ?? effort;
   const effortLabel = development && shownEffort ? effortLabels[shownEffort] ?? shownEffort : "";
@@ -1625,9 +1625,14 @@ function RuntimeSelector({
     committedEffort.current = null;
   }, [effort, open]);
   const commitEffort = (value: ReasoningEffort | undefined) => {
-    if (!value || value === (committedEffort.current ?? effort)) return;
-    committedEffort.current = value;
-    onEffortChange?.(value);
+    if (!value || value === (committedEffort.current?.effort ?? effort)) return;
+    const commit = { effort: value };
+    committedEffort.current = commit;
+    void Promise.resolve(onEffortChange?.(value)).then(() => {
+      if (committedEffort.current !== commit) return;
+      setPreviewEffort(null);
+      committedEffort.current = null;
+    });
   };
   const releaseSlider = (target: HTMLInputElement) => {
     sliderDragging.current = false;

@@ -22,7 +22,21 @@ try {
   await page.evaluate(async () => {
     const { cleoClient } = await import("/src/services/cleoClient.ts");
     const { snapshot } = await import("/src/services/mockData.ts");
-    window.harnessFixture = { calls: [], created: 0, sent: [], snapshot };
+    window.harnessFixture = { calls: [], created: 0, sent: [], deliveredAttachments: [], updates: [], snapshot };
+    const update = cleoClient.updateRuntime.bind(cleoClient);
+    cleoClient.updateRuntime = async (...args) => {
+      window.harnessFixture.updates.push(args);
+      if (window.harnessFixture.failUpdate) {
+        window.harnessFixture.failUpdate = false;
+        throw new Error("Runtime update rejected");
+      }
+      if (window.harnessFixture.holdUpdate) {
+        await new Promise(resolve => { window.harnessFixture.finishUpdate = resolve; });
+      }
+      return update(...args);
+    };
+    cleoClient.pickAttachments = async () => [{ name: "queued.txt", path: "mock-attachment://queued.txt",
+      mimeType: "text/plain", size: 12 }];
     const create = cleoClient.createThread.bind(cleoClient);
     cleoClient.createThread = (...args) => { window.harnessFixture.created++; return create(...args); };
     const original = cleoClient.switchHarness.bind(cleoClient);
@@ -31,8 +45,9 @@ try {
       await new Promise((resolve, reject) => { Object.assign(window.harnessFixture, { resolve, reject }); });
       return original(...args);
     };
-    cleoClient.streamTurn = async function* (threadId, prompt) {
+    cleoClient.streamTurn = async function* (threadId, prompt, attachments) {
       window.harnessFixture.sent.push([threadId, prompt]);
+      window.harnessFixture.deliveredAttachments.push(attachments);
       yield { type: "upsert-item", item: { id: `mock-turn-${window.harnessFixture.sent.length}`, type: "message", role: "assistant", content: "Turn result", time: "" } };
       await new Promise(resolve => { window.harnessFixture.finishTurn = resolve; });
       window.harnessFixture.finishTurn = null;
@@ -127,8 +142,142 @@ try {
   assert.deepEqual(state.sent.map(turn => turn[0]), [calls[0][0], calls[0][0]]);
   assert.equal(state.sent[1][1], "Finish the next step on codex");
   assert.equal(await page.locator(".thread-row.active").innerText().then(t => t.split("\n")[0]), selected.split("\n")[0]);
+
+  // Both automatic and manual queue delivery retain text and attachments when handoff fails.
+  await page.waitForFunction(() => !window.harnessFixture.finishTurn);
+  await input.fill("Original turn before failed queued handoff");
+  await input.press("Enter");
+  await page.waitForFunction(() => Boolean(window.harnessFixture.finishTurn));
+  await choose(/^claude/, /Claude Opus 5/);
+  await page.getByRole("button", { name: "添加附件", exact: true }).click();
+  await input.fill("Queued text must survive handoff failure");
+  await input.press("Enter");
+  const queue = page.getByTestId("queued-messages");
+  await queue.waitFor();
+  await input.fill("Independent unsent draft");
+  const sentBeforeFailure = (await fixture()).sent.length;
+  await page.evaluate(() => window.harnessFixture.finishTurn());
+  await page.getByRole("status").filter({ hasText: /正在连接 claude/ }).waitFor();
+  await page.evaluate(() => window.harnessFixture.reject(new Error("Queued handoff failed")));
+  await page.getByRole("alert").filter({ hasText: "Queued handoff failed" }).waitFor();
+  await queue.waitFor();
+  assert.equal(await queue.locator(".queued-text").innerText(), "Queued text must survive handoff failure");
+  assert.equal(await queue.locator(".queued-attachments").innerText(), "1");
+  assert.equal(await input.inputValue(), "Independent unsent draft");
+  assert.equal((await fixture()).sent.length, sentBeforeFailure);
+  await choose(/^claude/, /Claude Opus 5/);
+  await queue.getByRole("button", { name: "发送", exact: true }).click();
+  await page.getByRole("status").filter({ hasText: /正在连接 claude/ }).waitFor();
+  await page.evaluate(() => window.harnessFixture.reject(new Error("Manual queued handoff failed")));
+  await page.getByRole("alert").filter({ hasText: "Manual queued handoff failed" }).waitFor();
+  await queue.waitFor();
+  assert.equal(await queue.locator("li").count(), 1);
+  assert.equal(await queue.locator(".queued-attachments").innerText(), "1");
+  await queue.getByRole("button", { name: "发送", exact: true }).click();
+  await page.waitForFunction(() => Boolean(window.harnessFixture.finishTurn));
+  assert.equal(await queue.count(), 0);
+  assert.equal((await fixture()).sent.at(-1)[1], "Queued text must survive handoff failure");
+  assert.equal(await page.evaluate(() => window.harnessFixture.deliveredAttachments.at(-1)[0].path), "mock-attachment://queued.txt");
+  assert.equal(await input.inputValue(), "Independent unsent draft");
+  await page.evaluate(() => window.harnessFixture.finishTurn());
+  await page.waitForFunction(() => !window.harnessFixture.finishTurn);
+
+  // Same-provider model changes preserve Fast, and an explicit standard-speed pick is applied.
+  await trigger.click();
+  await page.getByTestId("speed-toggle").click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="runtime-selector"]').dataset.speed === "fast");
+  await page.keyboard.press("Escape");
+  await choose(/^codex/, /GPT-5.6-Sol/);
+  assert.equal(await trigger.getAttribute("data-speed"), "fast");
+  await input.fill("Keep Fast on the new model");
+  await input.press("Enter");
+  await page.getByRole("status").filter({ hasText: /正在连接 codex/ }).waitFor();
+  await page.evaluate(() => window.harnessFixture.resolve());
+  await page.waitForFunction(() => Boolean(window.harnessFixture.finishTurn));
+  assert.equal(await trigger.getAttribute("data-speed"), "fast");
+  await page.evaluate(() => window.harnessFixture.finishTurn());
+  await page.waitForFunction(() => !window.harnessFixture.finishTurn);
+  await choose(/^codex/, /GPT-5.6-Terra/);
+  await trigger.click();
+  await page.getByTestId("speed-toggle").click();
+  assert.equal(await trigger.getAttribute("data-speed"), "default");
+  await page.keyboard.press("Escape");
+  await input.fill("Use standard speed on the new model");
+  await input.press("Enter");
+  await page.getByRole("status").filter({ hasText: /正在连接 codex/ }).waitFor();
+  await page.evaluate(() => window.harnessFixture.resolve());
+  await page.waitForFunction(() => Boolean(window.harnessFixture.finishTurn));
+  assert.equal(await trigger.getAttribute("data-speed"), "default");
+  await page.evaluate(() => window.harnessFixture.finishTurn());
+  await page.waitForFunction(() => !window.harnessFixture.finishTurn);
+
+  // If the speed update fails after the model changed, keep the draft and report the live runtime.
+  await trigger.click();
+  await page.getByTestId("speed-toggle").click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="runtime-selector"]').dataset.speed === "fast");
+  await page.keyboard.press("Escape");
+  await choose(/^codex/, /GPT-5.6-Sol/);
+  await trigger.click();
+  await page.getByTestId("speed-toggle").click();
+  await page.keyboard.press("Escape");
+  await page.evaluate(() => { window.harnessFixture.failUpdate = true; });
+  const sentBeforeSpeedFailure = (await fixture()).sent.length;
+  await input.fill("Keep this draft if standard speed cannot be applied");
+  await input.press("Enter");
+  await page.getByRole("status").filter({ hasText: /正在连接 codex/ }).waitFor();
+  await page.evaluate(() => window.harnessFixture.resolve());
+  await page.getByRole("alert").filter({ hasText: "Runtime update rejected" }).waitFor();
+  assert.equal((await fixture()).sent.length, sentBeforeSpeedFailure);
+  assert.equal(await input.inputValue(), "Keep this draft if standard speed cannot be applied");
+  assert.equal(await pillModel(), "codex · gpt-5.6-sol");
+  assert.equal(await trigger.getAttribute("data-speed"), "fast");
+  await trigger.click();
+  await page.getByTestId("speed-toggle").click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="runtime-selector"]').dataset.speed === "default");
+  await page.keyboard.press("Escape");
+  await input.press("Enter");
+  await page.waitForFunction(() => Boolean(window.harnessFixture.finishTurn));
+  await page.evaluate(() => window.harnessFixture.finishTurn());
+  await page.waitForFunction(() => !window.harnessFixture.finishTurn);
+
+  // A rejected effort update rolls the preview back and can be retried with the same value.
+  await page.evaluate(() => { window.harnessFixture.failUpdate = true; });
+  await trigger.click();
+  const effort = page.getByTestId("effort-selector");
+  const originalEffort = await effort.getAttribute("data-value");
+  await effort.focus();
+  await page.keyboard.press("End");
+  await page.getByRole("alert").filter({ hasText: "Runtime update rejected" }).waitFor();
+  await page.waitForFunction(value => document.querySelector('[data-testid="effort-selector"]').dataset.value === value, originalEffort);
+  assert.equal(await trigger.getAttribute("data-effort"), originalEffort);
+  await page.evaluate(() => { window.harnessFixture.holdUpdate = true; });
+  await effort.focus();
+  await page.keyboard.press("End");
+  await page.waitForFunction(() => Boolean(window.harnessFixture.finishUpdate));
+  assert.equal(await effort.getAttribute("data-value"), "ultra");
+  assert.equal(await trigger.getAttribute("data-effort"), originalEffort);
+  await page.evaluate(() => { window.harnessFixture.holdUpdate = false; window.harnessFixture.finishUpdate(); });
+  await page.waitForFunction(() => document.querySelector('[data-testid="runtime-selector"]').dataset.effort === "ultra");
+  assert.equal(await effort.getAttribute("data-value"), "ultra");
+
+  // Pointer dragging still previews locally, commits once on release and waits for acknowledgment.
+  const updatesBeforeDrag = await page.evaluate(() => window.harnessFixture.updates.length);
+  await page.evaluate(() => { window.harnessFixture.holdUpdate = true; window.harnessFixture.finishUpdate = null; });
+  const slider = await effort.boundingBox();
+  await page.mouse.move(slider.x + slider.width - 2, slider.y + slider.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(slider.x + 2, slider.y + slider.height / 2, { steps: 10 });
+  assert.equal(await effort.getAttribute("data-value"), "low");
+  assert.equal(await page.evaluate(() => window.harnessFixture.updates.length), updatesBeforeDrag);
+  await page.mouse.up();
+  await page.waitForFunction(() => Boolean(window.harnessFixture.finishUpdate));
+  assert.equal(await page.evaluate(() => window.harnessFixture.updates.length), updatesBeforeDrag + 1);
+  assert.equal(await effort.getAttribute("data-value"), "low");
+  assert.equal(await trigger.getAttribute("data-effort"), "ultra");
+  await page.evaluate(() => { window.harnessFixture.holdUpdate = false; window.harnessFixture.finishUpdate(); });
+  await page.waitForFunction(() => document.querySelector('[data-testid="runtime-selector"]').dataset.effort === "low");
   assert.deepEqual(errors, []);
-  console.log("PASS: pick only shows, pick back cancels, send hands off once, failure keeps draft, running-turn queue (mock UI)");
+  console.log("PASS: deferred handoff, queue failure/retry with attachments, same-provider speed, effort failure/retry (mock UI)");
 } finally {
   await browser?.close();
   await server.close();

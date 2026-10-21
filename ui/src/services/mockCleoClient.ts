@@ -572,8 +572,10 @@ export class MockCleoClient implements CleoClient {
   async switchHarness(threadId: string, provider: string, model: string, effort?: RuntimeProfile["effort"]): Promise<RuntimeProfile> {
     const thread = snapshot.threads.find((item) => item.id === threadId);
     if (!thread) throw new Error("Unknown thread");
-    const runtime = { ...(thread.runtime ?? snapshot.runtime), provider, model, effort: effort ?? null,
-      supportsFastMode: provider === "codex", serviceTier: provider === "codex" ? "default" as const : null };
+    const current = thread.runtime ?? snapshot.runtime;
+    const serviceTier = current.provider === provider ? current.serviceTier ?? "default" : "default";
+    const runtime = { ...current, provider, model, effort: effort ?? null,
+      supportsFastMode: provider === "codex", serviceTier: provider === "codex" ? serviceTier : null };
     thread.runtime = runtime;
     return runtime;
   }
