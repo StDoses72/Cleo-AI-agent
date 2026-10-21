@@ -174,6 +174,10 @@ export function useCleoWorkspace(evolutionOpen = false) {
   const [draftModel, setDraftModel] = useState("");
   const [draftEffort, setDraftEffort] = useState<RuntimeProfile["effort"]>(null);
   const [draftServiceTier, setDraftServiceTier] = useState<"default" | "fast">("default");
+  // The permission preset picked for a draft, kept per provider so switching harness resets it.
+  const [draftPermissions, setDraftPermissionsState] = useState<{
+    provider: string; access?: string; approval?: string;
+  } | null>(null);
   const cancellingRuns = useRef(new Set<string>());
   const steeringRequests = useRef(new Map<string, { id: string; runId: string; text: string }>());
   const steeringLocks = useRef(new Set<string>());
@@ -293,18 +297,34 @@ export function useCleoWorkspace(evolutionOpen = false) {
     const provider = runtimeCatalog?.productivityProviders.find(
       (candidate) => candidate.id === draftProvider,
     );
+    // The draft shows the provider's first preset until the user picks another one.
+    const chosen = draftPermissions?.provider === provider?.id ? draftPermissions : null;
+    const fallback = provider?.permissionOptions?.presets?.[0]?.update;
     return {
       provider: (provider?.id ?? draftProvider) || "选择 SDK / ACP",
       model: draftModel || provider?.defaultModel || "选择模型",
       effort: draftEffort,
       serviceTier: provider?.type === "codex_sdk" ? draftServiceTier : null,
       supportsFastMode: provider?.type === "codex_sdk",
-      access: "workspace-write",
-      approval: "default",
+      access: chosen?.access ?? fallback?.access ?? "workspace-write",
+      approval: chosen?.approval ?? fallback?.approval ?? "default",
+      permissionOptions: provider?.permissionOptions,
       contextWindow: 128000,
       editable: false,
     };
-  }, [activeSpace, draftEffort, draftServiceTier, draftModel, draftProfileId, draftProvider, runtimeCatalog]);
+  }, [activeSpace, draftEffort, draftPermissions, draftServiceTier, draftModel, draftProfileId, draftProvider, runtimeCatalog]);
+
+  /** Purpose: Remember the permission preset for the draft so its task starts with it.
+   * Input: the selector's update (preset values and the provider it belongs to).
+   * Output: the draft runtime reflects it; create_thread applies it before the first turn.
+   */
+  const setDraftPermissions = async (update: RuntimeUpdate) => {
+    setDraftPermissionsState({
+      provider: update.permissionProvider ?? draftProvider,
+      access: update.access ?? undefined,
+      approval: update.approval ?? undefined,
+    });
+  };
 
   const skillKey = `${draftRuntime.provider}:${activeProject?.path ?? ""}`;
   useEffect(() => {
@@ -587,6 +607,13 @@ export function useCleoWorkspace(evolutionOpen = false) {
       setDraftModel(activeThread.runtime?.model ?? draftModel);
       setDraftEffort(activeThread.runtime?.effort ?? draftEffort);
       setDraftServiceTier(activeThread.runtime?.serviceTier ?? "default");
+      // The next task inherits the permissions of the one on screen, like its model.
+      if (activeThread.runtime && activeThread.projectId !== EVOLUTION_PROJECT) {
+        setDraftPermissionsState({
+          provider: activeThread.runtime.provider,
+          access: activeThread.runtime.access, approval: activeThread.runtime.approval,
+        });
+      }
     }
     if (evolutionOpen) beginEvolutionDraft();
     else setActiveThreadId(null);
@@ -618,6 +645,9 @@ export function useCleoWorkspace(evolutionOpen = false) {
             model: draftModel || undefined,
             effort: draftEffort ?? undefined,
             serviceTier: draftRuntime.supportsFastMode ? draftServiceTier : undefined,
+            // Only an explicit choice travels; otherwise the harness keeps its own default.
+            ...(draftPermissions && draftPermissions.provider === (draftProvider || runtimeCatalog?.defaultProductivityProvider)
+              ? { access: draftPermissions.access, approval: draftPermissions.approval } : {}),
           },
     );
     if (!project) {
@@ -1511,6 +1541,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
     resolveApproval,
     updateRuntime,
     updatePermissions,
+    setDraftPermissions,
     selectNonProductivityProfile,
     loadProductivityModels,
     selectProductivityRuntime,

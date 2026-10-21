@@ -32,12 +32,13 @@ import type {
   TimelineContent,
   QuestionRequest,
 } from "../types";
-import { snapshot, uiChanges } from "./mockData";
+import { permissionPresets, snapshot, uiChanges } from "./mockData";
 
 const delay = (milliseconds: number) =>
   new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
 
 const clone = <T,>(value: T): T => structuredClone(value);
+
 
 export class MockCleoClient implements CleoClient {
   private backgroundMemorySettings: BackgroundMemorySettings = { enabled: false, intervalMinutes: 30, pendingThreshold: 5 };
@@ -185,8 +186,9 @@ export class MockCleoClient implements CleoClient {
             effort: options.effort ?? "medium",
             serviceTier: options.provider === "claude" ? null : options.serviceTier ?? "default",
             supportsFastMode: options.provider !== "claude",
-            access: "workspace-write",
-            approval: "user",
+            access: options.access ?? "workspace-write",
+            approval: options.approval ?? (options.provider === "claude" ? "default" : "user"),
+            permissionOptions: options.provider === "claude" ? permissionPresets.claude : permissionPresets.codex,
             editable: true,
             steerMode: "native",
           },
@@ -636,8 +638,8 @@ export class MockCleoClient implements CleoClient {
     return {
       nonProductivityProfiles: this.modelSettings.profiles.map(p => ({ id: p.name, label: p.displayName || p.name, provider: p.provider, model: p.model, maxTokens: p.maxTokens, active: p.name === this.modelSettings.activeAgent })),
       productivityProviders: [
-        { id: "codex", type: "codex_sdk", defaultModel: "gpt-5.6-sol", modelSource: "dynamic" },
-        { id: "claude", type: "claude_sdk", defaultModel: "claude-opus-5", modelSource: "dynamic" },
+        { id: "codex", type: "codex_sdk", defaultModel: "gpt-5.6-sol", modelSource: "dynamic", permissionOptions: permissionPresets.codex },
+        { id: "claude", type: "claude_sdk", defaultModel: "claude-opus-5", modelSource: "dynamic", permissionOptions: permissionPresets.claude },
       ],
       defaultNonProductivityProfile: this.modelSettings.activeAgent,
       defaultProductivityProvider: "codex",

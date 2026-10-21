@@ -91,6 +91,8 @@ export class IpcCleoClient implements CleoClient {
       effort: options.effort,
       service_tier: options.serviceTier,
       profile_id: options.profileId,
+      access: options.access,
+      approval: options.approval,
     });
   }
 

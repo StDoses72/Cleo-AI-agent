@@ -976,10 +976,25 @@ class DesktopService:
         profile_id: str | None = None,
         service_tier: str | None = None,
         project_path: str | None = None,
+        access: str | None = None,
+        approval: str | None = None,
     ) -> dict[str, Any]:
+        """Purpose: Create a thread; a development task may start with chosen permissions.
+
+        Input: Space, project, optional runtime choices and, for development tasks, the
+        ``access`` / ``approval`` preset picked in the draft. Output: The thread view. The
+        permissions are validated against the provider type before any session is created,
+        then applied to the new session like a runtime update would.
+        """
         memory_space = "non_productivity" if space == "chat" else "productivity"
         if space not in {"chat", "productivity"}:
             raise ValueError(f"不支持的项目空间：{space}")
+        permissions = {
+            key: value for key, value in (("access", access), ("approval", approval))
+            if value is not None
+        }
+        if permissions and space != "productivity":
+            raise ValueError("只有开发任务可以预先选择权限。")
         project = project_name_from_id(project_id_value)
         selected_path: str | None = None
         if project_path is not None and not (
@@ -1046,6 +1061,10 @@ class DesktopService:
                 self._validate_service_tier(
                     self._capabilities(provider_settings.type), service_tier,
                 )
+            if permissions:
+                from cleo.desktop.runtime_permissions import validate_permissions
+
+                validate_permissions(provider_settings.type, permissions)
             selected_model = model or provider_settings.model
             if provider_name not in self.settings.productivity.providers:
                 from cleo.config.settings import HARNESSES_CONFIG_PATH
@@ -1066,6 +1085,8 @@ class DesktopService:
             await self._adopt_productivity_session(
                 session, effort=effort, service_tier=service_tier,
             )
+            if permissions:
+                await self._update_runtime(thread_id=session.id, update=permissions)
             manifest = self.store.load_manifest(session.id)
         self._activate(manifest)
         return await self._thread(manifest)
@@ -1615,6 +1636,8 @@ class DesktopService:
             }
             for name, profile in sorted(self._agent_profiles().items())
         ]
+        from cleo.desktop.runtime_permissions import permission_choices
+
         providers = []
         for name, provider in task_providers(self.settings.productivity).items():
             if not provider.enabled or name not in registered:
@@ -1625,6 +1648,9 @@ class DesktopService:
                     "type": provider.type,
                     "defaultModel": provider.model,
                     "modelSource": "dynamic",
+                    # The presets a draft can pick before its session exists; a live session
+                    # may later narrow them with the harness's own restrictions.
+                    "permissionOptions": permission_choices(provider.type),
                 }
             )
         return {

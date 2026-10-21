@@ -29,7 +29,18 @@ try {
         if (method === "load_memory") return { memories: fixture.memories, memoryOverview: fixture.memoryOverview };
         if (method === "load_thread") return structuredClone(fixture.threads.find(thread => thread.id === params.thread_id));
         if (method === "get_pending_questions" || method === "get_local_skills") return [];
-        if (method === "get_runtime_catalog") return { nonProductivityProfiles: [], defaultNonProductivityProfile: "", defaultProductivityProvider: "codex", productivityProviders: [] };
+        if (method === "get_runtime_catalog") return { nonProductivityProfiles: [], defaultNonProductivityProfile: "", defaultProductivityProvider: "codex", productivityProviders: [
+          // Presets listed per provider let a draft choose its permissions before the session exists.
+          { id: "codex", type: "codex_sdk", defaultModel: "gpt-test", modelSource: "dynamic", permissionOptions: { access: [], approval: [], presets: [
+            { value: "ask", label: "请求批准", description: "", update: { approval: "user", access: "workspace-write" } },
+            { value: "full", label: "完全访问", description: "", update: { approval: "deny_all", access: "full-access" } },
+          ] } },
+          // The draft inherits the harness of the thread on screen (Claude here), so list it too.
+          { id: "claude", type: "claude_sdk", defaultModel: "claude-test", modelSource: "dynamic", permissionOptions: { access: [], approval: [], presets: [
+            { value: "ask", label: "请求批准", description: "", update: { approval: "default" } },
+            { value: "full", label: "完全访问", description: "", update: { approval: "bypassPermissions" } },
+          ] } },
+        ] };
         if (method === "get_productivity_models") return { provider: "codex", source: "sdk", models: [] };
         if (method === "get_model_settings") return { profiles: [], connections: [], activeAgent: "", activeDreamAgent: "" };
         if (method === "get_agent_instructions") return { content: "", path: "AGENTS.md", exists: false };
@@ -106,14 +117,18 @@ try {
   assert.equal(await targetName.innerText(), "新建项目");
   assert.equal(await composer.inputValue(), "");
   if (process.env.CLEO_SMOKE_OUTPUT) await page.screenshot({ path: join(process.env.CLEO_SMOKE_OUTPUT, "project-workspaces.png") });
+  // The draft's permission preset is applied when the task is created, not after a first turn.
+  await page.getByTestId("permission-selector").selectOption("full");
   await composer.fill("检查这个工作区");
   await composer.press("Enter");
   await page.waitForFunction(() => window.projectTest.calls.some(c => c.method === "create_thread"));
   const created = await page.evaluate(() => window.projectTest.calls.find(c => c.method === "create_thread").params);
   assert.equal(created.project_id_value, "productivity:canonical-project");
   assert.equal(created.project_path, "C:\\Projects\\中文 文件夹");
+  assert.equal(created.provider, "claude", "the draft keeps the harness of the thread it was started from");
+  assert.deepEqual([created.access, created.approval], [undefined, "bypassPermissions"]);
   assert.deepEqual(errors, []);
-  console.log("PASS: quick empty task, draft moves between projects, cancellation preserves draft, failure recovery, busy picker, late response isolation, canonical project selection and new session working directory");
+  console.log("PASS: quick empty task, draft moves between projects, cancellation preserves draft, failure recovery, busy picker, late response isolation, canonical project selection, draft permissions and new session working directory");
 } finally {
   await browser?.close(); await server.close();
   assert.equal(dirname(scratch), resolve(tmpdir()));

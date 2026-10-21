@@ -553,7 +553,8 @@ export function App() {
           }}
           onEffortChange={(effort) => workspace.updateRuntime({ effort })}
           onServiceTierChange={(serviceTier) => workspace.updateRuntime({ serviceTier })}
-          onPermissionChange={workspace.activeThread?.id ? (update) => workspace.updatePermissions(workspace.activeThread!.id, update) : undefined}
+          onPermissionChange={workspace.activeThread?.id ? (update) => workspace.updatePermissions(workspace.activeThread!.id, update)
+            : evolutionOpen ? undefined : workspace.setDraftPermissions}
           attachments={workspace.attachments}
           onPickAttachments={workspace.pickAttachments}
           onPrepareAttachments={workspace.prepareAttachments}

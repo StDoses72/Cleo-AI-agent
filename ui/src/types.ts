@@ -378,6 +378,8 @@ export interface ProductivityProviderOption {
   type: ProductivityProviderType;
   defaultModel: string | null;
   modelSource: "dynamic" | "config";
+  /** The permission presets a draft can pick before its session exists. */
+  permissionOptions?: RuntimeProfile["permissionOptions"];
 }
 
 export interface RuntimeCatalog {
@@ -400,6 +402,9 @@ export interface CreateThreadOptions {
   effort?: ReasoningEffort;
   serviceTier?: "default" | "fast";
   profileId?: string;
+  /** Permission preset chosen in the draft; applied to the new session before its first turn. */
+  access?: string;
+  approval?: string;
 }
 
 export interface ModelProfileSummary {

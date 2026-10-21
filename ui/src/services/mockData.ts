@@ -3,6 +3,7 @@ import type {
   MemoryEntry,
   MemoryOverview,
   Project,
+  RuntimeProfile,
   Thread,
   WorkspaceSnapshot,
 } from "../types";
@@ -83,6 +84,28 @@ const uiChanges: ChangeFile[] = [
   },
 ];
 
+/** The presets the backend lists per provider type (cleo/desktop/runtime_permissions.py). */
+export const permissionPresets: Record<"codex" | "claude", NonNullable<RuntimeProfile["permissionOptions"]>> = {
+  codex: {
+    access: [], approval: [],
+    presets: [
+      { value: "ask", label: "请求批准", description: "由你批准超出已有授权范围的操作。", update: { approval: "user", access: "workspace-write" } },
+      { value: "review", label: "帮我审批", description: "由当前 harness 自动审查操作；可能允许、拒绝或请求你确认。", update: { approval: "auto_review", access: "workspace-write" } },
+      { value: "full", label: "完全访问", description: "允许常规文件、命令和工具操作，无需逐项确认；服务强制规则仍生效。", update: { approval: "deny_all", access: "full-access" } },
+    ],
+    reason: "选择后由当前 harness 检查并生效，仅影响此会话。",
+  },
+  claude: {
+    access: [], approval: [],
+    presets: [
+      { value: "ask", label: "请求批准", description: "由你批准超出已有授权范围的操作。", update: { approval: "default" } },
+      { value: "review", label: "帮我审批", description: "由当前 harness 自动审查操作；可能允许、拒绝或请求你确认。", update: { approval: "auto" } },
+      { value: "full", label: "完全访问", description: "允许常规文件、命令和工具操作，无需逐项确认；服务强制规则仍生效。", update: { approval: "bypassPermissions" } },
+    ],
+    reason: "选择后由当前 harness 检查并生效，仅影响此会话。",
+  },
+};
+
 export const projects: Project[] = [
   {
     id: "cleo-agent",
@@ -125,7 +148,7 @@ export const projects: Project[] = [
 export const threads: Thread[] = [
   {
     id: "desktop-ui",
-    runtime: { provider: "codex", model: "gpt-5.6-sol", effort: null, access: "workspace-write", approval: "user" },
+    runtime: { provider: "codex", model: "gpt-5.6-sol", effort: null, access: "workspace-write", approval: "user" , permissionOptions: permissionPresets.codex },
     space: "productivity",
     projectId: "cleo-agent",
     title: "完成独立桌面 UI",
@@ -195,7 +218,7 @@ export const threads: Thread[] = [
   },
   {
     id: "session-hub",
-    runtime: { provider: "claude", model: "claude-opus-5-5", effort: null, access: "workspace-write", approval: "user" },
+    runtime: { provider: "claude", model: "claude-opus-5-5", effort: null, access: "workspace-write", approval: "user" , permissionOptions: permissionPresets.claude },
     space: "productivity",
     projectId: "cleo-agent",
     title: "统一 managed 与 native sessions",
@@ -223,7 +246,7 @@ export const threads: Thread[] = [
   },
   {
     id: "limits",
-    runtime: { provider: "codex", model: "gpt-5.6-sol", effort: null, access: "workspace-write", approval: "user" },
+    runtime: { provider: "codex", model: "gpt-5.6-sol", effort: null, access: "workspace-write", approval: "user" , permissionOptions: permissionPresets.codex },
     space: "productivity",
     projectId: "cleo-agent",
     title: "修正 Codex 用量显示",
@@ -244,7 +267,7 @@ export const threads: Thread[] = [
   },
   {
     id: "merge-exports",
-    runtime: { provider: "claude", model: "claude-sonnet-5-5", effort: null, access: "workspace-write", approval: "user" },
+    runtime: { provider: "claude", model: "claude-sonnet-5-5", effort: null, access: "workspace-write", approval: "user" , permissionOptions: permissionPresets.claude },
     space: "productivity",
     projectId: "productivity:general",
     title: "把导出的 CSV 合并成一张表",
