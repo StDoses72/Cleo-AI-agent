@@ -21,6 +21,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+/* Settings: centred in both axes, with no top offset; the modal itself sizes its gutters as a share of the viewport. */
+.settings-backdrop {
+  align-items: center;
+  padding-top: 0;
+}
+
 /* ---------- Confirm dialogs ---------- */
 .delete-thread-backdrop {
   align-items: center;
