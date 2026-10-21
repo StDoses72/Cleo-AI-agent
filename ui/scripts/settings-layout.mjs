@@ -5,6 +5,13 @@ export async function checkSettingsLayout(page) {
   await settings.evaluate(async element => {
     await Promise.all(element.getAnimations().map(animation => animation.finished));
   });
+  const centring = await page.evaluate(() => {
+    const { left, top, right, bottom } = document.querySelector(".settings-modal").getBoundingClientRect();
+    return { left, top, right: innerWidth - right, bottom: innerHeight - bottom };
+  });
+  assert.ok(Math.abs(centring.left - centring.right) <= 1, `Settings dialog is off-centre horizontally: ${JSON.stringify(centring)}`);
+  assert.ok(Math.abs(centring.top - centring.bottom) <= 1, `Settings dialog is off-centre vertically: ${JSON.stringify(centring)}`);
+  assert.ok(Math.min(centring.left, centring.top, centring.right, centring.bottom) >= 0, `Settings dialog overflows the window: ${JSON.stringify(centring)}`);
   const navigation = settings.getByRole("navigation", { name: "设置导航" });
   const pages = [
     ["外观", "外观"], ["运行设置", "运行设置"], ["对话指令", "对话指令"],
