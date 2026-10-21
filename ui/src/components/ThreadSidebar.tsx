@@ -202,7 +202,11 @@ export function ThreadSidebar({
                     >
                       {open ? <FolderOpen size={15} /> : <Folder size={15} />}
                       <strong>{label}</strong>
-                      {group.project.branch ? <small>{group.project.branch}</small> : null}
+                      {group.project.branch ? (
+                        <small title={group.project.dirtyFiles ? `${group.project.branch} · ${group.project.dirtyFiles} 个文件有改动` : group.project.branch}>
+                          {group.project.branch}{group.project.dirtyFiles ? ` · ${group.project.dirtyFiles}` : ""}
+                        </small>
+                      ) : null}
                     </button>
                     <div className="folder-group-actions">
                       <button
