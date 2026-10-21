@@ -27,6 +27,7 @@ import type {
   WorkspaceSpace,
 } from "./types";
 import { visiblePrompt } from "./visible-prompt";
+import { projectsInSpace } from "./runtime-labels";
 
 function currentTime() {
   return new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
@@ -52,6 +53,12 @@ const emptyDraft: ComposerDraft = { prompt: "", attachments: [] };
 /** The development project that binds no folder; chosen when nothing else is selected. */
 const GENERAL_PRODUCTIVITY_PROJECT = "productivity:general";
 const EVOLUTION_PROJECT = "productivity:cleo-evolution";
+
+/** The project a draft lands in when the user picks nothing: the space's general project
+ * (no folder bound) whenever it is listed, otherwise the first ordinary project. */
+function defaultProjectFor(projects: Parameters<typeof projectsInSpace>[0], space: ThreadSpace) {
+  return projectsInSpace(projects, space).find((project) => project.id !== EVOLUTION_PROJECT);
+}
 
 export function useCleoWorkspace(evolutionOpen = false) {
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
@@ -234,7 +241,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
           setActiveThreadId(initialThread.id);
         } else {
           const initialSpace = loaded.activeSpace ?? "productivity";
-          const initialProject = ordinaryProjects.find((project) => project.space === initialSpace);
+          const initialProject = defaultProjectFor(ordinaryProjects, initialSpace);
           setActiveSpace(initialSpace);
           setActiveProjectId(initialProject?.id ?? ordinaryProjects[0]?.id ?? "");
           setActiveThreadId(null);
@@ -498,8 +505,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
       setActiveThreadId(next?.id ?? null);
       return;
     }
-    const projectForSpace = snapshot.projects.find((project) => project.space === space
-      && project.id !== "productivity:cleo-evolution");
+    const projectForSpace = defaultProjectFor(snapshot.projects, space);
     const preferredProjectId =
       activeProject?.space === space && activeProject.id !== "productivity:cleo-evolution"
         ? activeProjectId : projectForSpace?.id ?? "";
@@ -516,15 +522,24 @@ export function useCleoWorkspace(evolutionOpen = false) {
     }
   };
 
-  const selectProject = (projectId: string) => {
+  /** Purpose: Move the unsent draft to another project without losing its text.
+   * Input: a project of the current space. Output: the draft is parked there and shown;
+   * saved threads keep the project they ran in, so a thread on screen is simply left.
+   */
+  const retargetDraft = (projectId: string) => {
+    if (activeSpace === "memory" || projectId === activeProjectId) return;
     clearLoadingError();
     selectionRef.current += 1;
+    const from = `new:${activeSpace}:${activeProjectId}`;
+    const to = `new:${activeSpace}:${projectId}`;
+    setDrafts((current) => {
+      const moving = current[from];
+      if (!moving) return current;
+      const { [from]: _moved, ...rest } = current;
+      return { ...rest, [to]: moving };
+    });
     setActiveProjectId(projectId);
-    if (!snapshot || activeSpace === "memory") return;
-    const next = snapshot.threads.find(
-      (thread) => thread.space === activeSpace && thread.projectId === projectId,
-    );
-    setActiveThreadId(next?.id ?? null);
+    setActiveThreadId(null);
   };
 
   const selectThread = (threadId: string) => {
@@ -555,12 +570,15 @@ export function useCleoWorkspace(evolutionOpen = false) {
   };
 
   /** Purpose: Open an empty task in whichever view is on screen.
-   * Input: none. Output: the active view's selection is cleared; saved tasks stay untouched.
-   * Each view owns its own selected thread, so clearing the workspace selection while the
-   * evolution view is open left the old task on screen and the action did nothing at all.
+   * Input: optionally the project to park the draft in (a sidebar group's "+"); otherwise the
+   * draft stays where the user is. Output: the active view's selection is cleared; saved
+   * tasks stay untouched. Each view owns its own selected thread, so clearing the workspace
+   * selection while the evolution view is open left the old task on screen and the action
+   * did nothing at all.
    */
-  const startNewThread = () => {
+  const startNewThread = (projectId?: string) => {
     selectionRef.current += 1;
+    if (projectId && !evolutionOpen) setActiveProjectId(projectId);
     if (activeSpace === "chat" && runtimeCatalog?.defaultNonProductivityProfile) {
       setDraftProfileId(runtimeCatalog.defaultNonProductivityProfile);
     }
@@ -1470,7 +1488,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
     approvalPendingId,
     approvalError,
     selectSpace,
-    selectProject,
+    retargetDraft,
     selectThread,
     createThread: startNewThread,
     chooseWorkspace,

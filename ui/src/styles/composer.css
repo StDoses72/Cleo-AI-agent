@@ -627,6 +627,171 @@ select.text-control:hover {
   overflow-wrap: anywhere;
 }
 
+/* ---------- Project target: where an unsent draft will run ---------- */
+.project-target-wrap {
+  position: relative;
+}
+
+/* The header already shows the branch, so the pill carries only the project name. */
+.project-target {
+  max-width: 180px;
+  color: var(--text-soft);
+  background: var(--surface);
+}
+
+.project-target:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.project-target[aria-expanded="true"] {
+  color: var(--text);
+  background: var(--surface-active);
+}
+
+.project-target > svg {
+  flex: 0 0 auto;
+}
+
+.project-target > svg:first-child {
+  color: var(--muted);
+}
+
+.project-target-name {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-target-menu {
+  position: absolute;
+  z-index: 40;
+  bottom: 38px;
+  left: 0;
+  width: 304px;
+  padding: 6px;
+  animation: pop-in 140ms ease both;
+}
+
+.project-target-heading {
+  padding: 6px 10px 8px;
+  color: var(--muted-2);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.project-target-row {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.project-target-row .project-target-option {
+  min-width: 0;
+  flex: 1;
+}
+
+.project-target-remove {
+  display: grid;
+  width: 30px;
+  flex: 0 0 30px;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  color: var(--muted-2);
+  opacity: 0;
+  transition: opacity 120ms ease, color 120ms ease, background 120ms ease;
+}
+
+.project-target-row:hover .project-target-remove,
+.project-target-row:focus-within .project-target-remove {
+  opacity: 1;
+}
+
+.project-target-remove:hover {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.project-glyph.plain {
+  color: var(--muted);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.project-target-option {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  color: var(--text-soft);
+  text-align: left;
+}
+
+.project-target-option:hover {
+  background: var(--surface-hover);
+}
+
+.project-target-option.selected {
+  background: var(--surface-active);
+}
+
+.project-target-option > svg {
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+
+.project-target-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.project-target-copy strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: var(--font-size-control);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-target-copy small {
+  overflow: hidden;
+  color: var(--muted);
+  font-family: var(--font-code);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-target-menu .project-target-open {
+  margin-top: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+}
+
+.project-target-open .project-glyph {
+  color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.project-target-open small {
+  font-family: var(--font-ui);
+}
+
+.project-target-open:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
 /* ---------- Slash menu ---------- */
 .slash-menu {
   position: absolute;

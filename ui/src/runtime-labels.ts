@@ -1,15 +1,33 @@
 import type { Project, ReasoningEffort, RuntimeProfile, ThreadSpace } from "./types";
 
-/** Purpose: The name shown for a project; the managed general project reads as 通用. */
-export function projectLabel(project: Pick<Project, "name" | "managed"> | null | undefined) {
-  if (!project) return "";
-  return project.managed ? "通用" : project.name;
+/** Purpose: Whether a project is the general one of its space: it binds no user folder, so
+ * drafts land there when nothing else is chosen. Chat's general project is not marked managed
+ * by the backend, so the reserved name counts too. */
+export function isGeneralProject(project: Pick<Project, "name" | "managed"> | null | undefined) {
+  return Boolean(project && (project.managed || project.name.trim().toLowerCase() === "general"));
 }
 
-/** Purpose: The secondary line under a project name; a managed project shows no folder. */
-export function projectPathLabel(project: Pick<Project, "path" | "managed"> | null | undefined) {
-  if (!project) return "";
-  return project.managed ? "不绑定文件夹" : project.path;
+/** Purpose: The name shown for a project. A general project has no name in the interface
+ * (folder-less work is simply a thread), so callers fall back to their own neutral label. */
+export function projectLabel(project: Pick<Project, "name" | "managed"> | null | undefined) {
+  if (!project || isGeneralProject(project)) return "";
+  return project.name;
+}
+
+/** Purpose: The secondary line under a project name; a general project shows no path. */
+export function projectPathLabel(project: Pick<Project, "name" | "path" | "managed"> | null | undefined) {
+  if (!project || isGeneralProject(project)) return "";
+  return project.path;
+}
+
+/** Purpose: The projects a space lists, general first so the folder-less default is always on top.
+ * Input: every project and the space on screen. Output: a new, ordered array; the backend's
+ * name order is kept for the rest. Projects without a space are legacy mock entries. */
+export function projectsInSpace(projects: readonly Project[], space: ThreadSpace): Project[] {
+  const own = projects.filter((project) => project.space
+    ? project.space === space
+    : space === "chat" ? isGeneralProject(project) : !isGeneralProject(project));
+  return [...own.filter(isGeneralProject), ...own.filter((project) => !isGeneralProject(project))];
 }
 
 /** Purpose: The short harness name a thread card shows: coding harness for tasks, model for chats. */

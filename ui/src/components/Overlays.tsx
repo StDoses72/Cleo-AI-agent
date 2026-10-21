@@ -3,7 +3,7 @@ import { dreamStatusLabel } from "../memoryStatus";
 import { UpdateVersionPicker } from "./UpdateVersionPicker";
 import { handleDialogKeyDown, Modal } from "./Modal";
 import { PermissionSelector } from "./PermissionSelector";
-import { accessLabel, approvalLabel, effortLabels } from "../runtime-labels";
+import { accessLabel, approvalLabel, effortLabels, projectLabel } from "../runtime-labels";
 import {
   ArrowDownToLine,
   ArrowRight,
@@ -270,7 +270,7 @@ export function RemoveProjectDialog({
       >
         <span className="delete-thread-icon"><Trash2 size={18} /></span>
         <div>
-          <h2 id="remove-project-title">移除“{project.name}”？</h2>
+          <h2 id="remove-project-title">移除“{projectLabel(project)}”？</h2>
           <p id="remove-project-detail">本地文件和历史任务不会被删除。</p>
         </div>
         {error && <p className="dialog-error" role="alert">{error}</p>}

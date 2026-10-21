@@ -60,23 +60,34 @@ try {
   await page.goto(server.resolvedUrls.local[0]);
   const composer = page.getByTestId("composer-input");
   const newProject = page.getByTestId("new-project");
-  const pickerName = page.locator(".project-picker-copy strong");
+  // The draft's project shows in the composer only while nothing has been sent yet.
+  const target = page.getByTestId("project-target");
+  const targetName = page.locator('[data-testid="project-target"] .project-target-name');
   const settled = () => newProject.and(page.locator(":enabled")).waitFor();
   await composer.waitFor();
-  const originalProject = await pickerName.innerText();
   await page.getByTestId("new-thread").click();
+  const originalProject = await targetName.innerText();
   await composer.fill("保留的草稿");
+  // Unbinding the folder and binding it again keeps the draft's text; nothing is created until it is sent.
+  await target.click();
+  await page.getByRole("menuitemradio", { name: "不绑定文件夹" }).click();
+  assert.equal(await targetName.innerText(), "不绑定文件夹");
+  await page.getByTestId("draft-row").waitFor();
+  assert.equal(await composer.inputValue(), "保留的草稿", "Moving the draft lost its text");
+  await target.click();
+  await page.getByRole("menuitemradio", { name: new RegExp(originalProject.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) }).click();
+  assert.equal(await targetName.innerText(), originalProject);
   assert.equal(await page.evaluate(() => window.projectTest.picks), 0);
   assert.equal(await page.evaluate(() => window.projectTest.calls.filter(c => c.method === "create_thread").length), 0);
   await newProject.click(); await settled();
-  assert.equal(await pickerName.innerText(), originalProject);
+  assert.equal(await targetName.innerText(), originalProject);
   assert.equal(await composer.inputValue(), "保留的草稿");
   assert.equal(await page.evaluate(() => window.projectTest.calls.filter(c => c.method === "add_project").length), 0);
 
   await page.evaluate(() => { window.projectTest.picked = "C:\\Projects\\中文 文件夹"; window.projectTest.fail = true; });
   await newProject.click(); await settled();
   await page.getByRole("alert").getByText("项目文件夹无法访问").waitFor();
-  assert.equal(await pickerName.innerText(), originalProject);
+  assert.equal(await targetName.innerText(), originalProject);
   assert.equal(await composer.inputValue(), "保留的草稿");
 
   await page.evaluate(() => { window.projectTest.fail = false; window.projectTest.hold = true; });
@@ -86,10 +97,11 @@ try {
   await page.getByRole("button", { name: /^统一 managed 与 native sessions/ }).click();
   await page.evaluate(() => { window.projectTest.hold = false; window.projectTest.release(); });
   await settled();
-  assert.equal(await pickerName.innerText(), originalProject, "Slow folder registration stole navigation");
+  assert.ok((await page.locator(".thread-row.active").innerText()).includes("统一 managed"),
+    "Slow folder registration stole navigation");
 
   await newProject.click(); await settled();
-  assert.equal(await pickerName.innerText(), "新建项目");
+  assert.equal(await targetName.innerText(), "新建项目");
   assert.equal(await composer.inputValue(), "");
   if (process.env.CLEO_SMOKE_OUTPUT) await page.screenshot({ path: join(process.env.CLEO_SMOKE_OUTPUT, "project-workspaces.png") });
   await composer.fill("检查这个工作区");
@@ -99,7 +111,7 @@ try {
   assert.equal(created.project_id_value, "productivity:canonical-project");
   assert.equal(created.project_path, "C:\\Projects\\中文 文件夹");
   assert.deepEqual(errors, []);
-  console.log("PASS: quick empty task, cancellation preserves draft, failure recovery, busy picker, late response isolation, canonical project selection and new session working directory");
+  console.log("PASS: quick empty task, draft moves between projects, cancellation preserves draft, failure recovery, busy picker, late response isolation, canonical project selection and new session working directory");
 } finally {
   await browser?.close(); await server.close();
   assert.equal(dirname(scratch), resolve(tmpdir()));

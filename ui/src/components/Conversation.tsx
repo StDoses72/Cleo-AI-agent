@@ -73,7 +73,8 @@ import { PermissionSelector } from "./PermissionSelector";
 import { ApprovalPrompt } from "./ApprovalPrompt";
 import { RenameThreadDialog } from "./Overlays";
 import { handleDialogKeyDown } from "./Modal";
-import { approvalLabel, effortLabels, projectLabel } from "../runtime-labels";
+import { approvalLabel, effortLabels, isGeneralProject, projectLabel } from "../runtime-labels";
+import { ProjectTarget } from "./ProjectTarget";
 
 interface ConversationProps {
   history?: ReturnType<typeof useTimelineHistory>;
@@ -83,6 +84,13 @@ interface ConversationProps {
   header?: ReactNode;
   thread: Thread | null;
   project: Project | null;
+  /** Projects of this space; with onSelectProject, an unsent draft shows where it will run and can move. */
+  projects?: Project[];
+  activeProjectId?: string;
+  onSelectProject?: (projectId: string) => void;
+  onChooseWorkspace?: () => void;
+  onRemoveProject?: (project: Project) => void;
+  choosingWorkspace?: boolean;
   space: ThreadSpace;
   runtime: RuntimeProfile;
   runtimeCatalog: RuntimeCatalog | null;
@@ -151,6 +159,12 @@ export function Conversation({
   header,
   thread,
   project,
+  projects,
+  activeProjectId,
+  onSelectProject,
+  onChooseWorkspace,
+  onRemoveProject,
+  choosingWorkspace,
   space,
   runtime,
   runtimeCatalog,
@@ -415,6 +429,13 @@ export function Conversation({
         sendError={sendError}
         harnessSwitchStatus={harnessSwitchStatus}
         space={space}
+        drafting={!thread}
+        projects={projects}
+        activeProjectId={activeProjectId}
+        onSelectProject={onSelectProject}
+        onChooseWorkspace={onChooseWorkspace}
+        onRemoveProject={onRemoveProject}
+        choosingWorkspace={choosingWorkspace}
         runtime={runtime}
         runtimeCatalog={runtimeCatalog}
         productivityModels={productivityModels}
@@ -1093,6 +1114,11 @@ function WelcomeState({ project, space, onUseSuggestion }: { project: Project | 
     <div className="welcome-state">
       <div className="welcome-mark" aria-hidden="true"><span>C</span></div>
       <h2>{evolving ? "你想让 Cleo 怎样改变？" : space === "chat" ? "今天想聊些什么？" : "开始新任务"}</h2>
+      {!evolving && project && space === "productivity" ? (
+        <p>{isGeneralProject(project)
+          ? "没有绑定文件夹，适合一次性脚本、探索和提问。要改某个项目时，在下方选择它的文件夹。"
+          : `任务会在 ${projectLabel(project)} 的目录里运行。`}</p>
+      ) : null}
       <div className="suggestion-list">
         {prompts.map((suggestion) => (
           <button type="button" key={suggestion} onClick={() => {
@@ -1110,6 +1136,13 @@ function WelcomeState({ project, space, onUseSuggestion }: { project: Project | 
 
 function Composer({
   prompt,
+  drafting = false,
+  projects = [],
+  activeProjectId = "",
+  onSelectProject,
+  onChooseWorkspace,
+  onRemoveProject,
+  choosingWorkspace = false,
   onPromptChange: setPrompt,
   sendBlocked,
   sendError,
@@ -1186,7 +1219,13 @@ function Composer({
   | "approvalPending"
   | "approvalError"
   | "onResolveApproval"
-> & { steerReady?: boolean }) {
+  | "projects"
+  | "activeProjectId"
+  | "onSelectProject"
+  | "onChooseWorkspace"
+  | "onRemoveProject"
+  | "choosingWorkspace"
+> & { steerReady?: boolean; drafting?: boolean }) {
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [draggingFiles, setDraggingFiles] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -1412,6 +1451,21 @@ function Composer({
         />
         <div className="composer-footer">
           <div className="composer-tools">
+            {drafting && onSelectProject && onChooseWorkspace && projects.length ? (
+              <>
+                <ProjectTarget
+                  space={space}
+                  projects={projects}
+                  activeProjectId={activeProjectId}
+                  disabled={running || Boolean(harnessSwitchStatus)}
+                  choosing={choosingWorkspace}
+                  onSelect={onSelectProject}
+                  onChooseWorkspace={onChooseWorkspace}
+                  onRemoveProject={onRemoveProject}
+                />
+                <span className="composer-divider" />
+              </>
+            ) : null}
             <button type="button" aria-label="添加附件" title="添加 PDF、Office、图片或代码文件" onClick={() => void pickFiles()}>
               <Paperclip size={16} />
             </button>

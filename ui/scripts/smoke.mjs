@@ -67,9 +67,7 @@ try {
   await window.screenshot({ path: join(outputDir, "01b-change-history.png") });
   await historyPicker.selectOption("workspace");
 
-  await window.locator(".project-picker").click();
-  await window.getByTestId("choose-workspace").waitFor();
-  await window.locator(".project-picker").click();
+  await window.getByTestId("new-project").waitFor();
 
   // Returning from another space must preserve the selected thread, not pick the first row.
   await window.getByRole("button", { name: /^统一 managed 与 native sessions/ }).click();
@@ -89,21 +87,19 @@ try {
   assert((await window.locator(".thread-row.active").innerText()).includes("Cleo 的产品语气"),
     "Returning to chat lost its selected thread");
   await window.getByRole("button", { name: "开发", exact: true }).click();
-  await window.locator(".project-picker").click();
-  await window.locator(".project-menu").getByRole("button", { name: /Orbit Notes.*orbit-notes/ }).click();
+  await window.getByRole("button", { name: "在 Orbit Notes 中新建任务" }).click();
   await window.getByTestId("composer-input").fill("Keep this workspace draft");
   for (const space of ["记忆", "对话"]) {
     await window.getByRole("button", { name: space, exact: true }).click();
     await window.getByRole("button", { name: "开发", exact: true }).click();
-    assert((await window.locator(".project-picker").innerText()).includes("Orbit Notes"),
+    assert((await window.locator('[data-testid="project-target"] .project-target-name').innerText()).includes("Orbit Notes"),
       `Returning from ${space} lost the selected empty workspace`);
     assert(await window.getByTestId("composer-input").inputValue() === "Keep this workspace draft",
       "Returning to an empty workspace lost its draft");
     assert(await window.locator(".thread-row.active").count() === 0,
       "Returning to an empty workspace selected an unrelated thread");
   }
-  await window.locator(".project-picker").click();
-  await window.locator(".project-menu").getByRole("button", { name: /Cleo AI agent.*Cleo-AI-agent/ }).click();
+  await window.getByRole("button", { name: "在 Cleo AI agent 中新建任务" }).click();
   await window.getByTestId("new-thread").click();
   await window.getByTestId("composer-input").fill("Unsent new task");
   await window.getByRole("button", { name: "记忆", exact: true }).click();

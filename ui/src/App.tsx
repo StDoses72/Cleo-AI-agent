@@ -333,8 +333,8 @@ export function App() {
       },
       {
         id: "workspace",
-        label: "新项目",
-        hint: "选择或新建本地文件夹作为工作区",
+        label: "添加项目文件夹",
+        hint: "把本地文件夹作为项目，任务在它的目录里运行",
         icon: commandIcons.code,
         run: () => void workspace.chooseWorkspace().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法打开工作目录", "error")),
       },
@@ -445,7 +445,7 @@ export function App() {
         threads={workspace.snapshot.threads.filter((thread) => thread.projectId !== "productivity:cleo-evolution")}
         activeProjectId={workspace.activeProjectId}
         activeThreadId={workspace.activeThreadId}
-        onSelectProject={workspace.selectProject}
+        onStartThread={(projectId) => workspace.createThread(projectId)}
         onRemoveProject={project => { setRemoveError(null); setProjectPendingRemoval(project); }}
         onSelectThread={workspace.selectThread}
         onDeleteThread={thread => { setDeleteError(null); setThreadPendingDeletion(thread); }}
@@ -489,6 +489,12 @@ export function App() {
           onRename={workspace.renameThread}
           thread={conversationThread}
           project={conversationProject}
+          projects={evolutionOpen ? [] : workspace.snapshot.projects.filter((project) => project.id !== "productivity:cleo-evolution")}
+          activeProjectId={workspace.activeProjectId}
+          onSelectProject={workspace.retargetDraft}
+          onChooseWorkspace={() => void workspace.chooseWorkspace().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法打开工作目录", "error"))}
+          onRemoveProject={project => { setRemoveError(null); setProjectPendingRemoval(project); }}
+          choosingWorkspace={workspace.choosingWorkspace}
           space={!evolutionOpen && workspace.activeSpace === "chat" ? "chat" : "productivity"}
           runtime={activeRuntime}
           runtimeCatalog={workspace.runtimeCatalog}

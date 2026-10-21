@@ -85,42 +85,7 @@
   font-size: var(--font-size-caption);
 }
 
-/* ----- Project picker ----- */
-.project-picker-wrap {
-  position: relative;
-  padding: 0 4px;
-}
-
-.project-picker {
-  display: flex;
-  width: 100%;
-  height: 52px;
-  align-items: center;
-  gap: 10px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  color: var(--text-soft);
-  background: color-mix(in srgb, var(--surface) 55%, transparent);
-  text-align: left;
-  transition: background 140ms ease, border-color 140ms ease;
-}
-
-.project-picker:hover {
-  border-color: var(--border-strong);
-  background: var(--surface);
-}
-
-.project-picker[aria-expanded="true"] {
-  border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
-  background: var(--surface);
-}
-
-.project-picker > svg {
-  flex: 0 0 auto;
-  color: var(--muted-2);
-}
-
+/* ----- Project glyph (shared with the inspector and composer) ----- */
 .project-glyph {
   --project-accent: var(--accent);
   display: grid;
@@ -143,125 +108,141 @@
   font-size: var(--font-size-caption);
 }
 
-.project-picker-copy,
-.project-menu button > span:last-child {
+/* ----- Folder groups: a header and indented rows, nothing boxed ----- */
+.folder-group {
+  margin-top: 2px;
+}
+
+.folder-group-header {
+  position: relative;
   display: flex;
-  min-width: 0;
-  flex: 1;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
 }
 
-.project-picker-copy strong,
-.project-menu strong {
-  overflow: hidden;
-  color: var(--text);
-  font-size: var(--font-size-control);
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.project-picker-copy small,
-.project-menu small {
-  overflow: hidden;
-  color: var(--muted);
-  font-family: var(--font-code);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.project-menu {
-  position: absolute;
-  z-index: 40;
-  top: 58px;
-  right: 4px;
-  left: 4px;
-  padding: 6px;
-  animation: pop-in 140ms ease both;
-}
-
-.project-menu button {
+.folder-group-toggle {
   display: flex;
   width: 100%;
+  min-width: 0;
+  min-height: 32px;
   align-items: center;
-  gap: 10px;
-  padding: 8px;
+  gap: 8px;
+  padding: 5px 10px;
   border-radius: var(--radius-sm);
+  color: var(--text-soft);
+  font-size: var(--font-size-control);
+  font-weight: 600;
   text-align: left;
+  transition: color 120ms ease, background 120ms ease;
 }
 
-.project-menu button:hover {
+.folder-group-toggle:hover {
+  color: var(--text);
   background: var(--surface-hover);
 }
 
-.project-menu-row {
-  display: flex;
-  align-items: stretch;
-  gap: 2px;
+.folder-group-toggle:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--accent) 58%, transparent);
+  outline-offset: -1px;
 }
 
-.project-menu .project-menu-select {
-  min-width: 0;
+.folder-group-toggle > svg {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.folder-group-toggle strong {
+  overflow: hidden;
   flex: 1;
+  font-weight: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.project-menu .project-menu-remove {
-  width: 32px;
-  flex: 0 0 32px;
-  justify-content: center;
-  padding: 0;
+.folder-group-toggle small {
+  overflow: hidden;
+  max-width: 96px;
+  flex: 0 0 auto;
   color: var(--muted-2);
+  font-family: var(--font-code);
+  font-size: 11px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: opacity 120ms ease;
 }
 
-.project-menu .project-menu-remove:hover {
+.folder-group-actions {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: opacity 120ms ease;
+}
+
+.folder-group-header:hover .folder-group-actions,
+.folder-group-header:focus-within .folder-group-actions {
+  opacity: 1;
+}
+
+.folder-group-header:hover .folder-group-toggle small,
+.folder-group-header:focus-within .folder-group-toggle small {
+  opacity: 0;
+}
+
+.folder-group-actions button {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--muted);
+}
+
+.folder-group-actions button:hover {
+  color: var(--text);
+  background: var(--surface-active);
+}
+
+.folder-group-actions .folder-group-remove:hover {
   color: var(--danger);
-  background: color-mix(in srgb, var(--danger) 10%, transparent);
 }
 
-.project-menu .project-menu-action {
-  margin-bottom: 6px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--border);
-  border-radius: 0;
+/* Indentation is the only cue that a row belongs to the folder above it. */
+.thread-nested {
+  padding-left: 22px;
 }
 
-.project-menu .project-menu-action .project-glyph {
-  color: var(--accent);
-  background: var(--accent-soft);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
+.folder-empty {
+  padding: 5px 10px;
+  color: var(--muted-2);
+  font-size: var(--font-size-caption);
 }
 
-/* ----- Primary actions ----- */
+/* ----- Primary actions: plain rows, like a coding agent's "new chat" entry ----- */
 .new-thread-button {
   display: flex;
-  height: 40px;
-  margin: 12px 4px 6px;
+  height: 36px;
+  margin: 4px 4px 2px;
   align-items: center;
   gap: 9px;
-  padding: 0 12px;
-  border-radius: var(--radius-md);
-  color: var(--accent-ink);
-  background: var(--accent-gradient);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset, 0 6px 16px color-mix(in srgb, var(--accent) 22%, transparent);
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text);
   font-size: var(--font-size-control);
-  font-weight: 650;
+  font-weight: 600;
   text-align: left;
-  transition: filter 140ms ease, transform 140ms ease, box-shadow 140ms ease;
+  transition: background 120ms ease;
 }
 
 .new-thread-button:hover {
-  filter: brightness(1.05);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset, 0 8px 22px color-mix(in srgb, var(--accent) 30%, transparent);
-}
-
-.new-thread-button:active {
-  transform: translateY(1px);
+  background: var(--surface-hover);
 }
 
 .new-thread-button svg {
-  color: inherit;
+  color: var(--text-soft);
 }
 
 .new-thread-button span {
@@ -269,9 +250,13 @@
 }
 
 .new-thread-button kbd {
-  border-color: color-mix(in srgb, var(--accent-ink) 22%, transparent);
-  color: color-mix(in srgb, var(--accent-ink) 78%, transparent);
-  background: color-mix(in srgb, #fff 18%, transparent);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.new-thread-button:hover kbd,
+.new-thread-button:focus-visible kbd {
+  opacity: 1;
 }
 
 .new-project-button {
@@ -280,7 +265,7 @@
   margin: 0 4px 6px;
   align-items: center;
   gap: 9px;
-  padding: 0 12px;
+  padding: 0 10px;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   color: var(--text-soft);
@@ -294,12 +279,23 @@
 }
 
 .new-project-button svg {
-  color: var(--accent);
+  color: var(--muted);
 }
 
 .new-project-button:disabled {
   opacity: 0.6;
   cursor: wait;
+}
+
+/* The folder action sits under the list, like "open project" in a coding agent's sidebar. */
+.sidebar-open-folder {
+  flex: 0 0 auto;
+  margin: 6px 4px 0;
+  color: var(--muted);
+}
+
+.sidebar-open-folder:hover:not(:disabled) {
+  color: var(--text-soft);
 }
 
 /* ----- Search ----- */
@@ -345,63 +341,51 @@
   padding: 0;
 }
 
-/* ----- Thread list ----- */
+/* ----- Thread list: borderless rows ----- */
 .thread-list {
   min-height: 0;
   flex: 1;
   overflow-y: auto;
-  padding: 0 2px 18px 4px;
+  padding: 2px 2px 12px 4px;
 }
 
 .list-section-label {
-  padding: 12px 10px 6px;
+  padding: 14px 10px 4px;
   color: var(--muted-2);
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .thread-row {
   position: relative;
   display: flex;
   width: 100%;
-  margin-bottom: 2px;
-  border-radius: var(--radius-md);
-  color: var(--muted);
-  text-align: left;
-  transition: color 130ms ease, background 130ms ease;
+  align-items: center;
+  border-radius: var(--radius-sm);
+  color: var(--text-soft);
+  transition: color 120ms ease, background 120ms ease;
 }
 
 .thread-row:hover,
 .thread-row:focus-within {
-  color: var(--text-soft);
+  color: var(--text);
   background: var(--surface-hover);
 }
 
 .thread-row.active {
   color: var(--text);
   background: var(--surface-active);
-  box-shadow: inset 0 0 0 1px var(--border);
-}
-
-.thread-row.active::before {
-  position: absolute;
-  top: 12px;
-  bottom: 12px;
-  left: -4px;
-  width: 3px;
-  border-radius: 3px;
-  background: var(--accent);
-  content: "";
 }
 
 .thread-row-select {
   display: flex;
   width: 100%;
   min-width: 0;
-  gap: 10px;
-  padding: 10px 38px 10px 10px;
+  min-height: 32px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 30px 5px 10px;
   color: inherit;
   text-align: left;
 }
@@ -409,31 +393,102 @@
 .thread-row-select:focus-visible {
   outline: 1px solid color-mix(in srgb, var(--accent) 58%, transparent);
   outline-offset: -1px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
+}
+
+.thread-title-line {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+}
+
+.thread-title-line strong {
+  overflow: hidden;
+  flex: 1;
+  color: inherit;
+  font-size: var(--font-size-control);
+  font-weight: 500;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-row.active .thread-title-line strong,
+.thread-row.unread .thread-title-line strong {
+  font-weight: 620;
+}
+
+/* The unsent draft is highlighted like the selected row but is not a saved thread. */
+.thread-row.draft {
+  color: var(--text);
+  background: var(--surface-active);
+}
+
+.thread-row.draft .thread-title-line strong {
+  font-weight: 620;
+}
+
+.thread-meta {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-2);
+  transition: opacity 110ms ease;
+}
+
+.thread-meta svg {
+  color: var(--warning);
+}
+
+.thread-row:hover .thread-meta,
+.thread-row:focus-within .thread-meta {
+  opacity: 0;
+}
+
+.thread-status-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: status-pulse 1.5s ease-in-out infinite;
+}
+
+.thread-unread-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--highlight, var(--accent));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--highlight, var(--accent)) 30%, transparent);
+}
+
+@keyframes status-pulse {
+  50% { opacity: 0.4; box-shadow: 0 0 0 4px var(--accent-soft); }
 }
 
 .thread-delete-button {
   position: absolute;
   z-index: 2;
-  top: 8px;
-  right: 8px;
+  top: 50%;
+  right: 6px;
   display: grid;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   place-items: center;
-  border-radius: 7px;
+  border-radius: 6px;
   color: var(--muted);
-  background: color-mix(in srgb, var(--surface-raised) 94%, transparent);
-  box-shadow: var(--shadow-sm);
   opacity: 0;
-  transform: translateX(3px);
+  transform: translateY(-50%) translateX(3px);
   transition: color 120ms ease, background 120ms ease, opacity 120ms ease, transform 120ms ease;
 }
 
 .thread-row:hover .thread-delete-button,
 .thread-row:focus-within .thread-delete-button {
   opacity: 1;
-  transform: translateX(0);
+  transform: translateY(-50%) translateX(0);
 }
 
 .thread-delete-button:hover {
@@ -446,144 +501,19 @@
   opacity: 0.28;
 }
 
-.thread-row:hover .thread-title-line time,
-.thread-row:focus-within .thread-title-line time {
-  opacity: 0;
-}
-
-.thread-status-dot {
-  width: 7px;
-  height: 7px;
-  flex: 0 0 auto;
-  margin-top: 6px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--muted-2) 60%, transparent);
-}
-
-.thread-row.active .thread-status-dot,
-.thread-row[data-status="completed"] .thread-status-dot {
-  background: var(--muted-2);
-}
-
-.thread-row[data-status="running"] .thread-status-dot {
-  background: var(--accent);
-  animation: status-pulse 1.5s ease-in-out infinite;
-}
-
-.thread-row[data-status="attention"] .thread-status-dot {
-  background: var(--warning);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning) 18%, transparent);
-}
-
-@keyframes status-pulse {
-  50% { opacity: 0.4; box-shadow: 0 0 0 4px var(--accent-soft); }
-}
-
-.thread-copy {
-  display: flex;
-  min-width: 0;
-  flex: 1;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.thread-title-line {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 6px;
-}
-
-.thread-title-line strong {
-  overflow: hidden;
-  flex: 1;
-  color: inherit;
-  font-size: var(--font-size-control);
-  font-weight: 560;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.thread-row.active .thread-title-line strong {
-  font-weight: 620;
-}
-
-.thread-title-line time {
-  overflow: hidden;
-  max-width: 72px;
-  flex: 0 0 auto;
-  color: var(--muted-2);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  transition: opacity 110ms ease;
-}
-
-.thread-summary {
-  overflow: hidden;
+.thread-more {
+  display: block;
+  width: 100%;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
   color: var(--muted);
   font-size: var(--font-size-caption);
-  line-height: 1.4;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-align: left;
 }
 
-.thread-tags {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 6px;
-  margin-top: 3px;
-}
-
-.thread-harness {
-  display: inline-flex;
-  align-items: center;
-  max-width: 140px;
-  padding: 1px 7px;
-  border-radius: var(--radius-pill);
-  color: var(--muted);
-  background: color-mix(in srgb, var(--surface-active) 70%, transparent);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.thread-row.unread .thread-title-line strong {
-  color: var(--text);
-  font-weight: 700;
-}
-
-.thread-row.unread .thread-status-dot {
-  background: var(--highlight, var(--accent));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--highlight, var(--accent)) 30%, transparent);
-}
-
-.thread-status-label.unread {
-  color: var(--highlight-ink, var(--accent));
-  background: var(--highlight, var(--accent-soft));
-}
-
-.thread-status-label {
-  display: inline-flex;
-  width: fit-content;
-  align-items: center;
-  gap: 4px;
-  padding: 1px 7px;
-  border-radius: var(--radius-pill);
-  color: var(--accent);
-  background: var(--accent-soft);
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.thread-status-label.attention {
-  color: var(--warning);
-  background: color-mix(in srgb, var(--warning) 12%, transparent);
+.thread-more:hover {
+  color: var(--text-soft);
+  background: var(--surface-hover);
 }
 
 .sidebar-empty,
