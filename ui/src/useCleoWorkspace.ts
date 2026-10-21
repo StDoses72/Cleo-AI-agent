@@ -278,6 +278,19 @@ export function useCleoWorkspace(evolutionOpen = false) {
     };
   }, [activeSpace, activeProject, activeProjectId, activeThreadId]);
 
+  // The displayed permissions and create_thread payload share the same native values.
+  const draftPermissionUpdate = useMemo(() => {
+    const provider = runtimeCatalog?.productivityProviders.find(candidate => candidate.id === draftProvider);
+    const chosen = draftPermissions?.provider === provider?.id ? draftPermissions : null;
+    const fallback = provider?.permissionOptions?.presets?.[0]?.update;
+    const access = chosen?.access ?? fallback?.access ?? provider?.permissionOptions?.access[0]?.value;
+    const approval = chosen?.approval ?? fallback?.approval ?? provider?.permissionOptions?.approval[0]?.value;
+    return {
+      ...(provider?.type === "codex_sdk" && access ? { access } : {}),
+      ...(approval ? { approval } : {}),
+    };
+  }, [draftPermissions, draftProvider, runtimeCatalog]);
+
   const draftRuntime = useMemo<RuntimeProfile>(() => {
     if (activeSpace === "chat") {
       const profile = runtimeCatalog?.nonProductivityProfiles.find(
@@ -297,22 +310,19 @@ export function useCleoWorkspace(evolutionOpen = false) {
     const provider = runtimeCatalog?.productivityProviders.find(
       (candidate) => candidate.id === draftProvider,
     );
-    // The draft shows the provider's first preset until the user picks another one.
-    const chosen = draftPermissions?.provider === provider?.id ? draftPermissions : null;
-    const fallback = provider?.permissionOptions?.presets?.[0]?.update;
     return {
       provider: (provider?.id ?? draftProvider) || "选择 SDK / ACP",
       model: draftModel || provider?.defaultModel || "选择模型",
       effort: draftEffort,
       serviceTier: provider?.type === "codex_sdk" ? draftServiceTier : null,
       supportsFastMode: provider?.type === "codex_sdk",
-      access: chosen?.access ?? fallback?.access ?? "workspace-write",
-      approval: chosen?.approval ?? fallback?.approval ?? "default",
+      access: draftPermissionUpdate.access ?? "default",
+      approval: draftPermissionUpdate.approval ?? "default",
       permissionOptions: provider?.permissionOptions,
       contextWindow: 128000,
       editable: false,
     };
-  }, [activeSpace, draftEffort, draftPermissions, draftServiceTier, draftModel, draftProfileId, draftProvider, runtimeCatalog]);
+  }, [activeSpace, draftEffort, draftPermissionUpdate, draftServiceTier, draftModel, draftProfileId, draftProvider, runtimeCatalog]);
 
   /** Purpose: Remember the permission preset for the draft so its task starts with it.
    * Input: the selector's update (preset values and the provider it belongs to).
@@ -645,9 +655,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
             model: draftModel || undefined,
             effort: draftEffort ?? undefined,
             serviceTier: draftRuntime.supportsFastMode ? draftServiceTier : undefined,
-            // Only an explicit choice travels; otherwise the harness keeps its own default.
-            ...(draftPermissions && draftPermissions.provider === (draftProvider || runtimeCatalog?.defaultProductivityProvider)
-              ? { access: draftPermissions.access, approval: draftPermissions.approval } : {}),
+            ...draftPermissionUpdate,
           },
     );
     if (!project) {
@@ -709,7 +717,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
     return result.thread;
   };
 
-  /** Purpose: Register a selected folder and open its empty composer without launching a model.
+  /** Purpose: Register a selected folder and carry the unsent draft into its composer.
    * Input: Native directory selection. Output: Registered workspace; cancellation keeps selection.
    * A late dialog result must not replace a task the user selected in the meantime.
    */
@@ -728,10 +736,14 @@ export function useCleoWorkspace(evolutionOpen = false) {
         throw new Error("文件夹已添加，但无法定位项目，请在项目列表中选择。");
       }
       if (selectionRef.current === selection) {
-        selectionRef.current += 1;
-        setActiveSpace(space);
-        setActiveProjectId(projectId);
-        setActiveThreadId(null);
+        if (activeThreadId === null && activeSpace !== "memory" && !evolutionOpen) {
+          retargetDraft(projectId);
+        } else {
+          selectionRef.current += 1;
+          setActiveSpace(space);
+          setActiveProjectId(projectId);
+          setActiveThreadId(null);
+        }
       }
       return projectPath;
     } finally {

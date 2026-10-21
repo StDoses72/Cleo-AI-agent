@@ -23,6 +23,7 @@ try {
     const control = window.projectTest = { calls: [], picked: null, picks: 0, fail: false, hold: false, release: null };
     window.cleoDesktop = {
       pickWorkspace: async () => { control.picks++; return control.picked; },
+      pickAttachments: async () => [{ name: "draft.txt", path: "C:\\fixtures\\draft.txt", mimeType: "text/plain", size: 4 }],
       request: async (method, params = {}) => {
         control.calls.push({ method, params });
         if (method === "load_workspace") return structuredClone(fixture);
@@ -113,9 +114,25 @@ try {
     "Slow folder registration stole navigation");
 
   await page.getByTestId("new-thread").click();
+  await composer.fill("添加项目时保留的草稿");
+  await page.getByRole("button", { name: "添加附件", exact: true }).click();
+  await page.getByRole("button", { name: "移除 draft.txt", exact: true }).waitFor();
+  await page.evaluate(() => { window.projectTest.hold = true; });
+  await addProject();
+  await page.waitForFunction(() => Boolean(window.projectTest.release));
+  await composer.fill("等待添加项目时继续编辑的草稿");
+  await page.evaluate(() => { window.projectTest.hold = false; window.projectTest.release(); });
+  await settled();
+  assert.equal(await targetName.innerText(), "新建项目");
+  assert.equal(await composer.inputValue(), "等待添加项目时继续编辑的草稿");
+  await page.getByRole("button", { name: "移除 draft.txt", exact: true }).waitFor();
+  // Moving again carries the current draft, including onto a project that had an older draft.
+  await target.click();
+  await page.getByRole("menuitemradio", { name: originalProject, exact: true }).click();
+  assert.equal(await composer.inputValue(), "等待添加项目时继续编辑的草稿");
   await addProject(); await settled();
   assert.equal(await targetName.innerText(), "新建项目");
-  assert.equal(await composer.inputValue(), "");
+  assert.equal(await composer.inputValue(), "等待添加项目时继续编辑的草稿");
   if (process.env.CLEO_SMOKE_OUTPUT) await page.screenshot({ path: join(process.env.CLEO_SMOKE_OUTPUT, "project-workspaces.png") });
   // The draft's permission preset is applied when the task is created, not after a first turn.
   await page.getByTestId("permission-selector").selectOption("full");
@@ -128,7 +145,7 @@ try {
   assert.equal(created.provider, "claude", "the draft keeps the harness of the thread it was started from");
   assert.deepEqual([created.access, created.approval], [undefined, "bypassPermissions"]);
   assert.deepEqual(errors, []);
-  console.log("PASS: quick empty task, draft moves between projects, cancellation preserves draft, failure recovery, busy picker, late response isolation, canonical project selection, draft permissions and new session working directory");
+  console.log("PASS: project selection and registration carry draft text, edits and attachments; cancellation, failure recovery, late response isolation, canonical project selection and draft permissions");
 } finally {
   await browser?.close(); await server.close();
   assert.equal(dirname(scratch), resolve(tmpdir()));
