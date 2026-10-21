@@ -92,6 +92,7 @@
   .composer-tools { flex-wrap: wrap; flex: 1; }
   .composer .runtime-selector { position: static; min-width: 0; max-width: 100%; }
   .runtime-selector-trigger { max-width: 145px; }
-  .composer .runtime-menu { left: auto; right: 12px; bottom: calc(100% + 8px); width: calc(100% - 24px); max-width: 300px; max-height: max(80px, calc(100cqh - var(--composer-clearance) - 20px)); display: flex; flex-direction: column; }
+  /* Narrow panes anchor the menu to the composer instead of the pill, still rising from the pill's row. */
+  .composer .runtime-menu { left: 12px; right: auto; bottom: 40px; width: calc(100% - 24px); max-width: 300px; max-height: max(80px, calc(100cqh - var(--composer-clearance) - 60px)); display: flex; flex-direction: column; }
   .runtime-menu-list { min-height: 0; }
 }
