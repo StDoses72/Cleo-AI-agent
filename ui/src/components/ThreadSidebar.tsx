@@ -1,6 +1,6 @@
 import { modifierKey } from "../platform";
 import { harnessLabel, isGeneralProject, projectLabel, projectsInSpace } from "../runtime-labels";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Brain,
   CircleAlert,
@@ -190,19 +190,6 @@ export function ThreadSidebar({
           </label>
 
           <div className="thread-list" data-testid="thread-list">
-            {draftIsLoose ? <DraftRow noun={noun} /> : null}
-            <ThreadRows
-              id="loose"
-              threads={loose}
-              limit={searching ? Infinity : TOP_LIMIT}
-              expanded={expanded}
-              onExpand={(id) => setExpanded((current) => [...current, id])}
-              activeThreadId={activeThreadId}
-              unreadThreadIds={unreadThreadIds}
-              onSelectThread={onSelectThread}
-              onDeleteThread={onDeleteThread}
-            />
-            {folders.length ? <div className="list-section-label">文件夹</div> : null}
             {folders.map((group) => {
               const label = projectLabel(group.project);
               const open = searching || !collapsed.includes(group.project.id);
@@ -267,6 +254,20 @@ export function ThreadSidebar({
                 </section>
               );
             })}
+            {/* Folder-less work sits under the folders; the label only separates it from them. */}
+            {folders.length && (loose.length || draftIsLoose) ? <div className="list-section-label">未绑定文件夹</div> : null}
+            {draftIsLoose ? <DraftRow noun={noun} /> : null}
+            <ThreadRows
+              id="loose"
+              threads={loose}
+              limit={searching ? Infinity : TOP_LIMIT}
+              expanded={expanded}
+              onExpand={(id) => setExpanded((current) => [...current, id])}
+              activeThreadId={activeThreadId}
+              unreadThreadIds={unreadThreadIds}
+              onSelectThread={onSelectThread}
+              onDeleteThread={onDeleteThread}
+            />
             {nothing ? (
               <div className="sidebar-empty">
                 <FileClock size={20} />
@@ -289,13 +290,14 @@ export function ThreadSidebar({
   );
 }
 
-/** The unsent draft reads as the row it is about to become. */
+/** The unsent draft reads as the row it is about to become; it scrolls into view so a draft
+ * parked below long folders is never out of sight. */
 function DraftRow({ noun }: { noun: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => { ref.current?.scrollIntoView({ block: "nearest" }); }, []);
   return (
-    <div className="thread-row draft" aria-current="true" data-testid="draft-row">
-      <span className="thread-row-select">
-        <span className="thread-title-line"><strong>{`未发送的${noun}`}</strong></span>
-      </span>
+    <div className="thread-draft-row" aria-current="true" data-testid="draft-row" ref={ref}>
+      <span className="thread-title-line"><strong>{`未发送的${noun}`}</strong></span>
     </div>
   );
 }
@@ -360,7 +362,8 @@ function ThreadRow({
 }) {
   const harness = harnessLabel(thread.runtime, thread.space);
   const status = thread.waitingFor ? "attention" : thread.status;
-  const hint = [thread.summary, harness, thread.updatedAt].filter(Boolean).join(" · ");
+  const hint = [thread.summary, thread.runtime?.model
+    ? `${thread.runtime.provider} · ${thread.runtime.model}` : harness, thread.updatedAt].filter(Boolean).join(" · ");
   const stateLabel = thread.waitingFor === "approval" ? "等待审批"
     : thread.waitingFor === "question" ? "等待回答"
     : thread.status === "running" ? "运行中"
@@ -375,6 +378,7 @@ function ThreadRow({
       <button className="thread-row-select" type="button" onClick={onClick} title={hint}
         aria-label={stateLabel ? `${thread.title}（${stateLabel}）` : undefined}>
         <span className="thread-title-line"><strong>{thread.title}</strong></span>
+        {/* Status sits before the harness so every harness label lines up at the right edge. */}
         {stateLabel ? (
           <span className="thread-meta" title={stateLabel}>
             {status === "running" ? <span className="thread-status-dot" />
@@ -382,6 +386,7 @@ function ThreadRow({
               : <span className="thread-unread-dot" />}
           </span>
         ) : null}
+        {harness ? <small className="thread-harness">{harness}</small> : null}
       </button>
       <button
         className="thread-delete-button"

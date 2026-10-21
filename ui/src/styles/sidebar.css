@@ -420,13 +420,39 @@
 }
 
 /* The unsent draft is highlighted like the selected row but is not a saved thread. */
-.thread-row.draft {
+.thread-draft-row {
+  display: flex;
+  width: 100%;
+  min-height: 32px;
+  align-items: center;
+  margin-bottom: 1px;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
   color: var(--text);
   background: var(--surface-active);
 }
 
-.thread-row.draft .thread-title-line strong {
+.thread-draft-row .thread-title-line strong {
   font-weight: 620;
+}
+
+/* The harness a thread last used, as quiet text; it yields to the delete action on hover. */
+.thread-harness {
+  overflow: hidden;
+  max-width: 96px;
+  flex: 0 0 auto;
+  color: var(--muted-2);
+  font-family: var(--font-code);
+  font-size: 11px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: opacity 110ms ease;
+}
+
+.thread-row:hover .thread-harness,
+.thread-row:focus-within .thread-harness {
+  opacity: 0;
 }
 
 .thread-meta {
