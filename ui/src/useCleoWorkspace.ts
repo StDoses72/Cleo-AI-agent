@@ -28,6 +28,7 @@ import type {
 } from "./types";
 import { visiblePrompt } from "./visible-prompt";
 import { projectsInSpace } from "./runtime-labels";
+import { nextPendingSwitch, runtimeWithPendingSwitch, type PendingHarnessSwitch } from "./harness-handoff";
 
 function currentTime() {
   return new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
@@ -145,6 +146,17 @@ export function useCleoWorkspace(evolutionOpen = false) {
   const [drafts, setDrafts] = useState<Record<string, ComposerDraft>>({});
   const [harnessSwitches, setHarnessSwitches] = useState<Record<string, string>>({});
   const harnessSwitchRef = useRef(new Set<string>());
+  // A harness picked for an existing task waits here; sendPrompt hands it off with the next message.
+  const [pendingSwitches, setPendingSwitches] = useState<Record<string, PendingHarnessSwitch>>({});
+  const pendingSwitchesRef = useRef<Record<string, PendingHarnessSwitch>>({});
+  const setPendingSwitch = (threadId: string, pending: PendingHarnessSwitch | null) => {
+    const next = { ...pendingSwitchesRef.current };
+    if (pending) next[threadId] = pending;
+    else delete next[threadId];
+    pendingSwitchesRef.current = next;
+    setPendingSwitches(next);
+  };
+  const pendingHarnessSwitch = activeThreadId ? pendingSwitches[activeThreadId] ?? null : null;
   const harnessSwitchTarget = activeThreadId ? harnessSwitches[activeThreadId] : undefined;
   const harnessSwitchStatus = harnessSwitchTarget
     ? running
@@ -323,6 +335,11 @@ export function useCleoWorkspace(evolutionOpen = false) {
       editable: false,
     };
   }, [activeSpace, draftEffort, draftPermissionUpdate, draftServiceTier, draftModel, draftProfileId, draftProvider, runtimeCatalog]);
+
+  // What the pill and card show for the active task: its live runtime, or the pick awaiting handoff.
+  const activeThreadRuntime = useMemo(() => activeThread?.runtime
+    ? runtimeWithPendingSwitch(activeThread.runtime, pendingHarnessSwitch, runtimeCatalog)
+    : activeThread?.runtime, [activeThread?.runtime, pendingHarnessSwitch, runtimeCatalog]);
 
   /** Purpose: Remember the permission preset for the draft so its task starts with it.
    * Input: the selector's update (preset values and the provider it belongs to).
@@ -613,10 +630,10 @@ export function useCleoWorkspace(evolutionOpen = false) {
       setDraftProfileId(runtimeCatalog.defaultNonProductivityProfile);
     }
     if (activeThread?.space === "productivity") {
-      setDraftProvider(activeThread.runtime?.provider ?? draftProvider);
-      setDraftModel(activeThread.runtime?.model ?? draftModel);
-      setDraftEffort(activeThread.runtime?.effort ?? draftEffort);
-      setDraftServiceTier(activeThread.runtime?.serviceTier ?? "default");
+      setDraftProvider(activeThreadRuntime?.provider ?? draftProvider);
+      setDraftModel(activeThreadRuntime?.model ?? draftModel);
+      setDraftEffort(activeThreadRuntime?.effort ?? draftEffort);
+      setDraftServiceTier(activeThreadRuntime?.serviceTier ?? "default");
       // The next task inherits the permissions of the one on screen, like its model.
       if (activeThread.runtime && activeThread.projectId !== EVOLUTION_PROJECT) {
         setDraftPermissionsState({
@@ -793,6 +810,39 @@ export function useCleoWorkspace(evolutionOpen = false) {
     }
 
     const threadId = thread.id;
+    // A harness picked for this task is handed off now, right before the message it was picked for.
+    // A failed handoff leaves the task on its live harness with the draft untouched.
+    const pendingSwitch = pendingSwitchesRef.current[threadId];
+    if (pendingSwitch) {
+      harnessSwitchRef.current.add(threadId);
+      setHarnessSwitches(current => ({ ...current, [threadId]: pendingSwitch.provider }));
+      try {
+        let runtime = await cleoClient.switchHarness(
+          threadId, pendingSwitch.provider, pendingSwitch.model, pendingSwitch.effort ?? undefined,
+        );
+        if (pendingSwitch.serviceTier && runtime.supportsFastMode) {
+          runtime = await cleoClient.updateRuntime(threadId, { serviceTier: pendingSwitch.serviceTier })
+            .catch(() => runtime);
+        }
+        setPendingSwitch(threadId, null);
+        updateThread(threadId, current => ({ ...current, runtime, skills: [] }));
+        void refreshSkills(thread, pendingSwitch.provider);
+      } catch (error) {
+        setPendingSwitch(threadId, null);
+        updateDraft(sourceDraftKey, (current) => ({
+          ...current,
+          error: error instanceof Error ? error.message : "切换失败，原会话可继续使用。",
+        }));
+        if (runLocks.current.get(lockKey) === token) runLocks.current.delete(lockKey);
+        setStartingKeys(keys => keys.filter(key => key !== lockKey));
+        return;
+      } finally {
+        harnessSwitchRef.current.delete(threadId);
+        setHarnessSwitches(current => {
+          const next = { ...current }; delete next[threadId]; return next;
+        });
+      }
+    }
     const canNavigate = () => selectionRef.current === selection
       && viewRef.current === evolutionOpen && thread.projectId !== EVOLUTION_PROJECT;
     if (lockKey !== threadId) runLocks.current.delete(lockKey);
@@ -1195,6 +1245,16 @@ export function useCleoWorkspace(evolutionOpen = false) {
   };
 
   const updateRuntime = (update: RuntimeUpdate) => {
+    const pendingSwitch = activeThreadId ? pendingSwitchesRef.current[activeThreadId] : undefined;
+    if (activeThreadId && pendingSwitch && (update.effort || update.serviceTier)) {
+      // Effort and speed for a harness that has not been handed off yet travel with the handoff.
+      setPendingSwitch(activeThreadId, {
+        ...pendingSwitch,
+        ...(update.effort ? { effort: update.effort } : {}),
+        ...(update.serviceTier ? { serviceTier: update.serviceTier } : {}),
+      });
+      return;
+    }
     if (activeSpace === "productivity" && update.serviceTier) {
       setDraftServiceTier(update.serviceTier);
     }
@@ -1272,42 +1332,36 @@ export function useCleoWorkspace(evolutionOpen = false) {
     }
   };
 
-  /** Switch existing tasks in place; new drafts only change their initial selection. */
-  const selectProductivityRuntime = async (provider: string, model: string) => {
+  /** Purpose: Refresh a task's capabilities after a handoff; the timeline and draft stay in place. */
+  const refreshSkills = async (thread: Thread, provider: string) => {
+    const projectPath = snapshotRef.current?.projects.find(project => project.id === thread.projectId)?.path
+      ?? activeProject?.path;
+    try {
+      const skills = await cleoClient.getLocalSkills(provider, projectPath);
+      updateThread(thread.id, current => ({ ...current, skills }));
+    } catch {
+      updateDraft(thread.id, current => ({ ...current,
+        error: "Harness 已切换；技能列表暂时无法读取。",
+      }));
+    }
+  };
+
+  /** Purpose: Record which harness and model a task should use from its next message on.
+   * Input: the picked harness and model. Output: an existing task keeps running on its live
+   * harness and shows the pick as pending; picking the live harness back cancels the pick.
+   * The handoff itself happens in sendPrompt. New drafts only change their initial selection.
+   */
+  const selectProductivityRuntime = (provider: string, model: string) => {
     const selectedModel = productivityModels[provider]?.models.find(
       (candidate) => candidate.id === model,
     );
     if (activeThread?.space === "productivity") {
       const threadId = activeThread.id;
-      if (harnessSwitchRef.current.has(threadId)
-        || (activeThread.runtime?.provider === provider && activeThread.runtime?.model === model)) return;
-      harnessSwitchRef.current.add(threadId);
-      setHarnessSwitches(current => ({ ...current, [threadId]: provider }));
+      if (harnessSwitchRef.current.has(threadId)) return;
+      setPendingSwitch(threadId, nextPendingSwitch(activeThread.runtime, {
+        provider, model, effort: selectedModel?.defaultEffort ?? null,
+      }));
       updateDraft(threadId, current => ({ ...current, error: undefined }));
-      try {
-        const runtime = await cleoClient.switchHarness(
-          threadId, provider, model, selectedModel?.defaultEffort ?? undefined,
-        );
-        updateThread(threadId, current => ({ ...current, runtime, skills: [] }));
-        // Refresh only capabilities; keep the live timeline and unsent draft in place.
-        try {
-          const skills = await cleoClient.getLocalSkills(provider, activeProject?.path);
-          updateThread(threadId, current => ({ ...current, skills }));
-        } catch {
-          updateDraft(threadId, current => ({ ...current,
-            error: "Harness 已切换；技能列表暂时无法读取。",
-          }));
-        }
-      } catch (error) {
-        updateDraft(threadId, current => ({ ...current,
-          error: error instanceof Error ? error.message : "切换失败，原会话可继续使用。",
-        }));
-      } finally {
-        harnessSwitchRef.current.delete(threadId);
-        setHarnessSwitches(current => {
-          const next = { ...current }; delete next[threadId]; return next;
-        });
-      }
       return;
     }
     setDraftProvider(provider);
@@ -1376,6 +1430,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
     const deletedWasActive = activeThreadId === threadId;
     selectionRef.current += 1;
     const refreshed = await refreshWorkspace(() => cleoClient.deleteThread(threadId));
+    setPendingSwitch(threadId, null);
     if (deletedWasActive) {
       const replacement = refreshed.threads.find(
         (thread) =>
@@ -1516,6 +1571,8 @@ export function useCleoWorkspace(evolutionOpen = false) {
     sendError: draft.error || (activeThreadId ? recoveryErrors[activeThreadId] : undefined),
     startingRun,
     harnessSwitchStatus,
+    pendingHarnessSwitch,
+    activeThreadRuntime,
     modelSettings,
     modelSettingsLoading,
     modelSettingsError,

@@ -104,6 +104,8 @@ interface ConversationProps {
   sendBlocked: string | null;
   sendError?: string;
   harnessSwitchStatus?: string | null;
+  /** A harness picked for this task that is handed off with its next message. */
+  pendingHarnessSwitch?: { provider: string; model: string } | null;
   prompt: string;
   onPromptChange: (prompt: string) => void;
   onRename: (name: string) => Promise<void>;
@@ -178,6 +180,7 @@ export function Conversation({
   sendBlocked,
   sendError,
   harnessSwitchStatus,
+  pendingHarnessSwitch,
   prompt,
   onPromptChange,
   onRename,
@@ -430,6 +433,7 @@ export function Conversation({
         sendBlocked={sendBlocked}
         sendError={sendError}
         harnessSwitchStatus={harnessSwitchStatus}
+        pendingHarnessSwitch={pendingHarnessSwitch}
         space={space}
         drafting={!thread}
         projects={projects}
@@ -1149,6 +1153,7 @@ function Composer({
   sendBlocked,
   sendError,
   harnessSwitchStatus,
+  pendingHarnessSwitch,
   space,
   runtime,
   runtimeCatalog,
@@ -1189,6 +1194,7 @@ function Composer({
   | "sendBlocked"
   | "sendError"
   | "harnessSwitchStatus"
+  | "pendingHarnessSwitch"
   | "runtime"
   | "space"
   | "runtimeCatalog"
@@ -1421,7 +1427,10 @@ function Composer({
         </ul> : null}
         {attachmentError ? <div className="attachment-error" role="alert">{attachmentError}</div> : null}
         {harnessSwitchStatus ? <div className="harness-switch-status" role="status">{harnessSwitchStatus}</div> : null}
-        {!harnessSwitchStatus && runtime?.handoffStatus === "prepared" ? <div className="harness-switch-status" role="status">交接已准备，随下一条消息提交</div> : null}
+        {!harnessSwitchStatus && pendingHarnessSwitch ? <div className="harness-switch-status" role="status" data-testid="harness-pending">
+          {`下一条消息将交接到 ${pendingHarnessSwitch.provider} · ${pendingHarnessSwitch.model}；选回当前运行方式可取消`}
+        </div> : null}
+        {!harnessSwitchStatus && !pendingHarnessSwitch && runtime?.handoffStatus === "prepared" ? <div className="harness-switch-status" role="status">交接已准备，随下一条消息提交</div> : null}
         {!harnessSwitchStatus && runtime?.handoffStatus === "submitted" ? <div className="harness-switch-status" role="status">交接已提交但尚未完成首轮，继续前请核对已执行的操作</div> : null}
         {sendError ? <div className="attachment-error" role="alert">{sendError}</div> : null}
         {computerUseSelected && <div className="attachment-row"><span className="attachment-chip computer-use-chip">
@@ -1484,6 +1493,7 @@ function Composer({
               error={runtimeModelsError}
               running={running}
               switching={Boolean(harnessSwitchStatus)}
+              pendingSwitch={Boolean(pendingHarnessSwitch)}
               onSelectProfile={onSelectNonProductivityProfile}
               onLoadModels={onLoadProductivityModels}
               onSelectProductivityRuntime={onSelectProductivityRuntime}
@@ -1496,7 +1506,7 @@ function Composer({
               onServiceTierChange={onServiceTierChange}
             />
             {space === "productivity" && <PermissionSelector key={runtime.provider} runtime={runtime}
-              onChange={onPermissionChange} disabled={Boolean(harnessSwitchStatus)} />}
+              onChange={onPermissionChange} disabled={Boolean(harnessSwitchStatus) || Boolean(pendingHarnessSwitch)} />}
           </div>
           <div className="composer-send-actions">
           {running && (
@@ -1545,6 +1555,7 @@ function RuntimeSelector({
   error,
   running,
   switching,
+  pendingSwitch = false,
   onSelectProfile,
   onLoadModels,
   onSelectProductivityRuntime,
@@ -1564,6 +1575,8 @@ function RuntimeSelector({
   error: string | null;
   running: boolean;
   switching: boolean;
+  /** A harness pick awaits the next message; the pill reads as it will after the handoff. */
+  pendingSwitch?: boolean;
   onSelectProfile: (profileId: string) => void;
   onLoadModels: (provider: string, refresh?: boolean) => Promise<ProductivityModelCatalog>;
   onSelectProductivityRuntime: (provider: string, model: string) => void;
@@ -1643,6 +1656,7 @@ function RuntimeSelector({
         data-testid="runtime-selector"
         data-effort={development ? effort || undefined : undefined}
         data-speed={showSpeed ? serviceTier ?? "" : undefined}
+        data-pending-switch={pendingSwitch ? "true" : undefined}
       >
         <span>{development ? `${runtime.provider} · ` : ""}{runtime.model}</span>
         {effortLabel ? <small className="runtime-selector-extra">{`· ${effortLabel}`}</small> : null}
@@ -1722,7 +1736,7 @@ function RuntimeSelector({
                   <ArrowLeft size={14} />
                 </button>
                 <span>选择运行方式</span>
-                {running && <small>当前轮结束后切换</small>}
+                <small>随下一条消息交接</small>
               </div>
               <div className="runtime-menu-list">
                 {providers.map((provider) => (

@@ -379,7 +379,7 @@ export function App() {
 
   if (!workspace.snapshot) return <><DependencySetup /><LoadingScreen error={workspace.loadingError} onRetry={workspace.retryLoading} /></>;
 
-  const activeRuntime = evolutionOpen && !evolutionThread ? workspace.draftRuntime : workspace.activeThread?.runtime ?? workspace.draftRuntime;
+  const activeRuntime = evolutionOpen && !evolutionThread ? workspace.draftRuntime : workspace.activeThreadRuntime ?? workspace.draftRuntime;
   const selectedThread = evolutionOpen && !evolutionThread ? null : workspace.activeThread;
   const conversationThread = selectedThread;
   const conversationProject: Project | null = evolutionOpen
@@ -483,6 +483,7 @@ export function App() {
           onPromptChange={workspace.setPrompt}
           sendError={workspace.sendError}
           harnessSwitchStatus={workspace.harnessSwitchStatus}
+          pendingHarnessSwitch={evolutionOpen && !evolutionThread ? null : workspace.pendingHarnessSwitch}
           sendBlocked={composerBlocked}
           onRename={workspace.renameThread}
           thread={conversationThread}
