@@ -85,7 +85,9 @@ export function ThreadSidebar({
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<string[]>(readCollapsed);
   const [expanded, setExpanded] = useState<string[]>([]);
+  // Closing a folder forgets its "显示更多", so it reopens on the short list.
   const toggleFolder = (projectId: string) => {
+    if (!collapsed.includes(projectId)) setExpanded((current) => current.filter((id) => id !== projectId));
     setCollapsed((current) => {
       const next = current.includes(projectId)
         ? current.filter((value) => value !== projectId)
@@ -318,9 +320,11 @@ function ThreadRows({
   onSelectThread: (threadId: string) => void;
   onDeleteThread: (thread: Thread) => void;
 }) {
-  // The selected thread is never hidden behind "显示更多".
+  // The selected thread is never hidden behind "显示更多": past the limit it is listed on its
+  // own, after the short list, rather than unfolding every row.
   const activeIndex = threads.findIndex((thread) => thread.id === activeThreadId);
-  const shown = expanded.includes(id) || activeIndex >= limit ? threads : threads.slice(0, limit);
+  const shown = expanded.includes(id) ? threads
+    : activeIndex >= limit ? [...threads.slice(0, limit), threads[activeIndex]] : threads.slice(0, limit);
   return (
     <>
       {shown.map((thread) => (

@@ -79,21 +79,36 @@ try {
   await page.goto(server.resolvedUrls.local[0]);
   await page.getByTestId("composer-input").waitFor();
   const preset = page.getByTestId("permission-selector");
+  const menu = page.getByTestId("permission-menu");
+  const presetValue = () => preset.getAttribute("data-value");
+  const menuClosed = () => page.waitForFunction(() => !document.querySelector('[data-testid="permission-menu"]'));
+  const choose = async value => { await preset.click(); await menu.locator(`[data-testid="permission-option"][data-value="${value}"]`).click(); };
   const presetSettled = () => preset.and(page.locator(":enabled")).waitFor();
-  assert.equal(await preset.inputValue(), "review");
-  await preset.selectOption("full"); await presetSettled();
+  assert.equal(await presetValue(), "review");
+  // The menu opens above the pill and inside the window; Escape and a click elsewhere close it; arrow keys walk it.
+  await preset.click();
+  const [pill, popover] = [await preset.boundingBox(), await menu.boundingBox()];
+  assert.ok(popover.y >= 0 && popover.y + popover.height <= pill.y,
+    `The permission menu must open above the pill (menu ${JSON.stringify(popover)}, pill ${JSON.stringify(pill)})`);
+  assert.equal(await menu.getByRole("menuitemradio", { checked: true }).getAttribute("data-value"), "review");
+  await page.keyboard.press("Escape"); await menuClosed();
+  assert.equal(await presetValue(), "review", "Escape must not change the preset");
+  await preset.click(); await page.getByTestId("composer-input").click(); await menuClosed();
+  await preset.click(); await page.keyboard.press("ArrowDown"); await page.keyboard.press("Enter"); await presetSettled();
+  await menuClosed();
+  assert.equal(await presetValue(), "full", "ArrowDown from 帮我审批 then Enter picks 完全访问");
   assert.deepEqual(await page.evaluate(() => window.permissionTest.calls.at(-1).update),
     { approval: "deny_all", access: "full-access", permissionProvider: "codex" });
-  await preset.selectOption("ask"); await presetSettled();
+  await choose("ask"); await presetSettled();
   assert.deepEqual(await page.evaluate(() => window.permissionTest.calls.at(-1).update),
     { approval: "user", access: "workspace-write", permissionProvider: "codex" });
   await page.evaluate(() => { window.permissionTest.fail = true; });
-  await preset.selectOption("full"); await presetSettled();
-  assert.equal(await preset.inputValue(), "ask", "A rejected mode must not appear effective");
+  await choose("full"); await presetSettled();
+  assert.equal(await presetValue(), "ask", "A rejected mode must not appear effective");
   await page.getByRole("alert").getByText("权限未保存：服务暂时不可用").waitFor();
   await page.evaluate(() => { window.permissionTest.fail = false; window.permissionTest.running = true; });
-  await preset.selectOption("review"); await presetSettled();
-  assert.equal(await preset.inputValue(), "review", "A pending preset is shown as the selected value");
+  await choose("review"); await presetSettled();
+  assert.equal(await presetValue(), "review", "A pending preset is shown as the selected value");
   assert.deepEqual(await page.evaluate(() => {
     const runtime = window.permissionTest.fixture.threads.find(t => t.id === "desktop-ui").runtime;
     return [runtime.approval, runtime.pendingPermissions];
@@ -102,7 +117,7 @@ try {
   assert.match(await preset.getAttribute("title"), /下轮生效 · 当前：请求批准/);
   assert.equal(await page.locator(".permission-selector small").count(), 0);
   await page.evaluate(() => { window.permissionTest.running = false; });
-  await preset.selectOption("review"); await presetSettled();
+  await choose("review"); await presetSettled();
   if (process.env.CLEO_SMOKE_OUTPUT) await page.screenshot({ path: join(process.env.CLEO_SMOKE_OUTPUT, "session-permissions.png") });
   const settings = page.getByRole("dialog", { name: "设置", exact: true });
   const open = async () => {

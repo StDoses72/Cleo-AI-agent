@@ -492,7 +492,6 @@ export function App() {
           activeProjectId={workspace.activeProjectId}
           onSelectProject={workspace.retargetDraft}
           onChooseWorkspace={() => void workspace.chooseWorkspace().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法打开工作目录", "error"))}
-          onRemoveProject={project => { setRemoveError(null); setProjectPendingRemoval(project); }}
           choosingWorkspace={workspace.choosingWorkspace}
           space={!evolutionOpen && workspace.activeSpace === "chat" ? "chat" : "productivity"}
           runtime={activeRuntime}

@@ -480,7 +480,7 @@ function RuntimePermissions({ runtime, threadId, onChange }: {
     finally { inFlight.current = false; setSaving(false); }
   };
   return <>
-    <PermissionSelector key={runtime.provider} runtime={runtime} disabled={saving}
+    <PermissionSelector key={runtime.provider} runtime={runtime} disabled={saving} placement="down"
       onChange={threadId && onChange ? update => onChange(threadId, update) : undefined} />
     {(["access", "approval"] as const).map(field => {
       const title = field === "access" ? "文件访问" : "审批方式";

@@ -81,15 +81,47 @@ try {
   await page.getByTestId("new-thread").click();
   const originalProject = await targetName.innerText();
   await composer.fill("保留的草稿");
-  // Unbinding the folder and binding it again keeps the draft's text; nothing is created until it is sent.
+  // The menu has no "no project" row and no explanatory line under 添加项目…: the selected project
+  // alone carries a clear button, which only unbinds the draft (the project stays listed, nothing is
+  // removed) and keeps the draft's text; nothing is created until it is sent.
+  const menu = page.getByRole("menu", { name: /所属项目/ });
+  const checked = () => menu.getByRole("menuitemradio", { checked: true });
+  const clear = page.getByTestId("project-target-clear");
+  const original = new RegExp(originalProject.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   await target.click();
-  await page.getByRole("menuitemradio", { name: "不关联项目" }).click();
+  assert.equal(await menu.getByRole("menuitemradio", { name: "不关联项目" }).count(), 0, "No standalone 不关联项目 row");
+  assert.equal(await menu.locator(".project-target-open small").count(), 0, "添加项目… carries no explanatory line");
+  assert.equal(await checked().getAttribute("aria-label"), originalProject);
+  assert.equal(await clear.count(), 1, "Only the selected project offers to clear the selection");
+  assert.equal(await menu.getByRole("button", { name: /移除项目/ }).count(), 0, "The picker never removes projects");
+  await clear.click();
   assert.equal(await targetName.innerText(), "不关联项目");
   await page.getByTestId("draft-row").waitFor();
   assert.equal(await composer.inputValue(), "保留的草稿", "Moving the draft lost its text");
+  assert.equal(await page.evaluate(() => window.projectTest.calls.filter(c => c.method === "remove_project").length), 0,
+    "Clearing the selection must not remove the project");
+  assert.equal(await page.getByRole("button", { name: "移除项目", exact: true }).count(), 0, "Clearing must not open the removal dialog");
   await target.click();
-  await page.getByRole("menuitemradio", { name: new RegExp(originalProject.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) }).click();
+  assert.equal(await checked().count(), 0, "Clearing left a project selected");
+  assert.equal(await clear.count(), 0, "Nothing is selected, so nothing offers to clear");
+  await menu.getByRole("menuitemradio", { name: original }).click();
   assert.equal(await targetName.innerText(), originalProject);
+  // Switching projects moves the clear button with the selection; clearing again keeps every project listed.
+  await target.click();
+  assert.equal(await checked().getAttribute("aria-label"), originalProject);
+  await menu.getByRole("menuitemradio", { name: "Orbit Notes", exact: true }).click();
+  assert.equal(await targetName.innerText(), "Orbit Notes");
+  assert.equal(await composer.inputValue(), "保留的草稿");
+  await target.click();
+  assert.equal(await checked().getAttribute("aria-label"), "Orbit Notes");
+  assert.equal(await clear.count(), 1);
+  await clear.click();
+  assert.equal(await targetName.innerText(), "不关联项目");
+  await target.click();
+  assert.equal(await menu.getByRole("menuitemradio").count(), 2, "Both projects remain after clearing");
+  await menu.getByRole("menuitemradio", { name: original }).click();
+  assert.equal(await targetName.innerText(), originalProject);
+  assert.equal(await page.evaluate(() => window.projectTest.calls.filter(c => c.method === "remove_project").length), 0);
   assert.equal(await page.evaluate(() => window.projectTest.picks), 0);
   assert.equal(await page.evaluate(() => window.projectTest.calls.filter(c => c.method === "create_thread").length), 0);
   await addProject(); await settled();
@@ -135,7 +167,8 @@ try {
   assert.equal(await composer.inputValue(), "等待添加项目时继续编辑的草稿");
   if (process.env.CLEO_SMOKE_OUTPUT) await page.screenshot({ path: join(process.env.CLEO_SMOKE_OUTPUT, "project-workspaces.png") });
   // The draft's permission preset is applied when the task is created, not after a first turn.
-  await page.getByTestId("permission-selector").selectOption("full");
+  await page.getByTestId("permission-selector").click();
+  await page.locator('[data-testid="permission-option"][data-value="full"]').click();
   await composer.fill("检查这个工作区");
   await composer.press("Enter");
   await page.waitForFunction(() => window.projectTest.calls.some(c => c.method === "create_thread"));
@@ -145,7 +178,7 @@ try {
   assert.equal(created.provider, "claude", "the draft keeps the harness of the thread it was started from");
   assert.deepEqual([created.access, created.approval], [undefined, "bypassPermissions"]);
   assert.deepEqual(errors, []);
-  console.log("PASS: project selection and registration carry draft text, edits and attachments; cancellation, failure recovery, late response isolation, canonical project selection and draft permissions");
+  console.log("PASS: project selection, clearing and registration carry draft text, edits and attachments; clearing never removes a project; cancellation, failure recovery, late response isolation, canonical project selection and draft permissions");
 } finally {
   await browser?.close(); await server.close();
   assert.equal(dirname(scratch), resolve(tmpdir()));
