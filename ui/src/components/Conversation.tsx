@@ -91,7 +91,6 @@ interface ConversationProps {
   activeProjectId?: string;
   onSelectProject?: (projectId: string) => void;
   onChooseWorkspace?: () => void;
-  onRemoveProject?: (project: Project) => void;
   choosingWorkspace?: boolean;
   space: ThreadSpace;
   runtime: RuntimeProfile;
@@ -167,7 +166,6 @@ export function Conversation({
   activeProjectId,
   onSelectProject,
   onChooseWorkspace,
-  onRemoveProject,
   choosingWorkspace,
   space,
   runtime,
@@ -440,7 +438,6 @@ export function Conversation({
         activeProjectId={activeProjectId}
         onSelectProject={onSelectProject}
         onChooseWorkspace={onChooseWorkspace}
-        onRemoveProject={onRemoveProject}
         choosingWorkspace={choosingWorkspace}
         runtime={runtime}
         runtimeCatalog={runtimeCatalog}
@@ -1147,7 +1144,6 @@ function Composer({
   activeProjectId = "",
   onSelectProject,
   onChooseWorkspace,
-  onRemoveProject,
   choosingWorkspace = false,
   onPromptChange: setPrompt,
   sendBlocked,
@@ -1231,7 +1227,6 @@ function Composer({
   | "activeProjectId"
   | "onSelectProject"
   | "onChooseWorkspace"
-  | "onRemoveProject"
   | "choosingWorkspace"
 > & { steerReady?: boolean; drafting?: boolean }) {
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
@@ -1430,7 +1425,6 @@ function Composer({
         {!harnessSwitchStatus && pendingHarnessSwitch ? <div className="harness-switch-status" role="status" data-testid="harness-pending">
           {`下一条消息将交接到 ${pendingHarnessSwitch.provider} · ${pendingHarnessSwitch.model}；选回当前运行方式可取消`}
         </div> : null}
-        {!harnessSwitchStatus && !pendingHarnessSwitch && runtime?.handoffStatus === "prepared" ? <div className="harness-switch-status" role="status">交接已准备，随下一条消息提交</div> : null}
         {!harnessSwitchStatus && runtime?.handoffStatus === "submitted" ? <div className="harness-switch-status" role="status">交接已提交但尚未完成首轮，继续前请核对已执行的操作</div> : null}
         {sendError ? <div className="attachment-error" role="alert">{sendError}</div> : null}
         {computerUseSelected && <div className="attachment-row"><span className="attachment-chip computer-use-chip">
@@ -1472,7 +1466,6 @@ function Composer({
                   choosing={choosingWorkspace}
                   onSelect={onSelectProject}
                   onChooseWorkspace={onChooseWorkspace}
-                  onRemoveProject={onRemoveProject}
                 />
                 <span className="composer-divider" />
               </>

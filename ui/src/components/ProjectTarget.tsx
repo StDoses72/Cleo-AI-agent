@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Check, ChevronDown, FolderMinus, FolderOpen, FolderPlus, Trash2 } from "lucide-react";
+import { Check, ChevronDown, FolderMinus, FolderOpen, FolderPlus, X } from "lucide-react";
 import { isGeneralProject, projectLabel, projectPathLabel, projectsInSpace } from "../runtime-labels";
 import type { Project, ThreadSpace } from "../types";
 
@@ -11,15 +11,16 @@ interface ProjectTargetProps {
   choosing?: boolean;
   onSelect: (projectId: string) => void;
   onChooseWorkspace: () => void;
-  onRemoveProject?: (project: Project) => void;
 }
 
 /** Purpose: Show, and let the user change, which project an unsent draft belongs to.
  * Input: the space's projects and the draft's current project. Output: a pill in the composer
- * that reads 不关联项目 until a project is chosen; the menu offers that, every project, and
- * adding a project from a local folder. A standalone draft is not a project of its own in
- * the interface: the backend keeps those threads in its general project, which never appears
- * here by name. Existing threads keep their project, so the pill only renders while drafting.
+ * that reads 不关联项目 until a project is chosen; the menu lists every real project and
+ * adding one from a local folder. "No project" has no row of its own: it is simply the state
+ * where nothing in the list is selected, and the selected project carries a clear button that
+ * returns the draft to it. The backend keeps folder-less threads in its general project, which
+ * never appears here by name; this menu never removes a project, only the draft's link to it.
+ * Existing threads keep their project, so the pill only renders while drafting.
  */
 export function ProjectTarget({
   space,
@@ -29,7 +30,6 @@ export function ProjectTarget({
   choosing = false,
   onSelect,
   onChooseWorkspace,
-  onRemoveProject,
 }: ProjectTargetProps) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -50,11 +50,11 @@ export function ProjectTarget({
   }, [open]);
 
   const ordered = projectsInSpace(projects, space);
-  const active = ordered.find((project) => project.id === activeProjectId)
-    ?? ordered.find(isGeneralProject) ?? ordered[0];
+  const general = ordered.find(isGeneralProject);
+  const active = ordered.find((project) => project.id === activeProjectId) ?? general ?? ordered[0];
   const noFolder = !active || isGeneralProject(active);
+  const listed = ordered.filter((project) => !isGeneralProject(project));
   const noun = space === "chat" ? "对话" : "任务";
-  const optionLabel = (project: Project) => (isGeneralProject(project) ? "不关联项目" : projectLabel(project));
 
   return (
     <div className="project-target-wrap" ref={wrapRef}>
@@ -77,9 +77,8 @@ export function ProjectTarget({
       {open ? (
         <div className="project-target-menu surface-popover" role="menu" aria-label={`选择${noun}所属项目`}>
           <div className="project-target-heading">{`${noun}属于哪个项目`}</div>
-          {ordered.map((project) => {
-            const selected = project.id === active?.id;
-            const general = isGeneralProject(project);
+          {listed.map((project) => {
+            const selected = !noFolder && project.id === active?.id;
             return (
               <div className="project-target-row" key={project.id}>
                 <button
@@ -87,33 +86,34 @@ export function ProjectTarget({
                   type="button"
                   role="menuitemradio"
                   aria-checked={selected}
-                  aria-label={optionLabel(project)}
+                  aria-label={projectLabel(project)}
                   onClick={() => {
                     setOpen(false);
                     onSelect(project.id);
                   }}
                 >
-                  <span className={`project-glyph compact ${general ? "plain" : ""}`} style={{ "--project-accent": project.accent } as CSSProperties}>
-                    {general ? <FolderMinus size={12} /> : projectLabel(project).slice(0, 1)}
+                  <span className="project-glyph compact" style={{ "--project-accent": project.accent } as CSSProperties}>
+                    {projectLabel(project).slice(0, 1)}
                   </span>
                   <span className="project-target-copy">
-                    <strong>{optionLabel(project)}</strong>
-                    <small>{general ? `独立${noun}：一次性脚本、探索和提问` : projectPathLabel(project)}</small>
+                    <strong>{projectLabel(project)}</strong>
+                    <small>{projectPathLabel(project)}</small>
                   </span>
                   {selected ? <Check size={14} /> : null}
                 </button>
-                {onRemoveProject && project.removable ? (
+                {selected && general ? (
                   <button
-                    className="project-target-remove"
+                    className="project-target-clear"
                     type="button"
-                    aria-label={`移除项目 ${projectLabel(project)}`}
-                    title="移除项目（不删除本地文件）"
+                    aria-label={`取消关联项目 ${projectLabel(project)}`}
+                    title={`取消关联，${noun}改为不关联项目（项目保留在列表中）`}
                     onClick={() => {
                       setOpen(false);
-                      onRemoveProject(project);
+                      onSelect(general.id);
                     }}
+                    data-testid="project-target-clear"
                   >
-                    <Trash2 size={13} />
+                    <X size={13} />
                   </button>
                 ) : null}
               </div>
@@ -133,7 +133,6 @@ export function ProjectTarget({
             <span className="project-glyph compact"><FolderPlus size={13} /></span>
             <span className="project-target-copy">
               <strong>{choosing ? "正在选择文件夹…" : "添加项目…"}</strong>
-              <small>{space === "chat" ? "选择一个目录来归档对话和记忆" : "选择本地文件夹作为项目，任务在它的目录里运行"}</small>
             </span>
           </button>
         </div>

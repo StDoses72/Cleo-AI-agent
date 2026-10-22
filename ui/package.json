@@ -24,7 +24,7 @@
     "smoke:update-settings": "node tests/update-settings.smoke.mjs",
     "smoke:permissions": "node tests/runtime-permissions.smoke.mjs && node tests/draft-permissions.smoke.mjs",
     "smoke:evolution-workspace": "node tests/evolution-workspace.smoke.mjs && node tests/evolution-monitor.smoke.mjs",
-    "smoke:projects": "node tests/project-workspaces.smoke.mjs",
+    "smoke:projects": "node tests/project-workspaces.smoke.mjs && node tests/sidebar-folders.smoke.mjs",
     "smoke:steering": "node tests/steering.smoke.mjs",
     "smoke:timing": "node tests/timing.smoke.mjs",
     "smoke:evolution-ui": "node tests/evolution-overview.smoke.mjs && node tests/contribution-merge.smoke.mjs && node tests/interaction-ui.smoke.mjs && node tests/behavior-review.smoke.mjs",

@@ -76,12 +76,18 @@ try {
       }, { fixture: snapshot, providers, provider, inherited });
       await page.goto(server.resolvedUrls.local[0]);
       const input = page.getByTestId("composer-input");
+      const permission = page.getByTestId("permission-selector");
+      const permissionValue = () => permission.getAttribute("data-value");
+      const choosePermission = async value => {
+        await permission.click();
+        await page.locator(`[data-testid="permission-option"][data-value="${value}"]`).click();
+      };
       await input.waitFor();
       if (inherited) await page.getByTestId("new-thread").click();
       if (provider.type === "codex_sdk") {
-        assert.equal(await page.getByTestId("permission-selector").inputValue(), inherited ? "full" : "ask");
+        assert.equal(await permissionValue(), inherited ? "full" : "ask");
       } else if (provider.type === "claude_sdk") {
-        assert.equal(await page.getByTestId("permission-selector").inputValue(), inherited ? "custom" : "ask");
+        assert.equal(await permissionValue(), inherited ? "custom" : "ask");
       }
       const send = async () => {
         const before = await page.evaluate(() => window.draftPermissionTest.calls.length);
@@ -99,19 +105,19 @@ try {
       // Every visible preset is sent using its native values, including after a harness switch.
       for (const preset of provider.permissionOptions.presets ?? []) {
         await page.getByTestId("new-thread").click();
-        await page.getByTestId("permission-selector").selectOption(preset.value);
+        await choosePermission(preset.value);
         const created = await send();
         assert.deepEqual([created.access, created.approval], [preset.update.access, preset.update.approval]);
       }
       if (provider.type === "codex_sdk") {
         await page.getByTestId("new-thread").click();
-        await page.getByTestId("permission-selector").selectOption("full");
+        await choosePermission("full");
         await page.getByTestId("runtime-selector").click();
         await page.getByTestId("runtime-model-row").click();
         await page.getByTestId("runtime-menu").getByRole("button", { name: /^custom-claude/ }).click();
         await page.getByRole("button", { name: /^Test model/ }).click();
         await page.keyboard.press("Escape");
-        assert.equal(await page.getByTestId("permission-selector").inputValue(), "ask");
+        assert.equal(await permissionValue(), "ask");
         const switched = await send();
         assert.deepEqual([switched.provider, switched.access, switched.approval], ["custom-claude", undefined, "default"]);
       }
