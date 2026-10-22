@@ -89,7 +89,14 @@ export function PermissionSelector({ runtime, onChange, disabled = false, placem
       : (index + (event.key === "ArrowDown" ? 1 : -1) + options.length) % options.length;
     options[next].focus();
   };
-  return <div className="permission-selector" ref={wrapRef}>
+  return <div className="permission-selector" ref={wrapRef} onKeyDown={event => {
+    if (!open || event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+    setOpen(false);
+    triggerRef.current?.focus();
+  }}>
     <button className="text-control permission-selector-trigger" type="button" ref={triggerRef}
       aria-label="会话权限" aria-haspopup="menu" aria-expanded={open} data-testid="permission-selector"
       data-value={current?.value ?? "custom"}

@@ -128,6 +128,28 @@ try {
   const approval = settings.getByLabel("审批方式", { exact: true });
   const settled = () => access.and(page.locator(":enabled")).waitFor();
   await open();
+  // Escape dismisses only the nested permission menu; a second Escape closes settings.
+  const settingsPreset = settings.getByTestId("permission-selector");
+  const callsBeforeEscape = await page.evaluate(() => window.permissionTest.calls.length);
+  const valueBeforeEscape = await settingsPreset.getAttribute("data-value");
+  await settingsPreset.click();
+  await settings.getByTestId("permission-menu").waitFor();
+  await settings.getByRole("menuitemradio", { checked: true }).dispatchEvent("keydown", {
+    key: "Escape", isComposing: true, bubbles: true,
+  });
+  assert.equal(await settings.getByTestId("permission-menu").isVisible(), true,
+    "IME Escape must not dismiss the permission menu");
+  await page.keyboard.press("Escape");
+  assert.equal(await settings.isVisible(), true, "Escape from the permission menu closed settings");
+  await menuClosed();
+  assert.equal(await settingsPreset.evaluate(element => element === document.activeElement), true,
+    "Closing the permission menu must return focus to its trigger");
+  assert.equal(await settingsPreset.getAttribute("data-value"), valueBeforeEscape);
+  assert.equal(await page.evaluate(() => window.permissionTest.calls.length), callsBeforeEscape,
+    "Dismissing the permission menu must not save a preset");
+  await page.keyboard.press("Escape");
+  await settings.waitFor({ state: "hidden" });
+  await open();
   assert.equal(await approval.inputValue(), "auto_review");
   await access.selectOption("full-access"); await settled();
   assert.equal(await approval.inputValue(), "auto_review", "Access must not change approval policy");
