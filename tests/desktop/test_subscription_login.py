@@ -25,7 +25,7 @@ def test_login_cancel_closes_official_attempt_and_prevents_overlapping_logins(
 
     class Client:
         def __init__(self, *, config):
-            assert config.env["CODEX_HOME"] == str((tmp_path / "data/codex").resolve())
+            assert config.env["CODEX_HOME"] == str((tmp_path / "native-codex").resolve())
 
         async def __aenter__(self):
             return self

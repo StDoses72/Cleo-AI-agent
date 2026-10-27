@@ -2,6 +2,47 @@
   "chat": [
     {
       "annotations": null,
+      "description": "Browse native file references; optional exact project scope excludes unknown scopes.",
+      "input_schema": {
+        "description": "Browse native file references; optional exact project scope excludes unknown scopes.",
+        "properties": {
+          "limit": {
+            "default": 50,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "project_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Project Path"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id"
+        ],
+        "title": "browse_memory_source",
+        "type": "object"
+      },
+      "name": "browse_memory_source"
+    },
+    {
+      "annotations": null,
       "description": "Delegate a coding task in the currently selected project.",
       "input_schema": {
         "description": "Delegate a coding task in the currently selected project.",
@@ -100,6 +141,17 @@
         "type": "object"
       },
       "name": "computer_tools"
+    },
+    {
+      "annotations": null,
+      "description": "List available native sources, detection, configuration and generation status.",
+      "input_schema": {
+        "description": "List available native sources, detection, configuration and generation status.",
+        "properties": {},
+        "title": "list_memory_sources",
+        "type": "object"
+      },
+      "name": "list_memory_sources"
     },
     {
       "annotations": null,
@@ -209,6 +261,52 @@
     },
     {
       "annotations": null,
+      "description": "Read a bounded native UTF-8 file page, preserving byte references and source version.",
+      "input_schema": {
+        "description": "Read a bounded native UTF-8 file page, preserving byte references and source version.",
+        "properties": {
+          "entry": {
+            "title": "Entry",
+            "type": "string"
+          },
+          "max_bytes": {
+            "default": 16384,
+            "title": "Max Bytes",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Version"
+          }
+        },
+        "required": [
+          "source_id",
+          "entry"
+        ],
+        "title": "read_memory_source",
+        "type": "object"
+      },
+      "name": "read_memory_source"
+    },
+    {
+      "annotations": null,
       "description": "Read scoped preferences and the last historical handoff, with local Git history.\n\n        A handoff describes its named work item at its source time, not current code state.",
       "input_schema": {
         "description": "Read scoped preferences and the last historical handoff, with local Git history.\n\nA handoff describes its named work item at its source time, not current code state.",
@@ -302,9 +400,9 @@
     },
     {
       "annotations": null,
-      "description": "Search saved discussions in both spaces, including uncompacted active threads.\n\n        Results cite source events. Read the thread for full context. Search scans batches;\n        continue next_cursor even when a partial page has no hits. Ranking is per page.",
+      "description": "Rank all scoped indexed history before paging, repairing only invalid sessions.\n\n        A changed scope, visible history or index invalidates continuation cursors. Lexical\n        matching scans scoped chunks; no fixed session/chunk cutoff hides later matches.",
       "input_schema": {
-        "description": "Search saved discussions in both spaces, including uncompacted active threads.\n\nResults cite source events. Read the thread for full context. Search scans batches;\ncontinue next_cursor even when a partial page has no hits. Ranking is per page.",
+        "description": "Rank all scoped indexed history before paging, repairing only invalid sessions.\n\nA changed scope, visible history or index invalidates continuation cursors. Lexical\nmatching scans scoped chunks; no fixed session/chunk cutoff hides later matches.",
         "properties": {
           "cursor": {
             "anyOf": [
@@ -528,17 +626,6 @@
     },
     {
       "annotations": null,
-      "description": "Read Cleo's global descriptive persona projection.\n\n    The persona is shared across projects and spaces, but it contains only\n    interaction style and relationship tendencies. It is not a policy source.",
-      "input_schema": {
-        "description": "Read Cleo's global descriptive persona projection.\n\nThe persona is shared across projects and spaces, but it contains only\ninteraction style and relationship tendencies. It is not a policy source.",
-        "properties": {},
-        "title": "read_global_persona",
-        "type": "object"
-      },
-      "name": "read_global_persona"
-    },
-    {
-      "annotations": null,
       "description": "Read inspectable long-term memory for one space-bound project.\n\n    中文说明: 读取项目现有长期记忆 (MEMORY.md/decisions.md 等),\n    供 DreamAgent 在整理时保留既有 durable context。注册于 dream.py\n    的 DreamAgent.toolist (invoke prompt 步骤 2)。\n\n    Args:\n        space/project: 记忆定位参数; 由 LLM 按 prompt 指定值传入。\n\n    Returns:\n        各记忆文件拼接的 Markdown str (无内容时为空串, 非法时为\n        \"Error: ...\"); 由框架回传给 DreamAgent LLM。",
       "input_schema": {
         "description": "Read inspectable long-term memory for one space-bound project.\n\n中文说明: 读取项目现有长期记忆 (MEMORY.md/decisions.md 等),\n供 DreamAgent 在整理时保留既有 durable context。注册于 dream.py\n的 DreamAgent.toolist (invoke prompt 步骤 2)。\n\nArgs:\n    space/project: 记忆定位参数; 由 LLM 按 prompt 指定值传入。\n\nReturns:\n    各记忆文件拼接的 Markdown str (无内容时为空串, 非法时为\n    \"Error: ...\"); 由框架回传给 DreamAgent LLM。",
@@ -642,83 +729,6 @@
         "type": "object"
       },
       "name": "remember_durable_knowledge"
-    },
-    {
-      "annotations": null,
-      "description": "Store one project-independent persona tendency with validated evidence.\n\n    Valid categories are communication, expression, relationship, adaptation,\n    and boundary. Never use this for project facts, permissions, policies,\n    secrets, tool behavior, or a one-off conversational mood.",
-      "input_schema": {
-        "description": "Store one project-independent persona tendency with validated evidence.\n\nValid categories are communication, expression, relationship, adaptation,\nand boundary. Never use this for project facts, permissions, policies,\nsecrets, tool behavior, or a one-off conversational mood.",
-        "properties": {
-          "category": {
-            "title": "Category",
-            "type": "string"
-          },
-          "confidence": {
-            "default": 1.0,
-            "title": "Confidence",
-            "type": "number"
-          },
-          "evidence_event_ids": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Evidence Event Ids",
-            "type": "array"
-          },
-          "importance": {
-            "default": 3,
-            "title": "Importance",
-            "type": "integer"
-          },
-          "project": {
-            "title": "Project",
-            "type": "string"
-          },
-          "session_id": {
-            "title": "Session Id",
-            "type": "string"
-          },
-          "source_hash": {
-            "title": "Source Hash",
-            "type": "string"
-          },
-          "space": {
-            "title": "Space",
-            "type": "string"
-          },
-          "tags": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Tags"
-          },
-          "trait": {
-            "title": "Trait",
-            "type": "string"
-          }
-        },
-        "required": [
-          "space",
-          "project",
-          "session_id",
-          "source_hash",
-          "category",
-          "trait",
-          "evidence_event_ids"
-        ],
-        "title": "remember_global_persona_trait",
-        "type": "object"
-      },
-      "name": "remember_global_persona_trait"
     },
     {
       "annotations": null,

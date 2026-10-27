@@ -15,30 +15,17 @@ Cleo 使用两个经过 Pydantic 校验的 JSON 文件：`cleo.json` 管理通�
 
 可用 `CLEO_CONFIG_PATH` 与 `CLEO_HARNESSES_CONFIG_PATH` 指定配置文件。打包应用由 Electron 显式设置 `CLEO_HOME`；源码 checkout 会以仓库为相对路径根。
 
-每个 coding harness 在 Cleo 数据根目录下有一个固定目录，跨会话、跨版本复用：
+Codex 和 Claude 默认使用本机原生目录：有效的 `CODEX_HOME` / `CLAUDE_CONFIG_DIR` 优先，否则使用 `~/.codex` / `~/.claude`。登录、连接验证、模型列表、skills、会话创建与恢复、跨来源记忆读取采用同一解析规则。项目 cwd、Git worktree 与 harness home 是三个不同概念，项目文件不会移入 home。
 
-```text
-<Cleo 数据根目录>/
-├─ config/        Cleo 配置
-├─ memory/        Cleo 聊天与记忆
-├─ data/
-│  ├─ codex/      Codex 的配置、登录、会话、skills（CODEX_HOME，SQLite 状态也在此）
-│  └─ claude/     Claude 的配置、登录、会话、skills（CLAUDE_CONFIG_DIR）
-└─ runtimes/      安装的运行程序和依赖
-```
+Cleo 与原生客户端共用登录和配置；登录或退出会影响使用相同目录的应用。Cleo 不复制认证文件，也不会在恢复失败时切换到另一个账号目录。设置中的“原生目录”展示当前路径与可用配置条目。
 
-登录、验证连接、模型列表、对话、恢复会话和 skill 菜单都通过同一目录管理模块使用这些目录，不再读取外部 `~/.codex`、`~/.claude` 或环境变量中的 `CODEX_HOME`/`CLAUDE_CONFIG_DIR`。它们只保存 harness 自身状态：agent 的工作目录仍是会话选择的项目，权限也仍按会话所选模式执行。
+### 旧专用目录迁移
 
-Cleo 新建的 Codex/Claude 会话不会写入默认 Codex/Claude 应用的会话列表；Cleo 的历史和继续对话能力保留。登录入口位于“设置 → 模型 → 新增连接 → 账号登录 → Codex / Claude Code”，Claude SDK harness 与 Claude Code 连接共用同一登录。组织策略仍然适用。
+首次使用会检查 `<Cleo 数据根目录>/data/codex` 或 `data/claude`，将可识别的原生 JSONL 会话及可移植的技能、指令、记忆文本补充到原生目录。保留会话 ID、原始记录和路径结构；目标已有内容优先，同 ID 或同名不同内容不覆盖。每个文件经过内容哈希校验并独立发布，一项冲突不阻止其他文件迁移，失败可在后续使用或重启时重试。
 
-**导入本机配置**：Cleo 首次使用某个 harness 目录时（每次启动检查一次），会检测本机的 `~/.claude`、`~/.codex`（或 `CLAUDE_CONFIG_DIR`/`CODEX_HOME`），把 Cleo 目录中还没有的项目复制进来并直接生效：
+迁移报告为旧目录内 `.cleo-native-migration.json`，包含路径、哈希、已验证／冲突／重试／保留状态，不另存正文。字节校验不等于所有原生版本都可恢复：打开会话时仍由原生 SDK 验证恢复能力。原生版本不兼容、损坏或同 ID 冲突的旧文件继续保留以供恢复。
 
-- Claude：`skills/`、`agents/`、`commands/`、`CLAUDE.md`，以及 `settings.json` 中缺少的设置。
-- Codex：`skills/`、`rules/`、`prompts/`、`AGENTS.md`，以及 `config.toml` 中缺少的设置（追加在文件中，保留原有内容）；指向已复制 skills 的路径会改为 Cleo 副本。
-
-复制只增不改：原目录只读取不修改；Cleo 目录中已有的文件、设置和同名 skill 不会被覆盖。已导入的项目记录在 `data/<harness>/.cleo-imported.json`，在 Cleo 中删除后不会再次导入；本机新增的项目会在下次启动时补充。登录凭据、插件、会话历史，以及切换账号/计费/服务商的设置（如 `apiKeyHelper`、`model_provider`、API Key 环境变量）不会导入，因此仍需在 Cleo 中登录一次。
-
-也可以打开“设置 → 导入”随时对比 Cleo 目录与本机 Claude/Codex：列出相同、本机新增、Cleo 新增和同名但内容不同的项目，可把本机新增的技能等导入 Cleo，或把 Cleo 中新增的导出回本机。两个方向都只复制对方缺少的项目，同名内容不同时两边都保留、不会覆盖；设置只支持从本机补充导入。隔离前创建的已有会话（及 Codex 原生分支）沿用原目录继续恢复，不移动、不删除。
+旧目录不会自动删除。认证、设置、SQLite、锁文件、全局索引及未识别文件留在原处，避免覆盖登录、改变账号或导入不兼容状态。原生配置优先生效；旧配置中需要保留的设置由用户核对后在原生客户端配置。迁移不会转化不同厂商的历史，也不会隐藏或归档会话。
 
 ## `cleo.json` 结构
 
@@ -96,10 +83,11 @@ Directory profile 定义产品数据布局。相对路径基于 `root_dir`：
 | `workspace_dir` | `workspace` | 可选工作区输入/输出 |
 | `memory_dir` | `memory` | session event log、memory DB 与投影 |
 | `memory_policy_path` | `memory/MEMORY_POLICY.md` | 开发者维护的记忆提取策略 |
-| `persona_path` | `PERSONA.md` | persona 的人类可读投影 |
 | `session_index_path` | `memory/sessions.sqlite3` | 全局 session metadata registry |
 | `session_artifacts_dir` | `data/session_artifacts` | 大型 browser/tool 产物 |
 | `runtime_state_path` | `data/runtime.json` | 当前界面导航状态 |
+
+旧 `persona_path` 配置兼容忽略；`PERSONA.md`、`persona.sqlite3` 原样保留，不读取、不生成、不注入，也不自动转换成项目偏好。
 
 把数据目录迁移到新位置时，应整体迁移相关文件并保持 scope 结构，不要只复制 Markdown 记忆投影。
 
@@ -198,7 +186,6 @@ ACP 的 `env` 可能包含 secret；不要把含真实 token 的 `harnesses.json
 | `sessions.sqlite3` | 全局 session registry | 是 |
 | space `memory.sqlite3` | 长期记忆、evidence、chunks | 部分内容来自 consolidation，不应随意删除 |
 | 项目 `MEMORY.md` | 当前用户偏好，独立 Git 记录历史 | 不应作为数据库缓存删除 |
-| `PERSONA.md` | 兼容保留的 persona 内容 | 保留人工内容，不自动提取新条目 |
 | `runtime.json` | 当前导航状态 | 是，不含对话正文 |
 
 ## 部署前安全清单

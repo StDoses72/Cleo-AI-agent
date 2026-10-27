@@ -15,6 +15,9 @@ Chat、Codex、Claude 和 ACP productivity 会话使用同一个 `MemoryReader`�
 | `search_long_term_memory` | 兼容名称：只读取两个空间的当前 Markdown 偏好，不读取旧事实库 |
 | `read_project_memory` | 读取指定项目的偏好、历史交接快照与 Git 记录 |
 | `memory_history` | 只读查看指定项目记忆的 Git 提交 |
+| `list_memory_sources` | 列出 Cleo、Codex、Claude 和手动来源，区分安装、配置、历史与记忆可读状态 |
+| `browse_memory_source` | 分页浏览原生目录与作用域、格式、版本和原文引用 |
+| `read_memory_source` | 按需读取 UTF-8 原文的有界字节页，续页绑定版本 |
 
 Chat 使用 LangChain 封装；productivity 使用同一组方法的 stdio MCP 封装。
 用户提到历史讨论时，agent 可以先搜索，再读取选定会话，按项目和 thread 引用来源。
@@ -28,7 +31,7 @@ old/new 编辑与未解决冲突；程序校验来源、目标和预算，在候
 后再发布一个有效版本。手动整理可替换一个有来源时间的简短交接快照。
 
 结构投影继续合并有可靠 ID 的终端片段、复用相同正文并省略已知用量通知，保留工具
-正文；字符分块、20,000 代理 tokens 和 UTF-8 字节上限保持。模型不能直接写文件，
+的有界摘录并保留结果、状态和原文引用；字符分块、20,000 代理 tokens 和 UTF-8 字节上限保持。模型不能直接写文件，
 独立上下文继续通过 API 或订阅 runtime 使用已配置的整理模型，不加载本地语义模型。
 
 版本 2 的 dream.json 记录增量游标及未完成块结果，成功后清理中间候选。旧版本的事实
@@ -36,25 +39,25 @@ old/new 编辑与未解决冲突；程序校验来源、目标和预算，在候
 覆盖或重新作为有效偏好加载。历史原文与旧数据库不会在升级时自动删除。
 
 内层 Git 只追踪白名单 MEMORY.md。发布失败保留/恢复旧正文，重复发布不产生额外
-提交；未解决冲突通过 hash 标记暂不注入，问题展示在记忆页并等待用户澄清。Git
+提交；不确定冲突候选逐项跳过，其他有效编辑继续发布。历史矛盾条目的 hash 排除标记保持兼容。Git
 来源 hash 和会话标识提供回查入口，不再在每条偏好后反复追加 evidence 长串。
 
 ## 数据与分页
 
 - 会话文件、项目归属和 DreamAgent 的写入范围保持原状，无需迁移或复制记忆。
-- 只读取 Cleo 已保存的历史；外部客户端尚未导入的原生会话不在范围内。
-- 活跃会话可读取已持久化的事件。读取不会触发 DreamAgent 或写入 compact。
-- 历史搜索复用 compact 的词法分块和评分；compact 缺失或过期时，从事件构造临时投影。
+- 原有 thread 工具读取 Cleo 历史；跨 harness 工具直接按需读取原生文件，不另建全文副本。
+- 活跃会话的持久事件可局部补齐索引。查询不触发 DreamAgent；失效的派生 compact/分块可以重建。
+- 历史搜索复用 conversation_chunks。事件序号、文件身份、compact 和索引版本共同判断新鲜度；不变日志不会每次全读和全文哈希。
 - 消息和工具记录沿用 compactor 的脱敏、图片引用与工具负载省略规则，不是未经处理的原始日志。
 - `read_thread(view="summary")` 的 summary 指有效 compact 投影；不可用时返回
   `summary_unavailable`，可改读 `messages`。
 - 消息续读游标固定事件上界；后来追加的消息只会出现在新读取中。源内容变化会返回
   `stale_cursor`。通过 session ID 重新解析项目位置，因此移动后仍可读取。
 - 读取每次最多三个 6,000 字符片段，`content_offset` / `continued` 标识长记录的分段。
-- 搜索每次最多扫描 50 个 thread、返回 20 个命中片段，每段最多 1,000 字符。
-  结果按页内相关度、更新时间排序；`truncated` 提示需要读取 thread 获取上下文。
+- 搜索在限定范围内完成相关性排序后分页，每页最多 20 个片段，每段最多 1,000 字符。
+  不再按 50 个会话或 1,000 块静默截断；普通词法匹配仍可能扫描范围内所有分块。
 - 列表和搜索返回 `partial`、`next_cursor`。必须继续游标才能判断完整范围有无命中；
-  搜索分页不是整个历史库的事务快照，期间新建的会话应重新查询。
+  搜索游标绑定查询、作用域与可见历史/索引版本；有上限的短期命中 ID 快照过期或变化会明确失效，需重新查询。
 - 偏好检索按项目读取最多 30 条有效条目；跨项目结果可受 limit 截断并返回 partial，需缩小范围。
   不伪造每条偏好的事实置信度或事件来源；项目级 Git 历史提供整理来源。
 - 已删除的 thread 返回 `not_found`；损坏的事件返回 `read_error` 或带 `errors` 的部分结果。
@@ -91,3 +94,35 @@ python -m cleo.mcp.memory_server --memory-root <absolute-memory-directory>
 
 运行 `tests/memory/test_reader.py` 和 `tests/integrations/test_memory_mcp.py` 可验证
 跨空间读取、分页、恢复接入、真实 stdio 启动与退出，以及客户端临时配置。
+
+## 跨 harness 原生记忆
+
+设置 → 数据与记忆可添加绝对路径的只读来源，或撤销来源读取；配置保存在
+`config/memory-sources.json`，独立于 DreamAgent 开关。默认读取有效原生 home。
+Codex 暴露 `memories/`、`AGENTS.md` 和原生 JSONL；Claude 暴露项目 `memory/`、
+`CLAUDE.md` 和原生 JSONL。自定义目录可手动添加 Markdown 来源。凭据、原生配置、
+数据库与锁不作为正文读取项。未知/全局作用域不会伪装成某项目；项目路径过滤仅匹配
+原生 metadata 或显式手动绑定。读取页保留原生换行、字节位置和版本，源变化要求重读。
+
+可选协作提示默认关闭，只在启用后传给 harness。它要求按需读取当前项目、保留原始
+来源及版本、跳过重复与无变化内容，并使用 harness 自己支持的机制维护记忆。读取
+成功或提示已发送不代表同步成功；功能关闭、未知、冲突或读取失败必须反馈。
+Codex 生成文件不是稳定写入接口，不能通过直接覆盖它们强制同步。
+
+原生自动更新状态只报告本地配置证据，不保证后台生成已执行。项目/组织策略、会话
+条件、MCP 外部上下文资格及额度仍可能阻止生成。实现依据：
+[Codex memories](https://learn.chatgpt.com/docs/customization/memories)、
+[Claude memory](https://code.claude.com/docs/en/memory)。
+
+## 可重复验证
+
+`python -m scripts.benchmark_memory_projection` 用合成的大工具输出比较完整正文与有界投影，
+核对失败、取消、恢复、测试结果和用户约束仍存在，且原始事件不变。
+`python -m scripts.benchmark_memory_retrieval --memory-root <全新临时目录> --prepare`
+创建 60 个会话、每个 40 轮的合成样本，统计预热后三轮完整分页检索的实际原文读取次数。
+可将同一脚本的 `PYTHONPATH` 指向基线 checkout，对同一 fixture 运行对照；脚本不调用模型。
+
+在本次 Windows 验证中，投影输入由 30,236 降至 323 tokens；检索完整日志读取由 186 次
+降至 0 次，总耗时约 2.51 秒降至 1.41 秒。耗时依赖机器与缓存，不能外推为所有查询的保证。
+`tests/memory/test_retrieval_index.py` 还验证 513 个会话配合 8 项进程缓存，以及变化、损坏、
+rewind、移动、删除、重启与发布失败；测试观察真实读取入口，不只拦截投影函数。

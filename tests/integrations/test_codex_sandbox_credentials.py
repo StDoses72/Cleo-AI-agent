@@ -460,24 +460,21 @@ def test_windows_sandbox_mode_prefers_last_override(tmp_path):
     assert windows_sandbox_mode(tmp_path / "missing", ()) is None
 
 
-@pytest.mark.parametrize(("home", "legacy", "sandbox", "expected"), [
-    ("C:/cleo/codex", False, "workspace-write", True),
-    ("C:/cleo/codex", False, "read-only", True),
-    ("C:/cleo/codex", True, "workspace-write", False),
-    ("C:/cleo/codex", False, "full-access", False),
-    (None, False, "workspace-write", False),
-])
-def test_provider_coordinates_before_sandboxed_turns(monkeypatch, home, legacy, sandbox,
-                                                     expected):
+@pytest.mark.parametrize("sandbox", ["workspace-write", "read-only", "full-access"])
+def test_native_turn_never_coordinates_or_copies_credentials(monkeypatch, sandbox):
+    from unittest.mock import AsyncMock
+
+    from cleo.harnesses import SessionOptions
     from cleo.integrations.harnesses.codex import CodexProvider
 
-    calls = []
-    monkeypatch.setattr(coordinator, "prepare_for_turn", lambda path: calls.append(path))
-    client = SimpleNamespace(**({"_cleo_sandbox_credentials_home": Path(home)} if home else {}))
-    runtime = SimpleNamespace(client=client, legacy_home=legacy,
-                              options=SimpleNamespace(sandbox=sandbox))
-    asyncio.run(CodexProvider._prepare_sandbox_credentials(runtime))
-    assert calls == ([Path(home)] if expected else [])
+    monkeypatch.setattr(coordinator, "prepare_for_turn", lambda *_: pytest.fail(
+        "Native sandbox credentials belong to the native client"))
+    runtime = SimpleNamespace(
+        has_started_turn=False, options=SessionOptions(approval_mode="deny_all", sandbox=sandbox),
+        client=SimpleNamespace(), thread=SimpleNamespace(turn=AsyncMock()),
+    )
+    asyncio.run(CodexProvider(None)._start_turn(runtime, "hello"))
+    runtime.thread.turn.assert_awaited_once()
 
 
 def test_prepare_for_turn_never_raises(tmp_path, monkeypatch):
@@ -495,7 +492,7 @@ def test_prepare_for_turn_never_raises(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize(("platform", "saved", "legacy", "expected"), [
-    ("win32", '[windows]\nsandbox = "elevated"\n', False, True),
+    ("win32", '[windows]\nsandbox = "elevated"\n', False, False),
     ("win32", "", False, False),  # Cleo's default is the unelevated sandbox
     ("win32", '[windows]\nsandbox = "elevated"\n', True, False),
     ("linux", '[windows]\nsandbox = "elevated"\n', False, False),
@@ -506,8 +503,7 @@ def test_client_marks_only_isolated_elevated_homes(tmp_path, monkeypatch, platfo
 
     monkeypatch.setattr("cleo.config.settings.APP_HOME", tmp_path)
     monkeypatch.setattr("cleo.integrations.codex_home.sys.platform", platform)
-    monkeypatch.setattr("cleo.integrations.harnesses.codex.sys.platform", platform)
-    home = tmp_path / "data" / "codex"
+    home = tmp_path / "native-codex"
     home.mkdir(parents=True)
     (home / "config.toml").write_text(saved, encoding="utf-8")
     client = CodexProvider._client(legacy=legacy)

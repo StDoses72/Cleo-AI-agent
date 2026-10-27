@@ -120,6 +120,9 @@ class ClaudeCliProvider:
         return ProviderSession(identifier)
 
     async def resume_session(self, native_session_id, project_path, model=None):
+        from cleo.integrations.harness_migration import check_resume_migration
+
+        check_resume_migration("claude", native_session_id)
         self._sessions[native_session_id] = (project_path, native_session_id)
         if claude_session_is_external(native_session_id):
             self._external.add(native_session_id)
@@ -139,7 +142,11 @@ class ClaudeCliProvider:
             config.write_text(
                 json.dumps({"mcpServers": self.mcp.claude_servers()}), encoding="utf-8"
             )
-            instructions.write_text(self.mcp.instructions, encoding="utf-8")
+            guidance = self.mcp.sync_instructions
+            instructions.write_text(
+                self.mcp.instructions + ("\n\n" + guidance if guidance else ""),
+                encoding="utf-8",
+            )
             args = [
                 "-p",
                 "--output-format",

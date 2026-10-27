@@ -17,6 +17,7 @@ from cleo.integrations.harnesses.codex import CodexProvider
 from cleo.integrations.harnesses.codex_approvals import CodexApprovalBroker
 from cleo.integrations.harnesses.memory import MemoryMcp
 from cleo.memory.reader import TOOL_NAMES
+from cleo.memory.sources import SOURCE_TOOLS
 from cleo.sessions.store import SessionStore
 
 
@@ -69,7 +70,7 @@ def test_stdio_tools_work_from_unrelated_cwd_without_configuration_writes(tmp_pa
     async def exercise():
         async with Client(transport) as client:
             tools = await client.list_tools()
-            assert {t.name for t in tools} == set(TOOL_NAMES)
+            assert {t.name for t in tools} == set(TOOL_NAMES) | set(SOURCE_TOOLS)
             assert all(t.annotations.readOnlyHint for t in tools)
             result = await client.call_tool("read_thread", {"session_id": "chat"})
             assert result.data["results"][0]["content"] == "shared requirements"
@@ -103,7 +104,7 @@ def test_codex_override_is_client_local_and_valid_toml(tmp_path, monkeypatch):
     independent = CodexProvider(None)._client_with_approvals(CodexApprovalBroker("codex"))
     independent_config = independent._client._sync.config
     assert "mcp_servers" not in tomllib.loads("\n".join(independent_config.config_overrides))
-    assert independent_config.env["CODEX_HOME"] == str((tmp_path / "data/codex").resolve())
+    assert independent_config.env["CODEX_HOME"] == str((tmp_path / "native-codex").resolve())
 
 
 @pytest.mark.parametrize("settings,granted", [
@@ -246,7 +247,7 @@ def test_codex_create_resume_and_fork_preserve_mcp(tmp_path, monkeypatch):
         mcp_overrides = tuple(value for value in client.config.config_overrides
                               if value.startswith("mcp_servers."))
         assert mcp_overrides == memory.codex_config().config_overrides
-        assert client.config.env["CODEX_HOME"] == str((tmp_path / "data/codex").resolve())
+        assert client.config.env["CODEX_HOME"] == str((tmp_path / "native-codex").resolve())
         assert client.closed
 
 

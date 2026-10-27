@@ -6,18 +6,36 @@ import base64
 import binascii
 import hashlib
 import json
+import sqlite3
+import time
+from collections import OrderedDict
 from datetime import UTC, datetime
 from pathlib import Path
+from threading import RLock
 from typing import Any, Literal
 
-from cleo.memory.compaction import _redact_text, compact_events, load_validated_compact
+from cleo.memory.compaction import (
+    _redact_text,
+    compact_events,
+    compact_revision,
+    file_revision,
+    load_validated_compact,
+    validated_compact_source,
+)
 from cleo.memory.markdown import parse_memory
-from cleo.memory.paths import MEMORY_SPACES, validate_name, validate_space
+from cleo.memory.paths import (
+    MEMORY_SPACES,
+    memory_database_path,
+    validate_name,
+    validate_space,
+)
 from cleo.memory.repository import MemoryRepository, digest, read_conflicts
 from cleo.memory.store import (
-    _conversation_chunks,
     _lexical_score,
+    _logical_conversation_rows,
+    conversation_projection_matches,
 )
+from cleo.sessions.rewind import active_events
 from cleo.sessions.store import SessionStore
 
 READING_INSTRUCTIONS = (
@@ -43,6 +61,13 @@ SCAN_THREADS = 50
 
 def _fingerprint(value: Any) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
+
+
+def _database_revision(path: Path) -> tuple:
+    # Opening a read-only SQLite snapshot can create an empty WAL. Its existence is
+    # not an index change; frames (after the 32-byte header) are actual pending writes.
+    wal = file_revision(Path(str(path) + "-wal"))
+    return (str(path), file_revision(path), wal if wal and wal[2] > 32 else None)
 
 
 def _encode(value: dict) -> str:
@@ -92,6 +117,10 @@ class MemoryReader:
     def __init__(self, memory_root: str | Path, index_path: str | Path | None = None):
         self.root = Path(memory_root).expanduser().resolve()
         self.store = SessionStore(self.root, index_path)
+        # Short-lived ordered hit IDs and scores only; bodies remain in the existing index.
+        self._cache_lock = RLock()
+        self._searches: OrderedDict[str, dict] = OrderedDict()
+        self._read_digests: OrderedDict[tuple, str] = OrderedDict()
 
     def _threads(self, space: str | None, project: str | None) -> list[dict]:
         if space is not None:
@@ -172,6 +201,9 @@ class MemoryReader:
         except FileNotFoundError:
             return {"status": "not_found", "session_id": session_id, "results": []}
         source = _source(manifest)
+        read_revision = compact_revision(
+            self.root, manifest["space"], manifest["project"], session_id,
+        )
         try:
             if view == "summary":
                 try:
@@ -198,7 +230,16 @@ class MemoryReader:
                         project=manifest["project"], session_id=session_id,
                     )
                 except (OSError, ValueError):
-                    payload = None
+                    self.store.refresh_compact(
+                        session_id, materialize=False, preserve_updated_at=True,
+                    )
+                    read_revision = compact_revision(
+                        self.root, manifest["space"], manifest["project"], session_id,
+                    )
+                    payload = load_validated_compact(
+                        memory_root=self.root, space=manifest["space"],
+                        project=manifest["project"], session_id=session_id,
+                    )
                 if payload is not None and state.get("upper", payload["source"]["to_seq"]) == (
                     payload["source"]["to_seq"]
                 ):
@@ -210,12 +251,30 @@ class MemoryReader:
                     payload = compact_events(
                         space=manifest["space"], project=manifest["project"],
                         session_id=session_id,
-                        events=[event for event in events if event["seq"] <= upper],
+                        events=[event for event in active_events(events) if event["seq"] <= upper],
                     )
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError, sqlite3.Error) as exc:
             return {**source, "status": "read_error", "error": type(exc).__name__, "results": []}
         records = payload["events"]
-        digest = _fingerprint(records)
+        revision = compact_revision(self.root, manifest["space"], manifest["project"], session_id)
+        if revision != read_revision:
+            return {**source, "status": "stale_cursor", "results": []}
+        digest_key = (revision, upper)
+        with self._cache_lock:
+            digest = self._read_digests.get(digest_key)
+            if digest is None:
+                try:
+                    receipt = validated_compact_source(
+                        memory_root=self.root, space=manifest["space"],
+                        project=manifest["project"], session_id=session_id,
+                    )
+                except (OSError, ValueError):
+                    return {**source, "status": "stale_cursor", "results": []}
+                digest = (receipt["records_digest"] if receipt["to_seq"] == upper
+                          and receipt["revision"] == revision else _fingerprint(records))
+                self._read_digests[digest_key] = digest
+                while len(self._read_digests) > 128:
+                    self._read_digests.popitem(last=False)
         if state and state.get("digest") != digest:
             return {**source, "status": "stale_cursor", "results": []}
         offset, part = state.get("offset", 0), state.get("part", 0)
@@ -270,6 +329,28 @@ class MemoryReader:
             else None,
         }
 
+    def _history_version(self, manifests: list[dict]) -> str:
+        versions = [_database_revision(self.store.index_path)]
+        versions.extend(compact_revision(self.root, row["space"], row["project"], row["id"])
+                    for row in manifests)
+        for space in sorted({row["space"] for row in manifests}):
+            path = memory_database_path(self.root, space)
+            versions.append(_database_revision(path))
+        return _fingerprint(versions)
+
+    def _history_rows(self, manifests: list[dict]) -> list[dict]:
+        rows = []
+        scopes = sorted({(row["space"], row["project"]) for row in manifests})
+        for space, project in scopes:
+            ids = [row["id"] for row in manifests
+                   if (row["space"], row["project"]) == (space, project)]
+            # Keep SQL parameter counts bounded; this does not truncate the search scope.
+            for start in range(0, len(ids), 500):
+                rows.extend(_logical_conversation_rows(
+                    space, project, memory_database_path(self.root, space), ids[start:start + 500],
+                ))
+        return rows
+
     def search_conversation_history(
         self,
         query: str,
@@ -279,78 +360,132 @@ class MemoryReader:
         cursor: str | None = None,
         limit: int = 20,
     ) -> dict:
-        """Search saved discussions in both spaces, including uncompacted active threads.
+        """Rank all scoped indexed history before paging, repairing only invalid sessions.
 
-        Results cite source events. Read the thread for full context. Search scans batches;
-        continue next_cursor even when a partial page has no hits. Ranking is per page.
+        A changed scope, visible history or index invalidates continuation cursors. Lexical
+        matching scans scoped chunks; no fixed session/chunk cutoff hides later matches.
         """
         if not query.strip():
             raise ValueError("query must not be empty")
         ids = sorted({validate_name(s, "session_id") for s in session_ids or []})
         binding = _fingerprint(["search", query, space, project, ids])
         state = _decode(cursor, binding)
-        after, offset = state.get("after", ""), state.get("offset", 0)
-        candidates = [
-            r
-            for r in self._threads(space, project)
-            if r["id"] >= after and (not ids or r["id"] in ids)
-        ]
-        results, errors = [], []
-        next_state = None
-        for number, row in enumerate(candidates):
-            session_id = row["id"]
-            if number >= SCAN_THREADS:
-                next_state = {"after": session_id, "offset": 0}
-                break
+        candidates = [row for row in self._threads(space, project)
+                      if not ids or row["id"] in ids]
+        errors, manifests = [], []
+        for row in candidates:
             try:
-                manifest = self.store.load_manifest(session_id)
-                # Reuse the validated compact when available, otherwise project in memory.
-                try:
-                    payload = load_validated_compact(
-                        memory_root=self.root,
-                        space=manifest["space"],
-                        project=manifest["project"],
-                        session_id=session_id,
-                    )
-                except (OSError, ValueError):
-                    events = self.store.read_events(session_id)
-                    payload = compact_events(
-                        space=manifest["space"],
-                        project=manifest["project"],
-                        session_id=session_id,
-                        events=events,
-                    )
-                chunks = _conversation_chunks(payload)
-                start = offset if session_id == after else 0
-                for index in range(start, len(chunks)):
-                    chunk = chunks[index]
-                    score = _lexical_score(query, "", chunk["content"], [])
-                    if score <= 0:
-                        continue
-                    results.append(
-                        {
-                            **_source(manifest),
-                            **chunk,
-                            "score": score,
-                            "content": chunk["content"][:1000],
-                            "truncated": len(chunk["content"]) > 1000,
-                        }
-                    )
-                    if len(results) >= min(_limit(limit), 20):
-                        next_state = {"after": session_id, "offset": index + 1}
-                        break
-                if next_state:
-                    break
+                manifest = self.store.load_manifest(row["id"])
+                if ((space is None or manifest["space"] == space)
+                        and (project is None or manifest["project"] == project)):
+                    manifests.append(manifest)
             except (OSError, ValueError) as exc:
-                errors.append({"session_id": session_id, "error": type(exc).__name__})
-        results.sort(key=lambda r: (r["score"], r["updated_at"]), reverse=True)
-        return {
-            "status": "partial" if errors else "ok",
-            "results": results,
-            "errors": errors,
-            "partial": next_state is not None or bool(errors),
-            "next_cursor": _encode({"binding": binding, **next_state}) if next_state else None,
-        }
+                errors.append({"session_id": row["id"], "error": type(exc).__name__})
+        before = self._history_version(manifests)
+        if state and state.get("version") != before:
+            return {"status": "stale_cursor", "results": [], "errors": errors,
+                    "partial": True, "next_cursor": None}
+        with self._cache_lock:
+            snapshot = self._searches.get(binding)
+            if snapshot is not None and (snapshot["version"] != before
+                                         or time.monotonic() - snapshot["created"] > 60):
+                self._searches.pop(binding)
+                snapshot = None
+        current = {}
+        if snapshot is None:
+            for manifest in manifests:
+                session_id = manifest["id"]
+                scope = {"memory_root": self.root, "space": manifest["space"],
+                         "project": manifest["project"], "session_id": session_id}
+                try:
+                    try:
+                        source = validated_compact_source(**scope)
+                        if not conversation_projection_matches(
+                            manifest["space"], manifest["project"], session_id,
+                            source["source_content_hash"],
+                            path=memory_database_path(self.root, manifest["space"]),
+                        ):
+                            raise ValueError("Conversation index is incomplete")
+                    except (OSError, ValueError):
+                        self.store.refresh_compact(
+                            session_id, materialize=False, preserve_updated_at=True,
+                        )
+                        source = validated_compact_source(**scope)
+                    current[session_id] = source
+                except (OSError, ValueError, sqlite3.Error) as exc:
+                    errors.append({"session_id": session_id, "error": type(exc).__name__})
+            # Repairs publish new compact/index versions. Freeze that committed state.
+            try:
+                manifests = [self.store.load_manifest(row["id"]) for row in manifests]
+            except (OSError, ValueError):
+                return {"status": "stale_cursor", "results": [], "errors": errors,
+                        "partial": True, "next_cursor": None}
+            version = self._history_version(manifests)
+            if any((space is not None and row["space"] != space)
+                   or (project is not None and row["project"] != project) for row in manifests):
+                return {"status": "stale_cursor", "results": [], "errors": errors,
+                        "partial": True, "next_cursor": None}
+            if any(compact_revision(self.root, row["space"], row["project"], row["id"])
+                   != current[row["id"]]["revision"]
+                   for row in manifests if row["id"] in current):
+                return {"status": "stale_cursor", "results": [], "errors": errors,
+                        "partial": True, "next_cursor": None}
+            by_id = {row["id"]: row for row in manifests}
+            ranked = []
+            for row in self._history_rows([m for m in manifests if m["id"] in current]):
+                if current[row["session_id"]]["source_content_hash"] != row["source_hash"]:
+                    continue
+                score = _lexical_score(query, "", row["content"], [])
+                if score > 0:
+                    ranked.append((row["session_id"], row["chunk_index"], score))
+            ranked.sort(key=lambda hit: (hit[2], by_id[hit[0]]["updated_at"], hit[0], -hit[1]),
+                        reverse=True)
+            if self._history_version(manifests) != version:
+                return {"status": "stale_cursor", "results": [], "errors": errors,
+                        "partial": True, "next_cursor": None}
+            snapshot = {"version": version, "hits": ranked, "errors": errors,
+                        "created": time.monotonic()}
+            # Large result sets are ranked again on continuation, without dropping hits.
+            if len(ranked) <= 10000 and not errors:
+                with self._cache_lock:
+                    self._searches[binding] = snapshot
+                    self._searches.move_to_end(binding)
+                    while len(self._searches) > 8:
+                        self._searches.popitem(last=False)
+        else:
+            version = snapshot["version"]
+            errors = snapshot["errors"]
+        if state and state["version"] != version:
+            return {"status": "stale_cursor", "results": [], "errors": errors,
+                    "partial": True, "next_cursor": None}
+        offset = state.get("offset", 0)
+        if offset > len(snapshot["hits"]):
+            raise ValueError("Invalid cursor position")
+        hits = snapshot["hits"][offset:offset + min(_limit(limit), 20)]
+        selected_ids = {hit[0] for hit in hits}
+        selected = [row for row in manifests if row["id"] in selected_ids]
+        rows = {(row["session_id"], row["chunk_index"]): row
+                for row in self._history_rows(selected)}
+        by_id = {row["id"]: row for row in manifests}
+        results = []
+        for session_id, index, score in hits:
+            row = rows.get((session_id, index))
+            if row is None:
+                return {"status": "stale_cursor", "results": [], "errors": errors,
+                        "partial": True, "next_cursor": None}
+            results.append({**_source(by_id[session_id]), "index": index,
+                            "event_ids": json.loads(row["event_ids_json"]),
+                            "created_at": row["created_at"], "ended_at": row["ended_at"],
+                            "score": score, "content": row["content"][:1000],
+                            "truncated": len(row["content"]) > 1000})
+        if self._history_version(manifests) != version:
+            return {"status": "stale_cursor", "results": [], "errors": errors,
+                    "partial": True, "next_cursor": None}
+        more = offset + len(hits) < len(snapshot["hits"])
+        return {"status": "partial" if errors else "ok", "results": results,
+                "errors": errors, "partial": more or bool(errors),
+                "next_cursor": _encode({"binding": binding, "version": version,
+                                        "offset": offset + len(hits)}) if more else None}
 
     def search_long_term_memory(
         self,
@@ -389,8 +524,8 @@ class MemoryReader:
                     if conflicts:
                         suppressed = {digest(p) for c in conflicts for p in c['preferences']}
                         errors.append({"space": selected, "project": name,
-                                       "error": "needs_clarification",
-                                       "questions": [c['question'] for c in conflicts]})
+                                       "error": "legacy_conflicts_excluded",
+                                       "excluded_count": len(suppressed)})
                     for preference in document.preferences:
                         if digest(preference) in suppressed:
                             continue

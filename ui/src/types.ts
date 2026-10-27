@@ -221,12 +221,13 @@ export interface HarnessSyncItem {
   state: "same" | "different" | "local_only" | "cleo_only";
 }
 
-/** Cleo's own harness directory compared with the local Claude/Codex setup. */
+/** Native harness state shared by Cleo and the installed Claude/Codex client. */
 export interface HarnessSyncStatus {
   harness: "claude" | "codex";
   localPath: string;
   localExists: boolean;
   cleoPath: string;
+  sharedHome?: boolean;
   items: HarnessSyncItem[];
   settings: { file: string; missingInCleo: string[] };
 }
@@ -315,7 +316,7 @@ export type ReasoningEffort =
 
 export interface MemoryEntry {
   id: string;
-  scope: "persona" | "project" | "preference";
+  scope: "project" | "preference";
   title: string;
   content: string;
   source: string;
@@ -434,6 +435,21 @@ export interface BackgroundMemorySettings {
   pendingThreshold: number;
 }
 
+export interface MemorySourceSettings {
+  sync_enabled: boolean;
+  disabled_sources: string[];
+  sources: { id: string; kind: "codex" | "claude" | "markdown"; root: string; project_path: string | null }[];
+}
+
+export interface MemorySourcesState {
+  settings: MemorySourceSettings;
+  sources: { id: string; kind: string; root: string; enabled: boolean; installed: boolean;
+    detected: boolean; configured: boolean; readable_memory: boolean; status: string;
+    error?: string; native_auto_update?: { generation: string; note?: string };
+    native_migration?: { report_path: string; status: string; status_counts: Record<string, number>;
+      originals_retained: boolean; resume_verification: string } | null }[];
+}
+
 export interface BackgroundMemoryState extends BackgroundMemorySettings {
   dreamEnabled: boolean;
   running: boolean;
@@ -499,7 +515,7 @@ export type ApplyModelSettings = (operation: () => Promise<ModelSettings>) => Pr
 export interface MemoryOverviewEntry {
   history?: Array<{ commit: string; created_at: string; summary: string }>;
   id: string;
-  scope: "project" | "persona";
+  scope: "project";
   space: "non_productivity" | "productivity" | null;
   project: string | null;
   category: string;
@@ -576,7 +592,6 @@ export interface MemoryOverview {
     active_memories: number;
     project_memories: number;
     project_scopes: number;
-    persona_traits: number;
     pending_sources: number;
   };
   dream_agent: {
@@ -682,6 +697,8 @@ export interface CleoClient {
   saveModelProfile(profile: ModelProfileInput): Promise<ModelSettings>;
   saveDreamSettings(selection: string, model?: string): Promise<ModelSettings>;
   getBackgroundMemoryState(): Promise<BackgroundMemoryState>;
+  getMemorySources(): Promise<MemorySourcesState>;
+  saveMemorySources(settings: MemorySourceSettings): Promise<MemorySourcesState>;
   saveBackgroundMemorySettings(settings: BackgroundMemorySettings): Promise<BackgroundMemoryState>;
   checkModelConnection(connection: Partial<ModelConnectionInput> & { profileId?: string }): Promise<ModelConnectionProbe>;
   createModelConnection(connection: ModelConnectionInput): Promise<ModelSettings>;

@@ -5,8 +5,12 @@ from pathlib import Path
 from langchain.tools import tool
 
 from cleo.memory.reader import TOOL_NAMES, MemoryReader
+from cleo.memory.sources import SOURCE_TOOLS, MemorySources
 
 
-def create_memory_tools(memory_root: str | Path, index_path: str | Path | None = None):
+def create_memory_tools(memory_root: str | Path, index_path: str | Path | None = None,
+                        source_config: str | Path | None = None):
     reader = MemoryReader(memory_root, index_path)
-    return [tool(name)(getattr(reader, name)) for name in TOOL_NAMES]
+    sources = MemorySources(memory_root, source_config)
+    return [*[tool(name)(getattr(reader, name)) for name in TOOL_NAMES],
+            *[tool(name)(getattr(sources, name)) for name in SOURCE_TOOLS]]

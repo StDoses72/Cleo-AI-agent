@@ -3,11 +3,9 @@ from __future__ import annotations
 import asyncio
 import os
 import secrets
-import sys
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
-from pathlib import Path
 from typing import Any
 
 from openai_codex import (
@@ -18,6 +16,7 @@ from openai_codex import (
     CodexConfig,
     Input,
     Sandbox,
+    TextInput,
 )
 from openai_codex.api import (
     ReasoningEffort,
@@ -47,7 +46,6 @@ from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 from cleo.harnesses.provider import NativeSessionNotFoundError, ProviderSession, ProviderTurn
 from cleo.harnesses.rewind import locate_turn
 from cleo.i18n import tr
-from cleo.integrations import codex_sandbox_credentials
 from cleo.integrations.codex_home import isolated_codex_config
 from cleo.integrations.harnesses.codex_approvals import CodexApprovalBroker
 from cleo.integrations.harnesses.memory import MemoryMcp
@@ -201,6 +199,9 @@ class CodexProvider:
         返回:
             ``ProviderSession``(id == 恢复后的 thread id), 由 AgentAdapter 消费。
         """
+        from cleo.integrations.harness_migration import check_resume_migration
+
+        check_resume_migration("codex", native_session_id)
         approvals = CodexApprovalBroker(self.name)
         client = self._client_with_approvals(
             approvals, **({"context": context} if context else {}),
@@ -228,10 +229,6 @@ class CodexProvider:
                 error.code == -32600
                 and error.message == f"no rollout found for thread id {native_session_id}"
             ):
-                if not _legacy:
-                    return await self.resume_session(
-                        native_session_id, project_path, model, context=context, _legacy=True,
-                    )
                 raise NativeSessionNotFoundError(str(error)) from error
             raise
         except BaseException:
@@ -618,7 +615,7 @@ class CodexProvider:
             ``NativeSessionPage``, 含本页 ``NativeSession`` 元组与
             ``next_cursor`` 翻页游标。
         """
-        async with self._client(legacy=True) as client:
+        async with self._client() as client:
             response = await client.thread_list(
                 archived=archived,
                 cursor=cursor,
@@ -647,15 +644,12 @@ class CodexProvider:
             ``NativeSessionDetail``, 含归一化的 session 信息与按 JSON
             序列化的 turns 元组。
         """
-        try:
-            async with self._client(**({"legacy": True} if _legacy else {})) as client:
-                thread = await client.thread_resume(native_session_id)
-                response = await thread.read(include_turns=True)
-        except JsonRpcError as error:
-            if (not _legacy and error.code == -32600
-                    and error.message == f"no rollout found for thread id {native_session_id}"):
-                return await self.read_native_session(native_session_id, _legacy=True)
-            raise
+        from cleo.integrations.harness_migration import check_resume_migration
+
+        check_resume_migration("codex", native_session_id)
+        async with self._client() as client:
+            thread = await client.thread_resume(native_session_id)
+            response = await thread.read(include_turns=True)
         native = self._native_session(response.thread)
         turns = tuple(
             turn.model_dump(mode="json", by_alias=True, exclude_none=True)
@@ -888,7 +882,11 @@ class CodexProvider:
     ) -> AsyncTurnHandle:
         runtime.has_started_turn = True
         options = runtime.options
-        await self._prepare_sandbox_credentials(runtime)
+        guidance = self._memory_mcp.sync_instructions if self._memory_mcp else ""
+        if guidance:
+            prompt = (guidance + "\n\n" + prompt if isinstance(prompt, str)
+                      else [TextInput(guidance), *(prompt if isinstance(prompt, list)
+                                                   else [prompt])])
         if options.approval_mode != "user" and options.service_tier != "default":
             return await runtime.thread.turn(
                 prompt,
@@ -935,21 +933,8 @@ class CodexProvider:
         return None
 
     @staticmethod
-    async def _prepare_sandbox_credentials(runtime: _CodexRuntime) -> None:
-        """Keep Cleo's shared Windows sandbox account credentials working before a turn.
-
-        Only Cleo's isolated home with the elevated native sandbox is coordinated; legacy
-        sessions use the standalone Codex home directly, and full access runs no sandbox.
-        """
-        home = getattr(runtime.client, "_cleo_sandbox_credentials_home", None)
-        if not home or runtime.legacy_home or runtime.options.sandbox == "full-access":
-            return
-        await asyncio.to_thread(codex_sandbox_credentials.prepare_for_turn, home)
-
-    @staticmethod
     def _client(config: CodexConfig | None = None, *, legacy: bool = False) -> AsyncCodex:
-        if not legacy:
-            config = isolated_codex_config(config)
+        config = isolated_codex_config(config)
         # Desktop selects the CLI bundled with its validated Python SDK runtime.
         if (codex_bin := os.environ.get("CLEO_CODEX_BIN")) and not (
             config is not None and config.codex_bin
@@ -957,11 +942,8 @@ class CodexProvider:
             config = config or CodexConfig()
             config.codex_bin = codex_bin
         client = AsyncCodex(config=config) if config is not None else AsyncCodex()
-        home = (config.env or {}).get("CODEX_HOME") if config is not None and not legacy else None
-        if home and sys.platform == "win32" and codex_sandbox_credentials.windows_sandbox_mode(
-            Path(home), config.config_overrides,
-        ) == "elevated":
-            client._cleo_sandbox_credentials_home = Path(home)
+        # Native Codex owns its sandbox credentials. The retired isolated-home repair
+        # must never copy credentials or rotate accounts in this shared directory.
         return client
 
     def _client_with_approvals(

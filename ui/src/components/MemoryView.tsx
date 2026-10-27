@@ -80,7 +80,7 @@ export function MemoryView({
       ? overview.entries.filter((entry) => entry.scope === "project")
       : overview.entries;
     return entries.filter((entry) => {
-      const key = entry.space && entry.project ? `${entry.space}:${entry.project}` : "persona";
+      const key = entry.space && entry.project ? `${entry.space}:${entry.project}` : "project";
       if (mode === "projects" && projectKey !== "all" && key !== projectKey) return false;
       return !normalizedQuery || [entry.title, entry.content, entry.category, entry.project, ...entry.tags]
         .filter(Boolean)
@@ -163,7 +163,8 @@ export function MemoryView({
 
       {overview.issues?.map((issue) => (
         <p role="status" key={`${issue.space}:${issue.project}`}>
-          {issue.project}{tr("punctuation.colon")}{issue.questions?.join(" ") || issue.error}
+          {issue.project}{tr("punctuation.colon")}{issue.error === "legacy_conflicts_excluded"
+            ? tr("memorysources.legacy_excluded") : issue.questions?.join(" ") || issue.error}
         </p>
       ))}
 
@@ -257,7 +258,7 @@ function MemoryLedger({
           return (
             <article key={memory.id} className={expanded ? "expanded" : ""}>
               <div className={`memory-scope ${memory.scope}`}>
-                {memory.scope === "persona" ? tr("memoryview.persona") : categoryLabel(memory.category)}
+                {categoryLabel(memory.category)}
               </div>
               <div className="memory-copy">
                 <button type="button" className="memory-entry-toggle" onClick={() => onToggle(memory.id)} aria-expanded={expanded}>
@@ -265,7 +266,7 @@ function MemoryLedger({
                   <ChevronDown size={15} />
                 </button>
                 <footer>
-                  <span>{memory.scope === "persona" ? "PERSONA.md" : `${spaceLabel(memory.space)} / ${memory.project}`}</span>
+                  <span>{`${spaceLabel(memory.space)} / ${memory.project}`}</span>
                   <time>{formatRelativeTime(memory.updated_at)}</time>
                 </footer>
                 {expanded ? <MemoryDetails memory={memory} /> : null}

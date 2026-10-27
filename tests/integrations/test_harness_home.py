@@ -1,4 +1,4 @@
-"""Every Claude/Codex entry point uses one fixed Cleo-owned harness directory."""
+"""Every Claude/Codex entry point uses the effective native harness directory."""
 
 import asyncio
 import os
@@ -24,8 +24,8 @@ def homes(tmp_path, monkeypatch):
     external.mkdir(parents=True)
     (external / ".credentials.json").write_text("external login sentinel", encoding="utf-8")
     return SimpleNamespace(
-        claude=(cleo / "data" / "claude").resolve(),
-        codex=(cleo / "data" / "codex").resolve(),
+        claude=external.resolve(),
+        codex=(tmp_path / "native-codex").resolve(),
         external=external,
         project=tmp_path / "project",
     )
@@ -57,18 +57,18 @@ def fake_sdk(monkeypatch):
 
 
 def test_fixed_directories_are_stable_and_leave_process_environment(homes, monkeypatch):
-    monkeypatch.setenv("CODEX_HOME", "external-codex")
+    monkeypatch.setenv("CODEX_HOME", str(homes.codex))
     assert harness_home.harness_home("claude") == homes.claude
     assert harness_home.harness_home("claude") == homes.claude
     assert harness_home.harness_home("codex") == homes.codex
     env = harness_home.harness_environment("codex", {"KEEP": "1"})
-    assert env == {"KEEP": "1", "CODEX_HOME": str(homes.codex),
-                   "CODEX_SQLITE_HOME": str(homes.codex)}
+    assert env == {"KEEP": "1", "CODEX_HOME": str(homes.codex)}
     assert harness_home.claude_environment({"KEEP": "1"}) == {
         "KEEP": "1", "CLAUDE_CONFIG_DIR": str(homes.claude),
     }
-    assert harness_home.claude_environment({"KEEP": "1"}, external=True) == {"KEEP": "1"}
-    assert os.environ["CODEX_HOME"] == "external-codex"
+    assert harness_home.claude_environment({"KEEP": "1"}, external=True) == {
+        "KEEP": "1", "CLAUDE_CONFIG_DIR": str(homes.claude)}
+    assert os.environ["CODEX_HOME"] == str(homes.codex)
     assert "CLAUDE_CONFIG_DIR" not in os.environ
     with pytest.raises(ValueError):
         harness_home.harness_home("gemini")
@@ -78,7 +78,7 @@ def test_legacy_detection_prefers_cleo_home_and_rejects_paths(homes):
     assert not harness_home.claude_session_is_external(None)
     assert not harness_home.claude_session_is_external(SESSION)
     transcript(homes.external)
-    assert harness_home.claude_session_is_external(SESSION)
+    assert not harness_home.claude_session_is_external(SESSION)
     for hostile in ("../" + SESSION, "*", "a/b", ""):
         assert not harness_home.claude_session_is_external(hostile)
     transcript(homes.claude)
@@ -99,13 +99,13 @@ def test_sdk_sessions_use_cleo_home_and_legacy_history_stays_resumable(homes, mo
 
         resumed = await provider.resume_session(SESSION, str(homes.project))
         runtime = provider._sessions[resumed.id]
-        assert runtime.external_home
-        # Legacy sessions keep the inherited environment, i.e. the original directory.
-        assert connections[-1].options.env == {}
+        assert not runtime.external_home
+        # Existing and new sessions share one explicit native directory.
+        assert connections[-1].options.env == {"CLAUDE_CONFIG_DIR": str(homes.claude)}
         assert connections[-1].options.resume == SESSION
         await provider.update_session_options(resumed.id, approval_mode="bypassPermissions")
-        assert connections[-1].options.env == {}
-        assert runtime.external_home
+        assert connections[-1].options.env == {"CLAUDE_CONFIG_DIR": str(homes.claude)}
+        assert not runtime.external_home
 
         other = await provider.resume_session("unknown-session", str(homes.project))
         assert connections[-1].options.env == {"CLAUDE_CONFIG_DIR": str(homes.claude)}
@@ -114,8 +114,8 @@ def test_sdk_sessions_use_cleo_home_and_legacy_history_stays_resumable(homes, mo
     asyncio.run(run())
     assert legacy.read_text(encoding="utf-8") == original
     assert (homes.external / ".credentials.json").read_text() == "external login sentinel"
-    assert not (homes.claude / ".credentials.json").exists()
-    assert not (homes.claude / "projects").exists()
+    assert (homes.claude / ".credentials.json").exists()
+    assert (homes.claude / "projects").exists()
 
 
 def test_login_check_models_and_cli_turns_use_the_same_directory(homes, monkeypatch):
@@ -158,7 +158,7 @@ def test_login_check_models_and_cli_turns_use_the_same_directory(homes, monkeypa
     status, new_turn, old_turn, handoff = (env for _, env in spawned)
     for env in (status, new_turn, handoff):
         assert env["CLAUDE_CONFIG_DIR"] == str(homes.claude)
-    assert "CLAUDE_CONFIG_DIR" not in old_turn
+    assert old_turn["CLAUDE_CONFIG_DIR"] == str(homes.claude)
     assert "--resume" in spawned[2][0] and SESSION in spawned[2][0]
 
     captured = []

@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
 from cleo.memory.paths import MEMORY_SPACES, memory_state_path
-from cleo.memory.persona import list_persona_traits
 from cleo.memory.reader import MemoryReader
 from cleo.memory.repository import MemoryRepository
 from cleo.memory.state import list_session_sources
@@ -53,8 +51,7 @@ def build_memory_overview(
             selected_sources = [entry for entry in selected_sources if entry["project"] == project]
         sources.extend(selected_sources)
 
-    persona_traits = list_persona_traits(memory_root=memory_root)
-    entries = [*project_entries, *(_persona_entry(entry) for entry in persona_traits)]
+    entries = project_entries
     entries.sort(key=lambda entry: entry["updated_at"], reverse=True)
 
     pending_count = sum(entry.get("status") == "pending" for entry in sources)
@@ -67,16 +64,20 @@ def build_memory_overview(
     project_summaries.sort(key=lambda entry: entry["updated_at"] or "", reverse=True)
     processed_times = [entry.get("last_processed_at") for entry in sources]
     last_processed_at = max((value for value in processed_times if value), default=None)
-    dream_status = "attention" if failed_count or issues else "running" if running_count else "idle"
+    failures = [
+        issue for issue in issues if issue.get("error") != "legacy_conflicts_excluded"
+    ]
+    dream_status = (
+        "attention" if failed_count or failures else "running" if running_count else "idle"
+    )
 
     return {
         "schema_version": 1,
         "issues": issues,
         "summary": {
-            "active_memories": project_memory_count + len(persona_traits),
+            "active_memories": project_memory_count,
             "project_memories": project_memory_count,
             "project_scopes": project_scope_count,
-            "persona_traits": len(persona_traits),
             "pending_sources": len(review_sources),
         },
         "dream_agent": {
@@ -114,24 +115,6 @@ def _project_entry(entry: dict[str, Any]) -> dict[str, Any]:
             }
             for evidence in entry["evidence"]
         ],
-        "evidence_count": entry["evidence_count"],
-        "updated_at": entry["updated_at"],
-    }
-
-
-def _persona_entry(entry: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "id": entry["id"],
-        "scope": "persona",
-        "space": None,
-        "project": None,
-        "category": entry["category"],
-        "title": entry["category"].replace("_", " ").title(),
-        "content": entry["trait"],
-        "confidence": entry["confidence"],
-        "importance": entry["importance"],
-        "tags": json.loads(entry["tags_json"] or "[]"),
-        "evidence": [],
         "evidence_count": entry["evidence_count"],
         "updated_at": entry["updated_at"],
     }

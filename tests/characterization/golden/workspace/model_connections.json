@@ -301,7 +301,6 @@
           "data_dir": "data",
           "memory_dir": "memory",
           "memory_policy_path": "memory/MEMORY_POLICY.md",
-          "persona_path": "PERSONA.md",
           "root_dir": ".",
           "runtime_state_path": "data/runtime.json",
           "session_artifacts_dir": "data/session_artifacts",

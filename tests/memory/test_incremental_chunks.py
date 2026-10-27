@@ -24,7 +24,7 @@ def rows(path):
 
 
 def assert_search(monkeypatch, path, metadata, normal, fallback):
-    monkeypatch.setattr(store, "load_validated_compact", lambda **kwargs: metadata)
+    monkeypatch.setattr(store, "validated_compact_source", lambda **kwargs: metadata["source"])
     results = store.search_conversation_history(
         space="productivity", project="p", query="needle", path=path,
         memory_root=path.parent, top_k=20,
@@ -123,10 +123,12 @@ def test_search_rejects_uncommitted_head_and_missing_fragments(tmp_path, monkeyp
     store.update_conversation_chunks(payload(), normal=normal,
                                     fallback=[event("f", "error")], batch_key=2,
                                     expected_prior_hash=None, reset=True, path=path)
-    monkeypatch.setattr(store, "load_validated_compact", lambda **kwargs: payload("hash-2"))
+    monkeypatch.setattr(
+        store, "validated_compact_source", lambda **kwargs: payload("hash-2")["source"],
+    )
     assert store.search_conversation_history(space="productivity", project="p", query="needle",
                                              path=path, memory_root=tmp_path) == []
-    monkeypatch.setattr(store, "load_validated_compact", lambda **kwargs: payload())
+    monkeypatch.setattr(store, "validated_compact_source", lambda **kwargs: payload()["source"])
     with sqlite3.connect(path) as conn:
         conn.execute("DELETE FROM conversation_chunks WHERE projection_kind = 'fallback'")
     assert store.search_conversation_history(space="productivity", project="p", query="needle",
@@ -147,7 +149,7 @@ def test_search_limit_counts_logical_chunks_not_fallback_fragments(tmp_path, mon
         conn.execute("UPDATE conversation_chunks SET content=?,batch_seq=1001 "
                      "WHERE projection_kind='head'",
                      (json.dumps({"normal_count": 1, "fallback_count": 1001}),))
-    monkeypatch.setattr(store, "load_validated_compact", lambda **kwargs: payload())
+    monkeypatch.setattr(store, "validated_compact_source", lambda **kwargs: payload()["source"])
     result = store.search_conversation_history(space="productivity", project="p", query="needle",
                                                path=path, memory_root=tmp_path)
     assert len(result) == 1

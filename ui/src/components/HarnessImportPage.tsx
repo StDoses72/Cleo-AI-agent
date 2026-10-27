@@ -9,8 +9,8 @@ const kindLabels: Record<string, string> = {
   get skills() { return tr("harnessimportpage.skills"); }, get agents() { return tr("harnessimportpage.subagents"); }, get commands() { return tr("approvalprompt.command"); }, get rules() { return tr("harnessimportpage.rules"); }, get prompts() { return tr("harnessimportpage.prompts"); }, get instructions() { return tr("harnessimportpage.instruction_files"); },
 };
 
-/** Purpose: Compare Cleo's own harness directories with the local Claude/Codex setup and copy
- * chosen items either way. Input: whether the page is visible. Output: explicit, non-overwriting copies.
+/** Purpose: Show the native state directory and its available user-authored setup.
+ * Legacy API responses retain the explicit non-overwriting copy controls.
  */
 export function HarnessImportPage({ active, onRevealPath }: { active: boolean; onRevealPath: (path: string) => void }) {
   const [statuses, setStatuses] = useState<HarnessSyncStatus[] | null>(null);
@@ -53,6 +53,14 @@ export function HarnessImportPage({ active, onRevealPath }: { active: boolean; o
     {notice && <p className="settings-success" role="status">{notice}</p>}
     {!statuses && loading && <p role="status">{tr("harnessimportpage.comparing_local_and_cleo_configurations")}</p>}
     {statuses?.map(status => {
+      if (status.sharedHome) return <section key={status.harness} className="harness-sync-card" aria-label={harnessNames[status.harness]}>
+        <header><strong>{harnessNames[status.harness]}</strong><span className="harness-sync-badge ok">{tr("harnessimportpage.shared_native_home")}</span></header>
+        <div className="harness-sync-paths"><span>{status.localPath}</span>
+          {status.localExists && <button type="button" aria-label={tr("harnessimportpage.open_the_local_value_directory", { p0: harnessNames[status.harness] })} onClick={() => onRevealPath(status.localPath)}><FolderOpen size={13} /></button>}
+        </div>
+        <p>{tr("harnessimportpage.shared_native_explanation")}</p>
+        <ul className="harness-sync-list">{status.items.map(item => <li key={item.id}><span>{item.name}</span><small>{kindLabels[item.kind] || item.kind}</small></li>)}</ul>
+      </section>;
       const group = (state: HarnessSyncItem["state"]) => status.items.filter(item => item.state === state);
       const localOnly = group("local_only"), cleoOnly = group("cleo_only"), different = group("different"), same = group("same");
       const selected = (items: HarnessSyncItem[]) => items.filter(item => !unselected.has(`${status.harness}:${item.id}`)).map(item => item.id);

@@ -939,9 +939,11 @@ def _main(argv: list[str] | None = None) -> int:
     restore_parser = sub.add_parser("restore", help="restore a users-file backup")
     restore_parser.add_argument("backup", nargs="?")
     args = parser.parse_args(argv)
-    from cleo.integrations.harness_home import external_home, harness_home
+    from cleo.config.settings import APP_HOME
+    from cleo.integrations.harness_home import external_home
 
-    home, external = harness_home("codex", create=False), external_home("codex")
+    # This recovery utility belongs to retired isolated homes, never native credentials.
+    home, external = APP_HOME / "data" / "codex", external_home("codex")
     if args.command == "status":
         directory = coordination_dir(home)
         report = {

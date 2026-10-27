@@ -166,7 +166,6 @@ Cleo thread 的标题由首条 `user_message` 确定，也可作为纯 metadata 
 ```text
 memory/
 ├── MEMORY_POLICY.md
-├── persona.sqlite3
 ├── sessions.sqlite3
 ├── non_productivity/
 │   ├── memory.sqlite3
@@ -217,7 +216,7 @@ space/project/session 绑定、actor、type、时间和 payload。
 - 省略低价值读取结果和超长终端内容。
 - 保存 `source_content_hash`、event range 和 `source_event_ids`。
 
-加载 compact 时必须重新计算 event hash，并校验 space/project/session 和最后 seq。
+加载 compact 时校验范围、事件序号和文件版本；同版本复用有上限的验证记录，首次、变更或损坏时再读取完整事件并核对 hash。
 
 ### SQLite
 
@@ -225,9 +224,7 @@ space/project/session 绑定、actor、type、时间和 payload。
 每个 space 自己的 `memory.sqlite3` 保存 atomic memory、event evidence、consolidation
 记录与 lexical conversation chunks。SQLite 不是原始对话事实源。
 
-`memory/persona.sqlite3` 是唯一的跨 project/space 记忆库，只保存人格 trait 及其私有
-event evidence。根目录 `PERSONA.md` 是其不暴露 project/session 来源的可读投影，并由
-前台 Cleo 作为低权限描述性记忆加载。
+人格存储已退出运行路径。旧 `persona.sqlite3` 与 `PERSONA.md` 原样保留，不读取、注入、更新或自动转成项目偏好；旧 `persona_path` 配置在校验时忽略。
 
 ## Harness 事件适配
 
@@ -332,24 +329,19 @@ Cleo handle ↔ native thread ID 映射。已完成内容只留在 SessionStore�
 ## DreamAgent 流转
 
 ```text
-validated compact
-  → space/project/session/source hash 校验
-  → DreamAgent 读取同 scope 的项目记忆与全局 PERSONA.md
-  → atomic memory + evidence_event_ids
-  → 可选写入 project-independent persona trait + evidence
-  → 原子写入 MEMORY.md
-  → 原子渲染根目录 PERSONA.md
-  → 显式 complete consolidation
+原始 events.jsonl → 带来源引用和省略标记的有界投影
+  → 当前项目偏好 + 用户证据 → old/new 候选编辑
+  → 按项跳过证据不足的冲突，保留其他有效编辑
+  → 基于最新正文重新核对 → MEMORY.md 原子发布及 Git 提交
+  → 发布可靠完成后推进 committed_seq 并清理 pending
 ```
 
-两个 space 使用不同提取重点：non-productivity 偏向用户事实、偏好、目标与纠正；
-productivity 偏向任务目标、技术决策、改动文件、测试结果、错误、产物和未完成事项。
+两个空间都只抽取有用户证据的项目偏好。事实、代码和任务结果通过历史检索回查。
 
 DreamAgent 使用 `active_profiles.dream_agent` 独立选择 `profiles.agents` 中的模型配置。
 旧配置未设置该字段时回退到前台 `active_profiles.agent`。
 
-自动 consolidation 不会修改 `AGENTS.md`，也不会创建或更新 skill。人格层只能描述
-交流、表达、关系连续性、适应方式和互动边界；不能包含项目事实、权限、政策或工具指令。
+自动 consolidation 不会修改 `AGENTS.md`，也不会创建或更新 skill。整理开关独立于只读记忆查询与托盘驻留；关闭后停止新模型调用，取消与重启通过现有 pending/checkpoint 恢复。
 
 用户确认整理后，DreamAgent 直接处理 validated compact；手动忽略则只记录 `processed_hash`
 和 skipped 状态。`consolidated_hash` 只表示 source 已完成项目记忆协议，因此被手动忽略的

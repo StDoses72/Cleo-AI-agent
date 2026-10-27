@@ -5,6 +5,7 @@
       "compressed_at": "<time>",
       "omitted_tool_characters": 5007,
       "raw_characters": 34958,
+      "tool_body_version": 1,
       "tool_event_count": 2
     },
     "events": [

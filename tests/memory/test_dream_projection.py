@@ -1,5 +1,8 @@
 import json
 
+import pytest
+
+from cleo.memory.consolidation import Extraction
 from cleo.memory.dream_projection import MAX_BLOCK_BYTES, build_blocks, project_events, token_count
 
 
@@ -80,14 +83,15 @@ def test_no_dangling_references_after_block_boundary():
     assert "x " * 100 in "".join(b.text for b in blocks)
 
 
-def test_binary_and_secrets_redacted_but_tool_content_preserved():
+def test_binary_and_secrets_redacted_and_tool_body_excerpted():
     records = project_events([event(1, "tool_result", content={
         "content": "real tool body" * 1000,
         "api_key": "private-key", "token_count": 100,
         "image": {"type": "image_url", "image_url": {"url": "data:image/png;base64,secret"}},
     })])
     body = records[0].body
-    assert body["content"]["content"] == "real tool body" * 1000
+    assert "omitted content" in body["content"]["content"]
+    assert len(body["content"]["content"]) < 3000
     assert body["content"]["api_key"] == "<redacted>"
     assert "base64" not in json.dumps(body)
     assert body["content"]["token_count"] == 100
@@ -104,12 +108,13 @@ def test_repeated_user_events_remain_distinct_and_noise_is_explicit():
     assert records[-1].kind == "session_cancelled"
 
 
-def test_langchain_tool_content_not_dropped_by_legacy_compactor():
+def test_langchain_tool_content_excerpt_keeps_source_reference():
     raw = event(1, "tool_result")
     raw["message"] = {"type": "tool", "data": {"content": "z" * 10000,
                                                  "tool_call_id": "call"}}
     records = project_events([raw])
-    assert records[0].body["message"]["data"]["content"] == "z" * 10000
+    assert "omitted content" in records[0].body["message"]["data"]["content"]
+    assert records[0].event_ids == ["event-1"]
 
 
 def test_projection_uses_active_history_after_multiple_rewinds():
@@ -121,3 +126,66 @@ def test_projection_uses_active_history_after_multiple_rewinds():
     assert [record.seq for record in records] == [1, 5]
     text = "\n".join(block.text for block in build_blocks(records))
     assert "removed" not in text
+
+
+def test_long_tool_transcript_retains_lifecycle_and_user_constraints_without_raw_mutation():
+    output = ("checking unchanged dependency\n" * 20_000
+              + "ERROR: connection failed\nCancelled: retry after reconnect\n"
+              + "checking unchanged dependency\n" * 20_000
+              + "Recovered: resumed successfully\n312 tests passed\n")
+    raw = [event(1, "user_message", content="Always preserve my original files."),
+           delta(2, output), result(3, output),
+           event(4, "session_cancelled"), event(5, "session_resumed")]
+    original = json.dumps(raw)
+    records = project_events(raw)
+    blocks = build_blocks(records)
+    projected = "\n".join(block.text for block in blocks)
+    assert len(projected) < len(original) // 100
+    assert json.dumps(raw) == original
+    assert all(text in projected for text in [
+        "Always preserve my original files.", "connection failed", "Cancelled",
+        "Recovered", "312 tests passed", "session_cancelled", "session_resumed",
+        "omitted content", "same_output_as",
+    ])
+    assert blocks[0].evidence["E2"] == ["event-2"]
+    with pytest.raises(ValueError, match="direct user evidence"):
+        Extraction.model_validate({"edits": [{"new": "Prefer retries.",
+                                               "evidence_refs": ["E2"]}]}).validate_evidence(
+            blocks[0],
+        )
+
+
+def test_compact_file_read_failure_retains_tail_and_raw_reference():
+    from cleo.memory.compaction import _compact_tool_result
+
+    body, omitted = _compact_tool_result(
+        "read_file", "error", "progress\n" * 1000 + "ERROR: permission denied; no files changed",
+    )
+    assert "permission denied" in body["result"]
+    assert body["result_truncated"] and omitted > 0
+
+
+def test_deleting_conflicting_default_requires_direct_user_evidence():
+    block = build_blocks(project_events([
+        event(1, "user_message", content="Remove the old English default; use Chinese."),
+        event(2, "tool_result", content="Default English."),
+    ]))[0]
+    for refs in ([], ["E2"]):
+        with pytest.raises(ValueError, match="evidence"):
+            result = Extraction.model_validate({"edits": [{"old": "Default English.",
+                                                          "evidence_refs": refs}]})
+            result.validate_evidence(block)
+    Extraction.model_validate({"edits": [{"old": "Default English.",
+                                           "evidence_refs": ["E1"]}]}).validate_evidence(block)
+
+
+def test_large_structured_tool_excerpt_cannot_reintroduce_redacted_secrets():
+    from cleo.memory.compaction import _compact_tool_result
+
+    result, _ = _compact_tool_result("query", "success", json.dumps({
+        "api_key": "private-credential", "rows": list(range(3000)),
+        "nested": {"password": "private-password"},
+    }))
+    rendered = json.dumps(result)
+    assert "private-credential" not in rendered and "private-password" not in rendered
+    assert "<redacted>" in rendered and result["result_truncated"]

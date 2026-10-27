@@ -201,6 +201,8 @@ class DesktopService:
         self._productivity_sessions: dict[str, Any] = {}
         self._runs = RunSupervisor()
         self._memory_operations = 0
+        self._manual_memory_tasks: set[asyncio.Task] = set()
+        self._memory_closed = False
         self._background_memory = BackgroundMemory(
             settings=self._background_memory_settings,
             sources=self._background_memory_sources,
@@ -607,10 +609,17 @@ class DesktopService:
         session_id: str,
         action: str,
     ) -> dict[str, Any]:
-        async with self._memory_operation():
-            return await self._review_memory_source(
-                space=space, project=project, session_id=session_id, action=action,
-            )
+        if self._memory_closed:
+            raise ValueError("Memory consolidation is stopped for shutdown")
+        task = asyncio.current_task()
+        self._manual_memory_tasks.add(task)
+        try:
+            async with self._memory_operation():
+                return await self._review_memory_source(
+                    space=space, project=project, session_id=session_id, action=action,
+                )
+        finally:
+            self._manual_memory_tasks.discard(task)
 
     @asynccontextmanager
     async def _memory_operation(self):
@@ -628,6 +637,8 @@ class DesktopService:
         """Resolve one source in the desktop memory review queue."""
         if action not in {"consolidate", "skip"}:
             raise ValueError(tr("service.unsupported_memory_action_value", p0=action))
+        if action == "consolidate" and not self._background_memory_settings()["dreamEnabled"]:
+            raise ValueError("Memory consolidation is disabled in settings")
         validate_dream_state(self.settings.MEMORY_DIR, space)
         state_path = memory_state_path(self.settings.MEMORY_DIR, space)
         source = get_session_source(space, project, session_id, path=state_path)
@@ -659,9 +670,24 @@ class DesktopService:
             try:
                 factory = self._dream_agent_factory or _create_default_dream_agent
                 dream_agent = await asyncio.to_thread(factory)
+                if not self._background_memory_settings()["dreamEnabled"]:
+                    raise asyncio.CancelledError
                 await dream_agent.invoke(
                     space=space, project=project, session_id=session_id, force=True,
                 )
+            except asyncio.CancelledError:
+                current = get_session_source(space, project, session_id, path=state_path)
+                if current and current["source_hash"] == source["source_hash"]:
+                    initializing = (current["status"] == "running"
+                                    and current.get("processing_phase") == "initializing")
+                    cancelled = (current["status"] == "failed" and str(
+                        current.get("last_error") or "",
+                    ).startswith("Consolidation cancelled;"))
+                    if initializing or cancelled:
+                        mark_consolidation_pending(
+                            space, project, session_id, source["source_hash"], path=state_path,
+                        )
+                raise
             except Exception as exc:
                 current = get_session_source(space, project, session_id, path=state_path)
                 if current is None or current.get("status") != "failed":
@@ -679,6 +705,29 @@ class DesktopService:
 
     async def get_background_memory_state(self) -> dict[str, Any]:
         return self._background_memory.state()
+
+    async def get_memory_sources(self) -> dict[str, Any]:
+        from cleo.memory.source_settings import read_source_settings
+        from cleo.memory.sources import MemorySources
+        path = Path(self.settings.PROFILE_DIR).with_name("memory-sources.json")
+        return {"settings": read_source_settings(path),
+                **await asyncio.to_thread(
+                    MemorySources(self.settings.MEMORY_DIR, path).list_memory_sources)}
+
+    async def save_memory_sources(self, *, settings: dict[str, Any]) -> dict[str, Any]:
+        from cleo.memory.source_settings import save_source_settings
+        path = Path(self.settings.PROFILE_DIR).with_name("memory-sources.json")
+        save_source_settings(path, settings)
+        return await self.get_memory_sources()
+
+    async def _cancel_manual_memory(self) -> None:
+        tasks = [task for task in self._manual_memory_tasks
+                 if task is not asyncio.current_task() and not task.done()]
+        for task in tasks:
+            if not task.cancelling():
+                task.cancel()
+        if tasks:
+            await asyncio.shield(asyncio.gather(*tasks, return_exceptions=True))
 
     def _background_memory_settings(self) -> dict[str, Any]:
         if self._config is not None:
@@ -772,7 +821,8 @@ class DesktopService:
         session_id: str,
     ) -> dict[str, Any]:
         """Purpose: Preview the same current evidence snapshot used by DreamAgent.
-        Input: Source identity. Output: Redacted full-text records without any cache/state writes.
+        Input: Source identity. Output: Redacted records with bounded tool excerpts and original
+        source references, without cache/state writes.
         """
         source = get_session_source(
             space,
@@ -812,6 +862,10 @@ class DesktopService:
                     "metadata": {
                         "from_seq": record.seq, "to_seq": record.end_seq,
                         "method": record.method,
+                        "source_path": str(session_directory(
+                            self.settings.MEMORY_DIR, space, project, session_id,
+                        ) / "events.jsonl"),
+                        "event_ids": record.event_ids,
                     },
                 }
             )
@@ -1815,10 +1869,12 @@ class DesktopService:
     async def save_dream_settings(
         self, *, selection: str, model: str | None = None,
     ) -> dict[str, Any]:
-        if self._runs.any_running():
+        if selection != "mode:disabled" and self._runs.any_running():
             raise ValueError(tr("service.wait_for_the_current_task_to_finish_before_chang_2"))
+        result = self._reloaded(save_dream_settings(self.settings.PROFILE_DIR, selection, model))
         await self._background_memory.cancel()
-        return self._reloaded(save_dream_settings(self.settings.PROFILE_DIR, selection, model))
+        await self._cancel_manual_memory()
+        return result
 
     def _require_idle_configuration(self) -> None:
         if self._runs.any_running():
@@ -1997,6 +2053,10 @@ class DesktopService:
         if (not new.active_profiles.background_memory_enabled
                 or not new.active_profiles.dream_enabled):
             self._background_memory.request_cancel()
+        if not new.active_profiles.dream_enabled:
+            for task in self._manual_memory_tasks:
+                if not task.done() and not task.cancelling():
+                    task.cancel()
         adapter = self._adapter_instance
         if adapter is None or not hasattr(adapter, "provider_settings"):
             return
@@ -2009,7 +2069,9 @@ class DesktopService:
         }))
 
     async def shutdown(self) -> None:
+        self._memory_closed = True
         await self._background_memory.cancel(close=True)
+        await self._cancel_manual_memory()
         from cleo.computer.host import controller
         from cleo.integrations.computer import close_connections
         await close_connections()
@@ -2819,6 +2881,7 @@ class DesktopService:
                 }),
                 session_store=self.store,
                 computer_config_path=Path(self.settings.PROFILE_DIR).with_name("computer-use.json"),
+                source_config_path=Path(self.settings.PROFILE_DIR).with_name("memory-sources.json"),
             )
         return self._adapter_instance
 
@@ -2899,16 +2962,8 @@ class DesktopService:
 
     @staticmethod
     def _memory_entry(entry: dict[str, Any]) -> dict[str, Any]:
-        scope = (
-            "persona"
-            if entry["scope"] == "persona"
-            else "preference"
-            if entry["category"] == "preference"
-            else "project"
-        )
-        source = (
-            "PERSONA.md" if entry["scope"] == "persona" else f"{entry['space']}/{entry['project']}"
-        )
+        scope = "preference" if entry["category"] == "preference" else "project"
+        source = f"{entry['space']}/{entry['project']}"
         return {
             "id": entry["id"],
             "scope": scope,

@@ -151,6 +151,13 @@ class AgentMcp:
     scope: dict[str, str] | None = None
 
     @property
+    def sync_instructions(self) -> str:
+        if self.mode != "chat" or self.profile.backend not in {"codex", "claude_code"}:
+            return ""
+        from cleo.memory.source_settings import sync_instructions
+        return sync_instructions(settings.PROFILE_DIR.with_name("memory-sources.json"))
+
+    @property
     def args(self) -> list[str]:
         """Purpose: Start tools with bundled dependencies, independent of the project.
         Input: Runtime mode, project path, and scope on this instance.
@@ -173,7 +180,9 @@ class AgentMcp:
             json.dumps(self.scope or {}),
         ]
 
-    def codex_config(self) -> CodexConfig:
+    def codex_config(
+        self, *, approval_mode: str = "deny_all", computer_client: str | None = None,
+    ) -> CodexConfig:
         return CodexConfig(
             codex_bin=executable(self.profile),
             env=runtime_environment(),

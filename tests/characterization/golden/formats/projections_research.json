@@ -11,6 +11,7 @@
       "compressed_at": "<time>",
       "omitted_tool_characters": 0,
       "raw_characters": 1961,
+      "tool_body_version": 1,
       "tool_event_count": 0
     },
     "events": [

@@ -17,7 +17,6 @@
       "summary": {
         "active_memories": 0,
         "pending_sources": 0,
-        "persona_traits": 0,
         "project_memories": 0,
         "project_scopes": 0
       },
@@ -33,8 +32,12 @@
         "created_at": "<time>",
         "id": "<turn:1>",
         "metadata": {
+          "event_ids": [
+            "<turn:1>"
+          ],
           "from_seq": 2,
           "method": "",
+          "source_path": "<HOME>/memory/non_productivity/projects/general/sessions/<thread:1>/events.jsonl",
           "to_seq": 2
         },
         "type": "human"
@@ -44,8 +47,12 @@
         "created_at": "<time>",
         "id": "<event:1>",
         "metadata": {
+          "event_ids": [
+            "<event:1>"
+          ],
           "from_seq": 3,
           "method": "",
+          "source_path": "<HOME>/memory/non_productivity/projects/general/sessions/<thread:1>/events.jsonl",
           "to_seq": 3
         },
         "type": "ai"
@@ -80,7 +87,6 @@
       "non_productivity/projects/general/sessions/<thread:1>/compact.json",
       "non_productivity/projects/general/sessions/<thread:1>/events.jsonl",
       "non_productivity/projects/general/sessions/<thread:1>/manifest.json",
-      "persona.sqlite3",
       "sessions.sqlite3"
     ],
     "memory_git_log": [],
@@ -154,7 +160,6 @@
       "summary": {
         "active_memories": 0,
         "pending_sources": 1,
-        "persona_traits": 0,
         "project_memories": 0,
         "project_scopes": 0
       },

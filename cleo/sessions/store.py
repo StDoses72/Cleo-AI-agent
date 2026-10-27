@@ -454,11 +454,12 @@ class SessionStore:
             return self.load_manifest(session_id)
 
     def refresh_compact(
-        self, session_id: str, *, materialize: bool = True,
+        self, session_id: str, *, materialize: bool = True, preserve_updated_at: bool = False,
     ) -> dict[str, Any] | None:
         """Update compact and its index; rebuild only when the incremental cache is invalid.
 
         Output: The legacy logical payload, or None when only the commit is needed.
+        Query-time repair preserves visible recency with preserve_updated_at=True.
         """
         with self._lock:
             manifest = self.load_manifest(session_id)
@@ -468,7 +469,13 @@ class SessionStore:
             refreshed = self._compact.refresh(
                 manifest, self._events, revision, materialize=materialize,
             )
-            self.update_manifest(session_id, **refreshed["manifest"])
+            if preserve_updated_at:
+                manifest.update(refreshed["manifest"])
+                path = self._manifests.path(manifest["space"], manifest["project"], session_id)
+                self._manifests.write(path, manifest)
+                self._index.upsert(manifest, path)
+            else:
+                self.update_manifest(session_id, **refreshed["manifest"])
             return refreshed["payload"]
 
     def find_by_native_session(

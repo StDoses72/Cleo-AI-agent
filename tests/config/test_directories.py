@@ -15,6 +15,7 @@ def test_directory_profile_exposes_new_session_paths(tmp_path: Path) -> None:
 
     assert profile.memory_path == tmp_path / "memory"
     assert profile.memory_policy_file == tmp_path / "memory" / "MEMORY_POLICY.md"
-    assert profile.persona_file == tmp_path / "PERSONA.md"
+    assert "persona_path" not in profile.model_dump()
+    assert not hasattr(profile, "persona_file")
     assert profile.session_index_file == tmp_path / "memory" / "sessions.sqlite3"
     assert profile.session_artifacts_path == tmp_path / "data" / "session_artifacts"

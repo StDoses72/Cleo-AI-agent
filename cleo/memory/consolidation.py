@@ -40,11 +40,13 @@ class Extraction(BaseModel):
         Output: Raises ValueError for missing or unknown evidence references.
         """
         for edit in self.edits:
-            if edit.new and not edit.evidence_refs:
-                raise ValueError("new preferences need source evidence")
+            if not edit.evidence_refs:
+                raise ValueError("preference changes need source evidence")
             missing = set(edit.evidence_refs) - block.evidence.keys()
             if missing:
                 raise ValueError(f"unknown evidence refs: {', '.join(sorted(missing))}")
+            if not set(edit.evidence_refs) & block.preference_evidence:
+                raise ValueError("preference changes need direct user evidence, not tool output")
 
 
 def save_checkpoint(path: Path, checkpoint: dict) -> None:

@@ -337,6 +337,8 @@ const allowedMethods = new Set([
   "save_model_profile",
   "save_dream_settings",
   "get_background_memory_state",
+  "get_memory_sources",
+  "save_memory_sources",
   "save_background_memory_settings",
   "check_model_connection",
   "create_model_connection",

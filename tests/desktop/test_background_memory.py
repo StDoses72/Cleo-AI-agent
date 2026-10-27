@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -14,7 +15,7 @@ from cleo.desktop.configuration import (
     save_background_memory_settings,
 )
 from cleo.desktop.service import DesktopService
-from cleo.memory.paths import memory_state_path
+from cleo.memory.paths import memory_state_path, session_directory
 from cleo.memory.state import (
     get_session_source,
     mark_consolidation_failed,
@@ -402,3 +403,126 @@ def test_memory_mutations_wait_for_publication_and_block_scheduler(tmp_path, met
         assert await operation == {"completed": True}
         assert service._memory_operations == 0
     asyncio.run(check())
+
+
+def manual_review(service):
+    return service.review_memory_source(space="non_productivity", project="general",
+                                        session_id="one", action="consolidate")
+
+
+def checkpoint_fixture(service):
+    checkpoint = session_directory(
+        service.settings.MEMORY_DIR, "non_productivity", "general", "one",
+    ) / "dream.json"
+    checkpoint.write_text('{"pending":{"results":{"completed-block":{"edits":[]}}}}')
+    return checkpoint
+
+
+def test_manual_disabled_rejects_before_model_construction(tmp_path):
+    async def check():
+        factory = Mock()
+        service, path = make_service(tmp_path, factory)
+        await service.save_dream_settings(selection="mode:disabled")
+        with pytest.raises(ValueError, match="disabled"):
+            await manual_review(service)
+        factory.assert_not_called()
+        assert not service._manual_memory_tasks and service._memory_operations == 0
+        assert get_session_source("non_productivity", "general", "one", path=path)[
+            "status"] == "pending"
+    asyncio.run(check())
+
+
+def test_disable_during_manual_factory_keeps_retryable_source_and_checkpoint(tmp_path):
+    async def check():
+        entered, release = threading.Event(), threading.Event()
+        invoke = AsyncMock()
+
+        def factory():
+            entered.set()
+            assert release.wait(10)
+            return SimpleNamespace(invoke=invoke)
+
+        service, path = make_service(tmp_path, factory)
+        checkpoint = checkpoint_fixture(service)
+        before = checkpoint.read_bytes()
+        task = asyncio.create_task(manual_review(service))
+        try:
+            assert await asyncio.to_thread(entered.wait, 10)
+            assert get_session_source("non_productivity", "general", "one", path=path)[
+                "status"] == "running"
+            await service.save_dream_settings(selection="mode:disabled")
+        finally:
+            release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        invoke.assert_not_awaited()
+        assert checkpoint.read_bytes() == before
+        assert get_session_source("non_productivity", "general", "one", path=path)[
+            "status"] == "pending"
+        assert not service._manual_memory_tasks
+    asyncio.run(asyncio.wait_for(check(), 15))
+
+
+@pytest.mark.parametrize("operation", ["disable", "hot_reload", "shutdown"])
+def test_manual_cancellation_drains_publication_and_preserves_progress(
+    tmp_path, monkeypatch, operation,
+):
+    async def check():
+        entered, cleaning, release = (asyncio.Event() for _ in range(3))
+
+        async def invoke(**_kwargs):
+            mark_consolidation_started("non_productivity", "general", "one", "hash",
+                                       phase="chunk 2/3", path=path)
+            entered.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cleaning.set()
+                await release.wait()
+                mark_consolidation_failed(
+                    "non_productivity", "general", "one", "hash",
+                    "Consolidation cancelled; 1/3 blocks checkpointed.", path=path,
+                )
+                raise
+
+        service, path = make_service(tmp_path, lambda: SimpleNamespace(invoke=invoke))
+        checkpoint = checkpoint_fixture(service)
+        before = checkpoint.read_bytes()
+        monkeypatch.setattr("cleo.integrations.computer.close_connections", AsyncMock())
+        stop = AsyncMock()
+        monkeypatch.setattr("cleo.computer.host.controller", lambda: SimpleNamespace(stop=stop))
+        task = asyncio.create_task(manual_review(service))
+        await entered.wait()
+        if operation == "hot_reload":
+            service._settings_changed(None, SimpleNamespace(active_profiles=ActiveProfiles(
+                agent="chat", dream_enabled=False,
+            )))
+            cancellation = asyncio.create_task(service._cancel_manual_memory())
+        else:
+            cancellation = asyncio.create_task(service.shutdown() if operation == "shutdown"
+                                               else service.save_dream_settings(
+                                                   selection="mode:disabled"))
+        await cleaning.wait()
+        assert not cancellation.done() and service._memory_operations == 1
+        assert not (await service.run_background_memory_review())["running"]
+        if operation == "shutdown":
+            with pytest.raises(ValueError, match="shutdown"):
+                await manual_review(service)
+        release.set()
+        await cancellation
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert checkpoint.read_bytes() == before
+        assert get_session_source("non_productivity", "general", "one", path=path)[
+            "status"] == "pending"
+        assert not service._manual_memory_tasks and service._memory_operations == 0
+        if operation == "shutdown":
+            stop.assert_awaited_once_with("exit")
+        else:
+            await service.save_dream_settings(selection="mode:follow")
+            resumed = AsyncMock(return_value={"status": "complete"})
+            service._dream_agent_factory = lambda: SimpleNamespace(invoke=resumed)
+            service.load_workspace = AsyncMock(return_value={"loaded": True})
+            assert await manual_review(service) == {"loaded": True}
+            resumed.assert_awaited_once()
+    asyncio.run(asyncio.wait_for(check(), 15))

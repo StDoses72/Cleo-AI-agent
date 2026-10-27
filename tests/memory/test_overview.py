@@ -2,7 +2,6 @@ from pathlib import Path
 
 from cleo.memory.overview import build_memory_overview
 from cleo.memory.paths import memory_state_path
-from cleo.memory.persona import upsert_persona_trait
 from cleo.memory.repository import MemoryRepository
 from cleo.memory.state import mark_consolidation_skipped, touch_session_source
 
@@ -16,18 +15,6 @@ def test_memory_overview_matches_desktop_contract(tmp_path: Path) -> None:
         MemoryRepository(memory_root).publish(
             space, project, "", "# User Preferences\n- Prefer concise answers.\n", "initial",
         )
-
-    upsert_persona_trait(
-        memory_root=memory_root,
-        category="communication",
-        trait="Lead with the result.",
-        space="non_productivity",
-        project="general",
-        session_id="session-general",
-        source_hash="hash-general",
-        evidence_event_ids=["event-persona"],
-        tags=["style"],
-    )
 
     non_productivity_state = memory_state_path(memory_root, "non_productivity")
     touch_session_source(
@@ -60,10 +47,9 @@ def test_memory_overview_matches_desktop_contract(tmp_path: Path) -> None:
 
     assert overview["schema_version"] == 1
     assert overview["summary"] == {
-        "active_memories": 3,
+        "active_memories": 2,
         "project_memories": 2,
         "project_scopes": 2,
-        "persona_traits": 1,
         "pending_sources": 1,
     }
     assert overview["dream_agent"]["status"] == "idle"
@@ -90,13 +76,10 @@ def test_memory_overview_matches_desktop_contract(tmp_path: Path) -> None:
             "updated_at": overview["review_sources"][0]["updated_at"],
         }
     ]
-    assert {entry["scope"] for entry in overview["entries"]} == {"project", "persona"}
+    assert {entry["scope"] for entry in overview["entries"]} == {"project"}
     project_memory = next(entry for entry in overview["entries"] if entry["scope"] == "project")
     assert project_memory["category"] == "preference"
     assert project_memory["evidence"] == []
-    persona = next(entry for entry in overview["entries"] if entry["scope"] == "persona")
-    assert persona["tags"] == ["style"]
-    assert persona["evidence"] == []
 
 
 def test_memory_overview_is_empty(tmp_path: Path) -> None:

@@ -1,9 +1,8 @@
-"""Detached worker for sequential DreamAgent memory consolidation.
+"""Legacy explicit worker entrypoint for sequential DreamAgent consolidation.
 
-The desktop backend launches this module on shutdown (see
-``cleo.integrations.background.launch_dream_agent_worker``) with a JSON list of
-``[thread_id, project, space]`` jobs. It runs without a console, so failures are written
-to stderr and never stop the remaining jobs.
+Accepts a JSON list of ``[thread_id, project, space]`` jobs. The desktop uses its
+in-process cancellable scheduler and does not launch this worker on exit. Failures
+are written to stderr and do not stop the remaining jobs.
 """
 
 from __future__ import annotations

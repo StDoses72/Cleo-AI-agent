@@ -44,6 +44,36 @@ def invoke(agent):
     return asyncio.run(agent.invoke("session-dream", "cleo", "productivity"))
 
 
+def test_disabled_consolidation_cannot_be_forced(tmp_path, monkeypatch):
+    config, _ = setup(tmp_path, monkeypatch)
+    config.active_profiles.dream_enabled = False
+    extract = AsyncMock()
+    monkeypatch.setattr(dream_module.DreamAgent, "_extract", extract)
+    result = asyncio.run(dream_module.DreamAgent().invoke(
+        "session-dream", "cleo", "productivity", force=True,
+    ))
+    assert result["status"] == "skipped"
+    extract.assert_not_awaited()
+
+
+def test_disabling_between_blocks_preserves_checkpoint_without_new_call(tmp_path, monkeypatch):
+    config, _ = setup(tmp_path, monkeypatch, "direct user preference evidence " * 2000)
+    monkeypatch.setattr(dream_module, "BLOCK_BUDGET", 1200)
+    calls = []
+
+    async def extract(self, prompt):
+        calls.append(prompt)
+        config.active_profiles.dream_enabled = False
+        return extracted(prompt)
+
+    monkeypatch.setattr(dream_module.DreamAgent, "_extract", extract)
+    with pytest.raises(asyncio.CancelledError):
+        invoke(dream_module.DreamAgent())
+    checkpoint = load_checkpoint(checkpoint_file(config))
+    assert len(calls) == 1 and len(checkpoint["pending"]["results"]) == 1
+    assert checkpoint["committed_seq"] == 0
+
+
 def test_timing_tracks_actual_retries_and_publish_without_changing_evidence(tmp_path, monkeypatch):
     from cleo.runtime.timing import TimingStore
 
@@ -78,8 +108,10 @@ def memories():
 
 
 def extracted(prompt, *, subject="Prefer concise answers."):
-    line = prompt.split("Evidence records:\n", 1)[1].splitlines()[0]
-    row = json.loads(line)
+    rows = [json.loads(line) for line in prompt.split("Evidence records:\n", 1)[1].splitlines()]
+    row = next((row for row in rows if row.get("type") in {"user_message", "human"}), None)
+    if row is None:
+        return Extraction(summary="No direct user preference evidence in this block.")
     return Extraction.model_validate({
         "edits": [{"new": subject,
                       "evidence_refs": [row.get("ref", row["record"])]}],

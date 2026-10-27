@@ -2,6 +2,7 @@ import { getLanguage } from "../../electron/i18n.mjs";
 import { t as tr } from "../../electron/i18n.mjs";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { dreamStatusLabel } from "../memoryStatus";
+import { MemorySourcesSettings } from "./MemorySourcesSettings";
 import { UpdateVersionPicker } from "./UpdateVersionPicker";
 import { handleDialogKeyDown, Modal } from "./Modal";
 import { PermissionSelector } from "./PermissionSelector";
@@ -465,6 +466,7 @@ export function SettingsModal({
           ) : (
             <div className="settings-page">
               <SettingsRow title={tr("modelsettingspanel.memory_consolidation")}><span className="settings-value">{dreamStatusLabel(dreamAgent)}</span></SettingsRow>
+              <MemorySourcesSettings active={open} />
               {onStorageInventory && <StorageSettings active={open} onInventory={onStorageInventory} onReclaim={onReclaimStorage}
                 blocked={storageBlocked} onRevealPath={onRevealPath} />}
               <details className="settings-advanced"><summary>{tr("connectionwizard.advanced_settings")}</summary>

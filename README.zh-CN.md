@@ -38,7 +38,7 @@ Cleo 是一套本地优先的 AI 工作空间：它把通用对话、开发者�
 - append-only `events.jsonl` 会话事实源、原子 manifest 和可重建 SQLite 索引。
 - `non_productivity` 与 `productivity` 两个 memory space；读取偏好时显式限定项目范围。
 - 规则压缩、敏感信息清理，以及校验证据、处理冲突并发布偏好编辑的 DreamAgent。
-- 项目偏好、手动整理时可替换的单个交接快照与历史片段检索；兼容现有 persona，停止自动提取新 persona。
+- 项目偏好、可选后台整理、跨来源原生记忆与历史索引检索。旧人格数据原样保留，不再读取或注入。
 - 带 allowlist、路径边界、超时、输出上限和审计日志的本地 shell 工具。
 - 每个 thread 独立的浏览器会话，以及公网/私网和域名访问边界。
 - Windows、macOS 与 Linux 原生桌面包，按平台校验更新并保留用户数据。
@@ -68,7 +68,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 使用 Codex 开发对话时，可在运行药丸的卡片里用闪电按钮切换快速模式；选择按对话保存。快速模式消耗更多额度，可用性取决于模型和账号，不支持时不显示该按钮。
 
-新建 Codex/Claude 会话的登录、配置、历史和 skills 保存在 Cleo 专用目录（`data/codex`、`data/claude`），不写入默认应用的会话列表；本机已有的 skills、指令和设置会自动补充导入，登录需在 Cleo 内单独完成一次。已有会话沿用原目录，详见[配置说明](docs/CONFIGURATION.md)。
+Codex/Claude 的登录、配置、历史和 skills 共用本机原生目录，尊重 `CODEX_HOME` / `CLAUDE_CONFIG_DIR`。旧专用区域按可核验规则迁移可移植内容，保留原件和冲突报告，不覆盖目标登录、配置或同 ID 历史；详见[配置说明](docs/CONFIGURATION.md)。
 
 ### 从源码运行
 
@@ -128,7 +128,7 @@ Desktop / MCP
                                       │
                          DreamAgent consolidation
                                       │
-                    project memory + evidence + persona
+                    project preferences + source references
 ```
 
 最重要的边界是：

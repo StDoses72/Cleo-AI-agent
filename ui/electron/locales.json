@@ -1,4 +1,20 @@
 {
+  "memorysources.migration": {
+    "zh-CN": "旧目录迁移",
+    "en": "Retired home migration"
+  },
+  "memorysources.migration_retained": {
+    "zh-CN": "旧数据保留用于恢复。已验证仅表示文件内容一致，原生恢复能力在打开时验证。报告：",
+    "en": "Originals remain for recovery. Verified means byte integrity; native resume is checked on open. Report:"
+  },
+  "harnessimportpage.shared_native_home": {
+    "zh-CN": "共用原生目录",
+    "en": "Shared native directory"
+  },
+  "harnessimportpage.shared_native_explanation": {
+    "zh-CN": "登录、配置、技能、会话和记忆使用同一原生目录，无需导入或导出。旧专用目录保留用于恢复；迁移冲突可在记忆来源中查看。",
+    "en": "Login, configuration, skills, sessions and memory use the same native directory. No import or export is needed. Retired directories remain available for recovery; review migration conflicts in Memory sources."
+  },
   "settings.language": {
     "zh-CN": "语言",
     "en": "Language"
@@ -2619,10 +2635,6 @@
     "zh-CN": " 条",
     "en": " entries"
   },
-  "memoryview.persona": {
-    "zh-CN": "人格",
-    "en": "Persona"
-  },
   "memoryview.recent_changes": {
     "zh-CN": "最近变更",
     "en": "Recent changes"
@@ -2916,8 +2928,8 @@
     "en": "Uses Codex quota"
   },
   "catalog.sign_in_separately_in_cleo_new_sessions_are_stored_separately_from_codex_app_history_": {
-    "zh-CN": "请在 Cleo 中独立登录。新会话与 Codex 应用的历史分开保存；同一账号的 Codex 额度仍共享。",
-    "en": "Sign in separately in Cleo. New sessions are stored separately from Codex app history; Codex quota is still shared for the same account."
+    "zh-CN": "与本机 Codex 共用登录、配置和会话目录；登录变更影响使用同一目录的客户端，同一账号共享 Codex 额度。",
+    "en": "Shares the native Codex login, configuration and session directory. Login changes affect clients using that directory; the same account shares Codex quota."
   },
   "catalog.sign_in_with_a_claude_account": {
     "zh-CN": "使用 Claude 账号登录",
@@ -3508,8 +3520,8 @@
     "en": "New connection"
   },
   "overlays.import": {
-    "zh-CN": "导入",
-    "en": "Import"
+    "zh-CN": "原生目录",
+    "en": "Native directories"
   },
   "overlays.software_updates": {
     "zh-CN": "软件更新",
@@ -7366,5 +7378,125 @@
   "visible_prompt.compatibility_caption": {
     "zh-CN": "请调查并修复提交到 {p0} 的兼容性问题。",
     "en": "Investigate and fix compatibility issues when submitting to {p0}."
+  },
+  "memorysources.title": {
+    "zh-CN": "记忆来源",
+    "en": "Memory sources"
+  },
+  "memorysources.description": {
+    "zh-CN": "按需读取原生记忆与历史，保留出处和作用域。原生更新仍受各工具设置与额度影响。",
+    "en": "Read native memories and history on demand with scope and provenance. Native updates depend on each tool’s settings and quota."
+  },
+  "memorysources.installed": {
+    "zh-CN": "已安装",
+    "en": "Installed"
+  },
+  "memorysources.configured": {
+    "zh-CN": "已配置",
+    "en": "Configured"
+  },
+  "memorysources.readable": {
+    "zh-CN": "有可读记忆",
+    "en": "Readable memory"
+  },
+  "memorysources.native_generation": {
+    "zh-CN": "原生自动整理",
+    "en": "Native generation"
+  },
+  "memorysources.read_source": {
+    "zh-CN": "允许读取来源",
+    "en": "Allow source"
+  },
+  "memorysources.sync": {
+    "zh-CN": "提示原生工具维护记忆",
+    "en": "Prompt native memory cooperation"
+  },
+  "memorysources.sync_help": {
+    "zh-CN": "独立可选，下次调用生效。提示工具读取项目记忆并使用自身支持的记忆机制；不保证同步成功，不覆盖原生文件或复制凭据。",
+    "en": "Optional; applies from the next invocation. Asks the tool to read project memory and use its supported native mechanism. Does not guarantee synchronization, overwrite native files or copy credentials."
+  },
+  "memorysources.source_id": {
+    "zh-CN": "来源标识",
+    "en": "Source ID"
+  },
+  "memorysources.directory": {
+    "zh-CN": "原生目录（绝对路径）",
+    "en": "Native directory (absolute path)"
+  },
+  "memorysources.project": {
+    "zh-CN": "项目路径（可选，绝对路径）",
+    "en": "Project path (optional, absolute)"
+  },
+  "memorysources.format": {
+    "zh-CN": "来源格式",
+    "en": "Source format"
+  },
+  "memorysources.add": {
+    "zh-CN": "添加只读来源",
+    "en": "Add read-only source"
+  },
+  "memorysources.yes": {
+    "zh-CN": "是",
+    "en": "Yes"
+  },
+  "memorysources.no": {
+    "zh-CN": "否",
+    "en": "No"
+  },
+  "memorysources.state_unknown": {
+    "zh-CN": "未核实",
+    "en": "Unverified"
+  },
+  "memorysources.state_configured_enabled": {
+    "zh-CN": "配置已启用",
+    "en": "Enabled in settings"
+  },
+  "memorysources.state_disabled": {
+    "zh-CN": "已停用",
+    "en": "Disabled"
+  },
+  "memorysources.state_available": {
+    "zh-CN": "可读取",
+    "en": "Available"
+  },
+  "memorysources.state_unavailable": {
+    "zh-CN": "目录不可用",
+    "en": "Directory unavailable"
+  },
+  "memorysources.state_unsupported": {
+    "zh-CN": "需手动添加目录",
+    "en": "Add a directory to read"
+  },
+  "memorysources.state_read_error": {
+    "zh-CN": "读取失败",
+    "en": "Read failed"
+  },
+  "memorysources.state_partial": {
+    "zh-CN": "部分可读取",
+    "en": "Partially available"
+  },
+  "memorysources.state_different_native_target": {
+    "zh-CN": "原生目录已变更，需核验",
+    "en": "Native directory changed; verification required"
+  },
+  "memorysources.state_verified": {
+    "zh-CN": "已核对副本",
+    "en": "Copies verified"
+  },
+  "memorysources.state_conflict": {
+    "zh-CN": "冲突",
+    "en": "Conflicts"
+  },
+  "memorysources.state_retry": {
+    "zh-CN": "需重试",
+    "en": "Retry needed"
+  },
+  "memorysources.state_retained": {
+    "zh-CN": "保留旧文件",
+    "en": "Original files retained"
+  },
+  "memorysources.legacy_excluded": {
+    "zh-CN": "旧记忆中互相矛盾的条目已排除，不影响其他有效偏好。",
+    "en": "Contradictory legacy entries are excluded. Other valid preferences remain available."
   }
 }

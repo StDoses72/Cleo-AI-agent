@@ -1,8 +1,4 @@
-"""Full-text, evidence-linked projections for bounded DreamAgent requests.
-
-The historical compact/index format stays unchanged. Only protocol duplication
-and known usage notifications are removed here; tool text is never excerpted.
-"""
+"""Evidence-linked projections with bounded, explicitly excerpted tool bodies."""
 
 from __future__ import annotations
 
@@ -14,9 +10,10 @@ from functools import lru_cache
 from typing import Any
 
 from cleo.memory.compaction import _redact_text
+from cleo.memory.tool_body import bounded_tool_text
 from cleo.sessions.rewind import active_events
 
-PROJECTION_VERSION = 1
+PROJECTION_VERSION = 2
 BLOCK_BUDGET = 20_000
 MAX_BLOCK_BYTES = 64_000
 _NOISE = {"thread/tokenUsage/updated", "account/rateLimits/updated"}
@@ -88,10 +85,25 @@ class Record:
 class Block:
     text: str
     evidence: dict[str, list[str]]
+    preference_evidence: set[str] = field(default_factory=set)
 
     @property
     def digest(self) -> str:
         return hashlib.sha256(canonical([self.text, self.evidence]).encode()).hexdigest()
+
+
+def _tool_body(value: Any) -> Any:
+    if isinstance(value, str):
+        return bounded_tool_text(value)
+    if isinstance(value, dict):
+        return {key: _tool_body(child) for key, child in value.items()}
+    if isinstance(value, list):
+        text = canonical(value)
+        if len(text) > 2400:
+            return {"excerpt": bounded_tool_text(text), "content_omitted": True,
+                    "original_characters": len(text)}
+        return [_tool_body(child) for child in value]
+    return value
 
 
 def project_events(events: list[dict]) -> list[Record]:
@@ -175,6 +187,11 @@ def project_events(events: list[dict]) -> list[Record]:
         if isinstance(output, str):
             record.output_hash = hashlib.sha256(output.encode()).hexdigest()
         record.body = redact(record.body)
+        if record.kind in {"tool_result", "tool_call", "terminal_output", "tool_event"}:
+            record.body = _tool_body(record.body)
+            if len(canonical(record.body)) > 12_000:
+                record.body = {"excerpt": bounded_tool_text(canonical(record.body), 8000),
+                               "content_omitted": True}
     return records
 
 
@@ -189,6 +206,7 @@ def build_blocks(records: list[Record], *, budget: int = BLOCK_BUDGET) -> list[B
     blocks: list[Block] = []
     lines: list[str] = []
     evidence: dict[str, list[str]] = {}
+    preference_evidence: set[str] = set()
     bodies: dict[str, str] = {}
     outputs: dict[tuple, tuple[str, str]] = {}
 
@@ -197,9 +215,10 @@ def build_blocks(records: list[Record], *, budget: int = BLOCK_BUDGET) -> list[B
 
     def flush() -> None:
         if lines:
-            blocks.append(Block("\n".join(lines), dict(evidence)))
+            blocks.append(Block("\n".join(lines), dict(evidence), set(preference_evidence)))
         lines.clear()
         evidence.clear()
+        preference_evidence.clear()
         bodies.clear()
         outputs.clear()
 
@@ -221,6 +240,7 @@ def build_blocks(records: list[Record], *, budget: int = BLOCK_BUDGET) -> list[B
         })
 
     for record in records:
+        is_user = record.kind in {"user_message", "human"}
         text = render(record, reuse=True)
         if lines and not fits("\n".join([*lines, text])):
             flush()
@@ -231,8 +251,9 @@ def build_blocks(records: list[Record], *, budget: int = BLOCK_BUDGET) -> list[B
                 low, high = start + 1, len(text)
                 ref = f"{record.ref}:{start}"
 
-                def fragment(end: int, *, record_ref=record.ref, ref=ref, start=start, text=text):
-                    return canonical({"record": record_ref, "ref": ref,
+                def fragment(end: int, *, record_ref=record.ref, kind=record.kind,
+                             ref=ref, start=start, text=text):
+                    return canonical({"record": record_ref, "ref": ref, "type": kind,
                                       "range": [start, end], "fragment": text[start:end]})
 
                 while low < high:
@@ -241,11 +262,14 @@ def build_blocks(records: list[Record], *, budget: int = BLOCK_BUDGET) -> list[B
                         low = middle
                     else:
                         high = middle - 1
-                blocks.append(Block(fragment(low), {ref: record.event_ids}))
+                blocks.append(Block(fragment(low), {ref: record.event_ids},
+                                    {ref} if is_user else set()))
                 start = low
             continue
         lines.append(text)
         evidence[record.ref] = record.event_ids
+        if is_user:
+            preference_evidence.add(record.ref)
         bodies[record.equality_hash] = record.ref
         if record.operation and "output" in record.body:
             outputs[record.operation] = (record.output_hash, record.ref)

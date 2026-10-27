@@ -20,11 +20,10 @@ def test_isolation_preserves_shared_config_and_does_not_copy_auth(tmp_path, monk
     monkeypatch.setenv("CODEX_SQLITE_HOME", str(shared))
     original = CodexConfig(env={"CUSTOM": "keep"}, config_overrides=('sqlite_home="shared"',))
     isolated = isolated_codex_config(original)
-    home = (tmp_path / "cleo/data/codex").resolve()
-    assert home.is_dir() and not (home / "auth.json").exists()
-    assert isolated.env == {"CUSTOM": "keep", "CODEX_HOME": str(home),
-                            "CODEX_SQLITE_HOME": str(home)}
-    assert tomllib.loads(isolated.config_overrides[-1])["sqlite_home"] == str(home)
+    home = shared.resolve()
+    assert home.is_dir() and (home / "auth.json").exists()
+    assert isolated.env == {"CUSTOM": "keep", "CODEX_HOME": str(home)}
+    assert tomllib.loads(isolated.config_overrides[-1])["sqlite_home"] == "shared"
     assert original.env == {"CUSTOM": "keep"}
     assert original.config_overrides == ('sqlite_home="shared"',)
     assert os.environ["CODEX_HOME"] == str(shared)
@@ -35,7 +34,7 @@ def test_isolation_preserves_shared_config_and_does_not_copy_auth(tmp_path, monk
 @pytest.mark.parametrize("approval", ["deny_all", "user"])
 def test_new_sessions_are_private_and_old_sessions_and_forks_keep_their_home(approval):
     async def scenario():
-        stored = {False: set(), True: {"old"}}
+        stored = {False: {"old"}, True: set()}
         calls = []
 
         class Client:
@@ -80,10 +79,10 @@ def test_new_sessions_are_private_and_old_sessions_and_forks_keep_their_home(app
         await provider.fork_session("new")
         assert calls[-1] == ("fork", False)
         await provider.resume_session("old", "workspace")
-        assert calls[-3:] == [("resume", False), ("close", False), ("resume", True)]
+        assert calls[-1] == ("resume", False)
         await provider.fork_session("old")
-        assert calls[-1] == ("fork", True)
-        assert stored[True] == {"old"}
+        assert calls[-1] == ("fork", False)
+        assert stored[True] == set()
 
     asyncio.run(scenario())
 
@@ -122,7 +121,7 @@ def test_native_sandbox_default_is_windows_only(tmp_path, monkeypatch, platform)
 def test_explicit_windows_sandbox_settings_are_preserved(tmp_path, monkeypatch):
     monkeypatch.setattr("cleo.config.settings.APP_HOME", tmp_path)
     monkeypatch.setattr("cleo.integrations.codex_home.sys.platform", "win32")
-    home = tmp_path / "data" / "codex"
+    home = tmp_path / "native-codex"
     home.mkdir(parents=True)
     saved = '[windows]\nsandbox = "elevated"\n'
     (home / "config.toml").write_text(saved, encoding="utf-8")
