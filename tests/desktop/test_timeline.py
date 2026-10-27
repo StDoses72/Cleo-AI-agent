@@ -94,7 +94,7 @@ def test_tool_updates_and_final_answer_survive_page_boundaries(tmp_path):
     tool = next(i for i in page["items"] if i["type"] == "tool")
     assert tool["status"] == "done"
     assert tool["turnHasAnswer"]
-    assert len(tool["output"]) == 8192
+    assert len(tool["output"]) == 32768
     assert tool["more"]["output"] == 50000
     assert len(index.content(tool["id"], "output")["text"]) == 16384
 

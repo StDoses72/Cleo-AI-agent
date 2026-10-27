@@ -21,7 +21,11 @@ from cleo.sessions.store import SessionStore
 LEGACY = (Path(__file__).resolve().parents[1] / "characterization" / "fixtures"
           / "legacy_home_v0_7_1" / "memory")
 # The projection each version produces for the frozen v0.7.1 sessions.
-PINNED = {9: "3301892058774d49258c4690fb3f827f4d6f86860c782a16e097daf48e0932cc"}
+PINNED = {
+    9: "3301892058774d49258c4690fb3f827f4d6f86860c782a16e097daf48e0932cc",
+    # 10 raised PREVIEW_CHARS; the projection itself is unchanged.
+    10: "3301892058774d49258c4690fb3f827f4d6f86860c782a16e097daf48e0932cc",
+}
 
 
 def _projection_digest() -> str:

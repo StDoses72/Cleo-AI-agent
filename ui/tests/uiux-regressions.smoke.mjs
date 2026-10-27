@@ -317,7 +317,7 @@ try {
     await page.locator(".turn-activity").waitFor({ state: "hidden" });
     assert.equal(await page.getByTestId("composer-input").inputValue(), "next instruction draft");
   });
-  await check("full content keeps Markdown and automatically loads the next part with retry", async page => {
+  await check("full content expands in place, keeps Markdown and retries after a failed part", async page => {
     await page.evaluate(async () => {
       const { cleoClient } = await import("/src/services/cleoClient.ts");
       const original = await cleoClient.loadThread("desktop-ui");
@@ -335,17 +335,16 @@ try {
     });
     await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
     await page.getByRole("button", { name: "展开全文", exact: true }).click();
-    const dialog = page.getByRole("dialog", { name: "完整历史正文" });
-    await dialog.getByRole("heading", { name: "Reader heading" }).waitFor();
-    assert.equal(await dialog.getByRole("button", { name: /上一段|下一段/ }).count(), 0);
-    await dialog.locator(".history-reader-content").evaluate(element => { element.scrollTop = element.scrollHeight; });
-    await dialog.getByRole("alert").filter({ hasText: "reader offline" }).waitFor();
-    assert.equal(await dialog.getByRole("heading", { name: "Reader heading" }).count(), 1);
-    await dialog.getByRole("button", { name: "重试", exact: true }).click();
-    await page.waitForFunction(() => window.readerCalls.length === 3);
-    await dialog.locator(".history-reader-content").evaluate(element => { element.scrollTop = element.scrollHeight; });
-    await dialog.getByText(/Reader end marker/).waitFor({ state: "attached" });
-    assert.deepEqual(await page.evaluate(() => window.readerCalls), [0, 4096, 4096, 8192]);
+    const entry = page.locator(".virtual-timeline-row").filter({ hasText: "Reader heading" });
+    await entry.getByRole("alert").filter({ hasText: "reader offline" }).waitFor();
+    // The text stays in the timeline; no reader dialog opens for message content.
+    assert.equal(await page.locator("dialog.history-reader[open]").count(), 0);
+    assert.equal(await entry.getByRole("heading", { name: "Reader heading" }).count(), 1);
+    await entry.getByRole("button", { name: "重试", exact: true }).click();
+    await entry.getByText(/Reader end marker/).waitFor({ state: "attached" });
+    assert.equal(await page.getByRole("button", { name: "展开全文", exact: true }).count(), 0);
+    assert.equal(await page.getByRole("button", { name: "重试", exact: true }).count(), 0);
+    assert.deepEqual(await page.evaluate(() => window.readerCalls), [0, 4096, 0, 4096, 8192]);
   });
   await check("instruction and connection drafts survive settings navigation", async page => {
     await page.getByRole("button", { name: "设置", exact: true }).click();

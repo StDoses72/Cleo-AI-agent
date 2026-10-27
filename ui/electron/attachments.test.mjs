@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, truncate, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -64,6 +64,22 @@ test("pasted in-memory files are materialized for local agents", async () => {
     assert.equal(attachment.mimeType, "image/png");
     assert.equal(attachment.size, 11);
     assert.match(attachment.path, /clipboard\.png$/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("pasted files arrive as raw bytes, so the sandboxed preload never needs Buffer", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cleo-pasted-bytes-"));
+  try {
+    const bytes = new TextEncoder().encode("screenshot-bytes");
+    const [attachment] = await materializeInlineAttachments([
+      { name: "screenshot.png", mimeType: "image/png", bytes },
+    ], root);
+
+    assert.equal(attachment.size, bytes.length);
+    assert.equal(await readFile(attachment.path, "utf8"), "screenshot-bytes");
+    assert.match(attachment.path, /screenshot\.png$/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -10,7 +10,7 @@
 /* ---------- Approval prompt ---------- */
 .approval-prompt {
   position: relative;
-  width: min(100%, 780px);
+  width: var(--reading-width);
   margin: 0 auto 12px;
   overflow: hidden;
   padding: 18px 20px 14px;
@@ -272,7 +272,7 @@
 /* ---------- Composer card ---------- */
 .composer {
   position: relative;
-  width: min(100%, 860px);
+  width: var(--reading-width);
   margin: 0 auto;
   padding: 14px 14px 10px;
   border: 1px solid var(--border-strong);

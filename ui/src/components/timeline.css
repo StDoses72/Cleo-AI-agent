@@ -1,5 +1,6 @@
 .conversation-chrome { position: relative; z-index: 2; min-width: 0; background: var(--canvas); }
-.conversation-body { position: relative; min-width: 0; min-height: 0; container-type: size; }
+/* Reading column: a fixed share of the conversation panel, never narrower than the old 780px column and capped for very wide panels. */
+.conversation-body { position: relative; min-width: 0; min-height: 0; container-type: size; --reading-width: min(100%, clamp(780px, 84cqw, 1360px)); }
 .conversation-viewport { position: absolute; inset: 0; padding-bottom: var(--composer-clearance); scroll-padding-bottom: var(--composer-clearance); overflow-anchor: none; }
 .conversation-bottom { position: absolute; z-index: 10; inset: auto 0 0; min-width: 0; background: transparent; pointer-events: none; }
 .conversation-bottom .approval-prompt, .conversation-bottom .question-banner,
@@ -96,3 +97,7 @@
   .composer .runtime-menu { left: 12px; right: auto; bottom: 40px; width: calc(100% - 24px); max-width: 300px; max-height: max(80px, calc(100cqh - var(--composer-clearance) - 60px)); display: flex; flex-direction: column; }
   .runtime-menu-list { min-height: 0; }
 }
+/* "展开全文" expands a long message in place; a failed read shows beside a retry link. */
+.history-content-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0 0 18px; }
+.history-content-inline .history-content-link { margin: 0; }
+.history-content-inline-error { color: var(--danger); font-size: var(--font-size-control); }

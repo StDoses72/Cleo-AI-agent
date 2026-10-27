@@ -14,10 +14,10 @@ from cleo.memory.paths import events_path
 from cleo.sessions.rewind import REWIND_EVENT
 
 PAGE_SIZE = 80
-PREVIEW_CHARS = 8192
+PREVIEW_CHARS = 32768
 PAGE_BYTES = 512 * 1024
 # Bump whenever timeline_from_events changes its output, so cached indexes are rebuilt.
-PROJECTION_VERSION = 9
+PROJECTION_VERSION = 10
 # A harness switch hands history to a new native session, which cannot rewind across it.
 HANDOFF_BOUNDARIES = (SWITCH_EVENT, DELIVERED_EVENT, "cleo/handoff_submitted")
 
