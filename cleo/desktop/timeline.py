@@ -17,7 +17,7 @@ PAGE_SIZE = 80
 PREVIEW_CHARS = 32768
 PAGE_BYTES = 512 * 1024
 # Bump whenever timeline_from_events changes its output, so cached indexes are rebuilt.
-PROJECTION_VERSION = 10
+PROJECTION_VERSION = 11
 # A harness switch hands history to a new native session, which cannot rewind across it.
 HANDOFF_BOUNDARIES = (SWITCH_EVENT, DELIVERED_EVENT, "cleo/handoff_submitted")
 
@@ -147,7 +147,7 @@ class TimelineIndex:
                         if saved is None:
                             position += 1
                         preview = dict(item)
-                        for field in ("content", "output", "command"):
+                        for field in ("output", "command"):
                             value = preview.get(field)
                             if isinstance(value, str) and len(value) > PREVIEW_CHARS:
                                 preview[field] = value[:PREVIEW_CHARS]

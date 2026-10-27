@@ -317,16 +317,69 @@ try {
     await page.locator(".turn-activity").waitFor({ state: "hidden" });
     assert.equal(await page.getByTestId("composer-input").inputValue(), "next instruction draft");
   });
-  await check("full content expands in place, keeps Markdown and retries after a failed part", async page => {
+  await check("full content history renders Markdown without an expand action", async page => {
     await page.evaluate(async () => {
       const { cleoClient } = await import("/src/services/cleoClient.ts");
       const original = await cleoClient.loadThread("desktop-ui");
-      const text = "# Reader heading\n\n" + "A paragraph to read.\n\n".repeat(500) + "Reader end marker";
-      const item = { id: "large", type: "message", role: "assistant", time: "", content: text.slice(0, 300), more: { content: text.length } };
+      const content = "# Reader heading\n\n" + "A paragraph to read. ".repeat(3000) + "\n\nReader end marker";
+      cleoClient.loadThread = async () => ({ ...original,
+        items: [{ id: "large", type: "message", role: "assistant", time: "", content }],
+        history: { before: "0", after: "0", total: 1, hasBefore: false, hasAfter: false, revision: "1" } });
+    });
+    await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
+    const entry = page.locator('[data-row-id="large"]');
+    await entry.getByRole("heading", { name: "Reader heading" }).waitFor();
+    assert.match(await entry.textContent(), /Reader end marker/);
+    assert.equal(await entry.getByRole("button", { name: "展开全文", exact: true }).count(), 0);
+    assert.equal(await page.locator("dialog.history-reader[open]").count(), 0);
+  });
+  for (const type of ["message", "thought"]) {
+    await check(`full content ${type} keeps streaming and final tails without expansion`, async page => {
+      await page.evaluate(async type => {
+        const { cleoClient } = await import("/src/services/cleoClient.ts");
+        window.streamingText = "# Streaming content\n\n" + "initial text ".repeat(3000) + "\n\nINITIAL_TAIL";
+        cleoClient.copyText = async text => { window.copiedText = text; };
+        cleoClient.streamTurn = async function* () {
+          const item = done => ({ id: "streaming-content", type, content: window.streamingText,
+            ...(type === "message" ? { role: "assistant", time: done ? "updated" : "initial" }
+              : { status: done ? "done" : "running" }) });
+          yield { type: "upsert-item", item: item(false) };
+          await new Promise(resolve => { window.advanceStream = resolve; });
+          window.streamingText += "\n\nLATEST_TAIL";
+          yield { type: "upsert-item", item: item(true) };
+          await new Promise(resolve => { window.finishStream = resolve; });
+        };
+      }, type);
+      await page.getByTestId("composer-input").fill("Read the long streaming content");
+      await page.getByTestId("send-button").click();
+      const row = page.locator('[data-row-id="streaming-content"]');
+      await row.waitFor();
+      assert.match(await row.textContent(), /INITIAL_TAIL/);
+      assert.equal(await row.getByRole("button", { name: "展开全文", exact: true }).count(), 0);
+      await page.evaluate(() => window.advanceStream());
+      if (type === "message") await row.locator("time").filter({ hasText: "updated" }).waitFor();
+      else await row.locator(".thought-entry.done").waitFor();
+      assert.match(await row.textContent(), /LATEST_TAIL/);
+      assert.equal(await row.getByRole("button", { name: "展开全文", exact: true }).count(), 0);
+      if (type === "message") {
+        await row.getByRole("button", { name: "复制", exact: true }).click();
+        assert.equal(await page.evaluate(() => window.copiedText), await page.evaluate(() => window.streamingText));
+      }
+      await page.evaluate(() => window.finishStream());
+    });
+  }
+  await check("tool output still loads more content in a reader and retries failed reads", async page => {
+    await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      const original = await cleoClient.loadThread("desktop-ui");
+      const text = "Tool output\n\n" + "A paragraph to read.\n\n".repeat(500) + "Reader end marker";
+      const item = { id: "large-tool", type: "tool", name: "Read", status: "done", command: "cat report.txt",
+        output: text.slice(0, 300), more: { output: text.length } };
       cleoClient.loadThread = async () => ({ ...original, items: [item], history: { before: "0", after: "0", total: 1, hasBefore: false, hasAfter: false, revision: "1" } });
       window.readerCalls = [];
       let failed = false;
-      cleoClient.readTimelineContent = async (_thread, _item, _field, offset) => {
+      cleoClient.readTimelineContent = async (_thread, _item, field, offset) => {
+        if (field !== "output") throw new Error(`Unexpected field: ${field}`);
         window.readerCalls.push(offset);
         if (offset && !failed) { failed = true; throw new Error("reader offline"); }
         const part = text.slice(offset, offset + 4096);
@@ -334,17 +387,17 @@ try {
       };
     });
     await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
-    await page.getByRole("button", { name: "展开全文", exact: true }).click();
-    const entry = page.locator(".virtual-timeline-row").filter({ hasText: "Reader heading" });
-    await entry.getByRole("alert").filter({ hasText: "reader offline" }).waitFor();
-    // The text stays in the timeline; no reader dialog opens for message content.
-    assert.equal(await page.locator("dialog.history-reader[open]").count(), 0);
-    assert.equal(await entry.getByRole("heading", { name: "Reader heading" }).count(), 1);
-    await entry.getByRole("button", { name: "重试", exact: true }).click();
-    await entry.getByText(/Reader end marker/).waitFor({ state: "attached" });
-    assert.equal(await page.getByRole("button", { name: "展开全文", exact: true }).count(), 0);
-    assert.equal(await page.getByRole("button", { name: "重试", exact: true }).count(), 0);
-    assert.deepEqual(await page.evaluate(() => window.readerCalls), [0, 4096, 0, 4096, 8192]);
+    await page.getByTestId("tool-group").getByRole("button").first().click();
+    await page.getByRole("button", { name: "展开输出", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "完整历史正文" });
+    await dialog.getByText(/Tool output/).waitFor();
+    await dialog.locator(".history-reader-content").evaluate(element => { element.scrollTop = element.scrollHeight; });
+    await dialog.getByRole("alert").filter({ hasText: "reader offline" }).waitFor();
+    await dialog.getByRole("button", { name: "重试", exact: true }).click();
+    await page.waitForFunction(() => window.readerCalls.length === 3);
+    await dialog.locator(".history-reader-content").evaluate(element => { element.scrollTop = element.scrollHeight; });
+    await dialog.getByText(/Reader end marker/).waitFor({ state: "attached" });
+    assert.deepEqual(await page.evaluate(() => window.readerCalls), [0, 4096, 4096, 8192]);
   });
   await check("instruction and connection drafts survive settings navigation", async page => {
     await page.getByRole("button", { name: "设置", exact: true }).click();

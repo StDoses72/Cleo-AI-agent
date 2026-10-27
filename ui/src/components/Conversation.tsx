@@ -274,27 +274,6 @@ export function Conversation({
     if (block.type === "thought-group") rows.push(...block.thoughts.map(item => ({ id: item.id, type: "thought-row" as const, item })));
     if (block.type === "tool-group") rows.push(...block.tools.map((item, index) => ({ id: item.id, type: "tool-row" as const, item, index })));
   }
-  // Long messages expand in place: full text keyed by thread + item, so a thread switch never shows another thread's text.
-  const [inlineText, setInlineText] = useState<Record<string, string>>({});
-  const [inlineStatus, setInlineStatus] = useState<Record<string, "loading" | string>>({});
-  const expandInline = async (item: TimelineItem & { content: string }) => {
-    if (!thread) return;
-    const key = stateKey(item.id);
-    setInlineStatus(current => ({ ...current, [key]: "loading" }));
-    try {
-      const text = await fullMessageText(thread.id, item);
-      setInlineText(current => Object.fromEntries(Object.entries({ ...current, [key]: text }).slice(-50)));
-      setInlineStatus(({ [key]: _done, ...rest }) => rest);
-    } catch (error) {
-      setInlineStatus(current => ({ ...current, [key]: error instanceof Error ? error.message : "正文读取失败" }));
-    }
-  };
-  const withInlineText = (item: TimelineItem): TimelineItem => {
-    const text = inlineText[stateKey(item.id)];
-    if (text === undefined || !item.more?.content) return item;
-    const { content: _preview, ...more } = item.more;
-    return { ...item, content: text, more: Object.keys(more).length ? more : undefined } as TimelineItem;
-  };
   const [reader, setReader] = useState<{ item: TimelineItem; field: string; offset: number; text: string; next: number; total: number } | null>(null);
   const [readerError, setReaderError] = useState("");
   const [readerLoading, setReaderLoading] = useState(false);
@@ -359,9 +338,7 @@ export function Conversation({
   }, [thread?.id, thread?.items.length, thread?.history?.before, thread?.history?.after, history?.busy, history?.error, bottomInset]);
 
   const editableTurns = useMemo(() => new Set(thread?.editableTurnIds ?? []), [thread?.editableTurnIds]);
-  const renderRow = (raw: TimelineRow) => {
-    const row: TimelineRow = raw.type === "thought-row" ? { ...raw, item: withInlineText(raw.item) as typeof raw.item }
-      : raw.type === "message" ? withInlineText(raw) as TimelineRow : raw;
+  const renderRow = (row: TimelineRow) => {
     let item: TimelineItem | undefined;
     let content: ReactNode;
     if (row.type === "thought-group") content = <ThoughtGroupEntry item={row} projectPath={project?.path ?? null} onOpenPath={onOpenPath}
@@ -379,15 +356,9 @@ export function Conversation({
       editable={!running && !waitingForAnswer && Boolean(onEditMessage) && editableTurns.has(row.id)}
       onEditMessage={onEditMessage}
       steeringBusy={steeringBusy} onRetrySteer={onRetrySteer} onRestoreSteer={onRestoreSteer} />; }
-    const status = item ? inlineStatus[stateKey(item.id)] : undefined;
-    return <>{content}{item?.more && Object.keys(item.more).map(field => field === "content" && "content" in item!
-      ? <span className="history-content-inline" key={field}>
-          {status && status !== "loading" && <span className="history-content-inline-error" role="alert">{status}</span>}
-          <button className="history-content-link" disabled={status === "loading"} onClick={() => void expandInline(item as TimelineItem & { content: string })}>
-            {status === "loading" ? "正在展开…" : status ? "重试" : "展开全文"}</button>
-        </span>
-      : <button className="history-content-link" key={field} onClick={() => void readContent(item!, field)}>
-          {field === "output" ? "展开输出" : field === "command" ? "展开命令" : "展开全文"}</button>)}</>;
+    return <>{content}{item?.more && Object.keys(item.more).filter(field => field === "output" || field === "command").map(field =>
+      <button className="history-content-link" key={field} onClick={() => void readContent(item!, field)}>
+        {field === "output" ? "展开输出" : "展开命令"}</button>)}</>;
   };
 
   return (
@@ -807,7 +778,7 @@ function TimelineEntry({
 type MessageItem = Extract<TimelineItem, { type: "message" }>;
 
 /** Purpose: Read a message's full text when the timeline only holds a preview of it. */
-async function fullMessageText(threadId: string, item: Pick<TimelineItem, "id" | "more"> & { content: string }) {
+async function fullMessageText(threadId: string, item: MessageItem) {
   if (!item.more?.content) return item.content;
   let text = "";
   for (let offset = 0; ;) {
