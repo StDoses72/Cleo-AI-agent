@@ -279,26 +279,34 @@ export function Conversation({
   const [readerError, setReaderError] = useState("");
   const [readerLoading, setReaderLoading] = useState(false);
   const readerRequest = useRef(false);
+  const readerNext = useRef(0);
   const readerDialog = useRef<HTMLDialogElement>(null);
   const readerViewport = useRef<HTMLDivElement>(null);
   const readerGeneration = useRef(0);
   const closeReader = () => {
     readerGeneration.current++;
     readerRequest.current = false;
+    readerNext.current = 0;
     setReader(null); setReaderError(""); setReaderLoading(false);
   };
   useEffect(closeReader, [thread?.id]);
   useEffect(() => { if (reader) readerDialog.current?.showModal(); else readerDialog.current?.close(); }, [Boolean(reader)]);
   const readContent = async (item: TimelineItem, field: string, offset = 0) => {
-    if (!thread || (offset > 0 && readerRequest.current)) return;
+    if (!thread || (offset > 0 && (readerRequest.current || offset !== readerNext.current))) return;
     const generation = ++readerGeneration.current;
     readerRequest.current = true; setReaderLoading(true);
     setReaderError("");
-    if (!offset) setReader({ item, field, offset: 0, text: "", next: 0, total: 0 });
+    if (!offset) {
+      readerNext.current = 0;
+      setReader({ item, field, offset: 0, text: "", next: 0, total: 0 });
+    }
     try {
       const content = await cleoClient.readTimelineContent(thread.id, item.id, field, offset);
-      if (generation === readerGeneration.current) setReader(current => ({ item, field, ...content,
-        text: offset ? (current?.text ?? "") + content.text : content.text }));
+      if (generation === readerGeneration.current) {
+        readerNext.current = content.next;
+        setReader(current => ({ item, field, ...content,
+          text: offset ? (current?.text ?? "") + content.text : content.text }));
+      }
     } catch (error) {
       if (generation === readerGeneration.current) setReaderError(error instanceof Error ? error.message : tr("conversation.could_not_read_the_full_content"));
     } finally {
