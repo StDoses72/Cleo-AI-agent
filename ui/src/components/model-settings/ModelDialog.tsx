@@ -1,3 +1,4 @@
+import { t as tr } from "../../../electron/i18n.mjs";
 import { useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { handleDialogKeyDown } from "../Modal";
@@ -26,7 +27,7 @@ export function ModelDialog({ title, onClose, onEscape, children }: {
         if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) onClose();
       }
     }} onCancel={event => { event.preventDefault(); (onEscape || onClose)(); }}>
-    <header className="ms-dialog-heading"><h2>{title}</h2><button className="ms-icon" aria-label={`关闭${title}`} onClick={onClose}><X /></button></header>
+    <header className="ms-dialog-heading"><h2>{title}</h2><button className="ms-icon" aria-label={tr("modeldialog.close_value", { p0: title })} onClick={onClose}><X /></button></header>
     {children}
   </dialog>;
 }

@@ -1,5 +1,7 @@
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
+let uiLanguage = process.argv.includes("--cleo-ui-language=en") ? "en" : "zh-CN";
+ipcRenderer.on("cleo:language-changed", (_event, language) => { uiLanguage = language; });
 const memoryListeners = new Set();
 let pendingOpenMemory = false;
 ipcRenderer.on("cleo:open-memory", () => {
@@ -8,6 +10,12 @@ ipcRenderer.on("cleo:open-memory", () => {
 });
 
 contextBridge.exposeInMainWorld("cleoWindow", {
+  language: process.argv.includes("--cleo-ui-language=en") ? "en" : "zh-CN",
+  onLanguageChanged: (listener) => {
+    const handler = (_event, language) => listener(language);
+    ipcRenderer.on("cleo:language-changed", handler);
+    return () => ipcRenderer.removeListener("cleo:language-changed", handler);
+  },
   platform: process.platform,
   setTheme: (theme) => ipcRenderer.send("cleo:window-theme", theme),
   setBadge: (count, overlay) => ipcRenderer.send("cleo:window-badge", { count, overlay }),
@@ -20,6 +28,7 @@ contextBridge.exposeInMainWorld("cleoWindow", {
 
 if (!process.argv.includes("--cleo-desktop-mock")) {
   contextBridge.exposeInMainWorld("cleoDesktop", {
+    getUiLanguage: () => ipcRenderer.invoke("cleo:request", { method: "get_ui_language", params: {} }),
     onCompanionThread: listener => {
       const handler = (_event, thread) => listener(thread);
       ipcRenderer.on("cleo:companion-thread", handler);
@@ -69,7 +78,7 @@ if (!process.argv.includes("--cleo-desktop-mock")) {
     revealPath: (value) => ipcRenderer.invoke("cleo:reveal-path", value),
     openLocalPath: async (href, workspacePath) => {
       const result = await ipcRenderer.invoke("cleo:open-local-path", { href, workspacePath });
-      if (!result?.ok) throw new Error(result?.error || "无法打开本地文件");
+      if (!result?.ok) throw new Error(result?.error || (uiLanguage === "en" ? "Could not open the local file" : "无法打开本地文件"));
     },
     getEvolutionState: () => ipcRenderer.invoke("cleo:evolution:state"),
     evolutionAction: (action, params = {}) => ipcRenderer.invoke("cleo:evolution:action", { action, ...params }),

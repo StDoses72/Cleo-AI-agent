@@ -1,3 +1,4 @@
+import { t as tr } from "../electron/i18n.mjs";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { EvolutionState } from "./evolution-types";
 
@@ -30,7 +31,7 @@ export function useEvolution() {
     return () => { revision.current++; unsubscribe?.(); };
   }, [refresh]);
   const run = useCallback(async <T,>(action: string, params: Record<string, unknown> = {}): Promise<T> => {
-    if (!window.cleoDesktop) throw new Error("请在 Cleo 桌面应用中使用本地迭代。");
+    if (!window.cleoDesktop) throw new Error(tr("useevolution.use_local_iteration_in_the_cleo_desktop_app"));
     setPending(true); setError(null);
     try { return await window.cleoDesktop.evolutionAction<T>(action, params); }
     catch (failure) {
@@ -46,7 +47,7 @@ export function useEvolution() {
   }, [refresh]);
   const inspect = useCallback(<T,>(action: string, params: Record<string, unknown> = {}): Promise<T> => {
     const request = readQueue.current.then(async () => {
-      if (!window.cleoDesktop) throw new Error("请在 Cleo 桌面应用中使用本地迭代。");
+      if (!window.cleoDesktop) throw new Error(tr("useevolution.use_local_iteration_in_the_cleo_desktop_app"));
       try { return await window.cleoDesktop.evolutionAction<T>(action, params); }
       catch (failure) {
         throw new Error((failure instanceof Error ? failure.message : String(failure))

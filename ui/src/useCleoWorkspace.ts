@@ -1,3 +1,5 @@
+import { getLanguage } from "../electron/i18n.mjs";
+import { t as tr } from "../electron/i18n.mjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { requestKey } from "./request-key";
 import { cleoClient } from "./services/cleoClient";
@@ -31,7 +33,7 @@ import { projectsInSpace } from "./runtime-labels";
 import { nextPendingSwitch, runtimeWithPendingSwitch, type PendingHarnessSwitch } from "./harness-handoff";
 
 function currentTime() {
-  return new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+  return new Date().toLocaleTimeString(getLanguage(), { hour: "2-digit", minute: "2-digit" });
 }
 
 function mergeAttachments(current: Attachment[], selected: Attachment[]) {
@@ -96,7 +98,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
             setMemoryError(null);
           }
         } catch (error) {
-          if (revision === memoryRevision.current) setMemoryError(error instanceof Error ? error.message : "无法刷新记忆");
+          if (revision === memoryRevision.current) setMemoryError(error instanceof Error ? error.message : tr("usecleoworkspace.could_not_refresh_memories"));
         }
       } while (revision !== memoryRevision.current);
     };
@@ -160,8 +162,8 @@ export function useCleoWorkspace(evolutionOpen = false) {
   const harnessSwitchTarget = activeThreadId ? harnessSwitches[activeThreadId] : undefined;
   const harnessSwitchStatus = harnessSwitchTarget
     ? running
-      ? `已选择 ${harnessSwitchTarget}，等待当前轮结束后交接…`
-      : `正在连接 ${harnessSwitchTarget} 并交接上下文…`
+      ? tr("usecleoworkspace.selected_value_waiting_for_the_current_turn_to_finish_before_handing_off", { p0: harnessSwitchTarget })
+      : tr("usecleoworkspace.connecting_to_value_and_handing_off_context", { p0: harnessSwitchTarget })
     : null;
   const [modelSettings, setModelSettings] = useState<ModelSettings | null>(null);
   const [modelSettingsLoading, setModelSettingsLoading] = useState(false);
@@ -265,7 +267,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
       })
       .catch((error: unknown) => {
         if (active) {
-          setLoadingError(error instanceof Error ? error.message : "无法加载本地工作区");
+          setLoadingError(error instanceof Error ? error.message : tr("usecleoworkspace.could_not_load_the_local_workspace"));
         }
       });
     return () => {
@@ -311,10 +313,10 @@ export function useCleoWorkspace(evolutionOpen = false) {
       return {
         profileId: profile?.id,
         provider: profile?.provider ?? "Cleo",
-        model: profile?.model ?? "选择模型",
+        model: profile?.model ?? tr("connectionwizard.choose_model"),
         effort: "high",
         access: "workspace-write",
-        approval: "Cleo 工具策略",
+        approval: tr("usecleoworkspace.cleo_tool_policy"),
         contextWindow: profile?.maxTokens,
         editable: false,
       };
@@ -323,8 +325,8 @@ export function useCleoWorkspace(evolutionOpen = false) {
       (candidate) => candidate.id === draftProvider,
     );
     return {
-      provider: (provider?.id ?? draftProvider) || "选择 SDK / ACP",
-      model: draftModel || provider?.defaultModel || "选择模型",
+      provider: (provider?.id ?? draftProvider) || tr("usecleoworkspace.choose_sdk_acp"),
+      model: draftModel || provider?.defaultModel || tr("connectionwizard.choose_model"),
       effort: draftEffort,
       serviceTier: provider?.type === "codex_sdk" ? draftServiceTier : null,
       supportsFastMode: provider?.type === "codex_sdk",
@@ -424,6 +426,22 @@ export function useCleoWorkspace(evolutionOpen = false) {
     return refreshed;
   };
 
+  const refreshLanguage = async () => {
+    const [refreshed, catalog] = await Promise.all([
+      refreshWorkspace(() => cleoClient.loadWorkspace()), cleoClient.getRuntimeCatalog(),
+    ]);
+    setRuntimeCatalog(catalog);
+    // Keep live turns and drafts; only refresh their presentation metadata.
+    setSnapshot(current => current && { ...current, threads: current.threads.map(thread => {
+      const fresh = refreshed.threads.find(item => item.id === thread.id);
+      if (!fresh) return thread;
+      return { ...thread, updatedAt: fresh.updatedAt,
+        runtime: (thread.runtime?.settingsRevision ?? 0) > (fresh.runtime?.settingsRevision ?? 0)
+          ? thread.runtime : fresh.runtime };
+    }) });
+    await history.load("latest");
+  };
+
   const history = useTimelineHistory(activeThread, updateThread);
   const acknowledgeSteer = (threadId: string, item: TimelineItem) => {
     if (item.type !== "message" || !item.steer || item.steer.threadId !== threadId) return;
@@ -515,7 +533,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
           }
         } catch (error) {
           if (active && runLocks.current.get(id) === token) setRecoveryErrors(current => ({ ...current,
-            [id]: error instanceof Error ? error.message : "无法同步运行状态，将自动重试。" }));
+            [id]: error instanceof Error ? error.message : tr("usecleoworkspace.could_not_synchronize_run_status_retrying_automatically") }));
         }
       }));
       if (active) timer = window.setTimeout(() => void refresh(), 1500);
@@ -612,7 +630,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
       .catch((error: unknown) => {
         if (selectionRef.current !== selection || threadVersions.current.get(threadId) !== version || runLocks.current.has(threadId)) return;
         loadingRetry.current = () => selectThread(threadId);
-        setLoadingError(error instanceof Error ? error.message : "无法恢复历史记录");
+        setLoadingError(error instanceof Error ? error.message : tr("usecleoworkspace.could_not_restore_history"));
       });
   };
 
@@ -656,7 +674,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
       ? snapshot?.projects.find((candidate) => candidate.id === GENERAL_PRODUCTIVITY_PROJECT)
       : undefined)
       ?? snapshot?.projects.find((candidate) => candidate.space === space && candidate.id !== EVOLUTION_PROJECT);
-    if (!project && space === "chat") throw new Error("请先打开一个工作目录。");
+    if (!project && space === "chat") throw new Error(tr("usecleoworkspace.open_a_working_directory_first"));
     // Development work binds no folder by default: it belongs to the general project.
     const thread = await cleoClient.createThread(
       space,
@@ -709,8 +727,8 @@ export function useCleoWorkspace(evolutionOpen = false) {
       // Never reload over in-flight chunks; this cache receives the stream even when hidden.
       if (runLocks.current.has(cached.id)) return cached;
     }
-    if (!threadId && runLocks.current.size) throw new Error("请先等待运行中的任务完成。");
-    if (!window.cleoDesktop) throw new Error("本地迭代需要在桌面应用中运行。");
+    if (!threadId && runLocks.current.size) throw new Error(tr("usecleoworkspace.wait_for_running_tasks_to_finish"));
+    if (!window.cleoDesktop) throw new Error(tr("usecleoworkspace.local_iteration_requires_the_desktop_app"));
     const selected = ++evolutionSelectionRef.current;
     const result = await window.cleoDesktop.request<{ thread: Thread; workspace: WorkspaceSnapshot }>(
       "open_evolution_thread", { thread_id: threadId, provider: draftProvider || undefined,
@@ -750,7 +768,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
       const refreshed = await refreshWorkspace(() => cleoClient.addProject(space, projectPath));
       const projectId = refreshed.selectedProjectId;
       if (!projectId || !refreshed.projects.some(project => project.id === projectId)) {
-        throw new Error("文件夹已添加，但无法定位项目，请在项目列表中选择。");
+        throw new Error(tr("usecleoworkspace.folder_added_but_its_project_could_not_be_located_select_it_in_the_project_list"));
       }
       if (selectionRef.current === selection) {
         if (activeThreadId === null && activeSpace !== "memory" && !evolutionOpen) {
@@ -795,14 +813,14 @@ export function useCleoWorkspace(evolutionOpen = false) {
       if (!thread) thread = await createThread();
       if (!preserveDraft && history.isActive(thread.id)) {
         if (thread.history?.hasAfter && !await history.load("latest")) {
-          throw new Error("无法加载最新对话，请重试发送。");
+          throw new Error(tr("usecleoworkspace.could_not_load_the_latest_conversation_retry_sending"));
         }
         history.follow(true);
       }
     } catch (error) {
       updateDraft(sourceDraftKey, (current) => ({
         ...current,
-        error: error instanceof Error ? error.message : "无法创建对话，请重试。",
+        error: error instanceof Error ? error.message : tr("usecleoworkspace.could_not_create_the_conversation_try_again"),
       }));
       if (runLocks.current.get(lockKey) === token) runLocks.current.delete(lockKey);
       setStartingKeys(keys => keys.filter(key => key !== lockKey));
@@ -831,7 +849,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
         setPendingSwitch(threadId, null);
         updateDraft(sourceDraftKey, (current) => ({
           ...current,
-          error: error instanceof Error ? error.message : "切换失败，原会话可继续使用。",
+          error: error instanceof Error ? error.message : tr("usecleoworkspace.switch_failed_the_original_session_remains_available"),
         }));
         if (runLocks.current.get(lockKey) === token) runLocks.current.delete(lockKey);
         setStartingKeys(keys => keys.filter(key => key !== lockKey));
@@ -868,7 +886,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
       summary: visiblePrompt(prompt).slice(0, 64),
       status: "running",
       steerReady: false,
-      updatedAt: "刚刚",
+      updatedAt: tr("memoryview.just_now"),
       items: !preserveDraft || history.isFollowing(threadId) ? [...current.items, userItem] : current.items,
     }));
 
@@ -967,7 +985,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
                 type: "notice",
                 tone: "warning",
                 // Same title as the persisted error notice shows after a reload.
-                title: "运行需要查看",
+                title: tr("usecleoworkspace.run_needs_attention"),
                 detail: event.message,
               },
             ],
@@ -986,8 +1004,8 @@ export function useCleoWorkspace(evolutionOpen = false) {
             id: `${threadId}-error-${Date.now()}`,
             type: "notice",
             tone: "warning",
-            title: "运行时暂时不可用",
-            detail: error instanceof Error ? error.message : "请稍后重试。",
+            title: tr("usecleoworkspace.runtime_temporarily_unavailable"),
+            detail: error instanceof Error ? error.message : tr("usecleoworkspace.try_again_later"),
           },
         ],
       }));
@@ -1020,7 +1038,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
   };
 
   const sendQueuedMessages = async (thread: Thread, queued: QueuedMessage[]) => {
-    const submitted = await sendPrompt(queued.map(item => item.text).filter(Boolean).join("\n\n") || "请分析这些附件。", thread, {
+    const submitted = await sendPrompt(queued.map(item => item.text).filter(Boolean).join("\n\n") || tr("conversation.please_analyze_these_attachments"), thread, {
       attachments: queued.flatMap(item => item.attachments),
     });
     if (!submitted) updateQueue(thread.id, current => [...queued, ...current]);
@@ -1042,8 +1060,8 @@ export function useCleoWorkspace(evolutionOpen = false) {
           id: `${threadId}-cancel-error-${Date.now()}`,
           type: "notice",
           tone: "warning",
-          title: "停止失败",
-          detail: error instanceof Error ? error.message : "请重试停止操作。",
+          title: tr("usecleoworkspace.could_not_stop"),
+          detail: error instanceof Error ? error.message : tr("usecleoworkspace.retry_the_stop_operation"),
         }],
       }));
       return;
@@ -1070,8 +1088,8 @@ export function useCleoWorkspace(evolutionOpen = false) {
           id: `${threadId}-cancelled-${Date.now()}`,
           type: "notice",
           tone: "info",
-          title: "已停止当前运行",
-          detail: "可以修改提示后再次发送。",
+          title: tr("usecleoworkspace.current_run_stopped"),
+          detail: tr("usecleoworkspace.you_can_edit_the_prompt_and_send_it_again"),
         },
       ],
     }));
@@ -1093,7 +1111,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
         (candidate) => candidate.threadId !== request.threadId || candidate.id !== request.id,
       ));
     } catch (error) {
-      setApprovalErrors(current => ({ ...current, [request.threadId]: error instanceof Error ? error.message : "无法提交审批决定" }));
+      setApprovalErrors(current => ({ ...current, [request.threadId]: error instanceof Error ? error.message : tr("usecleoworkspace.could_not_submit_the_approval_decision") }));
     } finally {
       approvalSending.current.delete(key);
       approvalVersions.current.set(request.threadId, (approvalVersions.current.get(request.threadId) ?? 0) + 1);
@@ -1103,8 +1121,8 @@ export function useCleoWorkspace(evolutionOpen = false) {
 
   const renameThread = async (title: string) => {
     const threadId = activeThreadId;
-    if (!threadId || !title.trim()) throw new Error("请输入会话名称。");
-    if (runLocks.current.has(threadId)) throw new Error("请等待当前运行完成后重命名。");
+    if (!threadId || !title.trim()) throw new Error(tr("usecleoworkspace.enter_a_conversation_name"));
+    if (runLocks.current.has(threadId)) throw new Error(tr("usecleoworkspace.wait_for_the_current_run_to_finish_before_renaming"));
     const token = crypto.randomUUID();
     runLocks.current.set(threadId, token);
     setStartingKeys(keys => [...keys, threadId]);
@@ -1129,7 +1147,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
     const item = await cleoClient.steerRun(threadId, runId, requestId, text, retry);
     if (item.type !== "message" || !item.steer || item.steer.id !== requestId
         || item.steer.threadId !== threadId || item.steer.runId !== runId || item.steer.text !== text) {
-      throw new Error("引导回执与目标运行不一致");
+      throw new Error(tr("usecleoworkspace.the_steering_receipt_does_not_match_the_target_run"));
     }
     upsertTimelineItem(threadId, item);
     return item;
@@ -1152,7 +1170,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
     } catch (error) {
       if (steeringRequests.current.get(threadId)?.id === requestId) {
         updateDraft(threadId, current => ({ ...current, error: error instanceof Error
-          ? `${error.message}；重试会核对同一条消息。` : "尚未确认提交结果，重试会核对同一条消息。" }));
+          ? tr("usecleoworkspace.value_retrying_will_verify_the_same_message", { p0: error.message }) : tr("usecleoworkspace.submission_is_not_confirmed_retrying_will_verify_the_same_message") }));
       }
       return false;
     } finally {
@@ -1221,7 +1239,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
     const threadId = activeThreadId;
     const prompt = text.trim();
     if (!threadId || !prompt) return;
-    if (runLocks.current.has(threadId)) throw new Error("请等待当前运行结束后再编辑消息。");
+    if (runLocks.current.has(threadId)) throw new Error(tr("usecleoworkspace.wait_for_the_current_run_to_finish_before_editing_a_message"));
     const rewound = await cleoClient.rewindThread(threadId, itemId);
     updateThread(threadId, () => rewound);
     await sendPrompt(prompt, rewound, { attachments: [] });
@@ -1235,7 +1253,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
       await submitSteer(receipt.threadId, receipt.runId, receipt.text, receipt.id, true);
     } catch (error) {
       updateDraft(receipt.threadId, current => ({ ...current,
-        error: error instanceof Error ? error.message : "无法核对引导消息。请重试。",
+        error: error instanceof Error ? error.message : tr("usecleoworkspace.could_not_verify_the_steering_message_try_again"),
       }));
     } finally {
       steeringLocks.current.delete(receipt.threadId);
@@ -1278,7 +1296,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
       .catch((error: unknown) => {
         if (selectionRef.current !== selection) return;
         loadingRetry.current = () => updateRuntime(update);
-        setLoadingError(error instanceof Error ? error.message : "无法更新运行参数");
+        setLoadingError(error instanceof Error ? error.message : tr("usecleoworkspace.could_not_update_run_settings"));
       });
   };
 
@@ -1330,7 +1348,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
       }
       return loaded;
     } catch (error) {
-      const message = error instanceof Error && error.message ? error.message : "无法读取模型列表，请重试";
+      const message = error instanceof Error && error.message ? error.message : tr("usecleoworkspace.could_not_load_the_model_list_try_again");
       if (modelRequestRef.current === request) setRuntimeModelsError(message);
       throw error;
     } finally {
@@ -1347,7 +1365,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
       updateThread(thread.id, current => ({ ...current, skills }));
     } catch {
       updateDraft(thread.id, current => ({ ...current,
-        error: "Harness 已切换；技能列表暂时无法读取。",
+        error: tr("usecleoworkspace.harness_switched_the_skills_list_is_temporarily_unavailable"),
       }));
     }
   };
@@ -1407,10 +1425,10 @@ export function useCleoWorkspace(evolutionOpen = false) {
   };
   const undoChanges = async () => {
     if (!activeThread || activeThread.space !== "productivity") {
-      throw new Error("只有开发任务可以回退 Git 改动。");
+      throw new Error(tr("usecleoworkspace.only_development_tasks_can_revert_git_changes"));
     }
     if (runLocks.current.has(activeThread.id)) {
-      throw new Error("任务正在运行，请先停止后再回退。");
+      throw new Error(tr("usecleoworkspace.the_task_is_running_stop_it_before_reverting"));
     }
     let result: Awaited<ReturnType<typeof cleoClient.undoChanges>>;
     await refreshWorkspace(async () => { result = await cleoClient.undoChanges(activeThread.id); return result.workspace; });
@@ -1430,7 +1448,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
   };
   const deleteThread = async (threadId: string) => {
     if (runLocks.current.has(threadId)) {
-      throw new Error("正在运行的 thread 不能删除，请先停止运行。");
+      throw new Error(tr("usecleoworkspace.a_running_thread_cannot_be_deleted_stop_it_first"));
     }
     const deleted = snapshot?.threads.find((thread) => thread.id === threadId);
     const deletedWasActive = activeThreadId === threadId;
@@ -1455,7 +1473,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
   };
   const removeProject = async (projectId: string) => {
     const removed = snapshot?.projects.find((project) => project.id === projectId);
-    if (!removed) throw new Error("找不到要移除的项目。");
+    if (!removed) throw new Error(tr("usecleoworkspace.could_not_find_the_project_to_remove"));
     const refreshed = await refreshWorkspace(() => cleoClient.removeProject(projectId));
     const preservedProject = refreshed.projects.find(
       (project) => project.id === activeProjectId,
@@ -1479,7 +1497,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
       setModelSettings(loaded);
       return loaded;
     } catch (error) {
-      setModelSettingsError(error instanceof Error ? error.message : "无法读取模型配置");
+      setModelSettingsError(error instanceof Error ? error.message : tr("usecleoworkspace.could_not_load_model_configuration"));
       throw error;
     } finally {
       setModelSettingsLoading(false);
@@ -1514,7 +1532,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
       setAgentInstructions(loaded);
       return loaded;
     } catch (error) {
-      setAgentInstructionsError(error instanceof Error ? error.message : "无法读取对话指令");
+      setAgentInstructionsError(error instanceof Error ? error.message : tr("usecleoworkspace.could_not_load_chat_instructions"));
       throw error;
     } finally {
       setAgentInstructionsLoading(false);
@@ -1548,6 +1566,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
 
   return {
     history,
+    refreshLanguage,
     questions,
     skills: activeThread?.skills ?? (draftSkills?.key === skillKey && !evolutionOpen ? draftSkills.skills : []),
     snapshot: snapshot && { ...snapshot, threads: snapshot.threads.map(thread => ({ ...thread,

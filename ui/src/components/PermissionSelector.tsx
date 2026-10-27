@@ -1,3 +1,4 @@
+import { t as tr } from "../../electron/i18n.mjs";
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Check, ChevronDown, ShieldCheck } from "lucide-react";
 import type { RuntimeProfile, RuntimeUpdate } from "../types";
@@ -75,7 +76,7 @@ export function PermissionSelector({ runtime, onChange, disabled = false, placem
     inFlight.current = true;
     setSaving(true); setError("");
     try { await onChange({ ...preset.update, permissionProvider: runtime.provider }); }
-    catch (error) { setError(error instanceof Error ? error.message : "权限设置未保存，请重试。"); }
+    catch (error) { setError(error instanceof Error ? error.message : tr("permissionselector.permissions_were_not_saved_try_again")); }
     finally { inFlight.current = false; setSaving(false); }
   };
   const moveFocus = (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -98,17 +99,17 @@ export function PermissionSelector({ runtime, onChange, disabled = false, placem
     triggerRef.current?.focus();
   }}>
     <button className="text-control permission-selector-trigger" type="button" ref={triggerRef}
-      aria-label="会话权限" aria-haspopup="menu" aria-expanded={open} data-testid="permission-selector"
+      aria-label={tr("permissionselector.session_permissions")} aria-haspopup="menu" aria-expanded={open} data-testid="permission-selector"
       data-value={current?.value ?? "custom"}
-      title={[current?.description ?? actual, pending ? `下轮生效 · 当前：${actual}` : "", runtime.permissionOptions?.reason ?? ""].filter(Boolean).join("\n")}
+      title={[current?.description ?? actual, pending ? tr("permissionselector.applies_next_turn_current_value", { p0: actual }) : "", runtime.permissionOptions?.reason ?? ""].filter(Boolean).join("\n")}
       disabled={disabled || saving} onClick={() => setOpen(value => !value)}>
       <ShieldCheck size={14} />
-      <span className="permission-selector-label">{current?.label ?? "自定义权限"}</span>
+      <span className="permission-selector-label">{current?.label ?? tr("permissionselector.custom_permissions")}</span>
       <ChevronDown size={13} />
     </button>
-    {open && <div className={`permission-menu surface-popover ${placement}`} role="menu" aria-label="选择会话权限"
+    {open && <div className={`permission-menu surface-popover ${placement}`} role="menu" aria-label={tr("permissionselector.choose_session_permissions")}
       data-testid="permission-menu" onKeyDown={moveFocus}>
-      <div className="permission-menu-heading">会话权限</div>
+      <div className="permission-menu-heading">{tr("permissionselector.session_permissions")}</div>
       <div className="permission-menu-list" ref={listRef} style={maxHeight ? { maxHeight } : undefined}>
         {presets.map(preset => {
           const checked = preset.value === current?.value;
@@ -125,7 +126,7 @@ export function PermissionSelector({ runtime, onChange, disabled = false, placem
         })}
       </div>
     </div>}
-    {saving && <small role="status">正在核对权限…</small>}
+    {saving && <small role="status">{tr("permissionselector.checking_permissions")}</small>}
     {error && <span className="permission-selector-error" role="alert">{error}</span>}
   </div>;
 }

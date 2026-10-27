@@ -24,6 +24,8 @@ import threading
 import time
 from dataclasses import dataclass
 
+from cleo.i18n import tr
+
 MAX_EDGE = 1600
 TYPE_BATCH = 16
 
@@ -113,7 +115,7 @@ def parse_keys(value: str) -> tuple[list[int], int | None]:
     """Purpose: Parse "ctrl+shift+t". Input: shortcut. Output: modifier VKs and main VK."""
     text = str(value or "").strip()
     if not text or len(text) > 60:
-        raise HostError("快捷键不能为空，且不超过 60 个字符。")
+        raise HostError(tr("host.the_shortcut_must_be_nonempty_and_at_most_60_cha"))
     parts = [part.strip() for part in text.replace("++", "+plus").split("+") if part.strip()]
     modifiers: list[int] = []
     key: int | None = None
@@ -124,7 +126,7 @@ def parse_keys(value: str) -> tuple[list[int], int | None]:
                 modifiers.append(MODIFIER_VK[lower])
             continue
         if key is not None:
-            raise HostError(f"一个快捷键只能包含一个主键：{text}")
+            raise HostError(tr("host.a_shortcut_can_contain_only_one_primary_key_valu", p0=text))
         if part in PUNCTUATION:
             lower = PUNCTUATION[part]
         if lower in NAMED_VK:
@@ -134,9 +136,9 @@ def parse_keys(value: str) -> tuple[list[int], int | None]:
         elif lower.startswith("f") and lower[1:].isdigit() and 1 <= int(lower[1:]) <= 24:
             key = 0x6F + int(lower[1:])
         else:
-            raise HostError(f"不支持的按键：{part}")
+            raise HostError(tr("host.unsupported_key_value", p0=part))
     if key is None and not modifiers:
-        raise HostError(f"无法识别的快捷键：{text}")
+        raise HostError(tr("host.unrecognized_shortcut_value", p0=text))
     return modifiers, key
 
 
@@ -273,7 +275,7 @@ class Win32:
             or self._activity_error
             or not self._activity_thread.is_alive()
         ):
-            raise HostError("无法监听用户鼠标键盘活动，本机输入已拒绝；请重新启动 Cleo。")
+            raise HostError(tr("host.user_mouse_and_keyboard_activity_cannot_be_monit"))
         return self._physical_activity.count
 
     def _monitor_activity(self):
@@ -366,7 +368,7 @@ class Win32:
             for kind, callback in zip((13, 14), callbacks, strict=True):
                 hook = user32.SetWindowsHookExW(kind, callback, module, 0)
                 if not hook:
-                    raise HostError("用户活动监听注册失败。")
+                    raise HostError(tr("host.could_not_register_the_user_activity_monitor"))
                 hooks.append(hook)
             message = wintypes.MSG()
             # Ensure PostThreadMessage can address this thread even during immediate shutdown.
@@ -377,7 +379,7 @@ class Win32:
                 if result == 0:
                     break
                 if result == -1:
-                    raise HostError("用户活动监听已中断。")
+                    raise HostError(tr("host.the_user_activity_monitor_was_interrupted"))
         except Exception as error:
             self._activity_error = str(error)
         finally:
@@ -459,7 +461,7 @@ class Win32:
         sent = self.user32.SendInput(len(items), array, self.ctypes.sizeof(self.INPUT))
         if sent != len(items):
             raise HostError(
-                "系统拒绝了输入（可能是目标窗口以管理员权限运行，或正在显示安全桌面）。"
+                tr("host.the_system_rejected_input_the_target_window_may_")
             )
 
     def _mouse(self, flags, dx=0, dy=0, data=0):
@@ -596,7 +598,7 @@ class HostController:
     @property
     def api(self):
         if self.platform != "win32":
-            raise HostError("本机电脑模式目前仅支持 Windows。")
+            raise HostError(tr("host.local_computer_mode_currently_supports_windows_o"))
         if self._api is None:
             self._api = Win32()
         return self._api
@@ -612,7 +614,7 @@ class HostController:
         api = self.api
         generation = self._generation
         if not self._lock.acquire(timeout=30):
-            raise HostError("本机控制正忙，请稍后重试。")
+            raise HostError(tr("host.local_control_is_busy_try_again_later"))
         try:
             self._active = generation
             with api.dpi_aware():
@@ -642,7 +644,7 @@ class HostController:
                     "switch": self._switch,
                 }.get(op)
                 if handler is None:
-                    raise HostError(f"不支持的本机操作：{op}")
+                    raise HostError(tr("host.unsupported_local_operation_value", p0=op))
                 self._check_signature(args)
                 detail = handler(args)
                 self._sleep(0.05)
@@ -690,10 +692,10 @@ class HostController:
     def _checkpoint(self):
         """Purpose: Guard further input. Input: current guards. Output: exception on pause."""
         if self._generation != self._active:
-            raise HostError("本机操作已停止。")
+            raise HostError(tr("host.local_operation_stopped"))
         if self._pending_user_activity or self._user_active(self._activity_baseline):
             self._pending_user_activity = True
-            raise UserActivity("检测到用户输入，本机操作已暂停。")
+            raise UserActivity(tr("host.user_input_was_detected_local_operation_paused"))
 
     # --- observation --------------------------------------------------------------------------
 
@@ -704,7 +706,7 @@ class HostController:
     def _check_signature(self, args: dict):
         expected = args.get("signature")
         if expected and expected != self._signature(self.api.monitors()):
-            raise HostError("显示器布局、分辨率或缩放已变化，坐标已过期。请重新截图。")
+            raise HostError(tr("host.display_layout_resolution_or_scaling_changed_coo"))
 
     def _baseline(self) -> dict:
         """Purpose: Observe activity. Input: Win32 state. Output: baseline excluding AI input."""
@@ -728,7 +730,7 @@ class HostController:
     def _screenshot(self, args: dict) -> dict:
         monitors = self.api.monitors()
         if not monitors:
-            raise HostError("没有找到可用的显示器。")
+            raise HostError(tr("host.no_available_displays_were_found"))
         display = args.get("display")
         foreground = self.api.foreground()
         if display == "all":
@@ -742,7 +744,11 @@ class HostController:
         else:
             if isinstance(display, int) and not isinstance(display, bool):
                 if not 0 <= display < len(monitors):
-                    raise HostError(f"没有序号为 {display} 的显示器（共 {len(monitors)} 个）。")
+                    raise HostError(tr(
+                        "host.display_value_does_not_exist_there_are_value_dis",
+                        p0=display,
+                        p1=len(monitors),
+                    ))
                 chosen = monitors[display]
             else:
                 chosen = next(
@@ -820,22 +826,22 @@ class HostController:
         try:
             x, y = int(args[f"{prefix}x"]), int(args[f"{prefix}y"])
         except (KeyError, TypeError, ValueError) as exc:
-            raise HostError("坐标无效。") from exc
+            raise HostError(tr("host.invalid_coordinates")) from exc
         if not any(
             m.rect[0] <= x < m.rect[2] and m.rect[1] <= y < m.rect[3] for m in self.api.monitors()
         ):
-            raise HostError("坐标不在任何显示器范围内，请重新截图。")
+            raise HostError(tr("host.the_coordinates_are_outside_all_displays_take_a_"))
         return x, y
 
     def _guard_point(self, args: dict, x: int, y: int):
         protected = {int(pid) for pid in args.get("protected_pids") or [] if isinstance(pid, int)}
         if protected and self.api.pid_at(x, y) in protected:
-            raise HostError("目标位置是 Cleo 自身的窗口或状态条，本机控制不能操作 Cleo。")
+            raise HostError(tr("host.the_target_is_cleo_s_own_window_or_status_bar_lo"))
 
     def _guard_foreground(self, args: dict):
         protected = {int(pid) for pid in args.get("protected_pids") or [] if isinstance(pid, int)}
         if protected and self.api.foreground()["pid"] in protected:
-            raise HostError("当前前台窗口是 Cleo，本机控制不会向 Cleo 输入。请先切换到目标应用。")
+            raise HostError(tr("host.cleo_is_the_foreground_window_local_control_will"))
 
     def _press_button(self, name: str):
         self._buttons.append(name)
@@ -851,10 +857,10 @@ class HostController:
         self._guard_point(args, x, y)
         button = args.get("button", "left")
         if button not in ("left", "right", "middle"):
-            raise HostError("button 无效。")
+            raise HostError(tr("host.invalid_button"))
         clicks = args.get("clicks", 1)
         if clicks not in (1, 2):
-            raise HostError("clicks 只能是 1 或 2。")
+            raise HostError(tr("host.clicks_must_be_1_or_2"))
         self.api.move(x, y)
         for index in range(clicks):
             self._checkpoint()
@@ -892,10 +898,10 @@ class HostController:
         self._guard_point(args, x, y)
         direction = args.get("direction")
         if direction not in ("up", "down", "left", "right"):
-            raise HostError("direction 无效。")
+            raise HostError(tr("host.invalid_direction"))
         amount = args.get("amount", 3)
         if not isinstance(amount, int) or not 1 <= amount <= 20:
-            raise HostError("amount 必须在 1–20 之间。")
+            raise HostError(tr("host.amount_must_be_between_1_and_20"))
         self.api.move(x, y)
         for _ in range(amount):
             self._checkpoint()
@@ -954,7 +960,7 @@ class HostController:
     def _type(self, args: dict):
         text = args.get("text")
         if not isinstance(text, str) or len(text) > 20000:
-            raise HostError("text 无效。")
+            raise HostError(tr("host.invalid_text"))
         self._guard_foreground(args)
         self._type_text(text)
 
@@ -965,7 +971,7 @@ class HostController:
     def _launch(self, args: dict):
         name = args.get("name")
         if not isinstance(name, str) or not name.strip() or len(name) > 120:
-            raise HostError("应用名称无效。")
+            raise HostError(tr("host.invalid_application_name"))
         self._press_combo([MODIFIER_VK["win"]], None)
         self._sleep(0.8)
         self._checkpoint()
@@ -973,21 +979,24 @@ class HostController:
         self._sleep(1.0)
         self._checkpoint()
         self._press_combo([], 0x0D)
-        return f"已通过开始菜单搜索启动“{name.strip()}”；请截图确认应用是否已打开。"
+        return tr("host.searched_for_and_launched_value_through_the_star", p0=name.strip())
 
     def _switch(self, args: dict):
         name = args.get("name")
         if not isinstance(name, str) or not name.strip():
-            raise HostError("窗口名称无效。")
+            raise HostError(tr("host.invalid_window_name"))
         protected = {int(pid) for pid in args.get("protected_pids") or [] if isinstance(pid, int)}
         needle = name.strip().casefold()
         for window in self.api.windows():
             if window["pid"] in protected or needle not in window["title"].casefold():
                 continue
             if not self.api.activate(window["hwnd"]):
-                raise HostError(f"系统没有允许切换到“{window['title']}”，请截图后点击该窗口。")
-            return f"已切换到窗口“{window['title']}”。"
-        raise HostError(f"没有找到标题包含“{name.strip()}”的窗口。")
+                raise HostError(tr(
+                    "host.the_system_did_not_allow_switching_to_value_take",
+                    p0=window['title'],
+                ))
+            return tr("host.switched_to_window_value", p0=window['title'])
+        raise HostError(tr("host.no_window_title_contains_value", p0=name.strip()))
 
 
 _controller: HostController | None = None

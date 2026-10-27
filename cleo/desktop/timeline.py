@@ -10,6 +10,7 @@ from contextlib import closing
 
 from cleo.desktop.projection import timeline_from_events
 from cleo.harnesses.handoff import DELIVERED_EVENT, SWITCH_EVENT
+from cleo.i18n import get_language, language_context, tr
 from cleo.memory.paths import events_path
 from cleo.sessions.rewind import REWIND_EVENT
 
@@ -17,7 +18,7 @@ PAGE_SIZE = 80
 PREVIEW_CHARS = 32768
 PAGE_BYTES = 512 * 1024
 # Bump whenever timeline_from_events changes its output, so cached indexes are rebuilt.
-PROJECTION_VERSION = 11
+PROJECTION_VERSION = 12
 # A harness switch hands history to a new native session, which cannot rewind across it.
 HANDOFF_BOUNDARIES = (SWITCH_EVENT, DELIVERED_EVENT, "cleo/handoff_submitted")
 
@@ -40,7 +41,7 @@ class TimelineIndex:
     def _connect(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if self.path.is_symlink():
-            raise ValueError("历史索引不能使用链接文件。")
+            raise ValueError(tr("timeline.the_history_index_cannot_be_a_linked_file"))
         try:
             return self._open_database()
         except sqlite3.DatabaseError as exc:
@@ -76,6 +77,11 @@ class TimelineIndex:
         return db
 
     def _sync(self, db):
+        # One rebuild must use one language even if the setting changes during I/O.
+        with language_context(get_language()):
+            return self._sync_projection(db)
+
+    def _sync_projection(self, db):
         db.execute("BEGIN IMMEDIATE")
         row = db.execute("SELECT value FROM metadata WHERE id=1").fetchone()
         old = json.loads(row[0]) if row else None
@@ -85,12 +91,14 @@ class TimelineIndex:
             info = None
         signature = [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns] if info else None
         if (old and old.get("projection_version") == PROJECTION_VERSION
+                and old.get("ui_language", "zh-CN") == get_language()
                 and old["signature"] == signature):
             db.commit()
             return old
         reset = (
             old is None
             or old.get("projection_version") != PROJECTION_VERSION
+            or old.get("ui_language", "zh-CN") != get_language()
             or signature is None
             or old["signature"] is None
             or signature[:2] != old["signature"][:2]
@@ -114,7 +122,9 @@ class TimelineIndex:
                     event = json.loads(line)
                     if (not isinstance(event, dict) or event.get("schema_version", 1) != 1
                             or type(event.get("seq")) is not int):
-                        raise ValueError("无法读取此版本的会话历史。")
+                        raise ValueError(tr(
+                            "timeline.this_version_of_conversation_history_cannot_be_r",
+                        ))
                     if event.get("type") == REWIND_EVENT:
                         position, turn_id = self._rewind(db, event, position, turn_id)
                         epoch = uuid.uuid4().hex  # Cursors into removed items are stale.
@@ -168,6 +178,7 @@ class TimelineIndex:
                     )
                     offset = stream.tell()
         meta = {
+            "ui_language": get_language(),
             "projection_version": PROJECTION_VERSION,
             "signature": signature,
             "epoch": epoch,
@@ -237,16 +248,16 @@ class TimelineIndex:
             decoded = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
             version, position = json.loads(decoded)
         except (ValueError, TypeError, UnicodeError) as exc:
-            raise ValueError("历史游标无效，请回到最新。") from exc
+            raise ValueError(tr("timeline.invalid_history_cursor_jump_to_latest")) from exc
         if version != epoch or type(position) is not int or position < 0:
-            raise ValueError("历史已变化，请回到最新重新加载。")
+            raise ValueError(tr("timeline.history_changed_jump_to_latest_to_reload"))
         return position
 
     def page(self, *, cursor=None, direction="latest", limit=PAGE_SIZE):
         if direction not in {"latest", "before", "after"} or type(limit) is not int:
-            raise ValueError("历史分页参数无效。")
+            raise ValueError(tr("timeline.invalid_history_pagination_parameters"))
         if not 1 <= limit <= 100 or (direction != "latest" and not isinstance(cursor, str)):
-            raise ValueError("历史分页参数无效。")
+            raise ValueError(tr("timeline.invalid_history_pagination_parameters"))
         with closing(self._connect()) as db, db:
             meta = self._sync(db)
             pivot = (
@@ -292,9 +303,9 @@ class TimelineIndex:
 
     def content(self, item_id, field, offset=0, limit=16384):
         if field not in {"content", "output", "command"} or type(offset) is not int or offset < 0:
-            raise ValueError("正文分页参数无效。")
+            raise ValueError(tr("timeline.invalid_content_pagination_parameters"))
         if type(limit) is not int or not 1 <= limit <= 16384:
-            raise ValueError("正文分页参数无效。")
+            raise ValueError(tr("timeline.invalid_content_pagination_parameters"))
         with closing(self._connect()) as db, db:
             self._sync(db)
             row = db.execute(
@@ -303,7 +314,7 @@ class TimelineIndex:
                 (f"$.{field}", offset + 1, limit, f"$.{field}", item_id),
             ).fetchone()
             if row is None or row[0] is None:
-                raise ValueError("找不到这条历史内容，请重新加载。")
+                raise ValueError(tr("timeline.this_historical_content_was_not_found_reload_it"))
             return {"text": row[0], "offset": offset, "next": offset + len(row[0]), "total": row[1]}
 
     def steer(self, request_id):

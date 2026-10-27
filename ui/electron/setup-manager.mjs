@@ -1,3 +1,4 @@
+import { t as tr } from "./i18n.mjs";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { readJson, writeJson } from "./evolution-store.mjs";
@@ -87,41 +88,41 @@ export class SetupManager {
     }
     const toolResults = await Promise.all(["node", "git", "uv"].map(name => this.probe(tools[name], ["--version"])));
     this.items = [
-      { id: "runtime", title: "Cleo 基础运行环境", ready: runtime.ok, detail: runtime.ok ? "Cleo Python 已就绪" : runtime.detail, action: "修复运行环境", optional: false },
-      { id: "harnesses", title: "Codex / Claude 编码后端", ready: harnesses.ok, detail: harnesses.ok ? "编码后端可启动；账号登录请在模型设置中完成。" : harnesses.detail, action: "修复编码后端", optional: false },
-      { id: "tools", title: "自我迭代工具", ready: toolResults.every(item => item.ok), detail: "Git、Node.js、uv；优先使用已有工具，缺少时安装到 Cleo 管理目录。", action: "准备构建工具", optional: true },
+      { id: "runtime", title: tr("setup_manager.cleo_base_runtime"), ready: runtime.ok, detail: runtime.ok ? tr("setup_manager.cleo_python_is_ready") : runtime.detail, action: tr("setup_manager.repair_runtime"), optional: false },
+      { id: "harnesses", title: tr("setup_manager.codex_claude_coding_backends"), ready: harnesses.ok, detail: harnesses.ok ? tr("setup_manager.coding_backends_can_start_complete_account_sign_in_in_model_settings") : harnesses.detail, action: tr("setup_manager.repair_coding_backends"), optional: false },
+      { id: "tools", title: tr("setup_manager.self_iteration_tools"), ready: toolResults.every(item => item.ok), detail: tr("setup_manager.git_node_js_and_uv_existing_tools_are_preferred_missing_ones_are_installed_in_cleo_s_"), action: tr("setup_manager.prepare_build_tools"), optional: true },
     ];
     const saved = await readJson(join(this.root, "setup-v1.json"), {});
     const pendingIds = (saved.pendingIds || []).filter(id => !this.items.find(item => item.id === id)?.ready);
     const allReady = this.items.every(item => item.ready);
     // A fresh successful scan supersedes old installation failures and pending steps.
-    if (allReady) this.message = "环境依赖已检查，全部就绪。";
+    if (allReady) this.message = tr("setup_manager.environment_dependencies_checked_everything_is_ready");
     await this.persist({ items: this.items, pendingIds,
       ...(allReady ? { message: this.message, restartRequired: false } : {}),
       checkedVersions: [...new Set([...(saved.checkedVersions || []), this.version])].slice(-20) });
     return this.state();
   }
   install(ids, consent) {
-    if (this.installing) return Promise.reject(new Error("依赖操作正在进行。"));
+    if (this.installing) return Promise.reject(new Error(tr("setup_manager.a_dependency_operation_is_in_progress")));
     this.installing = this.installSelected(ids, consent).finally(() => { this.installing = null; });
     return this.installing;
   }
   async installSelected(ids, consent) {
-    if (this.closed) throw new Error("Cleo 正在退出，请重新打开后复查依赖。");
-    if (consent !== true) throw new Error("请先确认安装所选依赖。");
-    if (this.busy || this.checking) throw new Error("依赖操作正在进行。");
-    if (!Array.isArray(ids) || !ids.length || ids.some(id => !this.items.some(item => item.id === id))) throw new Error("请选择检查列表中的依赖。");
+    if (this.closed) throw new Error(tr("setup_manager.cleo_is_shutting_down_reopen_it_and_check_dependencies_again"));
+    if (consent !== true) throw new Error(tr("setup_manager.confirm_installation_of_the_selected_dependencies_first"));
+    if (this.busy || this.checking) throw new Error(tr("setup_manager.a_dependency_operation_is_in_progress"));
+    if (!Array.isArray(ids) || !ids.length || ids.some(id => !this.items.some(item => item.id === id))) throw new Error(tr("setup_manager.choose_dependencies_from_the_checklist"));
     this.busy = true; this.logs = ""; this.cancel = new AbortController();
     const ordered = ITEM_IDS.filter(id => ids.includes(id));
     try {
       await this.persist({ pendingIds: ordered, restartRequired: false });
       for (const id of ordered) {
         this.cancel.signal.throwIfAborted();
-        this.message = `正在准备：${this.items.find(item => item.id === id).title}`;
+        this.message = tr("setup_manager.preparing_value", { p0: this.items.find(item => item.id === id).title });
         await this.persist({ installing: id, message: this.message });
         if (id === "runtime" || id === "harnesses") {
           await this.repairRuntime();
-          this.message = "运行环境已准备，请关闭并重新打开 Cleo 后复查。";
+          this.message = tr("setup_manager.runtime_prepared_close_and_reopen_cleo_then_check_again");
           await this.persist({ pendingIds: ordered.slice(ordered.indexOf(id) + 1), message: this.message });
           break;
         } else if (id === "tools") {
@@ -129,10 +130,10 @@ export class SetupManager {
           await writeJson(join(this.root, "tools-v1.json"), { node: tools.node, git: tools.git, uv: tools.uv });
         }
         await this.persist({ pendingIds: ordered.slice(ordered.indexOf(id) + 1) });
-        this.message = "所选步骤已完成，正在复查可用性。";
+        this.message = tr("setup_manager.selected_steps_completed_checking_availability_again");
       }
     } catch (error) {
-      this.message = `准备未完成：${error.message}`;
+      this.message = tr("setup_manager.preparation_incomplete_value", { p0: error.message });
       throw error;
     } finally {
       try { await this.persist({ installing: null, message: this.message }); }
@@ -141,6 +142,6 @@ export class SetupManager {
     }
     return this.state();
   }
-  async dismiss() { if (this.busy) throw new Error("请等待当前安装完成。"); const saved = await readJson(join(this.root, "setup-v1.json"), {}); await this.persist({ dismissed: true, checkedVersions: [...new Set([...(saved.checkedVersions || []), this.version])].slice(-20) }); return this.state(); }
-  async close() { this.closed = true; this.cancel?.abort(new Error("Cleo 正在退出，重新打开后请复查依赖。")); await this.installing?.catch(() => {}); }
+  async dismiss() { if (this.busy) throw new Error(tr("setup_manager.wait_for_the_current_installation_to_finish")); const saved = await readJson(join(this.root, "setup-v1.json"), {}); await this.persist({ dismissed: true, checkedVersions: [...new Set([...(saved.checkedVersions || []), this.version])].slice(-20) }); return this.state(); }
+  async close() { this.closed = true; this.cancel?.abort(new Error(tr("setup_manager.cleo_is_shutting_down_check_dependencies_again_after_reopening"))); await this.installing?.catch(() => {}); }
 }

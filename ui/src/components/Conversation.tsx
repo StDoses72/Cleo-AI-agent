@@ -1,3 +1,4 @@
+import { t as tr } from "../../electron/i18n.mjs";
 import { modifierKey } from "../platform";
 import { VirtualTimeline } from "./VirtualTimeline";
 import { Timing } from "./Timing";
@@ -150,8 +151,8 @@ interface ConversationProps {
 }
 
 const suggestions = {
-  chat: ["帮我想一个轻松有趣的周末计划", "把一个复杂概念讲得简单易懂", "帮我把零散想法整理成清晰的文字"],
-  productivity: ["检查当前改动并给出下一步", "为这个仓库做一次聚焦的代码审查", "解释这个项目的结构和运行方式"],
+  get chat() { return [tr("conversation.help_me_plan_a_relaxed_fun_weekend"), tr("conversation.explain_a_complex_concept_in_simple_terms"), tr("conversation.turn_my_scattered_ideas_into_clear_writing")]; },
+  get productivity() { return [tr("conversation.review_the_current_changes_and_suggest_next_steps"), tr("conversation.do_a_focused_code_review_of_this_repository"), tr("conversation.explain_this_project_s_structure_and_how_it_runs")]; },
 };
 
 export function Conversation({
@@ -299,7 +300,7 @@ export function Conversation({
       if (generation === readerGeneration.current) setReader(current => ({ item, field, ...content,
         text: offset ? (current?.text ?? "") + content.text : content.text }));
     } catch (error) {
-      if (generation === readerGeneration.current) setReaderError(error instanceof Error ? error.message : "正文读取失败");
+      if (generation === readerGeneration.current) setReaderError(error instanceof Error ? error.message : tr("conversation.could_not_read_the_full_content"));
     } finally {
       if (generation === readerGeneration.current) { readerRequest.current = false; setReaderLoading(false); }
     }
@@ -358,7 +359,7 @@ export function Conversation({
       steeringBusy={steeringBusy} onRetrySteer={onRetrySteer} onRestoreSteer={onRestoreSteer} />; }
     return <>{content}{item?.more && Object.keys(item.more).filter(field => field === "output" || field === "command").map(field =>
       <button className="history-content-link" key={field} onClick={() => void readContent(item!, field)}>
-        {field === "output" ? "展开输出" : "展开命令"}</button>)}</>;
+        {field === "output" ? tr("conversation.expand_output") : tr("conversation.expand_command")}</button>)}</>;
   };
 
   return (
@@ -384,9 +385,9 @@ export function Conversation({
       />}</div>
 
       <div className="conversation-body" style={{ "--composer-clearance": `${bottomInset}px` } as CSSProperties}>
-        {history?.error && <div className="history-error" role="alert">{history.error}<button onClick={() => void history.retry()}>重试加载</button></div>}
-        {history?.busy && <div className="history-loading" data-direction={history.busy} role="status" aria-label="正在加载历史"><LoaderCircle className="spin" size={14} /></div>}
-        <div className="conversation-viewport" ref={viewportRef} tabIndex={0} aria-label="对话历史" onWheel={event => {
+        {history?.error && <div className="history-error" role="alert">{history.error}<button onClick={() => void history.retry()}>{tr("conversation.retry_loading")}</button></div>}
+        {history?.busy && <div className="history-loading" data-direction={history.busy} role="status" aria-label={tr("conversation.loading_history")}><LoaderCircle className="spin" size={14} /></div>}
+        <div className="conversation-viewport" ref={viewportRef} tabIndex={0} aria-label={tr("conversation.conversation_history")} onWheel={event => {
           if (event.deltaY < 0) { stickToBottomRef.current = false; history?.follow(false); }
           if (!history?.busy && !history?.error) {
             const view = event.currentTarget;
@@ -398,7 +399,7 @@ export function Conversation({
         {thread?.items.length ? (
           <>
             <VirtualTimeline rows={rows} viewport={viewportRef} follow={stickToBottomRef} bottomInset={bottomInset} threadId={thread.id} render={renderRow} onScroll={trackScrollPosition}
-              footer={<>{showActivity && <div className="turn-activity" role="status"><LoaderCircle className="spin" size={14} /><span>正在处理…</span></div>}
+              footer={<>{showActivity && <div className="turn-activity" role="status"><LoaderCircle className="spin" size={14} /><span>{tr("conversation.working")}</span></div>}
                 {thread.currentTiming && (running || !thread.items.some(item => item.timing?.id === thread.currentTiming?.id))
                   && <Timing key={thread.currentTiming.id} summary={thread.currentTiming} />}</>} />
           </>
@@ -408,20 +409,20 @@ export function Conversation({
       </div>
 
       <div className="conversation-bottom" ref={bottomRef}>
-      {(history?.unread || thread?.history?.hasAfter || (history && !history.following)) && <button className="history-latest" aria-label="回到最新" title={history?.unread ? "有新消息 · 回到最新" : "回到最新"} data-unread={history?.unread || undefined} onClick={() => {
+      {(history?.unread || thread?.history?.hasAfter || (history && !history.following)) && <button className="history-latest" aria-label={tr("conversation.jump_to_latest")} title={history?.unread ? tr("conversation.new_messages_jump_to_latest") : tr("conversation.jump_to_latest")} data-unread={history?.unread || undefined} onClick={() => {
         void history?.load("latest", () => { stickToBottomRef.current = true; });
       }}><ArrowDown size={17} aria-hidden="true" /></button>}
       {questionUI}
-      <dialog ref={readerDialog} className="history-reader" data-content-kind={reader?.item.type} aria-label="完整历史正文"
+      <dialog ref={readerDialog} className="history-reader" data-content-kind={reader?.item.type} aria-label={tr("conversation.full_history_content")}
         onKeyDown={handleDialogKeyDown} onCancel={closeReader}>
-        {reader && <><header><strong>完整内容</strong><button aria-label="关闭正文" onClick={closeReader}><X size={18} /></button></header>
+        {reader && <><header><strong>{tr("conversation.full_content")}</strong><button aria-label={tr("conversation.close_content")} onClick={closeReader}><X size={18} /></button></header>
           <div className="history-reader-content" ref={readerViewport} onScroll={loadReaderEdge} tabIndex={0}>
             {reader.item.type === "message" || reader.item.type === "thought"
               ? <div className="message-copy"><MarkdownContent content={reader.text} projectPath={project?.path ?? null} onOpenPath={onOpenPath} /></div>
               : <pre>{reader.text}</pre>}
           </div>
-          {readerLoading && <div className="reader-status" role="status" aria-label="正在读取内容"><LoaderCircle className="spin" size={14} /></div>}
-          {readerError && <p className="history-error" role="alert">{readerError}<button onClick={() => void readContent(reader.item, reader.field, reader.next)}>重试</button></p>}
+          {readerLoading && <div className="reader-status" role="status" aria-label={tr("conversation.reading_content")}><LoaderCircle className="spin" size={14} /></div>}
+          {readerError && <p className="history-error" role="alert">{readerError}<button onClick={() => void readContent(reader.item, reader.field, reader.next)}>{tr("app.retry")}</button></p>}
         </>}
       </dialog>
 
@@ -548,8 +549,8 @@ function ConversationHeader({
         <button
           className={`icon-button ${sidebarCollapsed ? "visible-accent" : ""}`}
           type="button"
-          aria-label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
-          title={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
+          aria-label={sidebarCollapsed ? tr("conversation.expand_sidebar") : tr("conversation.collapse_sidebar")}
+          title={sidebarCollapsed ? tr("conversation.expand_sidebar") : tr("conversation.collapse_sidebar")}
           onClick={onToggleSidebar}
         >
           <PanelLeftClose size={17} />
@@ -557,7 +558,7 @@ function ConversationHeader({
         <div className="breadcrumb">
           <span className="breadcrumb-project">{(project && projectLabel(project)) || "Cleo"}</span>
           <ChevronRight size={13} />
-          <strong>{thread?.title ?? (space === "chat" ? "新对话" : "新任务")}</strong>
+          <strong>{thread?.title ?? (space === "chat" ? tr("conversation.new_chat") : tr("conversation.new_task"))}</strong>
         </div>
       </div>
       <div className="header-actions">
@@ -566,12 +567,12 @@ function ConversationHeader({
             className="undo-button"
             type="button"
             disabled={!thread || running || undoing}
-            aria-label="回退 Git 改动"
-            title="回退最近一轮对项目 Git 文件的修改；不包含浏览器或桌面操作"
+            aria-label={tr("conversation.revert_git_changes")}
+            title={tr("conversation.revert_project_git_changes_from_the_latest_turn_excludes_browser_and_desktop_actions")}
             onClick={onUndo}
           >
             <RotateCcw className={undoing ? "spin" : ""} size={14} />
-            <span>{undoing ? "撤销中" : "撤销项目改动"}</span>
+            <span>{undoing ? tr("conversation.reverting") : tr("conversation.revert_project_changes")}</span>
           </button>
         ) : null}
         {project?.branch ? (
@@ -581,29 +582,29 @@ function ConversationHeader({
             {project.dirtyFiles ? <small>{project.dirtyFiles}</small> : null}
           </button>
         ) : null}
-        <button className="icon-button" type="button" aria-label="运行记录" title="查看运行记录" onClick={onShowRun}>
+        <button className="icon-button" type="button" aria-label={tr("conversation.run_history")} title={tr("conversation.view_run_history")} onClick={onShowRun}>
           <Terminal size={16} />
         </button>
-        <button className="icon-button" type="button" aria-label="命令面板" title={`命令面板 · ${modifierKey} K`} onClick={onOpenCommand}>
+        <button className="icon-button" type="button" aria-label={tr("conversation.command_palette")} title={tr("conversation.command_palette_value_k", { p0: modifierKey })} onClick={onOpenCommand}>
           <Command size={16} />
         </button>
         <div className="thread-actions-wrap" ref={menuRef}>
-          <button className="icon-button" type="button" aria-label="更多" title="会话操作" disabled={!thread || busy} aria-expanded={threadMenuOpen} onClick={() => setThreadMenuOpen((open) => !open)}>
+          <button className="icon-button" type="button" aria-label={tr("conversation.more")} title={tr("conversation.conversation_actions")} disabled={!thread || busy} aria-expanded={threadMenuOpen} onClick={() => setThreadMenuOpen((open) => !open)}>
             <MoreHorizontal size={17} />
           </button>
           {threadMenuOpen ? (
             <div className="thread-actions-menu surface-popover">
-              {onImprove && <button type="button" onClick={() => { setThreadMenuOpen(false); onImprove(); }}>改进 Cleo</button>}
+              {onImprove && <button type="button" onClick={() => { setThreadMenuOpen(false); onImprove(); }}>{tr("conversation.improve_cleo")}</button>}
               <button type="button" onClick={() => {
                 setThreadMenuOpen(false);
                 setRenameOpen(true);
-              }}>重命名</button>
+              }}>{tr("conversation.rename")}</button>
               {thread?.space === "productivity" ? <>
-                <button type="button" onClick={() => runThreadCommand("/fork")}>创建分支任务</button>
-                <button type="button" onClick={() => runThreadCommand("/compact")}>压缩上下文</button>
+                <button type="button" onClick={() => runThreadCommand("/fork")}>{tr("conversation.branch_this_task")}</button>
+                <button type="button" onClick={() => runThreadCommand("/compact")}>{tr("conversation.compact_context")}</button>
                 <button className="danger" type="button" onClick={() => {
-                  if (window.confirm("归档当前任务并创建新任务？")) runThreadCommand("/archive");
-                }}>归档</button>
+                  if (window.confirm(tr("conversation.archive_the_current_task_and_create_a_new_one"))) runThreadCommand("/archive");
+                }}>{tr("conversation.archive")}</button>
               </> : null}
             </div>
           ) : null}
@@ -612,8 +613,8 @@ function ConversationHeader({
         <button
           className={`icon-button ${inspectorOpen ? "active" : ""}`}
           type="button"
-          aria-label={inspectorOpen ? "关闭检查器" : "打开检查器"}
-          title={inspectorOpen ? "关闭检查器" : "打开检查器"}
+          aria-label={inspectorOpen ? tr("app.close_inspector") : tr("app.open_inspector")}
+          title={inspectorOpen ? tr("app.close_inspector") : tr("app.open_inspector")}
           onClick={onToggleInspector}
         >
           <PanelRightClose size={17} />
@@ -731,13 +732,13 @@ function TimelineEntry({
   if (item.type === "tool-group") return <ToolGroupEntry item={item} />;
   if (item.type === "plan") return <PlanEntry item={item} />;
   if (item.type === "question") return <section className="question-history" data-testid="question-history">
-    <strong>{item.request.status === "answered" ? "已回答 Agent 提问" : item.request.status === "pending" ? "等待回答" : item.request.status === "cancelled" ? "提问已取消" : "旧提问已失效，请让 Agent 重新提问"}</strong>
+    <strong>{item.request.status === "answered" ? tr("conversation.agent_question_answered") : item.request.status === "pending" ? tr("conversation.waiting_for_an_answer") : item.request.status === "cancelled" ? tr("conversation.question_cancelled") : tr("conversation.this_question_has_expired_ask_the_agent_to_send_it_again")}</strong>
     {item.request.questions.map(question => <div key={question.id}><p>{question.question}</p>
-      {item.request.answers?.[question.id] && <p className="question-history-answer">{question.secret ? "（已隐藏）" : item.request.answers[question.id].join("、")}</p>}</div>)}
+      {item.request.answers?.[question.id] && <p className="question-history-answer">{question.secret ? tr("conversation.hidden") : item.request.answers[question.id].join("、")}</p>}</div>)}
   </section>;
   if (item.type === "message") {
     return (
-      <article className={`message-entry ${item.role}`} aria-label={item.role === "user" ? "你的消息" : "Cleo 的回复"}>
+      <article className={`message-entry ${item.role}`} aria-label={item.role === "user" ? tr("conversation.your_message") : tr("conversation.cleo_s_reply")}>
         {(item.role === "assistant" || item.time) && <div className="message-meta">
           {item.role === "assistant" && <span>Cleo</span>}
           <time>{item.time}</time>
@@ -745,17 +746,17 @@ function TimelineEntry({
         <MessageText key={`${threadId}:${item.id}`} item={item} threadId={threadId}
           projectPath={projectPath} onOpenPath={onOpenPath} onEdit={editable ? onEditMessage : undefined} />
         {item.steer && <div className="steer-receipt" data-testid="steer-receipt" data-status={item.steer.status}>
-          <span>{({ queued: item.steer.mode === "native" ? "等待投递" : "当前回复结束后发送",
-            sending: "正在投递", received: "已接收", failed: "未投递",
-            cancelled: "已取消投递", uncertain: "接收状态未确认" })[item.steer.status]}</span>
+          <span>{({ queued: item.steer.mode === "native" ? tr("conversation.waiting_for_delivery") : tr("conversation.send_after_the_current_reply"),
+            sending: tr("conversation.delivering"), received: tr("conversation.received"), failed: tr("conversation.not_delivered"),
+            cancelled: tr("conversation.delivery_cancelled"), uncertain: tr("conversation.receipt_not_confirmed") })[item.steer.status]}</span>
           {item.steer.error && <span className="steer-error">{item.steer.error}</span>}
           {item.steer.retryable && onRetrySteer && <button disabled={steeringBusy}
-            onClick={() => onRetrySteer(item.steer!)}>重试</button>}
+            onClick={() => onRetrySteer(item.steer!)}>{tr("app.retry")}</button>}
           {["failed", "cancelled", "uncertain"].includes(item.steer.status) && onRestoreSteer
             && <button onClick={() => {
               onRestoreSteer(item.steer!);
               document.querySelector<HTMLTextAreaElement>('[data-testid="composer-input"]')?.focus();
-            }}>放回输入框</button>}
+            }}>{tr("conversation.restore_to_composer")}</button>}
         </div>}
         {(item.timing || item.role === "assistant") && item.turnId !== activeTurnId && <Timing key={item.timing?.id ?? item.id}
           summary={item.timing} error={item.timingError} />}
@@ -817,24 +818,24 @@ function MessageText({ item, threadId, projectPath, onOpenPath, onEdit }: {
       setCopied(true);
       if (copiedTimer.current) window.clearTimeout(copiedTimer.current);
       copiedTimer.current = window.setTimeout(() => setCopied(false), 1500);
-    } catch { setError("复制失败"); }
+    } catch { setError(tr("conversation.copy_failed")); }
   };
   const startEdit = async () => {
     try { setDraft(await fullMessageText(threadId, item)); setError(""); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "无法读取消息"); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : tr("conversation.could_not_read_the_message")); }
   };
   const submit = async () => {
     if (!onEdit || !draft?.trim() || busy) return;
     setBusy(true);
     setError("");
     try { await onEdit(item.id, draft); setDraft(null); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "无法编辑这条消息"); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : tr("conversation.could_not_edit_this_message")); }
     finally { setBusy(false); }
   };
 
   return <div className="message-text" ref={article}>
     {draft === null ? <div className="message-copy"><MarkdownContent content={item.content} projectPath={projectPath} onOpenPath={onOpenPath} /></div>
-      : <div className="message-edit"><textarea aria-label="编辑消息" autoFocus value={draft} disabled={busy}
+      : <div className="message-edit"><textarea aria-label={tr("conversation.edit_message")} autoFocus value={draft} disabled={busy}
           onChange={event => setDraft(event.target.value)}
           onKeyDown={event => {
             if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
@@ -842,15 +843,15 @@ function MessageText({ item, threadId, projectPath, onOpenPath, onEdit }: {
             if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submit(); }
           }} />
         <div>
-          <button type="button" disabled={busy} onClick={() => setDraft(null)}>取消</button>
-          <button type="button" className="primary" disabled={busy || !draft.trim()} onClick={() => void submit()}>{busy ? "发送中…" : "发送"}</button>
+          <button type="button" disabled={busy} onClick={() => setDraft(null)}>{tr("computerpanel.cancel")}</button>
+          <button type="button" className="primary" disabled={busy || !draft.trim()} onClick={() => void submit()}>{busy ? tr("conversation.sending") : tr("conversation.send")}</button>
         </div>
       </div>}
     {draft === null && <div className="message-actions">
-      <button type="button" aria-label="复制" title={copied ? "已复制" : "复制"} onClick={() => void copy()}>
+      <button type="button" aria-label={tr("conversation.copy")} title={copied ? tr("conversation.copied") : tr("conversation.copy")} onClick={() => void copy()}>
         {copied ? <Check size={14} /> : <Copy size={14} />}
       </button>
-      {onEdit && <button type="button" aria-label="编辑" title="编辑" onClick={() => void startEdit()}><Pencil size={14} /></button>}
+      {onEdit && <button type="button" aria-label={tr("conversation.edit")} title={tr("conversation.edit")} onClick={() => void startEdit()}><Pencil size={14} /></button>}
     </div>}
     {error && <p className="message-edit-error" role="alert">{error}</p>}
   </div>;
@@ -892,7 +893,7 @@ function MarkdownContent({
             return (
               <span
                 className="markdown-link local-file-link disabled"
-                title={hasUnsupportedScheme ? "不支持这个链接类型" : "当前任务没有关联工作目录"}
+                title={hasUnsupportedScheme ? tr("conversation.this_link_type_is_not_supported") : tr("conversation.this_task_has_no_working_directory")}
               >
                 <span>{children}</span>
                 <FileCode2 aria-hidden="true" size={11} />
@@ -904,7 +905,7 @@ function MarkdownContent({
               {...props}
               className="markdown-link local-file-link"
               href={href}
-              title={`在系统默认应用中打开 · ${href}`}
+              title={tr("conversation.open_in_the_default_application_value", { p0: href })}
               onClick={(event) => {
                 event.preventDefault();
                 onOpenPath(href, projectPath || "");
@@ -949,7 +950,7 @@ function ThoughtGroupEntry({
   const [localExpanded, setExpanded] = useState(!item.hasAnswer);
   const expanded = controlled ?? localExpanded;
   const running = active ?? item.thoughts.some((thought) => thought.status === "running");
-  const summary = `${item.thoughts.length} 条`;
+  const summary = tr("conversation.value_entries", { p0: item.thoughts.length });
   const runningThought = item.thoughts.findLast((thought) => thought.status === "running");
   const live = runningThought && !expanded ? liveLine(runningThought.content) : "";
 
@@ -964,7 +965,7 @@ function ThoughtGroupEntry({
           <Sparkles size={15} />
         </span>
         <span className="tool-group-copy">
-          <strong>思考过程</strong>
+          <strong>{tr("conversation.thinking")}</strong>
           <small>{summary}</small>
           {live ? <span className="tool-group-live" aria-live="polite">{live}</span> : null}
         </span>
@@ -1012,7 +1013,7 @@ function PlanEntry({ item }: { item: Extract<TimelineItem, { type: "plan" }> }) 
   return (
     <section className="plan-entry">
       <div className="timeline-section-heading">
-        <span>计划</span>
+        <span>{tr("conversation.plan")}</span>
         <small>
           {item.steps.filter((step) => step.status === "done").length}/{item.steps.length}
         </small>
@@ -1040,7 +1041,7 @@ function ToolGroupEntry({ item, expanded: controlled, onToggle, headerOnly = fal
   const runningCount = item.tools.filter((tool) => tool.status === "running").length;
   const errorCount = item.tools.filter((tool) => tool.status === "error" && !tool.approvalAudit).length;
   const status = (active ?? Boolean(runningCount)) ? "running" : errorCount ? "error" : "done";
-  const summary = errorCount ? `${item.tools.length} 项 · ${errorCount} 项失败` : `${item.tools.length} 项`;
+  const summary = errorCount ? tr("conversation.value_items_value_failed", { p0: item.tools.length, p1: errorCount }) : tr("conversation.value_items", { p0: item.tools.length });
   const runningTool = !expanded ? item.tools.findLast((tool) => tool.status === "running") : undefined;
   const live = runningTool ? liveLine([runningTool.name, runningTool.command].filter(Boolean).join(" · ")) : "";
   return (
@@ -1052,7 +1053,7 @@ function ToolGroupEntry({ item, expanded: controlled, onToggle, headerOnly = fal
       >
         <span className="tool-icon"><Wrench size={14} /></span>
         <span className="tool-group-copy">
-          <strong>工具过程</strong>
+          <strong>{tr("conversation.tool_activity")}</strong>
           <small>{summary}</small>
           {live ? <span className="tool-group-live" aria-live="polite">{live}</span> : null}
         </span>
@@ -1090,9 +1091,9 @@ function ToolProcess({ tool, index, open, onToggle }: { tool: ToolTimelineItem; 
         <span className="tool-main">
           <span>
             <strong>{tool.name}</strong>
-            {!tool.approvalAudit && <small>{tool.status === "running" ? "运行中" : tool.status === "error" ? "失败" : "完成"}</small>}
+            {!tool.approvalAudit && <small>{tool.status === "running" ? tr("conversation.running") : tool.status === "error" ? tr("conversation.failed") : tr("conversation.done")}</small>}
           </span>
-          {(tool.command || !tool.approvalAudit) && <code>{tool.command || "等待工具输入"}</code>}
+          {(tool.command || !tool.approvalAudit) && <code>{tool.command || tr("conversation.waiting_for_tool_input")}</code>}
         </span>
         {tool.status === "running" ? (
           <Circle size={14} />
@@ -1104,7 +1105,7 @@ function ToolProcess({ tool, index, open, onToggle }: { tool: ToolTimelineItem; 
           <Check size={14} />
         )}
       </summary>
-      {tool.permission && <p className="tool-permission">{tool.permission.source} · {approvalLabel(tool.permission.policy)} · 已允许执行</p>}
+      {tool.permission && <p className="tool-permission">{tool.permission.source} · {approvalLabel(tool.permission.policy)} {tr("conversation.execution_allowed")}</p>}
       {tool.output ? <pre>{tool.output}</pre> : null}
     </details>
   );
@@ -1113,15 +1114,15 @@ function ToolProcess({ tool, index, open, onToggle }: { tool: ToolTimelineItem; 
 /** Purpose: Keep the shared composer welcome focused on the current task. Input: project/space. Output: relevant example requests. */
 function WelcomeState({ project, space, onUseSuggestion }: { project: Project | null; space: ThreadSpace; onUseSuggestion: (prompt: string) => void }) {
   const evolving = project?.id === "productivity:cleo-evolution";
-  const prompts = evolving ? ["让 Cleo 的界面更清晰一些", "为 Cleo 增加一个我需要的功能", "帮我改善 Cleo 的使用体验"] : suggestions[space];
+  const prompts = evolving ? [tr("conversation.make_cleo_s_interface_clearer"), tr("conversation.add_a_feature_i_need_to_cleo"), tr("conversation.help_improve_my_experience_with_cleo")] : suggestions[space];
   return (
     <div className="welcome-state">
       <div className="welcome-mark" aria-hidden="true"><span>C</span></div>
-      <h2>{evolving ? "你想让 Cleo 怎样改变？" : space === "chat" ? "今天想聊些什么？" : "开始新任务"}</h2>
+      <h2>{evolving ? tr("conversation.how_would_you_like_to_change_cleo") : space === "chat" ? tr("conversation.what_would_you_like_to_talk_about") : tr("conversation.start_a_new_task")}</h2>
       {!evolving && project && space === "productivity" ? (
         <p>{isGeneralProject(project)
-          ? "这是独立任务，不关联项目，适合一次性脚本、探索和提问。要改某个项目时，在下方选择它。"
-          : `任务会在项目 ${projectLabel(project)} 的目录里运行。`}</p>
+          ? tr("conversation.this_standalone_task_has_no_project_attached_use_it_for_one_off_scripts_exploration_a")
+          : tr("conversation.this_task_runs_in_the_value_project_directory", { p0: projectLabel(project) })}</p>
       ) : null}
       <div className="suggestion-list">
         {prompts.map((suggestion) => (
@@ -1256,7 +1257,7 @@ function Composer({
   }, [onLoadProductivityModels, productivityModels, runtime.provider, space]);
 
   const submit = () => {
-    const content = prompt.trim() || (attachments.length ? "请分析这些附件。" : "");
+    const content = prompt.trim() || (attachments.length ? tr("conversation.please_analyze_these_attachments") : "");
     if (!content || sendBlocked) return;
     onSend(content);
   };
@@ -1285,7 +1286,7 @@ function Composer({
     try {
       await onPrepareAttachments(files);
     } catch (error) {
-      setAttachmentError(error instanceof Error ? error.message : "无法添加附件");
+      setAttachmentError(error instanceof Error ? error.message : tr("conversation.could_not_add_the_attachment"));
     }
   };
   const pickFiles = async () => {
@@ -1293,7 +1294,7 @@ function Composer({
     try {
       await onPickAttachments();
     } catch (error) {
-      setAttachmentError(error instanceof Error ? error.message : "无法添加附件");
+      setAttachmentError(error instanceof Error ? error.message : tr("conversation.could_not_add_the_attachment"));
     }
   };
   const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
@@ -1373,12 +1374,12 @@ function Composer({
         {draggingFiles ? (
           <div className="composer-drop-overlay" aria-hidden="true">
             <Paperclip size={18} />
-            <span>松开以添加文件</span>
+            <span>{tr("conversation.drop_to_add_files")}</span>
           </div>
         ) : null}
         {matchingCommands.length || matchingSkills.length ? (
-          <div className="slash-menu surface-popover" data-testid="slash-menu" id="slash-options" role="listbox" aria-label="当前 harness 技能与命令">
-            <span>命令与技能</span>
+          <div className="slash-menu surface-popover" data-testid="slash-menu" id="slash-options" role="listbox" aria-label={tr("conversation.current_harness_skills_and_commands")}>
+            <span>{tr("conversation.commands_and_skills")}</span>
             {matchingSkills.map((skill, index) => (
               <button type="button" role="option" aria-selected={selectedCommand === index} id={`slash-option-${index}`} key={skill.command} title={skill.path} onMouseDown={(event) => event.preventDefault()} onClick={() => chooseCommand(skill.command)}>
                 <code>/{skill.name}</code><small>{skill.source}{skill.command !== `/${skill.name}` ? ` · ${skill.command}` : ""}</small>
@@ -1400,37 +1401,37 @@ function Composer({
                   <AttachmentIcon size={12} />
                   <span>{attachment.name}</span>
                   <small>{formatAttachmentSize(attachment.size)}</small>
-                  <button type="button" aria-label={`移除 ${attachment.name}`} onClick={() => onRemoveAttachment(attachment.path)}><X size={12} /></button>
+                  <button type="button" aria-label={tr("conversation.remove_value", { p0: attachment.name })} onClick={() => onRemoveAttachment(attachment.path)}><X size={12} /></button>
                 </span>
               );
             })}
           </div>
         ) : null}
-        {queuedMessages.length ? <ul className="queued-messages" aria-label="待发送消息" data-testid="queued-messages">
+        {queuedMessages.length ? <ul className="queued-messages" aria-label={tr("conversation.queued_messages")} data-testid="queued-messages">
           {queuedMessages.map(message => <li key={message.id} className="queued-message">
             <span className="queued-text" title={message.text}>{message.text || message.attachments.map(item => item.name).join("、")}</span>
             {message.attachments.length ? <span className="queued-attachments" title={message.attachments.map(item => item.name).join("\n")}>
               <Paperclip size={12} />{message.attachments.length}</span> : null}
             {canSteer && !message.attachments.length && onSteerQueued && <button type="button" className="queued-steer"
-              title="立即插入当前运行" disabled={steeringBusy} onClick={() => onSteerQueued(message.id)} data-testid="steer-queued">
+              title={tr("conversation.insert_into_the_current_run_now")} disabled={steeringBusy} onClick={() => onSteerQueued(message.id)} data-testid="steer-queued">
               <CornerDownRight size={13} />Steer</button>}
-            {!running && onSendQueued && <button type="button" aria-label="发送" title="发送" disabled={Boolean(sendBlocked)}
+            {!running && onSendQueued && <button type="button" aria-label={tr("conversation.send")} title={tr("conversation.send")} disabled={Boolean(sendBlocked)}
               onClick={() => onSendQueued(message.id)}><ArrowUp size={13} /></button>}
-            {onEditQueued && <button type="button" aria-label="编辑" title="编辑" onClick={() => { onEditQueued(message.id); inputRef.current?.focus(); }}>
+            {onEditQueued && <button type="button" aria-label={tr("conversation.edit")} title={tr("conversation.edit")} onClick={() => { onEditQueued(message.id); inputRef.current?.focus(); }}>
               <Pencil size={13} /></button>}
-            {onRemoveQueued && <button type="button" aria-label="移除" title="移除" onClick={() => onRemoveQueued(message.id)}><X size={13} /></button>}
+            {onRemoveQueued && <button type="button" aria-label={tr("conversation.remove")} title={tr("conversation.remove")} onClick={() => onRemoveQueued(message.id)}><X size={13} /></button>}
           </li>)}
         </ul> : null}
         {attachmentError ? <div className="attachment-error" role="alert">{attachmentError}</div> : null}
         {harnessSwitchStatus ? <div className="harness-switch-status" role="status">{harnessSwitchStatus}</div> : null}
         {!harnessSwitchStatus && pendingHarnessSwitch ? <div className="harness-switch-status" role="status" data-testid="harness-pending">
-          {`下一条消息将交接到 ${pendingHarnessSwitch.provider} · ${pendingHarnessSwitch.model}；选回当前运行方式可取消`}
+          {tr("conversation.the_next_message_will_hand_off_to_value_value_select_the_current_runtime_to_cancel", { p0: pendingHarnessSwitch.provider, p1: pendingHarnessSwitch.model })}
         </div> : null}
-        {!harnessSwitchStatus && runtime?.handoffStatus === "submitted" ? <div className="harness-switch-status" role="status">交接已提交但尚未完成首轮，继续前请核对已执行的操作</div> : null}
+        {!harnessSwitchStatus && runtime?.handoffStatus === "submitted" ? <div className="harness-switch-status" role="status">{tr("conversation.the_handoff_was_submitted_but_its_first_turn_is_incomplete_check_the_actions_already_")}</div> : null}
         {sendError ? <div className="attachment-error" role="alert">{sendError}</div> : null}
         {computerUseSelected && <div className="attachment-row"><span className="attachment-chip computer-use-chip">
           <span>Computer Use</span>
-          <button type="button" aria-label="移除 Computer Use" onClick={() => { setPrompt(composerText); inputRef.current?.focus(); }}><X size={12} /></button>
+          <button type="button" aria-label={tr("conversation.remove_computer_use")} onClick={() => { setPrompt(composerText); inputRef.current?.focus(); }}><X size={12} /></button>
         </span></div>}
         <textarea
           ref={inputRef}
@@ -1451,8 +1452,8 @@ function Composer({
           }}
           onPaste={onPaste}
           rows={1}
-          aria-label={space === "chat" ? "消息" : "任务描述"}
-          placeholder={running ? "排队下一条消息" : space === "chat" ? "向 Cleo 发送消息…" : "描述你想完成的事情"}
+          aria-label={space === "chat" ? tr("conversation.message") : tr("conversation.task_description")}
+          placeholder={running ? tr("conversation.queue_the_next_message") : space === "chat" ? tr("conversation.send_a_message_to_cleo") : tr("conversation.describe_what_you_want_to_accomplish")}
           data-testid="composer-input"
         />
         <div className="composer-footer">
@@ -1471,10 +1472,10 @@ function Composer({
                 <span className="composer-divider" />
               </>
             ) : null}
-            <button type="button" aria-label="添加附件" title="添加 PDF、Office、图片或代码文件" onClick={() => void pickFiles()}>
+            <button type="button" aria-label={tr("conversation.add_attachment")} title={tr("conversation.add_pdfs_office_documents_images_or_code_files")} onClick={() => void pickFiles()}>
               <Paperclip size={16} />
             </button>
-            <button type="button" aria-label="查看上下文" title="查看上下文" onClick={onShowContext}>
+            <button type="button" aria-label={tr("conversation.view_context")} title={tr("conversation.view_context")} onClick={onShowContext}>
               <AtSign size={16} />
             </button>
             <span className="composer-divider" />
@@ -1504,15 +1505,15 @@ function Composer({
           </div>
           <div className="composer-send-actions">
           {running && (
-            <button className="send-button stop" type="button" aria-label="停止" title="停止" onClick={onCancel} data-testid="stop-button">
+            <button className="send-button stop" type="button" aria-label={tr("computerpanel.stop")} title={tr("computerpanel.stop")} onClick={onCancel} data-testid="stop-button">
               <Square size={13} fill="currentColor" />
             </button>
           )}
           <button
             className="send-button"
             type="button"
-            aria-label={running ? "加入队列" : "发送"}
-            title={sendBlocked || (running ? "加入队列 · Enter" : "发送 · Enter")}
+            aria-label={running ? tr("conversation.add_to_queue") : tr("conversation.send")}
+            title={sendBlocked || (running ? tr("conversation.add_to_queue_enter") : tr("conversation.send_enter"))}
             disabled={Boolean(sendBlocked) || (!prompt.trim() && attachments.length === 0)}
             onClick={submit}
             data-testid={running ? "queue-button" : "send-button"}
@@ -1676,7 +1677,7 @@ function RuntimeSelector({
         className="text-control runtime-selector-trigger"
         type="button"
         disabled={(running && space === "chat") || switching || !catalog}
-        aria-label={development ? "选择运行方式、模型、思考深度和速度" : "选择对话模型"}
+        aria-label={development ? tr("conversation.choose_runtime_model_reasoning_effort_and_speed") : tr("conversation.choose_chat_model")}
         aria-expanded={open}
         onClick={toggleMenu}
         data-testid="runtime-selector"
@@ -1686,7 +1687,7 @@ function RuntimeSelector({
       >
         <span>{development ? `${runtime.provider} · ` : ""}{runtime.model}</span>
         {effortLabel ? <small className="runtime-selector-extra">{`· ${effortLabel}`}</small> : null}
-        {showSpeed && serviceTier === "fast" ? <small className="runtime-selector-extra">· 快速</small> : null}
+        {showSpeed && serviceTier === "fast" ? <small className="runtime-selector-extra">{tr("conversation.fast")}</small> : null}
         <ChevronDown size={13} />
       </button>
       {open ? (
@@ -1694,7 +1695,7 @@ function RuntimeSelector({
           {space === "chat" ? (
             <>
               <div className="runtime-menu-heading">
-                <span>模型配置</span>
+                <span>{tr("conversation.model_configuration")}</span>
               </div>
               <div className="runtime-menu-list">
                 {profiles.map((profile) => (
@@ -1719,7 +1720,7 @@ function RuntimeSelector({
           ) : providerScreen ? (
             <>
               <div className="runtime-menu-heading runtime-menu-heading-back">
-                <button type="button" aria-label="返回服务列表" onClick={() => { setProviderScreen(null); setScreen("providers"); }}>
+                <button type="button" aria-label={tr("conversation.back_to_providers")} onClick={() => { setProviderScreen(null); setScreen("providers"); }}>
                   <ArrowLeft size={14} />
                 </button>
                 <span>{selectedProvider?.id ?? providerScreen}</span>
@@ -1727,11 +1728,11 @@ function RuntimeSelector({
               </div>
               <div className="runtime-menu-list">
                 {loadingProvider === providerScreen ? (
-                  <div className="runtime-menu-status"><LoaderCircle className="spin" size={14} />正在读取模型…</div>
+                  <div className="runtime-menu-status"><LoaderCircle className="spin" size={14} />{tr("conversation.loading_models")}</div>
                 ) : error ? (
                   <div className="runtime-menu-status error" role="alert">
                     <span>{error}</span>
-                    <button type="button" onClick={() => openProvider(providerScreen)}>重试读取模型</button>
+                    <button type="button" onClick={() => openProvider(providerScreen)}>{tr("conversation.retry_loading_models")}</button>
                   </div>
                 ) : (
                   selectedModels?.map((model) => (
@@ -1758,11 +1759,11 @@ function RuntimeSelector({
           ) : screen === "providers" ? (
             <>
               <div className="runtime-menu-heading runtime-menu-heading-back">
-                <button type="button" aria-label="返回当前设置" onClick={() => setScreen("card")}>
+                <button type="button" aria-label={tr("conversation.back_to_current_settings")} onClick={() => setScreen("card")}>
                   <ArrowLeft size={14} />
                 </button>
-                <span>选择运行方式</span>
-                <small>随下一条消息交接</small>
+                <span>{tr("conversation.choose_runtime")}</span>
+                <small>{tr("conversation.hand_off_with_the_next_message")}</small>
               </div>
               <div className="runtime-menu-list">
                 {providers.map((provider) => (
@@ -1789,8 +1790,8 @@ function RuntimeSelector({
                     className={`runtime-card-fast ${serviceTier === "fast" ? "active" : ""}`}
                     type="button"
                     aria-pressed={serviceTier === "fast"}
-                    aria-label="快速模式"
-                    title={serviceTier === "fast" ? "快速模式已开启：更快，消耗更多额度" : "开启快速模式：更快，消耗更多额度；可用性取决于模型和账号"}
+                    aria-label={tr("conversation.fast_mode")}
+                    title={serviceTier === "fast" ? tr("conversation.fast_mode_is_on_faster_responses_with_higher_usage") : tr("conversation.enable_fast_mode_faster_responses_with_higher_usage_availability_depends_on_the_model")}
                     disabled={settingsLocked}
                     data-testid="speed-toggle"
                     onClick={() => onServiceTierChange?.(serviceTier === "fast" ? "default" : "fast")}
@@ -1801,19 +1802,19 @@ function RuntimeSelector({
                 <button
                   className="runtime-card-model"
                   type="button"
-                  aria-label="更换运行方式或模型"
-                  title="更换运行方式或模型"
+                  aria-label={tr("conversation.change_runtime_or_model")}
+                  title={tr("conversation.change_runtime_or_model")}
                   data-testid="runtime-model-row"
                   onClick={() => setScreen("providers")}
                 >
-                  <strong>{effortLabel || "由模型决定"}</strong>
+                  <strong>{effortLabel || tr("conversation.determined_by_the_model")}</strong>
                   <span>{runtime.provider} · {runtime.model}<ChevronRight size={13} /></span>
                 </button>
                 <button
                   className="runtime-card-reset"
                   type="button"
-                  aria-label="恢复默认"
-                  title="恢复模型默认的思考深度和标准速度"
+                  aria-label={tr("conversation.restore_defaults")}
+                  title={tr("conversation.restore_the_model_s_default_reasoning_effort_and_standard_speed")}
                   disabled={settingsLocked || !canReset}
                   data-testid="runtime-reset"
                   onClick={resetSettings}
@@ -1834,9 +1835,9 @@ function RuntimeSelector({
                     max={supportedEfforts.length - 1}
                     step={1}
                     value={effortIndex}
-                    aria-label="思考深度"
+                    aria-label={tr("conversation.reasoning_effort")}
                     aria-valuetext={effortLabel || undefined}
-                    title={`思考深度：${effortLabel || "由模型决定"}`}
+                    title={tr("conversation.reasoning_effort_value", { p0: effortLabel || tr("conversation.determined_by_the_model") })}
                     disabled={settingsLocked}
                     data-testid="effort-selector"
                     data-value={shownEffort}
@@ -1866,6 +1867,6 @@ function RuntimeSelector({
 function providerTypeLabel(type?: string) {
   if (type === "codex_sdk") return "Codex";
   if (type === "claude_sdk") return "Claude";
-  if (type === "acp") return "外部客户端";
-  return "服务";
+  if (type === "acp") return tr("conversation.external_client");
+  return tr("conversation.provider");
 }

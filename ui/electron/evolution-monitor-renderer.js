@@ -1,5 +1,16 @@
+import { t as tr, getLanguage, setLanguage } from "./i18n.mjs";
+
+function applyLanguage(language) {
+  setLanguage(language);
+  document.documentElement.lang = language;
+  for (const node of document.querySelectorAll("[data-i18n]")) node.textContent = tr(node.dataset.i18n);
+  for (const attribute of ["title", "aria-label", "placeholder"]) {
+    for (const node of document.querySelectorAll(`[data-i18n-${attribute}]`)) node.setAttribute(attribute, tr(node.getAttribute(`data-i18n-${attribute}`)));
+  }
+}
+applyLanguage(window.cleoMonitor.language ?? "zh-CN");
 const element = id => document.getElementById(id);
-const labels = { queued: "已保存 · 等待会话空闲", started: "已提交", completed: "已处理", interrupted: "执行中断，请核对会话后继续", cancelled: "已取消" };
+const labels = { get queued() { return tr("evolution_monitor_renderer.saved_waiting_for_the_conversation_to_become_idle"); }, get started() { return tr("evolution_monitor_renderer.submitted"); }, get completed() { return tr("evolution_monitor_renderer.processed"); }, get interrupted() { return tr("evolution_monitor_renderer.execution_interrupted_check_the_conversation_before_continuing"); }, get cancelled() { return tr("timing.cancelled"); } };
 let busy = false, refreshing = false, latest = null, questionKey = "";
 const nodes = new Map();
 const text = (tag, value, className = "") => { const node = document.createElement(tag); node.textContent = value || ""; node.className = className; return node; };
@@ -14,20 +25,20 @@ function renderTimeline(items) {
   for (const item of items) {
     if (item.type === "question") continue;
     keep.add(item.id);
-    const signature = JSON.stringify(item);
+    const signature = `${getLanguage()}:${JSON.stringify(item)}`;
     const previous = nodes.get(item.id);
     if (previous?.signature === signature) continue;
     let node;
     if (item.type === "tool" || item.type === "thought") {
       node = document.createElement("details"); node.className = `${item.type} ${item.status || ""}`;
       node.open = previous?.node.open || false;
-      const result = { running: "进行中", done: "完成", error: "失败", interrupted: "中断" }[item.status] || "";
-      node.append(text("summary", item.type === "tool" ? `⌁ ${item.name || "工具调用"} · ${result}` : `过程说明 · ${result}`));
+      const result = { running: tr("computerpanel.in_progress"), done: tr("conversation.done"), error: tr("conversation.failed"), interrupted: tr("evolution_monitor_renderer.interrupted") }[item.status] || "";
+      node.append(text("summary", item.type === "tool" ? `⌁ ${item.name || tr("memoryview.tool_call")} · ${result}` : tr("evolution_monitor_renderer.progress_details_value", { p0: result })));
       if (item.command) node.append(text("pre", item.command));
       if (item.output || item.content) node.append(text("pre", item.output || item.content));
     } else if (item.type === "message") {
       node = text("article", "", item.role === "user" ? "user" : "assistant");
-      node.append(text("span", item.role === "user" ? "你" : "Cleo", "role"), text("div", item.content));
+      node.append(text("span", item.role === "user" ? tr("evolutioncases.you") : "Cleo", "role"), text("div", item.content));
     } else if (item.type === "plan") {
       node = text("article", (item.steps || []).map(step => `${step.status === "done" ? "✓" : "·"} ${step.label || step.title || step.step}`).join("\n"), "plan");
     } else if (item.type === "notice") node = text("article", `${item.title || ""}\n${item.detail || ""}`, "notice");
@@ -37,7 +48,7 @@ function renderTimeline(items) {
   }
   for (const [id, entry] of nodes) if (!keep.has(id)) { entry.node.remove(); nodes.delete(id); }
   let empty = pane.querySelector(".empty");
-  if (!nodes.size && !empty) { empty = text("div", "暂无对话", "empty"); pane.append(empty); }
+  if (!nodes.size && !empty) { empty = text("div", tr("evolution_monitor_renderer.no_conversation_yet"), "empty"); pane.append(empty); }
   else if (nodes.size) empty?.remove();
 }
 function renderQuestions(requests) {
@@ -47,7 +58,7 @@ function renderQuestions(requests) {
   questionKey = key; element("questions").replaceChildren();
   for (const request of pending) {
     const form = document.createElement("form"); form.className = "question";
-    if (request.questions.some(question => question.secret)) { form.append(text("p", "此问题涉及敏感输入，请在 Cleo 主窗口回答。")); element("questions").append(form); continue; }
+    if (request.questions.some(question => question.secret)) { form.append(text("p", tr("evolution_monitor_renderer.this_question_involves_sensitive_input_answer_it_in_cleo_s_main_window"))); element("questions").append(form); continue; }
     for (const question of request.questions) {
       const field = document.createElement("fieldset"); field.dataset.id = question.id;
       field.append(text("legend", question.question));
@@ -57,17 +68,17 @@ function renderQuestions(requests) {
         label.append(input, document.createTextNode(` ${option.label}`));
         if (option.description) label.append(text("small", option.description)); field.append(label);
       }
-      const free = document.createElement("input"); free.type = "text"; free.placeholder = "也可以直接输入你的选择"; free.setAttribute("aria-label", question.question);
+      const free = document.createElement("input"); free.type = "text"; free.placeholder = tr("evolution_monitor_renderer.you_can_also_type_your_choice"); free.setAttribute("aria-label", question.question);
       field.append(free); form.append(field);
     }
-    const submit = text("button", "提交回答"); submit.type = "submit"; form.append(submit);
+    const submit = text("button", tr("evolution_monitor_renderer.submit_answer")); submit.type = "submit"; form.append(submit);
     form.addEventListener("submit", async event => {
       event.preventDefault();
       const answers = Object.fromEntries([...form.querySelectorAll("fieldset")].map(field => {
         const free = field.querySelector("input[type=text]").value.trim();
         return [field.dataset.id, free ? [free] : [...field.querySelectorAll("input:checked")].map(input => input.value)];
       }));
-      if (Object.values(answers).some(values => !values.length)) { element("error").textContent = "请回答每一个问题。"; return; }
+      if (Object.values(answers).some(values => !values.length)) { element("error").textContent = tr("evolution_monitor_renderer.answer_every_question"); return; }
       submit.disabled = true;
       try { await window.cleoMonitor.control("answer", { questionId: request.id, answers }); }
       catch (error) { element("error").textContent = errorText(error); }
@@ -80,6 +91,7 @@ async function refresh() {
   if (refreshing) return; refreshing = true;
   try {
     const state = await window.cleoMonitor.status(); latest = state;
+    if (state.uiLanguage && state.uiLanguage !== getLanguage()) applyLanguage(state.uiLanguage);
     const scroll = element("conversation"); const follow = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 80;
     element("phase").textContent = state.phase; element("detail").textContent = state.detail;
     document.body.classList.toggle("offline", !state.connected);
@@ -88,7 +100,7 @@ async function refresh() {
     element("stop").disabled = !state.connected;
     element("discard").disabled = !state.connected || !state.canDiscard;
     element("resume").hidden = !state.paused;
-    element("hint").textContent = state.paused ? "已暂停，点击继续处理消息后执行" : "";
+    element("hint").textContent = state.paused ? tr("evolution_monitor_renderer.paused_click_continue_messages_to_execute") : "";
     renderTimeline(state.thread?.items || []);
     renderQuestions(state.connected ? state.thread?.pendingQuestions || [] : []);
     element("messages").replaceChildren(...state.messages.filter(message => ["queued", "interrupted", "cancelled"].includes(message.status)).slice(-5).map(message => {
@@ -96,7 +108,7 @@ async function refresh() {
     }));
     renderActions(state);
     const command = state.commands?.at(-1);
-    element("control-status").textContent = command ? command.status === "error" ? command.detail : command.status === "completed" ? "操作已完成" : "正在处理操作…" : "";
+    element("control-status").textContent = command ? command.status === "error" ? command.detail : command.status === "completed" ? tr("evolution_monitor_renderer.operation_completed") : tr("evolution_monitor_renderer.processing_operation") : "";
     if (follow) scroll.scrollTop = scroll.scrollHeight;
   } catch (error) { element("error").textContent = errorText(error); }
   finally { refreshing = false; }
@@ -113,16 +125,16 @@ function renderActions(state) {
   const canCheck = Boolean(actions && (actions.needsCheck || actions.checkFailed));
   const check = element("check");
   check.hidden = Boolean(actions?.canApply || actions?.canSave);
-  check.textContent = actions?.checkFailed ? "重新检查" : "检查改动";
+  check.textContent = actions?.checkFailed ? tr("dependencysetup.check_again") : tr("evolutionpanel.check_changes");
   check.disabled = !idle || !canCheck;
-  check.title = !state.connected ? "主程序尚未连接" : state.running ? "agent 正在修改，完成后再检查"
-    : actions?.unchanged ? "暂无程序改动" : !canCheck ? "暂无需要检查的改动" : "检查并构建本轮改动";
+  check.title = !state.connected ? tr("evolution_monitor_renderer.main_program_not_connected") : state.running ? tr("evolution_monitor_renderer.the_agent_is_editing_run_checks_after_it_finishes")
+    : actions?.unchanged ? tr("evolutionpanel.no_program_changes") : !canCheck ? tr("evolution_monitor_renderer.no_changes_need_checking") : tr("evolution_monitor_renderer.check_and_build_this_iteration_s_changes");
   element("apply").hidden = !actions?.canApply;
   element("apply").disabled = !idle;
   element("save").hidden = !actions?.canSave;
   element("save").disabled = !idle;
   if (!actions?.canSave) element("save-form").hidden = true;
-  element("version-name").placeholder = actions?.suggestedName ? `默认：${actions.suggestedName}` : "版本名称";
+  element("version-name").placeholder = actions?.suggestedName ? tr("evolution_monitor_renderer.default_value", { p0: actions.suggestedName }) : tr("evolution_monitor_renderer.version_name");
 }
 const actionNames = { check: "build", apply: "apply", stop: "stop", discard: "discard", recovery: "recovery", resume: "resume", emergency: "emergency" };
 for (const [id, action] of Object.entries(actionNames)) element(id).addEventListener("click", async () => {

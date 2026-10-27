@@ -7,6 +7,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from cleo.i18n import tr
+
 
 @dataclass(frozen=True)
 class LocalSkill:
@@ -32,9 +34,13 @@ class LocalSkill:
         try:
             instructions = self.path.read_text(encoding="utf-8-sig")
         except (OSError, UnicodeError) as exc:
-            raise ValueError(f"无法读取 skill {self.name}: {self.path}") from exc
+            raise ValueError(tr(
+                "skills.could_not_read_skill_value_value",
+                p0=self.name,
+                p1=self.path,
+            )) from exc
         if not instructions.strip():
-            raise ValueError(f"Skill 文件为空: {self.path}")
+            raise ValueError(tr("skills.skill_file_is_empty_value", p0=self.path))
         parts = prompt.split(maxsplit=1)
         arguments = parts[1] if len(parts) > 1 else ""
         task = arguments or (
@@ -66,12 +72,19 @@ def discover_skills(harness: str, cwd: str, reserved: tuple[str, ...]) -> list[L
     config = harness_home(harness)
     roots = [(config / "skills", f"{harness} · Cleo")]
     if harness == "codex":
-        roots.append((home / ".agents" / "skills", "codex · 用户 .agents"))
+        roots.append((home / ".agents" / "skills", tr("skills.codex_user_agents")))
     project = Path(cwd).resolve()
     for directory in (project, *project.parents):
-        roots.append((directory / f".{harness}" / "skills", f"{harness} · 项目 {directory}"))
+        roots.append((directory / f".{harness}" / "skills", tr(
+            "skills.value_project_value",
+            p0=harness,
+            p1=directory,
+        )))
         if harness == "codex":
-            roots.append((directory / ".agents" / "skills", f"codex · 项目 {directory}"))
+            roots.append((directory / ".agents" / "skills", tr(
+                "skills.codex_project_value",
+                p0=directory,
+            )))
         if (directory / ".git").exists():
             break
     found: list[tuple[str, str, Path]] = []

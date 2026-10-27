@@ -1,3 +1,4 @@
+import { t as tr } from "./i18n.mjs";
 import { join } from "node:path";
 import { readJson, writeJson } from "./evolution-store.mjs";
 
@@ -12,7 +13,7 @@ export class EvolutionInteractions {
       || data.feedback.some((f) => !f || typeof f.id !== "string" || typeof f.caseId !== "string" || typeof f.body !== "string")
       || data.confirmations.some((c) => !c || typeof c.id !== "string" || typeof c.skipped !== "boolean")
       || data.completions.some((c) => !c || typeof c.id !== "string" || typeof c.note !== "string" || typeof c.candidate !== "string"))
-      throw new Error("验收交互记录格式无法读取；保留原文件，未覆盖。");
+      throw new Error(tr("evolution_interactions.could_not_read_the_acceptance_interaction_record_format_the_original_file_was_preserv"));
     return data;
   }
 
@@ -23,7 +24,7 @@ export class EvolutionInteractions {
     if (previous) {
       for (const [key, value] of Object.entries(record)) {
         if (key !== "at" && JSON.stringify(previous[key]) !== JSON.stringify(value))
-          throw new Error("交互标识已用于不同内容。");
+          throw new Error(tr("evolution_interactions.this_interaction_id_was_already_used_for_different_content"));
       }
       return previous;
     }

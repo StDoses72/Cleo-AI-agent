@@ -1,3 +1,4 @@
+import { t as tr } from "./i18n.mjs";
 import { launchDesktop } from "./evolution-launch.mjs";
 import { app, dialog } from "electron";
 import { resolve } from "node:path";
@@ -18,7 +19,7 @@ export async function launchBuild(build, store, transactionId = null) {
 
 /** Purpose: Wait for the old app to release data. Input: parent pid. Output: termination or bounded error. */
 async function waitForExit(pid, cancelled = async () => false) {
-  if (!Number.isSafeInteger(pid) || pid <= 0 || pid === process.pid) throw new Error("无效的应用进程。");
+  if (!Number.isSafeInteger(pid) || pid <= 0 || pid === process.pid) throw new Error(tr("evolution_recovery.invalid_application_process"));
   const deadline = Date.now() + 60000;
   while (Date.now() < deadline) {
     if (await cancelled()) return false;
@@ -26,7 +27,7 @@ async function waitForExit(pid, cancelled = async () => false) {
     catch (error) { if (error.code === "ESRCH") return true; throw error; }
     await new Promise((done) => setTimeout(done, 250));
   }
-  throw new Error("Cleo 尚未退出。请关闭当前程序，再打开恢复入口。");
+  throw new Error(tr("evolution_recovery.cleo_has_not_exited_close_the_current_program_before_opening_recovery"));
 }
 
 /** Purpose: Verify that a separate restart surface is visible before the old app exits.
@@ -36,12 +37,12 @@ export async function waitForControllerReady(store, id, child) {
   const path = ownedPath(store.root, "handoffs", `${id}.json`);
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
-    if (child.exitCode !== null || child.signalCode !== null) throw new Error("重启控制器未能启动，当前 Cleo 已保留。");
+    if (child.exitCode !== null || child.signalCode !== null) throw new Error(tr("evolution_recovery.the_restart_controller_could_not_start_the_current_cleo_instance_was_kept"));
     const ready = await readJson(path);
     if (ready?.id === id && ready.pid === child.pid) return;
     await new Promise((done) => setTimeout(done, 100));
   }
-  throw new Error("重启窗口尚未就绪，当前 Cleo 已保留。");
+  throw new Error(tr("evolution_recovery.the_restart_window_is_not_ready_the_current_cleo_instance_was_kept"));
 }
 
 /** Purpose: Wait for a real UI/backend startup acknowledgment, not merely process creation.
@@ -72,7 +73,7 @@ async function stopFailedBuild(child) {
   }
   const deadline = Date.now() + 10000;
   while (child.exitCode === null && child.signalCode === null && Date.now() < deadline) await new Promise((done) => setTimeout(done, 100));
-  if (child.exitCode === null && child.signalCode === null) throw new Error("程序仍在退出。");
+  if (child.exitCode === null && child.signalCode === null) throw new Error(tr("evolution_recovery.the_program_is_still_exiting"));
 }
 
 /** Purpose: Own restart visibility and automatic rollback outside mutable app code.
@@ -81,14 +82,14 @@ async function stopFailedBuild(child) {
  */
 export async function applyFromController(store, parent, { progress: existingProgress } = {}) {
   const initial = await store.read();
-  if (!initial.transaction) throw new Error("没有待应用的改动。");
+  if (!initial.transaction) throw new Error(tr("evolution_recovery.there_are_no_changes_to_apply"));
   const progress = existingProgress || await createRestartWindow();
   const readyPath = ownedPath(store.root, "handoffs", `${initial.transaction.id}.json`);
   await writeJson(readyPath, { id: initial.transaction.id, pid: process.pid });
   let parentClosed = parent === null;
   const hooks = {
     async withLock(action) {
-      if (!app.requestSingleInstanceLock()) throw new Error("另一个 Cleo 仍在运行，请先关闭它后重试。");
+      if (!app.requestSingleInstanceLock()) throw new Error(tr("evolution_recovery.another_cleo_instance_is_running_close_it_and_retry"));
       try { return await action(); } finally { app.releaseSingleInstanceLock(); }
     },
     launch: (build, transaction) => launchBuild(build, store, transaction),
@@ -109,7 +110,7 @@ export async function applyFromController(store, parent, { progress: existingPro
       } catch (error) { result = { ok: false, error: error.message }; }
       let selected;
       do {
-        await progress.progress("Cleo 需要恢复", result.error, true);
+        await progress.progress(tr("evolution_recovery.cleo_needs_recovery"), result.error, true);
         await progress.waitForChoice();
         if (!parentClosed) break;
         selected = await showRecovery(store, { selectOnly: true, parentWindow: progress.window });
@@ -117,7 +118,7 @@ export async function applyFromController(store, parent, { progress: existingPro
       if (selected) {
         try {
           await hooks.withLock(async () => { await store.recover(selected); await store.stage(selected); });
-        } catch (error) { await progress.progress("暂时无法切换", error.message, true); }
+        } catch (error) { await progress.progress(tr("evolution_recovery.cannot_switch_yet"), error.message, true); }
       }
     }
   } finally { await rm(readyPath, { force: true }); }
@@ -127,25 +128,25 @@ export async function applyFromController(store, parent, { progress: existingPro
 export async function showRecovery(store, { selectOnly = false, parentWindow = null } = {}) {
   const state = await store.read();
   if (!state.baseline) {
-    await dialog.showMessageBox({ type: "info", message: "尚未创建恢复点", detail: "首次准备本地迭代时会保存可用版本。" });
+    await dialog.showMessageBox({ type: "info", message: tr("evolution_recovery.no_recovery_point_has_been_created"), detail: tr("evolution_recovery.a_working_version_is_saved_when_local_iteration_is_prepared_for_the_first_time") });
     return;
   }
   const choices = [state.baseline, state.workspaceBase, state.latestSaved, state.iteration?.base,
     state.lastApplication?.from, state.transaction?.from, state.active]
     .filter((id, index, all) => id && all.indexOf(id) === index)
     .map((id) => state.builds.find((build) => build.id === id)).filter(Boolean);
-  const options = { title: "Cleo · 版本与恢复", type: "question",
-    message: "选择一个可用状态", detail: selectOnly
-      ? "选择后由 Cleo 自动完成重启。这里只切换程序，聊天、记忆和配置始终保留。"
-      : "请先关闭正在运行的 Cleo。这里只切换程序版本，聊天、记忆和配置等用户数据始终保留。",
-    buttons: [...choices.map((build) => build.baseline ? `保底正式版 ${build.version}`
-      : build.kind === "official" ? `正式版 ${build.version}` : build.name || "本地修改"), "取消"],
+  const options = { title: tr("evolution_recovery.cleo_versions_and_recovery"), type: "question",
+    message: tr("evolution_recovery.choose_an_available_state"), detail: selectOnly
+      ? tr("evolution_recovery.cleo_restarts_automatically_after_selection_only_the_program_changes_chats_memories_a")
+      : tr("evolution_recovery.close_the_running_cleo_instance_first_only_the_program_version_changes_user_data_incl"),
+    buttons: [...choices.map((build) => build.baseline ? tr("evolution_recovery.fallback_stable_release_value", { p0: build.version })
+      : build.kind === "official" ? tr("evolution_recovery.stable_release_value", { p0: build.version }) : build.name || tr("evolution_recovery.local_changes")), tr("computerpanel.cancel")],
     cancelId: choices.length, noLink: true };
   const result = await dialog.showMessageBox(...(parentWindow ? [parentWindow, options] : [options]));
   if (result.response === choices.length) return;
   const selected = choices[result.response];
   if (selectOnly) return selected.id;
-  if (!app.requestSingleInstanceLock()) throw new Error("请先关闭正在运行的 Cleo，再执行恢复。");
+  if (!app.requestSingleInstanceLock()) throw new Error(tr("evolution_recovery.close_the_running_cleo_instance_before_recovery"));
   let build;
   try { build = await store.recover(selected.id); }
   finally { app.releaseSingleInstanceLock(); }

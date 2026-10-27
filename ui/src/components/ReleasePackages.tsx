@@ -1,15 +1,16 @@
+import { t as tr } from "../../electron/i18n.mjs";
 import { useEffect, useRef, useState } from "react";
 import { RefreshCw, Upload } from "lucide-react";
 
 interface BuildRun { id: string; url: string; createdAt: string }
 interface PackageStatus { status: string; workflowUrl: string; releaseUrl?: string }
 const labels: Record<string, string> = {
-  submitted: "发布请求已提交，等待工作流创建运行记录。",
-  running: "安装包发布中。",
-  completed: "安装包发布完成：工作流成功，四个平台安装包、清单和校验文件齐全。",
-  failed: "安装包发布失败。请查看工作流错误，修复后使用相同标签和构建重试。",
-  unknown: "尚未找到对应运行记录。请求可能仍在处理，请稍后刷新。",
-  incomplete: "工作流曾成功，但远端文件或发布信息不完整，不能确认安装包可用。请查看工作流及 Release。",
+  get submitted() { return tr("releasepackages.publishing_requested_waiting_for_the_workflow_run_to_appear"); },
+  get running() { return tr("releasepackages.publishing_installation_packages"); },
+  get completed() { return tr("releasepackages.installation_packages_published_the_workflow_succeeded_and_packages_manifests_and_che"); },
+  get failed() { return tr("releasepackages.package_publishing_failed_review_the_workflow_error_fix_it_and_retry_with_the_same_ta"); },
+  get unknown() { return tr("releasepackages.no_matching_run_was_found_yet_the_request_may_still_be_processing_refresh_later"); },
+  get incomplete() { return tr("releasepackages.the_workflow_succeeded_previously_but_remote_files_or_release_metadata_are_incomplete"); },
 };
 
 export function ReleasePackages({ params, disabled, onAction, onBusy }: {
@@ -37,22 +38,21 @@ export function ReleasePackages({ params, disabled, onAction, onBusy }: {
     finally { inFlight.current = false; setPending(false); onBusy?.(false); }
   };
   const locked = disabled || pending;
-  return <section aria-label="发布安装包">
-    <h4>安装包</h4>
-    {!status && <p role="status">安装包尚未确认发布。</p>}
-    <button disabled={locked} onClick={() => void run("releaseBuilds")}><RefreshCw size={14} />查找匹配构建</button>
-    {builds?.length === 0 && <p role="status">没有该提交的完整构建。需要成功的 Desktop platforms 手动构建及四个平台未过期的产物；PR 检查不包含完整 Windows 安装包。
-      <a href="https://github.com/StDoses72/Cleo-AI-agent/actions/workflows/desktop-platforms.yml" target="_blank" rel="noreferrer">查看 Desktop platforms</a></p>}
-    {!!builds?.length && <label>成功构建<select aria-label="成功构建" value={runId} disabled={locked} onChange={event => setRunId(event.target.value)}>
+  return <section aria-label={tr("releasepackages.publish_installation_packages")}>
+    <h4>{tr("overlays.installation_packages")}</h4>
+    {!status && <p role="status">{tr("releasepackages.package_publication_has_not_been_confirmed")}</p>}
+    <button disabled={locked} onClick={() => void run("releaseBuilds")}><RefreshCw size={14} />{tr("releasepackages.find_matching_build")}</button>
+    {builds?.length === 0 && <p role="status">{tr("releasepackages.no_complete_build_exists_for_this_commit_a_successful_manual_desktop_platforms_build_")}<a href="https://github.com/StDoses72/Cleo-AI-agent/actions/workflows/desktop-platforms.yml" target="_blank" rel="noreferrer">{tr("releasepackages.view_desktop_platforms")}</a></p>}
+    {!!builds?.length && <label>{tr("releasepackages.successful_build")}<select aria-label={tr("releasepackages.successful_build")} value={runId} disabled={locked} onChange={event => setRunId(event.target.value)}>
       {builds.map(build => <option key={build.id} value={build.id}>#{build.id} · {build.createdAt}</option>)}
     </select></label>}
-    <label>构建 Run ID<input aria-label="构建 Run ID" inputMode="numeric" pattern="[0-9]+" value={runId} disabled={locked} onChange={event => setRunId(event.target.value)} /></label>
-    {builds?.find(build => build.id === runId) && <p><a href={builds.find(build => build.id === runId)!.url} target="_blank" rel="noreferrer">查看构建</a></p>}
+    <label>{tr("releasepackages.build_run_id")}<input aria-label={tr("releasepackages.build_run_id")} inputMode="numeric" pattern="[0-9]+" value={runId} disabled={locked} onChange={event => setRunId(event.target.value)} /></label>
+    {builds?.find(build => build.id === runId) && <p><a href={builds.find(build => build.id === runId)!.url} target="_blank" rel="noreferrer">{tr("releasepackages.view_build")}</a></p>}
     <button disabled={locked || !/^\d+$/.test(runId) || !params.tag || !params.title || status?.status === "running" || status?.status === "submitted" || status?.status === "completed"}
-      onClick={() => void run("publishReleasePackages")}><Upload size={14} />发布安装包</button>
-    <button disabled={locked || !/^\d+$/.test(runId) || !params.tag} onClick={() => void run("releasePackageStatus")}><RefreshCw size={14} />刷新安装包状态</button>
-    {status && <p role="status">{labels[status.status] || "安装包状态待确认。"} <a href={status.workflowUrl} target="_blank" rel="noreferrer">查看发布工作流</a>
-      {status.releaseUrl && <> · <a href={status.releaseUrl} target="_blank" rel="noreferrer">查看安装包</a></>}</p>}
+      onClick={() => void run("publishReleasePackages")}><Upload size={14} />{tr("releasepackages.publish_installation_packages")}</button>
+    <button disabled={locked || !/^\d+$/.test(runId) || !params.tag} onClick={() => void run("releasePackageStatus")}><RefreshCw size={14} />{tr("releasepackages.refresh_package_status")}</button>
+    {status && <p role="status">{labels[status.status] || tr("releasepackages.package_status_is_unconfirmed")} <a href={status.workflowUrl} target="_blank" rel="noreferrer">{tr("releasepackages.view_publishing_workflow")}</a>
+      {status.releaseUrl && <> · <a href={status.releaseUrl} target="_blank" rel="noreferrer">{tr("releasepackages.view_packages")}</a></>}</p>}
     {error && <p role="alert">{error}</p>}
   </section>;
 }

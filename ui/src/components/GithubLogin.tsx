@@ -1,3 +1,4 @@
+import { t as tr } from "../../electron/i18n.mjs";
 import { useState } from "react";
 import { Check, Copy, ExternalLink, GitBranch } from "lucide-react";
 import type { EvolutionGithubAuth } from "../evolution-types";
@@ -23,30 +24,30 @@ export function GithubLogin({ auth, busy, onAction, onContribute }: {
       setCopiedCode(auth.code); setFailedCopy(null);
     } catch { setFailedCopy(auth.code); }
   };
-  return <section className="evolution-github" aria-label="GitHub 登录">
-    <div className="evolution-github-heading"><GitBranch size={16} /><strong>GitHub 连接</strong></div>
+  return <section className="evolution-github" aria-label={tr("githublogin.github_sign_in")}>
+    <div className="evolution-github-heading"><GitBranch size={16} /><strong>{tr("githublogin.github_connection")}</strong></div>
     {auth.message && <p role="status">{auth.message}</p>}
-    {auth.status === "connected" && <p role="status" aria-label="仓库发布权限">
+    {auth.status === "connected" && <p role="status" aria-label={tr("githublogin.repository_release_permission")}>
       {auth.repositoryAccess?.login && <strong>{auth.repositoryAccess.login} · {auth.repositoryAccess.role} · </strong>}
-      {auth.repositoryAccess?.message || "仓库发布权限尚未确认。"}
+      {auth.repositoryAccess?.message || tr("githublogin.repository_release_permission_has_not_been_confirmed")}
     </p>}
-    {auth.diagnostic && <p className="evolution-github-hint">诊断：{auth.diagnostic}</p>}
+    {auth.diagnostic && <p className="evolution-github-hint">{tr("githublogin.diagnostics")}{auth.diagnostic}</p>}
     {auth.status === "waiting" && auth.code && <>
       <div className="evolution-github-code">
-        <code aria-label="GitHub 一次性验证码">{auth.code}</code>
-        <button onClick={() => void copyCode()}>{copiedCode === auth.code ? <Check size={14} /> : <Copy size={14} />}{copiedCode === auth.code ? "已复制" : "复制验证码"}</button>
+        <code aria-label={tr("githublogin.github_one_time_code")}>{auth.code}</code>
+        <button onClick={() => void copyCode()}>{copiedCode === auth.code ? <Check size={14} /> : <Copy size={14} />}{copiedCode === auth.code ? tr("conversation.copied") : tr("githublogin.copy_code")}</button>
       </div>
-      <p>在 github.com/login/device 输入此验证码</p>
+      <p>{tr("githublogin.enter_this_code_at_github_com_login_device")}</p>
       {auth.browserError && <p className="evolution-github-hint">{auth.browserError}</p>}
-      {failedCopy === auth.code && <p className="evolution-github-hint">复制失败，请手动选择并复制验证码。</p>}
+      {failedCopy === auth.code && <p className="evolution-github-hint">{tr("githublogin.copy_failed_select_and_copy_the_code_manually")}</p>}
     </>}
     <div className="evolution-github-actions">
-      {auth.status === "connected" && <button className="evolution-primary" disabled={busy} onClick={onContribute}>{auth.repositoryAccess?.canRelease ? "提交 PR / 发布" : "继续提交 PR"}</button>}
-      {auth.status === "waiting" && <button className="evolution-primary" onClick={() => onAction("openGithubLogin")}><ExternalLink size={14} />打开 GitHub 授权页面</button>}
-      {pending && <button onClick={() => onAction("cancelLogin")}>取消登录</button>}
-      {retry && <button disabled={busy} onClick={() => onAction("login")}>重新连接 GitHub</button>}
-      {auth.status === "disconnected" && <button disabled={busy} onClick={() => onAction("login")}>连接 GitHub</button>}
-      {auth.status === "connected" && <button disabled={busy} onClick={() => onAction("login")}>检查连接</button>}
+      {auth.status === "connected" && <button className="evolution-primary" disabled={busy} onClick={onContribute}>{auth.repositoryAccess?.canRelease ? tr("githublogin.submit_pr_publish") : tr("githublogin.continue_pr_submission")}</button>}
+      {auth.status === "waiting" && <button className="evolution-primary" onClick={() => onAction("openGithubLogin")}><ExternalLink size={14} />{tr("githublogin.open_github_authorization_page")}</button>}
+      {pending && <button onClick={() => onAction("cancelLogin")}>{tr("githublogin.cancel_sign_in")}</button>}
+      {retry && <button disabled={busy} onClick={() => onAction("login")}>{tr("githublogin.reconnect_github")}</button>}
+      {auth.status === "disconnected" && <button disabled={busy} onClick={() => onAction("login")}>{tr("githublogin.connect_github")}</button>}
+      {auth.status === "connected" && <button disabled={busy} onClick={() => onAction("login")}>{tr("githublogin.check_connection")}</button>}
     </div>
   </section>;
 }

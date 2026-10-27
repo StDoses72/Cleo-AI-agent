@@ -13,6 +13,7 @@ from tempfile import TemporaryDirectory
 
 from cleo.harnesses.models import AgentEvent, emit_event
 from cleo.harnesses.provider import ProviderSession, ProviderTurn
+from cleo.i18n import tr
 from cleo.integrations.harness_home import (
     CLAUDE_LOGIN_HINT,
     claude_environment,
@@ -89,9 +90,13 @@ async def auth_status(profile) -> dict:
         if process.returncode or not payload.get("loggedIn"):
             detail = diagnostic_text(stderr.decode("utf-8", errors="replace"))
             raise ValueError(
-                f"Claude Code 登录检查未通过 (exit_code={process.returncode}, "
-                f"loggedIn={payload.get('loggedIn') is True})。"
-                f"{CLAUDE_LOGIN_HINT} {detail}"
+                tr(
+                    "claude_cli.claude_code_sign_in_check_failed_exit_code_value",
+                    p0=process.returncode,
+                    p1=payload.get('loggedIn') is True,
+                    p2=CLAUDE_LOGIN_HINT,
+                    p3=detail,
+                )
             )
         return {"status": "connected", "models": []}
     finally:
@@ -254,7 +259,7 @@ class ClaudeCliProvider:
                         details.append("stderr: " + text)
                     raise RuntimeError(
                         "Claude Code did not complete the turn (" + "; ".join(evidence) + "). "
-                        + (" ".join(details) or "CLI 未提供错误详情。")
+                        + (" ".join(details) or tr("claude_cli.the_cli_provided_no_error_details"))
                     )
                 return ProviderTurn(
                     native_session_id=result.get("session_id"),

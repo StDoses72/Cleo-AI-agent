@@ -35,6 +35,7 @@ from cleo.harnesses.models import (
     emit_event,
 )
 from cleo.harnesses.provider import AgentProvider, NativeSessionNotFoundError
+from cleo.i18n import tr
 from cleo.runtime.usage import RateLimitWindowUsage
 from cleo.sessions.ports import SessionRepository
 
@@ -273,7 +274,7 @@ class AgentService:
         create_context = getattr(implementation, "create_context_session", None)
         if prepared.requires_reader and not callable(create_context):
             raise ValueError(
-                "目标 Harness 不支持长历史的受控读取；未截断历史，原 harness 可继续使用。"
+                tr("service.the_target_harness_does_not_support_controlled_a")
             )
         old = self._sessions.get(session_id)
         handoff_id = f"handoff-{secrets.token_hex(12)}"
@@ -292,7 +293,7 @@ class AgentService:
             options = options_method(candidate.id) if callable(options_method) else None
             raw_options = manifest.get("runtime_options")
             if raw_options is not None and not isinstance(raw_options, dict):
-                raise ValueError("运行选项格式不受支持，未覆盖现有配置。")
+                raise ValueError(tr("service.the_run_options_format_is_unsupported_existing_c"))
             runtime = dict(raw_options or {})
             runtime.update(
                 options.as_dict()
@@ -306,7 +307,7 @@ class AgentService:
                 }
             )
             if self._store.read_events(session_id) != events:
-                raise ValueError("准备交接时历史发生变化，请重试；原 harness 保持不变。")
+                raise ValueError(tr("service.history_changed_while_preparing_the_handoff_retr"))
             updates = {
                 "provider": provider,
                 "native_session_id": candidate.native_id,
@@ -440,7 +441,7 @@ class AgentService:
             self._context.load(route.context_binding)
             if len(prompt.encode()) + len(route.handoff.encode()) > 64_000:
                 raise ValueError(
-                    "本次输入超过保守交接预算，请缩短新消息；历史未截断，尚未提交模型。"
+                    tr("service.this_input_exceeds_the_conservative_handoff_budg")
                 )
         turn_key = f"turn-{secrets.token_hex(12)}"
         self._store.append_events(
@@ -560,7 +561,7 @@ class AgentService:
         try:
             from cleo.runtime.timing import phase
 
-            phase("准备模型上下文")
+            phase(tr("service.prepare_model_context"))
             context = (
                 self._memory_context(self._space, route.project) if self._memory_context else ""
             )
@@ -581,7 +582,7 @@ class AgentService:
                         },
                     },
                 )
-            phase("模型运行（含工具与等待）")
+            phase(tr("service.model_run_including_tools_and_waiting"))
             if on_event is not None:
                 consumer = asyncio.create_task(deliver())
             turn = await route.provider.prompt(
@@ -605,7 +606,7 @@ class AgentService:
                 raise delivery_error
             if prompt_error is not None:
                 raise prompt_error
-            phase("保存回复与会话状态", previous_status=(
+            phase(tr("chat_runtime.save_reply_and_session_state"), previous_status=(
                 "cancelled" if turn.status == "cancelled"
                 else "failed" if turn.error else "completed"
             ))
@@ -906,7 +907,7 @@ class AgentService:
         """
         route = self._route(session_id)
         if route.handoff_id:
-            raise ValueError("交接尚未完成，暂不能编辑之前的消息。")
+            raise ValueError(tr("service.the_handoff_is_incomplete_earlier_messages_canno"))
         method = self._capability(route.provider, "rewind")
         async with self._session_locks.setdefault(session_id, asyncio.Lock()):
             native = await method(route.provider_session_id, prompt=prompt, later=later,
@@ -1042,7 +1043,7 @@ class AgentService:
         manifest = self._store.load_manifest(session_id)
         current = manifest.get("runtime_options")
         if current is not None and not isinstance(current, dict):
-            raise ValueError("运行选项格式不受支持，未覆盖现有配置。")
+            raise ValueError(tr("service.the_run_options_format_is_unsupported_existing_c"))
         self._store.update_manifest(
             session_id,
             runtime_options={**(current or {}), **options.as_dict()},

@@ -1,3 +1,4 @@
+import { t as tr } from "./i18n.mjs";
 /** Keep the main window and its running work alive until an explicit application quit. */
 export function createTrayController({ app, Menu, Tray, nativeImage, iconPath, createWindow,
   canOpen = () => true, onOpenMemory,
@@ -21,6 +22,18 @@ export function createTrayController({ app, Menu, Tray, nativeImage, iconPath, c
     if (tray && !tray.isDestroyed()) tray.destroy();
     tray = null;
   };
+  const refreshLanguage = () => {
+    if (!tray || tray.isDestroyed()) return;
+    tray.setContextMenu(Menu.buildFromTemplate([
+      { label: tr("tray.open_cleo"), click: show },
+      ...(onOpenMemory ? [{ label: tr("tray.memory_management"), click: () => {
+        const current = show();
+        if (current) onOpenMemory(current);
+      } }] : []),
+      { type: "separator" },
+      { label: tr("tray.quit_cleo"), click: () => app.quit() },
+    ]));
+  };
   app.on("before-quit", () => {
     if (quitting) return;
     quitting = true;
@@ -32,6 +45,7 @@ export function createTrayController({ app, Menu, Tray, nativeImage, iconPath, c
   });
 
   return {
+    refreshLanguage,
     getWindow,
     show,
     isVisible: () => Boolean(getWindow()?.isVisible()),
@@ -41,18 +55,10 @@ export function createTrayController({ app, Menu, Tray, nativeImage, iconPath, c
       started = true;
       try {
         const image = nativeImage.createFromPath(iconPath);
-        if (image.isEmpty()) throw new Error("找不到 Cleo 托盘图标。");
+        if (image.isEmpty()) throw new Error(tr("tray.cleo_tray_icon_not_found"));
         tray = new Tray(image.resize({ height: platform === "darwin" ? 18 : 24 }));
         tray.setToolTip("Cleo");
-        tray.setContextMenu(Menu.buildFromTemplate([
-          { label: "打开 Cleo", click: show },
-          ...(onOpenMemory ? [{ label: "记忆管理", click: () => {
-            const current = show();
-            if (current) onOpenMemory(current);
-          } }] : []),
-          { type: "separator" },
-          { label: "退出 Cleo", click: () => app.quit() },
-        ]));
+        refreshLanguage();
         tray.on("click", show);
         tray.on("double-click", show);
       } catch (error) {

@@ -110,6 +110,7 @@
 @container (max-width: 340px) {
   .inspector-tabs { gap: 1px; padding: 2px; }
   .inspector-tabs button { padding: 0 7px; gap: 4px; }
+  :root:lang(en) .inspector-tabs button { padding: 0 3px; gap: 3px; font-size: 11px; }
 }
 
 .inspector-empty {

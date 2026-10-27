@@ -1,3 +1,4 @@
+import { t as tr } from "../../electron/i18n.mjs";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -93,7 +94,7 @@ export function FilesPanel({ root, reveal, onNotify, onCopyText, onOpenExternal,
       const listing = await files<{ entries: WorkspaceEntry[]; truncated: boolean }>("list", { root, path });
       setListings(current => ({ ...current, [path]: listing }));
     } catch (cause) {
-      setListings(current => ({ ...current, [path]: { entries: [], truncated: false, error: cause instanceof Error ? cause.message : "无法读取文件夹" } }));
+      setListings(current => ({ ...current, [path]: { entries: [], truncated: false, error: cause instanceof Error ? cause.message : tr("filespanel.could_not_read_the_folder") } }));
     }
   }, [root, files]);
 
@@ -101,7 +102,7 @@ export function FilesPanel({ root, reveal, onNotify, onCopyText, onOpenExternal,
     if (!root || !files) return;
     setSelected(path); setLine(targetLine); setError("");
     try { setPreview(await files<WorkspaceFilePreview>("read", { root, path })); }
-    catch (cause) { setPreview(null); setError(cause instanceof Error ? cause.message : "无法预览文件"); }
+    catch (cause) { setPreview(null); setError(cause instanceof Error ? cause.message : tr("filespanel.could_not_preview_the_file")); }
   }, [root, files]);
 
   useEffect(() => {
@@ -132,21 +133,21 @@ export function FilesPanel({ root, reveal, onNotify, onCopyText, onOpenExternal,
   const openInBrowser = async () => {
     if (!root || !preview) return;
     try { await window.cleoDesktop?.computer?.("preview", { root, path: preview.path }); onOpenBrowser(); }
-    catch (cause) { onNotify(cause instanceof Error ? cause.message : "无法在内置浏览器中打开"); }
+    catch (cause) { onNotify(cause instanceof Error ? cause.message : tr("filespanel.could_not_open_in_the_built_in_browser")); }
   };
 
   const lines = useMemo(() => (preview?.text ?? "").split(/\r?\n/).slice(0, MAX_LINES), [preview?.text]);
 
   if (!root) {
-    return <div className="inspector-empty"><FolderClosed size={22} /><strong>没有工作目录</strong><span>为任务选择项目文件夹后，可在这里浏览和预览文件。</span></div>;
+    return <div className="inspector-empty"><FolderClosed size={22} /><strong>{tr("filespanel.no_working_directory")}</strong><span>{tr("filespanel.choose_a_project_folder_for_this_task_to_browse_and_preview_its_files_here")}</span></div>;
   }
   if (!files) {
-    return <div className="inspector-empty"><CircleAlert size={22} /><strong>文件侧栏不可用</strong><span>请在 Cleo 桌面应用中使用。</span></div>;
+    return <div className="inspector-empty"><CircleAlert size={22} /><strong>{tr("filespanel.file_sidebar_unavailable")}</strong><span>{tr("filespanel.use_this_feature_in_the_cleo_desktop_app")}</span></div>;
   }
 
   const renderTree = (path: string, depth: number): React.ReactNode => {
     const listing = listings[path];
-    if (!listing) return <p className="files-tree-note" style={{ paddingLeft: 10 + depth * 12 }}>加载中…</p>;
+    if (!listing) return <p className="files-tree-note" style={{ paddingLeft: 10 + depth * 12 }}>{tr("filespanel.loading")}</p>;
     if (listing.error) return <p className="files-tree-note error" style={{ paddingLeft: 10 + depth * 12 }}>{listing.error}</p>;
     return <>
       {listing.entries.map(entry => {
@@ -161,38 +162,38 @@ export function FilesPanel({ root, reveal, onNotify, onCopyText, onOpenExternal,
           {entry.kind === "directory" && isOpen && renderTree(entry.path, depth + 1)}
         </div>;
       })}
-      {listing.truncated && <p className="files-tree-note" style={{ paddingLeft: 10 + depth * 12 }}>仅显示前 2000 项。</p>}
+      {listing.truncated && <p className="files-tree-note" style={{ paddingLeft: 10 + depth * 12 }}>{tr("filespanel.showing_the_first_2_000_items_only")}</p>}
     </>;
   };
 
   return <div className={`files-panel ${draggingDivider ? "is-resizing" : ""}`} ref={panelRef} style={treeHeight === null ? undefined : { "--files-tree-height": `${Math.min(treeHeight, Math.max(MIN_TREE_HEIGHT, panelHeight - MIN_PREVIEW_HEIGHT - DIVIDER_HEIGHT))}px` } as CSSProperties}>
-    <div className="files-tree" aria-label="工作目录文件">
+    <div className="files-tree" aria-label={tr("filespanel.working_directory_files")}>
       <div className="files-tree-header"><span title={root}>{root.split(/[\\/]/).filter(Boolean).at(-1) ?? root}</span>
-        <button className="icon-button" type="button" aria-label="刷新文件列表" onClick={() => { setListings({}); for (const path of expanded) void load(path); }}><RefreshCw size={13} /></button></div>
+        <button className="icon-button" type="button" aria-label={tr("filespanel.refresh_file_list")} onClick={() => { setListings({}); for (const path of expanded) void load(path); }}><RefreshCw size={13} /></button></div>
       {renderTree("", 0)}
     </div>
-    <div className="files-divider" role="separator" tabIndex={0} aria-label={preview?.kind === "pdf" ? "上下拖动调整 PDF 预览高度" : "上下拖动调整文件预览高度"}
-      title="上下拖动调整预览高度" aria-orientation="horizontal"
+    <div className="files-divider" role="separator" tabIndex={0} aria-label={preview?.kind === "pdf" ? tr("filespanel.drag_vertically_to_resize_the_pdf_preview") : tr("filespanel.drag_vertically_to_resize_the_file_preview")}
+      title={tr("filespanel.drag_vertically_to_resize_the_preview")} aria-orientation="horizontal"
       aria-valuemin={MIN_TREE_HEIGHT} aria-valuemax={Math.max(MIN_TREE_HEIGHT, panelHeight - MIN_PREVIEW_HEIGHT - DIVIDER_HEIGHT)}
       aria-valuenow={Math.round(treeHeight ?? panelHeight * .38)}
       onPointerDown={onDividerDown} onPointerMove={onDividerMove}
       onPointerUp={() => { dividerDrag.current = null; setDraggingDivider(false); }} onPointerCancel={() => { dividerDrag.current = null; setDraggingDivider(false); }}
       onLostPointerCapture={() => { dividerDrag.current = null; setDraggingDivider(false); }} onKeyDown={onDividerKeyDown}>
-      <span aria-hidden="true">上下拖动调整预览高度</span>
+      <span aria-hidden="true">{tr("filespanel.drag_vertically_to_resize_the_preview")}</span>
     </div>
     <div className="files-preview">
       {error && <p className="computer-panel-error"><CircleAlert size={14} />{error}</p>}
-      {!preview && !error && <div className="inspector-empty"><File size={22} /><strong>选择文件预览</strong><span>点击聊天中的文件链接也会在这里定位。</span></div>}
+      {!preview && !error && <div className="inspector-empty"><File size={22} /><strong>{tr("filespanel.select_a_file_to_preview")}</strong><span>{tr("filespanel.file_links_in_the_conversation_also_locate_files_here")}</span></div>}
       {preview && <>
         <header className="files-preview-header">
           <span title={preview.path}>{preview.path}</span><small>{size(preview.size)}</small>
-          {["html", "pdf", "image", "markdown", "text"].includes(preview.kind) && <button type="button" className="icon-button" aria-label="在内置浏览器中打开" title="在内置浏览器中打开" onClick={() => void openInBrowser()}><Globe size={14} /></button>}
-          <button type="button" className="icon-button" aria-label="用系统应用打开" title="用系统应用打开" onClick={() => onOpenExternal(joinPath(root, preview.path))}><ExternalLink size={14} /></button>
-          <button type="button" className="icon-button" aria-label="复制路径" title="复制路径" onClick={() => { onCopyText(joinPath(root, preview.path)); onNotify("文件路径已复制"); }}><Copy size={14} /></button>
+          {["html", "pdf", "image", "markdown", "text"].includes(preview.kind) && <button type="button" className="icon-button" aria-label={tr("filespanel.open_in_the_built_in_browser")} title={tr("filespanel.open_in_the_built_in_browser")} onClick={() => void openInBrowser()}><Globe size={14} /></button>}
+          <button type="button" className="icon-button" aria-label={tr("filespanel.open_in_the_system_application")} title={tr("filespanel.open_in_the_system_application")} onClick={() => onOpenExternal(joinPath(root, preview.path))}><ExternalLink size={14} /></button>
+          <button type="button" className="icon-button" aria-label={tr("filespanel.copy_path")} title={tr("filespanel.copy_path")} onClick={() => { onCopyText(joinPath(root, preview.path)); onNotify(tr("filespanel.file_path_copied")); }}><Copy size={14} /></button>
         </header>
         {preview.kind === "image" && <div className="files-image"><img src={preview.url} alt={preview.path} /></div>}
         {preview.kind === "pdf" && <iframe className="files-pdf" title={preview.path} src={preview.url} />}
-        {preview.kind === "binary" && <div className="inspector-empty"><File size={22} /><strong>二进制文件</strong><span>无法以文字预览，可用系统应用打开。</span></div>}
+        {preview.kind === "binary" && <div className="inspector-empty"><File size={22} /><strong>{tr("filespanel.binary_file")}</strong><span>{tr("filespanel.a_text_preview_is_unavailable_open_it_in_a_system_application")}</span></div>}
         {preview.kind === "markdown" && <div className="files-markdown">
           <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: "ignore", errorColor: "#c96b63" }]]} urlTransform={(url) => {
             if (/^(https?:|mailto:|#)/i.test(url)) return url;
@@ -201,10 +202,10 @@ export function FilesPanel({ root, reveal, onNotify, onCopyText, onOpenExternal,
             {normalizeMath(preview.text ?? "")}</ReactMarkdown>
         </div>}
         {(preview.kind === "text" || preview.kind === "html") && <>
-          {preview.kind === "html" && <p className="computer-panel-hint">HTML 源码；点击 <Globe size={11} /> 在内置浏览器中预览页面。</p>}
-          <pre className="files-code" tabIndex={0} aria-label="文件内容">{lines.map((text, index) => <span key={index} ref={line === index + 1 ? highlighted : undefined}
+          {preview.kind === "html" && <p className="computer-panel-hint">{tr("filespanel.html_source_click")}<Globe size={11} /> {tr("filespanel.to_preview_the_page_in_the_built_in_browser")}</p>}
+          <pre className="files-code" tabIndex={0} aria-label={tr("filespanel.file_contents")}>{lines.map((text, index) => <span key={index} ref={line === index + 1 ? highlighted : undefined}
             className={line === index + 1 ? "target" : ""}><i>{index + 1}</i><code>{text || " "}</code></span>)}</pre>
-          {(preview.truncated || (preview.text ?? "").split(/\r?\n/).length > MAX_LINES) && <p className="computer-panel-hint">文件较大，只显示开头部分。</p>}
+          {(preview.truncated || (preview.text ?? "").split(/\r?\n/).length > MAX_LINES) && <p className="computer-panel-hint">{tr("filespanel.this_file_is_large_only_its_beginning_is_shown")}</p>}
         </>}
       </>}
     </div>

@@ -1,10 +1,11 @@
+import { t as tr } from "./i18n.mjs";
 /** Purpose: Keep switching code independent of windows and never restore user data.
  * Input: store and launch/health/termination/progress hooks.
  * Output: success only after a selected or fallback program acknowledges startup; failure leaves recovery to the caller.
  */
 export async function runHandoff(store, hooks) {
   const initial = await store.read();
-  if (!initial.transaction) return { ok: false, error: "没有待完成的版本切换。" };
+  if (!initial.transaction) return { ok: false, error: tr("evolution_handoff.there_is_no_pending_version_switch") };
   const targets = [...new Set([initial.transaction.to, initial.transaction.from, initial.baseline].filter(Boolean))];
   let detail = "";
   for (let index = 0; index < targets.length; index += 1) {
@@ -13,25 +14,25 @@ export async function runHandoff(store, hooks) {
       const build = await hooks.withLock(async () => {
         if (index) {
           await store.recover(targets[index]);
-          await store.stage(targets[index], { restartError: "上次应用未成功，已自动回到可用版本。可以继续修改或重新应用。" });
+          await store.stage(targets[index], { restartError: tr("evolution_handoff.the_previous_application_did_not_start_successfully_cleo_returned_to_a_working_versio") });
         }
         return store.activate();
       });
       const transaction = (await store.read()).transaction;
-      await hooks.progress(index ? "正在恢复可用版本" : "正在启动修改后的 Cleo",
-        index ? "新版本没有成功启动，正在自动回退。你的数据保持不变。" : "确认主界面和后端就绪后，此窗口会自动关闭。");
+      await hooks.progress(index ? tr("evolution_handoff.restoring_a_working_version") : tr("evolution_handoff.starting_the_modified_cleo"),
+        index ? tr("evolution_handoff.the_new_version_could_not_start_rolling_back_automatically_your_data_is_unchanged") : tr("evolution_handoff.this_window_closes_automatically_once_the_main_interface_and_backend_are_ready"));
       child = await hooks.launch(build, transaction.id);
       if (await hooks.waitHealthy(child, transaction.id, build.id)) {
         return { ok: true, recovered: index > 0, active: build.id };
       }
-      throw new Error("程序未在规定时间内完成启动检查。");
+      throw new Error(tr("evolution_handoff.the_program_did_not_complete_startup_checks_within_the_allotted_time"));
     } catch (error) {
       detail = error.message;
       if (child) {
         try { await hooks.stop(child); }
-        catch { return { ok: false, error: "新程序尚未完全退出。恢复入口将保持打开，请关闭该程序后重试。" }; }
+        catch { return { ok: false, error: tr("evolution_handoff.the_new_program_has_not_fully_exited_recovery_will_stay_open_close_that_program_and_r") }; }
       }
     }
   }
-  return { ok: false, error: detail || "没有版本成功启动，请选择其他可用版本。" };
+  return { ok: false, error: detail || tr("evolution_handoff.no_version_started_successfully_choose_another_available_version") };
 }

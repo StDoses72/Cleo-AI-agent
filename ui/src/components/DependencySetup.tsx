@@ -1,3 +1,4 @@
+import { t as tr } from "../../electron/i18n.mjs";
 import { useEffect, useRef, useState } from "react";
 import { Check, Download, RefreshCw, X } from "lucide-react";
 import { Modal } from "./Modal";
@@ -62,23 +63,23 @@ export function DependencySetup() {
     } catch (failure) { setError((failure instanceof Error ? failure.message : String(failure)).replace(/^Error invoking remote method '[^']+': Error: /, "")); }
     finally { ++revision.current; setPending(false); }
   };
-  return <Modal open className="setup-overlay" label="运行环境" onClose={busy ? undefined : () => void close()}>
+  return <Modal open className="setup-overlay" label={tr("dependencysetup.runtime_setup")} onClose={busy ? undefined : () => void close()}>
     <section className="setup-dialog">
-      <header><div><h2>准备你的工作环境</h2></div><button className="icon-button" aria-label="关闭运行环境" disabled={busy} onClick={() => void close()}><X size={18} /></button></header>
-      {!state?.items.length && <p role="status">正在检查运行环境…</p>}
+      <header><div><h2>{tr("dependencysetup.prepare_your_environment")}</h2></div><button className="icon-button" aria-label={tr("dependencysetup.close_runtime_setup")} disabled={busy} onClick={() => void close()}><X size={18} /></button></header>
+      {!state?.items.length && <p role="status">{tr("dependencysetup.checking_the_environment")}</p>}
       <div className="setup-items">{state?.items.map(item => <label className="setup-item" key={item.id}>
         {item.ready ? <Check size={18} className="setup-ready" /> : <input type="checkbox" aria-label={item.action} checked={selected.includes(item.id)} disabled={busy}
           onChange={event => { setSelected(ids => event.target.checked ? [...ids, item.id] : ids.filter(id => id !== item.id)); setConsent(false); }} />}
-        <span><strong>{item.title}</strong><small>{item.detail}</small></span><em>{item.ready ? "已就绪" : item.optional ? "可选" : "需要处理"}</em>
+        <span><strong>{item.title}</strong><small>{item.detail}</small></span><em>{item.ready ? tr("dependencysetup.ready") : item.optional ? tr("dependencysetup.optional") : tr("dependencysetup.action_needed")}</em>
       </label>)}</div>
       {selected.length > 0 && <label className="setup-consent"><input type="checkbox" checked={consent} disabled={busy} onChange={event => setConsent(event.target.checked)} />
-        <span>允许下载并安装所选依赖到 Cleo 管理目录；账号登录由我完成。</span></label>}
-      {state?.restartRequired && <p className="setup-notice">如 Windows 要求重启，请重启电脑后重新打开此向导。安装进度会保留。</p>}
-      {!error && (state?.message || busy) && <p role="status">{state?.message || "正在检查…"}</p>}
+        <span>{tr("dependencysetup.allow_the_selected_dependencies_to_be_downloaded_and_installed_in_cleo_s_managed_dire")}</span></label>}
+      {state?.restartRequired && <p className="setup-notice">{tr("dependencysetup.if_windows_requires_a_restart_restart_the_computer_and_reopen_this_wizard_installatio")}</p>}
+      {!error && (state?.message || busy) && <p role="status">{state?.message || tr("dependencysetup.checking")}</p>}
       {error && <p role="alert" className="setup-error">{error}</p>}
-      {state?.logs && <details><summary>查看安装日志</summary><pre>{state.logs}</pre></details>}
-      <footer>{Boolean(state?.pendingIds?.length) && <button disabled={busy} onClick={() => void operate("install", true)}>继续已授权安装</button>}<button disabled={busy} onClick={() => void close()}>稍后再说</button><button disabled={busy} onClick={() => void operate("scan")}><RefreshCw size={14} />重新检查</button>
-        <button className="setup-install" disabled={busy || !selected.length || !consent} onClick={() => void operate("install")}><Download size={14} />{busy ? "处理中…" : "安装所选依赖"}</button></footer>
+      {state?.logs && <details><summary>{tr("dependencysetup.view_installation_logs")}</summary><pre>{state.logs}</pre></details>}
+      <footer>{Boolean(state?.pendingIds?.length) && <button disabled={busy} onClick={() => void operate("install", true)}>{tr("dependencysetup.continue_authorized_installation")}</button>}<button disabled={busy} onClick={() => void close()}>{tr("dependencysetup.not_now")}</button><button disabled={busy} onClick={() => void operate("scan")}><RefreshCw size={14} />{tr("dependencysetup.check_again")}</button>
+        <button className="setup-install" disabled={busy || !selected.length || !consent} onClick={() => void operate("install")}><Download size={14} />{busy ? tr("dependencysetup.working") : tr("dependencysetup.install_selected_dependencies")}</button></footer>
     </section>
   </Modal>;
 }

@@ -1,3 +1,4 @@
+import { t as tr } from "./i18n.mjs";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { readJson, writeJson } from "./evolution-store.mjs";
@@ -7,7 +8,7 @@ const behaviorText = value => String(value || "").normalize("NFKC").replace(/\s+
 const sameBehavior = (a, b) => behaviorText(a.trigger) === behaviorText(b.trigger)
   && behaviorText(a.item.expectation) === behaviorText(b.item.expectation);
 const text = (value, limit, name) => {
-  if (typeof value !== "string" || !value.trim() || value.length > limit) throw new Error(`${name}无效。`);
+  if (typeof value !== "string" || !value.trim() || value.length > limit) throw new Error(tr("evolution_requests.invalid_value", { p0: name }));
   return value.trim();
 };
 
@@ -32,7 +33,7 @@ export class EvolutionRequests {
       || (["freezing", "frozen"].includes(r.status) && !r.cases.length)
       || r.cases.some((c) => !c?.item || typeof c.item.id !== "string" || typeof c.item.expectation !== "string"
         || typeof c.item.evidence !== "string"))) {
-      throw new Error("验收请求记录格式无法读取；已保留原文件，未覆盖。请使用兼容版本。");
+      throw new Error(tr("evolution_requests.could_not_read_the_acceptance_request_record_format_the_original_file_was_preserved_a"));
     }
     return data;
   }
@@ -45,20 +46,20 @@ export class EvolutionRequests {
 
   /** Capture case feedback before analysis; revised criteria get new IDs, never overwritten history. */
   async feedback({ id, caseId, body, threadId }) {
-    text(id, 100, "反馈标识"); text(body, 5000, "反馈"); text(threadId, 150, "会话标识");
+    text(id, 100, tr("evolution_requests.feedback_id")); text(body, 5000, tr("evolution_requests.feedback")); text(threadId, 150, tr("evolution_requests.conversation_id"));
     const item = (await this.suite()).find((c) => c.id === caseId);
     const retry = (await this.read()).requests.find((r) => r.id === id);
-    if (!item || (!item.enabled && !retry)) throw new Error("此验收项已结束，请使用最新的待验收项。");
+    if (!item || (!item.enabled && !retry)) throw new Error(tr("evolution_requests.this_acceptance_item_has_ended_use_the_latest_pending_item"));
     const pending = (await this.acceptance.interactions.read()).feedback.find((f) => f.caseId === caseId && f.id !== id);
-    if (pending && item.kind === "manual") throw new Error("此项已有反馈，请先在对话中补充或继续，再对最新预期反馈。");
-    const prompt = `继续修改此行为验收，结合原上下文和最新反馈重新准备待验收预期；未被反馈改变的要求继续保留。\n`
-      + `验收项：${item.title}\n此前预期：${item.expectation}\n上下文：${item.evidence.slice(0, 18000)}\n最新用户反馈：${body}`;
+    if (pending && item.kind === "manual") throw new Error(tr("evolution_requests.this_item_already_has_feedback_add_details_or_continue_in_the_conversation_before_giv"));
+    const prompt = tr("evolution_requests.continue_this_behavior_acceptance_case_use_the_original_context_and_latest_feedback_t")
+      + tr("evolution_requests.acceptance_item_value_previous_expectation_value_context_value_latest_user_feedback_v", { p0: item.title, p1: item.expectation, p2: item.evidence.slice(0, 18000), p3: body });
     await this.acceptance.interactions.append("feedback", { id, caseId, body, threadId });
     // A feedback submission cannot leave a previous human pass usable while clarification waits.
     const status = await this.acceptance.status(await this.store.read());
     const result = status.report?.results.find((r) => r.id === caseId);
     if (result && item.kind === "manual") {
-      result.after = { ...result.after, status: "manual", detail: "用户提交了进一步反馈，等待修改后重新验收。" };
+      result.after = { ...result.after, status: "manual", detail: tr("evolution_requests.the_user_submitted_more_feedback_awaiting_changes_before_another_acceptance_check") };
       await writeJson(this.acceptance.reportPath, status.report);
     }
     return this.prepare({ id, threadId, prompt, ...(item.kind === "manual" ? { replaces: caseId } : {}) });
@@ -73,10 +74,10 @@ export class EvolutionRequests {
    * Input: task identity. Output: durable abandonment and cancellation of its remaining manual cases.
    */
   async abandon({ threadId }) {
-    text(threadId, 150, "会话标识");
+    text(threadId, 150, tr("evolution_requests.conversation_id"));
     const data = await this.read();
     const requests = data.requests.filter((r) => r.threadId === threadId && !r.abandonedAt);
-    if (requests.some((r) => this.running.has(r.id))) throw new Error("请先停止正在准备的需求。");
+    if (requests.some((r) => this.running.has(r.id))) throw new Error(tr("evolution_requests.stop_the_requirements_preparation_already_in_progress_first"));
     const abandonedAt = now();
     for (const request of requests) request.abandonedAt = abandonedAt;
     // Journal first: even an interrupted cancellation must never restart an abandoned request.
@@ -92,21 +93,21 @@ export class EvolutionRequests {
    * Input: case, task, optional feedback and stable retry ID. Output: one repair request and feedback receipt.
    */
   async continueCase({ id, caseId, threadId, body = "" }) {
-    id = text(id, 100, "请求标识"); threadId = text(threadId, 150, "会话标识");
-    if (typeof body !== "string" || body.length > 5000) throw new Error("反馈最多 5,000 字符。");
+    id = text(id, 100, tr("evolution_requests.request_id")); threadId = text(threadId, 150, tr("evolution_requests.conversation_id"));
+    if (typeof body !== "string" || body.length > 5000) throw new Error(tr("evolution_requests.feedback_is_limited_to_5_000_characters"));
     const item = (await this.suite()).find((c) => c.id === caseId && c.enabled);
-    if (!item) throw new Error("此验收项已结束，请使用最新的待验收项。");
+    if (!item) throw new Error(tr("evolution_requests.this_acceptance_item_has_ended_use_the_latest_pending_item"));
     const data = await this.read();
     const parent = data.requests.find((r) => r.cases.some((c) => c.item.id === caseId));
-    const prompt = `${(await this.acceptance.prompt(caseId)).slice(0, 24000)}\n\n用户选择沿用此案例继续修改，不重新生成案例，不改变原有验收预期。`
-      + (body.trim() ? `\n最新反馈：${body.trim()}` : "");
+    const prompt = tr("evolution_requests.value_the_user_chose_to_continue_editing_with_this_case_do_not_regenerate_the_case_or", { p0: (await this.acceptance.prompt(caseId)).slice(0, 24000) })
+      + (body.trim() ? tr("evolution_requests.latest_feedback_value", { p0: body.trim() }) : "");
     const request = await this.repair({ id, threadId, prompt, parent: parent?.id });
     await this.acceptance.interactions.append("feedback", { id, caseId, threadId,
-      body: body.trim() || "沿用此案例继续修改", mode: "continue" });
+      body: body.trim() || tr("evolution_requests.continue_editing_with_this_case"), mode: "continue" });
     const status = await this.acceptance.status(await this.store.read());
     const result = status.report?.results.find((r) => r.id === caseId);
     if (result && item.kind === "manual" && !request.execution) {
-      result.after = { ...result.after, status: "manual", detail: "沿用此案例继续修改，完成后重新验收。" };
+      result.after = { ...result.after, status: "manual", detail: tr("evolution_requests.continue_editing_with_this_case_and_repeat_acceptance_afterward") };
       await writeJson(this.acceptance.reportPath, status.report);
     }
     return request;
@@ -116,7 +117,7 @@ export class EvolutionRequests {
     const cases = await readJson(this.acceptance.path, []);
     if (!Array.isArray(cases) || cases.some((c) => !c || typeof c.id !== "string"
       || typeof c.expectation !== "string" || typeof c.enabled !== "boolean")) {
-      throw new Error("已有验收案例格式无法读取，未覆盖。");
+      throw new Error(tr("evolution_requests.could_not_read_the_existing_acceptance_case_format_it_was_not_overwritten"));
     }
     return cases;
   }
@@ -125,11 +126,11 @@ export class EvolutionRequests {
    * Input: Original identity, optional clarification or reanalyze flag. Output: durable preparation; frozen goals stay immutable.
    */
   async prepare({ id, threadId, prompt, clarification, reanalyze = false, skipClarification = false, replaces }) {
-    text(id, 100, "请求标识"); text(threadId, 150, "会话标识"); text(prompt, 30000, "需求");
+    text(id, 100, tr("evolution_requests.request_id")); text(threadId, 150, tr("evolution_requests.conversation_id")); text(prompt, 30000, tr("evolution_requests.requirements"));
     const data = await this.read();
     let request = data.requests.find((r) => r.id === id);
-    if (request?.abandonedAt) throw new Error("此需求已废弃，请提出新的修改需求。");
-    if (request && (request.prompt !== prompt || request.threadId !== threadId)) throw new Error("请求标识已用于另一条需求。");
+    if (request?.abandonedAt) throw new Error(tr("evolution_requests.this_request_was_discarded_submit_a_new_change_request"));
+    if (request && (request.prompt !== prompt || request.threadId !== threadId)) throw new Error(tr("evolution_requests.this_request_id_was_already_used_for_another_request"));
     if (!request) {
       request = { id, threadId, prompt, status: "analyzing", createdAt: now(), cases: [], clarifications: [],
         ...(replaces ? { replaces } : {}) };
@@ -143,15 +144,15 @@ export class EvolutionRequests {
     if (skipClarification) {
       const recorded = (await this.acceptance.interactions.read()).confirmations.find((c) => c.id === id && c.skipped);
       if (!recorded) {
-        if (request.status !== "clarification") throw new Error("当前需求不在等待确认。");
+        if (request.status !== "clarification") throw new Error(tr("evolution_requests.this_request_is_not_awaiting_confirmation"));
         await this.acceptance.interactions.append("confirmations", { id, skipped: true, question: request.answer });
       }
     }
     if (clarification) {
-      const answer = text(clarification, 5000, "补充说明");
+      const answer = text(clarification, 5000, tr("evolution_requests.additional_details"));
       if (request.status === "clarification") request.clarifications.push({ question: request.answer, answer, at: now() });
       else if (request.clarifications.at(-1)?.answer !== answer)
-        throw new Error("当前需求不在等待澄清。请使用修正案例保留变更原因。");
+        throw new Error(tr("evolution_requests.this_request_is_not_awaiting_clarification_use_a_case_correction_to_preserve_the_reas"));
     }
     this.running.add(id);
     try {
@@ -159,43 +160,43 @@ export class EvolutionRequests {
       await this.save(data);
       const skipped = (await this.acceptance.interactions.read()).confirmations.some((c) => c.id === id && c.skipped);
       const confirmed = skipped || request.clarifications.length > 0;
-      const continuation = confirmed ? "\n已完成一次集中确认，不再追问。" + (skipped
-        ? "用户选择跳过确认，未提供具体答案。" : "结合用户补充继续。")
-        + "请采用合理且可逆的假设，返回 change 或 investigate 及具体验收；answer 简短说明采用的假设。" : "";
+      const continuation = confirmed ? tr("evolution_requests.one_consolidated_confirmation_has_already_been_completed_do_not_ask_again") + (skipped
+        ? tr("evolution_requests.the_user_chose_to_skip_confirmation_without_providing_specific_answers") : tr("evolution_requests.continue_using_the_user_s_additional_information"))
+        + tr("evolution_requests.use_reasonable_reversible_assumptions_return_change_or_investigate_with_concrete_acce") : "";
       const enabled = new Set((await this.suite()).filter(c => c.enabled).map(c => c.id));
       const previous = data.requests.filter(r => r.id !== id && r.threadId === threadId && !r.abandonedAt)
         .flatMap(r => r.cases).filter(c => enabled.has(c.item.id) && c.item.id !== replaces);
       const context = previous.filter((c, index) => previous.findIndex(p => p.item.id === c.item.id) === index)
         .slice(-30).map(c => ({ title: c.item.title, trigger: c.trigger, expectation: c.item.expectation }));
       let analysis = await this.analyze(threadId, prompt + request.clarifications.map((c) =>
-        `\n澄清问题：${c.question}\n用户补充：${c.answer}`).join("") + continuation, context);
+        tr("evolution_requests.clarification_questions_value_user_details_value", { p0: c.question, p1: c.answer })).join("") + continuation, context);
       if (confirmed && analysis?.intent === "clarification") {
         // One bounded model correction, not another user question or fabricated acceptance.
-        analysis = await this.analyze(threadId, prompt + request.clarifications.map((c) => `\n用户补充：${c.answer}`).join("")
-          + continuation + "\n上一分析仍返回了澄清，未遵守已确认的继续方式。请直接准备可执行的调查或修改验收。", context);
-        if (analysis?.intent === "clarification") throw new Error("分析器未能按合理假设生成验收；原需求和确认已保留，可重试准备。");
+        analysis = await this.analyze(threadId, prompt + request.clarifications.map((c) => tr("evolution_requests.user_details_value", { p0: c.answer })).join("")
+          + continuation + tr("evolution_requests.the_previous_analysis_still_requested_clarification_and_did_not_follow_the_confirmed_"), context);
+        if (analysis?.intent === "clarification") throw new Error(tr("evolution_requests.the_analyzer_could_not_generate_acceptance_criteria_using_reasonable_assumptions_the_"));
       }
       if (["question", "clarification"].includes(analysis?.intent)) {
-        request.answer = text(analysis.answer, 10000, "分析答复");
+        request.answer = text(analysis.answer, 10000, tr("evolution_requests.analysis_response"));
         request.status = analysis.intent === "question" ? "answered" : "clarification";
         await this.save(data);
         return request;
       }
       if (analysis?.intent !== "change" || !Array.isArray(analysis.cases) || !analysis.cases.length || analysis.cases.length > 12)
-        throw new Error("未生成有效案例；没有开始修改代码。");
+        throw new Error(tr("evolution_requests.no_valid_case_was_generated_code_editing_has_not_started"));
       const state = await this.store.read();
-      if (!state.active) throw new Error("请先准备当前版本。");
+      if (!state.active) throw new Error(tr("evolution_acceptance.prepare_the_current_version_first"));
       if (confirmed) request.answer = typeof analysis.answer === "string" && analysis.answer.trim()
-        ? analysis.answer.slice(0, 10000) : "采用假设：保留现有上下文和未要求改变的行为，以最小可逆修改实现目标；执行时自行调查源码与日志。";
+        ? analysis.answer.slice(0, 10000) : tr("evolution_requests.assumptions_preserve_existing_context_and_behavior_not_requested_to_change_implement_");
       request.cases = analysis.cases.map((c) => {
-        const detail = { requirement: text(c.requirement, 4000, "对应要求"),
-          current: text(c.current, 3000, "当前行为"), trigger: text(c.trigger, 2000, "操作条件"),
-          sourceEvidence: text(c.evidence, 20000, "源码证据") };
+        const detail = { requirement: text(c.requirement, 4000, tr("evolution_requests.related_requirement")),
+          current: text(c.current, 3000, tr("evolution_requests.current_behavior")), trigger: text(c.trigger, 2000, tr("evolutioncases.action_conditions")),
+          sourceEvidence: text(c.evidence, 20000, tr("evolution_requests.source_evidence")) };
         // A model cannot invent an executable checker or claim an observed baseline failure.
-        detail.current = detail.current.startsWith("尚未验证") ? detail.current : `尚未验证（仅静态分析）：${detail.current}`;
-        const item = { id: randomUUID(), title: text(c.title, 120, "标题"),
-          expectation: text(c.expectation, 4000, "预期"),
-          evidence: `对应要求：${detail.requirement}\n当前行为：${detail.current}\n操作：${detail.trigger}\n静态证据：\n${detail.sourceEvidence}`,
+        detail.current = (detail.current.startsWith("尚未验证") || detail.current.startsWith("Not verified")) ? detail.current : tr("evolution_requests.not_verified_static_analysis_only_value", { p0: detail.current });
+        const item = { id: randomUUID(), title: text(c.title, 120, tr("evolution_requests.title")),
+          expectation: text(c.expectation, 4000, tr("evolution_requests.expectation")),
+          evidence: tr("evolution_requests.related_requirement_value_current_behavior_value_action_value_static_evidence_value", { p0: detail.requirement, p1: detail.current, p2: detail.trigger, p3: detail.sourceEvidence }),
           kind: "manual", enabled: true, sourceThread: threadId, baseline: state.active, createdAt: now() };
         const same = previous.find(c => sameBehavior(c, { ...detail, item }));
         return same || { ...detail, item };
@@ -218,7 +219,7 @@ export class EvolutionRequests {
     for (const { item } of request.cases) {
       const existing = cases.find((c) => c.id === item.id);
       if (existing && (existing.expectation !== item.expectation || existing.evidence !== item.evidence))
-        throw new Error("冻结案例与已保存内容不一致，未覆盖。");
+        throw new Error(tr("evolution_requests.the_frozen_case_differs_from_the_saved_content_it_was_not_overwritten"));
       if (!existing) cases.push(item);
     }
     // Revisions retain the entire old case and only archive it, using the old writer's semantics.
@@ -229,22 +230,22 @@ export class EvolutionRequests {
   }
 
   async revise({ id, caseId, expectation, trigger, reason }) {
-    text(id, 100, "修正标识");
+    text(id, 100, tr("evolution_requests.correction_id"));
     const data = await this.read();
     const retry = data.requests.find((r) => r.id === id);
     if (retry) {
       if (retry.replaces !== caseId || retry.reason !== reason || retry.cases[0]?.item.expectation !== expectation.trim()
         || retry.cases[0]?.trigger !== trigger.trim())
-        throw new Error("修正标识已用于不同内容。");
+        throw new Error(tr("evolution_requests.this_correction_id_was_already_used_for_different_content"));
       return retry.status === "freezing" ? this.freeze(data, retry) : retry;
     }
     const source = data.requests.find((r) => r.cases.some((c) => c.item.id === caseId));
     const previous = source?.cases.find((c) => c.item.id === caseId);
     const saved = (await this.suite()).find((c) => c.id === caseId && c.enabled);
-    if (!previous || !saved) throw new Error("找不到可修正的自动准备案例。");
-    const revised = { ...previous, trigger: text(trigger, 2000, "操作条件"), item: { ...saved,
-      id: randomUUID(), expectation: text(expectation, 4000, "预期"), createdAt: now(), enabled: true,
-      evidence: `${saved.evidence}\n用户调整操作：${trigger}\n变更原因：${text(reason, 4000, "变更原因")}` } };
+    if (!previous || !saved) throw new Error(tr("evolution_requests.could_not_find_an_automatically_prepared_case_that_can_be_corrected"));
+    const revised = { ...previous, trigger: text(trigger, 2000, tr("evolutioncases.action_conditions")), item: { ...saved,
+      id: randomUUID(), expectation: text(expectation, 4000, tr("evolution_requests.expectation")), createdAt: now(), enabled: true,
+      evidence: tr("evolution_requests.value_user_adjusted_action_value_reason_for_change_value", { p0: saved.evidence, p1: trigger, p2: text(reason, 4000, tr("evolution_requests.reason_for_change")) }) } };
     const request = { id, threadId: source.threadId, prompt: source.prompt, status: "freezing", createdAt: now(),
       cases: [revised], replaces: caseId, parent: source.id, reason, clarifications: [] };
     data.requests.push(request);
@@ -254,33 +255,33 @@ export class EvolutionRequests {
 
   async editingPrompt(id) {
     const request = (await this.read()).requests.find((r) => r.id === id);
-    if (request?.abandonedAt) throw new Error("此需求已废弃，请提出新的修改需求。");
-    if (!request || request.status !== "frozen") throw new Error("请先完成本轮验收准备。");
+    if (request?.abandonedAt) throw new Error(tr("evolution_requests.this_request_was_discarded_submit_a_new_change_request"));
+    if (!request || request.status !== "frozen") throw new Error(tr("evolution_requests.complete_acceptance_preparation_for_this_iteration_first"));
     const cases = await this.suite();
     for (const { item } of request.cases) {
       const saved = cases.find((c) => c.id === item.id);
       if (saved?.cancelledAt) continue;
       if (!saved?.enabled || saved.expectation !== item.expectation || saved.evidence !== item.evidence)
-        throw new Error("本轮案例已修正或归档，请使用更新后的案例。");
+        throw new Error(tr("evolution_requests.this_iteration_s_case_was_corrected_or_archived_use_the_updated_case"));
     }
     if (!request.cases.some(({ item }) => cases.some((c) => c.id === item.id && c.enabled)))
-      throw new Error("本轮验收项已全部取消或结束，请提出新的修改需求。");
+      throw new Error(tr("evolution_requests.all_acceptance_items_in_this_iteration_are_cancelled_or_finished_submit_a_new_change_"));
     const enabled = cases.filter((c) => c.enabled);
     return `[[CLEO_ACCEPTANCE_REQUEST:${request.id}]]\n${request.prompt}\n`
-      + (request.reason ? `用户调整原因：${request.reason}\n` : "")
-      + (request.clarifications || []).map((c) => `补充：${c.answer}\n`).join("")
-      + (request.answer ? `继续方式与假设：${request.answer}\n` : "")
-      + "\n以下案例已经由桌面保存并冻结。实现需求，保留已有回归；不得改写预期或声称人工案例已经通过。\n"
-      + enabled.map((c) => `${c.id} ${c.title}\n操作与证据：${c.evidence}\n预期：${c.expectation}\n验证方式：${c.kind}`).join("\n\n");
+      + (request.reason ? tr("evolution_requests.reason_for_user_adjustment_value", { p0: request.reason }) : "")
+      + (request.clarifications || []).map((c) => tr("evolution_requests.additional_details_value", { p0: c.answer })).join("")
+      + (request.answer ? tr("evolution_requests.continuation_approach_and_assumptions_value", { p0: request.answer }) : "")
+      + tr("evolution_requests.the_following_cases_have_been_saved_and_frozen_by_the_desktop_app_implement_the_requi")
+      + enabled.map((c) => tr("evolution_requests.value_value_actions_and_evidence_value_expected_behavior_value_verification_method_va", { p0: c.id, p1: c.title, p2: c.evidence, p3: c.expectation, p4: c.kind })).join("\n\n");
   }
 
   /** Claim once before handing control to an editing agent. No renderer completion can pass a case. */
   async claim(threadId, prompt) {
     const id = /^\[\[CLEO_ACCEPTANCE_REQUEST:([^\]]+)\]\]/.exec(prompt)?.[1];
-    if (!id || prompt !== await this.editingPrompt(id)) throw new Error("编辑前必须准备并冻结验收案例。");
+    if (!id || prompt !== await this.editingPrompt(id)) throw new Error(tr("evolution_requests.prepare_and_freeze_acceptance_cases_before_editing"));
     const data = await this.read();
     const request = data.requests.find((r) => r.id === id);
-    if (request.threadId !== threadId || request.execution) throw new Error("此需求已提交或会话不匹配；不会重复启动修改。");
+    if (request.threadId !== threadId || request.execution) throw new Error(tr("evolution_requests.this_request_was_already_submitted_or_the_conversation_does_not_match_editing_will_no"));
     request.execution = { status: "submitted", at: now() };
     await this.save(data);
     return id;
@@ -297,16 +298,16 @@ export class EvolutionRequests {
     const data = await this.read();
     const existing = data.requests.find((r) => r.id === id);
     if (existing) {
-      if (existing.abandonedAt) throw new Error("此需求已废弃，请提出新的修改需求。");
-      if (existing.threadId !== threadId || existing.prompt !== prompt) throw new Error("请求标识已用于另一条需求。");
+      if (existing.abandonedAt) throw new Error(tr("evolution_requests.this_request_was_discarded_submit_a_new_change_request"));
+      if (existing.threadId !== threadId || existing.prompt !== prompt) throw new Error(tr("evolution_requests.this_request_id_was_already_used_for_another_request"));
       return existing;
     }
     const cases = (await this.suite()).filter((c) => c.enabled);
     if (!cases.length) return this.prepare({ id, threadId, prompt });
-    const request = { id: text(id, 100, "请求标识"), threadId: text(threadId, 150, "会话标识"),
-      prompt: text(prompt, 30000, "诊断"), status: "frozen", createdAt: now(), frozenAt: now(), repair: true,
+    const request = { id: text(id, 100, tr("evolution_requests.request_id")), threadId: text(threadId, 150, tr("evolution_requests.conversation_id")),
+      prompt: text(prompt, 30000, tr("evolution_requests.diagnostics")), status: "frozen", createdAt: now(), frozenAt: now(), repair: true,
       ...(parent ? { parent } : {}),
-      cases: cases.map((item) => ({ item, requirement: item.title, current: "尚未验证", trigger: item.evidence })), clarifications: [] };
+      cases: cases.map((item) => ({ item, requirement: item.title, current: tr("evolution_requests.not_verified"), trigger: item.evidence })), clarifications: [] };
     data.requests.push(request); await this.save(data); return request;
   }
 }

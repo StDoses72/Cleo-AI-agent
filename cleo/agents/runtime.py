@@ -14,6 +14,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk, convert_to_messag
 
 from cleo.config.settings import AgentProfile, settings
 from cleo.harnesses.events import capture_context_usage
+from cleo.i18n import tr
 from cleo.integrations.subscriptions import AgentMcp, create_runtime
 from cleo.runtime.usage import ContextWindowUsage
 from cleo.sessions.ports import SessionRepository
@@ -35,7 +36,7 @@ def _codex_content(content):
               and block.get("mime_type") in {"image/png", "image/jpeg", "image/gif", "image/webp"}):
             result.append(ImageInput(f"data:{block['mime_type']};base64,{block['base64']}"))
         else:
-            raise ValueError("Codex 订阅对话支持图片附件；其他文件请粘贴为文本或使用开发任务。")
+            raise ValueError(tr("runtime.codex_subscription_chats_support_image_attachmen"))
     return result
 
 
@@ -85,7 +86,7 @@ class RuntimeGraph:
                     blocks = message.content
                     if any(isinstance(b, dict) and b.get("type") != "text" for b in blocks):
                         raise ValueError(
-                            "订阅 Chat 暂不支持附件，请使用 API 模型或将文本粘贴到消息中。"
+                            tr("runtime.subscription_chats_do_not_support_attachments_ye")
                         )
                     message.content = "\n".join(
                         b if isinstance(b, str) else b.get("text", "") for b in blocks

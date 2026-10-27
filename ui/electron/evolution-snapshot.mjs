@@ -1,3 +1,4 @@
+import { t as tr } from "./i18n.mjs";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, writeFile, lstat, rm } from "node:fs/promises";
 import { join, dirname, resolve, relative, isAbsolute } from "node:path";
@@ -19,8 +20,8 @@ export function isContributionSource(name) {
 export async function assertSnapshotTarget(manager, tools, branch, expected) {
   const target = await requireTargetBranch(manager, tools, branch);
   const sha = target.commit?.sha;
-  if (!/^[a-f0-9]{40}$/.test(sha || "")) throw new Error("无法读取目标分支提交，请刷新后重试。");
-  if (expected && sha !== expected) throw new Error("目标分支已变化，已停止提交；请重新检查并发起新的 PR。");
+  if (!/^[a-f0-9]{40}$/.test(sha || "")) throw new Error(tr("evolution_snapshot.could_not_read_the_target_branch_commit_refresh_and_retry"));
+  if (expected && sha !== expected) throw new Error(tr("evolution_snapshot.the_target_branch_changed_so_submission_stopped_check_again_and_create_a_new_pr"));
   return sha;
 }
 
@@ -28,7 +29,7 @@ export async function assertSnapshotTarget(manager, tools, branch, expected) {
 export async function removeContributionSnapshot(manager, directory) {
   const root = resolve(manager.store.root, "submission-snapshots");
   if (dirname(resolve(directory)) !== root || !(await lstat(directory)).isDirectory() || (await lstat(directory)).isSymbolicLink())
-    throw new Error("提交临时目录无效，未执行清理。");
+    throw new Error(tr("evolution_snapshot.invalid_temporary_submission_directory_cleanup_was_not_performed"));
   await rm(directory, { recursive: true, force: true });
 }
 
@@ -48,9 +49,9 @@ export async function createContributionSnapshot(manager, tools, branch, sourceH
     const helper = `!'${tools.gh.replaceAll("\\", "/").replaceAll("'", "'\\''")}' auth git-credential`;
     await git(["-c", "credential.helper=", "-c", `credential.helper=${helper}`, "fetch", "--no-tags",
       `https://github.com/${CONTRIBUTION_REPOSITORY}.git`, `refs/heads/${branch}`]);
-    if (await git(["rev-parse", "FETCH_HEAD"]) !== baseSha) throw new Error("目标分支已变化，已停止提交；请重新检查。");
+    if (await git(["rev-parse", "FETCH_HEAD"]) !== baseSha) throw new Error(tr("evolution_snapshot.the_target_branch_changed_so_submission_stopped_check_again"));
     if (await git(["ls-tree", "--name-only", baseSha]))
-      throw new Error("目标分支不是空分支。请由维护者从 submission-base 创建新的空接收分支；不会覆盖已有文件。");
+      throw new Error(tr("evolution_snapshot.the_target_branch_is_not_empty_ask_a_maintainer_to_create_a_new_empty_receiving_branc"));
     const sourceOptions = { cwd: manager.source, env: tools.env, trimOutput: false, rejectStderr: true };
     const output = await manager.runCommand(tools.git, ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], sourceOptions);
     const names = [...new Set(output.split("\0").filter(Boolean))].sort();
@@ -60,16 +61,16 @@ export async function createContributionSnapshot(manager, tools, branch, sourceH
       const path = resolve(manager.source, name);
       const child = relative(resolve(manager.source), path);
       if (!child || child.startsWith("..") || isAbsolute(child) || /[\r\n\\]/.test(name))
-        throw new Error(`快照导出已停止：源码路径无效：${JSON.stringify(name.slice(0, 2000))}。路径必须位于源码目录内，且不能包含换行或反斜杠。本次尚未生成提交、未推送或创建 PR。`);
+        throw new Error(tr("evolution_snapshot.snapshot_export_stopped_invalid_source_path_value_paths_must_stay_inside_the_source_d", { p0: JSON.stringify(name.slice(0, 2000)) }));
       hash.update(name);
       let info;
       try { info = await lstat(path); } catch (error) {
         if (error.code !== "ENOENT") throw error;
         hash.update("deleted"); continue;
       }
-      if (!info.isFile() || info.isSymbolicLink()) throw new Error(`源码必须是普通文件：${name}`);
+      if (!info.isFile() || info.isSymbolicLink()) throw new Error(tr("evolution_snapshot.source_must_be_a_regular_file_value", { p0: name }));
       for (let parent = dirname(path); parent !== resolve(manager.source); parent = dirname(parent)) {
-        if ((await lstat(parent)).isSymbolicLink()) throw new Error(`源码不能通过目录链接读取：${name}`);
+        if ((await lstat(parent)).isSymbolicLink()) throw new Error(tr("evolution_snapshot.source_cannot_be_read_through_a_directory_link_value", { p0: name }));
       }
       const bytes = await readFile(path);
       hash.update(createHash("sha256").update(bytes).digest("hex"));
@@ -79,8 +80,8 @@ export async function createContributionSnapshot(manager, tools, branch, sourceH
       exported.push(name);
     }
     if (hash.digest("hex") !== sourceHash || await manager.sourceHash(tools) !== sourceHash)
-      throw new Error("导出期间本地版本发生变化，已停止提交；请重新检查和构建。");
-    if (!exported.length) throw new Error("所选版本没有可提交的程序源码。");
+      throw new Error(tr("evolution_snapshot.the_local_version_changed_during_export_submission_stopped_check_and_build_again"));
+    if (!exported.length) throw new Error(tr("evolution_snapshot.the_selected_version_has_no_program_source_to_submit"));
     // Higher-priority attributes preserve exact snapshot bytes and disable configured clean filters.
     await writeFile(join(directory, ".git/info/attributes"), "* -text -filter -ident -working-tree-encoding\n");
     await git(["add", "--force", "--all"]);

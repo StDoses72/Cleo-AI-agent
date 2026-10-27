@@ -1,3 +1,4 @@
+import { t as tr } from "../electron/i18n.mjs";
 import { useEffect, useRef, useState } from "react";
 import { cleoClient } from "./services/cleoClient";
 import { mergeTimelinePage } from "./timeline-cache";
@@ -42,7 +43,7 @@ export function useTimelineHistory(thread: Thread | null, update: (id: string, f
       if (direction === "latest") { follow.current = true; setFollowing(true); setUnread(false); }
       return true;
     } catch (failure) {
-      if (token === generation.current) setError(failure instanceof Error ? failure.message : "历史加载失败");
+      if (token === generation.current) setError(failure instanceof Error ? failure.message : tr("usetimelinehistory.could_not_load_history"));
     } finally {
       if (token === generation.current) { inFlight.current = false; setBusy(null); }
     }

@@ -1,3 +1,4 @@
+import messages from "../electron/locales.json" with { type: "json" };
 import assert from "node:assert/strict";
 import { _electron as electron } from "playwright";
 import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -11,6 +12,8 @@ import { resizeWindow } from "./window-size.mjs";
 const ui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const scratch = await mkdtemp(join(tmpdir(), "cleo-layout-smoke-"));
 const appDir = join(scratch, "app");
+const language = process.env.CLEO_TEST_LANGUAGE === "en" ? "en" : "zh-CN";
+const uiLabel = value => Object.values(messages).find(entry => entry["zh-CN"] === value)?.[language] ?? value;
 let application;
 let page;
 
@@ -33,6 +36,8 @@ try {
     cwd: ui, stdio: "pipe", windowsHide: true,
   });
   assert.equal(build.status, 0, build.stderr?.toString());
+  await mkdir(join(scratch, "home", "data"), { recursive: true });
+  await writeFile(join(scratch, "home", "data", "runtime.json"), JSON.stringify({ ui_language: language }));
   application = await electron.launch({
     args: [appDir, `--user-data-dir=${join(scratch, "profile")}`],
     env: { ...process.env, CLEO_DESKTOP_MOCK: "1", CLEO_HOME: join(scratch, "home") },
@@ -93,15 +98,15 @@ try {
   await page.getByText("最后一条消息应完整显示在输入框上方。", { exact: true }).waitFor();
   assert.equal(await page.locator(".conversation-chrome .evolution-cases").count(), 0, "Improvement controls should not occupy the conversation header");
   await page.locator(".thread-actions-wrap > button").click();
-  await page.getByRole("button", { name: "改进 Cleo", exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('[data-testid="composer-input"]')?.value === "请改进 Cleo：");
-  assert.equal(await page.getByRole("dialog", { name: "改进 Cleo", exact: true }).count(), 0);
-  await page.getByRole("navigation", { name: "工作区" }).getByRole("button", { name: "开发", exact: true }).click();
+  await page.getByRole("button", { name: uiLabel("改进 Cleo"), exact: true }).click();
+  await page.waitForFunction(value => document.querySelector('[data-testid="composer-input"]')?.value === value, uiLabel("请改进 Cleo："));
+  assert.equal(await page.getByRole("dialog", { name: uiLabel("改进 Cleo"), exact: true }).count(), 0);
+  await page.getByRole("navigation", { name: uiLabel("工作区") }).getByRole("button", { name: uiLabel("开发"), exact: true }).click();
   await page.getByText("最后一条消息应完整显示在输入框上方。", { exact: true }).waitFor();
 
   const viewport = page.locator(".conversation-viewport");
   const inspector = page.getByTestId("inspector");
-  const latest = page.getByRole("button", { name: "回到最新", exact: true });
+  const latest = page.getByRole("button", { name: uiLabel("回到最新"), exact: true });
   async function settle() {
     await page.waitForFunction(() => !document.querySelector(".app-shell").getAnimations()
       .some(animation => animation.playState === "running"));
@@ -117,7 +122,7 @@ try {
     await settle();
   }
   async function openInspector() {
-    if (!await inspector.count()) await page.getByRole("button", { name: "打开检查器", exact: true }).click();
+    if (!await inspector.count()) await page.getByRole("button", { name: uiLabel("打开检查器"), exact: true }).click();
     await inspector.waitFor();
     await settle();
   }
@@ -259,10 +264,10 @@ try {
   assert.equal(await actions.evaluate(element => getComputedStyle(element).opacity), "0", "Message actions show without hover");
   await lastMessage.hover();
   await page.waitForFunction(() => getComputedStyle(document.querySelector('[data-row-id="layout-159"] .message-actions')).opacity === "1");
-  assert.equal(await lastMessage.getByRole("button", { name: "编辑" }).count(), 0, "Replies cannot be edited");
+  assert.equal(await lastMessage.getByRole("button", { name: uiLabel("编辑") }).count(), 0, "Replies cannot be edited");
   assert.equal(await actions.locator("button").evaluateAll(buttons => buttons.every(button => !button.textContent.trim())), true,
     "Message actions should be icons with names in tooltips");
-  await lastMessage.getByRole("button", { name: "复制" }).click();
+  await lastMessage.getByRole("button", { name: uiLabel("复制") }).click();
   assert.match(await page.evaluate(() => window.__copiedMessage), /最后一条消息应完整显示/);
   await lastMessage.evaluate(element => {
     const paragraph = element.querySelector(".message-copy p:last-child");
@@ -271,22 +276,22 @@ try {
     window.getSelection().removeAllRanges();
     window.getSelection().addRange(range);
   });
-  await lastMessage.getByRole("button", { name: "复制" }).click();
+  await lastMessage.getByRole("button", { name: uiLabel("复制") }).click();
   assert.equal(await page.evaluate(() => window.__copiedMessage), "最后一条消息应完整显示在输入框上方。");
   const userMessage = page.locator('[data-row-id="layout-158"] .message-text');
   await userMessage.hover();
-  await userMessage.getByRole("button", { name: "编辑" }).click();
-  await userMessage.getByRole("textbox", { name: "编辑消息" }).fill("调整后的需求");
-  await userMessage.getByRole("button", { name: "发送", exact: true }).click();
+  await userMessage.getByRole("button", { name: uiLabel("编辑") }).click();
+  await userMessage.getByRole("textbox", { name: uiLabel("编辑消息") }).fill("调整后的需求");
+  await userMessage.getByRole("button", { name: uiLabel("发送"), exact: true }).click();
   await page.waitForFunction(() => window.__edits?.some(edit => edit.prompt === "调整后的需求"));
   assert.deepEqual(await page.evaluate(() => window.__edits), [{ rewind: "layout-158" }, { prompt: "调整后的需求" }]);
   await page.getByText("最后一条消息应完整显示在输入框上方。", { exact: true }).waitFor();
 
   await openInspector();
-  await inspector.locator(".inspector-tabs").getByRole("button", { name: "文件" }).click();
+  await inspector.locator(".inspector-tabs").getByRole("button", { name: uiLabel("文件") }).click();
   await inspector.getByRole("button", { name: "sample.pdf" }).click();
   await inspector.locator(".files-pdf").waitFor();
-  const divider = inspector.getByRole("separator", { name: "上下拖动调整 PDF 预览高度" });
+  const divider = inspector.getByRole("separator", { name: uiLabel("上下拖动调整 PDF 预览高度") });
   const initialHeight = await inspector.locator(".files-tree").evaluate(element => element.getBoundingClientRect().height);
   const initialPdfHeight = await inspector.locator(".files-pdf").evaluate(element => element.getBoundingClientRect().height);
   await divider.focus();
@@ -304,7 +309,7 @@ try {
   assert(draggedHeight >= raisedHeight + 30, "Pointer drag did not resize the file preview");
   const draggedPdfHeight = await inspector.locator(".files-pdf").evaluate(element => element.getBoundingClientRect().height);
   assert(draggedPdfHeight <= raisedPdfHeight - 30, "PDF preview did not resize with the pointer drag");
-  await inspector.locator(".inspector-tabs").getByRole("button", { name: /^变更/ }).click();
+  await inspector.locator(".inspector-tabs").getByRole("button", { name: new RegExp("^" + uiLabel("变更 ").trim()) }).click();
 
   const scenarios = [
     { name: "wide", width: 1600, height: 1000, zoom: 1 },
@@ -326,12 +331,12 @@ try {
       await checkLastMessage(label);
       await checkScrollAndHitTargets(label);
       await checkRuntimeMenu(label);
-      for (const tab of ["上下文", "运行", /^变更/]) {
+      for (const tab of [uiLabel("上下文"), uiLabel("运行"), new RegExp("^" + uiLabel("变更 ").trim())]) {
         await inspector.locator(".inspector-tabs").getByRole("button", { name: tab }).click();
         await checkGeometry(label);
       }
       await captureScreenshot(`layout-${label}.png`);
-      await inspector.getByRole("button", { name: "关闭检查器", exact: true }).click();
+      await inspector.getByRole("button", { name: uiLabel("关闭检查器"), exact: true }).click();
       await inspector.waitFor({ state: "detached" });
       await settle();
       const closedWidth = await page.locator(".conversation-shell").evaluate(element => element.getBoundingClientRect().width);

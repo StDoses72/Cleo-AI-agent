@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from cleo.i18n import tr
+
 Emit = Callable[[dict[str, Any]], Awaitable[None]]
 
 # Evolution tasks run in a managed workspace with fixed permissions; only commands that
@@ -52,7 +54,7 @@ class EvolutionPolicy(TurnHook):
     def check(self, request: TurnRequest) -> None:
         if self._is_evolution(request.manifest) and request.prompt.startswith("/"):
             if request.prompt.split(" ", 1)[0] not in EVOLUTION_COMMANDS:
-                raise ValueError("进化任务不能切换工作目录、任务或放宽权限，请使用进化页面操作。")
+                raise ValueError(tr("turn_hooks.evolution_tasks_cannot_change_working_directorie"))
 
 
 class ComputerUseHook(TurnHook):
@@ -111,8 +113,8 @@ async def timed_reply(
         memory_dir, session_id=manifest["id"], space=manifest["space"],
         project=manifest["project"], kind="reply", emit=timing_event,
     ) as timing:
-        timing.phase("准备上下文与任务")
-        timing.summary["unavailable"] = ["模型服务内部阶段"]
+        timing.phase(tr("turn_hooks.prepare_context_and_task"))
+        timing.summary["unavailable"] = [tr("turn_hooks.internal_model_service_stage")]
         observed: dict[str, Any] = {}
 
         async def timed_event(event):
@@ -133,8 +135,8 @@ async def timed_reply(
                 key = event["type"].split("-")[0] + request["id"]
                 if key not in observed:
                     observed[key] = timing.start(
-                        "等待审批" if event["type"] == "approval-request"
-                        else "等待回答",
+                        tr("turn_hooks.awaiting_approval") if event["type"] == "approval-request"
+                        else tr("turn_hooks.waiting_for_an_answer"),
                         category="wait",
                     )
             elif event["type"] in {"approval-resolved", "question-resolved"}:

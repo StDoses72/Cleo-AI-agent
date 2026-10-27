@@ -67,7 +67,19 @@ try {
   await page.waitForFunction(async () => (await window.cleoMonitor.status()).commands.some(command => command.action === "save"));
   const save = (await restartedApp.commands()).find(command => command.action === "save");
   assert.deepEqual(save.params, { name: "" });
-  if (process.env.CLEO_SMOKE_OUTPUT) await page.screenshot({ path: join(process.env.CLEO_SMOKE_OUTPUT, "evolution-monitor.png") });
+  await page.getByRole("textbox", { name: "补充需求" }).fill("保留这条未发送的需求");
+  await restartedApp.publish({ ...ready, uiLanguage: "en", actions: { canSave: true } });
+  await page.getByRole("button", { name: "Versions and recovery", exact: true }).waitFor();
+  assert.equal(await page.getByRole("textbox", { name: "Additional requirements", exact: true }).inputValue(), "保留这条未发送的需求");
+  assert.equal(await page.locator("html").getAttribute("lang"), "en");
+  // The next program instance reads the same runtime home before showing the window.
+  await writeJson(join(scratch, "data/data/runtime.json"), { ui_language: "en" });
+  await app.close();
+  app = await electron.launch({ executablePath: join(ui, "node_modules/electron/dist/electron.exe"), args: [ui, "--cleo-evolution-monitor", `--user-data-dir=${join(scratch, "profile")}`], env });
+  const relaunched = await app.firstWindow();
+  await relaunched.getByRole("button", { name: "Versions and recovery", exact: true }).waitFor();
+  assert.equal(await relaunched.locator("html").getAttribute("lang"), "en");
+  if (process.env.CLEO_SMOKE_OUTPUT) await relaunched.screenshot({ path: join(process.env.CLEO_SMOKE_OUTPUT, "evolution-monitor.png") });
   console.log("PASS: native independent monitor, restart progress, durable supplemental messages and reconnection");
 } finally {
   await app?.close();

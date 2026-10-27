@@ -1,3 +1,4 @@
+import { t as tr } from "./i18n.mjs";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -12,9 +13,9 @@ const json = async (manager, tools, path) => JSON.parse(await manager.runCommand
 async function checkedSource(manager, tools, params) {
   const access = await checkReleasePermission(manager, tools);
   if (!access.canRelease) throw new Error(access.message);
-  if (params.login !== access.login) throw new Error("账号已变化，请重新核对发布提交。");
+  if (params.login !== access.login) throw new Error(tr("release_packages.the_account_changed_verify_the_release_commit_again"));
   const source = await (params.sourceKind === "merged-pr" ? mergedReleaseSource : releaseSource)(manager, tools, params.url);
-  if (source.commit !== params.commit) throw new Error("提交已变化，请重新核对发布提交。");
+  if (source.commit !== params.commit) throw new Error(tr("release_packages.the_commit_changed_verify_the_release_commit_again"));
   return source;
 }
 
@@ -42,7 +43,7 @@ export async function releaseBuilds(manager, params) {
 
 function validateSelection(params) {
   if (!/^\d+$/.test(String(params.runId)) || !releaseTagPattern.test(params.tag || "") || !params.tag.startsWith("v")
-      || !/^[a-f0-9]{40}$/.test(params.commit || "")) throw new Error("请选择构建，并填写以 v 开头、与项目版本一致的标签。");
+      || !/^[a-f0-9]{40}$/.test(params.commit || "")) throw new Error(tr("release_packages.choose_a_build_and_enter_a_tag_starting_with_v_that_matches_the_project_version"));
 }
 
 async function publicationRun(manager, tools, params) {
@@ -59,9 +60,9 @@ function runResult(run) {
 export async function checkedRunResult(manager, tools, params, run) {
   const result = runResult(run);
   if (result.status !== "completed") return result;
-  if (await tagCommit(manager, tools, params.tag) !== params.commit) throw new Error("标签提交发生变化，请在 GitHub 核对，不能确认安装包发布完成。");
+  if (await tagCommit(manager, tools, params.tag) !== params.commit) throw new Error(tr("release_packages.the_tag_s_commit_changed_check_github_package_publication_cannot_be_confirmed"));
   const build = await json(manager, tools, `${endpoint}/actions/runs/${params.runId}`);
-  if (build.head_sha !== params.commit) throw new Error("构建与发布提交不一致。");
+  if (build.head_sha !== params.commit) throw new Error(tr("release_packages.the_build_and_release_commits_do_not_match"));
   const release = await findRelease(manager, tools, params.tag);
   const names = new Set(release?.assets?.map(item => item.name));
   const expected = targets.flatMap(target => [`Cleo-${target}${target === "linux-x64" ? ".tar.gz" : ".zip"}`,
@@ -82,7 +83,7 @@ export async function checkedRunResult(manager, tools, params, run) {
 /** Dispatch is explicit; a matching in-flight/successful run reconciles a lost response. */
 export async function publishReleasePackages(manager, params) {
   validateSelection(params);
-  if (typeof params.body !== "string") throw new Error("发布说明格式无效，请重新核对。");
+  if (typeof params.body !== "string") throw new Error(tr("release_packages.invalid_release_notes_format_check_again"));
   return manager.operation("publishing", async () => {
     const tools = await manager.prepareTools(true);
     const source = await checkedSource(manager, tools, params);
@@ -90,11 +91,11 @@ export async function publishReleasePackages(manager, params) {
     const desktop = await json(manager, tools, `${endpoint}/actions/workflows/desktop-platforms.yml`);
     if (run.workflow_id !== desktop.id || run.head_sha !== source.commit || run.status !== "completed"
         || run.conclusion !== "success" || run.event !== "workflow_dispatch" || !await buildArtifacts(manager, tools, run))
-      throw new Error("构建必须是该提交成功的 Desktop platforms 手动运行，且四个平台产物均未过期。PR 检查不能代替完整构建。");
-    if (await tagCommit(manager, tools, params.tag) !== source.commit) throw new Error("标签与构建提交不一致，不会改写标签。");
+      throw new Error(tr("release_packages.the_build_must_be_a_successful_manual_desktop_platforms_run_for_this_commit_with_unex"));
+    if (await tagCommit(manager, tools, params.tag) !== source.commit) throw new Error(tr("release_packages.the_tag_and_build_commits_differ_the_tag_will_not_be_rewritten"));
     const release = await findRelease(manager, tools, params.tag);
     if (!release || release.name !== params.title?.trim() || (release.body || "") !== params.body || release.prerelease !== params.prerelease)
-      throw new Error("请先创建或核对同标签 Release；标题、说明和发布类型必须与远端一致。");
+      throw new Error(tr("release_packages.create_or_verify_the_release_for_this_tag_first_its_title_notes_and_type_must_match_t"));
     const existing = await publicationRun(manager, tools, params);
     if (existing && (existing.status !== "completed" || existing.conclusion === "success")) {
       const current = await checkedRunResult(manager, tools, params, existing);
@@ -104,7 +105,7 @@ export async function publishReleasePackages(manager, params) {
     const file = await json(manager, tools, `${endpoint}/contents/.github/workflows/${workflow}?ref=${encodeURIComponent(params.tag)}`);
     const text = file.encoding === "base64" ? Buffer.from(file.content, "base64").toString("utf8") : "";
     if (!text.includes("allow_existing_release:") || !text.includes("prerelease:"))
-      throw new Error("该版本的发布工作流尚未支持应用衔接。请更新 publish-release.yml 后重新核对版本；Release 和标签均保留。");
+      throw new Error(tr("release_packages.this_version_s_publishing_workflow_does_not_yet_support_app_integration_update_publis"));
     const directory = await mkdtemp(join(tmpdir(), "cleo-package-dispatch-"));
     try {
       const input = join(directory, "dispatch.json");
@@ -117,7 +118,7 @@ export async function publishReleasePackages(manager, params) {
       } catch {
         const accepted = await publicationRun(manager, tools, params).catch(() => null);
         if (accepted && accepted.id !== existing?.id) return checkedRunResult(manager, tools, params, accepted);
-        throw new Error("无法确认工作流是否已接收请求。请先刷新安装包状态；若没有对应运行记录，再使用相同构建和标签重试。GitHub 授权需要 Actions 写入权限。");
+        throw new Error(tr("release_packages.could_not_confirm_whether_the_workflow_accepted_the_request_refresh_package_status_fi"));
       }
       const accepted = await publicationRun(manager, tools, params).catch(() => null);
       return accepted && accepted.id !== existing?.id ? checkedRunResult(manager, tools, params, accepted)

@@ -92,7 +92,7 @@ def prepare(resources: Path, source: Path, target: str) -> None:
                 "files": {path.name: sha(path) for path in runtime.iterdir()}}
     # platform.mjs imports computer/startup.mjs, which imports computer/schemes.mjs.
     for name in ("online-runtime.mjs", "release-downloads.mjs", "platform.mjs",
-                 "evolution-tools.mjs", "evolution-store.mjs",
+                 "evolution-tools.mjs", "evolution-store.mjs", "i18n.mjs", "locales.json",
                  "computer/startup.mjs", "computer/schemes.mjs"):
         (resources / name).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / "ui/electron" / name, resources / name)

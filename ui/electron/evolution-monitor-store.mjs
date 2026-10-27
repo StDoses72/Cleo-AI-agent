@@ -1,3 +1,4 @@
+import { t as tr } from "./i18n.mjs";
 import { randomUUID } from "node:crypto";
 import { mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -14,7 +15,7 @@ export class EvolutionMonitorStore {
   async publish(value) { await writeJson(join(this.root, "runtime.json"), { ...value, updatedAt: Date.now(), pid: process.pid }); }
   async runtime() { return await readJson(join(this.root, "runtime.json"), {}); }
   async command(action, threadId, params = {}) {
-    if (!["stop", "discard", "rollback", "answer", "resume", "build", "apply", "save"].includes(action)) throw new Error("不支持的进化操作。");
+    if (!["stop", "discard", "rollback", "answer", "resume", "build", "apply", "save"].includes(action)) throw new Error(tr("evolution_companion.unsupported_evolution_action"));
     const command = { id: randomUUID(), action, threadId, params, createdAt: Date.now() };
     await writeJson(join(this.root, "commands", `${command.id}.json`), command);
     return command;
@@ -31,7 +32,7 @@ export class EvolutionMonitorStore {
     return result.sort((a, b) => a.createdAt - b.createdAt);
   }
   async commandResult(id, status, detail = "") {
-    if (!identifier(id)) throw new Error("无效的操作编号。");
+    if (!identifier(id)) throw new Error(tr("evolution_monitor_store.invalid_operation_id"));
     await writeJson(join(this.root, "command-results", `${id}.json`), { status, detail });
   }
   async pause(value) { await writeJson(join(this.root, "preferences.json"), { paused: value }); }
@@ -41,22 +42,22 @@ export class EvolutionMonitorStore {
     return readJson(join(this.root, "messages", `${id}.json`));
   }
   async enqueue(threadId, body) {
-    if (typeof threadId !== "string" || !threadId || threadId.length > 300) throw new Error("请先在进化中开始一个会话。");
-    if (typeof body !== "string" || !body.trim() || body.length > 30000) throw new Error("补充需求需为 1–30,000 字符。");
+    if (typeof threadId !== "string" || !threadId || threadId.length > 300) throw new Error(tr("evolution_monitor_store.start_a_conversation_in_evolution_first"));
+    if (typeof body !== "string" || !body.trim() || body.length > 30000) throw new Error(tr("evolution_monitor_store.additional_requirements_must_contain_1_30_000_characters"));
     const message = { id: randomUUID(), threadId, body: body.trim(), createdAt: Date.now() };
     await writeJson(join(this.root, "messages", `${message.id}.json`), message);
     return message;
   }
   async receipt(id, status, detail = "") {
-    if (!identifier(id)) throw new Error("无效的消息编号。");
+    if (!identifier(id)) throw new Error(tr("evolution_monitor_store.invalid_message_id"));
     await writeJson(join(this.root, "receipts", `${id}.json`), { id, status, detail, updatedAt: Date.now() });
   }
   async claim(id) {
-    if (!identifier(id) || !await this.message(id)) throw new Error("找不到补充消息。");
+    if (!identifier(id) || !await this.message(id)) throw new Error(tr("evolution_monitor_store.additional_message_not_found"));
     const claims = join(this.root, "claims");
     await mkdir(claims, { recursive: true });
     try { await mkdir(join(claims, id)); }
-    catch (error) { if (error.code === "EEXIST") throw new Error("此消息已经提交，请先核对会话，避免重复执行。"); throw error; }
+    catch (error) { if (error.code === "EEXIST") throw new Error(tr("evolution_monitor_store.this_message_was_already_submitted_check_the_conversation_first_to_avoid_executing_it")); throw error; }
     await this.receipt(id, "started");
   }
   async messages() {

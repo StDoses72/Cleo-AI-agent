@@ -30,7 +30,8 @@
       "non_productivity": [],
       "productivity": []
     },
-    "schema_version": 3
+    "schema_version": 3,
+    "ui_language": "zh-CN"
   },
   "session_dirs": [
     true

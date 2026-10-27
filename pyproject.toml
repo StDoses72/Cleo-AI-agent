@@ -43,6 +43,7 @@ include = ["cleo*"]
 
 [tool.setuptools.package-data]
 "cleo.config" = ["templates/*.json"]
+"cleo" = ["locales.json"]
 
 [tool.ruff]
 line-length = 100

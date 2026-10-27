@@ -13,6 +13,8 @@ from contextvars import ContextVar
 from datetime import UTC, datetime
 from pathlib import Path
 
+from cleo.i18n import tr
+
 log = logging.getLogger(__name__)
 current_timing = ContextVar("current_timing", default=None)
 _parent = ContextVar("timing_parent", default=None)
@@ -28,13 +30,15 @@ class TimingStore:
 
     def _connect(self):
         if self.path.is_symlink():
-            raise OSError("计时记录不能使用链接文件。")
+            raise OSError(tr("timing.timing_records_cannot_be_linked_files"))
         self.path.parent.mkdir(parents=True, exist_ok=True)
         db = sqlite3.connect(self.path, timeout=2)
         try:
             version = db.execute("PRAGMA user_version").fetchone()[0]
             if version not in {0, 1}:
-                raise sqlite3.DatabaseError("无法读取此版本的计时记录。")
+                raise sqlite3.DatabaseError(tr(
+                    "timing.this_version_of_timing_records_cannot_be_read",
+                ))
             if version == 1:
                 return db
             db.executescript("""
@@ -94,11 +98,11 @@ class TimingStore:
 
     def detail(self, identifier):
         if not self.path.exists():
-            raise ValueError("找不到这次计时记录。")
+            raise ValueError(tr("timing.this_timing_record_was_not_found"))
         with closing(self._connect()) as db:
             row = db.execute("SELECT summary FROM attempts WHERE id=?", (identifier,)).fetchone()
             if row is None:
-                raise ValueError("找不到这次计时记录。")
+                raise ValueError(tr("timing.this_timing_record_was_not_found"))
             summary = self._summary(row[0])
             spans = [json.loads(row[0]) for row in db.execute(
                 "SELECT body FROM spans WHERE attempt_id=? ORDER BY ordinal", (identifier,),
@@ -174,7 +178,7 @@ class TimingRecorder:
                 await asyncio.to_thread(self.store.save, summary, spans)
             except (OSError, sqlite3.Error) as error:
                 self.dirty.update(span["id"] for span in spans)
-                self.summary["persistenceError"] = "计时记录未能保存。"
+                self.summary["persistenceError"] = tr("timing.timing_records_could_not_be_saved")
                 summary["persistenceError"] = self.summary["persistenceError"]
                 log.warning("Timing persistence failed: %s", error)
             else:

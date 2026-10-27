@@ -1,8 +1,11 @@
+import { t as tr } from "./i18n.mjs";
 import { app, dialog, ipcMain } from "electron";
 import { join, resolve } from "node:path";
 import { EvolutionStore } from "./evolution-store.mjs";
 import { desktopDataHome } from "./platform.mjs";
 import { configureReleaseChannel } from "./release-channel.mjs";
+import { setLanguage } from "./i18n.mjs";
+import { readUiLanguage } from "./language.mjs";
 
 configureReleaseChannel(app);
 const root = join(app.getPath("userData"), "evolution");
@@ -14,6 +17,7 @@ const parentArgument = process.argv.find((argument) => argument.startsWith("--cl
 
 /** Purpose: Select a version ahead of mutable UI/backend imports. Input: flags. Output: selected app. */
 async function boot() {
+  setLanguage(await readUiLanguage(dataHome));
   if (!app.isPackaged || process.env.CLEO_DESKTOP_MOCK === "1") { await import("./main.mjs"); return; }
   if (recovery || parentArgument) {
     await app.whenReady();
@@ -22,13 +26,13 @@ async function boot() {
       if (parentArgument) await controller.applyFromController(store, Number(parentArgument.split("=")[1]));
       else await controller.showRecovery(store);
     } catch (error) {
-      await dialog.showMessageBox({ type: "error", title: "Cleo 恢复", message: "操作未完成", detail: error.message });
+      await dialog.showMessageBox({ type: "error", title: tr("bootstrap.cleo_recovery"), message: tr("evolutionpanel.operation_incomplete"), detail: error.message });
     }
     app.quit(); return;
   }
   if (process.argv.includes("--cleo-import-bundle")) {
     await app.whenReady();
-    if (!app.requestSingleInstanceLock()) throw new Error("请先关闭当前 Cleo，再打开新版程序。");
+    if (!app.requestSingleInstanceLock()) throw new Error(tr("bootstrap.close_the_current_cleo_instance_before_opening_the_new_version"));
     try {
       const { EvolutionManager } = await import("./evolution.mjs");
       await new EvolutionManager({ app, root, dataHome }).importBundle();
@@ -46,13 +50,13 @@ async function boot() {
     const installed = await manager.installedRelease();
     if (installed) {
       await app.whenReady();
-      if (!app.requestSingleInstanceLock()) throw new Error("请先关闭当前 Cleo，再打开新版程序。");
+      if (!app.requestSingleInstanceLock()) throw new Error(tr("bootstrap.close_the_current_cleo_instance_before_opening_the_new_version"));
       let progress;
       let transaction;
       try {
         const { createRestartWindow } = await import("./evolution-progress.mjs");
         progress = await createRestartWindow();
-        await progress.progress(`正在打开 Cleo ${installed.version}`, "正在准备新版程序…");
+        await progress.progress(tr("bootstrap.opening_cleo_value", { p0: installed.version }), tr("bootstrap.preparing_the_new_program"));
         transaction = await manager.stageInstalledRelease();
       } catch (error) {
         progress?.finish();
@@ -93,7 +97,7 @@ async function boot() {
 // Electron emits ready after evaluating its ESM entry point. Do not await a path that waits for ready here.
 void boot().catch(async (error) => {
   await app.whenReady();
-  await dialog.showMessageBox({ type: "error", title: "Cleo 启动失败",
-    message: "可以通过独立恢复入口切回可用程序。", detail: error.message });
+  await dialog.showMessageBox({ type: "error", title: tr("bootstrap.cleo_could_not_start"),
+    message: tr("bootstrap.use_the_independent_recovery_entry_point_to_switch_back_to_a_working_program"), detail: error.message });
   app.quit();
 });

@@ -14,6 +14,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
+from cleo.i18n import tr
+
 
 class RunSupervisor:
     def __init__(self) -> None:
@@ -132,7 +134,7 @@ class RunSupervisor:
     def harness_switch(self, thread_id: str) -> Iterator[None]:
         """Purpose: Mark a harness switch in progress; a second one is rejected."""
         if thread_id in self.harness_switches:
-            raise ValueError("此会话正在切换 harness，请等待完成。")
+            raise ValueError(tr("runs.this_conversation_is_switching_harnesses_wait_fo"))
         self.harness_switches.add(thread_id)
         try:
             yield

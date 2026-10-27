@@ -11,6 +11,7 @@ from typing import Any
 
 from cleo.desktop.rpc import RpcRegistry, wire_error
 from cleo.desktop.service import DesktopService
+from cleo.i18n import language_context
 
 
 class ProtocolServer:
@@ -75,7 +76,10 @@ class ProtocolServer:
                 self._stopping = True
                 result: Any = {"stopped": True}
             else:
-                result = await self._registry.dispatch(self.service, method_name, params, emit)
+                with language_context(lambda: getattr(
+                    getattr(self.service, "runtime", None), "ui_language", "zh-CN"
+                )):
+                    result = await self._registry.dispatch(self.service, method_name, params, emit)
             self._debug(f"complete {method_name} {request_id}")
             await self._write({"id": request_id, "type": "result", "result": result})
         except asyncio.CancelledError:
