@@ -21,7 +21,13 @@ from cleo.sessions.store import SessionStore
 LEGACY = (Path(__file__).resolve().parents[1] / "characterization" / "fixtures"
           / "legacy_home_v0_7_1" / "memory")
 # The projection each version produces for the frozen v0.7.1 sessions.
-PINNED = {9: "3301892058774d49258c4690fb3f827f4d6f86860c782a16e097daf48e0932cc"}
+PINNED = {
+    9: "3301892058774d49258c4690fb3f827f4d6f86860c782a16e097daf48e0932cc",
+    # 10 raised PREVIEW_CHARS; the projection itself is unchanged.
+    10: "3301892058774d49258c4690fb3f827f4d6f86860c782a16e097daf48e0932cc",
+    # 11 keeps complete message/thought bodies in history pages.
+    11: "3301892058774d49258c4690fb3f827f4d6f86860c782a16e097daf48e0932cc",
+}
 
 
 def _projection_digest() -> str:
@@ -69,4 +75,31 @@ def test_cached_codex_plan_is_rebuilt_with_running_status(tmp_path) -> None:
     cards = TimelineIndex(store, manifest).page()["items"]
     assert len(cards) == 1
     assert cards[0]["steps"] == [{"label": "Inspect", "status": "running"}]
+    assert index.source.read_bytes() == original_log
+
+
+def test_v10_truncated_message_cache_is_rebuilt_with_full_body(tmp_path) -> None:
+    store = SessionStore(tmp_path / "memory")
+    manifest = store.create_session(
+        session_id="history", space="productivity", project="p",
+        provider="codex", owner_type="user",
+    )
+    content = "Long historical reply.\n\n" * 3000 + "FINAL_TAIL"
+    store.append_event(
+        session_id="history", space="productivity", project="p", actor="codex",
+        event_type="assistant_message", content=content,
+    )
+    index = TimelineIndex(store, manifest)
+    index.page()
+    original_log = index.source.read_bytes()
+    with closing(sqlite3.connect(index.path)) as db, db:
+        db.execute("UPDATE metadata SET value=json_set(value,'$.projection_version',10)")
+        db.execute(
+            "UPDATE items SET preview=json_set(preview,'$.content',?,'$.more.content',?)",
+            (content[:32768], len(content)),
+        )
+
+    item = TimelineIndex(store, manifest).page()["items"][0]
+    assert item["content"] == content
+    assert "content" not in item.get("more", {})
     assert index.source.read_bytes() == original_log

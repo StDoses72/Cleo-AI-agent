@@ -58,7 +58,8 @@ if (!process.argv.includes("--cleo-desktop-mock")) {
         inline.push({
           name: file.name,
           mimeType: file.type,
-          base64: Buffer.from(await file.arrayBuffer()).toString("base64"),
+          // Electron 45 dropped the Buffer global from sandboxed preloads; ship raw bytes and let main encode them.
+          bytes: new Uint8Array(await file.arrayBuffer()),
         });
       }
       return ipcRenderer.invoke("cleo:prepare-attachments", { paths, inline });

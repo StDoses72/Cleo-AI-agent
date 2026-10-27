@@ -197,7 +197,7 @@
 }
 
 .timeline {
-  width: min(100%, 860px);
+  width: var(--reading-width);
   margin: 0 auto;
   padding: 36px 44px 48px;
   animation: timeline-enter 260ms ease both;

@@ -356,8 +356,9 @@ export function Conversation({
       editable={!running && !waitingForAnswer && Boolean(onEditMessage) && editableTurns.has(row.id)}
       onEditMessage={onEditMessage}
       steeringBusy={steeringBusy} onRetrySteer={onRetrySteer} onRestoreSteer={onRestoreSteer} />; }
-    return <>{content}{item?.more && Object.keys(item.more).map(field => <button className="history-content-link" key={field}
-      onClick={() => void readContent(item!, field)}>{field === "output" ? "展开输出" : "展开全文"}</button>)}</>;
+    return <>{content}{item?.more && Object.keys(item.more).filter(field => field === "output" || field === "command").map(field =>
+      <button className="history-content-link" key={field} onClick={() => void readContent(item!, field)}>
+        {field === "output" ? "展开输出" : "展开命令"}</button>)}</>;
   };
 
   return (

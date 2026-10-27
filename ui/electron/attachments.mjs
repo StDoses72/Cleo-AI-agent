@@ -131,6 +131,14 @@ export async function attachmentsFromPaths(paths) {
   }));
 }
 
+/** Purpose: Read an in-memory file's bytes as the preload sends them (Uint8Array/ArrayBuffer) or as legacy base64. */
+function inlineBytes(entry) {
+  const bytes = entry?.bytes;
+  if (bytes instanceof Uint8Array) return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (bytes instanceof ArrayBuffer) return Buffer.from(bytes);
+  return Buffer.from(String(entry?.base64 || ""), "base64");
+}
+
 export async function materializeInlineAttachments(entries, directory) {
   const normalizedEntries = Array.isArray(entries) ? entries : [];
   ensureBatchSize(normalizedEntries.length);
@@ -139,7 +147,7 @@ export async function materializeInlineAttachments(entries, directory) {
   const attachments = [];
   for (const entry of normalizedEntries) {
     const mimeType = mimeTypeFor(entry?.name, entry?.mimeType);
-    const data = Buffer.from(String(entry?.base64 || ""), "base64");
+    const data = inlineBytes(entry);
     ensureFileSize(String(entry?.name || "clipboard-file"), data.length);
     const sourceName = basename(String(entry?.name || "clipboard-file"));
     const sourceExtension = extname(sourceName).toLowerCase();
