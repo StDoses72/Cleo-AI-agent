@@ -7,3 +7,5 @@ export function relativeTime(count: number, unit: "minute" | "hour" | "day"): st
 export function setLanguage(value: UiLanguage): void;
 export function subscribeLanguage(listener: () => void): () => void;
 export function t(key: MessageKey, params?: Record<string, unknown>): string;
+export function sourceText(key: MessageKey, params?: Record<string, unknown>): string;
+export function translator(language: UiLanguage): typeof t;

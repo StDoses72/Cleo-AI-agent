@@ -28,3 +28,11 @@ test("startup honors the active directory profile and configured runtime path", 
     assert.equal(await readUiLanguage(root, { CLEO_CONFIG_PATH: "cleo-test.json" }), "en");
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test("an unusable language file cannot prevent startup or recovery", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cleo-language-"));
+  try {
+    await mkdir(join(root, "config/cleo.json"), { recursive: true });
+    assert.equal(await readUiLanguage(root, {}), "zh-CN");
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

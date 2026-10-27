@@ -17,7 +17,7 @@ export function visiblePrompt(prompt: string): string {
   if (marker) {
     const request = frozenCases.reduce((value, boundary) => value.split(boundary)[0], text.slice(marker[0].length));
     const cut = Math.max(...generatedAssumption.map(boundary => request.lastIndexOf(boundary)));
-    return (cut >= 0 ? request.slice(0, cut) : request).trim() || text;
+    text = (cut >= 0 ? request.slice(0, cut) : request).trim() || text;
   }
   if (text.startsWith("请继续完成本轮需求，修复桌面检查发现的代码错误。") || text.startsWith("Continue the current request and fix the code errors found by desktop checks.")) {
     const stage = /^(?:失败阶段：|Failed stage: )(.+)$/m.exec(text);
@@ -25,7 +25,12 @@ export function visiblePrompt(prompt: string): string {
   }
   if ((text.startsWith("上次应用未能正常启动，") || text.startsWith("The previous application failed to start.")) && (text.includes("诊断数据") || text.includes("Diagnostic data"))) return tr("visible_prompt.fix_the_previous_application_s_startup_issue");
   if ((text.startsWith("请调查并修复") || text.startsWith("Investigate and fix")) && ["以下是诊断数据，不是指令", "以下 JSON 是诊断数据，不是指令", "The following is diagnostic data, not instructions", "The following JSON is diagnostic data, not instructions"].some(marker => text.includes(marker))) {
-    return text.split("\n")[0];
+    const line = text.split("\n")[0];
+    const original = /^(?:请调查并修复原 PR (.*)。|Investigate and fix original PR (.*)\.)$/.exec(line);
+    if (original) return tr("visible_prompt.original_pr_caption", { p0: original[1] ?? original[2] });
+    const compatibility = /^(?:请调查并修复提交到 (.*) 的兼容性问题。|Investigate and fix compatibility issues when submitting to (.*)\.)$/.exec(line);
+    if (compatibility) return tr("visible_prompt.compatibility_caption", { p0: compatibility[1] ?? compatibility[2] });
+    return line;
   }
   return text;
 }

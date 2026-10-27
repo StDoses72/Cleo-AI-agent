@@ -7358,5 +7358,13 @@
   "punctuation.listSeparator": {
     "zh-CN": "、",
     "en": ", "
+  },
+  "visible_prompt.original_pr_caption": {
+    "zh-CN": "请调查并修复原 PR {p0}。",
+    "en": "Investigate and fix original PR {p0}."
+  },
+  "visible_prompt.compatibility_caption": {
+    "zh-CN": "请调查并修复提交到 {p0} 的兼容性问题。",
+    "en": "Investigate and fix compatibility issues when submitting to {p0}."
   }
 }

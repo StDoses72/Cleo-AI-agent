@@ -103,3 +103,23 @@ test("durable question cancellation supersedes provisional UI cleanup", () => {
   const result = mergeTimelinePage(current, { ...page(0, 1), items: [cancelled] }, "latest", requested);
   assert.equal(result.items[0].request.status, "cancelled");
 });
+
+test("language refresh retains a paused unpersisted reply and adopts the translated page", () => {
+  const user = { ...all[0], turnId: "turn", order: 0 };
+  const partial = { id: "turn:answer", turnId: "turn", type: "message", role: "assistant", content: "still thinking" };
+  const notice = { id: "notice", turnId: "turn", type: "notice", cursor: "1", order: 1, title: "中文" };
+  const current = { items: [user, notice, partial] };
+  const translated = { ...notice, title: "English", cursor: "new:1" };
+  const loaded = { ...page(0, 2), items: [{ ...user, cursor: "new:0" }, translated] };
+  const refreshed = mergeTimelinePage(current, loaded, "latest", current, true);
+  assert.deepEqual(refreshed.items.map(item => item.id), [user.id, notice.id, partial.id]);
+  assert.equal(refreshed.items[1].title, "English");
+  assert.equal(refreshed.items.at(-1).content, partial.content);
+  assert.equal(refreshed.history.after, "new:1");
+  const final = { ...partial, id: "persisted-answer", content: "still thinking — done", cursor: "new:2", order: 2 };
+  const completed = mergeTimelinePage(refreshed, { ...loaded, items: [...loaded.items, final] }, "latest", refreshed, true);
+  assert.deepEqual(completed.items.map(item => item.id), [user.id, notice.id, final.id]);
+  assert.equal(completed.items.at(-1).content, final.content);
+  assert.equal(mergeTimelinePage(current, loaded, "latest", current).items.some(item => item.id === partial.id), false,
+    "ordinary history replacement must still discard removed items");
+});

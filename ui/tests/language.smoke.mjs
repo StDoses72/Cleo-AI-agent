@@ -71,6 +71,45 @@ try {
   assert.match(await page.locator(".conversation-viewport").textContent(), /保留用户原文/);
   await page.getByTestId("approval-cancel").click();
   await page.getByTestId("approval-prompt").waitFor({ state: "hidden" });
+  await page.evaluate(async () => {
+    const { cleoClient } = await import("/src/services/cleoClient.ts");
+    const stream = cleoClient.streamTurn.bind(cleoClient);
+    cleoClient.streamTurn = async function* (...args) {
+      for await (const event of stream(...args)) {
+        yield event;
+        if (event.type !== "turn-started") continue;
+        const partial = { id: `${event.item.turnId}:answer`, turnId: event.item.turnId,
+          type: "message", role: "assistant", content: "Paused unpersisted reply", time: "" };
+        const resume = new Promise(resolve => { window.continueReply = resolve; });
+        // Match production: chunks are displayed but only the final answer is durable.
+        yield { type: "upsert-item", item: partial };
+        await resume;
+        const stored = cleoClient.histories.get(args[0]);
+        const final = { ...partial, id: "persisted-language-answer", content: `${partial.content} — complete`,
+          cursor: String(stored.length), order: stored.length };
+        stored.push(final);
+        yield { type: "upsert-item", item: final };
+        yield { type: "done", summary: final.content };
+        return;
+      }
+    };
+  });
+  await page.getByTestId("composer-input").fill("Keep the paused reply");
+  await page.getByTestId("send-button").click();
+  await page.getByText("Paused unpersisted reply", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("combobox", { name: "Language", exact: true }).selectOption("zh-CN");
+  await page.getByRole("combobox", { name: "语言", exact: true }).waitFor();
+  await page.waitForFunction(() => !document.querySelector('select[aria-label="语言"]').disabled);
+  await page.getByRole("button", { name: "关闭设置", exact: true }).click();
+  await page.getByText("Paused unpersisted reply", { exact: true }).waitFor();
+  await page.evaluate(() => window.continueReply());
+  await page.getByText("Paused unpersisted reply — complete", { exact: true }).waitFor();
+  await page.getByText("Paused unpersisted reply", { exact: true }).waitFor({ state: "hidden" });
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("combobox", { name: "语言", exact: true }).selectOption("en");
+  await page.getByRole("combobox", { name: "Language", exact: true }).waitFor();
+  await page.getByRole("button", { name: "Close settings", exact: true }).click();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.setViewportSize({ width: 980, height: 800 });
   assert.equal(await page.locator(".settings-modal").evaluate(node => node.scrollWidth <= node.clientWidth + 2), true);

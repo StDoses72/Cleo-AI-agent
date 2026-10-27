@@ -1,4 +1,4 @@
-import { t as tr } from "./i18n.mjs";
+import { getLanguage, translator, t as tr } from "./i18n.mjs";
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, mkdtemp, rm, mkdir, copyFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -168,10 +168,11 @@ export class EvolutionAcceptance {
     })) throw new Error(tr("evolution_acceptance.behavior_acceptance_has_not_passed_compare_the_current_version_and_complete_the_cases"));
   }
 
-  async prompt(id) {
+  async prompt(id, language = getLanguage()) {
+    const requestText = translator(language);
     const item = (await readJson(this.path, [])).find((entry) => entry.id === id && entry.enabled);
     if (!item) throw new Error(tr("evolution_acceptance.acceptance_case_not_found"));
-    return tr("evolution_acceptance.improve_cleo_s_implementation_according_to_the_frozen_case_below_keep_the_case_and_ex", { p0: item.title, p1: item.expectation, p2: item.sourceThread || tr("evolution_acceptance.submitted_by_user"), p3: item.evidence });
+    return requestText("evolution_acceptance.improve_cleo_s_implementation_according_to_the_frozen_case_below_keep_the_case_and_ex", { p0: item.title, p1: item.expectation, p2: item.sourceThread || requestText("evolution_acceptance.submitted_by_user"), p3: item.evidence });
   }
 }
 

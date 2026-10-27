@@ -58,7 +58,7 @@ function renderQuestions(requests) {
   questionKey = key; element("questions").replaceChildren();
   for (const request of pending) {
     const form = document.createElement("form"); form.className = "question";
-    if (request.questions.some(question => question.secret)) { form.append(text("p", tr("evolution_monitor_renderer.this_question_involves_sensitive_input_answer_it_in_cleo_s_main_window"))); element("questions").append(form); continue; }
+    if (request.questions.some(question => question.secret)) { const notice = text("p", tr("evolution_monitor_renderer.this_question_involves_sensitive_input_answer_it_in_cleo_s_main_window")); notice.dataset.i18n = "evolution_monitor_renderer.this_question_involves_sensitive_input_answer_it_in_cleo_s_main_window"; form.append(notice); element("questions").append(form); continue; }
     for (const question of request.questions) {
       const field = document.createElement("fieldset"); field.dataset.id = question.id;
       field.append(text("legend", question.question));
@@ -68,10 +68,10 @@ function renderQuestions(requests) {
         label.append(input, document.createTextNode(` ${option.label}`));
         if (option.description) label.append(text("small", option.description)); field.append(label);
       }
-      const free = document.createElement("input"); free.type = "text"; free.placeholder = tr("evolution_monitor_renderer.you_can_also_type_your_choice"); free.setAttribute("aria-label", question.question);
+      const free = document.createElement("input"); free.type = "text"; free.placeholder = tr("evolution_monitor_renderer.you_can_also_type_your_choice"); free.dataset.i18nPlaceholder = "evolution_monitor_renderer.you_can_also_type_your_choice"; free.setAttribute("aria-label", question.question);
       field.append(free); form.append(field);
     }
-    const submit = text("button", tr("evolution_monitor_renderer.submit_answer")); submit.type = "submit"; form.append(submit);
+    const submit = text("button", tr("evolution_monitor_renderer.submit_answer")); submit.dataset.i18n = "evolution_monitor_renderer.submit_answer"; submit.type = "submit"; form.append(submit);
     form.addEventListener("submit", async event => {
       event.preventDefault();
       const answers = Object.fromEntries([...form.querySelectorAll("fieldset")].map(field => {

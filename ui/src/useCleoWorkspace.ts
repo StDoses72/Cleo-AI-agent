@@ -439,7 +439,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
         runtime: (thread.runtime?.settingsRevision ?? 0) > (fresh.runtime?.settingsRevision ?? 0)
           ? thread.runtime : fresh.runtime };
     }) });
-    await history.load("latest");
+    await history.load("latest", undefined, runLocks.current.has(activeThread?.id ?? ""));
   };
 
   const history = useTimelineHistory(activeThread, updateThread);

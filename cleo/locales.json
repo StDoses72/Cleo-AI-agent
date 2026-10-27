@@ -1534,5 +1534,13 @@
   "projection.value_days_ago_one": {
     "zh-CN": "{p0} 天前",
     "en": "{p0} day ago"
+  },
+  "projection.original_pr_caption": {
+    "zh-CN": "请调查并修复原 PR {p0}。",
+    "en": "Investigate and fix original PR {p0}."
+  },
+  "projection.compatibility_caption": {
+    "zh-CN": "请调查并修复提交到 {p0} 的兼容性问题。",
+    "en": "Investigate and fix compatibility issues when submitting to {p0}."
   }
 }

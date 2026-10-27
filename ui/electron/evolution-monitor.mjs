@@ -29,7 +29,7 @@ export async function startEvolutionMonitor() {
     trusted(event);
     await writeJson(join(store.root, "presence.json"), { pid: process.pid, version: app.getVersion(), updatedAt: Date.now() });
     const [runtime, state, messages] = await Promise.all([store.runtime(), readJson(join(root, "state.json"), {}), store.messages()]);
-    if (runtime.uiLanguage === "en" || runtime.uiLanguage === "zh-CN") setLanguage(runtime.uiLanguage);
+    setLanguage(await readUiLanguage(dataHome));
     const tx = state.transaction;
     let phase = runtime.phase || tr("evolution_monitor.waiting_for_a_conversation");
     let detail = runtime.detail || tr("evolution_monitor.describe_your_improvement_request_in_cleo_s_evolution_workspace");

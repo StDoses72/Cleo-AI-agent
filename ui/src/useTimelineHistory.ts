@@ -27,7 +27,7 @@ export function useTimelineHistory(thread: Thread | null, update: (id: string, f
     setBusy(null); setError(null); setUnread(false);
   }, [thread?.id]);
 
-  const load = async (direction: "latest" | "before" | "after", beforeApply?: () => void) => {
+  const load = async (direction: "latest" | "before" | "after", beforeApply?: () => void, preserveUnpersisted = false) => {
     const { thread: current } = latest.current;
     if (!current || (inFlight.current && direction !== "latest")) return;
     if (inFlight.current) generation.current++;
@@ -39,7 +39,7 @@ export function useTimelineHistory(thread: Thread | null, update: (id: string, f
       const page = await cleoClient.loadTimeline(current.id, cursor ? direction : "latest", cursor);
       if (token !== generation.current || latest.current.thread?.id !== current.id) return;
       beforeApply?.();
-      latest.current.update(current.id, saved => mergeTimelinePage(saved, page, direction, current));
+      latest.current.update(current.id, saved => mergeTimelinePage(saved, page, direction, current, preserveUnpersisted));
       if (direction === "latest") { follow.current = true; setFollowing(true); setUnread(false); }
       return true;
     } catch (failure) {

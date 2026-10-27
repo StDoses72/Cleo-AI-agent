@@ -1,6 +1,5 @@
-import { t as tr } from "./i18n.mjs";
+import { sourceText, t as tr, getLanguage, setLanguage } from "./i18n.mjs";
 import { randomUUID } from "node:crypto";
-import { getLanguage, setLanguage } from "./i18n.mjs";
 import { readUiLanguage } from "./language.mjs";
 import { launchDesktop } from "./evolution-launch.mjs";
 import { waitForControllerReady, showRecovery } from "./evolution-recovery.mjs";
@@ -619,8 +618,8 @@ app.whenReady().then(async () => {
       nextMessage: () => monitorStore.pending(params.threadId),
       repairPrompt: async () => {
         const state = await evolution.store.read();
-        if (state.lastRestartError) return tr("main.the_previous_application_failed_to_start_investigate_and_fix_startup_in_the_cleo_sour") + state.lastRestartError;
-        return (await evolution.repairPrompt()).replace(tr("main.the_desktop_app_will_run_checks_again_after_this_turn"), tr("main.after_the_fix_the_user_chooses_when_to_check_changes"));
+        if (state.lastRestartError) return sourceText("main.the_previous_application_failed_to_start_investigate_and_fix_startup_in_the_cleo_sour") + state.lastRestartError;
+        return (await evolution.repairPrompt()).replace(sourceText("main.the_desktop_app_will_run_checks_again_after_this_turn"), sourceText("main.after_the_fix_the_user_chooses_when_to_check_changes"));
       },
       releases: async () => {
         await updater.refreshCatalog();

@@ -57,7 +57,7 @@ def internal_prompt_display(content: str) -> str:
         cut = max(request.rfind(boundary) for boundary in _GENERATED_ASSUMPTION)
         # Cleo's clarification answer is last; the request and user supplements precede it.
         text = (request[:cut] if cut >= 0 else request).strip() or text
-    elif text.startswith(_CHECK_REPAIR):
+    if text.startswith(_CHECK_REPAIR):
         stage = re.search(r"(?m)^(?:失败阶段：|Failed stage: )(.+)$", text)
         text = tr(
             "projection.fix_the_issues_found_by_checks",
@@ -71,6 +71,17 @@ def internal_prompt_display(content: str) -> str:
         label in text for label in _DIAGNOSTIC_DATA
     ):
         text = text.partition("\n")[0]
+        original = re.fullmatch(
+            r"(?:请调查并修复原 PR (.*)。|Investigate and fix original PR (.*)\.)", text,
+        )
+        compatibility = re.fullmatch(
+            r"(?:请调查并修复提交到 (.*) 的兼容性问题。|"
+            r"Investigate and fix compatibility issues when submitting to (.*)\.)", text,
+        )
+        if original:
+            text = tr("projection.original_pr_caption", p0=original[1] or original[2])
+        elif compatibility:
+            text = tr("projection.compatibility_caption", p0=compatibility[1] or compatibility[2])
     return text
 
 

@@ -27,12 +27,13 @@ export function boundTimeline(items: TimelineItem[], retain: "start" | "end" = "
   return retain === "end" ? selected.reverse() : selected;
 }
 
-export function mergeTimelinePage(thread: Thread, page: TimelinePage, direction: "latest" | "before" | "after", requestedFrom?: Thread): Thread {
+export function mergeTimelinePage(thread: Thread, page: TimelinePage, direction: "latest" | "before" | "after", requestedFrom?: Thread, preserveUnpersisted = false): Thread {
   const baseline = new Map(requestedFrom?.items.map(item => [item.id, item]));
+  const incoming = new Map(page.items.map(item => [item.id, item]));
   const live = new Map(requestedFrom ? thread.items.filter(item =>
     !(item.type === "notice" && item.cursor === undefined) &&
-    JSON.stringify(item) !== JSON.stringify(baseline.get(item.id))).map(item => [item.id, item]) : []);
-  const incoming = new Map(page.items.map(item => [item.id, item]));
+    ((preserveUnpersisted && item.cursor === undefined && !incoming.has(item.id)) ||
+      JSON.stringify(item) !== JSON.stringify(baseline.get(item.id)))).map(item => [item.id, item]) : []);
   for (const [id, item] of live) {
     const fetched = incoming.get(id);
     // A persisted terminal receipt supersedes the UI's provisional unavailable state.

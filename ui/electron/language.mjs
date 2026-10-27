@@ -7,7 +7,14 @@ async function readObject(path) {
     const value = JSON.parse((await readFile(path, "utf8")).replace(/^\uFEFF/, ""));
     return value && typeof value === "object" && !Array.isArray(value) ? value : {};
   }
-  catch (error) { if (error.code === "ENOENT" || error instanceof SyntaxError) return {}; throw error; }
+  catch (error) {
+    if (error.code === "ENOENT" || error instanceof SyntaxError) return {};
+    if (["EACCES", "EPERM", "EISDIR", "ENOTDIR"].includes(error.code)) {
+      console.error("Language preference unavailable:", error.code);
+      return {};
+    }
+    throw error;
+  }
 }
 const expandHome = value => value === "~" ? homedir() : value.startsWith("~/") || value.startsWith("~\\") ? resolve(homedir(), value.slice(2)) : value;
 
