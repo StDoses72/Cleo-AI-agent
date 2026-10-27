@@ -112,16 +112,19 @@ const siblingChannel = () => {
   return { label: name, controlRoot: join(dirname(app.getPath("userData")), name, "evolution"),
     dataHome: join(dirname(cleoHome), name) };
 };
+let storageReady = false;
 const storageOptions = () => ({
   dataHome: backend.runtimePaths().cleoHome, store: evolution.store, siblings: [siblingChannel()],
   currentResources: process.resourcesPath, currentRuntimeNamespace: dependencies.installationRoot,
-  currentBaseResources: dependencies.baseResources, onlineRoots: [defaultRuntimeRoot()],
+  currentBaseResources: dependencies.baseResources, onlineRoots: [defaultRuntimeRoot(), defaultRuntimeRoot(true)],
   installedExecutables: [process.execPath, ...defaultLauncherPaths()], currentVersion: app.getVersion(),
   protectedVersions: [updater.getState().latestVersion, updater.getState().selectedTag?.replace(/^v/, "")].filter(Boolean),
   downloadsBusy: () => releaseDownloads.busy || programUpdates.busy || evolution.phase !== "idle" || setup.busy,
+  pruneOnlineRuntimes: storageReady,
 });
 const storage = createStorageQueue();
 app.on("cleo:healthy", (transactionId) => {
+  storageReady = true;
   // Reclaim after the program proved itself; locked entries stay journaled for the next start.
   void storage(() => reclaimStorage(storageOptions())).then(result => {
     if (result.removed.length || result.failed.length) console.log(`Storage cleanup: removed ${result.removed.length}, failed ${result.failed.length}, freed ${result.freedBytes} bytes.`);

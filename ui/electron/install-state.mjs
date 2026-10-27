@@ -41,6 +41,24 @@ export async function executableInUse(path, filesystem = fs) {
   return false;
 }
 
+/** Probe executable images before deleting any part of a runtime; never follow links.
+ * Windows sharing violations and POSIX ETXTBSY defer the whole directory, including CLI children.
+ */
+export async function runtimeInUse(directory, filesystem = fs) {
+  for (const name of await filesystem.readdir(directory)) {
+    const path = join(directory, name);
+    const info = await filesystem.lstat(path);
+    if (info.isSymbolicLink()) continue;
+    if (info.isDirectory()) {
+      if (await runtimeInUse(path, filesystem)) return true;
+    } else if (info.isFile() && (process.platform === "win32"
+      ? /\.(exe|dll|pyd|node)$/i.test(name) : (info.mode & 0o111) !== 0)) {
+      if (await executableInUse(path, filesystem)) return true;
+    }
+  }
+  return false;
+}
+
 export function acquireSingleInstance(app, windows) {
   if (!app.requestSingleInstanceLock()) return false;
   app.on("second-instance", () => {

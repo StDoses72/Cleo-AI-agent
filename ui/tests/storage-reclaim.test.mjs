@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { randomUUID } from "node:crypto";
 import * as nativeFs from "node:fs/promises";
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { dirname, join, posix, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { EvolutionStore, exists } from "../electron/evolution-store.mjs";
@@ -80,6 +82,179 @@ async function fixture(t) {
 }
 
 const byId = (result, prefix) => result.entries.filter(entry => entry.id.startsWith(prefix));
+
+async function healthyOnlineRuntime(f) {
+  const build = await f.addBuild("official", "0.10.3", { plan: "latest" });
+  const runtime = await f.addOnlineRuntime(await planKey(build.resources), "0.10.3");
+  await mkdir(join(runtime, "browser"));
+  await mkdir(join(runtime, "python", "bin"), { recursive: true });
+  await writeFile(join(runtime, "python", process.platform === "win32" ? "python.exe" : "bin/python3"), "python");
+  await writeFile(join(runtime, "browser", process.platform === "win32" ? "node.exe" : "node"), "node");
+  return { dataHome: f.dataHome, store: f.store, currentResources: build.resources,
+    currentBaseResources: runtime, currentVersion: "0.10.3", pruneOnlineRuntimes: true,
+    runtimeInUse: async () => false };
+}
+
+test("healthy updates keep one online runtime even when old completed installs have owners", async t => {
+  const f = await fixture(t);
+  const options = await healthyOnlineRuntime(f);
+  const old = [];
+  for (const version of ["0.7.0", "0.7.1", "0.8.0", "0.8.1", "0.8.2", "0.9.0", "0.10.0", "0.10.1", "0.10.2"]) {
+    const build = await f.addBuild("official", version, { plan: version });
+    old.push(await f.addOnlineRuntime(await planKey(build.resources), version));
+  }
+  const result = await reclaimStorage(options);
+  assert.equal(result.removed.length, 9);
+  for (const path of old) assert.equal(await exists(path), false);
+  assert.equal(await exists(options.currentBaseResources), true);
+  assert.equal(await exists(join(f.dataHome, "memory", "notes.md")), true);
+  assert.deepEqual((await reclaimStorage(options)).removed, []);
+});
+
+test("online runtime pruning waits for health, a valid current plan and completed activation", async t => {
+  const f = await fixture(t);
+  const options = await healthyOnlineRuntime(f);
+  const old = await f.addOnlineRuntime(hex(64), "0.10.2");
+  for (const patch of [{ pruneOnlineRuntimes: false }, { currentBaseResources: null },
+    { currentVersion: "0.10.4" }, { currentResources: join(f.root, "missing") }]) {
+    await reclaimStorage({ ...options, ...patch });
+    assert.equal(await exists(old), true);
+  }
+  await f.store.update({ transaction: { id: "pending", to: "next" } });
+  await reclaimStorage(options);
+  assert.equal(await exists(old), true);
+});
+
+test("a downloaded future runtime survives until that version starts successfully", async t => {
+  const f = await fixture(t);
+  const options = await healthyOnlineRuntime(f);
+  const future = await f.addOnlineRuntime(hex(64), "0.10.4");
+  const invalid = await f.addOnlineRuntime(hex(64), "unknown");
+  const old = await f.addOnlineRuntime(hex(64), "0.10.2");
+  await reclaimStorage(options);
+  assert.equal(await exists(future), true);
+  assert.equal(await exists(invalid), true);
+  assert.equal(await exists(old), false);
+  assert.equal(await exists(options.currentBaseResources), true);
+});
+
+test("online runtime cleanup pauses during downloads and installer staging", async t => {
+  const f = await fixture(t);
+  const options = await healthyOnlineRuntime(f);
+  const old = await f.addOnlineRuntime(hex(64), "0.10.2");
+  await reclaimStorage({ ...options, downloadsBusy: () => true });
+  assert.equal(await exists(old), true);
+  const scratch = join(f.online, ".install-active");
+  await mkdir(scratch);
+  await reclaimStorage(options);
+  assert.equal(await exists(old), true);
+  await rm(scratch, { recursive: true });
+  assert.equal((await reclaimStorage(options)).removed.length, 1);
+});
+
+test("running old runtimes remain intact and are retried after the process exits", async t => {
+  const f = await fixture(t);
+  const options = await healthyOnlineRuntime(f);
+  const old = await f.addOnlineRuntime(hex(64), "0.10.2");
+  const busy = await reclaimStorage({ ...options, runtimeInUse: async path => path === old });
+  assert.equal(busy.failed.length, 1);
+  assert.equal(await exists(join(old, "ready.json")), true);
+  assert.equal(await exists(join(old, "python", "python.bin")), true);
+  assert.deepEqual((await f.store.read()).storageCleanupPending, busy.failed.map(e => e.id));
+  const retry = await reclaimStorage(options);
+  assert.equal(retry.removed.length, 1);
+  assert.deepEqual((await f.store.read()).storageCleanupPending, []);
+});
+
+test("failed image inspection never permits online runtime deletion", async t => {
+  const f = await fixture(t);
+  const options = await healthyOnlineRuntime(f);
+  const old = await f.addOnlineRuntime(hex(64), "0.10.2");
+  const result = await reclaimStorage({ ...options, runtimeInUse: async () => { throw new Error("image inspection denied"); } });
+  assert.equal(result.failed.length, 1);
+  assert.equal(await exists(join(old, "ready.json")), true);
+});
+
+test("a disappearing child during inspection is not reported as a removed runtime", async t => {
+  const f = await fixture(t);
+  const options = await healthyOnlineRuntime(f);
+  const old = await f.addOnlineRuntime(hex(64), "0.10.2");
+  const result = await reclaimStorage({ ...options, runtimeInUse: async () => {
+    throw Object.assign(new Error("child disappeared"), { code: "ENOENT" });
+  } });
+  assert.deepEqual(result.removed, []);
+  assert.equal(result.failed.length, 1);
+  assert.equal(result.freedBytes, 0);
+  assert.equal(await exists(join(old, "ready.json")), true);
+});
+
+test("a real running child protects its complete runtime until exit", { timeout: 30000 }, async t => {
+  const f = await fixture(t);
+  const options = { ...await healthyOnlineRuntime(f), runtimeInUse: undefined };
+  const old = await f.addOnlineRuntime(hex(64), "0.10.2");
+  await mkdir(join(old, "browser"));
+  const binary = join(old, "browser", process.platform === "win32" ? "node.exe" : "node");
+  await copyFile(process.execPath, binary);
+  const child = spawn(binary, ["-e", "process.stdout.write('ready'); setInterval(() => {}, 1000)"],
+    { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+  try {
+    await Promise.race([once(child.stdout, "data", { signal: t.signal }),
+      once(child, "error", { signal: t.signal }).then(([error]) => { throw error; })]);
+    const busy = await reclaimStorage(options);
+    assert.equal(busy.failed.length, 1);
+    assert.equal(await exists(join(old, "ready.json")), true);
+    assert.equal(await exists(join(old, "python", "python.bin")), true);
+  } finally {
+    if (child.pid && child.exitCode === null && child.signalCode === null) {
+      const exited = once(child, "exit");
+      child.kill();
+      await exited;
+    }
+  }
+  assert.equal((await reclaimStorage(options)).removed.length, 1);
+  assert.equal(await exists(old), false);
+});
+
+test("a damaged current runtime cannot authorize removal of the last working environment", async t => {
+  const f = await fixture(t);
+  const options = await healthyOnlineRuntime(f);
+  const old = await f.addOnlineRuntime(hex(64), "0.10.2");
+  await rm(join(options.currentBaseResources, "browser"), { recursive: true });
+  await reclaimStorage(options);
+  assert.equal(await exists(old), true);
+});
+
+test("a partial deletion retries even after an owned runtime loses its ready marker", async t => {
+  const f = await fixture(t);
+  const options = await healthyOnlineRuntime(f);
+  const build = await f.addBuild("official", "0.10.2", { plan: "old-owner" });
+  const old = await f.addOnlineRuntime(await planKey(build.resources), "0.10.2");
+  const fs = { ...nativeFs, rm: async (path, flags) => {
+    if (path === old) {
+      await nativeFs.rm(join(old, "ready.json"));
+      throw Object.assign(new Error("locked midway"), { code: "EPERM" });
+    }
+    return nativeFs.rm(path, flags);
+  } };
+  assert.equal((await reclaimStorage({ ...options, fs })).failed.length, 1);
+  assert.equal(await exists(join(old, "ready.json")), false);
+  await reclaimStorage({ ...options, downloadsBusy: () => true });
+  assert.equal(await exists(old), true);
+  assert.equal((await reclaimStorage(options)).removed.length, 1);
+  assert.equal(await exists(old), false);
+});
+
+test("an installer starting during the image probe defers deletion", async t => {
+  const f = await fixture(t);
+  const options = await healthyOnlineRuntime(f);
+  const old = await f.addOnlineRuntime(hex(64), "0.10.2");
+  const result = await reclaimStorage({ ...options, runtimeInUse: async () => {
+    await mkdir(join(f.online, ".install-new"));
+    return false;
+  } });
+  assert.equal(result.failed.length, 1);
+  assert.equal(await exists(join(old, "ready.json")), true);
+});
 
 test("pyvenv.cfg home parsing tolerates Windows paths and spacing", () => {
   assert.equal(venvHome("home = C:\\Program Files\\Cleo\\resources\\python\r\ninclude-system-site-packages = false\r\n"), "C:\\Program Files\\Cleo\\resources\\python");
