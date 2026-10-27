@@ -19,7 +19,7 @@ const REPOSITORY = "StDoses72/Cleo-AI-agent";
 const REPO_URL = `https://github.com/${REPOSITORY}.git`;
 const API = `https://api.github.com/repos/${REPOSITORY}`;
 const GITHUB_DEVICE_URL = "https://github.com/login/device";
-const PROTECTED = ["bootstrap.mjs", "i18n.mjs", "language.mjs", "locales.json", "release-channel.mjs", "evolution.mjs", "evolution-store.mjs", "evolution-tools.mjs", "evolution-recovery.mjs", "evolution-launch.mjs", "evolution-progress.mjs", "evolution-handoff.mjs", "release-downloads.mjs", "program-updates.mjs", "updater.mjs", "shutdown.mjs"];
+const PROTECTED = ["bootstrap.mjs", "i18n.mjs", "language.mjs", "recovery-locales.json", "release-channel.mjs", "evolution.mjs", "evolution-store.mjs", "evolution-tools.mjs", "evolution-recovery.mjs", "evolution-launch.mjs", "evolution-progress.mjs", "evolution-handoff.mjs", "release-downloads.mjs", "program-updates.mjs", "updater.mjs", "shutdown.mjs"];
 
 /** Input: accumulated CLI diagnostics. Output: a device code from known gh formats only.
  * Supports ordinary and clipboard-enabled gh without changing global configuration.

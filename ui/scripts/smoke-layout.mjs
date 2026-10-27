@@ -1,4 +1,5 @@
-import messages from "../electron/locales.json" with { type: "json" };
+import uiMessages from "../electron/locales.json" with { type: "json" };
+import recoveryMessages from "../electron/recovery-locales.json" with { type: "json" };
 import assert from "node:assert/strict";
 import { _electron as electron } from "playwright";
 import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -13,7 +14,7 @@ const ui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const scratch = await mkdtemp(join(tmpdir(), "cleo-layout-smoke-"));
 const appDir = join(scratch, "app");
 const language = process.env.CLEO_TEST_LANGUAGE === "en" ? "en" : "zh-CN";
-const uiLabel = value => Object.values(messages).find(entry => entry["zh-CN"] === value)?.[language] ?? value;
+const uiLabel = value => Object.values({ ...uiMessages, ...recoveryMessages }).find(entry => entry["zh-CN"] === value)?.[language] ?? value;
 let application;
 let page;
 

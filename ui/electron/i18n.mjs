@@ -1,4 +1,5 @@
 import messages from "./locales.json" with { type: "json" };
+import recoveryMessages from "./recovery-locales.json" with { type: "json" };
 
 let language = "zh-CN";
 const listeners = new Set();
@@ -16,6 +17,7 @@ export function subscribeLanguage(listener) {
   return () => listeners.delete(listener);
 }
 export function t(key, params = {}) {
-  const template = messages[key]?.[language] ?? messages[key]?.en ?? key;
+  const entry = recoveryMessages[key] ?? messages[key];
+  const template = entry?.[language] ?? entry?.en ?? key;
   return template.replace(/\{(\w+)\}/g, (match, name) => Object.hasOwn(params, name) ? String(params[name]) : match);
 }

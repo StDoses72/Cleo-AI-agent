@@ -3,10 +3,13 @@ import test from "node:test";
 import { readFile, readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import messages from "./locales.json" with { type: "json" };
+import uiMessages from "./locales.json" with { type: "json" };
+import recoveryMessages from "./recovery-locales.json" with { type: "json" };
 import { getLanguage, relativeTime, setLanguage, subscribeLanguage, t } from "./i18n.mjs";
+const messages = { ...uiMessages, ...recoveryMessages };
 
 test("every interface message has both languages and matching interpolation parameters", () => {
+  assert.ok(Object.keys(uiMessages).every(key => !Object.hasOwn(recoveryMessages, key)));
   const parameters = text => [...text.matchAll(/\{(\w+)\}/g)].map(match => match[1]).sort();
   for (const [key, value] of Object.entries(messages)) {
     assert.deepEqual(Object.keys(value).sort(), ["en", "zh-CN"], key);

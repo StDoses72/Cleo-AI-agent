@@ -185,7 +185,7 @@ async function fixture(t) {
   const manager = new EvolutionManager({ app: { isPackaged: false, getVersion: () => "0.3.9" },
     root: join(root, "controller"), dataHome: join(root, "home") });
   await mkdir(join(manager.source, "ui/electron"), { recursive: true });
-  for (const name of ["bootstrap.mjs", "i18n.mjs", "language.mjs", "locales.json", "release-channel.mjs", "evolution.mjs", "evolution-store.mjs", "evolution-tools.mjs", "evolution-recovery.mjs", "evolution-launch.mjs", "evolution-progress.mjs", "evolution-handoff.mjs", "release-downloads.mjs", "program-updates.mjs", "updater.mjs", "shutdown.mjs"]) {
+  for (const name of ["bootstrap.mjs", "i18n.mjs", "language.mjs", "locales.json", "recovery-locales.json", "release-channel.mjs", "evolution.mjs", "evolution-store.mjs", "evolution-tools.mjs", "evolution-recovery.mjs", "evolution-launch.mjs", "evolution-progress.mjs", "evolution-handoff.mjs", "release-downloads.mjs", "program-updates.mjs", "updater.mjs", "shutdown.mjs"]) {
     await cp(new URL("../electron/" + name, import.meta.url), join(manager.source, "ui/electron", name));
   }
   await writeFile(join(manager.source, "ui/package.json"), '{"main":"electron/bootstrap.mjs"}');
@@ -198,7 +198,7 @@ async function fixture(t) {
   return { root, manager };
 }
 
-for (const name of ["i18n.mjs", "language.mjs", "locales.json"]) {
+for (const name of ["i18n.mjs", "language.mjs", "recovery-locales.json"]) {
   test(`recovery localization dependency ${name} cannot be self-modified`, async t => {
     const { manager } = await fixture(t);
     await manager.checkProtection();
@@ -206,6 +206,15 @@ for (const name of ["i18n.mjs", "language.mjs", "locales.json"]) {
     await assert.rejects(manager.checkProtection(), error => error.message.includes(name));
   });
 }
+
+test("ordinary UI translations remain editable without changing recovery protection", async t => {
+  const { manager } = await fixture(t);
+  const path = join(manager.source, "ui/electron/locales.json");
+  const messages = JSON.parse(await readFile(path, "utf8"));
+  messages["settings.language"].en = "Interface language";
+  await writeJson(path, messages);
+  await manager.checkProtection();
+});
 
 test("Python test failures block packaging and use an isolated data home", async (t) => {
   const { manager, calls } = await validationFixture(t);
