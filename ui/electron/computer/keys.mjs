@@ -1,3 +1,4 @@
+import { t as tr } from "../i18n.mjs";
 /** Keyboard shortcut parsing shared by the built-in browser (CDP) and host desktop tools.
  * Names are case-insensitive and joined with "+", for example "ctrl+shift+tab" or "Enter".
  */
@@ -63,7 +64,7 @@ export function keyInfo(name) {
     return { key: raw.length === 1 ? raw.toLowerCase() : raw, code: `Key${upper}`, keyCode: upper.charCodeAt(0), text: raw.toLowerCase() };
   }
   if (/^[0-9]$/.test(raw)) return { key: raw, code: `Digit${raw}`, keyCode: raw.charCodeAt(0), text: raw };
-  throw new Error(`不支持的按键：${raw}`);
+  throw new Error(tr("keys.unsupported_key_value", { p0: raw }));
 }
 
 /** Purpose: Parse a shortcut such as "ctrl+shift+t".
@@ -71,10 +72,10 @@ export function keyInfo(name) {
  */
 export function parseShortcut(value) {
   const text = String(value ?? "").trim();
-  if (!text || text.length > 60) throw new Error("快捷键不能为空，且不超过 60 个字符。");
+  if (!text || text.length > 60) throw new Error(tr("keys.the_shortcut_must_be_nonempty_and_at_most_60_characters_long"));
   // Allow "ctrl++" and a literal "+" key.
   const parts = text.replace(/\+\+$/, "+plus").split("+").map(part => part.trim()).filter(Boolean);
-  if (!parts.length || parts.length > 5) throw new Error(`无法识别的快捷键：${text}`);
+  if (!parts.length || parts.length > 5) throw new Error(tr("keys.unrecognized_shortcut_value", { p0: text }));
   const modifiers = [];
   let key = null;
   for (const part of parts) {
@@ -83,7 +84,7 @@ export function parseShortcut(value) {
       if (!modifiers.includes(modifier)) modifiers.push(modifier);
       continue;
     }
-    if (key) throw new Error(`一个快捷键只能包含一个主键：${text}`);
+    if (key) throw new Error(tr("keys.a_shortcut_can_contain_only_one_primary_key_value", { p0: text }));
     key = keyInfo(part);
   }
   return { modifiers, key, label: [...modifiers, key?.key === " " ? "Space" : key?.key].filter(Boolean).join("+") };
@@ -99,8 +100,8 @@ export function modifierMask(modifiers) {
  */
 export function stopAccelerator(value) {
   const parsed = parseShortcut(value);
-  if (!parsed.key) throw new Error("紧急停止快捷键需要一个主键。");
-  if (parsed.modifiers.length < 2) throw new Error("紧急停止快捷键至少需要两个修饰键，避免误触。");
+  if (!parsed.key) throw new Error(tr("keys.the_emergency_stop_shortcut_needs_a_primary_key"));
+  if (parsed.modifiers.length < 2) throw new Error(tr("keys.the_emergency_stop_shortcut_needs_at_least_two_modifier_keys_to_prevent_accidental_ac"));
   const names = { Control: "Control", Alt: "Alt", Shift: "Shift", Meta: "Super" };
   const key = parsed.key.key.length === 1 ? parsed.key.key.toUpperCase() : parsed.key.key;
   const electronKey = { Escape: "Escape", " ": "Space", ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left", ArrowRight: "Right" }[key] ?? key;

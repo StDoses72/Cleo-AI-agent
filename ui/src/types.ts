@@ -642,6 +642,8 @@ export type StreamEvent =
   | { type: "error"; message: string };
 
 export interface CleoClient {
+  getUiLanguage(): Promise<"zh-CN" | "en">;
+  setUiLanguage(language: "zh-CN" | "en"): Promise<"zh-CN" | "en">;
   getTiming(timingId: string): Promise<TimingDetails>;
   loadWorkspace(): Promise<WorkspaceSnapshot>;
   loadMemory(): Promise<Pick<WorkspaceSnapshot, "memories" | "memoryOverview">>;

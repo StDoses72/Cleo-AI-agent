@@ -1,3 +1,4 @@
+import { t as tr } from "./i18n.mjs";
 /** Purpose: Allow pending human observations at Apply while retaining automatic regressions.
  * Input: Existing acceptance service and target ID. Output: Read-only gate; Save keeps requirePassed.
  */
@@ -11,7 +12,7 @@ export async function requireApplicable(acceptance, id) {
   if (!status.fresh || status.report.candidate !== id || automatic.some((item) => {
     const result = status.report.results.find((entry) => entry.id === item.id);
     return result?.after.status !== "passed" || result?.before.status === "error";
-  })) throw new Error("自动行为回归尚未通过，请检查当前构建的比较结果。");
+  })) throw new Error(tr("evolution_behavior_policy.automatic_behavior_regression_checks_have_not_passed_review_the_comparison_results_fo"));
 }
 
 /** Purpose: Record observations only against the program actually running.
@@ -21,7 +22,7 @@ export async function reviewApplied(acceptance, id, note) {
   const state = await acceptance.store.read();
   const status = await acceptance.status(state);
   if (!status.fresh || status.report?.candidate !== state.active) {
-    throw new Error("请先应用当前构建，体验后再确认验收。");
+    throw new Error(tr("evolution_acceptance.apply_the_current_build_and_try_it_before_confirming_acceptance"));
   }
   return acceptance.review(id, note);
 }

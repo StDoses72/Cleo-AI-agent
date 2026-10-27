@@ -1,3 +1,4 @@
+import { t as tr } from "../electron/i18n.mjs";
 import { DependencySetup } from "./components/DependencySetup";
 import { modifierKey } from "./platform";
 import { QuestionDialog } from "./components/QuestionDialog";
@@ -30,9 +31,15 @@ import { ThreadSidebar } from "./components/ThreadSidebar";
 import { WorkspaceRail } from "./components/WorkspaceRail";
 import { useCleoWorkspace } from "./useCleoWorkspace";
 import { cleoClient } from "./services/cleoClient";
+import { useLanguage, setLanguage, type UiLanguage } from "./i18n";
 import type { ConfigStatus, MemoryViewMode, Project, Thread, UpdateState, WorkspaceSpace } from "./types";
 
 export function App() {
+  const language = useLanguage();
+  const changeLanguage = async (value: UiLanguage) => {
+    setLanguage(await cleoClient.setUiLanguage(value));
+    await workspace.refreshLanguage();
+  };
   const evolution = useEvolution();
   const [evolutionOpen, setEvolutionOpen] = useState(() => localStorage.getItem("cleo-view") === "evolution");
   const workspace = useCleoWorkspace(evolutionOpen);
@@ -57,7 +64,7 @@ export function App() {
       await evolution.run("thread", { id: thread.id });
       return thread;
     } catch (error) {
-      setEvolutionIssue(error instanceof Error ? error.message : "无法打开进化对话");
+      setEvolutionIssue(error instanceof Error ? error.message : tr("app.could_not_open_the_evolution_chat"));
       return null;
     } finally {
       openingEvolution.current = false;
@@ -80,7 +87,7 @@ export function App() {
       await evolution.run("thread", { id: thread.id });
       await workspace.sendPrompt(prompt, thread, { preserveDraft });
     } catch (error) {
-      setEvolutionIssue(error instanceof Error ? error.message : "无法开始修改");
+      setEvolutionIssue(error instanceof Error ? error.message : tr("app.could_not_start_editing"));
     } finally { preparingEvolution.current = false; setPreparingTurn(false); await evolution.refresh(); }
   };
   /** Purpose: Return compiler/runtime diagnostics to the same agent. Input: none. Output: repair turn. */
@@ -89,7 +96,7 @@ export function App() {
     try {
       const prompt = await evolution.run<string>("repairPrompt");
       await sendEvolutionPrompt(prompt, true, evolution.state?.threadId || undefined);
-    } catch (error) { setEvolutionIssue(error instanceof Error ? error.message : "无法开始修复"); }
+    } catch (error) { setEvolutionIssue(error instanceof Error ? error.message : tr("app.could_not_start_the_repair")); }
   };
   const evolutionAction = (action: string, params: Record<string, unknown> = {}) => {
     if (["releasePermission", "previewMergedRelease", "contributionBranches", "checkContribution", "mergeAssistance", "releases"].includes(action)) return evolution.inspect(action, params);
@@ -99,13 +106,13 @@ export function App() {
       return evolution.run<string>("contributionRepairPrompt", params).then(async (prompt) => {
         setEvolutionOpen(true);
         await sendEvolutionPrompt(prompt, true);
-      }).catch((error: unknown) => setEvolutionIssue(error instanceof Error ? error.message : "无法开始 PR 修复"));
+      }).catch((error: unknown) => setEvolutionIssue(error instanceof Error ? error.message : tr("app.could_not_start_the_pr_repair")));
     }
     return evolution.run(action, params).then((result) => {
       if (action === "discard" || action === "select") workspace.beginEvolutionDraft();
       return result;
     }).catch((error: unknown) => {
-      setEvolutionIssue(error instanceof Error ? error.message : "操作失败");
+      setEvolutionIssue(error instanceof Error ? error.message : tr("app.operation_failed"));
       if (["previewRelease", "publishRelease", "publishMergedRelease", "previewMergedRelease", "releaseBuilds", "publishReleasePackages", "releasePackageStatus", "releasePermission", "startRelease", "submit", "requestBranch"].includes(action)) throw error;
     });
   };
@@ -201,8 +208,8 @@ export function App() {
   const unfinishedEvolution = evolution.state?.iteration || evolution.state?.draftDirty
     || (localCandidate?.kind === "local" && !localCandidate.savedAt);
   const displayedUpdateState: UpdateState = { ...updateState,
-    installBlocked: workspace.anyRunning ? "请先等待运行中的任务结束。"
-      : unfinishedEvolution ? "请先保存或放弃本轮进化，再安装更新。" : null,
+    installBlocked: workspace.anyRunning ? tr("app.wait_for_the_running_tasks_to_finish")
+      : unfinishedEvolution ? tr("app.save_or_discard_the_current_evolution_changes_before_installing_an_update") : null,
   };
   const toastTimerRef = useRef<number | null>(null);
   // Configuration edits apply live; surface the ones that did not load or need a restart.
@@ -295,11 +302,11 @@ export function App() {
     void operation
       .then((result) => {
         if (typeof result !== "boolean" && result.phase === "error") {
-          notify(result.error || "更新操作失败", "error");
+          notify(result.error || tr("app.update_failed"), "error");
         }
       })
       .catch((error: unknown) => {
-        notify(error instanceof Error ? error.message : "更新操作失败", "error");
+        notify(error instanceof Error ? error.message : tr("app.update_failed"), "error");
       });
   };
 
@@ -325,56 +332,56 @@ export function App() {
     () => [
       {
         id: "new",
-        label: "新建任务",
-        hint: "在当前项目中创建任务",
+        label: tr("app.new_task"),
+        hint: tr("app.create_a_task_in_the_current_project"),
         icon: commandIcons.plus,
         shortcut: `${modifierKey} N`,
         run: () => void workspace.createThread(),
       },
       {
         id: "workspace",
-        label: "添加项目",
-        hint: "选择本地文件夹作为项目，任务在它的目录里运行",
+        label: tr("app.add_project"),
+        hint: tr("app.choose_a_local_folder_tasks_run_in_that_directory"),
         icon: commandIcons.code,
-        run: () => void workspace.chooseWorkspace().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法打开工作目录", "error")),
+        run: () => void workspace.chooseWorkspace().catch((error: unknown) => notify(error instanceof Error ? error.message : tr("app.could_not_open_the_working_directory"), "error")),
       },
       {
         id: "chat",
-        label: "打开 Cleo 对话",
-        hint: "日常对话",
+        label: tr("app.open_cleo_chat"),
+        hint: tr("app.everyday_conversation"),
         icon: commandIcons.chat,
         run: () => { setEvolutionOpen(false); workspace.selectSpace("chat"); },
       },
       {
         id: "code",
-        label: "打开开发任务",
-        hint: "处理开发任务",
+        label: tr("app.open_development_tasks"),
+        hint: tr("app.work_on_development_tasks"),
         icon: commandIcons.code,
         run: () => { setEvolutionOpen(false); workspace.selectSpace("productivity"); },
       },
       {
         id: "memory",
-        label: "查看记忆",
-        hint: "查看保存的记忆",
+        label: tr("app.view_memories"),
+        hint: tr("app.view_saved_memories"),
         icon: commandIcons.memory,
         run: () => { setEvolutionOpen(false); workspace.selectSpace("memory"); },
       },
       {
         id: "inspector",
-        label: inspectorOpen ? "关闭检查器" : "打开检查器",
-        hint: "查看文件变更、上下文与运行输出",
+        label: inspectorOpen ? tr("app.close_inspector") : tr("app.open_inspector"),
+        hint: tr("app.view_file_changes_context_and_execution_output"),
         icon: commandIcons.inspector,
         run: () => setInspectorOpen((open) => !open),
       },
       {
         id: "settings",
-        label: "打开设置",
-        hint: "修改外观、模型与数据选项",
+        label: tr("app.open_settings"),
+        hint: tr("app.change_appearance_models_and_data_settings"),
         icon: commandIcons.settings,
         run: () => setSettingsOpen(true),
       },
     ],
-    [inspectorOpen, workspace],
+    [inspectorOpen, workspace, language],
   );
 
   if (!workspace.snapshot) return <><DependencySetup /><LoadingScreen error={workspace.loadingError} onRetry={workspace.retryLoading} /></>;
@@ -395,17 +402,17 @@ export function App() {
     ? activeRuntime
     : { ...activeRuntime, effort: selectedRuntimeModel.defaultEffort };
   const evolutionUnavailable = !evolutionOpen ? null : !evolution.state
-    ? evolution.loadError ? "进化状态读取失败，请先重试。" : "正在读取进化状态…"
-    : !evolution.state.supported ? "当前运行方式不支持本地进化。" : null;
+    ? evolution.loadError ? tr("app.could_not_load_evolution_status_try_again") : tr("app.loading_evolution_status")
+    : !evolution.state.supported ? tr("app.local_evolution_is_unavailable_in_this_environment") : null;
   let composerBlocked = workspace.harnessSwitchStatus || evolutionUnavailable;
   if (!composerBlocked && (updateState.blocksTasks || (evolutionOpen && updateState.operationBusy))) {
-    composerBlocked = "请等待当前版本操作完成…";
+    composerBlocked = tr("app.wait_for_the_current_version_operation_to_finish");
   }
   if (!composerBlocked && evolutionOpen && (evolution.state?.phase !== "idle"
       || (!workspace.running && (preparingTurn || openingEvolutionUi || evolution.pending)))) {
-    composerBlocked = "请等待当前操作完成…";
+    composerBlocked = tr("app.wait_for_the_current_operation_to_finish");
   }
-  if (!composerBlocked && workspace.startingRun) composerBlocked = "正在提交，请稍候…";
+  if (!composerBlocked && workspace.startingRun) composerBlocked = tr("app.submitting_please_wait");
   const appClasses = [
     "app-shell",
     evolutionOpen ? "evolution-open" : "",
@@ -419,12 +426,12 @@ export function App() {
   return (
     <div ref={inspectorResize.setShell} className={appClasses} style={inspectorResize.style} data-theme={theme}>
       <TitleBar
-        projectName={evolutionOpen ? "Cleo" : workspace.activeSpace === "memory" ? "记忆" : (workspace.activeProject && projectLabel(workspace.activeProject)) || "Cleo"}
-        mode={evolutionOpen ? "进化" : workspace.activeSpace === "productivity" ? "开发" : workspace.activeSpace === "chat" ? "对话" : "记忆"}
+        projectName={evolutionOpen ? "Cleo" : workspace.activeSpace === "memory" ? tr("app.memory") : (workspace.activeProject && projectLabel(workspace.activeProject)) || "Cleo"}
+        mode={evolutionOpen ? tr("app.evolution") : workspace.activeSpace === "productivity" ? tr("app.development") : workspace.activeSpace === "chat" ? tr("app.chat") : tr("app.memory")}
       />
       {workspace.loadingError && <div className="workspace-error" role="alert">
-        <span>{workspace.loadingError}</span><button onClick={workspace.retryLoading}>重试</button>
-        <button onClick={workspace.clearLoadingError}>关闭</button>
+        <span>{workspace.loadingError}</span><button onClick={workspace.retryLoading}>{tr("app.retry")}</button>
+        <button onClick={workspace.clearLoadingError}>{tr("app.close")}</button>
       </div>}
       <DependencySetup />
       <WorkspaceRail
@@ -451,7 +458,7 @@ export function App() {
         onDeleteThread={thread => { setDeleteError(null); setThreadPendingDeletion(thread); }}
         onCreateThread={() => void workspace.createThread()}
         recoverableChatBackups={workspace.snapshot.backend?.recoverableChatBackups ?? 0}
-        onRestoreChatHistory={() => void workspace.restoreChatHistory().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法恢复旧对话", "error"))}
+        onRestoreChatHistory={() => void workspace.restoreChatHistory().catch((error: unknown) => notify(error instanceof Error ? error.message : tr("app.could_not_restore_previous_chats"), "error"))}
         memoryOverview={workspace.snapshot.memoryOverview}
         memoryView={memoryView}
         onMemoryViewChange={setMemoryView}
@@ -477,7 +484,7 @@ export function App() {
               if (evolution.loadError || !retryEvolution.current) void evolution.refresh().catch(() => {});
               else retryEvolution.current();
             }} onRepair={() => { void repairEvolution(); }} /> : undefined}
-          onImprove={!evolutionOpen && conversationThread && window.cleoDesktop ? () => { setImprovementDraft("请改进 Cleo："); setEvolutionOpen(true); } : undefined}
+          onImprove={!evolutionOpen && conversationThread && window.cleoDesktop ? () => { setImprovementDraft(tr("app.please_improve_cleo")); setEvolutionOpen(true); } : undefined}
           prompt={workspace.prompt}
           skills={workspace.skills}
           onPromptChange={workspace.setPrompt}
@@ -491,7 +498,7 @@ export function App() {
           projects={evolutionOpen ? [] : workspace.snapshot.projects.filter((project) => project.id !== "productivity:cleo-evolution")}
           activeProjectId={workspace.activeProjectId}
           onSelectProject={workspace.retargetDraft}
-          onChooseWorkspace={() => void workspace.chooseWorkspace().catch((error: unknown) => notify(error instanceof Error ? error.message : "无法打开工作目录", "error"))}
+          onChooseWorkspace={() => void workspace.chooseWorkspace().catch((error: unknown) => notify(error instanceof Error ? error.message : tr("app.could_not_open_the_working_directory"), "error"))}
           choosingWorkspace={workspace.choosingWorkspace}
           space={!evolutionOpen && workspace.activeSpace === "chat" ? "chat" : "productivity"}
           runtime={activeRuntime}
@@ -524,25 +531,25 @@ export function App() {
           onCancel={workspace.cancelRun}
           onUndo={() => {
             if (!workspace.activeProject?.branch) {
-              notify("当前工作目录不是 Git 仓库，无法回退。", "error");
+              notify(tr("app.the_working_directory_is_not_a_git_repository_so_changes_cannot_be_reverted"), "error");
               return;
             }
-            if (!window.confirm("将回退最近一次回答产生的文件改动，并保留回答前已有的改动。是否继续？")) return;
+            if (!window.confirm(tr("app.revert_the_file_changes_made_by_the_latest_reply_while_preserving_changes_that_existe"))) return;
             setUndoingChanges(true);
             void workspace.undoChanges()
               .then((result) => {
                 notify(result.restoredFiles > 0
-                  ? `已回退本次回答对 ${result.restoredFiles} 个文件的改动`
-                  : "最近一次回答没有产生文件改动");
+                  ? tr("app.reverted_this_reply_s_changes_to_value_files", { p0: result.restoredFiles })
+                  : tr("app.the_latest_reply_made_no_file_changes"));
               })
               .catch((error: unknown) => {
-                notify(error instanceof Error ? error.message : "无法回退 Git 改动", "error");
+                notify(error instanceof Error ? error.message : tr("app.could_not_revert_git_changes"), "error");
               })
               .finally(() => setUndoingChanges(false));
           }}
           onSelectNonProductivityProfile={(profileId) => {
             void workspace.selectNonProductivityProfile(profileId).catch(
-              (error: unknown) => notify(error instanceof Error ? error.message : "无法切换模型", "error"),
+              (error: unknown) => notify(error instanceof Error ? error.message : tr("app.could_not_switch_models"), "error"),
             );
           }}
           onLoadProductivityModels={(provider, refresh) => workspace.loadProductivityModels(
@@ -582,7 +589,7 @@ export function App() {
               }
               await workspace.openLocalPath(href, workspacePath);
             })().catch((error: unknown) => {
-              notify(error instanceof Error ? error.message : "无法打开本地文件", "error");
+              notify(error instanceof Error ? error.message : tr("app.could_not_open_the_local_file"), "error");
             });
           }}
           onThreadCommand={(command) => void workspace.sendPrompt(command)}
@@ -612,12 +619,14 @@ export function App() {
           onRevealPath={(value) => void workspace.revealPath(value)}
           fileReveal={fileReveal}
           onOpenExternalPath={(path) => void workspace.openLocalPath(path, conversationProject?.path ?? "").catch((error: unknown) => {
-            notify(error instanceof Error ? error.message : "无法打开本地文件", "error");
+            notify(error instanceof Error ? error.message : tr("app.could_not_open_the_local_file"), "error");
           })}
         />
       ) : null}
       <CommandPalette open={commandOpen} actions={commandActions} onClose={() => setCommandOpen(false)} />
       <SettingsModal
+        language={language}
+        onLanguageChange={changeLanguage}
         open={settingsOpen}
         theme={theme}
         motionEnabled={motionEnabled}
@@ -647,15 +656,15 @@ export function App() {
         onInstallUpdate={() => runUpdateAction("install")}
         onStorageInventory={window.cleoDesktop?.storageInventory ? () => window.cleoDesktop!.storageInventory!() : undefined}
         onReclaimStorage={window.cleoDesktop?.reclaimStorage ? () => window.cleoDesktop!.reclaimStorage!() : undefined}
-        storageBlocked={workspace.anyRunning ? "请先等待运行中的任务结束，再清理存储。" : null}
+        storageBlocked={workspace.anyRunning ? tr("app.wait_for_running_tasks_to_finish_before_reclaiming_storage") : null}
         onRevealPath={(path) => void workspace.revealPath(path)}
         onCopyConfigTemplate={(kind) => {
-          void workspace.copyConfigTemplate(kind).then(() => notify("配置模板已复制"));
+          void workspace.copyConfigTemplate(kind).then(() => notify(tr("app.configuration_template_copied")));
         }}
         onResetWorkspace={() => {
           void workspace.resetWorkspace()
-            .then(() => notify("工作区已重置到 main"))
-            .catch((error) => notify(error instanceof Error ? error.message : "重置失败，请重试", "error"));
+            .then(() => notify(tr("app.workspace_reset_to_main")))
+            .catch((error) => notify(error instanceof Error ? error.message : tr("app.reset_failed_try_again"), "error"));
         }}
         onClose={() => setSettingsOpen(false)}
       />
@@ -672,10 +681,10 @@ export function App() {
           void workspace.deleteThread(threadPendingDeletion.id)
             .then(() => {
               setThreadPendingDeletion(null);
-              notify("任务已删除");
+              notify(tr("app.task_deleted"));
             })
             .catch((error: unknown) => {
-              setDeleteError(error instanceof Error ? error.message : "无法删除任务");
+              setDeleteError(error instanceof Error ? error.message : tr("app.could_not_delete_the_task"));
             })
             .finally(() => setDeletingThread(false));
         }}
@@ -692,10 +701,10 @@ export function App() {
           void workspace.removeProject(projectPendingRemoval.id)
             .then(() => {
               setProjectPendingRemoval(null);
-              notify("项目已从侧边栏移除");
+              notify(tr("app.project_removed_from_the_sidebar"));
             })
             .catch((error: unknown) => {
-              setRemoveError(error instanceof Error ? error.message : "无法移除项目");
+              setRemoveError(error instanceof Error ? error.message : tr("app.could_not_remove_the_project"));
             })
             .finally(() => setRemovingProject(false));
         }}

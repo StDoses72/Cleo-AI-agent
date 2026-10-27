@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from cleo.i18n import tr
 from cleo.memory.compaction import _redact_text
 from cleo.memory.paths import session_directory
 from cleo.sessions.rewind import active_events
@@ -237,7 +238,9 @@ class ConversationContext:
 
                     fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             except OSError as exc:
-                raise ValueError("此会话正由另一运行时处理，请稍后重试。") from exc
+                raise ValueError(tr(
+                    "context.another_runtime_is_handling_this_conversation_tr",
+                )) from exc
             try:
                 yield
             finally:
@@ -255,7 +258,7 @@ class ConversationContext:
         if len(events) == last:
             return
         if last > len(events) or any(e.get("seq") != n for n, e in enumerate(events, 1)):
-            raise ValueError("会话历史不完整，不能恢复交接。")
+            raise ValueError(tr("context.conversation_history_is_incomplete_handoff_canno"))
         commits = [
             e
             for e in events[last:]
@@ -265,7 +268,7 @@ class ConversationContext:
             and (e.get("data", {}).get("payload") or {}).get("context_version") == VERSION
         ]
         if not commits:
-            raise ValueError("会话历史与清单不一致；未自动覆盖，请先恢复。")
+            raise ValueError(tr("context.conversation_history_does_not_match_the_manifest"))
         commit = commits[-1]
         updates = commit["data"]["payload"].get("manifest_updates")
         if not isinstance(updates, dict) or set(updates) - {
@@ -278,7 +281,7 @@ class ConversationContext:
             raise ValueError("Invalid handoff recovery record")
         # Do not guess the meaning of later writes from a different writer.
         if any(e["type"] != "session_completed" for e in events[commit["seq"] :]):
-            raise ValueError("交接提交后有未确认写入；未自动覆盖。")
+            raise ValueError(tr("context.unconfirmed_writes_occurred_after_handoff_submis"))
         self.store.update_manifest(session_id, **updates, last_event_seq=len(events))
 
     def prepare(

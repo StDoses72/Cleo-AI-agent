@@ -1,3 +1,4 @@
+import { t as tr } from "../../electron/i18n.mjs";
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import {
   Braces,
@@ -63,13 +64,13 @@ export function Inspector({
       {resizeHandle}
       <header className="inspector-header">
         <div className="inspector-tabs" role="tablist">
-          <button className={activeTab === "changes" ? "active" : ""} type="button" onClick={() => onTabChange("changes")}>变更 {thread?.changes.length ? <small>{thread.changes.length}</small> : null}</button>
-          <button className={activeTab === "context" ? "active" : ""} type="button" onClick={() => onTabChange("context")}>上下文</button>
-          <button className={activeTab === "run" ? "active" : ""} type="button" onClick={() => onTabChange("run")}>运行</button>
-          <button className={activeTab === "files" ? "active" : ""} type="button" onClick={() => onTabChange("files")}>文件</button>
-          <button className={activeTab === "computer" ? "active" : ""} type="button" onClick={() => onTabChange("computer")}>电脑</button>
+          <button className={activeTab === "changes" ? "active" : ""} type="button" onClick={() => onTabChange("changes")}>{tr("inspector.changes")}{thread?.changes.length ? <small>{thread.changes.length}</small> : null}</button>
+          <button className={activeTab === "context" ? "active" : ""} type="button" onClick={() => onTabChange("context")}>{tr("inspector.context")}</button>
+          <button className={activeTab === "run" ? "active" : ""} type="button" onClick={() => onTabChange("run")}>{tr("inspector.run")}</button>
+          <button className={activeTab === "files" ? "active" : ""} type="button" onClick={() => onTabChange("files")}>{tr("approvalprompt.file")}</button>
+          <button className={activeTab === "computer" ? "active" : ""} type="button" onClick={() => onTabChange("computer")}>{tr("inspector.computer")}</button>
         </div>
-        <button className="icon-button" type="button" aria-label="关闭检查器" onClick={onClose}><X size={16} /></button>
+        <button className="icon-button" type="button" aria-label={tr("app.close_inspector")} onClick={onClose}><X size={16} /></button>
       </header>
       {activeTab === "computer" ? (
         <ComputerPanel thread={thread} running={running} onStop={onStop} />
@@ -108,7 +109,7 @@ function ChangesPanel({ thread, onNotify, onCopyText }: { thread: Thread | null;
     return (
       <div className="inspector-empty">
         <GitBranch size={22} />
-        <strong>没有文件变更</strong>
+        <strong>{tr("inspector.no_file_changes")}</strong>
       </div>
     );
   }
@@ -118,28 +119,27 @@ function ChangesPanel({ thread, onNotify, onCopyText }: { thread: Thread | null;
       <div className="change-history-picker">
         <Clock3 size={14} />
         <select
-          aria-label="选择变更快照"
+          aria-label={tr("inspector.choose_change_snapshot")}
           data-testid="change-history-picker"
           value={selectedSetId}
           onChange={(event) => setSelectedSetId(event.target.value)}
         >
-          <option value="workspace">当前工作区 · {thread?.changes.length ?? 0} 个文件</option>
+          <option value="workspace">{tr("inspector.current_workspace")}{thread?.changes.length ?? 0} {tr("inspector.files")}</option>
           {history.map((changeSet) => (
             <option value={changeSet.id} key={changeSet.id}>
-              {changeSet.title} · {changeSet.createdAt} · {changeSet.changes.length} 个文件
-            </option>
+              {changeSet.title} · {changeSet.createdAt} · {changeSet.changes.length} {tr("inspector.files_2")}</option>
           ))}
         </select>
       </div>
       {!changes.length ? (
         <div className="inspector-empty change-snapshot-empty">
           <GitBranch size={22} />
-          <strong>当前工作区没有变更</strong>
+          <strong>{tr("inspector.no_changes_in_the_current_workspace")}</strong>
         </div>
       ) : (
         <>
           <div className="change-summary">
-            <span>{changes.length} 个文件</span>
+            <span>{changes.length} {tr("inspector.files")}</span>
             <div><strong>+{changes.reduce((total, file) => total + file.additions, 0)}</strong><em>-{changes.reduce((total, file) => total + file.deletions, 0)}</em></div>
           </div>
           <div className="changed-files">
@@ -155,12 +155,12 @@ function ChangesPanel({ thread, onNotify, onCopyText }: { thread: Thread | null;
             <div className="diff-viewer">
               <header>
                 <div><Braces size={14} /><span title={selected.path}>{selected.path.split("/").at(-1)}</span></div>
-                <button type="button" title="复制路径" onClick={() => {
+                <button type="button" title={tr("filespanel.copy_path")} onClick={() => {
                   onCopyText(selected.path);
-                  onNotify("文件路径已复制");
+                  onNotify(tr("filespanel.file_path_copied"));
                 }}><Copy size={14} /></button>
               </header>
-              <pre tabIndex={0} role="region" aria-label="代码差异">
+              <pre tabIndex={0} role="region" aria-label={tr("inspector.code_diff")}>
                 {selected.diff.split("\n").map((line, index) => (
                   <span className={line.startsWith("+") ? "added" : line.startsWith("-") ? "deleted" : line.startsWith("@@") ? "hunk" : ""} key={`${index}-${line}`}>
                     <i>{index + 1}</i><code>{line || " "}</code>
@@ -194,26 +194,26 @@ function ContextPanel({
   return (
     <div className="context-panel">
       <section className="inspector-section">
-        <div className="section-kicker"><Cpu size={14} /><span>运行参数</span></div>
+        <div className="section-kicker"><Cpu size={14} /><span>{tr("inspector.run_settings")}</span></div>
         <dl className="property-list">
-          <div><dt>服务</dt><dd>{runtime.provider}</dd></div>
-          <div><dt>模型</dt><dd>{runtime.model}</dd></div>
-          <div><dt>思考深度</dt><dd>{runtime.effort ? effortLabels[runtime.effort] ?? runtime.effort : "由模型决定"}</dd></div>
-          <div><dt>访问</dt><dd title={runtime.access}>{accessLabel(runtime.access)}</dd></div>
-          <div><dt>审批</dt><dd title={runtime.approval}>{approvalLabel(runtime.approval)}</dd></div>
+          <div><dt>{tr("conversation.provider")}</dt><dd>{runtime.provider}</dd></div>
+          <div><dt>{tr("inspector.model")}</dt><dd>{runtime.model}</dd></div>
+          <div><dt>{tr("conversation.reasoning_effort")}</dt><dd>{runtime.effort ? effortLabels[runtime.effort] ?? runtime.effort : tr("conversation.determined_by_the_model")}</dd></div>
+          <div><dt>{tr("inspector.access")}</dt><dd title={runtime.access}>{accessLabel(runtime.access)}</dd></div>
+          <div><dt>{tr("inspector.approval")}</dt><dd title={runtime.approval}>{approvalLabel(runtime.approval)}</dd></div>
         </dl>
       </section>
       <section className="inspector-section">
-        <div className="section-kicker"><Clock3 size={14} /><span>上下文窗口</span><small>{ratio === null ? "—" : `${ratio}%`}</small></div>
+        <div className="section-kicker"><Clock3 size={14} /><span>{tr("inspector.context_window")}</span><small>{ratio === null ? "—" : `${ratio}%`}</small></div>
         {ratio !== null && <div className="usage-track"><span style={{ width: `${Math.min(100, ratio)}%` }} /></div>}
-        <div className="usage-copy"><span>{thread?.usage.used == null || thread.usage.limit <= 0 ? "上下文用量未知" : `${(thread.usage.used / 1000).toFixed(1)}k / ${(thread.usage.limit / 1000).toFixed(0)}k`}</span><small>输入 {thread?.usage.input ?? "—"} · 输出 {thread?.usage.output ?? "—"}</small></div>
+        <div className="usage-copy"><span>{thread?.usage.used == null || thread.usage.limit <= 0 ? tr("inspector.context_usage_unknown") : `${(thread.usage.used / 1000).toFixed(1)}k / ${(thread.usage.limit / 1000).toFixed(0)}k`}</span><small>{tr("inspector.input")}{thread?.usage.input ?? "—"} {tr("inspector.output")}{thread?.usage.output ?? "—"}</small></div>
       </section>
       <section className="inspector-section">
-        <div className="section-kicker"><ShieldCheck size={14} /><span>工作区</span></div>
-        <button className="workspace-context-row" type="button" onClick={() => project?.path && onRevealPath(project.path)}><span className={`project-glyph compact ${isGeneralProject(project) ? "plain" : ""}`} style={{ "--project-accent": project?.accent } as CSSProperties}>{isGeneralProject(project) ? <FolderMinus size={12} /> : projectLabel(project).slice(0, 1)}</span><div><strong>{projectLabel(project) || "不关联项目"}</strong><small>{projectPathLabel(project) || "独立任务，没有项目目录"}</small></div></button>
+        <div className="section-kicker"><ShieldCheck size={14} /><span>{tr("inspector.workspace")}</span></div>
+        <button className="workspace-context-row" type="button" onClick={() => project?.path && onRevealPath(project.path)}><span className={`project-glyph compact ${isGeneralProject(project) ? "plain" : ""}`} style={{ "--project-accent": project?.accent } as CSSProperties}>{isGeneralProject(project) ? <FolderMinus size={12} /> : projectLabel(project).slice(0, 1)}</span><div><strong>{projectLabel(project) || tr("inspector.no_project")}</strong><small>{projectPathLabel(project) || tr("inspector.standalone_task_without_a_project_directory")}</small></div></button>
       </section>
       <section className="inspector-section memory-context">
-        <div className="section-kicker"><CircleCheck size={14} /><span>记忆预览</span><small>{relevantMemories.length}</small></div>
+        <div className="section-kicker"><CircleCheck size={14} /><span>{tr("inspector.memory_preview")}</span><small>{relevantMemories.length}</small></div>
         {relevantMemories.map((memory) => (
           <details key={memory.id}><summary>{memory.title}</summary><p>{memory.content}</p></details>
         ))}
@@ -230,14 +230,14 @@ function RunPanel({ thread, project }: { thread: Thread | null; project: Project
     <div className="run-panel">
       <section className="run-status">
         <span className={running ? "running" : hasIssue ? "issue" : completed ? "complete" : "idle"}>{running ? <Circle size={12} /> : hasIssue ? <CircleAlert size={12} /> : completed ? <Check size={12} /> : <Clock3 size={12} />}</span>
-        <div><strong>{running ? "Agent 正在执行" : hasIssue ? "上次运行需要查看" : completed ? "上次运行已完成" : "尚未运行"}</strong>{(running || hasIssue || completed) && <small>{thread?.updatedAt}</small>}</div>
+        <div><strong>{running ? tr("inspector.agent_is_running") : hasIssue ? tr("inspector.the_last_run_needs_attention") : completed ? tr("inspector.the_last_run_completed") : tr("inspector.not_run_yet")}</strong>{(running || hasIssue || completed) && <small>{thread?.updatedAt}</small>}</div>
       </section>
       <Timing key={thread?.currentTiming?.id ?? thread?.id} summary={thread?.currentTiming} error={thread?.timingError} />
       <div className="terminal-head"><Terminal size={14} /><span>cleo · {project?.name ?? "workspace"}</span></div>
-      <pre className="terminal-output" tabIndex={0} role="region" aria-label="终端输出">{thread?.terminal?.length ? thread.terminal.join("") : <span className="muted">暂无运行输出</span>}{running && <span className="cursor">▋</span>}</pre>
+      <pre className="terminal-output" tabIndex={0} role="region" aria-label={tr("inspector.terminal_output")}>{thread?.terminal?.length ? thread.terminal.join("") : <span className="muted">{tr("inspector.no_execution_output_yet")}</span>}{running && <span className="cursor">▋</span>}</pre>
       <div className="run-events">
-        {thread?.items.filter((item) => item.type === "tool").slice(-8).map((item) => item.type === "tool" ? <div className={item.status === "error" ? "issue" : ""} key={item.id}>{item.status === "error" ? <CircleAlert size={14} /> : item.status === "running" ? <Circle size={14} /> : <CircleCheck size={14} />}<span>{item.name}</span><time>{item.status === "running" ? "运行中" : item.status === "error" ? "失败" : "完成"}</time></div> : null)}
-        {!thread?.items.some((item) => item.type === "tool") ? <div><Clock3 size={14} /><span>尚无工具运行</span></div> : null}
+        {thread?.items.filter((item) => item.type === "tool").slice(-8).map((item) => item.type === "tool" ? <div className={item.status === "error" ? "issue" : ""} key={item.id}>{item.status === "error" ? <CircleAlert size={14} /> : item.status === "running" ? <Circle size={14} /> : <CircleCheck size={14} />}<span>{item.name}</span><time>{item.status === "running" ? tr("conversation.running") : item.status === "error" ? tr("conversation.failed") : tr("conversation.done")}</time></div> : null)}
+        {!thread?.items.some((item) => item.type === "tool") ? <div><Clock3 size={14} /><span>{tr("inspector.no_tools_have_run_yet")}</span></div> : null}
       </div>
     </div>
   );

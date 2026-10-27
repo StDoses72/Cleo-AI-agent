@@ -1,3 +1,4 @@
+import { t as tr } from "./i18n.mjs";
 import { versionForReleaseTag } from "./release-channel.mjs";
 
 /** Coordinate user-requested program changes across the update and evolution entry points. */
@@ -19,8 +20,8 @@ export class ProgramUpdates {
   get blocksTasks() { return (this.active && this.blocking) || this.restarting || this.closed; }
 
   async run(action, { allowRunning = false } = {}) {
-    if (this.busy) throw new Error("另一项版本操作正在进行，请稍候。");
-    if (!allowRunning && this.hasRunningTask()) throw new Error("请先等待当前任务完成或停止任务。");
+    if (this.busy) throw new Error(tr("program_updates.another_version_operation_is_in_progress_please_wait"));
+    if (!allowRunning && this.hasRunningTask()) throw new Error(tr("main.wait_for_the_current_task_to_finish_or_stop_it"));
     this.active = true;
     this.blocking = !allowRunning;
     this.updater.setState({ operationBusy: true, blocksTasks: this.blocksTasks });
@@ -45,14 +46,14 @@ export class ProgramUpdates {
     if (this.installation) return this.installation;
     this.installation = this.run(async () => {
       const state = this.updater.getState();
-      if (state.phase !== "ready" || !this.updater.manifest) throw new Error("请先下载并校验更新。");
+      if (state.phase !== "ready" || !this.updater.manifest) throw new Error(tr("program_updates.download_and_verify_the_update_first"));
       const version = this.updater.manifest.version;
       this.updater.setState({ phase: "installing", installStage: "preparing", error: null });
       try {
         await this.evolution.assertOfficialSwitchAllowed();
         const releases = await this.evolution.releases();
         const release = releases.find(item => versionForReleaseTag(item.tag) === version);
-        if (!release) throw new Error("找不到已下载的发布版本，请重新检查更新。");
+        if (!release) throw new Error(tr("program_updates.the_downloaded_release_was_not_found_check_for_updates_again"));
         const id = await this.evolution.downloadRelease(release.tag, {
           onProgress: (downloadedBytes, totalBytes) => this.updater.setState({ downloadedBytes, totalBytes }),
         });

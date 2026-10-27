@@ -22,6 +22,7 @@ from fastmcp.client.transports import StdioTransport
 from pydantic import BaseModel, ConfigDict, Field
 
 from cleo.computer import bridge
+from cleo.i18n import tr
 
 
 class ComputerSettings(BaseModel):
@@ -53,7 +54,10 @@ def read_settings(path: Path | None = None) -> ComputerSettings:
             raise ValueError("unsupported schema")
         return ComputerSettings.model_validate(raw)
     except (ValueError, OSError) as exc:
-        raise ValueError(f"电脑操作配置无法读取，已保留原文件：{path}") from exc
+        raise ValueError(tr(
+            "computer.could_not_read_computer_control_configuration_th",
+            p0=path,
+        )) from exc
 
 
 def server_configuration(path: Path | None, client_key: str | None = None) -> dict:
@@ -127,7 +131,7 @@ async def connection(session: str, path: Path | None = None) -> ComputerConnecti
     path = path or config_path()
     settings = read_settings(path)
     if sys.platform != "win32":
-        raise ValueError("自定义电脑工具仅支持 Windows；当前平台可以继续使用普通聊天。")
+        raise ValueError(tr("computer.custom_computer_tools_support_windows_only_ordin"))
     sessions = _connections.setdefault(asyncio.get_running_loop(), {})
     key = (str(path.resolve()), session)
     existing = sessions.get(key)
@@ -169,7 +173,7 @@ async def _custom(
             },
             {
                 "type": "text",
-                "text": "当前使用用户配置的自定义电脑工具连接；先查看工具返回的环境再操作。",
+                "text": tr("computer.using_the_user_s_configured_custom_computer_tool"),
             },
         ]
     blocks = []
@@ -179,7 +183,9 @@ async def _custom(
         elif block.type == "image":
             blocks.append({"type": "image", "base64": block.data, "mime_type": block.mime_type})
     if result.is_error:
-        blocks.insert(0, {"type": "text", "text": "自定义电脑工具操作失败，未确认完成。"})
+        blocks.insert(0, {"type": "text", "text": tr(
+            "computer.the_custom_computer_tool_operation_failed_comple",
+        )})
     return blocks
 
 
@@ -213,4 +219,7 @@ async def invoke(
         )
         return await bridge.request(payload, bridge=bridge_file)
     except Exception as exc:  # noqa: BLE001 - the model needs the reason, never a false success
-        return [{"type": "text", "text": f"电脑操作未完成：{exc or '连接超时'}"}]
+        return [{"type": "text", "text": tr(
+            "computer.computer_operation_incomplete_value",
+            p0=exc or tr("computer.connection_timed_out"),
+        )}]

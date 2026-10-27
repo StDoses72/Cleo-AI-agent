@@ -1,3 +1,4 @@
+import { t as tr, getLanguage } from "../i18n.mjs";
 /** Visible local-computer status and an emergency stop that does not depend on the AI.
  *
  * While the AI may drive the real mouse and keyboard, a small always-on-top, non-focusable bar
@@ -54,7 +55,7 @@ export class HostControls {
       if (!this.register()) {
         this.shortcut = previous;
         this.register();
-        throw new Error(`快捷键 ${accelerator} 已被其他程序占用，已保留原设置。`);
+        throw new Error(tr("host_ui.shortcut_value_is_used_by_another_application_the_previous_setting_was_preserved", { p0: accelerator }));
       }
     }
     writePreferences(this.preferencesPath, { stopShortcut: accelerator });
@@ -68,7 +69,7 @@ export class HostControls {
     let ok = false;
     try { ok = globalShortcut.register(this.shortcut, () => { void this.broker.stop({ source: "shortcut" }); }); } catch { ok = false; }
     this.registered = ok ? this.shortcut : null;
-    this.shortcutError = ok ? "" : `紧急停止快捷键 ${this.shortcut} 注册失败（可能被其他程序占用），请在电脑面板中更换，或使用状态条上的停止按钮。`;
+    this.shortcutError = ok ? "" : tr("host_ui.could_not_register_emergency_stop_shortcut_value_another_application_may_be_using_it_", { p0: this.shortcut });
     return ok;
   }
 
@@ -82,7 +83,7 @@ export class HostControls {
     if (this.window && !this.window.isDestroyed()) return this.window;
     const { BrowserWindow, screen } = this.electron;
     const area = screen.getPrimaryDisplay().workArea;
-    const width = 520;
+    const width = Math.min(760, area.width - 12);
     this.window = new BrowserWindow({
       width, height: 46, x: Math.round(area.x + (area.width - width) / 2), y: area.y + 6,
       frame: false, transparent: true, resizable: false, movable: false, minimizable: false, maximizable: false,
@@ -104,8 +105,14 @@ export class HostControls {
   pushStatus() {
     if (!this.window || this.window.isDestroyed()) return;
     const state = this.broker.state();
+    const stopping = state.stopping || hostStopUnconfirmed(state);
     this.window.webContents.send("cleo:computer:status", {
-      control: state.control.desktop, stopping: state.stopping || hostStopUnconfirmed(state), shortcut: this.registered ? this.shortcut : "",
+      control: state.control.desktop, stopping, shortcut: this.registered ? this.shortcut : "",
+      language: getLanguage(),
+      label: stopping ? tr("overlay_preload.stopping") : state.control.desktop === "user"
+        ? tr("computerpanel.you_are_in_control_ai_paused") : tr("overlay_preload.cleo_is_controlling_the_local_mouse_and_keyboard"),
+      shortcutLabel: this.registered ? tr("overlay_preload.value_emergency_stop", { p0: this.shortcut }) : tr("overlay_preload.shortcut_unavailable"),
+      buttons: { "takeover-desktop": tr("computerpanel.take_over"), "handback-desktop": tr("computerpanel.return_control_to_ai"), stop: tr("computerpanel.stop") },
     });
   }
 

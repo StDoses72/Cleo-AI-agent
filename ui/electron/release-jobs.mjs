@@ -1,3 +1,4 @@
+import { t as tr } from "./i18n.mjs";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -19,7 +20,7 @@ export class ReleaseJobs {
   async status() {
     const job = await readJson(this.path);
     if (job && (job.schema !== 1 || typeof job.id !== "string" || typeof job.phase !== "string"))
-      throw new Error("发布任务记录无法读取，已保留原文件。");
+      throw new Error(tr("release_jobs.the_publishing_job_record_could_not_be_read_the_original_file_was_preserved"));
     return job;
   }
 
@@ -30,18 +31,18 @@ export class ReleaseJobs {
   }
 
   async start(params) {
-    if (this.closing || this.starting) throw new Error("正在准备发布，请稍候。");
+    if (this.closing || this.starting) throw new Error(tr("release_jobs.preparing_publication_please_wait"));
     this.starting = true;
     try {
       const existing = await this.status();
-      if (existing?.phase === "failed") throw new Error("上一发布任务尚未完成，请先继续或停止该任务，再创建新的发布。");
+      if (existing?.phase === "failed") throw new Error(tr("release_jobs.the_previous_publishing_job_is_incomplete_continue_or_stop_it_before_creating_a_new_o"));
       if (releaseRunning(existing)) {
-        if (existing.tag !== String(params.tag).trim().replace(/^v?/, "v") || existing.url !== params.url) throw new Error("已有发布任务正在进行。");
+        if (existing.tag !== String(params.tag).trim().replace(/^v?/, "v") || existing.url !== params.url) throw new Error(tr("release_jobs.a_publishing_job_is_already_in_progress"));
         this.launch(existing); return existing;
       }
       const selection = await this.driver.authorize(params);
       const job = { schema: 1, id: randomUUID(), ...selection, phase: "preparing", attempt: 0,
-        message: "正在准备发布源码", createdAt: new Date().toISOString() };
+        message: tr("release_jobs.preparing_release_source"), createdAt: new Date().toISOString() };
       await this.save(job, {});
       this.launch(job);
       return job;
@@ -64,12 +65,12 @@ export class ReleaseJobs {
     this.abort = new AbortController();
     this.pending = this.drive(job, this.abort.signal).catch(async error => {
       if (this.closing) {
-        await this.save(job, { message: "发布已暂停，下次启动继续" });
+        await this.save(job, { message: tr("release_jobs.publishing_paused_resumes_on_the_next_launch") });
       } else if (this.abort.signal.aborted) {
-        await this.save(job, { phase: "cancelled", message: "发布已停止，已生成的产物保留" });
+        await this.save(job, { phase: "cancelled", message: tr("release_jobs.publishing_stopped_generated_artifacts_preserved") });
       } else {
         await this.save(job, { resumePhase: job.phase, phase: "failed", error: String(error.message).slice(-4000),
-          message: "发布未完成，可查看原因后继续" });
+          message: tr("release_jobs.publishing_incomplete_review_the_reason_and_continue") });
       }
     }).finally(() => { this.pending = null; });
   }
@@ -80,7 +81,7 @@ export class ReleaseJobs {
       const checkpoint = values => this.save(job, values);
       if (job.phase === "preparing") {
         await checkpoint(await this.driver.prepare(job, signal, checkpoint));
-        await checkpoint({ phase: "building", message: "正在构建 Windows、macOS 和 Linux 安装包" });
+        await checkpoint({ phase: "building", message: tr("release_jobs.building_windows_macos_and_linux_installers") });
       } else if (job.phase === "building" || job.phase === "publishing") {
         const publishing = job.phase === "publishing";
         const result = await this.driver.poll(job, publishing, signal, checkpoint);
@@ -90,21 +91,21 @@ export class ReleaseJobs {
         } else if (result.status === "success") {
           if (publishing) {
             const verified = await this.driver.verify(job, signal);
-            await checkpoint({ ...verified, phase: "completed", message: `${job.tag} 已发布，安装包已齐全` });
+            await checkpoint({ ...verified, phase: "completed", message: tr("release_jobs.value_published_with_all_installation_packages", { p0: job.tag }) });
           } else {
-            await checkpoint({ phase: "publishing", retryRun: null, message: "正在校验并发布安装包" });
+            await checkpoint({ phase: "publishing", retryRun: null, message: tr("release_jobs.verifying_and_publishing_installation_packages") });
           }
         } else {
-          if (job.attempt >= 3) throw new Error("自动修复已尝试三次仍未通过。请查看构建日志；不会公开不完整的版本。");
+          if (job.attempt >= 3) throw new Error(tr("release_jobs.automatic_repair_failed_after_three_attempts_review_the_build_logs_an_incomplete_vers"));
           await checkpoint({ phase: "repairing", retryRun: null, repairPhase: publishing ? "publishing" : "building",
             diagnostics: result.diagnostics, attempt: job.attempt + 1,
-            message: `正在调用 ${job.runtime?.provider || "harness"} 修复发布问题（${job.attempt + 1}/3）` });
+            message: tr("release_jobs.calling_value_to_repair_publishing_value_3", { p0: job.runtime?.provider || "harness", p1: job.attempt + 1 }) });
         }
       } else if (job.phase === "repairing") {
         const repair = await this.driver.repair(job, signal, checkpoint);
         await checkpoint({ ...repair, repairResult: null, diagnostics: null, phase: repair.changed ? "building" : job.repairPhase,
-          message: "修复检查已完成，正在重新验证" });
-      } else throw new Error(`无法恢复发布阶段：${job.phase}`);
+          message: tr("release_jobs.repair_checks_completed_verifying_again") });
+      } else throw new Error(tr("release_jobs.could_not_restore_publishing_stage_value", { p0: job.phase }));
     }
   }
 
@@ -117,10 +118,10 @@ export class ReleaseJobs {
     try { await this.driver.cancel?.(latest); }
     catch (error) {
       await this.save(latest, { phase: "failed", resumePhase: job.phase,
-        message: "本机发布已停止，远端停止状态待核对", error: error.message });
+        message: tr("release_jobs.local_publishing_stopped_remote_stop_status_needs_confirmation"), error: error.message });
       throw error;
     }
-    if (latest.phase !== "completed") await this.save(latest, { phase: "cancelled", message: "发布已停止，已生成的产物保留" });
+    if (latest.phase !== "completed") await this.save(latest, { phase: "cancelled", message: tr("release_jobs.publishing_stopped_generated_artifacts_preserved") });
     return this.status();
   }
 

@@ -1,3 +1,4 @@
+import { t as tr } from "../../../electron/i18n.mjs";
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, ExternalLink, Eye, KeyRound, UserRound } from "lucide-react";
 import { cleoClient } from "../../services/cleoClient";
@@ -5,7 +6,7 @@ import type { ApplyModelSettings, ModelConnectionInput, ModelConnectionProbe, Mo
 import { accounts, apiProviders, isAccount, modelLabel, profileLabel, profileModels } from "./catalog";
 import { ConnectionScope } from "./ConnectionScope";
 
-const message = (error: unknown) => error instanceof Error ? error.message : "连接失败，请重试。";
+const message = (error: unknown) => error instanceof Error ? error.message : tr("connectionwizard.connection_failed_try_again");
 
 export function ConnectionWizard({ existing, settings, busy, onApply, onDone, active = true }: {
   existing: ModelProfileSummary | null; settings: ModelSettings; busy: boolean;
@@ -109,7 +110,7 @@ export function ConnectionWizard({ existing, settings, busy, onApply, onDone, ac
   const chooseProvider = (id: string, nextType = type) => {
     operation.current++; setWorking(false); setType(nextType); setProviderId(id); setStep("connect"); setProbe(null); setChosen([]); setLogin(null); setError(""); setKey(""); setManualModel(""); setModelQuery(""); setExecutable("");
     const item = nextType === "api" ? apiProviders.find(p => p.id === id)! : accounts[id];
-    setName(`${item.name} · ${nextType === "api" ? "API" : "个人账号"}`);
+    setName(`${item.name} · ${nextType === "api" ? "API" : tr("connectionwizard.personal_account")}`);
     setBaseUrl(nextType === "api" ? apiProviders.find(p => p.id === id)!.baseUrl : "");
   };
   const switchType = (value: "api" | "account") => {
@@ -138,8 +139,8 @@ export function ConnectionWizard({ existing, settings, busy, onApply, onDone, ac
   };
   const save = async () => {
     if (saving.current || busy) return;
-    if (!name.trim()) { setError("请填写连接名称。"); return; }
-    if (!chosen.length) { setError("请至少选择或填写一个模型。"); return; }
+    if (!name.trim()) { setError(tr("connectionwizard.enter_a_connection_name")); return; }
+    if (!chosen.length) { setError(tr("connectionwizard.select_or_enter_at_least_one_model")); return; }
     saving.current = true;
     setError("");
     try {
@@ -157,47 +158,47 @@ export function ConnectionWizard({ existing, settings, busy, onApply, onDone, ac
   const visibleModels = [...new Set([...(probe?.models || []), ...chosen])].filter(id => `${id} ${modelLabel(id)}`.toLowerCase().includes(modelQuery.toLowerCase()));
 
   return <>
-    <div className="ms-tabs" role="tablist" aria-label="连接方式">
-      {([['api', 'API 密钥', KeyRound], ['account', '账号登录', UserRound]] as const).map(([value, label, Icon]) => <button key={value} role="tab" aria-selected={type === value} className={type === value ? "active" : ""} disabled={busy || login?.status === "pending" || !!existing} onClick={() => switchType(value)}><Icon />{label}</button>)}
+    <div className="ms-tabs" role="tablist" aria-label={tr("connectionwizard.connection_method")}>
+      {([['api', tr("catalog.api_key"), KeyRound], ['account', tr("catalog.account_sign_in"), UserRound]] as const).map(([value, label, Icon]) => <button key={value} role="tab" aria-selected={type === value} className={type === value ? "active" : ""} disabled={busy || login?.status === "pending" || !!existing} onClick={() => switchType(value)}><Icon />{label}</button>)}
     </div>
     <div className="ms-connect-layout">
       <div className="ms-providers">
-        <div className="ms-list-label">选择服务商</div>
+        <div className="ms-list-label">{tr("connectionwizard.choose_provider")}</div>
         {(type === "api" ? apiProviders : catalog.map(item => ({ id: item.backend, ...accounts[item.backend], name: accounts[item.backend]?.name || item.label, mark: accounts[item.backend]?.mark || "·" }))).map(item =>
           <button key={item.id} className={`ms-provider-option ${providerId === item.id ? "active" : ""}`} aria-pressed={providerId === item.id} disabled={busy || login?.status === "pending" || !!existing} onClick={() => chooseProvider(item.id)}><span className="ms-mark">{item.mark}</span><strong>{item.name}</strong></button>)}
-        {type === "account" && !catalog.length && <p className="ms-muted">{error || "正在读取登录方式…"}</p>}
+        {type === "account" && !catalog.length && <p className="ms-muted">{error || tr("connectionwizard.loading_sign_in_options")}</p>}
       </div>
       <div className="ms-connect-pane">
-        {!provider ? <div className="ms-empty-selection">{type === "api" ? <KeyRound /> : <UserRound />}<strong>选择一个服务商</strong></div> : <>
-          <div className="ms-connect-heading"><span className="ms-mark">{provider.mark}</span><h3>连接 {provider.name}</h3></div>
-          <div className="ms-steps">{[type === "api" ? "验证密钥" : "账号连接", "选择模型"].map((label, i) => <span key={label} className={i === ({ connect: 0, models: 1 })[step] ? "active" : ""}><b>{i + 1}</b>{label}</span>)}</div>
+        {!provider ? <div className="ms-empty-selection">{type === "api" ? <KeyRound /> : <UserRound />}<strong>{tr("connectionwizard.select_a_provider")}</strong></div> : <>
+          <div className="ms-connect-heading"><span className="ms-mark">{provider.mark}</span><h3>{tr("connectionwizard.connect")}{provider.name}</h3></div>
+          <div className="ms-steps">{[type === "api" ? tr("connectionwizard.verify_key") : tr("connectionwizard.account_connection"), tr("connectionwizard.choose_model")].map((label, i) => <span key={label} className={i === ({ connect: 0, models: 1 })[step] ? "active" : ""}><b>{i + 1}</b>{label}</span>)}</div>
           {step === "connect" && type === "api" && <form onSubmit={e => { e.preventDefault(); void readModels(); }}>
-            <label className="ms-field"><span>连接名称</span><input value={name} onChange={e => setName(e.target.value)} required disabled={locked} /></label>
-            <label className="ms-field"><span>API Key</span><div className="ms-input-wrap"><input type={showKey ? "text" : "password"} autoComplete="new-password" value={key} onChange={e => { setKey(e.target.value); setError(""); }} required disabled={locked} /><button type="button" className="ms-icon" aria-label="显示或隐藏密钥" onClick={() => setShowKey(!showKey)}><Eye /></button></div></label>
-            <details className="ms-advanced" open={providerId === "custom" || undefined}><summary>高级设置</summary><label className="ms-field"><span>Base URL</span><input type="url" value={baseUrl} onChange={e => setBaseUrl(e.target.value)} required={providerId === "custom"} disabled={locked} /></label></details>
-            <button className="ms-primary ms-full" disabled={locked}>{working ? "正在验证连接…" : <>验证并继续<ArrowRight /></>}</button>
+            <label className="ms-field"><span>{tr("connectiondetails.connection_name")}</span><input value={name} onChange={e => setName(e.target.value)} required disabled={locked} /></label>
+            <label className="ms-field"><span>API Key</span><div className="ms-input-wrap"><input type={showKey ? "text" : "password"} autoComplete="new-password" value={key} onChange={e => { setKey(e.target.value); setError(""); }} required disabled={locked} /><button type="button" className="ms-icon" aria-label={tr("connectionwizard.show_or_hide_key")} onClick={() => setShowKey(!showKey)}><Eye /></button></div></label>
+            <details className="ms-advanced" open={providerId === "custom" || undefined}><summary>{tr("connectionwizard.advanced_settings")}</summary><label className="ms-field"><span>Base URL</span><input type="url" value={baseUrl} onChange={e => setBaseUrl(e.target.value)} required={providerId === "custom"} disabled={locked} /></label></details>
+            <button className="ms-primary ms-full" disabled={locked}>{working ? tr("connectionwizard.verifying_connection") : <>{tr("connectionwizard.verify_and_continue")}<ArrowRight /></>}</button>
           </form>}
           {step === "connect" && type === "account" && account && <>
             <p className="ms-meta">{account.billing}</p>
             <ConnectionScope note={account.note} />
-            {login?.status === "pending" ? <div className="ms-waiting"><div className="ms-spinner" /><h3>等待账号授权</h3>{login.url?.startsWith("https://") && <a className="ms-secondary" href={login.url} target="_blank" rel="noreferrer">打开官方登录页面<ExternalLink /></a>}<button className="ms-quiet" disabled={working} onClick={() => void cancelLogin()}>取消登录</button></div> : <>
-              <button className="ms-primary ms-full" disabled={locked} onClick={() => void startLogin()}><ExternalLink />{working ? "正在连接…" : account.login}</button>
-              {error && <button className="ms-quiet ms-full" disabled={locked} onClick={() => void readModels()}>重试检查</button>}
+            {login?.status === "pending" ? <div className="ms-waiting"><div className="ms-spinner" /><h3>{tr("connectionwizard.waiting_for_account_authorization")}</h3>{login.url?.startsWith("https://") && <a className="ms-secondary" href={login.url} target="_blank" rel="noreferrer">{tr("connectionwizard.open_the_official_sign_in_page")}<ExternalLink /></a>}<button className="ms-quiet" disabled={working} onClick={() => void cancelLogin()}>{tr("githublogin.cancel_sign_in")}</button></div> : <>
+              <button className="ms-primary ms-full" disabled={locked} onClick={() => void startLogin()}><ExternalLink />{working ? tr("connectionwizard.connecting") : account.login}</button>
+              {error && <button className="ms-quiet ms-full" disabled={locked} onClick={() => void readModels()}>{tr("connectiondetails.retry_check")}</button>}
             </>}
             {login?.output && <pre className="ms-login-output">{login.output}</pre>}
-            {runtime && <a className="ms-link" href={runtime.docs} target="_blank" rel="noreferrer">安装官方客户端<ExternalLink /></a>}
-            <details className="ms-advanced"><summary>指定客户端路径</summary><label className="ms-field"><span>客户端路径</span><input value={executable} onChange={e => setExecutable(e.target.value)} placeholder="自动查找本机已安装的客户端" disabled={busy || login?.status === "pending"} /></label></details>
+            {runtime && <a className="ms-link" href={runtime.docs} target="_blank" rel="noreferrer">{tr("connectionwizard.install_the_official_client")}<ExternalLink /></a>}
+            <details className="ms-advanced"><summary>{tr("connectionwizard.specify_client_path")}</summary><label className="ms-field"><span>{tr("connectionwizard.client_path")}</span><input value={executable} onChange={e => setExecutable(e.target.value)} placeholder={tr("connectionwizard.automatically_find_a_locally_installed_client")} disabled={busy || login?.status === "pending"} /></label></details>
           </>}
           {step === "models" && <>
-            {probe?.status === "connected" && <div className="ms-connected"><Check />{type === "account" ? "客户端检查通过" : "连接验证成功"}</div>}
+            {probe?.status === "connected" && <div className="ms-connected"><Check />{type === "account" ? tr("connectiondetails.client_checks_passed") : tr("connectionwizard.connection_verified")}</div>}
             {type === "account" && <ConnectionScope />}
-            <label className="ms-field"><span>连接名称</span><input value={name} onChange={e => setName(e.target.value)} disabled={busy} /></label>
-            <div className="ms-models-label">选择要添加的模型<span>已选 {chosen.length}</span></div>
-            <input className="ms-model-filter" aria-label="筛选可用模型" placeholder="搜索可用模型" value={modelQuery} onChange={e => setModelQuery(e.target.value)} />
+            <label className="ms-field"><span>{tr("connectiondetails.connection_name")}</span><input value={name} onChange={e => setName(e.target.value)} disabled={busy} /></label>
+            <div className="ms-models-label">{tr("connectionwizard.select_models_to_add")}<span>{tr("connectionwizard.selected")}{chosen.length}</span></div>
+            <input className="ms-model-filter" aria-label={tr("connectionwizard.filter_available_models")} placeholder={tr("connectionwizard.search_available_models")} value={modelQuery} onChange={e => setModelQuery(e.target.value)} />
             <div className="ms-check-models">{visibleModels.map(id => <label key={id}><input type="checkbox" checked={chosen.includes(id)} disabled={busy || protectedModels.includes(id)} onChange={e => setChosen(e.target.checked ? [...new Set([...chosen, id])] : chosen.filter(value => value !== id))} /><span>{modelLabel(id)}</span></label>)}</div>
-            {!visibleModels.length && <p className="ms-muted">{probe?.message || "没有找到模型，可手动填写模型 ID。"}</p>}
-            <form className="ms-manual-model" onSubmit={e => { e.preventDefault(); if (manualModel.trim()) { setChosen([...new Set([...chosen, manualModel.trim()])]); setManualModel(""); setModelQuery(""); } }}><input aria-label="模型名称" placeholder="输入模型 ID" value={manualModel} onChange={e => setManualModel(e.target.value)} /><button className="ms-secondary" disabled={!manualModel.trim() || busy}>添加</button></form>
-            <div className="ms-form-actions"><button className="ms-quiet" disabled={busy} onClick={() => setStep("connect")}><ArrowLeft />返回</button><button className="ms-primary" disabled={!chosen.length || busy} onClick={() => void save()}>{busy ? "保存中…" : existing ? "保存连接" : "添加连接"}<Check /></button></div>
+            {!visibleModels.length && <p className="ms-muted">{probe?.message || tr("connectionwizard.no_models_found_you_can_enter_a_model_id_manually")}</p>}
+            <form className="ms-manual-model" onSubmit={e => { e.preventDefault(); if (manualModel.trim()) { setChosen([...new Set([...chosen, manualModel.trim()])]); setManualModel(""); setModelQuery(""); } }}><input aria-label={tr("connectionwizard.model_name")} placeholder={tr("connectionwizard.enter_model_id")} value={manualModel} onChange={e => setManualModel(e.target.value)} /><button className="ms-secondary" disabled={!manualModel.trim() || busy}>{tr("connectionwizard.add")}</button></form>
+            <div className="ms-form-actions"><button className="ms-quiet" disabled={busy} onClick={() => setStep("connect")}><ArrowLeft />{tr("connectionwizard.back")}</button><button className="ms-primary" disabled={!chosen.length || busy} onClick={() => void save()}>{busy ? tr("backgroundmemorysettingspanel.saving") : existing ? tr("connectionwizard.save_connection") : tr("connectionwizard.add_connection")}<Check /></button></div>
           </>}
           {error && <p className="ms-error" role="alert">{error}</p>}
         </>}

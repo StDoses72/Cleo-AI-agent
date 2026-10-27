@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from cleo.desktop.projection import changes_from_diff, path_name, project_id
+from cleo.i18n import tr
 from cleo.integrations.git import inspect_git_status, read_git_diff
 from cleo.integrations.workspace import resolve_productivity_cwd
 
@@ -45,7 +46,7 @@ class Command:
 
 
 class CommandRegistry:
-    def __init__(self, commands: Iterable[Command], *, unknown: str) -> None:
+    def __init__(self, commands: Iterable[Command], *, unknown: str | Callable[[], str]) -> None:
         self._commands: dict[str, Command] = {}
         for command in commands:
             for name in command.names:
@@ -61,7 +62,8 @@ class CommandRegistry:
         """Purpose: Find the command. Raises ValueError for unknown or incomplete commands."""
         command = self._commands.get(name)
         if command is None or (command.needs_argument and not argument):
-            raise ValueError(self._unknown.format(command=name))
+            message = self._unknown() if callable(self._unknown) else self._unknown
+            raise ValueError(message.format(command=name))
         return command
 
     async def run(self, context: CommandContext) -> None:
@@ -77,10 +79,8 @@ def _refresh(context: CommandContext, thread_id: str, space: str) -> Awaitable[N
 async def _chat_help(context: CommandContext) -> None:
     await context.service._notice(
         context.emit,
-        "Cleo 对话命令",
-        "/new · /project [name] · /project move <name> · /sessions · "
-        "/resume <id> · /rename <title> · /attach · /computeruse <操作需求> · "
-        "/productivity · /quit",
+        tr("commands.cleo_chat_commands"),
+        tr("commands.new_project_name_project_move_name_sessions_resu"),
     )
 
 
@@ -99,7 +99,12 @@ async def _chat_project(context: CommandContext) -> None:
         target = argument.removeprefix("move ").strip()
         moved = service.store.move_session(manifest["id"], target)
         await service._notice(
-            emit, "项目已迁移", f"当前对话已移动到 {moved['project']}。", "success"
+            emit, tr(
+                "commands.project_migrated",
+            ), tr(
+                "commands.the_current_conversation_moved_to_value",
+                p0=moved['project'],
+            ), "success"
         )
         await _refresh(context, manifest["id"], "chat")
     elif argument:
@@ -109,7 +114,9 @@ async def _chat_project(context: CommandContext) -> None:
         await _refresh(context, thread["id"], "chat")
     else:
         await service._notice(
-            emit, "记忆项目", " · ".join(service.runtime.projects_for("non_productivity"))
+            emit, tr(
+                "commands.memory_project",
+            ), " · ".join(service.runtime.projects_for("non_productivity"))
         )
 
 
@@ -120,13 +127,13 @@ async def _chat_sessions(context: CommandContext) -> None:
 async def _chat_resume(context: CommandContext) -> None:
     target = context.service.store.load_manifest(context.argument)
     if target["space"] != "non_productivity":
-        raise ValueError("目标不是 Cleo 对话 session。")
+        raise ValueError(tr("commands.the_target_is_not_a_cleo_chat_session"))
     await _refresh(context, context.argument, "chat")
 
 
 async def _chat_rename(context: CommandContext) -> None:
     context.service.store.rename_session(context.manifest["id"], context.argument)
-    await context.service._notice(context.emit, "已重命名", context.argument, "success")
+    await context.service._notice(context.emit, tr("commands.renamed"), context.argument, "success")
     await _refresh(context, context.manifest["id"], "chat")
 
 
@@ -140,7 +147,9 @@ async def _chat_productivity(context: CommandContext) -> None:
 
 async def _chat_quit(context: CommandContext) -> None:
     await context.service._notice(
-        context.emit, "桌面应用保持运行", "可以直接关闭窗口，Cleo 会在退出时整理记忆。"
+        context.emit, tr(
+            "commands.the_desktop_app_remains_running",
+        ), tr("commands.you_can_close_the_window_cleo_will_consolidate_m")
     )
 
 
@@ -154,7 +163,7 @@ CHAT = CommandRegistry([
     Command(("/attach",), _chat_attach),
     Command(("/productivity",), _chat_productivity),
     Command(("/quit", "/exit"), _chat_quit),
-], unknown="未知对话命令：{command}。输入 /help 查看命令。")
+], unknown=lambda: tr("commands.unknown_chat_command_value_enter_help_to_see_com"))
 
 
 # Development tasks -----------------------------------------------------------------------
@@ -162,7 +171,7 @@ CHAT = CommandRegistry([
 async def _task_help(context: CommandContext) -> None:
     await context.service._notice(
         context.emit,
-        "开发任务命令",
+        tr("commands.development_task_commands"),
         "/new · /cwd · /project · /git · /diff · /model · /effort · "
         "/access · /approval · /cd · /resume · /resume-native · /native · "
         "/sessions · /account · /fork · /rename · /compact · /archive · /back · /quit",
@@ -180,29 +189,37 @@ async def _task_new(context: CommandContext) -> None:
 
 async def _task_cwd(context: CommandContext) -> None:
     await context.service._notice(
-        context.emit, "工作目录",
+        context.emit, tr("commands.working_directory"),
         str(context.manifest.get("cwd") or context.session.project_path),
     )
 
 
 async def _task_project(context: CommandContext) -> None:
-    await context.service._notice(context.emit, "项目", str(context.manifest["project"]))
+    await context.service._notice(context.emit, tr(
+        "commands.project",
+    ), str(context.manifest["project"]))
 
 
 async def _task_git(context: CommandContext) -> None:
     status = await asyncio.to_thread(inspect_git_status, context.session.project_path)
     detail = (
-        "当前目录不是 Git 仓库。"
+        tr("commands.the_current_directory_is_not_a_git_repository")
         if status is None
-        else f"{status.branch} · {status.dirty_count} 个变更\n" + "\n".join(status.changes)
+        else tr(
+            "commands.value_value_changes",
+            p0=status.branch,
+            p1=status.dirty_count,
+        ) + "\n".join(status.changes)
     )
-    await context.service._notice(context.emit, "Git 状态", detail)
+    await context.service._notice(context.emit, tr("commands.git_status"), detail)
 
 
 async def _task_diff(context: CommandContext) -> None:
     diff = await asyncio.to_thread(read_git_diff, context.session.project_path)
     await context.emit({"type": "changes", "changes": changes_from_diff(diff)})
-    await context.service._notice(context.emit, "工作区差异", "已刷新右侧变更面板。", "success")
+    await context.service._notice(context.emit, tr(
+        "commands.workspace_diff",
+    ), tr("commands.the_changes_panel_on_the_right_has_refreshed"), "success")
 
 
 async def _task_model(context: CommandContext) -> None:
@@ -215,14 +232,14 @@ async def _task_model(context: CommandContext) -> None:
                 thread_id=manifest["id"], update={"model": argument}, command=True,
             )
         await emit({"type": "runtime", "runtime": runtime})
-        await service._notice(emit, "模型已更新", argument, "success")
+        await service._notice(emit, tr("commands.model_updated"), argument, "success")
     else:
         models = await context.adapter.list_models(
             manifest["provider"], context.session.project_path,
         )
         await service._notice(
             emit,
-            "可用模型",
+            tr("commands.available_models"),
             "\n".join(f"{model.id} — {model.display_name}" for model in models),
         )
 
@@ -249,7 +266,9 @@ async def _task_option(context: CommandContext) -> None:
                 thread_id=manifest["id"], update={ui_field: argument}, command=True,
             )
         await emit({"type": "runtime", "runtime": runtime})
-        await service._notice(emit, "运行参数已更新", f"{field} = {argument}", "success")
+        await service._notice(emit, tr(
+            "commands.run_settings_updated",
+        ), f"{field} = {argument}", "success")
 
 
 async def _task_cd(context: CommandContext) -> None:
@@ -301,7 +320,7 @@ async def _task_account(context: CommandContext) -> None:
     account = await context.adapter.account_status(provider)
     await context.service._notice(
         context.emit,
-        f"{provider} 账号",
+        tr("commands.value_account", p0=provider),
         f"authenticated: {account.authenticated}\n"
         f"type: {account.account_type or '—'}\n"
         f"email: {account.email or '—'}\n"
@@ -317,14 +336,16 @@ async def _task_fork(context: CommandContext) -> None:
 
 async def _task_rename(context: CommandContext) -> None:
     await context.adapter.rename_session(context.manifest["id"], context.argument)
-    await context.service._notice(context.emit, "已重命名", context.argument, "success")
+    await context.service._notice(context.emit, tr("commands.renamed"), context.argument, "success")
     await _refresh(context, context.manifest["id"], "productivity")
 
 
 async def _task_compact(context: CommandContext) -> None:
     await context.adapter.compact_session(context.manifest["id"])
     await context.service._notice(
-        context.emit, "上下文整理已启动", "Provider 原生上下文正在压缩。", "success",
+        context.emit, tr(
+            "commands.context_consolidation_started",
+        ), tr("commands.the_provider_s_native_context_is_being_compacted"), "success",
     )
 
 
@@ -338,7 +359,9 @@ async def _task_back(context: CommandContext) -> None:
 
 
 async def _task_quit(context: CommandContext) -> None:
-    await context.service._notice(context.emit, "桌面应用保持运行", "可以切换空间或直接关闭窗口。")
+    await context.service._notice(context.emit, tr(
+        "commands.the_desktop_app_remains_running",
+    ), tr("commands.you_can_switch_spaces_or_close_the_window"))
 
 
 PRODUCTIVITY = CommandRegistry([
@@ -362,4 +385,4 @@ PRODUCTIVITY = CommandRegistry([
     Command(("/archive",), _task_archive),
     Command(("/back",), _task_back),
     Command(("/quit", "/exit"), _task_quit),
-], unknown="未知开发命令：{command}。输入 /help 查看命令。")
+], unknown=lambda: tr("commands.unknown_development_command_value_enter_help_to"))

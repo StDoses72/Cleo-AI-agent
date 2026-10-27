@@ -1,3 +1,4 @@
+import { t as tr } from "./i18n.mjs";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { rm } from "node:fs/promises";
@@ -19,7 +20,7 @@ export class SelectableUpdater extends DesktopUpdater {
 
   async json(url) {
     const response = await this.fetchImpl(url, { headers: { "user-agent": `Cleo/${this.state.currentVersion}` }, redirect: "follow" });
-    if (!response.ok) throw new Error(`GitHub 版本请求失败（HTTP ${response.status}），请重试。`);
+    if (!response.ok) throw new Error(tr("selectable_updates.github_version_request_failed_http_value_try_again", { p0: response.status }));
     return response.json();
   }
 
@@ -27,13 +28,13 @@ export class SelectableUpdater extends DesktopUpdater {
     const releases = [];
     for (let page = 1; ; page++) {
       const items = await this.json(`${api}?per_page=100&page=${page}`);
-      if (!Array.isArray(items)) throw new Error("GitHub 返回的版本列表无效。");
+      if (!Array.isArray(items)) throw new Error(tr("selectable_updates.github_returned_an_invalid_version_list"));
       for (const item of items.filter(item => !item.draft)) {
         const assets = item.assets || [];
-        const reason = !versionForReleaseTag(item.tag_name) ? "版本标签不受支持"
-          : alphaTagPattern.test(item.tag_name) && !item.prerelease ? "实验版必须标记为预发布"
-          : !assets.some(asset => asset.name === this.target.manifest) ? "缺少当前平台的版本清单"
-            : !assets.some(asset => asset.name === this.target.archive) ? "缺少当前平台的安装包" : null;
+        const reason = !versionForReleaseTag(item.tag_name) ? tr("selectable_updates.unsupported_version_tag")
+          : alphaTagPattern.test(item.tag_name) && !item.prerelease ? tr("selectable_updates.experimental_versions_must_be_marked_as_pre_releases")
+          : !assets.some(asset => asset.name === this.target.manifest) ? tr("selectable_updates.missing_version_manifest_for_this_platform")
+            : !assets.some(asset => asset.name === this.target.archive) ? tr("selectable_updates.missing_installation_package_for_this_platform") : null;
         releases.push({ tag: item.tag_name, title: item.name || item.tag_name, prerelease: Boolean(item.prerelease),
           publishedAt: item.published_at, url: item.html_url, reason,
           manifestUrl: assetUrl(item.tag_name, this.target.manifest), archiveUrl: assetUrl(item.tag_name, this.target.archive) });
@@ -46,9 +47,9 @@ export class SelectableUpdater extends DesktopUpdater {
   }
 
   select(tag) {
-    if (this.busy || this.state.phase === "installing") throw new Error("版本操作正在进行，请完成后再改选。");
+    if (this.busy || this.state.phase === "installing") throw new Error(tr("selectable_updates.a_version_operation_is_running_wait_for_it_to_finish_before_changing_the_selection"));
     const release = this.catalog.find(item => item.tag === tag);
-    if (!release || release.reason) throw new Error(release?.reason || "请重新检查并选择可安装版本。");
+    if (!release || release.reason) throw new Error(release?.reason || tr("selectable_updates.check_again_and_select_an_installable_version"));
     this.selectedRelease = release;
     this.manifest = null;
     this.archivePath = null;
@@ -64,18 +65,18 @@ export class SelectableUpdater extends DesktopUpdater {
         // Automatic checks still follow stable releases. Historical/prerelease choices are explicit.
         const stable = this.catalog.filter(item => !item.prerelease && !item.reason)
           .sort((a, b) => compareVersions(b.tag, a.tag))[0];
-        if (!stable) throw new Error("没有适用于当前平台的正式版本，请选择其他可用版本。");
+        if (!stable) throw new Error(tr("selectable_updates.no_official_version_is_available_for_this_platform_choose_another_available_version"));
         this.checkedRelease = stable;
       } else {
         this.checkedRelease = this.catalog.find(item => item.tag === this.selectedRelease.tag);
-        if (!this.checkedRelease || this.checkedRelease.reason) throw new Error("所选版本已不可用，请重新选择。");
+        if (!this.checkedRelease || this.checkedRelease.reason) throw new Error(tr("selectable_updates.the_selected_version_is_no_longer_available_choose_another"));
         this.selectedRelease = this.checkedRelease;
       }
       const release = this.checkedRelease;
       const raw = await this.json(release.manifestUrl);
       const manifest = validateManifest(raw, this.target);
-      if (![2, 3].includes(raw.evolution_protocol)) throw new Error("该版本不支持保留当前数据的版本切换。");
-      if (manifest.version !== versionForReleaseTag(release.tag)) throw new Error("版本清单与所选版本不一致。");
+      if (![2, 3].includes(raw.evolution_protocol)) throw new Error(tr("selectable_updates.this_version_does_not_support_switching_while_preserving_current_data"));
+      if (manifest.version !== versionForReleaseTag(release.tag)) throw new Error(tr("selectable_updates.the_version_manifest_does_not_match_the_selected_version"));
       this.manifest = manifest;
       const available = Boolean(this.selectedRelease) || compareVersions(manifest.version, this.state.currentVersion) > 0;
       const ready = available && this.archivePath === this.archiveFor(manifest);
@@ -111,7 +112,7 @@ export async function prepareSelectedRelease(manager, updater, tag, { onProgress
     const release = updater.checkedRelease;
     const manifest = updater.manifest;
     if (!release || release.tag !== tag || !manifest || manifest.version !== versionForReleaseTag(tag))
-      throw new Error("所选版本已变化，请重新下载并校验。");
+      throw new Error(tr("selectable_updates.the_selected_version_changed_download_and_verify_again"));
     await manager.ensureBaseline();
     const archive = await manager.downloads.get(manifest, { url: release.archiveUrl, onProgress });
     signal.throwIfAborted();
@@ -136,7 +137,7 @@ export async function prepareSelectedRelease(manager, updater, tag, { onProgress
       signal.throwIfAborted();
       const record = { id, kind: "official", version: manifest.version, baseTag: tag, sha256: manifest.sha256,
         executable: `${manager.target.bundle}/${manager.target.executable}`, createdAt: new Date().toISOString() };
-      if (!await exists(ownedPath(directory, record.executable))) throw new Error("所选版本的安装包目录结构不正确。");
+      if (!await exists(ownedPath(directory, record.executable))) throw new Error(tr("selectable_updates.the_selected_package_has_an_incorrect_directory_structure"));
       await manager.store.update({ downloadedOfficial: id, builds: [...state.builds, record] });
       return id;
     } catch (error) {
@@ -167,7 +168,7 @@ export class SelectableProgramUpdates extends ProgramUpdates {
     if (this.closed) return Promise.resolve(this.updater.getState());
     if (tag === undefined && this.updater.getState().phase === "ready") return Promise.resolve(this.updater.getState());
     if (this.checking) return this.checking.tag === tag ? this.checking.promise
-      : Promise.reject(new Error("版本检查正在进行，请完成后再改选。"));
+      : Promise.reject(new Error(tr("selectable_updates.version_checking_is_in_progress_wait_for_it_to_finish_before_changing_the_selection")));
     const promise = this.run(async () => {
       if (tag !== undefined) this.updater.select(tag);
       return this.updater.check();

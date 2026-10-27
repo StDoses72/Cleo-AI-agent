@@ -1,6 +1,7 @@
+import { t as tr } from "../../../electron/i18n.mjs";
 import type { ModelProfileSummary } from "../../types";
 
-export const accountCheckScope = "仅检查客户端连接、登录状态和模型列表；未发送模型请求，额度及 MCP 工具执行尚未验证。";
+export const accountCheckScope = () => tr("catalog.checks_client_connectivity_sign_in_status_and_the_model_list_only_no_model_request_wa");
 
 export const apiProviders = [
   { id: "openai", name: "OpenAI", mark: "O", provider: "openai", baseUrl: "https://api.openai.com/v1" },
@@ -8,15 +9,15 @@ export const apiProviders = [
   { id: "google", name: "Google", mark: "G", provider: "google_genai", baseUrl: "https://generativelanguage.googleapis.com" },
   { id: "deepseek", name: "DeepSeek", mark: "D", provider: "openai", baseUrl: "https://api.deepseek.com" },
   { id: "moonshot", name: "Moonshot", mark: "M", provider: "openai", baseUrl: "https://api.moonshot.cn/v1" },
-  { id: "custom", name: "自定义服务", mark: "{}", provider: "openai", baseUrl: "" },
+  { id: "custom", get name() { return tr("catalog.custom_provider"); }, mark: "{}", provider: "openai", baseUrl: "" },
 ];
 
 export const accounts: Record<string, { name: string; mark: string; login: string; billing: string; note: string }> = {
-  codex: { name: "Codex", mark: "O", login: "使用 ChatGPT 账号登录", billing: "使用 Codex 额度", note: "请在 Cleo 中独立登录。新会话与 Codex 应用的历史分开保存；同一账号的 Codex 额度仍共享。" },
-  claude_code: { name: "Claude Code", mark: "A", login: "使用 Claude 账号登录", billing: "按 Claude Code 规则计费", note: "非交互调用的可用额度，以账号当前方案为准。" },
-  gemini: { name: "Gemini CLI", mark: "G", login: "使用 Google 账号登录", billing: "使用 Gemini CLI 配额", note: "通过官方客户端使用账号可用的 CLI 配额。" },
-  copilot: { name: "GitHub Copilot", mark: "G", login: "使用 GitHub 账号登录", billing: "使用 Copilot 配额", note: "可用模型及用量按你的 Copilot 方案计算。" },
-  grok: { name: "Grok", mark: "x", login: "使用 Grok 账号登录", billing: "使用 Grok 订阅额度", note: "通过 Grok Build 使用账号可用的订阅额度。" },
+  get codex() { return { name: "Codex", mark: "O", login: tr("catalog.sign_in_with_a_chatgpt_account"), billing: tr("catalog.uses_codex_quota"), note: tr("catalog.sign_in_separately_in_cleo_new_sessions_are_stored_separately_from_codex_app_history_") }; },
+  get claude_code() { return { name: "Claude Code", mark: "A", login: tr("catalog.sign_in_with_a_claude_account"), billing: tr("catalog.billed_under_claude_code_rules"), note: tr("catalog.available_quota_for_non_interactive_calls_depends_on_your_current_account_plan") }; },
+  get gemini() { return { name: "Gemini CLI", mark: "G", login: tr("catalog.sign_in_with_a_google_account"), billing: tr("catalog.uses_gemini_cli_quota"), note: tr("catalog.use_your_account_s_available_cli_quota_through_the_official_client") }; },
+  get copilot() { return { name: "GitHub Copilot", mark: "G", login: tr("catalog.sign_in_with_a_github_account"), billing: tr("catalog.uses_copilot_quota"), note: tr("catalog.available_models_and_usage_depend_on_your_copilot_plan") }; },
+  get grok() { return { name: "Grok", mark: "x", login: tr("catalog.sign_in_with_a_grok_account"), billing: tr("catalog.uses_grok_subscription_quota"), note: tr("catalog.use_your_account_s_available_subscription_quota_through_grok_build") }; },
 };
 
 export const profileLabel = (profile: ModelProfileSummary) => profile.displayName || profile.name;
@@ -28,9 +29,9 @@ export function providerInfo(profile: ModelProfileSummary) {
     || apiProviders.find(item => item.provider === profile.provider) || apiProviders[5];
 }
 export const billingLabel = (profile: ModelProfileSummary) => isAccount(profile)
-  ? accounts[profile.backend!]?.billing || "账号登录" : "API 密钥";
+  ? accounts[profile.backend!]?.billing || tr("catalog.account_sign_in") : tr("catalog.api_key");
 export function modelLabel(id: string) {
-  if (id === "default") return "官方默认模型";
+  if (id === "default") return tr("catalog.official_default_model");
   if (/^gpt-/i.test(id)) return id.replace(/^gpt-/i, "GPT-").replace(/-(astra|sol|terra|luna)$/i, (_, name: string) => ` ${name[0].toUpperCase()}${name.slice(1)}`);
   return id;
 }

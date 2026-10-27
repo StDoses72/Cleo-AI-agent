@@ -1,3 +1,4 @@
+import { t as tr } from "../i18n.mjs";
 /** Local, authenticated channel between Cleo's tool processes and the computer broker.
  *
  * No TCP port is opened. Windows uses a randomly named pipe; other systems use a Unix socket in
@@ -26,7 +27,7 @@ export function protectDirectory(directory, { platform = process.platform, exec 
   const system32 = join(process.env.SystemRoot || process.env.windir || "C:\Windows", "System32");
   const output = exec(join(system32, "whoami.exe"), ["/user", "/fo", "csv", "/nh"], { encoding: "utf8", windowsHide: true });
   const sid = /"(S-1-[0-9-]+)"\s*$/m.exec(String(output).trim())?.[1];
-  if (!sid) throw new Error("无法确定当前 Windows 用户，电脑操作通道未启用。");
+  if (!sid) throw new Error(tr("bridge.could_not_identify_the_current_windows_user_computer_control_is_disabled"));
   // Remove inherited grants (for example sandbox capability or group ACEs on parent folders).
   exec(join(system32, "icacls.exe"), [directory, "/inheritance:r", "/grant:r", `*${sid}:(OI)(CI)F`, "*S-1-5-18:(OI)(CI)F"],
     { encoding: "utf8", windowsHide: true });
@@ -69,7 +70,7 @@ export class ComputerBridge {
     socket.setEncoding("utf8");
     socket.on("close", () => {
       this.sockets.delete(socket);
-      if (!abort.signal.aborted) abort.abort(new Error("工具调用已取消。"));
+      if (!abort.signal.aborted) abort.abort(new Error(tr("bridge.tool_call_cancelled")));
     });
     socket.on("error", () => {});
     socket.on("data", chunk => {
@@ -94,13 +95,13 @@ export class ComputerBridge {
     try {
       request = JSON.parse(line);
       if (!this.authorized(request?.token)) {
-        reply = { ok: false, error: "电脑操作通道认证失败。" };
+        reply = { ok: false, error: tr("bridge.computer_control_channel_authentication_failed") };
       } else {
         const content = await this.handler(request, signal);
         reply = { id: request.id, ok: true, content };
       }
     } catch (error) {
-      reply = { id: request?.id, ok: false, error: String(error?.message || error || "电脑操作失败。").slice(0, 2000) };
+      reply = { id: request?.id, ok: false, error: String(error?.message || error || tr("bridge.computer_operation_failed")).slice(0, 2000) };
     }
     if (!socket.destroyed) socket.end(`${JSON.stringify(reply)}\n`);
   }

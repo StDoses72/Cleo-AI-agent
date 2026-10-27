@@ -1,3 +1,4 @@
+import { t as tr } from "../electron/i18n.mjs";
 import { useLayoutEffect, useEffect, useRef, useState, type CSSProperties, type PointerEvent, type KeyboardEvent } from "react";
 
 /** Purpose: Resize the shared inspector without storing user data.
@@ -60,7 +61,7 @@ export function useInspectorResize(layoutKey: string, visible: boolean) {
   };
 
   return { setShell, dragging, style: { "--inspector-preferred-width": `${width}px` } as CSSProperties,
-    handleProps: { role: "separator", tabIndex: 0, "aria-label": "调整检查器宽度", "aria-orientation": "vertical" as const,
+    handleProps: { role: "separator", tabIndex: 0, "aria-label": tr("useinspectorresize.resize_inspector"), "aria-orientation": "vertical" as const,
       "aria-valuemin": bounds.min, "aria-valuemax": bounds.max, "aria-valuenow": width,
       onPointerDown, onPointerMove, onPointerUp: stop, onPointerCancel: stop, onLostPointerCapture: stop, onKeyDown } };
 }

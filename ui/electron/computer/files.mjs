@@ -1,3 +1,4 @@
+import { t as tr } from "../i18n.mjs";
 /** Workspace file access for the Files sidebar and built-in browser previews.
  *
  * Every request names a workspace root registered by Cleo's own UI. Paths are resolved to real
@@ -42,9 +43,9 @@ export class WorkspaceFiles {
 
   /** Purpose: Register a workspace root. Input: absolute directory. Output: stable random id. */
   async register(root) {
-    if (typeof root !== "string" || !isAbsolute(root)) throw new Error("工作目录必须是绝对路径。");
+    if (typeof root !== "string" || !isAbsolute(root)) throw new Error(tr("files.the_working_directory_must_be_an_absolute_path"));
     const real = await realpath(root);
-    if (!(await stat(real)).isDirectory()) throw new Error("工作目录不存在。");
+    if (!(await stat(real)).isDirectory()) throw new Error(tr("files.the_working_directory_does_not_exist"));
     if (this.ids.has(real)) return { id: this.ids.get(real), real };
     const id = randomBytes(12).toString("hex");
     this.roots.set(id, real);
@@ -55,18 +56,18 @@ export class WorkspaceFiles {
   async target(root, path = "") {
     const { id, real } = await this.register(root);
     const requested = String(path ?? "").replaceAll("\\", "/");
-    if (requested.includes("\0")) throw new Error("路径无效。");
+    if (requested.includes("\0")) throw new Error(tr("files.invalid_path"));
     const candidate = resolve(real, ...requested.split("/").filter(Boolean));
-    if (!inside(real, candidate)) throw new Error("只能访问当前工作目录中的文件。");
+    if (!inside(real, candidate)) throw new Error(tr("files.only_files_in_the_current_working_directory_can_be_accessed"));
     let target;
-    try { target = await realpath(candidate); } catch { throw new Error(`找不到文件：${requested || "."}`); }
-    if (!inside(real, target)) throw new Error("该路径通过链接指向工作目录以外，已拒绝访问。");
+    try { target = await realpath(candidate); } catch { throw new Error(tr("broker.file_not_found_value", { p0: requested || "." })); }
+    if (!inside(real, target)) throw new Error(tr("files.this_path_links_outside_the_working_directory_access_was_denied"));
     return { id, root: real, target, relative: posix(relative(real, target)) };
   }
 
   async list(root, path = "") {
     const { target, relative: base } = await this.target(root, path);
-    if (!(await stat(target)).isDirectory()) throw new Error("不是文件夹。");
+    if (!(await stat(target)).isDirectory()) throw new Error(tr("files.not_a_directory"));
     const entries = await readdir(target, { withFileTypes: true });
     const items = [];
     for (const entry of entries.slice(0, MAX_ENTRIES)) {
@@ -81,7 +82,7 @@ export class WorkspaceFiles {
   async read(root, path) {
     const { id, target, relative: rel } = await this.target(root, path);
     const info = await stat(target);
-    if (!info.isFile()) throw new Error("只能预览文件。");
+    if (!info.isFile()) throw new Error(tr("files.only_files_can_be_previewed"));
     const extension = extname(target).toLowerCase();
     const url = `${FILE_SCHEME}://${id}/${rel.split("/").map(encodeURIComponent).join("/")}`;
     const base = { path: rel, size: info.size, modified: info.mtimeMs, url };

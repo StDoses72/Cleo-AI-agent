@@ -37,6 +37,14 @@ import type {
 export class IpcCleoClient implements CleoClient {
   private readonly bridge = window.cleoDesktop!;
 
+  getUiLanguage(): Promise<"zh-CN" | "en"> {
+    return this.bridge.getUiLanguage?.() ?? Promise.resolve(window.cleoWindow?.language ?? "zh-CN");
+  }
+
+  setUiLanguage(language: "zh-CN" | "en"): Promise<"zh-CN" | "en"> {
+    return this.bridge.request("set_ui_language", { language });
+  }
+
   getLocalSkills(provider: string, projectPath?: string): Promise<LocalSkill[]> {
     return this.bridge.request("get_local_skills", { provider, project_path: projectPath });
   }

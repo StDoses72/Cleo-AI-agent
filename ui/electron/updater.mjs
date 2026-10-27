@@ -1,3 +1,4 @@
+import { t as tr } from "./i18n.mjs";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { desktopPlatform } from "./platform.mjs";
@@ -103,7 +104,7 @@ export class DesktopUpdater {
       latestVersion: null,
       downloadedBytes: 0,
       totalBytes: 0,
-      error: this.packageManaged ? "此 Linux 安装由系统软件包管理器维护，请安装新版 .deb 软件包更新。" : null,
+      error: this.packageManaged ? tr("updater.this_linux_installation_is_managed_by_the_system_package_manager_install_a_newer_deb_") : null,
     };
   }
 
@@ -223,11 +224,11 @@ export class DesktopUpdater {
     if (!this.app.isPackaged || this.state.phase !== "ready" || !this.manifest || !this.archivePath) {
       return false;
     }
-    if (typeof installVersion !== "function") throw new Error("未完成版本切换，请重新检查更新后重试。");
+    if (typeof installVersion !== "function") throw new Error(tr("updater.version_switching_did_not_complete_check_for_updates_and_retry"));
     this.setState({ phase: "installing", error: null });
     try {
       const switched = await installVersion(this.manifest.version);
-      if (!switched) throw new Error("未完成版本切换，请重新检查更新后重试。");
+      if (!switched) throw new Error(tr("updater.version_switching_did_not_complete_check_for_updates_and_retry"));
       return true;
     } catch (error) {
       this.setState({

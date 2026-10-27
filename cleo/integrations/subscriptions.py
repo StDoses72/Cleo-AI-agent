@@ -15,6 +15,7 @@ from acp.schema import McpServerStdio
 from openai_codex import CodexConfig, Sandbox
 
 from cleo.config.settings import AgentProfile, settings
+from cleo.i18n import tr
 from cleo.integrations.harnesses.acp import AcpAgentSpec, AcpProvider
 from cleo.integrations.harnesses.codex import CodexProvider
 
@@ -82,6 +83,15 @@ RUNTIMES = {
 }
 
 
+def runtime_definitions() -> dict:
+    """Localize catalog labels without changing the public runtime registry."""
+    result = {name: dict(value) for name, value in RUNTIMES.items()}
+    result["codex"]["label"] = tr("subscriptions.codex_chatgpt_sign_in_uses_codex_quota")
+    result["claude_code"]["label"] = tr("subscriptions.claude_code_official_cli")
+    result["gemini"]["login"] = tr("subscriptions.gemini_choose_sign_in_with_google")
+    return result
+
+
 def _runtime_path() -> str:
     """Include standard CLI installs when launched outside a login shell."""
     paths = [value for value in os.environ.get("PATH", "").split(os.pathsep) if value]
@@ -103,7 +113,10 @@ def executable(profile: AgentProfile) -> str:
     if resolved is None:
         resolved = shutil.which(command, path=_runtime_path())
     if resolved is None:
-        raise FileNotFoundError(f"未找到 {command}。请安装客户端或指定路径。")
+        raise FileNotFoundError(tr(
+            "subscriptions.value_was_not_found_install_the_client_or_specif",
+            p0=command,
+        ))
     return resolved
 
 
@@ -222,7 +235,7 @@ async def inspect_connection(profile: AgentProfile) -> dict:
             payload = account.account.model_dump(mode="json") if account.account else {}
             if payload.get("type") != "chatgpt":
                 raise ValueError(
-                    "请在 Cleo 中使用 ChatGPT 账号独立登录 Codex（API Key 登录不适用）。"
+                    tr("subscriptions.sign_in_to_codex_separately_in_cleo_with_a_chatg")
                 )
             result = await client.models()
             return {"status": "connected", "models": [m.id for m in result.data]}

@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from cleo.i18n import tr
+
 _DIVERGENCE = re.compile(r"(ahead|behind) (\d+)")
 _OBJECT_ID = re.compile(r"^[0-9a-f]{40,64}$")
 _CHECKPOINT_VERSION = 1
@@ -78,7 +80,7 @@ class GitCheckpoint:
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> GitCheckpoint:
         if value.get("version") != _CHECKPOINT_VERSION:
-            raise ValueError("Git 回退记录版本无效。")
+            raise ValueError(tr("git.invalid_git_revert_record_version"))
         fields = {
             name: str(value.get(name) or "")
             for name in (
@@ -92,7 +94,7 @@ class GitCheckpoint:
             )
         }
         if not fields["ref"].startswith("refs/cleo/undo/"):
-            raise ValueError("Git 回退记录引用无效。")
+            raise ValueError(tr("git.invalid_git_revert_record_reference"))
         for name in (
             "head",
             "before_worktree",
@@ -101,7 +103,7 @@ class GitCheckpoint:
             "after_index",
         ):
             if not _OBJECT_ID.fullmatch(fields[name]):
-                raise ValueError("Git 回退记录对象无效。")
+                raise ValueError(tr("git.invalid_git_revert_record_object"))
         return cls(**fields)
 
 
@@ -223,7 +225,7 @@ def create_git_checkpoint(cwd: str, checkpoint_id: str) -> GitCheckpoint | None:
 
     head = _git(status.repo_root, "rev-parse", "--verify", "HEAD")
     if head.returncode != 0:
-        raise ValueError("当前 Git 仓库还没有提交，无法创建回退记录。")
+        raise ValueError(tr("git.the_git_repository_has_no_commits_so_a_revert_re"))
     head_id = head.stdout.strip()
     before_index_tree, before_worktree_tree = _snapshot_trees(status.repo_root, head_id)
     before_index = _commit_tree(status.repo_root, before_index_tree, None, "before index")
@@ -239,7 +241,7 @@ def create_git_checkpoint(cwd: str, checkpoint_id: str) -> GitCheckpoint | None:
     ref = f"refs/cleo/undo/{digest}"
     updated = _git(status.repo_root, "update-ref", ref, before_worktree)
     if updated.returncode != 0:
-        raise RuntimeError(_git_error(updated, "Git 无法保存回退记录。"))
+        raise RuntimeError(_git_error(updated, tr("git.git_could_not_save_the_revert_record")))
     return GitCheckpoint(
         repo_root=status.repo_root,
         ref=ref,
@@ -276,7 +278,7 @@ def finalize_git_checkpoint(checkpoint: GitCheckpoint) -> GitCheckpoint:
         checkpoint.before_worktree,
     )
     if updated.returncode != 0:
-        raise RuntimeError(_git_error(updated, "Git 无法完成回退记录。"))
+        raise RuntimeError(_git_error(updated, tr("git.git_could_not_finish_the_revert_record")))
     return GitCheckpoint(
         repo_root=checkpoint.repo_root,
         ref=checkpoint.ref,
@@ -301,7 +303,7 @@ def git_checkpoint_has_changes(value: dict[str, Any]) -> bool:
         if result.returncode == 1:
             return True
         if result.returncode != 0:
-            raise ValueError("Git 回退记录不可用。")
+            raise ValueError(tr("git.the_git_revert_record_is_unavailable"))
     return False
 
 
@@ -309,7 +311,7 @@ def read_git_checkpoint_diff(value: dict[str, Any] | GitCheckpoint) -> str:
     """Return the exact worktree diff captured by one completed agent turn."""
     checkpoint = value if isinstance(value, GitCheckpoint) else GitCheckpoint.from_dict(value)
     if checkpoint.after_worktree is None:
-        raise ValueError("最近一次回答的 Git 回退记录尚未完成。")
+        raise ValueError(tr("git.the_latest_reply_s_git_revert_record_is_incomple"))
     result = _git(
         checkpoint.repo_root,
         "diff",
@@ -321,7 +323,7 @@ def read_git_checkpoint_diff(value: dict[str, Any] | GitCheckpoint) -> str:
         timeout=30,
     )
     if result.returncode != 0:
-        raise RuntimeError(_git_error(result, "Git 无法读取本轮变更。"))
+        raise RuntimeError(_git_error(result, tr("git.git_could_not_read_this_turn_s_changes")))
     return result.stdout.removesuffix("\n")
 
 
@@ -329,7 +331,7 @@ def undo_git_checkpoint(value: dict[str, Any] | GitCheckpoint) -> GitUndoResult:
     """Restore the state before one turn without discarding earlier changes."""
     checkpoint = value if isinstance(value, GitCheckpoint) else GitCheckpoint.from_dict(value)
     if checkpoint.after_worktree is None or checkpoint.after_index is None:
-        raise ValueError("最近一次回答的 Git 回退记录尚未完成。")
+        raise ValueError(tr("git.the_latest_reply_s_git_revert_record_is_incomple"))
     _validate_checkpoint_repository(checkpoint)
 
     current_index_tree, current_worktree_tree = _snapshot_trees(
@@ -339,7 +341,7 @@ def undo_git_checkpoint(value: dict[str, Any] | GitCheckpoint) -> GitUndoResult:
     after_index_tree = _tree_for_commit(checkpoint.repo_root, checkpoint.after_index)
     after_worktree_tree = _tree_for_commit(checkpoint.repo_root, checkpoint.after_worktree)
     if current_index_tree != after_index_tree or current_worktree_tree != after_worktree_tree:
-        raise ValueError("回答完成后工作区又发生了变化，为避免覆盖这些改动，无法自动回退。")
+        raise ValueError(tr("git.the_workspace_changed_after_the_reply_finished_a"))
 
     changed_paths = _changed_paths(
         checkpoint.repo_root,
@@ -361,7 +363,9 @@ def undo_git_checkpoint(value: dict[str, Any] | GitCheckpoint) -> GitUndoResult:
         timeout=30,
     )
     if reverse_patch.returncode != 0:
-        raise RuntimeError(_git_error(reverse_patch, "Git 无法生成本轮回退补丁。"))
+        raise RuntimeError(_git_error(reverse_patch, tr(
+            "git.git_could_not_create_this_turn_s_revert_patch",
+        )))
 
     if reverse_patch.stdout:
         checked = _git(
@@ -373,7 +377,9 @@ def undo_git_checkpoint(value: dict[str, Any] | GitCheckpoint) -> GitUndoResult:
             timeout=30,
         )
         if checked.returncode != 0:
-            raise ValueError(_git_error(checked, "本轮改动与当前工作区冲突，无法自动回退。"))
+            raise ValueError(_git_error(checked, tr(
+                "git.this_turn_s_changes_conflict_with_the_current_wo",
+            )))
         applied = _git(
             checkpoint.repo_root,
             "apply",
@@ -382,12 +388,16 @@ def undo_git_checkpoint(value: dict[str, Any] | GitCheckpoint) -> GitUndoResult:
             timeout=30,
         )
         if applied.returncode != 0:
-            raise RuntimeError(_git_error(applied, "Git 无法应用本轮回退补丁。"))
+            raise RuntimeError(_git_error(applied, tr(
+                "git.git_could_not_apply_this_turn_s_revert_patch",
+            )))
 
     restored_index = _git(checkpoint.repo_root, "read-tree", checkpoint.before_index)
     if restored_index.returncode != 0:
         _restore_after_worktree(checkpoint)
-        raise RuntimeError(_git_error(restored_index, "Git 无法恢复回答前的暂存区。"))
+        raise RuntimeError(_git_error(restored_index, tr(
+            "git.git_could_not_restore_the_staging_area_from_befo",
+        )))
 
     _git(
         checkpoint.repo_root,
@@ -408,13 +418,15 @@ def discard_git_checkpoint(value: dict[str, Any] | GitCheckpoint) -> None:
 def _snapshot_trees(repo_root: str, head: str) -> tuple[str, str]:
     index = _git(repo_root, "write-tree")
     if index.returncode != 0:
-        raise RuntimeError(_git_error(index, "Git 无法读取暂存区。"))
+        raise RuntimeError(_git_error(index, tr("git.git_could_not_read_the_staging_area")))
 
     with tempfile.TemporaryDirectory(prefix="cleo-git-checkpoint-") as temporary:
         environment = {"GIT_INDEX_FILE": str(Path(temporary) / "index")}
         loaded = _git(repo_root, "read-tree", head, env=environment)
         if loaded.returncode != 0:
-            raise RuntimeError(_git_error(loaded, "Git 无法初始化回退记录。"))
+            raise RuntimeError(_git_error(loaded, tr(
+                "git.git_could_not_initialize_the_revert_record",
+            )))
         added = _git(
             repo_root,
             "add",
@@ -425,10 +437,14 @@ def _snapshot_trees(repo_root: str, head: str) -> tuple[str, str]:
             timeout=30,
         )
         if added.returncode != 0:
-            raise RuntimeError(_git_error(added, "Git 无法记录当前工作区。"))
+            raise RuntimeError(_git_error(added, tr(
+                "git.git_could_not_record_the_current_workspace",
+            )))
         worktree = _git(repo_root, "write-tree", env=environment)
         if worktree.returncode != 0:
-            raise RuntimeError(_git_error(worktree, "Git 无法保存当前工作区。"))
+            raise RuntimeError(_git_error(worktree, tr(
+                "git.git_could_not_save_the_current_workspace",
+            )))
     return index.stdout.strip(), worktree.stdout.strip()
 
 
@@ -439,33 +455,33 @@ def _commit_tree(repo_root: str, tree: str, parent: str | None, label: str) -> s
     arguments.extend(("-m", f"Cleo undo checkpoint: {label}"))
     committed = _git(repo_root, *arguments, env=_GIT_IDENTITY)
     if committed.returncode != 0:
-        raise RuntimeError(_git_error(committed, "Git 无法创建回退对象。"))
+        raise RuntimeError(_git_error(committed, tr("git.git_could_not_create_the_revert_object")))
     return committed.stdout.strip()
 
 
 def _tree_for_commit(repo_root: str, commit: str) -> str:
     result = _git(repo_root, "rev-parse", f"{commit}^{{tree}}")
     if result.returncode != 0:
-        raise ValueError("最近一次回答的 Git 回退对象已失效。")
+        raise ValueError(tr("git.the_latest_reply_s_git_revert_object_is_no_longe"))
     return result.stdout.strip()
 
 
 def _changed_paths(repo_root: str, before: str, after: str) -> set[str]:
     result = _git(repo_root, "diff", "--name-only", before, after, "--", timeout=30)
     if result.returncode != 0:
-        raise RuntimeError(_git_error(result, "Git 无法读取本轮变更。"))
+        raise RuntimeError(_git_error(result, tr("git.git_could_not_read_this_turn_s_changes")))
     return {line for line in result.stdout.splitlines() if line}
 
 
 def _validate_checkpoint_repository(checkpoint: GitCheckpoint) -> None:
     status = inspect_git_status(checkpoint.repo_root)
     if status is None:
-        raise ValueError("当前工作目录不是 Git 仓库，无法回退。")
+        raise ValueError(tr("service.the_working_directory_is_not_a_git_repository_so"))
     if os.path.normcase(status.repo_root) != os.path.normcase(checkpoint.repo_root):
-        raise ValueError("Git 回退记录不属于当前仓库。")
+        raise ValueError(tr("git.the_git_revert_record_does_not_belong_to_the_cur"))
     head = _git(checkpoint.repo_root, "rev-parse", "--verify", "HEAD")
     if head.returncode != 0 or head.stdout.strip() != checkpoint.head:
-        raise ValueError("本轮回答期间 Git HEAD 已变化，无法安全自动回退。")
+        raise ValueError(tr("git.git_head_changed_during_this_reply_automatic_rev"))
 
 
 def _restore_after_worktree(checkpoint: GitCheckpoint) -> None:

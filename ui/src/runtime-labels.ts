@@ -1,3 +1,4 @@
+import { t as tr } from "../electron/i18n.mjs";
 import type { Project, ReasoningEffort, RuntimeProfile, ThreadSpace } from "./types";
 
 /** Purpose: Whether a project is the general one of its space: it binds no user folder, so
@@ -42,18 +43,18 @@ export function harnessLabel(runtime: Pick<RuntimeProfile, "provider" | "model">
 }
 
 export const effortLabels: Record<ReasoningEffort, string> = {
-  none: "关闭", minimal: "最低", low: "低", medium: "中", high: "高",
-  xhigh: "很高", max: "最高", ultra: "极高",
+  get none() { return tr("runtime.off"); }, get minimal() { return tr("runtime_labels.minimal"); }, get low() { return tr("runtime_labels.low"); }, get medium() { return tr("runtime_labels.medium"); }, get high() { return tr("runtime_labels.high"); },
+  get xhigh() { return tr("runtime_labels.extra_high"); }, get max() { return tr("runtime_labels.maximum"); }, get ultra() { return tr("runtime_labels.ultra"); },
 };
 
 export function accessLabel(value: string) {
-  return ({ "read-only": "只读", "workspace-write": "工作区可写", "full-access": "完全访问",
-    "danger-full-access": "完全访问", default: "由服务管理" } as Record<string, string>)[value] ?? value;
+  return ({ "read-only": tr("runtime_labels.read_only"), "workspace-write": tr("runtime_labels.workspace_write"), "full-access": tr("runtime_labels.full_access"),
+    "danger-full-access": tr("runtime_labels.full_access"), default: tr("runtime_labels.managed_by_provider") } as Record<string, string>)[value] ?? value;
 }
 
 export function approvalLabel(value: string) {
-  return ({ user: "手动审批", auto_review: "自动审查", deny_all: "拒绝审批请求",
-    default: "默认策略", "on-request": "按需审批", untrusted: "审批未信任的操作",
-    never: "不发起审批", acceptEdits: "自动允许文件编辑", bypassPermissions: "跳过常规审批",
-    auto: "自动审查", auto_allow: "自动允许请求", dontAsk: "拒绝审批请求", plan: "规划模式" } as Record<string, string>)[value] ?? value;
+  return ({ user: tr("runtime_labels.manual_approval"), auto_review: tr("runtime_labels.automatic_review"), deny_all: tr("runtime_labels.deny_approval_requests"),
+    default: tr("runtime_labels.default_policy"), "on-request": tr("runtime_labels.approval_on_request"), untrusted: tr("runtime_labels.approve_untrusted_operations"),
+    never: tr("runtime_labels.never_request_approval"), acceptEdits: tr("runtime_labels.automatically_allow_file_edits"), bypassPermissions: tr("runtime_labels.bypass_standard_approval"),
+    auto: tr("runtime_labels.automatic_review"), auto_allow: tr("runtime_labels.automatically_allow_requests"), dontAsk: tr("runtime_labels.deny_approval_requests"), plan: tr("runtime_labels.plan_mode") } as Record<string, string>)[value] ?? value;
 }

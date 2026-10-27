@@ -1,3 +1,4 @@
+import { t as tr } from "../i18n.mjs";
 /** Wires Cleo's computer use into Electron: built-in browser, host control, bridge, files. */
 
 import { dirname, join } from "node:path";
@@ -69,7 +70,7 @@ export class ComputerUse {
     try {
       process.env.CLEO_COMPUTER_BRIDGE = await this.bridge.start();
     } catch (error) {
-      this.bridgeError = `电脑操作通道未能启动：${error.message}`;
+      this.bridgeError = tr("index.could_not_start_the_computer_control_channel_value", { p0: error.message });
       delete process.env.CLEO_COMPUTER_BRIDGE;
     }
   }
@@ -78,7 +79,7 @@ export class ComputerUse {
     const identity = request?.identity && typeof request.identity === "object" ? request.identity : {};
     if (request?.op === "tools") return this.broker.catalog(identity);
     if (request?.op === "call") return this.broker.call(identity, request.name, request.arguments ?? {}, signal);
-    throw new Error("未知的电脑操作请求。");
+    throw new Error(tr("index.unknown_computer_control_request"));
   }
 
   attachWindow(window) {
@@ -115,7 +116,7 @@ export class ComputerUse {
     if (!rect) { this.browser.setViewport(null); return; }
     const zoom = window.webContents.getZoomFactor() || 1;
     const values = ["x", "y", "width", "height"].map(key => Number(rect[key]));
-    if (values.some(value => !Number.isFinite(value))) throw new Error("浏览器区域无效。");
+    if (values.some(value => !Number.isFinite(value))) throw new Error(tr("index.invalid_browser_bounds"));
     const [x, y, width, height] = values.map(value => value * zoom);
     this.browser.setViewport({ x, y, width, height });
   }
@@ -142,8 +143,8 @@ export class ComputerUse {
       cancelFiles: () => this.browser.cancelFileChooser(tab().id),
       pickFiles: async () => {
         const current = tab();
-        if (!current.fileChooser) throw new Error("网页当前没有等待中的文件选择框。");
-        const result = await this.electron.dialog.showOpenDialog(window, { title: "选择要上传到网页的文件",
+        if (!current.fileChooser) throw new Error(tr("index.the_page_has_no_pending_file_chooser"));
+        const result = await this.electron.dialog.showOpenDialog(window, { title: tr("index.choose_files_to_upload_to_the_page"),
           properties: current.fileChooser.mode === "selectMultiple" ? ["openFile", "multiSelections"] : ["openFile"] });
         if (result.canceled || !result.filePaths.length) return null;
         return this.browser.setFiles(current.id, result.filePaths);
@@ -154,7 +155,7 @@ export class ComputerUse {
         else this.electron.shell.openPath(this.browser.downloadsDir);
       },
     };
-    if (!Object.hasOwn(actions, action)) throw new Error("未知的浏览器操作。");
+    if (!Object.hasOwn(actions, action)) throw new Error(tr("index.unknown_browser_operation"));
     await actions[action]();
     return this.state();
   }
@@ -172,13 +173,13 @@ export class ComputerUse {
     if (action === "shortcut") { this.controls.setShortcut(String(params.value || "")); return this.state(); }
     if (action === "preview") {
       const file = await this.files.read(String(params.root || ""), String(params.path || ""));
-      if (!["html", "pdf", "image", "text", "markdown"].includes(file.kind)) throw new Error("该文件不能在内置浏览器中预览。");
+      if (!["html", "pdf", "image", "text", "markdown"].includes(file.kind)) throw new Error(tr("index.this_file_cannot_be_previewed_in_the_built_in_browser"));
       if (this.broker.browserEngaged()) await this.broker.takeover("browser", "preview");
       const tab = this.browser.createTab({ activate: true });
       await this.browser.navigate(tab.id, file.url);
       return this.state();
     }
-    throw new Error("未知的电脑面板操作。");
+    throw new Error(tr("index.unknown_computer_panel_action"));
   }
 
   handleFiles(op, params = {}) {
@@ -186,7 +187,7 @@ export class ComputerUse {
     if (op === "list") return this.files.list(root, String(params.path || ""));
     if (op === "read") return this.files.read(root, String(params.path || ""));
     if (op === "locate") return this.files.locate(root, String(params.href || ""));
-    throw new Error("未知的文件操作。");
+    throw new Error(tr("index.unknown_file_operation"));
   }
 
   /** Clicks from the overlay page or the always-on-top host status bar. */

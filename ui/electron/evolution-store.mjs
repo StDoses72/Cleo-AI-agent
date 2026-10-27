@@ -1,3 +1,4 @@
+import { t as tr } from "./i18n.mjs";
 import { randomUUID, createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import * as nativeFs from "node:fs/promises";
@@ -78,7 +79,7 @@ export async function exists(path) {
 /** Purpose: Keep backups within owned data. Input: tree. Output: rejects links before copying. */
 export async function rejectLinks(path) {
   const info = await lstat(path);
-  if (info.isSymbolicLink()) throw new Error(`无法备份链接，请先移除或迁移：${path}`);
+  if (info.isSymbolicLink()) throw new Error(tr("evolution_store.cannot_back_up_a_link_remove_or_migrate_it_first_value", { p0: path }));
   if (info.isDirectory()) for (const entry of await readdir(path)) await rejectLinks(join(path, entry));
 }
 
@@ -127,10 +128,10 @@ export class EvolutionStore {
   async build(id) {
     const state = await this.read();
     const build = state.builds.find((item) => item.id === id);
-    if (!build || !/^[a-zA-Z0-9-]+$/.test(id)) throw new Error("找不到所选构建。");
+    if (!build || !/^[a-zA-Z0-9-]+$/.test(id)) throw new Error(tr("evolution_store.selected_build_not_found"));
     const directory = ownedPath(this.root, "builds", id);
     const executable = ownedPath(directory, build.executable);
-    if (!await exists(executable)) throw new Error("所选构建文件缺失，请使用保底版本恢复。");
+    if (!await exists(executable)) throw new Error(tr("evolution_store.selected_build_files_are_missing_recover_using_the_fallback_version"));
     return { ...build, directory, executable };
   }
 
@@ -138,7 +139,7 @@ export class EvolutionStore {
   async backup(id) {
     if (!/^[a-zA-Z0-9-]+$/.test(id)) throw new Error("Invalid backup id.");
     const destination = ownedPath(this.root, "backups", id);
-    if (await exists(destination)) throw new Error("恢复点已存在，拒绝覆盖。");
+    if (await exists(destination)) throw new Error(tr("evolution_store.a_recovery_point_already_exists_and_will_not_be_overwritten"));
     await mkdir(destination, { recursive: true });
     const entries = [];
     for (const name of DATA_ENTRIES) {
@@ -258,10 +259,10 @@ export class EvolutionStore {
    */
   async saveVersion(name = "") {
     const state = await this.read();
-    if (state.transaction) throw new Error("请等待应用启动完成后再保存。");
+    if (state.transaction) throw new Error(tr("evolution_store.wait_for_application_startup_to_finish_before_saving"));
     const build = await this.build(state.active);
     if (!state.iteration || build.kind !== "local" || build.id === state.iteration.base) {
-      throw new Error("请先应用本轮改动，再保存为本地版本。");
+      throw new Error(tr("evolution_store.apply_this_iteration_s_changes_before_saving_a_local_version"));
     }
     const saveSequence = (state.saveSequence || state.builds.filter((item) => item.savedAt).length) + 1;
     const saved = { ...state.builds.find((item) => item.id === build.id),
@@ -338,8 +339,8 @@ export class EvolutionStore {
   async stage(target, { officialSelection = false, restartError = null, installedRelease = null } = {}) {
     const build = await this.build(target);
     const state = await this.read();
-    if (state.transaction) throw new Error("上一次应用尚未完成，请打开恢复入口。");
-    if (officialSelection && build.kind !== "official") throw new Error("只有正式版本可以重置正式源码基准。");
+    if (state.transaction) throw new Error(tr("evolution_store.the_previous_application_has_not_finished_open_recovery"));
+    if (officialSelection && build.kind !== "official") throw new Error(tr("evolution_store.only_official_versions_can_reset_the_official_source_baseline"));
     const transaction = {
       id: randomUUID(), from: state.active, to: target,
       phase: "staged", backup: null, createdAt: new Date().toISOString(), restartError,
@@ -361,7 +362,7 @@ export class EvolutionStore {
   async activate() {
     const state = await this.read();
     const tx = state.transaction;
-    if (!tx) throw new Error("没有待应用的改动。");
+    if (!tx) throw new Error(tr("evolution_recovery.there_are_no_changes_to_apply"));
     await this.build(tx.to);
     if (!tx.backup) {
       const backup = `apply-${tx.id}`;
@@ -383,7 +384,7 @@ export class EvolutionStore {
       const source = ownedPath(this.root, "source");
       const archived = ownedPath(this.root, selection.sourceArchive);
       if (await exists(source)) {
-        if (await exists(archived)) throw new Error("源码归档已存在，不能覆盖；请使用恢复入口。");
+        if (await exists(archived)) throw new Error(tr("evolution_store.the_source_archive_already_exists_and_cannot_be_overwritten_use_recovery"));
         await fs.rename(source, archived);
       }
       Object.assign(patch, { selectedBase: tx.to, workspaceBase: tx.to, baseTag: selection.baseTag,
@@ -406,7 +407,7 @@ export class EvolutionStore {
       const source = ownedPath(this.root, "source");
       const archived = ownedPath(this.root, transaction.officialSelection.sourceArchive);
       if (await exists(archived)) {
-        if (await exists(source)) throw new Error("原源码和恢复源码同时存在，请检查后再恢复，不能覆盖现有源码。");
+        if (await exists(source)) throw new Error(tr("evolution_store.both_the_original_and_recovery_source_directories_exist_check_them_before_recovery_ex"));
         await fs.rename(archived, source);
       }
       Object.assign(patch, transaction.officialSelection.originalSelection);

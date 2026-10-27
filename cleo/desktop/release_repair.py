@@ -7,6 +7,8 @@ import json
 import sys
 from pathlib import Path
 
+from cleo.i18n import tr
+
 
 async def repair_release(request: dict, settings, create_provider) -> None:
     """Purpose: Repair an isolated release while preserving the selected version's behavior.
@@ -16,12 +18,12 @@ async def repair_release(request: dict, settings, create_provider) -> None:
     """
     source = Path(request["source"]).resolve(strict=True)
     if not (source / ".git").is_dir():
-        raise ValueError("发布修复目录不是独立 Git 工作区。")
+        raise ValueError(tr("release_repair.the_release_repair_directory_is_not_an_isolated"))
     runtime = request["runtime"]
     name = runtime["provider"]
     config = settings.productivity.providers.get(name)
     if not config or not config.enabled:
-        raise ValueError("发布所选 harness 已不可用，请恢复连接后继续。")
+        raise ValueError(tr("release_repair.the_harness_selected_for_release_repair_is_unava"))
     provider = create_provider(name, config)
     session = None
     try:
@@ -59,7 +61,9 @@ async def repair_release(request: dict, settings, create_provider) -> None:
                 + json.dumps(request.get("diagnostics", "")[-40000:], ensure_ascii=False),
             )
             if result.status != "completed":
-                raise RuntimeError(result.error or "发布修复未完成，请检查 harness 连接。")
+                raise RuntimeError(result.error or tr(
+                    "release_repair.release_repair_is_incomplete_check_the_harness_c",
+                ))
     finally:
         if session is not None:
             await provider.close(session.id)

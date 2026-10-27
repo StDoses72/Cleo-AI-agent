@@ -1,4 +1,6 @@
+import { sourceText, t as tr, getLanguage, setLanguage } from "./i18n.mjs";
 import { randomUUID } from "node:crypto";
+import { readUiLanguage } from "./language.mjs";
 import { launchDesktop } from "./evolution-launch.mjs";
 import { waitForControllerReady, showRecovery } from "./evolution-recovery.mjs";
 import { EvolutionManager } from "./evolution.mjs";
@@ -59,6 +61,7 @@ if (app.isPackaged) {
   })) app.exit(0);
 }
 const backend = new BackendBridge({ app, here });
+setLanguage(await readUiLanguage(backend.runtimePaths().cleoHome));
 const computer = new ComputerUse({
   app, backend,
   electron: { BrowserWindow, WebContentsView, dialog, globalShortcut, nativeImage, screen, session, shell },
@@ -140,11 +143,11 @@ const setup = new SetupManager({ root: join(process.env.CLEO_HOME || backend.run
   toolsRoot: join(evolutionRoot, "tools"), python: process.env.CLEO_PYTHON || backend.runtimePaths().python || (process.platform === "win32" ? "python" : "python3"),
   resourcesPath: process.resourcesPath,
   repairRuntime: async () => {
-    if (!dependencies.runtime) throw new Error("随应用安装的运行环境无法启动，请重新安装 Cleo 后重试。");
+    if (!dependencies.runtime) throw new Error(tr("main.the_runtime_bundled_with_the_application_cannot_start_reinstall_cleo_and_try_again"));
     await dependencies.check();
     const result = await readJson(join(dependencies.root, "state.json"), {});
     if (result.phase === "error" || updater.getState().dependencies?.phase === "error")
-      throw new Error(result.error || updater.getState().dependencies.error || "运行环境修复尚未完成。");
+      throw new Error(result.error || updater.getState().dependencies.error || tr("main.runtime_repair_is_not_complete"));
   },
 });
 
@@ -156,11 +159,11 @@ const companion = new EvolutionCompanion({ store: monitorStore, backend, evoluti
   ready: () => !editingThread && !backend.pending.size && !setup.busy && !programUpdates.busy && !programUpdates.closed && evolution.phase === "idle",
   turn: params => monitoredEvolutionTurn(params, () => {}),
   stop: async threadId => {
-    if (evolution.operationAbort) evolution.operationAbort.abort(new Error("用户已停止进化检查。"));
+    if (evolution.operationAbort) evolution.operationAbort.abort(new Error(tr("main.the_user_stopped_evolution_checks")));
     if (threadId) await backend.request("cancel_run", { thread_id: threadId });
     for (let attempt = 0; attempt < 100 && (editingThread || evolution.phase !== "idle"); attempt++)
       await new Promise(resolve => setTimeout(resolve, 100));
-    if (editingThread || evolution.phase !== "idle") throw new Error("任务尚未停止，请稍后重试恢复操作。");
+    if (editingThread || evolution.phase !== "idle") throw new Error(tr("main.the_task_has_not_stopped_yet_retry_recovery_later"));
   },
   discard: () => programUpdates.run(() => changeEvolutionBase(null, true)),
   rollback: id => programUpdates.run(() => changeEvolutionBase(id, true)),
@@ -189,9 +192,9 @@ async function openEvolutionMonitor() {
  */
 async function publishMonitor() {
   const state = await evolution.status();
-  await monitorStore.publish({ version: app.getVersion(), protocol: 2, threadId: editingThread || state.threadId,
-    phase: editingThread ? "agent 正在修改" : state.phase === "idle" ? "会话就绪" : "正在检查或准备版本",
-    detail: editingDetail || state.validation?.message || "可以继续聊天，准备体验时点击检查改动。",
+  await monitorStore.publish({ version: app.getVersion(), protocol: 2, uiLanguage: getLanguage(), threadId: editingThread || state.threadId,
+    phase: editingThread ? tr("main.the_agent_is_editing") : state.phase === "idle" ? tr("main.conversation_ready") : tr("main.checking_or_preparing_a_version"),
+    detail: editingDetail || state.validation?.message || tr("main.you_can_continue_chatting_click_check_changes_when_you_are_ready_to_try_them"),
     logs: (state.logs || "").slice(-12000), thread: companion.snapshot(),
     actions: { ...evolutionActions(state), running: Boolean(editingThread) },
     paused: await monitorStore.paused(), running: Boolean(editingThread) });
@@ -221,7 +224,7 @@ async function evolutionState() {
 
 /** Purpose: Hand off activation after explicit consent. Input: build id; current user data is always retained. Output: app restart. */
 async function applyEvolution(id) {
-  if (backend.pending.size) throw new Error("请先等待当前任务完成或停止任务，再应用改动。");
+  if (backend.pending.size) throw new Error(tr("main.wait_for_the_current_task_to_finish_or_stop_it_before_applying_changes"));
   const state = await evolution.store.read();
   if (state.active === id) return true;
   await openEvolutionMonitor();
@@ -266,16 +269,16 @@ async function changeEvolutionBase(id, discard = false) {
 async function monitoredEvolutionTurn(params, onEvent) {
   const queued = await monitorStore.message(params.run_id);
   if (queued) {
-    if (queued.threadId !== params.thread_id || queued.body !== params.prompt) throw new Error("补充消息与会话不匹配。");
+    if (queued.threadId !== params.thread_id || queued.body !== params.prompt) throw new Error(tr("main.the_additional_message_does_not_match_the_conversation"));
     if (!(await monitorStore.messages()).some(item => item.id === queued.id && item.status === "queued"))
-      throw new Error("此消息已经提交，请先核对会话，避免重复执行。");
+      throw new Error(tr("evolution_monitor_store.this_message_was_already_submitted_check_the_conversation_first_to_avoid_executing_it"));
     await monitorStore.claim(queued.id);
   }
   let completed = false;
   let failed = false;
   editingThread = params.thread_id;
   computer.broker.turnStarted(params.thread_id, params.run_id);
-  editingDetail = "用户补充可以继续发送；有取舍问题时请在会话中回答。";
+  editingDetail = tr("main.you_can_keep_sending_additional_messages_answer_any_tradeoff_questions_in_the_convers");
   try {
     await companion.load(params.thread_id).catch(error => console.error("Companion history:", error.message));
     if (companion.thread?.id === params.thread_id) { companion.thread.status = "running"; companion.thread.activeRunId = params.run_id; }
@@ -285,7 +288,7 @@ async function monitoredEvolutionTurn(params, onEvent) {
       companion.event(params.thread_id, event);
       if (event.type === "done") completed = true;
       if (event.type === "error") failed = true;
-      if (event.type === "question-request") editingDetail = "agent 正在询问取舍，可在此窗口或 Cleo 会话中回答。";
+      if (event.type === "question-request") editingDetail = tr("main.the_agent_is_asking_about_a_tradeoff_answer_here_or_in_the_cleo_conversation");
       onEvent(event);
     } });
   } catch (error) { failed = true; throw error; }
@@ -299,6 +302,8 @@ async function monitoredEvolutionTurn(params, onEvent) {
 }
 
 const allowedMethods = new Set([
+  "get_ui_language",
+  "set_ui_language",
   "load_workspace",
   "load_memory",
   "open_evolution_thread",
@@ -393,7 +398,7 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: true,
       preload: join(here, "preload.cjs"),
-      additionalArguments: process.env.CLEO_DESKTOP_MOCK === "1" ? ["--cleo-desktop-mock"] : [],
+      additionalArguments: [`--cleo-ui-language=${getLanguage()}`, ...(process.env.CLEO_DESKTOP_MOCK === "1" ? ["--cleo-desktop-mock"] : [])],
     },
   });
 
@@ -419,26 +424,26 @@ app.whenReady().then(async () => {
   // A failure here disables computer use only; Cleo itself must still start.
   await computer.start().catch(error => console.error("Computer use:", error.message));
   ipcMain.handle("cleo:setup", async (event, action, params = {}) => {
-    if (!trustedPreviewSender(event, pathToFileURL(join(here, "../dist/index.html")).href)) throw new Error("请在 Cleo 主窗口管理依赖。");
+    if (!trustedPreviewSender(event, pathToFileURL(join(here, "../dist/index.html")).href)) throw new Error(tr("main.manage_dependencies_in_cleo_s_main_window"));
     if (action === "status") return setup.state();
     if (action === "startup") return setup.startup();
     if (action === "scan") return setup.scan();
     if (action === "dismiss") return setup.dismiss();
     if (action === "install") {
-      if (backend.pending.size || evolution.phase !== "idle" || programUpdates.busy) throw new Error("请先等待任务及版本操作完成。");
+      if (backend.pending.size || evolution.phase !== "idle" || programUpdates.busy) throw new Error(tr("main.wait_for_current_tasks_and_version_operations_to_finish"));
       return setup.install(params.ids, params.consent);
     }
-    throw new Error("未知依赖操作。");
+    throw new Error(tr("main.unknown_dependency_operation"));
   });
   const appUrl = pathToFileURL(join(here, "../dist/index.html")).href;
   ipcMain.handle("cleo:computer", (event, action = "state", params = {}) => {
-    if (!trustedPreviewSender(event, appUrl)) throw new Error("电脑操作面板仅供 Cleo 主窗口使用。");
+    if (!trustedPreviewSender(event, appUrl)) throw new Error(tr("main.the_computer_panel_is_available_only_to_cleo_s_main_window"));
     const window = BrowserWindow.fromWebContents(event.sender);
-    if (!window) throw new Error("找不到 Cleo 主窗口。");
+    if (!window) throw new Error(tr("main.cleo_s_main_window_was_not_found"));
     return computer.handle(window, String(action), params && typeof params === "object" ? params : {});
   });
   ipcMain.handle("cleo:files", (event, op, params = {}) => {
-    if (!trustedPreviewSender(event, appUrl)) throw new Error("文件侧栏仅供 Cleo 主窗口使用。");
+    if (!trustedPreviewSender(event, appUrl)) throw new Error(tr("main.the_file_sidebar_is_available_only_to_cleo_s_main_window"));
     return computer.handleFiles(String(op), params && typeof params === "object" ? params : {});
   });
   // Take-over and stop clicks from Cleo's own overlay page and host status bar.
@@ -468,7 +473,7 @@ app.whenReady().then(async () => {
       window.setOverlayIcon(null, "");
       return;
     }
-    window.setOverlayIcon(nativeImage.createFromDataURL(overlay), `${count} 条已完成的回复`);
+    window.setOverlayIcon(nativeImage.createFromDataURL(overlay), tr("main.value_completed_replies", { p0: count }));
   });
   ipcMain.on("cleo:window-theme", (event, theme) => {
     if (theme !== "light" && theme !== "dark") return;
@@ -481,13 +486,13 @@ app.whenReady().then(async () => {
     });
   });
   ipcMain.handle("cleo:request", async (event, payload) => {
-    if (programUpdates.closed) throw new Error("Cleo 正在退出，请稍后重试。");
+    if (programUpdates.closed) throw new Error(tr("main.cleo_is_shutting_down_try_again_later"));
     const method = String(payload?.method || "");
     if (!allowedMethods.has(method)) throw new Error(`Unsupported desktop method: ${method}`);
     const streamId = payload?.streamId ? String(payload.streamId) : null;
     const controlsRun = method === "stream_turn" || method === "steer_run";
     if (controlsRun && (programUpdates.blocksTasks || setup.busy || companion.controlling)) {
-      throw new Error("请等待进化操作完成后再修改代码。");
+      throw new Error(tr("main.wait_for_the_evolution_operation_to_finish_before_editing_code"));
     }
     const params = payload?.params || {};
     const onEvent = (streamEvent) => {
@@ -495,16 +500,16 @@ app.whenReady().then(async () => {
         event.sender.send("cleo:stream-event", { streamId, event: streamEvent });
       }
     };
-    if (programUpdates.closed) throw new Error("Cleo 正在退出，请稍后重试。");
+    if (programUpdates.closed) throw new Error(tr("main.cleo_is_shutting_down_try_again_later"));
     const isEvolution = controlsRun && await backend.request("is_evolution_thread", { thread_id: params.thread_id });
-    if (programUpdates.closed) throw new Error("Cleo 正在退出，请稍后重试。");
+    if (programUpdates.closed) throw new Error(tr("main.cleo_is_shutting_down_try_again_later"));
     const tracksTurn = method === "stream_turn" && !isEvolution && typeof params.thread_id === "string";
     if (controlsRun) {
       const transaction = (await evolution.store.read()).transaction;
       if (programUpdates.blocksTasks || transaction || (evolution.phase !== "idle" && (!evolution.readOnlyOperation || isEvolution)))
-        throw new Error("请等待当前版本操作完成。");
+        throw new Error(tr("main.wait_for_the_current_version_operation_to_finish"));
     }
-    if (isEvolution && programUpdates.busy) throw new Error("请等待当前版本操作完成。");
+    if (isEvolution && programUpdates.busy) throw new Error(tr("main.wait_for_the_current_version_operation_to_finish"));
     if (tracksTurn) computer.broker.turnStarted(params.thread_id, params.run_id);
     let result;
     try {
@@ -516,6 +521,15 @@ app.whenReady().then(async () => {
       if (tracksTurn) computer.broker.turnEnded(params.thread_id);
     }
     if (method === "load_workspace") backend.hotReload = result?.backend?.hotReload === true;
+    if (method === "set_ui_language" || method === "get_ui_language") {
+      setLanguage(result);
+      desktopTray.refreshLanguage();
+      computer.browser.refreshLanguage();
+      computer.controls.pushStatus();
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) window.webContents.send("cleo:language-changed", result);
+      }
+    }
     // Backends without hot reload (older versions selected by evolution) still need a restart.
     if (!backend.hotReload && ["save_model_profile", "save_dream_settings", "create_model_connection",
       "select_chat_model", "rename_model_connection", "remove_model_connection"].includes(method)) {
@@ -525,8 +539,8 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle("cleo:pick-attachments", async () => {
     const result = await dialog.showOpenDialog({
-      title: "添加附件",
-      buttonLabel: "添加",
+      title: tr("conversation.add_attachment"),
+      buttonLabel: tr("connectionwizard.add"),
       properties: ["openFile", "multiSelections"],
       filters: ATTACHMENT_FILTERS,
     });
@@ -537,7 +551,7 @@ app.whenReady().then(async () => {
     const paths = Array.isArray(payload?.paths) ? payload.paths : [];
     const inline = Array.isArray(payload?.inline) ? payload.inline : [];
     if (paths.length + inline.length > MAX_ATTACHMENT_COUNT) {
-      throw new Error(`一次最多添加 ${MAX_ATTACHMENT_COUNT} 个附件`);
+      throw new Error(tr("attachments.you_can_add_at_most_value_attachments_at_once", { p0: MAX_ATTACHMENT_COUNT }));
     }
     const [pathAttachments, inlineAttachments] = await Promise.all([
       attachmentsFromPaths(paths),
@@ -547,8 +561,8 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle("cleo:pick-workspace", async (event) => {
     const options = {
-      title: "选择或新建项目文件夹",
-      buttonLabel: "用作工作区",
+      title: tr("main.choose_or_create_a_project_folder"),
+      buttonLabel: tr("main.use_as_workspace"),
       properties: ["openDirectory", "createDirectory"],
     };
     const parent = BrowserWindow.fromWebContents(event.sender);
@@ -570,7 +584,7 @@ app.whenReady().then(async () => {
     } catch (error) {
       return {
         ok: false,
-        error: error instanceof Error ? error.message : "无法打开本地文件",
+        error: error instanceof Error ? error.message : tr("app.could_not_open_the_local_file"),
       };
     }
   });
@@ -580,17 +594,17 @@ app.whenReady().then(async () => {
   ipcMain.handle("cleo:update:install", () => programUpdates.install());
   ipcMain.handle("cleo:storage:inventory", () => storage(() => storageInventory(storageOptions())));
   ipcMain.handle("cleo:storage:reclaim", () => {
-    if (backend.pending.size) throw new Error("请先等待当前任务完成或停止任务，再清理存储。");
+    if (backend.pending.size) throw new Error(tr("main.wait_for_the_current_task_to_finish_or_stop_it_before_reclaiming_storage"));
     return storage(() => reclaimStorage(storageOptions(), { manual: true }));
   });
   ipcMain.handle("cleo:evolution:state", () => evolutionState());
   ipcMain.handle("cleo:evolution:action", async (_event, payload) => {
     const { action, ...params } = payload || {};
-    if (setup.busy && !["monitor", "nextMessage"].includes(action)) throw new Error("请等待依赖安装完成。");
+    if (setup.busy && !["monitor", "nextMessage"].includes(action)) throw new Error(tr("main.wait_for_dependency_installation_to_finish"));
     if (backend.pending.size && action === "contributionRepairPrompt")
-      throw new Error("请先等待当前任务完成或停止任务，再检查合并。");
+      throw new Error(tr("main.wait_for_the_current_task_to_finish_or_stop_it_before_checking_the_merge"));
     if (backend.pending.size && ["prepare", "build", "merge", "submit", "apply", "recovery", "select", "discard", "save", "begin", "repairPrompt", "requestBranch", "refreshBranchRequest"].includes(action)) {
-      throw new Error("请先等待当前任务完成或停止任务。");
+      throw new Error(tr("main.wait_for_the_current_task_to_finish_or_stop_it"));
     }
     const actions = {
       prepare: () => evolution.prepare(),
@@ -604,8 +618,8 @@ app.whenReady().then(async () => {
       nextMessage: () => monitorStore.pending(params.threadId),
       repairPrompt: async () => {
         const state = await evolution.store.read();
-        if (state.lastRestartError) return "上次应用未能正常启动，请在 Cleo 源码工作区调查并修复启动问题。保留用户数据和恢复控制器，不要自行重启。诊断数据：\n" + state.lastRestartError;
-        return (await evolution.repairPrompt()).replace("桌面会在本轮结束后重新检查。", "修复后由用户选择检查改动。");
+        if (state.lastRestartError) return sourceText("main.the_previous_application_failed_to_start_investigate_and_fix_startup_in_the_cleo_sour") + state.lastRestartError;
+        return (await evolution.repairPrompt()).replace(sourceText("main.the_desktop_app_will_run_checks_again_after_this_turn"), sourceText("main.after_the_fix_the_user_chooses_when_to_check_changes"));
       },
       releases: async () => {
         await updater.refreshCatalog();
@@ -622,7 +636,7 @@ app.whenReady().then(async () => {
         const checked = await updater.check();
         if (checked.phase === "error") throw new Error(checked.error);
         const downloaded = await updater.download();
-        if (downloaded.phase !== "ready") throw new Error(downloaded.error || "请先下载并校验所选版本。");
+        if (downloaded.phase !== "ready") throw new Error(downloaded.error || tr("main.download_and_verify_the_selected_version_first"));
         return prepareSelectedRelease(evolution, updater, params.tag);
       },
       merge: () => evolution.mergeRelease(params.tag),
@@ -660,8 +674,8 @@ app.whenReady().then(async () => {
         if (selected) return applyEvolution(selected);
       },
     };
-    if (!Object.hasOwn(actions, action)) throw new Error("不支持的进化操作。");
-    if (programUpdates.closed) throw new Error("Cleo 正在退出，请稍后重试。");
+    if (!Object.hasOwn(actions, action)) throw new Error(tr("evolution_companion.unsupported_evolution_action"));
+    if (programUpdates.closed) throw new Error(tr("main.cleo_is_shutting_down_try_again_later"));
     if (["startRelease", "retryRelease", "cancelRelease", "cancelLogin", "openGithubLogin", "monitor", "nextMessage"].includes(action)) return actions[action]();
     return programUpdates.run(actions[action], {
       allowRunning: ["releases", "download", "pullRequest", "releasePermission", "previewMergedRelease", "contributionBranches", "checkContribution", "mergeAssistance"].includes(action),

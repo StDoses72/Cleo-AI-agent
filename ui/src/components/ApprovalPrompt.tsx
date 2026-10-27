@@ -1,3 +1,4 @@
+import { t as tr } from "../../electron/i18n.mjs";
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, GitBranch, LoaderCircle, ShieldCheck, Terminal, X } from "lucide-react";
 import type { ApprovalDecision, ApprovalRequest } from "../types";
@@ -10,10 +11,10 @@ interface ApprovalPromptProps {
 }
 
 const titleByKind: Record<ApprovalRequest["kind"], string> = {
-  command: "Cleo 想要执行受保护的命令",
-  file_change: "Cleo 想要修改受保护的文件",
-  permissions: "Cleo 请求额外权限",
-  elicitation: "工具请求你的授权",
+  get command() { return tr("approvalprompt.cleo_wants_to_run_a_protected_command"); },
+  get file_change() { return tr("approvalprompt.cleo_wants_to_modify_protected_files"); },
+  get permissions() { return tr("approvalprompt.cleo_requests_additional_permissions"); },
+  get elicitation() { return tr("approvalprompt.a_tool_needs_your_authorization"); },
 };
 
 type AllowMode = "accept" | "acceptForSession";
@@ -70,20 +71,20 @@ export function ApprovalPrompt({ request, pending, error, onResolve }: ApprovalP
   const detail = request.command
     || actionSummary
     || request.grantRoot
-    || (request.permissions ? JSON.stringify(request.permissions) : "等待确认后继续当前操作");
+    || (request.permissions ? JSON.stringify(request.permissions) : tr("approvalprompt.waiting_for_confirmation_to_continue"));
   const reason = request.reason || (
     request.kind === "command"
-      ? "该命令需要超出当前沙箱或写入受保护区域。请确认后继续。"
+      ? tr("approvalprompt.this_command_needs_access_beyond_the_current_sandbox_or_to_a_protected_area_confirm_t")
       : request.kind === "file_change"
-        ? "这项文件修改超出了当前会话已经授予的写入范围。"
-        : "当前服务请求你的确认。"
+        ? tr("approvalprompt.this_file_change_is_outside_the_write_access_granted_to_the_current_session")
+        : tr("approvalprompt.the_current_service_needs_your_confirmation")
   );
 
   const onceLabel = request.decisionLabels?.accept
-    || (request.mode === "url" ? "已完成授权" : request.kind === "elicitation" ? "允许" : "仅允许这一次");
-  const onceHint = request.kind === "elicitation" ? "继续此工具请求" : "继续当前操作，不保存规则";
-  const sessionLabel = request.decisionLabels?.acceptForSession || "本次会话始终允许";
-  const sessionHint = request.decisionLabels ? "采用服务提供的权限范围" : "相同请求在本次会话中不再询问";
+    || (request.mode === "url" ? tr("approvalprompt.authorization_completed") : request.kind === "elicitation" ? tr("approvalprompt.allow") : tr("approvalprompt.allow_once"));
+  const onceHint = request.kind === "elicitation" ? tr("approvalprompt.continue_this_tool_request") : tr("approvalprompt.continue_without_saving_a_rule");
+  const sessionLabel = request.decisionLabels?.acceptForSession || tr("approvalprompt.always_allow_in_this_session");
+  const sessionHint = request.decisionLabels ? tr("approvalprompt.use_the_scope_provided_by_the_service") : tr("approvalprompt.do_not_ask_again_for_matching_requests_in_this_session");
   const canChooseMode = decisions.has("accept") && decisions.has("acceptForSession");
   const activeMode: AllowMode = decisions.has("accept") ? (canChooseMode ? allowMode : "accept") : "acceptForSession";
   const allowLabel = activeMode === "accept" ? onceLabel : sessionLabel;
@@ -98,11 +99,11 @@ export function ApprovalPrompt({ request, pending, error, onResolve }: ApprovalP
       <header className="approval-header">
         <span className="approval-mark" aria-hidden="true"><ShieldCheck size={18} /></span>
         <div>
-          <span className="approval-kicker">需要你的确认</span>
+          <span className="approval-kicker">{tr("approvalprompt.your_confirmation_is_required")}</span>
           <h3 id="approval-title">{request.title || titleByKind[request.kind]}</h3>
         </div>
         <span className="approval-context" title={request.cwd || request.method}>
-          <GitBranch size={12} />{request.kind === "command" ? "命令" : request.kind === "file_change" ? "文件" : "权限"}
+          <GitBranch size={12} />{request.kind === "command" ? tr("approvalprompt.command") : request.kind === "file_change" ? tr("approvalprompt.file") : tr("approvalprompt.permissions")}
         </span>
       </header>
 
@@ -113,13 +114,11 @@ export function ApprovalPrompt({ request, pending, error, onResolve }: ApprovalP
 
       <p className="approval-reason">{reason}</p>
       {request.kind === "permissions" && request.permissions && request.command && <details className="approval-details">
-        <summary>请求详情</summary><pre>{JSON.stringify(request.permissions, null, 2)}</pre>
+        <summary>{tr("approvalprompt.request_details")}</summary><pre>{JSON.stringify(request.permissions, null, 2)}</pre>
       </details>}
       {request.kind === "elicitation" && request.mode === "url" && !request.unsupportedReason ? (
         <p className="approval-reason">
-          请先打开 <a href={request.url!} target="_blank" rel="noreferrer">{request.url}</a>，
-          完成授权后再确认。
-        </p>
+          {tr("approvalprompt.first_open")}<a href={request.url!} target="_blank" rel="noreferrer">{request.url}</a>{tr("approvalprompt.complete_authorization_then_confirm")}</p>
       ) : null}
       {request.unsupportedReason ? (
         <p className="approval-error" role="alert">{request.unsupportedReason}</p>
@@ -147,7 +146,7 @@ export function ApprovalPrompt({ request, pending, error, onResolve }: ApprovalP
                   className="approval-allow-toggle"
                   type="button"
                   disabled={pending}
-                  aria-label="选择允许方式"
+                  aria-label={tr("approvalprompt.choose_how_to_allow")}
                   aria-haspopup="menu"
                   aria-expanded={menuOpen}
                   onClick={() => setMenuOpen((open) => !open)}
@@ -156,7 +155,7 @@ export function ApprovalPrompt({ request, pending, error, onResolve }: ApprovalP
                   <ChevronDown size={16} />
                 </button>
                 {menuOpen ? (
-                  <div className="approval-allow-options surface-popover" role="menu" aria-label="允许方式">
+                  <div className="approval-allow-options surface-popover" role="menu" aria-label={tr("approvalprompt.permission_scope")}>
                     <button
                       type="button"
                       role="menuitemradio"
@@ -191,8 +190,8 @@ export function ApprovalPrompt({ request, pending, error, onResolve }: ApprovalP
             data-testid={denyCard === "decline" ? "approval-deny" : "approval-cancel"}
           >
             <span>
-              <strong>{denyCard === "decline" ? (request.decisionLabels?.decline || "拒绝") : "取消此次请求"}</strong>
-              <small>{denyCard === "decline" ? "不执行这项操作" : "放弃等待，结束这次请求"}</small>
+              <strong>{denyCard === "decline" ? (request.decisionLabels?.decline || tr("approvalprompt.deny")) : tr("approvalprompt.cancel_this_request")}</strong>
+              <small>{denyCard === "decline" ? tr("approvalprompt.do_not_perform_this_operation") : tr("approvalprompt.stop_waiting_and_end_this_request")}</small>
             </span>
             {footerCancel ? <X size={15} /> : <kbd>Esc</kbd>}
           </button>
@@ -202,11 +201,10 @@ export function ApprovalPrompt({ request, pending, error, onResolve }: ApprovalP
       <footer className="approval-footer">
         {footerCancel ? (
           <button type="button" disabled={pending} onClick={() => onResolve("cancel")} data-testid="approval-cancel">
-            取消此次请求
-          </button>
+            {tr("approvalprompt.cancel_this_request")}</button>
         ) : <span />}
         <span className={error ? "approval-error" : ""}>
-          {error || (request.cwd ? request.cwd : "请求暂停中")} {!error && footerCancel ? <kbd>Esc</kbd> : null}
+          {error || (request.cwd ? request.cwd : tr("approvalprompt.request_paused"))} {!error && footerCancel ? <kbd>Esc</kbd> : null}
         </span>
       </footer>
     </section>

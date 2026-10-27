@@ -1,3 +1,4 @@
+import { t as tr } from "../electron/i18n.mjs";
 import { useEffect, useRef, useState } from "react";
 import { requestKey } from "./request-key";
 import { cleoClient } from "./services/cleoClient";
@@ -73,7 +74,7 @@ export function useQuestions(thread: Thread | null, update: (id: string, fn: (t:
       return [q.id, q.multiple ? [...value.selected, ...(text ? [text] : [])] : text ? [text] : value.selected];
     }));
     if (Object.values(answers).some(values => !values.length)) {
-      setErrors(errors => ({ ...errors, [key]: "请回答每一个问题，再提交。" })); return;
+      setErrors(errors => ({ ...errors, [key]: tr("usequestions.answer_every_question_before_submitting") })); return;
     }
     sending.current.add(key); setBusy(current => [...current, key]);
     setErrors(errors => ({ ...errors, [key]: "" }));
@@ -81,7 +82,7 @@ export function useQuestions(thread: Thread | null, update: (id: string, fn: (t:
       await cleoClient.resolveQuestion(request.threadId, request.id, answers);
       resolve(request.threadId, { id: request.id, status: "answered", answers });
     } catch (failure) {
-      setErrors(errors => ({ ...errors, [key]: failure instanceof Error ? failure.message : "提交失败，可以重试" }));
+      setErrors(errors => ({ ...errors, [key]: failure instanceof Error ? failure.message : tr("usequestions.submission_failed_you_can_retry") }));
     } finally { sending.current.delete(key); setBusy(current => current.filter(value => value !== key)); }
   };
   const key = current ? requestKey(current.threadId, current.id) : "";

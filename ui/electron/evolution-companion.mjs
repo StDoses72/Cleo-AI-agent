@@ -1,3 +1,4 @@
+import { t as tr } from "./i18n.mjs";
 import { evolutionActions } from "./evolution-actions.mjs";
 
 /** Purpose: Project the existing agent stream into a durable companion view and route user controls.
@@ -32,7 +33,7 @@ export class EvolutionCompanion {
     else if (event.type === "runtime") thread.runtime = event.runtime;
     else if (event.type === "error") {
       thread.status = "attention";
-      thread.items.push({ id: `error-${Date.now()}`, type: "notice", title: "运行需要查看", detail: event.message });
+      thread.items.push({ id: `error-${Date.now()}`, type: "notice", title: tr("usecleoworkspace.run_needs_attention"), detail: event.message });
     } else if (event.type === "done") { thread.status = "completed"; thread.activeRunId = null; }
   }
   snapshot() {
@@ -43,42 +44,42 @@ export class EvolutionCompanion {
         [key, typeof value === "string" ? value.slice(-16000) : value]))) };
   }
   async control(command, state) {
-    if (command.threadId !== state.threadId) throw new Error("进化会话已改变，请重新选择操作。");
+    if (command.threadId !== state.threadId) throw new Error(tr("evolution_companion.the_evolution_conversation_changed_select_the_action_again"));
     const { action, params } = command;
     if (action === "answer") {
       const pending = await this.backend.request("get_pending_questions", { thread_id: command.threadId });
       const question = pending.find(q => q.id === params.questionId);
-      if (!question) throw new Error("问题已结束或连接已恢复，请等待 agent 重新提问。");
-      if (question.questions.some(q => q.secret)) throw new Error("敏感输入请在主窗口回答。");
-      if (!params.answers || question.questions.some(q => !Array.isArray(params.answers[q.id]) || !params.answers[q.id].length)) throw new Error("请回答每个问题。");
+      if (!question) throw new Error(tr("evolution_companion.the_question_ended_or_the_connection_recovered_wait_for_the_agent_to_ask_again"));
+      if (question.questions.some(q => q.secret)) throw new Error(tr("evolution_companion.enter_sensitive_information_in_the_main_window"));
+      if (!params.answers || question.questions.some(q => !Array.isArray(params.answers[q.id]) || !params.answers[q.id].length)) throw new Error(tr("evolution_companion.answer_every_question"));
       await this.backend.request("resolve_question", { thread_id: command.threadId, question_id: params.questionId, answers: params.answers });
       this.event(command.threadId, { type: "question-resolved", request: { id: params.questionId } });
       return;
     }
     if (action === "resume") { await this.store.pause(false); return; }
     if (["build", "apply", "save"].includes(action)) {
-      if (state.transaction) throw new Error("版本正在切换，请等待当前流程结束。");
-      if (!this.ready()) throw new Error("Cleo 正在修改或检查，请等当前步骤结束后再操作。");
+      if (state.transaction) throw new Error(tr("evolution_companion.a_version_switch_is_in_progress_wait_for_it_to_finish"));
+      if (!this.ready()) throw new Error(tr("evolution_companion.cleo_is_editing_or_checking_changes_wait_for_the_current_step_to_finish"));
       const actions = evolutionActions(await this.evolution.status());
       if (action === "build") {
-        if (!actions.needsCheck && !actions.checkFailed) throw new Error("暂无需要检查的改动。");
+        if (!actions.needsCheck && !actions.checkFailed) throw new Error(tr("evolution_companion.no_changes_need_checking"));
         await this.build();
       } else if (action === "apply") {
-        if (!actions.canApply) throw new Error("检查尚未通过或改动已变化，请重新检查。");
+        if (!actions.canApply) throw new Error(tr("evolution_companion.checks_have_not_passed_or_the_changes_have_changed_run_checks_again"));
         // Applying restarts Cleo; record the hand-off before this process exits.
-        await this.store.commandResult(command.id, "completed", "正在应用并重启 Cleo…");
+        await this.store.commandResult(command.id, "completed", tr("evolution_companion.applying_changes_and_restarting_cleo"));
         await this.apply(actions.candidateId);
       } else {
-        if (!actions.canSave) throw new Error("请先应用检查通过的改动，再保存版本。");
+        if (!actions.canSave) throw new Error(tr("evolution_companion.apply_changes_that_passed_checks_before_saving_a_version"));
         const name = typeof params?.name === "string" ? params.name.trim().slice(0, 80) : "";
         await this.save(name || actions.suggestedName);
       }
       return;
     }
-    if (!["stop", "discard", "rollback"].includes(action)) throw new Error("不支持的进化操作。");
-    if (state.transaction) throw new Error("版本正在切换，请等待当前恢复流程结束。");
+    if (!["stop", "discard", "rollback"].includes(action)) throw new Error(tr("evolution_companion.unsupported_evolution_action"));
+    if (state.transaction) throw new Error(tr("evolution_companion.a_version_switch_is_in_progress_wait_for_the_current_recovery_process_to_finish"));
     if (action !== "stop" && (params.active !== state.active || params.iteration !== (state.iteration?.id || null)))
-      throw new Error("版本或修改批次已改变，请重新确认恢复目标。");
+      throw new Error(tr("evolution_companion.the_version_or_change_batch_changed_confirm_the_recovery_target_again"));
     await this.store.pause(true);
     await this.stop(command.threadId);
     if (action === "stop") return;
@@ -89,7 +90,7 @@ export class EvolutionCompanion {
     else {
       const target = state.builds.find(build => build.id === params.targetId);
       if (!target || !(target.savedAt || target.kind === "official" || target.baseline || target.id === state.iteration?.base))
-        throw new Error("请选择已保存或本轮开始时的可用版本。");
+        throw new Error(tr("evolution_companion.choose_an_available_saved_version_or_the_version_from_the_start_of_this_iteration"));
       await this.rollback(target.id);
     }
   }

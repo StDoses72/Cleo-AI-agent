@@ -1,3 +1,4 @@
+import { t as tr } from "./i18n.mjs";
 import { mkdir, readFile, writeFile, access } from "node:fs/promises";
 import { join } from "node:path";
 import { CONTRIBUTION_REPOSITORY as REPOSITORY } from "./evolution-contributions.mjs";
@@ -18,7 +19,7 @@ export class GithubReleaseDriver {
   }
 
   directory(job) {
-    if (!/^[a-f0-9-]{36}$/.test(job.id)) throw new Error("发布任务路径无效。");
+    if (!/^[a-f0-9-]{36}$/.test(job.id)) throw new Error(tr("release_driver.invalid_publishing_job_path"));
     return join(this.manager.store.root, "release-jobs", job.id);
   }
 
@@ -47,24 +48,24 @@ export class GithubReleaseDriver {
 
   async authorize(params) {
     const tag = String(params.tag || "").trim().replace(/^v?/, "v");
-    if (!releaseTagPattern.test(tag) || tag.includes("+") || tag.length > 100) throw new Error("请输入有效版本号，例如 v0.4.8。");
+    if (!releaseTagPattern.test(tag) || tag.includes("+") || tag.length > 100) throw new Error(tr("release_driver.enter_a_valid_version_number_such_as_v0_4_8"));
     const title = typeof params.title === "string" ? params.title.trim() || tag : tag;
     const body = params.body ?? "", prerelease = params.prerelease ?? false;
     if (title.length > 200 || typeof body !== "string" || body.length > 20000 || typeof prerelease !== "boolean")
-      throw new Error("发布标题、说明或类型无效。");
+      throw new Error(tr("release_driver.invalid_release_title_notes_or_type"));
     const tools = await this.manager.tools.prepareGithub();
     const permission = await checkReleasePermission(this.manager, tools);
     if (!permission.canRelease) throw new Error(permission.message);
-    if (params.login && params.login !== permission.login) throw new Error("GitHub 账号已变化，请重新检查发布权限。");
+    if (params.login && params.login !== permission.login) throw new Error(tr("release_driver.the_github_account_changed_check_release_permission_again"));
     const source = await mergedReleaseSource(this.manager, tools, params.url);
     if (await findRelease(this.manager, tools, tag) || await tagCommit(this.manager, tools, tag))
-      throw new Error("该版本已存在，请使用新的版本号；不会覆盖已有发布。");
+      throw new Error(tr("release_driver.this_version_already_exists_use_a_new_version_number_existing_releases_will_not_be_ov"));
     return { ...source, sourceCommit: source.commit, login: permission.login, tag, title,
       body: body.replace(/\r\n/g, "\n"), prerelease, runtime: await this.runtime() };
   }
 
   async assertAccount(tools, job, signal) {
-    if ((await this.api(tools, "user", signal)).login !== job.login) throw new Error("GitHub 账号已变化，发布已暂停。");
+    if ((await this.api(tools, "user", signal)).login !== job.login) throw new Error(tr("release_driver.the_github_account_changed_publishing_is_paused"));
   }
 
   async prepare(job, signal, checkpoint) {
@@ -108,15 +109,15 @@ export class GithubReleaseDriver {
         await this.assertEmptyDraft(job, tools, signal);
         const current = await tagCommit(manager, tools, job.tag);
         if (current !== job.commit) {
-          if (current !== job.tagUpdateFrom) throw new Error("发布标签被其他操作修改，已停止发布。");
+          if (current !== job.tagUpdateFrom) throw new Error(tr("release_driver.another_operation_changed_the_release_tag_publishing_stopped"));
           await this.git(job, tools, ["push", `--force-with-lease=refs/tags/${job.tag}:${job.tagUpdateFrom}`,
             "origin", `${job.commit}:refs/tags/${job.tag}`], signal);
         }
       }
       // Only the verified successful build gets a tag. A crash can safely reconcile the same draft.
-      await checkpoint({ message: "四个平台构建完成，正在准备发布草稿" });
+      await checkpoint({ message: tr("release_driver.all_four_platforms_have_built_preparing_a_draft_release") });
       const result = await createVerifiedRelease(manager, tools, {}, job);
-      if (!result.draft) throw new Error("该版本已被公开，请核对远端状态后重试。");
+      if (!result.draft) throw new Error(tr("release_driver.this_version_is_already_public_check_the_remote_state_before_retrying"));
       await checkpoint({ releaseUrl: result.releaseUrl, releaseId: result.releaseId, tagUpdateFrom: null });
     }
     let workflowRun;
@@ -136,26 +137,26 @@ export class GithubReleaseDriver {
       }
       if (!workflowRun) {
         if (Date.now() - Date.parse(job[intent]) > 180000)
-          throw new Error("未找到已提交的构建记录，请在 GitHub 检查 Actions 权限及工作流。为避免重复发布，未再次提交。");
-        return { status: "running", message: publishing ? "正在排队校验、上传安装包" : "已提交各平台构建，等待运行" };
+          throw new Error(tr("release_driver.the_submitted_build_was_not_found_check_actions_permissions_and_workflows_on_github_i"));
+        return { status: "running", message: publishing ? tr("release_driver.queued_for_verification_and_package_upload") : tr("release_driver.platform_builds_submitted_waiting_for_execution") };
       }
       await checkpoint({ [key]: String(workflowRun.id), workflowUrl: workflowRun.html_url });
     }
-    if (workflowRun.head_sha !== job.commit || workflowRun.event !== "workflow_dispatch") throw new Error("工作流来源提交不一致，已停止发布。");
+    if (workflowRun.head_sha !== job.commit || workflowRun.event !== "workflow_dispatch") throw new Error(tr("release_driver.the_workflow_source_commit_does_not_match_publishing_stopped"));
     if (job.retryRun && Number(workflowRun.run_attempt) < job.retryRun.attempt) {
-      if (Date.now() - Date.parse(job.retryRun.at) > 180000) throw new Error("未确认重试已开始，请检查 GitHub Actions。");
-      return { status: "running", message: "等待构建重试" };
+      if (Date.now() - Date.parse(job.retryRun.at) > 180000) throw new Error(tr("release_driver.could_not_confirm_that_the_retry_started_check_github_actions"));
+      return { status: "running", message: tr("release_driver.waiting_for_build_retry") };
     }
     if (workflowRun.status !== "completed") {
-      if (Date.now() - Date.parse(workflowRun.created_at) > 3 * 3600000) throw new Error("发布等待超过三小时，请检查 GitHub Actions 后继续。");
+      if (Date.now() - Date.parse(workflowRun.created_at) > 3 * 3600000) throw new Error(tr("release_driver.publishing_has_waited_over_three_hours_check_github_actions_before_continuing"));
       const { jobs } = await this.api(tools, `${endpoint}/actions/runs/${workflowRun.id}/jobs?per_page=100`, signal);
-      return { status: "running", message: publishing ? "正在校验、上传附件并正式发布"
-        : `正在构建各平台安装包（${jobs.filter(j => j.conclusion === "success").length}/${jobs.length || 4}）` };
+      return { status: "running", message: publishing ? tr("release_driver.verifying_and_uploading_assets_then_publishing")
+        : tr("release_driver.building_platform_installation_packages_value_value", { p0: jobs.filter(j => j.conclusion === "success").length, p1: jobs.length || 4 }) };
     }
     if (workflowRun.conclusion === "success") return { status: "success" };
     const logs = await this.command(tools.gh, ["run", "view", String(workflowRun.id), "--repo", REPOSITORY, "--log-failed"],
       { env: tools.env, signal, outputMode: "tail" });
-    return { status: "failed", diagnostics: redactReleaseLog(logs || `工作流结果：${workflowRun.conclusion}`) };
+    return { status: "failed", diagnostics: redactReleaseLog(logs || tr("release_driver.workflow_result_value", { p0: workflowRun.conclusion })) };
   }
 
   async repair(job, signal, checkpoint) {
@@ -176,7 +177,7 @@ export class GithubReleaseDriver {
       const names = (await this.git(job, tools, ["diff", "--name-only", "HEAD"], signal)) + "\n"
         + await this.git(job, tools, ["ls-files", "--others", "--exclude-standard"], signal);
       if (names.split(/\r?\n/).some(name => /^(\.github\/|ui\/electron\/release-|AGENTS\.md$)/.test(name)))
-        throw new Error("自动修复涉及发布校验或工作流，修复已保留，请人工核对后继续。");
+        throw new Error(tr("release_driver.the_automatic_repair_touches_release_verification_or_workflows_the_repair_is_preserve"));
       await setReleaseVersion(source, job.tag.slice(1));
       await this.validateRepair(job, tools, signal);
       await checkpoint({ repairCommitBase: job.commit });
@@ -208,7 +209,7 @@ export class GithubReleaseDriver {
       commit = await this.git(job, tools, ["rev-parse", "HEAD"], signal);
     } else {
       const lineage = await this.git(job, tools, ["rev-list", "--parents", "-n", "1", "HEAD"], signal);
-      if (lineage !== `${commit} ${job.repairCommitBase}`) throw new Error("修复提交历史已变化，请检查独立发布工作区。");
+      if (lineage !== `${commit} ${job.repairCommitBase}`) throw new Error(tr("release_driver.repair_commit_history_changed_check_the_isolated_release_workspace"));
     }
     await checkpoint({ ...(job.repairPhase === "publishing" ? { tagUpdateFrom: job.repairCommitBase,
       publishRunId: null, publishDispatchedAt: null } : {}), commit,
@@ -221,14 +222,14 @@ export class GithubReleaseDriver {
     const tools = await this.tools(signal);
     const workflowRun = await this.api(tools, `${endpoint}/actions/runs/${job.publishRunId}`, signal);
     const result = await checkedRunResult(this.adapter(signal), tools, { ...job, runId: job.buildRunId }, workflowRun);
-    if (result.status !== "completed") throw new Error("远端安装包、校验文件或版本清单尚未齐全，不能确认发布成功。");
+    if (result.status !== "completed") throw new Error(tr("release_driver.remote_packages_checksums_or_version_manifests_are_incomplete_publication_cannot_be_c"));
     return { releaseUrl: result.releaseUrl };
   }
 
   async assertEmptyDraft(job, tools, signal) {
     const release = await findRelease(this.adapter(signal), tools, job.tag);
     if (!job.releaseId || release?.id !== job.releaseId || !release.draft || release.assets?.length)
-      throw new Error("已有发布内容不能自动替换。修复已保留，请核对附件或使用新版本号；不会覆盖正式版本。");
+      throw new Error(tr("release_driver.existing_release_content_cannot_be_replaced_automatically_the_repair_is_preserved_rev"));
   }
 
   async cancel(job) {
@@ -241,7 +242,7 @@ export class GithubReleaseDriver {
         `${endpoint}/actions/workflows/${workflows[kind]}/runs?event=workflow_dispatch&head_sha=${job.commit}&per_page=100`);
       const matched = runs?.find(r => r.head_sha === job.commit && (kind === "build" ? r.head_branch === job.branch
         : r.display_title === `release ${job.tag} build ${job.buildRunId}`));
-      if (!matched) throw new Error("远端尚未返回已提交的工作流，请在 GitHub Actions 核对并停止该版本的运行。");
+      if (!matched) throw new Error(tr("release_driver.the_remote_service_has_not_returned_the_submitted_workflow_yet_check_github_actions_a"));
       ids.add(String(matched.id));
     }
     for (const id of ids) {
@@ -260,7 +261,7 @@ export async function setReleaseVersion(source, version) {
   const updated = original.replace(project, section => section.replace(/^version\s*=\s*["'][^"']+["']/m, () => {
     replaced = true; return `version = "${version}"`;
   }));
-  if (!replaced) throw new Error("未找到项目版本号，无法准备发布。");
+  if (!replaced) throw new Error(tr("release_driver.project_version_number_not_found_cannot_prepare_the_release"));
   await writeFile(path, updated);
   for (const name of ["package.json", "package-lock.json"]) {
     const file = join(source, "ui", name), value = JSON.parse(await readFile(file, "utf8"));

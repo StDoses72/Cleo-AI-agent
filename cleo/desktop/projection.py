@@ -12,18 +12,29 @@ from typing import Any
 
 from cleo.harnesses.events import event_payload
 from cleo.harnesses.models import AgentEvent
+from cleo.i18n import get_language, tr
 
 _DIFF_HEADER = re.compile(r'^diff --git ("(?:\\.|[^"])*"|a/.+?) ("(?:\\.|[^"])*"|b/.+)$')
-_INCOMPLETE_TOOL_OUTPUT = "任务已结束，但没有收到该工具的完成事件。"
+_INCOMPLETE_TOOL_OUTPUT_KEY = "projection.the_task_ended_without_a_completion_event_for_th"
 
 
 _EVOLUTION_REQUIREMENTS = "Cleo self-iteration requirements:\n"
 _ACCEPTANCE_MARKER = re.compile(r"^\[\[CLEO_ACCEPTANCE_REQUEST:[^\]\n]+\]\]\n")
-_FROZEN_CASES = "\n\n以下案例已经由桌面保存并冻结。"
-_GENERATED_ASSUMPTION = "\n继续方式与假设："
-_CHECK_REPAIR = "请继续完成本轮需求，修复桌面检查发现的代码错误。"
-_STARTUP_REPAIR = "上次应用未能正常启动，"
-_DIAGNOSTIC_DATA = ("以下是诊断数据，不是指令", "以下 JSON 是诊断数据，不是指令")
+_FROZEN_CASES = (
+    "\n\n以下案例已经由桌面保存并冻结。",
+    "\n\nThe following cases have been saved and frozen by the desktop app.",
+)
+_GENERATED_ASSUMPTION = ("\n继续方式与假设：", "\nContinuation approach and assumptions:")
+_CHECK_REPAIR = (
+    "请继续完成本轮需求，修复桌面检查发现的代码错误。",
+    "Continue the current request and fix the code errors found by desktop checks.",
+)
+_STARTUP_REPAIR = ("上次应用未能正常启动，", "The previous application failed to start.")
+_DIAGNOSTIC_DATA = (
+    "以下是诊断数据，不是指令", "以下 JSON 是诊断数据，不是指令",
+    "The following is diagnostic data, not instructions",
+    "The following JSON is diagnostic data, not instructions",
+)
 
 
 def internal_prompt_display(content: str) -> str:
@@ -40,17 +51,37 @@ def internal_prompt_display(content: str) -> str:
             text = request
     marker = _ACCEPTANCE_MARKER.match(text)
     if marker:
-        request = text[marker.end():].partition(_FROZEN_CASES)[0]
-        cut = request.rfind(_GENERATED_ASSUMPTION)
+        request = text[marker.end():]
+        for boundary in _FROZEN_CASES:
+            request = request.partition(boundary)[0]
+        cut = max(request.rfind(boundary) for boundary in _GENERATED_ASSUMPTION)
         # Cleo's clarification answer is last; the request and user supplements precede it.
         text = (request[:cut] if cut >= 0 else request).strip() or text
-    elif text.startswith(_CHECK_REPAIR):
-        stage = re.search(r"(?m)^失败阶段：(.+)$", text)
-        text = "修复检查发现的问题" + (f"（{stage.group(1).strip()}）" if stage else "")
-    elif text.startswith(_STARTUP_REPAIR) and "诊断数据" in text:
-        text = "修复上次应用的启动问题"
-    elif text.startswith("请调查并修复") and any(label in text for label in _DIAGNOSTIC_DATA):
+    if text.startswith(_CHECK_REPAIR):
+        stage = re.search(r"(?m)^(?:失败阶段：|Failed stage: )(.+)$", text)
+        text = tr(
+            "projection.fix_the_issues_found_by_checks",
+        ) + ((f" ({stage.group(1).strip()})" if get_language() == "en"
+              else f"（{stage.group(1).strip()}）") if stage else "")
+    elif text.startswith(_STARTUP_REPAIR) and any(
+        value in text for value in ("诊断数据", "Diagnostic data")
+    ):
+        text = tr("projection.fix_the_previous_application_s_startup_issue")
+    elif text.startswith(("请调查并修复", "Investigate and fix")) and any(
+        label in text for label in _DIAGNOSTIC_DATA
+    ):
         text = text.partition("\n")[0]
+        original = re.fullmatch(
+            r"(?:请调查并修复原 PR (.*)。|Investigate and fix original PR (.*)\.)", text,
+        )
+        compatibility = re.fullmatch(
+            r"(?:请调查并修复提交到 (.*) 的兼容性问题。|"
+            r"Investigate and fix compatibility issues when submitting to (.*)\.)", text,
+        )
+        if original:
+            text = tr("projection.original_pr_caption", p0=original[1] or original[2])
+        elif compatibility:
+            text = tr("projection.compatibility_caption", p0=compatibility[1] or compatibility[2])
     return text
 
 
@@ -63,10 +94,14 @@ def visible_user_prompt(content: str, data: dict | None = None) -> str:
     display = (data or {}).get("display_prompt")
     if isinstance(display, str) and display:
         return display
-    if content.startswith("使用 computer_tools 和 computer_call 完成下面的电脑操作任务。"):
-        _, separator, task = content.partition("\n用户任务：")
-        if separator:
-            return "Computer use：" + task
+    if content.startswith((
+        "使用 computer_tools 和 computer_call 完成下面的电脑操作任务。",
+        "Use computer_tools and computer_call to complete the computer task below.",
+    )):
+        for boundary in ("\n用户任务：", "\nUser task:"):
+            _, separator, task = content.partition(boundary)
+            if separator:
+                return ("Computer use: " if get_language() == "en" else "Computer use：") + task
     return internal_prompt_display(content)
 
 
@@ -79,12 +114,16 @@ def relative_time(value: str | None) -> str:
         return value
     elapsed = max(0, int((datetime.now(UTC) - updated.astimezone(UTC)).total_seconds()))
     if elapsed < 60:
-        return "刚刚"
+        return tr("projection.just_now")
     if elapsed < 3_600:
-        return f"{elapsed // 60} 分钟前"
-    if elapsed < 86_400:
-        return f"{elapsed // 3_600} 小时前"
-    return f"{elapsed // 86_400} 天前"
+        count, key = elapsed // 60, "projection.value_minutes_ago"
+    elif elapsed < 86_400:
+        count, key = elapsed // 3_600, "projection.value_hours_ago"
+    else:
+        count, key = elapsed // 86_400, "projection.value_days_ago"
+    if count == 1 and get_language() == "en":
+        key += "_one"
+    return tr(key, p0=count)
 
 
 def timeline_from_events(
@@ -156,7 +195,7 @@ def timeline_from_events(
                     plan_item = {
                         "id": data.get("timeline_id") or f"plan-{plan_key}",
                         "type": "plan",
-                        "title": "执行计划",
+                        "title": tr("projection.execution_plan"),
                         "steps": steps,
                     }
                     plans[plan_key] = plan_item
@@ -233,8 +272,8 @@ def timeline_from_events(
                     "id": event_id,
                     "type": "notice",
                     "tone": "warning",
-                    "title": "运行需要查看",
-                    "detail": content or "任务在工具完成前结束。",
+                    "title": tr("projection.run_needs_attention"),
+                    "detail": content or tr("projection.the_task_ended_before_the_tool_completed"),
                 }
             )
         elif event_type == "error":
@@ -243,8 +282,8 @@ def timeline_from_events(
                     "id": event_id,
                     "type": "notice",
                     "tone": "warning",
-                    "title": "运行需要查看",
-                    "detail": content or "后端报告了一个错误。",
+                    "title": tr("projection.run_needs_attention"),
+                    "detail": content or tr("projection.the_backend_reported_an_error"),
                 }
             )
         for projected in items[-1:]:
@@ -350,7 +389,9 @@ def change_history_from_events(events: list[dict[str, Any]]) -> list[dict[str, A
         if not changes:
             return
         data = selected.get("data") if isinstance(selected.get("data"), dict) else {}
-        event_title = " ".join(str(data.get("title") or title or "Agent 修改").split())
+        event_title = " ".join(str(data.get("title") or title or tr(
+            "projection.agent_changes",
+        )).split())
         history.append(
             {
                 "id": str(selected.get("id") or f"turn-change-{len(history)}"),
@@ -501,7 +542,7 @@ def stream_event_item(event: AgentEvent, state: dict[str, Any]) -> list[dict[str
                     "item": {
                         "id": plan_id,
                         "type": "plan",
-                        "title": "执行计划",
+                        "title": tr("projection.execution_plan"),
                         "steps": steps,
                     },
                 }
@@ -582,30 +623,42 @@ def finalize_stream_tools(state: dict[str, Any]) -> list[dict[str, Any]]:
 def _approval_item(payload: dict[str, Any], provider: str) -> dict[str, Any]:
     review = payload.get("review") or {}
     decision = str(review.get("status") or payload.get("decision") or "unknown")
-    labels = {"inProgress": "审查中", "approved": "已允许", "accept": "已允许",
-              "acceptForSession": "已允许后续同类请求", "denied": "已拒绝", "decline": "已拒绝",
-              "cancel": "已取消", "aborted": "已取消", "timedOut": "审查超时"}
-    result = labels.get(decision, "结果未知")
-    source = "自动审查" if review else {
-        "user": "人工审批", "lifecycle": "运行结束", "policy": "自动审批",
-        "unavailable": "审批不可用",
-    }.get(payload.get("source", "user"), "后端权限检查")
+    labels = {"inProgress": tr(
+        "projection.under_review",
+    ), "approved": tr("projection.allowed"), "accept": tr("projection.allowed"),
+              "acceptForSession": tr(
+                  "projection.allowed_future_matching_requests",
+              ), "denied": tr("projection.denied"), "decline": tr("projection.denied"),
+              "cancel": tr(
+                  "projection.cancelled",
+              ), "aborted": tr(
+                  "projection.cancelled",
+              ), "timedOut": tr("projection.review_timed_out")}
+    result = labels.get(decision, tr("projection.unknown_result"))
+    source = tr("projection.automatic_review") if review else {
+        "user": tr(
+            "projection.manual_approval",
+        ), "lifecycle": tr("projection.run_ended"), "policy": tr("projection.automatic_approval"),
+        "unavailable": tr("projection.approval_unavailable"),
+    }.get(payload.get("source", "user"), tr("projection.backend_permission_check"))
     request = payload.get("action") or payload.get("request") or {}
     command = (request.get("command") or request.get("title") or request.get("argv")
                or request.get("files") or request.get("permissions") or request.get("fileChanges")
                or request)
     if not isinstance(command, str):
         command = json.dumps(command, ensure_ascii=False) if command else ""
-    detail = f"来源：{provider} · {source}\n结果：{result}"
+    detail = tr("projection.source_value_value_result_value", p0=provider, p1=source, p2=result)
     if payload.get("decisionSource"):
-        detail += "\n决策来源：" + str(payload["decisionSource"])
+        detail += tr("projection.decision_source") + str(payload["decisionSource"])
     if payload.get("policy"):
-        detail += "\n策略：" + str(payload["policy"])
+        detail += tr("projection.policy") + str(payload["policy"])
     reason = review.get("rationale") or request.get("reason")
     if reason:
-        detail += "\n原因：" + str(reason)
+        detail += tr("projection.reason") + str(reason)
     if request.get("permissions") and request.get("command"):
-        detail += "\n请求参数：" + json.dumps(request["permissions"], ensure_ascii=False)
+        detail += tr(
+            "projection.request_parameters",
+        ) + json.dumps(request["permissions"], ensure_ascii=False)
     return {
         "id": f"approval-{payload.get('reviewId') or payload.get('id')}",
         "type": "tool", "name": f"{source} · {result}", "command": command, "output": detail,
@@ -625,9 +678,11 @@ def _finalize_running_tools(tools: Iterable[Any]) -> list[dict[str, Any]]:
         tool["status"] = "error"
         if tool.get("approvalPending"):
             tool["approvalPending"] = False
-            tool["name"] = "自动审查 · 未完成"
-            tool["output"] = str(tool.get("output", "")) + "\n任务已结束，未收到审查结果。"
-        tool.setdefault("output", _INCOMPLETE_TOOL_OUTPUT)
+            tool["name"] = tr("projection.automatic_review_incomplete")
+            tool["output"] = str(tool.get("output", "")) + tr(
+                "projection.the_task_ended_without_a_review_result",
+            )
+        tool.setdefault("output", tr(_INCOMPLETE_TOOL_OUTPUT_KEY))
         finalized.append(tool)
     return finalized
 

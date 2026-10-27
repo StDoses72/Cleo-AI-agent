@@ -9,14 +9,15 @@ from datetime import UTC, datetime
 from cleo.desktop.projection import steer_item
 from cleo.desktop.timeline import TimelineIndex
 from cleo.harnesses.control import SteerRejected
+from cleo.i18n import tr
 
 
 def validate_steer(request_id, run_id, text):
     for identifier in (request_id, run_id):
         if not isinstance(identifier, str) or not 1 <= len(identifier) <= 128:
-            raise ValueError("引导消息缺少有效的请求或运行标识。")
+            raise ValueError(tr("steering.the_steering_message_is_missing_a_valid_request"))
     if not isinstance(text, str) or not text.strip() or len(text.encode()) > 64_000:
-        raise ValueError("请输入不超过 64 KB 的补充指令。")
+        raise ValueError(tr("steering.enter_an_additional_instruction_no_larger_than_6"))
 
 
 def new_receipt(manifest, request_id, run_id, text, mode, turn_id=None):
@@ -53,7 +54,7 @@ async def persist_receipt(store, manifest, receipt, **changes):
     if not any(event["id"] == events[0]["id"] for event in appended):
         existing = await asyncio.to_thread(TimelineIndex(store, manifest).steer, updated["id"])
         if existing["runId"] != updated["runId"] or existing["text"] != updated["text"]:
-            raise ValueError("请求标识已被另一条指令使用。")
+            raise ValueError(tr("service.this_request_id_was_already_used_by_another_inst"))
         return existing
     return updated
 
@@ -68,8 +69,10 @@ async def recover_steers(store, manifest, *, is_active=None):
         sending = receipt["status"] == "sending"
         await persist_receipt(
             store, manifest, receipt, status="uncertain" if sending else "cancelled",
-            retryable=False, error="上次运行已结束，未确认是否接收。" if sending
-            else "上次运行已结束，这条指令未投递。",
+            retryable=False, error=tr(
+                "steering.the_previous_run_ended_receipt_is_unconfirmed",
+            ) if sending
+            else tr("steering.the_previous_run_ended_this_instruction_was_not"),
         )
 
 
@@ -125,7 +128,7 @@ class SteeringRun:
             )
             if receipt:
                 if receipt["runId"] != self.run_id or receipt["text"] != text:
-                    raise ValueError("请求标识已被另一条指令使用。")
+                    raise ValueError(tr("service.this_request_id_was_already_used_by_another_inst"))
                 if (receipt["status"] == "queued" and request_id not in self.queue
                         and receipt.get("turnId") in self.turn_ids and not self.closed):
                     # A log append can succeed before the manifest/API response fails.
@@ -143,7 +146,9 @@ class SteeringRun:
                 )
             if self.closed:
                 receipt = await self._save(
-                    receipt, status="failed", retryable=False, error="这一轮已结束，指令未投递。",
+                    receipt, status="failed", retryable=False, error=tr(
+                        "steering.this_turn_ended_the_instruction_was_not_delivere",
+                    ),
                 )
             else:
                 receipt = await self._save(receipt, status="queued", retryable=False, error=None)
@@ -168,7 +173,9 @@ class SteeringRun:
                 if receipt["status"] != "sending":
                     continue
                 if self.closed:
-                    await self._save(receipt, status="cancelled", error="运行已停止，指令未投递。")
+                    await self._save(receipt, status="cancelled", error=tr(
+                        "steering.the_run_stopped_the_instruction_was_not_delivere",
+                    ))
                     return
             try:
                 self.delivery = asyncio.create_task(
@@ -180,12 +187,14 @@ class SteeringRun:
             except asyncio.CancelledError:
                 async with self.lock:
                     await self._save(receipt, status="uncertain", retryable=False,
-                                     error="运行已停止，未确认这条指令是否被接收。")
+                                     error=tr(
+                                         "steering.the_run_stopped_receipt_of_this_instruction_is_u",
+                                     ))
                     self.closed = True
                 return
             except Exception:
                 changes = {"status": "uncertain", "retryable": False,
-                           "error": "连接中断，未确认是否接收。请先查看本轮回复。"}
+                           "error": tr("steering.the_connection_was_interrupted_receipt_is_unconf")}
             else:
                 changes = {"status": "received", "retryable": False, "error": None}
             finally:
@@ -232,7 +241,9 @@ class SteeringRun:
                     await self._save(receipt, status="cancelled", retryable=False, error=reason)
                 elif receipt["status"] == "sending":
                     await self._save(receipt, status="uncertain", retryable=False,
-                                     error="运行已结束，未确认这条指令是否被接收。")
+                                     error=tr(
+                                         "steering.the_run_ended_receipt_of_this_instruction_is_unc",
+                                     ))
                 elif receipt.get("retryable"):
                     await self._save(receipt, retryable=False)
             self.queue.clear()
