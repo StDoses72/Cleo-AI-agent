@@ -1004,3 +1004,29 @@ def test_acp_user_approvals_keep_configured_or_chosen_modes(
     assert host.approvals.enabled is True
     assert host.approval_mode == expected
     assert provider._sessions["s"].options.approval_mode == expected
+
+
+def test_attachment_records_are_saved_with_the_turn_and_shown_immediately(tmp_path):
+    from cleo.desktop.projection import timeline_from_events
+
+    records = [{"name": "shot.png", "path": str(tmp_path / "shot.png"),
+                "mimeType": "image/png", "size": 10, "thumbnail": "data:image/png;base64,AA"}]
+
+    async def scenario():
+        adapter = AgentAdapter(tmp_path)
+        adapter.register(FakeProvider())
+        session = await adapter.create_session("fake", model="test-model")
+        received = []
+        await adapter.prompt(session.id, "describe\n\nAttached local files:\n- shot.png",
+                             on_event=received.append, display_prompt="describe",
+                             attachments=records)
+        assert received[0].type == "turn_started"
+        assert received[0].data["attachments"] == records
+        events = adapter._store.read_events(session.id)
+        user = next(event for event in events if event["type"] == "user_message")
+        assert user["data"]["attachments"] == records
+        item = timeline_from_events(events)[0]
+        assert item["content"] == "describe" and item["attachments"] == records
+        await adapter.aclose()
+
+    asyncio.run(scenario())

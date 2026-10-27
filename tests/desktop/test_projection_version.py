@@ -25,6 +25,8 @@ PINNED = {
     9: "3301892058774d49258c4690fb3f827f4d6f86860c782a16e097daf48e0932cc",
     # 10 raised PREVIEW_CHARS; the projection itself is unchanged.
     10: "3301892058774d49258c4690fb3f827f4d6f86860c782a16e097daf48e0932cc",
+    # 11 adds "attachments" to user messages; the legacy sessions carry none.
+    11: "3301892058774d49258c4690fb3f827f4d6f86860c782a16e097daf48e0932cc",
 }
 
 

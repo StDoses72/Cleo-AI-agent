@@ -2362,3 +2362,42 @@ def test_rewind_refuses_running_steered_and_unsupported_tasks(tmp_path):
     with pytest.raises(ValueError, match="不支持"):
         asyncio.run(service.rewind_thread(thread_id="task", item_id="t1"))
     assert asyncio.run(service.load_thread(thread_id="task"))["editableTurnIds"] == []
+
+
+def test_productivity_attachments_reach_the_agent_as_paths_but_show_as_chips(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def scenario() -> None:
+        service = _service(tmp_path)
+        session_id = "attachments-turn"
+        service.store.create_session(
+            session_id=session_id, space="productivity", project="workspace",
+            provider="codex", owner_type="user", native_session_id="native-attachments",
+            cwd=str(tmp_path / "workspace"),
+        )
+        service._productivity_sessions[session_id] = object()
+        monkeypatch.setattr("cleo.desktop.service.create_git_checkpoint", lambda *_args: None)
+        monkeypatch.setattr("cleo.desktop.service.read_git_diff", lambda _cwd: None)
+        calls: list[dict] = []
+
+        class Adapter(FakeProviderMetadata):
+            async def prompt(self, _session_id, prompt, *, on_event, **options):
+                calls.append({"prompt": prompt, **options})
+                return SimpleNamespace(response="done", status="completed", error=None)
+
+        service._adapter_instance = Adapter()
+        shot = tmp_path / "shot.png"
+        sent = [{"name": "shot.png", "path": str(shot), "mimeType": "image/png", "size": 4,
+                 "thumbnail": "data:image/png;base64,AA", "base64": "ZmlsZQ=="}]
+        await service._stream_productivity(
+            service.store.load_manifest(session_id), "what is in this image?", sent, AsyncMock(),
+        )
+
+        assert calls[0]["prompt"] == f"what is in this image?\n\nAttached local files:\n- {shot}"
+        assert calls[0]["display_prompt"] == "what is in this image?"
+        assert calls[0]["attachments"] == [
+            {"name": "shot.png", "path": str(shot), "mimeType": "image/png", "size": 4,
+             "thumbnail": "data:image/png;base64,AA"},
+        ]
+
+    asyncio.run(scenario())

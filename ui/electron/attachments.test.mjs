@@ -8,6 +8,7 @@ import {
   MAX_ATTACHMENT_BYTES,
   attachmentsFromPaths,
   materializeInlineAttachments,
+  withThumbnails,
 } from "./attachments.mjs";
 
 test("common document formats become lightweight attachment metadata", async () => {
@@ -83,4 +84,33 @@ test("pasted files arrive as raw bytes, so the sandboxed preload never needs Buf
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("image attachments gain a thumbnail no larger than 96px; other files and failures keep none", () => {
+  const sizes = { "wide.jpg": { width: 1920, height: 1080 }, "tall.png": { width: 40, height: 80 } };
+  const fakeImage = (path) => {
+    const name = path.split("/").pop();
+    if (name === "broken.png") throw new Error("cannot decode");
+    const size = sizes[name] ?? { width: 0, height: 0 };
+    const make = (current) => ({
+      isEmpty: () => !current.width,
+      getSize: () => current,
+      resize: (next) => make(next),
+      toDataURL: () => `data:image/png;base64,${current.width}x${current.height}`,
+      toJPEG: () => Buffer.from(`${current.width}x${current.height}`),
+    });
+    return make(size);
+  };
+  const [wide, tall, broken, doc] = withThumbnails([
+    { name: "wide.jpg", path: "C:/shots/wide.jpg", mimeType: "image/jpeg", size: 10 },
+    { name: "tall.png", path: "C:/shots/tall.png", mimeType: "image/png", size: 10 },
+    { name: "broken.png", path: "C:/shots/broken.png", mimeType: "image/png", size: 10 },
+    { name: "brief.pdf", path: "C:/docs/brief.pdf", mimeType: "application/pdf", size: 10 },
+  ], fakeImage);
+
+  assert.equal(wide.thumbnail, `data:image/jpeg;base64,${Buffer.from("96x54").toString("base64")}`);
+  assert.equal(tall.thumbnail, "data:image/png;base64,40x80");
+  assert.equal("thumbnail" in broken, false);
+  assert.equal("thumbnail" in doc, false);
+  assert.equal(wide.name, "wide.jpg");
 });

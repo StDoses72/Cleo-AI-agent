@@ -377,7 +377,7 @@ export function Conversation({
     } else { item = row; content = <TimelineEntry item={row} projectPath={project?.path ?? null} onOpenPath={onOpenPath}
       threadId={thread?.id ?? ""} activeTurnId={running ? thread?.currentTiming?.turnId : null}
       editable={!running && !waitingForAnswer && Boolean(onEditMessage) && editableTurns.has(row.id)}
-      onEditMessage={onEditMessage}
+      onEditMessage={onEditMessage} onRevealPath={onRevealPath}
       steeringBusy={steeringBusy} onRetrySteer={onRetrySteer} onRestoreSteer={onRestoreSteer} />; }
     const status = item ? inlineStatus[stateKey(item.id)] : undefined;
     return <>{content}{item?.more && Object.keys(item.more).map(field => field === "content" && "content" in item!
@@ -742,11 +742,13 @@ function TimelineEntry({
   activeTurnId,
   editable = false,
   onEditMessage,
+  onRevealPath,
 }: {
   item: TimelineBlock;
   threadId: string;
   editable?: boolean;
   onEditMessage?: ConversationProps["onEditMessage"];
+  onRevealPath?: ConversationProps["onRevealPath"];
   projectPath: string | null;
   onOpenPath: ConversationProps["onOpenPath"];
   steeringBusy?: boolean;
@@ -772,7 +774,8 @@ function TimelineEntry({
           <time>{item.time}</time>
         </div>}
         <MessageText key={`${threadId}:${item.id}`} item={item} threadId={threadId}
-          projectPath={projectPath} onOpenPath={onOpenPath} onEdit={editable ? onEditMessage : undefined} />
+          projectPath={projectPath} onOpenPath={onOpenPath} onEdit={editable ? onEditMessage : undefined}
+          onRevealPath={onRevealPath} />
         {item.steer && <div className="steer-receipt" data-testid="steer-receipt" data-status={item.steer.status}>
           <span>{({ queued: item.steer.mode === "native" ? "等待投递" : "当前回复结束后发送",
             sending: "正在投递", received: "已接收", failed: "未投递",
@@ -821,12 +824,13 @@ async function fullMessageText(threadId: string, item: Pick<TimelineItem, "id" |
 /** Purpose: Show a message with hover-only icon actions; editing a user turn resends it in place.
  * Input: message, and an edit handler when that turn can be rewound. Output: message, actions, inline editor.
  */
-function MessageText({ item, threadId, projectPath, onOpenPath, onEdit }: {
+function MessageText({ item, threadId, projectPath, onOpenPath, onEdit, onRevealPath }: {
   item: MessageItem;
   threadId: string;
   projectPath: string | null;
   onOpenPath: ConversationProps["onOpenPath"];
   onEdit?: ConversationProps["onEditMessage"];
+  onRevealPath?: ConversationProps["onRevealPath"];
 }) {
   const article = useRef<HTMLDivElement>(null);
   const copiedTimer = useRef<number | null>(null);
@@ -875,6 +879,8 @@ function MessageText({ item, threadId, projectPath, onOpenPath, onEdit }: {
           <button type="button" className="primary" disabled={busy || !draft.trim()} onClick={() => void submit()}>{busy ? "发送中…" : "发送"}</button>
         </div>
       </div>}
+    {item.role === "user" && item.attachments?.length ? <AttachmentChips attachments={item.attachments}
+      className="message-attachments" testId="message-attachments" onReveal={onRevealPath ?? (path => void cleoClient.revealPath(path))} /> : null}
     {draft === null && <div className="message-actions">
       <button type="button" aria-label="复制" title={copied ? "已复制" : "复制"} onClick={() => void copy()}>
         {copied ? <Check size={14} /> : <Copy size={14} />}
@@ -1420,25 +1426,12 @@ function Composer({
             ))}
           </div>
         ) : null}
-        {attachments.length ? (
-          <div className="attachment-row">
-            {attachments.map((attachment) => {
-              const AttachmentIcon = attachment.mimeType.startsWith("image/") ? FileImage : FileText;
-              return (
-                <span className="attachment-chip" key={attachment.path} title={`${attachment.name} · ${formatAttachmentSize(attachment.size)}`}>
-                  <AttachmentIcon size={12} />
-                  <span>{attachment.name}</span>
-                  <small>{formatAttachmentSize(attachment.size)}</small>
-                  <button type="button" aria-label={`移除 ${attachment.name}`} onClick={() => onRemoveAttachment(attachment.path)}><X size={12} /></button>
-                </span>
-              );
-            })}
-          </div>
-        ) : null}
+        {attachments.length ? <AttachmentChips attachments={attachments} onRemove={onRemoveAttachment} testId="composer-attachments" /> : null}
         {queuedMessages.length ? <ul className="queued-messages" aria-label="待发送消息" data-testid="queued-messages">
           {queuedMessages.map(message => <li key={message.id} className="queued-message">
             <span className="queued-text" title={message.text}>{message.text || message.attachments.map(item => item.name).join("、")}</span>
             {message.attachments.length ? <span className="queued-attachments" title={message.attachments.map(item => item.name).join("\n")}>
+              {message.attachments.filter(item => item.thumbnail).slice(0, 3).map(item => <img key={item.path} src={item.thumbnail} alt="" />)}
               <Paperclip size={12} />{message.attachments.length}</span> : null}
             {canSteer && !message.attachments.length && onSteerQueued && <button type="button" className="queued-steer"
               title="立即插入当前运行" disabled={steeringBusy} onClick={() => onSteerQueued(message.id)} data-testid="steer-queued">
@@ -1559,6 +1552,35 @@ function formatAttachmentSize(size: number) {
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** Purpose: Claude Code-style attachment chips: a small thumbnail for images, an icon for other files.
+ * Input: attachments, plus a remove handler (composer) or a reveal handler (sent messages). Output: one
+ * chip per file; with `onReveal` each chip is a button that locates the file and its title is the full path.
+ */
+function AttachmentChips({ attachments, onRemove, onReveal, className = "attachment-row", testId }: {
+  attachments: Attachment[];
+  onRemove?: (path: string) => void;
+  onReveal?: (path: string) => void;
+  className?: string;
+  testId?: string;
+}) {
+  return <div className={className} data-testid={testId}>
+    {attachments.map((attachment) => {
+      const AttachmentIcon = attachment.mimeType.startsWith("image/") ? FileImage : FileText;
+      const body = <>
+        {attachment.thumbnail ? <img src={attachment.thumbnail} alt="" /> : <AttachmentIcon size={12} />}
+        <span>{attachment.name}</span>
+        <small>{formatAttachmentSize(attachment.size)}</small>
+      </>;
+      if (onReveal) return <button type="button" className="attachment-chip attachment-link" key={attachment.path}
+        title={attachment.path} onClick={() => onReveal(attachment.path)}>{body}</button>;
+      return <span className="attachment-chip" key={attachment.path} title={`${attachment.name} · ${formatAttachmentSize(attachment.size)}`}>
+        {body}
+        {onRemove && <button type="button" aria-label={`移除 ${attachment.name}`} onClick={() => onRemove(attachment.path)}><X size={12} /></button>}
+      </span>;
+    })}
+  </div>;
 }
 
 /** Purpose: One pill for how a task runs: harness, model, reasoning effort and speed.

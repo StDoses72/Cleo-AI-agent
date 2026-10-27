@@ -352,6 +352,13 @@
 .attachment-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .attachment-chip > svg { flex: 0 0 auto; color: var(--accent); }
 .attachment-chip small { flex: 0 0 auto; color: var(--muted-2); font-size: 11px; }
+.attachment-chip img { flex: 0 0 auto; width: 22px; height: 22px; border-radius: 5px; object-fit: cover; background: var(--surface-raised); }
+.attachment-chip.attachment-link { cursor: pointer; text-align: left; }
+.attachment-chip.attachment-link:hover { color: var(--text); background: var(--surface-raised); }
+/* Chips under a sent message: same pills, no remove button, aligned with the user bubble. */
+.message-attachments { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 0 0; }
+.message-entry.user .message-attachments { justify-content: flex-end; }
+.queued-attachments img { width: 16px; height: 16px; border-radius: 3px; object-fit: cover; }
 .attachment-row button { display: grid; flex: 0 0 auto; place-items: center; color: var(--muted-2); }
 .attachment-row button:hover { color: var(--text); }
 .attachment-error { padding: 0 0 8px; color: var(--danger); font-size: var(--font-size-caption); }

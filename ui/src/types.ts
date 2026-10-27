@@ -151,6 +151,8 @@ export type TimelineItem = {
       content: string;
       time: string;
       steer?: SteerReceipt;
+      /** Files the user sent with this message; the agent received them separately. */
+      attachments?: Attachment[];
     }
   | {
       id: string;
@@ -270,6 +272,8 @@ export interface Attachment {
   mimeType: string;
   size: number;
   base64?: string;
+  /** Small data-URL preview for images, shown on the chip before and after sending. */
+  thumbnail?: string;
 }
 
 /** A message typed while a run is active; sent next unless steered into the run first. */

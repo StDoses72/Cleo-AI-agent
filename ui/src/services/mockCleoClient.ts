@@ -32,7 +32,7 @@ import type {
   TimelineContent,
   QuestionRequest,
 } from "../types";
-import { permissionPresets, snapshot, uiChanges } from "./mockData";
+import { mockThumbnail, permissionPresets, snapshot, uiChanges } from "./mockData";
 
 const delay = (milliseconds: number) =>
   new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
@@ -250,7 +250,8 @@ export class MockCleoClient implements CleoClient {
       const turnId = `mock-turn-${runId}`;
       const items = this.histories.get(threadId) ?? clone(snapshot.threads.find(t => t.id === threadId)?.items ?? []);
       this.histories.set(threadId, items);
-      const user: TimelineItem = { id: turnId, turnId, cursor: String(items.length), order: items.length, type: "message", role: "user", content: prompt, time: "" };
+      const user: TimelineItem = { id: turnId, turnId, cursor: String(items.length), order: items.length, type: "message", role: "user", content: prompt, time: "",
+        ...(attachments.length ? { attachments: attachments.map(({ base64: _bytes, ...chip }) => chip) } : {}) };
       items.push(user);
       yield { type: "turn-started", item: user };
       if (/提问测试|question demo/i.test(prompt)) {
@@ -585,12 +586,13 @@ export class MockCleoClient implements CleoClient {
   }
 
   async prepareAttachments(files: File[]): Promise<Attachment[]> {
-    return files.map((file, index) => ({
+    return Promise.all(files.map(async (file, index) => ({
       name: file.name,
       path: `mock-attachment://${index}/${encodeURIComponent(file.name)}`,
       mimeType: file.type || "application/octet-stream",
       size: file.size,
-    }));
+      ...(file.type.startsWith("image/") ? { thumbnail: await mockThumbnailFor(file) } : {}),
+    })));
   }
 
   async pickWorkspace(): Promise<string | null> {
@@ -853,4 +855,19 @@ export class MockCleoClient implements CleoClient {
   }
 
   async resetWorkspace(): Promise<void> {}
+}
+
+/** Purpose: Downscale a pasted image to a 96px data URL in the browser, as the Electron main process does. */
+async function mockThumbnailFor(file: File): Promise<string> {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 96 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/png");
+  } catch {
+    return mockThumbnail;
+  }
 }

@@ -162,3 +162,33 @@ export async function materializeInlineAttachments(entries, directory) {
   }
   return attachments;
 }
+
+export const THUMBNAIL_EDGE = 96;
+
+/** Purpose: Give image attachments a small preview the chips can show before and after sending.
+ * Input: attachment records and Electron's `nativeImage.createFromPath` (or a stand-in). Output: the
+ * same records; images that decode gain `thumbnail`, a PNG/JPEG data URL at most 96px on its longest
+ * edge. Unreadable or unsupported images keep no thumbnail so the chip falls back to its icon.
+ */
+export function withThumbnails(attachments, createImage) {
+  return (attachments || []).map((attachment) => {
+    if (!attachment?.mimeType?.startsWith("image/")) return attachment;
+    try {
+      const image = createImage(attachment.path);
+      if (!image || image.isEmpty()) return attachment;
+      const { width, height } = image.getSize();
+      if (!width || !height) return attachment;
+      const scale = Math.min(1, THUMBNAIL_EDGE / Math.max(width, height));
+      const resized = scale < 1
+        ? image.resize({ width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) })
+        : image;
+      // Photos compress far better as JPEG; PNG keeps transparency for screenshots and icons.
+      const thumbnail = attachment.mimeType === "image/png"
+        ? resized.toDataURL()
+        : `data:image/jpeg;base64,${resized.toJPEG(82).toString("base64")}`;
+      return { ...attachment, thumbnail };
+    } catch {
+      return attachment;
+    }
+  });
+}

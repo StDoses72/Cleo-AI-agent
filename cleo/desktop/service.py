@@ -37,6 +37,7 @@ from cleo.desktop.presenters import (
     workspace_view,
 )
 from cleo.desktop.projection import (
+    attachment_records,
     change_history_from_events,
     changes_from_diff,
     final_changes_from_diff,
@@ -2027,12 +2028,14 @@ class DesktopService:
                 f"Git 未能保存回退记录：{exc}\n改动会照常进行，但这一轮不能用撤销还原。",
                 "warning",
             )
-        if attachments:
-            paths = [str(item.get("path") or "") for item in attachments if item.get("path")]
-            if paths:
-                prompt = f"{prompt}\n\nAttached local files:\n" + "\n".join(
-                    f"- {path}" for path in paths
-                )
+        attachment_items = attachment_records(attachments)
+        if attachment_items:
+            # The conversation shows the user's text with attachment chips; only the
+            # agent sees the file list.
+            display_prompt = display_prompt or prompt
+            prompt = f"{prompt}\n\nAttached local files:\n" + "\n".join(
+                f"- {item['path']}" for item in attachment_items
+            )
         state: dict[str, Any] = {"run_id": secrets.token_hex(6)}
         usage = ContextWindowUsage(
             window_tokens=self._runtime_profile(manifest)["contextWindow"],
@@ -2096,6 +2099,7 @@ class DesktopService:
                 manifest["id"], self._evolution_prompt(manifest, prompt), on_event=on_event,
                 **({"display_prompt": display_prompt} if display_prompt else {}),
                 **({"steer_ids": steer_ids} if steer_ids else {}),
+                **({"attachments": attachment_items} if attachment_items else {}),
             )
         finally:
             from cleo.runtime.timing import phase

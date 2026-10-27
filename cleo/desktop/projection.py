@@ -70,6 +70,35 @@ def visible_user_prompt(content: str, data: dict | None = None) -> str:
     return internal_prompt_display(content)
 
 
+_ATTACHMENT_FIELDS = ("name", "path", "mimeType", "size", "thumbnail")
+
+
+def attachment_records(attachments: Any) -> list[dict[str, Any]]:
+    """Purpose: Keep only what the conversation shows about an attachment.
+
+    Input: Attachment dicts as the renderer sent them. Output: ``name``, ``path``,
+    ``mimeType``, ``size`` and an optional ``thumbnail`` data URL per attachment with a
+    path; file contents never enter the event log through this record.
+    """
+    records: list[dict[str, Any]] = []
+    for item in attachments if isinstance(attachments, list) else []:
+        if not isinstance(item, dict) or not item.get("path"):
+            continue
+        record: dict[str, Any] = {}
+        for field in _ATTACHMENT_FIELDS:
+            value = item.get(field)
+            if field == "size":
+                if isinstance(value, int) and not isinstance(value, bool):
+                    record[field] = value
+            elif isinstance(value, str) and value:
+                record[field] = value
+        record.setdefault("name", Path(str(record["path"])).name)
+        record.setdefault("mimeType", "application/octet-stream")
+        record.setdefault("size", 0)
+        records.append(record)
+    return records
+
+
 def relative_time(value: str | None) -> str:
     if not value:
         return "—"
@@ -117,7 +146,11 @@ def timeline_from_events(
                 continue
             current_turn_key = event_id
             if not data.get("steer_ids"):
-                items.append(_message(event_id, "user", content, event.get("created_at")))
+                item = _message(event_id, "user", content, event.get("created_at"))
+                records = attachment_records(data.get("attachments"))
+                if records:
+                    item["attachments"] = records
+                items.append(item)
         elif event_type == "steer":
             item = steer_item(payload)
             existing = steers.get(payload["id"])
@@ -384,9 +417,11 @@ def stream_event_item(event: AgentEvent, state: dict[str, Any]) -> list[dict[str
     payload = event_payload(event)
     if event.type == "turn_started":
         state["run_id"] = payload["turnId"]
+        records = attachment_records(event.data.get("attachments"))
         return [{"type": "turn-started", "item": {
             **_message(payload["turnId"], "user", visible_user_prompt(event.text or ""), None),
             "turnId": payload["turnId"],
+            **({"attachments": records} if records else {}),
         }}]
     item = payload.get("item") if isinstance(payload.get("item"), dict) else payload
     event_identifier = _tool_key(item, payload) or payload.get("turnId")
