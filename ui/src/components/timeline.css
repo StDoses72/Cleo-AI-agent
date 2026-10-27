@@ -97,7 +97,3 @@
   .composer .runtime-menu { left: 12px; right: auto; bottom: 40px; width: calc(100% - 24px); max-width: 300px; max-height: max(80px, calc(100cqh - var(--composer-clearance) - 60px)); display: flex; flex-direction: column; }
   .runtime-menu-list { min-height: 0; }
 }
-/* "展开全文" expands a long message in place; a failed read shows beside a retry link. */
-.history-content-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0 0 18px; }
-.history-content-inline .history-content-link { margin: 0; }
-.history-content-inline-error { color: var(--danger); font-size: var(--font-size-control); }

@@ -108,6 +108,37 @@ def test_empty_history_and_rebuilt_cursor(tmp_path):
         index.page(cursor=page["before"], direction="before")
 
 
+@pytest.mark.parametrize("event_type", ["user_message", "assistant_message", "thought"])
+def test_long_body_is_complete_in_history_pages(tmp_path, event_type):
+    content = "Long message paragraph.\n\n" * 3000 + "FINAL_TAIL"
+    _, index = fixture(tmp_path, [
+        {"id": "long", "type": event_type, "actor": "codex", "content": content},
+    ])
+    item = index.page()["items"][0]
+    assert item["content"] == content
+    assert "content" not in item.get("more", {})
+
+
+def test_large_complete_messages_remain_pageable_with_the_byte_budget(tmp_path):
+    content = "长" * 200000
+    _, index = fixture(tmp_path, [
+        {"id": f"large-{i}", "type": "assistant_message", "actor": "codex", "content": content}
+        for i in range(3)
+    ])
+    page = index.page()
+    for i in reversed(range(3)):
+        assert [item["id"] for item in page["items"]] == [f"large-{i}"]
+        assert page["items"][0]["content"] == content
+        assert page["hasBefore"] == (i > 0)
+        if i:
+            page = index.page(cursor=page["before"], direction="before")
+    for i in range(1, 3):
+        page = index.page(cursor=page["after"], direction="after")
+        assert [item["id"] for item in page["items"]] == [f"large-{i}"]
+        assert page["items"][0]["content"] == content
+        assert page["hasAfter"] == (i < 2)
+
+
 @pytest.mark.parametrize("status", ["failed", "cancelled", "completed"])
 def test_unanswered_thoughts_remain_visible_after_terminal_status(tmp_path, status):
     _, index = fixture(tmp_path, [

@@ -33,11 +33,28 @@ test("overlapping pages replace updated tools without duplicates", () => {
   assert.equal(next.items[0].status, "done");
 });
 
-test("large text is bounded and exposes a separate full-content reader", () => {
-  const items = boundTimeline(Array.from({ length: 500 }, (_, i) => ({ ...all[i], content: "x".repeat(60000) })));
-  assert.ok(JSON.stringify(items).length * 2 <= MAX_TIMELINE_BYTES + 1024);
-  assert.ok(items.length < 500);
-  assert.equal(items[0].more.content, 60000);
+for (const type of ["message", "thought"]) {
+  test(`long ${type} content stays complete within the total cache budget`, () => {
+    const content = "x".repeat(60000);
+    const items = boundTimeline(Array.from({ length: 500 }, (_, i) => ({ ...all[i], type, content })));
+    assert.ok(JSON.stringify(items).length * 2 <= MAX_TIMELINE_BYTES + 1024);
+    assert.ok(items.length > 0 && items.length < 500);
+    assert.ok(items.every(item => item.content === content && !item.more?.content));
+  });
+}
+
+test("large tool output and commands still use bounded previews", () => {
+  const [item] = boundTimeline([{ id: "tool", type: "tool", name: "Read", status: "done",
+    command: "x".repeat(60000), output: "y".repeat(60000) }]);
+  assert.equal(item.command.length, 32768);
+  assert.equal(item.output.length, 32768);
+  assert.deepEqual(item.more, { command: 60000, output: 60000 });
+});
+
+test("one message larger than the cache budget remains readable in either direction", () => {
+  const large = { ...all[1], content: "x".repeat(MAX_TIMELINE_BYTES) };
+  assert.deepEqual(boundTimeline([all[0], large]), [large]);
+  assert.deepEqual(boundTimeline([large, all[2]], "start"), [large]);
 });
 
 test("an in-flight page cannot overwrite newer stream updates or drop appended items", () => {

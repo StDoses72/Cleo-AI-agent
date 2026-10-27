@@ -2,7 +2,7 @@ import type { Thread, TimelineItem, TimelinePage } from "./types";
 
 export const MAX_TIMELINE_ITEMS = 500;
 export const MAX_TIMELINE_BYTES = 4 * 1024 * 1024;
-// Mirrors PREVIEW_CHARS in cleo/desktop/timeline.py: longer text is read on demand.
+// Mirrors PREVIEW_CHARS in cleo/desktop/timeline.py for tool output and commands.
 export const TIMELINE_PREVIEW_CHARS = 32768;
 
 export function boundTimeline(items: TimelineItem[], retain: "start" | "end" = "end"): TimelineItem[] {
@@ -12,11 +12,10 @@ export function boundTimeline(items: TimelineItem[], retain: "start" | "end" = "
   for (const original of ordered) {
     const item = { ...original } as TimelineItem;
     const text = item as unknown as Record<string, unknown>;
-    for (const key of ["content", "output", "command"]) {
+    for (const key of ["output", "command"]) {
       const value = text[key];
       if (typeof value === "string" && value.length > TIMELINE_PREVIEW_CHARS) {
-        text[key] = item.type === "thought"
-          ? `${value.slice(0, 2048)}\n\n…（可打开完整正文）…\n\n${value.slice(-6000)}` : value.slice(0, TIMELINE_PREVIEW_CHARS);
+        text[key] = value.slice(0, TIMELINE_PREVIEW_CHARS);
         item.more = { ...item.more, [key]: value.length };
       }
     }
