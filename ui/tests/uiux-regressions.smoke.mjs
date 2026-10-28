@@ -184,6 +184,8 @@ try {
     await page.getByRole("heading", { name: "Dream Agent", exact: true }).waitFor();
     await page.getByRole("button", { name: "Data and memory", exact: true }).click();
     await page.getByRole("checkbox", { name: "Background memory consolidation", exact: true }).waitFor();
+    await page.getByText("Optional memory sources", { exact: true }).waitFor();
+    assert.equal(await page.getByRole("region", { name: "Memory sources", exact: true }).isVisible(), false);
   });
   await check("information: memory filtering does not claim the queue is empty", async page => {
     await page.getByRole("button", { name: "记忆", exact: true }).click();
