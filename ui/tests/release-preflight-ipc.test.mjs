@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
+import { t as tr } from "../electron/i18n.mjs";
 import { ProgramUpdates } from "../electron/program-updates.mjs";
 
 test("automatic release preflight leaves conversations available and never dispatches publication", async () => {
@@ -23,6 +24,7 @@ test("automatic release preflight leaves conversations available and never dispa
   vm.runInNewContext(`${allowlist}\n${main.slice(requestStart, requestEnd)}\n${main.slice(start, end)}`, {
     ipcMain: { handle: (name, callback) => { handlers.set(name, callback); } },
     programUpdates: program,
+    tr,
     setup: { busy: false },
     companion: { controlling: false },
     backend: { pending: new Map([["running-task", {}]]), request: async (method, params) => {
