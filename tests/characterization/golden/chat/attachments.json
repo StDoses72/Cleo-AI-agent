@@ -1,6 +1,20 @@
 {
   "reloaded_items": [
     {
+      "attachments": [
+        {
+          "mimeType": "text/plain",
+          "name": "brief.txt",
+          "path": "<ROOT>/brief.txt",
+          "size": 0
+        },
+        {
+          "mimeType": "image/png",
+          "name": "pixel.png",
+          "path": "<ROOT>/pixel.png",
+          "size": 0
+        }
+      ],
       "content": "Review these\nAttachment 1: brief.txt\nAttachment 2: pixel.png",
       "cursor": "<cursor:1>",
       "id": "<turn:1>",
@@ -43,6 +57,20 @@
   "stream": [
     {
       "item": {
+        "attachments": [
+          {
+            "mimeType": "text/plain",
+            "name": "brief.txt",
+            "path": "<ROOT>/brief.txt",
+            "size": 0
+          },
+          {
+            "mimeType": "image/png",
+            "name": "pixel.png",
+            "path": "<ROOT>/pixel.png",
+            "size": 0
+          }
+        ],
         "content": "Review these",
         "id": "<turn:1>",
         "role": "user",
