@@ -30,8 +30,7 @@ API 支持 OpenAI 兼容、Anthropic 和 Google Gemini 接口。服务没有模�
 
 API Key 配置继续可用。订阅 Profile 不接受 API Key 或 Base URL。
 多个同服务的 Profile 共用该运行时的账号；它们不是相互独立的账号槽位。
-Codex 和 Claude 的新会话分别使用 Cleo 数据根目录下的 `data/codex`、`data/claude`，与默认应用/CLI 的历史、登录缓存及全局配置分开。首次使用请在 Cleo 内登录；同一账号的额度仍共享。原登录文件不会复制；本机的 skills、指令和设置会在首次使用时补充导入，详见[配置说明](CONFIGURATION.md)。
-已有 Codex/Claude 会话（及 Codex 原生分支）继续使用原目录，不做迁移或删除。其他服务仍沿用官方 CLI 的账号，登录或退出可能影响使用同一 CLI 的应用。
+Codex 和 Claude 复用本机原生目录，尊重 `CODEX_HOME`、`CLAUDE_CONFIG_DIR`。所有入口使用同一目录，登录或退出可能影响其他原生客户端。旧专用目录的可移植会话与文本按文件校验迁移，冲突、认证、配置及数据库保留；不会静默切换账号。详见[配置与恢复边界](CONFIGURATION.md)。
 Cleo 不主动在额度耗尽后切换付费 API，也不自动购买额度。
 官方 CLI 本身的既有配置、组织策略、额外用量设置仍然适用。
 
@@ -77,7 +76,7 @@ event ID、Markdown 输出和显式完成协议；失败保留来源供重试。
 
 ## 会话与工具边界
 
-Chat 保留 Cleo persona、项目指导和记忆读取，通过 stdio MCP 复用 Cleo 工具。
+Chat 保留项目指导和记忆读取，通过 stdio MCP 复用 Cleo 工具。
 每个会话保存不含密钥的配置快照和原生会话标识。支持恢复的运行时使用原生历史；
 ACP 明确声明不支持恢复时，以 Cleo 已保存的历史创建新原生会话。
 认证失败和普通运行错误不触发重新发送，也不跨服务回退。

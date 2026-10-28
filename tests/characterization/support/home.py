@@ -14,7 +14,6 @@ CHAT_API_KEY = "sk-characterization-secret"
 
 AGENTS_MD = "# Characterization home\n\nDeterministic instructions for tests.\n"
 MEMORY_POLICY_MD = "# Memory policy\n\nKeep durable facts only.\n"
-PERSONA_MD = "# Persona\n"
 
 
 @dataclass(frozen=True)
@@ -87,7 +86,6 @@ def chat_config(llm_base_url: str) -> dict:
                     "workspace_dir": "workspace",
                     "memory_dir": "memory",
                     "memory_policy_path": "memory/MEMORY_POLICY.md",
-                    "persona_path": "PERSONA.md",
                     "session_index_path": "memory/sessions.sqlite3",
                     "session_artifacts_dir": "data/session_artifacts",
                     "runtime_state_path": "data/runtime.json",
@@ -162,7 +160,6 @@ def build_home(root: Path, llm_base_url: str) -> CleoHome:
     (home / "config" / "harnesses.json").write_text(
         json.dumps(harnesses_config(), indent=2), encoding="utf-8")
     (home / "AGENTS.md").write_text(AGENTS_MD, encoding="utf-8")
-    (home / "PERSONA.md").write_text(PERSONA_MD, encoding="utf-8")
     (home / "memory" / "MEMORY_POLICY.md").write_text(MEMORY_POLICY_MD, encoding="utf-8")
     (workspace / "README.md").write_text("# Fixture workspace\n", encoding="utf-8")
     _git(workspace, "init", "-q", "-b", "main")

@@ -5,12 +5,15 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections import OrderedDict
 from datetime import UTC, datetime
 from pathlib import Path
+from threading import RLock
 from typing import Any
 
 from cleo.memory.compact_file import decode_compact, read_compact_file
-from cleo.memory.paths import compact_path, events_path, manifest_path
+from cleo.memory.paths import compact_path, events_path, manifest_path, memory_database_path
+from cleo.memory.tool_body import TOOL_BODY_VERSION, bounded_tool_text
 from cleo.sessions.rewind import active_events
 
 SCHEMA_VERSION = 2
@@ -244,7 +247,7 @@ def _bounded_text(content: Any, limit: int) -> tuple[Any, bool]:
     content = _redact_text(content)
     if len(content) <= limit:
         return content, False
-    return content[:limit] + f"... <truncated:{len(content) - limit} chars>", True
+    return bounded_tool_text(content, limit), True
 
 
 def _compact_tool_result(name: str, status: str, content: Any) -> tuple[dict[str, Any], int]:
@@ -261,7 +264,9 @@ def _compact_tool_result(name: str, status: str, content: Any) -> tuple[dict[str
         字符数由 compact_events 累计进 compression.omitted_tool_characters。
     """
     result_characters = _content_characters(content)
-    if name in _OMIT_RESULT_TOOLS or name in _FILE_WRITE_TOOLS:
+    if (name in _OMIT_RESULT_TOOLS or name in _FILE_WRITE_TOOLS) and str(status).casefold() in {
+        "", "success", "completed",
+    }:
         return (
             {
                 "result_omitted": True,
@@ -271,12 +276,14 @@ def _compact_tool_result(name: str, status: str, content: Any) -> tuple[dict[str
         )
 
     parsed_result = _parse_json_result(content)
-    if parsed_result is not None:
+    if parsed_result is not None and _content_characters(parsed_result) <= 2400:
         return {"result": parsed_result}, 0
 
     is_error = str(status).casefold() not in {"", "success", "completed"}
     limit = 2000 if is_error else 1000
-    result, truncated = _bounded_text(content, limit)
+    result, truncated = _bounded_text(
+        parsed_result if parsed_result is not None else content, limit,
+    )
     compacted: dict[str, Any] = {"result": result}
     if truncated:
         compacted["result_truncated"] = True
@@ -541,6 +548,7 @@ def compact_events(
         "session_id": session_id,
         "source": source,
         "compression": {
+            "tool_body_version": TOOL_BODY_VERSION,
             "compressed_at": _now_iso(),
             "raw_characters": len(raw_json),
             "compact_characters": len(compact_json),
@@ -594,32 +602,86 @@ def write_compact_events(
     return output_path, payload
 
 
-def load_validated_compact(
-    *,
-    memory_root: Path,
-    space: str,
-    project: str,
-    session_id: str,
+# Validation receipts contain metadata only, never historical message bodies.
+_VALIDATED: OrderedDict[tuple, dict[str, Any]] = OrderedDict()
+_VALIDATION_LOCK = RLock()
+_VALIDATION_LIMIT = 4096
+
+
+def file_revision(path: Path) -> tuple | None:
+    """Detect appends, replacement, truncation and atomic publication without reading bodies."""
+    try:
+        stat = path.stat()
+    except FileNotFoundError:
+        return None
+    return (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+
+
+def compact_revision(memory_root: Path, space: str, project: str, session_id: str) -> tuple:
+    paths = (
+        events_path(memory_root, space, project, session_id),
+        manifest_path(memory_root, space, project, session_id),
+        compact_path(memory_root, space, project, session_id),
+    )
+    return (str(Path(memory_root).resolve()), space, project, session_id, TOOL_BODY_VERSION,
+            *(file_revision(path) for path in paths))
+
+
+def _remember_validation(revision: tuple, receipt: dict) -> None:
+    with _VALIDATION_LOCK:
+        _VALIDATED[revision] = receipt
+        _VALIDATED.move_to_end(revision)
+        while len(_VALIDATED) > _VALIDATION_LIMIT:
+            _VALIDATED.popitem(last=False)
+
+
+def _validation_receipt(
+    revision: tuple, memory_root: Path, space: str, project: str, session_id: str,
+) -> dict | None:
+    with _VALIDATION_LOCK:
+        receipt = _VALIDATED.get(revision)
+        if receipt is not None:
+            _VALIDATED.move_to_end(revision)
+            return dict(receipt)
+    from cleo.memory.store import load_conversation_validation
+
+    receipt = load_conversation_validation(
+        space, project, session_id, path=memory_database_path(memory_root, space),
+    )
+    if (receipt is not None
+            and _canonical_json(receipt.get("revision")) == _canonical_json(revision)):
+        receipt["revision"] = revision
+        _remember_validation(revision, receipt)
+        return receipt
+    return None
+
+
+def validated_compact_source(
+    *, memory_root: Path, space: str, project: str, session_id: str,
 ) -> dict[str, Any]:
-    """Load compact data only when it matches the append-only event source.
+    """Reuse persisted index metadata even when the bounded in-process cache evicts it."""
+    revision = compact_revision(memory_root, space, project, session_id)
+    receipt = _validation_receipt(revision, memory_root, space, project, session_id)
+    if receipt is not None:
+        return receipt
+    load_validated_compact(memory_root=memory_root, space=space, project=project,
+                           session_id=session_id)
+    receipt = _validation_receipt(revision, memory_root, space, project, session_id)
+    if receipt is None:
+        raise ValueError("Session changed while validating compact")
+    return receipt
 
-    读取 compact.json 并做多重绑定校验 (space/project/session、schema_version、
-    source_content_hash、seq 范围), 防止消费 stale 或错绑的投影。
 
-    参数:
-        memory_root: memory 根目录; 调用方为 cleo/agents/dream.py invoke、
-            dream_agent_tools.py 的 _validated_compact、memory/store.py 的
-            search_conversation_history, 均传 settings.MEMORY_DIR 或 memory_root。
-        space: memory space; 来自各调用方的会话上下文。
-        project: 项目名; 同来源。
-        session_id: 会话 ID; 同来源。
+def load_validated_compact(
+    *, memory_root: Path, space: str, project: str, session_id: str,
+) -> dict[str, Any]:
+    """Validate each file revision once; later reads reuse a bounded metadata receipt.
 
-    返回:
-        校验通过的 compact payload dict; 被 DreamAgent 用于提取 durable
-        memory, 被 search_conversation_history 用于 source_hash 新鲜度比对。
-        任何校验失败抛 ValueError。
+    Manifest publication alone is not freshness: an active append or rewind changes the
+    event file before compact/source_hash publication. All three file identities are
+    checked, and a changed source is fully hashed before its receipt can be reused.
     """
-    raw_events = load_events(events_path(memory_root, space, project, session_id))
+    revision = compact_revision(memory_root, space, project, session_id)
     manifest = json.loads(
         manifest_path(memory_root, space, project, session_id).read_text(encoding="utf-8-sig")
     )
@@ -628,25 +690,35 @@ def load_validated_compact(
     ))
     source = payload.get("source") or {}
     expected_binding = (space, project, session_id)
-    manifest_binding = (
-        manifest.get("space"),
-        manifest.get("project"),
-        manifest.get("id"),
-    )
-    compact_binding = (
-        payload.get("space"),
-        payload.get("project"),
-        payload.get("session_id"),
-    )
-    if manifest_binding != expected_binding:
+    if (manifest.get("space"), manifest.get("project"), manifest.get("id")) != expected_binding:
         raise ValueError("session manifest binding does not match")
     if payload.get("schema_version") != SCHEMA_VERSION:
         raise ValueError("compact memory schema is not supported")
-    if compact_binding != expected_binding:
+    binding = (payload.get("space"), payload.get("project"), payload.get("session_id"))
+    if binding != expected_binding:
         raise ValueError("compact memory space/project/session binding does not match")
-    if source.get("source_content_hash") != event_content_hash(raw_events):
-        raise ValueError("compact memory is stale relative to the session event log")
-    expected_seq = int(raw_events[-1]["seq"]) if raw_events else 0
-    if int(source.get("to_seq", -1)) != expected_seq:
+    if int(manifest.get("last_event_seq", 0)) > int(source.get("to_seq", -1)):
         raise ValueError("compact memory event range is stale")
+    if (payload.get("compression") or {}).get("tool_body_version") != TOOL_BODY_VERSION:
+        raise ValueError("compact tool-body projection policy is stale")
+    receipt = _validation_receipt(revision, memory_root, space, project, session_id)
+    newly_validated = receipt is None
+    if receipt is None:
+        raw_events = load_events(events_path(memory_root, space, project, session_id))
+        if source.get("source_content_hash") != event_content_hash(raw_events):
+            raise ValueError("compact memory is stale relative to the session event log")
+        expected_seq = int(raw_events[-1]["seq"]) if raw_events else 0
+        if int(source.get("to_seq", -1)) != expected_seq:
+            raise ValueError("compact memory event range is stale")
+        receipt = {**source, "revision": revision, "records_digest": hashlib.sha256(
+            json.dumps(payload["events"], sort_keys=True).encode()).hexdigest()}
+    if compact_revision(memory_root, space, project, session_id) != revision:
+        raise ValueError("Session changed while validating compact")
+    if newly_validated:
+        from cleo.memory.store import save_conversation_validation
+
+        save_conversation_validation(
+            space, project, session_id, receipt, path=memory_database_path(memory_root, space),
+        )
+    _remember_validation(revision, receipt)
     return payload

@@ -66,7 +66,8 @@ DESKTOP_METHODS: tuple[RpcMethod, ...] = (
               "cancel_subscription_login"),
     # Memory review.
     *_methods("renderer", "get_memory_review_details", "review_memory_source",
-              "get_background_memory_state", "save_background_memory_settings"),
+              "get_background_memory_state", "save_background_memory_settings",
+              "get_memory_sources", "save_memory_sources"),
     # Electron main process only: evolution guard, computer use and lifecycle.
     *_methods("main", "is_evolution_thread", "release_runtime", "computer_host",
               "computer_host_stop", "computer_owner", "computer_scope",

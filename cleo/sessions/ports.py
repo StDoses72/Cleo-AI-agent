@@ -70,7 +70,7 @@ class SessionRepository(Protocol):
     ) -> dict[str, Any]: ...
 
     def refresh_compact(
-        self, session_id: str, *, materialize: bool = True,
+        self, session_id: str, *, materialize: bool = True, preserve_updated_at: bool = False,
     ) -> dict[str, Any] | None: ...
 
     def find_by_native_session(

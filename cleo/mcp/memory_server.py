@@ -5,16 +5,22 @@ import argparse
 from fastmcp import FastMCP
 
 from cleo.memory.reader import READING_INSTRUCTIONS, TOOL_NAMES, MemoryReader
+from cleo.memory.sources import SOURCE_INSTRUCTIONS, SOURCE_TOOLS, MemorySources
 
 
-def create_server(memory_root: str, index_path: str | None = None) -> FastMCP:
+def create_server(memory_root: str, index_path: str | None = None,
+                  source_config: str | None = None) -> FastMCP:
     reader = MemoryReader(memory_root, index_path)
-    server = FastMCP("cleo-memory", instructions=READING_INSTRUCTIONS)
+    server = FastMCP("cleo-memory", instructions=READING_INSTRUCTIONS + "\n" + SOURCE_INSTRUCTIONS)
     for name in TOOL_NAMES:
         server.tool(
             name=name,
             annotations={"readOnlyHint": True, "openWorldHint": False},
         )(getattr(reader, name))
+    sources = MemorySources(memory_root, source_config)
+    for name in SOURCE_TOOLS:
+        server.tool(name=name, annotations={"readOnlyHint": True, "openWorldHint": False})(
+            getattr(sources, name))
     return server
 
 
@@ -22,6 +28,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--memory-root", required=True)
     parser.add_argument("--session-index-path")
+    parser.add_argument("--source-config")
     parser.add_argument("--context-session")
     parser.add_argument("--context-snapshot")
     args = parser.parse_args()
@@ -32,7 +39,7 @@ def main() -> None:
             args.memory_root, args.session_index_path, args.context_session, args.context_snapshot
         )
     else:
-        server = create_server(args.memory_root, args.session_index_path)
+        server = create_server(args.memory_root, args.session_index_path, args.source_config)
     server.run(
         transport="stdio",
         show_banner=False,

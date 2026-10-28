@@ -385,14 +385,6 @@ export const memories: MemoryEntry[] = [
     source: "Architecture review",
     updatedAt: "3 天前",
   },
-  {
-    id: "persona-style",
-    scope: "persona",
-    title: "交流方式",
-    content: "直接、自然、有判断力。先给结果，再说明关键依据；避免过度格式化和空泛鼓励。",
-    source: "PERSONA.md",
-    updatedAt: "5 天前",
-  },
 ];
 
 export const memoryOverview: MemoryOverview = {
@@ -401,7 +393,6 @@ export const memoryOverview: MemoryOverview = {
     active_memories: memories.length,
     project_memories: 3,
     project_scopes: 2,
-    persona_traits: 1,
     pending_sources: 2,
   },
   dream_agent: {
@@ -489,21 +480,6 @@ export const memoryOverview: MemoryOverview = {
       evidence: [{ space: "productivity", project: "Cleo-AI-agent", session_id: "session-hub", event_id: "assistant-session", observed_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString() }],
       evidence_count: 1,
       updated_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    },
-    {
-      id: "persona-style",
-      scope: "persona",
-      space: null,
-      project: null,
-      category: "communication",
-      title: "交流方式",
-      content: "直接、自然、有判断力。先给结果，再说明关键依据；避免过度格式化和空泛鼓励。",
-      confidence: 0.9,
-      importance: 4,
-      tags: ["style"],
-      evidence: [],
-      evidence_count: 2,
-      updated_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
     },
   ],
 };

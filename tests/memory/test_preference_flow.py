@@ -2,6 +2,7 @@ import asyncio
 import json
 from pathlib import Path
 
+import pytest
 from langchain_core.messages import HumanMessage
 
 import cleo.agents.dream as dream_module
@@ -56,7 +57,8 @@ def test_unresolved_conflict_masks_only_conflicting_entries_then_resolves(tmp_pa
 
     monkeypatch.setattr(dream_module.DreamAgent, "_extract", conflict)
     result = asyncio.run(dream_module.DreamAgent().invoke("s1", "course", "productivity"))
-    assert result["status"] == "needs_clarification"
+    assert result["status"] == "complete"
+    assert result["excluded_conflict_groups"] == 1
     assert repo.read("productivity", "course") == text
     context = preference_context(config.MEMORY_DIR, "productivity", "course")
     assert "列出修改文件。" in context
@@ -69,7 +71,9 @@ def test_unresolved_conflict_masks_only_conflicting_entries_then_resolves(tmp_pa
     assert repo.history("productivity", "course") == []
 
     async def resolve(self, prompt):
-        return Extraction.model_validate({"edits": [{"old": "默认中文。"}]})
+        rows = [json.loads(row) for row in prompt.split("Evidence records:\n")[1].splitlines()]
+        ref = next(row["record"] for row in rows if row.get("type") == "user_message")
+        return Extraction.model_validate({"edits": [{"old": "默认中文。", "evidence_refs": [ref]}]})
 
     monkeypatch.setattr(dream_module.DreamAgent, "_extract", resolve)
     store.append_event(
@@ -114,3 +118,112 @@ def test_manual_resolution_of_one_conflict_does_not_mask_its_remaining_value(tmp
     assert read_conflicts(path, ['English', 'Short', 'Long', 'Unrelated']) == [
         {'preferences': ['Short', 'Long'], 'question': 'Length?'},
     ]
+
+
+def mixed_result(prompt):
+    rows = [json.loads(row) for row in prompt.split("Evidence records:\n")[1].splitlines()]
+    ref = next(row["record"] for row in rows if row.get("type") == "user_message")
+    return Extraction.model_validate({
+        "edits": [{"new": "Default Chinese.", "evidence_refs": [ref]},
+                  {"new": "Show changed files.", "evidence_refs": [ref]}],
+        "conflicts": [{"preferences": ["Default English.", "Default Chinese."],
+                       "question": "Insufficient evidence for a language change."}],
+    })
+
+
+@pytest.mark.parametrize("after_commit", [False, True])
+def test_uncertain_candidate_does_not_swallow_valid_edit_across_publication_retry(
+    tmp_path, monkeypatch, after_commit,
+):
+    _, _, repo = environment(tmp_path, monkeypatch, "# User Preferences\n- Default English.\n")
+    calls = []
+
+    async def extract(self, prompt):
+        calls.append(prompt)
+        return mixed_result(prompt)
+
+    monkeypatch.setattr(dream_module.DreamAgent, "_extract", extract)
+    publish = MemoryRepository.publish
+
+    def interrupted(self, *args):
+        if after_commit:
+            publish(self, *args)
+        raise OSError("publication interrupted")
+
+    monkeypatch.setattr(MemoryRepository, "publish", interrupted)
+    with pytest.raises(OSError, match="publication interrupted"):
+        asyncio.run(dream_module.DreamAgent().invoke("s1", "course", "productivity"))
+    path = repo.path("productivity", "course").parent / "sessions/s1/dream.json"
+    checkpoint = json.loads(path.read_text())
+    assert checkpoint["committed_seq"] == 0
+    assert checkpoint["pending"]["results"]
+    monkeypatch.setattr(MemoryRepository, "publish", publish)
+    result = asyncio.run(dream_module.DreamAgent().invoke("s1", "course", "productivity"))
+    assert result["status"] == "complete" and result["skipped_uncertain_edits"] == 1
+    assert len(calls) == 1
+    memory = repo.read("productivity", "course")
+    assert "Default English." in memory and "Show changed files." in memory
+    assert "Default Chinese." not in memory
+    assert json.loads(path.read_text())["pending"] is None
+
+
+def test_existing_conflict_keeps_unrelated_edit_and_legacy_progress_is_replayed(
+    tmp_path, monkeypatch,
+):
+    from cleo.memory.compaction import event_content_hash
+    from cleo.memory.repository import digest
+
+    text = "# User Preferences\n- Default English.\n- Default Chinese.\n"
+    config, store, repo = environment(tmp_path, monkeypatch, text)
+    events = store.read_events("s1")
+    directory = repo.path("productivity", "course").parent
+    (directory / ".memory-review.json").write_text(json.dumps({"conflicts": [{
+        "hashes": [digest("Default English."), digest("Default Chinese.")],
+        "question": "Language?",
+    }]}))
+    checkpoint = directory / "sessions/s1/dream.json"
+    checkpoint.write_text(json.dumps({"version": 2, "committed_seq": events[-1]["seq"],
+                                     "committed_hash": event_content_hash(events), "summary": "",
+                                     "pending": None, "memory_hash": digest(text)}))
+    calls = []
+
+    async def extract(self, prompt):
+        calls.append(prompt)
+        result = mixed_result(prompt)
+        result.edits = result.edits[1:]
+        return result
+
+    monkeypatch.setattr(dream_module.DreamAgent, "_extract", extract)
+    result = asyncio.run(dream_module.DreamAgent().invoke("s1", "course", "productivity"))
+    assert result["status"] == "complete" and result["excluded_conflict_groups"] == 1
+    assert "Show changed files." in repo.read("productivity", "course")
+    rows = MemoryReader(config.MEMORY_DIR).search_long_term_memory(
+        space="productivity", project="course",
+    )["results"]
+    assert [row["content"] for row in rows] == ["Show changed files."]
+    assert asyncio.run(dream_module.DreamAgent().invoke(
+        "s1", "course", "productivity",
+    ))["status"] == "skipped"
+    assert len(calls) == 1
+
+
+def test_concurrent_edit_rechecks_latest_memory_without_overwrite(tmp_path, monkeypatch):
+    _, _, repo = environment(tmp_path, monkeypatch, "# User Preferences\n- Default English.\n")
+    calls = []
+
+    async def extract(self, prompt):
+        calls.append(prompt)
+        if len(calls) == 1:
+            repo.path("productivity", "course").write_text(
+                "# User Preferences\n- Default English.\n- Preserve manual changes.\n",
+            )
+        return mixed_result(prompt)
+
+    monkeypatch.setattr(dream_module.DreamAgent, "_extract", extract)
+    with pytest.raises(ValueError, match="memory changed since extraction"):
+        asyncio.run(dream_module.DreamAgent().invoke("s1", "course", "productivity"))
+    assert asyncio.run(dream_module.DreamAgent().invoke(
+        "s1", "course", "productivity",
+    ))["status"] == "complete"
+    assert "Preserve manual changes." in calls[-1]
+    assert "Preserve manual changes." in repo.read("productivity", "course")

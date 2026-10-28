@@ -1,4 +1,6 @@
 import type {
+  MemorySourceSettings,
+  MemorySourcesState,
   HarnessSyncResult,
   HarnessSyncStatus,
   CleoClient,
@@ -41,6 +43,18 @@ const clone = <T,>(value: T): T => structuredClone(value);
 
 
 export class MockCleoClient implements CleoClient {
+  private memorySourceSettings: MemorySourceSettings = { sync_enabled: false, sources: [], disabled_sources: [] };
+  async getMemorySources(): Promise<MemorySourcesState> {
+    return { settings: clone(this.memorySourceSettings), sources: ["cleo", "codex", "claude"].map(id => ({
+      id, kind: id, root: `C:/Users/demo/.${id}`, enabled: !this.memorySourceSettings.disabled_sources.includes(id),
+      installed: true, detected: true, configured: true, readable_memory: true, status: "available",
+      native_auto_update: { generation: "unknown" },
+    })) };
+  }
+  async saveMemorySources(settings: MemorySourceSettings): Promise<MemorySourcesState> {
+    this.memorySourceSettings = clone(settings);
+    return this.getMemorySources();
+  }
   async getUiLanguage(): Promise<"zh-CN" | "en"> {
     return localStorage.getItem("cleo-mock-ui-language") === "en" ? "en" : "zh-CN";
   }
@@ -51,17 +65,14 @@ export class MockCleoClient implements CleoClient {
   }
   private backgroundMemorySettings: BackgroundMemorySettings = { enabled: false, intervalMinutes: 30, pendingThreshold: 5 };
   private harnessSync: HarnessSyncStatus[] = [
-    { harness: "claude", localPath: "C:\\Users\\demo\\.claude", localExists: true, cleoPath: "C:\\Users\\demo\\AppData\\Local\\Cleo\\data\\claude",
+    { harness: "claude", localPath: "C:\\Users\\demo\\.claude", localExists: true, cleoPath: "C:\\Users\\demo\\.claude", sharedHome: true,
       items: [
-        { id: "skills/grill", kind: "skills", name: "grill", state: "local_only" },
+        { id: "skills/grill", kind: "skills", name: "grill", state: "same" },
         { id: "skills/eli5", kind: "skills", name: "eli5", state: "same" },
-        { id: "skills/review", kind: "skills", name: "review", state: "cleo_only" },
-      ], settings: { file: "settings.json", missingInCleo: ["theme"] } },
-    { harness: "codex", localPath: "C:\\Users\\demo\\.codex", localExists: true, cleoPath: "C:\\Users\\demo\\AppData\\Local\\Cleo\\data\\codex",
-      items: [
-        { id: "skills/pdf", kind: "skills", name: "pdf", state: "different" },
-        { id: "rules/default.rules", kind: "rules", name: "default.rules", state: "same" },
-      ], settings: { file: "config.toml", missingInCleo: [] } },
+      ], settings: { file: "settings.json", missingInCleo: [] } },
+    { harness: "codex", localPath: "C:\\Users\\demo\\.codex", localExists: true, cleoPath: "C:\\Users\\demo\\.codex", sharedHome: true,
+      items: [{ id: "rules/default.rules", kind: "rules", name: "default.rules", state: "same" }],
+      settings: { file: "config.toml", missingInCleo: [] } },
   ];
   private modelSettings: ModelSettings = {
     profiles: [

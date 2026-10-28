@@ -155,6 +155,9 @@ class ClaudeProvider:
             ``ProviderSession``, id 为本地生成的新逻辑 id, native_id 为传入的
             原生 session id; 由 AgentAdapter 记录并用于后续路由。
         """
+        from cleo.integrations.harness_migration import check_resume_migration
+
+        check_resume_migration("claude", native_session_id)
         runtime = await self._connect(
             project_path, model, resume=native_session_id,
             external_home=claude_session_is_external(native_session_id),
@@ -423,7 +426,8 @@ class ClaudeProvider:
             runtime.approvals.callback = question_event
             runtime.approvals.reviewed_items.clear()
             try:
-                await runtime.client.query(prompt)
+                guidance = self._memory_mcp.sync_instructions if self._memory_mcp else ""
+                await runtime.client.query(guidance + "\n\n" + prompt if guidance else prompt)
                 async for message in runtime.client.receive_response():
                     if isinstance(message, SystemMessage) and message.subtype == "init":
                         native_id = message.data.get("session_id")
@@ -598,8 +602,7 @@ class ClaudeProvider:
                 ``resume_session``。
             model: 模型 id; 为 None 时回落到 ``default_model``。
             resume: 原生 session id, 由 ``resume_session`` 传入, 用于恢复会话。
-            external_home: 仅隔离前创建的会话为 True, 沿用用户原 Claude 目录;
-                其余会话固定使用 ``<CLEO_HOME>/data/claude``。
+            external_home: 兼容旧运行状态的标记; 所有会话使用同一原生目录。
         返回:
             ``_ClaudeRuntime``, 由调用方登记进 ``_sessions``。
         """

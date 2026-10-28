@@ -209,7 +209,6 @@ class DirectoryProfile(BaseModel):
         data_dir / skills_dir / workspace_dir / memory_dir: 各功能子目录;
             经对应 *_path property 暴露给 SettingsModel 的 DATA_DIR 等。
         memory_policy_path: memory 抽取策略文件;经 MEMORY_POLICY_PATH 暴露。
-        persona_path: 全局人格投影文件;经 PERSONA_PATH 暴露。
         session_index_path: 会话索引 SQLite;经 SESSION_INDEX_PATH 暴露,
             消费方: cleo/cli/application.py:172 等 SessionStore 构造处。
         session_artifacts_dir: 会话产物目录;经 SESSION_ARTIFACTS_DIR 暴露。
@@ -225,10 +224,16 @@ class DirectoryProfile(BaseModel):
     workspace_dir: Path = Path("workspace")
     memory_dir: Path = Path("memory")
     memory_policy_path: Path = Path("memory/MEMORY_POLICY.md")
-    persona_path: Path = Path("PERSONA.md")
     session_index_path: Path = Path("memory/sessions.sqlite3")
     session_artifacts_dir: Path = Path("data/session_artifacts")
     runtime_state_path: Path = Path("data/runtime.json")
+
+    @model_validator(mode="before")
+    @classmethod
+    def ignore_retired_persona_path(cls, value):
+        if isinstance(value, dict):
+            value = {key: item for key, item in value.items() if key != "persona_path"}
+        return value
 
     def project_path(self, path: Path) -> Path:
         """把 profile 内的相对路径解析到 root_path 之下。
@@ -280,11 +285,6 @@ class DirectoryProfile(BaseModel):
         来源: memory_policy_path 字段; 消费方: SettingsModel.MEMORY_POLICY_PATH。
         """
         return self.project_path(self.memory_policy_path)
-
-    @property
-    def persona_file(self) -> Path:
-        """全局人格投影绝对路径;默认与 ``AGENTS.md`` 同处应用根目录。"""
-        return self.project_path(self.persona_path)
 
     @property
     def session_index_file(self) -> Path:
@@ -742,11 +742,6 @@ class SettingsModel(BaseModel):
         return self.active_directory_profile.memory_policy_file
 
     @property
-    def PERSONA_PATH(self) -> Path:
-        """全局人格投影路径;来源: active directory profile。"""
-        return self.active_directory_profile.persona_file
-
-    @property
     def SESSION_INDEX_PATH(self) -> Path:
         """会话索引 SQLite 路径。
 
@@ -868,7 +863,6 @@ def _default_config() -> dict[str, Any]:
                     "workspace_dir": "workspace",
                     "memory_dir": "memory",
                     "memory_policy_path": "memory/MEMORY_POLICY.md",
-                    "persona_path": "PERSONA.md",
                     "session_index_path": "memory/sessions.sqlite3",
                     "session_artifacts_dir": "data/session_artifacts",
                     "runtime_state_path": "data/runtime.json",

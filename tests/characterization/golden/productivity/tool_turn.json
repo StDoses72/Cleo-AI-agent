@@ -102,6 +102,7 @@
           "compressed_at": "<time>",
           "omitted_tool_characters": 0,
           "raw_characters": "<path-dependent>",
+          "tool_body_version": 1,
           "tool_event_count": 2
         },
         "events": [

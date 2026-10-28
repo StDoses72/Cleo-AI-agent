@@ -298,7 +298,6 @@ def test_event_to_dream_completion_protocol(tmp_path: Path, monkeypatch) -> None
     memory_root = tmp_path / "memory"
     fake_settings = SimpleNamespace(
         MEMORY_DIR=memory_root,
-        PERSONA_PATH=tmp_path / "PERSONA.md",
     )
     monkeypatch.setattr(memory_store, "settings", fake_settings)
     monkeypatch.setattr(dream_agent_tools, "settings", fake_settings)
@@ -337,23 +336,6 @@ def test_event_to_dream_completion_protocol(tmp_path: Path, monkeypatch) -> None
         }
     )
     assert json.loads(remembered)["status"] == "stored"
-
-    persona_result = dream_agent_tools.remember_global_persona_trait.invoke(
-        {
-            "space": "productivity",
-            "project": "cleo",
-            "session_id": "session-dream",
-            "source_hash": source_hash,
-            "category": "adaptation",
-            "trait": "Explains architecture choices before implementation details.",
-            "evidence_event_ids": [evidence_event_id],
-            "confidence": 0.85,
-            "tags": ["technical-collaboration"],
-        }
-    )
-    assert json.loads(persona_result)["status"] == "stored"
-    persona_text = (tmp_path / "PERSONA.md").read_text(encoding="utf-8")
-    assert "Explains architecture choices before implementation details." in persona_text
 
     written = dream_agent_tools.write_memory_to_markdown.invoke(
         {

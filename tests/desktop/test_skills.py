@@ -26,7 +26,7 @@ def skill_home(tmp_path, monkeypatch):
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "external-codex"))
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "external-claude"))
     return SimpleNamespace(
-        home=home, codex=cleo / "data" / "codex", claude=cleo / "data" / "claude",
+        home=home, codex=tmp_path / "external-codex", claude=tmp_path / "external-claude",
         external_codex=tmp_path / "external-codex", external_claude=tmp_path / "external-claude",
     )
 
@@ -124,26 +124,20 @@ def test_desktop_dispatch_uses_selected_harness_and_keeps_builtins(skill_home, t
     assert service._local_skills(manifest) == []
 
 
-def test_catalog_reads_only_cleo_directories(skill_home, tmp_path, monkeypatch):
-    path = write_skill(skill_home.codex / "skills", "cleo-owned")
-    write_skill(skill_home.external_codex / "skills", "external-codex")
-    write_skill(skill_home.external_claude / "skills", "external-claude")
+def test_catalog_reads_effective_native_directories(skill_home, tmp_path, monkeypatch):
+    path = write_skill(skill_home.codex / "skills", "native-codex")
+    write_skill(skill_home.claude / "skills", "native-claude")
     write_skill(skill_home.home / ".codex" / "skills", "default-codex")
     write_skill(skill_home.home / ".claude" / "skills", "default-claude")
     entries = discover_skills("codex", str(tmp_path), PRODUCTIVITY_COMMANDS)
-    assert [(s.name, s.source) for s in entries] == [("cleo-owned", "codex · Cleo")]
-    assert discover_skills("claude", str(tmp_path), PRODUCTIVITY_COMMANDS) == []
+    assert [(s.name, s.source) for s in entries] == [("native-codex", "codex · native")]
+    assert [s.name for s in discover_skills("claude", str(tmp_path), PRODUCTIVITY_COMMANDS)] == [
+        "native-claude"]
+    path.write_bytes(b"\xff\xfe")
+    assert discover_skills("codex", str(tmp_path), PRODUCTIVITY_COMMANDS) == []
     monkeypatch.delenv("CODEX_HOME")
     monkeypatch.delenv("CLAUDE_CONFIG_DIR")
     assert [s.name for s in discover_skills("codex", str(tmp_path), PRODUCTIVITY_COMMANDS)] == [
-        "cleo-owned"
-    ]
-    assert discover_skills("claude", str(tmp_path), PRODUCTIVITY_COMMANDS) == []
-    # External skills reach the menu only as imported copies (import tests cover copying);
-    # the catalog itself never points at an external directory.
-    for harness in ("codex", "claude"):
-        for skill in discover_skills(harness, str(tmp_path), PRODUCTIVITY_COMMANDS):
-            assert skill.path.is_relative_to(getattr(skill_home, harness).resolve())
-    assert path.read_text().endswith("Apply concrete examples.")
-    path.write_bytes(b"\xff\xfe")
-    assert discover_skills("codex", str(tmp_path), PRODUCTIVITY_COMMANDS) == []
+        "default-codex"]
+    assert [s.name for s in discover_skills("claude", str(tmp_path), PRODUCTIVITY_COMMANDS)] == [
+        "default-claude"]

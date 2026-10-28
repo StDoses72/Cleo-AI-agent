@@ -18,6 +18,7 @@ def _default_adapter() -> CodexAdapter:
         project_root=settings.active_directory_profile.root_path,
         memory_root=settings.MEMORY_DIR,
         session_index_path=settings.SESSION_INDEX_PATH,
+        source_config_path=settings.PROFILE_DIR.with_name("memory-sources.json"),
     )
 
 

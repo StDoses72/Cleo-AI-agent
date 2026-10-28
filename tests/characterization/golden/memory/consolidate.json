@@ -13,7 +13,6 @@
       "non_productivity/projects/general/sessions/<thread:1>/dream.json",
       "non_productivity/projects/general/sessions/<thread:1>/events.jsonl",
       "non_productivity/projects/general/sessions/<thread:1>/manifest.json",
-      "persona.sqlite3",
       "sessions.sqlite3"
     ],
     "memory_git_log": [
@@ -55,6 +54,7 @@
   "dream_checkpoint": {
     "committed_hash": "sha256:<hex:4>",
     "committed_seq": 4,
+    "conflict_policy_version": 2,
     "memory_hash": "<hex:5>",
     "pending": null,
     "summary": "",
@@ -125,7 +125,6 @@
     "summary": {
       "active_memories": 1,
       "pending_sources": 0,
-      "persona_traits": 0,
       "project_memories": 1,
       "project_scopes": 1
     },

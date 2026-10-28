@@ -31,6 +31,7 @@ from cleo.memory.store import (
     replace_conversation_chunks,
     update_conversation_chunks,
 )
+from cleo.memory.tool_body import TOOL_BODY_VERSION
 from cleo.sessions.files import fsync_file
 
 
@@ -164,6 +165,7 @@ class CompactProjection:
             "source_version": int(source_state["source_version"]),
         }
         compression = {
+            "tool_body_version": TOOL_BODY_VERSION,
             "compressed_at": _now_iso(), "raw_characters": revision.raw_characters,
             "compact_characters": (
                 2 + stats["record_characters"] + max(0, stats["totalrecords"] - 1)

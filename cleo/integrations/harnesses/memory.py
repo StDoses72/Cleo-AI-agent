@@ -19,6 +19,13 @@ class MemoryMcp:
     index_path: Path | None = None
     context: ContextBinding | None = None
     computer_config_path: Path | None = None
+    source_config_path: Path | None = None
+
+    @property
+    def sync_instructions(self) -> str:
+        from cleo.memory.source_settings import sync_instructions
+        return sync_instructions(self.source_config_path or
+                                 self.root.parent / "config" / "memory-sources.json")
 
     def for_context(self, binding: ContextBinding) -> MemoryMcp:
         return replace(self, context=binding)
@@ -46,6 +53,8 @@ class MemoryMcp:
         args = ["-I", "-c", bootstrap, "--memory-root", str(self.root.expanduser().resolve())]
         if self.index_path is not None:
             args.extend(["--session-index-path", str(self.index_path.expanduser().resolve())])
+        if self.source_config_path is not None:
+            args.extend(["--source-config", str(self.source_config_path.expanduser().resolve())])
         return args
 
     def codex_config(

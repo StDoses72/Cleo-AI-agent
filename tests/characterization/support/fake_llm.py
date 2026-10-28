@@ -17,7 +17,6 @@ evidence record; otherwise it is the documented no-change result.
 from __future__ import annotations
 
 import json
-import re
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -47,10 +46,13 @@ DREAM_MARKER = "You maintain a small Markdown file of USER PREFERENCES"
 def dream_reply(messages: list[dict[str, Any]]) -> str:
     evidence = _latest_user_text(messages)
     edits = []
-    refs = re.findall(r'"record":"([^"]+)"', evidence)
-    if "[[prefer]]" in evidence and refs:
+    records = [json.loads(line) for line in
+               evidence.partition("Evidence records:\n")[2].splitlines()]
+    user = next((row for row in records if row.get("type") in {"user_message", "human"}
+                 and "[[prefer]]" in json.dumps(row)), None)
+    if user is not None:
         edits.append({"old": "", "new": "Prefers concise weekly plans",
-                      "evidence_refs": [refs[0]]})
+                      "evidence_refs": [user.get("ref", user["record"])]})
     return json.dumps({"edits": edits, "conflicts": [], "snapshot": None,
                        "work_item": "", "summary": "Scripted DreamAgent summary."})
 

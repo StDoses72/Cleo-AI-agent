@@ -196,6 +196,7 @@ def test_codex_config_is_created_and_still_read_by_cleo(tmp_path, monkeypatch):
     monkeypatch.setattr("cleo.integrations.codex_home.sys.platform", "win32")
     external = tmp_path / "user" / ".codex"
     write(external / "config.toml", '[windows]\nsandbox = "elevated"\n')
+    monkeypatch.setenv("CODEX_HOME", str(external))
     home = (tmp_path / "cleo" / "data" / "codex")
     assert import_external("codex", home, external) == ["config.toml:windows"]
     assert tomllib.loads((home / "config.toml").read_text(encoding="utf-8")) == {
@@ -224,7 +225,7 @@ def test_harness_home_imports_once_and_skill_menu_lists_cleo_copies(tmp_path, mo
     ]
     write(tmp_path / "user/.claude/skills/later/SKILL.md", "---\nname: later\n---\nL")
     harness_home("claude")
-    assert not (home / "skills/later").exists()  # Picked up on the next Cleo start.
+    assert (home / "skills/later").exists()  # Native edits are immediately visible.
 
 
 def test_import_failure_never_blocks_the_harness(tmp_path, monkeypatch):
@@ -238,7 +239,7 @@ def test_import_failure_never_blocks_the_harness(tmp_path, monkeypatch):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(harness_import, "import_external", fail)
-    assert harness_home("codex") == (tmp_path / "cleo" / "data" / "codex").resolve()
+    assert harness_home("codex") == (tmp_path / "native-codex").resolve()
 
 
 def test_hidden_entries_are_skipped_and_copied_item_paths_follow_the_copy(tmp_path):
@@ -347,14 +348,16 @@ def test_desktop_service_exposes_comparison_and_sync(tmp_path, monkeypatch):
     service = DesktopService.__new__(DesktopService)
     statuses = asyncio.run(service.get_harness_sync())
     assert [status["harness"] for status in statuses] == ["claude", "codex"]
-    assert not statuses[0]["localExists"]
+    assert statuses[0]["localExists"]
+    assert all(status["sharedHome"] for status in statuses)
     assert statuses[1]["items"] == [
-        {"id": "skills/pdf", "kind": "skills", "name": "pdf", "state": "local_only"},
+        {"id": "skills/pdf", "kind": "skills", "name": "pdf", "state": "same"},
     ]
     result = asyncio.run(service.sync_harness_items(
         harness="codex", direction="import", items=["skills/pdf"],
     ))
-    assert result == {"copied": ["skills/pdf"], "skipped": []}
-    assert (tmp_path / "cleo/data/codex/skills/pdf/SKILL.md").exists()
+    assert result == {"copied": [], "skipped": ["skills/pdf"]}
+    assert (tmp_path / "user/.codex/skills/pdf/SKILL.md").exists()
+    assert not (tmp_path / "cleo/data/codex").exists()
     with pytest.raises(ValueError):
         asyncio.run(service.sync_harness_items(harness="gemini", direction="import", items=[]))

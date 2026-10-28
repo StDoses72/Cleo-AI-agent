@@ -63,12 +63,16 @@ Respect scope and conditional exceptions. A new explicit correction REPLACES the
 preference; do not append contradictory defaults. Check the EXISTING FILE for conflicts
 as well as new evidence. File order is NOT preference chronology. If evidence resolves
 an existing conflict, remove the outdated entry. Otherwise return conflicts with exact
-existing preference texts and a clarification question. Do not guess a winner or invent
-an exception. Preserve unresolved_conflicts until later evidence resolves them.
+preference texts for that conflict. Skip only the uncertain candidate; keep all unrelated
+valid edits. Do not guess a winner, infer authority from file times/order, or invent an
+exception. Existing unresolved conflicts remain excluded from effective preferences until
+direct evidence resolves them; do not make them block the rest of the batch.
 
-For each added/replaced preference cite refs from THIS block. A deletion to repair a
-conflict already justified by existing memory can omit refs. Previous_summary is only
+For every addition, replacement or deletion cite direct user refs from THIS block.
+Deleting a conflicting default also needs explicit user evidence; existing file order,
+timestamps or your own preference do not authorize deletion. Previous_summary is only
 working context; it cannot establish new user preferences without supplied evidence.
+Tool records are excerpts for work-state context, never direct user-preference evidence.
 If refresh_snapshot is true, snapshot may contain up to five lines about the LAST
 supported work state (done/pending). Each line must be at most 200 characters with no
 embedded newline. work_item identifies the task. Replace earlier
@@ -85,6 +89,35 @@ Record bodies may use same_body_as/same_output_as or fragments; preserve their l
 
 MAX_INPUT_BYTES = 90_000
 MAX_EXTRACTION_ATTEMPTS = 3
+
+
+def _dream_enabled():
+    from cleo.config.settings import settings as live_settings
+
+    return live_settings.active_profiles.dream_enabled
+
+
+def _merge_extraction(candidate, result, conflicts):
+    """Skip uncertain edits independently; retain exclusions for existing contradictions."""
+    proposed = apply_edits(candidate, result.edits)
+    known = set(parse_memory(candidate).preferences) | set(parse_memory(proposed).preferences)
+    uncertain = set()
+    for conflict in result.conflicts:
+        if not set(conflict.preferences) <= known:
+            raise ValueError("conflict must reference exact existing or proposed preferences")
+        uncertain.update(conflict.preferences)
+    accepted = [edit for edit in result.edits
+                if edit.old not in uncertain and edit.new not in uncertain]
+    candidate = apply_edits(candidate, accepted)
+    current = set(parse_memory(candidate).preferences)
+    remaining = []
+    seen = set()
+    for group in [*conflicts, *(conflict.model_dump() for conflict in result.conflicts)]:
+        key = frozenset(group["preferences"])
+        if key <= current and key not in seen:
+            remaining.append(group)
+            seen.add(key)
+    return candidate, remaining, len(result.edits) - len(accepted)
 
 
 class DreamAgent:
@@ -112,6 +145,8 @@ class DreamAgent:
         )
         correction = ""
         for attempt in range(1, MAX_EXTRACTION_ATTEMPTS + 1):
+            if not _dream_enabled():
+                raise asyncio.CancelledError("memory consolidation disabled")
             # Retry only invalid output, never transport failures, cancellation, or publication.
             with stage(f"模型提取 · 第 {attempt} 次请求", category="model"):
                 text = await self._request_text(instructions + correction, prompt)
@@ -180,7 +215,7 @@ class DreamAgent:
         self, session_id: str, project: str = "general", space: str = DEFAULT_MEMORY_SPACE,
         *, force: bool = False,
     ):
-        if not force and not settings.active_profiles.dream_enabled:
+        if not _dream_enabled():
             return {"status": "skipped", "reason": "automatic memory consolidation is disabled"}
         async with measure(settings.MEMORY_DIR, session_id=session_id, space=space,
                            project=project, kind="dream") as timing:
@@ -216,6 +251,13 @@ class DreamAgent:
             session_directory(settings.MEMORY_DIR, space, project, session_id) / "dream.json"
         )
         checkpoint = invalidate_rewound_pending(checkpoint_path, events)
+        review_path = repository.path(space, project).with_name(".memory-review.json")
+        # Old conflict handling advanced progress without publishing unrelated edits.
+        # Replay its evidence once; never infer which swallowed edit the user intended.
+        if review_path.exists() and checkpoint.get("conflict_policy_version") != 2:
+            checkpoint.update(committed_seq=0, committed_hash=None, summary="", pending=None,
+                              memory_hash=None, conflict_policy_version=2)
+            save_checkpoint(checkpoint_path, checkpoint)
         if (not needs_consolidation(space, project, session_id, current_hash)
                 and checkpoint.get("memory_hash") == digest(initial) and not refresh_snapshot):
             return {"status": "skipped", "reason": "session source is already processed",
@@ -236,13 +278,13 @@ class DreamAgent:
             ):
                 raise ValueError("consolidated events changed; refusing to skip evidence")
             pending = checkpoint.get("pending")
+            if pending and pending["projection_version"] != PROJECTION_VERSION:
+                checkpoint["pending"] = pending = None
+                save_checkpoint(path, checkpoint)
             if pending is not None and initial != pending["base_memory"]:
                 if initial != pending.get("published_memory"):
-                    checkpoint["pending"] = None
+                    checkpoint["pending"] = pending = None
                     save_checkpoint(path, checkpoint)
-                    raise ValueError(
-                        "memory changed during extraction; retry against the current file"
-                    )
             if pending is None:
                 pending = {
                     "source_hash": current_hash, "to_seq": events[-1]["seq"] if events else 0,
@@ -255,8 +297,6 @@ class DreamAgent:
             source_hash = pending["source_hash"]
             if event_content_hash(snapshot) != source_hash:
                 raise ValueError("pending DreamAgent snapshot changed; refusing stale evidence")
-            if pending["projection_version"] != PROJECTION_VERSION:
-                raise ValueError("pending DreamAgent projection needs migration")
             visible = active_events(snapshot)
             records = await asyncio.to_thread(
                 project_events, ([e for e in visible if e["seq"] > committed]
@@ -269,8 +309,8 @@ class DreamAgent:
             snapshot_lines = None
             work_item = ""
             conflicts = []
-            review_path = repository.path(space, project).with_name(".memory-review.json")
             conflicts = read_conflicts(review_path, parse_memory(initial).preferences)
+            skipped_edits = 0
             for index, block in enumerate(blocks):
                 phase(f"处理第 {index + 1}/{total} 块")
                 current_hash = get_session_source(space, project, session_id)["source_hash"]
@@ -283,6 +323,8 @@ class DreamAgent:
                     with stage("恢复已完成的提取"):
                         result = Extraction.model_validate(cached)
                 else:
+                    if not _dream_enabled():
+                        raise asyncio.CancelledError("memory consolidation disabled")
                     prompt = canonical({
                         "space": space, "project": project, "session_id": session_id,
                         "block": index + 1, "total_blocks": total,
@@ -298,12 +340,8 @@ class DreamAgent:
                         save_checkpoint(path, checkpoint)
                 with stage("校验并合并结果"):
                     result.validate_evidence(block)
-                    candidate = apply_edits(candidate, result.edits)
-                    for conflict in result.conflicts:
-                        if any(item not in parse_memory(candidate).preferences
-                               for item in conflict.preferences):
-                            raise ValueError("conflict must reference exact existing preferences")
-                    conflicts = [c.model_dump() for c in result.conflicts]
+                    candidate, conflicts, skipped = _merge_extraction(candidate, result, conflicts)
+                    skipped_edits += skipped
                     if result.snapshot is not None and pending["refresh_snapshot"]:
                         snapshot_lines, work_item = result.snapshot, result.work_item
                     carry = result.summary
@@ -318,18 +356,6 @@ class DreamAgent:
             latest_manifest = store.load_manifest(session_id)
             if (latest_manifest["space"], latest_manifest["project"]) != (space, project):
                 raise ValueError("session moved before memory publication")
-            if conflicts:
-                phase("保存待澄清结果")
-                atomic_text(review_path, canonical({"memory_hash": digest(initial),
-                            "conflicts": [{"hashes": [digest(text) for text in c["preferences"]],
-                                           "question": c["question"]} for c in conflicts]}))
-                checkpoint.update(committed_seq=pending["to_seq"], committed_hash=source_hash,
-                                  summary=carry, pending=None, memory_hash=digest(initial))
-                save_checkpoint(path, checkpoint)
-                reason = " ".join(c["question"] for c in conflicts)
-                mark_consolidation_failed(space, project, session_id, current_hash, reason)
-                return {"status": "needs_clarification",
-                        "questions": [c["question"] for c in conflicts]}
             if snapshot_lines:
                 stamp = next((e.get("created_at", "") for e in reversed(snapshot)
                               if e.get("created_at")), manifest.get("updated_at", ""))
@@ -344,17 +370,28 @@ class DreamAgent:
                     + "\n".join('- ' + line for line in snapshot_lines)
                 ))
             pending["published_memory"] = candidate
+            checkpoint["conflict_policy_version"] = 2
             save_checkpoint(path, checkpoint)
+            if conflicts:
+                # Publish exclusions first: interruption must never expose contradictory
+                # defaults. Hash-bound groups harmlessly disappear when an entry is removed.
+                atomic_text(review_path, canonical({"memory_hash": digest(candidate),
+                            "policy_version": 2,
+                            "conflicts": [{"hashes": [digest(text) for text in c["preferences"]],
+                                           "question": c["question"]} for c in conflicts]}))
             phase("发布记忆文件与 Git 提交")
             commit = await finish_write(repository.publish, space, project,
                                         pending["base_memory"], candidate,
                                         f"Consolidate preferences from {session_id}\n\n"
                                         f"Source: {source_hash}")
             phase("保存整理状态")
-            review_path.unlink(missing_ok=True)
-            count = len(parse_memory(candidate).preferences)
+            if not conflicts:
+                review_path.unlink(missing_ok=True)
+            excluded = {text for group in conflicts for text in group["preferences"]}
+            count = sum(text not in excluded for text in parse_memory(candidate).preferences)
             checkpoint.update(committed_seq=pending["to_seq"], committed_hash=source_hash,
-                              summary="", pending=None, memory_hash=digest(candidate))
+                              summary="", pending=None, memory_hash=digest(candidate),
+                              conflict_policy_version=2)
             save_checkpoint(path, checkpoint)
             _, latest, _ = await asyncio.to_thread(
                 self._read_source, store, space, project, session_id,
@@ -373,7 +410,9 @@ class DreamAgent:
                 ),
             )
             return {"status": "complete", "source_hash": source_hash,
-                    "completed_blocks": completed, "durable_memory_count": count, "commit": commit}
+                    "completed_blocks": completed, "durable_memory_count": count, "commit": commit,
+                    "skipped_uncertain_edits": skipped_edits,
+                    "excluded_conflict_groups": len(conflicts)}
         except asyncio.CancelledError:
             phase("保存中断状态", previous_status="cancelled")
             mark_consolidation_failed(

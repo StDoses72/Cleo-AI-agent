@@ -136,12 +136,11 @@ def test_agent_backend_uses_configured_application_root(tmp_path, monkeypatch) -
     assert agent.backend.ls("/skills").error is None
     assert agent.backend.read("/memory/MEMORY_POLICY.md").error is None
     assert agent.backend.read("/AGENTS.md").error is None
-    assert agent.backend.read("/PERSONA.md").error is None
+    assert not (tmp_path / "PERSONA.md").exists()
     assert agent.backend.ls("/workspace").error is None
     assert captured_options["memory"] == [
         "/AGENTS.md",
         "/memory/MEMORY_POLICY.md",
-        "/PERSONA.md",
     ]
     assert agent.model_name == "selected-model"
     assert captured_model["model"] == "selected-model"
@@ -203,6 +202,5 @@ def test_agent_backend_uses_selected_project_and_mounts_cleo_context(tmp_path, m
         "/AGENTS.md",
         "/.cleo/AGENTS.md",
         "/.cleo/memory/MEMORY_POLICY.md",
-        "/.cleo/PERSONA.md",
     ]
     assert captured_options["skills"] == ["/.cleo/skills"]

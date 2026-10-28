@@ -21,6 +21,7 @@ def _default_adapter() -> CodexAdapter:
         project_root=settings.active_directory_profile.root_path,
         memory_root=settings.MEMORY_DIR,
         session_index_path=settings.SESSION_INDEX_PATH,
+        source_config_path=settings.PROFILE_DIR.with_name("memory-sources.json"),
     )
 
 
@@ -83,6 +84,7 @@ def create_codex_tools(project_root: str | Path):
         project_root=Path(project_root).expanduser().resolve(),
         memory_root=settings.MEMORY_DIR,
         session_index_path=settings.SESSION_INDEX_PATH,
+        source_config_path=settings.PROFILE_DIR.with_name("memory-sources.json"),
     )
 
     @tool("codex")

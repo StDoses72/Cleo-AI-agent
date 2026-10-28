@@ -10,7 +10,7 @@
   ],
   "harness_sync": [
     {
-      "cleoPath": "<HOME>/data/claude",
+      "cleoPath": "<USER>/.claude",
       "harness": "claude",
       "items": [],
       "localExists": true,
@@ -18,10 +18,11 @@
       "settings": {
         "file": "settings.json",
         "missingInCleo": []
-      }
+      },
+      "sharedHome": true
     },
     {
-      "cleoPath": "<HOME>/data/codex",
+      "cleoPath": "<USER>/.codex",
       "harness": "codex",
       "items": [],
       "localExists": true,
@@ -29,7 +30,8 @@
       "settings": {
         "file": "config.toml",
         "missingInCleo": []
-      }
+      },
+      "sharedHome": true
     }
   ],
   "is_evolution_thread_unknown": "FileNotFoundError",

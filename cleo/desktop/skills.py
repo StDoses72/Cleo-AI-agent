@@ -67,10 +67,8 @@ def discover_skills(harness: str, cwd: str, reserved: tuple[str, ...]) -> list[L
     from cleo.integrations.harness_home import harness_home
 
     home = Path.home()
-    # The same Cleo-owned directory the harness process uses. Its preparation copies
-    # skills from the user's local harness in once; the external copy is not listed.
     config = harness_home(harness)
-    roots = [(config / "skills", f"{harness} · Cleo")]
+    roots = [(config / "skills", f"{harness} · native")]
     if harness == "codex":
         roots.append((home / ".agents" / "skills", tr("skills.codex_user_agents")))
     project = Path(cwd).resolve()

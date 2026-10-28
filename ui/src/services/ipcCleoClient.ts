@@ -1,4 +1,6 @@
 import type {
+  MemorySourceSettings,
+  MemorySourcesState,
   HarnessSyncResult,
   HarnessSyncStatus,
   LocalSkill,
@@ -275,6 +277,12 @@ export class IpcCleoClient implements CleoClient {
   }
   getBackgroundMemoryState(): Promise<BackgroundMemoryState> {
     return this.bridge.request("get_background_memory_state");
+  }
+  getMemorySources(): Promise<MemorySourcesState> {
+    return this.bridge.request("get_memory_sources");
+  }
+  saveMemorySources(settings: MemorySourceSettings): Promise<MemorySourcesState> {
+    return this.bridge.request("save_memory_sources", { settings });
   }
   saveBackgroundMemorySettings(settings: BackgroundMemorySettings): Promise<BackgroundMemoryState> {
     return this.bridge.request("save_background_memory_settings", { ...settings });

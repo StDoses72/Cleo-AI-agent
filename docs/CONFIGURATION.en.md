@@ -15,6 +15,14 @@
 
 Use `CLEO_CONFIG_PATH` and `CLEO_HARNESSES_CONFIG_PATH` to select configuration files. Packaged applications set `CLEO_HOME`; source checkouts resolve relative paths from the repository.
 
+## Native harness homes
+
+Codex and Claude use the effective `CODEX_HOME` and `CLAUDE_CONFIG_DIR`, falling back to `~/.codex` and `~/.claude`. Login, validation, model discovery, skills, session creation/resume and memory reading share this resolver. Project cwd and Git worktrees remain separate from harness state. Login changes affect other clients using the same native home.
+
+On first use, portable transcripts and user-authored skill/instruction/memory text from retired `<Cleo data root>/data/<harness>` homes are published without overwriting native files or same-ID sessions. IDs and transcript metadata are retained and byte-verified. Each file is retryable independently; restart safely recovers partial publication. The retired home contains `.cleo-native-migration.json` with hashes, paths and statuses. Native resume is verified by the SDK on open, not inferred from a copy.
+
+Originals remain available for recovery. Credentials, settings, native SQLite files, locks, global indexes and unknown formats are retained in the retired home. Review needed legacy settings in the native client; migration never switches accounts or translates/hides/archives vendor history.
+
 ## Model profiles
 
 Start with [the configuration template](../cleo/config/templates/cleo.example.json). `active_profiles` selects named entries from `profiles`:
@@ -65,10 +73,11 @@ Directory profiles resolve paths relative to `root_dir`:
 | `workspace_dir` | `workspace` | Workspace files |
 | `memory_dir` | `memory` | Sessions and project memory |
 | `memory_policy_path` | `memory/MEMORY_POLICY.md` | Developer-owned extraction policy |
-| `persona_path` | `PERSONA.md` | Existing persona content |
 | `session_index_path` | `memory/sessions.sqlite3` | Session registry |
 | `session_artifacts_dir` | `data/session_artifacts` | Large tool and browser artifacts |
 | `runtime_state_path` | `data/runtime.json` | Navigation state |
+
+Legacy persona configuration is ignored. Existing `PERSONA.md` and `persona.sqlite3` remain untouched, are not read or injected, and are not converted into project preferences.
 
 `events.jsonl` retains original session events. Manifests, compact views, and indexes support navigation and retrieval. Project `MEMORY.md` stores current preferences with independent Git history; it should not be discarded as a database-rendered cache. See [Markdown memory and migration (Chinese)](MEMORY_MARKDOWN_GIT.md).
 

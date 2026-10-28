@@ -264,6 +264,7 @@ def sync_status(harness: str, home: Path, source: Path | None = None) -> dict[st
     return {
         "harness": harness, "localPath": str(source), "localExists": source.is_dir(),
         "cleoPath": str(home), "items": items,
+        "sharedHome": source.resolve() == home.resolve(),
         "settings": {"file": settings_name, "missingInCleo": missing},
     }
 
@@ -298,6 +299,8 @@ def sync_items(
             "harness_import.unsupported_item_value",
             p0=', '.join(map(str, invalid[:5])),
         ))
+    if source.resolve() == home.resolve():
+        return {"copied": [], "skipped": list(dict.fromkeys(items))}
     origin, target = (source, home) if direction == "import" else (home, source)
     copied: list[str] = []
     skipped: list[str] = []

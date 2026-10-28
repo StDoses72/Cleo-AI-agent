@@ -43,7 +43,7 @@ cleo/config/                  Pydantic 配置模型、加载器和模板
 cleo/desktop/                 JSONL stdio 协议、use case service 和 UI projection
 cleo/harnesses/               provider-neutral model、data plane 与 control plane
 cleo/integrations/harnesses/  Codex、Claude 与 ACP provider 实现
-cleo/memory/                  compaction、store、persona、state、路径与后台整理进程（worker）
+cleo/memory/                  compaction、store、sources、state、路径与后台整理进程（worker）
 cleo/sessions/                session 事实源与 registry
 cleo/runtime/                 当前交互状态与 context usage
 ui/                           Electron main/preload、React renderer 和 smoke tests

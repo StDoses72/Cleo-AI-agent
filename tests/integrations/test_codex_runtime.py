@@ -13,7 +13,7 @@ def test_desktop_cli_override_preserves_memory_configuration(monkeypatch, tmp_pa
     assert result["config"].codex_bin == executable
     assert tuple(value for value in result["config"].config_overrides
                  if value.startswith("mcp_servers.")) == config.config_overrides
-    assert result["config"].env["CODEX_HOME"] == str((tmp_path / "data/codex").resolve())
+    assert result["config"].env["CODEX_HOME"] == str((tmp_path / "native-codex").resolve())
 
 
 def test_without_desktop_override_sdk_uses_its_bundled_cli(monkeypatch, tmp_path):
@@ -21,4 +21,5 @@ def test_without_desktop_override_sdk_uses_its_bundled_cli(monkeypatch, tmp_path
     monkeypatch.delenv("CLEO_CODEX_BIN", raising=False)
     monkeypatch.setattr("cleo.integrations.harnesses.codex.AsyncCodex", lambda **kwargs: kwargs)
     assert CodexProvider._client()["config"].codex_bin is None
-    assert CodexProvider._client(legacy=True) == {}
+    assert CodexProvider._client(legacy=True)["config"].env["CODEX_HOME"] == str(
+        (tmp_path / "native-codex").resolve())

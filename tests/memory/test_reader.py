@@ -157,13 +157,8 @@ def test_search_pagination_does_not_hide_later_matches(tmp_path, monkeypatch):
     add_thread(store, "b", "productivity", "code", "needle")
     reader = MemoryReader(tmp_path)
     first = reader.search_conversation_history("needle")
-    assert first["results"] == []
-    assert first["partial"] and first["next_cursor"]
-    second = reader.search_conversation_history("needle", cursor=first["next_cursor"])
-    assert [r["session_id"] for r in second["results"]] == ["b"]
-    assert not second["partial"]
-    with pytest.raises(ValueError):
-        reader.search_conversation_history("different", cursor=first["next_cursor"])
+    assert [r["session_id"] for r in first["results"]] == ["b"]
+    assert not first["partial"] and first["next_cursor"] is None
     page = reader.list_threads(limit=1)
     assert page["results"][0]["session_id"] == "a"
     assert reader.list_threads(cursor=page["next_cursor"])["results"][0]["session_id"] == "b"
@@ -184,8 +179,9 @@ def test_search_hit_limit_and_corrupt_source(tmp_path):
     first = reader.search_conversation_history("needle", limit=1)
     second = reader.search_conversation_history("needle", limit=1, cursor=first["next_cursor"])
     assert first["results"][0]["event_ids"] != second["results"][0]["event_ids"]
-    last = reader.search_conversation_history("needle", cursor=second["next_cursor"])
-    assert not last["partial"] and last["results"] == []
+    assert not second["partial"] and second["next_cursor"] is None
+    with pytest.raises(ValueError):
+        reader.search_conversation_history("different", cursor=first["next_cursor"])
     events_path(tmp_path, "non_productivity", "general", "a").write_text("broken\n")
     assert reader.read_thread("a")["status"] == "read_error"
     error = reader.search_conversation_history("needle")

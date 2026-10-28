@@ -232,7 +232,12 @@ def _service(tmp_path: Path) -> DesktopService:
         max_tokens=32_000,
         api_key="test-key",
     )
+    config_path = tmp_path / "cleo.json"
+    config_path.write_text(
+        '{"active_profiles":{"agent":"primary","dream_enabled":true}}', encoding="utf-8",
+    )
     settings = SimpleNamespace(
+        PROFILE_DIR=config_path,
         MEMORY_DIR=memory_root,
         SESSION_INDEX_PATH=memory_root / "sessions.sqlite3",
         active_directory_profile=SimpleNamespace(root_path=workspace),
@@ -2054,7 +2059,11 @@ def test_review_memory_source_can_skip_pending_revision(tmp_path: Path) -> None:
     asyncio.run(scenario())
 
 
-def test_memory_review_preserves_full_tool_output(tmp_path: Path) -> None:
+def test_memory_review_bounds_tool_output_and_preserves_raw_reference(tmp_path: Path) -> None:
+    import json
+
+    from cleo.memory.sources import MemorySources
+
     async def scenario() -> None:
         service = _service(tmp_path)
         service.store.create_session(
@@ -2071,7 +2080,18 @@ def test_memory_review_preserves_full_tool_output(tmp_path: Path) -> None:
             session_id="full-tool", space="productivity", project="workspace",
         )
         tool = next(e for e in details["events"] if e["type"] == "tool_result")
-        assert tool["content"]["content"] == body
+        excerpt = tool["content"]["content"]
+        assert len(excerpt) < len(body) // 2
+        assert "omitted content" in excerpt
+        source_path = Path(tool["metadata"]["source_path"])
+        raw = MemorySources(service.settings.MEMORY_DIR).read_memory_source(
+            "cleo", source_path.relative_to(service.settings.MEMORY_DIR).as_posix(),
+            max_bytes=65536,
+        )
+        original = next(json.loads(line) for line in raw["content"].splitlines()
+                        if json.loads(line)["id"] == tool["id"])
+        assert original["content"] == body
+        assert original["id"] in tool["metadata"]["event_ids"]
 
     asyncio.run(scenario())
 
@@ -2197,8 +2217,11 @@ def test_review_memory_source_constructs_dream_agent_off_the_event_loop(tmp_path
                 action="consolidate",
             )
         )
-        while not constructor_started.is_set():
-            await asyncio.sleep(0)
+        async with asyncio.timeout(5):
+            while not constructor_started.is_set():
+                if review_task.done():
+                    await review_task
+                await asyncio.sleep(0)
 
         released_before_observation = release_constructor.is_set()
         source = get_session_source(

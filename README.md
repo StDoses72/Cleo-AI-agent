@@ -10,7 +10,7 @@ The project supports native desktop builds for Windows, macOS and Linux, backed 
 
 Codex development conversations toggle Fast mode with the lightning button on the runtime pill's card, saved per conversation. Fast mode consumes more credits; availability depends on the model and account, and the button is hidden where it is unsupported.
 
-New Codex conversations use Cleo's own state directory and stay out of the default Codex app's history. Sign in separately inside Cleo; existing conversations retain their original storage. See the [configuration guide](docs/CONFIGURATION.md).
+Codex and Claude share their native login, configuration and session directories, honoring `CODEX_HOME` and `CLAUDE_CONFIG_DIR`. Portable history from retired Cleo homes migrates without overwriting native data; originals remain available for recovery. See the [configuration guide](docs/CONFIGURATION.en.md).
 
 ## What Cleo solves
 
@@ -42,7 +42,7 @@ General assistants and coding agents usually keep separate histories, permission
 - An append-only `events.jsonl` source of truth, atomic manifests, and rebuildable SQLite indexes.
 - `non_productivity` and `productivity` memory spaces, with explicit project filters for applicable preferences.
 - Deterministic compaction, secret redaction, and DreamAgent preference edits with evidence validation and conflict handling.
-- Project preferences, one replaceable handoff snapshot on manual consolidation, and history retrieval; existing persona remains compatible, with no new automatic persona extraction.
+- Project preferences, optional background consolidation, native memory sources and indexed history retrieval. Retired persona data is preserved without being read or injected.
 - Local shell controls for allowlists, path boundaries, timeouts, output limits, and audit logging.
 - Per-thread browser sessions with public/private-network and domain boundaries.
 - Self-contained platform-specific desktop packages with verified updates and separate user data.
@@ -127,7 +127,7 @@ Desktop / MCP
                                       │
                          DreamAgent consolidation
                                       │
-                    project memory + evidence + persona
+                    project preferences + source references
 ```
 
 Four rules define the system:

@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from cleo.memory.compaction import load_validated_compact
+from cleo.memory.compaction import validated_compact_source
 from cleo.memory.paths import memory_database_path, validate_name, validate_space
 
 MEMORY_CATEGORIES = {
@@ -875,6 +875,64 @@ def conversation_projection_matches(
                 ))
 
 
+def load_conversation_validation(
+    space: str, project: str, session_id: str, *, path: Path,
+) -> dict | None:
+    """Read a metadata-only validation receipt from the existing projection head."""
+    if not path.exists():
+        return None
+    try:
+        with closing(_connect(space, path)) as conn:
+            row = conn.execute(
+                "SELECT source_hash,batch_seq,content FROM conversation_chunks "
+                "WHERE space=? AND project=? AND session_id=? AND chunk_index=-1 "
+                "AND projection_kind='head'", (space, project, session_id),
+            ).fetchone()
+        if row is None:
+            return None
+        receipt = json.loads(row["content"]).get("validation")
+        if (isinstance(receipt, dict) and receipt.get("source_content_hash") == row["source_hash"]
+                and receipt.get("to_seq") == row["batch_seq"]
+                and isinstance(receipt.get("records_digest"), str)
+                and len(receipt["records_digest"]) == 64):
+            return receipt
+    except (OSError, sqlite3.Error, TypeError, ValueError, AttributeError):
+        # This is an optional derived receipt. The caller validates the source on a miss.
+        return None
+    return None
+
+
+def save_conversation_validation(
+    space: str, project: str, session_id: str, receipt: dict, *, path: Path,
+) -> None:
+    """Attach a receipt only to the matching published head; never publish chunk bodies."""
+    if not path.exists():
+        return
+    try:
+        with closing(_connect(space, path)) as conn, conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT source_hash,batch_seq,content FROM conversation_chunks "
+                "WHERE space=? AND project=? AND session_id=? AND chunk_index=-1 "
+                "AND projection_kind='head'", (space, project, session_id),
+            ).fetchone()
+            if (row is None or receipt["source_content_hash"] != row["source_hash"]
+                    or receipt["to_seq"] != row["batch_seq"]):
+                return
+            counts = json.loads(row["content"])
+            _projection_counts(row["content"])
+            counts["validation"] = receipt
+            conn.execute(
+                "UPDATE conversation_chunks SET content=? WHERE space=? AND project=? "
+                "AND session_id=? AND chunk_index=-1 AND source_hash=? AND batch_seq=?",
+                (json.dumps(counts), space, project, session_id,
+                 row["source_hash"], row["batch_seq"]),
+            )
+    except (OSError, sqlite3.Error, TypeError, ValueError):
+        # Receipt persistence is best-effort; failed writes cannot validate future reads.
+        return
+
+
 def _projection_counts(content: str) -> tuple[int, int]:
     counts = json.loads(content)
     if not isinstance(counts, dict) or any(
@@ -1020,10 +1078,19 @@ def update_conversation_chunks(
     return normal_count or int(fallback_count > 0)
 
 
-def _logical_conversation_rows(space: str, project: str, path: Path | None) -> list[dict]:
-    """Read up to 1000 logical chunks in one SQLite snapshot, including all their fragments."""
+def _logical_conversation_rows(
+    space: str, project: str, path: Path | None, session_ids: list[str] | None = None,
+) -> list[dict]:
+    """Read every logical chunk in the requested scope in one SQLite snapshot."""
     with closing(_connect(space, path)) as conn, conn:
         conn.execute("BEGIN")
+        selected = ""
+        parameters = [space, project]
+        if session_ids is not None:
+            if not session_ids:
+                return []
+            selected = " AND c.session_id IN (" + ",".join("?" for _ in session_ids) + ")"
+            parameters.extend(session_ids)
         candidates = conn.execute(
             """SELECT c.*, h.source_hash AS head_hash, h.content AS head_content,
                       h.batch_seq AS head_batch
@@ -1039,8 +1106,8 @@ def _logical_conversation_rows(space: str, project: str, path: Path | None) -> l
                         SELECT 1 FROM conversation_chunks f WHERE f.space=c.space
                           AND f.project=c.project AND f.session_id=c.session_id
                           AND f.projection_kind='fallback')))
-            ORDER BY COALESCE(h.updated_at,c.updated_at) DESC, c.session_id, c.chunk_index
-            LIMIT 1000""", (space, project),
+            """ + selected + " ORDER BY COALESCE(h.updated_at,c.updated_at) DESC, "
+            "c.session_id, c.chunk_index", parameters,
         ).fetchall()
         heads: dict[str, tuple[int, list[sqlite3.Row]] | None] = {}
         results = []
@@ -1138,7 +1205,7 @@ def search_conversation_history(
 ) -> list[dict[str, Any]]:
     """Lexically retrieve scoped history and reject stale compact projections.
 
-    在 space+project 范围内做本地词法检索, 并通过 load_validated_compact
+    在 space+project 范围内做本地词法检索, 并通过 validated_compact_source
     校验每个会话的 source_hash, 丢弃与当前事件源不一致的 stale chunk。
 
     参数:
@@ -1171,15 +1238,13 @@ def search_conversation_history(
             continue
         if session_id not in current_hashes:
             try:
-                payload = load_validated_compact(
+                source = validated_compact_source(
                     memory_root=root,
                     space=space,
                     project=project,
                     session_id=session_id,
                 )
-                current_hashes[session_id] = (payload.get("source") or {}).get(
-                    "source_content_hash"
-                )
+                current_hashes[session_id] = source.get("source_content_hash")
             except (OSError, json.JSONDecodeError, ValueError):
                 current_hashes[session_id] = None
         if current_hashes[session_id] != row["source_hash"]:

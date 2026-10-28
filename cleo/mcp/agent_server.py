@@ -20,9 +20,7 @@ def agent_tools(mode: str, project_path: str):
         return [
             dream.read_compact_memory,
             dream.read_project_memory,
-            dream.read_global_persona,
             dream.remember_durable_knowledge,
-            dream.remember_global_persona_trait,
             dream.write_memory_to_markdown,
             dream.complete_memory_consolidation,
         ]

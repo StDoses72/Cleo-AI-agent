@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 
 from langchain.tools import tool
 
@@ -16,7 +15,6 @@ from cleo.memory.paths import (
     validate_name,
     validate_space,
 )
-from cleo.memory.persona import render_persona_markdown, upsert_persona_trait
 from cleo.memory.state import mark_consolidated
 from cleo.memory.store import (
     count_source_memories,
@@ -361,71 +359,6 @@ def read_project_memory(space: str, project: str) -> str:
             if content:
                 sections.append(f"# {filename}\n\n{content}")
     return "\n\n---\n\n".join(sections)
-
-
-@tool
-def read_global_persona() -> str:
-    """Read Cleo's global descriptive persona projection.
-
-    The persona is shared across projects and spaces, but it contains only
-    interaction style and relationship tendencies. It is not a policy source.
-    """
-    try:
-        return render_persona_markdown(
-            memory_root=settings.MEMORY_DIR,
-            persona_path=settings.PERSONA_PATH,
-        )
-    except (OSError, sqlite3.Error) as exc:
-        return f"Error: {exc}"
-
-
-@tool
-def remember_global_persona_trait(
-    space: str,
-    project: str,
-    session_id: str,
-    source_hash: str,
-    category: str,
-    trait: str,
-    evidence_event_ids: list[str],
-    confidence: float = 1.0,
-    importance: int = 3,
-    tags: list[str] | None = None,
-) -> str:
-    """Store one project-independent persona tendency with validated evidence.
-
-    Valid categories are communication, expression, relationship, adaptation,
-    and boundary. Never use this for project facts, permissions, policies,
-    secrets, tool behavior, or a one-off conversational mood.
-    """
-    try:
-        requested_ids = _validated_evidence(
-            space,
-            project,
-            session_id,
-            source_hash,
-            evidence_event_ids,
-        )
-        persona = upsert_persona_trait(
-            memory_root=settings.MEMORY_DIR,
-            category=category,
-            trait=trait,
-            space=space,
-            project=project,
-            session_id=session_id,
-            source_hash=source_hash,
-            evidence_event_ids=requested_ids,
-            confidence=confidence,
-            importance=importance,
-            tags=tags,
-        )
-        render_persona_markdown(
-            memory_root=settings.MEMORY_DIR,
-            persona_path=settings.PERSONA_PATH,
-        )
-    except (OSError, json.JSONDecodeError, sqlite3.Error, ValueError) as exc:
-        return f"Error: {exc}"
-    return _stored_result(persona)
 
 
 @tool

@@ -14,13 +14,13 @@ the invocation, source path and loaded instructions for inspection.
 
 Supported directories:
 
-- Claude: `<Cleo data root>/data/claude/skills` and project `.claude/skills`
+- Claude: `<effective CLAUDE_CONFIG_DIR>/skills` and project `.claude/skills`
   directories.
-- Codex: `<Cleo data root>/data/codex/skills`, `~/.agents/skills`, and project
+- Codex: `<effective CODEX_HOME>/skills`, `~/.agents/skills`, and project
   `.codex/skills` and `.agents/skills` directories.
-- User-level directories match the Cleo-owned homes the harness processes use;
-  skills from the local `~/.claude`, `~/.codex` (or `CLAUDE_CONFIG_DIR`/`CODEX_HOME`)
-  are copied into Cleo's directory on first use, and the menu lists those copies.
+- User-level directories are the same native homes used by login and sessions;
+  the defaults are `~/.claude` and `~/.codex`. Native skill edits are visible on
+  the next catalog refresh without an import/export step.
 - Project discovery visits the working directory and its parents up to the Git
   root. Each skill has its own directory containing `SKILL.md`; `.system` skills
   are also supported. Symlinked skill directories are resolved and deduplicated.
@@ -28,8 +28,7 @@ Supported directories:
 Built-in commands keep their names. Duplicate or reserved skill names receive
 stable `/skill:name:id` commands, so each source remains selectable. Files with
 `user-invocable: false` are excluded. Missing, empty or unreadable skills cannot
-be invoked; discovery never modifies existing skill files (it only adds the
-local skills imported as described above).
+be invoked; discovery never modifies existing skill files.
 
 This first stage supports native Claude/Codex development sessions only. Chat,
 evolution sessions, other ACP harnesses, plugin registry discovery, and

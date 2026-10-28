@@ -25,7 +25,6 @@
 				"workspace_dir": "workspace",
 				"memory_dir": "memory",
 				"memory_policy_path": "memory/MEMORY_POLICY.md",
-				"persona_path": "PERSONA.md",
 				"session_index_path": "memory/sessions.sqlite3",
 				"session_artifacts_dir": "data/session_artifacts",
 				"runtime_state_path": "data/runtime.json"
