@@ -19,7 +19,8 @@ from cleo.sessions.rewind import active_events
 from cleo.sessions.store import SessionStore
 
 
-def setup(tmp_path, monkeypatch, text="Remember this decision"):
+@pytest.fixture(autouse=True)
+def isolated_settings(tmp_path, monkeypatch):
     config = SettingsModel.model_validate({
         "active_profiles": {"agent": "primary", "dream_agent": "primary"},
         "profiles": {
@@ -31,6 +32,10 @@ def setup(tmp_path, monkeypatch, text="Remember this decision"):
     })
     monkeypatch.setattr(dream_module, "settings", config)
     monkeypatch.setattr("cleo.config.settings.settings", config)
+
+
+def setup(tmp_path, monkeypatch, text="Remember this decision"):
+    config = dream_module.settings
     monkeypatch.setattr(dream_module.DreamAgent, "_configure", lambda *_: None)
     store = SessionStore(config.MEMORY_DIR, config.SESSION_INDEX_PATH)
     store.sync_langchain_messages(
