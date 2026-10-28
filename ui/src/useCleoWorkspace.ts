@@ -871,6 +871,8 @@ export function useCleoWorkspace(evolutionOpen = false) {
       role: "user",
       content: visiblePrompt(prompt),
       time: currentTime(),
+      // Chips show at once; the backend's turn-started item carries the saved records.
+      ...(pendingAttachments.length ? { attachments: pendingAttachments.map(({ base64: _bytes, ...chip }) => chip) } : {}),
     };
     let turnId = userItem.id;
     userItem.turnId = turnId;

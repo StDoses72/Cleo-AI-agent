@@ -595,3 +595,40 @@ def test_acp_tool_calls_show_their_title_and_raw_input() -> None:
                                         data={"payload": acp}), {})
     assert (live[0]["item"]["name"], live[0]["item"]["command"]) == (
         "Read README.md", "README.md")
+
+
+def test_user_attachments_project_to_chips_live_and_in_history() -> None:
+    from cleo.desktop.projection import attachment_records
+
+    sent = [
+        {"name": "shot.png", "path": "C:/tmp/shot.png", "mimeType": "image/png", "size": 2048,
+         "thumbnail": "data:image/png;base64,AAAA", "base64": "ZmlsZQ=="},
+        {"name": "notes.md", "path": "C:/tmp/notes.md", "mimeType": "text/markdown", "size": 12},
+        {"name": "no-path.txt"},
+        "not a dict",
+    ]
+    records = attachment_records(sent)
+    assert records == [
+        {"name": "shot.png", "path": "C:/tmp/shot.png", "mimeType": "image/png", "size": 2048,
+         "thumbnail": "data:image/png;base64,AAAA"},
+        {"name": "notes.md", "path": "C:/tmp/notes.md", "mimeType": "text/markdown", "size": 12},
+    ]
+    assert attachment_records([{"path": "/tmp/raw.bin"}]) == [
+        {"path": "/tmp/raw.bin", "name": "raw.bin", "mimeType": "application/octet-stream",
+         "size": 0},
+    ]
+
+    history = timeline_from_events([
+        {"id": "u1", "type": "user_message", "content": "look at this",
+         "data": {"attachments": records}},
+        {"id": "u2", "type": "user_message", "content": "plain"},
+    ])
+    assert history[0]["attachments"] == records
+    assert "attachments" not in history[1]
+
+    live = stream_event_item(AgentEvent(
+        provider="codex", type="turn_started", text="look at this",
+        data={"turnId": "turn-1", "attachments": records},
+    ), {})[0]["item"]
+    assert live["attachments"] == records
+    assert live["content"] == "look at this"

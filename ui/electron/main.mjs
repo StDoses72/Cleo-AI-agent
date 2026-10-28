@@ -20,6 +20,7 @@ import {
   MAX_ATTACHMENT_COUNT,
   attachmentsFromPaths,
   materializeInlineAttachments,
+  withThumbnails,
 } from "./attachments.mjs";
 import { BackendBridge } from "./backend.mjs";
 import { configureReleaseChannel } from "./release-channel.mjs";
@@ -545,7 +546,7 @@ app.whenReady().then(async () => {
       filters: ATTACHMENT_FILTERS,
     });
     if (result.canceled) return [];
-    return attachmentsFromPaths(result.filePaths);
+    return withThumbnails(await attachmentsFromPaths(result.filePaths), nativeImage.createFromPath);
   });
   ipcMain.handle("cleo:prepare-attachments", async (_event, payload) => {
     const paths = Array.isArray(payload?.paths) ? payload.paths : [];
@@ -557,7 +558,7 @@ app.whenReady().then(async () => {
       attachmentsFromPaths(paths),
       materializeInlineAttachments(inline, attachmentTempRoot),
     ]);
-    return [...pathAttachments, ...inlineAttachments];
+    return withThumbnails([...pathAttachments, ...inlineAttachments], nativeImage.createFromPath);
   });
   ipcMain.handle("cleo:pick-workspace", async (event) => {
     const options = {

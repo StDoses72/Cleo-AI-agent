@@ -9,6 +9,13 @@ import type {
   WorkspaceSnapshot,
 } from "../types";
 
+/** A 96x60 "screenshot" the mock attaches to a message; the desktop app sends real PNG/JPEG thumbnails. */
+export const mockThumbnail = "data:image/svg+xml;utf8," + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="60" viewBox="0 0 96 60">'
+  + '<rect width="96" height="60" rx="6" fill="#1f2430"/><rect x="8" y="8" width="24" height="44" rx="3" fill="#2d3443"/>'
+  + '<rect x="38" y="8" width="50" height="10" rx="3" fill="#6b8afd"/><rect x="38" y="24" width="50" height="6" rx="3" fill="#3b4256"/>'
+  + '<rect x="38" y="34" width="40" height="6" rx="3" fill="#3b4256"/><rect x="38" y="44" width="30" height="8" rx="4" fill="#4cc38a"/></svg>');
+
 const uiChanges: ChangeFile[] = [
   {
     path: "ui/src/App.tsx",
@@ -174,6 +181,10 @@ export const threads: Thread[] = [
         content:
           "距离好用就差一点了。我需要完整的 UI，前端参照 T3 Code，但先不要和后端结合；另外不要做成 Web UI，要做成独立应用。",
         time: "16:38",
+        attachments: [
+          { name: "t3-code-reference.png", path: "C:/Users/demo/Pictures/t3-code-reference.png", mimeType: "image/png", size: 184_320, thumbnail: mockThumbnail },
+          { name: "desktop-requirements.md", path: "C:/Users/demo/Documents/desktop-requirements.md", mimeType: "text/markdown", size: 4_812 },
+        ],
       },
       {
         id: "thought-desktop",
@@ -235,6 +246,9 @@ export const threads: Thread[] = [
         role: "user",
         content: "检查 managed 和 native thread 合并后是否还会重复。",
         time: "14:04",
+        attachments: [
+          { name: "session-hub-trace.log", path: "D:/doses72Proj/Cleo-AI-agent/logs/session-hub-trace.log", mimeType: "text/plain", size: 27_904 },
+        ],
       },
       {
         id: "assistant-session",

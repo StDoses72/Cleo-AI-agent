@@ -540,6 +540,42 @@ try {
     assert.deepEqual(blocks.map(block => block.id), ["u1", "thought-group-t1", "tool-group-t1"]);
     assert.equal(blocks[1].hasAnswer, false);
   });
+  await check("attachments: sent messages show chips, not a pasted file list, before and after sending", async page => {
+    await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      const { mockThumbnail } = await import("/src/services/mockData.ts");
+      window.revealed = [];
+      cleoClient.revealPath = async path => { window.revealed.push(path); };
+      cleoClient.pickAttachments = async () => [
+        { name: "pasted.png", path: "C:/tmp/pasted.png", mimeType: "image/png", size: 2048, thumbnail: mockThumbnail },
+        { name: "notes.pdf", path: "C:/tmp/notes.pdf", mimeType: "application/pdf", size: 10240 },
+      ];
+    });
+    await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
+    const history = page.getByTestId("message-attachments").first();
+    await history.waitFor();
+    assert.equal(await history.locator(".attachment-chip").count(), 2);
+    assert.equal(await history.locator(".attachment-chip img").count(), 1);
+    assert.equal(await history.locator(".attachment-chip").first().getAttribute("title"), "C:/Users/demo/Pictures/t3-code-reference.png");
+    await history.locator(".attachment-chip").first().click();
+    assert.deepEqual(await page.evaluate(() => window.revealed), ["C:/Users/demo/Pictures/t3-code-reference.png"]);
+    assert.doesNotMatch(await page.getByTestId("conversation").innerText(), /Attached local files/);
+    // The composer shows the same chips, with a thumbnail for the image, until the message is sent.
+    await page.getByRole("button", { name: "添加附件", exact: true }).click();
+    const composer = page.getByTestId("composer-attachments");
+    assert.equal(await composer.locator(".attachment-chip").count(), 2);
+    assert.equal(await composer.locator(".attachment-chip img").count(), 1);
+    await page.getByTestId("composer-input").fill("看看这两个文件");
+    await page.getByTestId("send-button").click();
+    const sent = page.locator(".message-entry.user").filter({ hasText: "看看这两个文件" }).getByTestId("message-attachments");
+    await sent.waitFor();
+    assert.equal(await sent.locator(".attachment-chip").count(), 2);
+    assert.equal(await sent.locator(".attachment-chip img").count(), 1);
+    assert.equal(await sent.locator(".attachment-chip").last().getAttribute("title"), "C:/tmp/notes.pdf");
+    await page.getByTestId("stop-button").waitFor({ state: "hidden" });
+    assert.equal(await page.getByTestId("composer-attachments").count(), 0);
+    assert.doesNotMatch(await page.getByTestId("conversation").innerText(), /Attached local files/);
+  });
   if (process.env.CLEO_SMOKE_OUTPUT) await mkdir(process.env.CLEO_SMOKE_OUTPUT, { recursive: true });
   assert.deepEqual(failures, []);
 } finally {

@@ -8,6 +8,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from cleo.desktop.agent_system import Emit, TurnInput
+from cleo.desktop.projection import attachment_records
 from cleo.i18n import tr
 
 
@@ -88,6 +89,7 @@ class ChatRuntime:
         user_message = HumanMessage(
             id=turn_id, content=_build_user_content(prompt, chat_attachments),
         )
+        attachment_items = attachment_records(attachments)
         await asyncio.to_thread(
             self._store.append_events, session_id=manifest["id"], space=manifest["space"],
             project=manifest["project"], events=[{
@@ -95,12 +97,14 @@ class ChatRuntime:
                 "content": user_message.content,
                 "source_message_id": turn_id, "message": message_to_dict(user_message),
                 "data": {**({"steer_ids": steer_ids} if steer_ids else {}),
-                         **({"display_prompt": display_prompt} if display_prompt else {})},
+                         **({"display_prompt": display_prompt} if display_prompt else {}),
+                         **({"attachments": attachment_items} if attachment_items else {})},
             }],
         )
         await emit({"type": "turn-started", "item": {
             "id": turn_id, "turnId": turn_id, "type": "message", "role": "user",
             "content": display_prompt or prompt, "time": "",
+            **({"attachments": attachment_items} if attachment_items else {}),
         }})
         text = ""
         from cleo.runtime.timing import phase

@@ -144,3 +144,43 @@ def test_reload_during_turn_preparation_rebuilds_agent_on_the_next_turn(tmp_path
                 if call.args[0]["type"] == "done"] == ["browser=False", "browser=True"]
 
     asyncio.run(scenario())
+
+
+def test_chat_turns_save_attachment_chips_without_file_bytes(tmp_path) -> None:
+    store = SessionStore(tmp_path / "memory")
+    store.create_session(session_id="c", space="non_productivity", project="general",
+                         provider="cleo", owner_type="user")
+
+    def new_agent(_manifest):
+        async def stream_text(prompt, thread_id, *, loaded_info, images, message_id):
+            assert [image["name"] for image in images] == ["shot.png"]
+            yield "seen"
+
+        return SimpleNamespace(stream_text=stream_text, context_usage=SimpleNamespace(
+            used_tokens=5, window_tokens=100, input_tokens=3, output_tokens=2))
+
+    async def attachment(item):
+        return {"name": item["name"], "base64": "ZmlsZQ==", "mime_type": item["mimeType"]}
+
+    async def sync(agent, manifest, status):
+        pass
+
+    runtime = ChatRuntime(
+        store=store, new_agent=new_agent, attachment=attachment, sync=sync,
+        usage=lambda usage: {"used": usage.used_tokens}, config_version=lambda: 1,
+        max_attachments=3,
+    )
+    sent = {"name": "shot.png", "path": str(tmp_path / "shot.png"), "mimeType": "image/png",
+            "size": 4, "thumbnail": "data:image/png;base64,AA", "base64": "ZmlsZQ=="}
+    chip = {key: value for key, value in sent.items() if key != "base64"}
+    events = []
+
+    async def emit(event):
+        events.append(event)
+
+    asyncio.run(runtime.stream(TurnInput(store.load_manifest("c"), "what is this", [sent]), emit))
+    assert events[0]["type"] == "turn-started"
+    assert events[0]["item"]["attachments"] == [chip]
+    assert events[0]["item"]["content"] == "what is this"
+    saved = next(event for event in store.read_events("c") if event["type"] == "user_message")
+    assert saved["data"]["attachments"] == [chip]

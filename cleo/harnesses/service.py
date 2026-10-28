@@ -409,16 +409,18 @@ class AgentService:
         *,
         steer_ids: list[str] | None = None,
         display_prompt: str | None = None,
+        attachments: list[dict[str, Any]] | None = None,
     ) -> AgentResult:
         """Purpose: Run a model prompt while optionally presenting the user's concise request.
 
-        Input: Model prompt and optional display text. Output: Provider result and saved events.
+        Input: Model prompt, optional display text and the attachment records the
+        conversation shows for this turn. Output: Provider result and saved events.
         """
         session_id = self._required_text(session_id, "session_id")
         async with self._session_locks.setdefault(session_id, asyncio.Lock()):
             with self._context_lease(session_id):
                 return await self._prompt(session_id, prompt, on_event, steer_ids=steer_ids,
-                                          display_prompt=display_prompt)
+                                          display_prompt=display_prompt, attachments=attachments)
 
     async def _prompt(
         self,
@@ -428,6 +430,7 @@ class AgentService:
         *,
         steer_ids: list[str] | None = None,
         display_prompt: str | None = None,
+        attachments: list[dict[str, Any]] | None = None,
     ) -> AgentResult:
         """向已存在的会话发送一轮 prompt,并把事件/状态写入 SessionStore。"""
         session_id = self._required_text(session_id, "session_id")
@@ -451,7 +454,8 @@ class AgentService:
             events=[
                 {"id": turn_key, "type": "user_message", "actor": "agent", "content": prompt,
                  "data": {**({"steer_ids": steer_ids} if steer_ids else {}),
-                          **({"display_prompt": display_prompt} if display_prompt else {})}},
+                          **({"display_prompt": display_prompt} if display_prompt else {}),
+                          **({"attachments": attachments} if attachments else {})}},
                 {"type": "session_running", "actor": "system"},
             ],
             manifest_updates={"status": "running"},
@@ -462,7 +466,8 @@ class AgentService:
                 provider=route.provider.name,
                 type="turn_started",
                 text=display_prompt or prompt,
-                data={"turnId": turn_key},
+                data={"turnId": turn_key,
+                      **({"attachments": attachments} if attachments else {})},
             ),
         )
         thought_number = 0
