@@ -3,6 +3,7 @@
 from typing import Any
 
 from cleo.config.settings import AgentProfile
+from cleo.i18n import tr
 
 
 def profile_snapshot(profile: AgentProfile) -> dict[str, Any]:
@@ -45,7 +46,7 @@ def dream_profile(settings: Any, manifest: dict[str, Any]) -> AgentProfile:
             getattr(provider, "type", None)
         )
         if backend is None or not provider.enabled:
-            raise ValueError("无法跟随此开发会话的模型，请在设置 → DreamAgent 中选择独立模型。")
+            raise ValueError(tr("profiles.this_development_task_s_model_cannot_be_used_for"))
         options = manifest.get("runtime_options") or {}
         return AgentProfile(
             backend=backend,

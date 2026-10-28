@@ -1,3 +1,4 @@
+import { t as tr } from "../../electron/i18n.mjs";
 import { modifierKey } from "../platform";
 import { harnessLabel, isGeneralProject, projectLabel, projectsInSpace } from "../runtime-labels";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -103,7 +104,7 @@ export function ThreadSidebar({
   }, [activeProjectId, activeThreadId]);
 
   const searching = Boolean(query.trim());
-  const noun = space === "chat" ? "对话" : "任务";
+  const noun = space === "chat" ? tr("app.chat") : tr("computerpanel.task");
   const { loose, folders } = useMemo(() => {
     if (space === "memory") return { loose: [] as Thread[], folders: [] as FolderGroup[] };
     const normalized = query.trim().toLocaleLowerCase();
@@ -133,15 +134,15 @@ export function ThreadSidebar({
     <aside className="thread-sidebar">
       <div className="sidebar-heading">
         <div>
-          <h1>{space === "chat" ? "对话" : space === "memory" ? "记忆" : "开发任务"}</h1>
+          <h1>{space === "chat" ? tr("app.chat") : space === "memory" ? tr("app.memory") : tr("threadsidebar.development_tasks")}</h1>
         </div>
         {space === "chat" && recoverableChatBackups > 0 ? (
           <div className="sidebar-actions-wrap">
             <button
               className="icon-button"
               type="button"
-              aria-label="更多"
-              title="更多"
+              aria-label={tr("conversation.more")}
+              title={tr("conversation.more")}
               aria-expanded={actionsMenuOpen}
               onClick={() => setActionsMenuOpen((open) => !open)}
             >
@@ -158,8 +159,8 @@ export function ThreadSidebar({
                   >
                     <History size={15} />
                     <span>
-                      <strong>恢复旧对话</strong>
-                      <small>找到 {recoverableChatBackups} 条可恢复记录</small>
+                      <strong>{tr("threadsidebar.restore_previous_chats")}</strong>
+                      <small>{tr("threadsidebar.found")}{recoverableChatBackups} {tr("threadsidebar.recoverable_records")}</small>
                     </span>
                   </button>
               </div>
@@ -174,7 +175,7 @@ export function ThreadSidebar({
         <>
           <button className="new-thread-button" type="button" onClick={onCreateThread} data-testid="new-thread">
             <Plus size={16} />
-            <span>{space === "chat" ? "新对话" : "新任务"}</span>
+            <span>{space === "chat" ? tr("conversation.new_chat") : tr("conversation.new_task")}</span>
             <kbd>{modifierKey} N</kbd>
           </button>
 
@@ -183,8 +184,8 @@ export function ThreadSidebar({
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder={space === "chat" ? "搜索对话" : "搜索任务"}
-              aria-label={space === "chat" ? "搜索对话" : "搜索任务"}
+              placeholder={space === "chat" ? tr("threadsidebar.search_chats") : tr("threadsidebar.search_tasks")}
+              aria-label={space === "chat" ? tr("threadsidebar.search_chats") : tr("threadsidebar.search_tasks")}
             />
           </label>
 
@@ -206,7 +207,7 @@ export function ThreadSidebar({
                       {open ? <FolderOpen size={15} /> : <Folder size={15} />}
                       <strong>{label}</strong>
                       {group.project.branch ? (
-                        <small title={group.project.dirtyFiles ? `${group.project.branch} · ${group.project.dirtyFiles} 个文件有改动` : group.project.branch}>
+                        <small title={group.project.dirtyFiles ? tr("threadsidebar.value_value_changed_files", { p0: group.project.branch, p1: group.project.dirtyFiles }) : group.project.branch}>
                           {group.project.branch}{group.project.dirtyFiles ? ` · ${group.project.dirtyFiles}` : ""}
                         </small>
                       ) : null}
@@ -214,8 +215,8 @@ export function ThreadSidebar({
                     <div className="folder-group-actions">
                       <button
                         type="button"
-                        aria-label={`在 ${label} 中新建${noun}`}
-                        title={`在 ${label} 中新建${noun}`}
+                        aria-label={tr("threadsidebar.create_a_new_value_in_value", { p0: label, p1: noun })}
+                        title={tr("threadsidebar.create_a_new_value_in_value", { p0: label, p1: noun })}
                         onClick={() => onStartThread(group.project.id)}
                         data-testid="new-thread-in-project"
                       >
@@ -225,8 +226,8 @@ export function ThreadSidebar({
                         <button
                           className="folder-group-remove"
                           type="button"
-                          aria-label={`移除项目 ${label}`}
-                          title="移除项目（不删除本地文件）"
+                          aria-label={tr("threadsidebar.remove_project_value", { p0: label })}
+                          title={tr("threadsidebar.remove_project_without_deleting_local_files")}
                           onClick={() => onRemoveProject(group.project)}
                         >
                           <Trash2 size={13} />
@@ -250,7 +251,7 @@ export function ThreadSidebar({
                           onDeleteThread={onDeleteThread}
                         />
                       ) : draftHere ? null : (
-                        <div className="folder-empty">{`还没有${noun}`}</div>
+                        <div className="folder-empty">{tr("threadsidebar.no_value_yet", { p0: noun })}</div>
                       )}
                     </div>
                   ) : null}
@@ -258,7 +259,7 @@ export function ThreadSidebar({
               );
             })}
             {/* Standalone work sits under the projects; the label only separates it from them. */}
-            {folders.length && (loose.length || draftIsLoose) ? <div className="list-section-label">{`独立${noun}`}</div> : null}
+            {folders.length && (loose.length || draftIsLoose) ? <div className="list-section-label">{tr("threadsidebar.standalone_value", { p0: noun })}</div> : null}
             {draftIsLoose ? <DraftRow noun={noun} /> : null}
             <ThreadRows
               id="loose"
@@ -274,7 +275,7 @@ export function ThreadSidebar({
             {nothing ? (
               <div className="sidebar-empty">
                 <FileClock size={20} />
-                <span>{searching ? `没有匹配的${noun}` : `还没有${noun}`}</span>
+                <span>{searching ? tr("threadsidebar.no_matching_value", { p0: noun }) : tr("threadsidebar.no_value_yet", { p0: noun })}</span>
               </div>
             ) : null}
           </div>
@@ -282,7 +283,7 @@ export function ThreadSidebar({
         </>
       )}
 
-      {backendMode === "mock" && <footer className="sidebar-footer">演示模式</footer>}
+      {backendMode === "mock" && <footer className="sidebar-footer">{tr("threadsidebar.demo_mode")}</footer>}
     </aside>
   );
 }
@@ -294,7 +295,7 @@ function DraftRow({ noun }: { noun: string }) {
   useEffect(() => { ref.current?.scrollIntoView({ block: "nearest" }); }, []);
   return (
     <div className="thread-draft-row" aria-current="true" data-testid="draft-row" ref={ref}>
-      <span className="thread-title-line"><strong>{`未发送的${noun}`}</strong></span>
+      <span className="thread-title-line"><strong>{tr("threadsidebar.unsent_value", { p0: noun })}</strong></span>
     </div>
   );
 }
@@ -339,7 +340,7 @@ function ThreadRows({
       ))}
       {shown.length < threads.length ? (
         <button className="thread-more" type="button" onClick={() => onExpand(id)}>
-          {`显示更多（${threads.length - shown.length}）`}
+          {tr("threadsidebar.show_more_value", { p0: threads.length - shown.length })}
         </button>
       ) : null}
     </>
@@ -363,11 +364,11 @@ function ThreadRow({
   const status = thread.waitingFor ? "attention" : thread.status;
   const hint = [thread.summary, thread.runtime?.model
     ? `${thread.runtime.provider} · ${thread.runtime.model}` : harness, thread.updatedAt].filter(Boolean).join(" · ");
-  const stateLabel = thread.waitingFor === "approval" ? "等待审批"
-    : thread.waitingFor === "question" ? "等待回答"
-    : thread.status === "running" ? "运行中"
-    : thread.status === "attention" ? "需要查看"
-    : unread ? "新回复" : "";
+  const stateLabel = thread.waitingFor === "approval" ? tr("threadsidebar.awaiting_approval")
+    : thread.waitingFor === "question" ? tr("conversation.waiting_for_an_answer")
+    : thread.status === "running" ? tr("conversation.running")
+    : thread.status === "attention" ? tr("threadsidebar.needs_attention")
+    : unread ? tr("threadsidebar.new_reply") : "";
   return (
     <div
       className={`thread-row ${active ? "active" : ""} ${unread ? "unread" : ""}`}
@@ -390,8 +391,8 @@ function ThreadRow({
       <button
         className="thread-delete-button"
         type="button"
-        aria-label={`删除 ${thread.title}`}
-        title={thread.status === "running" ? "请先停止运行" : "删除任务"}
+        aria-label={tr("threadsidebar.delete_value", { p0: thread.title })}
+        title={thread.status === "running" ? tr("threadsidebar.stop_the_run_first") : tr("threadsidebar.delete_task")}
         disabled={thread.status === "running"}
         onClick={onDelete}
         data-testid="delete-thread"
@@ -415,17 +416,17 @@ function MemorySidebar({
     <div className="memory-sidebar-groups">
       <button className={`memory-nav-row ${activeView === "all" ? "active" : ""}`} type="button" onClick={() => onViewChange("all")} data-testid="memory-nav-all">
         <Brain size={16} />
-        <span>全部记忆</span>
+        <span>{tr("threadsidebar.all_memories")}</span>
         <small>{overview.summary.active_memories}</small>
       </button>
       <button className={`memory-nav-row ${activeView === "projects" ? "active" : ""}`} type="button" onClick={() => onViewChange("projects")} data-testid="memory-nav-projects">
         <FolderGit2 size={16} />
-        <span>项目记忆</span>
+        <span>{tr("memoryview.project_memories")}</span>
         <small>{overview.summary.project_memories}</small>
       </button>
       <button className={`memory-nav-row ${activeView === "pending" ? "active" : ""}`} type="button" onClick={() => onViewChange("pending")} data-testid="memory-nav-pending">
         <CircleAlert size={16} />
-        <span>待确认</span>
+        <span>{tr("evolutioncases.pending_confirmation")}</span>
         <small>{overview.summary.pending_sources}</small>
       </button>
     </div>

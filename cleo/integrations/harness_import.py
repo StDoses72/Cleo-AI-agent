@@ -27,6 +27,8 @@ from pathlib import Path
 from secrets import token_hex
 from typing import Any
 
+from cleo.i18n import tr
+
 logger = logging.getLogger(__name__)
 
 STATE_FILE = ".cleo-imported.json"
@@ -282,13 +284,20 @@ def sync_items(
     if direction not in {"import", "export"}:
         raise ValueError("direction must be import or export")
     if settings and direction != "import":
-        raise ValueError("设置只能从本机导入 Cleo。")
+        raise ValueError(tr("harness_import.settings_can_only_be_imported_from_the_local_ins"))
     source = (source or external_home(harness)).expanduser()
     if not source.is_dir():
-        raise ValueError(f"本机未找到 {harness} 目录：{source}")
+        raise ValueError(tr(
+            "harness_import.local_value_directory_not_found_value",
+            p0=harness,
+            p1=source,
+        ))
     invalid = [item for item in items if not _valid_item(harness, item)]
     if invalid:
-        raise ValueError(f"不支持的项目：{', '.join(map(str, invalid[:5]))}")
+        raise ValueError(tr(
+            "harness_import.unsupported_item_value",
+            p0=', '.join(map(str, invalid[:5])),
+        ))
     origin, target = (source, home) if direction == "import" else (home, source)
     copied: list[str] = []
     skipped: list[str] = []

@@ -31,13 +31,24 @@ try {
       { id: "user", type: "message", role: "user", content: "请检查进化工作区" },
       { id: "tool", type: "tool", name: "读取源文件", command: "git status", output: "工作区检查完成", status: "done" },
       { id: "assistant", type: "message", role: "assistant", content: "已检查代码，准备调整窗口布局。" },
-    ], pendingQuestions: [{ id: "question", status: "pending", questions: [{ id: "layout", question: "窗口默认多宽？", options: [{ label: "紧凑", description: "适合并排查看" }] }] }],
+    ], pendingQuestions: [{ id: "question", status: "pending", questions: [{ id: "layout", question: "窗口默认多宽？", options: [{ label: "紧凑", description: "适合并排查看" }] }] },
+      { id: "sensitive", status: "pending", questions: [{ id: "secret", question: "不要显示密钥", secret: true, options: [] }] }],
   } });
   await page.getByText("新版已连接", { exact: true }).waitFor();
   await page.getByText("已检查代码，准备调整窗口布局。", { exact: true }).waitFor();
   await page.getByText("⌁ 读取源文件 · 完成", { exact: true }).click();
   await page.getByText("工作区检查完成", { exact: true }).waitFor();
   await page.getByRole("radio", { name: /紧凑/ }).check();
+  const customAnswer = page.locator('#questions input[type="text"]');
+  await customAnswer.fill("保留自定义回答");
+  await writeJson(join(scratch, "data/data/runtime.json"), { ui_language: "en" });
+  await page.getByRole("button", { name: "Submit answer", exact: true }).waitFor();
+  await page.getByText("This question involves sensitive input. Answer it in Cleo's main window.", { exact: true }).waitFor();
+  assert.equal(await page.getByText("不要显示密钥", { exact: true }).count(), 0);
+  assert.equal(await customAnswer.inputValue(), "保留自定义回答");
+  assert.equal(await page.getByRole("radio", { name: /紧凑/ }).isChecked(), true);
+  await customAnswer.fill("");
+  await writeJson(join(scratch, "data/data/runtime.json"), { ui_language: "zh-CN" });
   await page.getByRole("button", { name: "提交回答" }).click();
   await page.getByRole("button", { name: "■ 停止执行" }).click();
   await page.waitForFunction(async () => (await window.cleoMonitor.status()).commands.some(command => command.action === "stop"));
@@ -67,7 +78,20 @@ try {
   await page.waitForFunction(async () => (await window.cleoMonitor.status()).commands.some(command => command.action === "save"));
   const save = (await restartedApp.commands()).find(command => command.action === "save");
   assert.deepEqual(save.params, { name: "" });
-  if (process.env.CLEO_SMOKE_OUTPUT) await page.screenshot({ path: join(process.env.CLEO_SMOKE_OUTPUT, "evolution-monitor.png") });
+  await page.getByRole("textbox", { name: "补充需求" }).fill("保留这条未发送的需求");
+  await writeJson(join(scratch, "data/data/runtime.json"), { ui_language: "en" });
+  await restartedApp.publish({ ...ready, uiLanguage: "en", actions: { canSave: true } });
+  await page.getByRole("button", { name: "Versions and recovery", exact: true }).waitFor();
+  assert.equal(await page.getByRole("textbox", { name: "Additional requirements", exact: true }).inputValue(), "保留这条未发送的需求");
+  assert.equal(await page.locator("html").getAttribute("lang"), "en");
+  // The next program instance reads the same runtime home before showing the window.
+  await writeJson(join(scratch, "data/data/runtime.json"), { ui_language: "en" });
+  await app.close();
+  app = await electron.launch({ executablePath: join(ui, "node_modules/electron/dist/electron.exe"), args: [ui, "--cleo-evolution-monitor", `--user-data-dir=${join(scratch, "profile")}`], env });
+  const relaunched = await app.firstWindow();
+  await relaunched.getByRole("button", { name: "Versions and recovery", exact: true }).waitFor();
+  assert.equal(await relaunched.locator("html").getAttribute("lang"), "en");
+  if (process.env.CLEO_SMOKE_OUTPUT) await relaunched.screenshot({ path: join(process.env.CLEO_SMOKE_OUTPUT, "evolution-monitor.png") });
   console.log("PASS: native independent monitor, restart progress, durable supplemental messages and reconnection");
 } finally {
   await app?.close();

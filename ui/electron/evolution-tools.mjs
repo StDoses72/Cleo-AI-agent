@@ -1,3 +1,4 @@
+import { t as tr } from "./i18n.mjs";
 import { spawn } from "node:child_process";
 import { cp, mkdir, rename, readdir, rm, open, access } from "node:fs/promises";
 import { constants } from "node:fs";
@@ -50,7 +51,7 @@ export async function githubEnvironment(root, { env = process.env, userHome = ho
     && await writableGithubPath(join(directory, "config.yml"))) return { ...env };
   const privateDirectory = join(root, "github-config");
   await mkdir(privateDirectory, { recursive: true, mode: 0o700 });
-  if (!await writableGithubPath(privateDirectory)) throw new Error("Cleo GitHub 登录配置目录不可写。");
+  if (!await writableGithubPath(privateDirectory)) throw new Error(tr("evolution_tools.cleo_s_github_sign_in_configuration_directory_is_not_writable"));
   await writeJson(join(root, "github-storage.json"), { private: true });
   return { ...env, GH_CONFIG_DIR: privateDirectory };
 }
@@ -95,10 +96,10 @@ export async function run(command, args, { cwd, env = process.env, log = () => {
     child.once("close", (code) => {
       cleanup();
       if (signal?.aborted) { reject(signal.reason); return; }
-      if (timedOut) { reject(new Error("操作超时，已停止进程。请检查日志后重试。")); return; }
-      if (!successCodes.includes(code)) { reject(new Error(`${command.split(/[\\/]/).at(-1)} 执行失败 (${code})\n${tail.slice(-3000)}`)); return; }
-      if (oversized) { reject(new Error("操作输出超过限制，已停止使用不完整的结果。")); return; }
-      if (rejectStderr && stderrTail) { reject(new Error(`命令返回诊断，无法确认输出完整。请检查源码读取权限或排除临时文件后重试。\n${stderrTail.slice(-3000)}`)); return; }
+      if (timedOut) { reject(new Error(tr("evolution_tools.the_operation_timed_out_and_its_process_was_stopped_review_the_logs_and_retry"))); return; }
+      if (!successCodes.includes(code)) { reject(new Error(tr("evolution_tools.value_failed_value_value", { p0: command.split(/[\\/]/).at(-1), p1: code, p2: tail.slice(-3000) }))); return; }
+      if (oversized) { reject(new Error(tr("evolution_tools.operation_output_exceeded_the_limit_the_incomplete_result_will_not_be_used"))); return; }
+      if (rejectStderr && stderrTail) { reject(new Error(tr("evolution_tools.the_command_returned_diagnostics_so_complete_output_cannot_be_confirmed_check_source_", { p0: stderrTail.slice(-3000) }))); return; }
       const result = outputMode === "tail" ? tail : output;
       resolve(trimOutput ? result.trim() : result);
     });
@@ -109,18 +110,18 @@ export async function run(command, args, { cwd, env = process.env, log = () => {
 export async function fetchRelease(url, json = true, { signal } = {}) {
   const timeout = AbortSignal.timeout(120000);
   const response = await fetch(url, { headers: { "User-Agent": "Cleo-Evolution" }, signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
-  if (!response.ok) throw new Error(`下载失败 (${response.status})，请检查网络后重试。`);
+  if (!response.ok) throw new Error(tr("evolution_tools.download_failed_value_check_your_connection_and_retry", { p0: response.status }));
   return json ? response.json() : response.text();
 }
 
 /** Purpose: Download only checksum-verified executable archives. Input: trusted URL, file, digest. Output: verified file. */
 export async function downloadVerified(url, path, digest, { signal } = {}) {
   signal?.throwIfAborted();
-  if (!/^[a-f0-9]{64}$/i.test(digest || "")) throw new Error("下载缺少 SHA-256 校验值，已停止。");
+  if (!/^[a-f0-9]{64}$/i.test(digest || "")) throw new Error(tr("evolution_tools.the_download_has_no_sha_256_checksum_it_was_stopped"));
   if (await exists(path) && await fileHash(path) === digest.toLowerCase()) return;
   const timeout = AbortSignal.timeout(900000);
   const response = await fetch(url, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
-  if (!response.ok) throw new Error(`下载失败 (${response.status})。`);
+  if (!response.ok) throw new Error(tr("evolution_tools.download_failed_value", { p0: response.status }));
   await mkdir(join(path, ".."), { recursive: true });
   const { Readable } = await import("node:stream");
   const { pipeline } = await import("node:stream/promises");
@@ -129,7 +130,7 @@ export async function downloadVerified(url, path, digest, { signal } = {}) {
   try {
     await pipeline(Readable.fromWeb(response.body), createWriteStream(temporary, { mode: 0o600 }), { signal });
     signal?.throwIfAborted();
-    if (await fileHash(temporary) !== digest.toLowerCase()) throw new Error("下载校验失败，请重新下载。");
+    if (await fileHash(temporary) !== digest.toLowerCase()) throw new Error(tr("evolution_tools.download_verification_failed_download_again"));
     await rename(temporary, path);
   } finally { await rm(temporary, { force: true }); }
 }
@@ -208,16 +209,16 @@ export class EvolutionTools {
     const marker = join(this.root, `${key}.json`);
     const saved = await readJson(marker);
     if (saved && await exists(saved.path)) return saved.path;
-    this.log(`正在准备 ${repository}…\n`);
+    this.log(tr("evolution_tools.preparing_value", { p0: repository }));
     const release = await fetchRelease(`${GITHUB}/repos/${repository}/releases/latest`, true, { signal });
     const asset = release.assets.find((item) => pattern.test(item.name));
-    if (!asset) throw new Error(`找不到适用于本机的 ${repository} 安装包。`);
+    if (!asset) throw new Error(tr("evolution_tools.no_value_package_is_available_for_this_computer", { p0: repository }));
     const directory = join(this.root, key, release.tag_name.replace(/[^a-zA-Z0-9.-]/g, "_"));
     const archive = join(directory, asset.name);
     await downloadVerified(asset.browser_download_url, archive, asset.digest?.replace(/^sha256:/, ""), { signal });
     await extract(archive, join(directory, "tool"), { signal });
     const path = await findTool(join(directory, "tool"), executable);
-    if (!path) throw new Error(`安装包缺少 ${executable}。`);
+    if (!path) throw new Error(tr("evolution_tools.the_installation_package_is_missing_value", { p0: executable }));
     await writeJson(marker, { path });
     return path;
   }
@@ -233,8 +234,8 @@ export class EvolutionTools {
       : `${platform}-${process.arch}${platform === "win" ? "-zip" : ""}`;
     const releases = await fetchRelease("https://nodejs.org/dist/index.json", true, { signal });
     const version = releases.find((item) => item.lts && item.files.includes(releaseFile))?.version;
-    if (!version) throw new Error("找不到本机适用的 Node.js LTS。");
-    this.log(`正在准备 Node.js ${version}…\n`);
+    if (!version) throw new Error(tr("evolution_tools.no_suitable_node_js_lts_version_was_found_for_this_computer"));
+    this.log(tr("evolution_tools.preparing_node_js_value", { p0: version }));
     const name = `node-${version}-${platform}-${process.arch}`;
     const directory = join(this.root, name);
     const archive = join(this.root, `${name}.${archiveType}`);
@@ -257,7 +258,7 @@ export class EvolutionTools {
     try { await run(git, ["--version"], { signal }); }
     catch {
       signal?.throwIfAborted();
-      if (process.platform !== "win32") throw new Error("本机缺少 Git；请安装系统 Git 后重试。");
+      if (process.platform !== "win32") throw new Error(tr("evolution_tools.git_is_not_installed_install_system_git_and_retry"));
       git = await this.githubTool("git-for-windows/git", /^MinGit-.*-64-bit\.zip$/, "git.exe", { signal });
     }
     let uv = "uv";

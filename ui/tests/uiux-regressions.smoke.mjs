@@ -382,6 +382,12 @@ try {
         if (field !== "output") throw new Error(`Unexpected field: ${field}`);
         window.readerCalls.push(offset);
         if (offset && !failed) { failed = true; throw new Error("reader offline"); }
+        if (offset === 8192 && !window.repeatedReaderEdge) {
+          window.repeatedReaderEdge = true;
+          queueMicrotask(() => queueMicrotask(() => {
+            document.querySelector(".history-reader-content").dispatchEvent(new Event("scroll", { bubbles: true }));
+          }));
+        }
         const part = text.slice(offset, offset + 4096);
         return { text: part, offset, next: offset + part.length, total: text.length };
       };
@@ -398,6 +404,7 @@ try {
     await dialog.locator(".history-reader-content").evaluate(element => { element.scrollTop = element.scrollHeight; });
     await dialog.getByText(/Reader end marker/).waitFor({ state: "attached" });
     assert.deepEqual(await page.evaluate(() => window.readerCalls), [0, 4096, 4096, 8192]);
+    assert.equal((await dialog.locator("pre").textContent()).split("Reader end marker").length, 2);
   });
   await check("instruction and connection drafts survive settings navigation", async page => {
     await page.getByRole("button", { name: "设置", exact: true }).click();

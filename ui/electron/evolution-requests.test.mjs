@@ -7,10 +7,67 @@ import { EvolutionStore, readJson, writeJson } from "./evolution-store.mjs";
 import { EvolutionAcceptance } from "./evolution-acceptance.mjs";
 import { EvolutionRequests } from "./evolution-requests.mjs";
 import { runPreparedEvolutionTurn } from "./evolution-editing.mjs";
+import { setLanguage } from "./i18n.mjs";
 
 const input = { id: "request-1", threadId: "thread-1", prompt: "给侧栏按钮显示文字" };
 const plan = { intent: "change", cases: [{ title: "侧栏文字", requirement: input.prompt,
   current: "图标按钮", trigger: "打开侧栏", expectation: "按钮旁显示文字标签", evidence: "ui/src/Button.tsx:1: <button />" }] };
+
+test("legacy frozen requests without a language retain their original control prompt", async t => {
+  const f = await setup(t);
+  try {
+    setLanguage("zh-CN");
+    const prepared = await f.prepare();
+    const original = await f.requests.editingPrompt(prepared.id);
+    const data = await f.requests.read();
+    delete data.requests[0].promptLanguage;
+    data.requests[0].futureExtension = { keep: true };
+    await writeJson(f.requests.path, data);
+    setLanguage("en");
+    const recovered = new EvolutionRequests(f.acceptance, f.requests.analyze);
+    assert.equal(await recovered.editingPrompt(prepared.id), original);
+    await recovered.claim(input.threadId, original);
+    assert.deepEqual((await recovered.read()).requests[0].futureExtension, { keep: true });
+  } finally { setLanguage("zh-CN"); }
+});
+
+for (const language of ["zh-CN", "en"]) {
+  test(`switching from ${language} does not invalidate a prepared or retried evolution request`, async t => {
+    const f = await setup(t);
+    try {
+      setLanguage(language);
+      const prepared = await f.prepare();
+      const prompt = await f.requests.editingPrompt(prepared.id);
+      assert.equal(prepared.promptLanguage, language);
+      assert.ok(prompt.includes(language === "en" ? "The following cases have been saved" : "以下案例已经由桌面保存"));
+      setLanguage(language === "en" ? "zh-CN" : "en");
+      f.requests = new EvolutionRequests(f.acceptance, f.requests.analyze);
+      assert.equal(await f.requests.editingPrompt(prepared.id), prompt);
+      await f.requests.claim(input.threadId, prompt);
+      const request = { id: "continue-language", caseId: prepared.cases[0].item.id, threadId: input.threadId };
+      const first = await f.requests.continueCase(request);
+      setLanguage(language);
+      assert.deepEqual(await f.requests.continueCase(request), first);
+      await assert.rejects(f.requests.continueCase({ ...request, body: "different feedback" }), /另一条需求|another request/);
+      assert.equal((await f.requests.suite()).length, 1);
+      assert.equal((await f.acceptance.interactions.read()).feedback.length, 1);
+    } finally { setLanguage("zh-CN"); }
+  });
+
+  test(`feedback prepared in ${language} remains idempotent after a language switch`, async t => {
+    const f = await setup(t);
+    try {
+      setLanguage(language);
+      const original = await f.prepare();
+      const feedback = { id: "feedback-language", caseId: original.cases[0].item.id,
+        threadId: input.threadId, body: "用户原始反馈" };
+      const first = await f.requests.feedback(feedback);
+      setLanguage(language === "en" ? "zh-CN" : "en");
+      assert.deepEqual(await f.requests.feedback(feedback), first);
+      assert.equal((await f.acceptance.interactions.read()).feedback[0].body, feedback.body);
+    } finally { setLanguage("zh-CN"); }
+  });
+}
 
 test("repeated behavior keeps the original before evidence and identity across later edits", async t => {
   const f = await setup(t);

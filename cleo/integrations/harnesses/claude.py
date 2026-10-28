@@ -32,6 +32,7 @@ from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 from cleo.harnesses.provider import ProviderSession, ProviderTurn
 from cleo.harnesses.questions import QuestionBroker, normalize_questions
 from cleo.harnesses.rewind import CLAUDE_TRANSCRIPT_SCRIPT, locate_turn
+from cleo.i18n import tr
 from cleo.integrations.harness_home import (
     CLAUDE_LOGIN_HINT,
     claude_environment,
@@ -172,7 +173,7 @@ class ClaudeProvider:
         transport = getattr(runtime.client, "_transport", None)
         cli = getattr(transport, "_cli_path", None)
         if not cli:
-            raise RuntimeError("无法确认 Claude SDK 的登录状态，原 harness 保持不变。")
+            raise RuntimeError(tr("claude.could_not_confirm_claude_sdk_sign_in_status_the_"))
         process = await asyncio.create_subprocess_exec(
             str(cli),
             "auth",
@@ -196,7 +197,7 @@ class ClaudeProvider:
             ):
                 detail = diagnostic_text(stderr.decode("utf-8", errors="replace"))
                 raise ValueError(
-                    "Claude 登录检查未通过，原 harness 保持不变。"
+                    tr("claude.claude_sign_in_checks_failed_the_original_harnes")
                     + ("" if external else CLAUDE_LOGIN_HINT) + detail
                 )
         finally:
@@ -308,11 +309,11 @@ class ClaudeProvider:
         """
         runtime = self._sessions[session_id]
         if runtime.active:
-            raise RuntimeError("Claude 仍在运行，暂不能编辑之前的消息。")
+            raise RuntimeError(tr("claude.claude_is_still_running_earlier_messages_cannot_"))
         async with runtime.lock:
             source = runtime.native_session_id
             if not source:
-                raise ValueError("Claude 会话尚未开始，无法编辑之前的消息。")
+                raise ValueError(tr("claude.the_claude_session_has_not_started_earlier_messa"))
             rows = await self._transcript(runtime, {"action": "list", "session": source})
             entries = [(index, row["text"]) for index, row in reversed(list(enumerate(rows)))
                        if row.get("text")]
@@ -349,7 +350,9 @@ class ClaudeProvider:
             await stop_process(process)
         if process.returncode:
             detail = diagnostic_text(stderr.decode("utf-8", errors="replace"))
-            raise RuntimeError("无法读取 Claude 会话记录，未作修改。" + detail)
+            raise RuntimeError(tr(
+                "claude.could_not_read_the_claude_conversation_record_no",
+            ) + detail)
         return json.loads(stdout)
 
     async def list_models(self, project_path: str = ".") -> tuple[HarnessModel, ...]:
@@ -380,9 +383,9 @@ class ClaudeProvider:
         if not models:
             models["default"] = HarnessModel(
                 id="default",
-                display_name="Claude 默认模型",
+                display_name=tr("claude.claude_default_model"),
                 is_default=True,
-                description="当前 Claude 未提供模型目录，使用其默认模型",
+                description=tr("claude.claude_did_not_provide_a_model_catalog_using_its"),
                 default_effort=None,
                 supported_efforts=(),
             )
@@ -455,7 +458,7 @@ class ClaudeProvider:
                                 reviewed = block.tool_use_id in runtime.approvals.reviewed_items
                                 if not block.is_error and not reviewed:
                                     event.data["permission"] = {
-                                        "source": "Claude 后端",
+                                        "source": tr("claude.claude_backend"),
                                         "policy": runtime.options.approval_mode,
                                         "decision": "accept",
                                     }
@@ -471,9 +474,13 @@ class ClaudeProvider:
                             if item_id and item_id in runtime.approvals.reviewed_items:
                                 continue
                             request = runtime.approvals.request(
-                                itemId=item_id, command=str(denial.get("tool_name") or "工具"),
+                                itemId=item_id, command=str(denial.get("tool_name") or tr(
+                                    "claude.tool",
+                                )),
                                 permissions=denial.get("tool_input"),
-                                reason="后端权限策略拒绝了此请求。",
+                                reason=tr(
+                                    "claude.the_backend_permission_policy_denied_this_reques",
+                                ),
                             )
                             await runtime.approvals.record(
                                 request, "decline", source="native_policy",
@@ -566,8 +573,10 @@ class ClaudeProvider:
         Input: Connected session ID. Output: A note distinguishing current mode from auto support.
         """
         verified = self._sessions[session_id].permission_verified
-        return {"reason": ("已核对 Claude 当前权限。" if verified else "") +
-                "切换时由 Claude 检查；帮我审批的可用性取决于客户端、模型和账号。"}
+        return {"reason": (tr(
+            "claude.claude_s_current_permissions_were_verified",
+        ) if verified else "") +
+                tr("claude.claude_checks_permissions_when_switching_automat")}
 
     async def resolve_approval(self, session_id: str, approval_id: str, decision: str) -> dict:
         return await self._sessions[session_id].approvals.resolve(approval_id, decision)
@@ -619,18 +628,25 @@ class ClaudeProvider:
             if tool_name != "AskUserQuestion":
                 request = approvals.request(
                     itemId=str(getattr(context, "tool_use_id", "") or ""), cwd=project_path,
-                    title=getattr(context, "title", None) or f"允许使用 {tool_name}？",
+                    title=getattr(context, "title", None) or tr(
+                        "claude.allow_use_of_value",
+                        p0=tool_name,
+                    ),
                     command=str(input_data.get("command") or input_data.get("file_path")
                                 or json.dumps(input_data, ensure_ascii=False)),
                     permissions=input_data,
                     reason=getattr(context, "decision_reason", None)
-                    or getattr(context, "description", None) or "Claude 请求你的确认。",
+                    or getattr(context, "description", None) or tr(
+                        "claude.claude_requests_your_confirmation",
+                    ),
                 )
                 decision = await approvals.ask(request)
                 if decision == "accept":
                     return PermissionResultAllow(updated_input=input_data)
                 return PermissionResultDeny(
-                    message="用户拒绝或取消了此请求。", interrupt=decision == "cancel",
+                    message=tr(
+                        "claude.the_user_denied_or_cancelled_this_request",
+                    ), interrupt=decision == "cancel",
                 )
             try:
                 normalized = normalize_questions(input_data.get("questions"), claude=True)
@@ -641,7 +657,9 @@ class ClaudeProvider:
                 native_id=str(getattr(context, "tool_use_id", "") or ""),
             )
             if answers is None:
-                return PermissionResultDeny(message="用户未提交答案。请在对话中重新询问。")
+                return PermissionResultDeny(message=tr(
+                    "claude.the_user_did_not_submit_an_answer_ask_again_in_t",
+                ))
             return PermissionResultAllow(
                 updated_input={
                     **input_data,
@@ -680,8 +698,11 @@ class ClaudeProvider:
             info = await describe() if callable(describe) else None
             actual = info.get("current_permission_mode") if isinstance(info, dict) else None
             if actual is not None and actual != options.permission_mode:
-                raise ValueError(f"Claude 未应用所选权限：请求 {options.permission_mode}，"
-                                 f"实际 {actual}。")
+                raise ValueError(tr(
+                    "claude.claude_did_not_apply_the_selected_permissions_re",
+                    p0=options.permission_mode,
+                    p1=actual,
+                ))
             verified = actual is not None
         except BaseException:
             await client.disconnect()

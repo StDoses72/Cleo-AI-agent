@@ -10,6 +10,7 @@ from collections.abc import Callable
 from typing import Any
 
 from cleo.desktop.projection import change_history_from_events, project_id, relative_time
+from cleo.i18n import tr
 from cleo.runtime.usage import ContextWindowUsage
 
 Candidates = dict[str, tuple[str, str, str]]
@@ -38,7 +39,7 @@ def visible_title(title: Any) -> str | None:
     if isinstance(title, str) and title.startswith(
         ("Cleo self-iteration requirements", "[[CLEO_ACCEPTANCE_REQUEST:"),
     ):
-        return "进化会话"
+        return tr("presenters.evolution_conversation")
     return title or None
 
 
@@ -120,7 +121,7 @@ def thread_view(
             for item in reversed(items)
             if item["type"] == "message" and item["content"]
         ),
-        manifest.get("title") or "等待第一条消息",
+        manifest.get("title") or tr("presenters.waiting_for_the_first_message"),
     )
     chat = manifest["space"] == "non_productivity"
     return {
@@ -129,7 +130,9 @@ def thread_view(
         "timingError": timing_error,
         "space": ui_space(manifest["space"]),
         "projectId": project_id(manifest["space"], manifest["project"]),
-        "title": visible_title(manifest.get("title")) or ("新对话" if chat else "新任务"),
+        "title": visible_title(manifest.get("title")) or (tr(
+            "presenters.new_chat",
+        ) if chat else tr("presenters.new_task")),
         "summary": summary,
         "canUndo": can_undo,
         "updatedAt": relative_time(manifest.get("updated_at")),

@@ -1,3 +1,4 @@
+import { t as tr } from "./i18n.mjs";
 import { randomUUID } from "node:crypto";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
@@ -87,11 +88,11 @@ export const SUPPORTED_ATTACHMENT_EXTENSIONS = [...mimeTypes.keys()]
   .sort();
 
 export const ATTACHMENT_FILTERS = [
-  { name: "支持的文件", extensions: SUPPORTED_ATTACHMENT_EXTENSIONS },
-  { name: "常见文档", extensions: ["pdf", "doc", "docx", "rtf", "odt", "txt", "md"] },
-  { name: "表格与演示", extensions: ["csv", "tsv", "xls", "xlsx", "ods", "ppt", "pptx", "odp"] },
-  { name: "图片", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp", "svg"] },
-  { name: "代码与数据", extensions: ["json", "jsonl", "yaml", "yml", "xml", "html", "css", "js", "jsx", "ts", "tsx", "py", "java", "c", "cpp", "h", "hpp", "cs", "go", "rs", "rb", "php", "swift", "kt", "sh", "ps1", "sql", "toml", "ini", "cfg", "log"] },
+  { get name() { return tr("attachments.supported_files"); }, extensions: SUPPORTED_ATTACHMENT_EXTENSIONS },
+  { get name() { return tr("attachments.common_documents"); }, extensions: ["pdf", "doc", "docx", "rtf", "odt", "txt", "md"] },
+  { get name() { return tr("attachments.spreadsheets_and_presentations"); }, extensions: ["csv", "tsv", "xls", "xlsx", "ods", "ppt", "pptx", "odp"] },
+  { get name() { return tr("attachments.images"); }, extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp", "svg"] },
+  { get name() { return tr("attachments.code_and_data"); }, extensions: ["json", "jsonl", "yaml", "yml", "xml", "html", "css", "js", "jsx", "ts", "tsx", "py", "java", "c", "cpp", "h", "hpp", "cs", "go", "rs", "rb", "php", "swift", "kt", "sh", "ps1", "sql", "toml", "ini", "cfg", "log"] },
 ];
 
 function mimeTypeFor(name, providedMimeType = "") {
@@ -100,18 +101,18 @@ function mimeTypeFor(name, providedMimeType = "") {
   if (mapped) return mapped;
   const normalizedMimeType = String(providedMimeType || "").toLowerCase();
   if (extensionForMimeType.has(normalizedMimeType)) return normalizedMimeType;
-  throw new Error(`不支持的附件类型：${basename(String(name || "未知文件"))}`);
+  throw new Error(tr("attachments.unsupported_attachment_type_value", { p0: basename(String(name || tr("attachments.unknown_file"))) }));
 }
 
 function ensureBatchSize(count) {
   if (count > MAX_ATTACHMENT_COUNT) {
-    throw new Error(`一次最多添加 ${MAX_ATTACHMENT_COUNT} 个附件`);
+    throw new Error(tr("attachments.you_can_add_at_most_value_attachments_at_once", { p0: MAX_ATTACHMENT_COUNT }));
   }
 }
 
 function ensureFileSize(name, size) {
   if (size > MAX_ATTACHMENT_BYTES) {
-    throw new Error(`附件超过 50 MB：${basename(name)}`);
+    throw new Error(tr("attachments.attachment_exceeds_50_mb_value", { p0: basename(name) }));
   }
 }
 
@@ -120,7 +121,7 @@ export async function attachmentsFromPaths(paths) {
   ensureBatchSize(normalizedPaths.length);
   return Promise.all(normalizedPaths.map(async (path) => {
     const fileStat = await stat(path);
-    if (!fileStat.isFile()) throw new Error(`只能添加文件：${basename(path)}`);
+    if (!fileStat.isFile()) throw new Error(tr("attachments.only_files_can_be_attached_value", { p0: basename(path) }));
     ensureFileSize(path, fileStat.size);
     return {
       name: basename(path),

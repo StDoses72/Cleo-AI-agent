@@ -41,6 +41,14 @@ const clone = <T,>(value: T): T => structuredClone(value);
 
 
 export class MockCleoClient implements CleoClient {
+  async getUiLanguage(): Promise<"zh-CN" | "en"> {
+    return localStorage.getItem("cleo-mock-ui-language") === "en" ? "en" : "zh-CN";
+  }
+
+  async setUiLanguage(language: "zh-CN" | "en"): Promise<"zh-CN" | "en"> {
+    localStorage.setItem("cleo-mock-ui-language", language);
+    return language;
+  }
   private backgroundMemorySettings: BackgroundMemorySettings = { enabled: false, intervalMinutes: 30, pendingThreshold: 5 };
   private harnessSync: HarnessSyncStatus[] = [
     { harness: "claude", localPath: "C:\\Users\\demo\\.claude", localExists: true, cleoPath: "C:\\Users\\demo\\AppData\\Local\\Cleo\\data\\claude",

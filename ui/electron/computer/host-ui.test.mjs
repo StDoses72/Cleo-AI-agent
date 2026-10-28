@@ -62,15 +62,20 @@ test("status overlay cannot hand back control while stopping is unconfirmed", as
   const context = { require: () => ({ ipcRenderer: { send: (...args) => sent.push(args),
     on: (name, handler) => listeners.set(name, handler) } }),
     window: { addEventListener: (_name, handler) => handler() },
-    document: { querySelector: selector => nodes.get(selector), querySelectorAll: () => [handback] } };
+    document: { documentElement: { lang: "zh-CN" }, querySelector: selector => nodes.get(selector), querySelectorAll: () => [handback] } };
   vm.runInNewContext(await readFile(new URL("./overlay-preload.cjs", import.meta.url), "utf8"), context);
-  listeners.get("cleo:computer:status")(null, { control: "user", stopping: true, shortcut: "Control+Alt+Escape" });
+  const status = { control: "user", stopping: true, shortcut: "Control+Alt+Escape", language: "zh-CN",
+    label: "正在停止…", shortcutLabel: "Control+Alt+Escape 紧急停止", buttons: { "handback-desktop": "交回 AI" } };
+  listeners.get("cleo:computer:status")(null, status);
   assert.equal(handback.hidden, true);
   handback.click({ preventDefault() {} });
   assert.equal(sent.length, 0);
   assert.match(nodes.get("[data-label]").textContent, /正在停止/);
-  listeners.get("cleo:computer:status")(null, { control: "user", stopping: false, shortcut: "Control+Alt+Escape" });
+  listeners.get("cleo:computer:status")(null, { ...status, stopping: false, language: "en",
+    label: "You are in control · AI paused", buttons: { "handback-desktop": "Return control to AI" } });
   assert.equal(handback.hidden, false);
+  assert.equal(context.document.documentElement.lang, "en");
+  assert.equal(handback.textContent, "Return control to AI");
   handback.click({ preventDefault() {} });
   assert.deepEqual(sent, [["cleo:computer:overlay", "handback-desktop"]]);
 });

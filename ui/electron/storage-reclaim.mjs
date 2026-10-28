@@ -1,3 +1,4 @@
+import { t as tr } from "./i18n.mjs";
 import { createHash } from "node:crypto";
 import * as nativeFs from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -177,22 +178,22 @@ async function liveResources({ fs, state, buildsRoot, target, currentResources, 
     if (version) entry.versions.add(String(version)); else entry.unknownVersion = true;
     references.set(key, entry);
   };
-  if (currentResources) add(currentResources, "当前运行的 Cleo", currentVersion);
+  if (currentResources) add(currentResources, tr("storage_reclaim.currently_running_cleo"), currentVersion);
   const registered = new Map((state.builds || []).map(build => [build.id, build]));
   for (const id of await listDirectory(fs, buildsRoot)) {
     if (!BUILD.test(id)) continue;
     const build = registered.get(id);
     const pending = (state.cleanupPending || []).includes(id);
-    const label = build ? `${build.kind === "official" ? "程序" : "本机版本"} ${build.version || build.name || id}`
-      : `未登记的程序目录 ${id}`;
+    const label = build ? `${build.kind === "official" ? tr("storage_reclaim.program") : tr("storage_reclaim.local_version")} ${build.version || build.name || id}`
+      : tr("storage_reclaim.unregistered_program_directory_value", { p0: id });
     const resources = join(buildsRoot, id, target.bundle, target.resources);
-    add(resources, pending ? `${label}（等待退役）` : label, build?.version || await bundleVersion(fs, resources, target));
+    add(resources, pending ? tr("storage_reclaim.value_awaiting_retirement", { p0: label }) : label, build?.version || await bundleVersion(fs, resources, target));
   }
   for (const [executable, version] of Object.entries(state.installedReleases || {})) {
     try {
       const resources = join(installationRoot(executable, target), target.resources);
       // The launcher may have been upgraded in place since it was journaled; its bundle says which version runs now.
-      add(resources, `已安装的 Cleo ${version}`, await bundleVersion(fs, resources, target) || version);
+      add(resources, tr("storage_reclaim.installed_cleo_value", { p0: version }), await bundleVersion(fs, resources, target) || version);
     } catch { /* A foreign layout is not a runtime owner. */ }
   }
   for (const executable of installedExecutables || []) {
@@ -201,26 +202,26 @@ async function liveResources({ fs, state, buildsRoot, target, currentResources, 
       if (!await probe(fs, executable)) continue;
       const resources = join(installationRoot(executable, target), target.resources);
       const version = await bundleVersion(fs, resources, target);
-      add(resources, version ? `已安装的 Cleo ${version}` : "已安装的 Cleo", version
+      add(resources, version ? tr("storage_reclaim.installed_cleo_value", { p0: version }) : tr("storage_reclaim.installed_cleo"), version
         || (resolve(executable) === resolve(process.execPath) ? currentVersion : null));
     } catch { /* ignore */ }
   }
   // Another release channel (Cleo / Cleo Alpha) shares the online runtime root; its programs count too.
   for (const sibling of siblings) {
-    const label = sibling.label || "另一渠道的 Cleo";
+    const label = sibling.label || tr("storage_reclaim.cleo_from_another_channel");
     const siblingState = await readJson(join(sibling.controlRoot, "state.json"), {});
     const siblingBuilds = join(sibling.controlRoot, "builds");
     const registered = new Map((siblingState.builds || []).map(build => [build.id, build]));
     for (const id of await listDirectory(fs, siblingBuilds)) {
       if (!BUILD.test(id)) continue;
       const resources = join(siblingBuilds, id, target.bundle, target.resources);
-      add(resources, `${label} 程序 ${registered.get(id)?.version || id}`,
+      add(resources, tr("storage_reclaim.value_program_value", { p0: label, p1: registered.get(id)?.version || id }),
         registered.get(id)?.version || await bundleVersion(fs, resources, target));
     }
     for (const [executable, version] of Object.entries(siblingState.installedReleases || {})) {
       try {
         const resources = join(installationRoot(executable, target), target.resources);
-        add(resources, `${label} 已安装 ${version}`, await bundleVersion(fs, resources, target) || version);
+        add(resources, tr("storage_reclaim.value_installed_value", { p0: label, p1: version }), await bundleVersion(fs, resources, target) || version);
       } catch { /* ignore */ }
     }
   }
@@ -263,7 +264,7 @@ export async function storageInventory({
   };
   for (const item of references) owner(namespaceKey(item.path), item);
   if (currentRuntimeNamespace) {
-    owner(basename(resolve(currentRuntimeNamespace)), { label: "当前运行的 Cleo",
+    owner(basename(resolve(currentRuntimeNamespace)), { label: tr("storage_reclaim.currently_running_cleo"),
       versions: new Set(currentVersion ? [currentVersion] : []), unknownVersion: !currentVersion });
   }
   const livePlans = new Map();
@@ -272,7 +273,7 @@ export async function storageInventory({
     if (key) livePlans.set(key, item.label);
   }
   if (currentBaseResources && PLAN_KEY.test(basename(resolve(currentBaseResources)))) {
-    livePlans.set(basename(resolve(currentBaseResources)), "当前运行的 Cleo");
+    livePlans.set(basename(resolve(currentBaseResources)), tr("storage_reclaim.currently_running_cleo"));
   }
   const userData = new Set(USER_DATA_ENTRIES.map(name => resolve(dataHome, name)));
   for (const path of [...userData]) {
@@ -291,12 +292,12 @@ export async function storageInventory({
     }
   };
   for (const sibling of siblings) {
-    if (sibling.dataHome) protectHomes(await snapshotHomes(fs, join(sibling.dataHome, "runtimes")), `${sibling.label || "另一渠道的 Cleo"} 的依赖快照`);
+    if (sibling.dataHome) protectHomes(await snapshotHomes(fs, join(sibling.dataHome, "runtimes")), tr("storage_reclaim.dependency_snapshot_for_value", { p0: sibling.label || tr("storage_reclaim.cleo_from_another_channel") }));
   }
   // A linked runtimes directory could point anywhere, including at user data: never inventory through it.
   const runtimesLinked = await linkedDirectory(fs, runtimesRoot) && Boolean(await probe(fs, runtimesRoot));
   if (runtimesLinked) {
-    entries.push({ id: "unknown:runtimes", kind: "unknown", path: runtimesRoot, bytes: 0, action: "keep", reason: "runtimes 目录是链接，不做清理" });
+    entries.push({ id: "unknown:runtimes", kind: "unknown", path: runtimesRoot, bytes: 0, action: "keep", reason: tr("storage_reclaim.the_runtimes_directory_is_a_link_and_will_not_be_cleaned") });
   }
 
   // Dependency snapshots: one namespace per program location, each holding validated runtime copies.
@@ -305,7 +306,7 @@ export async function storageInventory({
     if (name === "online" || onlineRootSet.includes(path)) continue;
     const info = await probe(fs, path);
     if (!info?.isDirectory() || info.isSymbolicLink()) continue;
-    if (!NAMESPACE.test(name)) { await push({ id: `unknown:${name}`, kind: "unknown", path, action: "keep", reason: "未知来源的目录，保持保守" }); continue; }
+    if (!NAMESPACE.test(name)) { await push({ id: `unknown:${name}`, kind: "unknown", path, action: "keep", reason: tr("storage_reclaim.directory_origin_is_unknown_retaining_it_conservatively") }); continue; }
     const versions = [];
     for (const version of await listDirectory(fs, path)) {
       if (!NAMESPACE.test(version) || !(await probe(fs, join(path, version)))?.isDirectory()) continue;
@@ -326,7 +327,7 @@ export async function storageInventory({
       // One install location upgraded in place leaves the previous versions' snapshots behind.
       for (const item of versions) {
         const current = owned.unknownVersion || owned.versions.has(item.version);
-        const reason = current ? `${owned.label} 的依赖快照` : `${owned.label} 原地升级前旧版本遗留的依赖快照`;
+        const reason = current ? tr("storage_reclaim.dependency_snapshot_for_value", { p0: owned.label }) : tr("storage_reclaim.dependency_snapshot_left_by_value_before_an_in_place_upgrade", { p0: owned.label });
         if (current) protectPlans(item.presentHomes, reason);
         await push({ id: `runtime-namespace:${name}/${item.version}`, kind: "runtime-namespace", path: join(path, item.version),
           snapshots: item.snapshots, policy: "automatic", action: current ? "keep" : "reclaim", reason });
@@ -336,8 +337,8 @@ export async function storageInventory({
     const snapshots = versions.reduce((sum, item) => sum + item.snapshots, 0);
     const presentHomes = versions.flatMap(item => item.presentHomes);
     const entry = { id: `runtime-namespace:${name}`, kind: "runtime-namespace", path, snapshots, policy: "automatic" };
-    if (presentHomes.length) Object.assign(entry, { action: "keep", reason: `对应程序仍存在于 ${dirname(presentHomes[0])}，未登记为保留版本` });
-    else Object.assign(entry, { action: "reclaim", reason: snapshots ? "对应程序已删除，快照无人使用" : "空的依赖命名空间" });
+    if (presentHomes.length) Object.assign(entry, { action: "keep", reason: tr("storage_reclaim.the_associated_program_still_exists_at_value_but_is_not_registered_as_retained", { p0: dirname(presentHomes[0]) }) });
+    else Object.assign(entry, { action: "reclaim", reason: snapshots ? tr("storage_reclaim.the_associated_program_was_deleted_and_no_one_uses_this_snapshot") : tr("storage_reclaim.empty_dependency_namespace") });
     if (entry.action === "keep") protectPlans(presentHomes, entry.reason);
     await push(entry);
   }
@@ -347,7 +348,7 @@ export async function storageInventory({
   const caches = [];
   for (const root of onlineRootSet) {
     if (await linkedDirectory(fs, root)) {
-      if (await probe(fs, root)) entries.push({ id: `unknown:online/${basename(root)}`, kind: "unknown", path: root, bytes: 0, action: "keep", reason: "运行环境目录是链接，不做清理" });
+      if (await probe(fs, root)) entries.push({ id: `unknown:online/${basename(root)}`, kind: "unknown", path: root, bytes: 0, action: "keep", reason: tr("storage_reclaim.the_runtime_directory_is_a_link_and_will_not_be_cleaned") });
       continue;
     }
     for (const name of await listDirectory(fs, root)) {
@@ -358,12 +359,12 @@ export async function storageInventory({
         const stale = now - info.mtimeMs > STALE_INSTALL_MS;
         if (!stale) installing = true;
         await push({ id: `install-scratch:${name}`, kind: "install-scratch", path, policy: "automatic",
-          action: stale ? "reclaim" : "keep", reason: stale ? "中断的安装遗留的临时目录" : "安装正在进行" });
+          action: stale ? "reclaim" : "keep", reason: stale ? tr("storage_reclaim.temporary_directory_left_by_an_interrupted_installation") : tr("storage_reclaim.installation_in_progress") });
         continue;
       }
       if (CACHE_NAMES.includes(name)) { caches.push({ id: `package-cache:${name}`, kind: "package-cache", path }); continue; }
       if (!info.isDirectory() || info.isSymbolicLink() || !PLAN_KEY.test(name)) {
-        await push({ id: `unknown:online/${name}`, kind: "unknown", path, action: "keep", reason: "未知来源的目录，保持保守" });
+        await push({ id: `unknown:online/${name}`, kind: "unknown", path, action: "keep", reason: tr("storage_reclaim.directory_origin_is_unknown_retaining_it_conservatively") });
         continue;
       }
       let version = null;
@@ -379,8 +380,8 @@ export async function storageInventory({
       // Legacy script installers support custom locations without a registry entry; absence of an owner is not proof of disuse.
       await push({ id: `online-runtime:${name}`, kind: "online-runtime", path, version, policy: "automatic",
         action: owner || completed ? "keep" : "reclaim",
-        reason: owner ? `${owner} 使用的运行环境` : completed ? "已完成的运行环境；旧安装器支持自定义程序位置，无法确认无人使用"
-          : "未完成的运行环境，没有程序使用" });
+        reason: owner ? tr("storage_reclaim.runtime_used_by_value", { p0: owner }) : completed ? tr("storage_reclaim.completed_runtime_legacy_installers_allow_custom_program_locations_so_it_cannot_be_co")
+          : tr("storage_reclaim.incomplete_runtime_with_no_program_using_it") });
     }
   }
   for (const cache of caches) {
@@ -389,9 +390,9 @@ export async function storageInventory({
   const cacheBytes = caches.reduce((sum, cache) => sum + (entries.find(entry => entry.id === cache.id)?.bytes || 0), 0);
   for (const entry of entries) {
     if (entry.kind !== "package-cache") continue;
-    if (installing) Object.assign(entry, { action: "keep", policy: "manual", reason: "安装正在进行，暂不清理下载缓存" });
+    if (installing) Object.assign(entry, { action: "keep", policy: "manual", reason: tr("storage_reclaim.installation_in_progress_download_cache_will_not_be_cleaned_yet") });
     else Object.assign(entry, { action: "reclaim", policy: cacheBytes > cacheLimit ? "automatic" : "manual",
-      reason: cacheBytes > cacheLimit ? "可重建的下载缓存，已超过保留上限" : "可重建的下载缓存，手动清理时释放" });
+      reason: cacheBytes > cacheLimit ? tr("storage_reclaim.rebuildable_download_cache_exceeds_its_retention_limit") : tr("storage_reclaim.rebuildable_download_cache_reclaimed_during_manual_cleanup") });
   }
 
   // Release archives: keep the newest and anything an update or the running version still needs.
@@ -425,30 +426,30 @@ export async function storageInventory({
   const protectedSet = new Set([...protectedVersions, currentVersion, newest].filter(Boolean));
   for (const archive of archives) {
     const entry = { ...archive, kind: "release-download", policy: "automatic" };
-    if (busy) Object.assign(entry, { action: "keep", reason: "正在下载更新，暂不清理" });
-    else if (archive.partial) Object.assign(entry, { action: "keep", reason: "下载尚未完成" });
+    if (busy) Object.assign(entry, { action: "keep", reason: tr("storage_reclaim.an_update_is_downloading_cleanup_is_deferred") });
+    else if (archive.partial) Object.assign(entry, { action: "keep", reason: tr("storage_reclaim.download_incomplete") });
     else if (archive.version && protectedSet.has(archive.version)) {
       Object.assign(entry, { action: "keep", reason: archive.version === newest && !protectedVersions.includes(archive.version)
-        ? "最新下载的安装包" : "当前版本或待安装更新的安装包" });
-    } else if (!archive.version) Object.assign(entry, { action: "keep", reason: "无法识别版本，保持保守" });
-    else Object.assign(entry, { action: "reclaim", reason: `Cleo ${archive.version} 的安装包已被更新版本取代` });
+        ? tr("storage_reclaim.most_recently_downloaded_installer") : tr("storage_reclaim.installer_for_the_current_version_or_pending_update") });
+    } else if (!archive.version) Object.assign(entry, { action: "keep", reason: tr("storage_reclaim.unrecognized_version_retaining_it_conservatively") });
+    else Object.assign(entry, { action: "reclaim", reason: tr("storage_reclaim.the_cleo_value_installer_was_superseded_by_a_newer_version", { p0: archive.version }) });
     await push(entry);
   }
 
   // Retained programs and data backups are governed by the evolution store; list them with their reasons.
   const keepRoles = new Map();
   const role = (id, label) => { if (id) keepRoles.set(id, [...(keepRoles.get(id) || []), label]); };
-  role(state.active, "当前程序"); role(state.baseline, "初始可用版本"); role(state.workspaceBase, "进化基线");
-  role(state.latestSaved, "最近保存版本"); role(state.candidate, "候选构建"); role(state.downloadedOfficial, "已下载的更新");
+  role(state.active, tr("storage_reclaim.current_program")); role(state.baseline, tr("storage_reclaim.initial_working_version")); role(state.workspaceBase, tr("storage_reclaim.evolution_baseline"));
+  role(state.latestSaved, tr("storage_reclaim.most_recently_saved_version")); role(state.candidate, tr("storage_reclaim.candidate_build")); role(state.downloadedOfficial, tr("storage_reclaim.downloaded_update"));
   for (const id of await listDirectory(fs, buildsRoot)) {
     const path = join(buildsRoot, id);
     if (!(await probe(fs, path))?.isDirectory()) continue;
     const build = (state.builds || []).find(item => item.id === id);
     const pending = (state.cleanupPending || []).includes(id);
     await push({ id: `build:${id}`, kind: "build", path, version: build?.version || null, action: "keep",
-      reason: pending ? "已退役，等待重试删除（上次被占用）" : build
-        ? `${build.kind === "official" ? "程序" : "本机版本"} ${build.version || build.name || ""}${keepRoles.has(id) ? ` · ${keepRoles.get(id).join("、")}` : ""}`.trim()
-        : "未登记的程序目录，由启动检查处理" });
+      reason: pending ? tr("storage_reclaim.retired_awaiting_deletion_retry_after_previously_being_in_use") : build
+        ? `${build.kind === "official" ? tr("storage_reclaim.program") : tr("storage_reclaim.local_version")} ${build.version || build.name || ""}${keepRoles.has(id) ? ` · ${keepRoles.get(id).join("、")}` : ""}`.trim()
+        : tr("storage_reclaim.unregistered_program_directory_handled_by_startup_checks") });
   }
   const backupsRoot = join(store.root, "backups");
   const protectedBackups = new Set([state.transaction?.backup, state.transaction?.id && `apply-${state.transaction.id}`, state.lastApplication?.backup].filter(Boolean));
@@ -457,13 +458,13 @@ export async function storageInventory({
     if (!(await probe(fs, path))?.isDirectory()) continue;
     const pending = (state.backupCleanupPending || []).includes(id);
     await push({ id: `backup:${id}`, kind: "backup", path, action: "keep",
-      reason: pending ? "超出保留份数，等待重试删除" : protectedBackups.has(id) ? "恢复所需的数据备份"
-        : BACKUP.test(id) ? "保留的数据备份（最多三份）" : "未知备份目录，保持保守" });
+      reason: pending ? tr("storage_reclaim.exceeds_retention_count_awaiting_deletion_retry") : protectedBackups.has(id) ? tr("storage_reclaim.data_backup_required_for_recovery")
+        : BACKUP.test(id) ? tr("storage_reclaim.retained_data_backup_up_to_three") : tr("storage_reclaim.unknown_backup_directory_retaining_it_conservatively") });
   }
   for (const name of USER_DATA_ENTRIES) {
     const path = join(dataHome, name);
     if (!await probe(fs, path)) continue;
-    await push({ id: `user-data:${name}`, kind: "user-data", path, action: "keep", reason: "用户数据，不会清理" });
+    await push({ id: `user-data:${name}`, kind: "user-data", path, action: "keep", reason: tr("storage_reclaim.user_data_never_cleaned") });
   }
   for (const entry of entries) {
     // Nothing that overlaps protected user data may ever be reclaimed, whatever its category,
@@ -471,7 +472,7 @@ export async function storageInventory({
     if (entry.action !== "reclaim") continue;
     const locations = [entry.path, await realLocation(fs, entry.path)].filter(Boolean);
     if (locations.some(location => [...userData].some(path => within(location, path) || within(path, location)))) {
-      Object.assign(entry, { action: "keep", reason: "与用户数据重叠，拒绝清理" });
+      Object.assign(entry, { action: "keep", reason: tr("storage_reclaim.overlaps_user_data_cleanup_refused") });
     }
   }
   const total = entries.reduce((sum, entry) => sum + entry.bytes, 0);

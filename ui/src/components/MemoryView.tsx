@@ -1,3 +1,5 @@
+import { getLanguage, relativeTime } from "../../electron/i18n.mjs";
+import { t as tr } from "../../electron/i18n.mjs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { dreamStatusLabel } from "../memoryStatus";
 import { Timing } from "./Timing";
@@ -35,18 +37,18 @@ interface MemoryViewProps {
 }
 
 const viewCopy = {
-  all: {
-    title: "记忆",
-    section: "最近更新",
-  },
-  projects: {
-    title: "项目记忆",
-    section: "项目条目",
-  },
-  pending: {
-    title: "待确认",
-    section: "待处理来源",
-  },
+  get all() { return {
+    title: tr("app.memory"),
+    section: tr("memoryview.recently_updated"),
+  }; },
+  get projects() { return {
+    title: tr("memoryview.project_memories"),
+    section: tr("memoryview.project_entries"),
+  }; },
+  get pending() { return {
+    title: tr("evolutioncases.pending_confirmation"),
+    section: tr("memoryview.pending_sources"),
+  }; },
 } as const;
 
 export function MemoryView({
@@ -104,7 +106,7 @@ export function MemoryView({
     try {
       await onReviewSource(source, action);
     } catch (error) {
-      setReviewError(error instanceof Error ? error.message : "无法处理这个记忆来源");
+      setReviewError(error instanceof Error ? error.message : tr("memoryview.could_not_process_this_memory_source"));
     } finally {
       reviewingRef.current = null;
       setReviewingId((current) => current === source.id ? null : current);
@@ -126,7 +128,7 @@ export function MemoryView({
       if (current) setReviewDetails(saved => ({ ...saved, [source.id]: details }));
     }).catch(error => {
       if (current) setReviewDetailsErrors(saved => ({ ...saved,
-        [source.id]: error instanceof Error ? error.message : "无法读取对话内容" }));
+        [source.id]: error instanceof Error ? error.message : tr("memoryview.could_not_read_the_conversation") }));
     }).finally(() => {
       if (current) setReviewDetailsLoadingId(saved => saved === source.id ? null : saved);
     });
@@ -136,8 +138,8 @@ export function MemoryView({
     };
   }, [expandedSource?.id, expandedSource?.source_version, detailsRetry]);
 
-  const dreamStatus = reviewingId ? "正在整理"
-    : reviewError ? "整理失败" : dreamStatusLabel(dreamAgent);
+  const dreamStatus = reviewingId ? tr("memoryview.consolidating")
+    : reviewError ? tr("memoryview.consolidation_failed") : dreamStatusLabel(dreamAgent);
 
   return (
     <main className="memory-view" data-testid="memory-view" data-mode={mode}>
@@ -150,43 +152,43 @@ export function MemoryView({
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder={mode === "pending" ? "搜索对话或项目" : "搜索记忆"}
-            aria-label={mode === "pending" ? "搜索待确认来源" : "搜索记忆"}
+            placeholder={mode === "pending" ? tr("memoryview.search_conversations_or_projects") : tr("memoryview.search_memories")}
+            aria-label={mode === "pending" ? tr("memoryview.search_sources_awaiting_confirmation") : tr("memoryview.search_memories")}
           />
         </label>
       </header>
 
       {refreshError && <div className="memory-review-error" role="alert"><span>{refreshError}</span>
-        <button disabled={refreshing} onClick={onRetryRefresh}>重试</button></div>}
+        <button disabled={refreshing} onClick={onRetryRefresh}>{tr("app.retry")}</button></div>}
 
       {overview.issues?.map((issue) => (
         <p role="status" key={`${issue.space}:${issue.project}`}>
-          {issue.project}：{issue.questions?.join(" ") || issue.error}
+          {issue.project}{tr("punctuation.colon")}{issue.questions?.join(" ") || issue.error}
         </p>
       ))}
 
       <div className="memory-summary" role="status">
-        <span>记忆整理 · {dreamStatus}</span>
-        {dreamAgent.last_processed_at && <span>上次整理 {formatRelativeTime(dreamAgent.last_processed_at)}</span>}
+        <span>{tr("memoryview.memory_consolidation")}{dreamStatus}</span>
+        {dreamAgent.last_processed_at && <span>{tr("memoryview.last_consolidated")}{formatRelativeTime(dreamAgent.last_processed_at)}</span>}
       </div>
 
       {(overview.timingError || Boolean(overview.timings?.length)) && <details className="memory-timing-history">
-        <summary>整理耗时</summary>
+        <summary>{tr("memoryview.consolidation_duration")}</summary>
         {overview.timingError ? <p role="alert">{overview.timingError}</p>
           : overview.timings?.map(timing => <div key={timing.id}>
-            <span>{timing.title || timing.sessionId} · {timing.project} · {new Date(timing.createdAt).toLocaleString()}</span>
+            <span>{timing.title || timing.sessionId} · {timing.project} · {new Date(timing.createdAt).toLocaleString(getLanguage())}</span>
             <Timing summary={timing} />
           </div>)}
       </details>}
 
       {mode === "projects" ? (
-        <nav className="memory-project-filter" aria-label="筛选记忆项目">
+        <nav className="memory-project-filter" aria-label={tr("memoryview.filter_memory_projects")}>
           <button
             type="button"
             className={projectKey === "all" ? "active" : ""}
             onClick={() => setProjectKey("all")}
           >
-            <span>全部项目</span><small>{summary.project_memories}</small>
+            <span>{tr("memoryview.all_projects")}</span><small>{summary.project_memories}</small>
           </button>
           {overview.project_summaries.map((project) => {
             const key = `${project.space}:${project.project}`;
@@ -248,14 +250,14 @@ function MemoryLedger({
 }) {
   return (
     <section className="memory-list-section">
-      <div className="memory-list-heading"><div><Brain size={16} /><span>{title}</span></div><small>{entries.length} 条</small></div>
+      <div className="memory-list-heading"><div><Brain size={16} /><span>{title}</span></div><small>{entries.length} {tr("memoryview.entries")}</small></div>
       <div className="memory-list" data-testid="memory-ledger">
         {entries.length ? entries.map((memory) => {
           const expanded = memory.id === expandedId;
           return (
             <article key={memory.id} className={expanded ? "expanded" : ""}>
               <div className={`memory-scope ${memory.scope}`}>
-                {memory.scope === "persona" ? "人格" : categoryLabel(memory.category)}
+                {memory.scope === "persona" ? tr("memoryview.persona") : categoryLabel(memory.category)}
               </div>
               <div className="memory-copy">
                 <button type="button" className="memory-entry-toggle" onClick={() => onToggle(memory.id)} aria-expanded={expanded}>
@@ -280,22 +282,22 @@ function MemoryDetails({ memory }: { memory: MemoryOverviewEntry }) {
   if (memory.scope === "project") {
     return (
       <div className="memory-entry-details">
-        <small>最近变更</small>
+        <small>{tr("memoryview.recent_changes")}</small>
         {memory.history?.length ? memory.history.map((entry) => (
           <p key={entry.commit}>
             <code>{entry.commit.slice(0, 8)}</code> {entry.summary}
             <time>{formatDateTime(entry.created_at)}</time>
           </p>
-        )) : <p>还没有已提交的记忆变更。</p>}
+        )) : <p>{tr("memoryview.no_committed_memory_changes_yet")}</p>}
       </div>
     );
   }
   return (
     <div className="memory-entry-details">
       <dl>
-        <div><dt>置信度</dt><dd>{Math.round(memory.confidence * 100)}%</dd></div>
-        <div><dt>重要性</dt><dd>{memory.importance} / 5</dd></div>
-        <div><dt>证据</dt><dd>{memory.evidence_count} 条</dd></div>
+        <div><dt>{tr("memoryview.confidence")}</dt><dd>{Math.round(memory.confidence * 100)}%</dd></div>
+        <div><dt>{tr("memoryview.importance")}</dt><dd>{memory.importance} / 5</dd></div>
+        <div><dt>{tr("memoryview.evidence")}</dt><dd>{memory.evidence_count} {tr("memoryview.entries")}</dd></div>
       </dl>
       {memory.tags.length ? <div className="memory-tags">{memory.tags.map((tag) => <span key={tag}>{tag}</span>)}</div> : null}
     </div>
@@ -329,7 +331,7 @@ function ReviewQueue({
 }) {
   return (
     <section className="memory-list-section memory-review-section">
-      <div className="memory-list-heading"><div><CircleAlert size={16} /><span>待处理来源</span></div><small>{sources.length} 个</small></div>
+      <div className="memory-list-heading"><div><CircleAlert size={16} /><span>{tr("memoryview.pending_sources")}</span></div><small>{sources.length} {tr("memoryview.items")}</small></div>
       {error ? <div className="memory-review-error" role="alert"><CircleAlert size={14} />{error}</div> : null}
       <div className="memory-review-list" data-testid="memory-review-list">
         {sources.length ? sources.map((source) => {
@@ -341,7 +343,7 @@ function ReviewQueue({
               <div className="memory-review-copy">
                 <button type="button" className="memory-review-toggle" onClick={() => onToggle(source)} aria-expanded={expanded}>
                   <span className="memory-review-summary">
-                    <span className="memory-review-title"><strong>{source.title || `${source.project} 的对话`}</strong><span>{source.status === "failed" ? "整理失败" : "待整理"}</span></span>
+                    <span className="memory-review-title"><strong>{source.title || tr("memoryview.conversations_in_value", { p0: source.project })}</strong><span>{source.status === "failed" ? tr("memoryview.consolidation_failed") : tr("memoryview.awaiting_consolidation")}</span></span>
                     {source.status === "failed" && source.last_error && <p>{source.last_error}</p>}
                     <footer><span>{source.project} · {spaceLabel(source.space)}</span><time>{formatRelativeTime(source.updated_at)}</time></footer>
                   </span>
@@ -350,10 +352,9 @@ function ReviewQueue({
               </div>
               <div className="memory-review-actions">
                 <button type="button" className="secondary" disabled={busy || reviewingId !== null} onClick={() => void onReview(source, "skip")}>
-                  <ArchiveX size={14} />忽略本次
-                </button>
+                  <ArchiveX size={14} />{tr("memoryview.ignore_this_time")}</button>
                 <button type="button" className="primary" disabled={busy || reviewingId !== null} onClick={() => void onReview(source, "consolidate")} data-testid="memory-review-confirm">
-                  <CheckCircle2 size={14} />{busy ? "正在整理…" : source.status === "failed" ? "继续整理" : "确认并整理"}
+                  <CheckCircle2 size={14} />{busy ? tr("memoryview.consolidating_2") : source.status === "failed" ? tr("memoryview.continue_consolidation") : tr("memoryview.confirm_and_consolidate")}
                 </button>
               </div>
               {expanded ? (
@@ -384,16 +385,16 @@ function MemoryReviewDetailsPanel({
   onRetry: () => void;
 }) {
   if (loading) {
-    return <div className="memory-review-details-status"><LoaderCircle className="spin" size={14} />正在读取对话…</div>;
+    return <div className="memory-review-details-status"><LoaderCircle className="spin" size={14} />{tr("memoryview.loading_conversation")}</div>;
   }
   if (error) {
-    return <div className="memory-review-details-status error" role="alert"><CircleAlert size={14} />{error}<button onClick={onRetry}>重试</button></div>;
+    return <div className="memory-review-details-status error" role="alert"><CircleAlert size={14} />{error}<button onClick={onRetry}>{tr("app.retry")}</button></div>;
   }
   if (!details) return null;
   return (
     <div className="memory-review-details">
       <header>
-        <strong>对话内容</strong>
+        <strong>{tr("memoryview.conversation_content")}</strong>
       </header>
       <div className="memory-review-events">
         {details.events.length ? details.events.map((event) => {
@@ -409,14 +410,14 @@ function MemoryReviewDetailsPanel({
               </header>
               {content ? typeof event.content === "string" && ["human", "ai"].includes(event.type)
                 ? <p className="memory-review-text">{content}</p> : <pre>{content}</pre> : null}
-              {metadata ? <details><summary>技术详情</summary><pre className="metadata">{metadata}</pre></details> : null}
+              {metadata ? <details><summary>{tr("memoryview.technical_details")}</summary><pre className="metadata">{metadata}</pre></details> : null}
             </div>
           );
-        }) : <p>没有可整理的内容。</p>}
+        }) : <p>{tr("memoryview.no_content_available_to_consolidate")}</p>}
       </div>
       {details.omitted_events.length ? (
         <details className="memory-review-omitted">
-          <summary>其他记录</summary>
+          <summary>{tr("memoryview.other_records")}</summary>
           {details.omitted_events.map((event) => (
             <div key={event.id}>
               <code>#{event.seq}</code>
@@ -435,31 +436,31 @@ function EmptyMemoryState({ icon, filtered }: { icon: "memory" | "review"; filte
   return (
     <div className="memory-empty-state">
       {icon === "review" ? <CheckCircle2 size={20} /> : <Database size={20} />}
-      <strong>{icon === "review" ? filtered ? "没有匹配的对话" : "没有待确认来源" : filtered ? "没有匹配的记忆" : "还没有记忆"}</strong>
+      <strong>{icon === "review" ? filtered ? tr("memoryview.no_matching_conversations") : tr("memoryview.no_sources_awaiting_confirmation") : filtered ? tr("memoryview.no_matching_memories") : tr("memoryview.no_memories_yet")}</strong>
     </div>
   );
 }
 
 function categoryLabel(category: string) {
   return {
-    fact: "事实",
-    decision: "决策",
-    constraint: "约束",
-    correction: "修正",
-    preference: "偏好",
-    action: "行动",
-    pattern: "模式",
-    artifact: "产物",
-    question: "问题",
-  }[category] ?? "项目";
+    fact: tr("memoryview.fact"),
+    decision: tr("memoryview.decision"),
+    constraint: tr("memoryview.constraint"),
+    correction: tr("memoryview.correction"),
+    preference: tr("memoryview.preference"),
+    action: tr("memoryview.action"),
+    pattern: tr("memoryview.pattern"),
+    artifact: tr("memoryview.artifact"),
+    question: tr("memoryview.issue"),
+  }[category] ?? tr("memoryview.project");
 }
 
 function reviewEventLabel(type: string, metadata: Record<string, unknown>) {
-  if (type === "human") return "用户消息";
-  if (type === "ai") return "助手消息";
+  if (type === "human") return tr("memoryview.user_message");
+  if (type === "ai") return tr("memoryview.assistant_message");
   if (type === "tool_event") {
-    const name = typeof metadata.name === "string" ? metadata.name : "工具调用";
-    return `工具 · ${name}`;
+    const name = typeof metadata.name === "string" ? metadata.name : tr("memoryview.tool_call");
+    return tr("memoryview.tool_value", { p0: name });
   }
   return type.replaceAll("_", " ");
 }
@@ -470,7 +471,7 @@ function formatReviewValue(value: unknown) {
 }
 
 function spaceLabel(space: MemoryOverviewEntry["space"] | MemoryReviewSource["space"]) {
-  return space === "productivity" ? "开发空间" : space === "non_productivity" ? "对话空间" : "全局";
+  return space === "productivity" ? tr("memoryview.development_space") : space === "non_productivity" ? tr("memoryview.chat_space") : tr("memoryview.global");
 }
 
 function formatRelativeTime(value: string | null) {
@@ -478,17 +479,17 @@ function formatRelativeTime(value: string | null) {
   const timestamp = Date.parse(value);
   if (Number.isNaN(timestamp)) return "—";
   const elapsedMinutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60_000));
-  if (elapsedMinutes < 1) return "刚刚";
-  if (elapsedMinutes < 60) return `${elapsedMinutes} 分钟前`;
+  if (elapsedMinutes < 1) return tr("memoryview.just_now");
+  if (elapsedMinutes < 60) return getLanguage() === "en" ? relativeTime(elapsedMinutes, "minute") : tr("memoryview.value_minutes_ago", { p0: elapsedMinutes });
   const elapsedHours = Math.floor(elapsedMinutes / 60);
-  if (elapsedHours < 24) return `${elapsedHours} 小时前`;
-  return `${Math.floor(elapsedHours / 24)} 天前`;
+  if (elapsedHours < 24) return getLanguage() === "en" ? relativeTime(elapsedHours, "hour") : tr("memoryview.value_hours_ago", { p0: elapsedHours });
+  return getLanguage() === "en" ? relativeTime(Math.floor(elapsedHours / 24), "day") : tr("memoryview.value_days_ago", { p0: Math.floor(elapsedHours / 24) });
 }
 
 function formatDateTime(value: string) {
   const timestamp = Date.parse(value);
   if (Number.isNaN(timestamp)) return "—";
-  return new Intl.DateTimeFormat("zh-CN", {
+  return new Intl.DateTimeFormat(getLanguage(), {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",

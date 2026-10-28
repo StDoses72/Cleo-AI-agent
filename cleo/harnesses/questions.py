@@ -9,19 +9,20 @@ import secrets
 from typing import Any
 
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
+from cleo.i18n import tr
 
 
 def normalize_questions(raw: Any, *, claude: bool = False) -> list[dict[str, Any]]:
     if not isinstance(raw, list) or not 1 <= len(raw) <= 12:
-        raise ValueError("提问需要包含 1 至 12 个问题。")
+        raise ValueError(tr("questions.a_question_request_must_contain_1_12_questions"))
     questions = []
     ids = set()
     for index, item in enumerate(raw):
         if not isinstance(item, dict) or not isinstance(item.get("question"), str):
-            raise ValueError("问题格式无效。")
+            raise ValueError(tr("questions.invalid_question_format"))
         identifier = str(index) if claude else str(item.get("id") or index)
         if identifier in ids or not item["question"].strip() or len(item["question"]) > 16000:
-            raise ValueError("问题标识重复或正文无效。")
+            raise ValueError(tr("questions.duplicate_question_id_or_invalid_question_text"))
         ids.add(identifier)
         options = item.get("options") or []
         if (
@@ -36,7 +37,7 @@ def normalize_questions(raw: Any, *, claude: bool = False) -> list[dict[str, Any
                 for option in options
             )
         ):
-            raise ValueError("问题选项格式无效。")
+            raise ValueError(tr("questions.invalid_question_options"))
         questions.append(
             {
                 "id": identifier,
@@ -51,7 +52,7 @@ def normalize_questions(raw: Any, *, claude: bool = False) -> list[dict[str, Any
             }
         )
     if len(json.dumps(questions, ensure_ascii=False).encode()) > 256 * 1024:
-        raise ValueError("提问内容过长，请拆分后重新询问。")
+        raise ValueError(tr("questions.the_question_content_is_too_long_split_it_into_s"))
     return questions
 
 
@@ -81,7 +82,7 @@ class QuestionBroker:
             value = {
                 **value,
                 "answers": {
-                    key: ["（已隐藏）"] if key in secret else answer
+                    key: [tr("questions.hidden")] if key in secret else answer
                     for key, answer in value["answers"].items()
                 },
             }
@@ -123,18 +124,18 @@ class QuestionBroker:
 
     async def resolve(self, identifier: str, answers: dict[str, list[str]]) -> dict:
         if identifier in self.submitting:
-            raise ValueError("答案正在提交，请勿重复提交。")
+            raise ValueError(tr("questions.answers_are_being_submitted_do_not_submit_them_a"))
         receipt = self.receipts.get(identifier)
         if receipt is not None:
             if receipt["answers"] != answers:
-                raise ValueError("此问题已提交其他答案。")
+                raise ValueError(tr("questions.different_answers_were_already_submitted_for_thi"))
             return receipt
         pending = self.pending.get(identifier)
         if pending is None or pending[1].done():
-            raise ValueError("问题已结束或连接已失效，请让 Agent 重新提问。")
+            raise ValueError(tr("questions.the_question_ended_or_the_connection_expired_ask"))
         request, future = pending
         if not isinstance(answers, dict) or set(answers) != {q["id"] for q in request["questions"]}:
-            raise ValueError("请回答每一个问题。")
+            raise ValueError(tr("questions.answer_every_question"))
         for question in request["questions"]:
             values = answers[question["id"]]
             if (
@@ -144,16 +145,16 @@ class QuestionBroker:
                 or (not question["multiple"] and len(values) != 1)
                 or any(not isinstance(v, str) or not v.strip() or len(v) > 16000 for v in values)
             ):
-                raise ValueError("答案格式无效，请检查选择或输入的文字。")
+                raise ValueError(tr("questions.invalid_answer_format_check_your_selections_or_t"))
         if sum(len(value) for values in answers.values() for value in values) > 65536:
-            raise ValueError("答案总长度不能超过 65,536 字符。")
+            raise ValueError(tr("questions.total_answer_length_cannot_exceed_65_536_charact"))
         receipt = {"id": identifier, "status": "answered", "answers": answers}
         # Persist/display the answer before releasing the waiting agent. Failure remains retryable.
         self.submitting.add(identifier)
         try:
             await self._emit("question_response", receipt)
             if future.done():
-                raise ValueError("提交时问题已取消，请查看任务状态。")
+                raise ValueError(tr("questions.the_question_was_cancelled_during_submission_che"))
             self.receipts[identifier] = receipt
             future.set_result(answers)
         finally:

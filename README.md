@@ -6,7 +6,7 @@ Cleo is a local-first AI workspace that brings general chat, developer agents, r
 
 The project supports native desktop builds for Windows, macOS and Linux, backed by a local Python service, plus a stdio MCP entry point. User data stays on the local device by default; inference is provided by the API provider or external agent harness selected by the user.
 
-> Current version: [v0.10.3](https://github.com/StDoses72/Cleo-AI-agent/releases/tag/v0.10.3) · [Download the desktop app](https://stdoses72.github.io/Cleo-AI-agent/)
+> Current version: [v0.11.0](https://github.com/StDoses72/Cleo-AI-agent/releases/tag/v0.11.0) · [Download the desktop app](https://stdoses72.github.io/Cleo-AI-agent/)
 
 Codex development conversations toggle Fast mode with the lightning button on the runtime pill's card, saved per conversation. Fast mode consumes more credits; availability depends on the model and account, and the button is hidden where it is unsupported.
 
@@ -99,6 +99,8 @@ Linux and macOS use the same Python package and JSON formats. See [platform supp
 ## Common workflows
 
 ### Desktop
+
+- **Interface language**: choose **Settings → Appearance → Language** (`设置 → 外观 → 语言`) and select **简体中文** or **English**. The explicit choice is saved as `ui_language` in the configured runtime state file (normally `data/runtime.json`) and survives restarts and upgrades. The operating system language does not change it. Switching preserves active tasks and drafts; conversation content, project names, and model replies are not translated.
 
 - **System tray**: closing the main window keeps Cleo running in the Windows tray or macOS menu bar; Linux requires a desktop environment with tray support. Use the tray menu to reopen Cleo, open memory management, or explicitly quit.
 - **Background memory**: enable it in Settings → Models → Memory consolidation. It is off by default; manual consolidation remains available while it is off. Once enabled, consolidation starts every 30 minutes or when 5 eligible sessions are waiting, whichever comes first. Both thresholds are adjustable. Foreground conversations take priority; errors and pending sources remain visible in memory management. Explicitly quitting stops background consolidation without starting a separate worker; saved checkpoints allow it to resume when Cleo next runs with automatic consolidation enabled and a trigger is met. Consolidation uses the selected memory model and may incur provider charges.

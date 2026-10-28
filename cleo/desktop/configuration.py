@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from cleo.config.settings import ActiveProfiles, AgentProfile
+from cleo.i18n import tr
 
 _PROFILE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 
@@ -50,7 +51,7 @@ def save_model_profile(config_path: Path | str, profile: dict[str, Any]) -> dict
     raw = _read_config(path)
     name = str(profile.get("name") or "").strip()
     if not _PROFILE_NAME.fullmatch(name):
-        raise ValueError("Profile 名称只能包含字母、数字、下划线和连字符，且最长 64 位。")
+        raise ValueError(tr("configuration.profile_names_can_contain_only_letters_digits_un"))
 
     agents = raw.setdefault("profiles", {}).setdefault("agents", {})
     existing = agents.get(name) if isinstance(agents.get(name), dict) else {}
@@ -59,7 +60,7 @@ def save_model_profile(config_path: Path | str, profile: dict[str, Any]) -> dict
     if backend != "api":
         api_key = ""
     if backend == "api" and not api_key:
-        raise ValueError("新增模型 Profile 时必须提供 API Key。")
+        raise ValueError(tr("configuration.an_api_key_is_required_when_adding_a_model_profi"))
 
     candidate = {
         "provider": str(profile.get("provider") or "").strip(),
@@ -117,7 +118,7 @@ def save_dream_settings(
         profile = AgentProfile.model_validate(raw["profiles"]["agents"][selection])
         selected_model = model or profile.model
         if selected_model not in profile.available_models:
-            raise ValueError("模型不属于所选连接。")
+            raise ValueError(tr("configuration.the_model_does_not_belong_to_the_selected_connec"))
         active["dream_model"] = selected_model
     _atomic_write(path, raw)
     return read_model_settings(path)
@@ -142,12 +143,18 @@ def save_background_memory_settings(
     interval_minutes: int | None = None, pending_threshold: int | None = None,
 ) -> dict[str, Any]:
     if type(enabled) is not bool:
-        raise ValueError("后台整理开关必须为布尔值。")
+        raise ValueError(tr("configuration.the_background_consolidation_setting_must_be_a_b"))
     for value, maximum, label in (
-        (interval_minutes, 1440, "整理间隔"), (pending_threshold, 1000, "待整理数量"),
+        (interval_minutes, 1440, tr(
+            "configuration.consolidation_interval",
+        )), (pending_threshold, 1000, tr("configuration.pending_count")),
     ):
         if value is not None and (type(value) is not int or not 1 <= value <= maximum):
-            raise ValueError(f"{label}必须为 1–{maximum} 的整数。")
+            raise ValueError(tr(
+                "configuration.value_must_be_an_integer_from_1_to_value",
+                p0=label,
+                p1=maximum,
+            ))
     path = Path(config_path).expanduser().resolve()
     raw = _read_config(path)
     active = raw.setdefault("active_profiles", {})
@@ -169,7 +176,7 @@ def create_model_connection(config_path: Path | str, connection: dict[str, Any])
     if not isinstance(models, list) or not models or any(
         not isinstance(value, str) or not value.strip() for value in models
     ):
-        raise ValueError("请至少选择或填写一个模型。")
+        raise ValueError(tr("configuration.select_or_enter_at_least_one_model"))
     models = list(dict.fromkeys(value.strip() for value in models))
     profile = AgentProfile(
         backend=connection.get("backend", "api"), provider=connection["provider"],
@@ -179,7 +186,7 @@ def create_model_connection(config_path: Path | str, connection: dict[str, Any])
     )
     identifier = f"connection_{secrets.token_hex(8)}"
     if identifier in agents:
-        raise ValueError("连接编号冲突，请重试。")
+        raise ValueError(tr("configuration.connection_id_collision_try_again"))
     agents[identifier] = {
         **profile.model_dump(mode="json", exclude={"api_key"}),
         "api_key": profile.api_key.get_secret_value(),
@@ -193,10 +200,10 @@ def select_chat_model(config_path: Path | str, profile_id: str, model: str) -> d
     raw = _read_config(path)
     agents = raw["profiles"]["agents"]
     if profile_id not in agents:
-        raise ValueError("模型连接不存在。")
+        raise ValueError(tr("configuration.model_connection_not_found"))
     profile = AgentProfile.model_validate(agents[profile_id])
     if model not in profile.available_models:
-        raise ValueError("模型不属于所选连接。")
+        raise ValueError(tr("configuration.the_model_does_not_belong_to_the_selected_connec"))
     active = raw["active_profiles"]
     if active.get("dream_agent") == profile_id and not active.get("dream_model"):
         active["dream_model"] = profile.model
@@ -212,7 +219,7 @@ def rename_model_connection(config_path: Path | str, profile_id: str, label: str
     raw = _read_config(path)
     agents = raw["profiles"]["agents"]
     if profile_id not in agents:
-        raise ValueError("模型连接不存在。")
+        raise ValueError(tr("configuration.model_connection_not_found"))
     agents[profile_id]["display_name"] = _connection_label(label, agents, profile_id)
     _atomic_write(path, raw)
     return read_model_settings(path)
@@ -223,9 +230,9 @@ def remove_model_connection(config_path: Path | str, profile_id: str) -> dict[st
     raw = _read_config(path)
     active = raw["active_profiles"]
     if profile_id in {active.get("agent"), active.get("dream_agent")}:
-        raise ValueError("这个连接正在被使用。切换所用模型后，才可移除。")
+        raise ValueError(tr("configuration.this_connection_is_in_use_switch_to_another_mode"))
     if profile_id not in raw["profiles"]["agents"]:
-        raise ValueError("模型连接不存在。")
+        raise ValueError(tr("configuration.model_connection_not_found"))
     del raw["profiles"]["agents"][profile_id]
     _atomic_write(path, raw)
     return read_model_settings(path)
@@ -234,12 +241,12 @@ def remove_model_connection(config_path: Path | str, profile_id: str) -> dict[st
 def _connection_label(value: Any, agents: dict, exclude: str | None = None) -> str:
     label = str(value or "").strip()
     if not label or len(label) > 80:
-        raise ValueError("连接名称需要 1–80 个字符。")
+        raise ValueError(tr("configuration.connection_names_must_contain_1_80_characters"))
     if any(
         str(profile.get("display_name") or name).casefold() == label.casefold()
         for name, profile in agents.items() if name != exclude
     ):
-        raise ValueError("这个连接名称已被使用。")
+        raise ValueError(tr("configuration.this_connection_name_is_already_in_use"))
     return label
 
 
@@ -248,7 +255,7 @@ def _read_config(config_path: Path | str) -> dict[str, Any]:
     with path.open(encoding="utf-8") as handle:
         raw = json.load(handle)
     if not isinstance(raw, dict):
-        raise ValueError("Cleo 配置必须是 JSON object。")
+        raise ValueError(tr("configuration.cleo_configuration_must_be_a_json_object"))
     return raw
 
 

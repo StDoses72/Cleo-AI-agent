@@ -1,3 +1,4 @@
+import { t as tr } from "./i18n.mjs";
 /** An unchanged build still needs acceptance against the version already running. */
 export function compareBuiltVersion(evolution, acceptance, candidate) {
   return evolution.operation("comparing", async () => {
@@ -35,6 +36,6 @@ export async function runPreparedEvolutionTurn({ evolution, requests, acceptance
  */
 export async function runEvolutionTurn({ evolution, backend, params, onEvent }) {
   await evolution.begin();
-  await evolution.recordValidation({ status: "pending", message: "可以继续补充需求；准备体验时点击检查改动。" });
+  await evolution.recordValidation({ status: "pending", message: tr("evolution_editing.you_can_add_more_requirements_click_check_changes_when_you_are_ready_to_try_them") });
   return backend.request("stream_turn", params, onEvent);
 }

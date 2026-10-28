@@ -1,3 +1,4 @@
+import { t as tr } from "../../../electron/i18n.mjs";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, ChevronRight, Layers, Moon, MoreHorizontal, Pause, SlidersHorizontal } from "lucide-react";
 import { cleoClient } from "../../services/cleoClient";
@@ -13,7 +14,7 @@ export type ModelsPage = "current" | "add" | "dream";
 const dreamChoice = (settings: ModelSettings) => ({ mode: settings.dreamEnabled === false ? "off" : settings.activeDreamAgent ? "fixed" : "follow", profileId: settings.activeDreamAgent, model: settings.activeDreamModel || settings.profiles.find(p => p.name === settings.activeDreamAgent)?.model || "" });
 
 function Summary({ profile, model, children }: { profile?: ModelProfileSummary; model?: string; children?: ReactNode }) {
-  return <div className="ms-summary"><span className="ms-mark large">{profile ? providerInfo(profile).mark : "·"}</span><div><strong>{model ? modelLabel(model) : "选择一个模型"}</strong><div className="ms-meta">{profile && <>{profileLabel(profile)}<span>· {billingLabel(profile)}</span></>}</div></div>{children}</div>;
+  return <div className="ms-summary"><span className="ms-mark large">{profile ? providerInfo(profile).mark : "·"}</span><div><strong>{model ? modelLabel(model) : tr("modelsettingspanel.select_a_model")}</strong><div className="ms-meta">{profile && <>{profileLabel(profile)}<span>· {billingLabel(profile)}</span></>}</div></div>{children}</div>;
 }
 
 export function ModelSettingsPanel({ page, settings, busy, activeProfileId, onApply, onNavigate, loadError, onRetry, active = true }: {
@@ -37,7 +38,7 @@ export function ModelSettingsPanel({ page, settings, busy, activeProfileId, onAp
   useEffect(() => { setError(""); if (page === "add") setWizardOpen(true); }, [page]);
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(""), 3000); return () => clearTimeout(timer); }, [notice]);
   if (!settings) return <div className="model-settings ms-loading" role={loadError ? "alert" : "status"}>
-    {loadError || "正在读取模型配置…"}{loadError && <button className="ms-link" onClick={onRetry} disabled={busy}>重试</button>}
+    {loadError || tr("modelsettingspanel.loading_model_configuration")}{loadError && <button className="ms-link" onClick={onRetry} disabled={busy}>{tr("app.retry")}</button>}
   </div>;
   const chat = settings.profiles.find(p => p.name === settings.activeAgent);
   const detail = settings.profiles.find(p => p.name === details);
@@ -49,52 +50,52 @@ export function ModelSettingsPanel({ page, settings, busy, activeProfileId, onAp
     setError("");
     if (picker?.target === "dream") { setDraft({ mode: "fixed", ...choice }); setPicker(null); return; }
     changingModel.current = true;
-    try { await onApply(() => cleoClient.selectChatModel(choice.profileId, choice.model)); setPicker(null); setNotice("新对话默认模型已更新"); }
-    catch (error) { setError(error instanceof Error ? error.message : "切换失败。"); }
+    try { await onApply(() => cleoClient.selectChatModel(choice.profileId, choice.model)); setPicker(null); setNotice(tr("modelsettingspanel.default_model_for_new_chats_updated")); }
+    catch (error) { setError(error instanceof Error ? error.message : tr("modelsettingspanel.switch_failed")); }
     finally { changingModel.current = false; }
   };
   const saveDream = async () => {
     setError("");
     try {
-      if (draft.mode === "fixed" && !draft.profileId) throw new Error("请选择记忆整理模型。");
+      if (draft.mode === "fixed" && !draft.profileId) throw new Error(tr("modelsettingspanel.select_a_memory_consolidation_model"));
       await onApply(() => cleoClient.saveDreamSettings(draft.mode === "follow" ? "mode:follow" : draft.mode === "off" ? "mode:disabled" : draft.profileId, draft.mode === "fixed" ? draft.model : undefined));
-      setNotice("记忆整理设置已保存");
-    } catch (error) { setError(error instanceof Error ? error.message : "保存失败。"); }
+      setNotice(tr("modelsettingspanel.memory_consolidation_settings_saved"));
+    } catch (error) { setError(error instanceof Error ? error.message : tr("connectiondetails.save_failed")); }
   };
   return <div className="model-settings" data-testid="model-settings">
     {loadError && <p className="ms-error" role="alert">{loadError}
-      <button className="ms-link" onClick={onRetry} disabled={busy}>重试</button></p>}
+      <button className="ms-link" onClick={onRetry} disabled={busy}>{tr("app.retry")}</button></p>}
     {page === "current" && <>
-      <div className="ms-section-label">新对话默认模型</div>
-      <Summary profile={chat} model={chat?.model}><button className="ms-secondary" disabled={busy} onClick={() => setPicker({ target: "chat" })}>切换模型<ChevronRight /></button></Summary>
-      <div className="ms-section-heading"><h3>已添加连接<span>{settings.profiles.length}</span></h3></div>
+      <div className="ms-section-label">{tr("modelsettingspanel.default_model_for_new_chats")}</div>
+      <Summary profile={chat} model={chat?.model}><button className="ms-secondary" disabled={busy} onClick={() => setPicker({ target: "chat" })}>{tr("modelsettingspanel.switch_model")}<ChevronRight /></button></Summary>
+      <div className="ms-section-heading"><h3>{tr("modelsettingspanel.added_connections")}<span>{settings.profiles.length}</span></h3></div>
       <div className="ms-connections">{settings.profiles.map(profile => {
         const status = statuses[profile.name];
-        const role = settings.activeAgent === profile.name ? "对话默认" : settings.activeDreamAgent === profile.name ? "记忆整理" : activeProfileId === profile.name ? "当前对话" : "";
+        const role = settings.activeAgent === profile.name ? tr("modelsettingspanel.chat_default") : settings.activeDreamAgent === profile.name ? tr("modelsettingspanel.memory_consolidation") : activeProfileId === profile.name ? tr("modelsettingspanel.current_conversation") : "";
         return <div className="ms-connection-row" key={profile.name}>
-          <span className="ms-mark">{providerInfo(profile).mark}</span><div className="ms-connection-body"><strong>{profileLabel(profile)}{role && <span className="ms-role">{role}</span>}</strong><div className="ms-meta">{billingLabel(profile)}<span>· {profileModels(profile).length} 个模型</span></div></div>
-          <span className={`ms-connection-status ${status?.state || ""}`}>{status?.state === "connected" ? (isAccount(profile) ? "客户端检查通过" : "已验证") : status?.state === "error" ? "需要检查" : status?.state === "checking" ? "验证中…" : "已配置"}</span>
-          {role !== "对话默认" && status?.state !== "error" && <button className="ms-quiet" disabled={busy} onClick={() => setPicker({ target: "chat", connection: profile.name })}>设为默认</button>}
-          <button className="ms-icon" aria-label={`管理 ${profileLabel(profile)}`} title="管理连接" onClick={() => setDetails(profile.name)}><MoreHorizontal /></button>
+          <span className="ms-mark">{providerInfo(profile).mark}</span><div className="ms-connection-body"><strong>{profileLabel(profile)}{role && <span className="ms-role">{role}</span>}</strong><div className="ms-meta">{billingLabel(profile)}<span>· {profileModels(profile).length} {tr("modelsettingspanel.models")}</span></div></div>
+          <span className={`ms-connection-status ${status?.state || ""}`}>{status?.state === "connected" ? (isAccount(profile) ? tr("connectiondetails.client_checks_passed") : tr("connectiondetails.verified")) : status?.state === "error" ? tr("connectiondetails.needs_checking") : status?.state === "checking" ? tr("connectiondetails.verifying") : tr("connectiondetails.configured")}</span>
+          {role !== "对话默认" && status?.state !== "error" && <button className="ms-quiet" disabled={busy} onClick={() => setPicker({ target: "chat", connection: profile.name })}>{tr("modelsettingspanel.set_as_default")}</button>}
+          <button className="ms-icon" aria-label={tr("modelsettingspanel.manage_value", { p0: profileLabel(profile) })} title={tr("modelsettingspanel.manage_connections")} onClick={() => setDetails(profile.name)}><MoreHorizontal /></button>
         </div>;
       })}</div>
-      <div className="ms-dream-link"><Moon /><div><strong>记忆整理</strong><div className="ms-meta">{settings.dreamEnabled === false ? "自动整理已暂停" : settings.activeDreamAgent ? `${profileLabel(savedDream!)} · ${modelLabel(settings.activeDreamModel || savedDream!.model)}` : `跟随对话 · ${modelLabel(chat?.model || "default")}`}</div></div><button className="ms-quiet" onClick={() => onNavigate("dream")}>设置记忆整理<ChevronRight /></button></div>
+      <div className="ms-dream-link"><Moon /><div><strong>{tr("modelsettingspanel.memory_consolidation")}</strong><div className="ms-meta">{settings.dreamEnabled === false ? tr("modelsettingspanel.automatic_consolidation_paused") : settings.activeDreamAgent ? `${profileLabel(savedDream!)} · ${modelLabel(settings.activeDreamModel || savedDream!.model)}` : tr("modelsettingspanel.follow_chat_model_value", { p0: modelLabel(chat?.model || "default") })}</div></div><button className="ms-quiet" onClick={() => onNavigate("dream")}>{tr("modelsettingspanel.configure_memory_consolidation")}<ChevronRight /></button></div>
     </>}
-    {wizardOpen && <div hidden={page !== "add"}><ConnectionWizard key={reconnect?.name || "new"} active={active && page === "add"} existing={reconnect} settings={settings} busy={busy} onApply={onApply} onDone={() => { setNotice(reconnect ? "连接已更新" : "连接已添加"); setReconnect(null); setWizardOpen(false); onNavigate("current"); }} /></div>}
+    {wizardOpen && <div hidden={page !== "add"}><ConnectionWizard key={reconnect?.name || "new"} active={active && page === "add"} existing={reconnect} settings={settings} busy={busy} onApply={onApply} onDone={() => { setNotice(reconnect ? tr("modelsettingspanel.connection_updated") : tr("modelsettingspanel.connection_added")); setReconnect(null); setWizardOpen(false); onNavigate("current"); }} /></div>}
     {page === "dream" && <>
-      <div className="ms-section-label">模型使用方式</div>
-      <div className="ms-dream-options" role="radiogroup" aria-label="记忆整理模型使用方式">{([
-        ["follow", "跟随对话", "使用来源会话的模型", Layers],
-        ["fixed", "独立模型", "单独指定记忆整理使用的模型", SlidersHorizontal],
-        ["off", "关闭自动整理", "保留会话记录，暂停自动整理", Pause],
-      ] as const).map(([mode, label, description, Icon]) => <button key={mode} role="radio" aria-checked={draft.mode === mode} className={draft.mode === mode ? "selected" : ""} disabled={busy} onClick={() => setDraft({ ...draft, mode })}><i className="ms-radio" /><span><strong>{label}{mode === "follow" && <em>默认</em>}</strong><small>{description}</small></span><Icon /></button>)}</div>
-      {draft.mode === "fixed" && <div className="ms-dream-preview"><div className="ms-section-label">记忆整理模型</div><Summary profile={fixedDream} model={draft.model}><button className="ms-secondary" disabled={busy} onClick={() => setPicker({ target: "dream" })}>选择模型</button></Summary></div>}
-      {changed && <div className="ms-save-footer"><span>有未保存的更改</span><button className="ms-quiet" disabled={busy} onClick={() => setDraft(dreamChoice(settings))}>取消更改</button><button className="ms-primary" disabled={busy} onClick={() => void saveDream()}>{busy ? "处理中…" : "保存设置"}</button></div>}
+      <div className="ms-section-label">{tr("modelsettingspanel.model_selection_mode")}</div>
+      <div className="ms-dream-options" role="radiogroup" aria-label={tr("modelsettingspanel.memory_model_selection_mode")}>{([
+        ["follow", tr("modelsettingspanel.follow_chat_model"), tr("modelsettingspanel.use_the_source_conversation_s_model"), Layers],
+        ["fixed", tr("modelsettingspanel.separate_model"), tr("modelsettingspanel.choose_a_dedicated_model_for_memory_consolidation"), SlidersHorizontal],
+        ["off", tr("modelsettingspanel.disable_automatic_consolidation"), tr("modelsettingspanel.keep_conversation_records_and_pause_automatic_consolidation"), Pause],
+      ] as const).map(([mode, label, description, Icon]) => <button key={mode} role="radio" aria-checked={draft.mode === mode} className={draft.mode === mode ? "selected" : ""} disabled={busy} onClick={() => setDraft({ ...draft, mode })}><i className="ms-radio" /><span><strong>{label}{mode === "follow" && <em>{tr("modelsettingspanel.default")}</em>}</strong><small>{description}</small></span><Icon /></button>)}</div>
+      {draft.mode === "fixed" && <div className="ms-dream-preview"><div className="ms-section-label">{tr("modelsettingspanel.memory_consolidation_model")}</div><Summary profile={fixedDream} model={draft.model}><button className="ms-secondary" disabled={busy} onClick={() => setPicker({ target: "dream" })}>{tr("connectionwizard.choose_model")}</button></Summary></div>}
+      {changed && <div className="ms-save-footer"><span>{tr("modelsettingspanel.unsaved_changes")}</span><button className="ms-quiet" disabled={busy} onClick={() => setDraft(dreamChoice(settings))}>{tr("backgroundmemorysettingspanel.discard_changes")}</button><button className="ms-primary" disabled={busy} onClick={() => void saveDream()}>{busy ? tr("dependencysetup.working") : tr("modelsettingspanel.save_settings")}</button></div>}
       <BackgroundMemorySettingsPanel active={active} busy={busy} dreamEnabled={settings.dreamEnabled !== false} />
     </>}
     {error && !picker && <p className="ms-error" role="alert">{error}</p>}
     {notice && <div className="ms-notice" role="status"><Check />{notice}</div>}
-    {active && picker && <ModelPicker title={picker.target === "chat" ? "选择对话默认模型" : "选择记忆整理模型"} profiles={settings.profiles.filter(p => !picker.connection || p.name === picker.connection)} selected={picker.target === "chat" ? { profileId: picker.connection || settings.activeAgent, model: settings.profiles.find(p => p.name === (picker.connection || settings.activeAgent))!.model } : draft.profileId ? draft : null} busy={busy} error={error} onSelect={choice => void changeModel(choice)} onClose={() => { setPicker(null); setError(""); }} />}
+    {active && picker && <ModelPicker title={picker.target === "chat" ? tr("modelsettingspanel.choose_the_default_chat_model") : tr("modelsettingspanel.choose_memory_consolidation_model")} profiles={settings.profiles.filter(p => !picker.connection || p.name === picker.connection)} selected={picker.target === "chat" ? { profileId: picker.connection || settings.activeAgent, model: settings.profiles.find(p => p.name === (picker.connection || settings.activeAgent))!.model } : draft.profileId ? draft : null} busy={busy} error={error} onSelect={choice => void changeModel(choice)} onClose={() => { setPicker(null); setError(""); }} />}
     {active && detail && <ConnectionDetails key={detail.name} profile={detail} settings={settings} busy={busy} activeProfileId={activeProfileId} status={statuses[detail.name]} onStatus={status => setStatuses(current => ({ ...current, [detail.name]: status }))} onApply={onApply} onClose={() => setDetails(null)} onReconnect={() => { setReconnect(detail); setDetails(null); onNavigate("add"); }} />}
   </div>;
 }

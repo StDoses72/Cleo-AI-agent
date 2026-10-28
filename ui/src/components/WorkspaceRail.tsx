@@ -1,3 +1,4 @@
+import { t as tr } from "../../electron/i18n.mjs";
 import { Brain, Code2, GitBranch, MessageCircle, Settings2 } from "lucide-react";
 import type { WorkspaceSpace } from "../types";
 
@@ -10,10 +11,10 @@ interface WorkspaceRailProps {
 }
 
 const spaces = [
-  { id: "chat" as const, label: "对话", icon: MessageCircle },
-  { id: "productivity" as const, label: "开发", icon: Code2 },
-  { id: "evolution" as const, label: "进化", icon: GitBranch },
-  { id: "memory" as const, label: "记忆", icon: Brain },
+  { id: "chat" as const, get label() { return tr("app.chat"); }, icon: MessageCircle },
+  { id: "productivity" as const, get label() { return tr("app.development"); }, icon: Code2 },
+  { id: "evolution" as const, get label() { return tr("app.evolution"); }, icon: GitBranch },
+  { id: "memory" as const, get label() { return tr("app.memory"); }, icon: Brain },
 ];
 
 export function WorkspaceRail({
@@ -23,7 +24,7 @@ export function WorkspaceRail({
   onOpenSettings,
 }: WorkspaceRailProps) {
   return (
-    <nav className="workspace-rail" aria-label="工作区">
+    <nav className="workspace-rail" aria-label={tr("inspector.workspace")}>
       <div className="brand-mark" role="img" aria-label="Cleo" />
       <div className="rail-spaces">
         {spaces.map(({ id, label, icon: Icon }) => (
@@ -31,8 +32,8 @@ export function WorkspaceRail({
             className={`rail-button ${activeSpace === id ? "active" : ""}`}
             key={id}
             type="button"
-            aria-label={unreadSpaces?.has(id) ? `${label}（有未读回复）` : label}
-            title={unreadSpaces?.has(id) ? `${label} · 有未读回复` : label}
+            aria-label={unreadSpaces?.has(id) ? tr("workspacerail.value_unread_replies", { p0: label }) : label}
+            title={unreadSpaces?.has(id) ? tr("workspacerail.value_unread_replies_2", { p0: label }) : label}
             data-unread={unreadSpaces?.has(id) ? "true" : undefined}
             onClick={() => onSelectSpace(id)}
           >
@@ -44,8 +45,8 @@ export function WorkspaceRail({
         <button
           className="rail-button"
           type="button"
-          aria-label="设置"
-          title="设置"
+          aria-label={tr("overlays.settings")}
+          title={tr("overlays.settings")}
           onClick={onOpenSettings}
         >
           <Settings2 size={18} strokeWidth={1.8} />

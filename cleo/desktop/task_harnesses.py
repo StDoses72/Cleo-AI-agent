@@ -10,6 +10,7 @@ from cleo.config.settings import (
     ProductivityProviderSettings,
     ProductivitySettings,
 )
+from cleo.i18n import tr
 
 
 def task_providers(settings: ProductivitySettings) -> dict[str, ProductivityProviderSettings]:
@@ -50,7 +51,7 @@ def register_task_provider(path: Path, name: str, provider: ProductivityProvider
         if not current.providers[name].enabled:
             raise ValueError(f"Harness {name!r} is disabled in configuration.")
         if current.providers[name] != provider:
-            raise ValueError("Harness 配置已变化，请重新打开 Cleo 后再创建任务。")
+            raise ValueError(tr("task_harnesses.harness_configuration_changed_reopen_cleo_before"))
         return
     providers = raw.setdefault("providers", {
         key: value.model_dump(mode="json") for key, value in current.providers.items()

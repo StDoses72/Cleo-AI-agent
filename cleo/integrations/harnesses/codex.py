@@ -46,6 +46,7 @@ from cleo.harnesses.control import (
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 from cleo.harnesses.provider import NativeSessionNotFoundError, ProviderSession, ProviderTurn
 from cleo.harnesses.rewind import locate_turn
+from cleo.i18n import tr
 from cleo.integrations import codex_sandbox_credentials
 from cleo.integrations.codex_home import isolated_codex_config
 from cleo.integrations.harnesses.codex_approvals import CodexApprovalBroker
@@ -400,7 +401,7 @@ class CodexProvider:
         """
         runtime = self._sessions[session_id]
         if service_tier is not None and service_tier not in {"default", "fast"}:
-            raise ValueError("不支持的 Codex 速度档位。")
+            raise ValueError(tr("codex.unsupported_codex_speed_tier"))
         if effort is not None:
             ReasoningEffort(effort)
         if approval_mode is not None:
@@ -444,7 +445,7 @@ class CodexProvider:
         if before.config_overrides == after.config_overrides:
             return
         if runtime.active_turn is not None:
-            raise ValueError("请等待当前运行结束后再更改权限。")
+            raise ValueError(tr("codex.wait_for_the_current_run_to_finish_before_changi"))
         broker = CodexApprovalBroker(self.name)
         client = self._client_with_approvals(
             broker, context=runtime.context_binding, legacy=runtime.legacy_home,
@@ -503,12 +504,14 @@ class CodexProvider:
     async def steer(self, session_id: str, text: str, expected_turn_id: str) -> None:
         turn = self._sessions[session_id].active_turn
         if turn is None or turn.id != expected_turn_id:
-            raise SteerRejected("目标运行已结束，指令未投递。")
+            raise SteerRejected(tr("service.the_target_run_ended_the_instruction_was_not_del"))
         try:
             response = await turn.steer(text)
         except JsonRpcError as error:
             if error.code == -32601:
-                raise SteerRejected("当前 Codex 客户端不支持运行中引导。") from error
+                raise SteerRejected(tr(
+                    "codex.this_codex_client_does_not_support_steering_duri",
+                )) from error
             if error.code == -32602 or (
                 error.code == -32600 and any(part in error.message.lower() for part in (
                     "no active turn", "expected turn", "turn id mismatch", "turn_id mismatch",
@@ -539,19 +542,25 @@ class CodexProvider:
         rules = (response.requirements.model_dump(mode="json", by_alias=True)
                  if response.requirements is not None else {})
         support = {"access": {}, "approval": {},
-                   "reason": "已读取 Codex 管理策略；选择仅影响此会话。"}
+                   "reason": tr("codex.codex_management_policies_loaded_your_selection_")}
         allowed_sandbox = rules.get("allowedSandboxModes")
         for value in ("read-only", "workspace-write", "full-access"):
             native = "danger-full-access" if value == "full-access" else value
             if allowed_sandbox is not None and native not in allowed_sandbox:
-                support["access"][value] = "此设备的管理策略不允许所选文件访问范围。"
+                support["access"][value] = tr(
+                    "codex.device_management_policy_does_not_allow_the_sele",
+                )
         allowed_approval = rules.get("allowedApprovalPolicies")
         for value in CODEX_APPROVAL_MODES:
             policy = "never" if value == "deny_all" else "on-request"
             if allowed_approval is not None and policy not in allowed_approval:
-                support["approval"][value] = "此设备的管理策略不允许所选审批方式。"
+                support["approval"][value] = tr(
+                    "codex.device_management_policy_does_not_allow_the_sele_2",
+                )
         if (rules.get("featureRequirements") or {}).get("guardian_approval") is False:
-            support["approval"]["auto_review"] = "此设备的管理策略未启用自动审查。"
+            support["approval"]["auto_review"] = tr(
+                "codex.device_management_policy_does_not_enable_automat",
+            )
         runtime.permission_support = support
 
     async def resolve_question(self, session_id: str, question_id: str, answers: dict) -> dict:
@@ -761,7 +770,7 @@ class CodexProvider:
         """
         runtime = self._sessions[session_id]
         if runtime.active_turn is not None:
-            raise RuntimeError("Codex 仍在运行，暂不能编辑之前的消息。")
+            raise RuntimeError(tr("codex.codex_is_still_running_earlier_messages_cannot_b"))
         async with runtime.lock:
             target = native_turn_id or await self._turn_for_prompt(runtime, prompt, later)
             await runtime.client._client.request(

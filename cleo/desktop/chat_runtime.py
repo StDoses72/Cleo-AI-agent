@@ -9,6 +9,7 @@ from typing import Any
 
 from cleo.desktop.agent_system import Emit, TurnInput
 from cleo.desktop.projection import attachment_records
+from cleo.i18n import tr
 
 
 class ChatRuntime:
@@ -108,7 +109,7 @@ class ChatRuntime:
         text = ""
         from cleo.runtime.timing import phase
 
-        phase("模型响应（含工具与等待）")
+        phase(tr("chat_runtime.model_response_including_tools_and_waiting"))
         try:
             async for chunk in agent.stream_text(
                 prompt,
@@ -132,7 +133,7 @@ class ChatRuntime:
                     }
                 )
         except BaseException as error:
-            phase("保存中断回复", previous_status=(
+            phase(tr("chat_runtime.save_interrupted_reply"), previous_status=(
                 "cancelled" if isinstance(error, asyncio.CancelledError) else "failed"
             ))
             await self._sync(agent, manifest, "interrupted")
@@ -151,7 +152,7 @@ class ChatRuntime:
             await emit({"type": "error", "message": detail})
             return
         else:
-            phase("保存回复与会话状态")
+            phase(tr("chat_runtime.save_reply_and_session_state"))
             await self._sync(agent, manifest, "completed")
         usage = agent.context_usage
         await emit({"type": "usage", "usage": self._usage(usage)})

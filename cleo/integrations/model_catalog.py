@@ -5,6 +5,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from cleo.config.settings import AgentProfile
+from cleo.i18n import tr
 
 
 async def list_api_models(profile: AgentProfile) -> dict:
@@ -14,7 +15,7 @@ async def list_api_models(profile: AgentProfile) -> dict:
         "google_genai": "https://generativelanguage.googleapis.com",
     }
     if profile.provider not in defaults:
-        raise ValueError("此 API 类型暂不支持自动读取模型，请使用 OpenAI 兼容接口。")
+        raise ValueError(tr("model_catalog.this_api_type_does_not_support_automatic_model_d"))
     base = (profile.base_url or defaults[profile.provider]).rstrip("/")
     url = urlsplit(base)
     if (
@@ -22,7 +23,7 @@ async def list_api_models(profile: AgentProfile) -> dict:
         or not url.hostname
         or (url.username or url.password or url.query or url.fragment)
     ):
-        raise ValueError("Base URL 必须是 HTTP(S) 地址，且不能包含账号、查询参数或片段。")
+        raise ValueError(tr("model_catalog.base_url_must_be_an_http_s_url_without_credentia"))
     key = profile.api_key.get_secret_value()
     if profile.provider == "anthropic":
         endpoint = base + ("/models" if base.endswith("/v1") else "/v1/models")
@@ -41,26 +42,41 @@ async def list_api_models(profile: AgentProfile) -> dict:
             while True:
                 response = await client.get(endpoint, headers=headers, params=params)
                 if response.status_code in {401, 403}:
-                    raise ValueError("API 认证失败，请检查密钥及账号权限。")
+                    raise ValueError(tr(
+                        "model_catalog.api_authentication_failed_check_the_key_and_acco",
+                    ))
                 if response.status_code in {404, 405, 501}:
                     return {
                         "status": "manual",
                         "models": [],
-                        "message": "服务未提供模型列表，请手动填写模型 ID。",
+                        "message": tr(
+                            "model_catalog.this_provider_does_not_offer_a_model_list_enter_",
+                        ),
                     }
                 if response.status_code == 429:
-                    raise ValueError("服务请求受限，请稍后重试。")
+                    raise ValueError(tr(
+                        "model_catalog.the_provider_rate_limited_the_request_try_again_",
+                    ))
                 if response.status_code != 200:
-                    raise ValueError(f"模型列表请求失败（HTTP {response.status_code}）。")
+                    raise ValueError(tr(
+                        "model_catalog.model_list_request_failed_http_value",
+                        p0=response.status_code,
+                    ))
                 try:
                     payload = response.json()
                 except ValueError as exc:
-                    raise ValueError("服务没有返回有效的模型列表。") from exc
+                    raise ValueError(tr(
+                        "model_catalog.the_provider_did_not_return_a_valid_model_list",
+                    )) from exc
                 if not isinstance(payload, dict):
-                    raise ValueError("服务没有返回有效的模型列表。")
+                    raise ValueError(tr(
+                        "model_catalog.the_provider_did_not_return_a_valid_model_list",
+                    ))
                 items = payload.get("models" if profile.provider == "google_genai" else "data")
                 if not isinstance(items, list):
-                    raise ValueError("服务没有返回有效的模型列表。")
+                    raise ValueError(tr(
+                        "model_catalog.the_provider_did_not_return_a_valid_model_list",
+                    ))
                 for item in items:
                     if not isinstance(item, dict):
                         continue
@@ -84,9 +100,13 @@ async def list_api_models(profile: AgentProfile) -> dict:
                 if not cursor:
                     break
                 if not isinstance(cursor, str) or cursor in seen_cursors:
-                    raise ValueError("模型列表分页返回异常，请稍后重试。")
+                    raise ValueError(tr(
+                        "model_catalog.unexpected_model_list_pagination_response_try_ag",
+                    ))
                 seen_cursors.add(cursor)
                 params = {parameter: cursor}
     except httpx.HTTPError as exc:
-        raise ValueError("无法读取模型列表，请检查 API 地址及网络连接。") from exc
+        raise ValueError(tr(
+            "model_catalog.could_not_read_the_model_list_check_the_api_url_",
+        )) from exc
     return {"status": "connected", "models": list(dict.fromkeys(models))}

@@ -1,3 +1,4 @@
+import { t as tr } from "./i18n.mjs";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
@@ -129,7 +130,7 @@ export function findInstalledRuntime(resources, dataHome) {
     const directory = join(root, plan.key);
     if (ready(directory, plan.key)) return directory;
   }
-  throw new Error("Cleo 的运行环境尚未安装。请重新运行对应系统的安装器，完成依赖下载后再打开应用。");
+  throw new Error(tr("online_runtime.cleo_s_runtime_is_not_installed_run_the_installer_for_your_operating_system_again_fin"));
 }
 
 /** Install immutable runtimes outside the application bundle, then atomically mark them ready. */

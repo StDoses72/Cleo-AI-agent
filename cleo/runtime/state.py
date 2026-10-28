@@ -1,7 +1,7 @@
 """运行时状态(runtime state)持久化: 管理当前 memory space / project / thread 及最近线程列表。"""
 
 import json
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
@@ -90,6 +90,7 @@ class RuntimeState(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     schema_version: int = RUNTIME_SCHEMA_VERSION
+    ui_language: Literal["zh-CN", "en"] = "zh-CN"
     current_space: str = DEFAULT_MEMORY_SPACE
     current_project: str | None = None
     current_thread_id: str | None = None
@@ -97,6 +98,11 @@ class RuntimeState(BaseModel):
     recent_threads: dict[str, list[str]] = Field(default_factory=_default_recent_threads)
     project_paths: dict[str, dict[str, str]] = Field(default_factory=_default_project_paths)
     removed_projects: dict[str, list[str]] = Field(default_factory=_default_removed_projects)
+
+    @field_validator("ui_language", mode="before")
+    @classmethod
+    def normalize_ui_language(cls, value: Any) -> str:
+        return value if value in ("zh-CN", "en") else "zh-CN"
 
     @field_validator("current_project", "current_thread_id", mode="before")
     @classmethod
@@ -202,6 +208,7 @@ class Runtime:
         self.memory_root = settings.MEMORY_DIR
         self.ensure_runtime_json()
         state = self._load_runtime_state()
+        self.ui_language = state.ui_language
         self.current_space = state.current_space
         self.current_project = state.current_project
         self.current_thread_id = state.current_thread_id
@@ -257,6 +264,18 @@ class Runtime:
             encoding="utf-8",
         )
         temp_path.replace(self.runtime_json_path)
+
+    def set_ui_language(self, language: str) -> None:
+        """Save an explicit interface language in the shared runtime state."""
+        if language not in ("zh-CN", "en"):
+            raise ValueError("Unsupported UI language")
+        previous = self.ui_language
+        self.ui_language = language
+        try:
+            self.update_runtime_json()
+        except OSError:
+            self.ui_language = previous
+            raise
 
     def update_current_space(self, space: str) -> None:
         """切换当前 memory space 并立即落盘。
@@ -422,6 +441,7 @@ class Runtime:
         """
         self.ensure_runtime_json()
         state = RuntimeState(
+            ui_language=self.ui_language,
             current_space=self.current_space,
             current_project=self.current_project,
             current_thread_id=self.current_thread_id,

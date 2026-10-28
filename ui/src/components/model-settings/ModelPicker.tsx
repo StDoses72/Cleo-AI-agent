@@ -1,3 +1,4 @@
+import { t as tr } from "../../../electron/i18n.mjs";
 import { useState } from "react";
 import { Check, KeyRound, Search, UserRound } from "lucide-react";
 import type { ModelProfileSummary } from "../../types";
@@ -14,8 +15,8 @@ export function ModelPicker({ title, profiles, selected, busy, error, onSelect, 
   const groups = profiles.map(profile => ({ profile, models: profileModels(profile).filter(model =>
     `${model} ${modelLabel(model)} ${profileLabel(profile)}`.toLowerCase().includes(query.trim().toLowerCase())) })).filter(group => group.models.length);
   return <ModelDialog title={title} onClose={() => { if (!busy) onClose(); }}>
-    <div className="ms-search"><Search /><input autoFocus aria-label="搜索模型" placeholder="搜索模型或连接" value={query} onChange={e => setQuery(e.target.value)} /></div>
-    <div className="ms-picker-scroll" role="radiogroup" aria-label="已配置模型">
+    <div className="ms-search"><Search /><input autoFocus aria-label={tr("modelpicker.search_models")} placeholder={tr("modelpicker.search_models_or_connections")} value={query} onChange={e => setQuery(e.target.value)} /></div>
+    <div className="ms-picker-scroll" role="radiogroup" aria-label={tr("connectiondetails.configured_models")}>
       {groups.map(({ profile, models }) => <section key={profile.name}>
         <div className="ms-picker-group">{isAccount(profile) ? <UserRound /> : <KeyRound />}{profileLabel(profile)}<span>· {billingLabel(profile)}</span></div>
         {models.map(model => {
@@ -25,9 +26,9 @@ export function ModelPicker({ title, profiles, selected, busy, error, onSelect, 
           </button>;
         })}
       </section>)}
-      {!groups.length && <div className="ms-empty"><strong>没有找到匹配的模型</strong><button className="ms-link" onClick={() => setQuery("")}>清除搜索</button></div>}
+      {!groups.length && <div className="ms-empty"><strong>{tr("modelpicker.no_matching_models")}</strong><button className="ms-link" onClick={() => setQuery("")}>{tr("modelpicker.clear_search")}</button></div>}
     </div>
     {error && <p className="ms-error" role="alert">{error}</p>}
-    {busy && <footer className="ms-dialog-footer" role="status">正在切换…</footer>}
+    {busy && <footer className="ms-dialog-footer" role="status">{tr("modelpicker.switching")}</footer>}
   </ModelDialog>;
 }

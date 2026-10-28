@@ -27,8 +27,10 @@ PINNED = {
     10: "3301892058774d49258c4690fb3f827f4d6f86860c782a16e097daf48e0932cc",
     # 11 keeps complete message/thought bodies in history pages.
     11: "3301892058774d49258c4690fb3f827f4d6f86860c782a16e097daf48e0932cc",
-    # 12 adds "attachments" to user messages; the legacy sessions carry none.
+    # 12 localizes desktop-owned labels and recognizes bilingual internal prompts.
     12: "3301892058774d49258c4690fb3f827f4d6f86860c782a16e097daf48e0932cc",
+    # 13 adds attachment records; the frozen legacy sessions carry none.
+    13: "3301892058774d49258c4690fb3f827f4d6f86860c782a16e097daf48e0932cc",
 }
 
 

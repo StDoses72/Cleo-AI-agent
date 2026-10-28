@@ -1,3 +1,4 @@
+import { t as tr } from "../../electron/i18n.mjs";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Check, ChevronDown, FolderMinus, FolderOpen, FolderPlus, X } from "lucide-react";
 import { isGeneralProject, projectLabel, projectPathLabel, projectsInSpace } from "../runtime-labels";
@@ -54,7 +55,7 @@ export function ProjectTarget({
   const active = ordered.find((project) => project.id === activeProjectId) ?? general ?? ordered[0];
   const noFolder = !active || isGeneralProject(active);
   const listed = ordered.filter((project) => !isGeneralProject(project));
-  const noun = space === "chat" ? "对话" : "任务";
+  const noun = space === "chat" ? tr("app.chat") : tr("computerpanel.task");
 
   return (
     <div className="project-target-wrap" ref={wrapRef}>
@@ -63,20 +64,20 @@ export function ProjectTarget({
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`${noun}所属项目：${noFolder ? "不关联项目" : projectLabel(active)}`}
-        title={noFolder ? `独立${noun}，不关联项目；点击可选择一个项目` : active?.path}
+        aria-label={tr("projecttarget.project_for_value_value", { p0: noun, p1: noFolder ? tr("inspector.no_project") : projectLabel(active) })}
+        title={noFolder ? tr("projecttarget.standalone_value_no_project_attached_click_to_choose_a_project", { p0: noun }) : active?.path}
         disabled={disabled}
         onClick={() => setOpen((current) => !current)}
         data-testid="project-target"
         data-choosing={choosing ? "true" : undefined}
       >
         {noFolder ? <FolderMinus size={14} /> : <FolderOpen size={14} />}
-        <span className="project-target-name">{noFolder ? "不关联项目" : projectLabel(active)}</span>
+        <span className="project-target-name">{noFolder ? tr("inspector.no_project") : projectLabel(active)}</span>
         <ChevronDown size={13} />
       </button>
       {open ? (
-        <div className="project-target-menu surface-popover" role="menu" aria-label={`选择${noun}所属项目`}>
-          <div className="project-target-heading">{`${noun}属于哪个项目`}</div>
+        <div className="project-target-menu surface-popover" role="menu" aria-label={tr("projecttarget.choose_a_project_for_value", { p0: noun })}>
+          <div className="project-target-heading">{tr("projecttarget.which_project_does_this_value_belong_to", { p0: noun })}</div>
           {listed.map((project) => {
             const selected = !noFolder && project.id === active?.id;
             return (
@@ -105,8 +106,8 @@ export function ProjectTarget({
                   <button
                     className="project-target-clear"
                     type="button"
-                    aria-label={`取消关联项目 ${projectLabel(project)}`}
-                    title={`取消关联，${noun}改为不关联项目（项目保留在列表中）`}
+                    aria-label={tr("projecttarget.detach_project_value", { p0: projectLabel(project) })}
+                    title={tr("projecttarget.detach_this_value_from_its_project_the_project_stays_in_the_list", { p0: noun })}
                     onClick={() => {
                       setOpen(false);
                       onSelect(general.id);
@@ -132,7 +133,7 @@ export function ProjectTarget({
           >
             <span className="project-glyph compact"><FolderPlus size={13} /></span>
             <span className="project-target-copy">
-              <strong>{choosing ? "正在选择文件夹…" : "添加项目…"}</strong>
+              <strong>{choosing ? tr("projecttarget.choosing_a_folder") : tr("projecttarget.add_project")}</strong>
             </span>
           </button>
         </div>

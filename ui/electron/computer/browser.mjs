@@ -1,3 +1,4 @@
+import { t as tr, getLanguage } from "../i18n.mjs";
 /** Cleo's built-in browser: persistent tabs rendered as WebContentsViews in the main window.
  *
  * The user and the AI share the same WebContents. AI input and screenshots use the in-process
@@ -19,23 +20,23 @@ const MAX_NOTICES = 12;
 const MAX_DOWNLOADS = 20;
 
 const PERMISSION_LABELS = {
-  media: "摄像头或麦克风", geolocation: "位置", notifications: "通知", midi: "MIDI 设备",
-  midiSysex: "MIDI 设备", pointerLock: "锁定鼠标指针", fullscreen: "全屏", openExternal: "打开外部应用",
-  "clipboard-read": "读取剪贴板", "idle-detection": "空闲检测", "display-capture": "屏幕共享",
-  "window-management": "窗口管理", hid: "HID 设备", serial: "串口设备", usb: "USB 设备",
+  get media() { return tr("browser.camera_or_microphone"); }, get geolocation() { return tr("browser.location"); }, get notifications() { return tr("browser.notifications"); }, get midi() { return tr("browser.midi_devices"); },
+  get midiSysex() { return tr("browser.midi_devices"); }, get pointerLock() { return tr("browser.pointer_lock"); }, get fullscreen() { return tr("browser.full_screen"); }, get openExternal() { return tr("browser.open_external_applications"); },
+  get "clipboard-read"() { return tr("browser.read_clipboard"); }, get "idle-detection"() { return tr("browser.idle_detection"); }, get "display-capture"() { return tr("browser.screen_sharing"); },
+  get "window-management"() { return tr("browser.window_management"); }, get hid() { return tr("browser.hid_devices"); }, get serial() { return tr("browser.serial_devices"); }, get usb() { return tr("browser.usb_devices"); },
 };
 
 /** Purpose: Accept an address-bar entry. Input: user or AI text. Output: normalized http(s) URL. */
 export function normalizeAddress(input) {
   const text = String(input ?? "").trim();
-  if (!text) throw new Error("请输入网址。");
-  if (text.length > 8192) throw new Error("网址过长。");
+  if (!text) throw new Error(tr("browser.enter_a_url"));
+  if (text.length > 8192) throw new Error(tr("browser.the_url_is_too_long"));
   if (/^about:blank$/i.test(text)) return "about:blank";
   let candidate = text;
   // "javascript:", "mailto:", "data:" and similar are schemes, not hosts; "localhost:3000" is a port.
   const scheme = /^([a-z][a-z\d+.-]*):(?!\d+(?:[/?#]|$))/i.exec(text);
   if (scheme && !/^[a-z][a-z\d+.-]*:\/\//i.test(text)) {
-    throw new Error(`内置浏览器只打开 http、https 和工作区预览地址，不支持 ${scheme[1].toLowerCase()}:`);
+    throw new Error(tr("browser.the_built_in_browser_opens_only_http_https_and_workspace_preview_urls_value_is_not_su", { p0: scheme[1].toLowerCase() }));
   }
   if (!/^[a-z][a-z\d+.-]*:\/\//i.test(text)) {
     const local = /^(localhost|127(?:\.\d{1,3}){3}|\[::1\])(:\d+)?(?:[/?#]|$)/i.test(text);
@@ -46,11 +47,11 @@ export function normalizeAddress(input) {
     candidate = `${local ? "http" : "https"}://${text}`;
   }
   let url;
-  try { url = new URL(candidate); } catch { throw new Error(`无法识别的网址：${text}`); }
+  try { url = new URL(candidate); } catch { throw new Error(tr("browser.unrecognized_url_value", { p0: text })); }
   if (!NAVIGATION_SCHEMES.has(url.protocol)) {
-    throw new Error(`内置浏览器只打开 http、https 和工作区预览地址，不支持 ${url.protocol}`);
+    throw new Error(tr("browser.the_built_in_browser_opens_only_http_https_and_workspace_preview_urls_value_is_not_su_2", { p0: url.protocol }));
   }
-  if ((url.protocol === "http:" || url.protocol === "https:") && !url.hostname) throw new Error("网址缺少主机名。");
+  if ((url.protocol === "http:" || url.protocol === "https:") && !url.hostname) throw new Error(tr("browser.the_url_has_no_hostname"));
   return url.href;
 }
 
@@ -72,7 +73,7 @@ function withTimeout(promise, ms, message) {
 function cancellable(promise, signal) {
   if (!signal) return promise;
   return new Promise((resolve, reject) => {
-    const cancel = () => reject(signal.reason || new Error("工具调用已取消。"));
+    const cancel = () => reject(signal.reason || new Error(tr("bridge.tool_call_cancelled")));
     signal.addEventListener("abort", cancel, { once: true });
     promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", cancel));
     if (signal.aborted) cancel();
@@ -146,7 +147,7 @@ export class CleoBrowser extends EventEmitter {
     ses.setPermissionRequestHandler((wc, permission, callback) => {
       const allowed = permission === "clipboard-sanitized-write";
       callback(allowed);
-      if (!allowed) this.notice(this.tabFor(wc), `网站请求“${PERMISSION_LABELS[permission] || permission}”权限，已拒绝。`);
+      if (!allowed) this.notice(this.tabFor(wc), tr("browser.the_website_requested_value_permission_it_was_denied", { p0: PERMISSION_LABELS[permission] || permission }));
     });
     ses.setPermissionCheckHandler((_wc, permission) => permission === "clipboard-sanitized-write");
     ses.setDevicePermissionHandler?.(() => false);
@@ -272,8 +273,15 @@ export class CleoBrowser extends EventEmitter {
     } });
     this.overlayView.setBackgroundColor("#00000000");
     void this.overlayView.webContents.loadFile(this.overlayFiles.html);
+    this.overlayView.webContents.on("did-finish-load", () => this.refreshLanguage());
     this.window.contentView.addChildView(this.overlayView);
     return this.overlayView;
+  }
+
+  refreshLanguage() {
+    this.overlayView?.webContents.send("cleo:computer:labels", {
+      language: getLanguage(), takeover: tr("computer.takeoverTitle"), active: tr("computer.browserActive"),
+    });
   }
 
   /** Purpose: Show "AI is operating, click to take over" above the page. Input: flag. */
@@ -303,7 +311,7 @@ export class CleoBrowser extends EventEmitter {
 
   requireTab(id) {
     const tab = this.tabs.get(String(id ?? ""));
-    if (!tab || tab.wc.isDestroyed()) throw new Error(`标签页 ${id} 不存在或已关闭。请调用 browser_tabs 查看当前标签页。`);
+    if (!tab || tab.wc.isDestroyed()) throw new Error(tr("browser.tab_value_does_not_exist_or_was_closed_call_browser_tabs_to_see_the_current_tabs", { p0: id }));
     return tab;
   }
 
@@ -317,7 +325,7 @@ export class CleoBrowser extends EventEmitter {
 
   /** Purpose: Open a tab. Input: optional URL, existing popup WebContents and focus flag. */
   createTab({ url = "", webContents = null, activate = true, openerId = null } = {}) {
-    if (this.closed) throw new Error("内置浏览器已关闭。");
+    if (this.closed) throw new Error(tr("browser.the_built_in_browser_is_closed"));
     const view = webContents
       ? new this.electron.WebContentsView({ webContents })
       : new this.electron.WebContentsView({ webPreferences: {
@@ -361,7 +369,7 @@ export class CleoBrowser extends EventEmitter {
     const { wc } = tab;
     wc.setWindowOpenHandler(({ url }) => {
       if (!navigationAllowed(url)) {
-        this.notice(tab, `已阻止打开非网页地址：${String(url).slice(0, 120)}`);
+        this.notice(tab, tr("browser.blocked_opening_a_non_web_url_value", { p0: String(url).slice(0, 120) }));
         return { action: "deny" };
       }
       return {
@@ -372,7 +380,7 @@ export class CleoBrowser extends EventEmitter {
     const guard = (event, url) => {
       if (navigationAllowed(url)) return;
       event.preventDefault();
-      this.notice(tab, `已阻止跳转到非网页地址：${String(url).slice(0, 120)}`);
+      this.notice(tab, tr("browser.blocked_navigation_to_a_non_web_url_value", { p0: String(url).slice(0, 120) }));
     };
     wc.on("will-navigate", guard);
     wc.on("will-redirect", guard);
@@ -403,7 +411,7 @@ export class CleoBrowser extends EventEmitter {
 
   /** Purpose: Attach the in-process DevTools client lazily. Input: tab. Output: ready tab. */
   async attach(tab) {
-    if (tab.crashed) throw new Error(`标签页 ${tab.id} 已崩溃（${tab.crashed}）。请用 browser_history reload 重新加载。`);
+    if (tab.crashed) throw new Error(tr("browser.tab_value_crashed_value_reload_it_with_browser_history_reload", { p0: tab.id, p1: tab.crashed }));
     if (tab.attached) return tab;
     if (tab.attachPromise) return tab.attachPromise;
     const debug = tab.wc.debugger;
@@ -421,7 +429,7 @@ export class CleoBrowser extends EventEmitter {
           await debug.sendCommand("DOM.enable");
           await debug.sendCommand("Emulation.setFocusEmulationEnabled", { enabled: true });
           await debug.sendCommand("Page.setInterceptFileChooserDialog", { enabled: true });
-        })(), INPUT_TIMEOUT, "浏览器初始化超时。请重新加载标签页后重试。");
+        })(), INPUT_TIMEOUT, tr("browser.browser_initialization_timed_out_reload_the_tab_and_try_again"));
         tab.attached = true;
         return tab;
       } catch (error) {
@@ -453,7 +461,7 @@ export class CleoBrowser extends EventEmitter {
   }
 
   command(tab, method, params = {}, timeout = INPUT_TIMEOUT) {
-    return withTimeout(tab.wc.debugger.sendCommand(method, params), timeout, `浏览器操作超时（${method}）。页面可能无响应。`);
+    return withTimeout(tab.wc.debugger.sendCommand(method, params), timeout, tr("browser.browser_operation_timed_out_value_the_page_may_be_unresponsive", { p0: method }));
   }
 
   /** Dispatch input; if the page opens a JavaScript dialog the action stops without waiting. */
@@ -465,7 +473,7 @@ export class CleoBrowser extends EventEmitter {
         this.command(tab, method, params).then(() => "done"),
         dialog.then(() => "dialog"),
       ]);
-      if (outcome === "dialog") throw Object.assign(new Error("页面弹出了对话框，操作暂停。"), { dialog: true });
+      if (outcome === "dialog") throw Object.assign(new Error(tr("browser.the_page_opened_a_dialog_the_operation_was_paused")), { dialog: true });
     } finally {
       tab.dialogWaiters.delete(onDialog);
     }
@@ -495,11 +503,11 @@ export class CleoBrowser extends EventEmitter {
   async history(id, action) {
     const tab = this.requireTab(id);
     const history = tab.wc.navigationHistory;
-    if (action === "back") { if (!history.canGoBack()) throw new Error("没有可后退的页面。"); history.goBack(); }
-    else if (action === "forward") { if (!history.canGoForward()) throw new Error("没有可前进的页面。"); history.goForward(); }
+    if (action === "back") { if (!history.canGoBack()) throw new Error(tr("browser.there_is_no_previous_page")); history.goBack(); }
+    else if (action === "forward") { if (!history.canGoForward()) throw new Error(tr("browser.there_is_no_next_page")); history.goForward(); }
     else if (action === "reload") { tab.crashed = null; tab.error = null; tab.attached = false; tab.wc.reload(); }
     else if (action === "stop") tab.wc.stop();
-    else throw new Error(`未知的浏览器历史操作：${action}`);
+    else throw new Error(tr("browser.unknown_browser_history_operation_value", { p0: action }));
     await wait(action === "stop" ? 50 : 600);
     this.emitState();
   }
@@ -552,7 +560,7 @@ export class CleoBrowser extends EventEmitter {
   async capture(id, signal) {
     const tab = await cancellable(this.attach(this.requireTab(id)), signal);
     const { width, height } = this.size;
-    if (tab.dialog) throw Object.assign(new Error("页面正在显示对话框。"), { dialog: true });
+    if (tab.dialog) throw Object.assign(new Error(tr("broker.the_page_is_showing_a_dialog")), { dialog: true });
     const shot = await cancellable(this.command(tab, "Page.captureScreenshot", { format: "png" }, 15000), signal);
     let image = this.electron.nativeImage.createFromBuffer(Buffer.from(shot.data, "base64"));
     const device = image.getSize();
@@ -683,7 +691,7 @@ export class CleoBrowser extends EventEmitter {
 
   async handleDialog(id, accept, promptText = "") {
     const tab = await this.attach(this.requireTab(id));
-    if (!tab.dialog) throw new Error("当前标签页没有打开的对话框。");
+    if (!tab.dialog) throw new Error(tr("browser.the_current_tab_has_no_open_dialog"));
     await this.command(tab, "Page.handleJavaScriptDialog", { accept: Boolean(accept), ...(promptText ? { promptText: String(promptText).slice(0, 2000) } : {}) });
     tab.dialog = null;
     this.emitState();
@@ -691,8 +699,8 @@ export class CleoBrowser extends EventEmitter {
 
   async setFiles(id, paths) {
     const tab = await this.attach(this.requireTab(id));
-    if (!tab.fileChooser) throw new Error("当前标签页没有等待中的文件选择框。请先点击网页中的上传按钮。");
-    if (tab.fileChooser.mode === "selectSingle" && paths.length > 1) throw new Error("该文件选择框只接受一个文件。");
+    if (!tab.fileChooser) throw new Error(tr("browser.the_current_tab_has_no_pending_file_chooser_click_the_page_s_upload_button_first"));
+    if (tab.fileChooser.mode === "selectSingle" && paths.length > 1) throw new Error(tr("browser.this_file_chooser_accepts_only_one_file"));
     await this.command(tab, "DOM.setFileInputFiles", { files: paths, backendNodeId: tab.fileChooser.backendNodeId });
     tab.fileChooser = null;
     this.emitState();
@@ -724,7 +732,7 @@ export class CleoBrowser extends EventEmitter {
       return { title: document.title, text, elements: items };
     })()`;
     const result = await this.command(tab, "Runtime.evaluate", { expression: script, returnByValue: true, awaitPromise: false }, 10000);
-    if (result.exceptionDetails) throw new Error("无法读取页面内容。");
+    if (result.exceptionDetails) throw new Error(tr("browser.could_not_read_the_page_content"));
     return result.result.value;
   }
 
@@ -746,7 +754,7 @@ export class CleoBrowser extends EventEmitter {
     item.once("done", (_event, state) => {
       record.state = state;
       record.received = item.getReceivedBytes();
-      this.notice(tab, state === "completed" ? `下载完成：${record.name}` : `下载未完成（${state}）：${record.name}`);
+      this.notice(tab, state === "completed" ? tr("browser.download_completed_value", { p0: record.name }) : tr("browser.download_incomplete_value_value", { p0: state, p1: record.name }));
       this.emitState();
     });
     this.emitState();

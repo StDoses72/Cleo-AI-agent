@@ -247,6 +247,11 @@ test("existing registry format round-trips through the iteration-base writer wit
     const source = execFileSync("git", ["show", "HEAD:ui/electron/evolution-store.mjs"], { encoding: "utf8", windowsHide: true });
     const legacyFile = join(root, "iteration-base-store.mjs");
     await writeFile(legacyFile, source);
+    if (source.includes('./i18n.mjs')) {
+      for (const name of ["i18n.mjs", "locales.json", "recovery-locales.json"]) {
+        await writeFile(join(root, name), execFileSync("git", ["show", `HEAD:ui/electron/${name}`], { windowsHide: true }));
+      }
+    }
     const { EvolutionStore: PreviousStore } = await import(pathToFileURL(legacyFile).href);
     const previous = new PreviousStore(manager.store.root, manager.store.dataHome);
     await previous.update({ legacyOptionalMissing: true });
@@ -273,6 +278,11 @@ test("available saved and baseline program writers preserve the same registry fi
     await fixture(async ({ root, manager, program }) => {
       const file = join(root, "previous-store.mjs");
       await writeFile(file, source);
+      if (source.toString().includes('./i18n.mjs')) {
+        for (const name of ["i18n.mjs", "locales.json", "recovery-locales.json"]) {
+          await writeFile(join(root, name), extractFile(archive, `electron/${name}`));
+        }
+      }
       const { EvolutionStore: PreviousStore } = await import(pathToFileURL(file).href);
       const previous = new PreviousStore(manager.store.root, manager.store.dataHome);
       await previous.update({ threadId: "previous-thread" });

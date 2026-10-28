@@ -2,6 +2,8 @@
 
 interface Window {
   cleoWindow?: {
+    language?: "zh-CN" | "en";
+    onLanguageChanged?(listener: (language: "zh-CN" | "en") => void): () => void;
     platform?: string;
     setTheme(theme: "dark" | "light"): void;
     /** Unread-reply count for the app icon; `overlay` is a PNG data URL used where the OS has no native badge. */
@@ -9,6 +11,7 @@ interface Window {
     onOpenMemory?(listener: () => void): () => void;
   };
   cleoDesktop?: {
+    getUiLanguage?(): Promise<"zh-CN" | "en">;
     onCompanionThread?(listener: (thread: import("./types").Thread) => void): () => void;
     setup?(action: "startup" | "status" | "scan" | "install" | "dismiss", params?: Record<string, unknown>): Promise<import("./components/DependencySetup").SetupState>;
     computer?(action: "state" | "viewport" | "browser" | "mode" | "authorize" | "takeover" | "handback" | "stop" | "shortcut" | "preview", params?: Record<string, unknown>): Promise<import("./computer-types").ComputerState>;

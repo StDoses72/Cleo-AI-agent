@@ -6,7 +6,7 @@ Cleo 是一套本地优先的 AI 工作空间：它把通用对话、开发者�
 
 项目提供 Windows、macOS、Linux 桌面构建支持，由本地 Python 后端服务驱动，另有 stdio MCP 入口。用户数据默认保存在本机；模型推理由用户配置的 API provider 或外部 agent harness 提供。
 
-> 当前版本：[v0.10.3](https://github.com/StDoses72/Cleo-AI-agent/releases/tag/v0.10.3) · [下载桌面版](https://stdoses72.github.io/Cleo-AI-agent/)
+> 当前版本：[v0.11.0](https://github.com/StDoses72/Cleo-AI-agent/releases/tag/v0.11.0) · [下载桌面版](https://stdoses72.github.io/Cleo-AI-agent/)
 
 ## Cleo 解决什么问题
 
@@ -100,6 +100,8 @@ Linux/macOS 使用相同的 Python 包和 JSON 配置。原生桌面构建、安
 ## 常用工作流
 
 ### 桌面端
+
+- **界面语言**：在「设置 → 外观 → 语言」中显式选择 **简体中文** 或 **English**，不跟随系统语言。选择以 `ui_language` 字段保存在 runtime 状态文件中（通常为 `data/runtime.json`），重启和升级后保留。切换不会中断正在运行的任务或清空草稿，也不会翻译聊天原文、项目名称和模型回复。
 
 - **托盘驻留**：关闭主窗口后，Cleo 继续在 Windows 系统托盘或 macOS 菜单栏运行；Linux 需要桌面环境支持托盘。可从托盘菜单重新打开 Cleo、进入记忆管理，或明确退出程序。
 - **后台记忆整理**：在「设置 → 模型 → 记忆整理」中开启，默认关闭；关闭时仍可手动整理。开启后，每 30 分钟或积压 5 个可整理会话时开始整理，任一条件满足即可；两个阈值均可调整。前台对话优先，错误和待处理来源可在记忆管理中查看。明确退出程序会停止后台整理，不再启动独立整理进程；下次启动后，若自动整理仍开启且满足触发条件，可从保留的检查点继续。整理使用所选记忆模型，可能产生模型调用费用。

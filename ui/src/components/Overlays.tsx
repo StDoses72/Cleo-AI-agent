@@ -1,3 +1,5 @@
+import { getLanguage } from "../../electron/i18n.mjs";
+import { t as tr } from "../../electron/i18n.mjs";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { dreamStatusLabel } from "../memoryStatus";
 import { UpdateVersionPicker } from "./UpdateVersionPicker";
@@ -88,14 +90,14 @@ export function CommandPalette({ open, actions, onClose }: CommandPaletteProps) 
 
   if (!open) return null;
   return (
-    <Modal open={open} className="overlay-backdrop" label="命令面板" onClose={onClose}>
+    <Modal open={open} className="overlay-backdrop" label={tr("conversation.command_palette")} onClose={onClose}>
       <div className="command-palette" onMouseDown={(event) => event.stopPropagation()}>
         <label className="command-search">
           <Search size={18} />
           <input
             autoFocus
             value={query}
-            aria-label="搜索命令"
+            aria-label={tr("overlays.search_commands")}
             role="combobox"
             aria-expanded="true"
             aria-controls="command-results"
@@ -115,12 +117,12 @@ export function CommandPalette({ open, actions, onClose }: CommandPaletteProps) 
                 onClose();
               }
             }}
-            placeholder="输入命令或搜索…"
+            placeholder={tr("overlays.enter_a_command_or_search")}
           />
           <kbd>Esc</kbd>
         </label>
-        <div className="command-results" id="command-results" role="listbox" aria-label="命令">
-          <span className="command-section-label">建议</span>
+        <div className="command-results" id="command-results" role="listbox" aria-label={tr("approvalprompt.command")}>
+          <span className="command-section-label">{tr("overlays.suggestions")}</span>
           {filtered.map(({ id, label, icon: Icon, shortcut, run }, index) => (
             <button
               className={index === selectedIndex ? "focused" : ""}
@@ -140,9 +142,9 @@ export function CommandPalette({ open, actions, onClose }: CommandPaletteProps) 
               {shortcut ? <kbd>{shortcut}</kbd> : <ArrowRight size={14} />}
             </button>
           ))}
-          {!filtered.length ? <div className="command-empty">没有匹配的命令</div> : null}
+          {!filtered.length ? <div className="command-empty">{tr("overlays.no_matching_commands")}</div> : null}
         </div>
-        <footer><span><kbd>↑↓</kbd> 选择</span><span><kbd>↵</kbd> 打开</span></footer>
+        <footer><span><kbd>↑↓</kbd> {tr("overlays.select")}</span><span><kbd>↵</kbd> {tr("overlays.open")}</span></footer>
       </div>
     </Modal>
   );
@@ -180,21 +182,21 @@ export function RenameThreadDialog({ title, onSave, onClose }: {
           await onSave(name.trim());
           onClose();
         } catch (reason) {
-          setError(reason instanceof Error ? reason.message : "无法重命名，请重试。");
+          setError(reason instanceof Error ? reason.message : tr("overlays.could_not_rename_try_again"));
         } finally {
           savingRef.current = false;
           setSaving(false);
         }
       }}>
-        <h2 id="rename-title">重命名任务</h2>
-        <label htmlFor="rename-input">名称</label>
+        <h2 id="rename-title">{tr("overlays.rename_task")}</h2>
+        <label htmlFor="rename-input">{tr("overlays.name")}</label>
         <input ref={inputRef} id="rename-input" autoFocus value={name} disabled={saving} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => {
           if (event.key === "Enter" && (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229)) event.preventDefault();
         }} />
         {error ? <p role="alert">{error}</p> : null}
         <footer>
-          <button type="button" disabled={saving} onClick={onClose}>取消</button>
-          <button className="primary" type="submit" disabled={saving || !name.trim()}>{saving ? "保存中…" : "保存"}</button>
+          <button type="button" disabled={saving} onClick={onClose}>{tr("computerpanel.cancel")}</button>
+          <button className="primary" type="submit" disabled={saving || !name.trim()}>{saving ? tr("backgroundmemorysettingspanel.saving") : tr("computerpanel.save")}</button>
         </footer>
       </form>
     </dialog>
@@ -228,16 +230,16 @@ export function DeleteThreadDialog({
       >
         <span className="delete-thread-icon"><Trash2 size={18} /></span>
         <div>
-          <h2 id="delete-thread-title">删除“{threadTitle}”？</h2>
+          <h2 id="delete-thread-title">{tr("overlays.delete")}{threadTitle}”？</h2>
           <p id="delete-thread-detail">
-            此操作无法撤销。{productivity ? "外部客户端中的会话会保留。" : ""}
+            {tr("overlays.this_action_cannot_be_undone")}{productivity ? tr("overlays.sessions_in_external_clients_will_be_preserved") : ""}
           </p>
         </div>
         {error && <p className="dialog-error" role="alert">{error}</p>}
         <footer>
-          <button autoFocus type="button" onClick={onCancel} disabled={deleting}>取消</button>
+          <button autoFocus type="button" onClick={onCancel} disabled={deleting}>{tr("computerpanel.cancel")}</button>
           <button className="danger" type="button" onClick={onConfirm} disabled={deleting}>
-            {deleting ? "删除中…" : "永久删除"}
+            {deleting ? tr("overlays.deleting") : tr("overlays.delete_permanently")}
           </button>
         </footer>
       </div>
@@ -270,14 +272,14 @@ export function RemoveProjectDialog({
       >
         <span className="delete-thread-icon"><Trash2 size={18} /></span>
         <div>
-          <h2 id="remove-project-title">移除“{projectLabel(project)}”？</h2>
-          <p id="remove-project-detail">本地文件和历史任务不会被删除。</p>
+          <h2 id="remove-project-title">{tr("overlays.remove")}{projectLabel(project)}”？</h2>
+          <p id="remove-project-detail">{tr("overlays.local_files_and_historical_tasks_will_not_be_deleted")}</p>
         </div>
         {error && <p className="dialog-error" role="alert">{error}</p>}
         <footer>
-          <button autoFocus type="button" onClick={onCancel} disabled={removing}>取消</button>
+          <button autoFocus type="button" onClick={onCancel} disabled={removing}>{tr("computerpanel.cancel")}</button>
           <button className="danger" type="button" onClick={onConfirm} disabled={removing}>
-            {removing ? "移除中…" : "移除项目"}
+            {removing ? tr("overlays.removing") : tr("overlays.remove_project")}
           </button>
         </footer>
       </div>
@@ -286,6 +288,8 @@ export function RemoveProjectDialog({
 }
 
 interface SettingsModalProps {
+  language: "zh-CN" | "en";
+  onLanguageChange: (language: "zh-CN" | "en") => Promise<void>;
   open: boolean;
   theme: "dark" | "light";
   motionEnabled: boolean;
@@ -323,11 +327,13 @@ interface SettingsModalProps {
 
 type SettingsPage = "appearance" | "agent" | "instructions" | "models" | "models-add" | "models-dream" | "import" | "updates" | "data";
 const settingsTitles: Record<SettingsPage, string> = {
-  appearance: "外观", agent: "运行设置", instructions: "对话指令", models: "当前配置",
-  "models-add": "新增连接", "models-dream": "记忆整理", import: "导入", updates: "软件更新", data: "数据与记忆",
+  get appearance() { return tr("overlays.appearance"); }, get agent() { return tr("overlays.run_settings"); }, get instructions() { return tr("overlays.chat_instructions"); }, get models() { return tr("overlays.current_configuration"); },
+  get "models-add"() { return tr("overlays.new_connection"); }, get "models-dream"() { return tr("modelsettingspanel.memory_consolidation"); }, get import() { return tr("overlays.import"); }, get updates() { return tr("overlays.software_updates"); }, get data() { return tr("overlays.data_and_memory"); },
 };
 
 export function SettingsModal({
+  language,
+  onLanguageChange,
   open,
   theme,
   motionEnabled,
@@ -361,6 +367,14 @@ export function SettingsModal({
   onResetWorkspace,
   onClose,
 }: SettingsModalProps) {
+  const [languageSaving, setLanguageSaving] = useState(false);
+  const [languageError, setLanguageError] = useState("");
+  const changeLanguage = async (value: "zh-CN" | "en") => {
+    setLanguageSaving(true); setLanguageError("");
+    try { await onLanguageChange(value); }
+    catch (error) { setLanguageError(error instanceof Error ? error.message : tr("settings.languageSaveFailed")); }
+    finally { setLanguageSaving(false); }
+  };
   const [page, setPage] = useState<SettingsPage>("appearance");
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => { scrollRef.current?.scrollTo(0, 0); }, [open, page]);
@@ -373,37 +387,37 @@ export function SettingsModal({
   const isModels = page === "models" || page === "models-add" || page === "models-dream";
   const modelPage: ModelsPage = page === "models-add" ? "add" : page === "models-dream" ? "dream" : "current";
   return (
-    <Modal open={open} className="overlay-backdrop settings-backdrop" label="设置" onClose={onClose}>
+    <Modal open={open} className="overlay-backdrop settings-backdrop" label={tr("overlays.settings")} onClose={onClose}>
       <div className="settings-modal" onMouseDown={(event) => event.stopPropagation()}>
-        <button className="icon-button settings-close" aria-label="关闭设置" onClick={onClose}><X size={17} /></button>
+        <button className="icon-button settings-close" aria-label={tr("overlays.close_settings")} onClick={onClose}><X size={17} /></button>
         <aside>
-          <div className="settings-brand"><span aria-hidden="true" /><strong>设置</strong></div>
-          <nav aria-label="设置导航">
-            <button className={page === "appearance" ? "active" : ""} aria-current={page === "appearance" ? "page" : undefined} type="button" onClick={() => setPage("appearance")}><Sparkles size={16} />外观</button>
-            <button className={page === "agent" ? "active" : ""} aria-current={page === "agent" ? "page" : undefined} type="button" onClick={() => setPage("agent")}><SlidersHorizontal size={16} />运行设置</button>
-            <button className={page === "instructions" ? "active" : ""} aria-current={page === "instructions" ? "page" : undefined} type="button" onClick={() => setPage("instructions")}><FileText size={16} />对话指令</button>
-            <button className="settings-model-group" type="button" onClick={() => setPage("models")}><Boxes size={16} />模型</button>
+          <div className="settings-brand"><span aria-hidden="true" /><strong>{tr("overlays.settings")}</strong></div>
+          <nav aria-label={tr("overlays.settings_navigation")}>
+            <button className={page === "appearance" ? "active" : ""} aria-current={page === "appearance" ? "page" : undefined} type="button" onClick={() => setPage("appearance")}><Sparkles size={16} />{tr("overlays.appearance")}</button>
+            <button className={page === "agent" ? "active" : ""} aria-current={page === "agent" ? "page" : undefined} type="button" onClick={() => setPage("agent")}><SlidersHorizontal size={16} />{tr("overlays.run_settings")}</button>
+            <button className={page === "instructions" ? "active" : ""} aria-current={page === "instructions" ? "page" : undefined} type="button" onClick={() => setPage("instructions")}><FileText size={16} />{tr("overlays.chat_instructions")}</button>
+            <button className="settings-model-group" type="button" onClick={() => setPage("models")}><Boxes size={16} />{tr("inspector.model")}</button>
             <div className="settings-model-subnav">
-              <button className={page === "models" ? "active" : ""} aria-current={page === "models" ? "page" : undefined} onClick={() => setPage("models")}><SlidersHorizontal size={15} />当前配置</button>
-              <button className={page === "models-add" ? "active" : ""} aria-current={page === "models-add" ? "page" : undefined} onClick={() => setPage("models-add")}><Plus size={15} />新增连接</button>
-              <button className={page === "models-dream" ? "active" : ""} aria-current={page === "models-dream" ? "page" : undefined} onClick={() => setPage("models-dream")}><Moon size={15} />记忆整理</button>
+              <button className={page === "models" ? "active" : ""} aria-current={page === "models" ? "page" : undefined} onClick={() => setPage("models")}><SlidersHorizontal size={15} />{tr("overlays.current_configuration")}</button>
+              <button className={page === "models-add" ? "active" : ""} aria-current={page === "models-add" ? "page" : undefined} onClick={() => setPage("models-add")}><Plus size={15} />{tr("overlays.new_connection")}</button>
+              <button className={page === "models-dream" ? "active" : ""} aria-current={page === "models-dream" ? "page" : undefined} onClick={() => setPage("models-dream")}><Moon size={15} />{tr("modelsettingspanel.memory_consolidation")}</button>
             </div>
-            <button className={page === "import" ? "active" : ""} aria-current={page === "import" ? "page" : undefined} type="button" onClick={() => setPage("import")}><ArrowDownToLine size={16} />导入</button>
-            <button className={page === "updates" ? "active" : ""} aria-current={page === "updates" ? "page" : undefined} type="button" onClick={() => setPage("updates")}><RefreshCw size={16} />更新</button>
-            <button className={page === "data" ? "active" : ""} aria-current={page === "data" ? "page" : undefined} type="button" onClick={() => setPage("data")}><Database size={16} />数据与记忆</button>
+            <button className={page === "import" ? "active" : ""} aria-current={page === "import" ? "page" : undefined} type="button" onClick={() => setPage("import")}><ArrowDownToLine size={16} />{tr("overlays.import")}</button>
+            <button className={page === "updates" ? "active" : ""} aria-current={page === "updates" ? "page" : undefined} type="button" onClick={() => setPage("updates")}><RefreshCw size={16} />{tr("overlays.updates")}</button>
+            <button className={page === "data" ? "active" : ""} aria-current={page === "data" ? "page" : undefined} type="button" onClick={() => setPage("data")}><Database size={16} />{tr("overlays.data_and_memory")}</button>
           </nav>
           {window.cleoDesktop?.setup && <button className="settings-setup-link" type="button"
-            onClick={() => { onClose(); window.dispatchEvent(new Event("cleo:open-setup")); }}><Wrench size={16} />检查运行环境</button>}
+            onClick={() => { onClose(); window.dispatchEvent(new Event("cleo:open-setup")); }}><Wrench size={16} />{tr("overlays.check_runtime_environment")}</button>}
         </aside>
         <section className="settings-content">
           <header className="settings-header">
-            <div className="settings-breadcrumb">设置<ChevronRight size={12} />{isModels && <>模型<ChevronRight size={12} /></>}<span>{settingsTitles[page]}</span></div>
-            <div className="settings-heading"><h2>{settingsTitles[page]}</h2>{page === "models" && <button className="settings-primary" onClick={() => setPage("models-add")}><Plus size={15} />新增连接</button>}</div>
+            <div className="settings-breadcrumb">{tr("overlays.settings")}<ChevronRight size={12} />{isModels && <>{tr("inspector.model")}<ChevronRight size={12} /></>}<span>{settingsTitles[page]}</span></div>
+            <div className="settings-heading"><h2>{settingsTitles[page]}</h2>{page === "models" && <button className="settings-primary" onClick={() => setPage("models-add")}><Plus size={15} />{tr("overlays.new_connection")}</button>}</div>
           </header>
           <div className="settings-scroll" ref={scrollRef}>
           <div hidden={page !== "instructions"} className="settings-instructions-container">
             {agentInstructionsError && <p className="settings-error" role="alert">{agentInstructionsError}
-              <button type="button" onClick={() => void onLoadAgentInstructions().catch(() => {})}>重试</button></p>}
+              <button type="button" onClick={() => void onLoadAgentInstructions().catch(() => {})}>{tr("app.retry")}</button></p>}
             <AgentInstructionsPage instructions={agentInstructions} loading={agentInstructionsLoading}
               onSave={onSaveAgentInstructions} onRevealPath={onRevealPath} />
           </div>
@@ -418,20 +432,25 @@ export function SettingsModal({
           </div>
           {page === "appearance" ? (
             <div className="settings-page">
-              <SettingsRow title="主题">
+              <SettingsRow title={tr("settings.language")}><select aria-label={tr("settings.language")} value={language} disabled={languageSaving}
+                onChange={event => void changeLanguage(event.target.value as "zh-CN" | "en")}>
+                <option value="zh-CN">{tr("overlays.label")}</option><option value="en">English</option>
+              </select></SettingsRow>
+              {languageError && <p className="settings-error" role="alert">{languageError}</p>}
+              <SettingsRow title={tr("overlays.theme")}>
                 <div className="theme-options">
-                  <button className={theme === "dark" ? "active" : ""} type="button" onClick={() => onThemeChange("dark")}><span className="theme-preview dark"><Moon size={16} /></span><span>深色</span>{theme === "dark" ? <Check size={14} /> : null}</button>
-                  <button className={theme === "light" ? "active" : ""} type="button" onClick={() => onThemeChange("light")}><span className="theme-preview light"><Sun size={16} /></span><span>浅色</span>{theme === "light" ? <Check size={14} /> : null}</button>
+                  <button className={theme === "dark" ? "active" : ""} type="button" onClick={() => onThemeChange("dark")}><span className="theme-preview dark"><Moon size={16} /></span><span>{tr("overlays.dark")}</span>{theme === "dark" ? <Check size={14} /> : null}</button>
+                  <button className={theme === "light" ? "active" : ""} type="button" onClick={() => onThemeChange("light")}><span className="theme-preview light"><Sun size={16} /></span><span>{tr("overlays.light")}</span>{theme === "light" ? <Check size={14} /> : null}</button>
                 </div>
               </SettingsRow>
-              <SettingsRow title="动态效果"><label className="switch"><input type="checkbox" aria-label="动态效果" checked={motionEnabled} onChange={(event) => onMotionChange(event.target.checked)} /><span /></label></SettingsRow>
+              <SettingsRow title={tr("overlays.motion_effects")}><label className="switch"><input type="checkbox" aria-label={tr("overlays.motion_effects")} checked={motionEnabled} onChange={(event) => onMotionChange(event.target.checked)} /><span /></label></SettingsRow>
             </div>
           ) : page === "agent" ? (
             <div className="settings-page">
-              {runtimeThread && <p className="settings-scope">当前任务 · {runtimeThread.title}</p>}
-              <SettingsRow title="服务"><span className="settings-value">{runtime.provider}</span></SettingsRow>
-              <SettingsRow title="当前任务模型">{runtime.editable === false ? <span className="settings-value">{runtime.model}</span> : <select aria-label="当前任务模型" value={runtime.model} onChange={event => onRuntimeChange({ model: event.target.value })}>{(runtime.models?.length ? runtime.models : [runtime.model]).map(model => <option key={model}>{model}</option>)}</select>}</SettingsRow>
-              <SettingsRow title="思考深度"><div className="segmented-control">{supportedEfforts.length ? supportedEfforts.map((effort) => <button className={runtime.effort === effort ? "active" : ""} type="button" key={effort} onClick={() => onRuntimeChange({ effort })}>{effortLabels[effort] ?? effort}</button>) : <span className="settings-value">由模型决定</span>}</div></SettingsRow>
+              {runtimeThread && <p className="settings-scope">{tr("overlays.current_task")}{runtimeThread.title}</p>}
+              <SettingsRow title={tr("conversation.provider")}><span className="settings-value">{runtime.provider}</span></SettingsRow>
+              <SettingsRow title={tr("overlays.current_task_model")}>{runtime.editable === false ? <span className="settings-value">{runtime.model}</span> : <select aria-label={tr("overlays.current_task_model")} value={runtime.model} onChange={event => onRuntimeChange({ model: event.target.value })}>{(runtime.models?.length ? runtime.models : [runtime.model]).map(model => <option key={model}>{model}</option>)}</select>}</SettingsRow>
+              <SettingsRow title={tr("conversation.reasoning_effort")}><div className="segmented-control">{supportedEfforts.length ? supportedEfforts.map((effort) => <button className={runtime.effort === effort ? "active" : ""} type="button" key={effort} onClick={() => onRuntimeChange({ effort })}>{effortLabels[effort] ?? effort}</button>) : <span className="settings-value">{tr("conversation.determined_by_the_model")}</span>}</div></SettingsRow>
               <RuntimePermissions key={runtimeThread?.id ?? "draft"} runtime={runtime}
                 threadId={runtimeThread?.id} onChange={onPermissionsChange} />
             </div>
@@ -445,12 +464,12 @@ export function SettingsModal({
             />
           ) : (
             <div className="settings-page">
-              <SettingsRow title="记忆整理"><span className="settings-value">{dreamStatusLabel(dreamAgent)}</span></SettingsRow>
+              <SettingsRow title={tr("modelsettingspanel.memory_consolidation")}><span className="settings-value">{dreamStatusLabel(dreamAgent)}</span></SettingsRow>
               {onStorageInventory && <StorageSettings active={open} onInventory={onStorageInventory} onReclaim={onReclaimStorage}
                 blocked={storageBlocked} onRevealPath={onRevealPath} />}
-              <details className="settings-advanced"><summary>高级设置</summary>
-                <SettingsRow title="配置模板"><div className="settings-actions"><button type="button" onClick={() => onCopyConfigTemplate("cleo")}>复制 Cleo 配置</button><button type="button" onClick={() => onCopyConfigTemplate("harnesses")}>复制运行配置</button></div></SettingsRow>
-                <SettingsRow title="重置工作区"><button className="settings-action danger" type="button" onClick={() => { if (window.confirm("将仓库重置到本地 main 并清理未跟踪文件？此操作不可撤销。")) onResetWorkspace(); }}>重置工作区</button></SettingsRow>
+              <details className="settings-advanced"><summary>{tr("connectionwizard.advanced_settings")}</summary>
+                <SettingsRow title={tr("overlays.configuration_templates")}><div className="settings-actions"><button type="button" onClick={() => onCopyConfigTemplate("cleo")}>{tr("overlays.copy_cleo_configuration")}</button><button type="button" onClick={() => onCopyConfigTemplate("harnesses")}>{tr("overlays.copy_runtime_configuration")}</button></div></SettingsRow>
+                <SettingsRow title={tr("overlays.reset_workspace")}><button className="settings-action danger" type="button" onClick={() => { if (window.confirm(tr("overlays.reset_the_repository_to_local_main_and_remove_untracked_files_this_action_cannot_be_u"))) onResetWorkspace(); }}>{tr("overlays.reset_workspace")}</button></SettingsRow>
               </details>
             </div>
           )}
@@ -476,14 +495,14 @@ function RuntimePermissions({ runtime, threadId, onChange }: {
     inFlight.current = true;
     setSaving(true); setError("");
     try { await onChange(threadId, { ...update, permissionProvider: runtime.provider }); }
-    catch (error) { setError(error instanceof Error ? error.message : "权限更改未保存，请重试。"); }
+    catch (error) { setError(error instanceof Error ? error.message : tr("overlays.permission_changes_were_not_saved_try_again")); }
     finally { inFlight.current = false; setSaving(false); }
   };
   return <>
     <PermissionSelector key={runtime.provider} runtime={runtime} disabled={saving} placement="down"
       onChange={threadId && onChange ? update => onChange(threadId, update) : undefined} />
     {(["access", "approval"] as const).map(field => {
-      const title = field === "access" ? "文件访问" : "审批方式";
+      const title = field === "access" ? tr("overlays.file_access") : tr("overlays.approval_policy");
       const label = field === "access" ? accessLabel : approvalLabel;
       const choices = runtime.permissionOptions?.[field] ?? [];
       const value = (sameProvider && pending?.[field]) || runtime[field];
@@ -493,17 +512,17 @@ function RuntimePermissions({ runtime, threadId, onChange }: {
           onChange={event => void change({ [field]: event.target.value })}>
           {!choice && <option value={value}>{label(value)}</option>}
           {choices.map(choice => <option key={choice.value} value={choice.value} disabled={Boolean(choice.disabledReason)}
-            title={choice.disabledReason ?? choice.description}>{choice.label}{choice.disabledReason ? "（不可用）" : ""}</option>)}
+            title={choice.disabledReason ?? choice.description}>{choice.label}{choice.disabledReason ? tr("overlays.unavailable") : ""}</option>)}
         </select> : <span className="settings-value">{label(runtime[field])}</span>}
       </SettingsRow>;
     })}
     {pending && <div className="settings-permission-pending" role="status">
-      <p>{sameProvider ? `下次运行生效 · 当前：${accessLabel(runtime.access)} · ${approvalLabel(runtime.approval)}`
-        : "待生效权限属于之前的服务，请重新选择或取消更改。"}</p>
-      <button className="settings-action" disabled={saving} onClick={() => void change({ discardPendingPermissions: true })}>取消更改</button>
+      <p>{sameProvider ? tr("overlays.applies_next_run_current_value_value", { p0: accessLabel(runtime.access), p1: approvalLabel(runtime.approval) })
+        : tr("overlays.pending_permissions_belong_to_the_previous_provider_choose_them_again_or_discard_the_")}</p>
+      <button className="settings-action" disabled={saving} onClick={() => void change({ discardPendingPermissions: true })}>{tr("backgroundmemorysettingspanel.discard_changes")}</button>
     </div>}
     {runtime.permissionOptions?.reason && <p className="settings-scope">{runtime.permissionOptions.reason}</p>}
-    {saving && <p className="settings-scope" role="status">正在保存…</p>}
+    {saving && <p className="settings-scope" role="status">{tr("overlays.saving")}</p>}
     {error && <p className="settings-error" role="alert">{error}</p>}
   </>;
 }
@@ -514,8 +533,8 @@ function formatStorage(value: number) {
 }
 
 const storageKindLabels: Record<StorageEntryKind, string> = {
-  "runtime-namespace": "依赖快照", "online-runtime": "运行环境", "package-cache": "下载缓存", "install-scratch": "安装临时目录",
-  "release-download": "安装包", build: "保留的程序", backup: "数据备份", "user-data": "用户数据", unknown: "其他",
+  get "runtime-namespace"() { return tr("overlays.dependency_snapshots"); }, get "online-runtime"() { return tr("dependencysetup.runtime_setup"); }, get "package-cache"() { return tr("overlays.download_cache"); }, get "install-scratch"() { return tr("overlays.temporary_installation_directories"); },
+  get "release-download"() { return tr("overlays.installation_packages"); }, get build() { return tr("overlays.retained_programs"); }, get backup() { return tr("overlays.data_backups"); }, get "user-data"() { return tr("overlays.user_data"); }, get unknown() { return tr("overlays.other"); },
 };
 const storageKindOrder = Object.keys(storageKindLabels) as StorageEntryKind[];
 
@@ -537,22 +556,22 @@ function StorageSettings({ active, onInventory, onReclaim, blocked, onRevealPath
     if (busy) return;
     setBusy("inventory"); setError("");
     try { setInventory(await current.current.onInventory()); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : "无法计算存储占用。"); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : tr("overlays.could_not_calculate_storage_usage")); }
     finally { setBusy(null); }
   };
   useEffect(() => { if (active && !inventory && !busy) void load(); }, [active]);
   const reclaim = async () => {
     if (busy || !inventory || !current.current.onReclaim) return;
-    const confirmed = window.confirm(`将删除约 ${formatStorage(inventory.reclaimableBytes)} 可回收内容：已删除程序遗留的依赖快照、没有程序使用的运行环境、过期安装包和可重建的下载缓存。\n用户数据、数据备份和保留的程序不受影响。`);
+    const confirmed = window.confirm(tr("overlays.delete_approximately_value_of_reclaimable_data_dependency_snapshots_left_by_deleted_p", { p0: formatStorage(inventory.reclaimableBytes) }));
     if (!confirmed) return;
     setBusy("reclaim"); setError(""); setNotice("");
     try {
       const result = await current.current.onReclaim();
       setInventory(result.inventory);
       setNotice(result.failed.length
-        ? `已释放 ${formatStorage(result.freedBytes)}；${result.failed.length} 项被占用未能删除，下次启动会重试。`
-        : `已释放 ${formatStorage(result.freedBytes)}。`);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "清理失败，请重试。"); }
+        ? tr("overlays.freed_value_value_items_were_in_use_and_could_not_be_deleted_they_will_be_retried_on_", { p0: formatStorage(result.freedBytes), p1: result.failed.length })
+        : tr("overlays.freed_value", { p0: formatStorage(result.freedBytes) }));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : tr("overlays.cleanup_failed_try_again")); }
     finally { setBusy(null); }
   };
   const groups = useMemo(() => {
@@ -569,40 +588,40 @@ function StorageSettings({ active, onInventory, onReclaim, blocked, onRevealPath
   const listed = useMemo(() => inventory ? [...inventory.entries]
     .filter(entry => entry.kind !== "user-data")
     .sort((a, b) => Number(b.action === "reclaim") - Number(a.action === "reclaim") || b.bytes - a.bytes) : [], [inventory]);
-  const description = !inventory ? (busy === "inventory" ? "正在统计 Cleo 自有文件的占用…" : "统计依赖快照、运行环境、安装包、备份与用户数据的占用。")
-    : `共 ${formatStorage(inventory.totalBytes)}，其中 ${formatStorage(inventory.reclaimableBytes)} 可回收${inventory.pending.length ? `；${inventory.pending.length} 项上次未能删除，将自动重试` : ""}。`;
+  const description = !inventory ? (busy === "inventory" ? tr("overlays.calculating_storage_used_by_cleo_owned_files") : tr("overlays.measures_dependency_snapshots_runtimes_installers_backups_and_user_data"))
+    : tr("overlays.total_value_reclaimable_valuevalue", { p0: formatStorage(inventory.totalBytes), p1: formatStorage(inventory.reclaimableBytes), p2: inventory.pending.length ? tr("overlays.value_items_could_not_be_deleted_last_time_and_will_be_retried_automatically", { p0: inventory.pending.length }) : "" });
   return (
-    <section className="storage-settings" aria-label="存储占用">
-      <SettingsRow title="存储占用" description={description}>
+    <section className="storage-settings" aria-label={tr("overlays.storage_usage")}>
+      <SettingsRow title={tr("overlays.storage_usage")} description={description}>
         <div className="settings-actions">
-          <button type="button" onClick={() => void load()} disabled={Boolean(busy)}>{busy === "inventory" ? "计算中…" : inventory ? "重新计算" : "计算占用"}</button>
+          <button type="button" onClick={() => void load()} disabled={Boolean(busy)}>{busy === "inventory" ? tr("overlays.calculating") : inventory ? tr("overlays.recalculate") : tr("overlays.calculate_usage")}</button>
           {inventory && onReclaim && inventory.reclaimableBytes > 0 && (
             <button type="button" onClick={() => void reclaim()} disabled={Boolean(busy) || Boolean(blocked)}
-              title={blocked ?? undefined}>{busy === "reclaim" ? "清理中…" : `清理 ${formatStorage(inventory.reclaimableBytes)}`}</button>
+              title={blocked ?? undefined}>{busy === "reclaim" ? tr("overlays.cleaning") : tr("overlays.reclaim_value", { p0: formatStorage(inventory.reclaimableBytes) })}</button>
           )}
         </div>
       </SettingsRow>
       {blocked && inventory && inventory.reclaimableBytes > 0 && <p className="settings-scope">{blocked}</p>}
       {error && <p className="settings-error" role="alert">{error}</p>}
       {notice && <p className="settings-scope" role="status">{notice}</p>}
-      {inventory && inventory.lastCleanup && !notice && <p className="settings-scope">上次清理：{new Date(inventory.lastCleanup.at).toLocaleString()} · 释放 {formatStorage(inventory.lastCleanup.freedBytes)}{inventory.lastCleanup.failed ? ` · ${inventory.lastCleanup.failed} 项待重试` : ""}</p>}
+      {inventory && inventory.lastCleanup && !notice && <p className="settings-scope">{tr("overlays.last_cleanup")}{new Date(inventory.lastCleanup.at).toLocaleString(getLanguage())} {tr("overlays.freed")}{formatStorage(inventory.lastCleanup.freedBytes)}{inventory.lastCleanup.failed ? tr("overlays.value_items_awaiting_retry", { p0: inventory.lastCleanup.failed }) : ""}</p>}
       {inventory && (
         <details className="settings-advanced storage-details">
-          <summary>占用明细</summary>
+          <summary>{tr("overlays.storage_breakdown")}</summary>
           <table className="storage-table">
-            <thead><tr><th>类别</th><th>条目</th><th>可回收</th><th>占用</th></tr></thead>
+            <thead><tr><th>{tr("overlays.category")}</th><th>{tr("overlays.entries")}</th><th>{tr("overlays.reclaimable")}</th><th>{tr("overlays.used")}</th></tr></thead>
             <tbody>{groups.map(group => <tr key={group.kind}><td>{storageKindLabels[group.kind]}</td><td>{group.count}</td><td>{group.reclaim ? formatStorage(group.reclaim) : "—"}</td><td>{formatStorage(group.bytes)}</td></tr>)}</tbody>
           </table>
           <ul className="storage-entries">
             {listed.map(entry => (
               <li key={entry.id} className={entry.action}>
-                <strong>{entry.action === "reclaim" ? "可回收" : "保留"} · {storageKindLabels[entry.kind]}{entry.version ? ` ${entry.version}` : ""} · {formatStorage(entry.bytes)}</strong>
-                <span>{entry.reason}{entry.action === "reclaim" && entry.policy === "manual" ? "（仅手动清理）" : ""}</span>
+                <strong>{entry.action === "reclaim" ? tr("overlays.reclaimable") : tr("overlays.retained")} · {storageKindLabels[entry.kind]}{entry.version ? ` ${entry.version}` : ""} · {formatStorage(entry.bytes)}</strong>
+                <span>{entry.reason}{entry.action === "reclaim" && entry.policy === "manual" ? tr("overlays.manual_cleanup_only") : ""}</span>
                 <button type="button" onClick={() => onRevealPath(entry.path)}><code>{entry.path}</code></button>
               </li>
             ))}
           </ul>
-          <p className="settings-scope">数据目录 {inventory.dataHome} · 程序目录 {inventory.controlRoot}。大小为递归文件大小近似值。</p>
+          <p className="settings-scope">{tr("overlays.data_directory")}{inventory.dataHome} {tr("overlays.program_directory")}{inventory.controlRoot}{tr("overlays.sizes_are_approximate_recursive_file_totals")}</p>
         </details>
       )}
     </section>
@@ -617,19 +636,19 @@ function formatBytes(value: number) {
 function updateDescription(state: UpdateState) {
   if (state.phase === "ready" && state.installBlocked) return state.installBlocked;
   if (state.phase === "ready" && state.error) return state.error;
-  if (state.operationBusy && !["checking", "downloading", "installing"].includes(state.phase)) return "另一项版本操作正在进行。";
+  if (state.operationBusy && !["checking", "downloading", "installing"].includes(state.phase)) return tr("overlays.another_version_operation_is_in_progress");
   switch (state.phase) {
-    case "unsupported": return state.error || "开发版本不检查更新";
-    case "idle": return "正在获取版本信息…";
-    case "checking": return "正在检查更新…";
-    case "up-to-date": return state.selectedTag ? `正在使用所选版本（${state.latestVersion}）。` : state.latestVersion ? `已是最新版本（${state.latestVersion}）。` : "已是最新版本。";
-    case "available": return `${state.selectedTag ? "已选择" : "可更新至"} ${state.latestVersion}${state.selectedPrerelease ? " · 预发布版" : ""}`;
-    case "downloading": return `正在下载 ${formatBytes(state.downloadedBytes)} / ${formatBytes(state.totalBytes)}。`;
-    case "ready": return `Cleo ${state.latestVersion} 已准备好，点击后重启安装。`;
-    case "installing": return state.installStage === "restarting" ? "正在启动新版本…" : "正在校验并解压更新…";
-    case "updated": return `Cleo ${state.currentVersion} 更新成功。`;
-    case "install-failed": return state.error || "安装未完成，请重新检查更新。";
-    case "error": return state.error || "检查或下载更新失败。";
+    case "unsupported": return state.error || tr("overlays.development_builds_do_not_check_for_updates");
+    case "idle": return tr("overlays.loading_version_information");
+    case "checking": return tr("overlays.checking_for_updates");
+    case "up-to-date": return state.selectedTag ? tr("overlays.you_are_using_the_selected_version_value", { p0: state.latestVersion }) : state.latestVersion ? tr("overlays.you_have_the_latest_version_value", { p0: state.latestVersion }) : tr("overlays.you_have_the_latest_version");
+    case "available": return `${state.selectedTag ? tr("overlays.selected") : tr("overlays.update_available")} ${state.latestVersion}${state.selectedPrerelease ? tr("overlays.pre_release") : ""}`;
+    case "downloading": return tr("overlays.downloading_value_value", { p0: formatBytes(state.downloadedBytes), p1: formatBytes(state.totalBytes) });
+    case "ready": return tr("overlays.cleo_value_is_ready_click_to_restart_and_install", { p0: state.latestVersion });
+    case "installing": return state.installStage === "restarting" ? tr("overlays.starting_the_new_version") : tr("overlays.verifying_and_extracting_the_update");
+    case "updated": return tr("overlays.cleo_value_updated_successfully", { p0: state.currentVersion });
+    case "install-failed": return state.error || tr("overlays.installation_did_not_complete_check_for_updates_again");
+    case "error": return state.error || tr("overlays.could_not_check_for_or_download_updates");
   }
 }
 
@@ -665,7 +684,7 @@ function UpdateSettingsPage({
       else failures.current = 0;
     } catch (error) {
       failures.current += 1;
-      setCheckError(error instanceof Error ? error.message : "无法读取版本，请重试。");
+      setCheckError(error instanceof Error ? error.message : tr("overlays.could_not_read_the_version_try_again"));
     } finally { inFlight.current = false; setChecking(false); }
   };
   useEffect(() => {
@@ -694,27 +713,27 @@ function UpdateSettingsPage({
     : 0;
   const busy = checking || state.operationBusy || state.phase === "checking" || state.phase === "downloading" || state.phase === "installing";
   let action: { label: string; run: () => void } | null = null;
-  if (checkError || ["error", "install-failed"].includes(state.phase)) action = { label: "重试", run: () => void check() };
-  else if (state.phase === "available") action = { label: "下载更新", run: onDownload };
-  else if (state.phase === "ready") action = { label: "重启并安装", run: onInstall };
-  else if (state.phase === "downloading") action = { label: "正在下载…", run: onDownload };
-  else if (state.phase === "installing") action = { label: "正在安装…", run: onInstall };
+  if (checkError || ["error", "install-failed"].includes(state.phase)) action = { label: tr("app.retry"), run: () => void check() };
+  else if (state.phase === "available") action = { label: tr("overlays.download_update"), run: onDownload };
+  else if (state.phase === "ready") action = { label: tr("overlays.restart_and_install"), run: onInstall };
+  else if (state.phase === "downloading") action = { label: tr("overlays.downloading"), run: onDownload };
+  else if (state.phase === "installing") action = { label: tr("overlays.installing"), run: onInstall };
   return (
     <div className="settings-page update-settings-page">
       <div className="update-hero">
-        <div><h3>Cleo {state.currentVersion}{state.currentPrerelease ? " · 预发布版" : ""}</h3>
+        <div><h3>Cleo {state.currentVersion}{state.currentPrerelease ? tr("overlays.pre_release") : ""}</h3>
           <p role={checkError || ["error", "install-failed"].includes(state.phase) ? "alert" : "status"}>{checkError || updateDescription(state)}</p></div>
       </div>
-      {state.phase === "downloading" ? <div className="update-progress" aria-label={`更新下载进度 ${percent}%`}><i style={{ width: `${percent}%` }} /></div> : null}
+      {state.phase === "downloading" ? <div className="update-progress" aria-label={tr("overlays.update_download_progress_value", { p0: percent })}><i style={{ width: `${percent}%` }} /></div> : null}
       {action && <div className="update-actions">
         <button type="button" disabled={busy || (state.phase === "ready" && Boolean(state.installBlocked))} onClick={action.run}>{action.label}</button>
       </div>}
       <UpdateVersionPicker state={state} busy={Boolean(busy)} onSelect={tag => void check(tag)} />
-      {state.dependencies && <details className="settings-advanced"><summary>运行依赖{state.dependencies.phase === "error" ? " · 更新未完成" : ""}</summary><p>{
-        state.dependencies.phase === "ready" ? "运行依赖已更新并通过检查，下次启动自动生效。"
-          : state.dependencies.phase === "error" ? `依赖更新未完成，继续使用当前版本。${state.dependencies.error || ""}`
-            : ["checking", "updating"].includes(state.dependencies.phase) ? "正在后台检查并更新 SDK 和浏览器工具…"
-              : "当前使用已验证的运行依赖。"
+      {state.dependencies && <details className="settings-advanced"><summary>{tr("overlays.runtime_dependencies")}{state.dependencies.phase === "error" ? tr("overlays.update_incomplete") : ""}</summary><p>{
+        state.dependencies.phase === "ready" ? tr("overlays.runtime_dependencies_were_updated_and_verified_they_will_take_effect_on_the_next_laun")
+          : state.dependencies.phase === "error" ? tr("overlays.dependency_update_did_not_complete_continuing_with_the_current_version_value", { p0: state.dependencies.error || "" })
+            : ["checking", "updating"].includes(state.dependencies.phase) ? tr("overlays.checking_and_updating_sdks_and_browser_tools_in_the_background")
+              : tr("overlays.using_verified_runtime_dependencies")
       }</p></details>}
     </div>
   );
@@ -725,16 +744,16 @@ export function ConfigNotice({ status, onRecheck }: { status: ConfigStatus | nul
   if (!status || (!status.error && !status.restartRequired)) return null;
   const key = `${status.version}:${status.error}:${status.restartRequired}`;
   if (dismissed === key) return null;
-  const detail = status.error ?? "数据目录的修改已保存，重启 Cleo 后生效。";
+  const detail = status.error ?? tr("overlays.data_directory_changes_were_saved_and_will_take_effect_after_restarting_cleo");
   return (
     <aside className="update-notice config-notice" role="status">
       <span className="update-notice-icon"><CircleAlert size={16} /></span>
       <div>
-        <strong>{status.error ? "配置没有完全生效" : "需要重启 Cleo"}</strong>
+        <strong>{status.error ? tr("overlays.configuration_was_not_fully_applied") : tr("overlays.restart_cleo_to_apply_changes")}</strong>
         <small title={detail}>{detail}</small>
       </div>
-      <button type="button" onClick={onRecheck}>重新检查</button>
-      <button type="button" className="config-notice-close" aria-label="关闭配置提示" title="关闭配置提示" onClick={() => setDismissed(key)}><X size={14} /></button>
+      <button type="button" onClick={onRecheck}>{tr("dependencysetup.check_again")}</button>
+      <button type="button" className="config-notice-close" aria-label={tr("overlays.dismiss_configuration_notice")} title={tr("overlays.dismiss_configuration_notice")} onClick={() => setDismissed(key)}><X size={14} /></button>
     </aside>
   );
 }
@@ -758,23 +777,23 @@ export function UpdateNotice({
     ? Math.min(100, Math.round((state.downloadedBytes / state.totalBytes) * 100))
     : 0;
   const titles: Partial<Record<UpdateState["phase"], string>> = {
-    available: `Cleo ${state.latestVersion} 可用`, ready: "更新已准备好",
-    installing: "正在准备安装", updated: "更新成功", "install-failed": "更新未完成",
+    available: tr("overlays.cleo_value_is_available", { p0: state.latestVersion }), ready: tr("overlays.update_ready"),
+    installing: tr("overlays.preparing_installation"), updated: tr("overlays.update_successful"), "install-failed": tr("overlays.update_incomplete_2"),
   };
   return (
     <aside className={`update-notice${minimized ? " update-notice-minimized" : ""}`} role="status">
-      {minimized ? <button type="button" aria-label="展开更新提示" aria-expanded={false} onClick={() => setMinimized(false)}>
-        <RefreshCw size={14} />{titles[state.phase] ?? `下载更新 · ${percent}%`}
+      {minimized ? <button type="button" aria-label={tr("overlays.expand_update_notice")} aria-expanded={false} onClick={() => setMinimized(false)}>
+        <RefreshCw size={14} />{titles[state.phase] ?? tr("overlays.download_update_value", { p0: percent })}
       </button> : <>
       <span className="update-notice-icon"><RefreshCw size={16} /></span>
       <div>
-        <strong>{titles[state.phase] ?? `正在下载更新 · ${percent}%`}</strong>
+        <strong>{titles[state.phase] ?? tr("overlays.downloading_update_value", { p0: percent })}</strong>
         {state.phase !== "available" || state.operationBusy ? <small>{result || state.phase === "installing" || state.phase === "ready" || state.operationBusy ? updateDescription(state) : `${formatBytes(state.downloadedBytes)} / ${formatBytes(state.totalBytes)}`}</small> : null}
       </div>
-      {state.phase === "available" ? <button type="button" disabled={state.operationBusy} onClick={onDownload}>下载</button> : null}
-      {state.phase === "ready" ? <button type="button" disabled={state.operationBusy || Boolean(state.installBlocked)} onClick={onInstall}>重启安装</button> : null}
-      {result ? <button type="button" onClick={() => setDismissed(resultKey)}>关闭</button> : null}
-      <button type="button" aria-label="最小化更新提示" title="最小化更新提示" aria-expanded={true} onClick={() => setMinimized(true)}>−</button>
+      {state.phase === "available" ? <button type="button" disabled={state.operationBusy} onClick={onDownload}>{tr("computerpanel.downloads")}</button> : null}
+      {state.phase === "ready" ? <button type="button" disabled={state.operationBusy || Boolean(state.installBlocked)} onClick={onInstall}>{tr("overlays.restart_to_install")}</button> : null}
+      {result ? <button type="button" onClick={() => setDismissed(resultKey)}>{tr("app.close")}</button> : null}
+      <button type="button" aria-label={tr("overlays.minimize_update_notice")} title={tr("overlays.minimize_update_notice")} aria-expanded={true} onClick={() => setMinimized(true)}>−</button>
       </>}
     </aside>
   );
@@ -814,21 +833,21 @@ function AgentInstructionsPage({
       setBaseline(result.content);
       setSaved(true);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "无法保存 对话指令");
+      setError(reason instanceof Error ? reason.message : tr("overlays.could_not_save_chat_instructions"));
     }
   };
   return (
     <form className="settings-page agent-instructions-page" onSubmit={submit}>
       <div className="agent-instructions-intro">
-        <code className="agent-instructions-path">{instructions?.path ?? (loading ? "正在读取…" : "尚未读取指令")}</code>
-        <button type="button" disabled={!instructions?.path} onClick={() => instructions?.path && onRevealPath(instructions.path)}><FolderOpen size={14} />打开位置</button>
+        <code className="agent-instructions-path">{instructions?.path ?? (loading ? tr("overlays.loading") : tr("overlays.instructions_have_not_loaded"))}</code>
+        <button type="button" disabled={!instructions?.path} onClick={() => instructions?.path && onRevealPath(instructions.path)}><FolderOpen size={14} />{tr("overlays.open_location")}</button>
       </div>
       <textarea
-        aria-label="对话指令内容"
+        aria-label={tr("overlays.chat_instruction_content")}
         spellCheck={false}
         value={draft}
         disabled={!instructions && loading}
-        placeholder={loading ? "正在读取…" : "在这里写入 AGENTS.md 指令"}
+        placeholder={loading ? tr("overlays.loading") : tr("overlays.write_agents_md_instructions_here")}
         onChange={(event) => { setDraft(event.target.value); setSaved(false); }}
         onKeyDown={(event) => {
           if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
@@ -838,10 +857,10 @@ function AgentInstructionsPage({
         }}
       />
       <footer>
-        <span className={error ? "error" : ""}>{error ?? (saved ? "已保存" : dirty ? "有未保存修改" : "")}</span>
+        <span className={error ? "error" : ""}>{error ?? (saved ? tr("overlays.saved") : dirty ? tr("overlays.unsaved_changes") : "")}</span>
         <div>
-          <button type="button" disabled={!dirty || loading} onClick={() => { setDraft(baseline); setError(null); setSaved(false); }}><RotateCcw size={14} />撤销修改</button>
-          <button className="primary" type="submit" disabled={!dirty || loading}><Save size={14} />{loading ? "保存中…" : "保存"}</button>
+          <button type="button" disabled={!dirty || loading} onClick={() => { setDraft(baseline); setError(null); setSaved(false); }}><RotateCcw size={14} />{tr("overlays.discard_edits")}</button>
+          <button className="primary" type="submit" disabled={!dirty || loading}><Save size={14} />{loading ? tr("backgroundmemorysettingspanel.saving") : tr("computerpanel.save")}</button>
         </div>
       </footer>
     </form>
@@ -856,7 +875,7 @@ export function LoadingScreen({ error, onRetry }: { error: string | null; onRetr
   return (
     <div className="loading-screen">
       <div className="loading-brand" role="img" aria-label="Cleo" />
-      {error ? <><strong>无法打开工作区</strong><p>{error}</p><button onClick={onRetry}>重试</button></> : <><div className="loading-line"><i /></div><span>正在打开本地工作区</span></>}
+      {error ? <><strong>{tr("overlays.could_not_open_the_workspace")}</strong><p>{error}</p><button onClick={onRetry}>{tr("app.retry")}</button></> : <><div className="loading-line"><i /></div><span>{tr("overlays.opening_the_local_workspace")}</span></>}
     </div>
   );
 }
@@ -880,7 +899,7 @@ export const commandIcons = {
 };
 
 export const spaceLabels: Record<WorkspaceSpace, string> = {
-  chat: "对话",
-  productivity: "开发",
-  memory: "记忆",
+  get chat() { return tr("app.chat"); },
+  get productivity() { return tr("app.development"); },
+  get memory() { return tr("app.memory"); },
 };

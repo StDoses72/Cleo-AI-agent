@@ -1,3 +1,4 @@
+import { t as tr } from "./i18n.mjs";
 import { createHash } from "node:crypto";
 import { execFile, spawn } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
@@ -68,7 +69,7 @@ export class DependencyUpdater {
         });
         await this.resolveCodexBinary();
       } catch (error) {
-        const state = { ...readDependencyState(this.root), active: null, phase: "error", error: `依赖启动检查失败，已恢复随应用安装的版本：${error.message}` };
+        const state = { ...readDependencyState(this.root), active: null, phase: "error", error: tr("dependencies.dependency_startup_checks_failed_restored_the_version_bundled_with_the_application_va", { p0: error.message }) };
         await writeFile(join(this.root, "state.json"), JSON.stringify(state));
         this.runtime = selectRuntime(this.root, this.baseResources);
       }
@@ -135,7 +136,7 @@ export class DependencyUpdater {
         clearInterval(timer);
         this.child = null;
         this.publish();
-        if (code !== 0) this.onState({ phase: "error", error: detail || "依赖更新中断；当前运行版本不受影响。" });
+        if (code !== 0) this.onState({ phase: "error", error: detail || tr("dependencies.dependency_update_interrupted_the_running_version_is_unaffected") });
         done();
       });
     });

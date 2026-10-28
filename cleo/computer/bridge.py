@@ -14,13 +14,12 @@ import secrets
 import sys
 from pathlib import Path
 
+from cleo.i18n import tr
+
 ENVIRONMENT = "CLEO_COMPUTER_BRIDGE"
 # Long enough for a user takeover (10 minutes) or an authorization prompt, plus margin.
 REQUEST_TIMEOUT = 11 * 60
-UNAVAILABLE = (
-    "电脑操作需要在运行中的 Cleo 桌面应用里使用：内置浏览器和本机电脑模式由桌面应用提供。"
-    "请在 Cleo 桌面应用中发送任务；普通聊天不受影响。"
-)
+_UNAVAILABLE_KEY = "bridge.computer_use_requires_a_running_cleo_desktop_app"
 
 
 class BridgeError(Exception):
@@ -34,18 +33,18 @@ def descriptor_path(explicit: str | Path | None = None) -> Path | None:
 
 def read_descriptor(path: Path | None) -> dict:
     if path is None:
-        raise BridgeError(UNAVAILABLE)
+        raise BridgeError(tr(_UNAVAILABLE_KEY))
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
-        raise BridgeError(UNAVAILABLE) from exc
+        raise BridgeError(tr(_UNAVAILABLE_KEY)) from exc
     if (
         not isinstance(data, dict)
         or data.get("version") != 1
         or not data.get("address")
         or not data.get("token")
     ):
-        raise BridgeError(UNAVAILABLE)
+        raise BridgeError(tr(_UNAVAILABLE_KEY))
     return data
 
 
@@ -55,10 +54,10 @@ async def _open(descriptor: dict):
     if descriptor.get("transport") == "unix":
         return await asyncio.open_unix_connection(address, limit=limit)
     if sys.platform != "win32":
-        raise BridgeError(UNAVAILABLE)
+        raise BridgeError(tr(_UNAVAILABLE_KEY))
     loop = asyncio.get_running_loop()
     if not hasattr(loop, "create_pipe_connection"):
-        raise BridgeError("当前事件循环不支持本地管道，无法连接 Cleo 桌面应用。")
+        raise BridgeError(tr("bridge.the_current_event_loop_does_not_support_local_pi"))
     for attempt in range(40):
         reader = asyncio.StreamReader(limit=limit)
         protocol = asyncio.StreamReaderProtocol(reader)
@@ -67,15 +66,15 @@ async def _open(descriptor: dict):
                 lambda protocol=protocol: protocol, address
             )
         except FileNotFoundError as exc:
-            raise BridgeError(UNAVAILABLE) from exc
+            raise BridgeError(tr(_UNAVAILABLE_KEY)) from exc
         except OSError as exc:
             # ERROR_PIPE_BUSY: every server instance is momentarily in use.
             if getattr(exc, "winerror", None) == 231 and attempt < 39:
                 await asyncio.sleep(0.05)
                 continue
-            raise BridgeError(UNAVAILABLE) from exc
+            raise BridgeError(tr(_UNAVAILABLE_KEY)) from exc
         return reader, asyncio.StreamWriter(transport, protocol, reader, loop)
-    raise BridgeError(UNAVAILABLE)
+    raise BridgeError(tr(_UNAVAILABLE_KEY))
 
 
 async def request(
@@ -96,11 +95,11 @@ async def request(
         except (OSError, RuntimeError):
             pass
     if not line:
-        raise BridgeError("Cleo 桌面应用中断了电脑操作连接，操作结果未知。请重新截图确认。")
+        raise BridgeError(tr("bridge.the_cleo_desktop_app_interrupted_the_computer_co"))
     reply = json.loads(line)
     if not reply.get("ok"):
-        raise BridgeError(str(reply.get("error") or "电脑操作失败。"))
+        raise BridgeError(str(reply.get("error") or tr("bridge.computer_operation_failed")))
     content = reply.get("content")
     if not isinstance(content, list):
-        raise BridgeError("电脑操作返回了无效结果。")
+        raise BridgeError(tr("bridge.computer_control_returned_an_invalid_result"))
     return content

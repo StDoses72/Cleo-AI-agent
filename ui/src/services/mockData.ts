@@ -1,3 +1,4 @@
+import { t as tr } from "../../electron/i18n.mjs";
 import type {
   ChangeFile,
   MemoryEntry,
@@ -96,20 +97,20 @@ export const permissionPresets: Record<"codex" | "claude", NonNullable<RuntimePr
   codex: {
     access: [], approval: [],
     presets: [
-      { value: "ask", label: "请求批准", description: "由你批准超出已有授权范围的操作。", update: { approval: "user", access: "workspace-write" } },
-      { value: "review", label: "帮我审批", description: "由当前 harness 自动审查操作；可能允许、拒绝或请求你确认。", update: { approval: "auto_review", access: "workspace-write" } },
-      { value: "full", label: "完全访问", description: "允许常规文件、命令和工具操作，无需逐项确认；服务强制规则仍生效。", update: { approval: "deny_all", access: "full-access" } },
+      { value: "ask", get label() { return tr("permissions.ask"); }, get description() { return tr("permissions.askDescription"); }, update: { approval: "user", access: "workspace-write" } },
+      { value: "review", get label() { return tr("permissions.review"); }, get description() { return tr("permissions.reviewDescription"); }, update: { approval: "auto_review", access: "workspace-write" } },
+      { value: "full", get label() { return tr("runtime_labels.full_access"); }, get description() { return tr("permissions.fullDescription"); }, update: { approval: "deny_all", access: "full-access" } },
     ],
-    reason: "选择后由当前 harness 检查并生效，仅影响此会话。",
+    get reason() { return tr("permissions.scope"); },
   },
   claude: {
     access: [], approval: [],
     presets: [
-      { value: "ask", label: "请求批准", description: "由你批准超出已有授权范围的操作。", update: { approval: "default" } },
-      { value: "review", label: "帮我审批", description: "由当前 harness 自动审查操作；可能允许、拒绝或请求你确认。", update: { approval: "auto" } },
-      { value: "full", label: "完全访问", description: "允许常规文件、命令和工具操作，无需逐项确认；服务强制规则仍生效。", update: { approval: "bypassPermissions" } },
+      { value: "ask", get label() { return tr("permissions.ask"); }, get description() { return tr("permissions.askDescription"); }, update: { approval: "default" } },
+      { value: "review", get label() { return tr("permissions.review"); }, get description() { return tr("permissions.reviewDescription"); }, update: { approval: "auto" } },
+      { value: "full", get label() { return tr("runtime_labels.full_access"); }, get description() { return tr("permissions.fullDescription"); }, update: { approval: "bypassPermissions" } },
     ],
-    reason: "选择后由当前 harness 检查并生效，仅影响此会话。",
+    get reason() { return tr("permissions.scope"); },
   },
 };
 

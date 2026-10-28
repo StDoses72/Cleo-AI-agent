@@ -1,5 +1,6 @@
 const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("cleoMonitor", {
+  language: process.argv.includes("--cleo-ui-language=en") ? "en" : "zh-CN",
   status: () => ipcRenderer.invoke("cleo:monitor:status"),
   send: body => ipcRenderer.invoke("cleo:monitor:send", body),
   control: (action, params = {}) => ipcRenderer.invoke("cleo:monitor:control", action, params),

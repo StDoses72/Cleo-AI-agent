@@ -1,3 +1,4 @@
+import { t as tr } from "./i18n.mjs";
 import { spawn } from "node:child_process";
 import {
   copyFileSync,
@@ -30,7 +31,7 @@ export class BackendBridge {
   }
 
   request(method, params = {}, onEvent = null) {
-    if (this.stopped || this.closing) return Promise.reject(new Error("Cleo 后端正在退出，不能开始新的请求。"));
+    if (this.stopped || this.closing) return Promise.reject(new Error(tr("backend.the_cleo_backend_is_shutting_down_and_cannot_accept_new_requests")));
     this.start();
     return this.#send(this.process, method, params, onEvent);
   }
@@ -49,7 +50,7 @@ export class BackendBridge {
   }
 
   start() {
-    if (this.stopped || this.closing) throw new Error("Cleo 后端正在退出，不能启动新进程。");
+    if (this.stopped || this.closing) throw new Error(tr("backend.the_cleo_backend_is_shutting_down_and_cannot_start_a_new_process"));
     if (this.process && !this.process.killed) return;
     const paths = this.runtimePaths();
     this.prepareHome(paths);
@@ -273,7 +274,7 @@ export class BackendBridge {
       if (active.exitCode === null && active.signalCode === null) {
         active.kill();
         await Promise.race([exited, new Promise((_, reject) => {
-          timer = setTimeout(() => reject(new Error("后端未能退出，已停止应用改动。")), 10000);
+          timer = setTimeout(() => reject(new Error(tr("backend.the_backend_could_not_exit_applying_changes_has_been_stopped"))), 10000);
         })]);
       }
     } finally {
