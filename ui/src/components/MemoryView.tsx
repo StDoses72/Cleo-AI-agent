@@ -1,10 +1,9 @@
 import { getLanguage, relativeTime } from "../../electron/i18n.mjs";
 import { t as tr } from "../../electron/i18n.mjs";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { dreamStatusLabel } from "../memoryStatus";
 import { Timing } from "./Timing";
 import {
-  ArchiveX,
   Brain,
   CheckCircle2,
   ChevronDown,
@@ -17,7 +16,6 @@ import {
 import type {
   MemoryOverview,
   MemoryOverviewEntry,
-  MemoryReviewAction,
   MemoryReviewDetails,
   MemoryReviewSource,
   MemoryViewMode,
@@ -30,10 +28,6 @@ interface MemoryViewProps {
   refreshing?: boolean;
   onRetryRefresh?: () => void;
   onLoadReviewDetails: (source: MemoryReviewSource) => Promise<MemoryReviewDetails>;
-  onReviewSource: (
-    source: MemoryReviewSource,
-    action: MemoryReviewAction,
-  ) => Promise<unknown>;
 }
 
 const viewCopy = {
@@ -46,7 +40,7 @@ const viewCopy = {
     section: tr("memoryview.project_entries"),
   }; },
   get pending() { return {
-    title: tr("evolutioncases.pending_confirmation"),
+    title: tr("memoryview.pending_sources"),
     section: tr("memoryview.pending_sources"),
   }; },
 } as const;
@@ -58,20 +52,16 @@ export function MemoryView({
   refreshing,
   onRetryRefresh,
   onLoadReviewDetails,
-  onReviewSource,
 }: MemoryViewProps) {
   const { summary, dream_agent: dreamAgent } = overview;
   const [query, setQuery] = useState("");
   const [projectKey, setProjectKey] = useState("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [reviewingId, setReviewingId] = useState<string | null>(null);
-  const [reviewError, setReviewError] = useState<string | null>(null);
   const [expandedReviewId, setExpandedReviewId] = useState<string | null>(null);
   const [reviewDetails, setReviewDetails] = useState<Record<string, MemoryReviewDetails>>({});
   const [reviewDetailsLoadingId, setReviewDetailsLoadingId] = useState<string | null>(null);
   const [reviewDetailsErrors, setReviewDetailsErrors] = useState<Record<string, string>>({});
   const [detailsRetry, setDetailsRetry] = useState(0);
-  const reviewingRef = useRef<string | null>(null);
   const copy = viewCopy[mode];
   const normalizedQuery = query.trim().toLocaleLowerCase();
 
@@ -97,24 +87,7 @@ export function MemoryView({
     [normalizedQuery, overview.review_sources],
   );
 
-  const review = async (source: MemoryReviewSource, action: MemoryReviewAction) => {
-    if (reviewingRef.current !== null) return;
-    reviewingRef.current = source.id;
-    setReviewError(null);
-    setReviewingId(source.id);
-    setExpandedReviewId((current) => current === source.id ? null : current);
-    try {
-      await onReviewSource(source, action);
-    } catch (error) {
-      setReviewError(error instanceof Error ? error.message : tr("memoryview.could_not_process_this_memory_source"));
-    } finally {
-      reviewingRef.current = null;
-      setReviewingId((current) => current === source.id ? null : current);
-    }
-  };
-
   const toggleReviewSource = (source: MemoryReviewSource) => {
-    if (reviewingRef.current === source.id) return;
     setExpandedReviewId(current => current === source.id ? null : source.id);
   };
   const expandedSource = overview.review_sources.find(source => source.id === expandedReviewId);
@@ -138,8 +111,7 @@ export function MemoryView({
     };
   }, [expandedSource?.id, expandedSource?.source_version, detailsRetry]);
 
-  const dreamStatus = reviewingId ? tr("memoryview.consolidating")
-    : reviewError ? tr("memoryview.consolidation_failed") : dreamStatusLabel(dreamAgent);
+  const dreamStatus = dreamStatusLabel(dreamAgent);
 
   return (
     <main className="memory-view" data-testid="memory-view" data-mode={mode}>
@@ -212,15 +184,12 @@ export function MemoryView({
         <ReviewQueue
           sources={visibleReviewSources}
           filtered={Boolean(normalizedQuery)}
-          reviewingId={reviewingId}
-          error={reviewError}
           expandedId={expandedReviewId}
           details={reviewDetails}
           detailsLoadingId={reviewDetailsLoadingId}
           detailsErrors={reviewDetailsErrors}
           onToggle={(source) => void toggleReviewSource(source)}
           onRetryDetails={() => setDetailsRetry(value => value + 1)}
-          onReview={review}
         />
       ) : (
         <MemoryLedger
@@ -308,35 +277,27 @@ function MemoryDetails({ memory }: { memory: MemoryOverviewEntry }) {
 function ReviewQueue({
   sources,
   filtered,
-  reviewingId,
-  error,
   expandedId,
   details,
   detailsLoadingId,
   detailsErrors,
   onToggle,
-  onReview,
   onRetryDetails,
 }: {
   sources: MemoryReviewSource[];
   filtered: boolean;
-  reviewingId: string | null;
-  error: string | null;
   expandedId: string | null;
   details: Record<string, MemoryReviewDetails>;
   detailsLoadingId: string | null;
   detailsErrors: Record<string, string>;
   onToggle: (source: MemoryReviewSource) => void;
-  onReview: (source: MemoryReviewSource, action: MemoryReviewAction) => Promise<void>;
   onRetryDetails: () => void;
 }) {
   return (
     <section className="memory-list-section memory-review-section">
       <div className="memory-list-heading"><div><CircleAlert size={16} /><span>{tr("memoryview.pending_sources")}</span></div><small>{sources.length} {tr("memoryview.items")}</small></div>
-      {error ? <div className="memory-review-error" role="alert"><CircleAlert size={14} />{error}</div> : null}
       <div className="memory-review-list" data-testid="memory-review-list">
         {sources.length ? sources.map((source) => {
-          const busy = reviewingId === source.id;
           const expanded = expandedId === source.id;
           return (
             <article key={source.id} data-status={source.status} className={expanded ? "expanded" : ""}>
@@ -349,13 +310,6 @@ function ReviewQueue({
                     <footer><span>{source.project} · {spaceLabel(source.space)}</span><time>{formatRelativeTime(source.updated_at)}</time></footer>
                   </span>
                   <ChevronDown size={15} />
-                </button>
-              </div>
-              <div className="memory-review-actions">
-                <button type="button" className="secondary" disabled={busy || reviewingId !== null} onClick={() => void onReview(source, "skip")}>
-                  <ArchiveX size={14} />{tr("memoryview.ignore_this_time")}</button>
-                <button type="button" className="primary" disabled={busy || reviewingId !== null} onClick={() => void onReview(source, "consolidate")} data-testid="memory-review-confirm">
-                  <CheckCircle2 size={14} />{busy ? tr("memoryview.consolidating_2") : source.status === "failed" ? tr("memoryview.continue_consolidation") : tr("memoryview.confirm_and_consolidate")}
                 </button>
               </div>
               {expanded ? (

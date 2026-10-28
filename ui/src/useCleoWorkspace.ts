@@ -14,7 +14,6 @@ import type {
   Attachment,
   ApplyModelSettings,
   ModelSettings,
-  MemoryReviewAction,
   MemoryReviewSource,
   ProductivityModelCatalog,
   RuntimeCatalog,
@@ -1550,19 +1549,6 @@ export function useCleoWorkspace(evolutionOpen = false) {
       setAgentInstructionsLoading(false);
     }
   };
-  const reviewMemorySource = async (
-    source: MemoryReviewSource,
-    action: MemoryReviewAction,
-  ) => {
-    try {
-      const refreshed = await cleoClient.reviewMemorySource(source, action);
-      await refreshMemory();
-      return refreshed;
-    } catch (error) {
-      await refreshMemory();
-      throw error;
-    }
-  };
   const loadMemoryReviewDetails = (source: MemoryReviewSource) =>
     cleoClient.getMemoryReviewDetails(source);
 
@@ -1658,6 +1644,5 @@ export function useCleoWorkspace(evolutionOpen = false) {
     loadAgentInstructions,
     saveAgentInstructions,
     loadMemoryReviewDetails,
-    reviewMemorySource,
   };
 }

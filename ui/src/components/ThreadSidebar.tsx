@@ -426,7 +426,7 @@ function MemorySidebar({
       </button>
       <button className={`memory-nav-row ${activeView === "pending" ? "active" : ""}`} type="button" onClick={() => onViewChange("pending")} data-testid="memory-nav-pending">
         <CircleAlert size={16} />
-        <span>{tr("evolutioncases.pending_confirmation")}</span>
+        <span>{tr("memoryview.pending_sources")}</span>
         <small>{overview.summary.pending_sources}</small>
       </button>
     </div>

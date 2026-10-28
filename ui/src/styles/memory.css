@@ -160,7 +160,7 @@
 
 .memory-review-error { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border)); border-radius: 7px; color: var(--danger); background: color-mix(in srgb, var(--danger) 7%, transparent); font-size: var(--font-size-caption); }
 .memory-review-list { border-top: 1px solid var(--border-strong); }
-.memory-review-list article { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 13px; padding: 18px 0; border-bottom: 1px solid var(--border); }
+.memory-review-list article { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 13px; padding: 18px 0; border-bottom: 1px solid var(--border); }
 .memory-review-list article.expanded { align-items: start; }
 .memory-review-icon { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 8px; color: var(--accent); background: var(--accent-soft); }
 .memory-review-list article[data-status="failed"] .memory-review-icon { color: var(--warning); background: color-mix(in srgb, var(--warning) 9%, transparent); }
@@ -178,11 +178,6 @@
 .memory-review-toggle > svg { flex: 0 0 auto; margin-top: 2px; color: var(--muted-2); transition: transform 150ms ease, color 150ms ease; }
 .memory-review-toggle:hover > svg { color: var(--accent); }
 .memory-review-list article.expanded .memory-review-toggle > svg { transform: rotate(180deg); }
-.memory-review-actions { display: flex; align-items: center; gap: 7px; }
-.memory-review-actions button { display: flex; height: 30px; align-items: center; gap: 6px; padding: 0 9px; border: 1px solid var(--border-strong); border-radius: 6px; color: var(--muted); font-size: var(--font-size-caption); }
-.memory-review-actions button:hover:not(:disabled) { color: var(--text-soft); background: var(--surface-hover); }
-.memory-review-actions button.primary { border-color: color-mix(in srgb, var(--accent) 28%, var(--border)); color: var(--accent); background: var(--accent-soft); }
-.memory-review-actions button:disabled { cursor: wait; opacity: .5; }
 .memory-review-details,
 .memory-review-details-status { grid-column: 2 / -1; min-width: 0; margin-top: 2px; padding: 15px 0 2px; border-top: 1px solid var(--border); animation: memory-detail-in 150ms ease both; }
 .memory-review-details-status { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: var(--font-size-caption); }
