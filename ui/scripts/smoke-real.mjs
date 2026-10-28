@@ -68,7 +68,7 @@ try {
   await window.getByTestId("memory-nav-projects").click();
   await window.getByRole("heading", { name: "项目记忆", exact: true }).waitFor();
   await window.getByTestId("memory-nav-pending").click();
-  await window.getByRole("heading", { name: "待确认", exact: true }).waitFor();
+  await window.getByRole("heading", { name: "整理队列", exact: true }).waitFor();
   if (consoleErrors.length) throw new Error(`Console errors: ${consoleErrors.join(" | ")}`);
   console.log(JSON.stringify({ status: "passed", backend: "real", testHome }, null, 2));
 } finally {

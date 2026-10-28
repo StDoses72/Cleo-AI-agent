@@ -324,7 +324,8 @@ try {
   await window.getByRole("button", { name: /浅色/ }).click();
   await window.screenshot({ path: join(outputDir, "06-settings-light.png") });
   await window.getByRole("button", { name: "数据与记忆", exact: true }).click();
-  await window.locator(".settings-row").getByText("记忆整理", { exact: true }).waitFor();
+  await window.getByRole("checkbox", { name: "后台记忆整理", exact: true }).waitFor();
+  assert(!await window.getByLabel("来源标识", { exact: true }).isVisible(), "Optional sources should start collapsed");
   await window.screenshot({ path: join(outputDir, "06b-settings-memory.png") });
   await window.getByRole("button", { name: "模型", exact: true }).click();
   await window.getByRole("button", { name: "切换模型", exact: true }).waitFor();
