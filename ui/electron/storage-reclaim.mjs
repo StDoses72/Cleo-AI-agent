@@ -6,6 +6,7 @@ import { basename, dirname, isAbsolute, join, posix, relative, resolve, win32 } 
 import { desktopPlatform, installationRoot } from "./platform.mjs";
 import { compareVersions } from "./updater.mjs";
 import { readJson } from "./evolution-store.mjs";
+import { runtimeInUse } from "./install-state.mjs";
 
 /** Rebuildable package caches below this total are kept for faster reinstalls; above it they are reclaimed automatically. */
 export const PACKAGE_CACHE_LIMIT = 512 * 1024 * 1024;
@@ -245,6 +246,7 @@ export async function storageInventory({
   dataHome, store, currentResources = null, currentRuntimeNamespace = null, currentBaseResources = null,
   onlineRoots = [], installedExecutables = [], protectedVersions = [], currentVersion = null,
   siblings = [], downloadsBusy = () => false, cacheLimit = PACKAGE_CACHE_LIMIT, measure = "all",
+  pruneOnlineRuntimes = false,
   target = desktopPlatform(), fs = filesystem(), signal, now = Date.now(),
 } = {}) {
   dataHome = resolve(dataHome);
@@ -346,6 +348,7 @@ export async function storageInventory({
   // Shared online runtimes plus the installer's rebuildable caches.
   let installing = false;
   const caches = [];
+  const onlineRuntimes = [];
   for (const root of onlineRootSet) {
     if (await linkedDirectory(fs, root)) {
       if (await probe(fs, root)) entries.push({ id: `unknown:online/${basename(root)}`, kind: "unknown", path: root, bytes: 0, action: "keep", reason: tr("storage_reclaim.the_runtime_directory_is_a_link_and_will_not_be_cleaned") });
@@ -377,12 +380,31 @@ export async function storageInventory({
         if (!["ENOENT", "ENOTDIR"].includes(error.code) && !(error instanceof SyntaxError)) throw error;
       }
       const owner = livePlans.get(name);
-      // Legacy script installers support custom locations without a registry entry; absence of an owner is not proof of disuse.
-      await push({ id: `online-runtime:${name}`, kind: "online-runtime", path, version, policy: "automatic",
+      // Until an update is healthy, preserve completed legacy installs even without discoverable owners.
+      onlineRuntimes.push({ id: `online-runtime:${name}`, kind: "online-runtime", path, version, completed, policy: "automatic",
         action: owner || completed ? "keep" : "reclaim",
         reason: owner ? tr("storage_reclaim.runtime_used_by_value", { p0: owner }) : completed ? tr("storage_reclaim.completed_runtime_legacy_installers_allow_custom_program_locations_so_it_cannot_be_co")
           : tr("storage_reclaim.incomplete_runtime_with_no_program_using_it") });
     }
+  }
+  const currentOnline = currentBaseResources && onlineRuntimes.find(entry =>
+    resolve(entry.path) === resolve(currentBaseResources) && entry.completed && entry.version === currentVersion);
+  const pruneOnline = pruneOnlineRuntimes && currentOnline && !state.transaction && !installing && !downloadsBusy()
+    && currentResources && await planKey(currentResources, fs) === basename(currentOnline.path)
+    && (await probe(fs, join(currentOnline.path, "python", target.platform === "win32" ? "python.exe" : "bin/python3")))?.isFile()
+    && (await probe(fs, join(currentOnline.path, "browser", target.platform === "win32" ? "node.exe" : "node")))?.isFile();
+  for (const { completed, ...entry } of onlineRuntimes) {
+    // A successful update replaces old online environments, including legacy custom installs.
+    // Newer staged releases survive until they themselves acknowledge a healthy startup.
+    if (pruneOnline && entry.path !== currentOnline.path
+        && dirname(entry.path) === dirname(currentOnline.path)) {
+      // A failed recursive delete may already have removed ready.json.
+      let superseded = !completed;
+      try { if (completed) superseded = compareVersions(entry.version, currentVersion) <= 0; }
+      catch { /* Unknown versions are not evidence of an older runtime. */ }
+      if (superseded) Object.assign(entry, { action: "reclaim", reason: "更新已成功，只保留当前版本的在线运行环境" });
+    }
+    await push(entry);
   }
   for (const cache of caches) {
     entries.push({ ...cache, bytes: await size(cache.path) });
@@ -491,6 +513,7 @@ export async function storageInventory({
  */
 export async function reclaimStorage(options, { manual = false } = {}) {
   const { store, fs = filesystem() } = options;
+  const inUse = options.runtimeInUse || runtimeInUse;
   return store.exclusive(async () => {
     const inventory = await storageInventory({ measure: manual ? "all" : "reclaim", ...options, fs });
     const targets = inventory.entries.filter(entry => entry.action === "reclaim" && (manual || entry.policy === "automatic"));
@@ -516,11 +539,24 @@ export async function reclaimStorage(options, { manual = false } = {}) {
         if (real !== join(realParent, basename(entry.path))) throw new Error("Relocated storage entry.");
         if (!ownedRoots.some(root => within(real, root))) throw new Error("Storage entry outside Cleo-owned roots.");
         if (protectedData.some(path => within(real, path) || within(path, real))) throw new Error("Storage entry overlaps user data.");
+        if (entry.kind === "online-runtime") {
+          // Recheck after measuring/journaling: an installer or process may have started meanwhile.
+          if (await inUse(real, fs)) throw new Error("旧运行环境仍有进程使用，退出后重试。");
+          if (options.downloadsBusy?.() || (await store.read()).transaction) throw new Error("安装或更新尚未完成，稍后重试。");
+          for (const name of await listDirectory(fs, parent)) {
+            if (name.startsWith(".install-")
+                && Date.now() - (await fs.stat(join(parent, name))).mtimeMs <= STALE_INSTALL_MS) {
+              throw new Error("运行环境正在安装，稍后重试。");
+            }
+          }
+        }
         await fs.rm(entry.path, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
         removed.push(entry.id);
         freedBytes += entry.bytes;
       } catch (error) {
-        if (error.code === "ENOENT") { removed.push(entry.id); freedBytes += entry.bytes; continue; }
+        if (error.code === "ENOENT" && !await probe(fs, entry.path)) {
+          removed.push(entry.id); freedBytes += entry.bytes; continue;
+        }
         failed.push({ id: entry.id, error: error.message });
       }
     }

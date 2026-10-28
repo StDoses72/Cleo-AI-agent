@@ -41,6 +41,36 @@ export async function executableInUse(path, filesystem = fs) {
   return false;
 }
 
+/** Probe executable images before deleting any part of a runtime; never follow links.
+ * macOS permits write opens on running images, so query its open text mappings instead.
+ * Windows sharing violations and Linux ETXTBSY defer the whole directory, including CLI children.
+ */
+export async function runtimeInUse(directory, filesystem = fs) {
+  if (process.platform === "darwin") {
+    try {
+      const { stdout } = await promisify(execFile)("/usr/sbin/lsof",
+        ["-nP", "-F", "p", "-a", "-d", "txt", "+D", directory], { timeout: 10000 });
+      return /^p\d+$/m.test(stdout);
+    } catch (error) {
+      // lsof uses exit 1 with no output when no matching files are open.
+      if (error.code === 1 && !error.stdout && !error.stderr) return false;
+      throw error;
+    }
+  }
+  for (const name of await filesystem.readdir(directory)) {
+    const path = join(directory, name);
+    const info = await filesystem.lstat(path);
+    if (info.isSymbolicLink()) continue;
+    if (info.isDirectory()) {
+      if (await runtimeInUse(path, filesystem)) return true;
+    } else if (info.isFile() && (process.platform === "win32"
+      ? /\.(exe|dll|pyd|node)$/i.test(name) : (info.mode & 0o111) !== 0)) {
+      if (await executableInUse(path, filesystem)) return true;
+    }
+  }
+  return false;
+}
+
 export function acquireSingleInstance(app, windows) {
   if (!app.requestSingleInstanceLock()) return false;
   app.on("second-instance", () => {

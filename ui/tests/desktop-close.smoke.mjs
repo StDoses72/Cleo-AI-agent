@@ -6,6 +6,7 @@ import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promi
 import { join, resolve, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { descendantProcesses } from "./process-tree.mjs";
 
 const execute = promisify(execFile);
 const tempRoot = resolve(process.env.CLEO_TEST_TEMP_DIR || tmpdir());
@@ -22,9 +23,9 @@ let startupPaths;
  * Input: Electron root pid. Output: pid/name/start time for checking cleanup without matching unrelated apps.
  */
 async function descendants(pid) {
-  const command = `$all = @(Get-CimInstance Win32_Process); $ids = [System.Collections.Generic.HashSet[uint32]]::new(); [void]$ids.Add(${pid}); do { $added = $false; foreach ($p in $all) { if ($ids.Contains([uint32]$p.ParentProcessId) -and $ids.Add([uint32]$p.ProcessId)) { $added = $true } } } while ($added); ConvertTo-Json -InputObject @($all | Where-Object { $ids.Contains([uint32]$_.ProcessId) } | Select-Object Name,ProcessId,CreationDate) -Compress`;
+  const command = `ConvertTo-Json -InputObject @(Get-CimInstance Win32_Process | Select-Object Name,ProcessId,ParentProcessId,@{Name='CreationDate';Expression={$_.CreationDate.ToUniversalTime().ToString('o')}}) -Compress`;
   const { stdout } = await execute("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", command], { windowsHide: true });
-  return JSON.parse(stdout.trim() || "[]");
+  return descendantProcesses(JSON.parse(stdout.trim() || "[]"), pid);
 }
 try {
   await mkdir(join(root, "user"), { recursive: true });
@@ -123,7 +124,7 @@ try {
   } finally { clearTimeout(timer); }
   const ids = tracked.map((item) => item.ProcessId).join(",");
   const { stdout } = await execute("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
-    `ConvertTo-Json -InputObject @(Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -in @(${ids}) } | Select-Object Name,ProcessId,CreationDate) -Compress`],
+    `ConvertTo-Json -InputObject @(Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -in @(${ids}) } | Select-Object Name,ProcessId,@{Name='CreationDate';Expression={$_.CreationDate.ToUniversalTime().ToString('o')}}) -Compress`],
   { windowsHide: true });
   const remaining = JSON.parse(stdout.trim() || "[]").filter((item) =>
     tracked.some((old) => old.ProcessId === item.ProcessId && old.CreationDate === item.CreationDate));
