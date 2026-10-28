@@ -2580,8 +2580,8 @@
     "en": "Project entries"
   },
   "memoryview.pending_sources": {
-    "zh-CN": "待处理来源",
-    "en": "Pending sources"
+    "zh-CN": "整理队列",
+    "en": "Consolidation queue"
   },
   "memoryview.could_not_process_this_memory_source": {
     "zh-CN": "无法处理这个记忆来源",
@@ -2608,8 +2608,8 @@
     "en": "Search memories"
   },
   "memoryview.search_sources_awaiting_confirmation": {
-    "zh-CN": "搜索待确认来源",
-    "en": "Search sources awaiting confirmation"
+    "zh-CN": "搜索待整理会话",
+    "en": "Search conversations awaiting consolidation"
   },
   "memoryview.memory_consolidation": {
     "zh-CN": "记忆整理 · ",
@@ -2708,8 +2708,8 @@
     "en": "No matching conversations"
   },
   "memoryview.no_sources_awaiting_confirmation": {
-    "zh-CN": "没有待确认来源",
-    "en": "No sources awaiting confirmation"
+    "zh-CN": "没有待整理会话",
+    "en": "No conversations awaiting consolidation"
   },
   "memoryview.no_matching_memories": {
     "zh-CN": "没有匹配的记忆",
@@ -2848,12 +2848,12 @@
     "en": "Consolidate on a schedule or when the session backlog reaches the threshold; yield to active conversations."
   },
   "backgroundmemorysettingspanel.off_by_default_uses_the_memory_model_selected_above_and_may_incur_model_usage_charges": {
-    "zh-CN": "默认关闭。沿用上方的记忆模型，开启后可能产生模型调用费用。",
-    "en": "Off by default. Uses the memory model selected above and may incur model usage charges when enabled."
+    "zh-CN": "默认关闭。使用 Dream Agent 页选择的模型，开启后可能产生模型调用费用。",
+    "en": "Off by default. Uses the model selected on the Dream Agent page and may incur model usage charges."
   },
   "backgroundmemorysettingspanel.enable_and_save_memory_consolidation_above_before_background_consolidation_can_run": {
-    "zh-CN": "请先在上方启用记忆整理并保存，后台整理才会运行。",
-    "en": "Enable and save memory consolidation above before background consolidation can run."
+    "zh-CN": "Dream Agent 已停用，请先在 Dream Agent 页启用并保存。",
+    "en": "Dream Agent is disabled. Enable it and save on the Dream Agent page first."
   },
   "backgroundmemorysettingspanel.interval_minutes": {
     "zh-CN": "整理间隔（分钟）",
@@ -3360,8 +3360,8 @@
     "en": "Follow chat model · {p0}"
   },
   "modelsettingspanel.configure_memory_consolidation": {
-    "zh-CN": "设置记忆整理",
-    "en": "Configure memory consolidation"
+    "zh-CN": "配置 Dream Agent",
+    "en": "Configure Dream Agent"
   },
   "modelsettingspanel.connection_updated": {
     "zh-CN": "连接已更新",
@@ -3396,12 +3396,12 @@
     "en": "Choose a dedicated model for memory consolidation"
   },
   "modelsettingspanel.disable_automatic_consolidation": {
-    "zh-CN": "关闭自动整理",
-    "en": "Disable automatic consolidation"
+    "zh-CN": "停用 Dream Agent",
+    "en": "Disable Dream Agent"
   },
   "modelsettingspanel.keep_conversation_records_and_pause_automatic_consolidation": {
-    "zh-CN": "保留会话记录，暂停自动整理",
-    "en": "Keep conversation records and pause automatic consolidation"
+    "zh-CN": "保留会话记录，暂停 Dream Agent 整理",
+    "en": "Keep conversation records and pause Dream Agent consolidation"
   },
   "modelsettingspanel.default": {
     "zh-CN": "默认",
@@ -4480,8 +4480,8 @@
     "en": "{p0} · Unread replies"
   },
   "memorystatus.sources_awaiting_confirmation": {
-    "zh-CN": "有来源等待确认",
-    "en": "Sources awaiting confirmation"
+    "zh-CN": "有会话待整理",
+    "en": "Conversations awaiting consolidation"
   },
   "memorystatus.recent_sources_processed": {
     "zh-CN": "最近来源已处理",
@@ -7498,5 +7498,13 @@
   "memorysources.legacy_excluded": {
     "zh-CN": "旧记忆中互相矛盾的条目已排除，不影响其他有效偏好。",
     "en": "Contradictory legacy entries are excluded. Other valid preferences remain available."
+  },
+  "modelsettingspanel.dream_agent": {
+    "zh-CN": "Dream Agent",
+    "en": "Dream Agent"
+  },
+  "memorysources.optional": {
+    "zh-CN": "可选记忆来源",
+    "en": "Optional memory sources"
   }
 }

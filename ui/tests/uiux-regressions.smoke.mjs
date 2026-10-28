@@ -141,13 +141,57 @@ try {
     await dialog.getByRole("radio", { name: /GPT-6 Astra/ }).click();
     await dialog.waitFor({ state: "hidden" });
   });
+  await check("memory controls: Dream Agent config and automatic consolidation have separate homes", async page => {
+    await page.getByRole("button", { name: "设置", exact: true }).click();
+    await page.getByRole("button", { name: "Dream Agent", exact: true }).click();
+    await page.getByRole("heading", { name: "Dream Agent", exact: true }).waitFor();
+    assert.equal(await page.getByRole("checkbox", { name: "后台记忆整理", exact: true }).count(), 0);
+    await page.getByRole("radio", { name: /跟随对话/ }).waitFor();
+    await page.getByRole("button", { name: "数据与记忆", exact: true }).click();
+    const automatic = page.getByRole("checkbox", { name: "后台记忆整理", exact: true });
+    const optional = page.getByText("可选记忆来源", { exact: true });
+    assert.equal(await page.getByLabel("来源标识", { exact: true }).isVisible(), false);
+    assert.ok((await automatic.boundingBox()).y < (await optional.boundingBox()).y);
+    await optional.click();
+    await page.getByLabel("来源标识", { exact: true }).fill("draft-source");
+    await optional.click();
+    assert.equal(await page.getByLabel("来源标识", { exact: true }).isVisible(), false);
+    await optional.click();
+    assert.equal(await page.getByLabel("来源标识", { exact: true }).inputValue(), "draft-source");
+    await optional.click();
+    if (process.env.CLEO_TEST_SCREENSHOT) await page.screenshot({ path: process.env.CLEO_TEST_SCREENSHOT });
+    await automatic.check();
+    await page.getByRole("spinbutton", { name: "整理间隔（分钟）" }).fill("12");
+    await page.getByRole("spinbutton", { name: "待整理会话数" }).fill("3");
+    await page.getByRole("button", { name: "保存后台设置", exact: true }).click();
+    await page.getByText("后台整理设置已保存", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Dream Agent", exact: true }).click();
+    await page.getByRole("button", { name: "数据与记忆", exact: true }).click();
+    assert.equal(await automatic.isChecked(), true);
+    assert.equal(await page.getByRole("spinbutton", { name: "整理间隔（分钟）" }).inputValue(), "12");
+    await automatic.uncheck();
+    await page.getByRole("button", { name: "保存后台设置", exact: true }).click();
+    await page.getByText("后台整理设置已保存", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "关闭设置", exact: true }).click();
+    await page.getByRole("button", { name: "记忆", exact: true }).click();
+    await page.getByTestId("memory-nav-pending").click();
+    assert.equal(await page.getByTestId("memory-review-list").locator("article").count(), 2);
+    assert.equal(await page.getByTestId("memory-review-confirm").count(), 0);
+    assert.equal(await page.getByRole("button", { name: "本次忽略", exact: true }).count(), 0);
+    await page.evaluate(async () => { (await import("/electron/i18n.mjs")).setLanguage("en"); });
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page.getByRole("button", { name: "Dream Agent", exact: true }).click();
+    await page.getByRole("heading", { name: "Dream Agent", exact: true }).waitFor();
+    await page.getByRole("button", { name: "Data and memory", exact: true }).click();
+    await page.getByRole("checkbox", { name: "Background memory consolidation", exact: true }).waitFor();
+  });
   await check("information: memory filtering does not claim the queue is empty", async page => {
     await page.getByRole("button", { name: "记忆", exact: true }).click();
     await page.getByTestId("memory-nav-pending").click();
-    await page.getByLabel("搜索待确认来源", { exact: true }).fill("no-matching-conversation");
+    await page.getByLabel("搜索待整理会话", { exact: true }).fill("no-matching-conversation");
     await page.getByText("没有匹配的对话", { exact: true }).waitFor();
-    assert.equal(await page.getByText("没有待确认来源", { exact: true }).count(), 0);
-    await page.getByLabel("搜索待确认来源", { exact: true }).fill("");
+    assert.equal(await page.getByText("没有待整理会话", { exact: true }).count(), 0);
+    await page.getByLabel("搜索待整理会话", { exact: true }).fill("");
     assert.equal(await page.getByTestId("memory-review-list").locator("article").count(), 2);
   });
   await check("information: open memory details follow source revisions and reject stale reads", async page => {
@@ -195,16 +239,16 @@ try {
   });
   await check("information: memory model changes remain drafts until saved", async page => {
     await page.getByRole("button", { name: "设置", exact: true }).click();
-    await page.getByRole("button", { name: "记忆整理", exact: true }).click();
-    await page.getByRole("radio", { name: /关闭自动整理/ }).click();
+    await page.getByRole("button", { name: "Dream Agent", exact: true }).click();
+    await page.getByRole("radio", { name: /停用 Dream Agent/ }).click();
     assert.equal(await page.evaluate(async () => {
       const { cleoClient } = await import("/src/services/cleoClient.ts");
       return (await cleoClient.getModelSettings()).dreamEnabled;
     }), true);
     assert.equal(await page.getByText("自动记忆整理已暂停", { exact: true }).count(), 0);
     await page.getByRole("button", { name: "外观", exact: true }).click();
-    await page.getByRole("button", { name: "记忆整理", exact: true }).click();
-    assert.equal(await page.getByRole("radio", { name: /关闭自动整理/ }).getAttribute("aria-checked"), "true");
+    await page.getByRole("button", { name: "Dream Agent", exact: true }).click();
+    assert.equal(await page.getByRole("radio", { name: /停用 Dream Agent/ }).getAttribute("aria-checked"), "true");
     await page.getByRole("button", { name: "保存设置", exact: true }).click();
     await page.getByText("记忆整理设置已保存", { exact: true }).waitFor();
     assert.equal(await page.evaluate(async () => {
@@ -499,18 +543,21 @@ try {
     await page.evaluate(async () => {
       const { cleoClient } = await import("/src/services/cleoClient.ts");
       const baseline = await cleoClient.loadWorkspace();
+      window.memoryEntryCount = baseline.memoryOverview.entries.length;
       let failed = false;
       cleoClient.loadMemory = async () => {
         if (!failed) { failed = true; throw new Error("memory unavailable"); }
         return { memories: baseline.memories, memoryOverview: baseline.memoryOverview };
       };
     });
+    const expected = await page.evaluate(() => window.memoryEntryCount);
+    assert.ok(expected > 0);
     await page.getByRole("button", { name: "记忆", exact: true }).click();
     await page.getByRole("alert").filter({ hasText: "memory unavailable" }).waitFor();
-    assert.equal(await page.getByTestId("memory-ledger").locator("article").count(), 4);
+    assert.equal(await page.getByTestId("memory-ledger").locator("article").count(), expected);
     await page.getByRole("button", { name: "重试", exact: true }).click();
     await page.getByRole("alert").filter({ hasText: "memory unavailable" }).waitFor({ state: "hidden" });
-    assert.equal(await page.getByTestId("memory-ledger").locator("article").count(), 4);
+    assert.equal(await page.getByTestId("memory-ledger").locator("article").count(), expected);
   });
   await check("Claude messages preserve steering chronology", async page => {
     const blocks = await page.evaluate(async () => {

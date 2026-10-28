@@ -7,8 +7,8 @@ import type { BackgroundMemoryState } from "../../types";
 const toDraft = (state: BackgroundMemoryState) => ({ enabled: state.enabled,
   intervalMinutes: String(state.intervalMinutes), pendingThreshold: String(state.pendingThreshold) });
 
-export function BackgroundMemorySettingsPanel({ active, busy, dreamEnabled }: {
-  active: boolean; busy: boolean; dreamEnabled: boolean;
+export function BackgroundMemorySettingsPanel({ active, busy, onConfigureDream }: {
+  active: boolean; busy: boolean; onConfigureDream: () => void;
 }) {
   const [state, setState] = useState<BackgroundMemoryState | null>(null);
   const [draft, setDraft] = useState({ enabled: false, intervalMinutes: "30", pendingThreshold: "5" });
@@ -52,18 +52,18 @@ export function BackgroundMemorySettingsPanel({ active, busy, dreamEnabled }: {
   };
   const disabled = loading || saving || busy || !state;
   const changed = state && JSON.stringify(draft) !== JSON.stringify(toDraft(state));
-  const status = !dreamEnabled ? tr("backgroundmemorysettingspanel.memory_consolidation_is_paused") : !state?.enabled ? tr("backgroundmemorysettingspanel.disabled")
+  const status = state?.dreamEnabled === false ? tr("backgroundmemorysettingspanel.memory_consolidation_is_paused") : !state?.enabled ? tr("backgroundmemorysettingspanel.disabled")
     : state.running ? tr("backgroundmemorysettingspanel.consolidating_in_the_background") : state.status === "failed" ? tr("backgroundmemorysettingspanel.the_last_consolidation_failed")
     : state.status === "cancelled" ? tr("backgroundmemorysettingspanel.paused_waiting_for_the_next_consolidation") : tr("backgroundmemorysettingspanel.waiting_for_the_next_consolidation");
 
-  return <form className="ms-background-memory" aria-label={tr("backgroundmemorysettingspanel.background_memory_consolidation_settings")} onSubmit={event => { event.preventDefault(); void save(); }}>
+  return <form className="model-settings ms-background-memory" aria-label={tr("backgroundmemorysettingspanel.background_memory_consolidation_settings")} onSubmit={event => { event.preventDefault(); void save(); }}>
     <div className="settings-row">
       <div><strong>{tr("backgroundmemorysettingspanel.background_memory_consolidation")}</strong><p>{tr("backgroundmemorysettingspanel.consolidate_on_a_schedule_or_when_the_session_backlog_reaches_the_threshold_yield_to_")}</p></div>
       <label className="switch"><input type="checkbox" aria-label={tr("backgroundmemorysettingspanel.background_memory_consolidation")} checked={draft.enabled}
         disabled={disabled} onChange={event => { setDraft({ ...draft, enabled: event.target.checked }); setSaved(false); }} /><span /></label>
     </div>
     <p className="ms-muted">{tr("backgroundmemorysettingspanel.off_by_default_uses_the_memory_model_selected_above_and_may_incur_model_usage_charges")}</p>
-    {!dreamEnabled && <p className="ms-muted">{tr("backgroundmemorysettingspanel.enable_and_save_memory_consolidation_above_before_background_consolidation_can_run")}</p>}
+    {state?.dreamEnabled === false && <p className="ms-muted">{tr("backgroundmemorysettingspanel.enable_and_save_memory_consolidation_above_before_background_consolidation_can_run")}</p>}
     <div className="ms-background-triggers">
       <label className="ms-field"><span>{tr("backgroundmemorysettingspanel.interval_minutes")}</span><input type="number" min="1" max="1440" step="1" required
         aria-label={tr("backgroundmemorysettingspanel.interval_minutes")} disabled={disabled} value={draft.intervalMinutes}
@@ -79,6 +79,7 @@ export function BackgroundMemorySettingsPanel({ active, busy, dreamEnabled }: {
     {state?.lastError && <p className="ms-error" role="alert">{tr("backgroundmemorysettingspanel.last_background_consolidation")}{state.lastError}</p>}
     {error && <p className="ms-error" role="alert">{error}</p>}
     <div className="ms-form-actions">
+      <button type="button" className="ms-link" onClick={onConfigureDream}>{tr("modelsettingspanel.configure_memory_consolidation")}</button>
       <button type="button" className="ms-link" disabled={loading || saving || Boolean(changed)} onClick={() => setReload(value => value + 1)}>{error ? tr("backgroundmemorysettingspanel.retry_loading") : tr("backgroundmemorysettingspanel.refresh_status")}</button>
       {changed && <><button type="button" className="ms-quiet" disabled={disabled} onClick={() => { setDraft(toDraft(state)); setError(""); setSaved(false); }}>{tr("backgroundmemorysettingspanel.discard_changes")}</button>
         <button type="submit" className="ms-primary" disabled={disabled}>{saving ? tr("backgroundmemorysettingspanel.saving") : tr("backgroundmemorysettingspanel.save_background_settings")}</button></>}

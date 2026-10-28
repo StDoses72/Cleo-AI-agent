@@ -47,7 +47,7 @@ try {
     args: [...(source ? [appDir] : []), `--user-data-dir=${join(root, "profile")}`],
     // Isolate app/provider state without replacing Windows' registered OS profile.
     env: { ...process.env, CLEO_HOME: join(root, "home"), CLEO_CONFIG_PATH: "", CLEO_HARNESSES_CONFIG_PATH: "",
-      CODEX_HOME: join(root, "user", ".codex") },
+      CODEX_HOME: join(root, "user", ".codex"), CLAUDE_CONFIG_DIR: join(root, "user", ".claude") },
     timeout: 60_000,
   });
   desktopProcess = desktop.process();
@@ -90,7 +90,7 @@ try {
   const initial = await window.evaluate(() => window.cleoDesktop.request("get_background_memory_state"));
   assert.equal(initial.enabled, false, "Automatic memory organization must be opt-in.");
   await window.getByRole("button", { name: "设置", exact: true }).click();
-  await window.getByRole("button", { name: "记忆整理", exact: true }).click();
+  await window.getByRole("button", { name: "数据与记忆", exact: true }).click();
   const settings = window.getByRole("form", { name: "后台记忆整理设置" });
   const automatic = settings.getByRole("checkbox", { name: "后台记忆整理", exact: true });
   assert.equal(await automatic.isChecked(), false);

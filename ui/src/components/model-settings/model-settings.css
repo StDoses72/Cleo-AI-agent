@@ -105,7 +105,7 @@
 .ms-dream-preview .ms-summary strong { font-size: var(--font-size-control); }
 .ms-save-footer { display:flex; align-items:center; gap:10px; padding:20px 0 0; margin-top:28px; border-top:1px solid var(--ms-line); }
 .ms-save-footer > span { margin-right:auto; color:var(--muted); font-size: var(--font-size-caption); }
-.ms-background-memory { margin-top:32px; padding-top:8px; border-top:1px solid var(--ms-line); }
+.ms-background-memory { margin-bottom:32px; padding-bottom:24px; border-bottom:1px solid var(--ms-line); }
 .ms-background-memory > .ms-muted { margin-top:12px; }
 .ms-background-triggers { display:flex; align-items:center; gap:14px; margin-top:20px; }
 .ms-background-triggers .ms-field { flex:1; min-width:0; }

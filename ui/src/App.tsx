@@ -473,7 +473,6 @@ export function App() {
           refreshing={workspace.memoryRefreshing}
           onRetryRefresh={() => void workspace.refreshMemory()}
           onLoadReviewDetails={workspace.loadMemoryReviewDetails}
-          onReviewSource={workspace.reviewMemorySource}
         />
       ) : (
           <Conversation
@@ -631,7 +630,6 @@ export function App() {
         theme={theme}
         motionEnabled={motionEnabled}
         onMotionChange={setMotionEnabled}
-        dreamAgent={workspace.snapshot.memoryOverview.dream_agent}
         runtime={settingsRuntime}
         runtimeThread={selectedThread}
         onPermissionsChange={workspace.updatePermissions}

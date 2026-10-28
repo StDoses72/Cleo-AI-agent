@@ -1,7 +1,7 @@
 import { getLanguage } from "../../electron/i18n.mjs";
 import { t as tr } from "../../electron/i18n.mjs";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { dreamStatusLabel } from "../memoryStatus";
+import { BackgroundMemorySettingsPanel } from "./model-settings/BackgroundMemorySettingsPanel";
 import { MemorySourcesSettings } from "./MemorySourcesSettings";
 import { UpdateVersionPicker } from "./UpdateVersionPicker";
 import { handleDialogKeyDown, Modal } from "./Modal";
@@ -40,7 +40,6 @@ import type {
   AgentInstructions,
   ApplyModelSettings,
   ModelSettings,
-  MemoryOverview,
   Project,
   RuntimeProfile,
   RuntimeUpdate,
@@ -295,7 +294,6 @@ interface SettingsModalProps {
   theme: "dark" | "light";
   motionEnabled: boolean;
   onMotionChange: (enabled: boolean) => void;
-  dreamAgent: MemoryOverview["dream_agent"];
   runtime: RuntimeProfile;
   runtimeThread?: { id: string; title: string } | null;
   onPermissionsChange?: (threadId: string, update: RuntimeUpdate) => Promise<void>;
@@ -329,7 +327,7 @@ interface SettingsModalProps {
 type SettingsPage = "appearance" | "agent" | "instructions" | "models" | "models-add" | "models-dream" | "import" | "updates" | "data";
 const settingsTitles: Record<SettingsPage, string> = {
   get appearance() { return tr("overlays.appearance"); }, get agent() { return tr("overlays.run_settings"); }, get instructions() { return tr("overlays.chat_instructions"); }, get models() { return tr("overlays.current_configuration"); },
-  get "models-add"() { return tr("overlays.new_connection"); }, get "models-dream"() { return tr("modelsettingspanel.memory_consolidation"); }, get import() { return tr("overlays.import"); }, get updates() { return tr("overlays.software_updates"); }, get data() { return tr("overlays.data_and_memory"); },
+  get "models-add"() { return tr("overlays.new_connection"); }, get "models-dream"() { return tr("modelsettingspanel.dream_agent"); }, get import() { return tr("overlays.import"); }, get updates() { return tr("overlays.software_updates"); }, get data() { return tr("overlays.data_and_memory"); },
 };
 
 export function SettingsModal({
@@ -339,7 +337,6 @@ export function SettingsModal({
   theme,
   motionEnabled,
   onMotionChange,
-  dreamAgent,
   runtime,
   runtimeThread,
   onPermissionsChange,
@@ -401,7 +398,7 @@ export function SettingsModal({
             <div className="settings-model-subnav">
               <button className={page === "models" ? "active" : ""} aria-current={page === "models" ? "page" : undefined} onClick={() => setPage("models")}><SlidersHorizontal size={15} />{tr("overlays.current_configuration")}</button>
               <button className={page === "models-add" ? "active" : ""} aria-current={page === "models-add" ? "page" : undefined} onClick={() => setPage("models-add")}><Plus size={15} />{tr("overlays.new_connection")}</button>
-              <button className={page === "models-dream" ? "active" : ""} aria-current={page === "models-dream" ? "page" : undefined} onClick={() => setPage("models-dream")}><Moon size={15} />{tr("modelsettingspanel.memory_consolidation")}</button>
+              <button className={page === "models-dream" ? "active" : ""} aria-current={page === "models-dream" ? "page" : undefined} onClick={() => setPage("models-dream")}><Moon size={15} />{tr("modelsettingspanel.dream_agent")}</button>
             </div>
             <button className={page === "import" ? "active" : ""} aria-current={page === "import" ? "page" : undefined} type="button" onClick={() => setPage("import")}><ArrowDownToLine size={16} />{tr("overlays.import")}</button>
             <button className={page === "updates" ? "active" : ""} aria-current={page === "updates" ? "page" : undefined} type="button" onClick={() => setPage("updates")}><RefreshCw size={16} />{tr("overlays.updates")}</button>
@@ -465,8 +462,12 @@ export function SettingsModal({
             />
           ) : (
             <div className="settings-page">
-              <SettingsRow title={tr("modelsettingspanel.memory_consolidation")}><span className="settings-value">{dreamStatusLabel(dreamAgent)}</span></SettingsRow>
-              <MemorySourcesSettings active={open} />
+              <BackgroundMemorySettingsPanel active={open} busy={modelSettingsLoading}
+                onConfigureDream={() => setPage("models-dream")} />
+              <details className="settings-advanced">
+                <summary>{tr("memorysources.optional")}</summary>
+                <MemorySourcesSettings active={open} />
+              </details>
               {onStorageInventory && <StorageSettings active={open} onInventory={onStorageInventory} onReclaim={onReclaimStorage}
                 blocked={storageBlocked} onRevealPath={onRevealPath} />}
               <details className="settings-advanced"><summary>{tr("connectionwizard.advanced_settings")}</summary>

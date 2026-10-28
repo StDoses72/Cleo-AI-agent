@@ -130,20 +130,14 @@ try {
   assert(await window.getByText("置信度", { exact: true }).count() === 0,
     "Project preferences still show synthetic confidence scores");
   await window.getByTestId("memory-nav-pending").click();
-  await window.getByRole("heading", { name: "待确认", exact: true }).waitFor();
+  await window.getByRole("heading", { name: "整理队列", exact: true }).waitFor();
   const reviewRowsBefore = await window.getByTestId("memory-review-list").locator("article").count();
   const firstReviewRow = window.getByTestId("memory-review-list").locator("article").first();
   await firstReviewRow.locator(".memory-review-toggle").click();
-  await firstReviewRow.getByTestId("memory-review-confirm").dblclick();
-  await window.waitForFunction(
-    (count) => document.querySelectorAll('[data-testid="memory-review-list"] article').length === count - 1,
-    reviewRowsBefore,
-  );
-  assert(await window.locator(".memory-review-error").count() === 0, "Double-click submitted memory review twice");
-  await window.getByTestId("memory-review-confirm").first().click();
-  await window.waitForFunction(
-    () => document.querySelectorAll('[data-testid="memory-review-list"] article').length === 0,
-  );
+  await firstReviewRow.getByText("对话内容", { exact: true }).waitFor();
+  assert(await window.getByTestId("memory-review-confirm").count() === 0, "Manual consolidation remains visible");
+  assert(await window.getByRole("button", { name: "本次忽略", exact: true }).count() === 0, "Manual skip remains visible");
+  assert(await window.getByTestId("memory-review-list").locator("article").count() === reviewRowsBefore, "Reading changed the consolidation queue");
   await window.screenshot({ path: join(outputDir, "02-memory.png") });
 
   await window.getByRole("button", { name: "开发", exact: true }).click();
@@ -215,7 +209,7 @@ try {
 
   await window.getByTestId("composer-input").fill("检查当前 mock 边界并完成一次可见的运行");
   await window.getByTestId("send-button").click();
-  await window.waitForFunction(() => document.querySelectorAll(".attachment-chip").length === 0);
+  await window.waitForFunction(() => document.querySelectorAll('[data-testid="composer"] .attachment-chip').length === 0);
   await window.getByTestId("stop-button").waitFor();
   await window.getByTestId("thought-group").waitFor({ timeout: 20_000 });
   // The thought group opens on its own until the final answer lands; tool groups stay collapsed with a live header line.

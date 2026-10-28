@@ -7,7 +7,6 @@ import { billingLabel, isAccount, modelLabel, profileLabel, profileModels, provi
 import { ConnectionDetails, type ConnectionStatus } from "./ConnectionDetails";
 import { ConnectionWizard } from "./ConnectionWizard";
 import { ModelPicker, type ModelChoice } from "./ModelPicker";
-import { BackgroundMemorySettingsPanel } from "./BackgroundMemorySettingsPanel";
 import "./model-settings.css";
 
 export type ModelsPage = "current" | "add" | "dream";
@@ -79,7 +78,7 @@ export function ModelSettingsPanel({ page, settings, busy, activeProfileId, onAp
           <button className="ms-icon" aria-label={tr("modelsettingspanel.manage_value", { p0: profileLabel(profile) })} title={tr("modelsettingspanel.manage_connections")} onClick={() => setDetails(profile.name)}><MoreHorizontal /></button>
         </div>;
       })}</div>
-      <div className="ms-dream-link"><Moon /><div><strong>{tr("modelsettingspanel.memory_consolidation")}</strong><div className="ms-meta">{settings.dreamEnabled === false ? tr("modelsettingspanel.automatic_consolidation_paused") : settings.activeDreamAgent ? `${profileLabel(savedDream!)} · ${modelLabel(settings.activeDreamModel || savedDream!.model)}` : tr("modelsettingspanel.follow_chat_model_value", { p0: modelLabel(chat?.model || "default") })}</div></div><button className="ms-quiet" onClick={() => onNavigate("dream")}>{tr("modelsettingspanel.configure_memory_consolidation")}<ChevronRight /></button></div>
+      <div className="ms-dream-link"><Moon /><div><strong>{tr("modelsettingspanel.dream_agent")}</strong><div className="ms-meta">{settings.dreamEnabled === false ? tr("modelsettingspanel.automatic_consolidation_paused") : settings.activeDreamAgent ? `${profileLabel(savedDream!)} · ${modelLabel(settings.activeDreamModel || savedDream!.model)}` : tr("modelsettingspanel.follow_chat_model_value", { p0: modelLabel(chat?.model || "default") })}</div></div><button className="ms-quiet" onClick={() => onNavigate("dream")}>{tr("modelsettingspanel.configure_memory_consolidation")}<ChevronRight /></button></div>
     </>}
     {wizardOpen && <div hidden={page !== "add"}><ConnectionWizard key={reconnect?.name || "new"} active={active && page === "add"} existing={reconnect} settings={settings} busy={busy} onApply={onApply} onDone={() => { setNotice(reconnect ? tr("modelsettingspanel.connection_updated") : tr("modelsettingspanel.connection_added")); setReconnect(null); setWizardOpen(false); onNavigate("current"); }} /></div>}
     {page === "dream" && <>
@@ -91,7 +90,6 @@ export function ModelSettingsPanel({ page, settings, busy, activeProfileId, onAp
       ] as const).map(([mode, label, description, Icon]) => <button key={mode} role="radio" aria-checked={draft.mode === mode} className={draft.mode === mode ? "selected" : ""} disabled={busy} onClick={() => setDraft({ ...draft, mode })}><i className="ms-radio" /><span><strong>{label}{mode === "follow" && <em>{tr("modelsettingspanel.default")}</em>}</strong><small>{description}</small></span><Icon /></button>)}</div>
       {draft.mode === "fixed" && <div className="ms-dream-preview"><div className="ms-section-label">{tr("modelsettingspanel.memory_consolidation_model")}</div><Summary profile={fixedDream} model={draft.model}><button className="ms-secondary" disabled={busy} onClick={() => setPicker({ target: "dream" })}>{tr("connectionwizard.choose_model")}</button></Summary></div>}
       {changed && <div className="ms-save-footer"><span>{tr("modelsettingspanel.unsaved_changes")}</span><button className="ms-quiet" disabled={busy} onClick={() => setDraft(dreamChoice(settings))}>{tr("backgroundmemorysettingspanel.discard_changes")}</button><button className="ms-primary" disabled={busy} onClick={() => void saveDream()}>{busy ? tr("dependencysetup.working") : tr("modelsettingspanel.save_settings")}</button></div>}
-      <BackgroundMemorySettingsPanel active={active} busy={busy} dreamEnabled={settings.dreamEnabled !== false} />
     </>}
     {error && !picker && <p className="ms-error" role="alert">{error}</p>}
     {notice && <div className="ms-notice" role="status"><Check />{notice}</div>}
