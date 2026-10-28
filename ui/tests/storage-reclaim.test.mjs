@@ -36,7 +36,9 @@ async function fixture(t) {
     const id = `${kind}-${randomUUID()}`;
     const resources = join(store.root, "builds", id, target.bundle, target.resources);
     await mkdir(join(resources, "python"), { recursive: true });
-    await writeFile(join(store.root, "builds", id, target.bundle, target.executable), "exe");
+    const executable = join(store.root, "builds", id, target.bundle, target.executable);
+    await mkdir(dirname(executable), { recursive: true });
+    await writeFile(executable, "exe");
     await writeFile(join(resources, "app.asar"), "bundle ".repeat(100));
     if (plan) await writeFile(join(resources, "runtime-plan.json"), JSON.stringify({ schema: 1, plan }));
     if (register) {
@@ -156,7 +158,7 @@ test("running old runtimes remain intact and are retried after the process exits
   const f = await fixture(t);
   const options = await healthyOnlineRuntime(f);
   const old = await f.addOnlineRuntime(hex(64), "0.10.2");
-  const busy = await reclaimStorage({ ...options, runtimeInUse: async path => path === old });
+  const busy = await reclaimStorage({ ...options, runtimeInUse: async path => path === await nativeFs.realpath(old) });
   assert.equal(busy.failed.length, 1);
   assert.equal(await exists(join(old, "ready.json")), true);
   assert.equal(await exists(join(old, "python", "python.bin")), true);
@@ -296,6 +298,7 @@ test("in-place upgrades leave old version snapshots that are reclaimed while the
   const resources = join(launcherRoot, target.resources);
   await mkdir(join(resources, "python"), { recursive: true });
   const executable = join(launcherRoot, target.executable);
+  await mkdir(dirname(executable), { recursive: true });
   await writeFile(executable, "exe");
   await writeFile(join(target.platform === "darwin" ? resources : launcherRoot, "release.json"), JSON.stringify({ app: "Cleo", version: "0.9.0" }));
   await f.store.update({ installedReleases: { [executable]: "0.7.0" } });
@@ -594,6 +597,7 @@ test("an installed launcher that never opened the evolution registry keeps its o
   const launcherRoot = join(f.root, "Programs", "Cleo");
   const resources = join(launcherRoot, target.resources);
   await mkdir(resources, { recursive: true });
+  await mkdir(dirname(join(launcherRoot, target.executable)), { recursive: true });
   await writeFile(join(launcherRoot, target.executable), "exe");
   await writeFile(join(resources, "runtime-plan.json"), JSON.stringify({ schema: 1, plan: "stable-0.9.0" }));
   await writeFile(join(target.platform === "darwin" ? resources : launcherRoot, "release.json"), JSON.stringify({ app: "Cleo", version: "0.9.0" }));
@@ -625,6 +629,7 @@ test("legacy script installations outside discoverable locations keep completed 
   const launcherRoot = join(f.root, "legacy-custom-install", target.bundle);
   const resources = join(launcherRoot, target.resources);
   await mkdir(resources, { recursive: true });
+  await mkdir(dirname(join(launcherRoot, target.executable)), { recursive: true });
   await writeFile(join(launcherRoot, target.executable), "exe");
   await writeFile(join(resources, "runtime-plan.json"), JSON.stringify({ schema: 1, plan: "legacy-custom" }));
   // download.ps1 -InstallRoot records installation metadata locally, without an Inno registration.
