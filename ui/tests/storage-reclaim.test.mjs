@@ -294,7 +294,7 @@ test("dependency namespaces survive while their program exists and are reclaimed
 test("in-place upgrades leave old version snapshots that are reclaimed while the current version stays", async t => {
   const f = await fixture(t);
   // Installed launcher outside the evolution store: its release.json says which version runs now.
-  const launcherRoot = join(f.root, "Program Files", "Cleo");
+  const launcherRoot = join(f.root, "Program Files", target.bundle);
   const resources = join(launcherRoot, target.resources);
   await mkdir(join(resources, "python"), { recursive: true });
   const executable = join(launcherRoot, target.executable);
@@ -594,7 +594,7 @@ test("queued storage requests resolve to their own results in order", async () =
 test("an installed launcher that never opened the evolution registry keeps its online runtime", async t => {
   const f = await fixture(t);
   // A chat-only installation of the other channel: a launcher on disk, no builds, no state.json, no snapshots.
-  const launcherRoot = join(f.root, "Programs", "Cleo");
+  const launcherRoot = join(f.root, "Programs", target.bundle);
   const resources = join(launcherRoot, target.resources);
   await mkdir(resources, { recursive: true });
   await mkdir(dirname(join(launcherRoot, target.executable)), { recursive: true });

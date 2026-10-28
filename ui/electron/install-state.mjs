@@ -42,9 +42,21 @@ export async function executableInUse(path, filesystem = fs) {
 }
 
 /** Probe executable images before deleting any part of a runtime; never follow links.
- * Windows sharing violations and POSIX ETXTBSY defer the whole directory, including CLI children.
+ * macOS permits write opens on running images, so query its open text mappings instead.
+ * Windows sharing violations and Linux ETXTBSY defer the whole directory, including CLI children.
  */
 export async function runtimeInUse(directory, filesystem = fs) {
+  if (process.platform === "darwin") {
+    try {
+      const { stdout } = await promisify(execFile)("/usr/sbin/lsof",
+        ["-nP", "-F", "p", "-a", "-d", "txt", "+D", directory], { timeout: 10000 });
+      return /^p\d+$/m.test(stdout);
+    } catch (error) {
+      // lsof uses exit 1 with no output when no matching files are open.
+      if (error.code === 1 && !error.stdout && !error.stderr) return false;
+      throw error;
+    }
+  }
   for (const name of await filesystem.readdir(directory)) {
     const path = join(directory, name);
     const info = await filesystem.lstat(path);
