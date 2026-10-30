@@ -526,3 +526,107 @@ def test_manual_cancellation_drains_publication_and_preserves_progress(
             assert await manual_review(service) == {"loaded": True}
             resumed.assert_awaited_once()
     asyncio.run(asyncio.wait_for(check(), 15))
+
+
+def failed_source(name="one", digest="first", failures=1):
+    return {**source(name, digest), "status": "failed", "failure_count": failures,
+            "last_error": "provider offline"}
+
+
+def test_failed_source_retries_with_backoff_until_exhausted():
+    async def check():
+        review = AsyncMock(side_effect=RuntimeError("provider offline"))
+        runner, _, entries, now, _ = controller(sources=[failed_source()], review=review)
+        assert runner.state()["pendingCount"] == 1
+        now[0] = 1800  # A failure persisted by an earlier process is due at the next interval.
+        runner.start_if_due()
+        await runner._task
+        assert review.await_count == 1
+        entries[0] = failed_source(failures=2)
+        runner.start_if_due()
+        assert not runner.state()["running"] and runner.state()["pendingCount"] == 0
+        now[0] = 1800 + 3599  # Two failures wait two intervals since the last attempt.
+        runner.start_if_due()
+        assert not runner.state()["running"]
+        now[0] = 1800 + 3600
+        assert runner.state()["pendingCount"] == 1
+        runner.start_if_due()
+        await runner._task
+        assert review.await_count == 2
+        entries[0] = failed_source(failures=3)
+        now[0] = 10 ** 6
+        runner.start_if_due()
+        assert not runner.state()["running"] and runner.state()["pendingCount"] == 0
+        entries[0] = source(digest="changed")  # New events requeue the source as pending.
+        runner.start_if_due()
+        await runner._task
+        assert review.await_count == 3
+    asyncio.run(check())
+
+
+def test_backlog_trigger_does_not_loop_on_the_same_failed_source():
+    async def check():
+        review = AsyncMock(side_effect=RuntimeError("provider offline"))
+        runner, _, entries, _, _ = controller(sources=[failed_source()], review=review,
+                                              threshold=1)
+        runner.start_if_due()
+        await runner._task
+        entries[0] = failed_source(failures=2)
+        for _ in range(3):
+            runner.start_if_due()
+            assert not runner.state()["running"]
+        assert review.await_count == 1
+    asyncio.run(check())
+
+
+def test_saving_schedule_rearms_one_attempt_for_failed_and_pending_sources():
+    async def check():
+        review = AsyncMock(side_effect=[RuntimeError("provider offline"), None, None, None])
+        runner, _, entries, now, _ = controller(
+            sources=[failed_source("failed"), source("pending")], review=review,
+        )
+        now[0] = 1800
+        runner.start_if_due()
+        await runner._task
+        entries[0] = failed_source("failed", failures=2)
+        now[0] = 3000  # Failed waits until 5400; pending stays suppressed at this hash.
+        runner.start_if_due()
+        assert not runner.state()["running"]
+        runner.reset_schedule()
+        runner.start_if_due()
+        assert not runner.state()["running"]  # The interval restarts.
+        now[0] = 4800
+        runner.start_if_due()
+        await runner._task
+        assert review.await_count == 4
+        assert [call.args[0]["session_id"] for call in review.await_args_list
+                ] == ["failed", "pending", "failed", "pending"]
+    asyncio.run(check())
+
+
+def test_service_retries_persisted_failed_source_and_skips_exhausted_ones(tmp_path):
+    async def check():
+        invoke = AsyncMock(return_value={"status": "complete"})
+        service, path = make_service(tmp_path, lambda: SimpleNamespace(invoke=invoke))
+        mark_consolidation_started("non_productivity", "general", "one", "hash", path=path)
+        mark_consolidation_failed("non_productivity", "general", "one", "hash",
+                                  "provider offline", path=path)
+        assert [item["session_id"] for item in service._background_memory_sources()] == ["one"]
+        assert (await service.get_background_memory_state())["pendingCount"] == 1
+        assert (await service.run_background_memory_review())["running"]
+        await service._background_memory._task
+        invoke.assert_awaited_once_with(space="non_productivity", project="general",
+                                       session_id="one", force=False)
+        for _ in range(2):
+            mark_consolidation_failed("non_productivity", "general", "one", "hash",
+                                      "provider offline", path=path)
+        assert get_session_source("non_productivity", "general", "one", path=path)[
+            "failure_count"] == 3
+        assert service._background_memory_sources() == []
+        assert (await service.get_background_memory_state())["pendingCount"] == 0
+        # The manual review path still accepts an exhausted failed source.
+        service.load_workspace = AsyncMock(return_value={})
+        await service.review_memory_source(space="non_productivity", project="general",
+                                           session_id="one", action="consolidate")
+        assert invoke.await_count == 2
+    asyncio.run(check())

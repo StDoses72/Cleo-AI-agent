@@ -761,7 +761,7 @@ class DesktopService:
             for source in list_session_sources(
                 space, path=memory_state_path(self.settings.MEMORY_DIR, space),
             ):
-                if source["status"] not in {"pending", "running"}:
+                if not BackgroundMemory.retryable(source):
                     continue
                 try:
                     manifest = self.store.load_manifest(source["session_id"])

@@ -2599,6 +2599,22 @@
     "zh-CN": "整理失败",
     "en": "Consolidation failed"
   },
+  "memoryview.retry_consolidation": {
+    "zh-CN": "重试整理",
+    "en": "Retry consolidation"
+  },
+  "memoryview.retrying_consolidation": {
+    "zh-CN": "正在重试整理…",
+    "en": "Retrying consolidation…"
+  },
+  "memoryview.automatic_retries_exhausted": {
+    "zh-CN": "自动重试已用尽，需要手动重试",
+    "en": "Automatic retries exhausted; retry manually"
+  },
+  "memoryview.could_not_retry_consolidation": {
+    "zh-CN": "无法重试整理",
+    "en": "Could not retry consolidation"
+  },
   "memoryview.search_conversations_or_projects": {
     "zh-CN": "搜索对话或项目",
     "en": "Search conversations or projects"
