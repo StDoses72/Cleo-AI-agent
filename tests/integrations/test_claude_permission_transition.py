@@ -74,7 +74,7 @@ def test_cancelled_stream_is_reconnected_before_next_prompt(tmp_path, monkeypatc
         async def set_model(self, model):
             assert not self.closed, "Cannot change the model on a disconnected SDK stream"
 
-        async def receive_response(self):
+        async def receive_messages(self):
             yield SystemMessage(subtype="init", data={"session_id": "native-history"})
             if self is connections[0]:
                 started.set()

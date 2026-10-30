@@ -18,6 +18,7 @@
 - [架构说明](ARCHITECTURE.md)：产品边界、组件关系、会话模型、harness 与记忆数据流。
 - [Architecture (English)](ARCHITECTURE.en.md)：英文架构说明。
 - [记忆系统设计记录](CASTMIND_MEMORY_MIGRATION.md)：为什么采用 event log、compact、SQLite evidence 与分区记忆。
+- [Harness 交互式问答与回合生命周期](harness/interactive-lifecycle.md)：Claude / Codex / ACP 的原生问答、审批、回合结束与后台任务协议，Cleo 的适配方式与 adapter 层架构判断。
 
 ## 我想参与开发
 
@@ -29,6 +30,7 @@
 ## ADR（架构决策记录）
 
 - [ADR 索引与写作约定](adr/README.md)：影响架构、数据模型或用户可见行为边界的决策，按编号记录在 `docs/adr/`，重点是为什么这样选、否决了什么、留下了什么限制。
+- [ADR 0004 Claude 回合与后台任务的生命周期归 provider 所有](adr/0004-claude-turn-and-background-task-lifecycle.md)
 
 ## 文档维护约定
 

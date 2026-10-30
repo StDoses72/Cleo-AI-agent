@@ -1347,6 +1347,26 @@
     "zh-CN": "Claude 后端",
     "en": "Claude backend"
   },
+  "claude.background_task": {
+    "zh-CN": "后台任务",
+    "en": "Background task"
+  },
+  "claude.background_task_finished": {
+    "zh-CN": "后台任务已结束",
+    "en": "Background task finished"
+  },
+  "claude.background_task_ended_with_the_run": {
+    "zh-CN": "本轮已结束，后台任务随之终止，未收到其结果",
+    "en": "This turn ended; the background task ended with it before reporting a result"
+  },
+  "claude.background_tasks_exceeded_the_wait_limit": {
+    "zh-CN": "后台任务在 {p0} 秒内没有新的进展，本轮已结束，这些任务随之终止",
+    "en": "Background tasks made no progress for {p0} seconds; this turn ended and those tasks ended with it"
+  },
+  "claude.this_reply_stage_ended_background_tasks_still_r": {
+    "zh-CN": "本阶段回复已结束，{p0} 个后台任务仍在运行，等待其后续结果",
+    "en": "This reply stage ended; {p0} background task(s) are still running, waiting for their results"
+  },
   "claude.tool": {
     "zh-CN": "工具",
     "en": "Tool"
