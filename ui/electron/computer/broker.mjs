@@ -350,9 +350,14 @@ export class ComputerBroker extends EventEmitter {
       released.push(...await (scoped ? this.browserFor(requested).releaseAll() : this.browser.releaseAll()).catch(() => []));
       // Only inputs pressed by Cleo are released; the user's physical keys are never touched.
       const entries = scoped ? [this.thread(requested)] : [...this.threads.values()];
+      // A scoped stop reaches the real desktop only when this conversation owns it (the lease or a
+      // desktop action in flight) or when nobody else does: being authorized while another
+      // conversation drives the desktop must not interrupt that conversation's action.
+      const ownsDesktop = this.lease?.threadId === requested
+        || [...this.inflight].some(job => job.target === "desktop" && job.threadId === requested);
+      const desktopFree = !this.lease || this.lease.threadId === requested;
       const hostInvolved = scoped
-        ? this.lease?.threadId === requested || entries[0].hostAuthorized || entries[0].mode === "host"
-          || [...this.inflight].some(job => job.target === "desktop" && job.threadId === requested)
+        ? ownsDesktop || (desktopFree && (entries[0].hostAuthorized || entries[0].mode === "host"))
         : this.hostEngaged() || Boolean(this.lastStop?.hostError) || entries.some(entry => entry.hostAuthorized);
       if (scoped && hostInvolved) this.wakeControl("desktop");
       const hostResult = hostInvolved ? await this.host.stop({ reason: "stop" }).catch(error => ({ error: error.message })) : null;

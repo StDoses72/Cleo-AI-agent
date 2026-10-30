@@ -235,6 +235,19 @@ test("registered schemes reach sessions created later and deleted conversations 
   assert.deepEqual(browser.state().threads, {});
 });
 
+test("deleting a conversation clears its persisted partition even when this process never opened its browser", async () => {
+  const { browser, sessions } = setup();
+  // Used in an earlier launch: no in-memory context at all.
+  await browser.releaseThread("thread-old");
+  assert.equal(sessions.get(partitionFor("persist:cleo-browser", "thread-old")).cleared, 1);
+  // Selected in the panel but never configured: a context without a session.
+  browser.setForeground("thread-shown");
+  await browser.releaseThread("thread-shown");
+  assert.equal(browser.hasContext("thread-shown"), false);
+  assert.equal(sessions.get(partitionFor("persist:cleo-browser", "thread-shown")).cleared, 1);
+  assert.equal(browser.foregroundId, null);
+});
+
 function attachSetup() {
   const browser = new CleoBrowser({ electron: {} });
   const context = browser.context("thread-a");
