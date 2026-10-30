@@ -32,5 +32,6 @@
 | 编号 | 标题 | 状态 |
 |---|---|---|
 | [0001](0001-retry-failed-memory-sources.md) | 失败的记忆源可自动重试（有界退避）并可从队列手动重试 | Proposed |
+| [0002](0002-move-conversation-into-project.md) | 已有会话加入同一空间的项目：复用 move_session，重新绑定工作目录 | Proposed |
 
 每个引入 ADR 的 PR 自己在此表追加对应行（并行 PR 之间的小冲突在合并时解决），这样任何一个 PR 合并后索引都是完整的。

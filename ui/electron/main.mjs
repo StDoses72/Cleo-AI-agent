@@ -314,6 +314,7 @@ const allowedMethods = new Set([
   "load_thread",
   "create_thread",
   "delete_thread",
+  "move_thread",
   "add_project",
   "remove_project",
   "restore_chat_backups",

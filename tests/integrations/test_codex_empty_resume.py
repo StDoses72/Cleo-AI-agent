@@ -106,3 +106,27 @@ def test_reconnect_never_discards_history_or_retries_unrelated_failures(
         )
 
     asyncio.run(exercise())
+
+
+def test_moved_empty_draft_still_reconnects_in_its_new_project(tmp_path):
+    async def exercise():
+        calls = []
+        provider = CodexProvider("model")
+        provider._client_with_approvals = lambda _broker, **_: DraftClient(calls)
+        first = AgentAdapter(tmp_path)
+        first.register(provider)
+        original = await first.create_session("codex", model="model")
+        await first.close(original.id)
+        # Joining a project appends session_project_moved; the draft still has no conversation.
+        moved = first._store.move_session(original.id, "research")
+        assert moved["project"] == "research"
+        recovered = AgentAdapter(tmp_path, session_store=first._store)
+        recovered.register(provider)
+        resumed = await recovered.resume_session(
+            "codex", original.native_session_id, project=moved["project"],
+        )
+        assert resumed.id == original.id
+        assert calls.count("start") == 2
+        await recovered.close(resumed.id)
+
+    asyncio.run(exercise())

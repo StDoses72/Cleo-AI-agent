@@ -228,6 +228,18 @@ export class MockCleoClient implements CleoClient {
     return clone(snapshot);
   }
 
+  async moveThread(threadId: string, projectId: string): Promise<WorkspaceSnapshot> {
+    await delay(220);
+    const thread = snapshot.threads.find((candidate) => candidate.id === threadId);
+    if (!thread) throw new Error("会话不存在。");
+    if (thread.status === "running") throw new Error("会话正在运行，等待结束后再加入其他项目。");
+    const project = snapshot.projects.find((candidate) => candidate.id === projectId
+      && (candidate.space ?? "chat") === thread.space);
+    if (!project) throw new Error(`目标项目 ${projectId} 不可用。`);
+    thread.projectId = project.id;
+    return clone(snapshot);
+  }
+
   async addProject(space: ThreadSpace, projectPath: string): Promise<WorkspaceSnapshot> {
     const name = projectPath.split(/[\\/]/).filter(Boolean).at(-1) ?? "workspace";
     const id = `${space}:${name}`;

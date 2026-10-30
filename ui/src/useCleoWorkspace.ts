@@ -1447,6 +1447,16 @@ export function useCleoWorkspace(evolutionOpen = false) {
     }
     return refreshed;
   };
+  const moveThread = async (threadId: string, projectId: string) => {
+    if (runLocks.current.has(threadId)) {
+      throw new Error(tr("usecleoworkspace.wait_for_the_current_run_to_finish_before_moving"));
+    }
+    const refreshed = await refreshWorkspace(() => cleoClient.moveThread(threadId, projectId));
+    const moved = refreshed.threads.find((thread) => thread.id === threadId);
+    // Stay on the same thread; only its project (and so the sidebar group) changed.
+    if (moved && activeThreadId === threadId) setActiveProjectId(moved.projectId);
+    return refreshed;
+  };
   const deleteThread = async (threadId: string) => {
     if (runLocks.current.has(threadId)) {
       throw new Error(tr("usecleoworkspace.a_running_thread_cannot_be_deleted_stop_it_first"));
@@ -1646,6 +1656,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
     resetWorkspace,
     restoreChatHistory,
     deleteThread,
+    moveThread,
     removeProject,
     loadModelSettings,
     applyModelSettings,
