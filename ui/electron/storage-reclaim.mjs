@@ -7,6 +7,7 @@ import { desktopPlatform, installationRoot } from "./platform.mjs";
 import { compareVersions } from "./updater.mjs";
 import { readJson } from "./evolution-store.mjs";
 import { runtimeInUse } from "./install-state.mjs";
+import { parseRuntimeRegistry, RUNTIME_REGISTRY } from "./online-runtime.mjs";
 
 /** Rebuildable package caches below this total are kept for faster reinstalls; above it they are reclaimed automatically. */
 export const PACKAGE_CACHE_LIMIT = 512 * 1024 * 1024;
@@ -171,15 +172,15 @@ export function createStorageQueue() {
  */
 async function liveResources({ fs, state, buildsRoot, target, currentResources, currentVersion, installedExecutables, siblings = [] }) {
   const references = new Map();
-  /** A reference with no known version keeps every version of its namespace. */
-  const add = (path, label, version = null) => {
+  /** A reference with no known version keeps every version of its namespace; `evidence` names how it was found. */
+  const add = (path, label, version = null, evidence = "program-directory") => {
     if (!path) return;
     const key = process.platform === "win32" ? resolve(path).toLowerCase() : resolve(path);
-    const entry = references.get(key) || { path: resolve(path), label, versions: new Set(), unknownVersion: false };
+    const entry = references.get(key) || { path: resolve(path), label, evidence, versions: new Set(), unknownVersion: false };
     if (version) entry.versions.add(String(version)); else entry.unknownVersion = true;
     references.set(key, entry);
   };
-  if (currentResources) add(currentResources, tr("storage_reclaim.currently_running_cleo"), currentVersion);
+  if (currentResources) add(currentResources, tr("storage_reclaim.currently_running_cleo"), currentVersion, "current-program");
   const registered = new Map((state.builds || []).map(build => [build.id, build]));
   for (const id of await listDirectory(fs, buildsRoot)) {
     if (!BUILD.test(id)) continue;
@@ -188,13 +189,14 @@ async function liveResources({ fs, state, buildsRoot, target, currentResources, 
     const label = build ? `${build.kind === "official" ? tr("storage_reclaim.program") : tr("storage_reclaim.local_version")} ${build.version || build.name || id}`
       : tr("storage_reclaim.unregistered_program_directory_value", { p0: id });
     const resources = join(buildsRoot, id, target.bundle, target.resources);
-    add(resources, pending ? tr("storage_reclaim.value_awaiting_retirement", { p0: label }) : label, build?.version || await bundleVersion(fs, resources, target));
+    add(resources, pending ? tr("storage_reclaim.value_awaiting_retirement", { p0: label }) : label, build?.version || await bundleVersion(fs, resources, target),
+      build ? "registered-build" : "program-directory");
   }
   for (const [executable, version] of Object.entries(state.installedReleases || {})) {
     try {
       const resources = join(installationRoot(executable, target), target.resources);
       // The launcher may have been upgraded in place since it was journaled; its bundle says which version runs now.
-      add(resources, tr("storage_reclaim.installed_cleo_value", { p0: version }), await bundleVersion(fs, resources, target) || version);
+      add(resources, tr("storage_reclaim.installed_cleo_value", { p0: version }), await bundleVersion(fs, resources, target) || version, "installed-launcher");
     } catch { /* A foreign layout is not a runtime owner. */ }
   }
   for (const executable of installedExecutables || []) {
@@ -204,7 +206,7 @@ async function liveResources({ fs, state, buildsRoot, target, currentResources, 
       const resources = join(installationRoot(executable, target), target.resources);
       const version = await bundleVersion(fs, resources, target);
       add(resources, version ? tr("storage_reclaim.installed_cleo_value", { p0: version }) : tr("storage_reclaim.installed_cleo"), version
-        || (resolve(executable) === resolve(process.execPath) ? currentVersion : null));
+        || (resolve(executable) === resolve(process.execPath) ? currentVersion : null), "installed-launcher");
     } catch { /* ignore */ }
   }
   // Another release channel (Cleo / Cleo Alpha) shares the online runtime root; its programs count too.
@@ -217,12 +219,12 @@ async function liveResources({ fs, state, buildsRoot, target, currentResources, 
       if (!BUILD.test(id)) continue;
       const resources = join(siblingBuilds, id, target.bundle, target.resources);
       add(resources, tr("storage_reclaim.value_program_value", { p0: label, p1: registered.get(id)?.version || id }),
-        registered.get(id)?.version || await bundleVersion(fs, resources, target));
+        registered.get(id)?.version || await bundleVersion(fs, resources, target), "sibling-channel");
     }
     for (const [executable, version] of Object.entries(siblingState.installedReleases || {})) {
       try {
         const resources = join(installationRoot(executable, target), target.resources);
-        add(resources, tr("storage_reclaim.value_installed_value", { p0: label, p1: version }), await bundleVersion(fs, resources, target) || version);
+        add(resources, tr("storage_reclaim.value_installed_value", { p0: label, p1: version }), await bundleVersion(fs, resources, target) || version, "sibling-channel");
       } catch { /* ignore */ }
     }
   }
@@ -269,13 +271,21 @@ export async function storageInventory({
     owner(basename(resolve(currentRuntimeNamespace)), { label: tr("storage_reclaim.currently_running_cleo"),
       versions: new Set(currentVersion ? [currentVersion] : []), unknownVersion: !currentVersion });
   }
+  // Every program that provably still uses an online runtime, with the kind of evidence that found it.
   const livePlans = new Map();
+  const planOwners = new Map();
+  const claim = (key, label, evidence) => {
+    if (!livePlans.has(key)) livePlans.set(key, label);
+    const owners = planOwners.get(key) || [];
+    if (!owners.some(owner => owner.label === label && owner.evidence === evidence)) owners.push({ label, evidence });
+    planOwners.set(key, owners);
+  };
   for (const item of references) {
     const key = await planKey(item.path, fs);
-    if (key) livePlans.set(key, item.label);
+    if (key) claim(key, item.label, item.evidence);
   }
   if (currentBaseResources && PLAN_KEY.test(basename(resolve(currentBaseResources)))) {
-    livePlans.set(basename(resolve(currentBaseResources)), tr("storage_reclaim.currently_running_cleo"));
+    claim(basename(resolve(currentBaseResources)), tr("storage_reclaim.currently_running_cleo"), "current-program");
   }
   const userData = new Set(USER_DATA_ENTRIES.map(name => resolve(dataHome, name)));
   for (const path of [...userData]) {
@@ -289,10 +299,35 @@ export async function storageInventory({
       for (const root of onlineRootSet) {
         if (!within(home, root)) continue;
         const key = relative(root, home).split(/[\\/]/)[0];
-        if (PLAN_KEY.test(key) && !livePlans.has(key)) livePlans.set(key, reason);
+        if (PLAN_KEY.test(key)) claim(key, reason, "dependency-snapshot");
       }
     }
   };
+  // The launch registry (#141): which program locations started with which runtime. A registered
+  // location that still exists and still plans the same runtime is an owner; one that moved on to
+  // another runtime or disappeared is evidence of retirement. A missing, unreadable or foreign
+  // registry is no evidence either way.
+  const retirementEvidence = new Map();
+  for (const root of onlineRootSet) {
+    if (await linkedDirectory(fs, root)) continue;
+    let registry;
+    try { registry = parseRuntimeRegistry(await fs.readFile(join(root, RUNTIME_REGISTRY), "utf8")); }
+    catch { continue; }
+    for (const [installation, entry] of Object.entries(registry.installations)) {
+      if (!(await probe(fs, installation))?.isDirectory()) {
+        retirementEvidence.set(entry.key, [...(retirementEvidence.get(entry.key) || []),
+          { kind: "installation-removed", detail: tr("storage_reclaim.installation_no_longer_exists_value", { p0: installation }) }]);
+        continue;
+      }
+      const planned = await planKey(installation, fs);
+      if (planned === null || planned === entry.key) {
+        claim(entry.key, tr("storage_reclaim.cleo_value_launched_from_value", { p0: entry.version || "", p1: installation }), "launch-registry");
+      } else {
+        retirementEvidence.set(entry.key, [...(retirementEvidence.get(entry.key) || []),
+          { kind: "installation-upgraded", detail: tr("storage_reclaim.installation_now_uses_another_runtime_value", { p0: installation }) }]);
+      }
+    }
+  }
   for (const sibling of siblings) {
     if (sibling.dataHome) protectHomes(await snapshotHomes(fs, join(sibling.dataHome, "runtimes")), tr("storage_reclaim.dependency_snapshot_for_value", { p0: sibling.label || tr("storage_reclaim.cleo_from_another_channel") }));
   }
@@ -355,6 +390,8 @@ export async function storageInventory({
       continue;
     }
     for (const name of await listDirectory(fs, root)) {
+      // The launch registry (and its in-flight temporary) is bookkeeping, not storage to classify.
+      if (name === RUNTIME_REGISTRY || name.startsWith(`${RUNTIME_REGISTRY}.`)) continue;
       const path = join(root, name);
       const info = await probe(fs, path);
       if (!info) continue;
@@ -382,6 +419,8 @@ export async function storageInventory({
       const owner = livePlans.get(name);
       // Until an update is healthy, preserve completed legacy installs even without discoverable owners.
       onlineRuntimes.push({ id: `online-runtime:${name}`, kind: "online-runtime", path, version, completed, policy: "automatic",
+        ownership: owner ? "in-use" : completed ? "unknown" : "retired",
+        owners: planOwners.get(name) || [], evidence: retirementEvidence.get(name) || [],
         action: owner || completed ? "keep" : "reclaim",
         reason: owner ? tr("storage_reclaim.runtime_used_by_value", { p0: owner }) : completed ? tr("storage_reclaim.completed_runtime_legacy_installers_allow_custom_program_locations_so_it_cannot_be_co")
           : tr("storage_reclaim.incomplete_runtime_with_no_program_using_it") });
@@ -402,7 +441,14 @@ export async function storageInventory({
       let superseded = !completed;
       try { if (completed) superseded = compareVersions(entry.version, currentVersion) <= 0; }
       catch { /* Unknown versions are not evidence of an older runtime. */ }
-      if (superseded) Object.assign(entry, { action: "reclaim", reason: "更新已成功，只保留当前版本的在线运行环境" });
+      if (superseded) Object.assign(entry, { action: "reclaim", ownership: "retired", reason: "更新已成功，只保留当前版本的在线运行环境" });
+      // A newer or unversioned runtime nobody provably uses is retired only when the registry shows
+      // every installation that launched with it has upgraded or is gone (#141).
+      else if (entry.ownership === "unknown" && entry.evidence.length) {
+        Object.assign(entry, { action: "reclaim", ownership: "retired", reason: tr(
+          "storage_reclaim.retired_every_installation_registered_to_it_moved_on_value",
+          { p0: entry.evidence.map(item => item.detail).join("; ") }) });
+      }
     }
     await push(entry);
   }

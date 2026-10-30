@@ -122,13 +122,63 @@ function ready(directory, key) {
   }
 }
 
+/** The per-root journal of which program locations launched with which runtime (storage evidence, #141). */
+export const RUNTIME_REGISTRY = "installations.json";
+
+/** Purpose: Normalize a registry file's content; anything malformed counts as an empty registry.
+ * Input: file text or null. Output: `{ schema: 1, installations: { [resourcesPath]: { key, version, updatedAt } } }`.
+ */
+export function parseRuntimeRegistry(text) {
+  const empty = { schema: 1, installations: {} };
+  if (typeof text !== "string" || !text.trim()) return empty;
+  let data;
+  try { data = JSON.parse(text); } catch { return empty; }
+  if (!data || typeof data !== "object" || data.schema !== 1 || !data.installations || typeof data.installations !== "object") return empty;
+  const installations = {};
+  for (const [path, entry] of Object.entries(data.installations)) {
+    if (!path || !entry || typeof entry !== "object" || !/^[a-f0-9]{64}$/.test(entry.key || "")) continue;
+    installations[path] = { key: entry.key, version: typeof entry.version === "string" ? entry.version : null,
+      updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt : null };
+  }
+  return { schema: 1, installations };
+}
+
+export function readRuntimeRegistry(root) {
+  try { return parseRuntimeRegistry(readFileSync(join(root, RUNTIME_REGISTRY), "utf8")); }
+  catch { return parseRuntimeRegistry(null); }
+}
+
+/** Purpose: Journal that the program at `resources` launched with runtime `plan.key` under `root`.
+ * Input: runtime root, the program's resources path and its runtime plan. Output: true when written.
+ * Entries whose runtime directory is gone are dropped on the way. Never throws: a read-only root
+ * only loses the evidence, it must not stop Cleo from starting.
+ */
+export function recordRuntimeOwner(root, resources, plan) {
+  try {
+    const registry = readRuntimeRegistry(root);
+    const installations = Object.fromEntries(Object.entries(registry.installations)
+      .filter(([, entry]) => existsSync(join(root, entry.key))));
+    installations[resolve(resources)] = { key: plan.key, version: plan.version ?? null, updatedAt: new Date().toISOString() };
+    const path = join(root, RUNTIME_REGISTRY);
+    const temporary = `${path}.${process.pid}.tmp`;
+    writeFileSync(temporary, JSON.stringify({ schema: 1, installations }, null, 2) + "\n");
+    try { renameSync(temporary, path); }
+    catch (error) { try { rmSync(temporary, { force: true }); } catch { /* best effort */ } throw error; }
+    return true;
+  } catch { return false; }
+}
+
 export function findInstalledRuntime(resources, dataHome) {
   const plan = readRuntimePlan(resources);
   if (!plan) return resources;
   const roots = [...new Set([join(dataHome, "runtimes/online"), defaultRuntimeRoot(), defaultRuntimeRoot(true)])];
   for (const root of roots) {
     const directory = join(root, plan.key);
-    if (ready(directory, plan.key)) return directory;
+    if (ready(directory, plan.key)) {
+      // The launch itself is the evidence that this location still uses this runtime.
+      recordRuntimeOwner(root, resources, plan);
+      return directory;
+    }
   }
   throw new Error(tr("online_runtime.cleo_s_runtime_is_not_installed_run_the_installer_for_your_operating_system_again_fin"));
 }
