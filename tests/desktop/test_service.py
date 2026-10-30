@@ -2424,3 +2424,152 @@ def test_productivity_attachments_reach_the_agent_as_paths_but_show_as_chips(
         ]
 
     asyncio.run(scenario())
+
+
+def test_move_thread_moves_general_chat_into_project_and_keeps_history(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        service = _service(tmp_path)
+        desktop = tmp_path / "desktop"
+        desktop.mkdir()
+        service.runtime.register_project("non_productivity", "desktop", str(desktop))
+        thread = await service.create_thread(space="chat", project_id_value="chat:general")
+        service.store.append_event(
+            space="non_productivity", project="general", session_id=thread["id"],
+            event_type="user_message", actor="user", content="Move me into desktop",
+        )
+        service.store.update_manifest(thread["id"], title="Desktop plans")
+        before = service.store.read_events(thread["id"])
+
+        service._runs.tasks[thread["id"]] = asyncio.current_task()
+        with pytest.raises(ValueError, match="正在运行"):
+            await service.move_thread(thread_id=thread["id"], project_id_value="chat:desktop")
+        service._runs.tasks.pop(thread["id"])
+        with pytest.raises(ValueError, match="同一空间"):
+            await service.move_thread(
+                thread_id=thread["id"], project_id_value="productivity:desktop",
+            )
+        with pytest.raises(ValueError, match="不可用"):
+            await service.move_thread(thread_id=thread["id"], project_id_value="chat:missing")
+        assert service.store.load_manifest(thread["id"])["project"] == "general"
+
+        snapshot = await service.move_thread(
+            thread_id=thread["id"], project_id_value="chat:desktop",
+        )
+        manifest = service.store.load_manifest(thread["id"])
+        assert manifest["project"] == "desktop" and manifest["title"] == "Desktop plans"
+        assert manifest["cwd"] == str(desktop)
+        events = service.store.read_events(thread["id"])
+        assert [event["id"] for event in events[:-1]] == [event["id"] for event in before]
+        assert events[-1]["type"] == "session_project_moved"
+        assert {event["project"] for event in events} == {"desktop"}
+        assert snapshot["activeThreadId"] == thread["id"]
+        assert service.runtime.current_thread_id == thread["id"]
+        moved = next(item for item in snapshot["threads"] if item["id"] == thread["id"])
+        assert moved["projectId"] == "chat:desktop" and moved["title"] == "Desktop plans"
+        # A second service instance (restart) reads the same ownership.
+        reloaded = DesktopService(
+            settings_model=service.settings,
+            store=SessionStore(service.settings.MEMORY_DIR, service.settings.SESSION_INDEX_PATH),
+            runtime=FakeRuntime(), adapter=SimpleNamespace(aclose=_async_none),
+        )
+        reloaded.runtime.register_project("non_productivity", "desktop", str(desktop))
+        after = await reloaded.load_workspace()
+        assert next(item for item in after["threads"] if item["id"] == thread["id"])[
+            "projectId"] == "chat:desktop"
+
+        consolidated = await service.create_thread(space="chat", project_id_value="chat:general")
+        service.store.append_event(
+            space="non_productivity", project="general", session_id=consolidated["id"],
+            event_type="user_message", actor="user", content="Already remembered",
+        )
+        from cleo.memory.paths import memory_state_path
+        from cleo.memory.state import get_session_source, mark_consolidated
+        state_path = memory_state_path(service.settings.MEMORY_DIR, "non_productivity")
+        service.store.refresh_compact(consolidated["id"])
+        source = get_session_source("non_productivity", "general", consolidated["id"],
+                                    path=state_path)
+        mark_consolidated(
+            "non_productivity", "general", consolidated["id"], str(source["source_hash"]),
+            durable_memory_count=0, no_durable_memory_reason="nothing durable",
+            path=state_path,
+        )
+        with pytest.raises(ValueError, match="已整理"):
+            await service.move_thread(
+                thread_id=consolidated["id"], project_id_value="chat:desktop",
+            )
+        assert service.store.load_manifest(consolidated["id"])["project"] == "general"
+
+    asyncio.run(scenario())
+
+
+def test_move_thread_rebinds_task_directory_and_releases_resident_session(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        service = _service(tmp_path)
+        adapter = FakeAdapter(service.store)
+        service._adapter_instance = adapter
+        source = tmp_path / "source"
+        source.mkdir()
+        target = tmp_path / "target"
+        target.mkdir()
+        service.runtime.register_project("productivity", "target", str(target))
+        task = await service.create_thread(
+            space="productivity", project_id_value="", project_path=str(source),
+        )
+        assert task["id"] in service._productivity_sessions
+        with pytest.raises(ValueError, match="演进"):
+            await service.move_thread(
+                thread_id=task["id"], project_id_value="productivity:cleo-evolution",
+            )
+
+        # The last turn's Git undo checkpoint belongs to the source repository.
+        service.store.update_manifest(task["id"], undo_checkpoint={
+            "repo_root": str(source), "before": "0" * 40, "after": "1" * 40,
+            "ref": "refs/cleo/undo",
+        }, undo_checkpoint_shared=True)
+        snapshot = await service.move_thread(
+            thread_id=task["id"], project_id_value="productivity:target",
+        )
+        manifest = service.store.load_manifest(task["id"])
+        assert manifest["project"] == "target" and manifest["cwd"] == str(target)
+        assert manifest["native_session_id"] == "native-test"
+        assert manifest["undo_checkpoint"] is None and not manifest["undo_checkpoint_shared"]
+        assert adapter.closed == [task["id"]]
+        assert task["id"] not in service._productivity_sessions
+        moved = next(item for item in snapshot["threads"] if item["id"] == task["id"])
+        assert moved["projectId"] == "productivity:target"
+        assert snapshot["activeThreadId"] == task["id"]
+
+        # The development /project move command uses the same path from inside a turn.
+        service._productivity_sessions[task["id"]] = SimpleNamespace(id=task["id"])
+        events = []
+
+        async def emit(event):
+            events.append(event)
+
+        await service.stream_turn(
+            thread_id=task["id"], prompt="/project move source", attachments=[], emit=emit,
+        )
+        manifest = service.store.load_manifest(task["id"])
+        assert manifest["project"] == "source" and manifest["cwd"] == str(source.resolve())
+        assert adapter.closed == [task["id"], task["id"]]
+        assert any(event["type"] == "refresh" and event["activeThreadId"] == task["id"]
+                   for event in events)
+        assert any((event.get("item") or {}).get("type") == "notice"
+                   and str(source.resolve()) in event["item"]["detail"] for event in events)
+
+        # A task handed off between harnesses carries a project-scoped context snapshot.
+        handed = task
+        service.store.append_event(
+            space="productivity", project="source", session_id=handed["id"],
+            event_type="provider_event", actor="system",
+            data={"provider_event_type": "cleo/harness_switch",
+                  "payload": {"version": 1, "context_version": 1, "snapshot_id": "ab" * 32,
+                              "provider": "codex", "phase": "prepared"}},
+        )
+        with pytest.raises(ValueError, match="上下文快照"):
+            await service.move_thread(
+                thread_id=handed["id"], project_id_value="productivity:target",
+            )
+        assert service.store.load_manifest(handed["id"])["project"] == "source"
+
+    asyncio.run(scenario())

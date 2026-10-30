@@ -187,6 +187,37 @@ try {
     await page.getByText("Optional memory sources", { exact: true }).waitFor();
     assert.equal(await page.getByRole("region", { name: "Memory sources", exact: true }).isVisible(), false);
   });
+  await check("projects: an existing general task can join a project and stays open", async page => {
+    await page.getByRole("button", { name: /^把导出的 CSV 合并成一张表/ }).click();
+    await page.getByRole("button", { name: "更多", exact: true }).click();
+    await page.getByTestId("move-thread").click();
+    const dialog = page.getByTestId("move-thread-dialog");
+    await dialog.waitFor();
+    assert.equal(await dialog.getByRole("radio").count(), 2);
+    assert.match(await dialog.getByTestId("move-thread-directory").innerText(), /工作目录/);
+    const crumbBefore = await page.locator(".breadcrumb-project").innerText();
+    await dialog.getByRole("button", { name: "取消", exact: true }).click();
+    await dialog.waitFor({ state: "detached" });
+    assert.equal(await page.locator(".breadcrumb-project").innerText(), crumbBefore);
+    assert.equal(await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      return (await cleoClient.loadWorkspace()).threads.find(thread => thread.id === "merge-exports").projectId;
+    }), "productivity:general");
+    await page.getByRole("button", { name: "更多", exact: true }).click();
+    await page.getByTestId("move-thread").click();
+    await page.getByTestId("move-thread-dialog").getByRole("radio", { name: /Cleo AI agent/ }).check();
+    await page.getByTestId("move-thread-confirm").click();
+    await page.getByTestId("move-thread-dialog").waitFor({ state: "detached" });
+    await page.getByText("已加入项目：Cleo AI agent", { exact: true }).waitFor();
+    assert.equal(await page.locator(".breadcrumb-project").innerText(), "Cleo AI agent");
+    assert.equal(await page.locator(".breadcrumb strong").innerText(), "把导出的 CSV 合并成一张表");
+    assert.equal(await page.getByTestId("thread-list").locator(".thread-row.active strong").innerText(), "把导出的 CSV 合并成一张表");
+    assert.equal(await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      const workspace = await cleoClient.loadWorkspace();
+      return workspace.threads.find(thread => thread.id === "merge-exports").projectId;
+    }), "cleo-agent");
+  });
   await check("information: memory filtering does not claim the queue is empty", async page => {
     await page.getByRole("button", { name: "记忆", exact: true }).click();
     await page.getByTestId("memory-nav-pending").click();

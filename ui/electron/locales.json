@@ -1039,6 +1039,10 @@
     "zh-CN": "改进 Cleo",
     "en": "Improve Cleo"
   },
+  "conversation.move_to_project": {
+    "zh-CN": "加入项目…",
+    "en": "Move to project…"
+  },
   "conversation.rename": {
     "zh-CN": "重命名",
     "en": "Rename"
@@ -2595,6 +2599,14 @@
     "zh-CN": "正在整理",
     "en": "Consolidating"
   },
+  "usecleoworkspace.wait_for_the_current_run_to_finish_before_moving": {
+    "zh-CN": "等待当前运行结束后再加入项目",
+    "en": "Wait for the current run to finish before moving"
+  },
+  "app.conversation_moved_to_value": {
+    "zh-CN": "已加入项目：{p0}",
+    "en": "Moved to {p0}"
+  },
   "memoryview.consolidation_failed": {
     "zh-CN": "整理失败",
     "en": "Consolidation failed"
@@ -3454,6 +3466,58 @@
   "overlays.could_not_rename_try_again": {
     "zh-CN": "无法重命名，请重试。",
     "en": "Could not rename. Try again."
+  },
+  "overlays.move_to_project": {
+    "zh-CN": "将会话加入项目",
+    "en": "Move conversation to a project"
+  },
+  "overlays.currently_in_value": {
+    "zh-CN": "当前位于：{p0}",
+    "en": "Currently in: {p0}"
+  },
+  "overlays.general_no_project": {
+    "zh-CN": "General（未关联项目）",
+    "en": "General (no project)"
+  },
+  "overlays.the_general_workspace": {
+    "zh-CN": "通用工作目录（不关联项目文件夹）",
+    "en": "the general workspace (no project folder)"
+  },
+  "overlays.target_project": {
+    "zh-CN": "目标项目",
+    "en": "Target project"
+  },
+  "overlays.no_other_projects_in_this_space": {
+    "zh-CN": "这个空间还没有其他项目，先在侧栏添加一个项目。",
+    "en": "There are no other projects in this space yet; add one from the sidebar first."
+  },
+  "overlays.move_task_directory_note": {
+    "zh-CN": "加入后，后续执行的工作目录将从 {p0} 改为 {p1}。已有文件、Git 仓库和附件不会被移动；下一轮会在新目录继续当前 harness 会话，若该 harness 无法在新目录恢复会提示错误。",
+    "en": "After moving, later turns run in {p1} instead of {p0}. Existing files, the Git repository and attachments are not moved; the next turn continues the current harness session in the new directory and reports an error if that harness cannot resume there."
+  },
+  "overlays.move_chat_note": {
+    "zh-CN": "加入后，这个对话会归入“{p0}”的记忆与上下文。",
+    "en": "After moving, this conversation belongs to the memory and context of “{p0}”."
+  },
+  "overlays.move_keeps_history_note": {
+    "zh-CN": "会话 ID、标题、消息和附件引用保持不变；上一轮的 Git 撤销点会随迁移作废。已整理进记忆的会话和带 harness 交接快照的任务暂不支持迁移。",
+    "en": "The conversation keeps its ID, title, messages and attachment references; the last turn's Git undo point is discarded by the move. A conversation already consolidated into memory, or a task carrying a harness handoff snapshot, cannot move yet."
+  },
+  "overlays.wait_for_the_run_to_finish_before_moving": {
+    "zh-CN": "会话正在运行，等待结束后再加入项目。",
+    "en": "The conversation is running; wait for it to finish before moving it."
+  },
+  "overlays.moving": {
+    "zh-CN": "正在加入…",
+    "en": "Moving…"
+  },
+  "overlays.move_to_project_confirm": {
+    "zh-CN": "加入项目",
+    "en": "Move"
+  },
+  "overlays.could_not_move_the_conversation": {
+    "zh-CN": "无法加入项目",
+    "en": "Could not move the conversation"
   },
   "overlays.rename_task": {
     "zh-CN": "重命名任务",
