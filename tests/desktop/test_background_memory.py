@@ -630,3 +630,46 @@ def test_service_retries_persisted_failed_source_and_skips_exhausted_ones(tmp_pa
                                            session_id="one", action="consolidate")
         assert invoke.await_count == 2
     asyncio.run(check())
+
+
+def test_failures_before_running_spend_one_attempt_each_until_exhausted(tmp_path):
+    async def check():
+        def factory():
+            raise RuntimeError("no model configured")
+
+        service, path = make_service(tmp_path, factory)
+        for attempt in range(1, 4):
+            service._background_memory.reset_schedule()
+            assert (await service.run_background_memory_review())["running"]
+            await service._background_memory._task
+            current = get_session_source("non_productivity", "general", "one", path=path)
+            assert current["status"] == "failed" and current["failure_count"] == attempt
+            assert current["last_error"] == "no model configured"
+        service._background_memory.reset_schedule()
+        state = await service.run_background_memory_review()
+        assert not state["running"] and state["pendingCount"] == 0
+        assert get_session_source("non_productivity", "general", "one", path=path)[
+            "failure_count"] == 3
+    asyncio.run(check())
+
+
+def test_new_source_revision_resets_the_automatic_retry_budget(tmp_path):
+    path = memory_state_path(tmp_path / "memory", "non_productivity")
+    touch_session_source(space="non_productivity", project="general", session_id="one",
+                         source_hash="old", last_event_seq=1, path=path)
+    for _ in range(3):
+        mark_consolidation_failed("non_productivity", "general", "one", "old",
+                                  "provider offline", path=path)
+    exhausted = get_session_source("non_productivity", "general", "one", path=path)
+    assert exhausted["failure_count"] == 3 and not BackgroundMemory.retryable(exhausted)
+    revised = touch_session_source(space="non_productivity", project="general", session_id="one",
+                                   source_hash="new", last_event_seq=2, path=path)
+    assert revised["status"] == "pending" and revised["source_version"] == 2
+    assert revised["failure_count"] == 0 and BackgroundMemory.retryable(revised)
+    failed = mark_consolidation_failed("non_productivity", "general", "one", "new",
+                                       "still offline", path=path)
+    assert failed["failure_count"] == 1 and BackgroundMemory.retryable(failed)
+    # A stale failure of the previous revision changes nothing.
+    stale = mark_consolidation_failed("non_productivity", "general", "one", "old",
+                                      "late error", path=path)
+    assert stale["failure_count"] == 1 and stale["source_hash"] == "new"

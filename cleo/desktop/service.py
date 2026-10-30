@@ -778,6 +778,8 @@ class DesktopService:
     ) -> dict[str, Any] | None:
         space, project, session_id = source["space"], source["project"], source["session_id"]
         state_path = memory_state_path(self.settings.MEMORY_DIR, space)
+        before = get_session_source(space, project, session_id, path=state_path)
+        failures_before = int((before or {}).get("failure_count") or 0)
         try:
             manifest = self.store.load_manifest(session_id)
             if manifest.get("owner_type") != "user" or self._is_removed_project(manifest):
@@ -807,7 +809,12 @@ class DesktopService:
             raise
         except Exception as error:
             current = get_session_source(space, project, session_id, path=state_path)
-            if current and current["status"] != "failed":
+            # DreamAgent records a failure once it owns the source. A failure before that
+            # (model construction, pre-run checks) still spends one automatic attempt, even
+            # when the source was already failed by an earlier attempt.
+            recorded = (current is not None
+                        and int(current.get("failure_count") or 0) != failures_before)
+            if current and current["source_hash"] == source["source_hash"] and not recorded:
                 mark_consolidation_failed(
                     space, project, session_id, source["source_hash"], str(error),
                     path=state_path,
