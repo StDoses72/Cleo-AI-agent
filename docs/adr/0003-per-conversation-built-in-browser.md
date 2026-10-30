@@ -1,0 +1,56 @@
+# 0003. 内置浏览器按会话隔离、按需创建、闲置 10 分钟回收
+
+- **Status**: Proposed
+- **Date**: 2026-10-30
+
+## Context
+
+右侧电脑面板的内置浏览器（Electron `WebContentsView`，`ui/electron/computer/browser.mjs` 的 `CleoBrowser`）原来被所有 Cleo 会话共用（issue #149）：
+
+- `ComputerUse`（`index.mjs`）只持有一个 `CleoBrowser`，所有会话看到同一组标签页，默认分区 `persist:cleo-browser`，登录状态也共享。
+- `ComputerBroker`（`broker.mjs`）用一个全局 lease 和一个浏览器队列：一个会话占用期间另一个会话的浏览器工具调用直接被拒；回合结束释放 lease 但页面保留。互斥能防止同时抢操作，却不能提供会话隔离。
+- 页面已经是按需创建，但没有闲置回收；关闭最后一个标签页会自动补建空白页，所以一旦用过浏览器就永远至少有一个 WebContents 活着。
+- UI（`ComputerPanel.tsx`）读取全局 `state.browser`，浏览器操作和 viewport 上报不携带会话归属。
+
+约束：真实桌面只有一套鼠标键盘，host 模式必须保持全局独占和现有授权/停止语义；新建会话、切换会话、读状态、列工具不得创建 WebContents；"没有变化"要定义为"没有实际使用"（轮询、动画、DOM 变化不算）；回收不能中断执行中的操作、下载、待处理对话框，也不能中断用户正在前台阅读的页面；旧截图/元素引用在回收后必须失效；不能静默删除用户已有的共享登录数据。
+
+## Decision
+
+- **共享舞台 + 按会话上下文。** `CleoBrowser` 保留窗口放置、离屏 keeper 窗口、接管遮罩这些只能有一份的东西；每个 `thread_id` 对应一个 `BrowserContext`（标签页、当前标签、标签编号、几何计数、下载、通知、`lastUsedAt`、休眠快照）。`browser.forThread(threadId)` 返回保持旧方法名的 `ThreadBrowser` 门面，broker 与面板每次只对一个会话说话。
+- **独立分区。** 每个会话使用 `persist:cleo-browser-thread-<slug(thread_id)>`，会话配置（权限处理器、file:// 拦截、下载、`cleo-file` 预览协议）在首次用到时按会话配置。旧的共享分区 `persist:cleo-browser` 原样留在磁盘上，既不复制进各会话也不删除。会话被删除时（`main.mjs` 在 `delete_thread` 成功后调用 `computer.forgetThread`）清理其队列、截图记录、页面和站点数据（`clearStorageData`）。
+- **前台/后台。** 面板用 `viewport` 请求携带 `threadId` 告诉主进程它正在显示谁；只有前台会话的当前标签放进主窗口，其他会话的页面留在 keeper 里继续绘制，因此后台会话的截图和操作照常进行，且不改变前台会话的页面。切换前台时重新计算接管遮罩（`foreground` 事件 → broker `changed()`），遮罩只反映当前显示的会话。
+- **控制权与队列按会话。** broker 去掉全局浏览器 lease：浏览器的控制权（agent/user）、控制 epoch、等待者、操作队列和"本回合是否用过浏览器"都挂在线程条目上；桌面（真实鼠标键盘）保留唯一的全局 lease、控制权和队列。截图记录除线程 id 外还校验该会话自己的几何计数和控制 epoch。
+- **stop 的作用域。** 面板的 stop 带 `threadId`，只取消、释放、结算该会话的浏览器工作（以及它持有的桌面控制），`cancel_run` 只发给该会话；紧急停止快捷键或不带会话的 stop 仍然全局停止一切。
+- **按需创建、允许零标签。** 创建上下文、切换前台、读状态都不创建 WebContents 或 keeper；首次工具调用、手动打开网页或工作区预览才创建第一页；关闭最后一个标签页保持零标签；没有任何会话有页面时销毁 keeper。
+- **闲置 10 分钟回收。** "使用"= 浏览器工具调用、面板操作、页面内真实键盘输入（`touch`）。满足"有页面、距上次使用 ≥ 10 分钟、不是正在前台显示的会话、没有待处理对话框/文件选择、没有进行中的下载"且 broker 报告该会话没有执行中或排队中的浏览器操作（`threadBusy`）时休眠：关闭 WebContents、解除调试连接、递增几何计数使旧 `screenshot_id`/标签 id 失效、必要时释放 keeper；保留登录分区和标签网址。离开前台（隐藏面板或切到别的会话）重新开始完整的 10 分钟窗口。面板显示"浏览器已休眠"，下一次工具调用或点击"重新打开"按保存的网址重新加载，不承诺恢复未提交的表单或页面脚本状态。
+
+## Alternatives considered
+
+- **每个会话一个独立的 `CleoBrowser` 实例，由一个池子管理。** 被否决：窗口放置、keeper、遮罩、显示缩放监听都只能有一份，多个实例会各自建 keeper 和遮罩；把共享部分抽成舞台、把会话部分抽成上下文，改动面反而更小，门面保证 broker 调用点几乎不变。
+- **保留全局 lease，只给页面加会话标签。** 被否决：lease 正是"一个会话用浏览器时另一个会话被拒"的根源；不同会话的页面互不影响后，没有理由让它们互相排队。桌面保留 lease 是因为真实输入设备确实只有一套。
+- **按会话 lease 但共享分区。** 被否决：issue 的核心诉求之一是避免跨任务串用账号状态；共享分区意味着一个任务登录后另一个任务也以同一身份操作。
+- **把旧共享分区的登录数据复制到每个新会话。** 被否决：静默扩散凭据到每个任务与隔离的目的相反；删除旧分区则会丢用户数据。选择原样保留、不再使用。
+- **以"Agent 回合仍在运行"作为保活条件。** 被否决：一个长回合可能几十分钟不碰浏览器，页面却一直占内存；issue 明确要求回合运行不构成永久保活。保活只看执行中/排队中的浏览器操作、下载、待处理交互和前台查看。
+- **用更短的阈值（如 2–3 分钟）或不设前台豁免。** 被否决：前台用户可能只是在静态阅读一页，几分钟不点击很常见；10 分钟是 issue 给定的值，前台豁免 + 离开后重新计时避免打断阅读，又不让"面板一直开着"成为永久保活。
+- **回收时只隐藏视图不销毁 WebContents。** 被否决：隐藏不释放渲染进程内存，也不满足"旧截图必须失效"；真正销毁加网址快照才是回收。
+- **回收后自动重新加载所有标签。** 被否决：回收的目的是省内存，自动重载等于没回收；按需在下一次实际使用时重载。
+- **面板 stop 全局停止（评审前的实现）。** 评审复现：停止会话 B 取消了会话 A 的截图。改为按会话作用域；但保留快捷键的全局语义，因为紧急停止的用途正是"不管是谁，立刻全停"，用户按快捷键时并不在看某个会话的面板。
+- **切换前台时沿用上一个会话的遮罩状态（评审前的实现）。** 评审复现：从 AI 操作中的 A 切到空闲 B，B 仍被遮罩挡住。改为前台变化时按目标会话重算。
+
+## Consequences
+
+- 正面：会话之间的标签页、登录、截图、控制权和队列互不串用；多个会话可以并行推进各自的浏览器任务；未用过浏览器的会话不占渲染资源；闲置页面会被真正释放，且恢复只影响目标会话。
+- 负面/限制：
+  - 用户需要在每个会话里分别登录网站；旧共享分区的登录不再被使用（也未删除）。
+  - 后台会话的页面继续在 keeper 里绘制以保证截图可用，这部分内存在它们闲置 10 分钟前不会释放。
+  - 每个会话一个持久分区会在磁盘上累积站点数据；只有删除会话时才清理，休眠不清理。
+  - 本次没有在真实 Electron 窗口里跑双会话，内存释放只由 fake 覆盖 WebContents 创建/销毁与 keeper 生命周期，没有实测数字。
+  - Python 侧独立的 `agent-browser` 适配器已有按 thread_id 命名会话的机制，不在本决策范围内。
+- 后续工作：在真实窗口里验证双会话与休眠/唤醒；考虑给久未使用的会话分区做清理策略；评估休眠时是否要保留可恢复的滚动位置。
+
+## References
+
+- PR [#158](https://github.com/StDoses72/Cleo-AI-agent/pull/158)；issue [#149](https://github.com/StDoses72/Cleo-AI-agent/issues/149)。
+- 代码：`ui/electron/computer/browser.mjs`（`CleoBrowser`、`BrowserContext`、`ThreadBrowser`、`partitionFor`、`BROWSER_IDLE_MS`、`hibernate`/`wake`/`reclaimIdle`），`ui/electron/computer/broker.mjs`（`browserFor`、`queueFor`、`controlOf`、`takeover`/`handback`/`stop`、`threadBusy`、`forgetThread`），`ui/electron/computer/index.mjs`（`threadFor`、`setViewport`、`forgetThread`），`ui/electron/main.mjs`（`delete_thread` 钩子），`ui/src/components/ComputerPanel.tsx`，`ui/src/computer-types.ts`。
+- 测试：`ui/electron/computer/browser.test.mjs`（无 WebContents 创建、按会话标签/分区/最后标签规则、主窗口与 keeper 放置、假时钟闲置回收与唤醒、下载/对话框/前台豁免、协议注册与站点数据清理），`ui/electron/computer/broker.test.mjs`（并发会话、控制权与截图隔离、按会话 stop 与快捷键全停、遮罩随前台、忙碌判定与遗忘），`ui/tests/computer-panel.smoke.mjs`。
+- 相关文档：`docs/computer-use.md`。
