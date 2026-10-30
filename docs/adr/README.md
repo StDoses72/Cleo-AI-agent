@@ -36,5 +36,6 @@
 | [0003](0003-per-conversation-built-in-browser.md) | 内置浏览器按会话隔离、按需创建、闲置 10 分钟回收 | Proposed |
 | [0004](0004-claude-turn-and-background-task-lifecycle.md) | Claude 回合与后台任务的生命周期归 provider 所有 | Proposed |
 | [0005](0005-single-codex-cli-distribution.md) | Codex CLI 只随 Python 运行时分发一次 | Proposed |
+| [0006](0006-online-runtime-ownership-and-retirement.md) | 在线运行环境的归属登记与基于证据的退役 | Proposed |
 
 每个引入 ADR 的 PR 自己在此表追加对应行（并行 PR 之间的小冲突在合并时解决），这样任何一个 PR 合并后索引都是完整的。

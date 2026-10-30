@@ -49,6 +49,12 @@ export interface StorageEntry {
   reason: string;
   version?: string | null;
   snapshots?: number;
+  /** Online runtimes: whether a program provably uses it, it is provably retired, or nobody can tell. */
+  ownership?: "in-use" | "retired" | "unknown";
+  /** Programs that still use the entry, each with the kind of evidence that found them. */
+  owners?: { label: string; evidence: string }[];
+  /** Observations behind a retirement, for example a registered installation that moved on. */
+  evidence?: { kind: string; detail: string }[];
 }
 
 export interface StorageInventory {
