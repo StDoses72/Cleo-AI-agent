@@ -18,6 +18,7 @@
 - [架构说明](ARCHITECTURE.md)：产品边界、组件关系、会话模型、harness 与记忆数据流。
 - [Architecture (English)](ARCHITECTURE.en.md)：英文架构说明。
 - [记忆系统设计记录](CASTMIND_MEMORY_MIGRATION.md)：为什么采用 event log、compact、SQLite evidence 与分区记忆。
+- [Harness 交互式问答与回合生命周期](harness/interactive-lifecycle.md)：Claude / Codex / ACP 的原生问答、审批、回合结束与后台任务协议，Cleo 的适配方式与 adapter 层架构判断。
 
 ## 我想参与开发
 
