@@ -174,7 +174,7 @@ git diff --stat
 `pyproject.toml` 是 Python 直接依赖入口，保留最低版本，不限制旧的上限。
 `ui/package.json` 和 `ui/runtime/package.json` 中的应用依赖跟随 npm 的 `latest` 稳定版标签。
 运行工具中的 npm 保留 11.x，以兼容内置 Node 24；Python/Node 本身仍使用发布流程指定的运行时。
-Codex Python SDK 使用官方配套的 `openai-codex-cli-bin`；桌面版通过 `CLEO_CODEX_BIN` 选择同一 Python 环境里的配套 CLI，启动和更新时校验 SDK、CLI 包及可执行文件版本一致。
+Codex Python SDK 使用官方配套的 `openai-codex-cli-bin`；桌面版通过 `CLEO_CODEX_BIN` 选择同一 Python 环境里的配套 CLI，启动和更新时校验 SDK、CLI 包及可执行文件版本一致。这是 Codex CLI 的唯一分发来源：`ui/runtime/package.json` 不再声明 `@openai/codex`（它曾在每套运行环境里多放一份约 0.4 GiB、内容相同的 `codex.exe`），`scripts/release_dependencies.py` 发现打包的 `browser/node_modules` 或 runtime lock 里出现它时拒绝生成依赖收据。后端 PATH 上的 `browser/node_modules/.bin` 只为 `agent-browser` 服务；SDK 自身按 `CodexConfig.codex_bin` 或 `codex_cli_bin.bundled_codex_path()` 解析二进制，从不查 PATH。
 
 `requirements.txt` 是带平台条件的跨平台 Python 精确锁文件；两个 `package-lock.json` 记录对应的 npm 解析结果。这些文件由更新命令生成，不应手工编辑。仓库忽略的 `uv.lock` 仅供本地使用。更新命令检测到已有 `.venv` 时，会自动通过 `uv sync --upgrade --extra dev --prerelease=disallow` 刷新本地锁文件并升级开发依赖，需要安装 `uv`。没有 `.venv` 的 CI 环境不会创建它；`--check` 不修改环境。最低版本约束仍表示兼容性要求，锁文件记录最新稳定且兼容的解析结果。
 
