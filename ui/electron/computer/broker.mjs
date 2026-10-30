@@ -333,9 +333,13 @@ export class ComputerBroker extends EventEmitter {
     const affects = job => !scoped || job.threadId === requested;
     this.stopping = (async () => {
       this.changed();
-      // The desktop owner, the conversation the panel stopped, or every conversation driving a browser.
+      // The conversation the panel stopped, or, for a global stop, every running conversation that
+      // holds the desktop, drives a browser or has an action in flight: the desktop owner alone would
+      // leave a browser conversation's run alive to queue new actions right after the stop.
       const active = [...this.threads].filter(([id, entry]) => entry.browserActive && this.running.has(id)).map(([id]) => id);
-      const owners = scoped ? [requested] : this.lease?.threadId ? [this.lease.threadId] : active;
+      const engaged = [...this.inflight].map(job => job.threadId);
+      const owners = scoped ? [requested]
+        : [...new Set([this.lease?.threadId, ...active, ...engaged].filter(id => id && this.running.has(id)))];
       const threadId = owners[0] || null;
       const reason = source === "shortcut" ? tr("broker.computer_control_stopped_through_the_emergency_stop_shortcut") : tr("broker.the_user_stopped_computer_control");
       this.cancelJobs(affects, reason);

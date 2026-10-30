@@ -3,6 +3,26 @@ import test from "node:test";
 import { ComputerUse } from "./index.mjs";
 import { FILE_SCHEME } from "./schemes.mjs";
 
+test("a viewport report without a conversation hides the shown browser and leaves panel actions without a target", () => {
+  const foregrounds = [];
+  const viewports = [];
+  const browser = {
+    foregroundId: "thread-a",
+    setForeground(threadId) { this.foregroundId = threadId; foregrounds.push(threadId); },
+    setViewport(rect) { viewports.push(rect); },
+  };
+  const window = { webContents: { getZoomFactor: () => 1 } };
+  const rect = { x: 10, y: 20, width: 300, height: 200 };
+  ComputerUse.prototype.setViewport.call({ browser }, window, rect, "thread-b");
+  assert.deepEqual(foregrounds, ["thread-b"], "a named conversation becomes the foreground");
+  ComputerUse.prototype.setViewport.call({ browser }, window, rect, null);
+  assert.deepEqual(foregrounds, ["thread-b", null], "no conversation selected clears the foreground");
+  assert.deepEqual(viewports.at(-1), rect, "the viewport itself is still placed");
+  assert.throws(() => ComputerUse.prototype.threadFor.call({ browser }, {}), /选择|select/i,
+    "address bar and tab actions have no conversation to fall back to");
+  assert.equal(ComputerUse.prototype.threadFor.call({ browser }, { threadId: "thread-c" }), "thread-c");
+});
+
 for (const handled of [false, true]) {
   test(`workspace previews register in the UI session when handled=${handled}`, async () => {
     const registrations = [];

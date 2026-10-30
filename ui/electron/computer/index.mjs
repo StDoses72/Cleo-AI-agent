@@ -120,7 +120,9 @@ export class ComputerUse {
 
   /** Purpose: Convert renderer CSS pixels to window DIPs and place the shown conversation's browser. */
   setViewport(window, rect, threadId = null) {
-    if (threadId) this.browser.setForeground(String(threadId));
+    // The panel names the conversation it shows. With none selected (a new draft, nothing open)
+    // the previously shown browser leaves the window and panel actions have no target.
+    this.browser.setForeground(threadId ? String(threadId) : null);
     if (!rect) { this.browser.setViewport(null); return; }
     const zoom = window.webContents.getZoomFactor() || 1;
     const values = ["x", "y", "width", "height"].map(key => Number(rect[key]));
