@@ -26,6 +26,11 @@
 3. [Desktop 子系统说明](../ui/README.md)：Electron/React 边界、IPC、构建和 smoke test。
 4. [仓库贡献规则](../AGENTS.md)：代码修改和 review 的长期约束。
 
+## ADR（架构决策记录）
+
+- [ADR 索引与写作约定](adr/README.md)：影响架构、数据模型或用户可见行为边界的决策，按编号记录在 `docs/adr/`，重点是为什么这样选、否决了什么、留下了什么限制。
+- [ADR 0006 在线运行环境的归属登记与基于证据的退役](adr/0006-online-runtime-ownership-and-retirement.md)
+
 ## 文档维护约定
 
 - 文档只描述仓库中已实现的能力；规划中的能力必须明确标记为规划。

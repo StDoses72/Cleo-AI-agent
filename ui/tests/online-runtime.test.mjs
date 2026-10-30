@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { Worker } from "node:worker_threads";
 import test from "node:test";
-import { findInstalledRuntime, INSTALL_STAGES, installProgress, installRuntime, pipProgress,
-  readRuntimePlan, watchCancellation } from "../electron/online-runtime.mjs";
+import { findInstalledRuntime, INSTALL_STAGES, installProgress, installRuntime, parseRuntimeRegistry,
+  pipProgress, readRuntimePlan, readRuntimeRegistry, RUNTIME_REGISTRY, watchCancellation } from "../electron/online-runtime.mjs";
 import { desktopPlatform } from "../electron/platform.mjs";
 
 const hash = data => createHash("sha256").update(data).digest("hex");
@@ -204,6 +204,55 @@ test("a cancel file stops a runtime download and removes its staging", async t =
   await assert.rejects(installation, /cancelled/i);
   assert.equal(controller.signal.reason.message, "Installation cancelled.");
   assert.deepEqual((await readdir(cache)).filter(name => name.startsWith(".install-")), []);
+});
+
+test("launching with an installed runtime journals the program location and prunes stale entries", async t => {
+  const { root, resources, plan } = await fixture(t);
+  const key = readRuntimePlan(resources).key;
+  const online = join(root, "runtimes", "online");
+  await readyRuntime(join(online, key), key);
+  assert.equal(findInstalledRuntime(resources, root), join(online, key));
+  const registry = JSON.parse(await readFile(join(online, RUNTIME_REGISTRY), "utf8"));
+  assert.deepEqual(Object.keys(registry.installations), [resolve(resources)]);
+  assert.equal(registry.installations[resolve(resources)].key, key);
+  assert.equal(registry.installations[resolve(resources)].version, plan.version);
+  assert.ok(registry.installations[resolve(resources)].updatedAt);
+  // Entries for runtimes that no longer exist are dropped; an older entry for this location is refreshed.
+  await writeFile(join(online, RUNTIME_REGISTRY), JSON.stringify({ schema: 1, installations: {
+    "/elsewhere/resources": { key: hash("gone"), version: "0.1.0" }, [resolve(resources)]: { key, version: "0.0.1" } } }));
+  findInstalledRuntime(resources, root);
+  const refreshed = readRuntimeRegistry(online);
+  assert.deepEqual(Object.keys(refreshed.installations), [resolve(resources)]);
+  assert.equal(refreshed.installations[resolve(resources)].version, plan.version);
+  // An in-place upgrade switches this location to a new key: the key it leaves stays in history
+  // (with the time it left) while its runtime directory exists, so cleanup can retire it later.
+  const upgraded = { ...plan, version: "0.6.2" };
+  await writeFile(join(resources, "runtime-plan.json"), JSON.stringify(upgraded));
+  const newKey = readRuntimePlan(resources).key;
+  assert.notEqual(newKey, key);
+  await readyRuntime(join(online, newKey), newKey);
+  assert.equal(findInstalledRuntime(resources, root), join(online, newKey));
+  const afterUpgrade = readRuntimeRegistry(online).installations[resolve(resources)];
+  assert.equal(afterUpgrade.key, newKey);
+  assert.equal(afterUpgrade.version, "0.6.2");
+  assert.deepEqual(afterUpgrade.history.map(item => [item.key, item.version]), [[key, plan.version]]);
+  assert.ok(afterUpgrade.history[0].leftAt);
+  // Launching again does not duplicate the history item; removing the old runtime prunes it.
+  findInstalledRuntime(resources, root);
+  assert.equal(readRuntimeRegistry(online).installations[resolve(resources)].history.length, 1);
+  await rm(join(online, key), { recursive: true });
+  findInstalledRuntime(resources, root);
+  assert.deepEqual(readRuntimeRegistry(online).installations[resolve(resources)].history, []);
+  // Malformed content is an empty registry, never an exception or a trusted entry.
+  assert.deepEqual(parseRuntimeRegistry("nonsense"), { schema: 1, installations: {} });
+  assert.deepEqual(parseRuntimeRegistry(JSON.stringify({ schema: 1, installations: {
+    "/x": { key: newKey, history: [{ key: "bad" }, { key: newKey }, { key, version: 1 }] } } })).installations["/x"].history,
+  [{ key, version: null, leftAt: null }]);
+  assert.deepEqual(parseRuntimeRegistry(JSON.stringify({ schema: 1, installations: { a: { key: "short" } } })), { schema: 1, installations: {} });
+  // A registry location that cannot be written never blocks startup.
+  await rm(join(online, RUNTIME_REGISTRY));
+  await mkdir(join(online, RUNTIME_REGISTRY));
+  assert.equal(findInstalledRuntime(resources, root), join(online, newKey));
 });
 
 test("the packaged entry point reports stages and honours the cancel file", async t => {

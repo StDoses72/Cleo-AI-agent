@@ -7143,6 +7143,22 @@
     "zh-CN": "{p0} 使用的运行环境",
     "en": "Runtime used by {p0}"
   },
+  "storage_reclaim.cleo_value_launched_from_value": {
+    "zh-CN": "从 {p1} 启动过的 Cleo {p0}",
+    "en": "Cleo {p0} launched from {p1}"
+  },
+  "storage_reclaim.installation_now_uses_another_runtime_value": {
+    "zh-CN": "{p0} 已切换到其他运行环境",
+    "en": "{p0} now uses another runtime"
+  },
+  "storage_reclaim.installation_no_longer_exists_value": {
+    "zh-CN": "{p0} 已不存在",
+    "en": "{p0} no longer exists"
+  },
+  "storage_reclaim.retired_every_installation_registered_to_it_moved_on_value": {
+    "zh-CN": "已退役：登记使用它的安装都已升级或被删除（{p0}），没有其他程序引用",
+    "en": "Retired: every installation registered to it upgraded or was removed ({p0}); nothing else references it"
+  },
   "storage_reclaim.completed_runtime_legacy_installers_allow_custom_program_locations_so_it_cannot_be_co": {
     "zh-CN": "已完成的运行环境；旧安装器支持自定义程序位置，无法确认无人使用",
     "en": "Completed runtime; legacy installers allow custom program locations, so it cannot be confirmed unused"
