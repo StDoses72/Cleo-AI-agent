@@ -27,8 +27,10 @@ function size(bytes: number) {
   return bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export function FilesPanel({ root, reveal, onNotify, onCopyText, onOpenExternal, onOpenBrowser }: {
+export function FilesPanel({ root, threadId = null, reveal, onNotify, onCopyText, onOpenExternal, onOpenBrowser }: {
   root: string | null;
+  /** The conversation whose built-in browser previews open in. */
+  threadId?: string | null;
   reveal: FileReveal | null;
   onNotify: (message: string) => void;
   onCopyText: (value: string) => void;
@@ -132,7 +134,7 @@ export function FilesPanel({ root, reveal, onNotify, onCopyText, onOpenExternal,
 
   const openInBrowser = async () => {
     if (!root || !preview) return;
-    try { await window.cleoDesktop?.computer?.("preview", { root, path: preview.path }); onOpenBrowser(); }
+    try { await window.cleoDesktop?.computer?.("preview", { root, path: preview.path, threadId }); onOpenBrowser(); }
     catch (cause) { onNotify(cause instanceof Error ? cause.message : tr("filespanel.could_not_open_in_the_built_in_browser")); }
   };
 

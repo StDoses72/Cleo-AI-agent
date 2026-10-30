@@ -1,7 +1,7 @@
 import { t as tr } from "../../electron/i18n.mjs";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import {
-  ArrowLeft, ArrowRight, CircleAlert, Download, Expand, Globe, Hand, Loader2, Minimize, Monitor, Play,
+  ArrowLeft, ArrowRight, CircleAlert, Download, Expand, Globe, Hand, Loader2, Minimize, Monitor, MoonStar, Play,
   Plus, RotateCw, ShieldAlert, Square, X,
 } from "lucide-react";
 import type { Thread, TimelineItem } from "../types";
@@ -83,8 +83,11 @@ export function ComputerPanel({ thread, running, onStop }: { thread: Thread | nu
   const threadId = thread?.id ?? null;
   const mode: ComputerMode = (threadId && state?.threads[threadId]?.mode) || "browser";
   const target: ComputerTarget = mode === "host" ? "desktop" : "browser";
-  const browser = state?.browser;
+  // The main process reports the browser of the conversation it currently shows; while the
+  // panel switches conversations, another conversation's tabs must not flash through.
+  const browser = state?.browser && (state.browser.threadId === undefined || state.browser.threadId === threadId) ? state.browser : null;
   const activeTab = browser?.tabs.find(tab => tab.id === browser.activeTabId) ?? null;
+  const hibernated = browser?.hibernated ?? null;
   const control = state?.control[target] ?? "agent";
   const working = Boolean(state?.inflight.some(job => job.target === target));
   const steps = (thread?.items ?? []).filter(isComputerTool).slice(-6).reverse();
@@ -114,10 +117,10 @@ export function ComputerPanel({ thread, running, onStop }: { thread: Thread | nu
       const value = rect && rect.width > 0 && rect.height > 0
         ? { x: Math.round(rect.left), y: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height) }
         : null;
-      const key = JSON.stringify(value);
+      const key = JSON.stringify({ value, threadId });
       if (key === lastRect.current) return;
       lastRect.current = key;
-      void bridge.computer?.("viewport", { rect: value }).catch(() => {});
+      void bridge.computer?.("viewport", { rect: value, threadId }).catch(() => {});
     };
     report();
     const observer = element ? new ResizeObserver(report) : null;
@@ -131,9 +134,9 @@ export function ComputerPanel({ thread, running, onStop }: { thread: Thread | nu
       document.removeEventListener("visibilitychange", report);
       clearInterval(timer);
       lastRect.current = "";
-      void bridge.computer?.("viewport", { rect: null }).catch(() => {});
+      void bridge.computer?.("viewport", { rect: null, threadId }).catch(() => {});
     };
-  }, [showBrowser, expanded]);
+  }, [showBrowser, expanded, threadId]);
 
   useEffect(() => {
     if (!editingAddress) setAddress(activeTab?.url === "about:blank" ? "" : activeTab?.url ?? "");
@@ -141,7 +144,7 @@ export function ComputerPanel({ thread, running, onStop }: { thread: Thread | nu
 
   useEffect(() => { setPromptText(activeTab?.dialog?.defaultPrompt ?? ""); }, [activeTab?.dialog?.message, activeTab?.dialog?.defaultPrompt]);
 
-  const browserAction = (action: string, params: Record<string, unknown> = {}) => act("browser", { action, ...params });
+  const browserAction = (action: string, params: Record<string, unknown> = {}) => act("browser", { threadId, action, ...params });
 
   const navigate = (event: FormEvent) => {
     event.preventDefault();
@@ -158,7 +161,7 @@ export function ComputerPanel({ thread, running, onStop }: { thread: Thread | nu
   };
 
   const stop = async () => {
-    const result = await act("stop");
+    const result = await act("stop", { threadId });
     if (!result && running) onStop();
   };
 
@@ -258,13 +261,18 @@ export function ComputerPanel({ thread, running, onStop }: { thread: Thread | nu
             <button type="button" onClick={() => void browserAction("cancelFiles")}>{tr("computerpanel.cancel")}</button>
           </div></div>
       </div>}
+      {hibernated && !browser?.tabs.length && <div className="browser-banner" role="status" data-testid="browser-hibernated">
+        <MoonStar size={14} /><div><strong>{tr("computerpanel.browser_asleep")}</strong>
+          <p>{tr("computerpanel.browser_asleep_detail_value", { p0: hibernated.tabs.length })}</p>
+          <div className="computer-authorization-actions"><button type="button" disabled={busy} onClick={() => void browserAction("wake")}>{tr("computerpanel.reopen_pages")}</button></div></div>
+      </div>}
       {(activeTab?.crashed || activeTab?.error || activeTab?.unresponsive) && <div className="browser-banner" role="status">
         <CircleAlert size={14} /><div><strong>{activeTab.crashed ? tr("computerpanel.the_page_crashed") : activeTab.unresponsive ? tr("computerpanel.the_page_is_not_responding") : tr("computerpanel.the_page_failed_to_load")}</strong>
           <p>{activeTab.crashed ? tr("computerpanel.reason_value", { p0: activeTab.crashed }) : activeTab.error?.description || ""}</p>
           <div className="computer-authorization-actions"><button type="button" onClick={() => void browserAction("reload")}>{tr("computerpanel.reload")}</button></div></div>
       </div>}
       <div className="browser-viewport" ref={viewport} data-testid="browser-viewport">
-        {!browser?.tabs.length && <div className="browser-empty"><Globe size={28} /><span>{tr("computerpanel.enter_a_url_to_browse_ai_also_opens_pages_here_when_running_computeruse_tasks")}</span></div>}
+        {!browser?.tabs.length && <div className="browser-empty"><Globe size={28} /><span>{hibernated ? tr("computerpanel.browser_asleep_hint") : tr("computerpanel.enter_a_url_to_browse_ai_also_opens_pages_here_when_running_computeruse_tasks")}</span></div>}
         {modalOpen && <div className="browser-empty"><span>{tr("computerpanel.the_browser_view_is_temporarily_hidden_while_a_dialog_is_open")}</span></div>}
       </div>
       {browser?.notices[0] && Date.now() - browser.notices[0].at < 60000 && <p className="computer-panel-hint">{browser.notices[0].text}</p>}
@@ -284,7 +292,7 @@ export function ComputerPanel({ thread, running, onStop }: { thread: Thread | nu
     <div className="computer-control-bar">
       <span><i className={working ? "is-running" : control === "user" ? "is-user" : ""} />{statusText}</span>
       <div>
-        <button type="button" disabled={busy || !state} onClick={() => void act(control === "user" ? "handback" : "takeover", { target })}>
+        <button type="button" disabled={busy || !state} onClick={() => void act(control === "user" ? "handback" : "takeover", { target, threadId })}>
           {control === "user" ? <Play size={13} /> : <Hand size={13} />}{control === "user" ? tr("computerpanel.return_control_to_ai") : tr("computerpanel.take_over")}</button>
         <button type="button" className="stop" disabled={busy || !canStop || state?.stopping} onClick={() => void stop()}><Square size={12} />{tr("computerpanel.stop")}</button>
       </div>

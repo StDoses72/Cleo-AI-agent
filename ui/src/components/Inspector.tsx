@@ -75,7 +75,7 @@ export function Inspector({
       {activeTab === "computer" ? (
         <ComputerPanel thread={thread} running={running} onStop={onStop} />
       ) : activeTab === "files" ? (
-        <FilesPanel root={project?.path || null} reveal={fileReveal} onNotify={onNotify} onCopyText={onCopyText}
+        <FilesPanel root={project?.path || null} threadId={thread?.id ?? null} reveal={fileReveal} onNotify={onNotify} onCopyText={onCopyText}
           onOpenExternal={(path) => (onOpenExternalPath ? onOpenExternalPath(path) : onRevealPath(path))}
           onOpenBrowser={() => onTabChange("computer")} />
       ) : activeTab === "changes" ? (
