@@ -254,6 +254,29 @@ test("a panel stop halts one conversation; the emergency shortcut halts every co
   assert.equal(broker.state().lastStop.settled, true);
 });
 
+test("a panel stop of an authorized conversation leaves the desktop another conversation is driving alone", async () => {
+  const { broker, hostCalls, backendCalls } = setup();
+  broker.turnStarted("thread-a");
+  broker.turnStarted("thread-b");
+  await broker.setMode("thread-a", "host", { confirmed: true });
+  await broker.setMode("thread-b", "host", { confirmed: true });
+  await broker.call({ thread_id: "thread-b" }, "desktop_screenshot", {});
+  assert.equal(broker.state().lease?.threadId, "thread-b", "thread-b owns the desktop");
+  const before = hostCalls.filter(([op]) => op === "stop").length;
+  const stopped = await broker.stop({ source: "panel", threadId: "thread-a" });
+  assert.equal(stopped.scoped, true);
+  assert.equal(hostCalls.filter(([op]) => op === "stop").length, before, "the desktop controller is not stopped for a bystander");
+  assert.equal(broker.state().lease?.threadId, "thread-b", "thread-b keeps the desktop");
+  assert.equal(broker.state().threads["thread-a"].mode, "browser", "thread-a's authorization is still revoked");
+  assert.equal(broker.state().threads["thread-b"].mode, "host");
+  assert.deepEqual(backendCalls.filter(([method]) => method === "cancel_run").map(([, params]) => params), [{ thread_id: "thread-a" }]);
+  // With the desktop free, stopping an authorized conversation still releases the controller.
+  broker.turnEnded("thread-b");
+  await broker.setMode("thread-a", "host", { confirmed: true });
+  await broker.stop({ source: "panel", threadId: "thread-a" });
+  assert.equal(hostCalls.filter(([op]) => op === "stop").length, before + 1);
+});
+
 test("a global stop cancels the run of every engaged conversation, not only the desktop owner", async () => {
   const { broker, pool, backendCalls } = setup();
   const other = pool.forThread("thread-b");

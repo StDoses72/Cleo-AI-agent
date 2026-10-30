@@ -1030,23 +1030,26 @@ export class CleoBrowser extends EventEmitter {
   /** Purpose: Drop everything a deleted conversation owned, including its site data. */
   async releaseThread(threadId) {
     const id = String(threadId ?? "");
+    if (!id) return;
     const context = this.contexts.get(id);
-    if (!context) return;
-    for (const tab of [...context.tabs.values()]) this.destroyTab(tab);
-    context.tabs.clear();
-    context.order = [];
-    context.activeId = null;
-    context.hibernated = null;
-    this.contexts.delete(id);
-    if (this.foregroundId === id) this.foregroundId = null;
-    this.releaseKeeper();
-    this.layout();
-    this.emitState();
-    this.emit("tabs", id);
-    if (context.configured) {
-      const ses = this.electron.session.fromPartition(context.partition);
-      await ses.clearStorageData?.().catch?.(() => {});
+    if (context) {
+      for (const tab of [...context.tabs.values()]) this.destroyTab(tab);
+      context.tabs.clear();
+      context.order = [];
+      context.activeId = null;
+      context.hibernated = null;
+      this.contexts.delete(id);
+      if (this.foregroundId === id) this.foregroundId = null;
+      this.releaseKeeper();
+      this.layout();
+      this.emitState();
+      this.emit("tabs", id);
     }
+    // Site data lives on disk under the conversation's partition whether or not this process ever
+    // opened its browser, so it is cleared from the thread id, not from a live, configured context.
+    const partition = context?.partition ?? partitionFor(this.partitionPrefix, id);
+    const ses = this.electron.session?.fromPartition?.(partition);
+    await ses?.clearStorageData?.().catch?.(() => {});
   }
 
   // --- state -------------------------------------------------------------------------------
