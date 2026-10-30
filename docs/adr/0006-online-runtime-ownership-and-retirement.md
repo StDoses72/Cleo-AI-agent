@@ -1,7 +1,7 @@
 # 0006. 在线运行环境的归属登记与基于证据的退役
 
-- Status: Proposed
-- Date: 2026-10-30
+- **Status**: Proposed
+- **Date**: 2026-10-30
 
 ## Context
 
