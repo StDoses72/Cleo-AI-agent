@@ -74,7 +74,7 @@ import type {
 } from "../types";
 import { PermissionSelector } from "./PermissionSelector";
 import { ApprovalPrompt } from "./ApprovalPrompt";
-import { RenameThreadDialog } from "./Overlays";
+import { MoveThreadDialog, RenameThreadDialog } from "./Overlays";
 import { handleDialogKeyDown } from "./Modal";
 import { approvalLabel, effortLabels, isGeneralProject, projectLabel } from "../runtime-labels";
 import { ProjectTarget } from "./ProjectTarget";
@@ -109,6 +109,8 @@ interface ConversationProps {
   prompt: string;
   onPromptChange: (prompt: string) => void;
   onRename: (name: string) => Promise<void>;
+  /** Move the open thread into another project of its space; absent when unsupported. */
+  onMoveToProject?: (projectId: string) => Promise<void>;
   undoing: boolean;
   sidebarCollapsed: boolean;
   inspectorOpen: boolean;
@@ -183,6 +185,7 @@ export function Conversation({
   prompt,
   onPromptChange,
   onRename,
+  onMoveToProject,
   undoing,
   sidebarCollapsed,
   inspectorOpen,
@@ -388,6 +391,8 @@ export function Conversation({
         onRevealPath={onRevealPath}
         onThreadCommand={onThreadCommand}
         onRename={onRename}
+        onMoveToProject={onMoveToProject}
+        projects={projects}
         onImprove={onImprove}
         busy={running || Boolean(sendBlocked)}
       />}</div>
@@ -504,12 +509,15 @@ function ConversationHeader({
   onRevealPath,
   onThreadCommand,
   onRename,
+  onMoveToProject,
+  projects,
   onImprove,
   busy,
 }: Pick<
   ConversationProps,
   | "thread"
   | "project"
+  | "projects"
   | "space"
   | "running"
   | "undoing"
@@ -523,15 +531,20 @@ function ConversationHeader({
   | "onRevealPath"
   | "onThreadCommand"
   | "onRename"
+  | "onMoveToProject"
   | "onImprove"
 > & { busy: boolean }) {
   const [threadMenuOpen, setThreadMenuOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     setThreadMenuOpen(false);
     setRenameOpen(false);
+    setMoveOpen(false);
   }, [thread?.id]);
+  const moveTargets = thread ? (projects ?? []).filter((candidate) => (candidate.space ?? "chat") === thread.space
+    && candidate.id !== thread.projectId && candidate.id !== "productivity:cleo-evolution") : [];
   useEffect(() => {
     if (!threadMenuOpen) return;
     const closeOutside = (event: PointerEvent) => {
@@ -607,6 +620,10 @@ function ConversationHeader({
                 setThreadMenuOpen(false);
                 setRenameOpen(true);
               }}>{tr("conversation.rename")}</button>
+              {onMoveToProject && thread ? <button type="button" data-testid="move-thread" onClick={() => {
+                setThreadMenuOpen(false);
+                setMoveOpen(true);
+              }}>{tr("conversation.move_to_project")}</button> : null}
               {thread?.space === "productivity" ? <>
                 <button type="button" onClick={() => runThreadCommand("/fork")}>{tr("conversation.branch_this_task")}</button>
                 <button type="button" onClick={() => runThreadCommand("/compact")}>{tr("conversation.compact_context")}</button>
@@ -630,6 +647,10 @@ function ConversationHeader({
       </div>
       {renameOpen && thread ? (
         <RenameThreadDialog title={thread.title} onSave={onRename} onClose={() => setRenameOpen(false)} />
+      ) : null}
+      {moveOpen && thread && onMoveToProject ? (
+        <MoveThreadDialog thread={thread} project={project ?? null} projects={moveTargets} running={running}
+          onMove={onMoveToProject} onClose={() => setMoveOpen(false)} />
       ) : null}
     </header>
   );

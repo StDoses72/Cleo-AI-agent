@@ -138,6 +138,7 @@ PRODUCTIVITY_COMMANDS = (
 # Development tasks that bind no folder belong to the ``general`` project, like chat does.
 # Harnesses still need a working directory, so Cleo keeps one out of sight beside its data.
 GENERAL_PROJECT = "general"
+EVOLUTION_PROJECT = "cleo-evolution"
 
 
 def _create_default_dream_agent():
@@ -444,6 +445,84 @@ class DesktopService:
             if replacement is not None:
                 self._activate(replacement)
         return await self.load_workspace()
+
+    async def move_thread(self, *, thread_id: str, project_id_value: str) -> dict[str, Any]:
+        """Purpose: Move an existing thread into another project of the same space.
+
+        Input: Thread id and the target ``chat:<name>`` / ``productivity:<name>`` id.
+        Output: The refreshed workspace; the thread keeps its id, title, events and
+        attachment references and stays the active thread when it was active.
+        """
+        manifest = self.store.load_manifest(thread_id)
+        if self._runs.is_running(thread_id) or self._runs.is_switching(thread_id):
+            raise ValueError(tr("service.a_running_thread_cannot_move_to_another_project"))
+        async with self._memory_operation():
+            await self._move_thread(manifest, project_id_value, require_known=True)
+        return await self.load_workspace()
+
+    async def _move_thread(
+        self, manifest: dict[str, Any], project_id_value: str, *, require_known: bool = False,
+    ) -> dict[str, Any]:
+        """Move one thread; callers decide whether a live run may do it (slash commands).
+
+        ``require_known`` rejects a chat project without a registered directory; the
+        legacy ``/project move <name>`` chat command still accepts one.
+        """
+        thread_id = str(manifest["id"])
+        memory_space = str(manifest["space"])
+        target = project_name_from_id(project_id_value).strip()
+        if ":" in project_id_value and project_id(memory_space, target) != project_id_value:
+            raise ValueError(tr("service.threads_move_only_within_their_own_space"))
+        if not target:
+            raise ValueError(tr("service.the_target_project_value_is_unavailable", p0=target))
+        if target == manifest["project"]:
+            return manifest
+        if self._is_evolution(manifest) or (
+            memory_space == "productivity" and target == EVOLUTION_PROJECT
+        ):
+            raise ValueError(tr("service.the_evolution_workspace_cannot_move"))
+        target_path = self._target_project_path(memory_space, target)
+        if (self.runtime.is_project_removed(memory_space, target)
+                or (target_path is None and (require_known or memory_space == "productivity"))
+                or (target_path is not None and not Path(target_path).is_dir())):
+            raise ValueError(tr("service.the_target_project_value_is_unavailable", p0=target))
+        try:
+            moved = self.store.move_session(thread_id, target)
+        except ValueError as error:
+            if "already been consolidated" in str(error):
+                raise ValueError(
+                    tr("service.a_consolidated_thread_cannot_move_projects"),
+                ) from error
+            raise
+        # Later turns must run against the target project: a resident harness session
+        # and a cached chat agent still point at the previous directory and memory.
+        if memory_space == "productivity":
+            if thread_id in self._productivity_sessions:
+                await self._adapter().close(thread_id)
+                self._productivity_sessions.pop(thread_id, None)
+            moved = self.store.update_manifest(thread_id, cwd=target_path)
+        else:
+            self._chat.forget(thread_id)
+            if target_path is not None and manifest.get("cwd"):
+                moved = self.store.update_manifest(thread_id, cwd=target_path)
+        if self.runtime.current_thread_id == thread_id:
+            self._activate(moved)
+        return moved
+
+    def _target_project_path(self, memory_space: str, project: str) -> str | None:
+        """The directory a thread moved into ``project`` runs in, when one is known."""
+        path = self._project_paths.get(project_id(memory_space, project))
+        if path is None:
+            path = self.runtime.project_path(memory_space, project)
+        if path is None:
+            root_path = str(self.settings.active_directory_profile.root_path)
+            if memory_space == "non_productivity" and project == "general":
+                path = root_path
+            elif memory_space == "productivity" and project == path_name(root_path, "workspace"):
+                path = root_path
+            elif memory_space == "productivity" and project == GENERAL_PROJECT:
+                path = self._general_workspace()
+        return path
 
     def _general_workspace(self) -> str:
         """Purpose: The working directory behind the general development project.

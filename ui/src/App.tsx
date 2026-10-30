@@ -492,6 +492,11 @@ export function App() {
           pendingHarnessSwitch={evolutionOpen && !evolutionThread ? null : workspace.pendingHarnessSwitch}
           sendBlocked={composerBlocked}
           onRename={workspace.renameThread}
+          onMoveToProject={conversationThread && !evolutionOpen ? async (projectId) => {
+            const target = workspace.snapshot?.projects.find((project) => project.id === projectId);
+            await workspace.moveThread(conversationThread.id, projectId);
+            notify(tr("app.conversation_moved_to_value", { p0: target ? projectLabel(target) : projectId }));
+          } : undefined}
           thread={conversationThread}
           project={conversationProject}
           projects={evolutionOpen ? [] : workspace.snapshot.projects.filter((project) => project.id !== "productivity:cleo-evolution")}
