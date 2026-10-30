@@ -591,6 +591,22 @@
     "zh-CN": "关闭 {p0}",
     "en": "Close {p0}"
   },
+  "computerpanel.browser_asleep": {
+    "zh-CN": "浏览器已休眠",
+    "en": "The browser is asleep"
+  },
+  "computerpanel.browser_asleep_detail_value": {
+    "zh-CN": "这个会话的浏览器连续 10 分钟没有使用，{p0} 个标签页的页面资源已释放以节省内存。重新打开会按保存的网址重新加载，不会恢复未提交的表单或页面脚本状态；登录数据保留。",
+    "en": "This conversation's browser went unused for 10 minutes, so the pages of {p0} tab(s) were released to save memory. Reopening reloads the saved addresses; unsubmitted forms and page script state are not restored, and login data is kept."
+  },
+  "computerpanel.browser_asleep_hint": {
+    "zh-CN": "已休眠，打开后重新加载。",
+    "en": "Asleep; pages reload when reopened."
+  },
+  "computerpanel.reopen_pages": {
+    "zh-CN": "重新打开",
+    "en": "Reopen"
+  },
   "computerpanel.new_tab_2": {
     "zh-CN": "新建标签页",
     "en": "New tab"
