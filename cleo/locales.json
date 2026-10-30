@@ -27,6 +27,10 @@
     "zh-CN": "当前对话已移动到 {p0}。",
     "en": "The current conversation moved to {p0}."
   },
+  "commands.the_current_task_moved_to_value": {
+    "zh-CN": "当前任务已移动到 {p0}，工作目录：{p1}。",
+    "en": "The current task moved to {p0}; working directory: {p1}."
+  },
   "commands.memory_project": {
     "zh-CN": "记忆项目",
     "en": "Memory project"
@@ -522,6 +526,30 @@
   "service.unsupported_project_space_value": {
     "zh-CN": "不支持的项目空间：{p0}",
     "en": "Unsupported project space: {p0}"
+  },
+  "service.a_running_thread_cannot_move_to_another_project": {
+    "zh-CN": "会话正在运行，等待结束后再加入其他项目。",
+    "en": "The conversation is running; wait for it to finish before moving it to another project."
+  },
+  "service.threads_move_only_within_their_own_space": {
+    "zh-CN": "会话只能加入同一空间内的项目。",
+    "en": "A conversation can only move to a project in its own space."
+  },
+  "service.the_target_project_value_is_unavailable": {
+    "zh-CN": "目标项目 {p0} 不可用。",
+    "en": "The target project {p0} is unavailable."
+  },
+  "service.a_consolidated_thread_cannot_move_projects": {
+    "zh-CN": "这个会话已整理进当前项目的记忆，暂不支持迁移。",
+    "en": "This conversation was already consolidated into its current project's memory and cannot move yet."
+  },
+  "service.a_task_with_a_handoff_context_snapshot_cannot_move": {
+    "zh-CN": "这个任务带有 harness 交接的上下文快照，暂不支持迁移到其他项目。",
+    "en": "This task carries a harness handoff context snapshot and cannot move to another project yet."
+  },
+  "service.the_evolution_workspace_cannot_move": {
+    "zh-CN": "Cleo 自我演进任务不能迁移项目。",
+    "en": "The Cleo evolution task cannot move between projects."
   },
   "service.the_working_directory_does_not_exist_or_is_not_a": {
     "zh-CN": "工作目录不存在或不是文件夹：{p0}",
@@ -1318,6 +1346,26 @@
   "claude.claude_backend": {
     "zh-CN": "Claude 后端",
     "en": "Claude backend"
+  },
+  "claude.background_task": {
+    "zh-CN": "后台任务",
+    "en": "Background task"
+  },
+  "claude.background_task_finished": {
+    "zh-CN": "后台任务已结束",
+    "en": "Background task finished"
+  },
+  "claude.background_task_ended_with_the_run": {
+    "zh-CN": "本轮已结束，后台任务随之终止，未收到其结果",
+    "en": "This turn ended; the background task ended with it before reporting a result"
+  },
+  "claude.background_tasks_exceeded_the_wait_limit": {
+    "zh-CN": "后台任务在 {p0} 秒内没有新的进展，本轮已结束，这些任务随之终止",
+    "en": "Background tasks made no progress for {p0} seconds; this turn ended and those tasks ended with it"
+  },
+  "claude.this_reply_stage_ended_background_tasks_still_r": {
+    "zh-CN": "本阶段回复已结束，{p0} 个后台任务仍在运行，等待其后续结果",
+    "en": "This reply stage ended; {p0} background task(s) are still running, waiting for their results"
   },
   "claude.tool": {
     "zh-CN": "工具",

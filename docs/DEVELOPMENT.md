@@ -60,6 +60,8 @@ Renderer 最多缓存 500 条、约 4 MiB 的预览内容，动态高度虚拟�
 
 Codex `item/tool/requestUserInput` 与 Claude `AskUserQuestion` 接入独立的 `QuestionBroker`，通过 `question_request` / `question_response` 持久化，桌面端使用 `get_pending_questions` / `resolve_question`。必须显式提交所有问题；权限自动批准策略、弹窗收起和超时都不会代答。取消运行会释放等待，重启后旧问题显示连接失效；不支持原生提问的入口继续使用文本对话。Claude 支持原生多选，Codex 使用其当前单选/文本协议。
 
+Claude Code 的一次 `ResultMessage` 只结束一个前台轮次：`Bash(run_in_background=true)` 或后台 agent 仍可继续运行，完成后 CLI 会在同一条流上唤醒模型再跑一轮（`task_notification` → 新的 `init` → 回复 → 带 `origin.kind == "task-notification"` 的 result）。`ClaudeProvider.prompt` 以 `background_tasks_changed` / `task_started` / `task_notification` 帧跟踪后台任务，把它们投影为时间线里的工具条目，在阶段 result 后写入 `status` 事件（`claude/stage_completed`）并继续消费同一条流，直到某个 result 到来时已无后台任务；阶段回复与最终回复都归属原始 turn，问答与审批在阶段之间保持可答。每个 `task_notification` 都欠模型一次唤醒结果：多个任务一起完成时 CLI 先发 `num_turns: 0` 的空 result，最后一个 result 才带回复，所以结束条件是"没有后台任务且没有未消费的唤醒结果"，不是任务集合为空。`ambient: true` 的任务（会话级 watcher）不算本轮工作。等待上限由 `CLEO_CLAUDE_BACKGROUND_WAIT_SECONDS` 控制（默认 600 秒，按帧间静默计时）：超时把本轮记为 `failed` 并附原因（阶段回复仍在时间线里，但最终回复没有到）；`0` 是明确的不等待，返回阶段回复为 `completed`。超时、等待期间取消、或唤醒轮次开始后流在 result 之前结束，都会断开这条流并在下一次 prompt 以原生 session 重连，避免迟到的唤醒回复串入后续用户轮次；流提前结束按错误处理，不沿用上一阶段的 result。
+
 UI 样式入口是 `ui/src/index.css`，它按顺序 `@import` `ui/src/styles/` 下的模块：`tokens.css` 定义颜色、字号、圆角、阴影等设计变量（含浅色主题覆盖），`base.css` 是全局重置，`shell.css` / `sidebar.css` / `conversation.css` / `composer.css` / `inspector.css` 分别对应窗口框架、侧栏、对话、输入框和检查器，`memory.css`、`settings.css`、`inspector-panels.css` 承载各面板，`overlays.css` 负责弹窗、命令面板和提示，`responsive.css` 与 `motion.css` 收尾。新面板沿用 `--font-ui` 与 `--font-code` 和统一字号变量，颜色只引用 tokens，不自行写死色值。
 
 对话正文、思考过程和文件预览里的 Markdown 都经 `remark-math` + `rehype-katex` 渲染数学公式：渲染前经 `ui/src/markdown-math.ts` 归一化：`\(` `\)` 转为 `$...$`，`\[` `\]` 转为 `$$...$$`，代码块与行内代码不处理；位于词首且紧跟数字的 `$`（如 `$5`）视为货币并转义。KaTeX 的样式与字体随 Vite 打包进 `dist/assets`，满足 CSP 的 `font-src 'self'`；公式语法错误时按原文显示，不中断渲染。
@@ -174,7 +176,7 @@ git diff --stat
 `pyproject.toml` 是 Python 直接依赖入口，保留最低版本，不限制旧的上限。
 `ui/package.json` 和 `ui/runtime/package.json` 中的应用依赖跟随 npm 的 `latest` 稳定版标签。
 运行工具中的 npm 保留 11.x，以兼容内置 Node 24；Python/Node 本身仍使用发布流程指定的运行时。
-Codex Python SDK 使用官方配套的 `openai-codex-cli-bin`；桌面版通过 `CLEO_CODEX_BIN` 选择同一 Python 环境里的配套 CLI，启动和更新时校验 SDK、CLI 包及可执行文件版本一致。
+Codex Python SDK 使用官方配套的 `openai-codex-cli-bin`；桌面版通过 `CLEO_CODEX_BIN` 选择同一 Python 环境里的配套 CLI，启动和更新时校验 SDK、CLI 包及可执行文件版本一致。这是 Codex CLI 的唯一分发来源：`ui/runtime/package.json` 不再声明 `@openai/codex`（它曾在每套运行环境里多放一份约 0.4 GiB、内容相同的 `codex.exe`），`scripts/release_dependencies.py` 发现打包的 `browser/node_modules` 或 runtime lock 里出现它时拒绝生成依赖收据。后端 PATH 上的 `browser/node_modules/.bin` 只为 `agent-browser` 服务；SDK 自身按 `CodexConfig.codex_bin` 或 `codex_cli_bin.bundled_codex_path()` 解析二进制，从不查 PATH。
 
 `requirements.txt` 是带平台条件的跨平台 Python 精确锁文件；两个 `package-lock.json` 记录对应的 npm 解析结果。这些文件由更新命令生成，不应手工编辑。仓库忽略的 `uv.lock` 仅供本地使用。更新命令检测到已有 `.venv` 时，会自动通过 `uv sync --upgrade --extra dev --prerelease=disallow` 刷新本地锁文件并升级开发依赖，需要安装 `uv`。没有 `.venv` 的 CI 环境不会创建它；`--check` 不修改环境。最低版本约束仍表示兼容性要求，锁文件记录最新稳定且兼容的解析结果。
 

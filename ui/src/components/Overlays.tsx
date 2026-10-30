@@ -6,7 +6,7 @@ import { MemorySourcesSettings } from "./MemorySourcesSettings";
 import { UpdateVersionPicker } from "./UpdateVersionPicker";
 import { handleDialogKeyDown, Modal } from "./Modal";
 import { PermissionSelector } from "./PermissionSelector";
-import { accessLabel, approvalLabel, effortLabels, projectLabel } from "../runtime-labels";
+import { accessLabel, approvalLabel, effortLabels, projectLabel, projectPathLabel } from "../runtime-labels";
 import {
   ArrowDownToLine,
   ArrowRight,
@@ -40,6 +40,7 @@ import type {
   AgentInstructions,
   ApplyModelSettings,
   ModelSettings,
+  Thread,
   Project,
   RuntimeProfile,
   RuntimeUpdate,
@@ -197,6 +198,91 @@ export function RenameThreadDialog({ title, onSave, onClose }: {
         <footer>
           <button type="button" disabled={saving} onClick={onClose}>{tr("computerpanel.cancel")}</button>
           <button className="primary" type="submit" disabled={saving || !name.trim()}>{saving ? tr("backgroundmemorysettingspanel.saving") : tr("computerpanel.save")}</button>
+        </footer>
+      </form>
+    </dialog>
+  );
+}
+
+/** Move an existing thread into another project of its space without creating a new thread. */
+export function MoveThreadDialog({ thread, project, projects, running, onMove, onClose }: {
+  thread: Pick<Thread, "id" | "space" | "projectId" | "title">;
+  project: Pick<Project, "name" | "managed" | "path"> | null;
+  projects: Project[];
+  running: boolean;
+  onMove: (projectId: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const movingRef = useRef(false);
+  const [targetId, setTargetId] = useState(projects[0]?.id ?? "");
+  const [moving, setMoving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const dialog = dialogRef.current!;
+    dialog.showModal();
+    return () => { if (dialog.open) dialog.close(); };
+  }, []);
+  const target = projects.find((candidate) => candidate.id === targetId) ?? null;
+  const productivity = thread.space === "productivity";
+  // General projects have no name or visible folder; say so instead of printing blanks.
+  const nameOf = (candidate: Pick<Project, "name" | "managed"> | null) =>
+    projectLabel(candidate) || tr("overlays.general_no_project");
+  const directoryOf = (candidate: Pick<Project, "name" | "managed" | "path"> | null) =>
+    projectPathLabel(candidate) || tr("overlays.the_general_workspace");
+  return (
+    <dialog ref={dialogRef} className="rename-dialog move-thread-dialog" aria-labelledby="move-thread-title"
+      data-testid="move-thread-dialog" onKeyDown={handleDialogKeyDown} onCancel={(event) => {
+        event.preventDefault();
+        if (!movingRef.current) onClose();
+      }}>
+      <form onSubmit={async (event) => {
+        event.preventDefault();
+        if (!target || running || movingRef.current) return;
+        movingRef.current = true;
+        setMoving(true);
+        setError(null);
+        try {
+          await onMove(target.id);
+          onClose();
+        } catch (reason) {
+          setError(reason instanceof Error ? reason.message : tr("overlays.could_not_move_the_conversation"));
+        } finally {
+          movingRef.current = false;
+          setMoving(false);
+        }
+      }}>
+        <h2 id="move-thread-title">{tr("overlays.move_to_project")}</h2>
+        <p className="move-thread-note">{tr("overlays.currently_in_value", { p0: nameOf(project) })}</p>
+        {projects.length ? (
+          <div className="move-thread-options" role="radiogroup" aria-label={tr("overlays.target_project")}>
+            {projects.map((candidate) => (
+              <label key={candidate.id} className="move-thread-option">
+                <input type="radio" name="move-thread-target" value={candidate.id} checked={targetId === candidate.id}
+                  disabled={moving} onChange={() => setTargetId(candidate.id)} />
+                <span>
+                  <strong>{nameOf(candidate)}</strong>
+                  {projectPathLabel(candidate) ? <small>{projectPathLabel(candidate)}</small> : null}
+                </span>
+              </label>
+            ))}
+          </div>
+        ) : <p className="move-thread-note">{tr("overlays.no_other_projects_in_this_space")}</p>}
+        {target ? (
+          <p className="move-thread-note" data-testid="move-thread-directory">
+            {productivity
+              ? tr("overlays.move_task_directory_note", { p0: directoryOf(project), p1: directoryOf(target) })
+              : tr("overlays.move_chat_note", { p0: nameOf(target) })}
+          </p>
+        ) : null}
+        <p className="move-thread-note">{tr("overlays.move_keeps_history_note")}</p>
+        {running ? <p role="alert">{tr("overlays.wait_for_the_run_to_finish_before_moving")}</p> : null}
+        {error ? <p role="alert">{error}</p> : null}
+        <footer>
+          <button type="button" disabled={moving} onClick={onClose}>{tr("computerpanel.cancel")}</button>
+          <button className="primary" type="submit" data-testid="move-thread-confirm" disabled={moving || running || !target}>
+            {moving ? tr("overlays.moving") : tr("overlays.move_to_project_confirm")}
+          </button>
         </footer>
       </form>
     </dialog>

@@ -28,7 +28,7 @@ def test_todowrite_preserves_tool_calls_and_updates_one_plan(tmp_path, monkeypat
         query = AsyncMock()
         disconnect = AsyncMock()
 
-        async def receive_response(self):
+        async def receive_messages(self):
             for block in blocks:
                 yield AssistantMessage(content=[block], model="test")
             yield ResultMessage(subtype="success", duration_ms=1, duration_api_ms=1,
@@ -95,7 +95,7 @@ def test_todowrite_handles_empty_and_malformed_todos(tool_input, expected_plan):
     class Client:
         query = AsyncMock()
 
-        async def receive_response(self):
+        async def receive_messages(self):
             yield AssistantMessage(content=[block], model="test")
             yield ResultMessage(subtype="success", duration_ms=1, duration_api_ms=1,
                                 is_error=False, num_turns=1, session_id="native", result="done")

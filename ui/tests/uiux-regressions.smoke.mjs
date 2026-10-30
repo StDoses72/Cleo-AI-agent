@@ -187,6 +187,37 @@ try {
     await page.getByText("Optional memory sources", { exact: true }).waitFor();
     assert.equal(await page.getByRole("region", { name: "Memory sources", exact: true }).isVisible(), false);
   });
+  await check("projects: an existing general task can join a project and stays open", async page => {
+    await page.getByRole("button", { name: /^把导出的 CSV 合并成一张表/ }).click();
+    await page.getByRole("button", { name: "更多", exact: true }).click();
+    await page.getByTestId("move-thread").click();
+    const dialog = page.getByTestId("move-thread-dialog");
+    await dialog.waitFor();
+    assert.equal(await dialog.getByRole("radio").count(), 2);
+    assert.match(await dialog.getByTestId("move-thread-directory").innerText(), /工作目录/);
+    const crumbBefore = await page.locator(".breadcrumb-project").innerText();
+    await dialog.getByRole("button", { name: "取消", exact: true }).click();
+    await dialog.waitFor({ state: "detached" });
+    assert.equal(await page.locator(".breadcrumb-project").innerText(), crumbBefore);
+    assert.equal(await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      return (await cleoClient.loadWorkspace()).threads.find(thread => thread.id === "merge-exports").projectId;
+    }), "productivity:general");
+    await page.getByRole("button", { name: "更多", exact: true }).click();
+    await page.getByTestId("move-thread").click();
+    await page.getByTestId("move-thread-dialog").getByRole("radio", { name: /Cleo AI agent/ }).check();
+    await page.getByTestId("move-thread-confirm").click();
+    await page.getByTestId("move-thread-dialog").waitFor({ state: "detached" });
+    await page.getByText("已加入项目：Cleo AI agent", { exact: true }).waitFor();
+    assert.equal(await page.locator(".breadcrumb-project").innerText(), "Cleo AI agent");
+    assert.equal(await page.locator(".breadcrumb strong").innerText(), "把导出的 CSV 合并成一张表");
+    assert.equal(await page.getByTestId("thread-list").locator(".thread-row.active strong").innerText(), "把导出的 CSV 合并成一张表");
+    assert.equal(await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      const workspace = await cleoClient.loadWorkspace();
+      return workspace.threads.find(thread => thread.id === "merge-exports").projectId;
+    }), "cleo-agent");
+  });
   await check("information: memory filtering does not claim the queue is empty", async page => {
     await page.getByRole("button", { name: "记忆", exact: true }).click();
     await page.getByTestId("memory-nav-pending").click();
@@ -195,6 +226,35 @@ try {
     assert.equal(await page.getByText("没有待整理会话", { exact: true }).count(), 0);
     await page.getByLabel("搜索待整理会话", { exact: true }).fill("");
     assert.equal(await page.getByTestId("memory-review-list").locator("article").count(), 2);
+  });
+  await check("recovery: failed memory sources offer a consolidation retry that pending ones do not", async page => {
+    await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      const original = cleoClient.reviewMemorySource.bind(cleoClient);
+      window.reviewCalls = [];
+      cleoClient.reviewMemorySource = async (source, action) => {
+        window.reviewCalls.push([source.id, action]);
+        if (window.reviewCalls.length === 1) throw new Error("provider still offline");
+        return original(source, action);
+      };
+    });
+    await page.getByRole("button", { name: "记忆", exact: true }).click();
+    await page.getByTestId("memory-nav-pending").click();
+    const list = page.getByTestId("memory-review-list");
+    assert.equal(await list.locator("article").count(), 2);
+    assert.equal(await list.locator("article[data-status='pending'] [data-testid='memory-review-retry']").count(), 0);
+    const retry = list.locator("article[data-status='failed'] [data-testid='memory-review-retry']");
+    assert.equal(await retry.count(), 1);
+    await retry.click();
+    await list.getByRole("alert").getByText("provider still offline", { exact: true }).waitFor();
+    assert.equal(await list.locator("article").count(), 2);
+    await retry.click();
+    await list.locator("[data-testid='memory-review-retry'][aria-busy='true']").waitFor();
+    await retry.dispatchEvent("click");  // A repeated click while in flight must not start a second review.
+    await list.locator("article[data-status='failed']").waitFor({ state: "detached" });
+    assert.equal(await list.locator("article").count(), 1);
+    assert.deepEqual(await page.evaluate(() => window.reviewCalls),
+      [["non_productivity:general:product-tone", "consolidate"], ["non_productivity:general:product-tone", "consolidate"]]);
   });
   await check("information: open memory details follow source revisions and reject stale reads", async page => {
     await page.evaluate(async () => {

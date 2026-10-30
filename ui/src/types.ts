@@ -49,6 +49,12 @@ export interface StorageEntry {
   reason: string;
   version?: string | null;
   snapshots?: number;
+  /** Online runtimes: whether a program provably uses it, it is provably retired, or nobody can tell. */
+  ownership?: "in-use" | "retired" | "unknown";
+  /** Programs that still use the entry, each with the kind of evidence that found them. */
+  owners?: { label: string; evidence: string }[];
+  /** Observations behind a retirement, for example a registered installation that moved on. */
+  evidence?: { kind: string; detail: string }[];
 }
 
 export interface StorageInventory {
@@ -673,6 +679,8 @@ export interface CleoClient {
   resolveQuestion(threadId: string, questionId: string, answers: Record<string, string[]>): Promise<void>;
   createThread(space: ThreadSpace, projectId: string, options?: CreateThreadOptions): Promise<Thread>;
   deleteThread(threadId: string): Promise<WorkspaceSnapshot>;
+  /** Move an existing thread into another project of the same space, keeping its history. */
+  moveThread(threadId: string, projectId: string): Promise<WorkspaceSnapshot>;
   addProject(space: ThreadSpace, projectPath: string): Promise<WorkspaceSnapshot>;
   removeProject(projectId: string): Promise<WorkspaceSnapshot>;
   restoreChatBackups(): Promise<WorkspaceSnapshot>;

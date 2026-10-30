@@ -5,9 +5,10 @@ import * as nativeFs from "node:fs/promises";
 import { copyFile, mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { dirname, join, posix, resolve } from "node:path";
+import { basename, dirname, join, posix, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { EvolutionStore, exists } from "../electron/evolution-store.mjs";
+import { RUNTIME_REGISTRY } from "../electron/online-runtime.mjs";
 import { desktopPlatform } from "../electron/platform.mjs";
 import { createStorageQueue, defaultLauncherPaths, namespaceKey, planKey, reclaimStorage, storageInventory, venvHome, versionKey } from "../electron/storage-reclaim.mjs";
 
@@ -674,4 +675,113 @@ test("an unreadable completion marker stops cleanup before deleting any runtime"
   assert.equal(await exists(runtime), true);
   assert.equal(await exists(incomplete), true);
   assert.equal((await f.store.read()).storageCleanupPending, undefined);
+});
+
+test("the launch registry names which installation still uses an online runtime", async t => {
+  const f = await fixture(t);
+  const installation = join(f.root, "Programs", target.bundle, target.resources);
+  await mkdir(installation, { recursive: true });
+  await writeFile(join(installation, "runtime-plan.json"), JSON.stringify({ schema: 1, plan: "registered" }));
+  const key = await planKey(installation);
+  const runtime = await f.addOnlineRuntime(key, "0.11.0");
+  await writeFile(join(f.online, RUNTIME_REGISTRY), JSON.stringify({ schema: 1, installations: {
+    [installation]: { key, version: "0.11.0", updatedAt: new Date().toISOString() } } }));
+  const result = await f.inventory();
+  const entry = result.entries.find(e => e.path === runtime);
+  assert.equal(entry.action, "keep");
+  assert.equal(entry.ownership, "in-use");
+  assert.deepEqual(entry.owners.map(owner => owner.evidence), ["launch-registry"]);
+  assert.match(entry.owners[0].label, /Cleo 0\.11\.0/);
+  assert.match(entry.reason, /0\.11\.0/);
+  assert.deepEqual(entry.evidence, []);
+  // The registry file itself is bookkeeping, not an unknown directory to report.
+  assert.ok(!result.entries.some(e => e.path === join(f.online, RUNTIME_REGISTRY)));
+  // Every online runtime carries an ownership verdict and its evidence.
+  const current = await f.inventory(await healthyOnlineRuntime(f));
+  for (const online of current.entries.filter(e => e.kind === "online-runtime")) {
+    assert.ok(["in-use", "retired", "unknown"].includes(online.ownership), online.id);
+    assert.ok(Array.isArray(online.owners) && Array.isArray(online.evidence), online.id);
+  }
+  assert.equal(current.entries.find(e => e.ownership === "in-use" && e.owners.some(o => o.evidence === "current-program")).action, "keep");
+});
+
+test("a runtime whose registered installations all upgraded or vanished is retired under the health gate", async t => {
+  const f = await fixture(t);
+  const options = await healthyOnlineRuntime(f);
+  // Newer than the current version, so the version-based rule does not apply; only the registry can retire it.
+  const stale = await f.addOnlineRuntime(hex(64), "9.9.9");
+  const unproven = await f.addOnlineRuntime(hex(64), "9.9.8");
+  const missing = join(f.root, "removed", target.resources);
+  await writeFile(join(f.online, RUNTIME_REGISTRY), JSON.stringify({ schema: 1, installations: {
+    [options.currentResources]: { key: basename(stale), version: "0.10.2", updatedAt: "2026-10-01T00:00:00Z" },
+    [missing]: { key: basename(stale), version: "0.10.1", updatedAt: "2026-09-01T00:00:00Z" } } }));
+
+  const gated = (await f.inventory({ ...options, pruneOnlineRuntimes: false })).entries.find(e => e.path === stale);
+  assert.equal(gated.action, "keep");
+  assert.equal(gated.ownership, "unknown");
+  assert.equal(gated.evidence.length, 2, "evidence is listed even while the gate keeps the runtime");
+
+  const entries = (await f.inventory(options)).entries;
+  const retired = entries.find(e => e.path === stale);
+  assert.equal(retired.action, "reclaim");
+  assert.equal(retired.ownership, "retired");
+  assert.deepEqual(retired.evidence.map(e => e.kind).sort(), ["installation-removed", "installation-upgraded"]);
+  assert.match(retired.reason, /已退役/);
+  assert.deepEqual(retired.owners, []);
+  const kept = entries.find(e => e.path === unproven);
+  assert.equal(kept.action, "keep");
+  assert.equal(kept.ownership, "unknown");
+  assert.deepEqual(kept.evidence, []);
+  assert.equal(entries.find(e => e.path === options.currentBaseResources).ownership, "in-use");
+
+  const result = await reclaimStorage(options);
+  assert.ok(result.removed.includes(retired.id));
+  assert.equal(await exists(stale), false);
+  assert.equal(await exists(unproven), true);
+  assert.equal(await exists(options.currentBaseResources), true);
+});
+
+test("history journaled by an in-place upgrade retires the runtime the installation left", async t => {
+  const f = await fixture(t);
+  const options = await healthyOnlineRuntime(f);
+  // The current program used `old` before upgrading in place; the launch registry now names the
+  // current key and keeps `old` in history. Without a version the version rule cannot retire it.
+  const old = await f.addOnlineRuntime(hex(64), null);
+  const current = basename(options.currentBaseResources);
+  await writeFile(join(f.online, RUNTIME_REGISTRY), JSON.stringify({ schema: 1, installations: {
+    [options.currentResources]: { key: current, version: "0.10.3", updatedAt: "2026-10-30T00:00:00Z",
+      history: [{ key: basename(old), version: null, leftAt: "2026-10-30T00:00:00Z" }] } } }));
+  const entries = (await f.inventory(options)).entries;
+  const retired = entries.find(e => e.path === old);
+  assert.equal(retired.ownership, "retired");
+  assert.equal(retired.action, "reclaim");
+  assert.deepEqual(retired.evidence.map(e => e.kind), ["installation-upgraded"]);
+  assert.equal(entries.find(e => e.path === options.currentBaseResources).ownership, "in-use");
+  // Once the installation itself is gone, its history is evidence of removal instead.
+  await writeFile(join(f.online, RUNTIME_REGISTRY), JSON.stringify({ schema: 1, installations: {
+    [join(f.root, "gone", target.resources)]: { key: hex(64), version: "0.10.3",
+      history: [{ key: basename(old), version: null, leftAt: "2026-10-30T00:00:00Z" }] } } }));
+  const removed = (await f.inventory(options)).entries.find(e => e.path === old);
+  assert.equal(removed.ownership, "retired");
+  assert.deepEqual(removed.evidence.map(e => e.kind), ["installation-removed"]);
+  const result = await reclaimStorage(options);
+  assert.ok(result.removed.includes(removed.id));
+  assert.equal(await exists(old), false);
+  assert.equal(await exists(options.currentBaseResources), true);
+});
+
+test("a corrupt or foreign launch registry is no evidence either way", async t => {
+  const f = await fixture(t);
+  const options = await healthyOnlineRuntime(f);
+  const runtime = await f.addOnlineRuntime(hex(64), "9.9.9");
+  for (const text of ["not json", JSON.stringify({ schema: 2, installations: { [options.currentResources]: { key: basename(runtime) } } }),
+    JSON.stringify({ schema: 1, installations: { [join(f.root, "gone")]: { key: hex(64), version: "1.0.0" } } })]) {
+    await writeFile(join(f.online, RUNTIME_REGISTRY), text);
+    const entry = (await f.inventory(options)).entries.find(e => e.path === runtime);
+    assert.equal(entry.action, "keep", text);
+    assert.equal(entry.ownership, "unknown", text);
+    assert.deepEqual(entry.evidence, []);
+    assert.equal((await reclaimStorage(options)).removed.length, 0, text);
+  }
+  assert.equal(await exists(runtime), true);
 });

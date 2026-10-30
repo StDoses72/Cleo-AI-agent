@@ -591,6 +591,22 @@
     "zh-CN": "关闭 {p0}",
     "en": "Close {p0}"
   },
+  "computerpanel.browser_asleep": {
+    "zh-CN": "浏览器已休眠",
+    "en": "The browser is asleep"
+  },
+  "computerpanel.browser_asleep_detail_value": {
+    "zh-CN": "这个会话的浏览器连续 10 分钟没有使用，{p0} 个标签页的页面资源已释放以节省内存。重新打开会按保存的网址重新加载，不会恢复未提交的表单或页面脚本状态；登录数据保留。",
+    "en": "This conversation's browser went unused for 10 minutes, so the pages of {p0} tab(s) were released to save memory. Reopening reloads the saved addresses; unsubmitted forms and page script state are not restored, and login data is kept."
+  },
+  "computerpanel.browser_asleep_hint": {
+    "zh-CN": "已休眠，打开后重新加载。",
+    "en": "Asleep; pages reload when reopened."
+  },
+  "computerpanel.reopen_pages": {
+    "zh-CN": "重新打开",
+    "en": "Reopen"
+  },
   "computerpanel.new_tab_2": {
     "zh-CN": "新建标签页",
     "en": "New tab"
@@ -1038,6 +1054,10 @@
   "conversation.improve_cleo": {
     "zh-CN": "改进 Cleo",
     "en": "Improve Cleo"
+  },
+  "conversation.move_to_project": {
+    "zh-CN": "加入项目…",
+    "en": "Move to project…"
   },
   "conversation.rename": {
     "zh-CN": "重命名",
@@ -2595,9 +2615,33 @@
     "zh-CN": "正在整理",
     "en": "Consolidating"
   },
+  "usecleoworkspace.wait_for_the_current_run_to_finish_before_moving": {
+    "zh-CN": "等待当前运行结束后再加入项目",
+    "en": "Wait for the current run to finish before moving"
+  },
+  "app.conversation_moved_to_value": {
+    "zh-CN": "已加入项目：{p0}",
+    "en": "Moved to {p0}"
+  },
   "memoryview.consolidation_failed": {
     "zh-CN": "整理失败",
     "en": "Consolidation failed"
+  },
+  "memoryview.retry_consolidation": {
+    "zh-CN": "重试整理",
+    "en": "Retry consolidation"
+  },
+  "memoryview.retrying_consolidation": {
+    "zh-CN": "正在重试整理…",
+    "en": "Retrying consolidation…"
+  },
+  "memoryview.automatic_retries_exhausted": {
+    "zh-CN": "自动重试已用尽，需要手动重试",
+    "en": "Automatic retries exhausted; retry manually"
+  },
+  "memoryview.could_not_retry_consolidation": {
+    "zh-CN": "无法重试整理",
+    "en": "Could not retry consolidation"
   },
   "memoryview.search_conversations_or_projects": {
     "zh-CN": "搜索对话或项目",
@@ -3454,6 +3498,58 @@
   "overlays.could_not_rename_try_again": {
     "zh-CN": "无法重命名，请重试。",
     "en": "Could not rename. Try again."
+  },
+  "overlays.move_to_project": {
+    "zh-CN": "将会话加入项目",
+    "en": "Move conversation to a project"
+  },
+  "overlays.currently_in_value": {
+    "zh-CN": "当前位于：{p0}",
+    "en": "Currently in: {p0}"
+  },
+  "overlays.general_no_project": {
+    "zh-CN": "General（未关联项目）",
+    "en": "General (no project)"
+  },
+  "overlays.the_general_workspace": {
+    "zh-CN": "通用工作目录（不关联项目文件夹）",
+    "en": "the general workspace (no project folder)"
+  },
+  "overlays.target_project": {
+    "zh-CN": "目标项目",
+    "en": "Target project"
+  },
+  "overlays.no_other_projects_in_this_space": {
+    "zh-CN": "这个空间还没有其他项目，先在侧栏添加一个项目。",
+    "en": "There are no other projects in this space yet; add one from the sidebar first."
+  },
+  "overlays.move_task_directory_note": {
+    "zh-CN": "加入后，后续执行的工作目录将从 {p0} 改为 {p1}。已有文件、Git 仓库和附件不会被移动；下一轮会在新目录继续当前 harness 会话，若该 harness 无法在新目录恢复会提示错误。",
+    "en": "After moving, later turns run in {p1} instead of {p0}. Existing files, the Git repository and attachments are not moved; the next turn continues the current harness session in the new directory and reports an error if that harness cannot resume there."
+  },
+  "overlays.move_chat_note": {
+    "zh-CN": "加入后，这个对话会归入“{p0}”的记忆与上下文。",
+    "en": "After moving, this conversation belongs to the memory and context of “{p0}”."
+  },
+  "overlays.move_keeps_history_note": {
+    "zh-CN": "会话 ID、标题、消息和附件引用保持不变；上一轮的 Git 撤销点会随迁移作废。已整理进记忆的会话和带 harness 交接快照的任务暂不支持迁移。",
+    "en": "The conversation keeps its ID, title, messages and attachment references; the last turn's Git undo point is discarded by the move. A conversation already consolidated into memory, or a task carrying a harness handoff snapshot, cannot move yet."
+  },
+  "overlays.wait_for_the_run_to_finish_before_moving": {
+    "zh-CN": "会话正在运行，等待结束后再加入项目。",
+    "en": "The conversation is running; wait for it to finish before moving it."
+  },
+  "overlays.moving": {
+    "zh-CN": "正在加入…",
+    "en": "Moving…"
+  },
+  "overlays.move_to_project_confirm": {
+    "zh-CN": "加入项目",
+    "en": "Move"
+  },
+  "overlays.could_not_move_the_conversation": {
+    "zh-CN": "无法加入项目",
+    "en": "Could not move the conversation"
   },
   "overlays.rename_task": {
     "zh-CN": "重命名任务",
@@ -7142,6 +7238,22 @@
   "storage_reclaim.runtime_used_by_value": {
     "zh-CN": "{p0} 使用的运行环境",
     "en": "Runtime used by {p0}"
+  },
+  "storage_reclaim.cleo_value_launched_from_value": {
+    "zh-CN": "从 {p1} 启动过的 Cleo {p0}",
+    "en": "Cleo {p0} launched from {p1}"
+  },
+  "storage_reclaim.installation_now_uses_another_runtime_value": {
+    "zh-CN": "{p0} 已切换到其他运行环境",
+    "en": "{p0} now uses another runtime"
+  },
+  "storage_reclaim.installation_no_longer_exists_value": {
+    "zh-CN": "{p0} 已不存在",
+    "en": "{p0} no longer exists"
+  },
+  "storage_reclaim.retired_every_installation_registered_to_it_moved_on_value": {
+    "zh-CN": "已退役：登记使用它的安装都已升级或被删除（{p0}），没有其他程序引用",
+    "en": "Retired: every installation registered to it upgraded or was removed ({p0}); nothing else references it"
   },
   "storage_reclaim.completed_runtime_legacy_installers_allow_custom_program_locations_so_it_cannot_be_co": {
     "zh-CN": "已完成的运行环境；旧安装器支持自定义程序位置，无法确认无人使用",

@@ -8,9 +8,12 @@ import { ComputerBroker } from "./broker.mjs";
 import { normalizeAddress } from "./browser.mjs";
 import { parseShortcut, stopAccelerator } from "./keys.mjs";
 
+/** One conversation's fake browser; the pool below hands them out per thread id. */
 class FakeBrowser extends EventEmitter {
-  constructor() {
+  constructor(threadId = "thread-a", pool = null) {
     super();
+    this.threadId = threadId;
+    this.pool = pool;
     this.tabs = new Map();
     this.order = [];
     this.activeId = null;
@@ -22,7 +25,9 @@ class FakeBrowser extends EventEmitter {
     this.next = 1;
   }
   requireTab(id) { const tab = this.tabs.get(id); if (!tab) throw new Error(`标签页 ${id} 不存在`); return tab; }
-  createTab() { const id = `t${this.next++}`; const tab = { id, wc: { getZoomFactor: () => 1 } }; this.tabs.set(id, tab); this.order.push(id); this.activeId = id; this.emit("tabs"); return tab; }
+  createTab() { const id = `t${this.next++}`; const tab = { id, wc: { getZoomFactor: () => 1 } }; this.tabs.set(id, tab); this.order.push(id); this.activeId = id; (this.pool ?? this).emit("tabs"); return tab; }
+  touch() { this.touched = (this.touched || 0) + 1; }
+  wake() { return false; }
   ensureTab() { return this.activeId ? this.requireTab(this.activeId) : this.createTab(); }
   activate(id) { this.requireTab(id); if (this.activeId !== id) { this.activeId = id; this.geometry++; } }
   close(id) { this.tabs.delete(id); this.order = this.order.filter(item => item !== id); if (this.activeId === id) this.activeId = this.order.at(-1) || null; }
@@ -41,11 +46,30 @@ class FakeBrowser extends EventEmitter {
   setZoom() { this.geometry++; }
   setAgentOverlay(value) { this.overlay = value; }
   tabState(tab) { return { id: tab.id, title: "", url: "https://example.com/", loading: false, zoom: 1, dialog: null, fileChooser: null, crashed: null, error: null }; }
-  state() { return { tabs: this.order.map(id => ({ id, title: "", url: "https://example.com/" })), activeTabId: this.activeId }; }
+  state() { return { threadId: this.threadId, tabs: this.order.map(id => ({ id, title: "", url: "https://example.com/" })), activeTabId: this.activeId }; }
+}
+
+/** The shared browser: per-conversation fakes plus the foreground the panel shows. */
+class FakePool extends EventEmitter {
+  constructor() { super(); this.threads = new Map(); this.foregroundId = null; this.overlay = false; }
+  forThread(threadId) {
+    let browser = this.threads.get(threadId);
+    if (!browser) { browser = new FakeBrowser(threadId, this); this.threads.set(threadId, browser); }
+    return browser;
+  }
+  setForeground(threadId) { if (this.foregroundId !== threadId) { this.foregroundId = threadId; this.emit("foreground", threadId); } }
+  setAgentOverlay(value) { this.overlay = value; }
+  async releaseAll() { const released = []; for (const browser of this.threads.values()) released.push(...await browser.releaseAll()); return released; }
+  state() {
+    const shown = this.foregroundId ? this.forThread(this.foregroundId) : null;
+    return { ...(shown ? shown.state() : { threadId: null, tabs: [], activeTabId: null }), threads: {} };
+  }
 }
 
 function setup({ platform = "win32", owner = null, scope = "" } = {}) {
-  const browser = new FakeBrowser();
+  const pool = new FakePool();
+  pool.setForeground("thread-a");
+  const browser = pool.forThread("thread-a");
   const hostCalls = [];
   const host = {
     result: null,
@@ -64,8 +88,8 @@ function setup({ platform = "win32", owner = null, scope = "" } = {}) {
     if (method === "computer_scope") return { cwd: scope };
     return null;
   } };
-  const broker = new ComputerBroker({ browser, host, backend, platform, protectedPids: [42] });
-  return { broker, browser, host, hostCalls, backendCalls };
+  const broker = new ComputerBroker({ browser: pool, host, backend, platform, protectedPids: [42] });
+  return { broker, browser, pool, host, hostCalls, backendCalls };
 }
 
 const T = { thread_id: "thread-a" };
@@ -148,13 +172,164 @@ test("takeover cancels queued input and handback never replays old coordinates",
   await assert.rejects(broker.call(T, "browser_click", { tab_id: shot.tab, screenshot_id: shot.id, x: 1, y: 1 }), /控制权发生过转移/);
 });
 
-test("a second task cannot drive the computer while the first task runs", async () => {
-  const { broker } = setup();
+test("conversations drive their own browsers at the same time; control and screenshots stay apart", async () => {
+  const { broker, browser, pool } = setup();
+  broker.turnStarted("thread-a");
+  broker.turnStarted("thread-b");
+  const a = await screenshot(broker);
+  const b = json(await broker.call({ thread_id: "thread-b" }, "browser_screenshot", {}));
+  const other = pool.forThread("thread-b");
+  assert.notEqual(other, browser);
+  assert.equal(b.target.tab_id, "t1", "each conversation numbers its own tabs");
+  assert.equal(browser.order.length, 1);
+  assert.equal(other.order.length, 1);
+  assert.equal(browser.touched, 1, "a tool call counts as use of that conversation's browser only");
+  assert.equal(other.touched, 1);
+  await assert.rejects(broker.call(T, "browser_click", { tab_id: a.tab, screenshot_id: b.screenshot.screenshot_id, x: 1, y: 1 }), /另一个任务/);
+  // Taking over thread-b's browser leaves thread-a's AI control untouched.
+  await broker.takeover("browser", "user", "thread-b");
+  assert.equal(broker.state().control.browser, "agent", "the shown conversation (thread-a) is still driven by the AI");
+  assert.equal(broker.state().threads["thread-b"].browserControl, "user");
+  assert.equal(broker.state().browserEngaged, true);
+  await broker.call(T, "browser_click", { tab_id: a.tab, screenshot_id: a.id, x: 1, y: 1 });
+  assert.deepEqual(browser.actions.at(-1), ["click", a.tab, 1, 1, "left"]);
+  const waiting = broker.call({ thread_id: "thread-b" }, "browser_click", { tab_id: "t1", screenshot_id: b.screenshot.screenshot_id, x: 1, y: 1 });
+  await new Promise(resolve => setTimeout(resolve, 50));
+  assert.equal(broker.threadBusy("thread-b"), true, "a queued action waiting for control counts as busy");
+  await broker.handback("browser", "thread-b");
+  await assert.rejects(waiting, /交回控制/);
+  assert.ok(!other.actions.some(action => action[0] === "click"), "thread-b's stale click never ran");
+  broker.turnEnded("thread-a");
+  assert.equal(broker.state().threads["thread-a"].browserActive, false);
+  assert.equal(broker.state().threads["thread-b"].browserActive, true);
+  assert.equal(broker.state().lease, null, "no shared lease: the shown conversation is idle");
+  pool.setForeground("thread-b");
+  assert.equal(broker.state().control.browser, "agent", "thread-b handed control back above");
+  assert.deepEqual(broker.state().lease, { threadId: "thread-b", running: true });
+});
+
+test("a panel stop halts one conversation; the emergency shortcut halts every conversation", async () => {
+  const { broker, browser, pool, backendCalls } = setup();
+  const other = pool.forThread("thread-b");
+  broker.turnStarted("thread-a");
+  broker.turnStarted("thread-b");
+  const a = await screenshot(broker);
+  const b = json(await broker.call({ thread_id: "thread-b" }, "browser_screenshot", {}));
+  let releaseA;
+  browser.gate = new Promise(resolve => { releaseA = resolve; });
+  let releaseB;
+  other.gate = new Promise(resolve => { releaseB = resolve; });
+  const clickA = broker.call(T, "browser_click", { tab_id: a.tab, screenshot_id: a.id, x: 1, y: 1 });
+  const clickB = broker.call({ thread_id: "thread-b" }, "browser_click", { tab_id: "t1", screenshot_id: b.screenshot.screenshot_id, x: 2, y: 2 });
+  const queuedB = broker.call({ thread_id: "thread-b" }, "browser_wait", { seconds: 1 });
+  await new Promise(resolve => setImmediate(resolve));
+  broker.queueFor("browser", "thread-b").idle = async () => {};
+  const stopped = await broker.stop({ source: "panel", threadId: "thread-b" });
+  await assert.rejects(queuedB, /用户已停止/);
+  assert.equal(stopped.threadId, "thread-b");
+  assert.equal(stopped.scoped, true);
+  assert.equal(stopped.settled, false, "thread-b's click is still in flight");
+  assert.deepEqual(backendCalls.filter(([method]) => method === "cancel_run").map(([, params]) => params), [{ thread_id: "thread-b" }]);
+  assert.equal(broker.threadBusy("thread-a"), true, "thread-a's click keeps running");
+  releaseA();
+  await clickA;
+  assert.deepEqual(browser.actions.at(-1), ["click", a.tab, 1, 1, "left"]);
+  assert.equal(broker.state().lastStop.settled, false, "thread-a finishing does not settle thread-b's stop");
+  releaseB();
+  await clickB.catch(() => {});
+  assert.equal(broker.state().lastStop.settled, true);
+  const fresh = await screenshot(broker);
+  let releaseFresh;
+  browser.gate = new Promise(resolve => { releaseFresh = resolve; });
+  const pendingA = broker.call(T, "browser_click", { tab_id: fresh.tab, screenshot_id: fresh.id, x: 3, y: 3 });
+  const waitingA = broker.call(T, "browser_wait", { seconds: 1 });
+  await new Promise(resolve => setImmediate(resolve));
+  broker.queueFor("browser", "thread-a").idle = async () => {};
+  const emergency = await broker.stop({ source: "shortcut", threadId: "thread-b" });
+  await assert.rejects(waitingA, /紧急停止/, "the shortcut cancels every conversation's queued work");
+  assert.equal(emergency.scoped, false);
+  assert.equal(emergency.settled, false, "thread-a's click is still in flight");
+  releaseFresh();
+  await pendingA.catch(() => {});
+  assert.equal(broker.state().lastStop.settled, true);
+});
+
+test("a panel stop of an authorized conversation leaves the desktop another conversation is driving alone", async () => {
+  const { broker, hostCalls, backendCalls } = setup();
+  broker.turnStarted("thread-a");
+  broker.turnStarted("thread-b");
+  await broker.setMode("thread-a", "host", { confirmed: true });
+  await broker.setMode("thread-b", "host", { confirmed: true });
+  await broker.call({ thread_id: "thread-b" }, "desktop_screenshot", {});
+  assert.equal(broker.state().lease?.threadId, "thread-b", "thread-b owns the desktop");
+  const before = hostCalls.filter(([op]) => op === "stop").length;
+  const stopped = await broker.stop({ source: "panel", threadId: "thread-a" });
+  assert.equal(stopped.scoped, true);
+  assert.equal(hostCalls.filter(([op]) => op === "stop").length, before, "the desktop controller is not stopped for a bystander");
+  assert.equal(broker.state().lease?.threadId, "thread-b", "thread-b keeps the desktop");
+  assert.equal(broker.state().threads["thread-a"].mode, "browser", "thread-a's authorization is still revoked");
+  assert.equal(broker.state().threads["thread-b"].mode, "host");
+  assert.deepEqual(backendCalls.filter(([method]) => method === "cancel_run").map(([, params]) => params), [{ thread_id: "thread-a" }]);
+  // With the desktop free, stopping an authorized conversation still releases the controller.
+  broker.turnEnded("thread-b");
+  await broker.setMode("thread-a", "host", { confirmed: true });
+  await broker.stop({ source: "panel", threadId: "thread-a" });
+  assert.equal(hostCalls.filter(([op]) => op === "stop").length, before + 1);
+});
+
+test("a global stop cancels the run of every engaged conversation, not only the desktop owner", async () => {
+  const { broker, pool, backendCalls } = setup();
+  const other = pool.forThread("thread-b");
+  broker.turnStarted("thread-a");
+  broker.turnStarted("thread-b");
+  broker.turnStarted("thread-c");
+  await broker.setMode("thread-a", "host", { confirmed: true });
+  await broker.call(T, "desktop_screenshot", {});
+  assert.equal(broker.state().lease?.threadId, "thread-a", "thread-a holds the desktop lease");
+  const b = json(await broker.call({ thread_id: "thread-b" }, "browser_screenshot", {}));
+  let releaseB;
+  other.gate = new Promise(resolve => { releaseB = resolve; });
+  const clickB = broker.call({ thread_id: "thread-b" }, "browser_click", { tab_id: "t1", screenshot_id: b.screenshot.screenshot_id, x: 2, y: 2 });
+  await new Promise(resolve => setImmediate(resolve));
+  broker.queueFor("browser", "thread-b").idle = async () => {};
+  const result = await broker.stop({ source: "shortcut" });
+  assert.equal(result.scoped, false);
+  const cancelled = backendCalls.filter(([method]) => method === "cancel_run").map(([, params]) => params.thread_id).sort();
+  assert.deepEqual(cancelled, ["thread-a", "thread-b"], "the desktop owner and the browser conversation are both cancelled");
+  assert.ok(!cancelled.includes("thread-c"), "a running conversation that never used the computer is left alone");
+  releaseB();
+  await clickB.catch(() => {});
+  assert.equal(broker.state().lastStop.settled, true);
+});
+
+test("the agent overlay follows the conversation shown in the panel", async () => {
+  const { broker, pool } = setup();
   broker.turnStarted("thread-a");
   await screenshot(broker);
-  await assert.rejects(broker.call({ thread_id: "thread-b" }, "browser_screenshot", {}), /另一个 Cleo 任务/);
-  broker.turnEnded("thread-a");
-  await broker.call({ thread_id: "thread-b" }, "browser_screenshot", {});
+  assert.equal(pool.overlay, true, "thread-a is shown and driven by the AI");
+  pool.setForeground("thread-b");
+  assert.equal(pool.overlay, false, "an idle conversation is not covered by thread-a's overlay");
+  assert.equal(broker.state().browserEngaged, false);
+  pool.setForeground("thread-a");
+  assert.equal(pool.overlay, true);
+  assert.equal(broker.state().browserEngaged, true);
+});
+
+test("in-flight browser work marks a conversation busy and forgetting it drops its state", async () => {
+  const { broker, browser } = setup();
+  const shot = await screenshot(broker);
+  assert.equal(broker.threadBusy("thread-a"), false);
+  let release;
+  browser.gate = new Promise(resolve => { release = resolve; });
+  const click = broker.call(T, "browser_click", { tab_id: shot.tab, screenshot_id: shot.id, x: 1, y: 1 });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(broker.threadBusy("thread-a"), true);
+  release();
+  await click;
+  assert.equal(broker.threadBusy("thread-a"), false);
+  broker.forgetThread("thread-a");
+  assert.equal(broker.state().threads["thread-a"], undefined);
+  await assert.rejects(broker.call(T, "browser_click", { tab_id: shot.tab, screenshot_id: shot.id, x: 1, y: 1 }), /screenshot_id 无效/);
 });
 
 test("tool identity comes from the harness client key", async () => {
@@ -163,7 +338,8 @@ test("tool identity comes from the harness client key", async () => {
   await known.broker.call(key, "browser_screenshot", {});
   await known.broker.call(key, "browser_screenshot", {});
   assert.equal(known.backendCalls.filter(([method]) => method === "computer_owner").length, 1, "owner lookups are cached");
-  assert.equal(known.broker.lease.threadId, "thread-k");
+  assert.equal(known.broker.thread("thread-k").browserActive, true);
+  assert.equal(known.broker.lease, null, "browser use takes no desktop lease");
   const unknown = setup({ owner: null });
   await assert.rejects(unknown.broker.call(key, "browser_screenshot", {}), /无法确定/);
   await assert.rejects(unknown.broker.call({ client_key: "../x" }, "browser_screenshot", {}), /任务标识/);
@@ -200,7 +376,7 @@ test("an unfinished stop reports completion only after the last action returns",
   browser.gate = new Promise(resolve => { release = resolve; });
   const click = broker.call(T, "browser_click", { screenshot_id: shot.id, x: 1, y: 1 });
   await new Promise(resolve => setImmediate(resolve));
-  broker.queues.browser.idle = async () => {};
+  broker.queueFor("browser", "thread-a").idle = async () => {};
   const stopping = await broker.stop();
   assert.equal(stopping.settled, false);
   release();

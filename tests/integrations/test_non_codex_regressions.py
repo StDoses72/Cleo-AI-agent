@@ -89,14 +89,14 @@ def test_sdk_forwards_tool_results_from_user_messages():
         async def query(_):
             pass
 
-        async def receive_response():
+        async def receive_messages():
             yield UserMessage(content=[ToolResultBlock(tool_use_id="read-1", content="fixture")])
             yield ResultMessage(subtype="success", duration_ms=1, duration_api_ms=1,
                                 is_error=False, num_turns=1, session_id="native", result="done")
 
         provider = ClaudeProvider()
         provider._sessions["local"] = _ClaudeRuntime(
-            client=SimpleNamespace(query=query, receive_response=receive_response),
+            client=SimpleNamespace(query=query, receive_messages=receive_messages),
             options=SessionOptions(), cwd=".",
         )
         received = []
