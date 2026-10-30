@@ -15,9 +15,9 @@ function baseState(overrides = {}) {
     platform: "win32", hostSupported: true, threads: {}, lease: { threadId: "fixture", running: true },
     control: { browser: "agent", desktop: "agent" }, inflight: [], authorization: null, stopping: false, lastStop: null,
     hostEngaged: false, browserEngaged: true, stopShortcut: "Control+Alt+Escape", shortcutActive: false, shortcutError: "", bridgeError: "",
-    browser: { tabs: [{ id: "t1", title: "示例", url: "https://example.com/", loading: false, canGoBack: true, canGoForward: false, zoom: 1,
+    browser: { threadId: "fixture", tabs: [{ id: "t1", title: "示例", url: "https://example.com/", loading: false, canGoBack: true, canGoForward: false, zoom: 1,
       crashed: null, unresponsive: false, error: null, dialog: null, fileChooser: null }], activeTabId: "t1", size: { width: 800, height: 600 },
-      visible: true, parked: false, downloads: [], notices: [], downloadsDir: "C:\\Users\\me\\Downloads\\Cleo" },
+      visible: true, parked: false, downloads: [], notices: [], downloadsDir: "C:\\Users\\me\\Downloads\\Cleo", hibernated: null },
     ...overrides,
   };
 }
@@ -77,7 +77,8 @@ try {
   assert.ok(viewport() && viewport().width > 100, "the native browser must be placed over the panel");
   await page.getByLabel("地址栏").fill("localhost:5173");
   await page.getByLabel("地址栏").press("Enter");
-  assert.deepEqual(actions.find(item => item.action === "browser" && item.params.action === "navigate")?.params, { action: "navigate", tabId: "t1", url: "localhost:5173" });
+  assert.deepEqual(actions.find(item => item.action === "browser" && item.params.action === "navigate")?.params, { threadId: "fixture", action: "navigate", tabId: "t1", url: "localhost:5173" });
+  assert.equal(actions.find(item => item.action === "viewport")?.params.threadId, "fixture", "viewport reports name the shown conversation");
 
   // Settings keeps its real Modal mounted when closed, like the main application.
   assert.equal(await page.locator("dialog.settings-backdrop").count(), 1);
@@ -117,7 +118,7 @@ try {
   await page.getByRole("button", { name: "接管", exact: true }).click();
   await page.getByText("你正在操作 · AI 已暂停").first().waitFor();
   await page.getByRole("button", { name: "交回 AI" }).click();
-  assert.deepEqual(actions.filter(item => ["takeover", "handback"].includes(item.action)).map(item => item.params), [{ target: "browser" }, { target: "browser" }]);
+  assert.deepEqual(actions.filter(item => ["takeover", "handback"].includes(item.action)).map(item => item.params), [{ target: "browser", threadId: "fixture" }, { target: "browser", threadId: "fixture" }]);
 
   // Local computer mode needs an explicit confirmation; cancelling changes nothing.
   await page.getByRole("radio", { name: "本机电脑" }).click();
@@ -152,6 +153,19 @@ try {
   await page.getByRole("button", { name: "停止" }).click();
   await page.getByText(/已停止任务，释放了 1 个按键或按钮/).waitFor();
 
+  // A hibernated conversation explains itself and reopens its pages on request.
+  state = baseState({ browser: { ...baseState().browser, tabs: [], activeTabId: null, hibernated: { at: Date.now(), tabs: [{ url: "https://example.com/", title: "示例" }] } } });
+  await page.evaluate(next => window.pushComputerState(next), state);
+  await page.getByTestId("browser-hibernated").getByText("浏览器已休眠").waitFor();
+  await page.getByText("已休眠，打开后重新加载。").waitFor();
+  await page.getByRole("button", { name: "重新打开" }).click();
+  assert.deepEqual(actions.filter(item => item.action === "browser").at(-1).params, { threadId: "fixture", action: "wake" });
+  // Another conversation's browser never flashes through this panel.
+  await page.evaluate(next => window.pushComputerState(next), baseState({ browser: { ...baseState().browser, threadId: "other" } }));
+  await page.waitForFunction(() => document.querySelectorAll("[role=tab]").length === 0);
+  await page.evaluate(next => window.pushComputerState(next), baseState());
+  await page.getByRole("tab").getByText("示例").waitFor();
+
   // Files sidebar: tree, preview, markdown and a chat link reveal with the target line.
   await page.getByRole("button", { name: "README.md" }).click();
   await page.getByRole("heading", { name: "标题" }).waitFor();
@@ -160,7 +174,7 @@ try {
   await page.getByRole("button", { name: "定位聊天链接" }).click();
   await page.locator(".files-code span.target").getByText("line three").waitFor();
   await page.getByRole("button", { name: "在内置浏览器中打开" }).click();
-  assert.deepEqual(actions.find(item => item.action === "preview").params, { root: "C:\\work", path: "src/app.ts" });
+  assert.deepEqual(actions.find(item => item.action === "preview").params, { root: "C:\\work", path: "src/app.ts", threadId: null });
   assert.equal(await page.locator("html").getAttribute("data-browser"), "open");
   assert.deepEqual(errors, []);
   console.log("computer panel smoke passed");

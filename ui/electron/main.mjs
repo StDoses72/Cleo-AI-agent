@@ -527,6 +527,8 @@ app.whenReady().then(async () => {
       // Queued computer actions of a finished turn must never run in a later one.
       if (tracksTurn) computer.broker.turnEnded(params.thread_id);
     }
+    // A deleted conversation leaves no browser pages, queued actions or site data behind.
+    if (method === "delete_thread" && typeof params.thread_id === "string") void computer.forgetThread(params.thread_id).catch(() => {});
     if (method === "load_workspace") backend.hotReload = result?.backend?.hotReload === true;
     if (method === "set_ui_language" || method === "get_ui_language") {
       setLanguage(result);
