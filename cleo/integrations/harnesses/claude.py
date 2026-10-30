@@ -108,6 +108,11 @@ class _ClaudeRuntime:
     background: dict[str, dict[str, Any]] = field(default_factory=dict)
     # True between a stage ResultMessage and the follow-up turn its background tasks owe.
     waiting: bool = False
+    # task_notification frames whose follow-up ResultMessage has not arrived yet. Each
+    # completion produces one result; batched completions yield empty ``num_turns: 0``
+    # results first and the last one carries the reply, so the task set alone cannot say
+    # whether the final reply was received.
+    owed_wakeups: int = 0
     # Set by cancel/close while waiting: the stream was dropped on purpose, not by a crash.
     wait_abandoned: bool = False
 
@@ -448,8 +453,10 @@ class ClaudeProvider:
         events: list[AgentEvent] = []
         response_parts: list[str] = []
         result_message: ResultMessage | None = None
+        last_turn_id: str | None = None
         stage = 0
         cancelled_while_waiting = False
+        timed_out_reason: str | None = None
         wait_ceiling = background_wait_seconds()
 
         async with runtime.lock:
@@ -458,6 +465,7 @@ class ClaudeProvider:
                                               runtime.options.effort, runtime.options.approval_mode)
             runtime.active = True
             runtime.background.clear()
+            runtime.owed_wakeups = 0
             runtime.waiting = False
             runtime.wait_abandoned = False
 
@@ -487,15 +495,19 @@ class ClaudeProvider:
                             async with asyncio.timeout(remaining):
                                 message = await anext(stream)
                         except TimeoutError:
-                            await self._abandon_background(
-                                runtime, publish, tr(
-                                    "claude.background_tasks_exceeded_the_wait_limit",
-                                    p0=int(wait_ceiling),
-                                ),
+                            timed_out_reason = tr(
+                                "claude.background_tasks_exceeded_the_wait_limit",
+                                p0=int(wait_ceiling),
                             )
+                            await self._abandon_background(runtime, publish, timed_out_reason)
                             break
-                        except (StopAsyncIteration, Exception):
+                        except (StopAsyncIteration, Exception) as exc:
                             if not runtime.wait_abandoned:
+                                if isinstance(exc, StopAsyncIteration):
+                                    raise RuntimeError(
+                                        "Claude Agent SDK stream ended while background tasks "
+                                        "still owed a reply"
+                                    ) from None
                                 raise
                             cancelled_while_waiting = True
                             await self._abandon_background(
@@ -510,18 +522,30 @@ class ClaudeProvider:
                         try:
                             message = await anext(stream)
                         except StopAsyncIteration:
+                            if result_message is None:
+                                # The CLI went away mid-turn (first turn or a follow-up): the
+                                # stream is dead, so the next prompt must reconnect.
+                                raise RuntimeError(
+                                    "Claude Agent SDK did not return a ResultMessage"
+                                ) from None
                             break
                     if isinstance(message, SystemMessage):
                         if message.subtype == "init":
                             native_id = message.data.get("session_id")
                             if isinstance(native_id, str) and native_id:
                                 runtime.native_session_id = native_id
-                            # A second init on the same stream opens the follow-up turn.
-                            runtime.waiting = False
+                            if runtime.waiting:
+                                # A second init on the same stream opens the follow-up turn.
+                                # Its result is now the one that counts: a stream that ends
+                                # before it must not pass the stage result off as final.
+                                runtime.waiting = False
+                                result_message = None
                         else:
                             await self._track_background(runtime, message, publish)
                     elif isinstance(message, AssistantMessage):
-                        runtime.waiting = False
+                        if runtime.waiting:
+                            runtime.waiting = False
+                            result_message = None
                         for block in message.content:
                             event = self._block_event(block)
                             if event is None:
@@ -558,6 +582,7 @@ class ClaudeProvider:
                                 await emit_event(on_event, event)
                     elif isinstance(message, ResultMessage):
                         result_message = message
+                        last_turn_id = message.uuid or last_turn_id
                         runtime.native_session_id = message.session_id
                         for denial in message.permission_denials or []:
                             if not isinstance(denial, dict):
@@ -578,7 +603,13 @@ class ClaudeProvider:
                                 request, "decline", source="native_policy",
                                 policy=runtime.options.approval_mode,
                             )
-                        if not runtime.background:
+                        origin = getattr(message, "origin", None)
+                        origin_kind = origin.get("kind") if isinstance(origin, dict) else None
+                        if stage > 0 or origin_kind == "task-notification":
+                            # One result per task_notification; empty ``num_turns: 0`` results
+                            # precede the reply when completions are answered together.
+                            runtime.owed_wakeups = max(0, runtime.owed_wakeups - 1)
+                        if not runtime.background and runtime.owed_wakeups <= 0:
                             break
                         if message.is_error or message.stop_reason == "cancelled":
                             # The turn ended abnormally while tasks still run: their later
@@ -587,27 +618,30 @@ class ClaudeProvider:
                                 runtime, publish, tr("claude.background_task_ended_with_the_run"),
                             )
                             break
-                        stage += 1
-                        origin = getattr(message, "origin", None)
-                        await publish(AgentEvent(
-                            provider=self.name, type="status",
-                            text=tr(
-                                "claude.this_reply_stage_ended_background_tasks_still_r",
-                                p0=len(runtime.background),
-                            ),
-                            data={
-                                "provider_event_type": "claude/stage_completed",
-                                "payload": {
-                                    "stage": stage,
-                                    "result": message.result,
-                                    "origin": origin if isinstance(origin, dict) else None,
-                                    "tasks": [
-                                        {"id": task_id, **info}
-                                        for task_id, info in runtime.background.items()
-                                    ],
+                        if message.num_turns or message.result:
+                            stage += 1
+                            await publish(AgentEvent(
+                                provider=self.name, type="status",
+                                text=tr(
+                                    "claude.this_reply_stage_ended_background_tasks_still_r",
+                                    p0=len(runtime.background),
+                                ),
+                                data={
+                                    "provider_event_type": "claude/stage_completed",
+                                    "payload": {
+                                        "stage": stage,
+                                        "result": message.result,
+                                        "origin": origin if isinstance(origin, dict) else None,
+                                        "owed_wakeups": runtime.owed_wakeups,
+                                        "tasks": [
+                                            {"id": task_id, **info}
+                                            for task_id, info in runtime.background.items()
+                                        ],
+                                    },
                                 },
-                            },
-                        ))
+                            ))
+                        elif stage == 0:
+                            stage = 1
                         if wait_ceiling <= 0:
                             await self._abandon_background(
                                 runtime, publish,
@@ -625,12 +659,26 @@ class ClaudeProvider:
             finally:
                 runtime.waiting = False
                 runtime.background.clear()
+                runtime.owed_wakeups = 0
                 await runtime.questions.cancel_all()
                 runtime.questions.callback = None
                 await runtime.approvals.cancel_all()
                 runtime.approvals.callback = None
                 runtime.active = False
 
+        turn_id = last_turn_id or f"claude_turn_{secrets.token_hex(6)}"
+        if timed_out_reason is not None:
+            # The stage reply stays in the timeline, but the work never produced its final
+            # reply: a "completed" turn here would present a partial answer as the whole.
+            return ProviderTurn(
+                native_session_id=runtime.native_session_id, turn_id=turn_id,
+                status="failed", response=None, error=timed_out_reason, events=tuple(events),
+            )
+        if cancelled_while_waiting:
+            return ProviderTurn(
+                native_session_id=runtime.native_session_id, turn_id=turn_id,
+                status="cancelled", response=None, error=None, events=tuple(events),
+            )
         if result_message is None:
             raise RuntimeError("Claude Agent SDK did not return a ResultMessage")
         response = result_message.result or "".join(response_parts) or None
@@ -643,13 +691,13 @@ class ClaudeProvider:
                 prompt=prompt,
             )
         status = "failed" if result_message.is_error else "completed"
-        if result_message.stop_reason == "cancelled" or cancelled_while_waiting:
+        if result_message.stop_reason == "cancelled":
             status = "cancelled"
         if status != "completed":
             response = None
         return ProviderTurn(
             native_session_id=result_message.session_id,
-            turn_id=result_message.uuid or f"claude_turn_{secrets.token_hex(6)}",
+            turn_id=turn_id,
             status=status,
             response=response,
             error=error,
@@ -668,6 +716,10 @@ class ClaudeProvider:
         """
         data = message.data if isinstance(message.data, dict) else {}
         subtype = message.subtype
+        # Ambient tasks (session-wide watchers) are not this turn's work: the CLI reports them
+        # in the same frames, but a turn must not wait for them.
+        if data.get("ambient") is True:
+            return
         if subtype == "task_started":
             task_id = str(data.get("task_id") or "")
             if data.get("is_backgrounded") and task_id and task_id not in runtime.background:
@@ -677,7 +729,8 @@ class ClaudeProvider:
             if not isinstance(tasks, list):
                 return
             live = {str(task["task_id"]): task for task in tasks
-                    if isinstance(task, dict) and task.get("task_id")}
+                    if isinstance(task, dict) and task.get("task_id")
+                    and task.get("ambient") is not True}
             for task_id, task in live.items():
                 if task_id not in runtime.background:
                     await self._background_started(runtime, publish, task)
@@ -689,6 +742,8 @@ class ClaudeProvider:
                 )
         elif subtype == "task_notification":
             task_id = str(data.get("task_id") or "")
+            # Every notification wakes the model once, whether or not the task was seen start.
+            runtime.owed_wakeups += 1
             if task_id in runtime.background:
                 status = str(data.get("status") or "completed")
                 await self._background_finished(

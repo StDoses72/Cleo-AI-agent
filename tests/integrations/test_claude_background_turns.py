@@ -218,20 +218,35 @@ def test_cancel_during_the_wake_up_turn_still_interrupts(monkeypatch):
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize("ceiling", ["0.2", "0"])
-def test_wait_ceiling_ends_the_turn_and_disconnects_leftover_tasks(monkeypatch, ceiling):
-    monkeypatch.setenv(BACKGROUND_WAIT_ENV, ceiling)
+def test_wait_ceiling_timeout_fails_the_turn_instead_of_passing_the_stage_off_as_final(monkeypatch):
+    monkeypatch.setenv(BACKGROUND_WAIT_ENV, "0.2")
     client = Client(stage_one(), hold_after_first=True)
     provider, runtime = _provider(client)
     received = []
 
     turn = asyncio.run(asyncio.wait_for(provider.prompt("s", "run it", received.append), 3))
 
-    assert turn.status == "completed"
-    assert turn.response == "STAGE1: started", "the stage reply is the final reply"
+    assert turn.status == "failed", "the final reply never came; the stage reply is not it"
+    assert turn.response is None
+    assert turn.error and "0" in turn.error
     assert client.disconnected == 1 and runtime.needs_reconnect
     assert [event.type for event in received[-2:]] == ["tool_result", "status"]
     assert received[-2].data["tool_use_id"] == "bg-1" and received[-2].data["status"] == "failed"
+    assert received[-1].data["provider_event_type"] == "claude/background_abandoned"
+    assert received[-1].text == turn.error
+
+
+def test_waiting_disabled_returns_the_stage_reply_and_drops_the_stream(monkeypatch):
+    """``0`` is an explicit opt-out: the user asked not to wait, so the stage reply is the reply."""
+    monkeypatch.setenv(BACKGROUND_WAIT_ENV, "0")
+    client = Client(stage_one(), hold_after_first=True)
+    provider, runtime = _provider(client)
+    received = []
+
+    turn = asyncio.run(asyncio.wait_for(provider.prompt("s", "run it", received.append), 3))
+
+    assert turn.status == "completed" and turn.response == "STAGE1: started"
+    assert client.disconnected == 1 and runtime.needs_reconnect
     assert received[-1].data["provider_event_type"] == "claude/background_abandoned"
 
 
@@ -334,3 +349,121 @@ def test_service_persists_every_stage_once_in_arrival_order(tmp_path, monkeypatc
         assert store.load_manifest(session.id)["status"] == "completed"
 
     asyncio.run(scenario())
+
+
+TASK_TWO = {"task_id": "bg-2", "run_id": "run-2", "task_type": "local_bash",
+            "description": "Second sleep"}
+
+
+def two_tasks_stage_one():
+    return [
+        AssistantMessage(content=[ToolUseBlock(id="tool-1", name="Bash", input={
+            "command": "sleep 6 && echo ONE", "run_in_background": True})], model="test"),
+        AssistantMessage(content=[ToolUseBlock(id="tool-2", name="Bash", input={
+            "command": "sleep 6 && echo TWO", "run_in_background": True})], model="test"),
+        _system("background_tasks_changed", tasks=[TASK]),
+        _system("task_started", **TASK, tool_use_id="tool-1", is_backgrounded=True),
+        _system("background_tasks_changed", tasks=[TASK, TASK_TWO]),
+        _system("task_started", **TASK_TWO, tool_use_id="tool-2", is_backgrounded=True),
+        AssistantMessage(content=[TextBlock(text="STAGE1: started")], model="test"),
+        _result("STAGE1: started"),
+    ]
+
+
+def two_tasks_batched_wake_up():
+    """Real CLI 2.1.310 frames: both completions are answered in one turn, so the first
+    produces an empty ``num_turns: 0`` result and only the last carries the reply."""
+    origin = {"kind": "task-notification", "producer": "session-task"}
+    return [
+        _system("task_updated", task_id="bg-1", run_id="run-1", patch={"status": "completed"}),
+        _system("task_notification", task_id="bg-1", run_id="run-1", tool_use_id="tool-1",
+                status="completed", output_file="one.output", summary="ONE completed"),
+        _system("background_tasks_changed", tasks=[TASK_TWO]),
+        _system("task_updated", task_id="bg-2", run_id="run-2", patch={"status": "completed"}),
+        _system("task_notification", task_id="bg-2", run_id="run-2", tool_use_id="tool-2",
+                status="completed", output_file="two.output", summary="TWO completed"),
+        _system("background_tasks_changed", tasks=[]),
+        _system("init", session_id="native"),
+        ResultMessage(subtype="success", duration_ms=1, duration_api_ms=1, is_error=False,
+                      num_turns=0, session_id="native", result="", stop_reason=None,
+                      origin={**origin, "runId": "run-1"}),
+        _system("init", session_id="native"),
+        AssistantMessage(content=[TextBlock(text="NOTIFIED: ONE\nNOTIFIED: TWO\nFINAL: both done")],
+                         model="test"),
+        ResultMessage(subtype="success", duration_ms=1, duration_api_ms=1, is_error=False,
+                      num_turns=1, session_id="native",
+                      result="NOTIFIED: ONE\nNOTIFIED: TWO\nFINAL: both done",
+                      origin={**origin, "runId": "run-2"}),
+    ]
+
+
+def test_batched_completions_wait_for_the_result_that_carries_the_reply():
+    client = Client(two_tasks_stage_one(), two_tasks_batched_wake_up())
+    provider, runtime = _provider(client)
+    received = []
+
+    turn = asyncio.run(asyncio.wait_for(provider.prompt("s", "run both", received.append), 3))
+
+    assert turn.status == "completed"
+    assert turn.response == "NOTIFIED: ONE\nNOTIFIED: TWO\nFINAL: both done", \
+        "an empty num_turns=0 result must not end the turn while a reply is still owed"
+    assert client.queries == ["run both"] and client.disconnected == 0
+    stages = [e for e in received if e.type == "status"
+              and e.data["provider_event_type"] == "claude/stage_completed"]
+    assert len(stages) == 1, "empty batch results are bookkeeping, not reply stages"
+    assert stages[0].data["payload"]["result"] == "STAGE1: started"
+    finished = [e.data["tool_use_id"] for e in received if e.type == "tool_result"
+                and e.data.get("provider_event_type") == "task_notification"]
+    assert finished == ["bg-1", "bg-2"]
+    assert [e.text for e in received if e.type == "agent_message"] == [
+        "STAGE1: started", "NOTIFIED: ONE\nNOTIFIED: TWO\nFINAL: both done",
+    ]
+    assert runtime.owed_wakeups == 0 and not runtime.background
+
+
+def test_ambient_tasks_never_hold_a_turn_open():
+    ambient = {"task_id": "watch-1", "run_id": "run-w", "task_type": "local_bash",
+               "description": "Live-update watcher", "ambient": True}
+    client = Client([
+        _system("background_tasks_changed", tasks=[ambient]),
+        _system("task_started", **ambient, tool_use_id="tool-w", is_backgrounded=True),
+        AssistantMessage(content=[TextBlock(text="plain answer")], model="test"),
+        _result("plain answer"),
+    ])
+    provider, runtime = _provider(client)
+    received = []
+
+    turn = asyncio.run(asyncio.wait_for(provider.prompt("s", "hello", received.append), 1))
+
+    assert turn.status == "completed" and turn.response == "plain answer"
+    assert client.disconnected == 0 and not runtime.needs_reconnect
+    assert [e.type for e in received] == ["agent_message"], "ambient watchers are not tool items"
+
+
+def test_stream_ending_inside_the_wake_up_turn_is_an_error_not_a_stale_success():
+    client = Client(stage_one(), [
+        _system("task_notification", task_id="bg-1", run_id="run-1", tool_use_id="tool-1",
+                status="completed", output_file="f", summary="done"),
+        _system("background_tasks_changed", tasks=[]),
+        _system("init", session_id="native"),
+        AssistantMessage(content=[TextBlock(text="working on the final reply")], model="test"),
+        # The CLI dies here; no ResultMessage for the follow-up turn ever arrives.
+    ])
+    provider, runtime = _provider(client)
+
+    with pytest.raises(RuntimeError, match="ResultMessage"):
+        asyncio.run(asyncio.wait_for(provider.prompt("s", "run it"), 3))
+    assert client.disconnected == 1 and runtime.needs_reconnect
+
+
+def test_stream_ending_while_a_reply_is_owed_is_an_error():
+    client = Client(stage_one(), [
+        _system("task_notification", task_id="bg-1", run_id="run-1", tool_use_id="tool-1",
+                status="completed", output_file="f", summary="done"),
+        _system("background_tasks_changed", tasks=[]),
+    ])
+    provider, runtime = _provider(client)
+
+    with pytest.raises(RuntimeError, match="still owed"):
+        asyncio.run(asyncio.wait_for(provider.prompt("s", "run it"), 3))
+    assert client.disconnected == 1 and runtime.needs_reconnect

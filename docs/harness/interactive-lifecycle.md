@@ -72,6 +72,24 @@ result     {"subtype":"success","result":"STAGE2: BG_DONE","origin":{"kind":"tas
 
 要点：CLI 不回显任何新的 user 消息，而是在后台任务完成时自行唤醒模型再跑一轮；唤醒轮次的 `ResultMessage.origin.kind == "task-notification"` 可用于归属；`background_tasks_changed.tasks` 是当前后台任务的完整快照。SDK 的 `Query._track_task_lifecycle` 只为子 agent 类任务做类似跟踪（`DEFERRING_TASK_TYPES`），不把后台 shell 计入，这是 SDK 自己 stdin 关闭策略的权衡，不是宿主应复用的语义。
 
+**多个任务一起完成时，每个 `task_notification` 仍各产生一个 result，但只有最后一个带回复。** 同日对两个 `sleep 6` 任务的真实帧（节选）：
+
+```text
+result     {"num_turns":3,"result":"STAGE1: started",…}
+system     task_notification {"task_id":"bks9vkykx","status":"completed",…}
+system     task_notification {"task_id":"bm73in7bk","status":"completed",…}
+system     background_tasks_changed {"tasks":[]}
+system     init
+result     {"num_turns":0,"result":"","stop_reason":null,"origin":{"kind":"task-notification","runId":"0mvvgtl6q-…"}}
+system     init
+assistant  text "NOTIFIED: ONE_DONE\nNOTIFIED: TWO_DONE\nFINAL: both done"
+result     {"num_turns":1,"result":"NOTIFIED: …\nFINAL: both done","origin":{"kind":"task-notification","runId":"0mvvgtl6h-…"}}
+```
+
+官方 TypeScript 参考对 `SDKResultMessage.origin` 的说明与此一致："When several background-task completions are queued together … All but the last of the completions Claude Code answers together produce empty results with `num_turns: 0`, in order, and the last one's result carries the turn that answers them all."因此"后台任务集合为空"不是结束条件——第一个空 result 到来时任务集合已经为空，却还欠一个带回复的 result。
+
+`SDKTaskStartedMessage` / `SDKTaskNotificationMessage` / `SDKBackgroundTasksChangedMessage` 条目都可能带 `ambient: true`："tasks that aren't part of the session's work, such as tasks Claude Code runs for its own operation. Live-update watchers are also ambient"。宿主不应把它们计入等待集合。`task_updated.patch.status` 取 `pending | running | completed | failed | killed`。
+
 取消：`ClaudeSDKClient.interrupt()` 只对进行中的轮次有效，产生 `stop_reason:"cancelled"` 的 result；空闲等待期间没有东西可中断。`stop_task(task_id)` 可停止后台任务（会再产生 `task_notification{status:"stopped"}`）。
 
 ### 1.2 Claude Code 官方 CLI（聊天入口 `claude_code`，`cleo/integrations/claude_cli.py`）
@@ -153,10 +171,11 @@ result     {"subtype":"success","result":"STAGE2: BG_DONE","origin":{"kind":"tas
 
 只改 `cleo/integrations/harnesses/claude.py` 与文案，不改 service、projection、UI：
 
-1. **消费整条流而不是一个回合。** `prompt()` 改用 `receive_messages()`；跟踪 `_ClaudeRuntime.background`（`task_id → {description, task_type, tool_use_id, status}`）：`background_tasks_changed.tasks` 为权威快照，`task_started{is_backgrounded}` 登记，`task_notification` / 终态 `task_updated` 结束。`ResultMessage` 到来时若仍有后台任务，写入 `status` 事件 `claude/stage_completed`（payload 含 `stage`、`result`、`origin`、任务列表），置 `runtime.waiting = True` 并继续读；直到某个 result 到来时 `background` 为空才返回。阶段回复与最终回复都在同一个 `turn_id` 下按顺序追加；`AgentService.finalize` 原有的"最终答案与最后一条 `agent_message` 相同则复用 timeline id"逻辑保证不重复。
+1. **消费整条流而不是一个回合。** `prompt()` 改用 `receive_messages()`；跟踪 `_ClaudeRuntime.background`（`task_id → {description, task_type, tool_use_id, status}`）与 `_ClaudeRuntime.owed_wakeups`：`background_tasks_changed.tasks` 为权威快照，`task_started{is_backgrounded}` 登记，`task_notification` 结束条目并把 `owed_wakeups` 加一（每个通知欠一个 result），终态 `task_updated` 只记状态。带 `ambient: true` 的帧一律忽略。`ResultMessage` 到来时：若它发生在阶段之后（或 `origin.kind == "task-notification"`），`owed_wakeups` 减一；**只有 `background` 为空且 `owed_wakeups == 0` 才结束**，否则写入 `status` 事件 `claude/stage_completed`（payload 含 `stage`、`result`、`origin`、`owed_wakeups`、任务列表；`num_turns: 0` 的空 result 只做记账，不算阶段）、置 `runtime.waiting = True` 并继续读。阶段回复与最终回复都在同一个 `turn_id` 下按顺序追加；`AgentService.finalize` 原有的"最终答案与最后一条 `agent_message` 相同则复用 timeline id"逻辑保证不重复。
 2. **后台任务可见。** 登记时发 `tool_call{id: task_id, name: "后台任务", input: description}`，结束时发 `tool_result{tool_use_id: task_id, output: summary, status}`。现有 `stream_event_item` / `timeline_from_events` 直接把它显示为 running → done 的工具条目，不需要 UI 改动。
-3. **有界等待与归属安全。** `CLEO_CLAUDE_BACKGROUND_WAIT_SECONDS`（默认 600 秒，按帧间静默计时，`0` 表示不等待）。超时、等待中 `cancel()` / `close()`、或 result 为错误 / 取消而仍有后台任务时：剩余任务条目标为失败、写 `claude/background_abandoned`、断开流并置 `needs_reconnect`，下一次 prompt 以原生 session 重连——迟到的唤醒轮次不可能串入后续用户轮次。`cancel()` 在等待阶段不再对空闲流发 `interrupt()`（没有可中断的轮次），而是丢弃流；唤醒轮次进行中仍走 `interrupt()`。
-4. **问答与审批跨阶段保持可答。** broker 只在 `finally` 取消，`can_use_tool` 在唤醒轮次里照常工作（单测 `test_questions_stay_answerable_in_the_wake_up_turn`）。
+3. **有界等待与归属安全。** `CLEO_CLAUDE_BACKGROUND_WAIT_SECONDS`（默认 600 秒，按帧间静默计时）。超时、等待中 `cancel()` / `close()`、或 result 为错误 / 取消而仍有后台任务时：剩余任务条目标为失败、写 `claude/background_abandoned`、断开流并置 `needs_reconnect`，下一次 prompt 以原生 session 重连——迟到的唤醒轮次不可能串入后续用户轮次。终态按真实情况报告：**超时返回 `status="failed"` 并以超时原因为 `error`**（阶段回复仍在时间线，但最终回复没有到，不能把它当成完成）；等待中取消返回 `cancelled`；`0` 是明确的不等待，返回阶段回复为 `completed`。`cancel()` 在等待阶段不再对空闲流发 `interrupt()`（没有可中断的轮次），而是直接丢弃流，循环立即结束，不会等满上限；唤醒轮次进行中仍走 `interrupt()`。
+4. **流提前结束按错误处理。** 唤醒轮次一开始（第二个 `init` 或 `AssistantMessage`）就丢弃上一阶段的 `ResultMessage` 引用；若流在该轮次的 result 之前结束，或在仍欠唤醒 result 时结束，`prompt()` 抛出 `RuntimeError` 并置 `needs_reconnect`，不会把上一阶段的结果当成成功返回。
+5. **问答与审批跨阶段保持可答。** broker 只在 `finally` 取消，`can_use_tool` 在唤醒轮次里照常工作（单测 `test_questions_stay_answerable_in_the_wake_up_turn`）。
 
 为什么不改 service / UI：阶段回复是普通 `agent_message`，后台任务是普通 tool 条目，终态仍是一个 `session_completed`；把"多阶段"压回现有事件词汇，上层无需知道 Claude 的后台语义。代价是等待期间该 turn 仍处于 running：UI 照常排队用户的新消息（现有行为），不会把新输入接到旧任务上，但长期运行的后台 shell（如 dev server）会在 600 秒静默后随本轮结束并被断开，而不是无限 loading。
 
