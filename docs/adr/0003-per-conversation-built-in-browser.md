@@ -1,6 +1,6 @@
 # 0003. 内置浏览器按会话隔离、按需创建、闲置 10 分钟回收
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-10-30
 
 ## Context

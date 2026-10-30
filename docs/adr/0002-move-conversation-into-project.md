@@ -1,6 +1,6 @@
 # 0002. 已有会话加入同一空间的项目：复用 move_session，重新绑定工作目录
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-10-30
 
 ## Context

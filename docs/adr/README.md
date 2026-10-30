@@ -31,11 +31,11 @@
 
 | 编号 | 标题 | 状态 |
 |---|---|---|
-| [0001](0001-retry-failed-memory-sources.md) | 失败的记忆源可自动重试（有界退避）并可从队列手动重试 | Proposed |
-| [0002](0002-move-conversation-into-project.md) | 已有会话加入同一空间的项目：复用 move_session，重新绑定工作目录 | Proposed |
-| [0003](0003-per-conversation-built-in-browser.md) | 内置浏览器按会话隔离、按需创建、闲置 10 分钟回收 | Proposed |
-| [0004](0004-claude-turn-and-background-task-lifecycle.md) | Claude 回合与后台任务的生命周期归 provider 所有 | Proposed |
-| [0005](0005-single-codex-cli-distribution.md) | Codex CLI 只随 Python 运行时分发一次 | Proposed |
-| [0006](0006-online-runtime-ownership-and-retirement.md) | 在线运行环境的归属登记与基于证据的退役 | Proposed |
+| [0001](0001-retry-failed-memory-sources.md) | 失败的记忆源可自动重试（有界退避）并可从队列手动重试 | Accepted |
+| [0002](0002-move-conversation-into-project.md) | 已有会话加入同一空间的项目：复用 move_session，重新绑定工作目录 | Accepted |
+| [0003](0003-per-conversation-built-in-browser.md) | 内置浏览器按会话隔离、按需创建、闲置 10 分钟回收 | Accepted |
+| [0004](0004-claude-turn-and-background-task-lifecycle.md) | Claude 回合与后台任务的生命周期归 provider 所有 | Accepted |
+| [0005](0005-single-codex-cli-distribution.md) | Codex CLI 只随 Python 运行时分发一次 | Accepted |
+| [0006](0006-online-runtime-ownership-and-retirement.md) | 在线运行环境的归属登记与基于证据的退役 | Accepted |
 
-每个引入 ADR 的 PR 自己在此表追加对应行（并行 PR 之间的小冲突在合并时解决），这样任何一个 PR 合并后索引都是完整的。
+每个引入 ADR 的 PR 自己在此表追加对应行（并行 PR 之间的小冲突在合并时解决），这样任何一个 PR 合并后索引都是完整的。0001–0006 随同一个集成 PR 合入 `main`，状态在集成时改为 Accepted。

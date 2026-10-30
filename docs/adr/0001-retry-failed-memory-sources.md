@@ -1,6 +1,6 @@
 # 0001. 失败的记忆源可自动重试（有界退避）并可从队列手动重试
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-10-30
 
 ## Context

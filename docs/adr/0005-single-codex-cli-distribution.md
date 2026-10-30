@@ -1,6 +1,6 @@
 # 0005. Codex CLI 只随 Python 运行时分发一次
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-10-30
 
 ## Context

@@ -30,6 +30,9 @@
 ## ADR（架构决策记录）
 
 - [ADR 索引与写作约定](adr/README.md)：影响架构、数据模型或用户可见行为边界的决策，按编号记录在 `docs/adr/`，重点是为什么这样选、否决了什么、留下了什么限制。
+- [ADR 0001 失败的记忆源可自动重试（有界退避）并可从队列手动重试](adr/0001-retry-failed-memory-sources.md)
+- [ADR 0002 已有会话加入同一空间的项目](adr/0002-move-conversation-into-project.md)
+- [ADR 0003 内置浏览器按会话隔离、按需创建、闲置 10 分钟回收](adr/0003-per-conversation-built-in-browser.md)
 - [ADR 0004 Claude 回合与后台任务的生命周期归 provider 所有](adr/0004-claude-turn-and-background-task-lifecycle.md)
 - [ADR 0005 Codex CLI 只随 Python 运行时分发一次](adr/0005-single-codex-cli-distribution.md)
 - [ADR 0006 在线运行环境的归属登记与基于证据的退役](adr/0006-online-runtime-ownership-and-retirement.md)
