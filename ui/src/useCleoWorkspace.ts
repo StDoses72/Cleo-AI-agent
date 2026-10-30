@@ -1551,6 +1551,14 @@ export function useCleoWorkspace(evolutionOpen = false) {
   };
   const loadMemoryReviewDetails = (source: MemoryReviewSource) =>
     cleoClient.getMemoryReviewDetails(source);
+  /** Re-run consolidation for a failed source through the manual review path. */
+  const retryMemorySource = async (source: MemoryReviewSource) => {
+    try {
+      return await cleoClient.reviewMemorySource(source, "consolidate");
+    } finally {
+      await refreshMemory();
+    }
+  };
 
   return {
     history,
@@ -1644,5 +1652,6 @@ export function useCleoWorkspace(evolutionOpen = false) {
     loadAgentInstructions,
     saveAgentInstructions,
     loadMemoryReviewDetails,
+    retryMemorySource,
   };
 }

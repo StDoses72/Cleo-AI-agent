@@ -196,6 +196,35 @@ try {
     await page.getByLabel("搜索待整理会话", { exact: true }).fill("");
     assert.equal(await page.getByTestId("memory-review-list").locator("article").count(), 2);
   });
+  await check("recovery: failed memory sources offer a consolidation retry that pending ones do not", async page => {
+    await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      const original = cleoClient.reviewMemorySource.bind(cleoClient);
+      window.reviewCalls = [];
+      cleoClient.reviewMemorySource = async (source, action) => {
+        window.reviewCalls.push([source.id, action]);
+        if (window.reviewCalls.length === 1) throw new Error("provider still offline");
+        return original(source, action);
+      };
+    });
+    await page.getByRole("button", { name: "记忆", exact: true }).click();
+    await page.getByTestId("memory-nav-pending").click();
+    const list = page.getByTestId("memory-review-list");
+    assert.equal(await list.locator("article").count(), 2);
+    assert.equal(await list.locator("article[data-status='pending'] [data-testid='memory-review-retry']").count(), 0);
+    const retry = list.locator("article[data-status='failed'] [data-testid='memory-review-retry']");
+    assert.equal(await retry.count(), 1);
+    await retry.click();
+    await list.getByRole("alert").getByText("provider still offline", { exact: true }).waitFor();
+    assert.equal(await list.locator("article").count(), 2);
+    await retry.click();
+    await list.locator("[data-testid='memory-review-retry'][aria-busy='true']").waitFor();
+    await retry.dispatchEvent("click");  // A repeated click while in flight must not start a second review.
+    await list.locator("article[data-status='failed']").waitFor({ state: "detached" });
+    assert.equal(await list.locator("article").count(), 1);
+    assert.deepEqual(await page.evaluate(() => window.reviewCalls),
+      [["non_productivity:general:product-tone", "consolidate"], ["non_productivity:general:product-tone", "consolidate"]]);
+  });
   await check("information: open memory details follow source revisions and reject stale reads", async page => {
     await page.evaluate(async () => {
       const { cleoClient } = await import("/src/services/cleoClient.ts");
