@@ -31,6 +31,7 @@
 
 - [ADR 索引与写作约定](adr/README.md)：影响架构、数据模型或用户可见行为边界的决策，按编号记录在 `docs/adr/`，重点是为什么这样选、否决了什么、留下了什么限制。
 - [ADR 0004 Claude 回合与后台任务的生命周期归 provider 所有](adr/0004-claude-turn-and-background-task-lifecycle.md)
+- [ADR 0005 Codex CLI 只随 Python 运行时分发一次](adr/0005-single-codex-cli-distribution.md)
 
 ## 文档维护约定
 
