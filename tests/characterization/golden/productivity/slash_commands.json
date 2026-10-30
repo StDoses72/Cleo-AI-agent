@@ -190,7 +190,7 @@
       "events": [
         {
           "item": {
-            "detail": "/new · /cwd · /project · /git · /diff · /model · /effort · /access · /approval · /cd · /resume · /resume-native · /native · /sessions · /account · /fork · /rename · /compact · /archive · /back · /quit",
+            "detail": "/new · /cwd · /project · /project move <name> · /git · /diff · /model · /effort · /access · /approval · /cd · /resume · /resume-native · /native · /sessions · /account · /fork · /rename · /compact · /archive · /back · /quit",
             "id": "<notice:1>",
             "title": "开发任务命令",
             "tone": "info",
