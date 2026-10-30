@@ -254,6 +254,31 @@ test("a panel stop halts one conversation; the emergency shortcut halts every co
   assert.equal(broker.state().lastStop.settled, true);
 });
 
+test("a global stop cancels the run of every engaged conversation, not only the desktop owner", async () => {
+  const { broker, pool, backendCalls } = setup();
+  const other = pool.forThread("thread-b");
+  broker.turnStarted("thread-a");
+  broker.turnStarted("thread-b");
+  broker.turnStarted("thread-c");
+  await broker.setMode("thread-a", "host", { confirmed: true });
+  await broker.call(T, "desktop_screenshot", {});
+  assert.equal(broker.state().lease?.threadId, "thread-a", "thread-a holds the desktop lease");
+  const b = json(await broker.call({ thread_id: "thread-b" }, "browser_screenshot", {}));
+  let releaseB;
+  other.gate = new Promise(resolve => { releaseB = resolve; });
+  const clickB = broker.call({ thread_id: "thread-b" }, "browser_click", { tab_id: "t1", screenshot_id: b.screenshot.screenshot_id, x: 2, y: 2 });
+  await new Promise(resolve => setImmediate(resolve));
+  broker.queueFor("browser", "thread-b").idle = async () => {};
+  const result = await broker.stop({ source: "shortcut" });
+  assert.equal(result.scoped, false);
+  const cancelled = backendCalls.filter(([method]) => method === "cancel_run").map(([, params]) => params.thread_id).sort();
+  assert.deepEqual(cancelled, ["thread-a", "thread-b"], "the desktop owner and the browser conversation are both cancelled");
+  assert.ok(!cancelled.includes("thread-c"), "a running conversation that never used the computer is left alone");
+  releaseB();
+  await clickB.catch(() => {});
+  assert.equal(broker.state().lastStop.settled, true);
+});
+
 test("the agent overlay follows the conversation shown in the panel", async () => {
   const { broker, pool } = setup();
   broker.turnStarted("thread-a");
