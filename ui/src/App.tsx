@@ -473,6 +473,7 @@ export function App() {
           refreshing={workspace.memoryRefreshing}
           onRetryRefresh={() => void workspace.refreshMemory()}
           onLoadReviewDetails={workspace.loadMemoryReviewDetails}
+          onRetrySource={workspace.retryMemorySource}
         />
       ) : (
           <Conversation
