@@ -227,6 +227,7 @@ export class CleoBrowser extends EventEmitter {
       this.window.contentView.addChildView(this.overlayView);
     }
     this.layout();
+    this.emit("foreground", this.foregroundId);
     this.emitState();
   }
 

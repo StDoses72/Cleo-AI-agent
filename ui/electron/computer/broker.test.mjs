@@ -57,7 +57,7 @@ class FakePool extends EventEmitter {
     if (!browser) { browser = new FakeBrowser(threadId, this); this.threads.set(threadId, browser); }
     return browser;
   }
-  setForeground(threadId) { this.foregroundId = threadId; }
+  setForeground(threadId) { if (this.foregroundId !== threadId) { this.foregroundId = threadId; this.emit("foreground", threadId); } }
   setAgentOverlay(value) { this.overlay = value; }
   async releaseAll() { const released = []; for (const browser of this.threads.values()) released.push(...await browser.releaseAll()); return released; }
   state() {
@@ -206,6 +206,65 @@ test("conversations drive their own browsers at the same time; control and scree
   pool.setForeground("thread-b");
   assert.equal(broker.state().control.browser, "agent", "thread-b handed control back above");
   assert.deepEqual(broker.state().lease, { threadId: "thread-b", running: true });
+});
+
+test("a panel stop halts one conversation; the emergency shortcut halts every conversation", async () => {
+  const { broker, browser, pool, backendCalls } = setup();
+  const other = pool.forThread("thread-b");
+  broker.turnStarted("thread-a");
+  broker.turnStarted("thread-b");
+  const a = await screenshot(broker);
+  const b = json(await broker.call({ thread_id: "thread-b" }, "browser_screenshot", {}));
+  let releaseA;
+  browser.gate = new Promise(resolve => { releaseA = resolve; });
+  let releaseB;
+  other.gate = new Promise(resolve => { releaseB = resolve; });
+  const clickA = broker.call(T, "browser_click", { tab_id: a.tab, screenshot_id: a.id, x: 1, y: 1 });
+  const clickB = broker.call({ thread_id: "thread-b" }, "browser_click", { tab_id: "t1", screenshot_id: b.screenshot.screenshot_id, x: 2, y: 2 });
+  const queuedB = broker.call({ thread_id: "thread-b" }, "browser_wait", { seconds: 1 });
+  await new Promise(resolve => setImmediate(resolve));
+  broker.queueFor("browser", "thread-b").idle = async () => {};
+  const stopped = await broker.stop({ source: "panel", threadId: "thread-b" });
+  await assert.rejects(queuedB, /用户已停止/);
+  assert.equal(stopped.threadId, "thread-b");
+  assert.equal(stopped.scoped, true);
+  assert.equal(stopped.settled, false, "thread-b's click is still in flight");
+  assert.deepEqual(backendCalls.filter(([method]) => method === "cancel_run").map(([, params]) => params), [{ thread_id: "thread-b" }]);
+  assert.equal(broker.threadBusy("thread-a"), true, "thread-a's click keeps running");
+  releaseA();
+  await clickA;
+  assert.deepEqual(browser.actions.at(-1), ["click", a.tab, 1, 1, "left"]);
+  assert.equal(broker.state().lastStop.settled, false, "thread-a finishing does not settle thread-b's stop");
+  releaseB();
+  await clickB.catch(() => {});
+  assert.equal(broker.state().lastStop.settled, true);
+  const fresh = await screenshot(broker);
+  let releaseFresh;
+  browser.gate = new Promise(resolve => { releaseFresh = resolve; });
+  const pendingA = broker.call(T, "browser_click", { tab_id: fresh.tab, screenshot_id: fresh.id, x: 3, y: 3 });
+  const waitingA = broker.call(T, "browser_wait", { seconds: 1 });
+  await new Promise(resolve => setImmediate(resolve));
+  broker.queueFor("browser", "thread-a").idle = async () => {};
+  const emergency = await broker.stop({ source: "shortcut", threadId: "thread-b" });
+  await assert.rejects(waitingA, /紧急停止/, "the shortcut cancels every conversation's queued work");
+  assert.equal(emergency.scoped, false);
+  assert.equal(emergency.settled, false, "thread-a's click is still in flight");
+  releaseFresh();
+  await pendingA.catch(() => {});
+  assert.equal(broker.state().lastStop.settled, true);
+});
+
+test("the agent overlay follows the conversation shown in the panel", async () => {
+  const { broker, pool } = setup();
+  broker.turnStarted("thread-a");
+  await screenshot(broker);
+  assert.equal(pool.overlay, true, "thread-a is shown and driven by the AI");
+  pool.setForeground("thread-b");
+  assert.equal(pool.overlay, false, "an idle conversation is not covered by thread-a's overlay");
+  assert.equal(broker.state().browserEngaged, false);
+  pool.setForeground("thread-a");
+  assert.equal(pool.overlay, true);
+  assert.equal(broker.state().browserEngaged, true);
 });
 
 test("in-flight browser work marks a conversation busy and forgetting it drops its state", async () => {

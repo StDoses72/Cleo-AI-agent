@@ -119,6 +119,8 @@ export class ComputerBroker extends EventEmitter {
     browser?.on?.("geometry", () => this.changed());
     browser?.on?.("tabs", () => this.changed());
     browser?.on?.("hibernated", () => this.changed());
+    // The overlay follows the conversation on screen, not the one shown before.
+    browser?.on?.("foreground", () => this.changed());
   }
 
   /** One conversation's browser: its own tabs, partition, geometry and notices. */
@@ -325,40 +327,51 @@ export class ComputerBroker extends EventEmitter {
    */
   async stop({ source = "panel", threadId: requested = null } = {}) {
     if (this.stopping) return this.stopping;
+    // A panel stop is scoped to its conversation: other conversations' browser work goes on.
+    // The emergency shortcut, and a stop that names no conversation, halt everything.
+    const scoped = Boolean(requested) && source !== "shortcut";
+    const affects = job => !scoped || job.threadId === requested;
     this.stopping = (async () => {
       this.changed();
       // The desktop owner, the conversation the panel stopped, or every conversation driving a browser.
       const active = [...this.threads].filter(([id, entry]) => entry.browserActive && this.running.has(id)).map(([id]) => id);
-      const owners = this.lease?.threadId ? [this.lease.threadId] : requested ? [requested] : active;
+      const owners = scoped ? [requested] : this.lease?.threadId ? [this.lease.threadId] : active;
       const threadId = owners[0] || null;
       const reason = source === "shortcut" ? tr("broker.computer_control_stopped_through_the_emergency_stop_shortcut") : tr("broker.the_user_stopped_computer_control");
-      this.cancelJobs(() => true, reason);
-      for (const target of ["browser", "desktop"]) this.wakeControl(target);
-      if (this.authorization) this.resolveAuthorization(false);
+      this.cancelJobs(affects, reason);
+      if (scoped) this.wakeControl("browser", requested);
+      else for (const target of ["browser", "desktop"]) this.wakeControl(target);
+      if (this.authorization && (!scoped || this.authorization.threadId === requested)) this.resolveAuthorization(false);
       const released = [];
-      released.push(...await this.browser.releaseAll().catch(() => []));
+      released.push(...await (scoped ? this.browserFor(requested).releaseAll() : this.browser.releaseAll()).catch(() => []));
       // Only inputs pressed by Cleo are released; the user's physical keys are never touched.
-      const hostInvolved = this.hostEngaged() || Boolean(this.lastStop?.hostError)
-        || [...this.threads.values()].some(entry => entry.hostAuthorized);
+      const entries = scoped ? [this.thread(requested)] : [...this.threads.values()];
+      const hostInvolved = scoped
+        ? this.lease?.threadId === requested || entries[0].hostAuthorized || entries[0].mode === "host"
+          || [...this.inflight].some(job => job.target === "desktop" && job.threadId === requested)
+        : this.hostEngaged() || Boolean(this.lastStop?.hostError) || entries.some(entry => entry.hostAuthorized);
+      if (scoped && hostInvolved) this.wakeControl("desktop");
       const hostResult = hostInvolved ? await this.host.stop({ reason: "stop" }).catch(error => ({ error: error.message })) : null;
       released.push(...(hostResult?.released || []));
-      // Emergency stop revokes every local-computer authorization; tasks return to the browser.
-      for (const entry of this.threads.values()) {
+      // Stopping revokes the affected conversations' local-computer authorization; they return to the browser.
+      for (const entry of entries) {
         if (entry.mode !== "host" && !entry.hostAuthorized) continue;
         entry.mode = "browser";
         entry.hostAuthorized = false;
         entry.modeEpoch += 1;
       }
+      if (scoped && this.lease?.threadId === requested) this.lease = null;
       let cancelled = false;
       for (const owner of owners) {
         if (!this.running.has(owner)) continue;
         cancelled = await this.backend.request("cancel_run", { thread_id: owner }).then(() => true).catch(() => false) || cancelled;
       }
-      await Promise.all(this.allQueues().map(queue => queue.idle()));
+      const queues = scoped ? [this.queueFor("browser", requested), ...(hostInvolved ? [this.queues.desktop] : [])] : this.allQueues();
+      await Promise.all(queues.map(queue => queue.idle()));
       const hostError = hostResult?.error
         || (hostResult?.stopped === false || hostResult?.settled === false ? tr("broker.the_local_controller_has_not_confirmed_the_stop_yet") : null);
-      const settled = !this.inflight.size && !hostError;
-      this.lastStop = { at: this.now(), source, threadId, released, cancelledRun: cancelled, settled,
+      const settled = ![...this.inflight].some(affects) && !hostError;
+      this.lastStop = { at: this.now(), source, threadId, scoped, released, cancelledRun: cancelled, settled,
         hostError };
       return this.lastStop;
     })();
@@ -821,8 +834,10 @@ export class ComputerBroker extends EventEmitter {
   changed() {
     if (this.closed) return;
     // A timed-out stop becomes confirmed when its final action actually returns.
-    if (!this.stopping && this.lastStop && !this.lastStop.settled && !this.lastStop.hostError && !this.inflight.size) {
-      this.lastStop = { ...this.lastStop, settled: true };
+    const last = this.lastStop;
+    const outstanding = last?.scoped ? [...this.inflight].some(job => job.threadId === last.threadId) : this.inflight.size;
+    if (!this.stopping && last && !last.settled && !last.hostError && !outstanding) {
+      this.lastStop = { ...last, settled: true };
     }
     this.browser?.setAgentOverlay?.(this.browserEngaged());
     this.emit("state");
