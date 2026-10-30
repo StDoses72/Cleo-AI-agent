@@ -23,7 +23,7 @@ def packaged(tmp_path, monkeypatch):
     )
     (tmp_path / "ui/runtime").mkdir(parents=True)
     (tmp_path / "ui/package-lock.json").write_text('{"packages":{}}')
-    tools = {"@openai/codex": "0.155.1", "agent-browser": "0.38.1", "npm": "11.19.1"}
+    tools = {"agent-browser": "0.38.1", "npm": "11.19.1"}
     lock = {"packages": {f"node_modules/{name}": {"version": version}
                          for name, version in tools.items()}}
     (tmp_path / "ui/runtime/package-lock.json").write_text(json.dumps(lock))
@@ -60,6 +60,39 @@ def test_stale_browser_tool_cannot_publish_a_receipt(packaged):
     (root / "browser/node_modules/agent-browser/package.json").write_text('{"version":"0.1.0"}')
     with pytest.raises(ValueError, match="does not match"):
         receipt.record(root, root / "python", root / "browser", root / "dependencies.json")
+
+
+def test_receipt_records_only_the_browser_tools_the_runtime_ships(packaged):
+    root, _ = packaged
+    receipt.record(root, root / "python", root / "browser", root / "dependencies.json")
+    data = json.loads((root / "dependencies.json").read_text())
+    assert data["tools"] == {"agent-browser": "0.38.1", "npm": "11.19.1"}
+
+
+@pytest.mark.parametrize("where", ["node_modules", "lock"])
+def test_a_second_codex_cli_from_npm_cannot_publish_a_receipt(packaged, where):
+    """The Codex CLI ships once, inside openai-codex-cli-bin (#142)."""
+    root, _ = packaged
+    if where == "node_modules":
+        duplicate = root / "browser/node_modules/@openai/codex"
+        duplicate.mkdir(parents=True)
+        (duplicate / "package.json").write_text('{"version": "0.155.1"}')
+    else:
+        lock_path = root / "ui/runtime/package-lock.json"
+        lock = json.loads(lock_path.read_text())
+        lock["packages"]["node_modules/@openai/codex"] = {"version": "0.155.1"}
+        lock_path.write_text(json.dumps(lock))
+    with pytest.raises(ValueError, match="duplicates the Python-bundled Codex CLI"):
+        receipt.record(root, root / "python", root / "browser", root / "dependencies.json")
+    assert not (root / "dependencies.json").exists()
+
+
+def test_runtime_manifest_does_not_redistribute_the_codex_cli():
+    manifest = json.loads((ROOT / "ui/runtime/package.json").read_text(encoding="utf-8"))
+    lock = json.loads((ROOT / "ui/runtime/package-lock.json").read_text(encoding="utf-8"))
+    assert "@openai/codex" not in manifest.get("dependencies", {})
+    assert not any("@openai/codex" in name for name in lock.get("packages", {}))
+    assert set(manifest["dependencies"]) == set(receipt.BROWSER_TOOLS)
 
 
 def test_receipt_selects_only_requirements_for_the_current_platform(packaged):
