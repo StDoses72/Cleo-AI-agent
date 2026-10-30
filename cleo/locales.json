@@ -543,6 +543,10 @@
     "zh-CN": "这个会话已整理进当前项目的记忆，暂不支持迁移。",
     "en": "This conversation was already consolidated into its current project's memory and cannot move yet."
   },
+  "service.a_task_with_a_handoff_context_snapshot_cannot_move": {
+    "zh-CN": "这个任务带有 harness 交接的上下文快照，暂不支持迁移到其他项目。",
+    "en": "This task carries a harness handoff context snapshot and cannot move to another project yet."
+  },
   "service.the_evolution_workspace_cannot_move": {
     "zh-CN": "Cleo 自我演进任务不能迁移项目。",
     "en": "The Cleo evolution task cannot move between projects."

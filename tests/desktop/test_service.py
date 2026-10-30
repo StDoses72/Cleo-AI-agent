@@ -2521,12 +2521,18 @@ def test_move_thread_rebinds_task_directory_and_releases_resident_session(tmp_pa
                 thread_id=task["id"], project_id_value="productivity:cleo-evolution",
             )
 
+        # The last turn's Git undo checkpoint belongs to the source repository.
+        service.store.update_manifest(task["id"], undo_checkpoint={
+            "repo_root": str(source), "before": "0" * 40, "after": "1" * 40,
+            "ref": "refs/cleo/undo",
+        }, undo_checkpoint_shared=True)
         snapshot = await service.move_thread(
             thread_id=task["id"], project_id_value="productivity:target",
         )
         manifest = service.store.load_manifest(task["id"])
         assert manifest["project"] == "target" and manifest["cwd"] == str(target)
         assert manifest["native_session_id"] == "native-test"
+        assert manifest["undo_checkpoint"] is None and not manifest["undo_checkpoint_shared"]
         assert adapter.closed == [task["id"]]
         assert task["id"] not in service._productivity_sessions
         moved = next(item for item in snapshot["threads"] if item["id"] == task["id"])
@@ -2550,5 +2556,20 @@ def test_move_thread_rebinds_task_directory_and_releases_resident_session(tmp_pa
                    for event in events)
         assert any((event.get("item") or {}).get("type") == "notice"
                    and str(source.resolve()) in event["item"]["detail"] for event in events)
+
+        # A task handed off between harnesses carries a project-scoped context snapshot.
+        handed = task
+        service.store.append_event(
+            space="productivity", project="source", session_id=handed["id"],
+            event_type="provider_event", actor="system",
+            data={"provider_event_type": "cleo/harness_switch",
+                  "payload": {"version": 1, "context_version": 1, "snapshot_id": "ab" * 32,
+                              "provider": "codex", "phase": "prepared"}},
+        )
+        with pytest.raises(ValueError, match="上下文快照"):
+            await service.move_thread(
+                thread_id=handed["id"], project_id_value="productivity:target",
+            )
+        assert service.store.load_manifest(handed["id"])["project"] == "source"
 
     asyncio.run(scenario())

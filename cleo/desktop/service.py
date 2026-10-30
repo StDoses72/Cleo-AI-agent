@@ -486,6 +486,11 @@ class DesktopService:
                 or (target_path is None and (require_known or memory_space == "productivity"))
                 or (target_path is not None and not Path(target_path).is_dir())):
             raise ValueError(tr("service.the_target_project_value_is_unavailable", p0=target))
+        # A harness handoff binds the native session to a context snapshot scoped to the
+        # current project; resuming it under another project would fail before the harness
+        # is even reached, so such a task is refused here with the reason.
+        if memory_space == "productivity" and self._has_context_snapshot(thread_id):
+            raise ValueError(tr("service.a_task_with_a_handoff_context_snapshot_cannot_move"))
         try:
             moved = self.store.move_session(thread_id, target)
         except ValueError as error:
@@ -500,7 +505,17 @@ class DesktopService:
             if thread_id in self._productivity_sessions:
                 await self._adapter().close(thread_id)
                 self._productivity_sessions.pop(thread_id, None)
-            moved = self.store.update_manifest(thread_id, cwd=target_path)
+            # The undo checkpoint belongs to the previous repository; reverting it from the
+            # new directory would compare the wrong trees, so it is discarded with the move.
+            checkpoint = manifest.get("undo_checkpoint")
+            if isinstance(checkpoint, dict):
+                try:
+                    await asyncio.to_thread(discard_git_checkpoint, checkpoint)
+                except (OSError, RuntimeError, ValueError):
+                    pass
+            moved = self.store.update_manifest(
+                thread_id, cwd=target_path, undo_checkpoint=None, undo_checkpoint_shared=False,
+            )
         else:
             self._chat.forget(thread_id)
             if target_path is not None and manifest.get("cwd"):
@@ -508,6 +523,15 @@ class DesktopService:
         if self.runtime.current_thread_id == thread_id:
             self._activate(moved)
         return moved
+
+    def _has_context_snapshot(self, thread_id: str) -> bool:
+        """Whether a harness handoff bound this thread to a durable context snapshot."""
+        for event in self.store.read_events(thread_id):
+            payload = (event.get("data") or {}).get("payload") or {}
+            if (event.get("actor") == "system" and isinstance(payload, dict)
+                    and payload.get("context_version") == 1 and payload.get("snapshot_id")):
+                return True
+        return False
 
     def _target_project_path(self, memory_space: str, project: str) -> str | None:
         """The directory a thread moved into ``project`` runs in, when one is known."""

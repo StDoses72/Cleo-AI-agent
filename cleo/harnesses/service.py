@@ -196,7 +196,9 @@ class AgentService:
                 not events
                 or len(events) != manifest.get("last_event_seq")
                 or any(
-                    event.get("type") not in {"session_created", "session_closed"}
+                    # A project move appends its own marker without any conversation.
+                    event.get("type")
+                    not in {"session_created", "session_closed", "session_project_moved"}
                     for event in events
                 )
             ):
