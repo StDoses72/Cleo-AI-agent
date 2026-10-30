@@ -741,6 +741,35 @@ test("a runtime whose registered installations all upgraded or vanished is retir
   assert.equal(await exists(options.currentBaseResources), true);
 });
 
+test("history journaled by an in-place upgrade retires the runtime the installation left", async t => {
+  const f = await fixture(t);
+  const options = await healthyOnlineRuntime(f);
+  // The current program used `old` before upgrading in place; the launch registry now names the
+  // current key and keeps `old` in history. Without a version the version rule cannot retire it.
+  const old = await f.addOnlineRuntime(hex(64), null);
+  const current = basename(options.currentBaseResources);
+  await writeFile(join(f.online, RUNTIME_REGISTRY), JSON.stringify({ schema: 1, installations: {
+    [options.currentResources]: { key: current, version: "0.10.3", updatedAt: "2026-10-30T00:00:00Z",
+      history: [{ key: basename(old), version: null, leftAt: "2026-10-30T00:00:00Z" }] } } }));
+  const entries = (await f.inventory(options)).entries;
+  const retired = entries.find(e => e.path === old);
+  assert.equal(retired.ownership, "retired");
+  assert.equal(retired.action, "reclaim");
+  assert.deepEqual(retired.evidence.map(e => e.kind), ["installation-upgraded"]);
+  assert.equal(entries.find(e => e.path === options.currentBaseResources).ownership, "in-use");
+  // Once the installation itself is gone, its history is evidence of removal instead.
+  await writeFile(join(f.online, RUNTIME_REGISTRY), JSON.stringify({ schema: 1, installations: {
+    [join(f.root, "gone", target.resources)]: { key: hex(64), version: "0.10.3",
+      history: [{ key: basename(old), version: null, leftAt: "2026-10-30T00:00:00Z" }] } } }));
+  const removed = (await f.inventory(options)).entries.find(e => e.path === old);
+  assert.equal(removed.ownership, "retired");
+  assert.deepEqual(removed.evidence.map(e => e.kind), ["installation-removed"]);
+  const result = await reclaimStorage(options);
+  assert.ok(result.removed.includes(removed.id));
+  assert.equal(await exists(old), false);
+  assert.equal(await exists(options.currentBaseResources), true);
+});
+
 test("a corrupt or foreign launch registry is no evidence either way", async t => {
   const f = await fixture(t);
   const options = await healthyOnlineRuntime(f);

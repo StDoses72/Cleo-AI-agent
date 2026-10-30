@@ -224,13 +224,35 @@ test("launching with an installed runtime journals the program location and prun
   const refreshed = readRuntimeRegistry(online);
   assert.deepEqual(Object.keys(refreshed.installations), [resolve(resources)]);
   assert.equal(refreshed.installations[resolve(resources)].version, plan.version);
+  // An in-place upgrade switches this location to a new key: the key it leaves stays in history
+  // (with the time it left) while its runtime directory exists, so cleanup can retire it later.
+  const upgraded = { ...plan, version: "0.6.2" };
+  await writeFile(join(resources, "runtime-plan.json"), JSON.stringify(upgraded));
+  const newKey = readRuntimePlan(resources).key;
+  assert.notEqual(newKey, key);
+  await readyRuntime(join(online, newKey), newKey);
+  assert.equal(findInstalledRuntime(resources, root), join(online, newKey));
+  const afterUpgrade = readRuntimeRegistry(online).installations[resolve(resources)];
+  assert.equal(afterUpgrade.key, newKey);
+  assert.equal(afterUpgrade.version, "0.6.2");
+  assert.deepEqual(afterUpgrade.history.map(item => [item.key, item.version]), [[key, plan.version]]);
+  assert.ok(afterUpgrade.history[0].leftAt);
+  // Launching again does not duplicate the history item; removing the old runtime prunes it.
+  findInstalledRuntime(resources, root);
+  assert.equal(readRuntimeRegistry(online).installations[resolve(resources)].history.length, 1);
+  await rm(join(online, key), { recursive: true });
+  findInstalledRuntime(resources, root);
+  assert.deepEqual(readRuntimeRegistry(online).installations[resolve(resources)].history, []);
   // Malformed content is an empty registry, never an exception or a trusted entry.
   assert.deepEqual(parseRuntimeRegistry("nonsense"), { schema: 1, installations: {} });
+  assert.deepEqual(parseRuntimeRegistry(JSON.stringify({ schema: 1, installations: {
+    "/x": { key: newKey, history: [{ key: "bad" }, { key: newKey }, { key, version: 1 }] } } })).installations["/x"].history,
+  [{ key, version: null, leftAt: null }]);
   assert.deepEqual(parseRuntimeRegistry(JSON.stringify({ schema: 1, installations: { a: { key: "short" } } })), { schema: 1, installations: {} });
   // A registry location that cannot be written never blocks startup.
   await rm(join(online, RUNTIME_REGISTRY));
   await mkdir(join(online, RUNTIME_REGISTRY));
-  assert.equal(findInstalledRuntime(resources, root), join(online, key));
+  assert.equal(findInstalledRuntime(resources, root), join(online, newKey));
 });
 
 test("the packaged entry point reports stages and honours the cancel file", async t => {

@@ -313,18 +313,24 @@ export async function storageInventory({
     let registry;
     try { registry = parseRuntimeRegistry(await fs.readFile(join(root, RUNTIME_REGISTRY), "utf8")); }
     catch { continue; }
+    const evidence = (key, kind, detail) => retirementEvidence.set(key, [...(retirementEvidence.get(key) || []), { kind, detail }]);
     for (const [installation, entry] of Object.entries(registry.installations)) {
-      if (!(await probe(fs, installation))?.isDirectory()) {
-        retirementEvidence.set(entry.key, [...(retirementEvidence.get(entry.key) || []),
-          { kind: "installation-removed", detail: tr("storage_reclaim.installation_no_longer_exists_value", { p0: installation }) }]);
+      const exists = (await probe(fs, installation))?.isDirectory();
+      // Runtimes this location already left (journaled at the launch that switched away).
+      for (const item of entry.history || []) {
+        evidence(item.key, exists ? "installation-upgraded" : "installation-removed", exists
+          ? tr("storage_reclaim.installation_now_uses_another_runtime_value", { p0: installation })
+          : tr("storage_reclaim.installation_no_longer_exists_value", { p0: installation }));
+      }
+      if (!exists) {
+        evidence(entry.key, "installation-removed", tr("storage_reclaim.installation_no_longer_exists_value", { p0: installation }));
         continue;
       }
       const planned = await planKey(installation, fs);
       if (planned === null || planned === entry.key) {
         claim(entry.key, tr("storage_reclaim.cleo_value_launched_from_value", { p0: entry.version || "", p1: installation }), "launch-registry");
       } else {
-        retirementEvidence.set(entry.key, [...(retirementEvidence.get(entry.key) || []),
-          { kind: "installation-upgraded", detail: tr("storage_reclaim.installation_now_uses_another_runtime_value", { p0: installation }) }]);
+        evidence(entry.key, "installation-upgraded", tr("storage_reclaim.installation_now_uses_another_runtime_value", { p0: installation }));
       }
     }
   }

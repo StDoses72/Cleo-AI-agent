@@ -137,8 +137,13 @@ export function parseRuntimeRegistry(text) {
   const installations = {};
   for (const [path, entry] of Object.entries(data.installations)) {
     if (!path || !entry || typeof entry !== "object" || !/^[a-f0-9]{64}$/.test(entry.key || "")) continue;
+    // Runtimes this location used before switching: the evidence that it left them (#141).
+    const history = (Array.isArray(entry.history) ? entry.history : [])
+      .filter(item => item && typeof item === "object" && /^[a-f0-9]{64}$/.test(item.key || "") && item.key !== entry.key)
+      .map(item => ({ key: item.key, version: typeof item.version === "string" ? item.version : null,
+        leftAt: typeof item.leftAt === "string" ? item.leftAt : null }));
     installations[path] = { key: entry.key, version: typeof entry.version === "string" ? entry.version : null,
-      updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt : null };
+      updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt : null, history };
   }
   return { schema: 1, installations };
 }
@@ -150,15 +155,31 @@ export function readRuntimeRegistry(root) {
 
 /** Purpose: Journal that the program at `resources` launched with runtime `plan.key` under `root`.
  * Input: runtime root, the program's resources path and its runtime plan. Output: true when written.
- * Entries whose runtime directory is gone are dropped on the way. Never throws: a read-only root
- * only loses the evidence, it must not stop Cleo from starting.
+ * When the location switches runtimes (an in-place upgrade), the key it leaves is kept in the
+ * entry's `history` with the time it left, so the storage inventory can later prove that this
+ * installation no longer needs the old runtime. Entries and history items whose runtime
+ * directory is gone are dropped on the way. Never throws: a read-only root only loses the
+ * evidence, it must not stop Cleo from starting.
  */
 export function recordRuntimeOwner(root, resources, plan) {
   try {
     const registry = readRuntimeRegistry(root);
-    const installations = Object.fromEntries(Object.entries(registry.installations)
-      .filter(([, entry]) => existsSync(join(root, entry.key))));
-    installations[resolve(resources)] = { key: plan.key, version: plan.version ?? null, updatedAt: new Date().toISOString() };
+    const present = key => existsSync(join(root, key));
+    const installations = {};
+    for (const [path, entry] of Object.entries(registry.installations)) {
+      const history = entry.history.filter(item => present(item.key));
+      if (present(entry.key)) installations[path] = { ...entry, history };
+      else if (history.length) installations[path] = { ...entry, history };
+    }
+    const location = resolve(resources);
+    const previous = installations[location];
+    const now = new Date().toISOString();
+    const history = (previous?.history || []).filter(item => item.key !== plan.key);
+    if (previous && previous.key !== plan.key && present(previous.key)
+        && !history.some(item => item.key === previous.key)) {
+      history.unshift({ key: previous.key, version: previous.version ?? null, leftAt: now });
+    }
+    installations[location] = { key: plan.key, version: plan.version ?? null, updatedAt: now, history };
     const path = join(root, RUNTIME_REGISTRY);
     const temporary = `${path}.${process.pid}.tmp`;
     writeFileSync(temporary, JSON.stringify({ schema: 1, installations }, null, 2) + "\n");
