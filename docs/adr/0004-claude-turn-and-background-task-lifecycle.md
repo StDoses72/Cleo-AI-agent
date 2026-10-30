@@ -1,7 +1,7 @@
 # 0004. Claude 回合与后台任务的生命周期归 provider 所有
 
-- Status: Proposed
-- Date: 2026-10-30
+- **Status**: Proposed
+- **Date**: 2026-10-30
 
 ## Context
 

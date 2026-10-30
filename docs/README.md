@@ -27,9 +27,10 @@
 3. [Desktop 子系统说明](../ui/README.md)：Electron/React 边界、IPC、构建和 smoke test。
 4. [仓库贡献规则](../AGENTS.md)：代码修改和 review 的长期约束。
 
-## ADR
+## ADR（架构决策记录）
 
-- [0004 Claude 回合与后台任务的生命周期归 provider 所有](adr/0004-claude-turn-and-background-task-lifecycle.md)
+- [ADR 索引与写作约定](adr/README.md)：影响架构、数据模型或用户可见行为边界的决策，按编号记录在 `docs/adr/`，重点是为什么这样选、否决了什么、留下了什么限制。
+- [ADR 0004 Claude 回合与后台任务的生命周期归 provider 所有](adr/0004-claude-turn-and-background-task-lifecycle.md)
 
 ## 文档维护约定
 
