@@ -13,6 +13,7 @@ from uuid import uuid4
 from langchain_core.messages import AIMessage, AIMessageChunk, convert_to_messages
 
 from cleo.config.settings import AgentProfile, settings
+from cleo.harnesses.availability import ModelAvailability, observed_turn, profile_scope
 from cleo.harnesses.events import capture_context_usage
 from cleo.integrations.subscriptions import AgentMcp, create_runtime
 from cleo.runtime.usage import ContextWindowUsage
@@ -155,17 +156,24 @@ class RuntimeGraph:
                 session = None
                 try:
                     model = None if self.profile.model == "default" else self.profile.model
-                    if native:
-                        from cleo.integrations.harnesses.acp import SessionResumeUnsupported
+                    evidence = ModelAvailability(Path(store.memory_root) / ".routing")
+                    account_scope = profile_scope(self.profile)
 
-                        try:
-                            session = await provider.resume_session(native, str(self.root), model)
-                        except SessionResumeUnsupported:
-                            # The handshake rejected resume before any prompt was sent.
-                            native = None
-                            session = await provider.create_session(str(self.root), model)
-                    else:
-                        session = await provider.create_session(str(self.root), model)
+                    async def connect():
+                        """Purpose: Reconnect without replaying. Output: native session."""
+                        nonlocal native
+                        if native:
+                            from cleo.integrations.harnesses.acp import SessionResumeUnsupported
+
+                            try:
+                                return await provider.resume_session(native, str(self.root), model)
+                            except SessionResumeUnsupported:
+                                native = None
+                        return await provider.create_session(str(self.root), model)
+
+                    session = await observed_turn(
+                        evidence, account_scope, model, None, connect,
+                    )
                     if session.native_id and manifest:
                         store.update_manifest(
                             thread_id,
@@ -210,10 +218,13 @@ class RuntimeGraph:
                             event.data.get("provider_event_type") == "thread/tokenUsage/updated"
                         )
                         if event.type == "assistant_message_chunk" and event.text:
-                            await queue.put(AIMessageChunk(content=event.text))
+                            await queue.put(AIMessageChunk(
+                                content=event.text, response_metadata={"cleo_native_usage": True},
+                            ))
                         if is_usage:
                             capture_context_usage(event, usage)
                             await queue.put(AIMessageChunk(content="", response_metadata={
+                                "cleo_native_usage": True,
                                 "token_usage": {
                                     "total_tokens": usage.used_tokens,
                                     "input_tokens": usage.input_tokens,
@@ -221,7 +232,9 @@ class RuntimeGraph:
                                     "context_window": usage.window_tokens,
                                 },
                             }))
-                        if manifest and (is_usage or event.type in {"tool_call", "tool_result"}):
+                        if manifest and (
+                            is_usage or event.type in {"usage", "tool_call", "tool_result"}
+                        ):
                             store.append_event(
                                 session_id=thread_id,
                                 space=manifest["space"],
@@ -232,7 +245,11 @@ class RuntimeGraph:
                                 data=event.data,
                             )
 
-                    result = await provider.prompt(session.id, prompt, on_event=on_event)
+                    result = await observed_turn(
+                        evidence, account_scope, self.profile.model,
+                        options.get("effort"),
+                        lambda: provider.prompt(session.id, prompt, on_event=on_event),
+                    )
                     if result.status != "completed":
                         raise RuntimeError(result.error or f"Runtime stopped: {result.status}")
                     if result.native_session_id and manifest:

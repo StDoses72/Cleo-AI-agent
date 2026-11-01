@@ -16,6 +16,14 @@ export function PermissionSelector({ runtime, onChange, disabled = false }: {
   const [error, setError] = useState("");
   const inFlight = useRef(false);
   const presets = runtime.permissionOptions?.presets ?? [];
+  const unified = runtime.routingMode === "auto" && runtime.routingPermissionPreset
+    && runtime.routingPermissionPreset !== "inherit" ? runtime.routingPermissionPreset : null;
+  if (unified) return <div className="permission-selector">
+    <select className="text-control" aria-label="会话权限" data-testid="permission-selector" disabled
+      value={unified} title="由设置 → 子任务路由 → 执行权限统一管理；主执行模型与子 agent 在下次运行时使用此权限。">
+      <option value={unified}>{{ ask: "请求批准", review: "帮我审批", full: "完全访问" }[unified]} · 路由</option>
+    </select>
+  </div>;
   if (!presets.length || !onChange) return null;
   const pending = runtime.pendingPermissions;
   const selected = pending?.provider === runtime.provider ? {

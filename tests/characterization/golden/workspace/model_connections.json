@@ -3,6 +3,7 @@
     "catalog": {
       "defaultNonProductivityProfile": "connection_<hex:1>",
       "defaultProductivityProvider": "scripted",
+      "defaultRoutingMode": "manual",
       "nonProductivityProfiles": [
         {
           "active": true,
@@ -239,7 +240,7 @@
     "runtime": {
       "access": ".",
       "approval": "Cleo 工具策略",
-      "contextWindow": 100000,
+      "contextWindow": 0,
       "editable": false,
       "effort": "high",
       "model": "fake-chat-mini",
@@ -249,6 +250,7 @@
       ],
       "profileId": "connection_<hex:1>",
       "provider": "openai",
+      "routingMode": "manual",
       "steerMode": "boundary",
       "supportsQuestions": false
     }

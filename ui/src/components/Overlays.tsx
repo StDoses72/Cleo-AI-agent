@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { dreamStatusLabel } from "../memoryStatus";
 import { UpdateVersionPicker } from "./UpdateVersionPicker";
+import { RoutingSettingsPanel } from "./model-settings/RoutingSettingsPanel";
 import { handleDialogKeyDown, Modal } from "./Modal";
 import { PermissionSelector } from "./PermissionSelector";
 import { accessLabel, approvalLabel, effortLabels, projectLabel } from "../runtime-labels";
@@ -321,10 +322,11 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-type SettingsPage = "appearance" | "agent" | "instructions" | "models" | "models-add" | "models-dream" | "import" | "updates" | "data";
+type SettingsPage = "appearance" | "agent" | "instructions" | "models" | "models-add" | "models-dream" | "routing" | "import" | "updates" | "data";
 const settingsTitles: Record<SettingsPage, string> = {
   appearance: "外观", agent: "运行设置", instructions: "对话指令", models: "当前配置",
   "models-add": "新增连接", "models-dream": "记忆整理", import: "导入", updates: "软件更新", data: "数据与记忆",
+  routing: "子任务路由",
 };
 
 export function SettingsModal({
@@ -387,6 +389,7 @@ export function SettingsModal({
               <button className={page === "models" ? "active" : ""} aria-current={page === "models" ? "page" : undefined} onClick={() => setPage("models")}><SlidersHorizontal size={15} />当前配置</button>
               <button className={page === "models-add" ? "active" : ""} aria-current={page === "models-add" ? "page" : undefined} onClick={() => setPage("models-add")}><Plus size={15} />新增连接</button>
               <button className={page === "models-dream" ? "active" : ""} aria-current={page === "models-dream" ? "page" : undefined} onClick={() => setPage("models-dream")}><Moon size={15} />记忆整理</button>
+              <button className={page === "routing" ? "active" : ""} aria-current={page === "routing" ? "page" : undefined} onClick={() => setPage("routing")}><SlidersHorizontal size={15} />子任务路由</button>
             </div>
             <button className={page === "import" ? "active" : ""} aria-current={page === "import" ? "page" : undefined} type="button" onClick={() => setPage("import")}><ArrowDownToLine size={16} />导入</button>
             <button className={page === "updates" ? "active" : ""} aria-current={page === "updates" ? "page" : undefined} type="button" onClick={() => setPage("updates")}><RefreshCw size={16} />更新</button>
@@ -401,6 +404,7 @@ export function SettingsModal({
             <div className="settings-heading"><h2>{settingsTitles[page]}</h2>{page === "models" && <button className="settings-primary" onClick={() => setPage("models-add")}><Plus size={15} />新增连接</button>}</div>
           </header>
           <div className="settings-scroll" ref={scrollRef}>
+          {page === "routing" && <RoutingSettingsPanel active={open} />}
           <div hidden={page !== "instructions"} className="settings-instructions-container">
             {agentInstructionsError && <p className="settings-error" role="alert">{agentInstructionsError}
               <button type="button" onClick={() => void onLoadAgentInstructions().catch(() => {})}>重试</button></p>}
@@ -435,7 +439,7 @@ export function SettingsModal({
               <RuntimePermissions key={runtimeThread?.id ?? "draft"} runtime={runtime}
                 threadId={runtimeThread?.id} onChange={onPermissionsChange} />
             </div>
-          ) : page === "instructions" || page === "import" || isModels ? null : page === "updates" ? (
+          ) : page === "instructions" || page === "import" || page === "routing" || isModels ? null : page === "updates" ? (
             <UpdateSettingsPage
               active={open}
               state={updateState}
@@ -479,6 +483,11 @@ function RuntimePermissions({ runtime, threadId, onChange }: {
     catch (error) { setError(error instanceof Error ? error.message : "权限更改未保存，请重试。"); }
     finally { inFlight.current = false; setSaving(false); }
   };
+  if (runtime.routingMode === "auto" && runtime.routingPermissionPreset
+      && runtime.routingPermissionPreset !== "inherit") return <>
+    <PermissionSelector runtime={runtime} />
+    <p className="settings-scope">在子任务路由设置中统一修改执行权限。</p>
+  </>;
   return <>
     <PermissionSelector key={runtime.provider} runtime={runtime} disabled={saving}
       onChange={threadId && onChange ? update => onChange(threadId, update) : undefined} />

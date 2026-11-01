@@ -109,7 +109,7 @@
           "runtime": {
             "access": "default",
             "approval": "user",
-            "contextWindow": 128000,
+            "contextWindow": 0,
             "editable": true,
             "effort": "low",
             "handoffStatus": null,
@@ -140,6 +140,7 @@
               "reason": "此服务不提供统一权限档位，请使用高级审批设置。"
             },
             "provider": "scripted",
+            "routingMode": "manual",
             "serviceTier": null,
             "settingsRevision": 1,
             "steerMode": "boundary",

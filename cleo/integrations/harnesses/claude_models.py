@@ -50,5 +50,7 @@ async def discover_claude_models(
             is_default=entry.get("isDefault") is True,
             default_effort=None,
             supported_efforts=supported,
+            available=True,
+            availability_source="runtime_catalog",
         )
     return tuple(models.values())

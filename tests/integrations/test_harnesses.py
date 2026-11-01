@@ -226,10 +226,13 @@ def test_claude_provider_reconnects_with_selected_effort(tmp_path) -> None:
         ),
         cwd=str(tmp_path),
         native_session_id="native-session",
+        computer_client="a" * 32,
     )
     connected: list[dict] = []
 
-    async def connect(project_path, model, effort=None, resume=None, permission_mode=None):
+    async def connect(project_path, model, effort=None, resume=None, permission_mode=None,
+                      computer_client=None):
+        """Purpose: Capture reconnect scope. Input: Launch options/key. Output: Fake runtime."""
         connected.append(
             {
                 "project_path": project_path,
@@ -237,6 +240,7 @@ def test_claude_provider_reconnects_with_selected_effort(tmp_path) -> None:
                 "effort": effort,
                 "resume": resume,
                 "permission_mode": permission_mode,
+                "computer_client": computer_client,
             }
         )
         return _ClaudeRuntime(
@@ -244,6 +248,7 @@ def test_claude_provider_reconnects_with_selected_effort(tmp_path) -> None:
             options=SessionOptions(model=model, effort=effort, approval_mode=permission_mode),
             cwd=project_path,
             native_session_id=resume,
+            computer_client=computer_client,
         )
 
     provider._connect = connect
@@ -259,6 +264,7 @@ def test_claude_provider_reconnects_with_selected_effort(tmp_path) -> None:
             "effort": "max",
             "resume": "native-session",
             "permission_mode": "acceptEdits",
+            "computer_client": "a" * 32,
         }
     ]
 

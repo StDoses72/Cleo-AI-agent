@@ -61,6 +61,33 @@
       "type": "turn-started"
     },
     {
+      "type": "task-usage",
+      "usage": {
+        "breakdown": [
+          {
+            "cacheRead": null,
+            "cacheWrite": null,
+            "complete": false,
+            "input": null,
+            "missingCalls": 1,
+            "model": "fake-chat",
+            "output": null,
+            "provider": "cleo",
+            "reportedCalls": 0,
+            "reportedCostUsd": null,
+            "role": "main",
+            "total": null
+          }
+        ],
+        "complete": false,
+        "input": null,
+        "missingCalls": 1,
+        "output": null,
+        "reportedCalls": 0,
+        "total": null
+      }
+    },
+    {
       "message": "Error code: 500 - {'error': {'message': 'fake upstream failure', 'type': 'server_error'}}",
       "type": "error"
     },

@@ -129,7 +129,8 @@ test("Windows extraction preserves literal paths and rejects a broken archive", 
 test("Windows extraction handles release entries longer than MAX_PATH", { skip: process.platform !== "win32" }, async (t) => {
   const root = await temporaryDirectory(t);
   const archive = join(root, "release.zip");
-  const destination = join(root, "official-12345678-1234-1234-1234-123456789012");
+  // Keep the fixture beyond MAX_PATH even when TEMP itself is deliberately short.
+  const destination = join(root, "long-path-regression".repeat(2), "official-12345678-1234-1234-1234-123456789012");
   const entry = "Cleo/resources/python/Lib/site-packages/anthropic/types/beta/__pycache__/beta_managed_agents_self_hosted_resources_unsupported_deployment_paused_reason_error.cpython-312.pyc";
   assert.ok(join(destination, entry).length > 260);
   // Build ZIP entries directly; fixture generation must not depend on filesystem long-path support.

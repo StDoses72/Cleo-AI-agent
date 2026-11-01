@@ -100,6 +100,7 @@ def timeline_from_events(
     thoughts = state.get("thoughts", {})
     answers = state.get("answers", {})
     steers = state.get("steers", {})
+    seen_errors = state.setdefault("seen_errors", {})
     for event in events:
         event_type = str(event.get("type") or "")
         event_id = str(event.get("id") or f"event-{len(items)}")
@@ -228,23 +229,37 @@ def timeline_from_events(
             _finalize_running_tools(tools.values())
             if event_type == "session_completed":
                 continue
+            from cleo.harnesses.availability import display_execution_error
+
+            detail = display_execution_error(content or "任务在工具完成前结束。")
+            error_key = f"{current_turn_key}\0{detail}"
+            if error_key in seen_errors:
+                continue
+            seen_errors[error_key] = True
             items.append(
                 {
                     "id": event_id,
                     "type": "notice",
                     "tone": "warning",
                     "title": "运行需要查看",
-                    "detail": content or "任务在工具完成前结束。",
+                    "detail": detail,
                 }
             )
         elif event_type == "error":
+            from cleo.harnesses.availability import display_execution_error
+
+            detail = display_execution_error(content or "后端报告了一个错误。")
+            error_key = f"{current_turn_key}\0{detail}"
+            if error_key in seen_errors:
+                continue
+            seen_errors[error_key] = True
             items.append(
                 {
                     "id": event_id,
                     "type": "notice",
                     "tone": "warning",
                     "title": "运行需要查看",
-                    "detail": content or "后端报告了一个错误。",
+                    "detail": detail,
                 }
             )
         for projected in items[-1:]:
@@ -557,7 +572,12 @@ def stream_event_item(event: AgentEvent, state: dict[str, Any]) -> list[dict[str
         output.append({"type": "question-request" if event.type == "question_request"
                        else "question-resolved", "request": payload})
     elif event.type == "error":
-        output.append({"type": "error", "message": event.text or "Provider reported an error."})
+        from cleo.harnesses.availability import display_execution_error
+
+        detail = display_execution_error(event.text or "Provider reported an error.")
+        if detail not in state.setdefault("reported_errors", set()):
+            state["reported_errors"].add(detail)
+            output.append({"type": "error", "message": detail})
     for projected in output:
         if projected["type"] == "upsert-item":
             item = projected["item"]

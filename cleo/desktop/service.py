@@ -976,6 +976,7 @@ class DesktopService:
         profile_id: str | None = None,
         service_tier: str | None = None,
         project_path: str | None = None,
+        routing_mode: str | None = None,
         access: str | None = None,
         approval: str | None = None,
     ) -> dict[str, Any]:
@@ -986,6 +987,8 @@ class DesktopService:
         permissions are validated against the provider type before any session is created,
         then applied to the new session like a runtime update would.
         """
+        if routing_mode is not None:
+            self._validate_routing_mode(routing_mode)
         memory_space = "non_productivity" if space == "chat" else "productivity"
         if space not in {"chat", "productivity"}:
             raise ValueError(f"不支持的项目空间：{space}")
@@ -1085,9 +1088,18 @@ class DesktopService:
             await self._adopt_productivity_session(
                 session, effort=effort, service_tier=service_tier,
             )
-            if permissions:
-                await self._update_runtime(thread_id=session.id, update=permissions)
             manifest = self.store.load_manifest(session.id)
+        if routing_mode is not None:
+            manifest = self.store.update_manifest(
+                manifest["id"], runtime_options={
+                    **(manifest.get("runtime_options") or {}), "routing_mode": routing_mode,
+                },
+            )
+        if memory_space == "productivity":
+            if permissions and self._routing_permission_setting(manifest) == "inherit":
+                await self._update_runtime(thread_id=manifest["id"], update=permissions)
+            await self._apply_routing_permissions(self.store.load_manifest(manifest["id"]))
+            manifest = self.store.load_manifest(manifest["id"])
         self._activate(manifest)
         return await self._thread(manifest)
 
@@ -1126,6 +1138,7 @@ class DesktopService:
         if self._runs.is_switching(thread_id):
             raise ValueError("正在交接 harness，请等待切换完成后发送。")
         prompt = str(prompt).strip()
+        task_prompt = prompt
         if not prompt:
             raise ValueError("prompt cannot be empty")
         manifest = self.store.load_manifest(thread_id)
@@ -1164,6 +1177,10 @@ class DesktopService:
                     manifest = self.store.load_manifest(thread_id)
                 if had_pending_permissions:
                     await emit({"type": "runtime", "runtime": self._runtime_profile(manifest)})
+            await self._apply_routing_permissions(manifest, run_id=active_run_id)
+            manifest = self.store.load_manifest(thread_id)
+            if self._routing_permission_setting(manifest) != "inherit":
+                await emit({"type": "runtime", "runtime": self._runtime_profile(manifest)})
             async with self._runs.workspace_guard:
                 root = await asyncio.to_thread(self._workspace_root, manifest)
                 peers = self._runs.claim_workspace(thread_id, root)
@@ -1200,16 +1217,45 @@ class DesktopService:
                 async with timed_reply(
                     self.settings.MEMORY_DIR, manifest, emit, run_event,
                 ) as timed_event:
-                    await system.run_turn(TurnInput(
-                        manifest, prompt, attachments or [],
-                        steer_ids=steer_ids, display_prompt=display_prompt,
-                    ), timed_event)
+                    from cleo.routing.models import RoutingSettings, load_policy
+                    from cleo.runtime.task_tracking import begin_task_turn
+                    from cleo.runtime.task_usage import task_usage
+
+                    profile_dir = getattr(self.settings, "PROFILE_DIR", None)
+                    policy = (load_policy(Path(profile_dir).with_name("routing.json"))
+                              if profile_dir else RoutingSettings())
+                    try:
+                        await begin_task_turn(
+                            self.store, self.settings, self.store.load_manifest(thread_id),
+                            task_prompt, policy,
+                        )
+                    finally:
+                        if self.store.load_manifest(thread_id).get("usage_task_id"):
+                            await emit({"type": "task-usage", "usage": await asyncio.to_thread(
+                                task_usage, self.store, thread_id,
+                            )})
+                    from cleo.routing.approvals import watch_worker_approvals
+
+                    async def routed_event(event):
+                        """Purpose: Register approvals. Input: UI event. Output: Parent stream."""
+                        if event["type"] == "approval-request":
+                            self._runs.add_approval(thread_id, event["request"])
+                        else:
+                            self._runs.drop_approval(thread_id, event["response"]["id"])
+                        await timed_event(event)
+
+                    async with watch_worker_approvals(self.store, thread_id, routed_event):
+                        await system.run_turn(TurnInput(
+                            manifest, prompt, attachments or [],
+                            steer_ids=steer_ids, display_prompt=display_prompt,
+                        ), timed_event)
                 if not terminal or terminal["type"] != "done" or steering.mode != "boundary":
                     break
                 next_message = await steering.next_boundary()
                 if next_message is None:
                     break
                 prompt, steer_ids = next_message
+                task_prompt = prompt
                 display_prompt = None
                 attachments = []
             await steering.close()
@@ -1236,6 +1282,13 @@ class DesktopService:
                     except (OSError, RuntimeError, ValueError) as exc:
                         self._debug(f"Shared checkpoint cleanup failed for {thread_id}: {exc}")
                     finally:
+                        if self.store.load_manifest(thread_id).get(
+                            "routing_permission_run_id",
+                        ) == active_run_id:
+                            self.store.update_manifest(
+                                thread_id, routing_permission_run_id=None,
+                                routing_permission_preset=None,
+                            )
                         self._runs.finish(thread_id)
 
     def _turn_hooks(self) -> list[TurnHook]:
@@ -1387,6 +1440,12 @@ class DesktopService:
         decision: str,
     ) -> dict[str, Any]:
         manifest = self.store.load_manifest(thread_id)
+        from cleo.routing.approvals import resolve_worker_approval
+
+        routed = resolve_worker_approval(self.store, thread_id, approval_id, decision)
+        if routed is not None:
+            self._runs.drop_approval(thread_id, approval_id)
+            return routed
         if manifest["space"] != "productivity":
             raise ValueError("Only productivity tasks can request tool approval.")
         await self._ensure_productivity_session(manifest)
@@ -1407,7 +1466,10 @@ class DesktopService:
         return await self._adapter().resolve_question(thread_id, question_id, answers)
 
     async def _prepare_harness(self, manifest, provider, implementation, session_id, effort=None):
-        """Apply desktop controls to a candidate before making it the current route."""
+        """Purpose: Prepare a main harness handoff before publishing its route.
+
+        Input: Host manifest, connected provider and effort. Output: Validated native controls.
+        """
         account = getattr(implementation, "account_status", None)
         if callable(account) and not (await account()).authenticated:
             raise ValueError(f"{provider} 尚未登录，请先完成登录。")
@@ -1427,6 +1489,13 @@ class DesktopService:
         if (not self._is_evolution(manifest)
                 and Capability.USER_APPROVALS in capabilities_of(implementation)):
             await implementation.enable_user_approvals(session_id)
+        preset = self._routing_permission_setting(manifest)
+        if preset != "inherit" and not self._is_evolution(manifest):
+            from cleo.routing.permissions import native_permissions
+
+            await implementation.update_session_options(
+                session_id, **native_permissions(implementation.provider_type, preset),
+            )
 
     async def switch_harness(
         self, *, thread_id: str, provider: str, model: str | None = None,
@@ -1489,8 +1558,16 @@ class DesktopService:
         )
 
     async def _apply_pending_permissions(self, manifest: dict[str, Any]) -> None:
+        """Purpose: Apply queued per-harness permissions unless a unified choice supersedes them.
+
+        Input: Reserved session manifest. Output: Native update and guarded queue cleanup.
+        """
         pending = manifest.get("pending_runtime_permissions")
         if not pending:
+            return
+        if (not self._is_evolution(manifest)
+                and self._routing_permission_setting(manifest) != "inherit"):
+            # Keep the queue until the replacement native permissions succeed.
             return
         # Changes made after this run was reserved belong to the following run.
         latest = self.store.load_manifest(manifest["id"])
@@ -1514,6 +1591,22 @@ class DesktopService:
         command: bool = False,
     ) -> dict[str, Any]:
         manifest = self.store.load_manifest(thread_id)
+        if ("access" in update or "approval" in update) \
+                and self._routing_permission_setting(manifest) != "inherit" \
+                and not self._is_evolution(manifest):
+            raise ValueError("子任务路由使用统一权限，请在设置 → 子任务路由中修改。")
+        if "routingMode" in update:
+            if len(update) != 1:
+                raise ValueError("请单独修改执行模式。")
+            self._validate_routing_mode(update["routingMode"])
+            if self._runs.is_running(thread_id):
+                raise ValueError("请等待当前轮结束后切换执行模式。")
+            self._runtime_revision(thread_id, runtime_options={
+                **(manifest.get("runtime_options") or {}), "routing_mode": update["routingMode"],
+            })
+            if manifest["space"] != "productivity":
+                self._chat.forget(thread_id)
+            return self._runtime_profile(self.store.load_manifest(thread_id))
         if (update.get("permissionProvider") is not None
                 and update["permissionProvider"] != manifest["provider"]):
             raise ValueError("运行后端已切换，请重新选择权限。")
@@ -1547,6 +1640,10 @@ class DesktopService:
                 },
             )
             self._chat.forget(thread_id)
+            self.store.append_event(
+                session_id=thread_id, space=manifest["space"], project=manifest["project"],
+                event_type="context_model_changed", actor="system", data={"model": selected.model},
+            )
             return self._runtime_profile(self.store.load_manifest(thread_id))
         options: dict[str, Any] = {}
         if self._is_evolution(manifest):
@@ -1606,6 +1703,32 @@ class DesktopService:
     async def get_model_settings(self) -> dict[str, Any]:
         return read_model_settings(self.settings.PROFILE_DIR)
 
+    def _routing_controls(self):
+        """Purpose: Share routing settings with desktop RPC. Output: local controls."""
+        from cleo.desktop.routing_settings import RoutingControls
+
+        return RoutingControls(self.settings, self.store, self._adapter())
+
+    async def get_routing_settings(self, refresh: bool = False) -> dict[str, Any]:
+        """Purpose: Inspect routing without model calls. Input: refresh flag. Output: view."""
+        return await self._routing_controls().view(refresh)
+
+    async def save_routing_settings(self, update: dict) -> dict[str, Any]:
+        """Purpose: Apply user routing edits. Input: policy changes. Output: updated view."""
+        return await self._routing_controls().save(update)
+
+    async def refresh_routing_benchmarks(self) -> dict[str, Any]:
+        """Purpose: Manually update benchmark metadata. Output: cache status and policy."""
+        return await self._routing_controls().refresh_benchmarks()
+
+    async def submit_routing_feedback(self, update: dict) -> dict[str, Any]:
+        """Purpose: Persist explicit user attribution. Output: refreshed routing view."""
+        return await self._routing_controls().submit_feedback(update)
+
+    async def save_benchmark_connection(self, update: dict) -> dict[str, Any]:
+        """Purpose: Save backend-only benchmark credentials. Input: edits. Output: safe metadata."""
+        return await self._routing_controls().save_benchmark_connection(update)
+
     async def get_agent_instructions(self) -> dict[str, Any]:
         path = Path(self.settings.active_directory_profile.root_path) / "AGENTS.md"
         return {
@@ -1658,6 +1781,7 @@ class DesktopService:
             "productivityProviders": providers,
             "defaultNonProductivityProfile": self._active_agent_profile_id(),
             "defaultProductivityProvider": self.settings.productivity.default_provider,
+            "defaultRoutingMode": self._routing_mode(None),
         }
 
     async def get_local_skills(
@@ -2060,6 +2184,13 @@ class DesktopService:
                     and event.type in {"permission_request", "question_request"}):
                 await steering.boundary_received()
             capture_context_usage(event, usage)
+            if (event.type == "usage"
+                    or event.data.get("provider_event_type") == "thread/tokenUsage/updated"):
+                from cleo.runtime.task_usage import task_usage
+
+                await emit({"type": "task-usage", "usage": await asyncio.to_thread(
+                    task_usage, self.store, manifest["id"],
+                )})
             for projected in stream_event_item(event, state):
                 if projected["type"] == "approval-request":
                     request = {**projected["request"], "threadId": manifest["id"]}
@@ -2197,10 +2328,19 @@ class DesktopService:
                     raise
                 asyncio.current_task().uncancel()
         publication.result()
+        from cleo.runtime.task_usage import task_usage
+
+        await emit({"type": "task-usage", "usage": await asyncio.to_thread(
+            task_usage, self.store, manifest["id"],
+        )})
         if result.status == "completed":
             await emit({"type": "done", "summary": (result.response or prompt)[:80]})
         else:
-            await emit({"type": "error", "message": result.error or f"运行状态：{result.status}"})
+            from cleo.harnesses.availability import display_execution_error
+
+            detail = display_execution_error(result.error or f"运行状态：{result.status}")
+            if detail not in state.get("reported_errors", set()):
+                await emit({"type": "error", "message": detail})
 
     async def _sync_chat(self, agent: Any, manifest: dict[str, Any], status: str) -> None:
         state = await agent.deepagent.aget_state({"configurable": {"thread_id": manifest["id"]}})
@@ -2463,7 +2603,7 @@ class DesktopService:
             await asyncio.to_thread(TimelineIndex(self.store, manifest).editable_turns)
             if include_history and self._rewindable(manifest) else []
         )
-        return thread_view(
+        result = thread_view(
             manifest,
             page=page,
             events=events,
@@ -2481,6 +2621,10 @@ class DesktopService:
             changes=changes,
             skills=[skill.entry() for skill in self._local_skills(manifest)],
         )
+        from cleo.runtime.task_usage import task_usage
+
+        result["taskUsage"] = await asyncio.to_thread(task_usage, self.store, manifest["id"])
+        return result
 
     @staticmethod
     def _can_undo(manifest: dict) -> bool:
@@ -2506,6 +2650,7 @@ class DesktopService:
 
     def _runtime_profile(self, manifest: dict[str, Any] | None) -> dict[str, Any]:
         from cleo.harnesses.context import handoff_status
+        from cleo.runtime.context_capacity import context_capacity
         if manifest is None or manifest.get("space") == "non_productivity":
             options = (
                 manifest.get("runtime_options")
@@ -2522,6 +2667,7 @@ class DesktopService:
             }
             return {
                 "profileId": profile_id,
+                "routingMode": self._routing_mode(manifest),
                 "provider": snapshot["provider"],
                 "model": snapshot["model"],
                 "models": [item.model for item in self._agent_profiles().values()],
@@ -2531,7 +2677,8 @@ class DesktopService:
                     "官方运行时及 Cleo 工具策略"
                     if snapshot.get("backend", "api") != "api" else "Cleo 工具策略"
                 ),
-                "contextWindow": snapshot["max_tokens"],
+                "contextWindow": context_capacity(
+                    self.settings, snapshot["model"], snapshot.get("backend", "api")),
                 "editable": False,
                 "supportsQuestions": False,
                 "steerMode": "boundary",
@@ -2554,8 +2701,10 @@ class DesktopService:
         )
         model = str(options.get("model") or default_model or "default")
         capabilities = self._session_capabilities(manifest)
+        permission_preset = self._routing_permission_setting(manifest)
         return {
             "provider": provider,
+            "routingMode": self._routing_mode(manifest),
             "model": model,
             "models": list(
                 dict.fromkeys(
@@ -2579,15 +2728,76 @@ class DesktopService:
                     else ("deny_all" if self._is_evolution(manifest) else "user")
                     if provider_type == "acp" else "default")
             ),
-            "contextWindow": 128_000,
+            "contextWindow": context_capacity(self.settings, model, provider_type, provider),
             "handoffStatus": handoff_status(self.store.read_events(manifest["id"])),
             "editable": True,
             "supportsQuestions": Capability.QUESTIONS in capabilities,
             "settingsRevision": manifest.get("runtime_settings_revision", 0),
             "steerMode": self._steer_mode(manifest),
             "permissionOptions": self._permission_options(manifest, provider_type),
+            **({"routingPermissionPreset": permission_preset}
+               if permission_preset != "inherit" else {}),
             "pendingPermissions": self._pending_permissions_profile(manifest),
         }
+
+    def _routing_permission_setting(self, manifest):
+        """Purpose: Describe the user-selected route-wide execution preset.
+
+        Input: Session manifest. Output: Current configured preset, or legacy inheritance.
+        """
+        from cleo.routing.models import RoutingSettings, execution_mode, load_policy
+
+        config_path = getattr(self.settings, "PROFILE_DIR", None)
+        policy = (load_policy(Path(config_path).with_name("routing.json"))
+                  if config_path else RoutingSettings())
+        return policy.permission_preset if execution_mode(policy, manifest) == "auto" else "inherit"
+
+    async def _apply_routing_permissions(self, manifest, *, run_id=None):
+        """Purpose: Snapshot user authorization before any main or worker execution.
+
+        Input: Idle/reserved session and optional run ID. Output: Native options and turn preset.
+        """
+        from cleo.routing.permissions import native_permissions
+
+        preset = self._routing_permission_setting(manifest)
+        if self._is_evolution(manifest):
+            return
+        if self._routing_mode(manifest) != "auto":
+            return
+        if preset != "inherit" and manifest["space"] == "productivity":
+            await self._ensure_productivity_session(manifest)
+            await self._adapter().update_session_options(
+                manifest["id"], **native_permissions(self._session_provider_type(manifest), preset),
+            )
+            pending = manifest.get("pending_runtime_permissions")
+            if pending and self.store.load_manifest(manifest["id"]).get(
+                "pending_runtime_permissions",
+            ) == pending:
+                self._runtime_revision(manifest["id"], pending_runtime_permissions=None)
+        if run_id is not None:
+            self.store.update_manifest(
+                manifest["id"], routing_permission_run_id=run_id, routing_permission_preset=preset,
+            )
+
+    def _routing_mode(self, manifest):
+        """Purpose: Describe session execution selection. Output: host-owned manual/auto mode."""
+        from cleo.routing.models import RoutingSettings, execution_mode, load_policy
+
+        config_path = getattr(self.settings, "PROFILE_DIR", None)
+        policy = (load_policy(Path(config_path).with_name("routing.json"))
+                  if config_path else RoutingSettings())
+        return execution_mode(policy, manifest)
+
+    def _validate_routing_mode(self, mode):
+        """Purpose: Reject unsupported or disabled automatic execution. Input: requested mode."""
+        from cleo.routing.models import load_policy
+
+        if mode not in {"manual", "auto"}:
+            raise ValueError("执行模式必须为指定 harness 或子任务路由。")
+        if mode == "auto" and not load_policy(
+            Path(self.settings.PROFILE_DIR).with_name("routing.json"),
+        ).enabled:
+            raise ValueError("请先在设置中配置并开启子任务路由。")
 
     @staticmethod
     def _capabilities(provider_type: str | None) -> frozenset[Capability]:

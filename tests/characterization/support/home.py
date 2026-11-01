@@ -166,6 +166,9 @@ def build_home(root: Path, llm_base_url: str) -> CleoHome:
     (home / "memory" / "MEMORY_POLICY.md").write_text(MEMORY_POLICY_MD, encoding="utf-8")
     (workspace / "README.md").write_text("# Fixture workspace\n", encoding="utf-8")
     _git(workspace, "init", "-q", "-b", "main")
+    # The backend invokes Git separately, without _git's command-only overrides.
+    # Keep its blob hashes stable when the build disables Windows' system config.
+    _git(workspace, "config", "core.autocrlf", "true")
     _git(workspace, "add", "README.md")
     _git(workspace, "commit", "-q", "-m", "fixture")
     return CleoHome(root=root, home=home, workspace=workspace, user_home=user_home)

@@ -108,6 +108,28 @@ def test_empty_history_and_rebuilt_cursor(tmp_path):
         index.page(cursor=page["before"], direction="before")
 
 
+def test_long_unicode_message_can_be_read_completely_after_reload(tmp_path):
+    """Purpose: Prove the history preview never truncates the persisted reply.
+
+    Input: A long Chinese/emoji Markdown message. Output: Exact reconstruction after reopening.
+    """
+    text = "# STM 作业讲解\n\n" + "事务与并发 🔒\n\n" * 5000 + "完整正文结束"
+    store, index = fixture(tmp_path, [
+        {"id": "reply", "type": "assistant_message", "actor": "codex", "content": text},
+    ])
+    preview = index.page()["items"][0]
+    assert len(preview["content"]) == 8192
+    assert preview["more"]["content"] == len(text)
+    reloaded = TimelineIndex(store, store.load_manifest("history"))
+    parts, offset = [], 0
+    while offset < len(text):
+        page = reloaded.content("reply", "content", offset)
+        assert page["offset"] == offset and page["next"] > offset
+        parts.append(page["text"])
+        offset = page["next"]
+    assert "".join(parts) == text
+
+
 @pytest.mark.parametrize("status", ["failed", "cancelled", "completed"])
 def test_unanswered_thoughts_remain_visible_after_terminal_status(tmp_path, status):
     _, index = fixture(tmp_path, [

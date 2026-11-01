@@ -46,7 +46,7 @@ try {
   assert.deepEqual(commands[0].params.answers, { layout: ["紧凑"] });
   for (const command of commands) await restartedApp.commandResult(command.id, "completed");
 
-  // Check -> save sit left of "版本与恢复" and use the main program's readiness.
+  // Legacy controls remain available while the main interface has not become usable.
   const header = page.locator("header .header-actions button:visible");
   const ready = { protocol: 2, threadId: "test-session", phase: "会话就绪", detail: "改动待检查", thread: null };
   await restartedApp.publish({ ...ready, actions: { needsCheck: true, suggestedName: "0.5.19" } });
@@ -68,7 +68,14 @@ try {
   const save = (await restartedApp.commands()).find(command => command.action === "save");
   assert.deepEqual(save.params, { name: "" });
   if (process.env.CLEO_SMOKE_OUTPUT) await page.screenshot({ path: join(process.env.CLEO_SMOKE_OUTPUT, "evolution-monitor.png") });
-  console.log("PASS: native independent monitor, restart progress, durable supplemental messages and reconnection");
+  // A heartbeat alone is insufficient; a loaded workspace in the matching main closes the companion.
+  const exited = new Promise(resolveExit => app.process().once("exit", resolveExit));
+  await writeJson(join(root, "state.json"), { active: "new", threadId: "test-session", transaction: null });
+  await restartedApp.publish({ ...ready, active: "new", mainInteractive: true });
+  await Promise.race([exited, new Promise((_, reject) => setTimeout(() => reject(new Error("Companion did not exit after main became interactive")), 10000))]);
+  app = null;
+  assert.equal((await restartedApp.pending("test-session")).body, "重启时补充：保留之前的布局");
+  console.log("PASS: Evolution handoff, durable supplemental messages and automatic companion exit on main readiness");
 } finally {
   await app?.close();
   assert.equal(dirname(scratch), resolve(tmpdir()));

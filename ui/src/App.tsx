@@ -546,12 +546,13 @@ export function App() {
               (error: unknown) => notify(error instanceof Error ? error.message : "无法切换模型", "error"),
             );
           }}
-          onLoadProductivityModels={(provider, refresh) => workspace.loadProductivityModels(
-            provider, conversationProject?.path, refresh,
+          onLoadProductivityModels={(provider, refresh, background) => workspace.loadProductivityModels(
+            provider, conversationProject?.path, refresh, background,
           )}
           onSelectProductivityRuntime={(provider, model) => {
             void workspace.selectProductivityRuntime(provider, model);
           }}
+          onRoutingModeChange={(routingMode) => workspace.updateRuntime({ routingMode })}
           onEffortChange={(effort) => workspace.updateRuntime({ effort })}
           onServiceTierChange={(serviceTier) => workspace.updateRuntime({ serviceTier })}
           onPermissionChange={workspace.activeThread?.id ? (update) => workspace.updatePermissions(workspace.activeThread!.id, update)

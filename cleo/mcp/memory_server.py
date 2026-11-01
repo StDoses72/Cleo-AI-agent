@@ -1,4 +1,4 @@
-"""Read-only memory tools; launched with an explicit Cleo root over stdio."""
+"""Memory tools and optional host-bound delegation, launched over stdio."""
 
 import argparse
 
@@ -7,14 +7,21 @@ from fastmcp import FastMCP
 from cleo.memory.reader import READING_INSTRUCTIONS, TOOL_NAMES, MemoryReader
 
 
-def create_server(memory_root: str, index_path: str | None = None) -> FastMCP:
+def create_server(memory_root: str, index_path: str | None = None,
+                  routing_parent_key: str | None = None) -> FastMCP:
+    """Purpose: Expose memory and host-bound delegation. Input: launch scope. Output: MCP."""
     reader = MemoryReader(memory_root, index_path)
-    server = FastMCP("cleo-memory", instructions=READING_INSTRUCTIONS)
+    from cleo.routing.tools import ROUTING_INSTRUCTIONS, register_mcp_tools
+
+    server = FastMCP("cleo-memory", instructions=READING_INSTRUCTIONS + (
+        "\n\n" + ROUTING_INSTRUCTIONS if routing_parent_key else ""))
     for name in TOOL_NAMES:
         server.tool(
             name=name,
             annotations={"readOnlyHint": True, "openWorldHint": False},
         )(getattr(reader, name))
+    if routing_parent_key:
+        register_mcp_tools(server, memory_root, routing_parent_key, index_path)
     return server
 
 
@@ -24,6 +31,7 @@ def main() -> None:
     parser.add_argument("--session-index-path")
     parser.add_argument("--context-session")
     parser.add_argument("--context-snapshot")
+    parser.add_argument("--routing-parent-key")
     args = parser.parse_args()
     if args.context_session or args.context_snapshot:
         if not (args.context_session and args.context_snapshot):
@@ -32,7 +40,7 @@ def main() -> None:
             args.memory_root, args.session_index_path, args.context_session, args.context_snapshot
         )
     else:
-        server = create_server(args.memory_root, args.session_index_path)
+        server = create_server(args.memory_root, args.session_index_path, args.routing_parent_key)
     server.run(
         transport="stdio",
         show_banner=False,

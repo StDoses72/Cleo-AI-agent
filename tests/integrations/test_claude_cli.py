@@ -66,7 +66,8 @@ def test_claude_stream_resume_errors_and_temporary_cleanup(tmp_path, monkeypatch
                     ]
                 },
             },
-            {"type": "result", "session_id": "native", "result": "Hi", "is_error": fails},
+                {"type": "result", "session_id": "native", "result": "Hi", "is_error": fails,
+                 "usage": {"input_tokens": 10, "output_tokens": 2}, "uuid": "result-one"},
         ]
         stdout.feed_data(("\n".join(json.dumps(m) for m in messages) + "\n").encode())
         stdout.feed_eof()
@@ -103,7 +104,8 @@ def test_claude_stream_resume_errors_and_temporary_cleanup(tmp_path, monkeypatch
     assert "--model" not in captured["args"]
     assert "--resume" in captured["args"]
     assert "--dangerously-skip-permissions" not in captured["args"]
-    assert [event.type for event in events] == ["assistant_message_chunk", "tool_call"]
+    assert [event.type for event in events] == ["assistant_message_chunk", "tool_call", "usage"]
+    assert events[-1].data["usage"] == {"input_tokens": 10, "output_tokens": 2}
     assert not Path(captured["mcp_path"]).exists()
 
 

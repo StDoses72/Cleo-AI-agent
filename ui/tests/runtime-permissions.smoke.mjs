@@ -78,7 +78,7 @@ try {
   }, snapshot);
   await page.goto(server.resolvedUrls.local[0]);
   await page.getByTestId("composer-input").waitFor();
-  const preset = page.getByTestId("permission-selector");
+  const preset = page.getByTestId("composer").getByTestId("permission-selector");
   const presetSettled = () => preset.and(page.locator(":enabled")).waitFor();
   assert.equal(await preset.inputValue(), "review");
   await preset.selectOption("full"); await presetSettled();
@@ -222,6 +222,20 @@ try {
   await nativeTool.locator("summary").click();
   await nativeTool.getByText("Claude 后端 · 自动审查 · 已允许执行", { exact: true }).waitFor();
   if (process.env.CLEO_SMOKE_OUTPUT) await page.screenshot({ path: join(process.env.CLEO_SMOKE_OUTPUT, "approval-history.png") });
+  assert.deepEqual(errors, []);
+  await page.evaluate(() => {
+    const runtime = window.permissionTest.fixture.threads.find(t => t.id === "desktop-ui").runtime;
+    Object.assign(runtime, { routingMode: "auto", routingPermissionPreset: "full" });
+  });
+  await page.getByRole("button", { name: /^统一 managed 与 native sessions/ }).click();
+  await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
+  assert.equal(await preset.inputValue(), "full");
+  assert.equal(await preset.isDisabled(), true);
+  assert.match(await preset.getAttribute("title"), /统一管理/);
+  await open();
+  assert.equal(await access.count(), 0);
+  assert.equal(await approval.count(), 0);
+  await settings.getByText("在子任务路由设置中统一修改执行权限。", { exact: true }).waitFor();
   assert.deepEqual(errors, []);
   console.log("PASS: independent permissions, automatic review, saved/pending state, failure recovery, discard, stale responses, task isolation, native Claude/ACP modes, durable audit display, dark/light and narrow layout");
 } finally {

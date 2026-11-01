@@ -130,3 +130,23 @@ def test_sync_providers_swaps_changed_harnesses_for_new_sessions(tmp_path: Path)
     assert adapter.provider_control("agent") is not agent
     assert adapter.providers == ("codex", "agent")
     assert sync_providers(adapter, productivity(["acp", "--fast"], gemini_enabled=False)) == []
+
+
+def test_routing_switch_refreshes_future_clients_without_rewriting_live_provider(tmp_path):
+    """Purpose: Reload the MCP switch for future sessions. Output: old clients remain intact."""
+    from cleo.integrations.harnesses.factory import sync_providers
+
+    productivity = ProductivitySettings.model_validate({
+        "default_provider": "codex", "providers": {"codex": {"type": "codex_sdk"}},
+    })
+    computer = tmp_path / "config/computer-use.json"
+    computer.parent.mkdir()
+    adapter = build_agent_adapter(tmp_path, productivity, computer_config_path=computer)
+    original = adapter.provider_control("codex")
+    assert original._memory_mcp.routing_enabled is False
+    computer.with_name("routing.json").write_text('{"enabled":true}', encoding="utf-8")
+    assert sync_providers(adapter, productivity) == ["codex"]
+    replacement = adapter.provider_control("codex")
+    assert replacement is not original and replacement._memory_mcp.routing_enabled is True
+    assert original._memory_mcp.routing_enabled is False
+    assert sync_providers(adapter, productivity) == []

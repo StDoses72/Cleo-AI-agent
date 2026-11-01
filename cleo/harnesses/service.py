@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from cleo.harnesses.availability import availability_store, observed_turn, provider_scope
 from cleo.harnesses.capabilities import Capability, capabilities_of
 from cleo.harnesses.context import ContextBinding, ConversationContext
 from cleo.harnesses.control import (
@@ -118,7 +119,11 @@ class AgentService:
         """在指定 provider 上创建新会话并登记路由与持久化 manifest。"""
         implementation = self._provider(provider)
         resolved_path = self._project_directory(project_path)
-        session = await implementation.create_session(resolved_path, model)
+        session = await observed_turn(
+            availability_store(self, self._project_root / "memory/.routing"),
+            provider_scope(implementation), model, None,
+            lambda: implementation.create_session(resolved_path, model),
+        )
         return self._add_route(
             implementation,
             session.id,
@@ -359,6 +364,9 @@ class AgentService:
             handoff_id,
             prepared.binding,
         )
+        from cleo.routing.scope import bind_parent
+
+        bind_parent(self._store, implementation, candidate.id, session_id)
         if old is not None:
             # Cleanup failure cannot undo an already committed selection.
             try:
@@ -416,8 +424,18 @@ class AgentService:
         session_id = self._required_text(session_id, "session_id")
         async with self._session_locks.setdefault(session_id, asyncio.Lock()):
             with self._context_lease(session_id):
-                return await self._prompt(session_id, prompt, on_event, steer_ids=steer_ids,
-                                          display_prompt=display_prompt)
+                route = self._route(session_id)
+                read_options = getattr(route.provider, "session_options", None)
+                options = (read_options(route.provider_session_id)
+                           if callable(read_options) else None)
+                model = options.model if options else None
+                effort = options.effort if options else None
+                evidence = availability_store(self, self._project_root / "memory/.routing")
+                scope = provider_scope(route.provider)
+                return await observed_turn(evidence, scope, model, effort, lambda: self._prompt(
+                    session_id, prompt, on_event, steer_ids=steer_ids,
+                    display_prompt=display_prompt,
+                ))
 
     async def _prompt(
         self,
@@ -816,6 +834,9 @@ class AgentService:
             **({"service_tier": service_tier} if service_tier is not None else {}),
         )
         self._persist_options(session_id, options)
+        from cleo.routing.scope import bind_parent
+
+        bind_parent(self._store, route.provider, route.provider_session_id, session_id)
         native_id = getattr(route.provider, "session_native_id", None)
         if callable(native_id):
             route.native_session_id = native_id(route.provider_session_id)
@@ -1029,6 +1050,9 @@ class AgentService:
             options = options_method(provider_session_id)
             if isinstance(options, SessionOptions):
                 self._persist_options(handle, options)
+        from cleo.routing.scope import bind_parent
+
+        bind_parent(self._store, provider, provider_session_id, handle)
         return AgentSession(
             id=handle,
             provider=provider.name,
@@ -1043,6 +1067,11 @@ class AgentService:
         current = manifest.get("runtime_options")
         if current is not None and not isinstance(current, dict):
             raise ValueError("运行选项格式不受支持，未覆盖现有配置。")
+        if current and options.model and current.get("model") != options.model:
+            self._store.append_event(
+                session_id=session_id, space=manifest["space"], project=manifest["project"],
+                event_type="context_model_changed", actor="system", data={"model": options.model},
+            )
         self._store.update_manifest(
             session_id,
             runtime_options={**(current or {}), **options.as_dict()},

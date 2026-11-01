@@ -54,6 +54,7 @@ HTML 文件可「在内置浏览器中打开」，相对路径的样式、脚本
 
 - 网页运行在独立、沙箱化的浏览器会话中，没有 Node.js、没有 Cleo 的 IPC，也不能访问本机文件；不关闭 webSecurity。
 - AI 工具通过本机命名管道（其他系统为私有 Unix 套接字）连接桌面应用，不开放任何 TCP 端口或远程调试端口；连接凭据保存在只有当前用户和 SYSTEM 可读的目录中。
+- 每个桌面实例发布自己的连接描述文件，通过 `CLEO_COMPUTER_BRIDGE` 和 MCP 的 `--bridge` 参数传给所属工具进程。不同实例的文件独立，旧实例退出时只清理自己的连接；重复启动被拒绝后直接结束初始化。连接令牌和任务归属校验继续有效。
 - 屏幕和网页内容只作为数据，不能修改权限、切换模式或扩大任务范围；本机控制只能由你在 Cleo 界面中授权。
 - 两个任务不能同时操作电脑：一个任务运行期间，另一个任务的电脑操作会被拒绝。
 
@@ -69,6 +70,7 @@ HTML 文件可「在内置浏览器中打开」，相对路径的样式、脚本
 ## 验证
 
 - `ui/electron/computer/*.test.mjs`：动作队列、接管/交回、停止、授权、坐标与截图绑定、上传范围、地址规则、文件侧栏路径校验。
+- `ui/electron/computer-bridge.test.mjs` 与 `ui/electron/desktop-instance-entry.test.mjs`：双实例连接隔离、次实例异常退出、旧实例延迟清理及单实例锁拒绝后的启动隔离，均使用假处理器。
 - `tests/integrations/test_computer_host.py`：本机控制器的坐标换算、多显示器、用户活动检测、停止与按键释放（使用模拟的 Win32 层）。
 - `tests/integrations/test_computer_browser_native.py`：设置 `CLEO_TEST_ELECTRON` 后在真实 Electron 中通过 MCP 工具完成登录、点击、中文输入、快捷键、滚动、缩放、多标签页、弹窗、下载、上传、预览、接管、停止、最小化和重启后保留登录，并检查前台窗口不变。
 - `tests/integrations/test_computer_host_native.py`：设置 `CLEO_TEST_HOST_INPUT=1` 后发送**真实**鼠标键盘输入到测试窗口；仅在电脑空闲时运行。

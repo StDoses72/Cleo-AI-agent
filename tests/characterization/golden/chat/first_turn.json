@@ -22,7 +22,7 @@
     "runtime": {
       "access": ".",
       "approval": "Cleo 工具策略",
-      "contextWindow": 64000,
+      "contextWindow": 0,
       "editable": false,
       "effort": "high",
       "model": "fake-chat",
@@ -31,6 +31,7 @@
       ],
       "profileId": "fake_chat",
       "provider": "openai",
+      "routingMode": "manual",
       "steerMode": "boundary",
       "supportsQuestions": false
     },
@@ -39,13 +40,37 @@
     "status": "idle",
     "steerReady": false,
     "summary": "等待第一条消息",
+    "taskUsage": {
+      "breakdown": [
+        {
+          "cacheRead": null,
+          "cacheWrite": null,
+          "complete": true,
+          "input": null,
+          "missingCalls": 0,
+          "model": "fake-chat",
+          "output": null,
+          "provider": "cleo",
+          "reportedCalls": 0,
+          "reportedCostUsd": null,
+          "role": "main",
+          "total": null
+        }
+      ],
+      "complete": true,
+      "input": null,
+      "missingCalls": 0,
+      "output": null,
+      "reportedCalls": 0,
+      "total": null
+    },
     "terminal": [],
     "timingError": null,
     "title": "新对话",
     "updatedAt": "<relative-time>",
     "usage": {
       "input": null,
-      "limit": 64000,
+      "limit": 0,
       "output": null,
       "used": null
     }
@@ -332,19 +357,25 @@
         "codex_reply",
         "computer_call",
         "computer_tools",
+        "delegate_subtask",
         "delete",
         "edit_file",
+        "flag_subtask_feedback",
         "glob",
         "grep",
+        "label_current_task",
+        "list_execution_candidates",
         "list_threads",
         "ls",
         "memory_history",
         "read_file",
         "read_project_memory",
         "read_thread",
+        "route_subtask",
         "run_shell_command",
         "search_conversation_history",
         "search_long_term_memory",
+        "subtask_status",
         "task",
         "write_file"
       ]
@@ -431,7 +462,7 @@
     "runtime": {
       "access": ".",
       "approval": "Cleo 工具策略",
-      "contextWindow": 64000,
+      "contextWindow": 0,
       "editable": false,
       "effort": "high",
       "model": "fake-chat",
@@ -440,6 +471,7 @@
       ],
       "profileId": "fake_chat",
       "provider": "openai",
+      "routingMode": "manual",
       "steerMode": "boundary",
       "supportsQuestions": false
     },
@@ -448,13 +480,37 @@
     "status": "completed",
     "steerReady": false,
     "summary": "Echo: Hello Cleo, plan my week",
+    "taskUsage": {
+      "breakdown": [
+        {
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "complete": true,
+          "input": 120,
+          "missingCalls": 0,
+          "model": "fake-chat",
+          "output": 30,
+          "provider": "cleo",
+          "reportedCalls": 1,
+          "reportedCostUsd": null,
+          "role": "main",
+          "total": 150
+        }
+      ],
+      "complete": true,
+      "input": 120,
+      "missingCalls": 0,
+      "output": 30,
+      "reportedCalls": 1,
+      "total": 150
+    },
     "terminal": [],
     "timingError": null,
     "title": "Hello Cleo, plan my week",
     "updatedAt": "<relative-time>",
     "usage": {
       "input": null,
-      "limit": 64000,
+      "limit": 0,
       "output": null,
       "used": null
     }
@@ -486,9 +542,36 @@
       "type": "usage",
       "usage": {
         "input": 120,
-        "limit": 64000,
+        "limit": 0,
         "output": 30,
         "used": 150
+      }
+    },
+    {
+      "type": "task-usage",
+      "usage": {
+        "breakdown": [
+          {
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "complete": true,
+            "input": 120,
+            "missingCalls": 0,
+            "model": "fake-chat",
+            "output": 30,
+            "provider": "cleo",
+            "reportedCalls": 1,
+            "reportedCostUsd": null,
+            "role": "main",
+            "total": 150
+          }
+        ],
+        "complete": true,
+        "input": 120,
+        "missingCalls": 0,
+        "output": 30,
+        "reportedCalls": 1,
+        "total": 150
       }
     },
     {

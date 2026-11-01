@@ -186,7 +186,7 @@ try {
     });
     await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
     await page.getByRole("button", { name: "上下文", exact: true }).click();
-    const usage = page.locator(".inspector-section").filter({ hasText: "上下文窗口" });
+    const usage = page.locator(".inspector-section").filter({ hasText: "当前上下文占用" });
     await usage.getByText("上下文用量未知", { exact: true }).waitFor();
     assert.doesNotMatch(await usage.innerText(), /0%/);
     assert.equal(await usage.locator(".usage-track").count(), 0);
@@ -317,7 +317,7 @@ try {
     await page.locator(".turn-activity").waitFor({ state: "hidden" });
     assert.equal(await page.getByTestId("composer-input").inputValue(), "next instruction draft");
   });
-  await check("full content keeps Markdown and automatically loads the next part with retry", async page => {
+  await check("full content renders inline automatically with Markdown, retry and complete copy", async page => {
     await page.evaluate(async () => {
       const { cleoClient } = await import("/src/services/cleoClient.ts");
       const original = await cleoClient.loadThread("desktop-ui");
@@ -325,6 +325,7 @@ try {
       const item = { id: "large", type: "message", role: "assistant", time: "", content: text.slice(0, 300), more: { content: text.length } };
       cleoClient.loadThread = async () => ({ ...original, items: [item], history: { before: "0", after: "0", total: 1, hasBefore: false, hasAfter: false, revision: "1" } });
       window.readerCalls = [];
+      cleoClient.copyText = async text => { window.copiedMessage = text; };
       let failed = false;
       cleoClient.readTimelineContent = async (_thread, _item, _field, offset) => {
         window.readerCalls.push(offset);
@@ -334,18 +335,65 @@ try {
       };
     });
     await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
-    await page.getByRole("button", { name: "展开全文", exact: true }).click();
-    const dialog = page.getByRole("dialog", { name: "完整历史正文" });
-    await dialog.getByRole("heading", { name: "Reader heading" }).waitFor();
-    assert.equal(await dialog.getByRole("button", { name: /上一段|下一段/ }).count(), 0);
-    await dialog.locator(".history-reader-content").evaluate(element => { element.scrollTop = element.scrollHeight; });
-    await dialog.getByRole("alert").filter({ hasText: "reader offline" }).waitFor();
-    assert.equal(await dialog.getByRole("heading", { name: "Reader heading" }).count(), 1);
-    await dialog.getByRole("button", { name: "重试", exact: true }).click();
-    await page.waitForFunction(() => window.readerCalls.length === 3);
-    await dialog.locator(".history-reader-content").evaluate(element => { element.scrollTop = element.scrollHeight; });
-    await dialog.getByText(/Reader end marker/).waitFor({ state: "attached" });
-    assert.deepEqual(await page.evaluate(() => window.readerCalls), [0, 4096, 4096, 8192]);
+    const message = page.getByRole("article", { name: "Cleo 的回复" });
+    await message.getByRole("alert").filter({ hasText: "reader offline" }).waitFor();
+    assert.equal(await message.getByRole("heading", { name: "Reader heading" }).count(), 1);
+    assert.equal(await page.getByRole("button", { name: "展开全文", exact: true }).count(), 0);
+    assert.equal(await page.getByRole("dialog", { name: "完整历史正文" }).count(), 0);
+    await message.getByRole("button", { name: "重试", exact: true }).click();
+    await message.getByText(/Reader end marker/).waitFor({ state: "attached" });
+    assert.deepEqual(await page.evaluate(() => window.readerCalls), [0, 4096, 0, 4096, 8192]);
+    await message.getByRole("button", { name: "复制", exact: true }).click({ force: true });
+    assert.equal(await page.evaluate(() => window.copiedMessage.endsWith("Reader end marker")), true);
+    assert.equal(await page.evaluate(() => window.readerCalls.length), 5, "Copy reuses the complete loaded message");
+  });
+  await check("full content stays complete while streaming without a history read", async page => {
+    await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      window.liveContentReads = 0;
+      cleoClient.readTimelineContent = async () => {
+        window.liveContentReads++;
+        throw new Error("Live content is not persisted yet");
+      };
+      cleoClient.streamTurn = async function* () {
+        yield { type: "upsert-item", item: { id: "long-live", type: "message", role: "assistant",
+          content: "# 实时回复\n\n" + "正在讲解事务 🔒\n\n".repeat(2000) + "完整流式结尾", time: "" } };
+        await new Promise(resolve => { window.finishLongTurn = resolve; });
+        yield { type: "done", summary: "complete" };
+      };
+    });
+    await page.getByTestId("composer-input").fill("Long reply fixture");
+    await page.getByTestId("send-button").click();
+    await page.getByRole("article", { name: "Cleo 的回复" }).getByText(/完整流式结尾/).waitFor({ state: "attached" });
+    assert.equal(await page.evaluate(() => window.liveContentReads), 0);
+    assert.equal(await page.getByRole("button", { name: "展开全文", exact: true }).count(), 0);
+    await page.evaluate(() => window.finishLongTurn());
+  });
+  await check("full content ignores late reads after switching sessions", async page => {
+    await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      const original = cleoClient.loadThread.bind(cleoClient);
+      cleoClient.loadThread = async id => id !== "desktop-ui" ? original(id) : ({ ...await original(id), items: [{
+        id: "shared-message-id", type: "message", role: "assistant", time: "",
+        content: "Old preview", more: { content: 12000 },
+      }], history: { before: "0", after: "0", total: 1, hasBefore: false, hasAfter: false, revision: "1" } });
+      window.messageReads = [];
+      cleoClient.readTimelineContent = async (thread, _item, _field, offset) => {
+        window.messageReads.push(thread);
+        await new Promise(resolve => { window.finishOldMessage = resolve; });
+        const text = "Obsolete full reply";
+        return { text, offset, next: text.length, total: text.length };
+      };
+    });
+    await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
+    await page.waitForFunction(() => Boolean(window.finishOldMessage));
+    await page.getByRole("button", { name: /^统一 managed/ }).click();
+    const current = page.getByRole("article", { name: "Cleo 的回复" }).filter({ hasText: "我确认了聚合层" });
+    await current.waitFor();
+    await page.evaluate(() => window.finishOldMessage());
+    assert.equal(await page.getByText("Obsolete full reply", { exact: true }).count(), 0);
+    assert.equal(await current.isVisible(), true);
+    assert.deepEqual(await page.evaluate(() => window.messageReads), ["desktop-ui"]);
   });
   await check("instruction and connection drafts survive settings navigation", async page => {
     await page.getByRole("button", { name: "设置", exact: true }).click();

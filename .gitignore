@@ -21,6 +21,9 @@ config/cleo.json
 config/harnesses.json
 /cleo/config/cleo.json
 /cleo/config/harnesses.json
+/routing.json
+/config/routing.json
+/cleo/config/routing.json
 
 # Runtime state, logs, and generated local data.
 data/*
@@ -29,6 +32,7 @@ data/*
 
 # Session event logs, indexes, and generated long-term memory.
 memory/thread_objects/
+memory/.routing/
 memory/threads.jsonl
 memory/projects/
 memory/non_productivity/

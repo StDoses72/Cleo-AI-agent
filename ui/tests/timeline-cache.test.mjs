@@ -33,11 +33,24 @@ test("overlapping pages replace updated tools without duplicates", () => {
   assert.equal(next.items[0].status, "done");
 });
 
-test("large text is bounded and exposes a separate full-content reader", () => {
+test("large messages stay complete while the history cache remains bounded", () => {
   const items = boundTimeline(Array.from({ length: 500 }, (_, i) => ({ ...all[i], content: "x".repeat(60000) })));
   assert.ok(JSON.stringify(items).length * 2 <= MAX_TIMELINE_BYTES + 1024);
   assert.ok(items.length < 500);
-  assert.equal(items[0].more.content, 60000);
+  assert.equal(items[0].content, "x".repeat(60000));
+  assert.equal(items[0].more, undefined);
+});
+
+test("tool previews stay bounded without clipping user or assistant messages", () => {
+  const content = "事务讲解 🔒".repeat(4000) + "完整结尾";
+  const items = boundTimeline([
+    { ...all[0], content }, { ...all[1], content },
+    { id: "tool", type: "tool", name: "Read", output: content },
+  ]);
+  assert.equal(items[0].content, content);
+  assert.equal(items[1].content, content);
+  assert.equal(items[2].output.length, 8192);
+  assert.equal(items[2].more.output, content.length);
 });
 
 test("an in-flight page cannot overwrite newer stream updates or drop appended items", () => {

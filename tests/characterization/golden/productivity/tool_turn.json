@@ -22,7 +22,7 @@
     "runtime": {
       "access": "default",
       "approval": "user",
-      "contextWindow": 128000,
+      "contextWindow": 0,
       "editable": true,
       "effort": "high",
       "handoffStatus": null,
@@ -53,6 +53,7 @@
         "reason": "此服务不提供统一权限档位，请使用高级审批设置。"
       },
       "provider": "scripted",
+      "routingMode": "manual",
       "serviceTier": null,
       "settingsRevision": 0,
       "steerMode": "boundary",
@@ -64,13 +65,37 @@
     "status": "idle",
     "steerReady": false,
     "summary": "等待第一条消息",
+    "taskUsage": {
+      "breakdown": [
+        {
+          "cacheRead": null,
+          "cacheWrite": null,
+          "complete": true,
+          "input": null,
+          "missingCalls": 0,
+          "model": "fake-model-a",
+          "output": null,
+          "provider": "scripted",
+          "reportedCalls": 0,
+          "reportedCostUsd": null,
+          "role": "main",
+          "total": null
+        }
+      ],
+      "complete": true,
+      "input": null,
+      "missingCalls": 0,
+      "output": null,
+      "reportedCalls": 0,
+      "total": null
+    },
     "terminal": [],
     "timingError": null,
     "title": "新任务",
     "updatedAt": "<relative-time>",
     "usage": {
       "input": null,
-      "limit": 128000,
+      "limit": 0,
       "output": null,
       "used": null
     }
@@ -712,7 +737,7 @@
     "runtime": {
       "access": "default",
       "approval": "user",
-      "contextWindow": 128000,
+      "contextWindow": 0,
       "editable": true,
       "effort": "high",
       "handoffStatus": null,
@@ -743,6 +768,7 @@
         "reason": "此服务不提供统一权限档位，请使用高级审批设置。"
       },
       "provider": "scripted",
+      "routingMode": "manual",
       "serviceTier": null,
       "settingsRevision": 0,
       "steerMode": "boundary",
@@ -754,13 +780,37 @@
     "status": "completed",
     "steerReady": false,
     "summary": "ACP reply: Update notes [[plan]] [[tool]] [[write]]",
+    "taskUsage": {
+      "breakdown": [
+        {
+          "cacheRead": null,
+          "cacheWrite": null,
+          "complete": false,
+          "input": null,
+          "missingCalls": 1,
+          "model": "fake-model-a",
+          "output": null,
+          "provider": "scripted",
+          "reportedCalls": 0,
+          "reportedCostUsd": null,
+          "role": "main",
+          "total": null
+        }
+      ],
+      "complete": false,
+      "input": null,
+      "missingCalls": 1,
+      "output": null,
+      "reportedCalls": 0,
+      "total": null
+    },
     "terminal": [],
     "timingError": null,
     "title": "Update notes [[plan]] [[tool]] [[write]]",
     "updatedAt": "<relative-time>",
     "usage": {
       "input": null,
-      "limit": 128000,
+      "limit": 0,
       "output": null,
       "used": null
     }
@@ -886,7 +936,7 @@
       "runtime": {
         "access": "default",
         "approval": "user",
-        "contextWindow": 128000,
+        "contextWindow": 0,
         "editable": true,
         "effort": "high",
         "handoffStatus": null,
@@ -917,6 +967,7 @@
           "reason": "此服务不提供统一权限档位，请使用高级审批设置。"
         },
         "provider": "scripted",
+        "routingMode": "manual",
         "serviceTier": null,
         "settingsRevision": 0,
         "steerMode": "boundary",
@@ -936,6 +987,33 @@
         }
       ],
       "type": "changes"
+    },
+    {
+      "type": "task-usage",
+      "usage": {
+        "breakdown": [
+          {
+            "cacheRead": null,
+            "cacheWrite": null,
+            "complete": false,
+            "input": null,
+            "missingCalls": 1,
+            "model": "fake-model-a",
+            "output": null,
+            "provider": "scripted",
+            "reportedCalls": 0,
+            "reportedCostUsd": null,
+            "role": "main",
+            "total": null
+          }
+        ],
+        "complete": false,
+        "input": null,
+        "missingCalls": 1,
+        "output": null,
+        "reportedCalls": 0,
+        "total": null
+      }
     },
     {
       "timing": {

@@ -115,7 +115,6 @@ export function EvolutionPanel({ children, state, error, busy, running, otherTas
         <span>正在使用</span><b>{active ? versionLabel(active, state?.releaseTypes?.[active.baseTag || ""]) : releaseVersionLabel(state?.currentVersion || "—")}</b><ChevronDown size={14} />
       </button>
       <div className="evolution-top-actions">
-        <button onClick={() => onAction("monitor")}>进化状态</button>
         <button aria-label="查看代码变更" aria-pressed={inspectorOpen} title="查看代码变更" onClick={onToggleInspector}><PanelRightOpen size={18} /></button>
         {history.length > 0 && <button aria-label="PR 历史" title="PR 历史" onClick={() => setSheet("history")}><History size={16} /><span>历史</span></button>}
         <button aria-label={authorizing ? "继续连接 GitHub" : "新建 PR"} disabled={blocked && !authorizing} onClick={openContribution}><GitPullRequest size={17} />{authorizing ? "继续连接" : "新建 PR"}</button>

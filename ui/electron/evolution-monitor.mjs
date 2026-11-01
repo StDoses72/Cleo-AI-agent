@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { readJson, writeJson } from "./evolution-store.mjs";
 import { EvolutionMonitorStore } from "./evolution-monitor-store.mjs";
 import { launchDesktop } from "./evolution-launch.mjs";
+import { monitorDisposition } from "./evolution-monitor-lifecycle.mjs";
 
 /** Purpose: Keep a small native progress and message window alive across Cleo restarts.
  * Input: standard userData path. Output: read-only progress plus durable supplemental messages.
@@ -13,6 +14,9 @@ export async function startEvolutionMonitor() {
   const root = join(app.getPath("userData"), "evolution");
   const store = new EvolutionMonitorStore(root);
   await app.whenReady();
+  if (monitorDisposition(await readJson(join(root, "state.json"), {}), await store.runtime()) === "close") {
+    app.quit(); return;
+  }
   const window = new BrowserWindow({ width: 680, height: 780, minWidth: 460, minHeight: 480,
     title: "Cleo · 进化伴随窗口", autoHideMenuBar: true, backgroundColor: "#101417",
     webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, partition: "cleo-companion",
@@ -27,7 +31,7 @@ export async function startEvolutionMonitor() {
     let detail = runtime.detail || "在 Cleo 的进化工作区提出改进要求。";
     if (tx) {
       phase = tx.phase === "staged" ? "正在备份并准备切换" : "正在启动修改后的 Cleo";
-      detail = "此窗口会保留。补充需求已保存，主程序就绪后在原进化会话中继续。";
+      detail = "补充需求已保存；主界面恢复后，此窗口自动关闭，请回到原进化会话继续。";
     } else if (state.lastRestartError) { phase = "已恢复可用版本"; detail = state.lastRestartError; }
     else if (Date.now() - (runtime.updatedAt || 0) > 15000) {
       phase = "等待 Cleo 连接"; detail = "主程序尚未连接；补充需求仍会保存。打开 Cleo 后可继续，或使用独立恢复入口。";
@@ -96,5 +100,17 @@ export async function startEvolutionMonitor() {
   window.webContents.on("will-navigate", event => event.preventDefault());
   await window.loadFile(join(dirname(fileURLToPath(import.meta.url)), "evolution-monitor.html"));
   window.show();
+  // Poll in the host process: closing must not depend on a working companion renderer.
+  let checking = false;
+  const timer = setInterval(async () => {
+    if (checking) return;
+    checking = true;
+    try {
+      const state = await readJson(join(root, "state.json"), {});
+      if (monitorDisposition(state, await store.runtime()) === "close") app.quit();
+    } catch (error) { console.error("Evolution companion lifecycle:", error.message); }
+    finally { checking = false; }
+  }, 500);
+  app.once("will-quit", () => clearInterval(timer));
   app.on("window-all-closed", () => app.quit());
 }

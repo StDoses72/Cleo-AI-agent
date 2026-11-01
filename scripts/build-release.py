@@ -163,6 +163,7 @@ def build(*, locked_dependencies: bool = False, online: bool = False) -> None:
             "package-lock.json",
             "tsconfig.json",
             "vite.config.ts",
+            "local-config-plugin.ts",
             "index.html",
             "src",
             "public",

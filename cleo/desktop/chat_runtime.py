@@ -132,6 +132,11 @@ class ChatRuntime:
                 "cancelled" if isinstance(error, asyncio.CancelledError) else "failed"
             ))
             await self._sync(agent, manifest, "interrupted")
+            from cleo.runtime.task_usage import task_usage
+
+            await emit({"type": "task-usage", "usage": await asyncio.to_thread(
+                task_usage, self._store, manifest["id"],
+            )})
             if not isinstance(error, Exception):
                 phase(None)
                 raise
@@ -151,4 +156,9 @@ class ChatRuntime:
             await self._sync(agent, manifest, "completed")
         usage = agent.context_usage
         await emit({"type": "usage", "usage": self._usage(usage)})
+        from cleo.runtime.task_usage import task_usage
+
+        await emit({"type": "task-usage", "usage": await asyncio.to_thread(
+            task_usage, self._store, manifest["id"],
+        )})
         await emit({"type": "done", "summary": (text or prompt)[:80]})

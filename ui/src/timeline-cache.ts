@@ -3,6 +3,9 @@ import type { Thread, TimelineItem, TimelinePage } from "./types";
 export const MAX_TIMELINE_ITEMS = 500;
 export const MAX_TIMELINE_BYTES = 4 * 1024 * 1024;
 
+/** Purpose: Bound the history window by size and age while preserving complete live messages.
+ * Input: Timeline items and the edge to retain. Output: Bounded rows; large tool payloads use previews.
+ */
 export function boundTimeline(items: TimelineItem[], retain: "start" | "end" = "end"): TimelineItem[] {
   const selected: TimelineItem[] = [];
   let bytes = 0;
@@ -12,7 +15,8 @@ export function boundTimeline(items: TimelineItem[], retain: "start" | "end" = "
     const text = item as unknown as Record<string, unknown>;
     for (const key of ["content", "output", "command"]) {
       const value = text[key];
-      if (typeof value === "string" && value.length > 8192) {
+      if (typeof value === "string" && value.length > 8192
+        && !(item.type === "message" && key === "content")) {
         text[key] = item.type === "thought"
           ? `${value.slice(0, 2048)}\n\n…（可打开完整正文）…\n\n${value.slice(-6000)}` : value.slice(0, 8192);
         item.more = { ...item.more, [key]: value.length };

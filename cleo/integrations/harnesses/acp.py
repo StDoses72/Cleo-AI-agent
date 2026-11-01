@@ -405,6 +405,8 @@ class AcpProvider:
                     is_default=value == current,
                     default_effort=default_effort,
                     supported_efforts=supported_efforts,
+                    available=True,
+                    availability_source="runtime_catalog",
                 ))
             return tuple(models)
         finally:
@@ -621,6 +623,12 @@ class AcpProvider:
             if runtime.computer_client == client_key:
                 return session_id
         return None
+
+    def delegation_parent_key(self, session_id: str) -> str | None:
+        """Purpose: Bind child tools to their host. Input: session ID. Output: launch key."""
+        if self._memory_mcp is None or not self._memory_mcp.routing_enabled:
+            return None
+        return self._sessions[session_id].computer_client
 
     def session_options(self, session_id: str) -> SessionOptions:
         """Return the model and effort exposed by the ACP session."""

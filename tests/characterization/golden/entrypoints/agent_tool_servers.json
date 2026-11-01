@@ -6,6 +6,31 @@
       "input_schema": {
         "description": "Delegate a coding task in the currently selected project.",
         "properties": {
+          "assessment": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Assessment"
+          },
+          "candidate_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Candidate Id"
+          },
           "model": {
             "anyOf": [
               {
@@ -26,6 +51,18 @@
           "prompt": {
             "title": "Prompt",
             "type": "string"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Provider"
           }
         },
         "required": [
@@ -100,6 +137,130 @@
         "type": "object"
       },
       "name": "computer_tools"
+    },
+    {
+      "annotations": null,
+      "description": "Execute a decomposed subtask. Main agent owns acceptance and the final reply.",
+      "input_schema": {
+        "description": "Execute a decomposed subtask. Main agent owns acceptance and the final reply.",
+        "properties": {
+          "assessment": {
+            "additionalProperties": true,
+            "title": "Assessment",
+            "type": "object"
+          },
+          "handoff": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Handoff"
+          },
+          "project_path": {
+            "default": ".",
+            "title": "Project Path",
+            "type": "string"
+          },
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          },
+          "recommendation": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Recommendation"
+          },
+          "selection": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Selection"
+          }
+        },
+        "required": [
+          "prompt",
+          "assessment"
+        ],
+        "title": "delegate_subtask",
+        "type": "object"
+      },
+      "name": "delegate_subtask"
+    },
+    {
+      "annotations": null,
+      "description": "Flag rework for user attribution. Repeated flags remain one pending episode.",
+      "input_schema": {
+        "description": "Flag rework for user attribution. Repeated flags remain one pending episode.",
+        "properties": {
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id"
+        ],
+        "title": "flag_subtask_feedback",
+        "type": "object"
+      },
+      "name": "flag_subtask_feedback"
+    },
+    {
+      "annotations": null,
+      "description": "Supply a short semantic title for the host's current goal during normal work.",
+      "input_schema": {
+        "description": "Supply a short semantic title for the host's current goal during normal work.",
+        "properties": {
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "label_current_task",
+        "type": "object"
+      },
+      "name": "label_current_task"
+    },
+    {
+      "annotations": null,
+      "description": "List configured harness/model/effort combinations without paid model turns.",
+      "input_schema": {
+        "description": "List configured harness/model/effort combinations without paid model turns.",
+        "properties": {
+          "refresh": {
+            "default": false,
+            "title": "Refresh",
+            "type": "boolean"
+          }
+        },
+        "title": "list_execution_candidates",
+        "type": "object"
+      },
+      "name": "list_execution_candidates"
     },
     {
       "annotations": null,
@@ -278,6 +439,44 @@
     },
     {
       "annotations": null,
+      "description": "Recommend a child from requirements. The coordinating model remains unchanged.",
+      "input_schema": {
+        "description": "Recommend a child from requirements. The coordinating model remains unchanged.",
+        "properties": {
+          "assessment": {
+            "additionalProperties": true,
+            "title": "Assessment",
+            "type": "object"
+          },
+          "project_path": {
+            "default": ".",
+            "title": "Project Path",
+            "type": "string"
+          },
+          "selection": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Selection"
+          }
+        },
+        "required": [
+          "assessment"
+        ],
+        "title": "route_subtask",
+        "type": "object"
+      },
+      "name": "route_subtask"
+    },
+    {
+      "annotations": null,
       "description": "Run a local shell command inside the currently selected project.",
       "input_schema": {
         "description": "Run a local shell command inside the currently selected project.",
@@ -450,6 +649,25 @@
         "type": "object"
       },
       "name": "search_long_term_memory"
+    },
+    {
+      "annotations": null,
+      "description": "Read this parent's attempts. Completed and accepted are separate states.",
+      "input_schema": {
+        "description": "Read this parent's attempts. Completed and accepted are separate states.",
+        "properties": {
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id"
+        ],
+        "title": "subtask_status",
+        "type": "object"
+      },
+      "name": "subtask_status"
     }
   ],
   "dream": [

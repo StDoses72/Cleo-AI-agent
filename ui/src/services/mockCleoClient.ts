@@ -41,6 +41,37 @@ const clone = <T,>(value: T): T => structuredClone(value);
 
 
 export class MockCleoClient implements CleoClient {
+  private routingSettings: import("../routing-types").RoutingSettings = {
+    revision: "mock", enabled: true, preference: "quality", fallbackCandidate: "codex/demo@high",
+    automaticUpgrade: false, crossBackendDelegation: false,
+    candidates: [{ id: "codex/demo@high", provider: "codex", backend: "codex_sdk", model: "demo",
+      effort: "high", enabled: true, tier: "strong", available: true, costType: "subscription",
+      checkedAt: null, statusReason: null, benchmarkMatch: "benchmark_missing", benchmarkVersion: null }],
+    benchmark: { source: null, retrievedAt: null, stale: true, error: "benchmark_cache_missing", recordCount: 0, keyConfigured: false },
+    recentTasks: [],
+  };
+
+  async getRoutingSettings(): Promise<import("../routing-types").RoutingSettings> {
+    return clone(this.routingSettings);
+  }
+
+  async saveBenchmarkConnection(): Promise<import("../routing-types").RoutingSettings> {
+    throw new Error("演示环境不保存密钥，请使用真实本地配置预览。");
+  }
+
+  async saveRoutingSettings(update: import("../routing-types").RoutingSettingsUpdate): Promise<import("../routing-types").RoutingSettings> {
+    this.routingSettings = { ...this.routingSettings, ...update,
+      candidates: this.routingSettings.candidates.map(item => ({ ...item, ...update.candidates.find(value => value.id === item.id) })) };
+    return this.getRoutingSettings();
+  }
+
+  async submitRoutingFeedback(): Promise<import("../routing-types").RoutingSettings> {
+    throw new Error("演示数据不支持反馈，请连接本地配置。");
+  }
+
+  async refreshRoutingBenchmarks(): Promise<import("../routing-types").RoutingSettings> {
+    return this.getRoutingSettings();
+  }
   private backgroundMemorySettings: BackgroundMemorySettings = { enabled: false, intervalMinutes: 30, pendingThreshold: 5 };
   private harnessSync: HarnessSyncStatus[] = [
     { harness: "claude", localPath: "C:\\Users\\demo\\.claude", localExists: true, cleoPath: "C:\\Users\\demo\\AppData\\Local\\Cleo\\data\\claude",

@@ -45,18 +45,12 @@ def permission_choices(provider_type: str, *, fixed: bool = False, support=None)
     """
     if fixed:
         return {"access": [], "approval": [], "reason": "进化任务使用固定权限。"}
+    from cleo.routing.permissions import NATIVE_PRESETS, PRESET_LABELS
+
     if provider_type == "codex_sdk":
         choices = {"access": CODEX_ACCESS, "approval": CODEX_APPROVAL}
-        modes = [
-            ("ask", "请求批准", "user", "workspace-write"),
-            ("review", "帮我审批", "auto_review", "workspace-write"),
-            ("full", "完全访问", "deny_all", "full-access"),
-        ]
     elif provider_type == "claude_sdk":
         choices = {"access": [], "approval": CLAUDE_APPROVAL}
-        modes = [("ask", "请求批准", "default", None),
-                 ("review", "帮我审批", "auto", None),
-                 ("full", "完全访问", "bypassPermissions", None)]
     elif provider_type == "acp":
         return {"access": [], "approval": ACP_APPROVAL,
                 "reason": "此服务不提供统一权限档位，请使用高级审批设置。"}
@@ -71,7 +65,9 @@ def permission_choices(provider_type: str, *, fixed: bool = False, support=None)
         "full": "允许常规文件、命令和工具操作，无需逐项确认；服务强制规则仍生效。",
     }
     result["presets"] = []
-    for value, label, approval, access in modes:
+    for value, native in NATIVE_PRESETS[provider_type].items():
+        label = PRESET_LABELS[value]
+        approval, access = native["approval_mode"], native.get("sandbox")
         update = {"approval": approval, **({"access": access} if access else {})}
         reason = next((restrictions.get(field, {}).get(option)
                        for field, option in update.items()
