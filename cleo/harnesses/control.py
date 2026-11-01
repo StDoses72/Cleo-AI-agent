@@ -35,6 +35,8 @@ class HarnessModel:
     is_default: bool
     default_effort: str | None
     supported_efforts: tuple[str, ...]
+    available: bool | None = None
+    availability_source: str = "catalog_only"
 
 
 @dataclass(frozen=True, slots=True)

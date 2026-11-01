@@ -183,6 +183,13 @@ class AgentMcp:
     def codex_config(
         self, *, approval_mode: str = "deny_all", computer_client: str | None = None,
     ) -> CodexConfig:
+        """Purpose: Match the native provider contract without granting desktop permissions.
+
+        Input: Provider approval policy and unused desktop attribution key. Output: the
+        existing tool-scoped configuration; evaluator callers remain deny-all/read-only.
+        """
+        if approval_mode != "deny_all":
+            raise ValueError("Subscription assessments require deny-all approvals")
         return CodexConfig(
             codex_bin=executable(self.profile),
             env=runtime_environment(),

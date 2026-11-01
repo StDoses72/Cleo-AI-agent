@@ -23,6 +23,67 @@ from cleo.memory.state import (
 from cleo.sessions.store import SessionStore
 
 
+@pytest.mark.parametrize("space,mode", [
+    ("non_productivity", "manual"), ("non_productivity", "auto"),
+    ("productivity", "manual"), ("productivity", "auto"),
+])
+def test_task_boundaries_run_at_real_turn_entry_without_switching_main(
+    tmp_path, monkeypatch, space, mode,
+):
+    """Purpose: Lock task accounting to both real desktop entry paths with no network."""
+    from cleo.routing.evaluator import AssessmentReply
+    from cleo.routing.models import RoutingSettings
+    from cleo.runtime import task_tracking
+    from cleo.runtime.task_usage import task_usage
+
+    async def scenario():
+        service = _service(tmp_path)
+        service.settings.PROFILE_DIR = tmp_path / "config" / "profiles"
+        service.store.create_session(session_id="task-root", space=space, project="general",
+                                     provider="cleo", owner_type="user")
+        options = {"model": "fixed-main", "routing_mode": mode}
+        service.store.update_manifest("task-root", runtime_options=options)
+        policy = RoutingSettings(enabled=True, task_tracking_enabled=True)
+        monkeypatch.setattr("cleo.routing.models.load_policy", lambda _: policy)
+        complete = AsyncMock(side_effect=[
+            AssessmentReply('{"decision":"continue"}', {"total_tokens": 3,
+                            "input_tokens": 2, "output_tokens": 1}),
+            AssessmentReply('{"decision":"new"}', {"total_tokens": 3,
+                            "input_tokens": 2, "output_tokens": 1}),
+        ])
+        monkeypatch.setattr(task_tracking, "complete_assessment", complete)
+        observed = []
+
+        async def run(turn, emit):
+            manifest = service.store.load_manifest(turn.manifest["id"])
+            observed.append(manifest["usage_task_id"])
+            service.store.append_events(
+                session_id=manifest["id"], space=space, project="general", events=[
+                    {"type": "user_message", "actor": "user", "content": turn.prompt},
+                    {"type": "usage", "actor": "fixture", "data": {
+                        "call_id": f"call-{len(observed)}", "usage": {
+                            "input_tokens": 10, "output_tokens": 2}}},
+                ],
+            )
+            await emit({"type": "done", "summary": "fixture"})
+
+        monkeypatch.setattr(service, "_agent_system", lambda _: SimpleNamespace(run_turn=run))
+        monkeypatch.setattr(service, "_steer_mode", lambda _: "boundary")
+        emitted = []
+        for prompt in ("first goal", "correct it", "different goal"):
+            await service.stream_turn(thread_id="task-root", prompt=prompt, attachments=[],
+                                      emit=AsyncMock(side_effect=emitted.append))
+        assert observed[0] == observed[1] and observed[2] != observed[1]
+        assert service.store.load_manifest("task-root")["runtime_options"] == options
+        assert complete.await_count == 2
+        assert all(call.args[0].model == "chat-test" for call in complete.await_args_list)
+        usage = task_usage(service.store, "task-root")
+        assert usage["total"] == 15 and usage["history"][0]["total"] == 27
+        assert any(event["type"] == "task-usage" for event in emitted)
+
+    asyncio.run(scenario())
+
+
 def test_chat_attachment_reads_document_from_local_path(tmp_path) -> None:
     document = tmp_path / "brief.pdf"
     document.write_bytes(b"%PDF-test")

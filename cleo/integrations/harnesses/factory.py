@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -128,11 +129,22 @@ def build_agent_adapter(
         session_store.index_path if session_store is not None else None,
         computer_config_path=computer_config_path,
         source_config_path=source_config_path,
+        routing_enabled=_routing_enabled(memory_root, computer_config_path),
     )
     adapter.memory_mcp = memory_mcp
     adapter.provider_settings = {}
     sync_providers(adapter, productivity)
     return adapter
+
+
+def _routing_enabled(memory_root: Path, computer_config_path: Path | None) -> bool:
+    """Purpose: Enable parent-bound tools only by operator policy. Input: paths. Output: switch."""
+    from cleo.routing.models import load_policy
+
+    path = (computer_config_path.with_name("routing.json") if computer_config_path
+            else memory_root.parent / "routing.json")
+    policy = load_policy(path)
+    return policy.enabled or policy.task_tracking_enabled
 
 
 def sync_providers(adapter: AgentAdapter, productivity: ProductivitySettings) -> list[str]:
@@ -143,12 +155,26 @@ def sync_providers(adapter: AgentAdapter, productivity: ProductivitySettings) ->
     provider instance they were created with until they close.
     """
     known = adapter.provider_settings
+    memory = adapter.memory_mcp
+    enabled = _routing_enabled(memory.root, memory.computer_config_path)
+    memory_changed = memory.routing_enabled != enabled
+    if memory_changed:
+        adapter.memory_mcp = replace(memory, routing_enabled=enabled)
     changed = []
     for name, provider_settings in productivity.providers.items():
-        if not provider_settings.enabled or known.get(name) == provider_settings:
+        if not provider_settings.enabled or (
+            known.get(name) == provider_settings and not memory_changed
+        ):
             continue
+        provider = create_provider(name, provider_settings, memory_mcp=adapter.memory_mcp)
+        if provider_settings.type == "acp":
+            import hashlib
+
+            provider.availability_configuration = hashlib.sha256(
+                provider_settings.options.model_dump_json().encode(),
+            ).hexdigest()
         adapter.register(
-            create_provider(name, provider_settings, memory_mcp=adapter.memory_mcp),
+            provider,
             replace=name in known,
         )
         known[name] = provider_settings

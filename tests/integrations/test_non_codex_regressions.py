@@ -84,7 +84,8 @@ def test_cli_retains_native_session_for_followup(tmp_path, monkeypatch):
     assert launches[1][launches[1].index("--resume") + 1] == "native-123"
 
 
-def test_sdk_forwards_tool_results_from_user_messages():
+@pytest.mark.parametrize("usage", [None, {"input_tokens": 10, "output_tokens": 2}])
+def test_sdk_forwards_tool_results_from_user_messages(usage):
     async def exercise():
         async def query(_):
             pass
@@ -92,7 +93,8 @@ def test_sdk_forwards_tool_results_from_user_messages():
         async def receive_messages():
             yield UserMessage(content=[ToolResultBlock(tool_use_id="read-1", content="fixture")])
             yield ResultMessage(subtype="success", duration_ms=1, duration_api_ms=1,
-                                is_error=False, num_turns=1, session_id="native", result="done")
+                                is_error=False, num_turns=1, session_id="native", result="done",
+                                usage=usage)
 
         provider = ClaudeProvider()
         provider._sessions["local"] = _ClaudeRuntime(
@@ -102,7 +104,9 @@ def test_sdk_forwards_tool_results_from_user_messages():
         received = []
         turn = await provider.prompt("local", "Read fixture", received.append)
         assert turn.status == "completed"
-        assert [event.type for event in received] == ["tool_result"]
+        assert [event.type for event in received] == ["tool_result", *(["usage"] if usage else [])]
+        if usage:
+            assert received[-1].data["usage"] == usage
         assert received[0].data["tool_use_id"] == "read-1"
         assert received[0].data["content"] == "fixture"
         assert turn.events == tuple(received)

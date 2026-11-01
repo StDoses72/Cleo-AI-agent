@@ -7618,5 +7618,41 @@
   "memorysources.optional": {
     "zh-CN": "可选记忆来源",
     "en": "Optional memory sources"
+  },
+  "routing.subtask_routing": {
+    "zh-CN": "子任务路由",
+    "en": "Subtask routing"
+  },
+  "routing.task_usage": {
+    "zh-CN": "当前任务用量",
+    "en": "Current task usage"
+  },
+  "routing.routing": {
+    "zh-CN": "路由",
+    "en": "Routing"
+  },
+  "routing.refresh": {
+    "zh-CN": "刷新",
+    "en": "Refresh"
+  },
+  "routing.permissions_managed": {
+    "zh-CN": "在子任务路由设置中统一修改执行权限。",
+    "en": "Manage execution permissions in Subtask routing settings."
+  },
+  "routing.permission_ask": {
+    "zh-CN": "请求批准",
+    "en": "Request approval"
+  },
+  "routing.permission_review": {
+    "zh-CN": "帮我审批",
+    "en": "Review for me"
+  },
+  "routing.permission_full": {
+    "zh-CN": "完全访问",
+    "en": "Full access"
+  },
+  "routing.companion_returns_to_main": {
+    "zh-CN": "补充需求已保存；主界面恢复后，此窗口自动关闭，请回到原进化会话继续。",
+    "en": "Additional requirements are saved. This window closes when the main interface returns; continue in the original Evolution conversation."
   }
 }

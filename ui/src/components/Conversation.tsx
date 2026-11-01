@@ -78,6 +78,7 @@ import { MoveThreadDialog, RenameThreadDialog } from "./Overlays";
 import { handleDialogKeyDown } from "./Modal";
 import { approvalLabel, effortLabels, isGeneralProject, projectLabel } from "../runtime-labels";
 import { ProjectTarget } from "./ProjectTarget";
+import { checkHarnessConnections } from "../connected-harnesses";
 
 interface ConversationProps {
   history?: ReturnType<typeof useTimelineHistory>;
@@ -130,8 +131,9 @@ interface ConversationProps {
   onRestoreSteer?: (receipt: SteerReceipt) => void;
   onUndo: () => void;
   onSelectNonProductivityProfile: (profileId: string) => void;
-  onLoadProductivityModels: (provider: string, refresh?: boolean) => Promise<ProductivityModelCatalog>;
+  onLoadProductivityModels: (provider: string, refresh?: boolean, background?: boolean) => Promise<ProductivityModelCatalog>;
   onSelectProductivityRuntime: (provider: string, model: string) => void;
+  onRoutingModeChange?: (mode: "manual" | "auto") => void;
   onEffortChange: (effort: NonNullable<RuntimeProfile["effort"]>) => void | Promise<void>;
   onPermissionChange?: (update: RuntimeUpdate) => Promise<void>;
   onServiceTierChange?: (tier: "default" | "fast") => void;
@@ -207,6 +209,7 @@ export function Conversation({
   onSelectNonProductivityProfile,
   onLoadProductivityModels,
   onSelectProductivityRuntime,
+  onRoutingModeChange,
   onEffortChange,
   onServiceTierChange,
   onPermissionChange,
@@ -472,6 +475,7 @@ export function Conversation({
         onSelectNonProductivityProfile={onSelectNonProductivityProfile}
         onLoadProductivityModels={onLoadProductivityModels}
         onSelectProductivityRuntime={onSelectProductivityRuntime}
+        onRoutingModeChange={onRoutingModeChange}
         onEffortChange={onEffortChange}
         onServiceTierChange={onServiceTierChange}
         onPermissionChange={onPermissionChange}
@@ -809,21 +813,36 @@ function TimelineEntry({
 }
 
 type MessageItem = Extract<TimelineItem, { type: "message" }>;
+interface MessageSource { threadId: string; item: MessageItem; request?: Promise<string> }
 
-/** Purpose: Read a message's full text when the timeline only holds a preview of it. */
+/** Purpose: Read the complete persisted message without silently accepting an incomplete page.
+ * Input: Session identity and preview item. Output: Full text, or a recoverable read error.
+ */
 async function fullMessageText(threadId: string, item: MessageItem) {
   if (!item.more?.content) return item.content;
   let text = "";
   for (let offset = 0; ;) {
     const page = await cleoClient.readTimelineContent(threadId, item.id, "content", offset);
+    if (page.offset !== offset || !Number.isSafeInteger(page.next) || page.next <= offset
+      || page.next > page.total || !page.text) throw new Error("正文未完整读取，请重试。");
     text += page.text;
     offset = page.next;
-    if (!page.text || offset >= page.total) return text;
+    if (offset >= page.total) return text;
   }
 }
 
-/** Purpose: Show a message with hover-only icon actions; editing a user turn resends it in place.
- * Input: message, and an edit handler when that turn can be rewound. Output: message, actions, inline editor.
+/** Purpose: Share one full-text read between automatic rendering, copying and editing.
+ * Input: A message revision bound to its session. Output: Cached complete text; failures can retry.
+ */
+function readMessageText(source: MessageSource): Promise<string> {
+  return source.request ??= fullMessageText(source.threadId, source.item).catch(reason => {
+    source.request = undefined;
+    throw reason;
+  });
+}
+
+/** Purpose: Render complete messages inline, with reusable full-text copy and editing.
+ * Input: Session-bound preview and optional rewind handler. Output: Full message or inline retry.
  */
 function MessageText({ item, threadId, projectPath, onOpenPath, onEdit, onRevealPath }: {
   item: MessageItem;
@@ -839,6 +858,24 @@ function MessageText({ item, threadId, projectPath, onOpenPath, onEdit, onReveal
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
+  const source = useMemo<MessageSource>(() => ({ threadId, item }), [threadId, item.id, item.content, item.more?.content]);
+  const [fullText, setFullText] = useState<{ source: typeof source; text: string } | null>(null);
+  const [contentError, setContentError] = useState<{ source: typeof source; message: string } | null>(null);
+  const [retry, setRetry] = useState(0);
+  const text = fullText?.source === source ? fullText.text : item.content;
+  const loading = Boolean(item.more?.content) && fullText?.source !== source;
+  const readError = contentError?.source === source ? contentError.message : "";
+  useEffect(() => {
+    if (!source.item.more?.content) return;
+    let active = true;
+    setContentError(null);
+    void readMessageText(source).then(value => {
+      if (active) setFullText({ source, text: value });
+    }).catch(reason => {
+      if (active) setContentError({ source, message: reason instanceof Error ? reason.message : "正文读取失败" });
+    });
+    return () => { active = false; };
+  }, [source, retry]);
   useEffect(() => () => { if (copiedTimer.current) window.clearTimeout(copiedTimer.current); }, []);
 
   const copy = async () => {
@@ -846,7 +883,7 @@ function MessageText({ item, threadId, projectPath, onOpenPath, onEdit, onReveal
     const selected = selection && !selection.isCollapsed && article.current?.contains(selection.anchorNode)
       && article.current?.contains(selection.focusNode) ? selection.toString() : "";
     try {
-      await cleoClient.copyText(selected || await fullMessageText(threadId, item));
+      await cleoClient.copyText(selected || await readMessageText(source));
       setError("");
       setCopied(true);
       if (copiedTimer.current) window.clearTimeout(copiedTimer.current);
@@ -854,7 +891,7 @@ function MessageText({ item, threadId, projectPath, onOpenPath, onEdit, onReveal
     } catch { setError(tr("conversation.copy_failed")); }
   };
   const startEdit = async () => {
-    try { setDraft(await fullMessageText(threadId, item)); setError(""); }
+    try { setDraft(await readMessageText(source)); setError(""); }
     catch (reason) { setError(reason instanceof Error ? reason.message : tr("conversation.could_not_read_the_message")); }
   };
   const submit = async () => {
@@ -867,7 +904,7 @@ function MessageText({ item, threadId, projectPath, onOpenPath, onEdit, onReveal
   };
 
   return <div className="message-text" ref={article}>
-    {draft === null ? <div className="message-copy"><MarkdownContent content={item.content} projectPath={projectPath} onOpenPath={onOpenPath} /></div>
+    {draft === null ? <div className="message-copy"><MarkdownContent content={text} projectPath={projectPath} onOpenPath={onOpenPath} /></div>
       : <div className="message-edit"><textarea aria-label={tr("conversation.edit_message")} autoFocus value={draft} disabled={busy}
           onChange={event => setDraft(event.target.value)}
           onKeyDown={event => {
@@ -888,6 +925,9 @@ function MessageText({ item, threadId, projectPath, onOpenPath, onEdit, onReveal
       </button>
       {onEdit && <button type="button" aria-label={tr("conversation.edit")} title={tr("conversation.edit")} onClick={() => void startEdit()}><Pencil size={14} /></button>}
     </div>}
+    {loading && !readError && <p className="message-content-status" role="status">正在加载完整正文…</p>}
+    {readError && <p className="message-edit-error" role="alert">{readError}<button type="button"
+      className="message-content-retry" onClick={() => setRetry(value => value + 1)}>重试</button></p>}
     {error && <p className="message-edit-error" role="alert">{error}</p>}
   </div>;
 }
@@ -1206,6 +1246,7 @@ function Composer({
   onSelectNonProductivityProfile,
   onLoadProductivityModels,
   onSelectProductivityRuntime,
+  onRoutingModeChange,
   onEffortChange,
   onServiceTierChange,
   onPermissionChange,
@@ -1246,6 +1287,7 @@ function Composer({
   | "onSelectNonProductivityProfile"
   | "onLoadProductivityModels"
   | "onSelectProductivityRuntime"
+  | "onRoutingModeChange"
   | "onEffortChange"
   | "onServiceTierChange"
   | "onPermissionChange"
@@ -1514,6 +1556,7 @@ function Composer({
               onSelectProfile={onSelectNonProductivityProfile}
               onLoadModels={onLoadProductivityModels}
               onSelectProductivityRuntime={onSelectProductivityRuntime}
+              onRoutingModeChange={onRoutingModeChange}
               effort={selectedEffort}
               supportedEfforts={supportedEfforts}
               defaultEffort={selectedModel?.defaultEffort ?? null}
@@ -1605,6 +1648,7 @@ function RuntimeSelector({
   onSelectProfile,
   onLoadModels,
   onSelectProductivityRuntime,
+  onRoutingModeChange,
   effort = "",
   supportedEfforts = [],
   defaultEffort = null,
@@ -1624,8 +1668,9 @@ function RuntimeSelector({
   /** A harness pick awaits the next message; the pill reads as it will after the handoff. */
   pendingSwitch?: boolean;
   onSelectProfile: (profileId: string) => void;
-  onLoadModels: (provider: string, refresh?: boolean) => Promise<ProductivityModelCatalog>;
+  onLoadModels: (provider: string, refresh?: boolean, background?: boolean) => Promise<ProductivityModelCatalog>;
   onSelectProductivityRuntime: (provider: string, model: string) => void;
+  onRoutingModeChange?: (mode: "manual" | "auto") => void;
   effort?: ReasoningEffort | "";
   supportedEfforts?: ReasoningEffort[];
   defaultEffort?: ReasoningEffort | null;
@@ -1648,6 +1693,11 @@ function RuntimeSelector({
   const settingsLocked = running || switching;
   const [open, setOpen] = useState(false);
   const [providerScreen, setProviderScreen] = useState<string | null>(null);
+  const [connectedModels, setConnectedModels] = useState<Record<string, ProductivityModelCatalog>>({});
+  const [checking, setChecking] = useState(false);
+  const [checkVersion, setCheckVersion] = useState(0);
+  const loadModelsRef = useRef(onLoadModels);
+  loadModelsRef.current = onLoadModels;
   // The development menu opens on the settings card; the harness list is a screen behind it.
   const [screen, setScreen] = useState<"card" | "providers">("card");
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -1696,14 +1746,28 @@ function RuntimeSelector({
     if (serviceTier === "fast") onServiceTierChange?.("default");
   };
   const profiles = catalog?.nonProductivityProfiles ?? [];
-  const providers = catalog?.productivityProviders ?? [];
+  const providers = (catalog?.productivityProviders ?? []).filter(provider => connectedModels[provider.id]);
   const selectedProfile = profiles.find(
     (profile) => profile.id === runtime.profileId,
   );
   const selectedProvider = providers.find(
     (provider) => provider.id === providerScreen,
   );
-  const selectedModels = providerScreen ? productivityModels[providerScreen]?.models : undefined;
+  const selectedModels = providerScreen ? (productivityModels[providerScreen]
+    ?? connectedModels[providerScreen])?.models : undefined;
+
+  useEffect(() => {
+    if (!open || space !== "productivity" || !catalog) return;
+    let cancelled = false;
+    setConnectedModels({});
+    setChecking(true);
+    void checkHarnessConnections(catalog.productivityProviders,
+      provider => loadModelsRef.current(provider, true, true),
+      (provider, models) => {
+        if (!cancelled) setConnectedModels(current => ({ ...current, [provider.id]: models }));
+      }).finally(() => { if (!cancelled) setChecking(false); });
+    return () => { cancelled = true; };
+  }, [open, space, catalog, checkVersion]);
 
   useEffect(() => {
     setOpen(false);
@@ -1736,7 +1800,7 @@ function RuntimeSelector({
         data-speed={showSpeed ? serviceTier ?? "" : undefined}
         data-pending-switch={pendingSwitch ? "true" : undefined}
       >
-        <span>{development ? `${runtime.provider} · ` : ""}{runtime.model}</span>
+        <span>{space === "productivity" ? runtime.routingMode === "auto" ? `子任务路由 · 主模型 ${runtime.provider} / ` : `${runtime.provider} · ` : ""}{runtime.model}</span>
         {effortLabel ? <small className="runtime-selector-extra">{`· ${effortLabel}`}</small> : null}
         {showSpeed && serviceTier === "fast" ? <small className="runtime-selector-extra">{tr("conversation.fast")}</small> : null}
         <ChevronDown size={13} />
@@ -1815,8 +1879,10 @@ function RuntimeSelector({
                 </button>
                 <span>{tr("conversation.choose_runtime")}</span>
                 <small>{tr("conversation.hand_off_with_the_next_message")}</small>
+                <button type="button" disabled={checking} onClick={() => setCheckVersion(value => value + 1)}>{tr("routing.refresh")}</button>
               </div>
               <div className="runtime-menu-list">
+                {checking && <div className="runtime-menu-status" role="status"><LoaderCircle className="spin" size={14} />正在检查客户端连接…</div>}
                 {providers.map((provider) => (
                   <button
                     className="runtime-menu-row"
@@ -1831,10 +1897,19 @@ function RuntimeSelector({
                     {provider.id === runtime.provider ? <Check size={14} /> : <ChevronRight size={14} />}
                   </button>
                 ))}
+                {!checking && !providers.length && <div className="runtime-menu-status">暂无连接检查通过的客户端，请先安装并登录开发客户端，再刷新。</div>}
               </div>
             </>
           ) : (
             <div className="runtime-card" data-testid="runtime-card">
+              <div className="runtime-menu-list" aria-label="执行方式">
+                <button className="runtime-menu-row" type="button" disabled={settingsLocked} onClick={() => {
+                  onRoutingModeChange?.("manual"); setScreen("providers");
+                }}><span className="runtime-menu-copy"><strong>指定 harness</strong></span>{runtime.routingMode !== "auto" ? <Check size={14} /> : <ChevronRight size={14} />}</button>
+                <button className="runtime-menu-row" type="button" disabled={settingsLocked} onClick={() => {
+                  onRoutingModeChange?.("auto"); setOpen(false);
+                }}><span className="runtime-menu-copy"><strong>子任务路由</strong></span>{runtime.routingMode === "auto" ? <Check size={14} /> : null}</button>
+              </div>
               <div className="runtime-card-top">
                 {showSpeed ? (
                   <button

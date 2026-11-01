@@ -82,9 +82,11 @@ Get-CimInstance Win32_Process | ForEach-Object {
             if ($processInfo.ExecutablePath.StartsWith($programRoot + "\", [System.StringComparison]::OrdinalIgnoreCase)) {
                 $running = Get-Process -Id $processInfo.ProcessId -ErrorAction SilentlyContinue
                 if ($running -and $running.Path -eq $processInfo.ExecutablePath) {
-                    try { $running | Stop-Process -Force }
-                    catch { if (-not $running.HasExited) { throw } }
-                    if (-not $running.WaitForExit(10000)) { throw "Cleo process did not stop: $($running.Id)" }
+                    try {
+                        try { $running | Stop-Process -Force }
+                        catch { if (-not $running.HasExited) { throw } }
+                        if (-not $running.WaitForExit(10000)) { throw "Cleo process did not stop: $($running.Id)" }
+                    } finally { $running.Dispose() }
                 }
                 break
             }
@@ -93,7 +95,19 @@ Get-CimInstance Win32_Process | ForEach-Object {
 }
 foreach ($removalPath in $removalPaths) {
     if (Test-Path -LiteralPath $removalPath) {
-        Remove-Item -LiteralPath $removalPath -Recurse -Force
+        # Windows can retain the executable image briefly after the process exits.
+        # Retry only I/O failures, within a fixed bound; persistent failures still stop uninstall.
+        for ($attempt = 0; $attempt -lt 10; $attempt++) {
+            try {
+                if (Test-Path -LiteralPath $removalPath) {
+                    Remove-Item -LiteralPath $removalPath -Recurse -Force
+                }
+                break
+            } catch [System.IO.IOException] {
+                if ($attempt -eq 9) { throw }
+                Start-Sleep -Milliseconds 100
+            }
+        }
         Write-Host "Removed Cleo files: $removalPath"
     }
 }

@@ -7,6 +7,7 @@ wake-up turn whose result carries ``origin.kind == "task-notification"``.
 """
 
 import asyncio
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -419,6 +420,39 @@ def test_batched_completions_wait_for_the_result_that_carries_the_reply():
         "STAGE1: started", "NOTIFIED: ONE\nNOTIFIED: TWO\nFINAL: both done",
     ]
     assert runtime.owed_wakeups == 0 and not runtime.background
+
+
+@pytest.mark.parametrize("control_usage,expected_calls,expected_total", [
+    ({}, 2, 35),
+    ({"input_tokens": 0, "output_tokens": 0}, 2, 35),
+    ({"input_tokens": 1, "output_tokens": 0}, 3, 36),
+])
+def test_routing_usage_counts_background_inference_but_not_empty_control_results(
+    control_usage, expected_calls, expected_total,
+):
+    """Purpose: Attribute stage usage without treating zero-activity notifications as calls.
+
+    Input: Fake multi-stage native frames. Output: Reported tokens and meaningful call counts.
+    """
+    from cleo.runtime.task_usage import event_usage
+
+    initial = two_tasks_stage_one()
+    initial[-1] = replace(initial[-1], usage={"input_tokens": 10, "output_tokens": 2},
+                          total_cost_usd=0.1, uuid="stage-one")
+    final = two_tasks_batched_wake_up()
+    final = [replace(frame, usage=control_usage, total_cost_usd=0, uuid="control")
+             if isinstance(frame, ResultMessage) and frame.num_turns == 0 else frame
+             for frame in final]
+    final[-1] = replace(final[-1], usage={"input_tokens": 20, "output_tokens": 3},
+                        total_cost_usd=0.2, uuid="stage-two")
+    provider, _ = _provider(Client(initial, final))
+    turn = asyncio.run(provider.prompt("s", "run both"))
+    assert turn.status == "completed" and turn.response.endswith("FINAL: both done")
+    totals = event_usage([{"type": "user_message"}, *[
+        {"type": event.type, "data": event.data} for event in turn.events
+    ]])
+    assert totals["total"] == expected_total
+    assert totals["reportedCalls"] == expected_calls
 
 
 def test_ambient_tasks_never_hold_a_turn_open():

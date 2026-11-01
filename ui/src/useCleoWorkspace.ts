@@ -63,6 +63,7 @@ function defaultProjectFor(projects: Parameters<typeof projectsInSpace>[0], spac
 }
 
 export function useCleoWorkspace(evolutionOpen = false) {
+  const [draftRoutingMode, setDraftRoutingMode] = useState<"manual" | "auto" | null>(null);
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
   /** Threads whose latest reply finished while the user was not looking at them. */
   const [unreadThreadIds, setUnreadThreadIds] = useState<string[]>([]);
@@ -311,12 +312,13 @@ export function useCleoWorkspace(evolutionOpen = false) {
       ) ?? runtimeCatalog?.nonProductivityProfiles[0];
       return {
         profileId: profile?.id,
+        routingMode: draftRoutingMode ?? runtimeCatalog?.defaultRoutingMode ?? "manual",
         provider: profile?.provider ?? "Cleo",
         model: profile?.model ?? tr("connectionwizard.choose_model"),
         effort: "high",
         access: "workspace-write",
         approval: tr("usecleoworkspace.cleo_tool_policy"),
-        contextWindow: profile?.maxTokens,
+        contextWindow: 0,
         editable: false,
       };
     }
@@ -326,16 +328,17 @@ export function useCleoWorkspace(evolutionOpen = false) {
     return {
       provider: (provider?.id ?? draftProvider) || tr("usecleoworkspace.choose_sdk_acp"),
       model: draftModel || provider?.defaultModel || tr("connectionwizard.choose_model"),
+      routingMode: draftRoutingMode ?? runtimeCatalog?.defaultRoutingMode ?? "manual",
       effort: draftEffort,
       serviceTier: provider?.type === "codex_sdk" ? draftServiceTier : null,
       supportsFastMode: provider?.type === "codex_sdk",
       access: draftPermissionUpdate.access ?? "default",
       approval: draftPermissionUpdate.approval ?? "default",
       permissionOptions: provider?.permissionOptions,
-      contextWindow: 128000,
+      contextWindow: 0,
       editable: false,
     };
-  }, [activeSpace, draftEffort, draftPermissionUpdate, draftServiceTier, draftModel, draftProfileId, draftProvider, runtimeCatalog]);
+  }, [activeSpace, draftEffort, draftPermissionUpdate, draftServiceTier, draftModel, draftProfileId, draftProvider, runtimeCatalog, draftRoutingMode]);
 
   // What the pill and card show for the active task: its live runtime, or the pick awaiting handoff.
   const activeThreadRuntime = useMemo(() => activeThread?.runtime
@@ -682,6 +685,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
         ? {
             projectPath: project?.path,
             profileId: draftProfileId || runtimeCatalog?.defaultNonProductivityProfile,
+            routingMode: draftRuntime.routingMode,
           }
         : {
             projectPath: project?.managed ? undefined : project?.path,
@@ -689,6 +693,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
             model: draftModel || undefined,
             effort: draftEffort ?? undefined,
             serviceTier: draftRuntime.supportsFastMode ? draftServiceTier : undefined,
+            routingMode: draftRuntime.routingMode,
             ...draftPermissionUpdate,
           },
     );
@@ -932,6 +937,8 @@ export function useCleoWorkspace(evolutionOpen = false) {
               ),
             ],
           }));
+        } else if (event.type === "task-usage") {
+          updateThread(threadId, (current) => ({ ...current, taskUsage: event.usage }));
         } else if (event.type === "usage") {
           updateThread(threadId, (current) => ({ ...current, usage: event.usage }));
         } else if (event.type === "runtime") {
@@ -1270,6 +1277,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
   };
 
   const updateRuntime = (update: RuntimeUpdate) => {
+    if (update.routingMode) setDraftRoutingMode(update.routingMode);
     const pendingSwitch = activeThreadId ? pendingSwitchesRef.current[activeThreadId] : undefined;
     if (activeThreadId && pendingSwitch && (update.effort || update.serviceTier)) {
       // Effort and speed for a harness that has not been handed off yet travel with the handoff.
@@ -1319,8 +1327,10 @@ export function useCleoWorkspace(evolutionOpen = false) {
    * Input: harness, project path and explicit refresh. Output: catalog or visible error.
    */
   const loadProductivityModels = async (
-    provider: string, projectPath = activeProject?.path, refresh = false,
+    provider: string, projectPath = activeProject?.path, refresh = false, background = false,
   ) => {
+    // Picker probes must not replace another provider's loading/error/effort state.
+    if (background) return cleoClient.getProductivityModels(provider, projectPath);
     const request = ++modelRequestRef.current;
     const cacheKey = JSON.stringify([provider, projectPath]);
     const cached = refresh ? undefined : modelCacheRef.current.get(cacheKey);

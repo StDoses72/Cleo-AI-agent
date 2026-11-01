@@ -27,6 +27,9 @@ export function PermissionSelector({ runtime, onChange, disabled = false, placem
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const presets = runtime.permissionOptions?.presets ?? [];
+  const unified = runtime.routingMode === "auto" && runtime.routingPermissionPreset
+    && runtime.routingPermissionPreset !== "inherit" ? runtime.routingPermissionPreset : null;
+  useEffect(() => { if (unified) setOpen(false); }, [unified]);
 
   useEffect(() => {
     if (!open) return;
@@ -59,6 +62,13 @@ export function PermissionSelector({ runtime, onChange, disabled = false, placem
     (current ?? options[0])?.focus();
   }, [open, placement]);
 
+  if (unified) return <div className="permission-selector">
+    <button type="button" className="text-control permission-selector-trigger" disabled
+      aria-label={tr("permissionselector.session_permissions")} data-testid="permission-selector"
+      data-value={unified} title={tr("routing.permissions_managed")}>
+      <ShieldCheck size={14} /><span>{tr(`routing.permission_${unified}`)} · {tr("routing.routing")}</span>
+    </button>
+  </div>;
   if (!presets.length || !onChange) return null;
   const pending = runtime.pendingPermissions;
   const selected = pending?.provider === runtime.provider ? {

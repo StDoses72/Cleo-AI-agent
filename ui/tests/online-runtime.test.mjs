@@ -196,12 +196,14 @@ test("a cancel file stops a runtime download and removes its staging", async t =
   t.after(watchCancellation(request, controller, 20));
   const { events, progress } = recorder();
   const installation = installRuntime({ resources, root: cache, signal: controller.signal, progress });
+  // Observe rejection before the cancellation watcher can fire during an awaited file write.
+  const cancelled = assert.rejects(installation, /cancelled/i);
   while (!events.some(event => event.stage === "python-download" && event.bytes === 3))
     await new Promise(resolve => setTimeout(resolve, 10));
   assert.deepEqual(events.find(event => event.stage === "python-download"),
     { stage: "python-download", bytes: 0, totalBytes: 7 });
   await writeFile(request, "cancel");
-  await assert.rejects(installation, /cancelled/i);
+  await cancelled;
   assert.equal(controller.signal.reason.message, "Installation cancelled.");
   assert.deepEqual((await readdir(cache)).filter(name => name.startsWith(".install-")), []);
 });

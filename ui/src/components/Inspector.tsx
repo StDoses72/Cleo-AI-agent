@@ -19,6 +19,8 @@ import {
 import type { MemoryEntry, Project, RuntimeProfile, Thread } from "../types";
 import { accessLabel, approvalLabel, effortLabels, isGeneralProject, projectLabel, projectPathLabel } from "../runtime-labels";
 import { Timing } from "./Timing";
+import { TaskTokenUsage } from "./TaskTokenUsage";
+import { ContextUsage } from "./ContextUsage";
 import { ComputerPanel } from "./ComputerPanel";
 import { FilesPanel, type FileReveal } from "./FilesPanel";
 
@@ -188,8 +190,6 @@ function ContextPanel({
   memories: MemoryEntry[];
   onRevealPath: (value: string) => void;
 }) {
-  const ratio = thread?.usage.used != null && thread.usage.limit > 0
-    ? Math.round((thread.usage.used / thread.usage.limit) * 100) : null;
   const relevantMemories = useMemo(() => memories.slice(0, 3), [memories]);
   return (
     <div className="context-panel">
@@ -204,9 +204,11 @@ function ContextPanel({
         </dl>
       </section>
       <section className="inspector-section">
-        <div className="section-kicker"><Clock3 size={14} /><span>{tr("inspector.context_window")}</span><small>{ratio === null ? "—" : `${ratio}%`}</small></div>
-        {ratio !== null && <div className="usage-track"><span style={{ width: `${Math.min(100, ratio)}%` }} /></div>}
-        <div className="usage-copy"><span>{thread?.usage.used == null || thread.usage.limit <= 0 ? tr("inspector.context_usage_unknown") : `${(thread.usage.used / 1000).toFixed(1)}k / ${(thread.usage.limit / 1000).toFixed(0)}k`}</span><small>{tr("inspector.input")}{thread?.usage.input ?? "—"} {tr("inspector.output")}{thread?.usage.output ?? "—"}</small></div>
+        <ContextUsage usage={thread?.usage} />
+      </section>
+      <section className="inspector-section">
+        <div className="section-kicker"><Cpu size={14} /><span>{tr("routing.task_usage")}</span></div>
+        <TaskTokenUsage usage={thread?.taskUsage} />
       </section>
       <section className="inspector-section">
         <div className="section-kicker"><ShieldCheck size={14} /><span>{tr("inspector.workspace")}</span></div>

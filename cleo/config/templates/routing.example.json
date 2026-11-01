@@ -1,0 +1,34 @@
+{
+  "enabled": false,
+  "aa_key_env": "ARTIFICIAL_ANALYSIS_API_KEY",
+  "aa_access": "free",
+  "cache_ttl_seconds": 86400,
+  "catalog_ttl_seconds": 300,
+  "preference": "quality",
+  "fallback_candidate": "codex/REPLACE_WITH_DISCOVERED_MODEL_ID@high",
+  "candidates": {
+    "codex/REPLACE_WITH_DISCOVERED_MODEL_ID@high": {
+      "enabled": true,
+      "tier": "strong",
+      "cost_type": "unknown",
+      "capabilities": {},
+      "context_window": null,
+      "model_version": null,
+      "benchmark": null
+    }
+  },
+  "complexity_tiers": {
+    "low": "economy",
+    "medium": "balanced",
+    "high": "strong",
+    "unknown": "strong"
+  },
+  "automatic_upgrade": false,
+  "allow_cross_backend_delegation": false,
+  "max_auto_upgrades": 1,
+  "max_depth": 1,
+  "max_task_seconds": 600,
+  "max_soft_budget_usd": null,
+  "checks": {},
+  "checks_by_task_type": {}
+}

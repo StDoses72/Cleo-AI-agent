@@ -1,0 +1,7 @@
+{
+  "strategy": "evaluator",
+  "auto_refresh_benchmarks": true,
+  "feedback_enabled": true,
+  "feedback_min_samples": 5,
+  "feedback_weight_cap": 0.15
+}

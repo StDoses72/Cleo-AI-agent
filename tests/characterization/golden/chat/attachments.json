@@ -95,9 +95,36 @@
       "type": "usage",
       "usage": {
         "input": 120,
-        "limit": 64000,
+        "limit": 0,
         "output": 30,
         "used": 150
+      }
+    },
+    {
+      "type": "task-usage",
+      "usage": {
+        "breakdown": [
+          {
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "complete": true,
+            "input": 120,
+            "missingCalls": 0,
+            "model": "fake-chat",
+            "output": 30,
+            "provider": "cleo",
+            "reportedCalls": 1,
+            "reportedCostUsd": null,
+            "role": "main",
+            "total": 150
+          }
+        ],
+        "complete": true,
+        "input": 120,
+        "missingCalls": 0,
+        "output": 30,
+        "reportedCalls": 1,
+        "total": 150
       }
     },
     {

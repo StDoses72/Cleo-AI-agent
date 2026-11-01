@@ -117,7 +117,6 @@ export function EvolutionPanel({ children, state, error, busy, running, otherTas
         <span>{tr("evolutionpanel.in_use")}</span><b>{active ? versionLabel(active, state?.releaseTypes?.[active.baseTag || ""]) : releaseVersionLabel(state?.currentVersion || "—")}</b><ChevronDown size={14} />
       </button>
       <div className="evolution-top-actions">
-        <button onClick={() => onAction("monitor")}>{tr("evolutionpanel.evolution_status")}</button>
         <button aria-label={tr("evolutionpanel.view_code_changes")} aria-pressed={inspectorOpen} title={tr("evolutionpanel.view_code_changes")} onClick={onToggleInspector}><PanelRightOpen size={18} /></button>
         {history.length > 0 && <button aria-label={tr("evolutionpanel.pr_history")} title={tr("evolutionpanel.pr_history")} onClick={() => setSheet("history")}><History size={16} /><span>{tr("evolutionpanel.history")}</span></button>}
         <button aria-label={authorizing ? tr("evolutionpanel.continue_connecting_to_github") : tr("evolutionpanel.new_pr")} disabled={blocked && !authorizing} onClick={openContribution}><GitPullRequest size={17} />{authorizing ? tr("evolutionpanel.continue_connecting") : tr("evolutionpanel.new_pr")}</button>

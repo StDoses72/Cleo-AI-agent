@@ -13,6 +13,7 @@ Guides for installing, configuring, and using Cleo Desktop and its terminal work
 5. [Acceptance](evolution-acceptance-preparation.en.md): prepare requirements and confirm behavior after application.
 6. [Local skills](local-skills.en.md): discover and invoke skills in development sessions.
 7. [Source contributions](contribution-targets.en.md): request a receiving branch and submit a source snapshot.
+8. [Subtask routing (Chinese)](benchmark-routing.md): connected candidates, Artificial Analysis data, evaluator selection, constrained delegation, and task usage.
 
 ## Understand and develop the project
 

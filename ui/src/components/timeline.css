@@ -22,6 +22,8 @@
 .message-edit textarea { box-sizing: border-box; width: 100%; min-height: 96px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border)); border-radius: 10px; color: var(--text); background: var(--surface); font: inherit; line-height: 1.55; resize: vertical; outline: none; }
 .message-edit textarea:focus { box-shadow: 0 0 0 2px var(--accent-soft); }
 .message-edit-error { margin: 5px 0; color: var(--danger); font-size: var(--font-size-caption); }
+.message-content-status { margin: 5px 0; color: var(--muted); font-size: var(--font-size-caption); }
+.message-content-retry { margin-left: 10px; color: var(--accent); font: inherit; cursor: pointer; }
 .message-edit > div { display: flex; justify-content: flex-end; gap: 6px; margin-top: 7px; }
 .message-edit button { padding: 5px 12px; border: 1px solid var(--border); border-radius: 7px; color: var(--text-soft); background: var(--surface); font: inherit; font-size: var(--font-size-caption); cursor: pointer; }
 .message-edit button:hover { background: var(--surface-hover); }

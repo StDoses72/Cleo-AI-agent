@@ -227,6 +227,14 @@ class ClaudeCliProvider:
                             )
                     elif payload.get("type") == "result":
                         result = payload
+                        if payload.get("usage") or payload.get("total_cost_usd") is not None:
+                            await emit_event(on_event, AgentEvent(
+                                provider=self.name, type="usage", data={
+                                    "usage": payload.get("usage"),
+                                    "call_id": payload.get("uuid") or secrets.token_hex(16),
+                                    "total_cost_usd": payload.get("total_cost_usd"),
+                                },
+                            ))
                     elif payload.get("type") in {"assistant", "user"}:
                         for block in payload.get("message", {}).get("content", []):
                             if not isinstance(block, dict):

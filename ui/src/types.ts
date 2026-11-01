@@ -245,6 +245,29 @@ export interface HarnessSyncResult {
   skipped: string[];
 }
 
+export interface TaskUsage {
+  total: number | null; input: number | null; output: number | null;
+  reportedCalls: number; missingCalls: number; complete: boolean;
+  referenceUsd?: number | null;
+  breakdown?: { role: string; part?: string; provider?: string; model?: string; total: number | null }[];
+  taskId?: string;
+  taskNumber?: number;
+  title?: string;
+  abstract?: string;
+  abstractSource?: "evaluator" | "request_excerpt";
+  coverage?: "full_task" | "since_tracking";
+  boundaryReason?: string;
+  scope?: "task" | "session_history";
+  boundaryStatus?: "initial" | "confirmed" | "unknown" | "cancelled" | "legacy" | "disabled";
+  models?: { provider?: string; model?: string; total: number | null; input: number | null; output: number | null;
+    reportedCalls?: number; missingCalls?: number; referenceUsd?: number | null;
+    priceSource?: string | null; priceAsOf?: string | null;
+    priceBasis?: string | null;
+    priceMatch?: string | null;
+    parts?: { part: string; total: number | null }[] }[];
+  history?: TaskUsage[];
+}
+
 export interface Thread {
   canUndo?: boolean;
   /** User turns the current native session can rewind; editing one resends from there. */
@@ -269,6 +292,7 @@ export interface Thread {
   changes: ChangeFile[];
   changeHistory?: ChangeSet[];
   usage: Usage;
+  taskUsage?: TaskUsage;
   runtime?: RuntimeProfile;
   terminal?: string[];
 }
@@ -334,6 +358,8 @@ export interface MemoryEntry {
 }
 
 export interface RuntimeProfile {
+  routingMode?: "manual" | "auto";
+  routingPermissionPreset?: "inherit" | "ask" | "review" | "full";
   steerMode?: "native" | "boundary";
   settingsRevision?: number;
   permissionOptions?: {
@@ -359,7 +385,7 @@ export interface RuntimeProfile {
   editable?: boolean;
 }
 
-export type RuntimeUpdate = Partial<Pick<RuntimeProfile, "model" | "effort" | "serviceTier" | "access" | "approval" | "profileId">> & {
+export type RuntimeUpdate = Partial<Pick<RuntimeProfile, "model" | "effort" | "serviceTier" | "access" | "approval" | "profileId" | "routingMode">> & {
   discardPendingPermissions?: boolean;
   permissionProvider?: string;
 };
@@ -394,6 +420,7 @@ export interface ProductivityProviderOption {
 }
 
 export interface RuntimeCatalog {
+  defaultRoutingMode?: "manual" | "auto";
   nonProductivityProfiles: NonProductivityProfileOption[];
   productivityProviders: ProductivityProviderOption[];
   defaultNonProductivityProfile: string;
@@ -407,6 +434,7 @@ export interface ProductivityModelCatalog {
 }
 
 export interface CreateThreadOptions {
+  routingMode?: "manual" | "auto";
   projectPath?: string;
   provider?: string;
   model?: string;
@@ -656,6 +684,7 @@ export type StreamEvent =
   | { type: "changes"; changes: ChangeFile[] }
   | { type: "change-history"; changeSet: ChangeSet }
   | { type: "usage"; usage: Usage }
+  | { type: "task-usage"; usage: TaskUsage }
   | { type: "runtime"; runtime: RuntimeProfile }
   | { type: "terminal"; chunk: string }
   | { type: "refresh"; activeThreadId: string; space: ThreadSpace }
@@ -700,6 +729,11 @@ export interface CleoClient {
   getConfigTemplates(): Promise<{ cleo: string; harnesses: string }>;
   getAgentInstructions(): Promise<AgentInstructions>;
   getModelSettings(): Promise<ModelSettings>;
+  getRoutingSettings(refresh?: boolean): Promise<import("./routing-types").RoutingSettings>;
+  saveRoutingSettings(update: import("./routing-types").RoutingSettingsUpdate): Promise<import("./routing-types").RoutingSettings>;
+  submitRoutingFeedback(update: import("./routing-types").RoutingFeedback): Promise<import("./routing-types").RoutingSettings>;
+  refreshRoutingBenchmarks(): Promise<import("./routing-types").RoutingSettings>;
+  saveBenchmarkConnection(update: import("./routing-types").BenchmarkConnectionUpdate): Promise<import("./routing-types").RoutingSettings>;
   getRuntimeCatalog(): Promise<RuntimeCatalog>;
   getConfigStatus(): Promise<ConfigStatus | null>;
   getProductivityModels(provider: string, projectPath?: string): Promise<ProductivityModelCatalog>;

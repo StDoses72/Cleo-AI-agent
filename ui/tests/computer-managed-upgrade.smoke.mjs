@@ -29,9 +29,14 @@ async function bounded(promise, timeout) {
   } finally { clearTimeout(timer); }
 }
 
-/** Send the model's first screenshot through the real authenticated local bridge. */
+/** Purpose: Call the owned package's bridge without assuming a shared descriptor filename.
+ * Input: Fixture tool and arguments. Output: Authenticated local tool result.
+ */
 async function modelCall(name, args = {}) {
-  const descriptor = JSON.parse(await readFile(join(profile, "computer-bridge/bridge.json"), "utf8"));
+  const bridgePath = await application.evaluate(() => process.env.CLEO_COMPUTER_BRIDGE);
+  assert.ok(typeof bridgePath === "string" && resolve(bridgePath).startsWith(resolve(profile) + (process.platform === "win32" ? "\\" : "/")),
+    "The test must use only its own application's descriptor");
+  const descriptor = JSON.parse(await readFile(bridgePath, "utf8"));
   return new Promise((resolveCall, reject) => {
     const socket = createConnection(descriptor.address);
     const timer = setTimeout(() => {

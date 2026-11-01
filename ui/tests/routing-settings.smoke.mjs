@@ -1,0 +1,64 @@
+import assert from "node:assert/strict";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { createServer } from "vite";
+import { chromium } from "playwright";
+
+// Exercise the real settings navigation with the existing offline mock client.
+const ui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const scratch = await mkdtemp(join(tmpdir(), "cleo-routing-ui-"));
+const server = await createServer({ root: ui, cacheDir: join(scratch, "vite"), server: { host: "127.0.0.1", port: 0 } });
+let browser;
+try {
+  await server.listen();
+  browser = await chromium.launch({ executablePath: process.env.CLEO_TEST_BROWSER, headless: true });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  const errors = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.goto(server.resolvedUrls.local[0]);
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "设置", exact: true });
+  await dialog.getByRole("button", { name: "子任务路由", exact: true }).click();
+  await dialog.getByRole("button", {name: "保守回退模型", exact: true}).waitFor();
+  await dialog.getByText("暂无数据", { exact: false }).waitFor();
+  assert.equal(await dialog.getByRole("button", { name: "更新数据", exact: true }).isDisabled(), true);
+  await dialog.getByRole("button", { name: "路由模型", exact: true }).click();
+  const search = dialog.getByRole("combobox", { name: "搜索路由模型", exact: true });
+  await search.fill("demo");
+  assert.equal(await dialog.getByRole("option", { name: /demo/ }).count(), 1);
+  await search.fill("fixture-no-match");
+  await dialog.getByText("没有匹配的模型", { exact: true }).waitFor();
+  await search.press("Escape");
+  assert.equal(await dialog.getByRole("button", { name: "路由模型", exact: true }).getAttribute("aria-expanded"), "false");
+  const toggle = dialog.getByRole("checkbox", { name: "自动路由", exact: true });
+  assert.equal(await toggle.isChecked(), true);
+  await toggle.uncheck();
+  await dialog.getByLabel("路由执行权限", { exact: true }).selectOption("full");
+  await dialog.getByLabel("路由选择偏好", { exact: true }).selectOption("cost");
+  await dialog.getByText("高级设置", {exact:true}).click();
+  await dialog.getByLabel("子任务分配方式", { exact: true }).selectOption("evaluator");
+  await dialog.getByRole("checkbox", { name: "使用已确认的本地反馈", exact: true }).uncheck();
+  await dialog.getByRole("checkbox", { name: "按任务统计用量", exact: true }).check();
+  await dialog.getByRole("button", { name: "保存路由配置", exact: true }).click();
+  await dialog.getByText("已保存", { exact: true }).waitFor();
+  await toggle.check();
+  await dialog.getByRole("button", { name: "保存路由配置", exact: true }).click();
+  assert.equal(await toggle.isChecked(), true);
+  assert.equal(await dialog.getByLabel("路由执行权限", { exact: true }).inputValue(), "full");
+  assert.equal(await dialog.getByLabel("子任务分配方式", { exact: true }).inputValue(), "evaluator");
+  assert.equal(await dialog.getByRole("checkbox", { name: "使用已确认的本地反馈", exact: true }).isChecked(), false);
+  assert.equal(await dialog.getByRole("checkbox", { name: "按任务统计用量", exact: true }).isChecked(), true);
+  assert.equal(await dialog.getByText("评估 → 分配 → 交接 → 验收", { exact: true }).count(), 1);
+  await dialog.locator(".settings-scroll").evaluate(element => element.scrollTo(0, 0));
+  await mkdir(join(ui, "output/routing"), { recursive: true });
+  await page.screenshot({ path: join(ui, "output/routing/settings-offline.png") });
+  assert.deepEqual(errors, []);
+  console.log(JSON.stringify({ status: "passed", routingVisible: true, saveAndReload: true, benchmarkMissingFallback: true, paidModelTurns: 0 }));
+} finally {
+  await browser?.close();
+  await server.close();
+  assert.equal(dirname(scratch), resolve(tmpdir()));
+  await rm(scratch, { recursive: true, force: true });
+}

@@ -102,7 +102,7 @@
   "runtime_after_update": {
     "access": "default",
     "approval": "user",
-    "contextWindow": 128000,
+    "contextWindow": 0,
     "editable": true,
     "effort": "high",
     "handoffStatus": null,
@@ -133,6 +133,7 @@
       "reason": "此服务不提供统一权限档位，请使用高级审批设置。"
     },
     "provider": "scripted",
+    "routingMode": "manual",
     "serviceTier": null,
     "settingsRevision": 1,
     "steerMode": "boundary",
@@ -268,7 +269,7 @@
       "runtime": {
         "access": "default",
         "approval": "user",
-        "contextWindow": 128000,
+        "contextWindow": 0,
         "editable": true,
         "effort": "high",
         "handoffStatus": null,
@@ -299,6 +300,7 @@
           "reason": "此服务不提供统一权限档位，请使用高级审批设置。"
         },
         "provider": "scripted",
+        "routingMode": "manual",
         "serviceTier": null,
         "settingsRevision": 1,
         "steerMode": "boundary",
@@ -310,6 +312,33 @@
     {
       "changes": [],
       "type": "changes"
+    },
+    {
+      "type": "task-usage",
+      "usage": {
+        "breakdown": [
+          {
+            "cacheRead": null,
+            "cacheWrite": null,
+            "complete": false,
+            "input": null,
+            "missingCalls": 1,
+            "model": "fake-model-a",
+            "output": null,
+            "provider": "scripted",
+            "reportedCalls": 0,
+            "reportedCostUsd": null,
+            "role": "main",
+            "total": null
+          }
+        ],
+        "complete": false,
+        "input": null,
+        "missingCalls": 1,
+        "output": null,
+        "reportedCalls": 0,
+        "total": null
+      }
     },
     {
       "timing": {

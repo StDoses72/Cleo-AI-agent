@@ -60,7 +60,10 @@ def test_agents_are_cached_per_thread_and_rebuilt_after_a_reload(tmp_path) -> No
     assert [event["type"] for event in events[:4]] == [
         "turn-started", "upsert-item", "upsert-item", "usage"]
     assert events[2]["item"]["content"] == "hello there"
-    assert events[4] == {"type": "done", "summary": "hello there"}
+    assert events[4]["type"] == "task-usage"
+    assert events[4]["usage"]["total"] is None
+    assert events[4]["usage"]["missingCalls"] == 1
+    assert events[5] == {"type": "done", "summary": "hello there"}
 
     version[0] = 2
     asyncio.run(runtime.stream(TurnInput(manifest, "after reload"), emit))

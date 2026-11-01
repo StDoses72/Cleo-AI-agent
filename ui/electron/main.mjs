@@ -41,6 +41,7 @@ import { acquireSingleInstance } from "./install-state.mjs";
 import { SetupManager } from "./setup-manager.mjs";
 import { startEvolutionMonitor } from "./evolution-monitor.mjs";
 import { EvolutionMonitorStore } from "./evolution-monitor-store.mjs";
+import { needsEvolutionMonitor } from "./evolution-monitor-lifecycle.mjs";
 import { EvolutionCompanion } from "./evolution-companion.mjs";
 import { evolutionActions, nextVersionName } from "./evolution-actions.mjs";
 import { readJson } from "./evolution-store.mjs";
@@ -53,14 +54,15 @@ if (process.argv.includes("--cleo-evolution-monitor")) {
 } else {
 const here = dirname(fileURLToPath(import.meta.url));
 const alphaChannel = configureReleaseChannel(app);
-registerComputerSchemes(protocol);
 let desktopTray;
-if (app.isPackaged) {
-  if (!acquireSingleInstance(app, () => {
+if (app.isPackaged && !acquireSingleInstance(app, () => {
     const window = desktopTray?.isQuitting() ? null : desktopTray?.getWindow();
     return window ? [window] : [];
-  })) app.exit(0);
-}
+  })) {
+  app.exit(0);
+} else {
+// Do not register ready handlers or publish a bridge after the instance lock was denied.
+registerComputerSchemes(protocol);
 const backend = new BackendBridge({ app, here });
 setLanguage(await readUiLanguage(backend.runtimePaths().cleoHome));
 const computer = new ComputerUse({
@@ -127,8 +129,10 @@ const storageOptions = () => ({
   pruneOnlineRuntimes: storageReady,
 });
 const storage = createStorageQueue();
+let mainInteractive = false;
 app.on("cleo:healthy", (transactionId) => {
   storageReady = true;
+  mainInteractive = true;
   // Reclaim after the program proved itself; locked entries stay journaled for the next start.
   void storage(() => reclaimStorage(storageOptions())).then(result => {
     if (result.removed.length || result.failed.length) console.log(`Storage cleanup: removed ${result.removed.length}, failed ${result.failed.length}, freed ${result.freedBytes} bytes.`);
@@ -178,10 +182,11 @@ const companion = new EvolutionCompanion({ store: monitorStore, backend, evoluti
     for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) window.webContents.send("cleo:companion-thread", thread);
   },
 });
-/** Purpose: Reuse one independent progress window, including across application restart.
- * Input: none. Output: launched monitor or reuse of its fresh presence marker.
+/** Purpose: Reuse a companion only while an Evolution restart makes the main UI unavailable.
+ * Input: durable handoff state. Output: one monitor or no window during normal work.
  */
 async function openEvolutionMonitor() {
+  if (!needsEvolutionMonitor(await evolution.store.read())) return;
   if (monitorLaunching) return monitorLaunching;
   monitorLaunching = (async () => {
     const presence = await readJson(join(monitorStore.root, "presence.json"), {});
@@ -196,7 +201,7 @@ async function openEvolutionMonitor() {
  */
 async function publishMonitor() {
   const state = await evolution.status();
-  await monitorStore.publish({ version: app.getVersion(), protocol: 2, uiLanguage: getLanguage(), threadId: editingThread || state.threadId,
+  await monitorStore.publish({ version: app.getVersion(), protocol: 2, uiLanguage: getLanguage(), active: state.active, mainInteractive, threadId: editingThread || state.threadId,
     phase: editingThread ? tr("main.the_agent_is_editing") : state.phase === "idle" ? tr("main.conversation_ready") : tr("main.checking_or_preparing_a_version"),
     detail: editingDetail || state.validation?.message || tr("main.you_can_continue_chatting_click_check_changes_when_you_are_ready_to_try_them"),
     logs: (state.logs || "").slice(-12000), thread: companion.snapshot(),
@@ -231,9 +236,9 @@ async function applyEvolution(id) {
   if (backend.pending.size) throw new Error(tr("main.wait_for_the_current_task_to_finish_or_stop_it_before_applying_changes"));
   const state = await evolution.store.read();
   if (state.active === id) return true;
-  await openEvolutionMonitor();
   const tx = await evolution.stage(id);
   try {
+    await openEvolutionMonitor();
     const controller = await launchDesktop(process.execPath,
       [`--cleo-apply-parent=${process.pid}`, `--user-data-dir=${app.getPath("userData")}`],
       { ...process.env, CLEO_HOME: evolution.store.dataHome });
@@ -287,7 +292,6 @@ async function monitoredEvolutionTurn(params, onEvent) {
     await companion.load(params.thread_id).catch(error => console.error("Companion history:", error.message));
     if (companion.thread?.id === params.thread_id) { companion.thread.status = "running"; companion.thread.activeRunId = params.run_id; }
     await publishMonitor().catch(error => console.error("Evolution monitor:", error.message));
-    await openEvolutionMonitor().catch(error => console.error("Evolution monitor:", error.message));
     return await runEvolutionTurn({ evolution, backend, params, onEvent: event => {
       companion.event(params.thread_id, event);
       if (event.type === "done") completed = true;
@@ -333,6 +337,11 @@ const allowedMethods = new Set([
   "get_config_templates",
   "get_agent_instructions",
   "get_model_settings",
+  "get_routing_settings",
+  "save_routing_settings",
+  "refresh_routing_benchmarks",
+  "save_benchmark_connection",
+  "submit_routing_feedback",
   "get_runtime_catalog",
   "get_config_status",
   "get_productivity_models",
@@ -417,6 +426,8 @@ function createWindow() {
     if (url !== window.webContents.getURL()) event.preventDefault();
   });
   desktopTray.attachWindow(window);
+  window.webContents.on("did-start-loading", () => { mainInteractive = false; });
+  window.webContents.on("render-process-gone", () => { mainInteractive = false; });
   window.once("ready-to-show", () => {
     if (!desktopTray.isQuitting()) window.show();
   });
@@ -622,7 +633,7 @@ app.whenReady().then(async () => {
       save: async () => evolution.saveVersion(String(params.name || "").trim() || nextVersionName(await evolution.status())),
       select: () => changeEvolutionBase(params.id),
       discard: () => changeEvolutionBase(null, true),
-      build: async () => { await openEvolutionMonitor(); return evolution.build(); },
+      build: () => evolution.build(),
       monitor: () => openEvolutionMonitor(),
       nextMessage: () => monitorStore.pending(params.threadId),
       repairPrompt: async () => {
@@ -690,7 +701,7 @@ app.whenReady().then(async () => {
       allowRunning: ["releases", "download", "pullRequest", "releasePermission", "previewMergedRelease", "contributionBranches", "checkContribution", "mergeAssistance"].includes(action),
     });
   });
-  if (!app.isPackaged) ipcMain.handle("cleo:evolution:healthy", () => {});
+  if (!app.isPackaged) ipcMain.handle("cleo:evolution:healthy", () => { mainInteractive = true; });
   // Downloaded updates never authorize installation. Selection is explicit and recoverable.
   try { backend.runtime = await dependencies.prepare(); }
   catch (error) { updater.setState({ dependencies: { phase: "error", error: error.message } }); }
@@ -719,4 +730,5 @@ app.on("before-quit", createQuitBarrier({
   quit: () => app.quit(),
 }));
 
+}
 }

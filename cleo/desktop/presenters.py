@@ -49,31 +49,23 @@ def accent(value: str) -> str:
 
 
 def usage_from_events(events: list[dict[str, Any]], limit: int) -> dict[str, int | None]:
-    """Purpose: Context usage reported by the harness in the latest token-usage events."""
-    usage = {"used": None, "limit": limit, "input": None, "output": None}
+    """Purpose: Replay latest context occupancy. Input: events/limit. Output: UI counters."""
+    from cleo.harnesses.events import project_context_usage
+
+    usage = ContextWindowUsage(window_tokens=limit)
     for event in events:
+        if event.get("type") == "context_model_changed":
+            usage = ContextWindowUsage(window_tokens=limit)
         data = event.get("data") if isinstance(event.get("data"), dict) else {}
         payload = data.get("payload") if isinstance(data.get("payload"), dict) else data
-        token_usage = payload.get("tokenUsage") if isinstance(payload, dict) else None
-        if not isinstance(token_usage, dict):
-            continue
-        total = token_usage.get("total") if isinstance(token_usage.get("total"), dict) else {}
-        last = token_usage.get("last") if isinstance(token_usage.get("last"), dict) else {}
-        for key, value in {
-            "used": total.get("totalTokens"),
-            "limit": token_usage.get("modelContextWindow"),
-            "input": last.get("inputTokens"),
-            "output": last.get("outputTokens"),
-        }.items():
-            if isinstance(value, int):
-                usage[key] = value
-    return usage
+        project_context_usage(payload, usage)
+    return usage_view(usage)
 
 
 def usage_view(usage: ContextWindowUsage) -> dict[str, int | None]:
     return {
         "used": usage.used_tokens,
-        "limit": usage.window_tokens or 128_000,
+        "limit": usage.window_tokens or 0,
         "input": usage.input_tokens,
         "output": usage.output_tokens,
     }

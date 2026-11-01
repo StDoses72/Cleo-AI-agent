@@ -47,6 +47,26 @@ export class IpcCleoClient implements CleoClient {
     return this.bridge.request("set_ui_language", { language });
   }
 
+  getRoutingSettings(refresh = false): Promise<import("../routing-types").RoutingSettings> {
+    return this.bridge.request("get_routing_settings", { refresh });
+  }
+
+  saveRoutingSettings(update: import("../routing-types").RoutingSettingsUpdate): Promise<import("../routing-types").RoutingSettings> {
+    return this.bridge.request("save_routing_settings", { update });
+  }
+
+  submitRoutingFeedback(update: import("../routing-types").RoutingFeedback): Promise<import("../routing-types").RoutingSettings> {
+    return this.bridge.request("submit_routing_feedback", { update });
+  }
+
+  refreshRoutingBenchmarks(): Promise<import("../routing-types").RoutingSettings> {
+    return this.bridge.request("refresh_routing_benchmarks");
+  }
+
+  saveBenchmarkConnection(update: import("../routing-types").BenchmarkConnectionUpdate): Promise<import("../routing-types").RoutingSettings> {
+    return this.bridge.request("save_benchmark_connection", { update });
+  }
+
   getLocalSkills(provider: string, projectPath?: string): Promise<LocalSkill[]> {
     return this.bridge.request("get_local_skills", { provider, project_path: projectPath });
   }
@@ -100,6 +120,7 @@ export class IpcCleoClient implements CleoClient {
       model: options.model,
       effort: options.effort,
       service_tier: options.serviceTier,
+      routing_mode: options.routingMode,
       profile_id: options.profileId,
       access: options.access,
       approval: options.approval,

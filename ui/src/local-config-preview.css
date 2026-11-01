@@ -1,0 +1,33 @@
+.local-config-preview { height: 100dvh; overflow: auto; background: var(--surface-raised); color: var(--text); }
+.local-config-preview > header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 22px 28px; border-bottom: 1px solid var(--border); }
+.local-config-preview > header strong { font-size: 19px; }
+.local-config-preview > header strong span { margin-left: 12px; font-size: 12px; color: var(--muted); font-weight: 400; }
+.local-config-live { font-size: 11px; color: var(--accent); }
+.local-config-layout { display: grid; grid-template-columns: 190px minmax(0, 1fr); max-width: 1160px; margin: auto; }
+.local-config-layout nav { padding: 28px 16px; position: sticky; top: 0; align-self: start; }
+.local-config-layout nav button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px; border: 0; border-radius: 9px; background: transparent; text-align: left; color: var(--muted); font-size: 13px; }
+.local-config-layout nav button[aria-current] { color: var(--text); background: var(--surface); }
+.local-config-layout nav p { margin: 24px 12px; font-size: 11px; line-height: 1.8; color: var(--muted); }
+.local-config-layout main { min-width: 0; padding: 28px 32px; border-left: 1px solid var(--border); }
+.local-config-heading { display: flex; align-items: center; justify-content: space-between; gap: 15px; }
+.local-config-heading p { font-size: 11px; color: var(--muted); margin: 0 0 8px; }
+.local-config-heading h1 { font-size: 24px; margin: 0; font-weight: 550; }
+.local-config-heading button { display: flex; align-items: center; gap: 6px; }
+.local-config-primary { display: flex; flex-wrap: wrap; gap: 7px; margin: 22px 0 28px; padding: 14px; border: 1px solid var(--border); border-radius: 9px; font-size: 12px; color: var(--muted); }
+.local-config-primary strong { color: var(--text); font-weight: 500; }
+.local-config-primary span { margin-left: auto; }
+.local-config-connections > p { color: var(--muted); font-size: 12px; line-height: 1.8; }
+.local-config-connections article { border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin: 16px 0; }
+.local-config-connections article > div:first-child { display: flex; align-items: center; justify-content: space-between; }
+.local-config-connections h2 { font-size: 15px; margin: 0; }
+.local-config-connections article p { font-size: 14px; overflow-wrap: anywhere; }
+.local-config-connections article small, .local-config-connections article > div:first-child span { color: var(--muted); font-size: 11px; }
+.local-config-models { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+.local-config-models span { border-radius: 5px; padding: 5px 8px; background: var(--surface); font-size: 11px; overflow-wrap: anywhere; }
+.local-config-preview .routing-candidates { max-height: 420px; overflow-y: auto; padding-right: 8px; }
+.local-task-usage { max-width: 600px; margin-top: 24px; padding: 22px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.local-task-toolbar { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 24px; }
+.local-task-toolbar label { display: grid; gap: 6px; min-width: 0; flex: 1; color: var(--muted); font-size: 11px; }
+.local-task-toolbar select { width: 100%; min-width: 0; max-width: 380px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); font-size: 12px; }
+.local-task-toolbar button { display: flex; align-items: center; gap: 6px; }
+@media (max-width: 680px) { .local-config-layout { grid-template-columns: 1fr; } .local-config-layout nav { display: flex; flex-wrap: wrap; padding: 12px; gap: 8px; } .local-config-layout nav button { width: auto; } .local-config-layout nav p { margin: 0 12px; } .local-config-layout main { padding: 18px; border-left: 0; } .local-config-live { max-width: 130px; } }

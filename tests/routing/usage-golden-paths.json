@@ -1,0 +1,18 @@
+[
+  "tests\\characterization\\golden\\chat\\attachments.json",
+  "tests\\characterization\\golden\\chat\\first_turn.json",
+  "tests\\characterization\\golden\\chat\\model_failure.json",
+  "tests\\characterization\\golden\\chat\\resume_after_restart.json",
+  "tests\\characterization\\golden\\chat\\rewind.json",
+  "tests\\characterization\\golden\\legacy\\workspace.json",
+  "tests\\characterization\\golden\\productivity\\boundary_steering.json",
+  "tests\\characterization\\golden\\productivity\\cancel_and_refusal.json",
+  "tests\\characterization\\golden\\productivity\\permission_denied_by_policy.json",
+  "tests\\characterization\\golden\\productivity\\resume_after_restart.json",
+  "tests\\characterization\\golden\\productivity\\runtime_options.json",
+  "tests\\characterization\\golden\\productivity\\slash_commands.json",
+  "tests\\characterization\\golden\\productivity\\tool_turn.json",
+  "tests\\characterization\\golden\\productivity\\user_approval.json",
+  "tests\\characterization\\golden\\workspace\\fresh_home.json",
+  "tests\\characterization\\golden\\workspace\\model_connections.json"
+]

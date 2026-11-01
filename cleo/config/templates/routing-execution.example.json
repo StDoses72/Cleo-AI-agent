@@ -1,0 +1,9 @@
+{
+  "default_mode": "auto",
+  "evaluator": {
+    "mode": "default",
+    "profile_id": null,
+    "model": null,
+    "timeout_seconds": 60
+  }
+}

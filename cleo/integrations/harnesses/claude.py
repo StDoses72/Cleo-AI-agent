@@ -318,11 +318,13 @@ class ClaudeProvider:
     async def _reconnect_runtime(self, runtime, model, effort, permission_mode):
         """Purpose: Replace an SDK stream while retaining history, scope and UI brokers.
 
-        Input: Existing runtime and desired launch options. Output: Fresh connected process.
+        Input: Existing runtime and desired launch options. Output: Fresh connected process
+        with the same host-owned task identity; a failed replacement leaves it unchanged.
         """
         replacement = await self._connect(
             runtime.cwd, model, effort=effort, resume=runtime.native_session_id,
             permission_mode=permission_mode,
+            computer_client=runtime.computer_client,
             **({"context": runtime.context_binding} if runtime.context_binding else {}),
             **({"external_home": True} if runtime.external_home else {}),
         )
@@ -415,6 +417,8 @@ class ClaudeProvider:
                 is_default=model == self._default_model,
                 default_effort="high",
                 supported_efforts=CLAUDE_EFFORTS,
+                available=None,
+                availability_source="configured_only",
             )
             for model in self._models
         )
@@ -584,6 +588,24 @@ class ClaudeProvider:
                         result_message = message
                         last_turn_id = message.uuid or last_turn_id
                         runtime.native_session_id = message.session_id
+                        # Zero-turn background notification results are bookkeeping frames.
+                        # Preserve any nonzero telemetry, even if the CLI reports no turns.
+                        has_activity = message.num_turns or message.total_cost_usd or any(
+                            (message.usage or {}).get(field) for field in (
+                                "input_tokens", "output_tokens", "total_tokens",
+                                "cache_read_input_tokens", "cache_creation_input_tokens",
+                            )
+                        )
+                        if has_activity and (
+                            message.usage or message.total_cost_usd is not None
+                        ):
+                            usage_event = AgentEvent(provider="claude", type="usage", data={
+                                "usage": message.usage,
+                                "call_id": getattr(message, "uuid", None) or secrets.token_hex(16),
+                                "total_cost_usd": message.total_cost_usd,
+                            })
+                            events.append(usage_event)
+                            await emit_event(on_event, usage_event)
                         for denial in message.permission_denials or []:
                             if not isinstance(denial, dict):
                                 continue
@@ -888,17 +910,19 @@ class ClaudeProvider:
         permission_mode: ClaudePermissionMode | None = None,
         context=None,
         external_home: bool = False,
+        computer_client: str | None = None,
     ) -> _ClaudeRuntime:
-        """创建并连接一个 ``ClaudeSDKClient``。
+        """Purpose: Connect a Claude SDK transport with host-scoped MCP tools.
 
-        参数:
-            project_path: 项目工作目录, 来自 ``create_session`` /
-                ``resume_session``。
-            model: 模型 id; 为 None 时回落到 ``default_model``。
-            resume: 原生 session id, 由 ``resume_session`` 传入, 用于恢复会话。
-            external_home: 兼容旧运行状态的标记; 所有会话使用同一原生目录。
-        返回:
-            ``_ClaudeRuntime``, 由调用方登记进 ``_sessions``。
+        Input:
+            project_path, model, effort, permission_mode: Native launch configuration.
+            resume: Optional native history to resume.
+            context: Optional host-bound context reader scope.
+            external_home: Compatibility flag; sessions use the configured native home.
+            computer_client: Existing host key for a transport replacement; omitted for
+                a newly registered session, which receives its own random identity.
+        Output:
+            Connected runtime for the caller to register; no host ownership is changed.
         """
         questions = QuestionBroker(self.name)
         approvals = PermissionBroker(self.name)
@@ -969,7 +993,9 @@ class ClaudeProvider:
             if context and self._memory_mcp
             else self._memory_mcp
         )
-        computer_client = secrets.token_hex(16)
+        # Task identity belongs to the logical runtime, not its replaceable SDK stream.
+        # Both MCP servers must retain the key already registered by bind_parent.
+        computer_client = computer_client or secrets.token_hex(16)
         options = ClaudeAgentOptions(
             max_buffer_size=CLAUDE_MESSAGE_BUFFER_BYTES,
             cwd=project_path,
@@ -1052,6 +1078,12 @@ class ClaudeProvider:
             if runtime.computer_client == client_key:
                 return session_id
         return None
+
+    def delegation_parent_key(self, session_id: str) -> str | None:
+        """Purpose: Bind child tools to their host. Input: session ID. Output: launch key."""
+        if self._memory_mcp is None or not self._memory_mcp.routing_enabled:
+            return None
+        return self._sessions[session_id].computer_client
 
     def _block_event(self, block: object) -> AgentEvent | None:
         """把 SDK 消息 block 映射为统一的 ``AgentEvent``。
