@@ -231,7 +231,7 @@ def test_claude_result_and_policy_are_truthful_live_and_after_reload(tmp_path, f
     class Client:
         query = AsyncMock()
 
-        async def receive_response(self):
+        async def receive_messages(self):
             yield AssistantMessage(content=[ToolUseBlock(id="tool", name="Read", input={})],
                                    model="test")
             yield UserMessage(content=[ToolResultBlock(

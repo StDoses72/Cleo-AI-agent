@@ -1,5 +1,13 @@
 import { t as tr, getLanguage } from "../i18n.mjs";
-/** Cleo's built-in browser: persistent tabs rendered as WebContentsViews in the main window.
+/** Cleo's built-in browser: per-conversation tabs rendered as WebContentsViews in the main window.
+ *
+ * Every Cleo conversation (``thread_id``) owns a ``BrowserContext``: its own tabs, active tab,
+ * downloads, notices, geometry counter and an isolated Electron storage partition. Contexts
+ * are created lazily and hold no WebContents until a page is actually needed. One shared
+ * stage (main window placement, off-screen keeper window, agent overlay) shows the foreground
+ * conversation's active tab; background conversations keep operating their own pages in the
+ * keeper. A context that nobody used for ``idleMs`` is hibernated: its WebContents are closed,
+ * the tab URLs are kept, and the next real use reloads them.
  *
  * The user and the AI share the same WebContents. AI input and screenshots use the in-process
  * DevTools protocol (webContents.debugger), so no remote debugging port is opened, the real
@@ -18,6 +26,9 @@ const NAVIGATION_SCHEMES = new Set(["http:", "https:", "cleo-file:"]);
 const INPUT_TIMEOUT = 8000;
 const MAX_NOTICES = 12;
 const MAX_DOWNLOADS = 20;
+/** A conversation's pages are released after this long without a tool call or user action. */
+export const BROWSER_IDLE_MS = 10 * 60 * 1000;
+const IDLE_CHECK_MS = 30 * 1000;
 
 const PERMISSION_LABELS = {
   get media() { return tr("browser.camera_or_microphone"); }, get geolocation() { return tr("browser.location"); }, get notifications() { return tr("browser.notifications"); }, get midi() { return tr("browser.midi_devices"); },
@@ -53,6 +64,12 @@ export function normalizeAddress(input) {
   }
   if ((url.protocol === "http:" || url.protocol === "https:") && !url.hostname) throw new Error(tr("browser.the_url_has_no_hostname"));
   return url.href;
+}
+
+/** Purpose: Derive a stable storage partition name from a conversation id. */
+export function partitionFor(prefix, threadId) {
+  const slug = String(threadId).replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 80);
+  return `${prefix}-thread-${slug}`;
 }
 
 function navigationAllowed(url) {
@@ -91,11 +108,16 @@ function uniquePath(directory, name) {
   return candidate;
 }
 
+function alive(window) {
+  return Boolean(window) && !window.isDestroyed();
+}
+
 class Tab {
-  constructor(id, view) {
+  constructor(id, view, context) {
     this.id = id;
     this.view = view;
     this.wc = view.webContents;
+    this.context = context;
     this.error = null;
     this.crashed = null;
     this.unresponsive = false;
@@ -107,55 +129,149 @@ class Tab {
     this.initialLoad = Promise.resolve();
     this.attachPromise = null;
     this.openerId = null;
+    this.hostWindow = null;
+  }
+}
+
+/** One conversation's browser: tabs, downloads, notices and an isolated storage partition. */
+class BrowserContext {
+  constructor(threadId, partition, now) {
+    this.threadId = threadId;
+    this.partition = partition;
+    this.tabs = new Map();
+    this.order = [];
+    this.activeId = null;
+    this.geometry = 1;
+    this.nextTab = 1;
+    this.downloads = [];
+    this.notices = [];
+    this.configured = false;
+    this.lastUsedAt = now;
+    // Saved tab URLs while the pages are released; null while the context is live.
+    this.hibernated = null;
+    this.facade = null;
   }
 }
 
 export class CleoBrowser extends EventEmitter {
-  constructor({ electron, partition = "persist:cleo-browser", downloadsDir, overlay = null, platform = process.platform }) {
+  constructor({ electron, partition = "persist:cleo-browser", downloadsDir, overlay = null, platform = process.platform,
+    idleMs = BROWSER_IDLE_MS, now = () => Date.now() }) {
     super();
     this.electron = electron;
-    this.partition = partition;
+    // Per-conversation partitions derive from this prefix; the legacy shared partition of the
+    // same name is left untouched on disk rather than copied into every conversation.
+    this.partitionPrefix = partition;
     this.downloadsDir = downloadsDir;
     this.overlayFiles = overlay;
     this.platform = platform;
-    this.tabs = new Map();
-    this.order = [];
-    this.activeId = null;
+    this.idleMs = idleMs;
+    this.now = now;
+    this.contexts = new Map();
+    this.foregroundId = null;
+    this.protocols = [];
     this.window = null;
     this.viewport = null;
     this.size = { ...DEFAULT_SIZE };
-    this.geometry = 1;
     this.scale = 1;
-    this.downloads = [];
-    this.notices = [];
-    this.nextTab = 1;
     this.overlayWanted = false;
     this.overlayView = null;
     this.keeper = null;
     // Views live in an off-screen keeper until a main window is attached and not minimized.
     this.parked = true;
     this.closed = false;
-    this.configured = false;
     this.stateTimer = null;
+    this.idleTimer = null;
   }
 
-  /** Purpose: Configure the persistent profile once. Input: none. Output: Electron session. */
-  session() {
-    const ses = this.electron.session.fromPartition(this.partition);
-    if (this.configured) return ses;
-    this.configured = true;
+  // --- conversations -------------------------------------------------------------------------
+
+  /** Purpose: The browser context of a conversation; creating it allocates no WebContents. */
+  context(threadId) {
+    const id = String(threadId ?? "");
+    if (!id) throw new Error(tr("broker.select_a_task_first"));
+    let context = this.contexts.get(id);
+    if (!context) {
+      context = new BrowserContext(id, partitionFor(this.partitionPrefix, id), this.now());
+      this.contexts.set(id, context);
+    }
+    return context;
+  }
+
+  hasContext(threadId) {
+    return this.contexts.has(String(threadId ?? ""));
+  }
+
+  /** Purpose: The per-conversation view used by the broker and the panel. */
+  forThread(threadId) {
+    const context = this.context(threadId);
+    if (!context.facade) context.facade = new ThreadBrowser(this, context);
+    return context.facade;
+  }
+
+  foreground() {
+    return this.foregroundId ? this.contexts.get(this.foregroundId) ?? null : null;
+  }
+
+  /** Purpose: Show one conversation's browser in the panel; others keep working off screen. */
+  setForeground(threadId) {
+    const next = threadId ? this.context(threadId) : null;
+    const previous = this.foreground();
+    if (previous === next) return;
+    // Leaving a page someone was reading restarts its full idle window.
+    if (previous && this.viewport && !this.parked) this.touch(previous);
+    this.foregroundId = next ? next.threadId : null;
+    if (previous) this.rehost(previous);
+    if (next) this.rehost(next);
+    if (this.overlayView && alive(this.window) && !this.parked) {
+      this.window.contentView.removeChildView(this.overlayView);
+      this.window.contentView.addChildView(this.overlayView);
+    }
+    this.layout();
+    this.emit("foreground", this.foregroundId);
+    this.emitState();
+  }
+
+  /** Purpose: Register a custom scheme on every conversation's session (now and later). */
+  registerProtocol(scheme, handler) {
+    this.protocols.push({ scheme, handler });
+    for (const context of this.contexts.values()) {
+      if (context.configured) this.applyProtocol(this.electron.session.fromPartition(context.partition), scheme, handler);
+    }
+  }
+
+  applyProtocol(ses, scheme, handler) {
+    const protocol = ses?.protocol;
+    if (!protocol) return;
+    const apply = () => { try { protocol.handle(scheme, handler); } catch { /* Already handled. */ } };
+    const check = protocol.isProtocolHandled?.(scheme);
+    if (check && typeof check.then === "function") void check.then(handled => { if (!handled) apply(); }, apply);
+    else if (!check) apply();
+  }
+
+  /** Purpose: Configure a conversation's isolated profile once. Output: Electron session. */
+  session(context) {
+    const ses = this.electron.session.fromPartition(context.partition);
+    if (context.configured) return ses;
+    context.configured = true;
     ses.setPermissionRequestHandler((wc, permission, callback) => {
       const allowed = permission === "clipboard-sanitized-write";
       callback(allowed);
-      if (!allowed) this.notice(this.tabFor(wc), tr("browser.the_website_requested_value_permission_it_was_denied", { p0: PERMISSION_LABELS[permission] || permission }));
+      if (!allowed) this.notice(context, this.tabFor(wc), tr("browser.the_website_requested_value_permission_it_was_denied", { p0: PERMISSION_LABELS[permission] || permission }));
     });
     ses.setPermissionCheckHandler((_wc, permission) => permission === "clipboard-sanitized-write");
     ses.setDevicePermissionHandler?.(() => false);
     // Remote pages must never read local files; workspace previews use the cleo-file scheme.
     ses.webRequest.onBeforeRequest({ urls: ["file://*/*"] }, (_details, callback) => callback({ cancel: true }));
-    ses.on("will-download", (_event, item, wc) => this.download(item, wc));
+    ses.on("will-download", (_event, item, wc) => this.download(context, item, wc));
+    for (const { scheme, handler } of this.protocols) this.applyProtocol(ses, scheme, handler);
     return ses;
   }
+
+  touch(context) {
+    context.lastUsedAt = this.now();
+  }
+
+  // --- window placement -------------------------------------------------------------------
 
   attachWindow(window) {
     this.window = window;
@@ -169,7 +285,7 @@ export class CleoBrowser extends EventEmitter {
     this.scale = this.displayScale();
     const metrics = () => {
       const scale = this.displayScale();
-      if (scale !== this.scale) { this.scale = scale; this.bump("display"); }
+      if (scale !== this.scale) { this.scale = scale; this.bumpAll("display"); }
     };
     this.electron.screen.on("display-metrics-changed", metrics);
     window.on("moved", metrics);
@@ -183,13 +299,14 @@ export class CleoBrowser extends EventEmitter {
     } catch { return 1; }
   }
 
-  host() {
-    if (this.parked || !this.window || this.window.isDestroyed()) return this.keeperWindow();
-    return this.window;
+  /** The window a conversation's views belong in: the main window for the shown one, else the keeper. */
+  host(context) {
+    if (context && context.threadId === this.foregroundId && !this.parked && alive(this.window)) return this.window;
+    return this.keeperWindow();
   }
 
   keeperWindow() {
-    if (this.keeper && !this.keeper.isDestroyed()) return this.keeper;
+    if (alive(this.keeper)) return this.keeper;
     // Chromium stops painting and screenshots in minimized windows. An inactive, off-screen,
     // non-focusable tool window keeps the same WebContents working without taking focus.
     this.keeper = new this.electron.BrowserWindow({
@@ -203,26 +320,49 @@ export class CleoBrowser extends EventEmitter {
     return this.keeper;
   }
 
+  /** Purpose: Drop the keeper window once no conversation keeps a page alive. */
+  releaseKeeper() {
+    if (!alive(this.keeper)) { this.keeper = null; return; }
+    if (this.tabCount()) return;
+    this.keeper.destroy();
+    this.keeper = null;
+  }
+
+  tabCount() {
+    let count = 0;
+    for (const context of this.contexts.values()) count += context.tabs.size;
+    return count;
+  }
+
+  /** Move a conversation's views into the window they should live in now. */
+  rehost(context) {
+    for (const tab of context.tabs.values()) this.place(tab);
+  }
+
+  place(tab) {
+    if (tab.wc.isDestroyed() || this.closed) return;
+    const target = this.host(tab.context);
+    if (tab.hostWindow === target && alive(target)) return;
+    if (alive(tab.hostWindow)) { try { tab.hostWindow.contentView.removeChildView(tab.view); } catch { /* Detached. */ } }
+    tab.hostWindow = alive(target) ? target : null;
+    if (tab.hostWindow) tab.hostWindow.contentView.addChildView(tab.view);
+  }
+
   parkViews(parked) {
     if (this.closed) return;
-    const keeperReady = Boolean(this.keeper) && !this.keeper.isDestroyed();
-    if (parked && !this.tabs.size) {
+    if (parked && !this.tabCount()) {
       // Nothing to keep alive yet; the keeper is created when the first tab needs it.
       this.parked = true;
       return;
     }
-    if (this.parked === parked && (!parked || keeperReady)) {
+    if (this.parked === parked) {
       this.layout();
       return;
     }
-    const from = this.parked ? (keeperReady ? this.keeper : null) : this.window;
     this.parked = parked;
-    const to = this.host();
-    for (const tab of this.tabs.values()) {
-      if (from && !from.isDestroyed()) from.contentView.removeChildView(tab.view);
-      if (to && !to.isDestroyed()) to.contentView.addChildView(tab.view);
-    }
-    if (this.overlayView && this.window && !this.window.isDestroyed()) {
+    const shown = this.foreground();
+    if (shown) this.rehost(shown);
+    if (this.overlayView && alive(this.window)) {
       this.window.contentView.removeChildView(this.overlayView);
       if (!parked) this.window.contentView.addChildView(this.overlayView);
     }
@@ -234,10 +374,12 @@ export class CleoBrowser extends EventEmitter {
     const next = rect && rect.width >= 40 && rect.height >= 40
       ? { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) }
       : null;
+    const shown = this.foreground();
+    if (shown && this.viewport && !next && !this.parked) this.touch(shown);
     this.viewport = next;
     if (next && (next.width !== this.size.width || next.height !== this.size.height)) {
       this.size = { width: next.width, height: next.height };
-      this.bump("resize");
+      this.bumpAll("resize");
     }
     this.layout();
     this.emitState();
@@ -246,19 +388,26 @@ export class CleoBrowser extends EventEmitter {
   layout() {
     const showing = Boolean(this.viewport) && !this.parked;
     const origin = showing ? this.viewport : { x: 0, y: 0 };
-    const bounds = { x: origin.x, y: origin.y, width: this.size.width, height: this.size.height };
-    for (const tab of this.tabs.values()) {
-      tab.view.setBounds(bounds);
-      tab.view.setVisible(tab.id === this.activeId && (showing || this.parked));
+    const shownBounds = { x: origin.x, y: origin.y, width: this.size.width, height: this.size.height };
+    const keeperBounds = { x: 0, y: 0, width: this.size.width, height: this.size.height };
+    for (const context of this.contexts.values()) {
+      const foreground = context.threadId === this.foregroundId;
+      for (const tab of context.tabs.values()) {
+        const inWindow = foreground && !this.parked;
+        tab.view.setBounds(inWindow ? shownBounds : keeperBounds);
+        // Background conversations stay painted in the keeper so their screenshots keep working.
+        tab.view.setVisible(tab.id === context.activeId && (!inWindow || showing));
+      }
     }
-    if (this.parked && this.keeper && !this.keeper.isDestroyed()) {
+    if (alive(this.keeper)) {
       this.keeper.setBounds({ x: -30000, y: -30000, width: this.size.width, height: this.size.height });
     }
     this.layoutOverlay();
   }
 
   layoutOverlay() {
-    const show = this.overlayWanted && Boolean(this.viewport) && !this.parked && Boolean(this.activeId);
+    const shown = this.foreground();
+    const show = this.overlayWanted && Boolean(this.viewport) && !this.parked && Boolean(shown?.activeId);
     if (!show) { this.overlayView?.setVisible(false); return; }
     const overlay = this.overlay();
     if (!overlay) return;
@@ -284,7 +433,7 @@ export class CleoBrowser extends EventEmitter {
     });
   }
 
-  /** Purpose: Show "AI is operating, click to take over" above the page. Input: flag. */
+  /** Purpose: Show "AI is operating, click to take over" above the shown page. Input: flag. */
   setAgentOverlay(wanted) {
     this.overlayWanted = Boolean(wanted);
     if (this.overlayWanted && this.overlayView && this.window && !this.parked) {
@@ -299,50 +448,62 @@ export class CleoBrowser extends EventEmitter {
     return Boolean(this.overlayView) && webContents === this.overlayView.webContents;
   }
 
-  bump(reason) {
-    this.geometry += 1;
-    this.emit("geometry", reason);
+  bump(context, reason) {
+    context.geometry += 1;
+    this.emit("geometry", { threadId: context.threadId, reason });
   }
 
+  bumpAll(reason) {
+    for (const context of this.contexts.values()) this.bump(context, reason);
+  }
+
+  // --- tabs --------------------------------------------------------------------------------
+
   tabFor(webContents) {
-    for (const tab of this.tabs.values()) if (tab.wc === webContents) return tab;
+    for (const context of this.contexts.values()) {
+      for (const tab of context.tabs.values()) if (tab.wc === webContents) return tab;
+    }
     return null;
   }
 
-  requireTab(id) {
-    const tab = this.tabs.get(String(id ?? ""));
+  requireTab(context, id) {
+    const tab = context.tabs.get(String(id ?? ""));
     if (!tab || tab.wc.isDestroyed()) throw new Error(tr("browser.tab_value_does_not_exist_or_was_closed_call_browser_tabs_to_see_the_current_tabs", { p0: id }));
     return tab;
   }
 
-  activeTab() {
-    return this.activeId ? this.requireTab(this.activeId) : null;
+  activeTab(context) {
+    return context.activeId ? this.requireTab(context, context.activeId) : null;
   }
 
-  ensureTab() {
-    return this.activeTab() || this.createTab();
+  /** Purpose: A tab to act on; a hibernated conversation reloads its saved tabs first. */
+  ensureTab(context) {
+    this.wake(context);
+    return this.activeTab(context) || this.createTab(context);
   }
 
   /** Purpose: Open a tab. Input: optional URL, existing popup WebContents and focus flag. */
-  createTab({ url = "", webContents = null, activate = true, openerId = null } = {}) {
+  createTab(context, { url = "", webContents = null, activate = true, openerId = null } = {}) {
     if (this.closed) throw new Error(tr("browser.the_built_in_browser_is_closed"));
+    if (context.hibernated && !webContents) this.wake(context);
+    this.touch(context);
     const view = webContents
       ? new this.electron.WebContentsView({ webContents })
       : new this.electron.WebContentsView({ webPreferences: {
-        session: this.session(), sandbox: true, contextIsolation: true, nodeIntegration: false,
+        session: this.session(context), sandbox: true, contextIsolation: true, nodeIntegration: false,
         webSecurity: true, allowRunningInsecureContent: false, backgroundThrottling: false,
         spellcheck: false, safeDialogs: true, navigateOnDragDrop: false, webviewTag: false,
       } });
     view.setBackgroundColor("#ffffff");
-    const tab = new Tab(`t${this.nextTab++}`, view);
+    const tab = new Tab(`t${context.nextTab++}`, view, context);
     tab.openerId = openerId;
-    this.tabs.set(tab.id, tab);
-    this.order.push(tab.id);
+    context.tabs.set(tab.id, tab);
+    context.order.push(tab.id);
     this.wire(tab);
     const attach = () => {
-      if (!this.tabs.has(tab.id) || tab.wc.isDestroyed() || this.closed) return;
-      this.host()?.contentView.addChildView(view);
-      if (this.overlayView && this.window && !this.parked) {
+      if (!context.tabs.has(tab.id) || tab.wc.isDestroyed() || this.closed) return;
+      this.place(tab);
+      if (this.overlayView && alive(this.window) && !this.parked && context.threadId === this.foregroundId) {
         this.window.contentView.removeChildView(this.overlayView);
         this.window.contentView.addChildView(this.overlayView);
       }
@@ -351,7 +512,9 @@ export class CleoBrowser extends EventEmitter {
     // Chromium focuses a new popup while it is created; attaching its view a moment later keeps
     // Cleo from being activated while the user works in another application.
     if (webContents) setTimeout(attach, 120); else attach();
-    if (activate || !this.activeId) this.activeId = tab.id;
+    if (activate || !context.activeId) {
+      if (context.activeId !== tab.id) { context.activeId = tab.id; this.bump(context, "tab"); }
+    }
     this.layout();
     // A new WebContents has no renderer until its first navigation. The model must be able
     // to screenshot a fresh tab before navigating; existing popups already have a renderer.
@@ -361,26 +524,26 @@ export class CleoBrowser extends EventEmitter {
       });
     }
     this.emitState();
-    this.emit("tabs");
+    this.emit("tabs", context.threadId);
     return tab;
   }
 
   wire(tab) {
-    const { wc } = tab;
+    const { wc, context } = tab;
     wc.setWindowOpenHandler(({ url }) => {
       if (!navigationAllowed(url)) {
-        this.notice(tab, tr("browser.blocked_opening_a_non_web_url_value", { p0: String(url).slice(0, 120) }));
+        this.notice(context, tab, tr("browser.blocked_opening_a_non_web_url_value", { p0: String(url).slice(0, 120) }));
         return { action: "deny" };
       }
       return {
         action: "allow",
-        createWindow: options => this.createTab({ webContents: options.webContents, activate: true, openerId: tab.id }).wc,
+        createWindow: options => this.createTab(context, { webContents: options.webContents, activate: true, openerId: tab.id }).wc,
       };
     });
     const guard = (event, url) => {
       if (navigationAllowed(url)) return;
       event.preventDefault();
-      this.notice(tab, tr("browser.blocked_navigation_to_a_non_web_url_value", { p0: String(url).slice(0, 120) }));
+      this.notice(context, tab, tr("browser.blocked_navigation_to_a_non_web_url_value", { p0: String(url).slice(0, 120) }));
     };
     wc.on("will-navigate", guard);
     wc.on("will-redirect", guard);
@@ -496,12 +659,14 @@ export class CleoBrowser extends EventEmitter {
     return url;
   }
 
-  async navigate(id, input) {
-    return this.load(this.requireTab(id), input);
+  async navigate(context, id, input) {
+    this.touch(context);
+    return this.load(this.requireTab(context, id), input);
   }
 
-  async history(id, action) {
-    const tab = this.requireTab(id);
+  async history(context, id, action) {
+    const tab = this.requireTab(context, id);
+    this.touch(context);
     const history = tab.wc.navigationHistory;
     if (action === "back") { if (!history.canGoBack()) throw new Error(tr("browser.there_is_no_previous_page")); history.goBack(); }
     else if (action === "forward") { if (!history.canGoForward()) throw new Error(tr("browser.there_is_no_next_page")); history.goForward(); }
@@ -512,53 +677,59 @@ export class CleoBrowser extends EventEmitter {
     this.emitState();
   }
 
-  activate(id) {
-    const tab = this.requireTab(id);
-    if (this.activeId !== tab.id) {
-      this.activeId = tab.id;
-      this.bump("tab");
+  activate(context, id) {
+    const tab = this.requireTab(context, id);
+    this.touch(context);
+    if (context.activeId !== tab.id) {
+      context.activeId = tab.id;
+      this.bump(context, "tab");
     }
     this.layout();
     this.emitState();
     return tab;
   }
 
-  close(id) {
-    const tab = this.requireTab(id);
+  /** Purpose: Close one tab. Closing the last tab leaves the conversation with no page. */
+  close(context, id) {
+    const tab = this.requireTab(context, id);
+    this.touch(context);
     tab.wc.close({ waitForBeforeUnload: false });
     this.forget(tab);
-    if (!this.tabs.size && !this.closed) this.createTab({ url: "" });
   }
 
   forget(tab) {
-    if (!this.tabs.has(tab.id)) return;
-    this.tabs.delete(tab.id);
-    this.order = this.order.filter(id => id !== tab.id);
-    try { this.host()?.contentView.removeChildView(tab.view); } catch { /* Already detached. */ }
+    const { context } = tab;
+    if (!context.tabs.has(tab.id)) return;
+    context.tabs.delete(tab.id);
+    context.order = context.order.filter(id => id !== tab.id);
+    try { if (alive(tab.hostWindow)) tab.hostWindow.contentView.removeChildView(tab.view); } catch { /* Already detached. */ }
+    tab.hostWindow = null;
     try { if (tab.wc.debugger.isAttached()) tab.wc.debugger.detach(); } catch { /* Closed. */ }
-    if (this.activeId === tab.id) {
-      this.activeId = this.order.at(-1) || null;
-      this.bump("tab");
+    if (context.activeId === tab.id) {
+      context.activeId = context.order.at(-1) || null;
+      this.bump(context, "tab");
     }
+    this.releaseKeeper();
     this.layout();
     this.emitState();
-    this.emit("tabs");
+    this.emit("tabs", context.threadId);
   }
 
-  setZoom(id, factor) {
-    const tab = this.requireTab(id);
+  setZoom(context, id, factor) {
+    const tab = this.requireTab(context, id);
+    this.touch(context);
     const next = Math.min(3, Math.max(0.3, Math.round(factor * 100) / 100));
     if (next !== tab.wc.getZoomFactor()) {
       tab.wc.setZoomFactor(next);
-      this.bump("zoom");
+      this.bump(context, "zoom");
     }
     this.emitState();
     return next;
   }
 
   /** Purpose: Capture exactly what the panel shows. Input: tab id. Output: DIP-sized PNG. */
-  async capture(id, signal) {
-    const tab = await cancellable(this.attach(this.requireTab(id)), signal);
+  async capture(context, id, signal) {
+    const tab = await cancellable(this.attach(this.requireTab(context, id)), signal);
     const { width, height } = this.size;
     if (tab.dialog) throw Object.assign(new Error(tr("broker.the_page_is_showing_a_dialog")), { dialog: true });
     const shot = await cancellable(this.command(tab, "Page.captureScreenshot", { format: "png" }, 15000), signal);
@@ -570,8 +741,8 @@ export class CleoBrowser extends EventEmitter {
     return { png: image.toPNG(), width, height, device, zoom: tab.wc.getZoomFactor(), scale: this.scale };
   }
 
-  async click(id, x, y, { button = "left", clicks = 1 } = {}) {
-    const tab = await this.attach(this.requireTab(id));
+  async click(context, id, x, y, { button = "left", clicks = 1 } = {}) {
+    const tab = await this.attach(this.requireTab(context, id));
     const point = this.cssPoint(tab, x, y);
     await this.input(tab, "Input.dispatchMouseEvent", { type: "mouseMoved", ...point, button: "none", pointerType: "mouse" });
     const bit = { left: 1, right: 2, middle: 4 }[button];
@@ -583,13 +754,13 @@ export class CleoBrowser extends EventEmitter {
     }
   }
 
-  async move(id, x, y) {
-    const tab = await this.attach(this.requireTab(id));
+  async move(context, id, x, y) {
+    const tab = await this.attach(this.requireTab(context, id));
     await this.input(tab, "Input.dispatchMouseEvent", { type: "mouseMoved", ...this.cssPoint(tab, x, y), button: "none", pointerType: "mouse" });
   }
 
-  async drag(id, from, to, signal) {
-    const tab = await this.attach(this.requireTab(id));
+  async drag(context, id, from, to, signal) {
+    const tab = await this.attach(this.requireTab(context, id));
     const start = this.cssPoint(tab, from.x, from.y);
     const end = this.cssPoint(tab, to.x, to.y);
     await this.input(tab, "Input.dispatchMouseEvent", { type: "mouseMoved", ...start, button: "none", pointerType: "mouse" });
@@ -606,20 +777,20 @@ export class CleoBrowser extends EventEmitter {
       await this.input(tab, "Input.dispatchMouseEvent", { type: "mouseReleased", ...end, button: "left", buttons: 0, clickCount: 1, pointerType: "mouse" });
       tab.pressed.delete("left");
     } finally {
-      if (tab.pressed.has("left")) await this.releaseInputs(tab.id).catch(() => {});
+      if (tab.pressed.has("left")) await this.releaseInputs(context, tab.id).catch(() => {});
     }
   }
 
-  async scroll(id, x, y, deltaX, deltaY) {
-    const tab = await this.attach(this.requireTab(id));
+  async scroll(context, id, x, y, deltaX, deltaY) {
+    const tab = await this.attach(this.requireTab(context, id));
     const point = this.cssPoint(tab, x, y);
     await this.input(tab, "Input.dispatchMouseEvent", { type: "mouseMoved", ...point, button: "none", pointerType: "mouse" });
     await this.input(tab, "Input.dispatchMouseEvent", { type: "mouseWheel", ...point, deltaX, deltaY, pointerType: "mouse" });
     await wait(250);
   }
 
-  async type(id, text, signal) {
-    const tab = await this.attach(this.requireTab(id));
+  async type(context, id, text, signal) {
+    const tab = await this.attach(this.requireTab(context, id));
     const lines = String(text).split(/\r?\n/);
     for (let index = 0; index < lines.length; index++) {
       signal?.throwIfAborted();
@@ -633,8 +804,8 @@ export class CleoBrowser extends EventEmitter {
     }
   }
 
-  async keys(id, shortcut) {
-    const tab = await this.attach(this.requireTab(id));
+  async keys(context, id, shortcut) {
+    const tab = await this.attach(this.requireTab(context, id));
     await this.press(tab, parseShortcut(shortcut));
   }
 
@@ -666,8 +837,8 @@ export class CleoBrowser extends EventEmitter {
   }
 
   /** Purpose: Release mouse buttons and modifiers an interrupted AI action left pressed. */
-  async releaseInputs(id) {
-    const tab = this.tabs.get(id);
+  async releaseInputs(context, id) {
+    const tab = context.tabs.get(id);
     if (!tab || !tab.attached || tab.wc.isDestroyed()) return [];
     const released = [];
     for (const item of [...tab.pressed]) {
@@ -683,22 +854,28 @@ export class CleoBrowser extends EventEmitter {
     return released;
   }
 
-  async releaseAll() {
+  /** Purpose: Release pressed inputs of one conversation, or of every conversation. */
+  async releaseAll(context = null) {
     const released = [];
-    for (const id of this.tabs.keys()) released.push(...await this.releaseInputs(id));
+    const contexts = context ? [context] : [...this.contexts.values()];
+    for (const item of contexts) {
+      for (const id of item.tabs.keys()) released.push(...await this.releaseInputs(item, id));
+    }
     return released;
   }
 
-  async handleDialog(id, accept, promptText = "") {
-    const tab = await this.attach(this.requireTab(id));
+  async handleDialog(context, id, accept, promptText = "") {
+    const tab = await this.attach(this.requireTab(context, id));
+    this.touch(context);
     if (!tab.dialog) throw new Error(tr("browser.the_current_tab_has_no_open_dialog"));
     await this.command(tab, "Page.handleJavaScriptDialog", { accept: Boolean(accept), ...(promptText ? { promptText: String(promptText).slice(0, 2000) } : {}) });
     tab.dialog = null;
     this.emitState();
   }
 
-  async setFiles(id, paths) {
-    const tab = await this.attach(this.requireTab(id));
+  async setFiles(context, id, paths) {
+    const tab = await this.attach(this.requireTab(context, id));
+    this.touch(context);
     if (!tab.fileChooser) throw new Error(tr("browser.the_current_tab_has_no_pending_file_chooser_click_the_page_s_upload_button_first"));
     if (tab.fileChooser.mode === "selectSingle" && paths.length > 1) throw new Error(tr("browser.this_file_chooser_accepts_only_one_file"));
     await this.command(tab, "DOM.setFileInputFiles", { files: paths, backendNodeId: tab.fileChooser.backendNodeId });
@@ -706,14 +883,15 @@ export class CleoBrowser extends EventEmitter {
     this.emitState();
   }
 
-  cancelFileChooser(id) {
-    const tab = this.requireTab(id);
+  cancelFileChooser(context, id) {
+    const tab = this.requireTab(context, id);
+    this.touch(context);
     tab.fileChooser = null;
     this.emitState();
   }
 
-  async pageText(id, limit = 6000) {
-    const tab = await this.attach(this.requireTab(id));
+  async pageText(context, id, limit = 6000) {
+    const tab = await this.attach(this.requireTab(context, id));
     const zoom = tab.wc.getZoomFactor() || 1;
     const script = `(() => {
       const text = (document.body?.innerText || "").replace(/\\n{3,}/g, "\\n\\n").slice(0, ${Math.max(500, Math.min(limit, 20000))});
@@ -736,15 +914,15 @@ export class CleoBrowser extends EventEmitter {
     return result.result.value;
   }
 
-  download(item, webContents) {
+  download(context, item, webContents) {
     const tab = this.tabFor(webContents);
     mkdirSync(this.downloadsDir, { recursive: true });
     const path = uniquePath(this.downloadsDir, item.getFilename());
     item.setSavePath(path);
     const record = { id: `d${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name: basename(path), path,
       url: item.getURL().slice(0, 500), state: "progressing", received: 0, total: item.getTotalBytes(), tabId: tab?.id || null };
-    this.downloads.unshift(record);
-    this.downloads.length = Math.min(this.downloads.length, MAX_DOWNLOADS);
+    context.downloads.unshift(record);
+    context.downloads.length = Math.min(context.downloads.length, MAX_DOWNLOADS);
     item.on("updated", (_event, state) => {
       record.state = state === "interrupted" ? "interrupted" : "progressing";
       record.received = item.getReceivedBytes();
@@ -754,17 +932,127 @@ export class CleoBrowser extends EventEmitter {
     item.once("done", (_event, state) => {
       record.state = state;
       record.received = item.getReceivedBytes();
-      this.notice(tab, state === "completed" ? tr("browser.download_completed_value", { p0: record.name }) : tr("browser.download_incomplete_value_value", { p0: state, p1: record.name }));
+      this.notice(context, tab, state === "completed" ? tr("browser.download_completed_value", { p0: record.name }) : tr("browser.download_incomplete_value_value", { p0: state, p1: record.name }));
       this.emitState();
     });
     this.emitState();
   }
 
-  notice(tab, text) {
-    this.notices.unshift({ at: Date.now(), tabId: tab?.id || null, text: String(text).slice(0, 300) });
-    this.notices.length = Math.min(this.notices.length, MAX_NOTICES);
+  notice(context, tab, text) {
+    context.notices.unshift({ at: Date.now(), tabId: tab?.id || null, text: String(text).slice(0, 300) });
+    context.notices.length = Math.min(context.notices.length, MAX_NOTICES);
     this.emitState();
   }
+
+  // --- idle reclaim ------------------------------------------------------------------------
+
+  /** Purpose: Whether a conversation's pages may be released right now (no pending interaction). */
+  idle(context) {
+    if (!context.tabs.size || context.hibernated) return false;
+    if (this.now() - context.lastUsedAt < this.idleMs) return false;
+    // Someone reading the shown page is a use even without clicks; the window restarts on leave.
+    if (context.threadId === this.foregroundId && Boolean(this.viewport) && !this.parked) return false;
+    for (const tab of context.tabs.values()) if (tab.dialog || tab.fileChooser) return false;
+    if (context.downloads.some(item => item.state === "progressing")) return false;
+    return true;
+  }
+
+  idleThreads() {
+    return [...this.contexts.values()].filter(context => this.idle(context)).map(context => context.threadId);
+  }
+
+  /** Purpose: Release the pages of every idle conversation that ``busy`` does not protect. */
+  reclaimIdle(busy = () => false) {
+    const released = [];
+    for (const threadId of this.idleThreads()) {
+      if (busy(threadId)) continue;
+      this.hibernate(threadId);
+      released.push(threadId);
+    }
+    return released;
+  }
+
+  startIdleReclaim({ busy = () => false, intervalMs = IDLE_CHECK_MS } = {}) {
+    this.stopIdleReclaim();
+    this.idleTimer = setInterval(() => { if (!this.closed) this.reclaimIdle(busy); }, intervalMs);
+    this.idleTimer.unref?.();
+  }
+
+  stopIdleReclaim() {
+    if (this.idleTimer) clearInterval(this.idleTimer);
+    this.idleTimer = null;
+  }
+
+  /** Purpose: Close a conversation's WebContents, keeping tab URLs and its login partition. */
+  hibernate(threadId) {
+    const context = this.contexts.get(String(threadId ?? ""));
+    if (!context || !context.tabs.size) return false;
+    const saved = { at: this.now(), activeIndex: Math.max(0, context.order.indexOf(context.activeId)),
+      tabs: context.order.map(id => context.tabs.get(id)).filter(Boolean).map(tab => {
+        const destroyed = tab.wc.isDestroyed();
+        return { url: destroyed ? "" : tab.wc.getURL(), title: destroyed ? "" : tab.wc.getTitle() };
+      }) };
+    for (const tab of [...context.tabs.values()]) this.destroyTab(tab);
+    context.tabs.clear();
+    context.order = [];
+    context.activeId = null;
+    context.hibernated = saved;
+    // Old screenshot ids and tab ids must not survive the release.
+    this.bump(context, "hibernate");
+    this.releaseKeeper();
+    this.layout();
+    this.emitState();
+    this.emit("tabs", context.threadId);
+    this.emit("hibernated", context.threadId);
+    return true;
+  }
+
+  destroyTab(tab) {
+    try { if (alive(tab.hostWindow)) tab.hostWindow.contentView.removeChildView(tab.view); } catch { /* Detached. */ }
+    tab.hostWindow = null;
+    try { if (tab.wc.debugger.isAttached()) tab.wc.debugger.detach(); } catch { /* Closing. */ }
+    try { tab.wc.close({ waitForBeforeUnload: false }); } catch { /* Closing. */ }
+  }
+
+  /** Purpose: Reload a hibernated conversation's saved tabs; a no-op for a live one. */
+  wake(context) {
+    const saved = context.hibernated;
+    if (!saved) return false;
+    context.hibernated = null;
+    this.touch(context);
+    saved.tabs.forEach((entry, index) => {
+      if (!context.hibernated) this.createTab(context, { url: entry.url && entry.url !== "about:blank" ? entry.url : "", activate: index === saved.activeIndex });
+    });
+    this.emit("woken", context.threadId);
+    return true;
+  }
+
+  /** Purpose: Drop everything a deleted conversation owned, including its site data. */
+  async releaseThread(threadId) {
+    const id = String(threadId ?? "");
+    if (!id) return;
+    const context = this.contexts.get(id);
+    if (context) {
+      for (const tab of [...context.tabs.values()]) this.destroyTab(tab);
+      context.tabs.clear();
+      context.order = [];
+      context.activeId = null;
+      context.hibernated = null;
+      this.contexts.delete(id);
+      if (this.foregroundId === id) this.foregroundId = null;
+      this.releaseKeeper();
+      this.layout();
+      this.emitState();
+      this.emit("tabs", id);
+    }
+    // Site data lives on disk under the conversation's partition whether or not this process ever
+    // opened its browser, so it is cleared from the thread id, not from a live, configured context.
+    const partition = context?.partition ?? partitionFor(this.partitionPrefix, id);
+    const ses = this.electron.session?.fromPartition?.(partition);
+    await ses?.clearStorageData?.().catch?.(() => {});
+  }
+
+  // --- state -------------------------------------------------------------------------------
 
   tabState(tab) {
     const { wc } = tab;
@@ -785,16 +1073,32 @@ export class CleoBrowser extends EventEmitter {
     };
   }
 
-  state() {
+  contextState(context) {
     return {
-      tabs: this.order.map(id => this.tabs.get(id)).filter(Boolean).map(tab => this.tabState(tab)),
-      activeTabId: this.activeId,
+      threadId: context.threadId,
+      tabs: context.order.map(id => context.tabs.get(id)).filter(Boolean).map(tab => this.tabState(tab)),
+      activeTabId: context.activeId,
+      downloads: context.downloads.map(item => ({ ...item })),
+      notices: context.notices.slice(0, 6),
+      hibernated: context.hibernated ? { at: context.hibernated.at, tabs: context.hibernated.tabs.map(tab => ({ ...tab })) } : null,
+      lastUsedAt: context.lastUsedAt,
+    };
+  }
+
+  /** Purpose: What the panel shows: the foreground conversation plus a summary of the others. */
+  state() {
+    const shown = this.foreground();
+    const threads = {};
+    for (const [id, context] of this.contexts) {
+      threads[id] = { tabs: context.tabs.size, hibernated: Boolean(context.hibernated), lastUsedAt: context.lastUsedAt };
+    }
+    return {
+      ...(shown ? this.contextState(shown) : { threadId: null, tabs: [], activeTabId: null, downloads: [], notices: [], hibernated: null, lastUsedAt: null }),
       size: this.size,
       visible: Boolean(this.viewport),
       parked: this.parked,
-      downloads: this.downloads.map(item => ({ ...item })),
-      notices: this.notices.slice(0, 6),
       downloadsDir: this.downloadsDir,
+      threads,
     };
   }
 
@@ -806,18 +1110,62 @@ export class CleoBrowser extends EventEmitter {
   /** Purpose: Release every tab and window at exit (distinct from closing one tab). */
   async shutdown() {
     this.closed = true;
+    this.stopIdleReclaim();
     clearTimeout(this.stateTimer);
     await this.releaseAll().catch(() => {});
-    // Persist logins even if the process exits right after closing.
-    if (this.configured) await this.session().cookies.flushStore().catch(() => {});
-    for (const tab of [...this.tabs.values()]) {
-      try { if (tab.wc.debugger.isAttached()) tab.wc.debugger.detach(); } catch { /* Closing. */ }
-      try { tab.wc.close({ waitForBeforeUnload: false }); } catch { /* Closing. */ }
+    for (const context of this.contexts.values()) {
+      // Persist logins even if the process exits right after closing.
+      if (context.configured) await this.electron.session.fromPartition(context.partition).cookies.flushStore().catch(() => {});
+      for (const tab of [...context.tabs.values()]) this.destroyTab(tab);
+      context.tabs.clear();
+      context.order = [];
     }
-    this.tabs.clear();
-    this.order = [];
     try { this.overlayView?.webContents.close(); } catch { /* Closing. */ }
-    if (this.keeper && !this.keeper.isDestroyed()) this.keeper.destroy();
+    if (alive(this.keeper)) this.keeper.destroy();
     this.emit("closed");
   }
+}
+
+/** One conversation's view of the shared browser: the interface the broker and panel use. */
+export class ThreadBrowser {
+  constructor(browser, context) {
+    this.browser = browser;
+    this.context = context;
+  }
+
+  get threadId() { return this.context.threadId; }
+  get activeId() { return this.context.activeId; }
+  get geometry() { return this.context.geometry; }
+  get notices() { return this.context.notices; }
+  get downloads() { return this.context.downloads; }
+  get tabs() { return this.context.tabs; }
+  get order() { return this.context.order; }
+  get hibernated() { return this.context.hibernated; }
+  get size() { return this.browser.size; }
+
+  touch() { this.browser.touch(this.context); }
+  wake() { return this.browser.wake(this.context); }
+  state() { return this.browser.contextState(this.context); }
+  tabState(tab) { return this.browser.tabState(tab); }
+  requireTab(id) { return this.browser.requireTab(this.context, id); }
+  activeTab() { return this.browser.activeTab(this.context); }
+  ensureTab() { return this.browser.ensureTab(this.context); }
+  createTab(options) { return this.browser.createTab(this.context, options); }
+  navigate(id, input) { return this.browser.navigate(this.context, id, input); }
+  history(id, action) { return this.browser.history(this.context, id, action); }
+  activate(id) { return this.browser.activate(this.context, id); }
+  close(id) { return this.browser.close(this.context, id); }
+  setZoom(id, factor) { return this.browser.setZoom(this.context, id, factor); }
+  capture(id, signal) { return this.browser.capture(this.context, id, signal); }
+  click(id, x, y, options) { return this.browser.click(this.context, id, x, y, options); }
+  move(id, x, y) { return this.browser.move(this.context, id, x, y); }
+  drag(id, from, to, signal) { return this.browser.drag(this.context, id, from, to, signal); }
+  scroll(id, x, y, deltaX, deltaY) { return this.browser.scroll(this.context, id, x, y, deltaX, deltaY); }
+  type(id, text, signal) { return this.browser.type(this.context, id, text, signal); }
+  keys(id, shortcut) { return this.browser.keys(this.context, id, shortcut); }
+  releaseAll() { return this.browser.releaseAll(this.context); }
+  handleDialog(id, accept, promptText) { return this.browser.handleDialog(this.context, id, accept, promptText); }
+  setFiles(id, paths) { return this.browser.setFiles(this.context, id, paths); }
+  cancelFileChooser(id) { return this.browser.cancelFileChooser(this.context, id); }
+  pageText(id, limit) { return this.browser.pageText(this.context, id, limit); }
 }

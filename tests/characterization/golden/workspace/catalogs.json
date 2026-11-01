@@ -89,6 +89,7 @@
   "runtime_catalog": {
     "defaultNonProductivityProfile": "fake_chat",
     "defaultProductivityProvider": "scripted",
+    "defaultRoutingMode": "manual",
     "nonProductivityProfiles": [
       {
         "active": true,

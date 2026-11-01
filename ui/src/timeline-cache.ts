@@ -5,6 +5,9 @@ export const MAX_TIMELINE_BYTES = 4 * 1024 * 1024;
 // Mirrors PREVIEW_CHARS in cleo/desktop/timeline.py for tool output and commands.
 export const TIMELINE_PREVIEW_CHARS = 32768;
 
+/** Purpose: Bound the history window by size and age while preserving complete live messages.
+ * Input: Timeline items and the edge to retain. Output: Bounded rows; large tool payloads use previews.
+ */
 export function boundTimeline(items: TimelineItem[], retain: "start" | "end" = "end"): TimelineItem[] {
   const selected: TimelineItem[] = [];
   let bytes = 0;

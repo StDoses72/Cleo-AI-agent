@@ -155,7 +155,9 @@ def test_uninstall_stops_retained_program_processes_only(desktop, managed: str) 
             processes.append(process)
             assert process.stdout.readline().strip() == b"ready"
         result = uninstall(install, env)
-        assert result.returncode == 0, result.stdout + result.stderr
+        assert result.returncode == 0, (
+            result.stdout + result.stderr + f"\nManaged process exit: {processes[0].poll()}"
+        )
         assert processes[0].poll() is not None, "Retained program was not stopped"
         assert processes[1].poll() is None, "An unrelated process was stopped"
     finally:

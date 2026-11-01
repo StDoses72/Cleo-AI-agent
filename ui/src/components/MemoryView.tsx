@@ -1,6 +1,6 @@
 import { getLanguage, relativeTime } from "../../electron/i18n.mjs";
 import { t as tr } from "../../electron/i18n.mjs";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { dreamStatusLabel } from "../memoryStatus";
 import { Timing } from "./Timing";
 import {
@@ -11,6 +11,7 @@ import {
   Database,
   FolderGit2,
   LoaderCircle,
+  RotateCcw,
   Search,
 } from "lucide-react";
 import type {
@@ -28,7 +29,12 @@ interface MemoryViewProps {
   refreshing?: boolean;
   onRetryRefresh?: () => void;
   onLoadReviewDetails: (source: MemoryReviewSource) => Promise<MemoryReviewDetails>;
+  /** Re-run consolidation for one failed source; distinct from refreshing the overview. */
+  onRetrySource?: (source: MemoryReviewSource) => Promise<unknown>;
 }
+
+/** Mirrors MAX_AUTOMATIC_FAILURES in cleo/desktop/background_memory.py. */
+const MAX_AUTOMATIC_FAILURES = 3;
 
 const viewCopy = {
   get all() { return {
@@ -52,6 +58,7 @@ export function MemoryView({
   refreshing,
   onRetryRefresh,
   onLoadReviewDetails,
+  onRetrySource,
 }: MemoryViewProps) {
   const { summary, dream_agent: dreamAgent } = overview;
   const [query, setQuery] = useState("");
@@ -62,6 +69,9 @@ export function MemoryView({
   const [reviewDetailsLoadingId, setReviewDetailsLoadingId] = useState<string | null>(null);
   const [reviewDetailsErrors, setReviewDetailsErrors] = useState<Record<string, string>>({});
   const [detailsRetry, setDetailsRetry] = useState(0);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [retryErrors, setRetryErrors] = useState<Record<string, string>>({});
+  const retryingRef = useRef<string | null>(null);
   const copy = viewCopy[mode];
   const normalizedQuery = query.trim().toLocaleLowerCase();
 
@@ -90,6 +100,21 @@ export function MemoryView({
   const toggleReviewSource = (source: MemoryReviewSource) => {
     setExpandedReviewId(current => current === source.id ? null : source.id);
   };
+  const retrySource = async (source: MemoryReviewSource) => {
+    if (!onRetrySource || retryingRef.current !== null) return;
+    retryingRef.current = source.id;
+    setRetryingId(source.id);
+    setRetryErrors(current => ({ ...current, [source.id]: "" }));
+    try {
+      await onRetrySource(source);
+    } catch (error) {
+      setRetryErrors(current => ({ ...current,
+        [source.id]: error instanceof Error ? error.message : tr("memoryview.could_not_retry_consolidation") }));
+    } finally {
+      retryingRef.current = null;
+      setRetryingId(current => current === source.id ? null : current);
+    }
+  };
   const expandedSource = overview.review_sources.find(source => source.id === expandedReviewId);
   useEffect(() => {
     const source = expandedSource;
@@ -111,7 +136,7 @@ export function MemoryView({
     };
   }, [expandedSource?.id, expandedSource?.source_version, detailsRetry]);
 
-  const dreamStatus = dreamStatusLabel(dreamAgent);
+  const dreamStatus = retryingId ? tr("memoryview.consolidating") : dreamStatusLabel(dreamAgent);
 
   return (
     <main className="memory-view" data-testid="memory-view" data-mode={mode}>
@@ -190,6 +215,9 @@ export function MemoryView({
           detailsErrors={reviewDetailsErrors}
           onToggle={(source) => void toggleReviewSource(source)}
           onRetryDetails={() => setDetailsRetry(value => value + 1)}
+          retryingId={retryingId}
+          retryErrors={retryErrors}
+          onRetry={onRetrySource ? (source) => void retrySource(source) : undefined}
         />
       ) : (
         <MemoryLedger
@@ -283,6 +311,9 @@ function ReviewQueue({
   detailsErrors,
   onToggle,
   onRetryDetails,
+  retryingId,
+  retryErrors,
+  onRetry,
 }: {
   sources: MemoryReviewSource[];
   filtered: boolean;
@@ -292,6 +323,9 @@ function ReviewQueue({
   detailsErrors: Record<string, string>;
   onToggle: (source: MemoryReviewSource) => void;
   onRetryDetails: () => void;
+  retryingId: string | null;
+  retryErrors: Record<string, string>;
+  onRetry?: (source: MemoryReviewSource) => void;
 }) {
   return (
     <section className="memory-list-section memory-review-section">
@@ -299,6 +333,8 @@ function ReviewQueue({
       <div className="memory-review-list" data-testid="memory-review-list">
         {sources.length ? sources.map((source) => {
           const expanded = expandedId === source.id;
+          const retrying = retryingId === source.id;
+          const retryError = retryErrors[source.id];
           return (
             <article key={source.id} data-status={source.status} className={expanded ? "expanded" : ""}>
               <span className="memory-review-icon">{source.status === "failed" ? <CircleAlert size={16} /> : <FolderGit2 size={16} />}</span>
@@ -311,6 +347,18 @@ function ReviewQueue({
                   </span>
                   <ChevronDown size={15} />
                 </button>
+                {source.status === "failed" && onRetry ? (
+                  <div className="memory-review-actions">
+                    <button type="button" className="secondary" data-testid="memory-review-retry"
+                      disabled={retryingId !== null} aria-busy={retrying} onClick={() => onRetry(source)}>
+                      {retrying ? <LoaderCircle className="spin" size={14} /> : <RotateCcw size={14} />}
+                      {retrying ? tr("memoryview.retrying_consolidation") : tr("memoryview.retry_consolidation")}
+                    </button>
+                    {source.failure_count >= MAX_AUTOMATIC_FAILURES
+                      ? <small>{tr("memoryview.automatic_retries_exhausted")}</small> : null}
+                    {retryError ? <span className="memory-review-retry-error" role="alert"><CircleAlert size={14} />{retryError}</span> : null}
+                  </div>
+                ) : null}
               </div>
               {expanded ? (
                 <MemoryReviewDetailsPanel

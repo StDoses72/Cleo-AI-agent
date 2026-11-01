@@ -49,7 +49,8 @@ jobs:
         include:
           - os: windows-latest
             target: windows-x64
-          - os: macos-14
+          # macOS 14 runners retire on 2026-11-02; macos-15 is native Apple Silicon.
+          - os: macos-15
             target: macos-arm64
           - os: macos-15-intel
             target: macos-x64

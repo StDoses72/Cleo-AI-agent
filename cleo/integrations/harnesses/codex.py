@@ -580,6 +580,9 @@ class CodexProvider:
         """
         async with self._client() as client:
             response = await client.models()
+        from cleo.integrations.harnesses.codex_models import account_model_ids
+
+        allowed = await account_model_ids()
         return tuple(
             HarnessModel(
                 id=str(model.model),
@@ -591,6 +594,10 @@ class CodexProvider:
                     self._scalar(option.reasoning_effort)
                     for option in model.supported_reasoning_efforts
                 ),
+                available=(False if getattr(model, "hidden", False)
+                           or getattr(model, "availability_nux", None) is not None
+                           else str(model.model) in allowed if allowed is not None else None),
+                availability_source="account_catalog" if allowed is not None else "catalog_only",
             )
             for model in response.data
         )
@@ -931,6 +938,12 @@ class CodexProvider:
             if getattr(runtime.client, "_cleo_computer_client", None) == client_key:
                 return session_id
         return None
+
+    def delegation_parent_key(self, session_id: str) -> str | None:
+        """Purpose: Bind child tools to their host. Input: session ID. Output: launch key."""
+        if self._memory_mcp is None or not self._memory_mcp.routing_enabled:
+            return None
+        return getattr(self._sessions[session_id].client, "_cleo_computer_client", None)
 
     @staticmethod
     def _client(config: CodexConfig | None = None, *, legacy: bool = False) -> AsyncCodex:

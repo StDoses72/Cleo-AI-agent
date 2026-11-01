@@ -32,7 +32,7 @@ export interface BrowserDownload {
 export interface ComputerState {
   platform: string;
   hostSupported: boolean;
-  threads: Record<string, { mode: ComputerMode; hostAuthorized: boolean }>;
+  threads: Record<string, { mode: ComputerMode; hostAuthorized: boolean; browserControl?: "agent" | "user"; browserActive?: boolean }>;
   lease: { threadId: string; running: boolean } | null;
   control: Record<ComputerTarget, "agent" | "user">;
   inflight: { threadId: string; target: ComputerTarget; name: string }[];
@@ -41,7 +41,9 @@ export interface ComputerState {
   lastStop: { at: number; source: string; threadId: string | null; released: string[]; cancelledRun: boolean; settled: boolean; hostError: string | null } | null;
   hostEngaged: boolean;
   browserEngaged: boolean;
+  /** The browser of the conversation currently shown in the panel (``threadId``). */
   browser: {
+    threadId?: string | null;
     tabs: BrowserTabState[];
     activeTabId: string | null;
     size: { width: number; height: number };
@@ -50,6 +52,10 @@ export interface ComputerState {
     downloads: BrowserDownload[];
     notices: { at: number; tabId: string | null; text: string }[];
     downloadsDir: string;
+    /** Set while the conversation's pages are released; tabs reload on the next use. */
+    hibernated?: { at: number; tabs: { url: string; title: string }[] } | null;
+    lastUsedAt?: number | null;
+    threads?: Record<string, { tabs: number; hibernated: boolean; lastUsedAt: number }>;
   };
   stopShortcut: string;
   shortcutActive: boolean;

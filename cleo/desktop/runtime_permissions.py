@@ -55,6 +55,8 @@ def permission_choices(provider_type: str, *, fixed: bool = False, support=None)
          "description": tr("runtime_permissions.automatically_selects_a_deny_option_cancels_requ")},
     ]
 
+    from cleo.routing.permissions import NATIVE_PRESETS
+
     if fixed:
         return {"access": [], "approval": [], "reason": tr(
             "runtime_permissions.evolution_tasks_use_fixed_permissions",
@@ -87,7 +89,9 @@ def permission_choices(provider_type: str, *, fixed: bool = False, support=None)
         "full": tr("runtime_permissions.allows_routine_file_command_and_tool_operations"),
     }
     result["presets"] = []
-    for value, label, approval, access in modes:
+    for value, native in NATIVE_PRESETS[provider_type].items():
+        label = next(label for key, label, *_ in modes if key == value)
+        approval, access = native["approval_mode"], native.get("sandbox")
         update = {"approval": approval, **({"access": access} if access else {})}
         reason = next((restrictions.get(field, {}).get(option)
                        for field, option in update.items()

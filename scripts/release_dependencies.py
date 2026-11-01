@@ -9,6 +9,10 @@ from pathlib import Path
 from packaging.requirements import Requirement
 
 LOCKS = ("requirements.txt", "ui/package-lock.json", "ui/runtime/package-lock.json")
+# npm tools the packaged browser runtime must carry at exactly the locked versions.
+BROWSER_TOOLS = ("agent-browser", "npm")
+# npm packages that would redistribute a binary the Python runtime already provides.
+DUPLICATE_CLI_PACKAGES = ("@openai/codex",)
 
 
 def record(root: Path, python: Path, browser: Path, output: Path) -> None:
@@ -32,11 +36,20 @@ def record(root: Path, python: Path, browser: Path, output: Path) -> None:
             raise ValueError(f"Packaged {name} does not match the resolved dependency lock")
     tools = {}
     runtime_lock = json.loads((root / "ui/runtime/package-lock.json").read_text())
-    for name in ("@openai/codex", "agent-browser", "npm"):
+    for name in BROWSER_TOOLS:
         installed = json.loads((browser / "node_modules" / name / "package.json").read_text())
         if installed["version"] != runtime_lock["packages"][f"node_modules/{name}"]["version"]:
             raise ValueError(f"Packaged {name} does not match the resolved dependency lock")
         tools[name] = installed["version"]
+    for name in DUPLICATE_CLI_PACKAGES:
+        # The Codex CLI ships once, inside openai-codex-cli-bin; a second copy from npm would
+        # add ~0.4 GiB per runtime without any consumer (#142).
+        if (browser / "node_modules" / name).exists() or f"node_modules/{name}" in runtime_lock.get(
+            "packages", {}
+        ):
+            raise ValueError(
+                f"{name} duplicates the Python-bundled Codex CLI and must not be packaged"
+            )
     receipt = {
         "schema_version": 1,
         "lock_sha256": {name: hashlib.sha256((root / name).read_bytes()).hexdigest()

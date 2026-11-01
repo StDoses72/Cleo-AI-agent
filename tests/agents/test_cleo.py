@@ -10,7 +10,7 @@ from cleo.agents.cleo import _build_user_content
 from cleo.runtime.usage import ContextWindowUsage
 
 
-def test_agent_stream_text_uses_async_graph_streaming() -> None:
+def test_agent_stream_text_uses_async_graph_streaming(tmp_path) -> None:
     class FakeGraph:
         async def astream(self, payload, *, config, stream_mode):
             assert payload["messages"][-1]["content"] == "hello"
@@ -28,6 +28,7 @@ def test_agent_stream_text_uses_async_graph_streaming() -> None:
             ), {}
 
     agent = Agent.__new__(Agent)
+    agent.root_dir = tmp_path
     agent.deepagent = FakeGraph()
     agent.context_usage = ContextWindowUsage(window_tokens=1000)
 

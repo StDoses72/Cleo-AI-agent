@@ -8,6 +8,10 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
+# A failed source is retried automatically until this many consecutive failures of the
+# same source revision; afterwards only the manual review path (or new events) can run it.
+MAX_AUTOMATIC_FAILURES = 3
+
 
 class BackgroundMemory:
     def __init__(
@@ -23,7 +27,8 @@ class BackgroundMemory:
         self._clock = clock
         self._last_started = clock()
         self._task: asyncio.Task[None] | None = None
-        self._attempted: dict[tuple[str, str, str], str] = {}
+        # Last in-process attempt per source: (source_hash, clock when it started).
+        self._attempted: dict[tuple[str, str, str], tuple[str, float]] = {}
         self._closed = False
         self._resume_due = False
         self._status = "idle"
@@ -40,13 +45,46 @@ class BackgroundMemory:
         }
 
     def reset_schedule(self) -> None:
+        """Restart the interval and re-arm one attempt for every eligible source.
+
+        Saving the schedule (including toggling automatic consolidation off and on) is
+        the user's explicit signal to try again, so in-process attempt suppression is
+        dropped. Persisted failure counts still bound how often a source is retried.
+        """
         self._last_started = self._clock()
         self._resume_due = False
+        self._attempted.clear()
+
+    @staticmethod
+    def retryable(source: dict[str, Any]) -> bool:
+        """Whether the scheduler may still pick this persisted source automatically."""
+        if source["status"] in {"pending", "running"}:
+            return True
+        return (source["status"] == "failed"
+                and int(source.get("failure_count") or 0) < MAX_AUTOMATIC_FAILURES)
+
+    def _retry_delay(self, source: dict[str, Any]) -> float:
+        """Seconds a failed source waits after its last in-process attempt: one interval,
+        doubling with every further failure of the same revision."""
+        failures = max(1, int(source.get("failure_count") or 0))
+        return self._settings()["intervalMinutes"] * 60 * 2 ** (failures - 1)
+
+    def _suppressed(self, source: dict[str, Any]) -> bool:
+        attempted = self._attempted.get(self._key(source))
+        if attempted is None or attempted[0] != source["source_hash"]:
+            return False
+        if source["status"] != "failed":
+            return True  # Still pending after a pass: wait for new events or a manual review.
+        return self._clock() - attempted[1] < self._retry_delay(source)
 
     def _pending(self) -> list[dict[str, Any]]:
         # A persisted running source may outlive its process. DreamAgent rechecks it
         # under the existing project lock, so a live publisher keeps ownership.
-        return [source for source in self._sources() if source["status"] in {"pending", "running"}]
+        # Failed sources stay eligible while their failure count and backoff allow a retry,
+        # so a recovered provider/network consolidates the unchanged revision later.
+        return [source for source in self._sources()
+                if self.retryable(source)
+                and (source["status"] != "failed" or not self._suppressed(source))]
 
     @staticmethod
     def _key(source: dict[str, Any]) -> tuple[str, str, str]:
@@ -58,8 +96,7 @@ class BackgroundMemory:
                 or self._busy() or self._task is not None and not self._task.done()):
             return
         pending = self._pending()
-        sources = [source for source in pending
-                   if self._attempted.get(self._key(source)) != source["source_hash"]]
+        sources = [source for source in pending if not self._suppressed(source)]
         if not sources:
             return
         elapsed = self._clock() - self._last_started
@@ -93,7 +130,7 @@ class BackgroundMemory:
                     result = None
                 if isinstance(result, dict) and result.get("status") == "pending":
                     continue  # A recovered snapshot finished; newer events still need a pass.
-                self._attempted[self._key(source)] = source["source_hash"]
+                self._attempted[self._key(source)] = (source["source_hash"], self._clock())
             self._status = "failed" if self._last_error else "idle"
         except asyncio.CancelledError:
             self._status = "cancelled"

@@ -276,6 +276,11 @@ async def subscription_text(profile, temporary: Path, instructions: str, prompt:
     parts = []
 
     async def on_event(event):
+        from cleo.runtime.task_usage import usage_observer
+
+        observer = usage_observer.get()
+        if observer:
+            observer(event)
         if event.type == "assistant_message_chunk" and event.text:
             parts.append(event.text)
 

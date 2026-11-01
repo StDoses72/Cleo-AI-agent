@@ -34,15 +34,21 @@ export function protectDirectory(directory, { platform = process.platform, exec 
 }
 
 export class ComputerBridge {
+  /** Purpose: Scope a channel to one desktop instance. Input: private directory/handler.
+   * Output: An independent descriptor which other instances cannot replace or remove.
+   */
   constructor({ directory, handler, platform = process.platform, protect = protectDirectory }) {
     Object.assign(this, { directory, handler, platform, protect });
     this.server = null;
     this.token = randomBytes(32).toString("hex");
-    this.descriptorPath = join(directory, "bridge.json");
+    this.descriptorPath = join(directory, `bridge-${process.pid}-${randomBytes(8).toString("hex")}.json`);
     this.address = null;
     this.sockets = new Set();
   }
 
+  /** Purpose: Publish this instance's authenticated channel before its backend starts.
+   * Input: Constructor configuration. Output: Private descriptor path for this backend only.
+   */
   async start() {
     this.protect(this.directory, { platform: this.platform });
     this.address = this.platform === "win32"

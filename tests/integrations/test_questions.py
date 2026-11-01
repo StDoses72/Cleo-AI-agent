@@ -156,7 +156,7 @@ def test_claude_native_callback_round_trip_even_under_permissive_mode(tmp_path, 
             permission = await hook.hooks[0]({}, "call", {})
             assert permission["hookSpecificOutput"]["permissionDecision"] == "ask"
 
-        async def receive_response(self):
+        async def receive_messages(self):
             self.result = await self.options.can_use_tool(
                 "AskUserQuestion",
                 original,
@@ -243,7 +243,7 @@ def test_claude_terminal_failure_preserves_progress_without_a_final_answer(cance
         async def query(self, _prompt):
             pass
 
-        async def receive_response(self):
+        async def receive_messages(self):
             yield AssistantMessage(content=[TextBlock(text="Checking files")], model="test")
             yield ResultMessage(
                 subtype="error_during_execution", duration_ms=1, duration_api_ms=1,

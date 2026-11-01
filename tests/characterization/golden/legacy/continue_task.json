@@ -5,6 +5,7 @@
     "upsert-item",
     "runtime",
     "changes",
+    "task-usage",
     "done"
   ],
   "manifest": {

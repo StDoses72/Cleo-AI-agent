@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { readJson, writeJson } from "./evolution-store.mjs";
 import { EvolutionMonitorStore } from "./evolution-monitor-store.mjs";
 import { launchDesktop } from "./evolution-launch.mjs";
+import { monitorDisposition } from "./evolution-monitor-lifecycle.mjs";
 
 /** Purpose: Keep a small native progress and message window alive across Cleo restarts.
  * Input: standard userData path. Output: read-only progress plus durable supplemental messages.
@@ -19,6 +20,9 @@ export async function startEvolutionMonitor() {
   const root = join(app.getPath("userData"), "evolution");
   const store = new EvolutionMonitorStore(root);
   await app.whenReady();
+  if (monitorDisposition(await readJson(join(root, "state.json"), {}), await store.runtime()) === "close") {
+    app.quit(); return;
+  }
   const window = new BrowserWindow({ width: 680, height: 780, minWidth: 460, minHeight: 480,
     title: tr("evolution_monitor.cleo_evolution_companion"), autoHideMenuBar: true, backgroundColor: "#101417",
     webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, partition: "cleo-companion",
@@ -35,7 +39,7 @@ export async function startEvolutionMonitor() {
     let detail = runtime.detail || tr("evolution_monitor.describe_your_improvement_request_in_cleo_s_evolution_workspace");
     if (tx) {
       phase = tx.phase === "staged" ? tr("evolution_monitor.backing_up_and_preparing_to_switch") : tr("evolution_handoff.starting_the_modified_cleo");
-      detail = tr("evolution_monitor.this_window_stays_open_additional_requirements_are_saved_and_will_continue_in_the_ori");
+      detail = tr("routing.companion_returns_to_main");
     } else if (state.lastRestartError) { phase = tr("evolution_monitor.working_version_restored"); detail = state.lastRestartError; }
     else if (Date.now() - (runtime.updatedAt || 0) > 15000) {
       phase = tr("evolution_monitor.waiting_for_cleo_to_connect"); detail = tr("evolution_monitor.the_main_program_is_not_connected_additional_requirements_will_still_be_saved_open_cl");
@@ -104,5 +108,17 @@ export async function startEvolutionMonitor() {
   window.webContents.on("will-navigate", event => event.preventDefault());
   await window.loadFile(join(dirname(fileURLToPath(import.meta.url)), "evolution-monitor.html"));
   window.show();
+  // Poll in the host process: closing must not depend on a working companion renderer.
+  let checking = false;
+  const timer = setInterval(async () => {
+    if (checking) return;
+    checking = true;
+    try {
+      const state = await readJson(join(root, "state.json"), {});
+      if (monitorDisposition(state, await store.runtime()) === "close") app.quit();
+    } catch (error) { console.error("Evolution companion lifecycle:", error.message); }
+    finally { checking = false; }
+  }, 500);
+  app.once("will-quit", () => clearInterval(timer));
   app.on("window-all-closed", () => app.quit());
 }

@@ -159,7 +159,11 @@ Cleo thread 的标题由首条 `user_message` 确定，也可作为纯 metadata 
 活跃且尚未 consolidation 的 thread 可以迁移 project：session 目录、manifest、event
 绑定、SQLite registry、compact、memory state 与 conversation chunks 会一起转移。
 一旦 source 已被 DreamAgent consolidation，迁移会被拒绝，以免旧 project 的长期记忆
-无法可靠回收。
+无法可靠回收。桌面端通过 `move_thread` RPC 和对话菜单的「加入项目…」暴露这一能力，
+`/project move <name>` 对聊天和开发任务同样可用：运行中、跨空间、自我演进任务和带
+harness 交接快照的任务会被拒绝并说明原因；开发任务迁移后 `cwd` 指向目标项目目录，驻留
+的 harness 会话关闭并在下一轮以新目录恢复，上一轮的 Git 撤销点被丢弃
+（[ADR 0002](adr/0002-move-conversation-into-project.md)）。
 
 ## Session 存储
 
@@ -249,6 +253,16 @@ native provider event
 
 无法稳定归一化的事件保存为 `provider_event`，并在 `data` 中保留 provider、原始事件
 类型和清理后的 payload。SessionStore 不依赖任何单个 harness 的 SDK 类型。
+
+一次原生 result 不一定结束一个回合。Claude Code 可以在前台轮次结束后继续运行后台任务
+（`Bash(run_in_background=true)`、后台 agent），完成时在同一条流上唤醒模型再跑一轮。
+`ClaudeProvider.prompt` 以后台任务集合与 `task_notification` 的欠账计数判断回合真正结束：
+阶段边界记为 `status` 事件 `claude/stage_completed`，等待超时或取消时写
+`claude/background_abandoned` 并以 `failed` / `cancelled` 终态结束；带 `ambient: true` 的
+任务不属于当前回合。service、投影与 UI 不需要知道这些 harness 特有语义。各 harness 的
+原生问答、审批、回合结束与后台任务协议，以及 Cleo 的适配方式和 adapter 层的架构判断，
+见[Harness 交互式问答与回合生命周期](harness/interactive-lifecycle.md)与
+[ADR 0004](adr/0004-claude-turn-and-background-task-lifecycle.md)。
 
 ## Cleo 主聊天流转
 

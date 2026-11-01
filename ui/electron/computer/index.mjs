@@ -57,13 +57,15 @@ export class ComputerUse {
     this.browser.on("state", () => this.push());
     this.browser.on("user-input", ({ tab, event, input }) => this.userInput(tab, event, input));
     this.browser.on("file-chooser", () => this.push());
+    this.browser.on("hibernated", () => this.push());
   }
 
   /** Purpose: Start the bridge before the backend so tool processes can find it. */
   async start() {
     const { session } = this.electron;
     const handler = request => this.files.respond(request);
-    this.browser.session().protocol.handle(FILE_SCHEME, handler);
+    // Every conversation's isolated session serves workspace previews; sessions are created lazily.
+    this.browser.registerProtocol(FILE_SCHEME, handler);
     if (!await session.defaultSession.protocol.isProtocolHandled(FILE_SCHEME)) {
       session.defaultSession.protocol.handle(FILE_SCHEME, handler);
     }
@@ -73,6 +75,8 @@ export class ComputerUse {
       this.bridgeError = tr("index.could_not_start_the_computer_control_channel_value", { p0: error.message });
       delete process.env.CLEO_COMPUTER_BRIDGE;
     }
+    // Pages nobody used for ten minutes are released unless an action is still in flight.
+    this.browser.startIdleReclaim?.({ busy: threadId => this.broker.threadBusy(threadId) });
   }
 
   async dispatch(request, signal) {
@@ -106,13 +110,19 @@ export class ComputerUse {
 
   /** Real keyboard input into the page while the AI operates it counts as taking over. */
   userInput(tab, _event, input) {
-    if (input.type !== "keyDown" || !this.broker.browserEngaged()) return;
-    if (tab.id !== this.browser.activeId) return;
-    void this.broker.takeover("browser", "keyboard");
+    const context = tab.context;
+    if (!context) return;
+    this.browser.touch(context);
+    if (input.type !== "keyDown" || !this.broker.browserEngaged(context.threadId)) return;
+    if (tab.id !== context.activeId) return;
+    void this.broker.takeover("browser", "keyboard", context.threadId);
   }
 
-  /** Purpose: Convert renderer CSS pixels to window DIPs and place the browser. */
-  setViewport(window, rect) {
+  /** Purpose: Convert renderer CSS pixels to window DIPs and place the shown conversation's browser. */
+  setViewport(window, rect, threadId = null) {
+    // The panel names the conversation it shows. With none selected (a new draft, nothing open)
+    // the previously shown browser leaves the window and panel actions have no target.
+    this.browser.setForeground(threadId ? String(threadId) : null);
     if (!rect) { this.browser.setViewport(null); return; }
     const zoom = window.webContents.getZoomFactor() || 1;
     const values = ["x", "y", "width", "height"].map(key => Number(rect[key]));
@@ -121,36 +131,47 @@ export class ComputerUse {
     this.browser.setViewport({ x, y, width, height });
   }
 
+  /** The conversation a panel request belongs to: explicit, else the one being shown. */
+  threadFor(params = {}) {
+    const threadId = String(params.threadId || this.browser.foregroundId || "");
+    if (!threadId) throw new Error(tr("broker.select_a_task_first"));
+    return threadId;
+  }
+
   async browserAction(window, params = {}) {
     const { action } = params;
-    const tab = () => this.browser.requireTab(params.tabId || this.browser.activeId);
-    // A user steering the shared browser takes control away from the AI first.
+    const threadId = this.threadFor(params);
+    const view = this.browser.forThread(threadId);
+    const tab = () => view.requireTab(params.tabId || view.activeId);
+    // A user steering a conversation's browser takes control of it away from the AI first.
     const userAction = !["openDownloads", "pickFiles", "cancelFiles", "dialog"].includes(action);
-    if (userAction && this.broker.browserEngaged()) await this.broker.takeover("browser", "chrome");
+    if (userAction && this.broker.browserEngaged(threadId)) await this.broker.takeover("browser", "chrome", threadId);
+    view.touch();
     const actions = {
-      navigate: () => this.browser.navigate((params.tabId ? tab() : this.browser.ensureTab()).id, params.url),
-      back: () => this.browser.history(tab().id, "back"),
-      forward: () => this.browser.history(tab().id, "forward"),
-      reload: () => this.browser.history(tab().id, "reload"),
-      stop: () => this.browser.history(tab().id, "stop"),
-      newTab: () => { const created = this.browser.createTab({ activate: true }); return params.url ? this.browser.navigate(created.id, params.url) : null; },
-      activate: () => this.browser.activate(params.tabId),
-      close: () => this.browser.close(params.tabId),
-      zoomIn: () => this.browser.setZoom(tab().id, tab().wc.getZoomFactor() + 0.1),
-      zoomOut: () => this.browser.setZoom(tab().id, tab().wc.getZoomFactor() - 0.1),
-      zoomReset: () => this.browser.setZoom(tab().id, 1),
-      dialog: () => this.browser.handleDialog(tab().id, params.accept === true, typeof params.text === "string" ? params.text : ""),
-      cancelFiles: () => this.browser.cancelFileChooser(tab().id),
+      navigate: () => view.navigate((params.tabId ? tab() : view.ensureTab()).id, params.url),
+      back: () => view.history(tab().id, "back"),
+      forward: () => view.history(tab().id, "forward"),
+      reload: () => view.history(tab().id, "reload"),
+      stop: () => view.history(tab().id, "stop"),
+      newTab: () => { const created = view.createTab({ activate: true }); return params.url ? view.navigate(created.id, params.url) : null; },
+      activate: () => view.activate(params.tabId),
+      close: () => view.close(params.tabId),
+      wake: () => view.wake(),
+      zoomIn: () => view.setZoom(tab().id, tab().wc.getZoomFactor() + 0.1),
+      zoomOut: () => view.setZoom(tab().id, tab().wc.getZoomFactor() - 0.1),
+      zoomReset: () => view.setZoom(tab().id, 1),
+      dialog: () => view.handleDialog(tab().id, params.accept === true, typeof params.text === "string" ? params.text : ""),
+      cancelFiles: () => view.cancelFileChooser(tab().id),
       pickFiles: async () => {
         const current = tab();
         if (!current.fileChooser) throw new Error(tr("index.the_page_has_no_pending_file_chooser"));
         const result = await this.electron.dialog.showOpenDialog(window, { title: tr("index.choose_files_to_upload_to_the_page"),
           properties: current.fileChooser.mode === "selectMultiple" ? ["openFile", "multiSelections"] : ["openFile"] });
         if (result.canceled || !result.filePaths.length) return null;
-        return this.browser.setFiles(current.id, result.filePaths);
+        return view.setFiles(current.id, result.filePaths);
       },
       openDownloads: () => {
-        const item = this.browser.downloads.find(download => download.id === params.downloadId);
+        const item = view.downloads.find(download => download.id === params.downloadId);
         if (item) this.electron.shell.showItemInFolder(item.path);
         else this.electron.shell.openPath(this.browser.downloadsDir);
       },
@@ -163,20 +184,22 @@ export class ComputerUse {
   /** Purpose: Serve Cleo's own UI. Input: validated IPC from the main window. Output: state. */
   async handle(window, action, params = {}) {
     if (action === "state") return this.state();
-    if (action === "viewport") { this.setViewport(window, params.rect || null); return null; }
+    if (action === "viewport") { this.setViewport(window, params.rect || null, params.threadId ? String(params.threadId) : null); return null; }
     if (action === "browser") return this.browserAction(window, params);
     if (action === "mode") { await this.broker.setMode(String(params.threadId || ""), params.mode, { confirmed: params.confirmed === true }); return this.state(); }
     if (action === "authorize") { await this.broker.answerAuthorization(String(params.id || ""), params.granted === true); return this.state(); }
-    if (action === "takeover") { await this.broker.takeover(params.target); return this.state(); }
-    if (action === "handback") { await this.broker.handback(params.target); return this.state(); }
-    if (action === "stop") return { ...this.state(), stopResult: await this.broker.stop({ source: "panel" }) };
+    if (action === "takeover") { await this.broker.takeover(params.target, "user", params.threadId ? String(params.threadId) : null); return this.state(); }
+    if (action === "handback") { await this.broker.handback(params.target, params.threadId ? String(params.threadId) : null); return this.state(); }
+    if (action === "stop") return { ...this.state(), stopResult: await this.broker.stop({ source: "panel", threadId: params.threadId ? String(params.threadId) : null }) };
     if (action === "shortcut") { this.controls.setShortcut(String(params.value || "")); return this.state(); }
     if (action === "preview") {
       const file = await this.files.read(String(params.root || ""), String(params.path || ""));
       if (!["html", "pdf", "image", "text", "markdown"].includes(file.kind)) throw new Error(tr("index.this_file_cannot_be_previewed_in_the_built_in_browser"));
-      if (this.broker.browserEngaged()) await this.broker.takeover("browser", "preview");
-      const tab = this.browser.createTab({ activate: true });
-      await this.browser.navigate(tab.id, file.url);
+      const threadId = this.threadFor(params);
+      const view = this.browser.forThread(threadId);
+      if (this.broker.browserEngaged(threadId)) await this.broker.takeover("browser", "preview", threadId);
+      const tab = view.createTab({ activate: true });
+      await view.navigate(tab.id, file.url);
       return this.state();
     }
     throw new Error(tr("index.unknown_computer_panel_action"));
@@ -199,6 +222,12 @@ export class ComputerUse {
     else if (action === "takeover-desktop" && fromStatus) void this.broker.takeover("desktop", "status-bar");
     else if (action === "handback-desktop" && fromStatus) void this.broker.handback("desktop");
     else if (action === "stop" && fromStatus) void this.broker.stop({ source: "status-bar" });
+  }
+
+  /** Purpose: Release a deleted conversation's browser, queue and site data. */
+  async forgetThread(threadId) {
+    this.broker.forgetThread(String(threadId));
+    await this.browser.releaseThread(String(threadId));
   }
 
   async close() {

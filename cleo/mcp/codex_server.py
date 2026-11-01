@@ -6,6 +6,7 @@ from fastmcp import FastMCP
 
 from cleo.config.settings import current_settings, settings
 from cleo.integrations import CodexAdapter
+from cleo.routing.tools import maybe_route_codex, routing_enabled
 
 mcp = FastMCP("cleo-codex")
 
@@ -27,7 +28,10 @@ async def codex(
     prompt: str,
     project_path: str = ".",
     model: str | None = None,
-) -> dict[str, str | None]:
+    assessment: dict | None = None,
+    provider: str | None = None,
+    candidate_id: str | None = None,
+) -> dict:
     """Run a complete Codex turn in a new thread and return its final result.
 
     由 fastmcp 框架注册为名为 ``codex`` 的 MCP tool; MCP client(如其他
@@ -42,6 +46,16 @@ async def codex(
         等), 由 fastmcp 序列化为 tool 响应回传给 MCP client; thread_id
         可传给 ``codex-reply`` 继续会话。
     """
+    routed = await maybe_route_codex(
+        prompt,
+        project_path,
+        model,
+        assessment,
+        provider,
+        candidate_id,
+    )
+    if routed is not None:
+        return routed
     return (await _default_adapter().start(prompt, project_path, model)).model_dump()
 
 
@@ -63,6 +77,11 @@ async def codex_reply(
         ``CodexResult.model_dump()`` 字典, 由 fastmcp 序列化后回传给
         MCP client。
     """
+    if routing_enabled():
+        return {
+            "status": "assessment_required",
+            "error": "Use host-bound delegate_subtask with an updated assessment",
+        }
     return (await _default_adapter().reply(thread_id, prompt, project_path)).model_dump()
 
 

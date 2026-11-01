@@ -97,7 +97,7 @@ async def _chat_project(context: CommandContext) -> None:
     )
     if argument.startswith("move "):
         target = argument.removeprefix("move ").strip()
-        moved = service.store.move_session(manifest["id"], target)
+        moved = await service._move_thread(manifest, project_id("non_productivity", target))
         await service._notice(
             emit, tr(
                 "commands.project_migrated",
@@ -172,7 +172,7 @@ async def _task_help(context: CommandContext) -> None:
     await context.service._notice(
         context.emit,
         tr("commands.development_task_commands"),
-        "/new · /cwd · /project · /git · /diff · /model · /effort · "
+        "/new · /cwd · /project · /project move <name> · /git · /diff · /model · /effort · "
         "/access · /approval · /cd · /resume · /resume-native · /native · "
         "/sessions · /account · /fork · /rename · /compact · /archive · /back · /quit",
     )
@@ -195,9 +195,21 @@ async def _task_cwd(context: CommandContext) -> None:
 
 
 async def _task_project(context: CommandContext) -> None:
-    await context.service._notice(context.emit, tr(
-        "commands.project",
-    ), str(context.manifest["project"]))
+    service, manifest, argument, emit = (
+        context.service, context.manifest, context.argument, context.emit,
+    )
+    if argument.startswith("move "):
+        target = argument.removeprefix("move ").strip()
+        moved = await service._move_thread(manifest, project_id("productivity", target))
+        await service._notice(
+            emit, tr("commands.project_migrated"),
+            tr("commands.the_current_task_moved_to_value",
+               p0=moved["project"], p1=str(moved.get("cwd") or "")),
+            "success",
+        )
+        await _refresh(context, manifest["id"], "productivity")
+        return
+    await service._notice(emit, tr("commands.project"), str(manifest["project"]))
 
 
 async def _task_git(context: CommandContext) -> None:

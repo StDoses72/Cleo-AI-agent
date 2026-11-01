@@ -178,6 +178,9 @@ def touch_session_source(
             entry["source_hash"] = source_hash
             entry["last_event_seq"] = int(last_event_seq)
             entry["status"] = "pending"
+            # The automatic retry budget is per revision: failures of the old events
+            # must not exhaust the attempts the new events are entitled to.
+            entry["failure_count"] = 0
             entry["processing_decision"] = None
             entry["processing_reason"] = None
             entry["processing_phase"] = None

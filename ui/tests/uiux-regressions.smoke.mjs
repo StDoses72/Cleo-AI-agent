@@ -187,6 +187,37 @@ try {
     await page.getByText("Optional memory sources", { exact: true }).waitFor();
     assert.equal(await page.getByRole("region", { name: "Memory sources", exact: true }).isVisible(), false);
   });
+  await check("projects: an existing general task can join a project and stays open", async page => {
+    await page.getByRole("button", { name: /^把导出的 CSV 合并成一张表/ }).click();
+    await page.getByRole("button", { name: "更多", exact: true }).click();
+    await page.getByTestId("move-thread").click();
+    const dialog = page.getByTestId("move-thread-dialog");
+    await dialog.waitFor();
+    assert.equal(await dialog.getByRole("radio").count(), 2);
+    assert.match(await dialog.getByTestId("move-thread-directory").innerText(), /工作目录/);
+    const crumbBefore = await page.locator(".breadcrumb-project").innerText();
+    await dialog.getByRole("button", { name: "取消", exact: true }).click();
+    await dialog.waitFor({ state: "detached" });
+    assert.equal(await page.locator(".breadcrumb-project").innerText(), crumbBefore);
+    assert.equal(await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      return (await cleoClient.loadWorkspace()).threads.find(thread => thread.id === "merge-exports").projectId;
+    }), "productivity:general");
+    await page.getByRole("button", { name: "更多", exact: true }).click();
+    await page.getByTestId("move-thread").click();
+    await page.getByTestId("move-thread-dialog").getByRole("radio", { name: /Cleo AI agent/ }).check();
+    await page.getByTestId("move-thread-confirm").click();
+    await page.getByTestId("move-thread-dialog").waitFor({ state: "detached" });
+    await page.getByText("已加入项目：Cleo AI agent", { exact: true }).waitFor();
+    assert.equal(await page.locator(".breadcrumb-project").innerText(), "Cleo AI agent");
+    assert.equal(await page.locator(".breadcrumb strong").innerText(), "把导出的 CSV 合并成一张表");
+    assert.equal(await page.getByTestId("thread-list").locator(".thread-row.active strong").innerText(), "把导出的 CSV 合并成一张表");
+    assert.equal(await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      const workspace = await cleoClient.loadWorkspace();
+      return workspace.threads.find(thread => thread.id === "merge-exports").projectId;
+    }), "cleo-agent");
+  });
   await check("information: memory filtering does not claim the queue is empty", async page => {
     await page.getByRole("button", { name: "记忆", exact: true }).click();
     await page.getByTestId("memory-nav-pending").click();
@@ -195,6 +226,35 @@ try {
     assert.equal(await page.getByText("没有待整理会话", { exact: true }).count(), 0);
     await page.getByLabel("搜索待整理会话", { exact: true }).fill("");
     assert.equal(await page.getByTestId("memory-review-list").locator("article").count(), 2);
+  });
+  await check("recovery: failed memory sources offer a consolidation retry that pending ones do not", async page => {
+    await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      const original = cleoClient.reviewMemorySource.bind(cleoClient);
+      window.reviewCalls = [];
+      cleoClient.reviewMemorySource = async (source, action) => {
+        window.reviewCalls.push([source.id, action]);
+        if (window.reviewCalls.length === 1) throw new Error("provider still offline");
+        return original(source, action);
+      };
+    });
+    await page.getByRole("button", { name: "记忆", exact: true }).click();
+    await page.getByTestId("memory-nav-pending").click();
+    const list = page.getByTestId("memory-review-list");
+    assert.equal(await list.locator("article").count(), 2);
+    assert.equal(await list.locator("article[data-status='pending'] [data-testid='memory-review-retry']").count(), 0);
+    const retry = list.locator("article[data-status='failed'] [data-testid='memory-review-retry']");
+    assert.equal(await retry.count(), 1);
+    await retry.click();
+    await list.getByRole("alert").getByText("provider still offline", { exact: true }).waitFor();
+    assert.equal(await list.locator("article").count(), 2);
+    await retry.click();
+    await list.locator("[data-testid='memory-review-retry'][aria-busy='true']").waitFor();
+    await retry.dispatchEvent("click");  // A repeated click while in flight must not start a second review.
+    await list.locator("article[data-status='failed']").waitFor({ state: "detached" });
+    assert.equal(await list.locator("article").count(), 1);
+    assert.deepEqual(await page.evaluate(() => window.reviewCalls),
+      [["non_productivity:general:product-tone", "consolidate"], ["non_productivity:general:product-tone", "consolidate"]]);
   });
   await check("information: open memory details follow source revisions and reject stale reads", async page => {
     await page.evaluate(async () => {
@@ -232,8 +292,8 @@ try {
     });
     await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
     await page.getByRole("button", { name: "上下文", exact: true }).click();
-    const usage = page.locator(".inspector-section").filter({ hasText: "上下文窗口" });
-    await usage.getByText("上下文用量未知", { exact: true }).waitFor();
+    const usage = page.locator(".inspector-section").filter({ has: page.locator(".usage-copy") });
+    await usage.locator(".usage-copy").getByText("—", { exact: true }).waitFor();
     assert.doesNotMatch(await usage.innerText(), /0%/);
     assert.equal(await usage.locator(".usage-track").count(), 0);
     await page.locator(".memory-context summary").first().click();
@@ -423,6 +483,7 @@ try {
         output: text.slice(0, 300), more: { output: text.length } };
       cleoClient.loadThread = async () => ({ ...original, items: [item], history: { before: "0", after: "0", total: 1, hasBefore: false, hasAfter: false, revision: "1" } });
       window.readerCalls = [];
+      cleoClient.copyText = async text => { window.copiedMessage = text; };
       let failed = false;
       cleoClient.readTimelineContent = async (_thread, _item, field, offset) => {
         if (field !== "output") throw new Error(`Unexpected field: ${field}`);
@@ -451,6 +512,62 @@ try {
     await dialog.getByText(/Reader end marker/).waitFor({ state: "attached" });
     assert.deepEqual(await page.evaluate(() => window.readerCalls), [0, 4096, 4096, 8192]);
     assert.equal((await dialog.locator("pre").textContent()).split("Reader end marker").length, 2);
+  });
+  await check("full content renders inline automatically with Markdown, retry and complete copy", async page => {
+    await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      const original = await cleoClient.loadThread("desktop-ui");
+      const text = "# Reader heading\n\n" + "A paragraph to read.\n\n".repeat(500) + "Reader end marker";
+      const item = { id: "large", type: "message", role: "assistant", time: "", content: text.slice(0, 300), more: { content: text.length } };
+      cleoClient.loadThread = async () => ({ ...original, items: [item], history: { before: "0", after: "0", total: 1, hasBefore: false, hasAfter: false, revision: "1" } });
+      window.readerCalls = [];
+      cleoClient.copyText = async text => { window.copiedMessage = text; };
+      let failed = false;
+      cleoClient.readTimelineContent = async (_thread, _item, _field, offset) => {
+        window.readerCalls.push(offset);
+        if (offset && !failed) { failed = true; throw new Error("reader offline"); }
+        const part = text.slice(offset, offset + 4096);
+        return { text: part, offset, next: offset + part.length, total: text.length };
+      };
+    });
+    await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
+    const message = page.getByRole("article", { name: "Cleo 的回复" });
+    await message.getByRole("alert").filter({ hasText: "reader offline" }).waitFor();
+    assert.equal(await message.getByRole("heading", { name: "Reader heading" }).count(), 1);
+    assert.equal(await page.getByRole("button", { name: "展开全文", exact: true }).count(), 0);
+    assert.equal(await page.getByRole("dialog", { name: "完整历史正文" }).count(), 0);
+    await message.getByRole("button", { name: "重试", exact: true }).click();
+    await message.getByText(/Reader end marker/).waitFor({ state: "attached" });
+    assert.deepEqual(await page.evaluate(() => window.readerCalls), [0, 4096, 0, 4096, 8192]);
+    await message.getByRole("button", { name: "复制", exact: true }).click({ force: true });
+    assert.equal(await page.evaluate(() => window.copiedMessage.endsWith("Reader end marker")), true);
+    assert.equal(await page.evaluate(() => window.readerCalls.length), 5, "Copy reuses the complete loaded message");
+  });
+  await check("full content ignores late reads after switching sessions", async page => {
+    await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      const original = cleoClient.loadThread.bind(cleoClient);
+      cleoClient.loadThread = async id => id !== "desktop-ui" ? original(id) : ({ ...await original(id), items: [{
+        id: "shared-message-id", type: "message", role: "assistant", time: "",
+        content: "Old preview", more: { content: 12000 },
+      }], history: { before: "0", after: "0", total: 1, hasBefore: false, hasAfter: false, revision: "1" } });
+      window.messageReads = [];
+      cleoClient.readTimelineContent = async (thread, _item, _field, offset) => {
+        window.messageReads.push(thread);
+        await new Promise(resolve => { window.finishOldMessage = resolve; });
+        const text = "Obsolete full reply";
+        return { text, offset, next: text.length, total: text.length };
+      };
+    });
+    await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
+    await page.waitForFunction(() => Boolean(window.finishOldMessage));
+    await page.getByRole("button", { name: /^统一 managed/ }).click();
+    const current = page.getByRole("article", { name: "Cleo 的回复" }).filter({ hasText: "我确认了聚合层" });
+    await current.waitFor();
+    await page.evaluate(() => window.finishOldMessage());
+    assert.equal(await page.getByText("Obsolete full reply", { exact: true }).count(), 0);
+    assert.equal(await current.isVisible(), true);
+    assert.deepEqual(await page.evaluate(() => window.messageReads), ["desktop-ui"]);
   });
   await check("instruction and connection drafts survive settings navigation", async page => {
     await page.getByRole("button", { name: "设置", exact: true }).click();

@@ -102,7 +102,7 @@
   "runtime": {
     "access": ".",
     "approval": "Cleo 工具策略",
-    "contextWindow": 64000,
+    "contextWindow": 0,
     "editable": false,
     "effort": "high",
     "model": "fake-chat",
@@ -111,6 +111,7 @@
     ],
     "profileId": "fake_chat",
     "provider": "openai",
+    "routingMode": "manual",
     "steerMode": "boundary",
     "supportsQuestions": false
   },

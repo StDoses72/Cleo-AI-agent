@@ -11,6 +11,7 @@ from langchain.tools import tool
 
 from cleo.config.settings import settings
 from cleo.integrations import CodexAdapter
+from cleo.routing.tools import create_routing_tools, maybe_route_codex, routing_enabled
 
 
 @cache
@@ -30,7 +31,10 @@ async def codex_tool(
     prompt: str,
     project_path: str = ".",
     model: str | None = None,
-) -> dict[str, str | None]:
+    assessment: dict | None = None,
+    provider: str | None = None,
+    candidate_id: str | None = None,
+) -> dict:
     """Delegate a coding task to Codex and wait for the completed turn.
 
     Use an absolute project path when Codex should work outside Cleo's current
@@ -51,6 +55,16 @@ async def codex_tool(
         error); 由 langchain tool 框架序列化回 LLM 作为 tool message,
         其中 thread_id 供后续 `codex_reply` 复用。
     """
+    routed = await maybe_route_codex(
+        prompt,
+        project_path,
+        model,
+        assessment,
+        provider,
+        candidate_id,
+    )
+    if routed is not None:
+        return routed
     return (await _default_adapter().start(prompt, project_path, model)).model_dump()
 
 
@@ -74,6 +88,14 @@ async def codex_reply_tool(
         CodexResult.model_dump() dict; 由 langchain 框架作为 tool
         message 回传给 LLM, 供其组织最终回复。
     """
+    if routing_enabled():
+        return {
+            "status": "assessment_required",
+            "error": (
+                "Use delegate_subtask with an updated assessment; "
+                "legacy reply is disabled during routed execution."
+            ),
+        }
     return (await _default_adapter().reply(thread_id, prompt, project_path)).model_dump()
 
 
@@ -92,8 +114,21 @@ def create_codex_tools(project_root: str | Path):
         prompt: str,
         project_path: str = ".",
         model: str | None = None,
-    ) -> dict[str, str | None]:
+        assessment: dict | None = None,
+        provider: str | None = None,
+        candidate_id: str | None = None,
+    ) -> dict:
         """Delegate a coding task in the currently selected project."""
+        routed = await maybe_route_codex(
+            prompt,
+            project_path,
+            model,
+            assessment,
+            provider,
+            candidate_id,
+        )
+        if routed is not None:
+            return routed
         return (await adapter.start(prompt, project_path, model)).model_dump()
 
     @tool("codex_reply")
@@ -103,6 +138,11 @@ def create_codex_tools(project_root: str | Path):
         project_path: str = ".",
     ) -> dict[str, str | None]:
         """Continue a Codex thread in the currently selected project."""
+        if routing_enabled():
+            return {
+                "status": "assessment_required",
+                "error": "Use delegate_subtask with an updated assessment",
+            }
         return (await adapter.reply(thread_id, prompt, project_path)).model_dump()
 
-    return project_codex_tool, project_codex_reply_tool
+    return project_codex_tool, project_codex_reply_tool, *create_routing_tools()

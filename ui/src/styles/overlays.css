@@ -383,3 +383,13 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 .history-loading {
   background: var(--canvas);
 }
+
+/* ---------- Move thread to project ---------- */
+.move-thread-dialog form > p.move-thread-note { margin: 0 0 12px; color: var(--muted); font-size: var(--font-size-control); line-height: 1.6; }
+.move-thread-dialog .move-thread-options { display: grid; gap: 6px; margin: 0 0 14px; max-height: 240px; overflow: auto; }
+.move-thread-dialog .move-thread-option { display: flex; align-items: flex-start; gap: 10px; padding: 9px 10px; border: 1px solid var(--border); border-radius: 9px; cursor: pointer; }
+.move-thread-dialog .move-thread-option:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.move-thread-dialog .move-thread-option input { margin-top: 3px; }
+.move-thread-dialog .move-thread-option span { display: grid; min-width: 0; gap: 2px; }
+.move-thread-dialog .move-thread-option strong { color: var(--text); font-size: var(--font-size-control); font-weight: 600; }
+.move-thread-dialog .move-thread-option small { overflow: hidden; color: var(--muted); font-size: var(--font-size-caption); text-overflow: ellipsis; white-space: nowrap; }

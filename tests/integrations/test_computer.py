@@ -86,24 +86,35 @@ def test_missing_desktop_app_is_reported_without_claiming_success(tmp_path, monk
     assert "桌面应用" in result[0]["text"]
 
 
-def test_server_configuration_carries_the_session_key_and_descriptor_path(tmp_path, monkeypatch):
+@pytest.mark.parametrize("descriptor_name", ["bridge.json", "bridge-123-instance.json"])
+def test_server_configuration_carries_the_session_key_and_descriptor_path(
+    tmp_path, monkeypatch, descriptor_name,
+):
+    """Purpose: Preserve each host's bridge path across harness configuration builders.
+
+    Input: Legacy or instance-scoped descriptor filename. Output: Matching launch arguments.
+    """
     path = tmp_path / "computer-use.json"
-    monkeypatch.setenv(computer.bridge.ENVIRONMENT, str(tmp_path / "bridge.json"))
+    descriptor = str(tmp_path / descriptor_name)
+    monkeypatch.setenv(computer.bridge.ENVIRONMENT, descriptor)
     args = computer.server_configuration(path, "ab" * 16)["cleo_computer"]["args"]
     assert args[args.index("--client-key") + 1] == "ab" * 16
-    assert args[args.index("--bridge") + 1] == str(tmp_path / "bridge.json")
+    assert args[args.index("--bridge") + 1] == descriptor
     monkeypatch.delenv(computer.bridge.ENVIRONMENT)
     plain = computer.server_configuration(path)["cleo_computer"]["args"]
     assert "--client-key" not in plain and "--bridge" not in plain
+    monkeypatch.setenv(computer.bridge.ENVIRONMENT, descriptor)
     memory = MemoryMcp(tmp_path / "memory", computer_config_path=path)
     overrides = memory.codex_config(computer_client="cd" * 16).config_overrides
     assert "mcp_servers.cleo_computer.tool_timeout_sec=660" in overrides
     prefix = "mcp_servers.cleo_computer.args="
     computer_args = [item for item in overrides if item.startswith(prefix)]
     assert any("cd" * 16 in item for item in computer_args)
-    assert "cd" * 16 in memory.claude_servers("cd" * 16)["cleo_computer"]["args"]
+    assert any(descriptor in json.loads(item[len(prefix):]) for item in computer_args)
+    claude_args = memory.claude_servers("cd" * 16)["cleo_computer"]["args"]
+    assert "cd" * 16 in claude_args and descriptor in claude_args
     acp = next(item for item in memory.acp_servers("cd" * 16) if item.name == "cleo_computer")
-    assert "cd" * 16 in acp.args
+    assert "cd" * 16 in acp.args and descriptor in acp.args
     # Reconnect comparisons use key-free configuration, so they stay stable.
     assert memory.codex_config().config_overrides == memory.codex_config().config_overrides
 

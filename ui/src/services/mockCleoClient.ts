@@ -63,6 +63,38 @@ export class MockCleoClient implements CleoClient {
     localStorage.setItem("cleo-mock-ui-language", language);
     return language;
   }
+
+  private routingSettings: import("../routing-types").RoutingSettings = {
+    revision: "mock", enabled: true, preference: "quality", fallbackCandidate: "codex/demo@high",
+    automaticUpgrade: false, crossBackendDelegation: false,
+    candidates: [{ id: "codex/demo@high", provider: "codex", backend: "codex_sdk", model: "demo",
+      effort: "high", enabled: true, tier: "strong", available: true, costType: "subscription",
+      checkedAt: null, statusReason: null, benchmarkMatch: "benchmark_missing", benchmarkVersion: null }],
+    benchmark: { source: null, retrievedAt: null, stale: true, error: "benchmark_cache_missing", recordCount: 0, keyConfigured: false },
+    recentTasks: [],
+  };
+
+  async getRoutingSettings(): Promise<import("../routing-types").RoutingSettings> {
+    return clone(this.routingSettings);
+  }
+
+  async saveBenchmarkConnection(): Promise<import("../routing-types").RoutingSettings> {
+    throw new Error("演示环境不保存密钥，请使用真实本地配置预览。");
+  }
+
+  async saveRoutingSettings(update: import("../routing-types").RoutingSettingsUpdate): Promise<import("../routing-types").RoutingSettings> {
+    this.routingSettings = { ...this.routingSettings, ...update,
+      candidates: this.routingSettings.candidates.map(item => ({ ...item, ...update.candidates.find(value => value.id === item.id) })) };
+    return this.getRoutingSettings();
+  }
+
+  async submitRoutingFeedback(): Promise<import("../routing-types").RoutingSettings> {
+    throw new Error("演示数据不支持反馈，请连接本地配置。");
+  }
+
+  async refreshRoutingBenchmarks(): Promise<import("../routing-types").RoutingSettings> {
+    return this.getRoutingSettings();
+  }
   private backgroundMemorySettings: BackgroundMemorySettings = { enabled: false, intervalMinutes: 30, pendingThreshold: 5 };
   private harnessSync: HarnessSyncStatus[] = [
     { harness: "claude", localPath: "C:\\Users\\demo\\.claude", localExists: true, cleoPath: "C:\\Users\\demo\\.claude", sharedHome: true,
@@ -225,6 +257,18 @@ export class MockCleoClient implements CleoClient {
     if (snapshot.activeThreadId === threadId) {
       snapshot.activeThreadId = snapshot.threads[index]?.id ?? snapshot.threads[index - 1]?.id ?? null;
     }
+    return clone(snapshot);
+  }
+
+  async moveThread(threadId: string, projectId: string): Promise<WorkspaceSnapshot> {
+    await delay(220);
+    const thread = snapshot.threads.find((candidate) => candidate.id === threadId);
+    if (!thread) throw new Error("会话不存在。");
+    if (thread.status === "running") throw new Error("会话正在运行，等待结束后再加入其他项目。");
+    const project = snapshot.projects.find((candidate) => candidate.id === projectId
+      && (candidate.space ?? "chat") === thread.space);
+    if (!project) throw new Error(`目标项目 ${projectId} 不可用。`);
+    thread.projectId = project.id;
     return clone(snapshot);
   }
 

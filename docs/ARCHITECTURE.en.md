@@ -172,7 +172,15 @@ as metadata. An active, unconsolidated thread can move between projects; its
 session directory, manifest, event bindings, SQLite registry, compact view,
 memory state, and conversation chunks move together. Once DreamAgent has
 consolidated the source, migration is rejected because durable knowledge in the
-old project cannot be retracted reliably.
+old project cannot be retracted reliably. The desktop exposes this through the
+`move_thread` RPC and the conversation menu's "Move to project…" dialog, and
+`/project move <name>` works for chat and development tasks alike. Running
+threads, cross-space targets, self-evolution tasks, and tasks that carry a
+harness handoff snapshot are rejected with a stated reason. After a development
+task moves, its `cwd` points at the target project directory, the resident
+harness session is closed and resumed in the new directory on the next turn,
+and the previous turn's Git undo checkpoint is discarded
+([ADR 0002](adr/0002-move-conversation-into-project.md)).
 
 ## Session Storage
 
@@ -241,6 +249,22 @@ Canonical semantics include assistant messages, tool calls and results,
 permission requests, file changes, terminal output, plan updates, status, and
 errors. Events that cannot be normalized safely become `provider_event` records
 with provider identity, native event type, and a sanitized payload in `data`.
+
+A native result does not necessarily end a turn. Claude Code can keep running
+background tasks (`Bash(run_in_background=true)`, background agents) after the
+foreground turn ends and, when they finish, wakes the model on the same stream
+for another round. `ClaudeProvider.prompt` decides that the turn is really over
+from the set of background tasks plus a count of wake-ups still owed after each
+`task_notification`: stage boundaries are recorded as the `status` event
+`claude/stage_completed`, a wait timeout or cancellation writes
+`claude/background_abandoned` and ends with a `failed` / `cancelled` terminal
+status, and tasks marked `ambient: true` never belong to the current turn. The
+service, projections, and UI do not need to know these harness-specific
+semantics. The native question, approval, turn-end, and background-task
+protocols of each harness, how Cleo adapts them, and the assessment of a
+per-harness adapter layer are documented in
+[Harness questions and turn lifecycle](harness/interactive-lifecycle.md)
+(Chinese) and [ADR 0004](adr/0004-claude-turn-and-background-task-lifecycle.md).
 
 ## Cleo Chat Flow
 
