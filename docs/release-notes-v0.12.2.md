@@ -1,6 +1,23 @@
-# Cleo v0.13.0
+# Cleo v0.12.2
 
-Cleo v0.13.0 keeps Claude turns open while native background tasks finish, isolates the built-in browser per conversation, lets conversations join projects, retries failed memory consolidation, ships the Codex CLI once, and retires superseded online runtimes by evidence.
+Cleo v0.12.2 adds benchmark-assisted subtask routing, configurable evaluators and task-scoped usage while keeping the selected main model in charge. It also fixes Claude task identity on reconnect, isolates computer bridge connections, completes the background-task lifecycle, and includes the reviewed browser, memory, project and runtime-storage fixes.
+
+## Subtask routing and task usage
+
+- Choose a connected harness/model directly or enable subtask routing. The main model still understands the request, decomposes work, controls parallelism, checks results and gives the final answer. Routing selects only eligible connected execution configurations; explicit user selections and disabled candidates remain authoritative.
+- Artificial Analysis supplies cached capability, price and speed references. A configurable API or harness evaluator recommends workers from the eligible catalog, or the deterministic rules can be used. An unspecified evaluator follows the new-conversation default model; its assessment is reused when it is already coordinating. Missing data stays unknown and uses a configured conservative fallback; benchmark refresh failures retain the latest valid cache.
+- Search and select allowed models in compact routing settings, configure the AA data connection and calibrate model versions. Confirmed unsupported account/harness/model combinations are excluded within their runtime scope without paid inference probes.
+- The current-task panel shows a concise task label and each model's responsibility, calls, reported tokens and available dollar costs. Related follow-ups stay in the same task; an evaluator can start a new task boundary for a new goal. Context occupancy uses the selected model's known capacity rather than the output-token setting. Missing usage or prices are not presented as zero; API-equivalent subscription costs are distinct from an invoice.
+- Routing records execution, acceptance and attributable feedback separately. Eligible retries/upgrades are bounded and cancellation never retries automatically. Confirmed feedback can make a limited, reversible local ranking adjustment; it does not train models or alter AA benchmark scores.
+- Existing routing/evaluator configuration remains local. Direct API connections can evaluate tasks, but this release does not add a direct API worker or make an arbitrary model compatible with another harness.
+
+## Permissions, complete output and recovery
+
+- A configured routing permission preset applies consistently to the coordinator and workers. Handoff discards stale queued permissions belonging to the old harness, while unsupported permission combinations remain ineligible.
+- Claude reconnects retain the same host-bound task key for memory, routing and computer tools. Computer bridge descriptors are unique per desktop instance, and a rejected second instance cannot replace the running instance's connection. Ownership validation stays in place; independent worker processes do not acquire desktop ownership just from a parent-binding file.
+- Conversation messages render complete content inline, including safe full-text loading, retry and copy for older preview records. Tool-output readers remain available.
+- The Evolution companion appears during an Evolution handoff only when the main interface is unavailable, and closes automatically when the main interface becomes ready. Independent recovery remains available.
+- An opt-in local configuration preview lets the browser sidebar read connections and edit routing settings through restricted local RPCs, with credential redaction and origin/token checks. It cannot start inference.
 
 ## Harness lifecycle
 
@@ -30,6 +47,10 @@ Cleo v0.13.0 keeps Claude turns open while native background tasks finish, isola
 - The Codex CLI ships once, from the Python `openai-codex-cli-bin` package. `ui/runtime/package.json` no longer declares `@openai/codex`, which saved about 0.43 GiB per online runtime, and the release receipt refuses to be generated if the npm package reappears.
 - Every start on an online runtime records which installation uses which runtime key in that runtime's `installations.json`, including the keys an installation has left. Storage cleanup labels runtimes `in-use`, `retired`, or `unknown` from this registry and reclaims only runtimes proven retired; unknown ownership is still kept.
 
+## Build compatibility
+
+- Apple Silicon CI uses the supported native `macos-15` image. The retired macOS 14 runner is also removed from download-page checks; Intel packages remain on `macos-15-intel`.
+
 ## Documentation
 
 - Architecture decision records live in `docs/adr/` with conventions in `docs/adr/README.md`; this release accepts ADR 0001–0006.
@@ -37,13 +58,13 @@ Cleo v0.13.0 keeps Claude turns open while native background tasks finish, isola
 
 ## Installers
 
-- [Windows x64 EXE](https://github.com/StDoses72/Cleo-AI-agent/releases/download/v0.13.0/Cleo-windows-x64-setup.exe)
-- [macOS Apple Silicon PKG](https://github.com/StDoses72/Cleo-AI-agent/releases/download/v0.13.0/Cleo-macos-arm64.pkg)
-- [macOS Intel PKG](https://github.com/StDoses72/Cleo-AI-agent/releases/download/v0.13.0/Cleo-macos-x64.pkg)
-- [Linux x64 DEB](https://github.com/StDoses72/Cleo-AI-agent/releases/download/v0.13.0/Cleo-linux-x64.deb)
+- [Windows x64 EXE](https://github.com/StDoses72/Cleo-AI-agent/releases/download/v0.12.2/Cleo-windows-x64-setup.exe)
+- [macOS Apple Silicon PKG](https://github.com/StDoses72/Cleo-AI-agent/releases/download/v0.12.2/Cleo-macos-arm64.pkg)
+- [macOS Intel PKG](https://github.com/StDoses72/Cleo-AI-agent/releases/download/v0.12.2/Cleo-macos-x64.pkg)
+- [Linux x64 DEB](https://github.com/StDoses72/Cleo-AI-agent/releases/download/v0.12.2/Cleo-linux-x64.deb)
 
-Installers prepare the verified runtime dependencies during installation. Each package has a matching SHA-256 file. macOS packages retain the existing ad-hoc signing approach; see the [platform guide](https://github.com/StDoses72/Cleo-AI-agent/blob/v0.13.0/docs/PLATFORMS.en.md) for installation details.
+Installers prepare the verified runtime dependencies during installation. Each package has a matching SHA-256 file. macOS packages retain the existing ad-hoc signing approach; see the [platform guide](https://github.com/StDoses72/Cleo-AI-agent/blob/v0.12.2/docs/PLATFORMS.en.md) for installation details.
 
-Included PRs: #153, #154, #155, #156, #157, #158. Fixes #141, #142, #148, #149, #150 and #152.
+Included PRs: #153, #154, #155, #156, #157, #158, integrated with routing and release preparation in #159. Fixes #141, #142, #148, #149, #150 and #152.
 
-[Full changelog](https://github.com/StDoses72/Cleo-AI-agent/compare/v0.12.1...v0.13.0)
+[Full changelog](https://github.com/StDoses72/Cleo-AI-agent/compare/v0.12.1...v0.12.2)
