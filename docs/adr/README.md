@@ -37,5 +37,6 @@
 | [0004](0004-claude-turn-and-background-task-lifecycle.md) | Claude 回合与后台任务的生命周期归 provider 所有 | Accepted |
 | [0005](0005-single-codex-cli-distribution.md) | Codex CLI 只随 Python 运行时分发一次 | Accepted |
 | [0006](0006-online-runtime-ownership-and-retirement.md) | 在线运行环境的归属登记与基于证据的退役 | Accepted |
+| [0007](0007-orchestration-layer-and-in-node-delegation.md) | 多 agent 协作拆成编排层与节点内委派层，子任务路由收窄为后者的一种实现 | Proposed |
 
 每个引入 ADR 的 PR 自己在此表追加对应行（并行 PR 之间的小冲突在合并时解决），这样任何一个 PR 合并后索引都是完整的。0001–0006 随同一个集成 PR 合入 `main`，状态在集成时改为 Accepted。
