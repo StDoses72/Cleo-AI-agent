@@ -16,9 +16,11 @@
     },
     "id": "<thread:1>",
     "items": [],
+    "parentId": null,
     "pendingApprovals": [],
     "pendingQuestions": [],
     "projectId": "chat:general",
+    "routingTaskId": null,
     "runtime": {
       "access": ".",
       "approval": "Cleo 工具策略",
@@ -461,9 +463,11 @@
         "type": "message"
       }
     ],
+    "parentId": null,
     "pendingApprovals": [],
     "pendingQuestions": [],
     "projectId": "chat:general",
+    "routingTaskId": null,
     "runtime": {
       "access": ".",
       "approval": "Cleo 工具策略",

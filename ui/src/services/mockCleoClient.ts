@@ -29,6 +29,7 @@ import type {
   ThreadSpace,
   TimelineItem,
   UndoChangesResult,
+  SourceControlOp,
   WorkspaceSnapshot,
   TimelinePage,
   TimelineContent,
@@ -274,7 +275,7 @@ export class MockCleoClient implements CleoClient {
 
   async addProject(space: ThreadSpace, projectPath: string): Promise<WorkspaceSnapshot> {
     const name = projectPath.split(/[\\/]/).filter(Boolean).at(-1) ?? "workspace";
-    const id = `${space}:${name}`;
+    const id = snapshot.projects.find((project) => project.path === projectPath)?.id ?? `${space}:${name}`;
     const existing = snapshot.projects.find((project) => project.id === id);
     if (existing) {
       existing.path = projectPath;
@@ -917,8 +918,91 @@ export class MockCleoClient implements CleoClient {
     return { restoredFiles, workspace: clone(snapshot) };
   }
 
+  /** Simulates the desktop git bridge on the mock data so every review action can be exercised. */
+  async sourceControl<T = unknown>(op: SourceControlOp, params: Record<string, unknown>): Promise<T> {
+    await delay(op === "push" || op === "createPullRequest" ? 500 : 180);
+    const thread = snapshot.threads.find((candidate) => candidate.id === params.threadId);
+    const project = snapshot.projects.find((candidate) => candidate.path === params.root);
+    if (op === "status") {
+      return { repository: Boolean(project?.branch), branch: project?.branch ?? null, upstream: project?.branch ? `origin/${project.branch}` : null,
+        ahead: this.mockAhead, behind: 0, changedFiles: thread?.changes.length ?? 0, remote: "git@github.com:demo/cleo.git",
+        canCreatePullRequest: true } as T;
+    }
+    if (op === "revertFile") {
+      if (!thread) throw new Error("没有找到这个任务。");
+      thread.changes = thread.changes.filter((file) => file.path !== params.path);
+      if (project) project.dirtyFiles = thread.changes.length;
+      return { path: params.path, action: "restored" } as T;
+    }
+    if (op === "root") return { root: project?.branch ? String(params.root) : null } as T;
+    if (op === "revertHunk") {
+      // Like `git apply --reverse`: the hunk must still be in the file's diff, then it is dropped.
+      const patch = String(params.patch || "").replace(/\r\n/g, "\n");
+      const path = /^diff --git a\/.+? b\/(.+)$/m.exec(patch)?.[1];
+      const file = thread?.changes.find((item) => item.path === path);
+      const hunk = patch.slice(patch.indexOf("\n@@") + 1).replace(/\n+$/, "");
+      if (!thread || !file || !hunk.startsWith("@@") || !file.diff.includes(hunk)) throw new Error("这段改动已经变化，刷新后再试。");
+      file.diff = file.diff.replace(hunk, "").replace(/\n{2,}/g, "\n").trim();
+      const body = file.diff.split("\n");
+      file.additions = body.filter((line) => line.startsWith("+") && !line.startsWith("+++")).length;
+      file.deletions = body.filter((line) => line.startsWith("-") && !line.startsWith("---")).length;
+      if (!body.some((line) => line.startsWith("@@"))) thread.changes = thread.changes.filter((item) => item !== file);
+      if (project) project.dirtyFiles = thread.changes.length;
+      return { path } as T;
+    }
+    if (op === "commit") {
+      if (!String(params.message || "").trim()) throw new Error("先写一句提交说明。");
+      const paths = new Set(Array.isArray(params.paths) ? params.paths.map(String) : []);
+      if (!paths.size) throw new Error("没有可提交的改动文件。");
+      if (thread) thread.changes = thread.changes.filter((file) => !paths.has(file.path));
+      if (project) project.dirtyFiles = thread?.changes.length ?? 0;
+      this.mockAhead += 1;
+      return { sha: "a1b2c3d", files: paths.size } as T;
+    }
+    if (op === "removeWorktree") {
+      if (!project || !/\/\.cleo\/worktrees\//.test(project.path)) throw new Error("只能移除 Cleo 创建的 worktree。");
+      return { path: project.path } as T;
+    }
+    if (op === "push") { this.mockAhead = 0; return { branch: project?.branch ?? "main" } as T; }
+    if (op === "createPullRequest") { this.mockPullRequest = true; return { url: "https://github.com/demo/cleo/pull/42" } as T; }
+    if (op === "pullRequest") {
+      return { pullRequest: this.mockPullRequest ? { number: 42, title: "Build the desktop shell", state: "OPEN",
+        url: "https://github.com/demo/cleo/pull/42", draft: false, checks: { passed: 3, failed: 0, pending: 1 } } : null } as T;
+    }
+    if (op === "listFiles") {
+      // The demo repository's files plus whatever the task has changed.
+      const files = new Set([...mockRepositoryFiles, ...snapshot.threads.filter((item) => item.projectId === project?.id).flatMap((item) => item.changes.map((file) => file.path))]);
+      return { repository: Boolean(project?.branch), files: [...files] } as T;
+    }
+    if (op === "createWorktree") {
+      const base = String(params.name || "task").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32) || "task";
+      // Like the desktop bridge: neither the folder nor the cleo/<slug> branch may be reused.
+      let slug = base;
+      for (let attempt = 2; snapshot.projects.some((item) => item.branch === `cleo/${slug}` || item.id === `productivity:${slug}`); attempt++) slug = `${base}-${attempt}`;
+      const path = `${String(params.root)}/.cleo/worktrees/${slug}`;
+      const branch = `cleo/${slug}`;
+      snapshot.projects.push({ id: `productivity:${slug}`, space: "productivity", name: `${project?.name ?? "repo"} · ${slug}`, path, branch,
+        dirtyFiles: 0, accent: project?.accent ?? "#75c9d6", removable: true });
+      return { path, branch, name: slug } as T;
+    }
+    throw new Error(`Unsupported source-control operation: ${op}`);
+  }
+
+  private mockAhead = 0;
+  private mockPullRequest = false;
+
   async resetWorkspace(): Promise<void> {}
 }
+
+const mockRepositoryFiles = [
+  "README.md", "package.json", "tsconfig.json", "vite.config.ts", "index.html",
+  "src/App.tsx", "src/main.tsx", "src/types.ts", "src/useCleoWorkspace.ts",
+  "src/components/Conversation.tsx", "src/components/Inspector.tsx", "src/components/ThreadSidebar.tsx",
+  "src/components/ReviewActions.tsx", "src/components/Overlays.tsx", "src/components/MemoryView.tsx",
+  "src/services/ipcCleoClient.ts", "src/services/mockCleoClient.ts", "src/styles/tokens.css", "src/styles/theme.css",
+  "electron/main.mjs", "electron/preload.cjs", "electron/source-control.mjs", "tests/uiux-regressions.smoke.mjs",
+  "docs/adr/0008-single-sidebar-flat-ui-and-review-loop.md",
+];
 
 /** Purpose: Downscale a pasted image to a 96px data URL in the browser, as the Electron main process does. */
 async function mockThumbnailFor(file: File): Promise<string> {

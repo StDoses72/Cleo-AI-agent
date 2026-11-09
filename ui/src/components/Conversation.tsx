@@ -1,5 +1,4 @@
 import { t as tr } from "../../electron/i18n.mjs";
-import { modifierKey } from "../platform";
 import { VirtualTimeline } from "./VirtualTimeline";
 import { Timing } from "./Timing";
 import { cleoClient } from "../services/cleoClient";
@@ -27,18 +26,22 @@ import {
   ArrowLeft,
   ArrowDown,
   ArrowUp,
-  AtSign,
+  Brain,
   Check,
   ChevronDown,
   ChevronRight,
   Circle,
+  CircleAlert,
+  FileDiff,
+  Users,
+  GitBranchPlus,
   CircleCheck,
-  Command,
   ExternalLink,
   FileCode2,
   FileImage,
   FileText,
   GitBranch,
+  GitFork,
   LoaderCircle,
   MoreHorizontal,
   Paperclip,
@@ -51,8 +54,6 @@ import {
   Zap,
   Sparkles,
   Square,
-  Terminal,
-  Wrench,
   X,
 } from "lucide-react";
 import type {
@@ -71,6 +72,7 @@ import type {
   ApprovalDecision,
   ApprovalRequest,
   QueuedMessage,
+  Usage,
 } from "../types";
 import { PermissionSelector } from "./PermissionSelector";
 import { ApprovalPrompt } from "./ApprovalPrompt";
@@ -78,6 +80,9 @@ import { MoveThreadDialog, RenameThreadDialog } from "./Overlays";
 import { handleDialogKeyDown } from "./Modal";
 import { approvalLabel, effortLabels, isGeneralProject, projectLabel } from "../runtime-labels";
 import { ProjectTarget } from "./ProjectTarget";
+import { mentionAt, mentionText, rankFiles } from "./fileMentions";
+import { modifierKey } from "../platform";
+import { toolFailed } from "../toolOutcome";
 import { checkHarnessConnections } from "../connected-harnesses";
 
 interface ConversationProps {
@@ -143,6 +148,22 @@ interface ConversationProps {
   onRemoveAttachment: (path: string) => void;
   onShowRun: () => void;
   onShowContext: () => void;
+  /** Open the details panel on the Changes tab. */
+  onShowChanges?: () => void;
+  /** Open the details panel on the Changes tab with this file's diff selected. */
+  onShowChangeFile?: (path: string) => void;
+  /** Offer to start the draft in an isolated git worktree (only for git projects). */
+  worktree?: { enabled: boolean; onToggle: () => void };
+  /** The project's files for @-mentions (git projects only). */
+  onListFiles?: () => Promise<string[]>;
+  /** Insert the composer's text into the running turn now instead of queueing it. */
+  onSteerDraft?: (text: string) => void;
+  /** Subtasks delegated from this conversation, and (for a subtask) the conversation that started it. */
+  subtasks?: Thread[];
+  parentThread?: Thread | null;
+  onOpenThread?: (threadId: string) => void;
+  /** The details panel is showing this conversation's changes, so the header need not repeat them. */
+  changesVisible?: boolean;
   onRevealPath: (path: string) => void;
   onOpenPath: (href: string, workspacePath: string) => void;
   onThreadCommand: (command: string) => void;
@@ -219,6 +240,15 @@ export function Conversation({
   onRemoveAttachment,
   onShowRun,
   onShowContext,
+  onShowChanges,
+  onShowChangeFile,
+  worktree,
+  onListFiles,
+  onSteerDraft,
+  subtasks = [],
+  parentThread = null,
+  onOpenThread,
+  changesVisible = false,
   onRevealPath,
   onOpenPath,
   onThreadCommand,
@@ -251,8 +281,9 @@ export function Conversation({
   const currentTurn = timelineItems.slice(timelineItems.findLastIndex(item => item.type === "message" && item.role === "user") + 1);
   const waiting = Boolean(approvalRequest || waitingForAnswer);
   const activeProcess = running && !waiting && !thread?.history?.hasAfter
-    ? currentTurn.findLast(item => item.type === "thought-group" ? item.thoughts.some(thought => thought.status === "running")
-      : item.type === "tool-group" && item.tools.some(tool => tool.status === "running")) : undefined;
+    // The live turn's work log counts as active until its answer lands, even between two steps.
+    ? currentTurn.findLast(item => item.type === "work-group" && item.items.some(entry => entry.status === "running"))
+      ?? currentTurn.findLast(item => item.type === "work-group" && !item.hasAnswer) : undefined;
   const showActivity = running && !waiting && !thread?.history?.hasAfter && !activeProcess
     && !currentTurn.some(item => item.type === "message" && item.role === "assistant" && item.content.trim());
 
@@ -260,8 +291,11 @@ export function Conversation({
   const stateKey = (id: string) => `${thread?.id}:${id}`;
   const isOpen = (block: TimelineBlock) => {
     const saved = expansion[stateKey(block.id)];
-    // Thoughts stay open until the turn's final answer arrives, then collapse once; a manual toggle after that wins.
-    if (block.type === "thought-group") return block.hasAnswer && !saved?.answered ? false : saved?.open ?? !block.hasAnswer;
+    // Work stays open until the turn's final answer arrives, then collapses once; a manual toggle after that wins.
+    // Only the live turn's work opens by itself (until its answer lands); past turns stay folded,
+    // including ones that ended without an answer.
+    if (block.type === "work-group") return block.hasAnswer && !saved?.answered ? false
+      : saved?.open ?? (!block.hasAnswer && (block.items.some(entry => entry.status === "running") || (running && currentTurn.includes(block))));
     return saved?.open ?? false;
   };
   const toggle = (id: string, open: boolean, answered = false) => setExpansion(current => {
@@ -270,7 +304,7 @@ export function Conversation({
     return Object.fromEntries(Object.entries(next).slice(-1000));
   });
   useLayoutEffect(() => {
-    const changed = timelineItems.filter((block): block is ThoughtGroupBlock => block.type === "thought-group" && block.hasAnswer && !expansion[stateKey(block.id)]?.answered);
+    const changed = timelineItems.filter((block): block is WorkGroupBlock => block.type === "work-group" && block.hasAnswer && !expansion[stateKey(block.id)]?.answered);
     if (!changed.length) return;
     setExpansion(current => Object.fromEntries(Object.entries({ ...current, ...Object.fromEntries(changed.map(block => [stateKey(block.id), { open: false, answered: true }])) }).slice(-1000)));
   }, [timelineItems, thread?.id, expansion]);
@@ -278,8 +312,7 @@ export function Conversation({
   for (const block of timelineItems) {
     rows.push(block);
     if (!isOpen(block)) continue;
-    if (block.type === "thought-group") rows.push(...block.thoughts.map(item => ({ id: item.id, type: "thought-row" as const, item })));
-    if (block.type === "tool-group") rows.push(...block.tools.map((item, index) => ({ id: item.id, type: "tool-row" as const, item, index })));
+    if (block.type === "work-group") rows.push(...block.items.map((item, index) => ({ id: item.id, type: "work-row" as const, item, index })));
   }
   const [reader, setReader] = useState<{ item: TimelineItem; field: string; offset: number; text: string; next: number; total: number } | null>(null);
   const [readerError, setReaderError] = useState("");
@@ -356,16 +389,14 @@ export function Conversation({
   const renderRow = (row: TimelineRow) => {
     let item: TimelineItem | undefined;
     let content: ReactNode;
-    if (row.type === "thought-group") content = <ThoughtGroupEntry item={row} projectPath={project?.path ?? null} onOpenPath={onOpenPath}
-      expanded={isOpen(row)} onToggle={() => toggle(row.id, !isOpen(row), row.hasAnswer)} active={row.id === activeProcess?.id} headerOnly />;
-    else if (row.type === "tool-group") content = <ToolGroupEntry item={row} expanded={isOpen(row)} onToggle={() => toggle(row.id, !isOpen(row))} active={row.id === activeProcess?.id} headerOnly />;
-    else if (row.type === "thought-row") {
+    if (row.type === "work-group") content = <WorkGroupEntry item={row} expanded={isOpen(row)}
+      onToggle={() => toggle(row.id, !isOpen(row), row.hasAnswer)} active={row.id === activeProcess?.id} />;
+    else if (row.type === "work-row") {
       item = row.item;
-      content = <div className="thought-process-list virtual-process-row"><ThoughtEntry item={row.item} projectPath={project?.path ?? null} onOpenPath={onOpenPath} /></div>;
-    } else if (row.type === "tool-row") {
-      item = row.item;
-      content = <div className="tool-process-list virtual-process-row"><ToolProcess tool={row.item} index={row.index}
-        open={expansion[stateKey(row.id)]?.open ?? false} onToggle={open => toggle(row.id, open)} /></div>;
+      content = <div className="work-process-list virtual-process-row" data-kind={row.item.type}>{row.item.type === "thought"
+        ? <ThoughtEntry item={row.item} projectPath={project?.path ?? null} onOpenPath={onOpenPath} />
+        : <ToolProcess tool={row.item} index={row.index}
+          open={expansion[stateKey(row.id)]?.open} onToggle={open => toggle(row.id, open)} />}</div>;
     } else { item = row; content = <TimelineEntry item={row} projectPath={project?.path ?? null} onOpenPath={onOpenPath}
       threadId={thread?.id ?? ""} activeTurnId={running ? thread?.currentTiming?.turnId : null}
       editable={!running && !waitingForAnswer && Boolean(onEditMessage) && editableTurns.has(row.id)}
@@ -390,6 +421,7 @@ export function Conversation({
         onToggleInspector={onToggleInspector}
         onOpenCommand={onOpenCommand}
         onShowRun={onShowRun}
+        onShowChanges={onShowChanges}
         onUndo={onUndo}
         onRevealPath={onRevealPath}
         onThreadCommand={onThreadCommand}
@@ -398,6 +430,9 @@ export function Conversation({
         projects={projects}
         onImprove={onImprove}
         busy={running || Boolean(sendBlocked)}
+        parentThread={parentThread}
+        onOpenThread={onOpenThread}
+        changesVisible={changesVisible}
       />}</div>
 
       <div className="conversation-body" style={{ "--composer-clearance": `${bottomInset}px` } as CSSProperties}>
@@ -416,6 +451,11 @@ export function Conversation({
           <>
             <VirtualTimeline rows={rows} viewport={viewportRef} follow={stickToBottomRef} bottomInset={bottomInset} threadId={thread.id} render={renderRow} onScroll={trackScrollPosition}
               footer={<>{showActivity && <div className="turn-activity" role="status"><LoaderCircle className="spin" size={14} /><span>{tr("conversation.working")}</span></div>}
+                <SubtaskList subtasks={subtasks} onOpen={onOpenThread} />
+                {/* Who is doing the work shows while the run is live too, next to its subtasks. */}
+                <CollaborationLine usage={thread.taskUsage} onOpen={onShowContext} />
+                {!running && space === "productivity" && thread.changes.length ? <ChangesCard thread={thread} undoing={undoing}
+                  onReview={onShowChanges} onReviewFile={onShowChangeFile} onUndo={thread.canUndo ? onUndo : undefined} /> : null}
                 {thread.currentTiming && (running || !thread.items.some(item => item.timing?.id === thread.currentTiming?.id))
                   && <Timing key={thread.currentTiming.id} summary={thread.currentTiming} />}</>} />
           </>
@@ -484,6 +524,11 @@ export function Conversation({
         onPrepareAttachments={onPrepareAttachments}
         onRemoveAttachment={onRemoveAttachment}
         onShowContext={onShowContext}
+        worktree={thread ? undefined : worktree}
+        onListFiles={onListFiles}
+        fileListKey={project?.path ?? ""}
+        onSteerDraft={onSteerDraft}
+        usage={thread?.usage}
         commands={commands}
         skills={skills ?? thread?.skills ?? []}
         approvalRequest={approvalRequest}
@@ -509,6 +554,7 @@ function ConversationHeader({
   onToggleInspector,
   onOpenCommand,
   onShowRun,
+  onShowChanges,
   onUndo,
   onRevealPath,
   onThreadCommand,
@@ -517,8 +563,14 @@ function ConversationHeader({
   projects,
   onImprove,
   busy,
+  parentThread,
+  onOpenThread,
+  changesVisible,
 }: Pick<
   ConversationProps,
+  | "parentThread"
+  | "onOpenThread"
+  | "changesVisible"
   | "thread"
   | "project"
   | "projects"
@@ -531,6 +583,7 @@ function ConversationHeader({
   | "onToggleInspector"
   | "onOpenCommand"
   | "onShowRun"
+  | "onShowChanges"
   | "onUndo"
   | "onRevealPath"
   | "onThreadCommand"
@@ -583,42 +636,43 @@ function ConversationHeader({
         <div className="breadcrumb">
           <span className="breadcrumb-project">{(project && projectLabel(project)) || "Cleo"}</span>
           <ChevronRight size={13} />
+          {/* A delegated subtask names the conversation that started it, one click away. */}
+          {parentThread ? <>
+            <button type="button" className="breadcrumb-parent" data-testid="subtask-parent" onClick={() => onOpenThread?.(parentThread.id)}
+              title={tr("conversation.back_to_parent_task")}>{parentThread.title}</button>
+            <ChevronRight size={13} />
+            <small className="breadcrumb-subtask">{tr("conversation.subtask")}</small>
+          </> : null}
           <strong>{thread?.title ?? (space === "chat" ? tr("conversation.new_chat") : tr("conversation.new_task"))}</strong>
         </div>
       </div>
       <div className="header-actions">
-        {space === "productivity" && thread?.canUndo ? (
-          <button
-            className="undo-button"
-            type="button"
-            disabled={!thread || running || undoing}
-            aria-label={tr("conversation.revert_git_changes")}
-            title={tr("conversation.revert_project_git_changes_from_the_latest_turn_excludes_browser_and_desktop_actions")}
-            onClick={onUndo}
-          >
-            <RotateCcw className={undoing ? "spin" : ""} size={14} />
-            <span>{undoing ? tr("conversation.reverting") : tr("conversation.revert_project_changes")}</span>
+        {space === "productivity" && thread?.changes.length && !changesVisible ? (
+          <button className="diff-pill" type="button" onClick={onShowChanges} data-testid="diff-pill"
+            aria-label={tr("conversation.review_value_changed_files", { p0: thread.changes.length })}
+            title={tr("conversation.review_value_changed_files", { p0: thread.changes.length })}>
+            <FileDiff size={13} />
+            <span>{tr("conversation.value_files", { p0: thread.changes.length })}</span>
+            <ins>+{thread.changes.reduce((total, file) => total + file.additions, 0)}</ins>
+            <del>-{thread.changes.reduce((total, file) => total + file.deletions, 0)}</del>
           </button>
         ) : null}
         {project?.branch ? (
-          <button className="branch-button" type="button" onClick={() => onRevealPath(project.path)}> 
-            <GitBranch size={14} />
+          <button className="branch-button" type="button" onClick={() => onRevealPath(project.path)}
+            title={project.dirtyFiles ? tr("threadsidebar.value_value_changed_files", { p0: project.branch, p1: project.dirtyFiles }) : project.branch}>
+            <GitBranch size={13} />
             <span>{project.branch}</span>
-            {project.dirtyFiles ? <small>{project.dirtyFiles}</small> : null}
           </button>
         ) : null}
-        <button className="icon-button" type="button" aria-label={tr("conversation.run_history")} title={tr("conversation.view_run_history")} onClick={onShowRun}>
-          <Terminal size={16} />
-        </button>
-        <button className="icon-button" type="button" aria-label={tr("conversation.command_palette")} title={tr("conversation.command_palette_value_k", { p0: modifierKey })} onClick={onOpenCommand}>
-          <Command size={16} />
-        </button>
         <div className="thread-actions-wrap" ref={menuRef}>
           <button className="icon-button" type="button" aria-label={tr("conversation.more")} title={tr("conversation.conversation_actions")} disabled={!thread || busy} aria-expanded={threadMenuOpen} onClick={() => setThreadMenuOpen((open) => !open)}>
             <MoreHorizontal size={17} />
           </button>
           {threadMenuOpen ? (
             <div className="thread-actions-menu surface-popover">
+              {space === "productivity" && thread?.canUndo ? <button type="button" disabled={running || undoing}
+                onClick={() => { setThreadMenuOpen(false); onUndo(); }}>{tr("inspector.undo_latest_turn")}</button> : null}
+              <button type="button" onClick={() => { setThreadMenuOpen(false); onShowRun(); }}>{tr("conversation.view_run_history")}</button>
               {onImprove && <button type="button" onClick={() => { setThreadMenuOpen(false); onImprove(); }}>{tr("conversation.improve_cleo")}</button>}
               <button type="button" onClick={() => {
                 setThreadMenuOpen(false);
@@ -662,23 +716,24 @@ function ConversationHeader({
 
 type ToolTimelineItem = Extract<TimelineItem, { type: "tool" }>;
 type ThoughtTimelineItem = Extract<TimelineItem, { type: "thought" }>;
-type ToolGroupBlock = {
+type ProcessItem = ToolTimelineItem | ThoughtTimelineItem;
+/** One turn's reasoning and tool calls, in the order they happened, behind a one-line summary. */
+type WorkGroupBlock = {
   id: string;
-  type: "tool-group";
-  tools: ToolTimelineItem[];
-};
-type ThoughtGroupBlock = {
-  id: string;
-  type: "thought-group";
-  thoughts: ThoughtTimelineItem[];
+  type: "work-group";
+  items: ProcessItem[];
   hasAnswer: boolean;
 };
-type TimelineBlock = Exclude<TimelineItem, { type: "thought" | "tool" }>
-  | ThoughtGroupBlock
-  | ToolGroupBlock;
-type TimelineRow = TimelineBlock | { id: string; type: "thought-row"; item: ThoughtTimelineItem }
-  | { id: string; type: "tool-row"; item: ToolTimelineItem; index: number };
+type TimelineBlock = Exclude<TimelineItem, { type: "thought" | "tool" }> | WorkGroupBlock;
+type TimelineRow = TimelineBlock | { id: string; type: "work-row"; item: ProcessItem; index: number };
 
+const isProcess = (item: TimelineItem): item is ProcessItem => item.type === "thought" || item.type === "tool";
+
+/** Purpose: Fold runs of thoughts and tool calls into chronological work groups.
+ * Input: timeline items in arrival order. Output: blocks in arrival order where each uninterrupted
+ * run of process items becomes one work group; messages (an answer, or the user steering mid-turn),
+ * plans, notices and questions are boundaries, so the order of decisions and actions is kept.
+ */
 export function groupTimelineItems(items: TimelineItem[]): TimelineBlock[] {
   const blocks: TimelineBlock[] = [];
   let turn: TimelineItem[] = [];
@@ -686,37 +741,23 @@ export function groupTimelineItems(items: TimelineItem[]): TimelineBlock[] {
 
   const flushTurn = () => {
     if (!turn.length) return;
-    const thoughts = turn.filter(
-      (item): item is ThoughtTimelineItem => item.type === "thought",
-    );
-    const tools = turn.filter(
-      (item): item is ToolTimelineItem => item.type === "tool",
-    );
-    let addedThoughtGroup = false;
-    let addedToolGroup = false;
-
+    const hasAnswer = turn.some(entry => entry.turnHasAnswer);
+    // Plans, questions and notices are boundaries: work before and after them stays on its own side.
+    // The first group keeps the segment's id (stable while it streams); later groups use their first item.
+    let run: ProcessItem[] = [];
+    let first = true;
+    const closeRun = () => {
+      if (!run.length) return;
+      blocks.push({ id: `work-group-${first ? turn[0].id : run[0].id}`, type: "work-group", items: run, hasAnswer });
+      run = [];
+      first = false;
+    };
     for (const item of turn) {
-      // The thought group always leads the turn's process blocks, even when a tool call arrived before the first thought.
-      if ((item.type === "thought" || item.type === "tool") && thoughts.length && !addedThoughtGroup) {
-        blocks.push({
-          id: `thought-group-${turn[0].id}`,
-          type: "thought-group",
-          thoughts,
-          hasAnswer: turn.some(item => item.turnHasAnswer),
-        });
-        addedThoughtGroup = true;
-      }
-      if (item.type === "tool" && !addedToolGroup) {
-        blocks.push({
-          id: `tool-group-${turn[0].id}`,
-          type: "tool-group",
-          tools,
-        });
-        addedToolGroup = true;
-      } else if (item.type !== "thought" && item.type !== "tool") {
-        blocks.push(item);
-      }
+      if (isProcess(item)) { run.push(item); continue; }
+      closeRun();
+      blocks.push(item);
     }
+    closeRun();
     turn = [];
   };
 
@@ -761,10 +802,7 @@ function TimelineEntry({
   onRestoreSteer?: ConversationProps["onRestoreSteer"];
   activeTurnId?: string | null;
 }) {
-  if (item.type === "thought-group") {
-    return <ThoughtGroupEntry item={item} projectPath={projectPath} onOpenPath={onOpenPath} />;
-  }
-  if (item.type === "tool-group") return <ToolGroupEntry item={item} />;
+  if (item.type === "work-group") return <WorkGroupEntry item={item} />;
   if (item.type === "plan") return <PlanEntry item={item} />;
   if (item.type === "question") return <section className="question-history" data-testid="question-history">
     <strong>{item.request.status === "answered" ? tr("conversation.agent_question_answered") : item.request.status === "pending" ? tr("conversation.waiting_for_an_answer") : item.request.status === "cancelled" ? tr("conversation.question_cancelled") : tr("conversation.this_question_has_expired_ask_the_agent_to_send_it_again")}</strong>
@@ -919,6 +957,7 @@ function MessageText({ item, threadId, projectPath, onOpenPath, onEdit, onReveal
       </div>}
     {item.role === "user" && item.attachments?.length ? <AttachmentChips attachments={item.attachments}
       className="message-attachments" testId="message-attachments" onReveal={onRevealPath ?? (path => void cleoClient.revealPath(path))} /> : null}
+    {item.role === "user" && item.memoryContext?.count ? <MemoryContextNote context={item.memoryContext} /> : null}
     {draft === null && <div className="message-actions">
       <button type="button" aria-label={tr("conversation.copy")} title={copied ? tr("conversation.copied") : tr("conversation.copy")} onClick={() => void copy()}>
         {copied ? <Check size={14} /> : <Copy size={14} />}
@@ -1005,62 +1044,65 @@ function markdownUrlTransform(value: string, key: string): string {
   return defaultUrlTransform(value);
 }
 
-function ThoughtGroupEntry({
-  item,
-  projectPath,
-  onOpenPath,
-  expanded: controlled,
-  onToggle,
-  headerOnly = false,
-  active,
-}: {
-  item: ThoughtGroupBlock;
-  projectPath: string | null;
-  onOpenPath: ConversationProps["onOpenPath"];
+const TOOL_KINDS = ["run", "edit", "read", "memory", "web", "agent", "other"] as const;
+type ToolKind = typeof TOOL_KINDS[number];
+
+/** Purpose: Name what a tool call did, so a turn summary can say "ran 2 commands · edited 3" instead
+ * of counting opaque tool names. Input: the harness's tool name. Output: one coarse kind. Cleo's own
+ * memory tools (searching long-term memory, reading an earlier conversation) are their own kind:
+ * they are the turns' real, visible uses of memory. */
+export function toolKind(name: string): ToolKind {
+  const value = name.toLowerCase();
+  if (/(cleo_memory|long_term_memory|memory_|_memory|read_thread)/.test(value)) return "memory";
+  if (/(edit|write|patch|apply|create_file|str_replace|notebook)/.test(value)) return "edit";
+  if (/(^read|view|grep|glob|search|^ls$|list|find|open_file)/.test(value)) return "read";
+  if (/(bash|shell|exec|command|terminal|powershell|workspace|^run)/.test(value)) return "run";
+  if (/(browser|web|fetch|computer|navigate|click|screenshot)/.test(value)) return "web";
+  if (/(task|agent|delegate|spawn)/.test(value)) return "agent";
+  return "other";
+}
+
+/** Purpose: The one-line header for a turn's work: what it is doing now, or a count of what it did.
+ * Input: the work group, whether its rows are shown, and whether it is the turn's live process.
+ * Output: a quiet row ("正在处理 · 读取文件…" / "已处理 · 3 个工具 · 2 段思考"); expanding it lists
+ * every thought and tool call in order as virtual rows beneath.
+ */
+function WorkGroupEntry({ item, expanded: controlled, onToggle, active }: {
+  item: WorkGroupBlock;
   expanded?: boolean;
   onToggle?: () => void;
-  headerOnly?: boolean;
   active?: boolean;
 }) {
-  const [localExpanded, setExpanded] = useState(!item.hasAnswer);
+  const [localExpanded, setExpanded] = useState(false);
   const expanded = controlled ?? localExpanded;
-  const running = active ?? item.thoughts.some((thought) => thought.status === "running");
-  const summary = tr("conversation.value_entries", { p0: item.thoughts.length });
-  const runningThought = item.thoughts.findLast((thought) => thought.status === "running");
-  const live = runningThought && !expanded ? liveLine(runningThought.content) : "";
-
+  const tools = item.items.filter((entry): entry is ToolTimelineItem => entry.type === "tool");
+  const thoughts = item.items.length - tools.length;
+  const errors = tools.filter((tool) => toolFailed(tool) && !tool.approvalAudit).length;
+  // Commands that reported how long they ran add up to the turn's command time.
+  const commandTime = tools.reduce((total, tool) => total + (tool.durationMs ?? 0), 0);
+  const running = active ?? item.items.some((entry) => entry.status === "running");
+  const current = running ? item.items.findLast((entry) => entry.status === "running") : undefined;
+  const live = current && !expanded ? liveLine(current.type === "tool" ? [current.name, current.command].filter(Boolean).join(" · ") : current.content) : "";
+  const counts = new Map<ToolKind, number>();
+  for (const tool of tools) counts.set(toolKind(tool.name), (counts.get(toolKind(tool.name)) ?? 0) + 1);
+  const parts = [
+    ...TOOL_KINDS.filter((kind) => counts.get(kind)).map((kind) => tr(`conversation.work_${kind}`, { p0: counts.get(kind) })),
+    thoughts ? tr("conversation.work_thoughts", { p0: thoughts }) : "",
+    commandTime && !running ? tr("conversation.work_command_time", { p0: formatDuration(commandTime) }) : "",
+  ].filter(Boolean);
+  const status = running ? "running" : errors ? "error" : "done";
   return (
-    <section className={`thought-group ${running ? "running" : "done"}`} data-testid="thought-group">
-      <button
-        type="button"
-        aria-expanded={expanded}
-        onClick={onToggle ?? (() => setExpanded((value) => !value))}
-      >
-        <span className="thought-icon">
-          <Sparkles size={15} />
+    <section className={`work-group ${status}`} data-testid="work-group">
+      <button type="button" aria-expanded={expanded} onClick={onToggle ?? (() => setExpanded((value) => !value))}>
+        <span className="work-group-icon" aria-hidden="true">
+          {running ? <LoaderCircle className="spin" size={13} /> : errors ? <CircleAlert size={13} /> : <Check size={13} />}
         </span>
-        <span className="tool-group-copy">
-          <strong>{tr("conversation.thinking")}</strong>
-          <small>{summary}</small>
-          {live ? <span className="tool-group-live" aria-live="polite">{live}</span> : null}
-        </span>
-        <span className="tool-group-actions">
-          {running ? <LoaderCircle className="spin" size={15} /> : null}
-          <ChevronDown className={expanded ? "rotated" : ""} size={15} />
-        </span>
+        <strong>{running ? tr("conversation.working") : tr("conversation.work_done")}</strong>
+        {parts.length ? <small>{parts.join(" · ")}</small> : null}
+        {errors ? <small className="work-group-errors">{tr("conversation.work_failed", { p0: errors })}</small> : null}
+        {live ? <span className="work-group-live" aria-live="polite">{live}</span> : null}
+        <ChevronRight className={`work-group-chevron ${expanded ? "rotated" : ""}`} size={13} />
       </button>
-      {expanded && !headerOnly ? (
-        <div className="thought-process-list">
-          {item.thoughts.map((thought) => (
-            <ThoughtEntry
-              key={thought.id}
-              item={thought}
-              projectPath={projectPath}
-              onOpenPath={onOpenPath}
-            />
-          ))}
-        </div>
-      ) : null}
     </section>
   );
 }
@@ -1085,13 +1127,32 @@ function ThoughtEntry({
 }
 
 function PlanEntry({ item }: { item: Extract<TimelineItem, { type: "plan" }> }) {
+  const done = item.steps.filter((step) => step.status === "done").length;
+  const complete = item.steps.length > 0 && done === item.steps.length;
+  // A finished plan folds to one line (also the moment its last step completes); it reopens on demand.
+  const [open, setOpen] = useState(!complete);
+  useEffect(() => { setOpen(!complete); }, [complete]);
+  if (complete && !open) {
+    return (
+      <section className="plan-entry collapsed">
+        <button type="button" className="plan-collapsed" aria-expanded={false} onClick={() => setOpen(true)}>
+          <CircleCheck size={13} />
+          <strong>{item.title}</strong>
+          <small>{tr("conversation.plan_complete_value", { p0: item.steps.length })}</small>
+          <ChevronRight size={13} />
+        </button>
+      </section>
+    );
+  }
   return (
     <section className="plan-entry">
       <div className="timeline-section-heading">
         <span>{tr("conversation.plan")}</span>
         <small>
-          {item.steps.filter((step) => step.status === "done").length}/{item.steps.length}
+          {done}/{item.steps.length}
         </small>
+        {complete ? <button type="button" className="plan-fold" aria-expanded={true} onClick={() => setOpen(false)}
+          aria-label={tr("conversation.collapse_plan")} title={tr("conversation.collapse_plan")}><ChevronDown size={13} /></button> : null}
       </div>
       <strong className="plan-title">{item.title}</strong>
       <ol>
@@ -1110,44 +1171,6 @@ function PlanEntry({ item }: { item: Extract<TimelineItem, { type: "plan" }> }) 
   );
 }
 
-function ToolGroupEntry({ item, expanded: controlled, onToggle, headerOnly = false, active }: { item: ToolGroupBlock; expanded?: boolean; onToggle?: () => void; headerOnly?: boolean; active?: boolean }) {
-  const [localExpanded, setExpanded] = useState(false);
-  const expanded = controlled ?? localExpanded;
-  const runningCount = item.tools.filter((tool) => tool.status === "running").length;
-  const errorCount = item.tools.filter((tool) => tool.status === "error" && !tool.approvalAudit).length;
-  const status = (active ?? Boolean(runningCount)) ? "running" : errorCount ? "error" : "done";
-  const summary = errorCount ? tr("conversation.value_items_value_failed", { p0: item.tools.length, p1: errorCount }) : tr("conversation.value_items", { p0: item.tools.length });
-  const runningTool = !expanded ? item.tools.findLast((tool) => tool.status === "running") : undefined;
-  const live = runningTool ? liveLine([runningTool.name, runningTool.command].filter(Boolean).join(" · ")) : "";
-  return (
-    <section className={`tool-group ${status}`} data-testid="tool-group">
-      <button
-        type="button"
-        aria-expanded={expanded}
-        onClick={onToggle ?? (() => setExpanded((value) => !value))}
-      >
-        <span className="tool-icon"><Wrench size={14} /></span>
-        <span className="tool-group-copy">
-          <strong>{tr("conversation.tool_activity")}</strong>
-          <small>{summary}</small>
-          {live ? <span className="tool-group-live" aria-live="polite">{live}</span> : null}
-        </span>
-        <span className="tool-group-actions">
-          {status === "running" ? <LoaderCircle className="spin" size={15} /> : null}
-          <ChevronDown className={expanded ? "rotated" : ""} size={15} />
-        </span>
-      </button>
-      {expanded && !headerOnly ? (
-        <div className="tool-process-list">
-          {item.tools.map((tool, index) => (
-            <ToolProcess key={tool.id} tool={tool} index={index} />
-          ))}
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
 /** Purpose: One quiet line of what the harness is doing right now, without markdown or line breaks. */
 function liveLine(content: string | undefined) {
   if (!content) return "";
@@ -1158,21 +1181,38 @@ function liveLine(content: string | undefined) {
   return line.length > 72 ? `${line.slice(0, 72)}…` : line;
 }
 
+/** Purpose: A short duration for tool rows and summaries ("850 ms", "3.2 秒", "2 分 05 秒"). */
+export function formatDuration(ms: number) {
+  if (ms < 1000) return tr("conversation.duration_ms", { p0: Math.round(ms) });
+  const seconds = ms / 1000;
+  if (seconds < 60) return tr("conversation.duration_seconds", { p0: seconds < 10 ? seconds.toFixed(1) : Math.round(seconds) });
+  const minutes = Math.floor(seconds / 60);
+  return tr("conversation.duration_minutes", { p0: minutes, p1: String(Math.round(seconds % 60)).padStart(2, "0") });
+}
+
 function ToolProcess({ tool, index, open, onToggle }: { tool: ToolTimelineItem; index: number; open?: boolean; onToggle?: (open: boolean) => void }) {
+  // A failed command opens by itself on its output, so the reason is one glance away (approval
+  // audit rows are records, not failures, and stay folded).
+  const failedWithOutput = toolFailed(tool) && !tool.approvalAudit && Boolean(tool.output);
   return (
-    <details className={`tool-process ${tool.status}`} data-testid="tool-process" open={open} onToggle={event => onToggle?.(event.currentTarget.open)}>
+    <details className={`tool-process ${toolFailed(tool) ? "error" : tool.status}`} data-testid="tool-process" open={open ?? failedWithOutput}
+      onToggle={event => onToggle?.(event.currentTarget.open)}>
       <summary>
         <span className="tool-process-index">{String(index + 1).padStart(2, "0")}</span>
         <span className="tool-main">
           <span>
             <strong>{tool.name}</strong>
-            {!tool.approvalAudit && <small>{tool.status === "running" ? tr("conversation.running") : tool.status === "error" ? tr("conversation.failed") : tr("conversation.done")}</small>}
+            {!tool.approvalAudit && <small>{tool.status === "running" ? tr("conversation.running") : toolFailed(tool) ? tr("conversation.failed") : tr("conversation.done")}</small>}
+            {/* A command's own outcome, when the harness reports it: exit code and how long it took. */}
+            {typeof tool.exitCode === "number" ? <small className={`tool-exit ${tool.exitCode ? "failed" : ""}`} data-testid="tool-exit">
+              {tr("conversation.exit_code_value", { p0: tool.exitCode })}</small> : null}
+            {typeof tool.durationMs === "number" ? <small className="tool-duration">{formatDuration(tool.durationMs)}</small> : null}
           </span>
           {(tool.command || !tool.approvalAudit) && <code>{tool.command || tr("conversation.waiting_for_tool_input")}</code>}
         </span>
         {tool.status === "running" ? (
           <Circle size={14} />
-        ) : tool.status === "error" ? (
+        ) : toolFailed(tool) && !tool.output ? (
           <X size={14} />
         ) : tool.output ? (
           <ChevronRight className="tool-process-chevron" size={14} />
@@ -1183,6 +1223,163 @@ function ToolProcess({ tool, index, open, onToggle }: { tool: ToolTimelineItem; 
       {tool.permission && <p className="tool-permission">{tool.permission.source} · {approvalLabel(tool.permission.policy)} {tr("conversation.execution_allowed")}</p>}
       {tool.output ? <pre>{tool.output}</pre> : null}
     </details>
+  );
+}
+
+/** Purpose: Close a turn with what it left in the working tree, the way a reviewer wants to see it.
+ * Input: the thread (its current workspace changes) and review/undo actions. Output: a compact card
+ * listing the changed files with line counts, a Review action that opens the Changes tab and, when
+ * the latest reply can be reverted, Undo.
+ */
+function ChangesCard({ thread, undoing, onReview, onReviewFile, onUndo }: {
+  thread: Thread;
+  undoing?: boolean;
+  onReview?: () => void;
+  /** Each listed file opens its own diff in the Changes tab. */
+  onReviewFile?: (path: string) => void;
+  onUndo?: () => void;
+}) {
+  const files = thread.changes;
+  const additions = files.reduce((total, file) => total + file.additions, 0);
+  const deletions = files.reduce((total, file) => total + file.deletions, 0);
+  const shown = files.slice(0, 4);
+  return (
+    <section className="changes-card" data-testid="changes-card" aria-label={tr("conversation.workspace_changes")}>
+      <header>
+        <FileDiff size={14} />
+        <strong>{tr("conversation.value_files_changed", { p0: files.length })}</strong>
+        <ins>+{additions}</ins><del>-{deletions}</del>
+        <span className="changes-card-actions">
+          {onUndo ? <button type="button" disabled={undoing} onClick={onUndo}>
+            <RotateCcw className={undoing ? "spin" : ""} size={13} />{undoing ? tr("conversation.reverting") : tr("inspector.undo_latest_turn")}</button> : null}
+          {onReview ? <button type="button" className="primary" onClick={onReview}>{tr("conversation.review_changes")}</button> : null}
+        </span>
+      </header>
+      <ul>
+        {shown.map(file => (
+          <li key={file.path}>
+            <small className={`change-status ${file.status}`}>{file.status.slice(0, 1).toUpperCase()}</small>
+            {onReviewFile
+              ? <button type="button" className="changes-card-file" title={tr("conversation.open_file_diff", { p0: file.path })}
+                  data-testid="changes-card-file" onClick={() => onReviewFile(file.path)}>{file.path}</button>
+              : <span title={file.path}>{file.path}</span>}
+            <ins>+{file.additions}</ins><del>-{file.deletions}</del>
+          </li>
+        ))}
+        {files.length > shown.length ? <li className="changes-card-more">{tr("conversation.and_value_more_files", { p0: files.length - shown.length })}</li> : null}
+      </ul>
+    </section>
+  );
+}
+
+/** Purpose: Show, in the conversation itself, which harnesses and models did this task's work:
+ * the main session, subtasks the router delegated, and the evaluator that judged them. Built from
+ * the task usage ledger the backend records per task; hidden when one model did everything.
+ */
+/** Purpose: Which saved preferences this message's turn was given, as Cleo recorded them before the
+ * run: a quiet line under the message that unfolds to the entries. */
+function MemoryContextNote({ context }: { context: NonNullable<Extract<TimelineItem, { type: "message" }>["memoryContext"]> }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="memory-context-note" data-testid="memory-context">
+      <button type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}
+        title={tr("conversation.memory_context_hint")}>
+        <Brain size={12} />
+        <span>{tr("conversation.memory_context_value", { p0: context.count })}</span>
+        <ChevronRight size={12} className={open ? "rotated" : ""} />
+      </button>
+      {open ? (
+        <ul>
+          {context.entries.map((entry) => <li key={entry.id || entry.content}>{entry.content}</li>)}
+          {context.count > context.entries.length ? <li className="more">{tr("conversation.memory_context_more", { p0: context.count - context.entries.length })}</li> : null}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+/** The ledger records the task-boundary classifier as an evaluator in every mode; it judges where a
+ * task starts, not the work, so it is not shown as a reviewer. */
+const BOUNDARY_PART = "任务边界判断";
+
+/** Purpose: Who did this task's work, from the backend's per-task usage ledger: the main session,
+ * each delegated job (named by its ledger part) and the reviewer, each with its model. Rows wrap
+ * instead of truncating, so every model stays readable; the line opens the usage table. */
+function CollaborationLine({ usage, onOpen }: { usage?: Thread["taskUsage"]; onOpen: () => void }) {
+  const parts = usage?.scope === "task" ? usage.breakdown ?? [] : [];
+  const workers = parts.filter((part) => part.role === "worker");
+  const evaluators = parts.filter((part) => part.role === "evaluator" && part.part !== BOUNDARY_PART);
+  if (!workers.length && !evaluators.length) return null;
+  const main = parts.find((part) => part.role === "main");
+  type Part = (typeof parts)[number];
+  // One entry per job and model: a retried job on the same model is one contributor, not two.
+  const unique = (rows: Part[], role: string) => [...new Map(rows.map((row) => [
+    `${row.part ?? ""}|${row.provider ?? ""}|${row.model ?? ""}`, { role: row.part || role, row },
+  ])).values()];
+  const entries = [
+    ...(main ? [{ role: tr("conversation.collab_role_main"), row: main }] : []),
+    ...unique(workers, tr("conversation.collab_role_worker")),
+    ...unique(evaluators, tr("conversation.collab_role_evaluator")).map((entry) => ({ ...entry, role: tr("conversation.collab_role_evaluator") })),
+  ];
+  return (
+    <button type="button" className="collaboration-line" data-testid="collaboration-line" onClick={onOpen}
+      title={tr("conversation.collaboration_hint")}>
+      <Users size={13} />
+      <span>{tr("conversation.collaboration")}</span>
+      {entries.map(({ role, row }) => (
+        <small key={`${role}|${row.provider}|${row.model}`} title={[row.provider, row.model].filter(Boolean).join(" · ")}>
+          <em>{role}</em>{row.model || row.provider}
+        </small>
+      ))}
+      <ChevronRight size={13} />
+    </button>
+  );
+}
+
+/** Purpose: The subtasks that subtask routing delegated from this conversation, each with its state
+ * and model; a row opens that subtask's own conversation. */
+function SubtaskList({ subtasks, onOpen }: { subtasks: Thread[]; onOpen?: (threadId: string) => void }) {
+  if (!subtasks.length) return null;
+  const stateOf = (thread: Thread) => thread.waitingFor === "approval" ? tr("threadsidebar.awaiting_approval")
+    : thread.waitingFor === "question" ? tr("conversation.waiting_for_an_answer")
+      : thread.status === "running" ? tr("conversation.running")
+        : thread.status === "attention" ? tr("threadsidebar.needs_attention")
+          : thread.status === "completed" ? tr("conversation.subtask_completed") : tr("conversation.subtask_not_started");
+  return (
+    <section className="subtask-list" data-testid="subtask-list" aria-label={tr("conversation.subtasks")}>
+      <header><GitFork size={13} /><span>{tr("conversation.subtasks")}</span><small>{subtasks.length}</small></header>
+      {subtasks.map((subtask) => (
+        <button type="button" className="subtask-row" key={subtask.id} data-status={subtask.waitingFor ? "attention" : subtask.status}
+          onClick={() => onOpen?.(subtask.id)} title={subtask.summary}>
+          {subtask.status === "running" && !subtask.waitingFor ? <LoaderCircle className="spin" size={13} />
+            : subtask.status === "attention" || subtask.waitingFor ? <CircleAlert size={13} />
+              : subtask.status === "completed" ? <CircleCheck size={13} /> : <Circle size={13} />}
+          <strong>{subtask.title}</strong>
+          <small>{[subtask.runtime?.provider, subtask.runtime?.model].filter(Boolean).join(" · ")}</small>
+          <em>{stateOf(subtask)}</em>
+          <ChevronRight size={13} />
+        </button>
+      ))}
+    </section>
+  );
+}
+
+/** Purpose: How full the model's context window is, as a small ring beside the send button. */
+function ContextRing({ used, limit, onClick }: { used: number; limit: number; onClick: () => void }) {
+  const ratio = Math.max(0, Math.min(1, used / limit));
+  const percent = Math.round(ratio * 100);
+  const circumference = 2 * Math.PI * 7;
+  return (
+    <button type="button" className={`context-ring ${percent >= 85 ? "high" : ""}`} onClick={onClick} data-testid="context-ring"
+      aria-label={tr("conversation.context_used_value", { p0: percent })}
+      title={tr("conversation.context_used_detail", { p0: percent, p1: (used / 1000).toFixed(1), p2: (limit / 1000).toFixed(0) })}>
+      <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+        <circle cx="9" cy="9" r="7" fill="none" strokeWidth="2" className="context-ring-track" />
+        <circle cx="9" cy="9" r="7" fill="none" strokeWidth="2" className="context-ring-value"
+          strokeDasharray={`${circumference * ratio} ${circumference}`} transform="rotate(-90 9 9)" strokeLinecap="round" />
+      </svg>
+      <span>{percent}%</span>
+    </button>
   );
 }
 
@@ -1217,6 +1414,8 @@ function WelcomeState({ project, space, onUseSuggestion }: { project: Project | 
 function Composer({
   prompt,
   drafting = false,
+  worktree,
+  usage,
   projects = [],
   activeProjectId = "",
   onSelectProject,
@@ -1261,6 +1460,9 @@ function Composer({
   approvalPending,
   approvalError,
   onResolveApproval,
+  onListFiles,
+  fileListKey = "",
+  onSteerDraft,
 }: Pick<
   ConversationProps,
   | "prompt"
@@ -1307,8 +1509,15 @@ function Composer({
   | "onSelectProject"
   | "onChooseWorkspace"
   | "choosingWorkspace"
-> & { steerReady?: boolean; drafting?: boolean }) {
+> & { steerReady?: boolean; drafting?: boolean; worktree?: ConversationProps["worktree"]; usage?: Usage;
+  onListFiles?: ConversationProps["onListFiles"]; fileListKey?: string; onSteerDraft?: ConversationProps["onSteerDraft"] }) {
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  // @-mentions: the caret position, the project's file list (read once per project) and the menu.
+  const [caret, setCaret] = useState(0);
+  const [fileIndex, setFileIndex] = useState<{ key: string; files: string[]; at: number; failed?: boolean } | null>(null);
+  const [fileIndexRequest, setFileIndexRequest] = useState(0);
+  const [selectedFile, setSelectedFile] = useState(0);
+  const [dismissedMention, setDismissedMention] = useState<string | null>(null);
   const [draggingFiles, setDraggingFiles] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const composing = useRef(false);
@@ -1341,6 +1550,17 @@ function Composer({
   const canSteer = running && Boolean(runtime.steerMode) && Boolean(steerReady);
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (composing.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+    if (mentionOpen && !event.shiftKey && (fileMatches.length || event.key === "Escape")) {
+      if (event.key === "Escape") { event.preventDefault(); setDismissedMention(mentionId); return; }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        setSelectedFile((index) => (index + (event.key === "ArrowDown" ? 1 : -1) + fileMatches.length) % fileMatches.length);
+        return;
+      }
+      if (event.key === "Enter" || event.key === "Tab") {
+        event.preventDefault(); chooseFile(fileMatches[selectedFile % fileMatches.length]); return;
+      }
+    }
     if (candidates.length && !event.shiftKey) {
       if (event.key === "Escape") { event.preventDefault(); setDismissedPrefix(prompt); return; }
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -1351,6 +1571,18 @@ function Composer({
       if (event.key === "Enter" || event.key === "Tab") {
         event.preventDefault(); chooseCommand(candidates[selectedCommand % candidates.length]); return;
       }
+    }
+    // Esc in an empty composer stops the run, as in other coding agents; with text it does nothing.
+    if (event.key === "Escape" && running && !prompt.trim() && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+      event.preventDefault();
+      onCancel();
+      return;
+    }
+    // Ctrl/Cmd+Enter while a turn runs steers the text into it instead of queueing.
+    if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && canSteer && onSteerDraft) {
+      event.preventDefault();
+      if (prompt.trim() && !attachments.length && !steeringBusy) onSteerDraft(composerText);
+      return;
     }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
@@ -1431,6 +1663,41 @@ function Composer({
     inputRef.current?.focus();
   };
 
+  // "@" opens the project's files; the list is read once per project when first needed.
+  const mention = onListFiles && !showCommands ? mentionAt(composerText, caret) : null;
+  const mentionId = mention ? `${mention.start}:${mention.query}` : "";
+  const mentionOpen = Boolean(mention) && dismissedMention !== mentionId;
+  const filesReady = fileIndex?.key === fileListKey && !fileIndex.failed;
+  // Opening the list re-reads the files when the copy is older than 20 s (the agent may have
+  // created or renamed files); a failed read is shown with Retry, never as "no files".
+  const mentionStarted = mentionOpen ? (mention?.start ?? -1) : -1;
+  useEffect(() => {
+    if (!mentionOpen || !onListFiles) return;
+    if (fileIndex?.key === fileListKey && !fileIndex.failed && Date.now() - fileIndex.at < 20_000) return;
+    let cancelled = false;
+    void onListFiles().then((files) => { if (!cancelled) setFileIndex({ key: fileListKey, files, at: Date.now() }); },
+      () => { if (!cancelled) setFileIndex({ key: fileListKey, files: [], at: Date.now(), failed: true }); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mentionStarted, fileListKey, fileIndexRequest]);
+  const filesFailed = Boolean(fileIndex?.key === fileListKey && fileIndex.failed);
+  const fileMatches = useMemo(() => mentionOpen && mention && filesReady ? rankFiles(fileIndex!.files, mention.query, 8) : [],
+    [mentionOpen, mentionId, filesReady, fileIndex]);
+  useEffect(() => { setSelectedFile(0); }, [mentionId, fileMatches.length]);
+  useEffect(() => {
+    if (fileMatches.length) document.getElementById(`mention-option-${selectedFile}`)?.scrollIntoView({ block: "nearest" });
+  }, [selectedFile, fileMatches.length]);
+  /** Replace the typed "@query" with the chosen path and put the caret after it. */
+  const chooseFile = (path: string) => {
+    if (!mention || composing.current) return;
+    const insert = mentionText(path);
+    const next = composerText.slice(0, mention.start) + insert + composerText.slice(caret);
+    const position = mention.start + insert.length;
+    setPrompt((computerUseSelected ? "/computeruse " : "") + next);
+    setCaret(position);
+    requestAnimationFrame(() => { inputRef.current?.focus(); inputRef.current?.setSelectionRange(position, position); });
+  };
+
   return (
     <div className="composer-dock">
       <ApprovalPrompt
@@ -1468,6 +1735,30 @@ function Composer({
               </button>
             ))}
           </div>
+        ) : showCommands ? (
+          <div className="slash-menu surface-popover slash-empty" data-testid="slash-menu" role="status">
+            <span>{tr("conversation.commands_and_skills")}</span>
+            <p>{commands.length || skills.length ? tr("conversation.no_matching_commands") : tr("conversation.no_commands_for_this_harness")}</p>
+          </div>
+        ) : mentionOpen && fileMatches.length ? (
+          <div className="slash-menu mention-menu surface-popover" data-testid="mention-menu" id="mention-options" role="listbox" aria-label={tr("conversation.project_files")}>
+            <span>{tr("conversation.project_files")}</span>
+            {fileMatches.map((path, index) => (
+              <button type="button" role="option" aria-selected={selectedFile === index} id={`mention-option-${index}`} key={path} title={path}
+                onMouseDown={(event) => event.preventDefault()} onClick={() => chooseFile(path)}>
+                <code>{path.split("/").at(-1)}</code><small>{path.split("/").slice(0, -1).join("/")}</small>
+              </button>
+            ))}
+          </div>
+        ) : mentionOpen ? (
+          <div className="slash-menu mention-menu surface-popover slash-empty" data-testid="mention-menu" role="status">
+            <span>{tr("conversation.project_files")}</span>
+            {filesFailed ? (
+              <p>{tr("conversation.project_files_failed")}
+                <button type="button" className="mention-retry" onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => { setFileIndex(null); setFileIndexRequest((value) => value + 1); }}>{tr("app.retry")}</button></p>
+            ) : <p>{!filesReady ? tr("conversation.reading_project_files") : fileIndex?.files.length ? tr("conversation.no_matching_files") : tr("conversation.no_project_files")}</p>}
+          </div>
         ) : null}
         {attachments.length ? <AttachmentChips attachments={attachments} onRemove={onRemoveAttachment} testId="composer-attachments" /> : null}
         {queuedMessages.length ? <ul className="queued-messages" aria-label={tr("conversation.queued_messages")} data-testid="queued-messages">
@@ -1501,13 +1792,19 @@ function Composer({
           ref={inputRef}
           role="combobox"
           aria-autocomplete="list"
-          aria-expanded={Boolean(candidates.length)}
-          aria-controls={candidates.length ? "slash-options" : undefined}
-          aria-activedescendant={candidates.length ? `slash-option-${selectedCommand % candidates.length}` : undefined}
+          aria-expanded={Boolean(candidates.length || fileMatches.length)}
+          aria-controls={candidates.length ? "slash-options" : fileMatches.length ? "mention-options" : undefined}
+          aria-activedescendant={candidates.length ? `slash-option-${selectedCommand % candidates.length}`
+            : fileMatches.length ? `mention-option-${selectedFile % fileMatches.length}` : undefined}
           onCompositionStart={() => { composing.current = true; }}
           onCompositionEnd={() => { composing.current = false; }}
           value={composerText}
-          onChange={(event) => { setDismissedPrefix(null); setPrompt((computerUseSelected ? "/computeruse " : "") + event.target.value); }}
+          onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
+          onChange={(event) => {
+            setDismissedPrefix(null);
+            setCaret(event.target.selectionStart);
+            setPrompt((computerUseSelected ? "/computeruse " : "") + event.target.value);
+          }}
           onKeyDown={(event) => {
             if (computerUseSelected && !composerText && event.key === "Backspace" && !composing.current) {
               event.preventDefault(); setPrompt(""); return;
@@ -1533,14 +1830,19 @@ function Composer({
                   onSelect={onSelectProject}
                   onChooseWorkspace={onChooseWorkspace}
                 />
+                {worktree ? (
+                  <button type="button" className={`worktree-toggle ${worktree.enabled ? "active" : ""}`} aria-pressed={worktree.enabled}
+                    data-testid="worktree-toggle" onClick={worktree.onToggle}
+                    title={worktree.enabled ? tr("conversation.worktree_on_hint") : tr("conversation.worktree_off_hint")}>
+                    <GitBranchPlus size={14} />
+                    <span>{worktree.enabled ? tr("conversation.new_worktree") : tr("conversation.current_folder")}</span>
+                  </button>
+                ) : null}
                 <span className="composer-divider" />
               </>
             ) : null}
             <button type="button" aria-label={tr("conversation.add_attachment")} title={tr("conversation.add_pdfs_office_documents_images_or_code_files")} onClick={() => void pickFiles()}>
               <Paperclip size={16} />
-            </button>
-            <button type="button" aria-label={tr("conversation.view_context")} title={tr("conversation.view_context")} onClick={onShowContext}>
-              <AtSign size={16} />
             </button>
             <span className="composer-divider" />
             <RuntimeSelector
@@ -1569,8 +1871,20 @@ function Composer({
               onChange={onPermissionChange} disabled={Boolean(harnessSwitchStatus) || Boolean(pendingHarnessSwitch)} />}
           </div>
           <div className="composer-send-actions">
+          {usage && usage.used != null && usage.limit > 0 ? (
+            <ContextRing used={usage.used} limit={usage.limit} onClick={onShowContext} />
+          ) : null}
+          {/* While a turn runs the message can wait in the queue (Enter) or go into the run now (Steer). */}
+          {canSteer && onSteerDraft ? (
+            <button className="steer-button" type="button" data-testid="steer-now"
+              disabled={steeringBusy || !prompt.trim() || attachments.length > 0}
+              title={attachments.length ? tr("conversation.steer_without_attachments") : tr("conversation.steer_now_hint", { p0: modifierKey })}
+              onClick={() => onSteerDraft(composerText)}>
+              <CornerDownRight size={13} />{tr("conversation.steer_now")}
+            </button>
+          ) : null}
           {running && (
-            <button className="send-button stop" type="button" aria-label={tr("computerpanel.stop")} title={tr("computerpanel.stop")} onClick={onCancel} data-testid="stop-button">
+            <button className="send-button stop" type="button" aria-label={tr("computerpanel.stop")} title={tr("conversation.stop_hint")} onClick={onCancel} data-testid="stop-button">
               <Square size={13} fill="currentColor" />
             </button>
           )}
@@ -1680,13 +1994,10 @@ function RuntimeSelector({
   onServiceTierChange?: (tier: "default" | "fast") => void;
 }) {
   const development = space === "productivity";
-  // While the slider is dragged it previews its own value here, and the card follows it. The
-  // pick is committed on release, so the workspace re-renders and the backend hears about it
-  // once per drag rather than on every step. The preview outlives the commit until the
-  // committed effort arrives from the backend, so the thumb never snaps back meanwhile.
+  // A picked effort shows at once here; the preview outlives the commit until the committed
+  // effort arrives from the backend, so the choice never snaps back meanwhile.
   const [previewEffort, setPreviewEffort] = useState<ReasoningEffort | null>(null);
   const committedEffort = useRef<{ effort: ReasoningEffort } | null>(null);
-  const sliderDragging = useRef(false);
   const shownEffort = previewEffort ?? effort;
   const effortLabel = development && shownEffort ? effortLabels[shownEffort] ?? shownEffort : "";
   const showSpeed = development && supportsFastMode && Boolean(onServiceTierChange);
@@ -1701,13 +2012,45 @@ function RuntimeSelector({
   // The development menu opens on the settings card; the harness list is a screen behind it.
   const [screen, setScreen] = useState<"card" | "providers">("card");
   const wrapRef = useRef<HTMLDivElement>(null);
+  // Like the permission menu: opening moves the keyboard into the menu (so Enter and Esc act on it,
+  // not on the composer), and closing it with the keyboard returns focus to the trigger.
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  // Where the menu itself put the keyboard on this screen (null: not placed yet). After that first
+  // placement the menu moves focus again only while it is still there, so once the user moves it
+  // (inside the menu, back to the composer, anywhere) a late model list leaves it alone.
+  const placedFocus = useRef<HTMLElement | null>(null);
+  useEffect(() => { placedFocus.current = null; }, [open, screen, providerScreen]);
+  useEffect(() => {
+    if (!open) return;
+    const frame = requestAnimationFrame(() => {
+      const menu = wrapRef.current?.querySelector<HTMLElement>(".runtime-menu");
+      if (!menu) return;
+      const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const first = placedFocus.current === null;
+      // The user's own focus wins: already inside the menu (they clicked or tabbed in), or moved
+      // away after the menu placed it.
+      if (first ? Boolean(active && menu.contains(active)) : active !== placedFocus.current) return;
+      // The current choice first (the selected model), else the menu's first control. Two queries:
+      // one selector list would return whichever match comes first in the document. The model list
+      // can arrive after the menu opens; then focus moves on to the selected model.
+      const target = menu.querySelector<HTMLElement>("[aria-pressed='true']:not(:disabled)")
+        ?? (first ? menu.querySelector<HTMLElement>("button:not(:disabled), input") : null);
+      if (!target) return;
+      if (target !== active) target.focus();
+      placedFocus.current = target;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open, screen, providerScreen, productivityModels, connectedModels]);
   useEffect(() => {
     if (!open) return;
     const closeOutside = (event: PointerEvent) => {
       if (!wrapRef.current?.contains(event.target as Node)) setOpen(false);
     };
     const closeOnEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key !== "Escape") return;
+      const inside = wrapRef.current?.contains(document.activeElement);
+      setOpen(false);
+      if (inside) { event.preventDefault(); event.stopPropagation(); triggerRef.current?.focus(); }
     };
     document.addEventListener("pointerdown", closeOutside);
     document.addEventListener("keydown", closeOnEscape);
@@ -1730,13 +2073,12 @@ function RuntimeSelector({
       committedEffort.current = null;
     });
   };
-  const releaseSlider = (target: HTMLInputElement) => {
-    sliderDragging.current = false;
-    commitEffort(supportedEfforts[Number(target.value)]);
+  const chooseEffort = (value: ReasoningEffort | undefined) => {
+    if (!value) return;
+    setPreviewEffort(value);
+    commitEffort(value);
   };
   const effortIndex = Math.max(0, supportedEfforts.indexOf(shownEffort as ReasoningEffort));
-  // The track is filled up to the thumb; the share is the effort's position in the list.
-  const effortFill = supportedEfforts.length > 1 ? effortIndex / (supportedEfforts.length - 1) * 100 : 100;
   const canReset = (defaultEffort !== null && defaultEffort !== shownEffort) || serviceTier === "fast";
   const resetSettings = () => {
     if (defaultEffort !== null && defaultEffort !== shownEffort) {
@@ -1755,6 +2097,14 @@ function RuntimeSelector({
   );
   const selectedModels = providerScreen ? (productivityModels[providerScreen]
     ?? connectedModels[providerScreen])?.models : undefined;
+  // The card lists the current harness's models directly; other harnesses are one screen away.
+  const [modelQuery, setModelQuery] = useState("");
+  const currentModels = (productivityModels[runtime.provider] ?? connectedModels[runtime.provider])?.models ?? [];
+  const modelNeedle = modelQuery.trim().toLowerCase();
+  const visibleModels = modelNeedle
+    ? currentModels.filter((model) => `${model.label} ${model.id} ${model.description ?? ""}`.toLowerCase().includes(modelNeedle))
+    : currentModels;
+  useEffect(() => { if (!open) setModelQuery(""); }, [open]);
 
   useEffect(() => {
     if (!open || space !== "productivity" || !catalog) return;
@@ -1789,6 +2139,7 @@ function RuntimeSelector({
   return (
     <div className="model-menu-wrap runtime-selector" ref={wrapRef}>
       <button
+        ref={triggerRef}
         className="text-control runtime-selector-trigger"
         type="button"
         disabled={(running && space === "chat") || switching || !catalog}
@@ -1910,7 +2261,38 @@ function RuntimeSelector({
                   onRoutingModeChange?.("auto"); setOpen(false);
                 }}><span className="runtime-menu-copy"><strong>子任务路由</strong></span>{runtime.routingMode === "auto" ? <Check size={14} /> : null}</button>
               </div>
+              <section className="runtime-section" aria-label={tr("conversation.models_of_value", { p0: runtime.provider })}>
+                <div className="runtime-section-label">
+                  <span>{tr("conversation.models_of_value", { p0: runtime.provider })}</span>
+                  <button
+                    className="runtime-card-model"
+                    type="button"
+                    aria-label={tr("conversation.change_runtime_or_model")}
+                    title={tr("conversation.change_runtime_or_model")}
+                    data-testid="runtime-model-row"
+                    onClick={() => setScreen("providers")}
+                  >
+                    {tr("conversation.switch_harness")}<ChevronRight size={13} />
+                  </button>
+                </div>
+                {currentModels.length > 6 ? (
+                  <input className="runtime-model-search" type="search" value={modelQuery} placeholder={tr("conversation.search_models")}
+                    aria-label={tr("conversation.search_models")} onChange={(event) => setModelQuery(event.target.value)} data-testid="runtime-model-search" />
+                ) : null}
+                <div className="runtime-model-list" data-testid="runtime-model-list">
+                  {visibleModels.map((model) => (
+                    <button className="runtime-model-row" type="button" key={model.id} disabled={settingsLocked}
+                      aria-pressed={runtime.model === model.id} onClick={() => onSelectProductivityRuntime(runtime.provider, model.id)}>
+                      <span>{model.label}</span>
+                      {runtime.model === model.id ? <Check size={14} /> : null}
+                    </button>
+                  ))}
+                  {currentModels.length && !visibleModels.length ? <p className="runtime-menu-status">{tr("conversation.no_matching_models")}</p> : null}
+                  {!currentModels.length ? <p className="runtime-model-current">{runtime.model}</p> : null}
+                </div>
+              </section>
               <div className="runtime-card-top">
+                <span className="runtime-section-label-text">{tr("conversation.reasoning_effort")}</span>
                 {showSpeed ? (
                   <button
                     className={`runtime-card-fast ${serviceTier === "fast" ? "active" : ""}`}
@@ -1924,18 +2306,7 @@ function RuntimeSelector({
                   >
                     <Zap size={16} />
                   </button>
-                ) : <span className="runtime-card-spacer" aria-hidden="true" />}
-                <button
-                  className="runtime-card-model"
-                  type="button"
-                  aria-label={tr("conversation.change_runtime_or_model")}
-                  title={tr("conversation.change_runtime_or_model")}
-                  data-testid="runtime-model-row"
-                  onClick={() => setScreen("providers")}
-                >
-                  <strong>{effortLabel || tr("conversation.determined_by_the_model")}</strong>
-                  <span>{runtime.provider} · {runtime.model}<ChevronRight size={13} /></span>
-                </button>
+                ) : null}
                 <button
                   className="runtime-card-reset"
                   type="button"
@@ -1949,37 +2320,36 @@ function RuntimeSelector({
                 </button>
               </div>
               {supportedEfforts.length ? (
+                // One named segment per level, lightest on the left. The group is a single tab stop;
+                // arrow keys, Home and End move the choice like a native radio group.
                 <div
-                  className={`runtime-effort${settingsLocked ? " disabled" : ""}`}
-                  style={{ "--effort-fill": `${effortFill}%` } as CSSProperties}
+                  className={`runtime-effort-segments${settingsLocked ? " disabled" : ""}`}
+                  role="radiogroup"
+                  aria-label={tr("conversation.reasoning_effort")}
+                  aria-disabled={settingsLocked || undefined}
+                  tabIndex={settingsLocked ? -1 : 0}
+                  title={tr("conversation.reasoning_effort_value", { p0: effortLabel || tr("conversation.determined_by_the_model") })}
+                  data-testid="effort-selector"
+                  data-value={shownEffort}
+                  data-options={JSON.stringify(supportedEfforts)}
+                  onKeyDown={(event) => {
+                    if (settingsLocked) return;
+                    const last = supportedEfforts.length - 1;
+                    const next = event.key === "Home" ? 0 : event.key === "End" ? last
+                      : event.key === "ArrowLeft" || event.key === "ArrowDown" ? Math.max(0, effortIndex - 1)
+                        : event.key === "ArrowRight" || event.key === "ArrowUp" ? Math.min(last, effortIndex + 1) : null;
+                    if (next === null) return;
+                    event.preventDefault();
+                    chooseEffort(supportedEfforts[next]);
+                  }}
                 >
-                  <span className="runtime-effort-track" aria-hidden="true"><span className="runtime-effort-fill" /></span>
-                  <input
-                    className="runtime-effort-slider"
-                    type="range"
-                    min={0}
-                    max={supportedEfforts.length - 1}
-                    step={1}
-                    value={effortIndex}
-                    aria-label={tr("conversation.reasoning_effort")}
-                    aria-valuetext={effortLabel || undefined}
-                    title={tr("conversation.reasoning_effort_value", { p0: effortLabel || tr("conversation.determined_by_the_model") })}
-                    disabled={settingsLocked}
-                    data-testid="effort-selector"
-                    data-value={shownEffort}
-                    data-options={JSON.stringify(supportedEfforts)}
-                    onPointerDown={() => { sliderDragging.current = true; }}
-                    onPointerUp={(event) => releaseSlider(event.currentTarget)}
-                    onPointerCancel={(event) => releaseSlider(event.currentTarget)}
-                    onLostPointerCapture={(event) => { if (sliderDragging.current) releaseSlider(event.currentTarget); }}
-                    onBlur={(event) => { if (sliderDragging.current) releaseSlider(event.currentTarget); }}
-                    onChange={(event) => {
-                      const next = supportedEfforts[Number(event.target.value)];
-                      setPreviewEffort(next ?? null);
-                      // Keyboard steps and scripted changes have no release; they commit at once.
-                      if (!sliderDragging.current) commitEffort(next);
-                    }}
-                  />
+                  {supportedEfforts.map(level => (
+                    <button type="button" role="radio" key={level} tabIndex={-1} disabled={settingsLocked}
+                      aria-checked={level === shownEffort} className={level === shownEffort ? "active" : ""}
+                      onClick={() => chooseEffort(level)}>
+                      {effortLabels[level] ?? level}
+                    </button>
+                  ))}
                 </div>
               ) : null}
             </div>

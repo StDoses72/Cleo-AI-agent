@@ -5,6 +5,9 @@ import type { RuntimeProfile, RuntimeUpdate } from "../types";
 import { accessLabel, approvalLabel } from "../runtime-labels";
 import "./permission-selector.css";
 
+/** Matches `.permission-menu` width in permission-selector.css. */
+const MENU_WIDTH = 300;
+
 /** Purpose: Select an atomic native permission preset without optimistic activation.
  * Input: Current/pending session settings and an awaited session-bound save callback.
  * Output: A pill styled like the composer's other controls whose menu opens above it (so it
@@ -22,6 +25,8 @@ export function PermissionSelector({ runtime, onChange, disabled = false, placem
   const [error, setError] = useState("");
   const [open, setOpen] = useState(false);
   const [maxHeight, setMaxHeight] = useState<number | undefined>(undefined);
+  // "end" right-aligns the menu with the pill when a left-aligned menu would run past its panel.
+  const [align, setAlign] = useState<"start" | "end">("start");
   const inFlight = useRef(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -56,6 +61,9 @@ export function PermissionSelector({ runtime, onChange, disabled = false, placem
     if (rect) {
       const room = placement === "up" ? rect.top : window.innerHeight - rect.bottom;
       setMaxHeight(Math.max(96, Math.floor(room - 56)));
+      const panel = triggerRef.current?.closest(".conversation-shell, .settings-modal, .inspector")?.getBoundingClientRect();
+      const limit = Math.min(window.innerWidth, panel?.right ?? window.innerWidth) - 8;
+      setAlign(rect.left + MENU_WIDTH > limit ? "end" : "start");
     }
     const options = listRef.current?.querySelectorAll<HTMLButtonElement>("button:enabled") ?? [];
     const current = Array.from(options).find((option) => option.getAttribute("aria-checked") === "true");
@@ -117,7 +125,7 @@ export function PermissionSelector({ runtime, onChange, disabled = false, placem
       <span className="permission-selector-label">{current?.label ?? tr("permissionselector.custom_permissions")}</span>
       <ChevronDown size={13} />
     </button>
-    {open && <div className={`permission-menu surface-popover ${placement}`} role="menu" aria-label={tr("permissionselector.choose_session_permissions")}
+    {open && <div className={`permission-menu surface-popover ${placement} ${align}`} role="menu" aria-label={tr("permissionselector.choose_session_permissions")}
       data-testid="permission-menu" onKeyDown={moveFocus}>
       <div className="permission-menu-heading">{tr("permissionselector.session_permissions")}</div>
       <div className="permission-menu-list" ref={listRef} style={maxHeight ? { maxHeight } : undefined}>

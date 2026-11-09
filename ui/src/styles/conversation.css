@@ -2,7 +2,7 @@
 .conversation-shell {
   display: grid;
   container-type: inline-size;
-  grid-column: 3;
+  grid-column: 2;
   grid-row: 2;
   min-width: 0;
   min-height: 0;
@@ -1057,3 +1057,422 @@
 .suggestion-list button:hover svg {
   transform: rotate(45deg) translate(1px, -1px);
 }
+
+/* ---------- Work log: one summary line per turn, chronological rows beneath ---------- */
+.work-group {
+  margin: 0 0 10px;
+}
+
+.work-group > button {
+  display: flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 8px 3px 4px;
+  margin-left: -4px;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: var(--font-size-control);
+  text-align: left;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.work-group > button:hover {
+  color: var(--text-soft);
+  background: var(--surface-hover);
+}
+
+.work-group-icon {
+  display: grid;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--muted-2);
+}
+
+.work-group.running .work-group-icon { color: var(--text); }
+.work-group.error .work-group-icon,
+.work-group-errors { color: var(--danger); }
+
+.work-group strong {
+  color: var(--text-soft);
+  font-weight: 550;
+  white-space: nowrap;
+}
+
+.work-group small {
+  color: var(--muted);
+  font-size: var(--font-size-control);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.work-group small::before {
+  margin-right: 7px;
+  color: var(--muted-2);
+  content: "·";
+}
+
+.work-group-live {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-group-chevron {
+  flex: 0 0 auto;
+  color: var(--muted-2);
+  transition: transform 140ms ease;
+}
+
+.work-group-chevron.rotated {
+  transform: rotate(90deg);
+}
+
+/* Expanded rows hang off a hairline under the summary, in arrival order. */
+.work-process-list.virtual-process-row {
+  margin: 0 0 2px 7px;
+  padding: 2px 0 2px 14px;
+  border-left: 1px solid var(--border-strong);
+}
+
+.work-process-list .thought-entry {
+  margin: 0;
+  padding: 3px 0;
+}
+
+.work-process-list .thought-entry > svg {
+  width: 13px;
+  height: 13px;
+  margin-top: 4px;
+  color: var(--muted-2);
+}
+
+.work-process-list .tool-process {
+  border: 0;
+}
+
+.work-process-list .tool-process summary {
+  gap: 8px;
+  padding: 3px 6px 3px 0;
+  border-radius: var(--radius-xs);
+}
+
+.work-process-list .tool-process-index {
+  display: none;
+}
+
+.work-process-list .tool-main {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.work-process-list .tool-main > span {
+  flex: 0 0 auto;
+}
+
+.work-process-list .tool-main strong {
+  color: var(--text-soft);
+  font-size: var(--font-size-control);
+  font-weight: 550;
+}
+
+.work-process-list .tool-main small {
+  display: none;
+}
+
+/* The status word is implied by the row's icon, but a command's exit code and duration stay. */
+.work-process-list .tool-main small.tool-exit,
+.work-process-list .tool-main small.tool-duration {
+  display: inline;
+}
+
+.work-process-list .tool-main code {
+  min-width: 0;
+  flex: 1;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.work-process-list .tool-process summary > svg {
+  width: 13px;
+  height: 13px;
+  color: var(--muted-2);
+}
+
+.work-process-list .tool-process.error summary > svg { color: var(--danger); }
+.work-process-list .tool-process.running summary > svg { color: var(--text); }
+
+.work-process-list .tool-process pre {
+  margin: 2px 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+/* ---------- Header diff pill ---------- */
+.diff-pill {
+  display: inline-flex;
+  height: 26px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-soft);
+  font-size: var(--font-size-caption);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.diff-pill:hover { color: var(--text); background: var(--surface-hover); }
+.diff-pill svg { color: var(--muted); }
+.diff-pill ins,
+.diff-pill del { font-family: var(--font-code); font-size: 11px; }
+
+/* ---------- End-of-turn changes card ---------- */
+.changes-card {
+  margin: 4px 0 18px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.changes-card > header {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  font-size: var(--font-size-control);
+}
+
+.changes-card > header > svg { color: var(--muted); }
+.changes-card > header strong { color: var(--text); font-weight: 600; }
+.changes-card > header ins,
+.changes-card > header del { font-family: var(--font-code); font-size: 12px; }
+
+.changes-card-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.changes-card-actions button {
+  display: inline-flex;
+  height: 26px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-soft);
+  background: var(--canvas);
+  font-size: var(--font-size-caption);
+  font-weight: 500;
+}
+
+.changes-card-actions button:hover:not(:disabled) { background: var(--surface-hover); }
+.changes-card-actions button.primary { border-color: var(--accent); color: var(--accent-ink); background: var(--accent); }
+.changes-card-actions button.primary:hover { background: var(--accent-strong); }
+.changes-card-actions button:disabled { opacity: 0.5; }
+
+.changes-card ul {
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+}
+
+.changes-card li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 12px;
+  font-size: var(--font-size-caption);
+}
+
+.changes-card li span,
+.changes-card-file {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--text-soft);
+  font-family: var(--font-code);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A file row opens that file's diff: plain text until hovered or focused. */
+.changes-card-file {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.changes-card-file:hover { color: var(--text); text-decoration: underline; }
+.changes-card-file:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 50%, transparent); outline-offset: 1px; border-radius: 3px; }
+
+.changes-card li ins,
+.changes-card li del { font-family: var(--font-code); font-size: 11px; }
+.changes-card-more { color: var(--muted); }
+
+/* ---------- Finished plans fold to one line ---------- */
+.plan-entry.collapsed {
+  padding: 0;
+  border: 0;
+}
+
+.plan-collapsed {
+  display: flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 7px;
+  margin-left: -4px;
+  padding: 3px 8px 3px 4px;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: var(--font-size-control);
+}
+
+.plan-collapsed:hover { color: var(--text-soft); background: var(--surface-hover); }
+.plan-collapsed > svg:first-child { color: var(--success); }
+.plan-collapsed strong { overflow: hidden; color: var(--text-soft); font-weight: 550; text-overflow: ellipsis; white-space: nowrap; }
+.plan-collapsed small { color: var(--muted); font-size: var(--font-size-control); white-space: nowrap; }
+.plan-collapsed small::before { margin-right: 7px; color: var(--muted-2); content: "·"; }
+.plan-collapsed > svg:last-child { flex: 0 0 auto; color: var(--muted-2); }
+
+.plan-fold {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  margin-left: 4px;
+  place-items: center;
+  border-radius: var(--radius-xs);
+  color: var(--muted);
+}
+
+.plan-fold:hover { color: var(--text); background: var(--surface-hover); }
+
+/* Which harnesses and models did the turn's work (from the task usage ledger). */
+.collaboration-line {
+  display: flex;
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin: 0 0 10px -4px;
+  padding: 3px 8px 3px 4px;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: var(--font-size-control);
+  text-align: left;
+}
+
+.collaboration-line:hover { color: var(--text-soft); background: var(--surface-hover); }
+.collaboration-line > svg:first-child { flex: 0 0 auto; color: var(--muted-2); }
+.collaboration-line > span { color: var(--text-soft); font-weight: 550; white-space: nowrap; }
+/* Each contributor wraps as a unit ("子任务 claude-opus-5-5"); nothing is cut off. */
+.collaboration-line small { display: inline-flex; align-items: baseline; gap: 5px; color: var(--text-soft); font-size: 12px; white-space: nowrap; }
+.collaboration-line small em { color: var(--muted); font-style: normal; }
+.collaboration-line > svg:last-child { flex: 0 0 auto; color: var(--muted-2); }
+
+/* The saved preferences a turn was given: a quiet line under the user's message. */
+.memory-context-note {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-top: 4px;
+}
+
+.memory-context-note > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.memory-context-note > button:hover { color: var(--text-soft); background: var(--surface-hover); }
+.memory-context-note > button .rotated { transform: rotate(90deg); }
+
+.memory-context-note ul {
+  max-width: min(520px, 100%);
+  margin: 4px 0 0;
+  padding: 6px 10px 6px 24px;
+  border-left: 2px solid var(--border);
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: left;
+}
+
+.memory-context-note li.more { color: var(--muted); list-style: none; margin-left: -14px; }
+
+/* Delegated subtasks under the answer: one flat row each, opening the subtask's conversation. */
+.subtask-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 10px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.subtask-list header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 4px 5px;
+  color: var(--muted);
+  font-size: var(--font-size-caption);
+  font-weight: 600;
+}
+
+.subtask-list header small { color: var(--muted-2); font-weight: 500; }
+
+.subtask-row {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto auto 14px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  border-radius: var(--radius-sm);
+  color: var(--text-soft);
+  font-size: var(--font-size-control);
+  text-align: left;
+}
+
+.subtask-row:hover { color: var(--text); background: var(--surface-hover); }
+.subtask-row strong { overflow: hidden; font-weight: 520; text-overflow: ellipsis; white-space: nowrap; }
+.subtask-row small { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.subtask-row em { color: var(--muted); font-size: 12px; font-style: normal; white-space: nowrap; }
+.subtask-row > svg:first-child { color: var(--muted-2); }
+.subtask-row[data-status="completed"] > svg:first-child { color: var(--success); }
+.subtask-row[data-status="attention"] > svg:first-child,
+.subtask-row[data-status="attention"] em { color: var(--warning); }
+
+/* A subtask's header names the conversation that started it. */
+.breadcrumb-parent {
+  overflow: hidden;
+  max-width: 220px;
+  padding: 1px 4px;
+  border-radius: var(--radius-xs);
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breadcrumb-parent:hover { color: var(--text); background: var(--surface-hover); }
+.breadcrumb-subtask { margin-right: 4px; color: var(--muted-2); font-size: var(--font-size-caption); }
+
+/* A command's exit code and duration in its tool row; a non-zero exit reads as a failure. */
+.tool-exit, .tool-duration { color: var(--muted-2); font-size: 11px; font-variant-numeric: tabular-nums; }
+.tool-exit.failed { color: var(--danger); font-weight: 600; }

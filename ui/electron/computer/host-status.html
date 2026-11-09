@@ -4,14 +4,18 @@
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
 <style>
-  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; font: 13px system-ui, "Microsoft YaHei", sans-serif; user-select: none; }
-  .bar { box-sizing: border-box; height: 40px; margin: 3px; display: flex; align-items: center; gap: 10px; padding: 0 8px 0 12px;
-    border-radius: 10px; color: #fff; background: rgba(160, 30, 30, .92); box-shadow: 0 2px 10px rgba(0,0,0,.35); }
-  .dot { width: 9px; height: 9px; border-radius: 50%; background: #fff; flex: none; }
+  /* Cleo is driving this computer's mouse and keyboard: a flat red bar (the warning colour is
+     deliberate), with the same small radii and plain buttons as the main window. */
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; font: 13px "Segoe UI", system-ui, "Microsoft YaHei", sans-serif; user-select: none; }
+  .bar { box-sizing: border-box; height: 40px; margin: 3px; display: flex; align-items: center; gap: 10px; padding: 0 6px 0 12px;
+    border: 1px solid rgba(255, 255, 255, .18); border-radius: 8px; color: #fff; background: #b23a36; box-shadow: 0 1px 3px rgba(0, 0, 0, .25); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #fff; flex: none; }
   [data-label] { font-weight: 600; white-space: nowrap; }
   [data-shortcut] { opacity: .85; white-space: nowrap; font-size: 12px; flex: 1; }
-  button { border: 0; border-radius: 7px; padding: 5px 10px; font: inherit; cursor: pointer; color: #1a1a1a; background: #fff; }
-  button.stop { background: #ffd24d; font-weight: 700; }
+  button { height: 28px; border: 1px solid rgba(255, 255, 255, .35); border-radius: 6px; padding: 0 10px; font: inherit; font-size: 12px; cursor: pointer; color: #fff; background: transparent; }
+  button:hover { background: rgba(255, 255, 255, .12); }
+  button.stop { border-color: #fff; color: #b23a36; background: #fff; font-weight: 700; }
+  button.stop:hover { background: #f4f4f3; }
   [hidden] { display: none; }
 </style>
 </head>

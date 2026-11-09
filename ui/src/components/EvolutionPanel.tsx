@@ -113,9 +113,14 @@ export function EvolutionPanel({ children, state, error, busy, running, otherTas
   return <header className="evolution-toolbar" aria-label={tr("evolutionpanel.evolution_actions")}>
     <div className="evolution-topline">
       <GitBranch size={19} className="evolution-accent" /><strong>{tr("app.evolution")}</strong>
-      <button className="evolution-version-trigger" onClick={() => setSheet("versions")} aria-label={tr("evolutionpanel.choose_version")} disabled={busy}>
-        <span>{tr("evolutionpanel.in_use")}</span><b>{active ? versionLabel(active, state?.releaseTypes?.[active.baseTag || ""]) : releaseVersionLabel(state?.currentVersion || "—")}</b><ChevronDown size={14} />
-      </button>
+      {active || state?.currentVersion ? (
+        <button className="evolution-version-trigger" onClick={() => setSheet("versions")} aria-label={tr("evolutionpanel.choose_version")} disabled={busy}>
+          <span>{tr("evolutionpanel.in_use")}</span><b>{active ? versionLabel(active, state?.releaseTypes?.[active.baseTag || ""]) : releaseVersionLabel(state!.currentVersion!)}</b><ChevronDown size={14} />
+        </button>
+      ) : (
+        // Until the version is known there is nothing to choose: a quiet loading line, not a chip.
+        <span className="evolution-version-loading" role="status"><LoaderCircle className="spin" size={13} />{tr("evolutionpanel.version_unknown")}</span>
+      )}
       <div className="evolution-top-actions">
         <button aria-label={tr("evolutionpanel.view_code_changes")} aria-pressed={inspectorOpen} title={tr("evolutionpanel.view_code_changes")} onClick={onToggleInspector}><PanelRightOpen size={18} /></button>
         {history.length > 0 && <button aria-label={tr("evolutionpanel.pr_history")} title={tr("evolutionpanel.pr_history")} onClick={() => setSheet("history")}><History size={16} /><span>{tr("evolutionpanel.history")}</span></button>}
@@ -123,7 +128,7 @@ export function EvolutionPanel({ children, state, error, busy, running, otherTas
       </div>
     </div>
     {showStatus && <div className="evolution-actionbar" role="region" aria-label={tr("evolutionpanel.editing_actions")}>
-      <div className="evolution-status" role="status">
+      <div className={`evolution-status ${otherTasksRunning && !running && !busy && !releasing && !state?.transaction ? "waiting" : ""}`} role="status">
         {!awaitingAuthorization && (busy || running || releasing || state?.transaction) && <LoaderCircle size={15} className="evolution-spin" />}
         <strong>{releasing ? `${releaseJob?.tag} · ${releaseJob?.message}` : status}</strong>
       </div>

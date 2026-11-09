@@ -14,14 +14,14 @@ export async function checkSettingsLayout(page) {
   assert.ok(Math.min(centring.left, centring.top, centring.right, centring.bottom) >= 0, `Settings dialog overflows the window: ${JSON.stringify(centring)}`);
   const navigation = settings.getByRole("navigation", { name: "设置导航" });
   const pages = [
-    ["外观", "外观"], ["运行设置", "运行设置"], ["对话指令", "对话指令"],
-    ["当前配置", "当前配置"], ["新增连接", "新增连接"], ["Dream Agent", "Dream Agent"],
-    ["更新", "软件更新"], ["数据与记忆", "数据与记忆"],
+    ["外观", "外观"], ["关于与更新", "关于与更新"], ["模型连接", "模型连接"], ["子任务路由", "子任务路由"],
+    ["对话指令", "对话指令"], ["Claude / Codex 原生配置", "Claude / Codex 原生配置"],
+    ["记忆整理", "记忆整理"], ["存储与维护", "存储与维护"],
   ];
   let baseline;
   for (const [label, title] of pages) {
     await navigation.getByRole("button", { name: label, exact: true }).click();
-    await settings.getByRole("heading", { name: title, exact: true }).waitFor();
+    await settings.locator(".settings-header").getByRole("heading", { name: title, exact: true }).waitFor();
     const state = await page.evaluate(() => {
       const box = (element) => {
         const { x, y, width, height } = element.getBoundingClientRect();

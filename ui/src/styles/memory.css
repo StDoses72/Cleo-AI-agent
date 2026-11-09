@@ -1,6 +1,6 @@
 /* Memory workspace: ledger, review queue, filters. */
 .memory-view {
-  grid-column: 3 / 5;
+  grid-column: 2 / 4;
   grid-row: 2;
   min-width: 0;
   min-height: 0;
@@ -21,6 +21,40 @@
 .memory-view-header h2 {
   font-size: var(--font-size-page-title);
   letter-spacing: -0.045em;
+}
+
+.memory-tabs {
+  display: flex;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.memory-tabs button {
+  display: inline-flex;
+  height: 28px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: var(--font-size-control);
+  font-weight: 500;
+}
+
+.memory-tabs button:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.memory-tabs button.active {
+  color: var(--text);
+  background: var(--surface-active);
+}
+
+.memory-tabs small {
+  color: var(--muted-2);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .memory-view-header p {

@@ -1,5 +1,5 @@
 import { t as tr } from "./i18n.mjs";
-import { app, dialog, ipcMain } from "electron";
+import { app, dialog, ipcMain, nativeTheme } from "electron";
 import { join, resolve } from "node:path";
 import { EvolutionStore } from "./evolution-store.mjs";
 import { desktopDataHome } from "./platform.mjs";
@@ -14,6 +14,9 @@ const dataHome = desktopDataHome({ platform: process.platform, environment: proc
 const store = new EvolutionStore(root, dataHome);
 const recovery = process.argv.includes("--cleo-recovery");
 const parentArgument = process.argv.find((argument) => argument.startsWith("--cleo-apply-parent="));
+// The restart and recovery windows wear the theme the main window handed over.
+const themeArgument = process.argv.find((argument) => argument.startsWith("--cleo-theme="))?.slice("--cleo-theme=".length);
+if (themeArgument === "light" || themeArgument === "dark") nativeTheme.themeSource = themeArgument;
 
 /** Purpose: Select a version ahead of mutable UI/backend imports. Input: flags. Output: selected app. */
 async function boot() {

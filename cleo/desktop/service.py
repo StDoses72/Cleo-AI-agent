@@ -2811,7 +2811,13 @@ class DesktopService:
         )
         can_undo = await asyncio.to_thread(self._can_undo, manifest)
         thread_id = manifest["id"]
-        running = self._runs.is_running(thread_id)
+        # A subtask delegated by subtask routing runs inside the run of the conversation that started
+        # the delegation, not in the desktop's run registry: it is running while its own session
+        # says so and some ancestor's run is live (routing nests a few levels deep).
+        running = self._runs.is_running(thread_id) or bool(
+            manifest.get("routing_task_id") and manifest.get("status") == "running"
+            and self._ancestor_run_live(manifest)
+        )
         active_run_id = self._runs.run_id(thread_id)
         steer_ready = self._runs.steer_ready(thread_id)
         pending_approvals = self._runs.pending_approvals(thread_id)
@@ -2841,6 +2847,25 @@ class DesktopService:
 
         result["taskUsage"] = await asyncio.to_thread(task_usage, self.store, manifest["id"])
         return result
+
+    def _ancestor_run_live(self, manifest: dict[str, Any], depth: int = 8) -> bool:
+        """Purpose: Whether any conversation above a delegated subtask has a live desktop run.
+
+        Input: the subtask's manifest. Output: True when a parent, grandparent, ... (bounded) is
+        running in the desktop's run registry; missing or unreadable manifests end the walk.
+        """
+        parent_id = manifest.get("parent_session_id")
+        seen: set[str] = set()
+        while parent_id and depth > 0 and parent_id not in seen:
+            if self._runs.is_running(parent_id):
+                return True
+            seen.add(parent_id)
+            depth -= 1
+            try:
+                parent_id = self.store.load_manifest(parent_id).get("parent_session_id")
+            except (OSError, ValueError, KeyError):
+                return False
+        return False
 
     @staticmethod
     def _can_undo(manifest: dict) -> bool:

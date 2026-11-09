@@ -48,7 +48,7 @@ try {
   await window.locator('.evolution-toolbar[aria-label="进化操作"]').waitFor();
   const evolution = await window.evaluate(() => window.cleoDesktop.getEvolutionState());
   if (!evolution.supported || evolution.phase !== "idle") throw new Error("Packaged evolution controller is unavailable.");
-  await window.getByRole("button", { name: "开发", exact: true }).click();
+  await window.getByTestId("new-task-in-section").click();
   await window.evaluate(() => {
     const input = document.querySelector('[data-testid="composer-input"]');
     const transfer = new DataTransfer();

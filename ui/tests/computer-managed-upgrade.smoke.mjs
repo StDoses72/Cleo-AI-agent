@@ -126,10 +126,10 @@ try {
     await onboarding.getByRole("button", { name: "稍后再说", exact: true }).click();
     await onboarding.waitFor({ state: "hidden" });
   }
-  await window.getByRole("button", { name: "开发", exact: true }).click();
+  await window.getByTestId("new-task-in-section").click();
   const openInspector = window.getByRole("button", { name: "打开检查器", exact: true });
   if (await openInspector.isVisible()) await openInspector.click();
-  await window.getByRole("button", { name: "电脑", exact: true }).click();
+  await window.getByRole("tab", { name: "电脑", exact: true }).click();
   async function browserVisible(expected) {
     const deadline = Date.now() + 5_000;
     let visible;

@@ -297,11 +297,11 @@ try {
   await page.evaluate(() => window.emitTest({ type: "upsert-item", item: { id: "tool-live", turnId: "live-turn", type: "tool", name: "test", command: "test", status: "running" } }));
   assert(await page.getByText(thought.content, { exact: true }).isVisible());
   await page.evaluate(() => window.emitTest({ type: "upsert-item", item: { id: "answer-live", turnId: "live-turn", type: "message", role: "assistant", content: "最终回答", time: "" } }));
-  await page.getByTestId("thought-group").getByRole("button").waitFor();
-  assert.equal(await page.getByTestId("thought-group").getByRole("button").getAttribute("aria-expanded"), "false");
-  await page.getByTestId("thought-group").getByRole("button").click();
+  await page.getByTestId("work-group").getByRole("button").waitFor();
+  assert.equal(await page.getByTestId("work-group").getByRole("button").getAttribute("aria-expanded"), "false");
+  await page.getByTestId("work-group").getByRole("button").click();
   await page.evaluate(() => window.emitTest({ type: "upsert-item", item: { id: "answer-live", turnId: "live-turn", type: "message", role: "assistant", content: "最终回答继续输出", time: "" } }));
-  assert.equal(await page.getByTestId("thought-group").getByRole("button").getAttribute("aria-expanded"), "true");
+  assert.equal(await page.getByTestId("work-group").getByRole("button").getAttribute("aria-expanded"), "true");
   await page.evaluate(() => window.askTest("claude"));
   const dialog = page.getByRole("dialog", { name: "Agent 提问" });
   await dialog.waitFor();

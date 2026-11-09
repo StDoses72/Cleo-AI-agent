@@ -7,6 +7,8 @@ import { boundTimeline } from "./timeline-cache";
 import { useTimelineHistory } from "./useTimelineHistory";
 import { useQuestions } from "./useQuestions";
 import type {
+  SourceControlOp,
+  Project,
   LocalSkill,
   AgentInstructions,
   ApprovalDecision,
@@ -56,10 +58,24 @@ const emptyDraft: ComposerDraft = { prompt: "", attachments: [] };
 const GENERAL_PRODUCTIVITY_PROJECT = "productivity:general";
 const EVOLUTION_PROJECT = "productivity:cleo-evolution";
 
+/** Purpose: Compare folder paths across separators and, on Windows drives, letter case. */
+function normalizedPath(path: string) {
+  const value = path.replaceAll("\\", "/").replace(/\/+$/, "");
+  return /^[a-z]:\//i.test(value) ? value.toLowerCase() : value;
+}
+
 /** The project a draft lands in when the user picks nothing: the space's general project
  * (no folder bound) whenever it is listed, otherwise the first ordinary project. */
 function defaultProjectFor(projects: Parameters<typeof projectsInSpace>[0], space: ThreadSpace) {
   return projectsInSpace(projects, space).find((project) => project.id !== EVOLUTION_PROJECT);
+}
+
+/** Purpose: The branch name in a project's record, as git's own branch name.
+ * Input: the workspace's branch text, taken from `git status --branch` ("main", "HEAD (no branch)",
+ * "No commits yet on main"). Output: the branch name, or null for a detached HEAD. */
+export function projectBranchName(branch: string | null | undefined): string | null {
+  if (!branch || /^HEAD(?: \(no branch\))?$/.test(branch)) return null;
+  return /^(?:No commits yet|Initial commit) on (.+)$/.exec(branch)?.[1] ?? branch;
 }
 
 export function useCleoWorkspace(evolutionOpen = false) {
@@ -801,10 +817,19 @@ export function useCleoWorkspace(evolutionOpen = false) {
     const lockKey = targetThread?.id ?? activeThread?.id ?? draftKey;
     if (!prompt || runLocks.current.has(lockKey)
       || harnessSwitchRef.current.has(targetThread?.id ?? activeThreadId ?? "")) return false;
-
     const token = deliveryId || crypto.randomUUID();
     runLocks.current.set(lockKey, token);
     setStartingKeys(keys => [...keys, lockKey]);
+    // A commit, revert or push is changing this checkout: the agent must not start editing it now.
+    // (Checked under the run lock, so a second Enter cannot slip past while git is asked.)
+    const targetProject = projectById(targetThread?.projectId ?? activeThread?.projectId ?? activeProjectId);
+    if (targetProject && gitMutations.current.size) await resolveRunningRoots(targetProject);
+    if (targetProject && gitMutationBusy(targetProject)) {
+      updateDraft(targetThread?.id ?? draftKey, (current) => ({ ...current, error: tr("sourcecontrol.git_action_in_progress") }));
+      if (runLocks.current.get(lockKey) === token) runLocks.current.delete(lockKey);
+      setStartingKeys(keys => keys.filter(key => key !== lockKey));
+      return false;
+    }
     const sourceDraftKey = targetThread?.id ?? draftKey;
     // Queued and edited messages carry their own attachments and leave the composer alone.
     const fromDraft = !preserveDraft && !attachments;
@@ -867,6 +892,15 @@ export function useCleoWorkspace(evolutionOpen = false) {
     }
     const canNavigate = () => selectionRef.current === selection
       && viewRef.current === evolutionOpen && thread.projectId !== EVOLUTION_PROJECT;
+    // Creating the conversation took time; a git action may have started in this checkout since.
+    // Checked again right before the turn starts, so the agent never edits files under it.
+    const startingProject = projectById(thread.projectId) ?? targetProject;
+    if (startingProject && gitMutationBusy(startingProject)) {
+      updateDraft(sourceDraftKey, (current) => ({ ...current, error: tr("sourcecontrol.git_action_in_progress") }));
+      if (runLocks.current.get(lockKey) === token) runLocks.current.delete(lockKey);
+      setStartingKeys(keys => keys.filter(key => key !== lockKey));
+      return false;
+    }
     if (lockKey !== threadId) runLocks.current.delete(lockKey);
     runLocks.current.set(threadId, token);
     const userItem: TimelineItem = {
@@ -897,9 +931,25 @@ export function useCleoWorkspace(evolutionOpen = false) {
     }));
 
     let failed = false;
+    // Whether the backend took the message (it started a turn or sent anything back). A run that
+    // fails before that delivered nothing, and callers keep what they sent (queued messages, notes).
+    let accepted = false;
+    // Subtask routing creates and runs child sessions during this turn. While it delegates, the
+    // task list is reloaded every few seconds so new subtasks and their states appear as they happen.
+    let delegating = false;
+    let lastListRefresh = 0;
+    const refreshSubtasks = () => {
+      lastListRefresh = Date.now();
+      void refreshWorkspace(() => cleoClient.loadWorkspace()).catch(() => {});
+    };
+    const subtaskPoll = window.setInterval(() => { if (delegating && Date.now() - lastListRefresh > 4000) refreshSubtasks(); }, 4000);
     try {
       for await (const event of cleoClient.streamTurn(threadId, prompt, pendingAttachments, token)) {
         if (runLocks.current.get(threadId) !== token) return true;
+        // Only the turn itself acknowledges the message; runtime or usage updates can precede a
+        // failure to start, and do not mean the message was delivered.
+        if (event.type === "turn-started" || event.type === "upsert-item" || event.type === "done"
+          || event.type === "approval-request" || event.type === "question-request") accepted = true;
         if (event.type === "turn-started") {
           turnId = event.item.turnId ?? event.item.id;
           updateThread(threadId, current => ({ ...current, steerReady: true,
@@ -907,6 +957,10 @@ export function useCleoWorkspace(evolutionOpen = false) {
         } else if (event.type === "upsert-item") {
           const projected = { ...event.item, turnId: event.item.turnId ?? turnId };
           upsertTimelineItem(threadId, projected);
+          if (event.item.type === "tool" && /subtask/i.test(event.item.name)) {
+            delegating = true;
+            if (Date.now() - lastListRefresh > 1500) refreshSubtasks();
+          }
         } else if (event.type === "timing") {
           if (event.timing.sessionId !== threadId) continue;
           updateThread(threadId, current => {
@@ -1018,6 +1072,9 @@ export function useCleoWorkspace(evolutionOpen = false) {
         ],
       }));
     } finally {
+      window.clearInterval(subtaskPoll);
+      // The final states of this turn's subtasks.
+      if (delegating) refreshSubtasks();
       if (runLocks.current.get(threadId) === token) {
         if (!failed) {
           updateThread(threadId, (current) =>
@@ -1032,6 +1089,19 @@ export function useCleoWorkspace(evolutionOpen = false) {
         ));
         questions.finish(threadId);
         void refreshMemory();
+        // The backend records which preferences the turn was given after the message itself;
+        // pick that record up so the turn shows it without a reload.
+        if (!failed && thread.space === "productivity") {
+          // A background read: it must not make this task the backend's current one (activate=false).
+          void cleoClient.loadThread(threadId, false).then(loaded => updateThread(threadId, current => ({
+            ...current,
+            items: current.items.map(item => {
+              const saved = item.type === "message" ? loaded.items.find(candidate => candidate.id === item.id) : undefined;
+              return item.type === "message" && saved?.type === "message" && saved.memoryContext && !item.memoryContext
+                ? { ...item, memoryContext: saved.memoryContext } : item;
+            }),
+          }))).catch(() => {});
+        }
         if (history.isActive(threadId) && history.isFollowing(threadId) && thread.history) await history.load("latest");
         // Messages queued during a run go next; a stopped or failed run keeps them for the user.
         if (!failed && !cancellingRuns.current.has(token) && queuesRef.current[threadId]?.length
@@ -1042,7 +1112,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
         }
       }
     }
-    return true;
+    return accepted || !failed;
   };
 
   const sendQueuedMessages = async (thread: Thread, queued: QueuedMessage[]) => {
@@ -1192,12 +1262,17 @@ export function useCleoWorkspace(evolutionOpen = false) {
   };
 
   /** Purpose: Hold a message typed during a run. Input: composer text. Output: queue entry; draft cleared. */
-  const queueMessage = (text: string) => {
+  /** Queue a message for after the current run. By default it is the composer's draft (text and
+   * attachments), which is then cleared; `fromDraft: false` queues only the given text and leaves
+   * the draft alone (review notes sent from the details panel). Returns whether it was queued. */
+  const queueMessage = (text: string, { fromDraft = true }: { fromDraft?: boolean } = {}) => {
     const threadId = activeThreadId;
     const prompt = text.trim();
-    if (!threadId || (!prompt && !draft.attachments.length)) return;
-    updateQueue(threadId, queue => [...queue, { id: crypto.randomUUID(), text: prompt, attachments: draft.attachments }]);
-    updateDraft(draftKey, current => ({ ...current, prompt: "", attachments: [], error: undefined }));
+    const attachments = fromDraft ? draft.attachments : [];
+    if (!threadId || (!prompt && !attachments.length)) return false;
+    updateQueue(threadId, queue => [...queue, { id: crypto.randomUUID(), text: prompt, attachments }]);
+    if (fromDraft) updateDraft(draftKey, current => ({ ...current, prompt: "", attachments: [], error: undefined }));
+    return true;
   };
 
   const takeQueued = (id: string) => {
@@ -1230,6 +1305,19 @@ export function useCleoWorkspace(evolutionOpen = false) {
     if (!await sendSteer(queued.text)) {
       updateQueue(threadId, current => [...current.slice(0, position), queued, ...current.slice(position)]);
     }
+  };
+
+  /** Purpose: Insert the composer's text into the running turn now (Steer) instead of queueing it.
+   * Input: the text. Output: the draft is cleared once the harness accepts it; on failure it is put
+   * back so nothing typed is lost. Attachments cannot be steered and keep the message queued. */
+  const steerDraft = async (text: string) => {
+    const threadId = activeThreadId;
+    const prompt = text.trim();
+    if (!threadId || !prompt || draft.attachments.length) return false;
+    updateDraft(draftKey, current => ({ ...current, prompt: "", error: undefined }));
+    const accepted = await sendSteer(prompt);
+    if (!accepted) updateDraft(threadId, current => ({ ...current, prompt: current.prompt.trim() ? `${prompt}\n\n${current.prompt}` : prompt }));
+    return accepted;
   };
 
   /** Purpose: Send a queued message now when no run is active (for example after a stop). */
@@ -1441,10 +1529,201 @@ export function useCleoWorkspace(evolutionOpen = false) {
     if (runLocks.current.has(activeThread.id)) {
       throw new Error(tr("usecleoworkspace.the_task_is_running_stop_it_before_reverting"));
     }
-    let result: Awaited<ReturnType<typeof cleoClient.undoChanges>>;
-    await refreshWorkspace(async () => { result = await cleoClient.undoChanges(activeThread.id); return result.workspace; });
-    return result!;
+    // Undoing the latest turn rewrites files like any git action: it takes the same reservation, so
+    // a commit, revert or new task cannot overlap it in this checkout.
+    const project = projectById(activeThread.projectId);
+    if (project) {
+      await resolveRunningRoots(project);
+      if (gitMutationBusy(project)) throw new Error(tr("sourcecontrol.checkout_busy"));
+    } else if (gitMutations.current.has(activeThread.projectId)) {
+      throw new Error(tr("sourcecontrol.checkout_busy"));
+    }
+    // The reservation is held by project id even when the project is not listed.
+    const reservation = activeThread.projectId;
+    gitMutations.current.add(reservation);
+    try {
+      let result: Awaited<ReturnType<typeof cleoClient.undoChanges>>;
+      await refreshWorkspace(async () => { result = await cleoClient.undoChanges(activeThread.id); return result.workspace; });
+      return result!;
+    } finally {
+      gitMutations.current.delete(reservation);
+    }
   };
+  /** Purpose: Run a git action on the current task's folder, then reload what it changed.
+   * Input: the operation and its parameters (the folder and task are filled in).
+   * Output: the bridge's result; the workspace and the task's change list are refreshed afterwards.
+   */
+  const runSourceControl = async <T = unknown>(op: SourceControlOp, params: Record<string, unknown> = {}): Promise<T> => {
+    const project = activeProject;
+    if (!project?.path || project.managed) throw new Error(tr("sourcecontrol.no_repository"));
+    const readOnly = op === "status" || op === "root" || op === "pullRequest" || op === "listFiles";
+    // Any task still running in the same checkout could lose or leak work to a revert or commit,
+    // and while the action runs no task may start there. Which projects share the checkout is
+    // settled with git first, not guessed from folder names.
+    if (!readOnly) {
+      await resolveRunningRoots(project);
+      if (checkoutBusy(project.id) || gitMutationBusy(project)) throw new Error(tr("sourcecontrol.checkout_busy"));
+      gitMutations.current.add(project.id);
+    }
+    try {
+      const result = await cleoClient.sourceControl<T>(op, { root: project.path, threadId: activeThread?.id ?? null, ...params });
+      const root = op === "status" ? (result as { root?: string } | null)?.root : undefined;
+      if (root) checkoutRoots.current[normalizedPath(project.path)] = normalizedPath(root);
+      if (op === "status") noteLiveBranch(project, result as { repository?: boolean; branch?: string | null } | null);
+      if (!readOnly) {
+        await refreshWorkspace(() => cleoClient.loadWorkspace()).catch(() => {});
+        const threadId = activeThread?.id;
+        // A background refresh: the user may have moved to another task while git worked (activate=false).
+        if (threadId) await cleoClient.loadThread(threadId, false).then(loaded => updateThread(threadId, () => loaded)).catch(() => {});
+      }
+      return result;
+    } finally {
+      if (!readOnly) gitMutations.current.delete(project.id);
+    }
+  };
+
+  /** Purpose: Start the draft as a task isolated in a new git worktree of the draft's project.
+   * Input: the prompt. Output: a `cleo/<slug>` worktree is created and added as a project, the draft
+   * moves there, and the prompt is sent once the move has rendered (see the effect below).
+   */
+  const sendInWorktree = async (prompt: string) => {
+    const project = activeProject;
+    if (!project?.path || project.managed || activeThreadId !== null || activeSpace !== "productivity") return sendPrompt(prompt);
+    // One worktree per send: a second Enter while git is still working does nothing.
+    if (creatingWorktreeRef.current) return false;
+    creatingWorktreeRef.current = true;
+    setCreatingWorktree(true);
+    const selection = selectionRef.current;
+    try {
+      const worktree = await cleoClient.sourceControl<{ path: string; branch: string }>("createWorktree", { root: project.path, name: prompt });
+      const refreshed = await refreshWorkspace(() => cleoClient.addProject("productivity", worktree.path));
+      const projectId = refreshed.selectedProjectId;
+      if (!projectId) throw new Error(tr("usecleoworkspace.folder_added_but_its_project_could_not_be_located_select_it_in_the_project_list"));
+      // If the user moved elsewhere meanwhile, the worktree stays listed but the draft is not pulled along.
+      if (selectionRef.current !== selection) return false;
+      pendingWorktreeSend.current = { projectId, prompt };
+      retargetDraft(projectId);
+      return true;
+    } finally {
+      creatingWorktreeRef.current = false;
+      setCreatingWorktree(false);
+    }
+  };
+  const creatingWorktreeRef = useRef(false);
+  const [creatingWorktree, setCreatingWorktree] = useState(false);
+  /** The branch git last reported for each project's folder (null: detached HEAD). It can differ
+   * from the workspace's own record when the checkout was switched outside Cleo; until the two agree,
+   * review notes are neither shown nor added (see App). */
+  const [liveBranches, setLiveBranches] = useState<Record<string, string | null>>({});
+  const reconciledBranch = useRef("");
+  const noteLiveBranch = (project: Project, status: { repository?: boolean; branch?: string | null } | null) => {
+    if (!status?.repository) return;
+    const branch = status.branch || null;
+    setLiveBranches((current) => current[project.id] === branch ? current : { ...current, [project.id]: branch });
+    if (projectBranchName(project.branch) === branch) return;
+    // Reload once per newly seen branch, so the project's branch and the task's changes catch up together.
+    const key = `${project.id}|${branch}`;
+    if (reconciledBranch.current === key) return;
+    reconciledBranch.current = key;
+    void refreshWorkspace(() => cleoClient.loadWorkspace()).catch(() => {});
+    const threadId = activeThread?.id;
+    if (threadId) void cleoClient.loadThread(threadId, false).then((loaded) => updateThread(threadId, () => loaded)).catch(() => {});
+  };
+  /** Each checkout's top folder by project path ("" outside git), learned from git. */
+  const checkoutRoots = useRef<Record<string, string>>({});
+  const [, setRootsVersion] = useState(0);
+  /** Purpose: Learn (once) which working tree a project's folder belongs to. */
+  const resolveCheckoutRoot = async (project: Project | undefined) => {
+    if (!project?.path || project.managed || project.space !== "productivity") return;
+    const key = normalizedPath(project.path);
+    if (key in checkoutRoots.current) return;
+    try {
+      const answer = await cleoClient.sourceControl<{ root: string | null }>("root", { root: project.path });
+      checkoutRoots.current[key] = answer?.root ? normalizedPath(answer.root) : "";
+      setRootsVersion(version => version + 1);
+    } catch { /* unknown stays unknown: the containment fallback applies */ }
+  };
+  // Every development project's working tree is looked up when the project list changes, so
+  // projects that share one checkout (a repository and its subfolders) are known to do so.
+  const projectPathsKey = snapshot?.projects.map(project => project.path).join("\n") ?? "";
+  useEffect(() => {
+    for (const project of snapshot?.projects ?? []) void resolveCheckoutRoot(project);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectPathsKey]);
+  /** Before a git action or a guarded send: the roots of every project involved are known. */
+  const resolveRunningRoots = async (project: Project) => {
+    const involved = [project, ...[...gitMutations.current].map(projectById),
+      ...(snapshot?.threads ?? []).filter(thread => thread.status === "running" || runLocks.current.has(thread.id)).map(thread => projectById(thread.projectId)),
+      // New tasks still being created hold their project too.
+      ...[...runLocks.current.keys()].filter(key => key.startsWith("new:productivity:")).map(key => projectById(key.slice("new:productivity:".length)))];
+    await Promise.all(involved.map(resolveCheckoutRoot));
+  };
+  /** Projects with a git action in flight: no task may start in their checkout until it ends. */
+  const gitMutations = useRef(new Set<string>());
+  /** Purpose: Tell whether two projects work in the same git working tree.
+   * Input: two projects. Output: true when git said they share a top folder, or (before git has
+   * answered for both) when one folder contains the other outside a Cleo worktree. */
+  const sameCheckout = (a: Project, b: Project) => {
+    if (a.id === b.id) return true;
+    if (!a.path || !b.path) return false;
+    const left = normalizedPath(a.path);
+    const right = normalizedPath(b.path);
+    const [rootA, rootB] = [checkoutRoots.current[left], checkoutRoots.current[right]];
+    if (rootA !== undefined && rootB !== undefined) return Boolean(rootA) && rootA === rootB;
+    const contains = (outer: string, inner: string) => inner === outer
+      || (inner.startsWith(`${outer}/`) && !inner.slice(outer.length).includes("/.cleo/worktrees/"));
+    return contains(left, right) || contains(right, left);
+  };
+  const projectById = (projectId: string) => snapshot?.projects.find(project => project.id === projectId);
+  /** True while a conversation is running — or a new task is starting — in the given project's
+   * checkout (any project sharing it). A starting draft holds a "new:productivity:<project>" lock. */
+  const checkoutBusy = (projectId: string) => {
+    const project = projectById(projectId);
+    if (!project) return false;
+    const shares = (otherId: string) => {
+      if (otherId === projectId) return true;
+      const other = projectById(otherId);
+      return Boolean(other && sameCheckout(project, other));
+    };
+    const starting = [...runLocks.current.keys()].some(key => key.startsWith("new:productivity:") && shares(key.slice("new:productivity:".length)));
+    return starting || Boolean(snapshot?.threads.some(thread => (thread.status === "running" || runLocks.current.has(thread.id)) && shares(thread.projectId)));
+  };
+  /** True while a git action runs in the given project's checkout. */
+  const gitMutationBusy = (project: Project) => [...gitMutations.current].some(id => {
+    const other = projectById(id);
+    return Boolean(other && sameCheckout(project, other));
+  });
+  /** Remove a Cleo worktree project: the folder through git (refusing uncommitted work unless forced),
+   * then the project; the parent repository is selected afterwards so nothing points at the removed folder. */
+  const removeWorktreeProject = async (projectToRemove: Project, force = false) => {
+    await resolveRunningRoots(projectToRemove);
+    if (checkoutBusy(projectToRemove.id) || gitMutationBusy(projectToRemove)) throw new Error(tr("sourcecontrol.checkout_busy"));
+    // Removal is a git action like any other: no task may start in this worktree meanwhile.
+    gitMutations.current.add(projectToRemove.id);
+    try {
+      await cleoClient.sourceControl("removeWorktree", { root: projectToRemove.path, force });
+    } finally {
+      gitMutations.current.delete(projectToRemove.id);
+    }
+    const wasSelected = activeProjectId === projectToRemove.id;
+    const refreshed = await refreshWorkspace(() => cleoClient.removeProject(projectToRemove.id));
+    if (!wasSelected) return;
+    const parentPath = normalizedPath(projectToRemove.path ?? "").split("/.cleo/worktrees/")[0];
+    const parent = refreshed.projects.find(project => project.space === "productivity" && project.path && normalizedPath(project.path) === parentPath)
+      ?? refreshed.projects.find(project => project.space === "productivity" && project.id !== EVOLUTION_PROJECT);
+    selectionRef.current += 1;
+    setActiveSpace("productivity");
+    setActiveProjectId(parent?.id ?? "");
+    setActiveThreadId(refreshed.threads.find(thread => thread.projectId === parent?.id && thread.space === "productivity")?.id ?? null);
+  };
+  const pendingWorktreeSend = useRef<{ projectId: string; prompt: string } | null>(null);
+  useEffect(() => {
+    const pending = pendingWorktreeSend.current;
+    if (!pending || pending.projectId !== activeProjectId || activeThreadId !== null) return;
+    pendingWorktreeSend.current = null;
+    void sendPrompt(pending.prompt);
+  }, [activeProjectId, activeThreadId]);
+
   const restoreChatHistory = async () => {
     const refreshed = await refreshWorkspace(() => cleoClient.restoreChatBackups());
     const restored = refreshed.threads.find(
@@ -1580,15 +1859,15 @@ export function useCleoWorkspace(evolutionOpen = false) {
     }
   };
 
+  const waitingFor = (thread: Thread) => pendingApprovals.some(request => request.threadId === thread.id) ? "approval" as const
+    : questions.pending.some(request => request.threadId === thread.id) ? "question" as const : undefined;
+
   return {
     history,
     refreshLanguage,
     questions,
     skills: activeThread?.skills ?? (draftSkills?.key === skillKey && !evolutionOpen ? draftSkills.skills : []),
-    snapshot: snapshot && { ...snapshot, threads: snapshot.threads.map(thread => ({ ...thread,
-      waitingFor: pendingApprovals.some(request => request.threadId === thread.id) ? "approval" as const
-        : questions.pending.some(request => request.threadId === thread.id) ? "question" as const : undefined,
-    })) },
+    snapshot: snapshot && { ...snapshot, threads: snapshot.threads.map(thread => ({ ...thread, waitingFor: waitingFor(thread) })) },
     loadingError,
     memoryError,
     memoryRefreshing,
@@ -1638,6 +1917,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
     sendPrompt,
     queuedMessages: activeThreadId ? queues[activeThreadId] ?? [] : [],
     queueMessage,
+    steerDraft,
     steerQueued,
     sendQueued,
     editQueued,
@@ -1663,6 +1943,12 @@ export function useCleoWorkspace(evolutionOpen = false) {
     openLocalPath,
     copyConfigTemplate,
     undoChanges,
+    runSourceControl,
+    liveBranches,
+    sendInWorktree,
+    creatingWorktree,
+    checkoutBusy,
+    removeWorktreeProject,
     resetWorkspace,
     restoreChatHistory,
     deleteThread,

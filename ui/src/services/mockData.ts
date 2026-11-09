@@ -173,6 +173,25 @@ export const threads: Thread[] = [
       },
     ],
     usage: { used: 38420, limit: 128000, input: 6320, output: 4418 },
+    // A routed task: the main session plus two delegated subtasks and the evaluator that judged them.
+    taskUsage: {
+      scope: "task", title: "完成独立桌面 UI", total: 61240, input: 51200, output: 10040, reportedCalls: 4, missingCalls: 0, complete: true,
+      referenceUsd: 0.4126,
+      // Shaped like the backend ledger: one row per (session, model), a worker's `part` names its job,
+      // and the task-boundary classifier is also recorded as an evaluator.
+      breakdown: [
+        { role: "main", part: "主任务执行与调度", provider: "codex", model: "gpt-5.6-sol", total: 38420 },
+        { role: "worker", part: "侧栏与导航重构", provider: "claude", model: "claude-opus-5-5", total: 14210 },
+        { role: "worker", part: "补充回归测试", provider: "codex", model: "gpt-5.6-sol", total: 6140 },
+        { role: "evaluator", part: "验收评审", provider: "deepseek", model: "deepseek-v4-flash", total: 2210 },
+        { role: "evaluator", part: "任务边界判断", provider: "deepseek", model: "deepseek-v4-flash", total: 260 },
+      ],
+      models: [
+        { provider: "codex", model: "gpt-5.6-sol", total: 44560, input: 37000, output: 7560, reportedCalls: 2, referenceUsd: 0.2611 },
+        { provider: "claude", model: "claude-opus-5-5", total: 14210, input: 12100, output: 2110, reportedCalls: 1, referenceUsd: 0.1471 },
+        { provider: "deepseek", model: "deepseek-v4-flash", total: 2470, input: 2100, output: 370, reportedCalls: 1, referenceUsd: 0.0044 },
+      ],
+    },
     items: [
       {
         id: "user-desktop",
@@ -185,6 +204,11 @@ export const threads: Thread[] = [
           { name: "t3-code-reference.png", path: "C:/Users/demo/Pictures/t3-code-reference.png", mimeType: "image/png", size: 184_320, thumbnail: mockThumbnail },
           { name: "desktop-requirements.md", path: "C:/Users/demo/Documents/desktop-requirements.md", mimeType: "text/markdown", size: 4_812 },
         ],
+        // As the backend records it: the project's preferences given to the agent before this turn.
+        memoryContext: { count: 2, entries: [
+          { id: "pref-desktop", content: "体验型 UI 应以独立应用交付，不把浏览器页面当作最终产品表面。" },
+          { id: "project-local-first", content: "在这个项目中，每次修改后简短列出变更文件和验证结果。" },
+        ] },
       },
       {
         id: "thought-desktop",
@@ -204,11 +228,31 @@ export const threads: Thread[] = [
         ],
       },
       {
+        id: "tool-desktop-memory",
+        type: "tool",
+        name: "mcp__cleo_memory__search_long_term_memory",
+        command: "{\"query\": \"桌面 UI 偏好\"}",
+        status: "done",
+        output: "{\"results\": [{\"id\": \"pref-desktop\", \"content\": \"偏好独立桌面应用\"}]}",
+      },
+      {
+        id: "tool-desktop-test",
+        type: "tool",
+        name: "shell",
+        command: "npm test",
+        status: "done",
+        exitCode: 1,
+        durationMs: 8420,
+        output: "✖ sidebar keeps the active thread visible\n  expected 3 rows, got 2\n1 failed, 41 passed",
+      },
+      {
         id: "tool-desktop",
         type: "tool",
         name: "workspace",
         command: "npm run build",
         status: "done",
+        exitCode: 0,
+        durationMs: 3210,
         output: "renderer built · electron entry ready · 0 type errors",
       },
       {
@@ -226,6 +270,43 @@ export const threads: Thread[] = [
           "第一版桌面工作区已经成形。界面层只依赖 CleoClient 协议，当前实现是可流式返回事件的 mock client。后续接入 Python 后端时，只需要新增 IPC bridge，不会改动消息流、侧栏或检查器组件。你可以先新建一个任务，完整体验发送、执行、工具展开和变更查看。",
         time: "16:47",
       },
+    ],
+  },
+  // Two subtasks that subtask routing delegated from "完成独立桌面 UI" (listed under it, not as tasks of their own).
+  {
+    id: "agent-sidebar-refactor",
+    parentId: "desktop-ui",
+    routingTaskId: "task_sidebar",
+    runtime: { provider: "claude", model: "claude-opus-5-5", effort: null, access: "workspace-write", approval: "user", permissionOptions: permissionPresets.claude },
+    space: "productivity",
+    projectId: "cleo-agent",
+    title: "侧栏与导航重构",
+    summary: "把四个空间合并成一条侧栏",
+    updatedAt: "12 分钟前",
+    status: "completed",
+    changes: [],
+    usage: { used: 14210, limit: 200000, input: 12100, output: 2110 },
+    items: [
+      { id: "user-sidebar-sub", type: "message", role: "user", content: "把四个空间合并成一条侧栏，保留记忆与进化入口。", time: "16:40" },
+      { id: "assistant-sidebar-sub", type: "message", role: "assistant", content: "侧栏已合并：新任务、搜索、记忆、进化在顶部，下面按项目列出任务。", time: "16:44" },
+    ],
+  },
+  {
+    id: "agent-regression-tests",
+    parentId: "desktop-ui",
+    routingTaskId: "task_tests",
+    runtime: { provider: "codex", model: "gpt-5.6-sol", effort: null, access: "workspace-write", approval: "user", permissionOptions: permissionPresets.codex },
+    space: "productivity",
+    projectId: "cleo-agent",
+    title: "补充回归测试",
+    summary: "为侧栏和检查器补测试",
+    updatedAt: "10 分钟前",
+    status: "completed",
+    changes: [],
+    usage: { used: 6140, limit: 128000, input: 5200, output: 940 },
+    items: [
+      { id: "user-tests-sub", type: "message", role: "user", content: "为新的侧栏和检查器补回归测试。", time: "16:44" },
+      { id: "assistant-tests-sub", type: "message", role: "assistant", content: "新增 4 项回归测试，其中 1 项暴露了侧栏行数问题，已交给主任务处理。", time: "16:46" },
     ],
   },
   {

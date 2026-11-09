@@ -83,7 +83,7 @@ try {
   assert.match(await page.getByLabel("发布版本", { exact: true }).innerText(), /v0.4.9/);
   await page.getByRole("button", { name: "关闭", exact: true }).click();
   await page.getByRole("button", { name: "其他任务运行（测试）", exact: true }).click();
-  await page.getByText("其他任务正在运行", { exact: true }).waitFor();
+  await page.getByText("其他任务正在运行，结束后才能修改 Cleo", { exact: true }).waitFor();
   assert.equal(await page.locator(".evolution-spin").count(), 0);
   assert.equal(await page.getByText("正在修改…", { exact: true }).count(), 0);
   await page.getByRole("button", { name: "其他任务运行（测试）", exact: true }).click();

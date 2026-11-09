@@ -50,6 +50,13 @@ def test_thread_view_titles_status_and_summary() -> None:
         "completed", "completed", "idle", "idle"]
 
 
+def test_thread_view_links_a_delegated_subtask_to_its_parent() -> None:
+    root = {"id": "t", "space": "productivity", "project": "p", "status": "completed"}
+    child = {**root, "id": "agent_1", "parent_session_id": "t", "routing_task_id": "task_abc"}
+    assert _thread(root)["parentId"] is None and _thread(root)["routingTaskId"] is None
+    assert _thread(child)["parentId"] == "t" and _thread(child)["routingTaskId"] == "task_abc"
+
+
 def test_workspace_view_defaults_to_productivity_without_an_active_thread() -> None:
     view = workspace_view(projects=[], threads=[], memory={"memories": []}, runtime={},
                           active=None, backend={})

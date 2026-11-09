@@ -16,9 +16,7 @@
 }
 
 @media (max-width: 760px) {
-  .app-shell { --rail-width: 52px; --gutter: 6px; }
-  .rail-button { width: 36px; height: 36px; }
-  .brand-mark { width: 32px; height: 32px; }
+  .app-shell { --sidebar-width: 232px; }
   .timeline { padding: 24px 18px 40px; }
   .message-entry.assistant .message-copy,
   .thought-group,

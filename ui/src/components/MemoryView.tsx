@@ -25,6 +25,8 @@ import type {
 interface MemoryViewProps {
   overview: MemoryOverview;
   mode: MemoryViewMode;
+  /** Switch between all memories, project memories and the consolidation queue. */
+  onModeChange?: (mode: MemoryViewMode) => void;
   refreshError?: string | null;
   refreshing?: boolean;
   onRetryRefresh?: () => void;
@@ -54,6 +56,7 @@ const viewCopy = {
 export function MemoryView({
   overview,
   mode,
+  onModeChange,
   refreshError,
   refreshing,
   onRetryRefresh,
@@ -142,7 +145,22 @@ export function MemoryView({
     <main className="memory-view" data-testid="memory-view" data-mode={mode}>
       <header className="memory-view-header">
         <div>
-          <h2>{copy.title}</h2>
+          <h2>{tr("app.memory")}</h2>
+          {onModeChange ? (
+            <div className="memory-tabs" role="tablist" aria-label={tr("app.memory")}>
+              {([
+                ["all", tr("threadsidebar.all_memories"), summary.active_memories],
+                ["projects", tr("memoryview.project_memories"), summary.project_memories],
+                ["pending", tr("memoryview.pending_sources"), summary.pending_sources],
+              ] as const).map(([value, label, count]) => (
+                <button key={value} type="button" role="tab" aria-selected={mode === value}
+                  className={mode === value ? "active" : ""} data-testid={`memory-nav-${value}`}
+                  onClick={() => onModeChange(value)}>
+                  {label}<small>{count}</small>
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
         <label className="memory-search">
           <Search size={15} />

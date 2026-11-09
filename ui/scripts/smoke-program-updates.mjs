@@ -120,7 +120,7 @@ try {
   };
   async function openUpdates() {
     if (!await settings.isVisible()) await page.getByRole("button", { name: "设置", exact: true }).click();
-    await settings.getByRole("button", { name: "更新", exact: true }).click();
+    await settings.getByRole("button", { name: "关于与更新", exact: true }).click();
     await page.locator(".update-settings-page").waitFor();
   }
   async function assertDisabled(button, disabled, message) {

@@ -1,7 +1,7 @@
 import { t as tr, getLanguage, setLanguage } from "./i18n.mjs";
 import { readUiLanguage } from "./language.mjs";
 import { desktopDataHome } from "./platform.mjs";
-import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme } from "electron";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readJson, writeJson } from "./evolution-store.mjs";
@@ -24,7 +24,9 @@ export async function startEvolutionMonitor() {
     app.quit(); return;
   }
   const window = new BrowserWindow({ width: 680, height: 780, minWidth: 460, minHeight: 480,
-    title: tr("evolution_monitor.cleo_evolution_companion"), autoHideMenuBar: true, backgroundColor: "#101417",
+    // Matches the window's first paint to the system theme it follows (see evolution-monitor.css).
+    title: tr("evolution_monitor.cleo_evolution_companion"), autoHideMenuBar: true,
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#161618" : "#ffffff",
     webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, partition: "cleo-companion",
       preload: join(dirname(fileURLToPath(import.meta.url)), "evolution-monitor-preload.cjs"),
       additionalArguments: [`--cleo-ui-language=${getLanguage()}`] } });

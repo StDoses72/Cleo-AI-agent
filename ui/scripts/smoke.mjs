@@ -43,7 +43,7 @@ try {
   const openInspector = window.getByRole("button", { name: "打开检查器", exact: true });
   if (await openInspector.isVisible()) await openInspector.click();
   const initialFit = await window.evaluate(() => {
-    const required = [".workspace-rail", ".thread-sidebar", ".conversation-shell", ".inspector"];
+    const required = [".thread-sidebar", ".conversation-shell", ".inspector"];
     return {
       viewport: { width: innerWidth, height: innerHeight },
       document: {
@@ -69,41 +69,31 @@ try {
 
   await window.getByTestId("thread-list").waitFor();
 
-  // Returning from another space must preserve the selected thread, not pick the first row.
+  // One list holds tasks and chats; leaving for memory and coming back through it keeps every selection and draft.
   await window.getByRole("button", { name: /^统一 managed 与 native sessions/ }).click();
-  for (const space of ["记忆", "对话"]) {
-    await window.getByRole("button", { name: space, exact: true }).click();
-    await window.getByRole("button", { name: "开发", exact: true }).click();
-    assert(await window.locator(".thread-row.active").innerText().then((text) => text.includes("统一 managed")),
-      `Returning from ${space} lost the selected productivity thread`);
-  }
-  await window.getByRole("button", { name: "开发", exact: true }).click();
+  await window.getByRole("button", { name: "记忆", exact: true }).click();
+  await window.getByTestId("memory-view").waitFor();
+  assert(await window.locator(".thread-row.active").count() === 0, "The memory view still highlights a conversation");
+  await window.getByRole("button", { name: /^统一 managed 与 native sessions/ }).click();
   assert((await window.locator(".thread-row.active").innerText()).includes("统一 managed"),
-    "Clicking the current space changed the selected thread");
-  await window.getByRole("button", { name: "对话", exact: true }).click();
+    "Returning from memory lost the selected productivity thread");
   await window.getByRole("button", { name: /^Cleo 的产品语气/ }).click();
-  await window.getByRole("button", { name: "开发", exact: true }).click();
-  await window.getByRole("button", { name: "对话", exact: true }).click();
   assert((await window.locator(".thread-row.active").innerText()).includes("Cleo 的产品语气"),
-    "Returning to chat lost its selected thread");
-  await window.getByRole("button", { name: "开发", exact: true }).click();
+    "A chat could not be opened from the shared list");
   await window.getByRole("button", { name: "在 Orbit Notes 中新建任务" }).click();
   await window.getByTestId("composer-input").fill("Keep this workspace draft");
-  for (const space of ["记忆", "对话"]) {
-    await window.getByRole("button", { name: space, exact: true }).click();
-    await window.getByRole("button", { name: "开发", exact: true }).click();
-    assert((await window.locator('[data-testid="project-target"] .project-target-name').innerText()).includes("Orbit Notes"),
-      `Returning from ${space} lost the selected empty workspace`);
-    assert(await window.getByTestId("composer-input").inputValue() === "Keep this workspace draft",
-      "Returning to an empty workspace lost its draft");
-    assert(await window.locator(".thread-row.active").count() === 0,
-      "Returning to an empty workspace selected an unrelated thread");
-  }
-  await window.getByRole("button", { name: "在 Cleo AI agent 中新建任务" }).click();
+  await window.getByRole("button", { name: "记忆", exact: true }).click();
   await window.getByTestId("new-thread").click();
+  assert((await window.locator('[data-testid="project-target"] .project-target-name').innerText()).includes("Orbit Notes"),
+    "Returning from memory lost the selected empty workspace");
+  assert(await window.getByTestId("composer-input").inputValue() === "Keep this workspace draft",
+    "Returning to an empty workspace lost its draft");
+  assert(await window.locator(".thread-row.active").count() === 0,
+    "Returning to an empty workspace selected an unrelated thread");
+  await window.getByRole("button", { name: "在 Cleo AI agent 中新建任务" }).click();
   await window.getByTestId("composer-input").fill("Unsent new task");
   await window.getByRole("button", { name: "记忆", exact: true }).click();
-  await window.getByRole("button", { name: "开发", exact: true }).click();
+  await window.getByTestId("new-thread").click();
   assert(await window.locator(".thread-row.active").count() === 0,
     "Returning to a new task selected an existing thread");
   assert(await window.getByTestId("composer-input").inputValue() === "Unsent new task",
@@ -111,9 +101,7 @@ try {
   await window.getByTestId("composer-input").fill("");
   await window.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
 
-  await window.getByRole("button", { name: "对话", exact: true }).click();
-  await window.getByRole("heading", { name: "对话", exact: true }).waitFor();
-  await window.getByTestId("new-thread").click();
+  await window.getByTestId("new-chat").click();
   await window.getByText("今天想聊些什么？").waitFor();
   await window.getByTestId("runtime-selector").click();
   await window.getByText("gpt-5.6-sol", { exact: true }).click();
@@ -122,7 +110,7 @@ try {
   await window.getByRole("button", { name: "记忆", exact: true }).click();
   await window.getByTestId("memory-view").waitFor();
   await window.getByTestId("memory-nav-projects").click();
-  await window.getByRole("heading", { name: "项目记忆", exact: true }).waitFor();
+  await window.getByRole("tab", { name: /项目记忆/, selected: true }).waitFor();
   await window.getByRole("button", { name: /Cleo-AI-agent/ }).click();
   await window.getByText("修改后列出变更文件", { exact: true }).click();
   await window.getByText("最近变更", { exact: true }).waitFor();
@@ -130,7 +118,7 @@ try {
   assert(await window.getByText("置信度", { exact: true }).count() === 0,
     "Project preferences still show synthetic confidence scores");
   await window.getByTestId("memory-nav-pending").click();
-  await window.getByRole("heading", { name: "整理队列", exact: true }).waitFor();
+  await window.getByRole("tab", { name: /整理队列/, selected: true }).waitFor();
   const reviewRowsBefore = await window.getByTestId("memory-review-list").locator("article").count();
   const firstReviewRow = window.getByTestId("memory-review-list").locator("article").first();
   await firstReviewRow.locator(".memory-review-toggle").click();
@@ -140,9 +128,8 @@ try {
   assert(await window.getByTestId("memory-review-list").locator("article").count() === reviewRowsBefore, "Reading changed the consolidation queue");
   await window.screenshot({ path: join(outputDir, "02-memory.png") });
 
-  await window.getByRole("button", { name: "开发", exact: true }).click();
-  await window.getByTestId("conversation").waitFor();
   await window.getByTestId("new-thread").click();
+  await window.getByTestId("conversation").waitFor();
   await window.getByText("开始新任务").waitFor();
   // The pill opens on a settings card; the model row leads to the harness and model lists.
   await window.getByTestId("runtime-selector").click();
@@ -211,60 +198,46 @@ try {
   await window.getByTestId("send-button").click();
   await window.waitForFunction(() => document.querySelectorAll('[data-testid="composer"] .attachment-chip').length === 0);
   await window.getByTestId("stop-button").waitFor();
-  await window.getByTestId("thought-group").waitFor({ timeout: 20_000 });
-  // The thought group opens on its own until the final answer lands; tool groups stay collapsed with a live header line.
-  // Expanded thought rows render as virtual rows after the group header, so look them up on the timeline.
+  await window.getByTestId("work-group").first().waitFor({ timeout: 20_000 });
+  // The live turn's work log stays open until the final answer lands, thoughts and tools in arrival order.
   await window.getByTestId("timeline").locator(".thought-entry").getByText("正在整理", { exact: false }).first().waitFor({ timeout: 20_000 });
-  await window.getByTestId("tool-group").getByText("2 项", { exact: false }).waitFor({ timeout: 5_000 });
+  await window.getByTestId("timeline").locator(".work-process-list[data-kind=tool]").first().waitFor({ timeout: 5_000 });
   const streamingLayout = await window.evaluate(() => {
     const timeline = document.querySelector('[data-testid="timeline"]');
-    const thoughtGroup = timeline?.querySelector('[data-testid="thought-group"]');
-    const toolGroup = timeline?.querySelector('[data-testid="tool-group"]');
+    const work = timeline?.querySelector('[data-testid="work-group"]');
     const assistant = timeline?.querySelector(".message-entry.assistant");
     const viewport = document.querySelector(".conversation-viewport");
-    const children = timeline ? Array.from(timeline.children) : [];
     return {
-      thoughtIndex: thoughtGroup ? children.indexOf(thoughtGroup.closest("[data-row-id]")) : -1,
-      toolIndex: toolGroup ? children.indexOf(toolGroup.closest("[data-row-id]")) : -1,
-      assistantIndex: assistant ? children.indexOf(assistant.closest("[data-row-id]")) : -1,
-      thoughtExpanded: thoughtGroup?.querySelector("button")?.getAttribute("aria-expanded"),
+      workExpanded: work?.querySelector("button")?.getAttribute("aria-expanded"),
+      assistant: Boolean(assistant),
       distanceFromBottom: viewport
         ? viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight
         : Number.POSITIVE_INFINITY,
     };
   });
-  assert(
-    streamingLayout.thoughtIndex >= 0
-      && streamingLayout.toolIndex >= 0
-      && streamingLayout.assistantIndex === -1
-      && streamingLayout.thoughtExpanded === "true",
-    "Process text was hidden before a final answer arrived",
-  );
-  assert(streamingLayout.thoughtIndex < streamingLayout.toolIndex, "Thought group should sit above the tool group");
+  assert(streamingLayout.workExpanded === "true" && !streamingLayout.assistant, "Process text was hidden before a final answer arrived");
   assert(streamingLayout.distanceFromBottom < 24, "Streaming timeline did not follow the latest text");
   await window.getByRole("heading", { name: "运行完成", exact: true }).waitFor({ timeout: 20_000 });
   await window.getByText("真实后端接入后，这些事件会保持同一结构从 IPC bridge 流入").waitFor({ timeout: 20_000 });
   await window.locator(".change-summary").getByText("2 个文件", { exact: true }).waitFor();
-  const thoughtGroupButton = window.getByTestId("thought-group").getByRole("button").first();
-  assert(
-    await thoughtGroupButton.getAttribute("aria-expanded") === "false",
-    "Completed thought group was not collapsed by default",
-  );
-  await thoughtGroupButton.click();
-  assert(await window.locator(".thought-entry").count() === 2, "Thought group did not retain all progress text");
+  await window.getByTestId("changes-card").getByText("2 个文件有改动", { exact: true }).waitFor();
+  // Work is grouped between boundaries (the plan splits it), so a turn has one or two work logs, all folded once answered.
+  const workGroups = await window.getByTestId("work-group").count();
+  assert(workGroups >= 1 && workGroups <= 2, `A turn's work was split into ${workGroups} logs`);
+  const workButtons = window.getByTestId("work-group").getByRole("button");
+  for (let index = 0; index < workGroups; index++) {
+    assert(await workButtons.nth(index).getAttribute("aria-expanded") === "false", "Completed work log was not collapsed by default");
+  }
+  for (let index = 0; index < workGroups; index++) await workButtons.nth(index).click();
+  assert(await window.locator(".thought-entry").count() === 2, "The work log did not retain all progress text");
+  assert(await window.getByTestId("tool-process").count() === 3, "The work log did not retain every tool call");
   assert(await window.locator(".plan-entry").count() === 1, "Plan updates created duplicate cards");
+  const planToggle = window.locator(".plan-collapsed");
+  if (await planToggle.count()) await planToggle.click();
   assert(
     await window.locator('.plan-entry li[data-status="done"]').count() === 3,
     "Plan card did not receive the latest incremental step state",
   );
-  assert(await window.getByTestId("tool-group").count() === 1, "Tool calls were not grouped");
-  const toolGroupButton = window.getByTestId("tool-group").getByRole("button");
-  assert(
-    await toolGroupButton.getAttribute("aria-expanded") === "false",
-    "Completed tool group was not collapsed by default",
-  );
-  await toolGroupButton.click();
-  assert(await window.getByTestId("tool-process").count() === 3, "Tool group did not retain every process");
   assert(await window.locator(".message-entry.assistant li").count() === 3, "Markdown list did not render");
   assert(
     await window.getByRole("link", { name: "渲染说明" }).getAttribute("target") === "_blank",
@@ -281,8 +254,7 @@ try {
   );
   assert(await window.getByTestId("runtime-selector").getAttribute("data-effort") === "low", "Created thread did not keep draft effort");
   await window.screenshot({ path: join(outputDir, "04a-process-expanded.png") });
-  await thoughtGroupButton.click();
-  await toolGroupButton.click();
+  for (let index = 0; index < workGroups; index++) await workButtons.nth(index).click();
   await window.screenshot({ path: join(outputDir, "04-completed-turn.png") });
 
   await window.getByTestId("composer-input").fill("请运行需要审批的 git commit");
@@ -307,10 +279,10 @@ try {
   await window.getByTestId("approval-prompt").waitFor({ state: "detached" });
   await window.screenshot({ path: join(outputDir, "04c-approval-denied.png") });
 
-  await window.getByRole("button", { name: "运行记录", exact: true }).click();
-  await window.getByRole("button", { name: "上下文", exact: true }).click();
+  await window.getByRole("button", { name: "更多", exact: true }).click();
+  await window.getByRole("button", { name: "查看运行记录", exact: true }).click();
+  await window.getByRole("tab", { name: "概况", exact: true, selected: true }).waitFor();
   await window.getByTestId("inspector").getByText("运行参数", { exact: true }).waitFor();
-  await window.getByRole("button", { name: "运行", exact: true }).click();
   await window.getByText("上次运行已完成").waitFor();
 
   await window.keyboard.press("Control+K");
@@ -323,19 +295,19 @@ try {
   await checkSettingsLayout(window);
   await window.getByRole("button", { name: /浅色/ }).click();
   await window.screenshot({ path: join(outputDir, "06-settings-light.png") });
-  await window.getByRole("button", { name: "数据与记忆", exact: true }).click();
+  await window.getByRole("button", { name: "记忆整理", exact: true }).click();
   await window.getByRole("checkbox", { name: "后台记忆整理", exact: true }).waitFor();
   assert(!await window.getByLabel("来源标识", { exact: true }).isVisible(), "Optional sources should start collapsed");
   await window.screenshot({ path: join(outputDir, "06b-settings-memory.png") });
-  await window.getByRole("button", { name: "模型", exact: true }).click();
+  await window.getByRole("button", { name: "模型连接", exact: true }).click();
   await window.getByRole("button", { name: "切换模型", exact: true }).waitFor();
-  await window.locator(".settings-model-subnav").getByRole("button", { name: "新增连接", exact: true }).click();
+  await window.locator(".settings-heading").getByRole("button", { name: "新增连接", exact: true }).click();
   await window.getByRole("tab", { name: "API 密钥", exact: true }).waitFor();
   await window.getByRole("button", { name: "O OpenAI", exact: true }).click();
   await window.getByLabel("API Key").waitFor();
   await window.screenshot({ path: join(outputDir, "06c-settings-models.png") });
-  await window.getByRole("button", { name: "更新", exact: true }).click();
-  await window.getByRole("heading", { name: "软件更新", exact: true }).waitFor();
+  await window.getByRole("button", { name: "关于与更新", exact: true }).click();
+  await window.getByRole("heading", { name: "关于与更新", exact: true }).waitFor();
   await window.getByText("开发版本不检查更新", { exact: false }).waitFor();
   await window.screenshot({ path: join(outputDir, "06d-settings-updates.png") });
   await window.keyboard.press("Escape");
@@ -390,27 +362,27 @@ try {
   await window.getByTestId("composer-input").waitFor({ state: "visible" });
   await window.screenshot({ path: join(outputDir, "08-recoverable-error.png") });
 
-  await window.getByRole("button", { name: "对话", exact: true }).click();
-  const chatRowsBeforeDelete = await window.locator(".thread-row").count();
-  await window.locator(".thread-row").first().hover();
-  await window.getByTestId("delete-thread").first().click();
+  const chatRows = '[data-section="section:chat"] .thread-row';
+  const chatRowsBeforeDelete = await window.locator(chatRows).count();
+  await window.locator(chatRows).first().hover();
+  await window.locator(chatRows).first().getByTestId("delete-thread").click();
   await window.getByRole("alertdialog").waitFor();
   await window.screenshot({ path: join(outputDir, "09-delete-chat-confirmation.png") });
   await window.getByRole("button", { name: "永久删除", exact: true }).click();
   await window.waitForFunction(
-    (count) => document.querySelectorAll(".thread-row").length === count - 1,
-    chatRowsBeforeDelete,
+    ([selector, count]) => document.querySelectorAll(selector).length === count - 1,
+    [chatRows, chatRowsBeforeDelete],
   );
 
-  await window.getByRole("button", { name: "开发", exact: true }).click();
-  const productivityRowsBeforeDelete = await window.locator(".thread-row").count();
-  await window.locator(".thread-row").first().hover();
-  await window.getByTestId("delete-thread").first().click();
+  const productivityRows = '[data-section="section:productivity"] .thread-row:not([data-status="running"])';
+  const productivityRowsBeforeDelete = await window.locator(productivityRows).count();
+  await window.locator(productivityRows).first().hover();
+  await window.locator(productivityRows).first().getByTestId("delete-thread").click();
   await window.getByText("外部客户端中的会话会保留。", { exact: false }).waitFor();
   await window.getByRole("button", { name: "永久删除", exact: true }).click();
   await window.waitForFunction(
-    (count) => document.querySelectorAll(".thread-row").length === count - 1,
-    productivityRowsBeforeDelete,
+    ([selector, count]) => document.querySelectorAll(selector).length === count - 1,
+    [productivityRows, productivityRowsBeforeDelete],
   );
   await window.screenshot({ path: join(outputDir, "10-delete-productivity-complete.png") });
 

@@ -145,6 +145,10 @@ def thread_view(
         "runtime": runtime,
         "terminal": terminal_lines(events),
         "skills": skills,
+        # A subtask that subtask routing delegated: the conversation that started it, so the
+        # desktop can list it under its parent instead of as an unrelated task.
+        "parentId": manifest.get("parent_session_id") or None,
+        "routingTaskId": manifest.get("routing_task_id") or None,
     }
 
 

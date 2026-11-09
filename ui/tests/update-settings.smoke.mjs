@@ -67,7 +67,7 @@ try {
   const settings = page.getByRole("dialog", { name: "设置", exact: true });
   const open = async () => {
     await page.getByRole("button", { name: "设置", exact: true }).click();
-    await settings.getByRole("button", { name: "更新", exact: true }).click();
+    await settings.getByRole("button", { name: "关于与更新", exact: true }).click();
   };
   await open();
   const download = settings.getByRole("button", { name: "下载更新", exact: true });

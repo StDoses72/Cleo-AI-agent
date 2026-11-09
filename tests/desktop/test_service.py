@@ -1247,6 +1247,44 @@ def test_productivity_thread_restores_nested_repo_diff_from_latest_turn(tmp_path
     asyncio.run(scenario())
 
 
+def test_delegated_subtask_reads_as_running_while_its_parent_run_is_live(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def scenario() -> None:
+        service = _service(tmp_path)
+        for session_id in ("parent-task", "agent_child"):
+            service.store.create_session(
+                session_id=session_id, space="productivity", project="workspace", provider="codex",
+                owner_type="user" if session_id == "parent-task" else "agent",
+                native_session_id=f"native-{session_id}", cwd=str(tmp_path / "workspace"),
+            )
+        service.store.update_manifest(
+            "agent_child", parent_session_id="parent-task", routing_task_id="task_1", status="running",
+        )
+        live = {"parent-task"}
+        monkeypatch.setattr(service._runs, "is_running", lambda thread_id: thread_id in live)
+
+        child = await service._thread(service.store.load_manifest("agent_child"), include_history=False)
+        assert child["status"] == "running"
+        assert child["parentId"] == "parent-task" and child["routingTaskId"] == "task_1"
+        # A grandchild runs inside the same root run.
+        service.store.create_session(
+            session_id="agent_grandchild", space="productivity", project="workspace", provider="codex",
+            owner_type="agent", native_session_id="native-grandchild", cwd=str(tmp_path / "workspace"),
+        )
+        service.store.update_manifest(
+            "agent_grandchild", parent_session_id="agent_child", routing_task_id="task_2", status="running",
+        )
+        grandchild = await service._thread(service.store.load_manifest("agent_grandchild"), include_history=False)
+        assert grandchild["status"] == "running"
+        # Once the parent run is gone, a child still marked running was interrupted.
+        live.clear()
+        child = await service._thread(service.store.load_manifest("agent_child"), include_history=False)
+        assert child["status"] == "attention"
+
+    asyncio.run(scenario())
+
+
 def test_productivity_turn_persists_and_emits_exact_change_history(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

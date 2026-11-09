@@ -17,6 +17,7 @@ interface Window {
     computer?(action: "state" | "viewport" | "browser" | "mode" | "authorize" | "takeover" | "handback" | "stop" | "shortcut" | "preview", params?: Record<string, unknown>): Promise<import("./computer-types").ComputerState>;
     onComputerState?(listener: (state: import("./computer-types").ComputerState) => void): () => void;
     files?<T = unknown>(op: "list" | "read" | "locate", params: Record<string, unknown>): Promise<T>;
+    git?<T = unknown>(op: import("./types").SourceControlOp, params: Record<string, unknown>): Promise<T>;
     request<T = unknown>(method: string, params?: Record<string, unknown>, streamId?: string | null): Promise<T>;
     onStreamEvent(listener: (payload: { streamId: string; event: unknown }) => void): () => void;
     pickAttachments(): Promise<import("./types").Attachment[]>;

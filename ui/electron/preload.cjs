@@ -42,6 +42,7 @@ if (!process.argv.includes("--cleo-desktop-mock")) {
       return () => ipcRenderer.removeListener("cleo:computer:state", handler);
     },
     files: (op, params = {}) => ipcRenderer.invoke("cleo:files", op, params),
+    git: (op, params = {}) => ipcRenderer.invoke("cleo:git", op, params),
     request: (method, params = {}, streamId = null) =>
       ipcRenderer.invoke("cleo:request", { method, params, streamId }),
     onStreamEvent: (listener) => {

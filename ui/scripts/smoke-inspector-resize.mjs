@@ -52,7 +52,7 @@ async function dragBy(delta) {
 }
 try {
   await page.goto(`http://127.0.0.1:${server.address().port}`);
-  await page.getByRole("button", { name: "开发", exact: true }).click();
+  // The mock workspace opens on a development task, so its details panel is already showing.
   await inspector.waitFor();
   await page.waitForFunction(() => document.querySelector('.inspector').getBoundingClientRect().width >= 280);
   await verifySideBySide(360);
@@ -68,7 +68,8 @@ try {
   assert.equal(await width(), expanded, "Pointer movement after release still resizes");
   assert.ok(Math.abs(await dragBy(45) - (expanded - 45)) < 2);
 
-  for (const name of ["上下文", "运行", "变更"]) {
+  // 文件 and 电脑 only exist in the desktop app; this browser build has 变更 and 概况.
+  for (const name of ["概况", "变更"]) {
     const before = await width();
     await inspector.locator(".inspector-tabs button").filter({ hasText: name }).click();
     await verifyTabs();
@@ -96,13 +97,16 @@ try {
     await verifySideBySide(viewportWidth >= 980 ? 360 : viewportWidth >= 800 ? 240 : 200);
     await verifyTabs();
   }
-  await page.getByRole("button", { name: "收起侧栏", exact: true }).click();
+  // At narrow widths the sidebar may already have collapsed itself.
+  const collapse = page.getByRole("button", { name: "收起侧栏", exact: true });
+  if (await collapse.count()) await collapse.click();
   await page.waitForFunction(() => document.querySelector('.thread-sidebar').getBoundingClientRect().width <= 1);
   await dragBy(-1000);
   await verifySideBySide(360);
   assert.ok(await width() >= 280, "Collapsing the sidebar did not restore inspector space");
   await inspector.getByRole("button", { name: "关闭检查器", exact: true }).click({ trial: true });
-  for (const name of ["上下文", "运行", "变更"]) {
+  // 文件 and 电脑 only exist in the desktop app; this browser build has 变更 and 概况.
+  for (const name of ["概况", "变更"]) {
     await inspector.locator(".inspector-tabs button").filter({ hasText: name }).click();
     await verifyTabs();
   }

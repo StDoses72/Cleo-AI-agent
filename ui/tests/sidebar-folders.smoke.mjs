@@ -29,7 +29,11 @@ try {
         ...structuredClone(template), id: `${projectId}-extra-${index}`, projectId, title: `${projectId} 任务 ${index}`, items: [], changes: [], changeHistory: [],
       });
     };
-    pad("cleo-agent", limit + 3 - fixture.threads.filter(thread => thread.projectId === "cleo-agent").length);
+    // Threads that need the user or are running are listed at the top, not in their folder;
+    // delegated subtasks are nested under their parent and do not count as folder rows.
+    const settled = projectId => fixture.threads.filter(thread => thread.projectId === projectId && !thread.parentId
+      && thread.status !== "attention" && thread.status !== "running" && !thread.waitingFor).length;
+    pad("cleo-agent", limit + 3 - settled("cleo-agent"));
     pad("orbit-notes", limit + 2);
     window.cleoDesktop = {
       request: async (method, params = {}) => {
@@ -53,7 +57,7 @@ try {
   await page.goto(server.resolvedUrls.local[0]);
   await page.getByTestId("thread-list").waitFor();
   const folder = id => page.locator(`section[data-project-id="${id}"]`);
-  const rows = id => folder(id).locator(".thread-row");
+  const rows = id => folder(id).locator(".thread-row:not(.child-row)");
   const more = id => folder(id).locator(".thread-more");
   const toggle = id => folder(id).locator(".folder-group-toggle");
   const cleo = "cleo-agent", orbit = "orbit-notes";

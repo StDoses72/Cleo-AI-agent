@@ -9,7 +9,7 @@ import { checkContribution, submitContribution, inspectPullRequest, contribution
 import { runEvolutionTurn } from "./evolution-editing.mjs";
 import { rmSync } from "node:fs";
 import {
-  app, BrowserWindow, Menu, Tray, WebContentsView, clipboard, dialog, globalShortcut, ipcMain, nativeImage, protocol, screen, session, shell,
+  app, BrowserWindow, Menu, Tray, WebContentsView, clipboard, dialog, globalShortcut, ipcMain, nativeImage, nativeTheme, protocol, screen, session, shell,
 } from "electron";
 import { trustedPreviewSender } from "./computer-preview.mjs";
 import { ComputerUse, registerComputerSchemes } from "./computer/index.mjs";
@@ -25,6 +25,7 @@ import {
 import { BackendBridge } from "./backend.mjs";
 import { configureReleaseChannel } from "./release-channel.mjs";
 import { openLocalHref } from "./local-files.mjs";
+import { createSourceControl } from "./source-control.mjs";
 import { SelectableUpdater, SelectableProgramUpdates, prepareSelectedRelease } from "./selectable-updates.mjs";
 import { checkReleasePermission, previewRelease, publishRelease, publishMergedRelease, previewMergedRelease } from "./github-releases.mjs";
 import { releaseBuilds, publishReleasePackages, releasePackageStatus } from "./release-packages.mjs";
@@ -48,8 +49,13 @@ import { readJson } from "./evolution-store.mjs";
 import { createStorageQueue, defaultLauncherPaths, reclaimStorage, storageInventory } from "./storage-reclaim.mjs";
 import { defaultRuntimeRoot } from "./online-runtime.mjs";
 
+/** The theme chosen in the main window (light/dark), handed to secondary windows; null = system. */
+let windowTheme = null;
 if (process.argv.includes("--cleo-evolution-monitor")) {
   configureReleaseChannel(app);
+  // The companion window wears the main window's theme when it was handed one.
+  const theme = process.argv.find((argument) => argument.startsWith("--cleo-theme="))?.slice("--cleo-theme=".length);
+  if (theme === "light" || theme === "dark") nativeTheme.themeSource = theme;
   await startEvolutionMonitor();
 } else {
 const here = dirname(fileURLToPath(import.meta.url));
@@ -191,7 +197,8 @@ async function openEvolutionMonitor() {
   monitorLaunching = (async () => {
     const presence = await readJson(join(monitorStore.root, "presence.json"), {});
     if (presence.version === app.getVersion() && Date.now() - (presence.updatedAt || 0) < 7000) return;
-    await launchDesktop(process.execPath, ["--cleo-evolution-monitor", `--user-data-dir=${app.getPath("userData")}`],
+    await launchDesktop(process.execPath, ["--cleo-evolution-monitor", `--user-data-dir=${app.getPath("userData")}`,
+      ...(windowTheme ? [`--cleo-theme=${windowTheme}`] : [])],
       { ...process.env, CLEO_HOME: evolution.store.dataHome, CLEO_EVOLUTION_CHILD: "1" });
   })();
   try { await monitorLaunching; } finally { monitorLaunching = null; }
@@ -240,7 +247,8 @@ async function applyEvolution(id) {
   try {
     await openEvolutionMonitor();
     const controller = await launchDesktop(process.execPath,
-      [`--cleo-apply-parent=${process.pid}`, `--user-data-dir=${app.getPath("userData")}`],
+      [`--cleo-apply-parent=${process.pid}`, `--user-data-dir=${app.getPath("userData")}`,
+        ...(windowTheme ? [`--cleo-theme=${windowTheme}`] : [])],
       { ...process.env, CLEO_HOME: evolution.store.dataHome });
     await waitForControllerReady(evolution.store, tx.id, controller);
     await backend.close();
@@ -403,11 +411,11 @@ function createWindow() {
     icon: iconPath,
     backgroundColor: "#0b0d10",
     titleBarStyle: "hidden",
-    ...(process.platform === "darwin" ? { trafficLightPosition: { x: 14, y: 14 } } : {}),
+    ...(process.platform === "darwin" ? { trafficLightPosition: { x: 14, y: 11 } } : {}),
     titleBarOverlay: process.platform === "darwin" ? false : {
-      color: "#0b0e12",
-      symbolColor: "#848c98",
-      height: 44,
+      color: "#111113",
+      symbolColor: "#98989e",
+      height: 38,
     },
     webPreferences: {
       contextIsolation: true,
@@ -464,6 +472,11 @@ app.whenReady().then(async () => {
     if (!trustedPreviewSender(event, appUrl)) throw new Error(tr("main.the_file_sidebar_is_available_only_to_cleo_s_main_window"));
     return computer.handleFiles(String(op), params && typeof params === "object" ? params : {});
   });
+  const sourceControl = createSourceControl();
+  ipcMain.handle("cleo:git", (event, op, params = {}) => {
+    if (!trustedPreviewSender(event, appUrl)) throw new Error(tr("main.the_file_sidebar_is_available_only_to_cleo_s_main_window"));
+    return sourceControl(String(op), params && typeof params === "object" ? params : {});
+  });
   // Take-over and stop clicks from Cleo's own overlay page and host status bar.
   ipcMain.on("cleo:computer:overlay", (event, action) => computer.overlay(event.sender, String(action)));
   const attachmentTempRoot = join(app.getPath("temp"), "Cleo", "attachments", randomUUID());
@@ -495,12 +508,16 @@ app.whenReady().then(async () => {
   });
   ipcMain.on("cleo:window-theme", (event, theme) => {
     if (theme !== "light" && theme !== "dark") return;
+    // Secondary windows (restart window here, the companion window in its own process) follow the
+    // theme chosen in the main window rather than the system's.
+    windowTheme = theme;
+    nativeTheme.themeSource = theme;
     if (process.platform !== "win32" && process.platform !== "linux") return;
     const window = BrowserWindow.fromWebContents(event.sender);
     if (!window || window.isDestroyed()) return;
     window.setTitleBarOverlay({
-      color: theme === "light" ? "#e9e9e6" : "#0b0e12",
-      symbolColor: theme === "light" ? "#59636f" : "#848c98",
+      color: theme === "light" ? "#f7f7f6" : "#111113",
+      symbolColor: theme === "light" ? "#59636f" : "#98989e",
     });
   });
   ipcMain.handle("cleo:request", async (event, payload) => {

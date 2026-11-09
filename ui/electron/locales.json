@@ -1940,8 +1940,8 @@
     "en": "Waiting for GitHub authorization"
   },
   "evolutionpanel.other_tasks_are_running": {
-    "zh-CN": "其他任务正在运行",
-    "en": "Other tasks are running"
+    "zh-CN": "其他任务正在运行，结束后才能修改 Cleo",
+    "en": "Other tasks are running; Cleo can be changed once they finish"
   },
   "evolutionpanel.checks_failed_changes_cannot_be_applied_yet": {
     "zh-CN": "检查未通过，修改尚不可应用",
@@ -7654,5 +7654,805 @@
   "routing.companion_returns_to_main": {
     "zh-CN": "补充需求已保存；主界面恢复后，此窗口自动关闭，请回到原进化会话继续。",
     "en": "Additional requirements are saved. This window closes when the main interface returns; continue in the original Evolution conversation."
+  },
+  "overlays.recent_conversations": {
+    "zh-CN": "最近",
+    "en": "Recent"
+  },
+  "overlays.conversations": {
+    "zh-CN": "任务与对话",
+    "en": "Tasks and chats"
+  },
+  "overlays.commands": {
+    "zh-CN": "命令",
+    "en": "Commands"
+  },
+  "sidebar.navigation": {
+    "zh-CN": "导航",
+    "en": "Navigation"
+  },
+  "sidebar.search": {
+    "zh-CN": "搜索",
+    "en": "Search"
+  },
+  "sidebar.evolution_hint": {
+    "zh-CN": "描述你想要的改变，让 Cleo 修改自己的界面和功能",
+    "en": "Describe a change and let Cleo edit its own interface and features"
+  },
+  "app.open_evolution": {
+    "zh-CN": "打开进化",
+    "en": "Open evolution"
+  },
+  "app.toggle_sidebar_hint": {
+    "zh-CN": "显示或隐藏左侧导航",
+    "en": "Show or hide the navigation column"
+  },
+  "app.switch_to_light_theme": {
+    "zh-CN": "切换到浅色主题",
+    "en": "Switch to light theme"
+  },
+  "app.switch_to_dark_theme": {
+    "zh-CN": "切换到深色主题",
+    "en": "Switch to dark theme"
+  },
+  "conversation.work_thoughts": {
+    "zh-CN": "{p0} 段思考",
+    "en": "{p0} thoughts"
+  },
+  "conversation.work_done": {
+    "zh-CN": "已处理",
+    "en": "Worked"
+  },
+  "conversation.work_failed": {
+    "zh-CN": "{p0} 个失败",
+    "en": "{p0} failed"
+  },
+  "inspector.details": {
+    "zh-CN": "概况",
+    "en": "Details"
+  },
+  "inspector.details_panel": {
+    "zh-CN": "详情面板",
+    "en": "Details panel"
+  },
+  "inspector.no_file_changes_hint": {
+    "zh-CN": "这个任务改动文件后会在这里逐个列出，可以查看差异或撤销。",
+    "en": "Files this task changes are listed here to review or undo."
+  },
+  "inspector.current_workspace_title": {
+    "zh-CN": "当前工作区",
+    "en": "Current workspace"
+  },
+  "inspector.undo_latest_turn": {
+    "zh-CN": "撤销上一轮",
+    "en": "Undo last turn"
+  },
+  "inspector.changed_files": {
+    "zh-CN": "改动的文件",
+    "en": "Changed files"
+  },
+  "inspector.open_in_files": {
+    "zh-CN": "在文件中打开",
+    "en": "Open in Files"
+  },
+  "inspector.no_memories_yet": {
+    "zh-CN": "还没有可用的记忆。",
+    "en": "No memories yet."
+  },
+  "conversation.review_value_changed_files": {
+    "zh-CN": "查看 {p0} 个改动文件",
+    "en": "Review {p0} changed files"
+  },
+  "conversation.value_files": {
+    "zh-CN": "{p0} 个文件",
+    "en": "{p0} files"
+  },
+  "conversation.workspace_changes": {
+    "zh-CN": "工作区改动",
+    "en": "Workspace changes"
+  },
+  "conversation.value_files_changed": {
+    "zh-CN": "{p0} 个文件有改动",
+    "en": "{p0} files changed"
+  },
+  "conversation.review_changes": {
+    "zh-CN": "查看改动",
+    "en": "Review"
+  },
+  "conversation.and_value_more_files": {
+    "zh-CN": "还有 {p0} 个文件",
+    "en": "{p0} more files"
+  },
+  "sourcecontrol.no_repository": {
+    "zh-CN": "这个任务没有关联 Git 仓库。",
+    "en": "This task has no git repository."
+  },
+  "review.comments_intro": {
+    "zh-CN": "请根据以下审查意见修改代码：",
+    "en": "Please address these review comments:"
+  },
+  "review.removed_line": {
+    "zh-CN": "删除的行",
+    "en": "removed line"
+  },
+  "review.committed_value": {
+    "zh-CN": "已提交 {p0}",
+    "en": "Committed {p0}"
+  },
+  "review.pushed_value": {
+    "zh-CN": "已推送到 {p0}",
+    "en": "Pushed {p0}"
+  },
+  "review.pull_request_opened_value": {
+    "zh-CN": "已创建 PR：{p0}",
+    "en": "Pull request opened: {p0}"
+  },
+  "review.pull_request_opened": {
+    "zh-CN": "已创建 PR",
+    "en": "Pull request opened"
+  },
+  "review.detached_head": {
+    "zh-CN": "游离提交",
+    "en": "detached HEAD"
+  },
+  "review.commits_to_push": {
+    "zh-CN": "待推送的提交",
+    "en": "Commits to push"
+  },
+  "review.commits_to_pull": {
+    "zh-CN": "远端有新提交",
+    "en": "Commits to pull"
+  },
+  "review.commit_all_changes": {
+    "zh-CN": "提交工作区的全部改动",
+    "en": "Commit every change in the working tree"
+  },
+  "review.nothing_to_commit": {
+    "zh-CN": "没有可提交的改动",
+    "en": "Nothing to commit"
+  },
+  "review.commit": {
+    "zh-CN": "提交",
+    "en": "Commit"
+  },
+  "review.push_hint": {
+    "zh-CN": "把当前分支推送到 origin",
+    "en": "Push this branch to origin"
+  },
+  "review.push": {
+    "zh-CN": "推送",
+    "en": "Push"
+  },
+  "review.create_pull_request_hint": {
+    "zh-CN": "用 GitHub CLI 为当前分支创建 PR",
+    "en": "Open a pull request for this branch with the GitHub CLI"
+  },
+  "review.push_before_pull_request": {
+    "zh-CN": "先提交并推送，再创建 PR",
+    "en": "Commit and push before opening a pull request"
+  },
+  "review.pull_request": {
+    "zh-CN": "创建 PR",
+    "en": "Pull request"
+  },
+  "review.commit_message_placeholder": {
+    "zh-CN": "提交说明（Ctrl+Enter 提交）",
+    "en": "Commit message (Ctrl+Enter to commit)"
+  },
+  "review.commit_message": {
+    "zh-CN": "提交说明",
+    "en": "Commit message"
+  },
+  "review.push_after_commit": {
+    "zh-CN": "提交后推送",
+    "en": "Push after commit"
+  },
+  "review.commit_value_files": {
+    "zh-CN": "提交 {p0} 个文件",
+    "en": "Commit {p0} files"
+  },
+  "review.comment_placeholder": {
+    "zh-CN": "写下审查意见（Ctrl+Enter 添加）",
+    "en": "Leave a review note (Ctrl+Enter to add)"
+  },
+  "review.add_comment": {
+    "zh-CN": "添加评论",
+    "en": "Add comment"
+  },
+  "review.value_comments": {
+    "zh-CN": "{p0} 条审查意见",
+    "en": "{p0} review comments"
+  },
+  "review.discard_comments": {
+    "zh-CN": "丢弃审查意见",
+    "en": "Discard comments"
+  },
+  "review.send_to_agent": {
+    "zh-CN": "发给 Agent",
+    "en": "Send to agent"
+  },
+  "review.revert_file_confirm": {
+    "zh-CN": "撤销 {p0} 的全部改动？已跟踪的文件会恢复到上次提交，新建的文件会被删除。",
+    "en": "Revert every change to {p0}? Tracked files return to the last commit; new files are deleted."
+  },
+  "review.file_reverted_value": {
+    "zh-CN": "已撤销 {p0}",
+    "en": "Reverted {p0}"
+  },
+  "review.revert_file_value": {
+    "zh-CN": "撤销 {p0} 的改动",
+    "en": "Revert {p0}"
+  },
+  "review.comment_on_line_value": {
+    "zh-CN": "评论第 {p0} 行",
+    "en": "Comment on line {p0}"
+  },
+  "conversation.worktree_on_hint": {
+    "zh-CN": "发送时为这个任务新建 git worktree 和 cleo/ 分支，改动不碰当前目录",
+    "en": "On send, create a git worktree on a cleo/ branch so this task never touches the current checkout"
+  },
+  "conversation.worktree_off_hint": {
+    "zh-CN": "在项目当前目录里运行；点一下改为隔离到新的 worktree",
+    "en": "Runs in the project folder as it is; click to isolate it in a new worktree"
+  },
+  "conversation.new_worktree": {
+    "zh-CN": "新 worktree",
+    "en": "New worktree"
+  },
+  "conversation.current_folder": {
+    "zh-CN": "当前目录",
+    "en": "Current folder"
+  },
+  "conversation.context_used_value": {
+    "zh-CN": "上下文已用 {p0}%",
+    "en": "{p0}% of context used"
+  },
+  "conversation.context_used_detail": {
+    "zh-CN": "上下文已用 {p0}%（{p1}k / {p2}k），点击查看详情",
+    "en": "{p0}% of context used ({p1}k / {p2}k); click for details"
+  },
+  "conversation.work_run": {
+    "zh-CN": "运行 {p0} 条命令",
+    "en": "ran {p0} commands"
+  },
+  "conversation.work_edit": {
+    "zh-CN": "编辑 {p0} 处",
+    "en": "edited {p0}"
+  },
+  "conversation.work_read": {
+    "zh-CN": "读取 {p0} 次",
+    "en": "read {p0}"
+  },
+  "conversation.work_web": {
+    "zh-CN": "浏览器操作 {p0} 次",
+    "en": "{p0} browser actions"
+  },
+  "conversation.work_agent": {
+    "zh-CN": "{p0} 个子任务",
+    "en": "{p0} subtasks"
+  },
+  "conversation.work_other": {
+    "zh-CN": "{p0} 个其他工具",
+    "en": "{p0} other tools"
+  },
+  "conversation.plan_complete_value": {
+    "zh-CN": "计划完成 · {p0} 步",
+    "en": "Plan done · {p0} steps"
+  },
+  "conversation.collapse_plan": {
+    "zh-CN": "收起计划",
+    "en": "Collapse plan"
+  },
+  "notify.needs_approval": {
+    "zh-CN": "需要你批准一个操作",
+    "en": "Needs your approval"
+  },
+  "notify.needs_answer": {
+    "zh-CN": "Agent 在等你回答",
+    "en": "The agent is waiting for your answer"
+  },
+  "notify.needs_attention": {
+    "zh-CN": "运行停止了，需要查看",
+    "en": "The run stopped and needs a look"
+  },
+  "notify.finished": {
+    "zh-CN": "任务完成",
+    "en": "Finished"
+  },
+  "app.turn_off_notifications": {
+    "zh-CN": "关闭桌面通知",
+    "en": "Turn off desktop notifications"
+  },
+  "app.turn_on_notifications": {
+    "zh-CN": "开启桌面通知",
+    "en": "Turn on desktop notifications"
+  },
+  "app.notifications_hint": {
+    "zh-CN": "你没在看的任务完成或等你处理时提醒",
+    "en": "Alert when a task you are not watching finishes or needs you"
+  },
+  "settings.group_general": {
+    "zh-CN": "通用",
+    "en": "General"
+  },
+  "settings.group_agent": {
+    "zh-CN": "模型与 Agent",
+    "en": "Models and agents"
+  },
+  "settings.group_memory": {
+    "zh-CN": "记忆与数据",
+    "en": "Memory and data"
+  },
+  "settings.models_nav": {
+    "zh-CN": "模型连接",
+    "en": "Model connections"
+  },
+  "settings.memory_nav": {
+    "zh-CN": "记忆整理",
+    "en": "Memory consolidation"
+  },
+  "settings.import_nav": {
+    "zh-CN": "Claude / Codex 原生配置",
+    "en": "Claude / Codex native setup"
+  },
+  "settings.updates_nav": {
+    "zh-CN": "关于与更新",
+    "en": "About and updates"
+  },
+  "settings.storage_nav": {
+    "zh-CN": "存储与维护",
+    "en": "Storage and maintenance"
+  },
+  "conversation.no_matching_commands": {
+    "zh-CN": "没有匹配的命令或技能，继续输入会作为普通消息发送。",
+    "en": "No matching command or skill; keep typing to send it as a message."
+  },
+  "conversation.no_commands_for_this_harness": {
+    "zh-CN": "当前运行方式没有可用的斜杠命令或本地技能。",
+    "en": "This runtime has no slash commands or local skills."
+  },
+  "app.next_conversation": {
+    "zh-CN": "下一个任务",
+    "en": "Next conversation"
+  },
+  "app.switch_conversation_hint": {
+    "zh-CN": "按最近顺序切换任务和对话（Shift 反向）",
+    "en": "Step through conversations, newest first (Shift goes back)"
+  },
+  "app.new_chat": {
+    "zh-CN": "新建对话",
+    "en": "New chat"
+  },
+  "evolutionpanel.version_unknown": {
+    "zh-CN": "正在读取版本…",
+    "en": "Reading the version…"
+  },
+  "sourcecontrol.checkout_busy": {
+    "zh-CN": "这个项目里还有任务在运行，等它结束后再撤销或提交。",
+    "en": "A task is still running in this project; wait for it to finish before reverting or committing."
+  },
+  "sourcecontrol.creating_worktree": {
+    "zh-CN": "正在创建 worktree…",
+    "en": "Creating worktree…"
+  },
+  "review.outdated_comments": {
+    "zh-CN": "{p0} 条意见对应的行已变化",
+    "en": "{p0} notes refer to lines that changed"
+  },
+  "review.diff_keyboard_hint": {
+    "zh-CN": "代码差异（上下方向键选行，Enter 或 C 添加审查意见）",
+    "en": "Code diff (arrow keys pick a line, Enter or C adds a review note)"
+  },
+  "review.commit_task_changes": {
+    "zh-CN": "只提交这个任务改动的文件",
+    "en": "Commit only the files this task changed"
+  },
+  "sidebar.needs_you": {
+    "zh-CN": "需要你处理",
+    "en": "Needs you"
+  },
+  "sidebar.running": {
+    "zh-CN": "运行中",
+    "en": "Running"
+  },
+  "sidebar.worktree": {
+    "zh-CN": "worktree",
+    "en": "worktree"
+  },
+  "sidebar.remove_worktree_value": {
+    "zh-CN": "移除 worktree {p0}",
+    "en": "Remove worktree {p0}"
+  },
+  "sidebar.remove_worktree_confirm": {
+    "zh-CN": "移除 worktree {p0}？文件夹会被删除，分支保留；有未提交的改动时 git 会拒绝。",
+    "en": "Remove worktree {p0}? The folder is deleted and the branch kept; git refuses if there are uncommitted changes."
+  },
+  "sidebar.worktree_removed": {
+    "zh-CN": "worktree 已移除，分支仍保留",
+    "en": "Worktree removed; the branch is kept"
+  },
+  "settings.notifications": {
+    "zh-CN": "桌面通知",
+    "en": "Desktop notifications"
+  },
+  "conversation.collaboration": {
+    "zh-CN": "协作",
+    "en": "Collaboration"
+  },
+  "conversation.collaboration_hint": {
+    "zh-CN": "这个任务由多个 harness 或模型协作完成；点击查看各自的用量",
+    "en": "Several harnesses or models worked on this task; click for their usage"
+  },
+  "conversation.collaboration_main": {
+    "zh-CN": "主任务 {p0}",
+    "en": "main {p0}"
+  },
+  "conversation.collaboration_workers": {
+    "zh-CN": "{p0} 个子任务 {p1}",
+    "en": "{p0} subtasks {p1}"
+  },
+  "conversation.collaboration_evaluator": {
+    "zh-CN": "评审 {p0}",
+    "en": "reviewed by {p0}"
+  },
+  "conversation.switch_harness": {
+    "zh-CN": "切换 harness",
+    "en": "Switch harness"
+  },
+  "conversation.search_models": {
+    "zh-CN": "搜索模型",
+    "en": "Search models"
+  },
+  "conversation.no_matching_models": {
+    "zh-CN": "没有匹配的模型",
+    "en": "No matching models"
+  },
+  "conversation.models_of_value": {
+    "zh-CN": "{p0} 的模型",
+    "en": "{p0} models"
+  },
+  "sourcecontrol.git_action_in_progress": {
+    "zh-CN": "这个检出目录正在执行 git 操作，完成后再发送。",
+    "en": "A git action is running in this checkout; send once it finishes."
+  },
+  "review.comments_not_sent": {
+    "zh-CN": "审查意见没有发出，已保留，可以重试。",
+    "en": "The review notes were not sent; they are kept so you can retry."
+  },
+  "conversation.project_files": {
+    "zh-CN": "项目文件",
+    "en": "Project files"
+  },
+  "conversation.reading_project_files": {
+    "zh-CN": "正在读取项目文件…",
+    "en": "Reading project files…"
+  },
+  "conversation.no_matching_files": {
+    "zh-CN": "没有匹配的文件",
+    "en": "No matching files"
+  },
+  "conversation.no_project_files": {
+    "zh-CN": "这个项目没有可引用的文件（需要 git 仓库）",
+    "en": "No files to mention here (needs a git repository)"
+  },
+  "review.nothing_to_push": {
+    "zh-CN": "没有需要推送的提交",
+    "en": "No commits to push"
+  },
+  "review.checks_failed": {
+    "zh-CN": "{p0} 项检查失败",
+    "en": "{p0} checks failed"
+  },
+  "review.checks_pending": {
+    "zh-CN": "{p0} 项检查进行中",
+    "en": "{p0} checks running"
+  },
+  "review.checks_passed": {
+    "zh-CN": "{p0} 项检查通过",
+    "en": "{p0} checks passed"
+  },
+  "review.pull_request_merged": {
+    "zh-CN": "已合并",
+    "en": "Merged"
+  },
+  "review.pull_request_open": {
+    "zh-CN": "已打开",
+    "en": "Open"
+  },
+  "shortcuts.title": {
+    "zh-CN": "键盘快捷键",
+    "en": "Keyboard shortcuts"
+  },
+  "shortcuts.group_app": {
+    "zh-CN": "全局",
+    "en": "Everywhere"
+  },
+  "shortcuts.group_composer": {
+    "zh-CN": "输入框",
+    "en": "Composer"
+  },
+  "shortcuts.group_review": {
+    "zh-CN": "审查与详情面板",
+    "en": "Review and details panel"
+  },
+  "shortcuts.palette": {
+    "zh-CN": "命令面板与搜索",
+    "en": "Command palette and search"
+  },
+  "shortcuts.previous_conversation": {
+    "zh-CN": "上一个对话",
+    "en": "Previous conversation"
+  },
+  "shortcuts.details_panel": {
+    "zh-CN": "打开或关闭详情面板",
+    "en": "Open or close the details panel"
+  },
+  "shortcuts.this_sheet": {
+    "zh-CN": "显示这张快捷键表",
+    "en": "Show this sheet"
+  },
+  "shortcuts.send_or_queue": {
+    "zh-CN": "发送；运行中则排队",
+    "en": "Send; queue while running"
+  },
+  "shortcuts.new_line": {
+    "zh-CN": "换行",
+    "en": "New line"
+  },
+  "shortcuts.commands": {
+    "zh-CN": "技能与命令",
+    "en": "Skills and commands"
+  },
+  "shortcuts.mention_file": {
+    "zh-CN": "引用项目文件",
+    "en": "Mention a project file"
+  },
+  "shortcuts.stop_run": {
+    "zh-CN": "停止当前运行（输入框为空时）",
+    "en": "Stop the current run (empty composer)"
+  },
+  "shortcuts.move_line_cursor": {
+    "zh-CN": "在 diff 中移动行光标",
+    "en": "Move the line cursor in a diff"
+  },
+  "shortcuts.comment_on_line": {
+    "zh-CN": "给当前行写审查意见",
+    "en": "Comment on the current line"
+  },
+  "shortcuts.save_comment": {
+    "zh-CN": "保存审查意见或提交说明",
+    "en": "Save a comment or commit message"
+  },
+  "shortcuts.switch_details_tab": {
+    "zh-CN": "切换详情面板标签",
+    "en": "Switch details panel tabs"
+  },
+  "app.keyboard_shortcuts_hint": {
+    "zh-CN": "查看所有快捷键",
+    "en": "See every shortcut"
+  },
+  "sidebar.remove_dirty_worktree_confirm": {
+    "zh-CN": "worktree {p0} 里还有未提交的改动。仍然移除会永久丢弃这些改动（分支和已提交的内容会保留）。确定吗？",
+    "en": "Worktree {p0} has uncommitted changes. Removing it anyway discards them permanently (the branch and its commits are kept). Continue?"
+  },
+  "sidebar.subtasks_of_value": {
+    "zh-CN": "{p0} 的子任务",
+    "en": "Subtasks of {p0}"
+  },
+  "conversation.work_memory": {
+    "zh-CN": "查阅记忆 {p0} 次",
+    "en": "{p0} memory lookups"
+  },
+  "conversation.work_command_time": {
+    "zh-CN": "命令耗时 {p0}",
+    "en": "commands took {p0}"
+  },
+  "conversation.exit_code_value": {
+    "zh-CN": "退出码 {p0}",
+    "en": "exit {p0}"
+  },
+  "conversation.duration_ms": {
+    "zh-CN": "{p0} ms",
+    "en": "{p0} ms"
+  },
+  "conversation.duration_seconds": {
+    "zh-CN": "{p0} 秒",
+    "en": "{p0} s"
+  },
+  "conversation.duration_minutes": {
+    "zh-CN": "{p0} 分 {p1} 秒",
+    "en": "{p0} min {p1} s"
+  },
+  "conversation.collab_role_main": {
+    "zh-CN": "主任务",
+    "en": "Main"
+  },
+  "conversation.collab_role_worker": {
+    "zh-CN": "子任务",
+    "en": "Subtask"
+  },
+  "conversation.collab_role_evaluator": {
+    "zh-CN": "评审",
+    "en": "Review"
+  },
+  "conversation.subtasks": {
+    "zh-CN": "子任务",
+    "en": "Subtasks"
+  },
+  "conversation.subtask": {
+    "zh-CN": "子任务",
+    "en": "Subtask"
+  },
+  "conversation.subtask_completed": {
+    "zh-CN": "已完成",
+    "en": "Done"
+  },
+  "conversation.subtask_not_started": {
+    "zh-CN": "未开始",
+    "en": "Not started"
+  },
+  "conversation.back_to_parent_task": {
+    "zh-CN": "回到发起这个子任务的对话",
+    "en": "Back to the conversation that started this subtask"
+  },
+  "conversation.steer_now": {
+    "zh-CN": "插入运行",
+    "en": "Steer"
+  },
+  "conversation.steer_now_hint": {
+    "zh-CN": "现在插入当前运行，而不是排队（{p0} Enter）",
+    "en": "Send into the current run now instead of queueing ({p0} Enter)"
+  },
+  "conversation.steer_without_attachments": {
+    "zh-CN": "带附件的消息只能排队",
+    "en": "Messages with attachments can only be queued"
+  },
+  "conversation.stop_hint": {
+    "zh-CN": "停止（输入框为空时按 Esc）",
+    "en": "Stop (Esc in an empty composer)"
+  },
+  "review.revert_hunk": {
+    "zh-CN": "撤销此段",
+    "en": "Revert hunk"
+  },
+  "review.revert_hunk_confirm": {
+    "zh-CN": "撤销 {p0} 中的这一段改动？文件的其他改动会保留。",
+    "en": "Revert this hunk in {p0}? The file's other changes are kept."
+  },
+  "review.hunk_reverted": {
+    "zh-CN": "已撤销 {p0} 中的一段改动",
+    "en": "Reverted a hunk in {p0}"
+  },
+  "inspector.widen_for_review": {
+    "zh-CN": "加宽面板以便审查",
+    "en": "Widen the panel for review"
+  },
+  "inspector.restore_width": {
+    "zh-CN": "恢复面板宽度",
+    "en": "Restore the panel width"
+  },
+  "conversation.project_files_failed": {
+    "zh-CN": "读取项目文件失败。",
+    "en": "Could not read the project's files."
+  },
+  "shortcuts.steer_now": {
+    "zh-CN": "运行中：现在插入当前运行（而不是排队）",
+    "en": "While running: send into the run now (instead of queueing)"
+  },
+  "review.pull_request_closed": {
+    "zh-CN": "已关闭",
+    "en": "Closed"
+  },
+  "review.pull_request_draft": {
+    "zh-CN": "草稿",
+    "en": "Draft"
+  },
+  "conversation.memory_context_value": {
+    "zh-CN": "提供了 {p0} 条记忆偏好",
+    "en": "Given {p0} saved preferences"
+  },
+  "conversation.memory_context_hint": {
+    "zh-CN": "这一轮开始前 Cleo 提供给 agent 的项目偏好（记录于发送时）",
+    "en": "The project preferences Cleo gave the agent before this turn (recorded when it was sent)"
+  },
+  "conversation.memory_context_more": {
+    "zh-CN": "另有 {p0} 条未列出",
+    "en": "{p0} more not listed"
+  },
+  "inspector.memories_given_last_turn": {
+    "zh-CN": "最近一轮提供的记忆",
+    "en": "Memories given to the latest turn"
+  },
+  "conversation.subtask_runs_in_parent": {
+    "zh-CN": "这个子任务正在父任务的运行中执行；要停止或补充要求，请在父任务里操作。",
+    "en": "This subtask is running inside its parent's run; stop it or add instructions from the parent task."
+  },
+  "inspector.memory_changed_since": {
+    "zh-CN": "记忆库中现在的内容：",
+    "en": "In the memory library now:"
+  },
+  "review.note_file_changed": {
+    "zh-CN": "此后文件有改动",
+    "en": "File changed since"
+  },
+  "review.note_file_changed_hint": {
+    "zh-CN": "写这条意见之后，这个文件的改动又变了；这一行文字没变，请确认意见仍然适用。",
+    "en": "This file's change is different from when the note was written; the line reads the same, so check the note still applies."
+  },
+  "shortcuts.model_menu": {
+    "zh-CN": "模型与思考深度",
+    "en": "Model and reasoning effort"
+  },
+  "shortcuts.access_menu": {
+    "zh-CN": "文件访问与审批方式",
+    "en": "File access and approval"
+  },
+  "overlays.storage_usage_desktop_only": {
+    "zh-CN": "数据目录、依赖快照和可回收空间在桌面版中计算并显示；网页预览没有本地文件可统计。",
+    "en": "The data folder, dependency snapshots and reclaimable space are measured in the desktop app; the web preview has no local files to measure."
+  },
+  "overlays.maintenance": {
+    "zh-CN": "维护",
+    "en": "Maintenance"
+  },
+  "review.pull_request_refresh_failed": {
+    "zh-CN": "刷新失败，显示的是上次结果",
+    "en": "Refresh failed; showing the last result"
+  },
+  "review.note_version_unverified": {
+    "zh-CN": "版本未核对",
+    "en": "Version not checked"
+  },
+  "review.note_version_unverified_hint": {
+    "zh-CN": "这条意见写于记录改动版本之前，无法确认它对应的是现在的改动。",
+    "en": "This note predates version tracking, so it cannot be matched to the current change."
+  },
+  "review.note_stale_in_prompt": {
+    "zh-CN": "（写于之前的改动版本，请先确认仍适用）",
+    "en": "(written on an earlier version of the change; check it still applies)"
+  },
+  "app.open_a_task_first": {
+    "zh-CN": "先打开一个任务或对话",
+    "en": "Open a task or chat first"
+  },
+  "app.focus_composer": {
+    "zh-CN": "聚焦输入框",
+    "en": "Focus the composer"
+  },
+  "app.focus_composer_hint": {
+    "zh-CN": "把光标移到当前任务的输入框",
+    "en": "Move the cursor to this task's message box"
+  },
+  "app.show_changes_tab": {
+    "zh-CN": "查看变更",
+    "en": "Show changes"
+  },
+  "app.show_changes_tab_hint": {
+    "zh-CN": "在详情面板打开本任务改动的文件",
+    "en": "Open this task's changed files in the details panel"
+  },
+  "app.show_files_tab": {
+    "zh-CN": "浏览项目文件",
+    "en": "Browse project files"
+  },
+  "app.show_files_tab_hint": {
+    "zh-CN": "在详情面板打开文件浏览",
+    "en": "Open the file browser in the details panel"
+  },
+  "app.composer_menu_hint": {
+    "zh-CN": "当前任务输入框里的菜单",
+    "en": "The menu in this task's composer"
+  },
+  "conversation.open_file_diff": {
+    "zh-CN": "查看 {p0} 的改动",
+    "en": "Show the changes to {p0}"
+  },
+  "review.note_unverified_in_prompt": {
+    "zh-CN": "（写于记录改动版本之前，请先确认仍适用）",
+    "en": "(written before change versions were recorded; check it still applies)"
+  },
+  "inspector.memory_excerpt_partial": {
+    "zh-CN": "这一轮只记录了这条偏好的前 160 个字符，之后部分的改动无法比对。",
+    "en": "Only the first 160 characters of this preference were recorded for the turn; changes after them cannot be compared."
   }
 }
