@@ -1524,8 +1524,8 @@
     "en": "Acceptance checklist"
   },
   "evolutioncases.items_awaiting_acceptance": {
-    "zh-CN": " 项待验收",
-    "en": " items awaiting acceptance"
+    "zh-CN": "{p0} 项待验收",
+    "en": "{p0} items awaiting acceptance"
   },
   "evolutioncases.create_an_improvement_case_from_this_conversation": {
     "zh-CN": "从此对话创建改进案例",
@@ -2896,8 +2896,8 @@
     "en": "Off by default. Uses the model selected on the Dream Agent page and may incur model usage charges."
   },
   "backgroundmemorysettingspanel.enable_and_save_memory_consolidation_above_before_background_consolidation_can_run": {
-    "zh-CN": "Dream Agent 已停用，请先在 Dream Agent 页启用并保存。",
-    "en": "Dream Agent is disabled. Enable it and save on the Dream Agent page first."
+    "zh-CN": "Dream Agent 已停用，请先在上方启用并保存。",
+    "en": "Dream Agent is disabled. Enable it above and save first."
   },
   "backgroundmemorysettingspanel.interval_minutes": {
     "zh-CN": "整理间隔（分钟）",
@@ -8454,5 +8454,17 @@
   "inspector.memory_excerpt_partial": {
     "zh-CN": "这一轮只记录了这条偏好的前 160 个字符，之后部分的改动无法比对。",
     "en": "Only the first 160 characters of this preference were recorded for the turn; changes after them cannot be compared."
+  },
+  "review.branch_unconfirmed": {
+    "zh-CN": "git 报告当前分支是 {p0}，Cleo 记录的是 {p1}。两者一致之前，审查意见先隐藏，也不能新增。",
+    "en": "Git reports branch {p0}, but Cleo's record says {p1}. Until they agree, review notes are hidden and new ones can't be added."
+  },
+  "review.branch_unconfirmed_kept": {
+    "zh-CN": "git 报告当前分支是 {p0}，Cleo 记录的是 {p1}。两者一致之前，审查意见先隐藏（已保留 {p2} 条，不会丢失），也不能新增。",
+    "en": "Git reports branch {p0}, but Cleo's record says {p1}. Until they agree, review notes are hidden ({p2} kept, not lost) and new ones can't be added."
+  },
+  "review.check_branch_again": {
+    "zh-CN": "重新检查",
+    "en": "Check again"
   }
 }

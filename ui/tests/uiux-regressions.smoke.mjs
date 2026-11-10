@@ -952,7 +952,7 @@ try {
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("cleo-review-notes") || "{}"));
     assert.ok(saved["task-not-in-the-list"]?.length, "notes of a task missing from the list are kept");
   });
-  await check("review notes wait while git reports another branch than the workspace", async page => {
+  await check("review notes follow outside switches A → B → A of an unpushed branch, and say why while they wait", async page => {
     await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
     await page.locator(".diff-viewer pre").focus();
     await page.keyboard.press("ArrowDown");
@@ -961,28 +961,43 @@ try {
     await page.keyboard.press("Control+Enter");
     const bar = page.getByTestId("review-comments");
     await bar.waitFor();
-    // The checkout is switched outside Cleo: git now reports another branch than the workspace records.
+    const hold = page.getByTestId("branch-hold");
+    // The checkout is switched outside Cleo, on branches never pushed (no upstream: nothing on GitHub
+    // to follow). The workspace's record of the branch changes only when the workspace is reloaded,
+    // and then to `recordedBranch`.
     await page.evaluate(async () => {
       const { cleoClient } = await import("/src/services/cleoClient.ts");
       const original = cleoClient.sourceControl.bind(cleoClient);
       const load = cleoClient.loadWorkspace.bind(cleoClient);
-      window.liveBranch = "elsewhere";
-      window.workspaceLoads = 0;
-      cleoClient.loadWorkspace = async (...args) => { window.workspaceLoads += 1; return load(...args); };
+      Object.assign(window, { liveBranch: "main", recordedBranch: "main", workspaceLoads: 0 });
+      cleoClient.loadWorkspace = async (...args) => {
+        window.workspaceLoads += 1;
+        const snapshot = await load(...args);
+        return { ...snapshot, projects: snapshot.projects.map((project) => project.branch === "main" ? { ...project, branch: window.recordedBranch } : project) };
+      };
       cleoClient.sourceControl = async (op, params) => {
         const result = await original(op, params);
-        return op === "status" ? { ...result, branch: window.liveBranch, upstream: `origin/${window.liveBranch}` } : result;
+        return op === "status" ? { ...result, branch: window.liveBranch, upstream: null, canCreatePullRequest: false } : result;
       };
     });
-    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-    await page.getByTestId("source-control").getByText("elsewhere", { exact: true }).waitFor();
+    // A → B while the record lags: notes hidden, none can be added, and the Changes tab says why.
+    await page.evaluate(() => { window.liveBranch = "feature-b"; window.dispatchEvent(new Event("focus")); });
+    await page.getByTestId("source-control").getByText("feature-b", { exact: true }).waitFor();
+    await hold.waitFor();
+    assert.match(await hold.innerText(), /feature-b[\s\S]*main[\s\S]*（已保留 1 条，不会丢失）/);
     await bar.waitFor({ state: "detached" });
     assert.equal(await page.locator("button.diff-comment-add").count(), 0, "no note can be added on an unconfirmed branch");
     await page.waitForFunction(() => window.workspaceLoads > 0);
-    // Back on the branch the workspace records: the note returns.
-    await page.evaluate(() => { window.liveBranch = "main"; window.dispatchEvent(new Event("focus")); });
+    // "Check again" once the record can catch up: both say feature-b, where the main note does not belong.
+    await page.evaluate(() => { window.recordedBranch = "feature-b"; });
+    await hold.getByRole("button", { name: "重新检查" }).click();
+    await hold.waitFor({ state: "detached" });
+    assert.equal(await bar.count(), 0, "a note written on main does not show on feature-b");
+    // B → A: the workspace is reloaded again on the way back and the note returns.
+    await page.evaluate(() => { window.liveBranch = "main"; window.recordedBranch = "main"; window.dispatchEvent(new Event("focus")); });
     await bar.waitFor();
     assert.match(await bar.innerText(), /1 条审查意见/);
+    assert.equal(await hold.count(), 0);
   });
   await check("a pull request stays with its branch when a refresh fails after a switch", async page => {
     await page.evaluate(async () => {
@@ -1004,6 +1019,10 @@ try {
     });
     await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
     const row = page.getByTestId("source-control");
+    await row.waitFor();
+    // The row may have read git before the answers above were in place; coming back to the window
+    // makes it read again (every repository refreshes on focus).
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await row.getByTestId("pull-request-status").waitFor();
     assert.match(await row.getByTestId("pull-request-status").innerText(), /#7/);
     await page.evaluate(() => { window.prBranch = "feature-b"; window.dispatchEvent(new Event("focus")); });
@@ -1046,6 +1065,57 @@ try {
     await page.waitForTimeout(1600);
     assert.ok((await page.evaluate(() => window.modelCalls)) >= callsAtOpen && callsAtOpen > 0, "the menu loaded models after opening");
     assert.equal(await focused(), "composer-input");
+  });
+  await check("a late model list leaves focus alone when the user's focus was in the menu first", async page => {
+    await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      const original = cleoClient.getProductivityModels.bind(cleoClient);
+      window.modelAnswers = 0;
+      cleoClient.getProductivityModels = async (...args) => {
+        await new Promise((resolve) => setTimeout(resolve, 900));
+        const models = await original(...args);
+        window.modelAnswers += 1;
+        return models;
+      };
+    });
+    await page.getByTestId("new-thread").click();
+    await page.getByTestId("runtime-selector").click();
+    await page.getByTestId("runtime-menu").waitFor();
+    // To the harness list and back, with the keyboard put on the harness row before the menu places
+    // it: the placement turn of the new screen belongs to the user.
+    await page.evaluate(async () => {
+      const settle = async () => { for (let step = 0; step < 6; step += 1) await Promise.resolve(); };
+      document.querySelector('[data-testid="runtime-model-row"]').click();
+      await settle();
+      document.querySelector('.runtime-menu button[aria-label="返回当前设置"]').click();
+      await settle();
+      document.querySelector('[data-testid="runtime-model-row"]').focus();
+    });
+    const focused = () => page.evaluate(() => document.activeElement?.getAttribute("data-testid"));
+    await page.waitForTimeout(120);
+    assert.equal(await focused(), "runtime-model-row", "the menu kept the user's focus on the harness row");
+    const answersBefore = await page.evaluate(() => window.modelAnswers);
+    await page.keyboard.press("Control+L");
+    assert.equal(await focused(), "composer-input");
+    await page.waitForFunction((before) => window.modelAnswers > before, answersBefore, { timeout: 5000 });
+    await page.waitForTimeout(300);
+    assert.equal(await focused(), "composer-input");
+  });
+  await check("the 160-character memory caveat appears only when the library's text runs past the record", async page => {
+    const results = await page.evaluate(async () => {
+      const { compareRecordedMemory } = await import("/src/components/Inspector.tsx");
+      const full = "偏".repeat(160);
+      return [
+        compareRecordedMemory(full, full),
+        compareRecordedMemory(full, `${full}，以及之后补充的一句`),
+        compareRecordedMemory(full, "改".repeat(160)),
+        compareRecordedMemory("短的偏好", "短的偏好"),
+        compareRecordedMemory("短的偏好", "短的偏好，补充一句"),
+        compareRecordedMemory(full, undefined),
+        compareRecordedMemory("😀".repeat(160), "😀".repeat(160)),
+      ];
+    });
+    assert.deepEqual(results, ["same", "partial", "changed", "same", "changed", "missing", "same"]);
   });
   await check("Ctrl+/ opens the keyboard shortcut sheet", async page => {
     await page.keyboard.press("Control+/");

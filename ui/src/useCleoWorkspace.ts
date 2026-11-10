@@ -1620,7 +1620,10 @@ export function useCleoWorkspace(evolutionOpen = false) {
     if (!status?.repository) return;
     const branch = status.branch || null;
     setLiveBranches((current) => current[project.id] === branch ? current : { ...current, [project.id]: branch });
-    if (projectBranchName(project.branch) === branch) return;
+    // Compared with the workspace's record as it is now, not as it was when git was asked: the record
+    // may have been reloaded meanwhile (a switch A → B → A must reload again on the way back).
+    const recorded = snapshotRef.current?.projects.find((item) => item.id === project.id) ?? project;
+    if (projectBranchName(recorded.branch) === branch) { reconciledBranch.current = ""; return; }
     // Reload once per newly seen branch, so the project's branch and the task's changes catch up together.
     const key = `${project.id}|${branch}`;
     if (reconciledBranch.current === key) return;
@@ -1628,6 +1631,12 @@ export function useCleoWorkspace(evolutionOpen = false) {
     void refreshWorkspace(() => cleoClient.loadWorkspace()).catch(() => {});
     const threadId = activeThread?.id;
     if (threadId) void cleoClient.loadThread(threadId, false).then((loaded) => updateThread(threadId, () => loaded)).catch(() => {});
+  };
+  /** Purpose: Ask git for the current task's branch again and, if the workspace's record still
+   * differs, reload the workspace again (the once-per-branch limit is lifted for this request). */
+  const recheckBranch = async () => {
+    reconciledBranch.current = "";
+    await runSourceControl("status").catch(() => {});
   };
   /** Each checkout's top folder by project path ("" outside git), learned from git. */
   const checkoutRoots = useRef<Record<string, string>>({});
@@ -1945,6 +1954,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
     undoChanges,
     runSourceControl,
     liveBranches,
+    recheckBranch,
     sendInWorktree,
     creatingWorktree,
     checkoutBusy,

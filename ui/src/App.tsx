@@ -11,7 +11,7 @@ import { renderBadge } from "./badge";
 import { harnessLabel, projectLabel } from "./runtime-labels";
 import { Conversation } from "./components/Conversation";
 import { Inspector, noteVersion, type InspectorTab } from "./components/Inspector";
-import { reviewCommentsPrompt, type ReviewComment } from "./components/ReviewActions";
+import { reviewCommentsPrompt, type BranchHold, type ReviewComment } from "./components/ReviewActions";
 import { isComputerTool } from "./components/ComputerPanel";
 import type { FileReveal } from "./components/FilesPanel";
 import { MemoryView } from "./components/MemoryView";
@@ -685,6 +685,13 @@ export function App() {
   const threadComments = conversationThread && branchSettled ? (reviewComments[conversationThread.id] ?? [])
     .filter((comment) => (!comment.repository || comment.repository === conversationProject?.path)
       && (!comment.branch || comment.branch === conversationProject?.branch)) : [];
+  // While they wait, the Changes tab says why the notes are gone and offers to check again.
+  const branchHold: BranchHold | undefined = conversationThread && gitProject && !branchSettled ? {
+    live: liveBranch ?? null,
+    recorded: projectBranchName(conversationProject?.branch),
+    kept: (reviewComments[conversationThread.id] ?? []).filter((comment) => !comment.repository || comment.repository === conversationProject?.path).length,
+    onRetry: workspace.recheckBranch,
+  } : undefined;
   const updateThreadComments = (update: (comments: ReviewComment[]) => ReviewComment[]) => {
     if (!conversationThread) return;
     const threadId = conversationThread.id;
@@ -965,6 +972,7 @@ export function App() {
           sourceBusy={Boolean(conversationProject && !evolutionOpen && workspace.checkoutBusy(conversationProject.id) && !workspace.running)}
           runSourceControl={gitProject && conversationThread?.space === "productivity" ? workspace.runSourceControl : undefined}
           reviewComments={threadComments}
+          branchHold={branchHold}
           onAddReviewComment={conversationThread && branchSettled ? (comment) => updateThreadComments((comments) => [...comments,
             { ...comment, id: crypto.randomUUID(), repository: conversationProject?.path ?? "", branch: conversationProject?.branch ?? "" }]) : undefined}
           onRemoveReviewComment={(id) => updateThreadComments((comments) => comments.filter((comment) => comment.id !== id))}

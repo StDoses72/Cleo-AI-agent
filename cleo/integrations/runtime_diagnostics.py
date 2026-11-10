@@ -37,6 +37,24 @@ def diagnostic_text(value: str, *, prompt: str = "", limit: int = 2000) -> str:
     return value[:limit] + ("…" if len(value) > limit else "")
 
 
+def model_error_text(error: BaseException) -> str:
+    """Purpose: Describe a failed model call the same way whatever the client SDK's version.
+    Input: The exception a model client raised. HTTP errors from the OpenAI and Anthropic SDKs
+    carry the status and the parsed response body.
+    Output: "Error code: <status> - <provider's message>" when the body holds the provider's own
+    message (SDKs differ in how they print the raw body); otherwise the exception's text.
+    Not redacted: pass the result through diagnostic_text before showing it.
+    """
+    status = getattr(error, "status_code", None)
+    body = getattr(error, "body", None)
+    if isinstance(status, int) and isinstance(body, dict):
+        detail = body.get("error", body)
+        message = detail.get("message") if isinstance(detail, dict) else None
+        if isinstance(message, str) and message.strip():
+            return f"Error code: {status} - {message.strip()}"
+    return str(error)
+
+
 class StderrCapture:
     """Drain a pipe completely while retaining only a bounded diagnostic prefix."""
 

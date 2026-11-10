@@ -94,11 +94,20 @@
 
 ## 6. 验证
 
-- `npm run typecheck`、`npm run test:backend`（含新增 `source-control.test.mjs`，10 项真实临时仓库测试）、`npm run test:context`、`npm run test:evolution` 通过。
-- Python：`tests/desktop`、`tests/characterization` 通过；characterization golden 只新增 `parentId` / `routingTaskId` 两个空字段（`chat/model_failure.json` 在本机因 OpenAI SDK 错误文本格式不同而失败，与本次改动无关，未重录）。
-- 浏览器冒烟：`smoke:uiux`（46 项）、`smoke:projects`、`smoke:permissions`、`smoke:concurrency`、`smoke:steering`、`smoke:timing`、`smoke:language`、`smoke:routing`、`smoke:update-settings`、`smoke:computer` 按新界面更新后通过。
-- `smoke:memory-sources`、`smoke:evolution-workspace` 的监控窗口部分、`smoke:evolution-ui` 的 `interaction-ui` 在未改动的 `main` 上以同样原因失败（本机 Python 环境 `openai_codex` 版本不匹配、Electron 子窗口启动失败、“0 项待验收”），不属于本次改动。
+- `npm run typecheck`、`npm run test:backend`（含新增 `source-control.test.mjs`，13 项真实临时仓库测试）、`npm run test:context`、`npm run test:evolution` 通过。
+- 浏览器与 Electron 冒烟全部通过：`smoke:uiux`（58 项）、`smoke:projects`、`smoke:permissions`、`smoke:concurrency`、`smoke:steering`、`smoke:timing`、`smoke:language`、`smoke:routing`、`smoke:update-settings`、`smoke:computer`、`smoke:history`、`smoke:layout`、`smoke:approvals`、`smoke:inspector`、`smoke`、`smoke:ux`（11 项）、`smoke:memory-sources`、`smoke:tray`、`smoke:evolution-workspace`。`smoke:evolution-ui` 的前三个文件通过，`behavior-review` 见下文。
+- 启动真实后端的冒烟需要用 `CLEO_PYTHON` / `CLEO_TEST_PYTHON` 指定装有 Cleo 依赖的解释器（例如仓库的 `.venv`）。不指定时会用 PATH 上的 `python`，本机那个环境的 `openai_codex` 版本过旧，导入就失败。此前“在 `main` 上也失败”的 memory-sources 和 tray 主要是这个原因。
 - 重构后的截图与评审结果见第 7 节。
+
+此前记为“在 `main` 上就失败”的检查，逐项处理如下：
+
+- **本次重构留下的过时测试：** 设置页分组后，“数据与记忆”“模型”“原生目录”“Dream Agent”这几个导航按钮已改名或合并，模型子导航也取消了。`memory-sources`、`tray`、`smoke-ux` 和打包冒烟已按新导航更新。发出的消息现在会显示附件标签，`smoke-ux` 的草稿隔离检查和 `smoke` 原来统计整页的标签，结果取决于历史是否已加载，现在只统计输入框里的附件。
+- **顺带发现的两个产品问题：**
+  - Dream Agent 与后台整理合并到同一页后，在上方停用 Dream Agent，下方的后台整理面板仍按打开时读到的状态显示。现在面板跟随本页最近一次保存的 Dream 设置，未保存的后台设置草稿不受影响。
+  - 停用提示原文是“请先在 Dream Agent 页启用”，那个页面已经不存在，改为“请先在上方启用并保存”。
+- **原有缺陷：** 验收清单的计数渲染成“0␣␣项待验收”，数字后有两个空格（JSX 空格加上文案开头的空格），`interaction-ui` 因此找不到“0 项待验收”。现在改为由文案占位符拼接数字。
+- **Python：** `chat/model_failure.json` 依赖 OpenAI SDK 打印错误的方式：新版 SDK 会把整个响应体字典直接打印出来，界面上也会显示这串字典。现在聊天运行时从 SDK 异常的 `status_code` 和 `body` 中取出提供方自己的错误信息，显示为“Error code: 500 - fake upstream failure”，与 SDK 版本无关，并补了单元测试。golden 无需重录。
+- **`behavior-review`：** 它要求“验收清单确认之后才能保存”和“自动检查通过之后才能应用”。这两个限制在 v0.6.0 合并（9a62ea0）时随源码快照一起被移除，合并说明里没有提到。是恢复这两个限制，还是让测试改为接受当前行为，由维护者决定。
 
 ## 7. 重构后评分
 
@@ -244,7 +253,21 @@ Astra 在第七轮找到一个严重缺陷：检查 HEAD 失败时，单文件�
 - **P3：** 菜单打开时焦点已经在菜单内，就不会记下“已放置”，之后迟到的模型列表仍可能抢走焦点。
 - **P3/P4（Fable）：** 等待分支确认期间，界面没有说明意见为什么消失；160 字符提示在内容恰好 160 字且未变时也会出现。
 
-按维护者“最多 10 轮”的要求，迭代到此停止，以上问题留作后续修复。
+按维护者“最多 10 轮”的要求，评分迭代到此停止。
+
+### 第十轮之后的修复（未评分）
+
+上面四项在第一稿提交之后修复。没有再请评审打分，所以第十轮分数仍是最终分数。
+
+- **意见跟随分支 A → B → A：** Git 行的焦点与轮询回调改为调用最新一次渲染的刷新函数；分支比较改用工作区当前的记录，而不是发出 git 请求时的记录。两者一致时会清除“已对账”标记，再次出现同一不一致时会重新加载。
+- **所有仓库在窗口获得焦点时重新读取 Git：** 未推送、不在 GitHub 的分支也包括在内；只有定时轮询仍限于有上游的 GitHub 分支。PR 结果改用独立编号，一次不重新询问 GitHub 的状态读取不再丢弃正在返回的 PR 结果。
+- **等待分支确认时说明原因：** 改动页显示“git 报告当前分支是 X，Cleo 记录的是 Y”，以及保留了几条意见，并提供“重新检查”按钮，按下后重新读取 git 并再次加载工作区。
+- **模型菜单焦点：** “本屏是否已放置焦点”和“菜单把焦点放在哪里”分开记录。焦点一开始就在菜单内时，这一屏的放置机会算作用户已经用掉，之后迟到的模型列表不再移动焦点。
+- **160 字符提示：** 只有记忆库里的当前内容比记录更长、确实无法比对时才显示；恰好 160 字且未变化时不再显示。
+- **测试：**
+  - 原来的分支检查改为在未推送分支上走完 A → B → A，工作区记录只在重新加载时才跟上，并覆盖说明行和“重新检查”。
+  - 新增两项检查：焦点一开始就在菜单内的顺序，以及 160 字符边界（包括恰好 160 字、更长、不同、emoji）。
+  - “PR 跟随分支”检查原本依赖页面加载时机：第一稿提交的版本重新完整运行时也失败了（55/56）。现在改为装好 mock 之后触发一次窗口焦点，使 Git 行重新读取。
 
 ## 8. 最终结论
 

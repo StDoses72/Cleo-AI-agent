@@ -39,7 +39,7 @@ export function EvolutionCases({ state, requests = [], thread, busy, canReview, 
   const dialogOnlyView = dialogOnly || !state?.cases.length;
   return <section className={`evolution-cases${dialogOnlyView ? " dialog-only" : ""}`} aria-label={dialogOnlyView ? undefined : tr("evolutioncases.behavior_acceptance")}>
     {!dialogOnlyView && <div className="evolution-cases-heading"><FlaskConical size={15} /><strong>{tr("evolutioncases.acceptance_checklist")}</strong>
-      {state && <span>{cases.length} {tr("evolutioncases.items_awaiting_acceptance")}</span>}
+      {state && <span>{tr("evolutioncases.items_awaiting_acceptance", { p0: cases.length })}</span>}
       <button disabled={busy} onClick={openDialog}>
         {thread ? tr("evolutioncases.create_an_improvement_case_from_this_conversation") : tr("evolutioncases.add_goal")}</button>
     </div>}

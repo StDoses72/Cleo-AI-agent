@@ -63,7 +63,7 @@ try {
   await window.getByRole("button", { name: "移除 clipboard.pdf", exact: true }).click();
   await window.getByRole("button", { name: "记忆", exact: true }).click();
   await window.getByRole("button", { name: "设置", exact: true }).click();
-  await window.getByRole("button", { name: "模型", exact: true }).click();
+  await window.getByRole("button", { name: "模型连接", exact: true }).click();
   await window.getByRole("button", { name: "切换模型", exact: true }).waitFor();
   await window.screenshot({ path: screenshotPath });
   if (consoleErrors.length) throw new Error(`Console errors: ${consoleErrors.join(" | ")}`);

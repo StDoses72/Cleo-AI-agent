@@ -191,7 +191,9 @@ try {
     input?.dispatchEvent(paste);
   });
   await window.getByText("proposal.docx", { exact: true }).waitFor();
-  assert(await window.locator(".attachment-chip").count() === 2, "Drag and paste did not add both attachments");
+  // The composer's chips only: sent messages in the open conversation show their attachments too.
+  assert(await window.getByTestId("composer-attachments").locator(".attachment-chip").count() === 2,
+    "Drag and paste did not add both attachments");
   await window.screenshot({ path: join(outputDir, "03b-attachments.png") });
 
   await window.getByTestId("composer-input").fill("检查当前 mock 边界并完成一次可见的运行");

@@ -770,6 +770,42 @@
 .review-comments-bar > span { flex: 1; font-weight: 600; }
 .review-comments-bar button:not(.primary) { width: 26px; padding: 0; justify-content: center; }
 
+/* Notes waiting for git and the workspace to agree on the branch: one flat line, like the notes bar. */
+.branch-hold {
+  display: flex;
+  min-height: 36px;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-soft);
+  background: var(--canvas);
+  font-size: var(--font-size-caption);
+  line-height: 1.4;
+}
+
+.branch-hold > svg { flex-shrink: 0; color: var(--muted); }
+.branch-hold > span { flex: 1; min-width: 0; }
+
+.branch-hold button {
+  display: inline-flex;
+  height: 26px;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-soft);
+  background: var(--canvas);
+  font-size: var(--font-size-caption);
+  font-weight: 500;
+}
+
+.branch-hold button:hover:not(:disabled) { color: var(--text); background: var(--surface-hover); }
+.branch-hold button:disabled { opacity: 0.45; cursor: default; }
+
 .changed-file {
   position: relative;
   display: flex;

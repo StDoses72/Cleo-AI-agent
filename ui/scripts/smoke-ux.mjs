@@ -111,6 +111,8 @@ try {
     await dialog.waitFor({ state: "hidden" });
   });
   await check("draft-isolation", async () => {
+    // Only the composer's own chips: sent messages in the history show their attachments too.
+    const composerChips = page.getByTestId("composer-attachments").locator(".attachment-chip");
     await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
     await input.fill("只属于开发任务的草稿");
     await input.evaluate((element) => {
@@ -118,20 +120,20 @@ try {
       transfer.items.add(new File(["draft attachment"], "draft.txt", { type: "text/plain" }));
       element.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: transfer }));
     });
-    await page.locator(".attachment-chip").first().waitFor();
+    await composerChips.first().waitFor();
     await page.getByTestId("new-chat").click();
     assert.equal(await input.inputValue(), "");
-    assert.equal(await page.locator(".attachment-chip").count(), 0);
+    assert.equal(await composerChips.count(), 0);
     await input.fill("只属于对话的草稿");
     await rail("记忆").click();
     await page.getByTestId("new-chat").click();
     assert.equal(await input.inputValue(), "只属于对话的草稿");
     await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
     assert.equal(await input.inputValue(), "只属于开发任务的草稿");
-    assert.equal(await page.locator(".attachment-chip").count(), 1);
+    assert.equal(await composerChips.count(), 1);
     await page.getByTestId("new-thread").click();
     assert.equal(await input.inputValue(), "");
-    assert.equal(await page.locator(".attachment-chip").count(), 0);
+    assert.equal(await composerChips.count(), 0);
   });
   await check("concurrent-send-preserves-drafts", async () => {
     await input.fill("审批测试 A");
@@ -161,8 +163,8 @@ try {
   });
   await check("model-connection-checkbox-layout", async () => {
     await rail("设置").click();
-    await rail("模型").click();
-    await page.locator(".settings-model-subnav").getByRole("button", { name: "新增连接", exact: true }).click();
+    await rail("模型连接").click();
+    await page.locator(".settings-heading").getByRole("button", { name: "新增连接", exact: true }).click();
     await page.getByRole("button", { name: "O OpenAI", exact: true }).click();
     await page.getByLabel("API Key").fill("test-only-api-key");
     await page.getByRole("button", { name: "验证并继续", exact: true }).click();

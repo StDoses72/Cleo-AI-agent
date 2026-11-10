@@ -65,39 +65,56 @@ export function SourceControlRow({ run, paths, busy, busyReason, onNotify }: {
   // GitHub is asked about the branch's pull request once per branch (and again after a push or a
   // new PR, or each minute while checks are still running) — not on every local file change.
   const prAsked = useRef<{ key: string; at: number } | null>(null);
-  const askPullRequest = (next: SourceControlStatus, id: number, force = false) => {
-    if (!next?.repository || !next.upstream || !next.canCreatePullRequest) { setPullRequest(null); prAsked.current = null; return; }
+  // Pull request answers are numbered on their own: a later status read that does not ask GitHub
+  // again (same branch, asked moments ago) must not discard the answer still on its way.
+  const prRequest = useRef(0);
+  const askPullRequest = (next: SourceControlStatus, force = false) => {
+    if (!next?.repository || !next.upstream || !next.canCreatePullRequest) {
+      prRequest.current += 1;
+      setPullRequest(null);
+      prAsked.current = null;
+      return;
+    }
     const key = `${next.branch}|${next.upstream}`;
     // A pull request belongs to its branch: after a switch, nothing is known until GitHub answers for
     // the new branch, so a failed refresh offers Retry instead of showing the previous branch's PR.
-    if (prAsked.current?.key !== key) { setPullRequest(null); setPrRefreshFailed(false); }
+    if (prAsked.current?.key !== key) { prRequest.current += 1; setPullRequest(null); setPrRefreshFailed(false); }
     if (!force && prAsked.current?.key === key && Date.now() - prAsked.current.at < 60_000) return;
     prAsked.current = { key, at: Date.now() };
+    const id = ++prRequest.current;
     void run<{ pullRequest: PullRequestStatus | null }>("pullRequest")
-      .then(answer => { if (id === request.current) { setPullRequest(answer.pullRequest); setPrRefreshFailed(false); } },
+      .then(answer => { if (id === prRequest.current) { setPullRequest(answer.pullRequest); setPrRefreshFailed(false); } },
         // Keep the last known pull request; say that the refresh failed rather than pretending there is none.
-        () => { if (id === request.current) setPrRefreshFailed(true); });
+        () => { if (id === prRequest.current) setPrRefreshFailed(true); });
   };
   const refresh = (forcePullRequest = false) => {
     const id = ++request.current;
     return run<SourceControlStatus>("status").then(next => {
       if (id !== request.current) return;
       setStatus(next);
-      askPullRequest(next, id, forcePullRequest);
+      askPullRequest(next, forcePullRequest);
     }).catch(() => { if (id === request.current) setStatus(null); });
   };
   useEffect(() => { void refresh(); }, [paths.join("\n")]);
+  // Listeners installed once call the refresh of the latest render: an older one would carry the
+  // task's folder and branch as they were when it was installed.
+  const latestRefresh = useRef(refresh);
+  latestRefresh.current = refresh;
+  // Any checkout can be switched or committed to outside Cleo, pushed or not, on GitHub or not: git
+  // is asked again whenever the window comes back into focus (the pull request too, where there is one).
+  useEffect(() => {
+    const onFocus = () => void latestRefresh.current(true);
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
   // GitHub changes without Cleo (a merge, new checks, a PR opened elsewhere): while a pushed branch is
-  // on screen the row asks again every few minutes — every minute while checks run — and whenever
-  // the window comes back into focus.
+  // on screen the row asks again every few minutes — every minute while checks run.
   const followed = Boolean(status?.upstream && status.canCreatePullRequest);
   const checksRunning = Boolean(pullRequest?.checks.pending && pullRequest.state === "OPEN");
   useEffect(() => {
     if (!followed) return;
-    const timer = window.setInterval(() => void refresh(true), checksRunning ? 60_000 : 180_000);
-    const onFocus = () => void refresh(true);
-    window.addEventListener("focus", onFocus);
-    return () => { window.clearInterval(timer); window.removeEventListener("focus", onFocus); };
+    const timer = window.setInterval(() => void latestRefresh.current(true), checksRunning ? 60_000 : 180_000);
+    return () => window.clearInterval(timer);
   }, [followed, checksRunning]);
   if (!status?.repository) return null;
 
@@ -220,6 +237,36 @@ export function CommentForm({ onSave, onCancel }: { onSave: (text: string) => vo
 }
 
 /** Purpose: The pending review notes and the action that hands them to the agent. */
+/** Why review notes are not on screen: git reports another branch than the workspace's record (the
+ * checkout was switched outside Cleo) and the record has not caught up yet.
+ * Input: the branch git reports (null: detached HEAD), the recorded one, how many of this task's notes
+ * are kept meanwhile, and a re-check of git and the workspace.
+ */
+export interface BranchHold {
+  live: string | null;
+  recorded: string | null;
+  kept: number;
+  onRetry: () => Promise<void>;
+}
+
+export function BranchHoldNotice({ hold }: { hold: BranchHold }) {
+  const [checking, setChecking] = useState(false);
+  return (
+    <div className="branch-hold" data-testid="branch-hold" role="status">
+      <GitBranch size={13} />
+      <span>{tr(hold.kept ? "review.branch_unconfirmed_kept" : "review.branch_unconfirmed",
+        { p0: hold.live ?? "HEAD", p1: hold.recorded ?? "HEAD", p2: hold.kept })}</span>
+      <button type="button" disabled={checking} onClick={() => {
+        setChecking(true);
+        void hold.onRetry().finally(() => setChecking(false));
+      }}>
+        {checking ? <LoaderCircle className="spin" size={12} /> : null}
+        {tr("review.check_branch_again")}
+      </button>
+    </div>
+  );
+}
+
 export function ReviewCommentsBar({ comments, onSend, onClear }: { comments: ReviewComment[]; onSend: () => void; onClear: () => void }) {
   if (!comments.length) return null;
   return (

@@ -576,7 +576,7 @@ export function SettingsModal({
             </div>
           ) : page === "models-dream" ? (
             <div className="settings-page settings-memory-page">
-              <BackgroundMemorySettingsPanel active={open} busy={modelSettingsLoading}
+              <BackgroundMemorySettingsPanel active={open} busy={modelSettingsLoading} dreamEnabled={modelSettings?.dreamEnabled}
                 onConfigureDream={() => scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" })} />
               <details className="settings-advanced">
                 <summary>{tr("memorysources.optional")}</summary>

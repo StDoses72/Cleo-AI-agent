@@ -2015,21 +2015,27 @@ function RuntimeSelector({
   // Like the permission menu: opening moves the keyboard into the menu (so Enter and Esc act on it,
   // not on the composer), and closing it with the keyboard returns focus to the trigger.
   const triggerRef = useRef<HTMLButtonElement>(null);
-  // Where the menu itself put the keyboard on this screen (null: not placed yet). After that first
-  // placement the menu moves focus again only while it is still there, so once the user moves it
-  // (inside the menu, back to the composer, anywhere) a late model list leaves it alone.
+  // Each screen places the keyboard once. `placementDone` says that turn is over; `placedFocus` is
+  // where the menu itself put focus (null when it left the user's own focus alone). Afterwards the
+  // menu moves focus again only while it is still where the menu put it, so once the user has it —
+  // from the start or later, inside the menu, back in the composer, anywhere — a late model list
+  // leaves it alone.
+  const placementDone = useRef(false);
   const placedFocus = useRef<HTMLElement | null>(null);
-  useEffect(() => { placedFocus.current = null; }, [open, screen, providerScreen]);
+  useEffect(() => { placementDone.current = false; placedFocus.current = null; }, [open, screen, providerScreen]);
   useEffect(() => {
     if (!open) return;
     const frame = requestAnimationFrame(() => {
       const menu = wrapRef.current?.querySelector<HTMLElement>(".runtime-menu");
       if (!menu) return;
       const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      const first = placedFocus.current === null;
-      // The user's own focus wins: already inside the menu (they clicked or tabbed in), or moved
-      // away after the menu placed it.
-      if (first ? Boolean(active && menu.contains(active)) : active !== placedFocus.current) return;
+      const first = !placementDone.current;
+      if (first && active && menu.contains(active)) {
+        // Already inside the menu (they clicked or tabbed in): the placement turn is the user's.
+        placementDone.current = true;
+        return;
+      }
+      if (!first && (!placedFocus.current || active !== placedFocus.current)) return;
       // The current choice first (the selected model), else the menu's first control. Two queries:
       // one selector list would return whichever match comes first in the document. The model list
       // can arrive after the menu opens; then focus moves on to the selected model.
@@ -2037,6 +2043,7 @@ function RuntimeSelector({
         ?? (first ? menu.querySelector<HTMLElement>("button:not(:disabled), input") : null);
       if (!target) return;
       if (target !== active) target.focus();
+      placementDone.current = true;
       placedFocus.current = target;
     });
     return () => cancelAnimationFrame(frame);

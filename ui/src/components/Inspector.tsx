@@ -27,7 +27,7 @@ import { TaskTokenUsage } from "./TaskTokenUsage";
 import { ContextUsage } from "./ContextUsage";
 import { ComputerPanel } from "./ComputerPanel";
 import { FilesPanel, type FileReveal } from "./FilesPanel";
-import { CommentForm, ReviewCommentsBar, SourceControlRow, type ReviewComment, type RunSourceControl } from "./ReviewActions";
+import { BranchHoldNotice, CommentForm, ReviewCommentsBar, SourceControlRow, type BranchHold, type ReviewComment, type RunSourceControl } from "./ReviewActions";
 import { RuntimePermissions } from "./Overlays";
 import { toolFailed } from "../toolOutcome";
 
@@ -54,6 +54,8 @@ interface InspectorProps {
   /** Git actions bound to the task's folder; absent where the task has no repository. */
   runSourceControl?: RunSourceControl;
   reviewComments?: ReviewComment[];
+  /** Set while review notes wait for git and the workspace to agree on the branch. */
+  branchHold?: BranchHold;
   onAddReviewComment?: (comment: Omit<ReviewComment, "id">) => void;
   onRemoveReviewComment?: (id: string) => void;
   onSendReviewComments?: () => void;
@@ -102,6 +104,7 @@ export function Inspector({
   sourceBusy = false,
   runSourceControl,
   reviewComments = [],
+  branchHold,
   onAddReviewComment,
   onRemoveReviewComment,
   onSendReviewComments,
@@ -158,7 +161,7 @@ export function Inspector({
         ) : activeTab === "changes" ? (
           <ChangesPanel thread={thread} repositoryPath={project?.path ?? ""} reveal={changeReveal} onNotify={onNotify} onCopyText={onCopyText} onOpenFile={onOpenFile}
             onUndo={onUndo} undoing={undoing} running={running} sourceBusy={sourceBusy} runSourceControl={runSourceControl}
-            comments={reviewComments} onAddComment={onAddReviewComment} onRemoveComment={onRemoveReviewComment}
+            comments={reviewComments} branchHold={branchHold} onAddComment={onAddReviewComment} onRemoveComment={onRemoveReviewComment}
             onSendComments={onSendReviewComments} onClearComments={onClearReviewComments} />
         ) : (
           <DetailsPanel thread={thread} project={project} runtime={runtime} memories={memories} onRevealPath={onRevealPath}
@@ -270,11 +273,25 @@ export function hunkPatch(file: ChangeFile, hunkIndex: number): string {
  * cleo/harnesses/service.py), so lengths are compared as code points too. */
 const MEMORY_EXCERPT_LIMIT = 160;
 
+/** Purpose: Compare what a turn was given with the memory library's text now.
+ * Input: the recorded text (the backend keeps up to 160 characters of each preference) and the
+ * library's current text, if the entry still exists.
+ * Output: "changed" when they differ; "partial" only when the library's text runs past a full-length
+ * record, so the rest cannot be compared; otherwise "same" ("missing" without a library entry).
+ */
+export function compareRecordedMemory(recorded: string, saved: string | undefined) {
+  if (saved === undefined) return "missing" as const;
+  // A shorter record is the whole preference, so any difference (an added sentence too) counts.
+  if ([...recorded].length < MEMORY_EXCERPT_LIMIT) return saved === recorded ? "same" as const : "changed" as const;
+  if (!saved.startsWith(recorded)) return "changed" as const;
+  return [...saved].length > [...recorded].length ? "partial" as const : "same" as const;
+}
+
 /** The last changes-card request the Changes tab acted on (the tab remounts when switched to). */
 let appliedChangeReveal = 0;
 
 function ChangesPanel({ thread, repositoryPath, reveal = null, onNotify, onCopyText, onOpenFile, onUndo, undoing, running, sourceBusy, runSourceControl,
-  comments, onAddComment, onRemoveComment, onSendComments, onClearComments }: {
+  comments, branchHold, onAddComment, onRemoveComment, onSendComments, onClearComments }: {
   thread: Thread | null;
   /** The task's folder: the branch row restarts when the task moves to another repository. */
   repositoryPath: string;
@@ -288,6 +305,7 @@ function ChangesPanel({ thread, repositoryPath, reveal = null, onNotify, onCopyT
   sourceBusy: boolean;
   runSourceControl?: RunSourceControl;
   comments: ReviewComment[];
+  branchHold?: BranchHold;
   onAddComment?: (comment: Omit<ReviewComment, "id">) => void;
   onRemoveComment?: (id: string) => void;
   onSendComments?: () => void;
@@ -343,6 +361,7 @@ function ChangesPanel({ thread, repositoryPath, reveal = null, onNotify, onCopyT
       <div className="changes-panel">
         {runSourceControl && thread ? <SourceControlRow key={`${thread.id}:${repositoryPath}`} run={runSourceControl} paths={[]} busy={running || sourceBusy}
           busyReason={sourceBusy ? tr("sourcecontrol.checkout_busy") : undefined} onNotify={onNotify} /> : null}
+        {branchHold ? <BranchHoldNotice hold={branchHold} /> : null}
         <div className="inspector-empty">
           <GitBranch size={20} />
           <strong>{tr("inspector.no_file_changes")}</strong>
@@ -386,6 +405,7 @@ function ChangesPanel({ thread, repositoryPath, reveal = null, onNotify, onCopyT
         <SourceControlRow key={`${thread?.id}:${repositoryPath}`} run={runSourceControl} paths={(thread?.changes ?? []).map((file) => file.path)}
           busy={running || undoing || sourceBusy} busyReason={sourceBusy ? tr("sourcecontrol.checkout_busy") : undefined} onNotify={onNotify} />
       ) : null}
+      {branchHold && selectedSetId === "workspace" ? <BranchHoldNotice hold={branchHold} /> : null}
       {onSendComments && onClearComments ? <ReviewCommentsBar comments={comments} onSend={onSendComments} onClear={onClearComments} /> : null}
       {!changes.length ? (
         <div className="inspector-empty change-snapshot-empty">
@@ -628,16 +648,13 @@ function DetailsPanel({
             // What the turn was given is the recorded text; the library's current wording is shown
             // separately, and only when it has changed since.
             const saved = memories.find((memory) => memory.id === entry.id);
-            // The record keeps up to 160 characters: a shorter one is the whole preference, so any
-            // difference (an added sentence too) counts; a full-length one can only be compared as a prefix.
-            const partial = [...entry.content].length >= MEMORY_EXCERPT_LIMIT;
-            const changed = saved && (partial ? !saved.content.startsWith(entry.content) : saved.content !== entry.content);
+            const comparison = compareRecordedMemory(entry.content, saved?.content);
             return (
               <details key={entry.id || entry.content}>
                 <summary>{entry.content.length > 40 ? `${entry.content.slice(0, 40)}…` : entry.content}</summary>
                 <p>{entry.content}</p>
-                {changed ? <p className="memory-now"><small>{tr("inspector.memory_changed_since")}</small>{saved.content}</p>
-                  : partial ? <p className="memory-now"><small>{tr("inspector.memory_excerpt_partial")}</small></p> : null}
+                {saved && comparison === "changed" ? <p className="memory-now"><small>{tr("inspector.memory_changed_since")}</small>{saved.content}</p>
+                  : comparison === "partial" ? <p className="memory-now"><small>{tr("inspector.memory_excerpt_partial")}</small></p> : null}
               </details>
             );
           })}
