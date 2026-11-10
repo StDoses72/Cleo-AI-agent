@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import { extractFile, listPackage } from "@electron/asar";
 import { EvolutionAcceptance } from "../electron/evolution-acceptance.mjs";
 import { EvolutionRequests } from "../electron/evolution-requests.mjs";
-import { writeJson, readJson } from "../electron/evolution-store.mjs";
+import { writeJson, readJson } from "../electron/program-store.mjs";
 
 // Read retained program packages, but run every reader/writer against temporary fixtures only.
 const buildsRoot = resolve(process.argv[2] || "../../builds");
@@ -25,8 +25,9 @@ for (const build of versions) {
   }
   const root = await mkdtemp(join(tmpdir(), "cleo-acceptance-compat-"));
   try {
-    for (const name of ["evolution-acceptance.mjs", "evolution-store.mjs"])
-      await writeFile(join(root, name), await sourceFile(name));
+    // Programs built after the registry moved keep the shared JSON helpers in program-store.mjs.
+    for (const name of ["evolution-acceptance.mjs", "evolution-store.mjs", "program-store.mjs"])
+      if (entries.includes(`/electron/${name}`)) await writeFile(join(root, name), await sourceFile(name));
     if (entries.includes("/electron/evolution-interactions.mjs"))
       await writeFile(join(root, "evolution-interactions.mjs"), await sourceFile("evolution-interactions.mjs"));
     const { EvolutionAcceptance: Previous } = await import(pathToFileURL(join(root, "evolution-acceptance.mjs")));

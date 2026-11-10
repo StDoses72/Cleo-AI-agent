@@ -1,11 +1,11 @@
 import { t as tr } from "./i18n.mjs";
-import { spawn } from "node:child_process";
-import { cp, mkdir, rename, readdir, rm, open, access } from "node:fs/promises";
+import { mkdir, rename, readdir, rm, access } from "node:fs/promises";
 import { constants } from "node:fs";
 import { homedir } from "node:os";
-import { createRequire } from "node:module";
 import { join, delimiter, dirname, win32, posix } from "node:path";
-import { exists, fileHash, readJson, writeJson } from "./evolution-store.mjs";
+import { exists, fileHash, readJson, writeJson } from "./program-store.mjs";
+import { run } from "./run-command.mjs";
+import { fetchRelease, extract } from "./program-bundles.mjs";
 
 const GITHUB = "https://api.github.com";
 
@@ -56,64 +56,6 @@ export async function githubEnvironment(root, { env = process.env, userHome = ho
   return { ...env, GH_CONFIG_DIR: privateDirectory };
 }
 
-/** Purpose: Run an argument array without a shell. Input: executable, args, process options. Output: stdout or a bounded diagnostic tail. */
-export async function run(command, args, { cwd, env = process.env, log = () => {}, timeout = 1_800_000, successCodes = [0], signal, outputMode = "capture", stdin = "ignore", trimOutput = true, rejectStderr = false } = {}) {
-  signal?.throwIfAborted();
-  if (!["capture", "tail"].includes(outputMode)) throw new Error(`Unknown command output mode: ${outputMode}`);
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, env, detached: process.platform !== "win32", windowsHide: true, stdio: [stdin, "pipe", "pipe"] });
-    let output = "";
-    let tail = "";
-    let stderrTail = "";
-    let timedOut = false;
-    let oversized = false;
-    const collect = (chunk, isStdout) => {
-      const text = chunk.toString();
-      tail = (tail + text).slice(-64 * 1024);
-      if (!isStdout) stderrTail = (stderrTail + text).slice(-64 * 1024);
-      // Metadata must be complete; installation diagnostics only need a bounded tail.
-      if (isStdout && outputMode === "capture" && !oversized) {
-        if (output.length + text.length > 16 * 1024 * 1024) { oversized = true; output = ""; }
-        else output += text;
-      }
-      log(text);
-    };
-    child.stdout.setEncoding("utf8").on("data", (chunk) => collect(chunk, true));
-    child.stderr.setEncoding("utf8").on("data", (chunk) => collect(chunk, false));
-    // Both cancellation and timeout stop descendants before releasing the operation.
-    const stop = () => {
-      if (process.platform === "win32" && child.pid) {
-        const killer = spawn("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
-        killer.on("error", () => child.kill());
-      } else if (child.pid) {
-        try { process.kill(-child.pid, "SIGKILL"); } catch { child.kill(); }
-      }
-    };
-    const timer = setTimeout(() => { timedOut = true; stop(); }, timeout);
-    signal?.addEventListener("abort", stop, { once: true });
-    const cleanup = () => { clearTimeout(timer); signal?.removeEventListener("abort", stop); };
-    child.once("error", (error) => { cleanup(); reject(error); });
-    child.once("close", (code) => {
-      cleanup();
-      if (signal?.aborted) { reject(signal.reason); return; }
-      if (timedOut) { reject(new Error(tr("evolution_tools.the_operation_timed_out_and_its_process_was_stopped_review_the_logs_and_retry"))); return; }
-      if (!successCodes.includes(code)) { reject(new Error(tr("evolution_tools.value_failed_value_value", { p0: command.split(/[\\/]/).at(-1), p1: code, p2: tail.slice(-3000) }))); return; }
-      if (oversized) { reject(new Error(tr("evolution_tools.operation_output_exceeded_the_limit_the_incomplete_result_will_not_be_used"))); return; }
-      if (rejectStderr && stderrTail) { reject(new Error(tr("evolution_tools.the_command_returned_diagnostics_so_complete_output_cannot_be_confirmed_check_source_", { p0: stderrTail.slice(-3000) }))); return; }
-      const result = outputMode === "tail" ? tail : output;
-      resolve(trimOutput ? result.trim() : result);
-    });
-  });
-}
-
-/** Purpose: Fetch metadata from public release services. Input: HTTPS URL. Output: JSON or text. */
-export async function fetchRelease(url, json = true, { signal } = {}) {
-  const timeout = AbortSignal.timeout(120000);
-  const response = await fetch(url, { headers: { "User-Agent": "Cleo-Evolution" }, signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
-  if (!response.ok) throw new Error(tr("evolution_tools.download_failed_value_check_your_connection_and_retry", { p0: response.status }));
-  return json ? response.json() : response.text();
-}
-
 /** Purpose: Download only checksum-verified executable archives. Input: trusted URL, file, digest. Output: verified file. */
 export async function downloadVerified(url, path, digest, { signal } = {}) {
   signal?.throwIfAborted();
@@ -135,23 +77,6 @@ export async function downloadVerified(url, path, digest, { signal } = {}) {
   } finally { await rm(temporary, { force: true }); }
 }
 
-/** Purpose: Unpack a verified release archive. Input: archive and new destination. Output: extracted tree. */
-export async function extract(archive, destination, { signal, log = () => {} } = {}) {
-  signal?.throwIfAborted();
-  await mkdir(destination, { recursive: true });
-  const options = { outputMode: "tail", log, signal };
-  if (process.platform === "win32" && archive.endsWith(".zip")) {
-    // Keep long-path support without passing Unicode paths through tar's ANSI argv.
-    // Node opens the archive and sets the working directory using Windows Unicode APIs.
-    const tar = join(process.env.SystemRoot || "C:\\Windows", "System32", "tar.exe");
-    const input = await open(archive, "r");
-    try { await run(tar, ["-xf", "-"], { ...options, cwd: destination, stdin: input.fd }); }
-    finally { await input.close(); }
-  } else if (process.platform === "darwin" && archive.endsWith(".zip")) await run("ditto", ["-x", "-k", archive, destination], options);
-  else if (archive.endsWith(".zip")) await run("unzip", ["-q", archive, "-d", destination], options);
-  else await run("tar", ["-xf", archive, "-C", destination], options);
-}
-
 /** Purpose: Find an executable inside an extracted trusted tool. Input: root/name. Output: path or null. */
 async function findTool(root, name) {
   for (const entry of await readdir(root, { withFileTypes: true })) {
@@ -162,27 +87,8 @@ async function findTool(root, name) {
   return null;
 }
 
-/** Purpose: Retain an installation as physical files without Electron expanding ASAR archives.
- * Input: installation root and destination. Output: byte-preserving bundle copy, including native symlinks.
- */
-export async function copyProgramBundle(source, destination, { signal } = {}) {
-  signal?.throwIfAborted();
-  if (process.platform === "win32") {
-    // Native copying avoids ASAR expansion and per-file JS overhead in the large Python runtime.
-    await run("robocopy.exe", [source, destination, "/E", "/SL", "/COPY:DAT", "/R:0", "/W:0",
-      "/MT:8", "/NFL", "/NDL", "/NP", "/NJH", "/NJS"],
-    { successCodes: [0, 1, 2, 3, 4, 5, 6, 7], timeout: 600000, signal });
-    return;
-  }
-  const filesystem = process.versions.electron
-    ? createRequire(import.meta.url)("original-fs").promises
-    : { cp };
-  await filesystem.cp(source, destination, { recursive: true, verbatimSymlinks: true });
-  signal?.throwIfAborted();
-}
-
 /** Purpose: Provision private build tools without changing global installations. */
-export class EvolutionTools {
+export class ManagedTools {
   constructor(root, log = () => {}) { this.root = root; this.log = log; }
 
   /** GitHub login is independent of build prerequisites and never needs a terminal. */

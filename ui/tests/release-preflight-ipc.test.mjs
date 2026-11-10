@@ -7,8 +7,9 @@ import { ProgramUpdates } from "../electron/program-updates.mjs";
 
 test("automatic release preflight leaves conversations available and never dispatches publication", async () => {
   const main = await readFile(new URL("../electron/main.mjs", import.meta.url), "utf8");
-  const start = main.indexOf('ipcMain.handle("cleo:evolution:action",');
-  const end = main.indexOf('if (!app.isPackaged) ipcMain.handle("cleo:evolution:healthy",', start);
+  const desktop = (await readFile(new URL("../electron/evolution-desktop.mjs", import.meta.url), "utf8")).replaceAll("\r\n", "\n");
+  const start = desktop.indexOf("async function evolutionAction(event, payload) {");
+  const end = desktop.indexOf("\n  return {\n", start);
   assert(start >= 0 && end > start);
   const requestStart = main.indexOf('ipcMain.handle("cleo:request",');
   const requestEnd = main.indexOf('ipcMain.handle("cleo:pick-attachments",', requestStart);
@@ -21,20 +22,19 @@ test("automatic release preflight leaves conversations available and never dispa
   const evolution = { phase: "idle", readOnlyOperation: false, store: { read: async () => ({}) } };
   const turns = [];
   const computer = { broker: { turnStarted: thread => turns.push(["start", thread]), turnEnded: thread => turns.push(["end", thread]) } };
-  vm.runInNewContext(`${allowlist}\n${main.slice(requestStart, requestEnd)}\n${main.slice(start, end)}`, {
-    ipcMain: { handle: (name, callback) => { handlers.set(name, callback); } },
-    programUpdates: program,
+  const backend = { pending: new Map([["running-task", {}]]), request: async (method, params) => {
+    if (method === "is_evolution_thread") return params.thread_id === "evolution";
+    if (method === "stream_turn") return "ordinary task started";
+    if (method === "steer_run") return "steer forwarded to existing task";
+    throw new Error(`Unexpected request: ${method}`);
+  } };
+  // The action router is a closure of the evolution seam; evaluate it with the seam's own bindings.
+  const handler = vm.runInNewContext(`${desktop.slice(start, end)}\nevolutionAction;`, {
+    programUpdates: () => program,
     tr,
-    setup: { busy: false },
-    companion: { controlling: false },
-    backend: { pending: new Map([["running-task", {}]]), request: async (method, params) => {
-      if (method === "is_evolution_thread") return params.thread_id === "evolution";
-      if (method === "stream_turn") return "ordinary task started";
-      if (method === "steer_run") return "steer forwarded to existing task";
-      throw new Error(`Unexpected request: ${method}`);
-    } },
+    setup: () => ({ busy: false }),
+    backend,
     evolution,
-    computer,
     checkReleasePermission: async () => ({ canRelease: true }),
     previewMergedRelease: async (_manager, params) => new Promise(resolve => {
       evolution.phase = "checking"; evolution.readOnlyOperation = true;
@@ -42,7 +42,16 @@ test("automatic release preflight leaves conversations available and never dispa
     }),
     releaseJobs: { start: () => { publications++; } },
   });
-  const handler = handlers.get("cleo:evolution:action");
+  vm.runInNewContext(`${allowlist}\n${main.slice(requestStart, requestEnd)}`, {
+    ipcMain: { handle: (name, callback) => { handlers.set(name, callback); } },
+    programUpdates: program,
+    tr,
+    setup: { busy: false },
+    evolutionDesktop: { controlling: false, ownsThread: threadId => backend.request("is_evolution_thread", { thread_id: threadId }) },
+    backend,
+    versions: evolution,
+    computer,
+  });
   const request = handlers.get("cleo:request");
   const reading = handler({}, { action: "previewMergedRelease", url: "https://github.com/test/repo/pull/1" });
   assert.equal(program.busy, true);

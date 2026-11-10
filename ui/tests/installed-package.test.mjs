@@ -28,7 +28,7 @@ for (const broken of [false, true]) {
     await writeFile(join(bundle, target.executable), "Copy-only fixture; never launched.");
     await cp(join(ui, "electron"), join(source, "electron"), { recursive: true });
     if (broken) {
-      const module = join(source, "electron/evolution.mjs");
+      const module = join(source, "electron/program-versions.mjs");
       const content = await readFile(module, "utf8");
       assert.ok(content.includes("async installedRelease() {"));
       await writeFile(module, content.replace("async installedRelease() {",
@@ -42,7 +42,7 @@ for (const broken of [false, true]) {
     await writeFile(join(target.platform === "darwin" ? resources : bundle, "release.json"),
       JSON.stringify({ app: "Cleo", version: "9.8.7", platform: target.id,
         schema_version: 1, evolution_protocol: 2, build_kind: "official" }));
-    const run = () => execute(process.execPath, [join(ui, "tests/evolution-installed-package.smoke.mjs")], {
+    const run = () => execute(process.execPath, [join(ui, "tests/installed-package.smoke.mjs")], {
       env: { ...process.env, CLEO_EXECUTABLE: join(bundle, target.executable) },
       timeout: 30000, windowsHide: true,
     });

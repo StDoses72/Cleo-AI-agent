@@ -27,9 +27,13 @@ test("only Evolution handoffs open the companion; recovery closes on the matchin
 
 test("real main entry opens after staging, never during agent turns or builds", async () => {
   const main = await readFile(new URL("./main.mjs", import.meta.url), "utf8");
-  const calls = [...main.matchAll(/await openEvolutionMonitor\(\)/g)];
+  const desktop = await readFile(new URL("./evolution-desktop.mjs", import.meta.url), "utf8");
+  const calls = [...main.matchAll(/await evolutionDesktop\.openMonitor\(\)/g)];
   assert.equal(calls.length, 1);
-  assert.ok(main.indexOf("const tx = await evolution.stage(id)") < calls[0].index);
+  assert.ok(main.indexOf("const tx = await versions.stage(id)") < calls[0].index);
   assert.match(main, /app\.on\("cleo:healthy",[^]*?mainInteractive = true/);
-  assert.match(main, /active: state.active, mainInteractive/);
+  // The seam itself never opens the monitor on its own: only main's version switch and the explicit action do.
+  assert.equal([...desktop.matchAll(/openEvolutionMonitor\(\)/g)].length, 2);
+  assert.match(desktop, /monitor: \(\) => openEvolutionMonitor\(\)/);
+  assert.match(desktop, /active: state.active, mainInteractive: mainInteractive\(\)/);
 });

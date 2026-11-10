@@ -6,7 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { desktopPlatform } from "../electron/platform.mjs";
-import { run } from "../electron/evolution-tools.mjs";
+import { run } from "../electron/run-command.mjs";
 
 const ui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = await mkdtemp(join(tmpdir(), "cleo-baseline-smoke-"));

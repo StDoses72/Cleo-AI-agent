@@ -4,8 +4,8 @@ import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 import { EvolutionManager } from "../electron/evolution.mjs";
-import { exists, writeJson } from "../electron/evolution-store.mjs";
-import { runHandoff } from "../electron/evolution-handoff.mjs";
+import { exists, writeJson } from "../electron/program-store.mjs";
+import { runHandoff } from "../electron/program-handoff.mjs";
 
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), "cleo-installed-test-"));

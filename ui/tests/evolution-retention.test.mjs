@@ -3,7 +3,8 @@ import test from "node:test";
 import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from "node:fs/promises";
 import { join, dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { EvolutionStore, exists } from "../electron/evolution-store.mjs";
+import { EvolutionStore } from "../electron/evolution-store.mjs";
+import { exists } from "../electron/program-store.mjs";
 
 /** Purpose: Exercise retention with actual disposable directories.
  * Input: test context. Output: store, build-registration and apply helpers; fixtures are removed afterward.

@@ -237,6 +237,43 @@ def create_runtime(profile: AgentProfile, mcp: AgentMcp):
     )
 
 
+async def subscription_text(profile, temporary: Path, instructions: str, prompt: str) -> str:
+    """Purpose: Ask a subscription runtime one tool-free question in a disposable directory.
+
+    Input: Connection profile, temporary directory, instructions and the data to analyse.
+    Output: The reply text. Uses only the transport: RuntimeGraph would initialize the live
+    session index.
+    """
+    # Existing tool-free MCP mode; Codex is read-only and Claude disables native tools.
+    mcp = AgentMcp(profile, temporary, instructions, mode="dream_extract")
+    provider = create_runtime(profile, mcp)
+    session = None
+    parts = []
+
+    async def on_event(event):
+        from cleo.runtime.task_usage import usage_observer
+
+        observer = usage_observer.get()
+        if observer:
+            observer(event)
+        if event.type == "assistant_message_chunk" and event.text:
+            parts.append(event.text)
+
+    try:
+        session = await provider.create_session(
+            str(temporary), None if profile.model == "default" else profile.model
+        )
+        reply = await provider.prompt(
+            session.id, instructions + "\n\n待分析的数据：\n" + prompt, on_event=on_event
+        )
+        if reply.status != "completed":
+            raise ValueError(reply.error or "只读分析未完成；原需求已保留。")
+        return reply.response or "".join(parts)
+    finally:
+        if session is not None:
+            await provider.close(session.id)
+
+
 async def inspect_connection(profile: AgentProfile) -> dict:
     """Check login and enumerate models without sending a model prompt."""
     executable(profile)

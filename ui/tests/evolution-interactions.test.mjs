@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { EvolutionAcceptance } from "../electron/evolution-acceptance.mjs";
 import { EvolutionRequests } from "../electron/evolution-requests.mjs";
 import { EvolutionInteractions } from "../electron/evolution-interactions.mjs";
-import { readJson, writeJson } from "../electron/evolution-store.mjs";
+import { readJson, writeJson } from "../electron/program-store.mjs";
 
 test("the draft skill client method is registered at the desktop IPC boundary", async () => {
   const main = await readFile(new URL("../electron/main.mjs", import.meta.url), "utf8");

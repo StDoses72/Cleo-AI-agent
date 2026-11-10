@@ -3,8 +3,8 @@ import { createHash } from "node:crypto";
 import { lstat, readFile, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, relative, isAbsolute, dirname } from "node:path";
-import { CONTRIBUTION_REPOSITORY as REPOSITORY } from "./evolution-contributions.mjs";
-import { isContributionSource } from "./evolution-snapshot.mjs";
+import { RELEASE_REPOSITORY as REPOSITORY } from "./release-channel.mjs";
+import { isPublishableSource } from "./publishable-source.mjs";
 
 const endpoint = `repos/${REPOSITORY}`;
 const shaPattern = /^[a-f0-9]{40}$/;
@@ -45,7 +45,7 @@ async function verifyReleaseTree(manager, tools, commit) {
   const modes = new Map(staged.split("\0").filter(Boolean).map(entry => [entry.slice(entry.indexOf("\t") + 1), entry.slice(0, 6)]));
   let count = 0;
   for (const name of new Set(output.split("\0").filter(Boolean))) {
-    if (!isContributionSource(name)) continue;
+    if (!isPublishableSource(name)) continue;
     const path = resolve(manager.source, name);
     const child = relative(resolve(manager.source), path);
     if (!child || child.startsWith("..") || isAbsolute(child) || /[\r\n\\]/.test(name)) throw new Error(tr("github_releases.invalid_source_path"));

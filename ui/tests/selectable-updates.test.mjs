@@ -1,8 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
-import { mkdtemp, mkdir, readFile, writeFile, rm, readdir } from "node:fs/promises";
+import { copyFile, mkdtemp, mkdir, readFile, writeFile, rm, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -48,7 +47,7 @@ async function fixture(action) {
   await manager.store.update({ active: "base", baseline: "base", builds: [base], unknownState: { retain: true } });
   manager.ensureBaseline = async () => base;
   const applied = [];
-  const program = new SelectableProgramUpdates({ updater, evolution: manager, hasRunningTask: () => Boolean(hooks.running),
+  const program = new SelectableProgramUpdates({ updater, versions: manager, hasRunningTask: () => Boolean(hooks.running),
     apply: async id => { applied.push(id); } });
   try { await action({ root, manager, updater, program, hooks, catalog, calls, applied }); }
   finally { program.close(); await manager.close(); await rm(root, { recursive: true, force: true }); }
@@ -242,15 +241,14 @@ test("selection cannot race an in-progress download", async () => {
   });
 });
 
-test("existing registry format round-trips through the iteration-base writer without losing unknown fields or user data", async () => {
+test("existing registry format round-trips through the v0.12.2 writer without losing unknown fields or user data", async () => {
   await fixture(async ({ program, manager, root }) => {
-    const source = execFileSync("git", ["show", "HEAD:ui/electron/evolution-store.mjs"], { encoding: "utf8", windowsHide: true });
-    const legacyFile = join(root, "iteration-base-store.mjs");
-    await writeFile(legacyFile, source);
-    if (source.includes('./i18n.mjs')) {
-      for (const name of ["i18n.mjs", "locales.json", "recovery-locales.json"]) {
-        await writeFile(join(root, name), execFileSync("git", ["show", `HEAD:ui/electron/${name}`], { windowsHide: true }));
-      }
+    // The registry writer exactly as v0.12.2 shipped it (ui/electron/evolution-store.mjs at that tag):
+    // retained programs of that generation keep writing state.json after a rollback.
+    const legacyFile = join(root, "previous-registry-writer.mjs");
+    await copyFile(new URL("./fixtures/registry-writer-v0.12.2.mjs", import.meta.url), legacyFile);
+    for (const name of ["i18n.mjs", "locales.json", "recovery-locales.json"]) {
+      await copyFile(new URL(`../electron/${name}`, import.meta.url), join(root, name));
     }
     const { EvolutionStore: PreviousStore } = await import(pathToFileURL(legacyFile).href);
     const previous = new PreviousStore(manager.store.root, manager.store.dataHome);
@@ -268,13 +266,16 @@ test("existing registry format round-trips through the iteration-base writer wit
 });
 
 test("available saved and baseline program writers preserve the same registry fields", { skip: !process.env.CLEO_COMPAT_BUILDS }, async () => {
-  const { extractFile } = await import("@electron/asar");
+  const { extractFile, listPackage } = await import("@electron/asar");
   const buildsRoot = process.env.CLEO_COMPAT_BUILDS;
   const directories = await readdir(buildsRoot, { withFileTypes: true });
   let checked = 0;
   for (const entry of directories.filter(item => item.isDirectory())) {
     const archive = join(buildsRoot, entry.name, "Cleo/resources/app.asar");
-    const source = extractFile(archive, "electron/evolution-store.mjs");
+    // Programs up to v0.12.2 keep the registry writer in evolution-store.mjs; later ones in program-store.mjs.
+    const packaged = new Set(listPackage(archive).map(name => name.replaceAll("\\", "/")));
+    const storeName = packaged.has("/electron/program-store.mjs") ? "program-store.mjs" : "evolution-store.mjs";
+    const source = extractFile(archive, `electron/${storeName}`);
     await fixture(async ({ root, manager, program }) => {
       const file = join(root, "previous-store.mjs");
       await writeFile(file, source);
@@ -283,7 +284,8 @@ test("available saved and baseline program writers preserve the same registry fi
           await writeFile(join(root, name), extractFile(archive, `electron/${name}`));
         }
       }
-      const { EvolutionStore: PreviousStore } = await import(pathToFileURL(file).href);
+      const writer = await import(pathToFileURL(file).href);
+      const PreviousStore = writer.ProgramStore || writer.EvolutionStore;
       const previous = new PreviousStore(manager.store.root, manager.store.dataHome);
       await previous.update({ threadId: "previous-thread" });
       const dataBefore = await readFile(join(root, "home", "content.json"));

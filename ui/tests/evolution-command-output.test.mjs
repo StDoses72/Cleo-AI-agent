@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { EvolutionManager } from "../electron/evolution.mjs";
-import { run } from "../electron/evolution-tools.mjs";
+import { run } from "../electron/run-command.mjs";
 
 async function fixture(context) {
   const root = await mkdtemp(join(tmpdir(), "cleo-command-output-"));

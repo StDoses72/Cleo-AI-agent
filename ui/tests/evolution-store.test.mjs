@@ -3,7 +3,8 @@ import test from "node:test";
 import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from "node:fs/promises";
 import { join, dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { EvolutionStore, readJson, writeJson, ownedPath } from "../electron/evolution-store.mjs";
+import { EvolutionStore } from "../electron/evolution-store.mjs";
+import { readJson, writeJson, ownedPath } from "../electron/program-store.mjs";
 
 /** Purpose: Provide isolated program/data records. Input: test context. Output: disposable store. */
 async function fixture(t) {

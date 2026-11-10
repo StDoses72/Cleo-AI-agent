@@ -24,8 +24,8 @@ let manager;
 try {
   const application = join(root, "application");
   extractAll(join(resources, "app.asar"), application);
-  const { EvolutionManager } = await import(pathToFileURL(join(application, "electron/evolution.mjs")).href);
-  manager = new EvolutionManager({ app: { isPackaged: true, getVersion: () => packageJson.version },
+  const { ProgramVersions } = await import(pathToFileURL(join(application, "electron/program-versions.mjs")).href);
+  manager = new ProgramVersions({ app: { isPackaged: true, getVersion: () => packageJson.version },
     executable, root: join(root, "evolution"), dataHome: join(root, "home") });
   const oldExecutable = `${target.bundle}/${target.executable}`;
   const alpha = packageJson.version.endsWith("-alpha");

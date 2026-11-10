@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { desktopPlatform } from "../electron/platform.mjs";
-import { EvolutionStore, exists, writeJson } from "../electron/evolution-store.mjs";
+import { ProgramStore, exists, writeJson } from "../electron/program-store.mjs";
 import { refreshInstalledLauncher, updateWindowsUninstallEntry, WINDOWS_INSTALLER_APP_ID, MAX_REFRESH_ATTEMPTS } from "../electron/launcher-refresh.mjs";
 
 const target = desktopPlatform();
@@ -21,7 +21,7 @@ async function fixture(t, { launcherVersion = "0.7.0", activeVersion = "0.9.0", 
     assert.equal(dirname(resolve(root)), resolve(tmpdir()));
     await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
-  const store = new EvolutionStore(join(root, "profile", "evolution"), join(root, "home"));
+  const store = new ProgramStore(join(root, "profile", "evolution"), join(root, "home"));
   await mkdir(join(store.dataHome, "data"), { recursive: true });
   await writeFile(join(store.dataHome, "data", "chat.txt"), "user data");
   const metadata = (version) => ({ schema_version: 1, app: "Cleo", version, platform: target.id, evolution_protocol: 2, build_kind: "official" });
@@ -259,7 +259,7 @@ test("a launcher directory that holds the data home or the registry is never swa
   const { store, root, builds, launcher, installRoot, refresh, active } = await fixture(t);
   const before = async () => [await readFile(launcher, "utf8"), await readFile(join(installRoot, "obsolete.txt"), "utf8")];
   // CLEO_HOME inside Programs\Cleo: the whole session store would travel with the retired directory.
-  const inside = new EvolutionStore(store.root, join(installRoot, "home"));
+  const inside = new ProgramStore(store.root, join(installRoot, "home"));
   await mkdir(join(inside.dataHome, "data"), { recursive: true });
   await writeFile(join(inside.dataHome, "data", "sessions.jsonl"), "irreplaceable");
   const refused = await refreshInstalledLauncher({ store: inside, executable: active, launchers: [], inUse: async () => false, registry: async () => assert.fail("no registry change") });
@@ -269,11 +269,11 @@ test("a launcher directory that holds the data home or the registry is never swa
   assert.deepEqual(await readdir(dirname(installRoot)), [target.bundle]);
   assert.equal((await inside.read()).launcherRefresh, undefined, "a refused refresh is not journaled for retry");
   // The install root inside the data home is refused the same way.
-  const enclosing = new EvolutionStore(store.root, dirname(installRoot));
+  const enclosing = new ProgramStore(store.root, dirname(installRoot));
   assert.equal((await refreshInstalledLauncher({ store: enclosing, executable: active, launchers: [], inUse: async () => false })).results[key(launcher)].reason, "contains-user-data");
   assert.deepEqual(await before(), ["installed executable 0.7.0", "stale file from the old launcher"]);
   // A data entry linked into the install root is detected through its real path.
-  const linked = new EvolutionStore(store.root, join(root, "linked-home"));
+  const linked = new ProgramStore(store.root, join(root, "linked-home"));
   await mkdir(linked.dataHome, { recursive: true });
   await mkdir(join(installRoot, "memory-store"));
   await writeFile(join(installRoot, "memory-store", "MEMORY.md"), "long-term memory");
@@ -305,7 +305,7 @@ test("a launcher directory that holds the data home or the registry is never swa
     await mkdir(join(installRoot, "home", "data"), { recursive: true });
     await writeFile(join(installRoot, "home", "data", "sessions.jsonl"), "irreplaceable");
     await symlink(join(installRoot, "home"), dataAlias, "junction");
-    const aliased = new EvolutionStore(store.root, dataAlias);
+    const aliased = new ProgramStore(store.root, dataAlias);
     const programAlias = join(root, "Apps", target.bundle);
     await mkdir(dirname(programAlias), { recursive: true });
     await symlink(installRoot, programAlias, "junction");

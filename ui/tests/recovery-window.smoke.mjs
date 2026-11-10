@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { launchDesktop } from "../electron/evolution-launch.mjs";
+import { launchDesktop } from "../electron/program-launch.mjs";
 import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";

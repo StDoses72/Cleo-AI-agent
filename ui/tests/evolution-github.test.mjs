@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { EvolutionManager } from "../electron/evolution.mjs";
-import { run } from "../electron/evolution-tools.mjs";
+import { run } from "../electron/run-command.mjs";
 
 /** Purpose: Exercise the real login state machine without accounts or browser side effects.
  * Input: test context and browser stub. Output: isolated controller and captured official URLs.

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { run } from "../electron/evolution-tools.mjs";
+import { run } from "../electron/run-command.mjs";
 
 // Execute the builder's real checksum assignments, without downloads or packaging.
 const checksumProbe = `

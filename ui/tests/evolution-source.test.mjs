@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { EvolutionManager } from "../electron/evolution.mjs";
-import { run } from "../electron/evolution-tools.mjs";
+import { run } from "../electron/run-command.mjs";
 
 for (const explicitBase of [false, true]) {
   test(`bundled source preserves committed, staged and unstaged deletions (${explicitBase ? "selected" : "version"} base)`, async (t) => {

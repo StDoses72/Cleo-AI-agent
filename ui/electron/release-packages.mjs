@@ -2,7 +2,7 @@ import { t as tr } from "./i18n.mjs";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { CONTRIBUTION_REPOSITORY as REPOSITORY } from "./evolution-contributions.mjs";
+import { RELEASE_REPOSITORY as REPOSITORY } from "./release-channel.mjs";
 import { checkReleasePermission, releaseSource, mergedReleaseSource, tagCommit, findRelease, releaseTagPattern } from "./github-releases.mjs";
 
 const endpoint = `repos/${REPOSITORY}`;

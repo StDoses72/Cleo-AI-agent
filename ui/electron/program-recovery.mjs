@@ -1,13 +1,13 @@
 import { t as tr } from "./i18n.mjs";
-import { launchDesktop } from "./evolution-launch.mjs";
+import { launchDesktop } from "./program-launch.mjs";
 import { app, dialog } from "electron";
 import { resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { rm } from "node:fs/promises";
-import { readJson, writeJson, ownedPath } from "./evolution-store.mjs";
-import { createRestartWindow } from "./evolution-progress.mjs";
-import { runHandoff } from "./evolution-handoff.mjs";
+import { readJson, writeJson, ownedPath } from "./program-store.mjs";
+import { createRestartWindow } from "./restart-window.mjs";
+import { runHandoff } from "./program-handoff.mjs";
 
 /** Purpose: Launch a retained build with visible UI. Input: validated build/store. Output: detached child process. */
 export async function launchBuild(build, store, transactionId = null) {

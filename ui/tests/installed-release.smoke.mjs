@@ -4,8 +4,8 @@ import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { createPackage } from "@electron/asar";
-import { run } from "../electron/evolution-tools.mjs";
-import { EvolutionStore } from "../electron/evolution-store.mjs";
+import { run } from "../electron/run-command.mjs";
+import { ProgramStore } from "../electron/program-store.mjs";
 
 if (process.platform !== "win32") {
   console.log("Windows installed-release startup smoke skipped on this platform.");
@@ -44,7 +44,7 @@ void app.whenReady().then(async () => {
         version, platform: "windows-x64", evolution_protocol: 2 }));
     }
     const profile = join(root, "profile");
-    const store = new EvolutionStore(join(profile, "evolution"), join(root, "home"));
+    const store = new ProgramStore(join(profile, "evolution"), join(root, "home"));
     const oldBundle = join(store.root, "builds/old/Cleo");
     await cp(bundle, oldBundle, { recursive: true });
     await pack(oldBundle, "0.3.10");

@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import { basename, dirname, isAbsolute, join, posix, relative, resolve, win32 } from "node:path";
 import { desktopPlatform, installationRoot } from "./platform.mjs";
 import { compareVersions } from "./updater.mjs";
-import { readJson } from "./evolution-store.mjs";
+import { readJson } from "./program-store.mjs";
 import { runtimeInUse } from "./install-state.mjs";
 import { parseRuntimeRegistry, RUNTIME_REGISTRY } from "./online-runtime.mjs";
 

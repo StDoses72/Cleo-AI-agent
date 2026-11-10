@@ -3,8 +3,8 @@ import test from "node:test";
 import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
-import { EvolutionStore } from "../electron/evolution-store.mjs";
-import { runHandoff } from "../electron/evolution-handoff.mjs";
+import { ProgramStore } from "../electron/program-store.mjs";
+import { runHandoff } from "../electron/program-handoff.mjs";
 
 /** Purpose: Run real activation journals with deterministic startup outcomes. Input: test and healthy ids. Output: fixture and hooks. */
 async function fixture(t, healthy) {
@@ -14,7 +14,7 @@ async function fixture(t, healthy) {
     assert.ok(root.includes("cleo-handoff-test-"));
     await rm(root, { recursive: true, force: true });
   });
-  const store = new EvolutionStore(join(root, "control"), join(root, "home"));
+  const store = new ProgramStore(join(root, "control"), join(root, "home"));
   await mkdir(join(store.dataHome, "data"), { recursive: true });
   await writeFile(join(store.dataHome, "data/latest.txt"), "latest");
   const builds = ["base", "saved", "draft"].map((id) => ({ id, kind: id === "base" ? "official" : "local",

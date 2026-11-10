@@ -4,7 +4,7 @@ import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { EvolutionManager } from "../electron/evolution.mjs";
-import { run } from "../electron/evolution-tools.mjs";
+import { run } from "../electron/run-command.mjs";
 import { checkContribution, submitContribution, inspectPullRequest, contributionRepairPrompt } from "../electron/evolution-merge-assistance.mjs";
 
 /** Purpose: Exercise real merge mechanics with isolated local remotes. Input: test context. Output: manager and moving target. */

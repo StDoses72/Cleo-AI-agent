@@ -15,8 +15,8 @@ import { desktopPlatform } from "../electron/platform.mjs";
 const hash = data => createHash("sha256").update(data).digest("hex");
 const electron = join(dirname(fileURLToPath(import.meta.url)), "../electron");
 // prepare-online-package.py ships these modules beside the installer entry point.
-const PACKAGED = ["online-runtime.mjs", "release-downloads.mjs", "platform.mjs", "evolution-tools.mjs",
-  "evolution-store.mjs", "i18n.mjs", "locales.json", "recovery-locales.json",
+const PACKAGED = ["online-runtime.mjs", "release-downloads.mjs", "platform.mjs", "run-command.mjs",
+  "i18n.mjs", "locales.json", "recovery-locales.json",
   "computer/startup.mjs", "computer/schemes.mjs"];
 
 async function readyRuntime(directory, key) {

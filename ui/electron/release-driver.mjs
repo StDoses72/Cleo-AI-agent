@@ -1,8 +1,8 @@
 import { t as tr } from "./i18n.mjs";
 import { mkdir, readFile, writeFile, access } from "node:fs/promises";
 import { join } from "node:path";
-import { CONTRIBUTION_REPOSITORY as REPOSITORY } from "./evolution-contributions.mjs";
-import { run } from "./evolution-tools.mjs";
+import { RELEASE_REPOSITORY as REPOSITORY } from "./release-channel.mjs";
+import { run } from "./run-command.mjs";
 import { checkReleasePermission, mergedReleaseSource, findRelease, tagCommit, createVerifiedRelease, releaseTagPattern } from "./github-releases.mjs";
 import { checkedRunResult } from "./release-packages.mjs";
 

@@ -3,18 +3,9 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, writeFile, lstat, rm } from "node:fs/promises";
 import { join, dirname, resolve, relative, isAbsolute } from "node:path";
 import { CONTRIBUTION_REPOSITORY, requireTargetBranch } from "./evolution-contributions.mjs";
+import { isPublishableSource } from "./publishable-source.mjs";
 
-/** Purpose: Exclude machine state even if accidentally tracked. Input: repository path. Output: publishable source flag. */
-export function isContributionSource(name) {
-  return !/^(?:data|config|release|dist|build|workspace|\.git|\.venv|\.release-build|\.test-deps)(?:\/|$)/.test(name)
-    && !/^\.(?:env(?:\.|$)|local-preview-)/.test(name)
-    && !/^memory\/(?!MEMORY_POLICY\.md$)/.test(name)
-    && !/^cleo\/config\/(?:cleo|harnesses)\.json$/.test(name)
-    && !/(?:^|\/)(?:node_modules|__pycache__|\.pytest_cache|\.ruff_cache)(?:\/|$)/.test(name)
-    && !/^ui\/(?:dist|output|\.npm-cache)(?:\/|$)/.test(name)
-    && !/^ui\/runtime\/(?!package(?:-lock)?\.json$)/.test(name)
-    && !/\.(?:pyc|tsbuildinfo|sqlite3?(?:-wal|-shm)?)$/.test(name);
-}
+export { isPublishableSource as isContributionSource };
 
 /** Purpose: Recheck the target against the pinned parent. Input: branch and expected SHA. Output: verified current SHA. */
 export async function assertSnapshotTarget(manager, tools, branch, expected) {
@@ -74,7 +65,7 @@ export async function createContributionSnapshot(manager, tools, branch, sourceH
       }
       const bytes = await readFile(path);
       hash.update(createHash("sha256").update(bytes).digest("hex"));
-      if (!isContributionSource(name)) continue;
+      if (!isPublishableSource(name)) continue;
       await mkdir(dirname(join(directory, name)), { recursive: true });
       await writeFile(join(directory, name), bytes, { mode: info.mode });
       exported.push(name);

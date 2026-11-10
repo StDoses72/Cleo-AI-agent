@@ -4,9 +4,9 @@ import { desktopDataHome } from "./platform.mjs";
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme } from "electron";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readJson, writeJson } from "./evolution-store.mjs";
+import { readJson, writeJson } from "./program-store.mjs";
 import { EvolutionMonitorStore } from "./evolution-monitor-store.mjs";
-import { launchDesktop } from "./evolution-launch.mjs";
+import { launchDesktop } from "./program-launch.mjs";
 import { monitorDisposition } from "./evolution-monitor-lifecycle.mjs";
 
 /** Purpose: Keep a small native progress and message window alive across Cleo restarts.

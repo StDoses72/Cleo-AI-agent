@@ -7,13 +7,13 @@ import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { createPackage } from "@electron/asar";
-import { EvolutionStore, readJson } from "../electron/evolution-store.mjs";
+import { ProgramStore, readJson } from "../electron/program-store.mjs";
 
 const execute = promisify(execFile);
 const repo = resolve(".");
 const root = await mkdtemp(join(tmpdir(), "cleo-visible-handoff-"));
-const moduleUrl = pathToFileURL(join(repo, "ui/electron/evolution-recovery.mjs")).href;
-const storeUrl = pathToFileURL(join(repo, "ui/electron/evolution-store.mjs")).href;
+const moduleUrl = pathToFileURL(join(repo, "ui/electron/program-recovery.mjs")).href;
+const storeUrl = pathToFileURL(join(repo, "ui/electron/program-store.mjs")).href;
 
 /** Purpose: Make tiny packaged startup fixtures on the real Electron runtime.
  * Input: directory and entry point code. Output: executable Cleo package.
@@ -36,15 +36,15 @@ async function scenario(allFail) {
   const directory = join(root, allFail ? "all-fail" : "fallback");
   const profile = join(directory, "profile");
   const dataHome = join(directory, "home");
-  const store = new EvolutionStore(join(profile, "evolution"), dataHome);
+  const store = new ProgramStore(join(profile, "evolution"), dataHome);
   await mkdir(join(dataHome, "data"), { recursive: true });
   await writeFile(join(dataHome, "data/latest.txt"), "current data");
   const marker = join(directory, "healthy.json");
   const bad = 'import { app } from "electron"; app.whenReady().then(() => app.exit(1));';
   const good = `import { app, BrowserWindow } from "electron";
 import { writeFile, readFile } from "node:fs/promises";
-import { EvolutionStore } from ${JSON.stringify(storeUrl)};
-const store = new EvolutionStore(${JSON.stringify(store.root)}, ${JSON.stringify(dataHome)});
+import { ProgramStore } from ${JSON.stringify(storeUrl)};
+const store = new ProgramStore(${JSON.stringify(store.root)}, ${JSON.stringify(dataHome)});
 app.whenReady().then(async () => {
  const window = new BrowserWindow({ show:false, width:400, height:240 });
  await window.loadURL("data:text/html,<h1>Cleo recovered</h1>");
@@ -64,9 +64,9 @@ app.on("window-all-closed", () => app.quit());`;
   await mkdir(harness);
   await writeFile(join(harness, "package.json"), JSON.stringify({ name: "cleo-handoff-controller", type: "module", main: "main.mjs" }));
   await writeFile(join(harness, "main.mjs"), `import {app} from "electron";
-import {EvolutionStore} from ${JSON.stringify(storeUrl)};
+import {ProgramStore} from ${JSON.stringify(storeUrl)};
 import {applyFromController} from ${JSON.stringify(moduleUrl)};
-app.whenReady().then(() => applyFromController(new EvolutionStore(${JSON.stringify(store.root)},${JSON.stringify(dataHome)}), ${parent.pid})).then(() => app.quit()).catch((error) => { console.error(error); app.exit(1); });`);
+app.whenReady().then(() => applyFromController(new ProgramStore(${JSON.stringify(store.root)},${JSON.stringify(dataHome)}), ${parent.pid})).then(() => app.quit()).catch((error) => { console.error(error); app.exit(1); });`);
   let application;
   let controllerProcess;
   try {

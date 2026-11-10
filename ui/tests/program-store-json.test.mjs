@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { join, dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { readJson, writeJson } from "../electron/evolution-store.mjs";
+import { readJson, writeJson } from "../electron/program-store.mjs";
 
 /** Purpose: Isolate persistence checks. Input: test context. Output: an owned, cleaned JSON path. */
 async function fixture(t) {

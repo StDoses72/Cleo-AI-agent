@@ -80,7 +80,7 @@ async function fixture(action) {
     const updater = new DesktopUpdater({ app, platform: target.platform, arch: process.arch,
       downloads, fetchImpl: network, manifestUrl,
     });
-    program = new ProgramUpdates({ updater, evolution: manager, hasRunningTask: () => Boolean(hooks.running),
+    program = new ProgramUpdates({ updater, versions: manager, hasRunningTask: () => Boolean(hooks.running),
       apply: async id => {
         counters.applies++;
         await hooks.stage?.(id);

@@ -1,6 +1,6 @@
 import { t as tr } from "./i18n.mjs";
 import { join } from "node:path";
-import { readJson, writeJson } from "./evolution-store.mjs";
+import { readJson, writeJson } from "./program-store.mjs";
 
 /** Separate additive journal: older suite/report writers never own these records. */
 export class EvolutionInteractions {

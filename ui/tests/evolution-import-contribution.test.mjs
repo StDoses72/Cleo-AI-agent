@@ -4,8 +4,8 @@ import { mkdtemp, mkdir, cp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { EvolutionManager, developmentBundleDigest } from "../electron/evolution.mjs";
-import { run } from "../electron/evolution-tools.mjs";
-import { writeJson } from "../electron/evolution-store.mjs";
+import { run } from "../electron/run-command.mjs";
+import { writeJson } from "../electron/program-store.mjs";
 
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), "cleo-import-contribution-"));

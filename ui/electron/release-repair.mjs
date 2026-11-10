@@ -1,6 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { run } from "./evolution-tools.mjs";
+import { run } from "./run-command.mjs";
 
 /** Launch a separate harness process so normal conversations and cancellation stay independent. */
 export async function runReleaseRepair(backend, request, signal) {

@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { desktopPlatform } from "./platform.mjs";
 import { ReleaseDownloads } from "./release-downloads.mjs";
-import { run as execute } from "./evolution-tools.mjs";
+import { run as execute } from "./run-command.mjs";
 
 const digest = data => createHash("sha256").update(data).digest("hex");
 const pause = milliseconds => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);

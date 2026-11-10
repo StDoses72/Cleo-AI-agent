@@ -1,8 +1,9 @@
 import { t as tr } from "./i18n.mjs";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { readJson, writeJson } from "./evolution-store.mjs";
-import { run, EvolutionTools } from "./evolution-tools.mjs";
+import { readJson, writeJson } from "./program-store.mjs";
+import { run } from "./run-command.mjs";
+import { ManagedTools } from "./managed-tools.mjs";
 
 // Computer use no longer needs Docker, WSL or a Linux desktop image; saved results for those
 // retired items are ignored rather than deleted.
@@ -16,7 +17,7 @@ export class SetupManager {
   constructor({ root, toolsRoot, python, resourcesPath, repairRuntime,
     execute = run, platform = process.platform, env = process.env, prepareTools, version = "development" }) {
     Object.assign(this, { root, toolsRoot, python, resourcesPath, repairRuntime, execute, platform, env });
-    this.prepareTools = prepareTools || (signal => new EvolutionTools(toolsRoot, text => { this.logs = (this.logs + text).slice(-8000); }).prepare(false, { signal }));
+    this.prepareTools = prepareTools || (signal => new ManagedTools(toolsRoot, text => { this.logs = (this.logs + text).slice(-8000); }).prepare(false, { signal }));
     this.items = []; this.busy = false; this.checking = null; this.logs = ""; this.message = "";
     this.cancel = null; this.closed = false;
     this.version = version;

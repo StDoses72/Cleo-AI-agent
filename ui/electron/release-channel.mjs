@@ -1,6 +1,9 @@
 import { dirname, join } from "node:path";
 import { desktopDataHome } from "./platform.mjs";
 
+/** The GitHub repository that publishes official Cleo releases. */
+export const RELEASE_REPOSITORY = "StDoses72/Cleo-AI-agent";
+
 export const alphaTagPattern = /^alpha-((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))$/;
 const versionTagPattern = /^v?((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$/;
 

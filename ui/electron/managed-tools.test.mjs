@@ -4,7 +4,8 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { EvolutionTools, run } from "./evolution-tools.mjs";
+import { run } from "./run-command.mjs";
+import { ManagedTools } from "./managed-tools.mjs";
 
 test("managed Node accepts the macOS arm64 identifier from the Node release index", {
   skip: process.platform !== "darwin" || process.arch !== "arm64",
@@ -37,7 +38,7 @@ test("managed Node accepts the macOS arm64 identifier from the Node release inde
       throw new Error(`Unexpected URL: ${href}`);
     };
 
-    const installed = await new EvolutionTools(join(temporary, "managed")).node();
+    const installed = await new ManagedTools(join(temporary, "managed")).node();
     assert.equal(await readFile(installed.node, "utf8"), "fixture node");
     assert.equal(await readFile(installed.npm, "utf8"), "fixture npm");
   } finally {

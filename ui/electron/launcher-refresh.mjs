@@ -5,8 +5,8 @@ import { createRequire } from "node:module";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { desktopPlatform, installationRoot } from "./platform.mjs";
-import { DATA_ENTRIES, exists, ownedPath, readJson } from "./evolution-store.mjs";
-import { copyProgramBundle } from "./evolution-tools.mjs";
+import { DATA_ENTRIES, exists, ownedPath, readJson } from "./program-store.mjs";
+import { copyProgramBundle } from "./program-bundles.mjs";
 import { executableInUse } from "./install-state.mjs";
 
 /** The Inno Setup AppId from scripts/installers/windows.iss; its uninstall key is `<AppId>_is1`. */

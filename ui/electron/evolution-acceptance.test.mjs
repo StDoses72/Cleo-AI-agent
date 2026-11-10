@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { EvolutionAcceptance } from "./evolution-acceptance.mjs";
-import { writeJson } from "./evolution-store.mjs";
+import { writeJson } from "./program-store.mjs";
 
 async function setup(t, replay) {
   const root = await mkdtemp(join(tmpdir(), "cleo-case-test-"));

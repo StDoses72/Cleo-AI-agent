@@ -2,8 +2,9 @@ import { t as tr } from "./i18n.mjs";
 import { createHash } from "node:crypto";
 import { writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { RELEASE_REPOSITORY } from "./release-channel.mjs";
 
-export const CONTRIBUTION_REPOSITORY = "StDoses72/Cleo-AI-agent";
+export const CONTRIBUTION_REPOSITORY = RELEASE_REPOSITORY;
 
 /** Purpose: Reject missing/protected targets before any remote mutation. Input: branch. Output: canonical branch name. */
 export function contributionTarget(value) {

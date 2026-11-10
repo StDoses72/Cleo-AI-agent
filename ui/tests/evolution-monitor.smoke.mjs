@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { _electron as electron } from "playwright";
 import { EvolutionMonitorStore } from "../electron/evolution-monitor-store.mjs";
-import { writeJson } from "../electron/evolution-store.mjs";
+import { writeJson } from "../electron/program-store.mjs";
 
 const ui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const scratch = await mkdtemp(join(tmpdir(), "cleo-monitor-native-"));

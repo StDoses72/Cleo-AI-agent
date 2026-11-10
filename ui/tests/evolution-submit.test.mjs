@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { EvolutionManager } from "../electron/evolution.mjs";
-import { run } from "../electron/evolution-tools.mjs";
+import { run } from "../electron/run-command.mjs";
 import { listContributionBranches, requestTargetBranch, refreshTargetBranch } from "../electron/evolution-contributions.mjs";
 import { createContributionSnapshot, removeContributionSnapshot } from "../electron/evolution-snapshot.mjs";
 
@@ -37,7 +37,7 @@ async function fixture(t) {
   await writeFile(env.GIT_CONFIG_GLOBAL, "");
   const manager = new EvolutionManager({ app: { isPackaged: false, getVersion: () => "0.3.9" }, root: join(root, "controller"), dataHome: join(root, "home") });
   await mkdir(join(manager.source, "ui/electron"), { recursive: true });
-  for (const name of ["bootstrap.mjs", "i18n.mjs", "language.mjs", "locales.json", "recovery-locales.json", "release-channel.mjs", "evolution.mjs", "evolution-store.mjs", "evolution-tools.mjs", "evolution-recovery.mjs", "evolution-launch.mjs", "evolution-progress.mjs", "evolution-handoff.mjs", "release-downloads.mjs", "program-updates.mjs", "updater.mjs", "shutdown.mjs"]) {
+  for (const name of ["bootstrap.mjs", "i18n.mjs", "language.mjs", "locales.json", "recovery-locales.json", "release-channel.mjs", "evolution.mjs", "evolution-store.mjs", "program-versions.mjs", "program-store.mjs", "run-command.mjs", "program-bundles.mjs", "managed-tools.mjs", "program-recovery.mjs", "program-launch.mjs", "restart-window.mjs", "program-handoff.mjs", "release-downloads.mjs", "program-updates.mjs", "updater.mjs", "shutdown.mjs"]) {
     await cp(new URL(`../electron/${name}`, import.meta.url), join(manager.source, "ui/electron", name));
   }
   await writeFile(join(manager.source, "ui/package.json"), '{"main":"electron/bootstrap.mjs"}');

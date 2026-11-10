@@ -6,7 +6,7 @@ import { createRequire } from "node:module";
 import { DesktopUpdater, compareVersions, validateManifest } from "./updater.mjs";
 import { ProgramUpdates } from "./program-updates.mjs";
 import { installRuntime } from "./online-runtime.mjs";
-import { exists, ownedPath } from "./evolution-store.mjs";
+import { exists, ownedPath } from "./program-store.mjs";
 import { alphaTagPattern, versionForReleaseTag } from "./release-channel.mjs";
 
 const repository = "StDoses72/Cleo-AI-agent";
@@ -150,17 +150,17 @@ export async function prepareSelectedRelease(manager, updater, tag, { onProgress
 
 export class SelectableProgramUpdates extends ProgramUpdates {
   constructor(options) {
-    const { evolution, updater } = options;
+    const { versions, updater } = options;
     super({ ...options, apply: async id => {
-      const state = await evolution.store.read();
+      const state = await versions.store.read();
       const alreadyActive = state.active === id && !state.transaction;
       const result = await options.apply(id);
       if (alreadyActive) updater.setState({ phase: "updated", installStage: null, error: null });
       return result;
-    }, evolution: {
-      assertOfficialSwitchAllowed: () => evolution.assertOfficialSwitchAllowed(),
+    }, versions: {
+      assertOfficialSwitchAllowed: () => versions.assertOfficialSwitchAllowed(),
       releases: async () => updater.checkedRelease ? [updater.checkedRelease] : [],
-      downloadRelease: (tag, progress) => prepareSelectedRelease(evolution, updater, tag, progress),
+      downloadRelease: (tag, progress) => prepareSelectedRelease(versions, updater, tag, progress),
     } });
   }
 

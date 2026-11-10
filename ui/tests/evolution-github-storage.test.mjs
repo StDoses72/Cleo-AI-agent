@@ -3,7 +3,7 @@ import test from "node:test";
 import { mkdtemp, mkdir, chmod, readFile, rm, writeFile, copyFile, link } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import * as tools from "../electron/evolution-tools.mjs";
+import * as tools from "../electron/managed-tools.mjs";
 import { spawnSync } from "node:child_process";
 
 test("Windows login and build tools retain a mixed-case Path when spawning real executables", {
@@ -17,11 +17,13 @@ test("Windows login and build tools retain a mixed-case Path when spawning real 
   const env = { ...process.env, GH_CONFIG_DIR: join(root, "config") };
   for (const key of Object.keys(env)) if (key.toLowerCase() === "path") delete env[key];
   env.Path = bin;
-  const moduleUrl = new URL("../electron/evolution-tools.mjs", import.meta.url).href;
+  const moduleUrl = new URL("../electron/managed-tools.mjs", import.meta.url).href;
+  const runUrl = new URL("../electron/run-command.mjs", import.meta.url).href;
   const probe = `
     import assert from 'node:assert/strict';
-    import { EvolutionTools, run } from ${JSON.stringify(moduleUrl)};
-    const tools = new EvolutionTools(${JSON.stringify(join(root, "tools"))});
+    import { ManagedTools } from ${JSON.stringify(moduleUrl)};
+    import { run } from ${JSON.stringify(runUrl)};
+    const tools = new ManagedTools(${JSON.stringify(join(root, "tools"))});
     tools.node = async () => ({ node: process.execPath, npm: 'unused' });
     tools.githubTool = async () => { throw new Error('Unexpected download'); };
     for (const prepared of [await tools.prepareGithub(), await tools.prepare(true), await tools.prepare(false)]) {
@@ -80,7 +82,7 @@ test("Windows and XDG path selection follows GitHub CLI precedence", () => {
 
 test("login tooling does not require Node, Python, or Git", async t => {
   const { root } = await fixture(t);
-  const manager = new tools.EvolutionTools(join(root, "tools"));
+  const manager = new tools.ManagedTools(join(root, "tools"));
   manager.node = async () => { throw new Error("Node must not be prepared for login"); };
   manager.githubTool = async () => process.execPath;
   const prepared = await manager.prepareGithub();

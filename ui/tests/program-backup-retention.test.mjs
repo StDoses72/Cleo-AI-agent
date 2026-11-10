@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import { mkdtemp, mkdir, readFile, readdir, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { EvolutionStore, exists, readJson, writeJson } from "../electron/evolution-store.mjs";
+import { ProgramStore, exists, readJson, writeJson } from "../electron/program-store.mjs";
 
 const backupId = (index) => `apply-${String(index).padStart(8, "0")}-0000-0000-0000-000000000000`;
 
@@ -17,7 +17,7 @@ async function fixture(t, sameHome = false) {
   const data = join(root, "home");
   await mkdir(join(data, "data"), { recursive: true });
   await writeFile(join(data, "data/conversation.json"), "current user data");
-  const store = new EvolutionStore(join(sameHome ? data : root, "evolution"), data);
+  const store = new ProgramStore(join(sameHome ? data : root, "evolution"), data);
   const executable = join(store.root, "builds/baseline/Cleo/app.exe");
   await mkdir(dirname(executable), { recursive: true });
   await writeFile(executable, "baseline");
@@ -172,7 +172,7 @@ test("partial deletion is retried after reopening even when its completion marke
   assert.deepEqual((await store.read()).backupCleanupPending, [backupId(1)]);
   assert.equal(await exists(join(blocked, "snapshot.json")), false);
   deny = false;
-  const reopened = new EvolutionStore(store.root, data);
+  const reopened = new ProgramStore(store.root, data);
   await reopened.pruneBackups();
   assert.deepEqual((await readdir(parent)).sort(), [3, 4, 5].map(backupId));
   assert.deepEqual((await reopened.read()).backupCleanupPending, []);
@@ -232,7 +232,7 @@ test("cleanup cannot remove a backup that is now the live data home", async (t) 
   const { store, parent, seed } = await fixture(t);
   for (let index = 1; index <= 5; index++) await seed(index);
   const live = join(parent, backupId(1));
-  const redirected = new EvolutionStore(store.root, live);
+  const redirected = new ProgramStore(store.root, live);
 
   await redirected.pruneBackups();
 

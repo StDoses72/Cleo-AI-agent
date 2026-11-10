@@ -4,7 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { createPackage } from "@electron/asar";
-import { run } from "../electron/evolution-tools.mjs";
+import { run } from "../electron/run-command.mjs";
 
 if (process.platform !== "win32") {
   console.log("Windows packaged recovery fault-injection test skipped on this platform.");
@@ -18,7 +18,7 @@ if (process.platform !== "win32") {
     await rm(join(app, "resources/default_app.asar"), { force: true });
     const source = join(root, "source");
     await mkdir(join(source, "electron"), { recursive: true });
-    for (const name of ["bootstrap.mjs", "release-channel.mjs", "evolution-store.mjs", "evolution-recovery.mjs", "evolution-launch.mjs", "evolution-progress.mjs", "evolution-handoff.mjs", "platform.mjs"]) {
+    for (const name of ["bootstrap.mjs", "release-channel.mjs", "program-store.mjs", "program-recovery.mjs", "program-launch.mjs", "restart-window.mjs", "program-handoff.mjs", "platform.mjs"]) {
       await cp(join(ui, "electron", name), join(source, "electron", name));
     }
     const bootstrap = join(source, "electron/bootstrap.mjs");

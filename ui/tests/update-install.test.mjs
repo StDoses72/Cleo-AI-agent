@@ -4,7 +4,8 @@ import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { extract, run } from "../electron/evolution-tools.mjs";
+import { run } from "../electron/run-command.mjs";
+import { extract } from "../electron/program-bundles.mjs";
 import { DesktopUpdater } from "../electron/updater.mjs";
 
 const verboseChild = "process.stderr.write('x'.repeat(17 * 1024 * 1024), () => process.stderr.write('FINAL DIAGNOSTIC', () => { process.exitCode = Number(process.argv[1]); }));";
