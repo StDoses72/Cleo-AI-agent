@@ -18,10 +18,9 @@ async function fixture(t) {
     if (command.includes("docker") && (!flags.installed || (args[0] === "info" && !flags.engine))) throw new Error("Docker not ready");
     return "1.0.0";
   };
-  const options = { root, toolsRoot: join(root, "tools"), python: "packaged-python", platform: "win32",
+  const options = { root, python: "packaged-python", platform: "win32",
     env: { LOCALAPPDATA: root, ProgramFiles: root }, execute,
-    prepareTools: async () => ({ node: "node", git: "git", uv: "uv" }),
-    repairRuntime: async () => {} };
+    repairRuntime: async () => { calls.push(["repair-runtime", []]); } };
   return { setup: new SetupManager(options), options, flags, calls };
 }
 
@@ -29,9 +28,11 @@ test("first-run scan never installs and consent/selection are enforced at the na
   const { setup, calls } = await fixture(t);
   const state = await setup.scan();
   assert.equal(state.items.find(item => item.id === "runtime").ready, true);
-  assert.deepEqual(state.items.map(item => item.id), ["runtime", "harnesses", "tools"]);
+  assert.deepEqual(state.items.map(item => item.id), ["runtime", "harnesses"]);
   assert.ok(calls.every(([, args]) => !args.includes("install")));
-  await assert.rejects(setup.install(["tools"], false), /确认/);
+  await assert.rejects(setup.install(["harnesses"], false), /确认/);
+  // The build tools item went away with local evolution; it can no longer be selected.
+  await assert.rejects(setup.install(["tools"], true), /列表/);
   await assert.rejects(setup.install(["arbitrary-executable"], true), /列表/);
   assert.ok(calls.every(([command]) => command !== "winget.exe"));
   await setup.dismiss(); assert.equal((await setup.state()).dismissed, true);
@@ -46,14 +47,14 @@ test("computer use needs no Docker or WSL: nothing is probed, listed or installe
   await assert.rejects(setup.install(["desktop"], true), /列表/);
 });
 
-test("saved Docker steps from older versions are ignored, not deleted", async t => {
+test("saved Docker and build-tool steps from older versions are ignored, not deleted", async t => {
   const { setup, options } = await fixture(t);
   await setup.persist({ items: [{ id: "docker", ready: false }, { id: "runtime", ready: true }],
     pendingIds: ["docker", "desktop", "tools"], message: "准备未完成：old error", restartRequired: true });
   const fresh = new SetupManager(options);
   const before = await fresh.state();
   assert.deepEqual(before.items.map(item => item.id), ["runtime"]);
-  assert.deepEqual(before.pendingIds, ["tools"]);
+  assert.deepEqual(before.pendingIds, []);
   const { readFile } = await import("node:fs/promises");
   const saved = JSON.parse(await readFile(join(options.root, "setup-v1.json"), "utf8"));
   assert.deepEqual(saved.pendingIds, ["docker", "desktop", "tools"], "older versions keep their saved plan");
@@ -73,10 +74,12 @@ test("scan and supported installs preserve retired records, pending plans and un
   let state = await saved();
   assert.deepEqual(state.items.find(item => item.id === "docker"), retired);
   assert.equal(state.items.find(item => item.id === "tools").custom, "tool metadata");
-  await setup.install(["tools"], true);
+  await setup.install(["harnesses"], true);
+  assert.ok(calls.some(([command]) => command === "repair-runtime"));
   state = await saved();
   assert.deepEqual(state.items.find(item => item.id === "docker"), retired);
-  assert.deepEqual(state.pendingIds, ["docker", "desktop"]);
+  assert.equal(state.items.find(item => item.id === "tools").custom, "tool metadata");
+  assert.deepEqual(state.pendingIds, ["docker", "desktop", "tools"], "an earlier program keeps its saved plan");
   assert.deepEqual(state.futureField, { keep: true });
   assert.ok(calls.every(([command]) => !/docker|wsl|winget/i.test(command)));
   assert.deepEqual((await setup.state()).pendingIds, []);
@@ -87,15 +90,15 @@ test("failed progress writes release the installation lock and shutdown does not
   await setup.scan();
   const persist = setup.persist.bind(setup);
   setup.persist = async () => { throw new Error("disk unavailable"); };
-  await assert.rejects(setup.install(["tools"], true), /disk unavailable/);
+  await assert.rejects(setup.install(["harnesses"], true), /disk unavailable/);
   assert.equal(setup.busy, false);
   assert.equal(setup.cancel, null);
   setup.persist = persist;
-  await setup.install(["tools"], true);
+  await setup.install(["harnesses"], true);
   await setup.close();
   const before = calls.length;
   await setup.scan();
-  await assert.rejects(setup.install(["tools"], true), /退出/);
+  await assert.rejects(setup.install(["harnesses"], true), /退出/);
   assert.equal(calls.length, before);
 });
 

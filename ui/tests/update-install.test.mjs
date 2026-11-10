@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { run } from "../electron/run-command.mjs";
@@ -45,7 +45,7 @@ function readyUpdater() {
   return { updater, states };
 }
 
-test("evolution installation reports preparation and blocks duplicate install/check/download", async () => {
+test("installation reports preparation and blocks duplicate install/check/download", async () => {
   const { updater, states } = readyUpdater();
   let release;
   const pending = new Promise((resolve) => { release = resolve; });
@@ -109,6 +109,17 @@ test("failed installation can be retried after rechecking and verifying the arch
   assert.equal((await updater.download()).phase, "ready");
   assert.equal(updater.getState().error, null);
   assert.equal(await updater.install(async () => true), true);
+});
+
+test("tar archives extract on Windows as well as POSIX", async (t) => {
+  const root = await temporaryDirectory(t);
+  const source = join(root, "tar-source");
+  await mkdir(source);
+  await writeFile(join(source, "hello.txt"), "source");
+  const archive = join(root, "source.tar.gz");
+  await run("tar", ["-czf", archive, "-C", source, "."]);
+  await extract(archive, join(root, "extracted"));
+  assert.equal(await readFile(join(root, "extracted/hello.txt"), "utf8"), "source");
 });
 
 test("Windows extraction preserves literal paths and rejects a broken archive", { skip: process.platform !== "win32" }, async (t) => {

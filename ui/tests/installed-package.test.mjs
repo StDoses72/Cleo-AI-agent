@@ -38,7 +38,6 @@ for (const broken of [false, true]) {
       name: "cleo-desktop", version: "9.8.7", type: "module", main: "electron/bootstrap.mjs",
     }));
     await createPackage(source, join(resources, "app.asar"));
-    await writeFile(join(resources, "evolution-source.tar.gz"), "bundled source snapshot");
     await writeFile(join(target.platform === "darwin" ? resources : bundle, "release.json"),
       JSON.stringify({ app: "Cleo", version: "9.8.7", platform: target.id,
         schema_version: 1, evolution_protocol: 2, build_kind: "official" }));

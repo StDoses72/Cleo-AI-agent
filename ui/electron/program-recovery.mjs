@@ -9,7 +9,10 @@ import { readJson, writeJson, ownedPath } from "./program-store.mjs";
 import { createRestartWindow } from "./restart-window.mjs";
 import { runHandoff } from "./program-handoff.mjs";
 
-/** Purpose: Launch a retained build with visible UI. Input: validated build/store. Output: detached child process. */
+/** Purpose: Launch a retained build with visible UI. Input: validated build/store. Output: detached child process.
+ * The CLEO_EVOLUTION_* names are the launch protocol every retained program reads. Programs up to
+ * v0.12.2 also expect CLEO_EVOLUTION_WORKSPACE; newer ones ignore it.
+ */
 export async function launchBuild(build, store, transactionId = null) {
   const child = await launchDesktop(build.executable, [`--user-data-dir=${app.getPath("userData")}`],
     { ...process.env, CLEO_HOME: store.dataHome, CLEO_EVOLUTION_CHILD: "1",
@@ -128,7 +131,7 @@ export async function applyFromController(store, parent, { progress: existingPro
 export async function showRecovery(store, { selectOnly = false, parentWindow = null } = {}) {
   const state = await store.read();
   if (!state.baseline) {
-    await dialog.showMessageBox({ type: "info", message: tr("evolution_recovery.no_recovery_point_has_been_created"), detail: tr("evolution_recovery.a_working_version_is_saved_when_local_iteration_is_prepared_for_the_first_time") });
+    await dialog.showMessageBox({ type: "info", message: tr("evolution_recovery.no_recovery_point_has_been_created"), detail: tr("program_recovery.cleo_saves_a_working_version_the_first_time_it_updates") });
     return;
   }
   const choices = [state.baseline, state.workspaceBase, state.latestSaved, state.iteration?.base,

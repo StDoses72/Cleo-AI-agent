@@ -1,23 +1,21 @@
 import { t as tr } from "./i18n.mjs";
-import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { readJson, writeJson } from "./program-store.mjs";
 import { run } from "./run-command.mjs";
-import { ManagedTools } from "./managed-tools.mjs";
 
-// Computer use no longer needs Docker, WSL or a Linux desktop image; saved results for those
-// retired items are ignored rather than deleted.
-const ITEM_IDS = ["runtime", "harnesses", "tools"];
+// Computer use no longer needs Docker, WSL or a Linux desktop image, and the build tools item
+// ("tools") went away with local evolution. Saved results for retired items are ignored rather
+// than deleted: an earlier program may run again after a rollback and still reads them.
+const ITEM_IDS = ["runtime", "harnesses"];
 
 /** Purpose: Detect and provision optional capabilities only after an explicit selection.
  * Input: owned state directory, packaged runtimes and execution adapters.
  * Output: durable setup progress; no installation happens during scan or startup.
  */
 export class SetupManager {
-  constructor({ root, toolsRoot, python, resourcesPath, repairRuntime,
-    execute = run, platform = process.platform, env = process.env, prepareTools, version = "development" }) {
-    Object.assign(this, { root, toolsRoot, python, resourcesPath, repairRuntime, execute, platform, env });
-    this.prepareTools = prepareTools || (signal => new ManagedTools(toolsRoot, text => { this.logs = (this.logs + text).slice(-8000); }).prepare(false, { signal }));
+  constructor({ root, python, resourcesPath, repairRuntime,
+    execute = run, platform = process.platform, env = process.env, version = "development" }) {
+    Object.assign(this, { root, python, resourcesPath, repairRuntime, execute, platform, env });
     this.items = []; this.busy = false; this.checking = null; this.logs = ""; this.message = "";
     this.cancel = null; this.closed = false;
     this.version = version;
@@ -78,20 +76,9 @@ export class SetupManager {
       this.probe(this.python, ["-I", "-X", "utf8", "-c", "from cleo.desktop.server import main; print('ready')"]),
       this.probe(this.python, ["-I", "-X", "utf8", "-c", "from cleo.desktop.dependencies import validate_codex_runtime, validate_claude_runtime; validate_codex_runtime(); validate_claude_runtime(); print('ready')"]),
     ]);
-    let tools = await readJson(join(this.root, "tools-v1.json"));
-    if (!tools) {
-      // Discover tools prepared by older Cleo versions without downloading anything.
-      const nodes = await readdir(this.toolsRoot).catch(() => []);
-      const nodeFolder = nodes.filter(name => /^node-v.*-win-x64$/.test(name)).sort().at(-1);
-      const uv = await readJson(join(this.toolsRoot, "astral-sh-uv.json"));
-      const git = await readJson(join(this.toolsRoot, "git-for-windows-git.json"));
-      tools = { node: nodeFolder ? join(this.toolsRoot, nodeFolder, "node.exe") : "node", git: git?.path || "git", uv: uv?.path || "uv" };
-    }
-    const toolResults = await Promise.all(["node", "git", "uv"].map(name => this.probe(tools[name], ["--version"])));
     this.items = [
       { id: "runtime", title: tr("setup_manager.cleo_base_runtime"), ready: runtime.ok, detail: runtime.ok ? tr("setup_manager.cleo_python_is_ready") : runtime.detail, action: tr("setup_manager.repair_runtime"), optional: false },
       { id: "harnesses", title: tr("setup_manager.codex_claude_coding_backends"), ready: harnesses.ok, detail: harnesses.ok ? tr("setup_manager.coding_backends_can_start_complete_account_sign_in_in_model_settings") : harnesses.detail, action: tr("setup_manager.repair_coding_backends"), optional: false },
-      { id: "tools", title: tr("setup_manager.self_iteration_tools"), ready: toolResults.every(item => item.ok), detail: tr("setup_manager.git_node_js_and_uv_existing_tools_are_preferred_missing_ones_are_installed_in_cleo_s_"), action: tr("setup_manager.prepare_build_tools"), optional: true },
     ];
     const saved = await readJson(join(this.root, "setup-v1.json"), {});
     const pendingIds = (saved.pendingIds || []).filter(id => !this.items.find(item => item.id === id)?.ready);
@@ -121,17 +108,11 @@ export class SetupManager {
         this.cancel.signal.throwIfAborted();
         this.message = tr("setup_manager.preparing_value", { p0: this.items.find(item => item.id === id).title });
         await this.persist({ installing: id, message: this.message });
-        if (id === "runtime" || id === "harnesses") {
-          await this.repairRuntime();
-          this.message = tr("setup_manager.runtime_prepared_close_and_reopen_cleo_then_check_again");
-          await this.persist({ pendingIds: ordered.slice(ordered.indexOf(id) + 1), message: this.message });
-          break;
-        } else if (id === "tools") {
-          const tools = await this.prepareTools(this.cancel.signal);
-          await writeJson(join(this.root, "tools-v1.json"), { node: tools.node, git: tools.git, uv: tools.uv });
-        }
-        await this.persist({ pendingIds: ordered.slice(ordered.indexOf(id) + 1) });
-        this.message = tr("setup_manager.selected_steps_completed_checking_availability_again");
+        // One repair covers the runtime and both coding backends; Cleo must reopen before the rest is checked.
+        await this.repairRuntime();
+        this.message = tr("setup_manager.runtime_prepared_close_and_reopen_cleo_then_check_again");
+        await this.persist({ pendingIds: ordered.slice(ordered.indexOf(id) + 1), message: this.message });
+        break;
       }
     } catch (error) {
       this.message = tr("setup_manager.preparation_incomplete_value", { p0: error.message });

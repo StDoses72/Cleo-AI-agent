@@ -14,7 +14,7 @@ from cleo.i18n import tr
 
 
 def task_providers(settings: ProductivitySettings) -> dict[str, ProductivityProviderSettings]:
-    """Purpose: Expose built-in coding harnesses in development and evolution.
+    """Purpose: Expose built-in coding harnesses for development tasks.
 
     Input: Existing harness settings, including explicit disabled entries.
     Output: A new mapping; saved names, options and enabled flags take precedence.

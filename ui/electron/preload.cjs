@@ -2,6 +2,16 @@ const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 let uiLanguage = process.argv.includes("--cleo-ui-language=en") ? "en" : "zh-CN";
 ipcRenderer.on("cleo:language-changed", (_event, language) => { uiLanguage = language; });
+// Local evolution was removed (docs/adr/0009-remove-local-evolution.md). The renderer still calls these
+// bridge methods until its own cleanup lands; each reports the feature as unavailable without reaching
+// the main process.
+const evolutionUnavailable = () => uiLanguage === "en"
+  ? "Local evolution is no longer part of Cleo."
+  : "Cleo 已不再提供本地进化。";
+const inertEvolutionState = () => ({
+  supported: false, phase: "idle", prepared: false, currentVersion: "", active: null, baseline: null, baseTag: null,
+  source: null, threadId: null, error: null, logs: "", builds: [], pullRequest: null, releases: [], recoveryPath: null,
+});
 const memoryListeners = new Set();
 let pendingOpenMemory = false;
 ipcRenderer.on("cleo:open-memory", () => {
@@ -29,11 +39,7 @@ contextBridge.exposeInMainWorld("cleoWindow", {
 if (!process.argv.includes("--cleo-desktop-mock")) {
   contextBridge.exposeInMainWorld("cleoDesktop", {
     getUiLanguage: () => ipcRenderer.invoke("cleo:request", { method: "get_ui_language", params: {} }),
-    onCompanionThread: listener => {
-      const handler = (_event, thread) => listener(thread);
-      ipcRenderer.on("cleo:companion-thread", handler);
-      return () => ipcRenderer.removeListener("cleo:companion-thread", handler);
-    },
+    onCompanionThread: () => () => {},
     setup: (action, params = {}) => ipcRenderer.invoke("cleo:setup", action, params),
     computer: (action = "state", params = {}) => ipcRenderer.invoke("cleo:computer", action, params),
     onComputerState: (listener) => {
@@ -81,14 +87,13 @@ if (!process.argv.includes("--cleo-desktop-mock")) {
       const result = await ipcRenderer.invoke("cleo:open-local-path", { href, workspacePath });
       if (!result?.ok) throw new Error(result?.error || (uiLanguage === "en" ? "Could not open the local file" : "无法打开本地文件"));
     },
-    getEvolutionState: () => ipcRenderer.invoke("cleo:evolution:state"),
-    evolutionAction: (action, params = {}) => ipcRenderer.invoke("cleo:evolution:action", { action, ...params }),
-    confirmHealthy: () => ipcRenderer.invoke("cleo:evolution:healthy"),
-    onEvolutionState: (listener) => {
-      const handler = (_event, state) => listener(state);
-      ipcRenderer.on("cleo:evolution:state", handler);
-      return () => ipcRenderer.removeListener("cleo:evolution:state", handler);
-    },
+    getEvolutionState: async () => inertEvolutionState(),
+    evolutionAction: async () => { throw new Error(evolutionUnavailable()); },
+    onEvolutionState: () => () => {},
+    // Startup confirmation for the version switch controller: the journal clears only after this.
+    confirmHealthy: () => ipcRenderer.invoke("cleo:program:healthy"),
+    // Opens the version and recovery chooser from inside the app; a selection restarts Cleo.
+    openRecovery: () => ipcRenderer.invoke("cleo:program:recovery"),
     getUpdateState: () => ipcRenderer.invoke("cleo:update:get-state"),
     checkForUpdates: (tag) => ipcRenderer.invoke("cleo:update:check", tag),
     downloadUpdate: () => ipcRenderer.invoke("cleo:update:download"),

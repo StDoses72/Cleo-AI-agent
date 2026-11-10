@@ -367,7 +367,7 @@ try {
   application = undefined;
   }
   if (process.env.CLEO_SMOKE_REGRESSION === "1") {
-    for (const script of ["smoke.mjs", "smoke-approvals.mjs", "smoke-evolution.mjs"]) {
+    for (const script of ["smoke.mjs", "smoke-approvals.mjs"]) {
       const result = spawnSync(process.execPath, [join(ui, "scripts", script)], {
         cwd: ui, stdio: "inherit", windowsHide: true,
         env: { ...process.env, CLEO_SMOKE_APP_DIR: appDir, CLEO_SMOKE_OUTPUT: join(scratch, script), CLEO_HOME: join(scratch, "home") },

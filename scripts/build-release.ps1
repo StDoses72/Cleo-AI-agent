@@ -316,9 +316,6 @@ try {
         "--version", $version
     )
 
-    Invoke-Checked -FilePath $node.Source -WorkingDirectory $sourceRoot -Arguments @(
-        (Join-Path $sourceRoot "scripts\bundle-evolution-source.mjs"), $resourcesPath
-    )
     Invoke-Checked -FilePath $runtimePython.FullName -WorkingDirectory $sourceRoot -Arguments @(
         (Join-Path $PSScriptRoot "release_dependencies.py"),
         "--root", $sourceRoot, "--python", (Join-Path $resourcesPath "python\python.exe"),
@@ -332,7 +329,8 @@ try {
     $releaseMetadata = [ordered]@{
         schema_version = if ($Online) { 2 } else { 1 }
         evolution_protocol = if ($Online) { 3 } else { 2 }
-        build_kind = if ($env:CLEO_EVOLUTION_BASE_TAG) { "local" } else { "official" }
+        # Field names are read by published programs; evolution_protocol is the data-preserving switch protocol.
+        build_kind = "official"
         app = "Cleo"
         version = $version
         platform = "windows-x64"

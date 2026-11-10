@@ -7,7 +7,7 @@ import { run } from "./run-command.mjs";
 /** Purpose: Fetch metadata from public release services. Input: HTTPS URL. Output: JSON or text. */
 export async function fetchRelease(url, json = true, { signal } = {}) {
   const timeout = AbortSignal.timeout(120000);
-  const response = await fetch(url, { headers: { "User-Agent": "Cleo-Evolution" }, signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
+  const response = await fetch(url, { headers: { "User-Agent": "Cleo" }, signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
   if (!response.ok) throw new Error(tr("evolution_tools.download_failed_value_check_your_connection_and_retry", { p0: response.status }));
   return json ? response.json() : response.text();
 }

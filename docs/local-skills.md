@@ -23,7 +23,7 @@ Cleo 在加载开发会话或选择新任务的原生 Claude/Codex harness 时�
 ## 使用范围
 
 菜单支持原生 Claude/Codex 开发会话。安装 skill 后重新打开会话可刷新列表。
-普通聊天、进化会话、其他 ACP harness、插件注册表发现及跨 harness 复用不在菜单范围内。
+普通聊天、其他 ACP harness、插件注册表发现及跨 harness 复用不在菜单范围内。
 加载指令仍遵循当前 harness 权限，不模拟所有厂商专用执行选项。
 
 Claude 原生连接启用 `setting_sources=["user", "project"]`；Codex 保留原生发现与触发规则。

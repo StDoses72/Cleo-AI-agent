@@ -68,4 +68,4 @@ npm install -g agent-browser@0.33.1
 Then install the desktop dependencies with `npm ci --prefix ui` and run `npm --prefix ui start`. The desktop app starts the Python backend (`python -m cleo.desktop.server`) from the source tree. Cleo no longer ships a terminal CLI; configuration templates can be copied from `cleo/config/templates/`. See [platform requirements](PLATFORMS.en.md).
 
 
-Next: explore [local skills](local-skills.en.md) or [local evolution](cleo-evolution.en.md).
+Next: explore [local skills](local-skills.en.md) or [program versions and recovery](program-versions.en.md).

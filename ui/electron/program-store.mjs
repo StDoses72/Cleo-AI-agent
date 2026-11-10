@@ -10,6 +10,9 @@ import { join, resolve, relative, isAbsolute, dirname } from "node:path";
 
 const mutationQueues = new Map();
 const jsonQueues = new Map();
+// Versions up to v0.12.2 kept an editable source workspace and local iterations in the same registry.
+// An official switch still journals and resets these fields exactly as those versions do, so a retained
+// program of that generation finds a consistent registry after either a switch or a rollback.
 const SELECTION_FIELDS = ["selectedBase", "workspaceBase", "baseTag", "prepared", "threadId",
   "iteration", "candidate", "draftDirty", "baseSourceHash", "pendingMerge"];
 
@@ -196,7 +199,7 @@ export class ProgramStore {
         if (await filesystem.realpath(directory) !== join(parentPath, id)) throw new Error("Linked backup directory.");
       } catch (error) { if (error.code !== "ENOENT") throw error; }
       const actual = join(parentPath, id);
-      // macOS can place evolution/backups inside dataHome, but never inside a live data entry.
+      // macOS can place the control directory's backups inside dataHome, but never inside a live data entry.
       const relations = [relative(actual, livePaths[0]), ...livePaths.slice(1)
         .flatMap(path => [relative(actual, path), relative(path, actual)])];
       if (relations.some(path => !path.startsWith("..") && !isAbsolute(path))) {
@@ -239,7 +242,8 @@ export class ProgramStore {
     return removed;
   }
 
-  /** Purpose: Bound retained programs to the base, latest saved version, and current work.
+  /** Purpose: Bound retained programs to the fallback, the current program and what a rollback needs,
+   * including the base, saved version and candidate an earlier version recorded for local work.
    * Input: none; call after serialized mutations or a successful startup.
    * Output: obsolete owned bundles removed; locked files are queued for a later retry. User data is never touched.
    */

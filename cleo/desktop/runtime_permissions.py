@@ -3,10 +3,10 @@
 from cleo.i18n import tr
 
 
-def permission_choices(provider_type: str, *, fixed: bool = False, support=None) -> dict:
+def permission_choices(provider_type: str, *, support=None) -> dict:
     """Purpose: Describe session presets using the connected harness's restrictions.
 
-    Input: Provider type, fixed evolution scope and optional native capability report.
+    Input: Provider type and optional native capability report.
     Output: Independent advanced choices and atomic common presets, with rejection reasons.
     """
     CODEX_ACCESS = [
@@ -57,10 +57,6 @@ def permission_choices(provider_type: str, *, fixed: bool = False, support=None)
 
     from cleo.routing.permissions import NATIVE_PRESETS
 
-    if fixed:
-        return {"access": [], "approval": [], "reason": tr(
-            "runtime_permissions.evolution_tasks_use_fixed_permissions",
-        )}
     if provider_type == "codex_sdk":
         choices = {"access": CODEX_ACCESS, "approval": CODEX_APPROVAL}
         modes = [

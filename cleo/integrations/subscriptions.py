@@ -267,7 +267,7 @@ async def subscription_text(profile, temporary: Path, instructions: str, prompt:
             session.id, instructions + "\n\n待分析的数据：\n" + prompt, on_event=on_event
         )
         if reply.status != "completed":
-            raise ValueError(reply.error or "只读分析未完成；原需求已保留。")
+            raise ValueError(reply.error or "只读分析未完成。")
         return reply.response or "".join(parts)
     finally:
         if session is not None:

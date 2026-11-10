@@ -32,9 +32,10 @@ def thread_status(status: Any) -> str:
 
 
 def visible_title(title: Any) -> str | None:
-    """Purpose: Keep titles saved from internal evolution prompts out of the UI.
+    """Purpose: Keep titles saved from earlier self-iteration prompts out of the UI.
 
     Input: Persisted manifest title. Output: Display title; the stored value is unchanged.
+    Local evolution was removed; tasks it created keep these titles on disk.
     """
     if isinstance(title, str) and title.startswith(
         ("Cleo self-iteration requirements", "[[CLEO_ACCEPTANCE_REQUEST:"),

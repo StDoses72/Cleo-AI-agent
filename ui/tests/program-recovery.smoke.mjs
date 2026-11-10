@@ -17,10 +17,9 @@ if (process.platform !== "win32") {
     await rename(join(app, "electron.exe"), join(app, "Cleo.exe"));
     await rm(join(app, "resources/default_app.asar"), { force: true });
     const source = join(root, "source");
-    await mkdir(join(source, "electron"), { recursive: true });
-    for (const name of ["bootstrap.mjs", "release-channel.mjs", "program-store.mjs", "program-recovery.mjs", "program-launch.mjs", "restart-window.mjs", "program-handoff.mjs", "platform.mjs"]) {
-      await cp(join(ui, "electron", name), join(source, "electron", name));
-    }
+    // The real entry point with everything it imports; only main.mjs is replaced below.
+    await mkdir(source, { recursive: true });
+    await cp(join(ui, "electron"), join(source, "electron"), { recursive: true });
     const bootstrap = join(source, "electron/bootstrap.mjs");
     const interception = [
       'import { dialog as smokeDialog } from "electron";',

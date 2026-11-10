@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { SelectableUpdater, SelectableProgramUpdates, prepareSelectedRelease } from "../electron/selectable-updates.mjs";
-import { EvolutionManager } from "../electron/evolution.mjs";
+import { ProgramVersions } from "../electron/program-versions.mjs";
 import { ReleaseDownloads } from "../electron/release-downloads.mjs";
 import { desktopPlatform } from "../electron/platform.mjs";
 
@@ -35,7 +35,7 @@ async function fixture(action) {
   const app = { isPackaged: true, getVersion: () => "0.6.0", getPath: name => join(root, name) };
   const downloads = new ReleaseDownloads({ root: join(root, "downloads"), fetchImpl: network });
   const updater = new SelectableUpdater({ app, downloads, fetchImpl: network, platform: target.platform });
-  const manager = new EvolutionManager({ app, root: join(root, "evolution"), dataHome: join(root, "home"), downloads,
+  const manager = new ProgramVersions({ app, root: join(root, "evolution"), dataHome: join(root, "home"), downloads,
     extractArchive: async (archive, directory) => {
       assert.deepEqual(await readFile(archive), payload);
       const file = join(directory, target.bundle, target.executable);

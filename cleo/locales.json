@@ -359,18 +359,6 @@
     "zh-CN": "\n任务已结束，未收到审查结果。",
     "en": "\nThe task ended without a review result."
   },
-  "release_repair.the_release_repair_directory_is_not_an_isolated": {
-    "zh-CN": "发布修复目录不是独立 Git 工作区。",
-    "en": "The release repair directory is not an isolated Git workspace."
-  },
-  "release_repair.the_harness_selected_for_release_repair_is_unava": {
-    "zh-CN": "发布所选 harness 已不可用，请恢复连接后继续。",
-    "en": "The harness selected for release repair is unavailable. Restore its connection before continuing."
-  },
-  "release_repair.release_repair_is_incomplete_check_the_harness_c": {
-    "zh-CN": "发布修复未完成，请检查 harness 连接。",
-    "en": "Release repair is incomplete. Check the harness connection."
-  },
   "runs.this_conversation_is_switching_harnesses_wait_fo": {
     "zh-CN": "此会话正在切换 harness，请等待完成。",
     "en": "This conversation is switching harnesses. Wait for it to finish."
@@ -471,10 +459,6 @@
     "zh-CN": "自动选择拒绝选项；服务没有提供拒绝选项时取消请求。",
     "en": "Automatically selects a deny option. Cancels requests when the service provides no deny option."
   },
-  "runtime_permissions.evolution_tasks_use_fixed_permissions": {
-    "zh-CN": "进化任务使用固定权限。",
-    "en": "Evolution tasks use fixed permissions."
-  },
   "runtime_permissions.request_approval": {
     "zh-CN": "请求批准",
     "en": "Request approval"
@@ -547,10 +531,6 @@
     "zh-CN": "这个任务带有 harness 交接的上下文快照，暂不支持迁移到其他项目。",
     "en": "This task carries a harness handoff context snapshot and cannot move to another project yet."
   },
-  "service.the_evolution_workspace_cannot_move": {
-    "zh-CN": "Cleo 自我演进任务不能迁移项目。",
-    "en": "The Cleo evolution task cannot move between projects."
-  },
   "service.the_working_directory_does_not_exist_or_is_not_a": {
     "zh-CN": "工作目录不存在或不是文件夹：{p0}",
     "en": "The working directory does not exist or is not a folder: {p0}"
@@ -602,30 +582,6 @@
   "service.the_memory_source_does_not_exist_or_was_already": {
     "zh-CN": "待确认的记忆来源不存在或已被处理",
     "en": "The memory source does not exist or was already processed"
-  },
-  "service.prepare_acceptance_in_an_evolution_conversation": {
-    "zh-CN": "请在进化会话中准备验收。",
-    "en": "Prepare acceptance in an evolution conversation."
-  },
-  "service.select_an_available_coding_harness_before_publis": {
-    "zh-CN": "请先选择可用的编码 harness，再开始发布。",
-    "en": "Select an available coding harness before publishing."
-  },
-  "service.prepare_the_local_iteration_workspace_first": {
-    "zh-CN": "请先准备本地迭代工作区。",
-    "en": "Prepare the local iteration workspace first."
-  },
-  "service.this_task_does_not_belong_to_the_local_iteration": {
-    "zh-CN": "该任务不属于本地迭代工作区。",
-    "en": "This task does not belong to the local iteration workspace."
-  },
-  "service.connect_the_selected_harness_in_settings_before": {
-    "zh-CN": "请先在设置中连接所选 harness，再开始进化。",
-    "en": "Connect the selected harness in settings before starting evolution."
-  },
-  "service.cleo_self_iteration": {
-    "zh-CN": "Cleo 自我迭代",
-    "en": "Cleo self-iteration"
   },
   "service.only_development_tasks_can_choose_permissions_in": {
     "zh-CN": "只有开发任务可以预先选择权限。",
@@ -718,14 +674,6 @@
   "service.changing_connection_type_requires_a_new_conversa": {
     "zh-CN": "切换连接类型需要新建对话，现有对话将保留原连接。",
     "en": "Changing connection type requires a new conversation. Existing conversations retain their original connection."
-  },
-  "service.evolution_tasks_use_full_access_ordinary_project": {
-    "zh-CN": "进化任务使用完全访问；普通项目权限独立设置。",
-    "en": "Evolution tasks use full access. Ordinary project permissions are configured separately."
-  },
-  "service.evolution_tasks_cannot_elevate_permissions": {
-    "zh-CN": "进化任务不允许提升权限。",
-    "en": "Evolution tasks cannot elevate permissions."
   },
   "service.change_models_and_permissions_separately_during": {
     "zh-CN": "运行中请分别调整模型和权限。权限更改将在下次运行使用。",
@@ -962,10 +910,6 @@
   "timeline.this_historical_content_was_not_found_reload_it": {
     "zh-CN": "找不到这条历史内容，请重新加载。",
     "en": "This historical content was not found. Reload it."
-  },
-  "turn_hooks.evolution_tasks_cannot_change_working_directorie": {
-    "zh-CN": "进化任务不能切换工作目录、任务或放宽权限，请使用进化页面操作。",
-    "en": "Evolution tasks cannot change working directories or tasks or relax permissions. Use the Evolution page."
   },
   "turn_hooks.prepare_context_and_task": {
     "zh-CN": "准备上下文与任务",

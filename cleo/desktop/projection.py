@@ -19,7 +19,9 @@ _DIFF_HEADER = re.compile(r'^diff --git ("(?:\\.|[^"])*"|a/.+?) ("(?:\\.|[^"])*"
 _INCOMPLETE_TOOL_OUTPUT_KEY = "projection.the_task_ended_without_a_completion_event_for_th"
 
 
-_EVOLUTION_REQUIREMENTS = "Cleo self-iteration requirements:\n"
+# Local evolution was removed (docs/adr/0009-remove-local-evolution.md). Tasks it created keep the
+# prompts the desktop generated for it, so the markers below stay as a read-only display rule.
+_SELF_ITERATION_REQUIREMENTS = "Cleo self-iteration requirements:\n"
 _ACCEPTANCE_MARKER = re.compile(r"^\[\[CLEO_ACCEPTANCE_REQUEST:[^\]\n]+\]\]\n")
 _FROZEN_CASES = (
     "\n\n以下案例已经由桌面保存并冻结。",
@@ -39,14 +41,14 @@ _DIAGNOSTIC_DATA = (
 
 
 def internal_prompt_display(content: str) -> str:
-    """Purpose: Hide desktop-generated evolution instructions from the conversation.
+    """Purpose: Hide instructions the desktop generated for earlier self-iteration tasks.
 
-    Input: Prompt text as sent to the coding agent. Output: Only what the user asked:
+    Input: Prompt text as it was sent to the coding agent. Output: Only what the user asked:
     the request itself (with the user's own supplements), or a short label for a
     desktop-initiated repair. Unrecognized text is returned unchanged.
     """
     text = content
-    if text.startswith(_EVOLUTION_REQUIREMENTS):
+    if text.startswith(_SELF_ITERATION_REQUIREMENTS):
         _, separator, request = text.partition("\n\nUser request:\n")
         if separator:
             text = request
@@ -87,7 +89,7 @@ def internal_prompt_display(content: str) -> str:
 
 
 def visible_user_prompt(content: str, data: dict | None = None) -> str:
-    """Purpose: Present task text without generated computer-use or evolution instructions.
+    """Purpose: Present task text without generated computer-use or self-iteration instructions.
 
     Input: Saved prompt and optional display metadata. Output: User-facing text,
     including a read-only compatibility view for older generated messages.

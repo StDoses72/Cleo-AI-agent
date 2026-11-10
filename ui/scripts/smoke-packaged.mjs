@@ -44,10 +44,11 @@ try {
   assert.equal(setup.items.find(item => item.id === "runtime")?.ready, true,
     `Packaged Python runtime is not ready: ${JSON.stringify(setup.items)}`);
   assert.equal(await window.getByRole("dialog", { name: "运行环境", exact: true }).count(), 0);
-  await window.getByRole("button", { name: "进化", exact: true }).click();
-  await window.locator('.evolution-toolbar[aria-label="进化操作"]').waitFor();
-  const evolution = await window.evaluate(() => window.cleoDesktop.getEvolutionState());
-  if (!evolution.supported || evolution.phase !== "idle") throw new Error("Packaged evolution controller is unavailable.");
+  // What a packaged program adds over a source run: a live updater and a startup confirmation that
+  // reaches the version switch controller.
+  const update = await window.evaluate(() => window.cleoDesktop.getUpdateState());
+  if (update.phase === "unsupported") throw new Error("Packaged updater is unavailable.");
+  await window.evaluate(() => window.cleoDesktop.confirmHealthy());
   await window.getByTestId("new-task-in-section").click();
   await window.evaluate(() => {
     const input = document.querySelector('[data-testid="composer-input"]');

@@ -13,7 +13,10 @@ import { RELEASE_REPOSITORY as REPOSITORY, releaseTagForVersion, versionForRelea
 
 const API = `https://api.github.com/repos/${REPOSITORY}`;
 
-/** Purpose: Retain, download and select official programs; only explicit UI actions activate one. */
+/** Purpose: Retain, download and select programs; only explicit UI actions activate one.
+ * Earlier versions also built local programs here. Their registry fields are still read and
+ * preserved so a retained program of that generation keeps working after a rollback.
+ */
 export class ProgramVersions {
   constructor({ app, root, dataHome, store, onState = () => {}, packaged = app.isPackaged, executable = process.execPath,
     downloads, extractArchive = extract }) {
@@ -24,7 +27,6 @@ export class ProgramVersions {
     this.executable = executable;
     this.onState = onState;
     this.phase = "idle";
-    this.readOnlyOperation = false;
     this.error = null;
     this.logs = "";
     this.closed = false;
@@ -38,12 +40,10 @@ export class ProgramVersions {
   log(message) { this.logs = (this.logs + message).slice(-16000); this.onState(); }
 
   /** Input: phase and operation. Output: serial execution with retained error and previous working build. */
-  async operation(phase, action, { prune = true, readOnly = false } = {}) {
-    if (this.closed) throw new Error(tr("evolution.cleo_is_shutting_down_and_cannot_start_new_evolution_operations"));
-    if (this.phase !== "idle") throw new Error(tr("evolution.another_evolution_operation_is_in_progress_please_wait"));
+  async operation(phase, action, { prune = true } = {}) {
+    if (this.closed) throw new Error(tr("program_versions.cleo_is_shutting_down_and_cannot_start_a_version_operation"));
+    if (this.phase !== "idle") throw new Error(tr("program_updates.another_version_operation_is_in_progress_please_wait"));
     const controller = new AbortController();
-    const previous = readOnly ? { error: this.error, logs: this.logs } : null;
-    this.readOnlyOperation = readOnly;
     this.operationAbort = controller;
     this.phase = phase; this.error = null; this.logs = ""; this.onState();
     try {
@@ -52,22 +52,21 @@ export class ProgramVersions {
         if ((await this.store.read()).transaction) throw new Error(tr("evolution.a_version_switch_is_in_progress_wait_for_the_restart_to_finish_or_use_recovery"));
         const result = await action(controller.signal);
         controller.signal.throwIfAborted();
-        if (prune && !readOnly) await this.store.pruneBuilds();
+        if (prune) await this.store.pruneBuilds();
         return result;
       });
       return await this.operationPromise;
     }
     catch (error) { this.error = error.message; throw error; }
     finally {
-      if (previous) { this.error = previous.error; this.logs = previous.logs; }
-      this.operationPromise = null; this.operationAbort = null; this.phase = "idle"; this.readOnlyOperation = false; this.onState();
+      this.operationPromise = null; this.operationAbort = null; this.phase = "idle"; this.onState();
     }
   }
 
   /** Purpose: Stop operation-owned writers before the app releases its single-instance lock. */
   async close() {
     this.closed = true;
-    this.operationAbort?.abort(new Error(tr("evolution.cleo_is_shutting_down_the_current_evolution_operation_was_stopped")));
+    this.operationAbort?.abort(new Error(tr("program_versions.cleo_is_shutting_down_the_current_version_operation_was_stopped")));
     const pending = this.operationPromise;
     try { await this.downloads.close?.(); }
     finally {
@@ -76,7 +75,8 @@ export class ProgramVersions {
     }
   }
 
-  /** Detect a newly opened official installation without overriding retained local work or a deliberate rollback. */
+  /** Detect a newly opened official installation without overriding a local program, unfinished
+   * local work recorded by an earlier version, or a deliberate rollback. */
   async installedRelease() {
     if (!this.packaged) return null;
     const child = relative(this.store.root, resolve(this.executable));
@@ -140,7 +140,7 @@ export class ProgramVersions {
   async ensureBaseline() {
     const state = await this.store.read();
     if (state.baseline) return this.store.build(state.baseline);
-    if (!this.packaged) throw new Error(tr("evolution.apply_changes_in_a_packaged_cleo_app_development_mode_can_display_the_evolution_inter"));
+    if (!this.packaged) throw new Error(tr("program_versions.switching_versions_needs_a_packaged_cleo_app"));
     const id = `baseline-${randomUUID()}`;
     const bundle = this.target.bundle;
     const directory = join(this.store.root, "builds", id, bundle);
@@ -187,7 +187,7 @@ export class ProgramVersions {
       const release = releases.find((item) => item.tag === tag);
       if (!release) throw new Error(tr("evolution.check_official_versions_and_select_a_published_version_first"));
       const rawManifest = await fetchRelease(release.manifestUrl, true, { signal });
-      if (![2, 3].includes(rawManifest.evolution_protocol)) throw new Error(tr("evolution.this_version_does_not_support_switching_while_preserving_current_user_data_so_it_cann"));
+      if (![2, 3].includes(rawManifest.evolution_protocol)) throw new Error(tr("selectable_updates.this_version_does_not_support_switching_while_preserving_current_data"));
       const manifest = validateManifest(rawManifest, this.target);
       if (manifest.version !== versionForReleaseTag(tag)) throw new Error(tr("evolution.the_version_manifest_does_not_match_the_selected_release"));
       const archive = await this.downloads.get(manifest, {
@@ -227,13 +227,16 @@ export class ProgramVersions {
     }, { prune: false });
   }
 
-  /** Purpose: Keep official updates from replacing an unfinished local iteration. */
+  /** Purpose: Keep an official switch from replacing unfinished local work an earlier version recorded.
+   * This program cannot save or discard that work, so the message sends the user back to the version
+   * that owns it; nothing is archived or pruned on their behalf.
+   */
   async assertOfficialSwitchAllowed() {
     const state = await this.store.read();
     if (state.transaction) throw new Error(tr("evolution.a_version_switch_is_in_progress_wait_for_the_restart_to_finish_or_use_recovery"));
     const candidate = state.builds.find((build) => build.id === state.candidate);
     if (state.iteration || state.draftDirty || (candidate?.kind === "local" && !candidate.savedAt)) {
-      throw new Error(tr("evolution.save_or_discard_this_iteration_s_local_changes_before_updating_the_official_version"));
+      throw new Error(tr("program_versions.an_earlier_version_has_unfinished_local_changes_return_to_it_before_updating"));
     }
   }
 
@@ -249,8 +252,13 @@ export class ProgramVersions {
     });
   }
 
-  /** Input: registered build and current registry. Output: rejection when this program must not be selected now. */
-  async assertStageAllowed(build) {
-    if (build.kind === "official") await this.assertOfficialSwitchAllowed();
+  /** Input: registered build and current registry. Output: rejection when this program must not be selected now.
+   * A local build an earlier version never saved has no check receipt this program can verify.
+   */
+  async assertStageAllowed(build, state) {
+    if (build.kind === "official") return this.assertOfficialSwitchAllowed();
+    if (!build.savedAt && build.id !== state.active) {
+      throw new Error(tr("program_versions.this_local_build_was_never_saved_and_cannot_be_selected"));
+    }
   }
 }

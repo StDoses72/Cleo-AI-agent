@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 
 const execute = promisify(execFile);
 const root = await mkdtemp(join(tmpdir(), "cleo-recovery-window-"));
-const executable = resolve(process.env.CLEO_EXECUTABLE || "release/Cleo-evolution/Cleo.exe");
+const executable = resolve(process.env.CLEO_EXECUTABLE || "release/Cleo/Cleo.exe");
 const profile = join(root, "profile");
 const control = join(profile, "evolution");
 let child;

@@ -30,19 +30,13 @@ async function boot() {
       if (parentArgument) await controller.applyFromController(store, Number(parentArgument.split("=")[1]));
       else await controller.showRecovery(store);
     } catch (error) {
-      await dialog.showMessageBox({ type: "error", title: tr("bootstrap.cleo_recovery"), message: tr("evolutionpanel.operation_incomplete"), detail: error.message });
+      await dialog.showMessageBox({ type: "error", title: tr("bootstrap.cleo_recovery"), message: tr("bootstrap.operation_incomplete"), detail: error.message });
     }
     app.quit(); return;
   }
-  if (process.argv.includes("--cleo-import-bundle")) {
-    await app.whenReady();
-    if (!app.requestSingleInstanceLock()) throw new Error(tr("bootstrap.close_the_current_cleo_instance_before_opening_the_new_version"));
-    try {
-      const { EvolutionManager } = await import("./evolution.mjs");
-      await new EvolutionManager({ app, root, dataHome }).importBundle();
-    } finally { app.releaseSingleInstanceLock(); }
-  }
   const state = await store.read();
+  // CLEO_EVOLUTION_CHILD and CLEO_EVOLUTION_TRANSACTION are the launch protocol shared with every
+  // retained program, including ones older than this one; their names are part of that protocol.
   if (state.active && process.env.CLEO_EVOLUTION_CHILD !== "1") {
     if (state.transaction) {
       await app.whenReady();
@@ -83,9 +77,8 @@ async function boot() {
       await launchBuild(selected, store); app.quit(); return;
     }
   }
-  process.env.CLEO_EVOLUTION_WORKSPACE = join(root, "source");
   const transactionId = process.env.CLEO_EVOLUTION_TRANSACTION;
-  ipcMain.handle("cleo:evolution:healthy", async () => {
+  ipcMain.handle("cleo:program:healthy", async () => {
     await store.exclusive(() => store.healthy(transactionId));
     app.emit("cleo:healthy", transactionId);
     if (process.platform === "win32") {

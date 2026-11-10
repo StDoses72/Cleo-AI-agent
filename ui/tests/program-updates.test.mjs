@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
-import { EvolutionManager } from "../electron/evolution.mjs";
+import { ProgramVersions } from "../electron/program-versions.mjs";
 import { desktopPlatform } from "../electron/platform.mjs";
 import { ProgramUpdates } from "../electron/program-updates.mjs";
 import { ReleaseDownloads } from "../electron/release-downloads.mjs";
@@ -53,7 +53,7 @@ async function fixture(action) {
     const controllerRoot = join(root, "profile", "evolution");
     downloads = new ReleaseDownloads({ root: join(controllerRoot, "downloads"), fetchImpl: network });
     const app = { isPackaged: true, getVersion: () => "0.3.11", getPath: name => join(root, name) };
-    manager = new EvolutionManager({ app, root: controllerRoot, dataHome, downloads,
+    manager = new ProgramVersions({ app, root: controllerRoot, dataHome, downloads,
       extractArchive: async (archive, directory, { signal }) => {
         signal.throwIfAborted();
         assert.deepEqual(await readFile(archive), payload, "Extraction must only receive the verified artifact");
@@ -71,8 +71,10 @@ async function fixture(action) {
     const oldExecutable = join(controllerRoot, "builds", base.id, base.executable);
     await mkdir(dirname(oldExecutable), { recursive: true });
     await writeFile(oldExecutable, "current official executable");
-    await mkdir(manager.source, { recursive: true });
-    await writeFile(join(manager.source, "user-edit.txt"), "keep source");
+    // Source an earlier version left behind for local changes; switching must never lose it.
+    const source = join(controllerRoot, "source");
+    await mkdir(source, { recursive: true });
+    await writeFile(join(source, "user-edit.txt"), "keep source");
     await mkdir(dataHome, { recursive: true });
     await writeFile(join(dataHome, "user-data.txt"), "keep user data");
     await manager.store.update({ active: "base", baseline: "base", selectedBase: "base", workspaceBase: "base",
@@ -111,7 +113,7 @@ async function fixture(action) {
       pending.push(result);
       return result;
     };
-    await action({ root, manager, downloads, updater, program, hooks, counters, manifest, payload,
+    await action({ root, manager, source, downloads, updater, program, hooks, counters, manifest, payload,
       archive: downloads.pathFor(validateManifest(manifest, target)), barrier, install });
   } finally {
     for (const barrier of barriers) barrier.resolve();
@@ -124,7 +126,7 @@ async function fixture(action) {
   }
 }
 
-test("normal download and install share one archive and block evolution through controller readiness", async () => {
+test("normal download and install share one archive and block other version operations through controller readiness", async () => {
   await fixture(async ({ manager, updater, program, hooks, counters, payload, archive, barrier, install }) => {
     assert.equal((await program.download()).phase, "ready");
     assert.equal(counters.archives, 1);
@@ -140,7 +142,7 @@ test("normal download and install share one archive and block evolution through 
     for (const checkpoint of [releases, extracting, staging, ready]) {
       await checkpoint.entered;
       assert.equal(updater.getState().phase, "installing");
-      await assert.rejects(program.run(() => manager.begin()), /另一项版本操作/);
+      await assert.rejects(program.run(() => manager.stage("base")), /另一项版本操作/);
       assert.equal(program.install(), first);
       checkpoint.release();
     }
@@ -149,7 +151,7 @@ test("normal download and install share one archive and block evolution through 
     assert.equal(counters.extracts, 1);
     assert.equal(counters.applies, 1);
     assert.equal(updater.getState().operationBusy, true, "Restart must keep the gate closed after apply returns");
-    await assert.rejects(program.run(() => manager.begin()), /另一项版本操作/);
+    await assert.rejects(program.run(() => manager.stage("base")), /另一项版本操作/);
     assert.deepEqual(await readFile(archive), payload);
     const state = await manager.store.read();
     assert.equal(state.transaction.phase, "staged");
@@ -159,7 +161,7 @@ test("normal download and install share one archive and block evolution through 
 
 for (const condition of ["iteration", "local-candidate", "dirty-source"]) {
   test(`${condition} blocks installation before preparation and preserves the registry, cache and builds`, async () => {
-    await fixture(async ({ root, manager, updater, program, counters, payload, archive, install }) => {
+    await fixture(async ({ root, manager, source, updater, program, counters, payload, archive, install }) => {
       await program.download();
       const local = { id: "local-draft", kind: "local", executable: `${manager.target.bundle}/${manager.target.executable}` };
       const executable = join(manager.store.root, "builds", local.id, local.executable);
@@ -180,7 +182,7 @@ for (const condition of ["iteration", "local-candidate", "dirty-source"]) {
       assert.deepEqual(await manager.store.read(), before);
       assert.deepEqual(await readFile(archive), payload);
       assert.equal(await readFile(executable, "utf8"), "unfinished local executable");
-      assert.equal(await readFile(join(manager.source, "user-edit.txt"), "utf8"), "keep source");
+      assert.equal(await readFile(join(source, "user-edit.txt"), "utf8"), "keep source");
       assert.equal(await readFile(join(root, "home", "user-data.txt"), "utf8"), "keep user data");
     });
   });
@@ -211,7 +213,7 @@ for (const failure of ["network", "extraction", "controller-start"]) {
   });
 }
 
-test("ordinary downloads serialize with evolution and repeated download clicks join one request", async () => {
+test("ordinary downloads serialize with other version operations and repeated download clicks join one request", async () => {
   await fixture(async ({ manager, program, hooks, counters, barrier }) => {
     const network = barrier();
     hooks.archive = network.wait;
@@ -219,7 +221,7 @@ test("ordinary downloads serialize with evolution and repeated download clicks j
     try {
       assert.equal(program.download(), first);
       await network.entered;
-      await assert.rejects(program.run(() => manager.begin()), /另一项版本操作/);
+      await assert.rejects(program.run(() => manager.stage("base")), /另一项版本操作/);
     } finally { network.release(); }
     assert.equal((await first).phase, "ready");
     assert.equal(counters.archives, 1);
@@ -246,7 +248,7 @@ test("checking the same release retains its verified ready state", async () => {
   });
 });
 
-test("closing the coordinator prevents any new update, install or evolution operation", async () => {
+test("closing the coordinator prevents any new update, install or version operation", async () => {
   await fixture(async ({ manager, updater, program, counters, install }) => {
     await program.download();
     const before = { ...counters };
@@ -254,7 +256,7 @@ test("closing the coordinator prevents any new update, install or evolution oper
     await program.check();
     await assert.rejects(program.download(), /另一项版本操作/);
     await assert.rejects(install(), /另一项版本操作/);
-    await assert.rejects(program.run(() => manager.begin()), /另一项版本操作/);
+    await assert.rejects(program.run(() => manager.stage("base")), /另一项版本操作/);
     assert.deepEqual(counters, before);
     assert.equal(updater.getState().phase, "ready");
   });

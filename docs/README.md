@@ -9,10 +9,9 @@
 1. [快速开始](GETTING_STARTED.md)：选择桌面版或源码运行，完成首次模型配置并执行第一条任务。
 2. [配置与安全边界](CONFIGURATION.md)：理解 `cleo.json`、`harnesses.json`、本地数据路径和权限边界。
 3. [运行时与数据维护指南](Cleo_Runtime_State_Maintenance_Guide.docx)：备份、迁移、恢复和排查本地状态。
-4. [本地进化](cleo-evolution.md)：描述需求、构建应用、验收、保存与恢复版本。
+4. [程序版本与恢复](program-versions.md)：更新、切换版本、启动失败回退与保底入口。
 5. [本地 skills](local-skills.md)：在开发会话中发现和调用本机技能。
-6. [源码贡献](contribution-targets.md)：申请接收分支、提交源码快照并查看 PR 状态。
-7. [子任务路由](benchmark-routing.md)：连接候选、Artificial Analysis 数据、评估器、受约束委派与任务用量。
+6. [子任务路由](benchmark-routing.md)：连接候选、Artificial Analysis 数据、评估器、受约束委派与任务用量。
 
 ## 我想理解系统
 

@@ -40,7 +40,7 @@ function channelOf(version) {
   return typeof version === "string" ? (version.endsWith("-alpha") ? "alpha" : "stable") : null;
 }
 
-/** Input: launcher root and store. Output: true when user data or the evolution registry would travel with the swap.
+/** Input: launcher root and store. Output: true when user data or the program registry would travel with the swap.
  * CLEO_HOME is a supported override, so the data home (or a linked data entry) can sit inside Programs\Cleo, and either
  * side may be reached through a junction: both are compared by real path, and a root that cannot be resolved is refused.
  */
@@ -147,8 +147,8 @@ export async function updateWindowsUninstallEntry(root, version, { hives = WINDO
 }
 
 /** Purpose: Keep the installed entry point (the launcher the Start Menu and taskbar open) at the running official version.
- * Input: evolution store and the running program; optional seams for tests. Output: per-launcher outcome.
- * Runs after a healthy startup of an official build that lives under evolution/builds. The launcher has already
+ * Input: program store and the running program; optional seams for tests. Output: per-launcher outcome.
+ * Runs after a healthy startup of an official build that lives under the control directory's builds. The launcher has already
  * quit after handing off, so its directory is replaced wholesale by a sibling-rename swap; a Windows file lock
  * leaves a journal in the registry (`launcherRefresh`) that the next healthy startup retries. User data is never touched.
  */
@@ -199,7 +199,7 @@ export async function refreshInstalledLauncher({
       results[path] = { status: "skipped", reason: "channel-mismatch", launcherChannel }; continue;
     }
     if (await overlapsUserData(root, store, filesystem)) {
-      log(`Launcher refresh refused: user data or the evolution registry lives inside ${root}.`);
+      log(`Launcher refresh refused: user data or the program registry lives inside ${root}.`);
       results[path] = { status: "skipped", reason: "contains-user-data" }; continue;
     }
     results[path] = await refreshLauncher({ store, path, root, previous, onDisk, source, build: active, target, filesystem, copyBundle, inUse, registry, log });

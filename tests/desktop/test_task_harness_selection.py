@@ -127,13 +127,11 @@ class TaskHarnessTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_development_registers_harness_before_creating_its_session(self):
         from cleo.agents.profiles import dream_profile
-        from cleo.desktop.evolution_planning import analyze_request
 
         service = self.service()
         service.settings.active_profiles = SimpleNamespace(dream_agent=None)
         service._project_paths = {"productivity:project": fixture.name}
         service._productivity_sessions = {}
-        service._restrict_evolution = AsyncMock()
         service._enable_desktop_approvals = AsyncMock()
         service._activate = lambda _: None
         service._thread = AsyncMock(return_value={"id": "new-task"})
@@ -161,17 +159,6 @@ class TaskHarnessTests(unittest.IsolatedAsyncioTestCase):
                         "runtime_options": {"model": "opus"}}
             profile = dream_profile(service.settings, manifest)
             self.assertEqual((profile.backend, profile.model), ("claude_code", "opus"))
-            async def prepare(root, request, complete, existing_cases=None):
-                self.assertIsNone(existing_cases)
-                await complete("instructions", "prompt")
-                return {"intent": "question", "answer": "read only"}
-
-            with patch("cleo.desktop.evolution_planning.plan_request", prepare), patch(
-                "cleo.desktop.evolution_planning.subscription_text", AsyncMock(return_value="{}")
-            ) as complete:
-                await analyze_request(service.settings, manifest, Path(temporary), "explain")
-                selected = complete.call_args.args[0]
-                self.assertEqual((selected.backend, selected.model), ("claude_code", "opus"))
         create_session.assert_awaited_once_with(
             "claude", project_path=fixture.name, model="opus", project="project",
         )
@@ -184,25 +171,6 @@ class TaskHarnessTests(unittest.IsolatedAsyncioTestCase):
         )
         with self.assertRaisesRegex(RuntimeError, "login failed"):
             await service.get_productivity_models(provider="claude")
-
-    async def test_evolution_forwards_each_selected_harness_model_and_effort(self):
-        for name in ("codex", "claude", "gemini", "copilot", "grok", "opencode"):
-            with self.subTest(provider=name), patch.dict(os.environ, {
-                "CLEO_EVOLUTION_WORKSPACE": fixture.name,
-            }):
-                service = self.service()
-                service.create_thread = AsyncMock(return_value={"id": "fixture"})
-                service.store = SimpleNamespace(rename_session=lambda *_: None)
-                service._adapter_instance = SimpleNamespace(providers=(name,))
-                service.load_thread = AsyncMock(return_value={"id": "fixture"})
-                service.load_workspace = AsyncMock(return_value={})
-                await service.open_evolution_thread(
-                    provider=name, model="vendor-model", effort="high"
-                )
-                service.create_thread.assert_awaited_once_with(
-                    space="productivity", project_id_value="productivity:cleo-evolution",
-                    project_path=fixture.name, provider=name, model="vendor-model", effort="high",
-                )
 
 
 class ClaudeCatalogTests(unittest.IsolatedAsyncioTestCase):

@@ -1,4 +1,4 @@
-"""Regression for changing an already connected evolution session to bypass mode."""
+"""Regression for changing an already connected session to bypass mode."""
 
 import asyncio
 

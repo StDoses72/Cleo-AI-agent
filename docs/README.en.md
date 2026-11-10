@@ -9,11 +9,9 @@ Guides for installing, configuring, and using Cleo Desktop and its terminal work
 1. [Getting started](GETTING_STARTED.en.md): install Cleo, configure a model, and start a conversation.
 2. [Platforms and installation](PLATFORMS.en.md): packages, data locations, and updates on Windows, macOS, and Linux.
 3. [Configuration](CONFIGURATION.en.md): model profiles, development harnesses, tools, and local data.
-4. [Local evolution](cleo-evolution.en.md): describe a change, apply a build, and save or restore a version.
-5. [Acceptance](evolution-acceptance-preparation.en.md): prepare requirements and confirm behavior after application.
-6. [Local skills](local-skills.en.md): discover and invoke skills in development sessions.
-7. [Source contributions](contribution-targets.en.md): request a receiving branch and submit a source snapshot.
-8. [Subtask routing (Chinese)](benchmark-routing.md): connected candidates, Artificial Analysis data, evaluator selection, constrained delegation, and task usage.
+4. [Program versions and recovery](program-versions.en.md): update, switch versions, roll back a failed start, and reach the fallback program.
+5. [Local skills](local-skills.en.md): discover and invoke skills in development sessions.
+6. [Subtask routing (Chinese)](benchmark-routing.md): connected candidates, Artificial Analysis data, evaluator selection, constrained delegation, and task usage.
 
 ## Understand and develop the project
 

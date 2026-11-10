@@ -175,7 +175,7 @@ consolidated the source, migration is rejected because durable knowledge in the
 old project cannot be retracted reliably. The desktop exposes this through the
 `move_thread` RPC and the conversation menu's "Move to project…" dialog, and
 `/project move <name>` works for chat and development tasks alike. Running
-threads, cross-space targets, self-evolution tasks, and tasks that carry a
+threads, cross-space targets, and tasks that carry a
 harness handoff snapshot are rejected with a stated reason. After a development
 task moves, its `cwd` points at the target project directory, the resident
 harness session is closed and resumed in the new directory on the next turn,
@@ -315,8 +315,8 @@ AgentAdapter.rewind (editing an earlier user message)
 
 Each `session_<status>` event records the turn's native ID so a Codex edit can
 target it directly; otherwise native turns are matched to prompts from newest to
-oldest. Only turns after the latest harness handoff can be edited, and ACP and
-evolution tasks do not offer editing. Editing rewinds the conversation only; files
+oldest. Only turns after the latest harness handoff can be edited, and ACP
+tasks do not offer editing. Editing rewinds the conversation only; files
 already written to the workspace are not reverted.
 
 `/productivity` in the main chat is the interactive terminal entry point; leaving

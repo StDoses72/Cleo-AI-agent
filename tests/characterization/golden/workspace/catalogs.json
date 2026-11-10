@@ -34,7 +34,7 @@
       "sharedHome": true
     }
   ],
-  "is_evolution_thread_unknown": "FileNotFoundError",
+  "load_thread_unknown": "FileNotFoundError",
   "local_skills": [],
   "model_settings": {
     "activeAgent": "fake_chat",

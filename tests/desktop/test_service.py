@@ -2615,10 +2615,6 @@ def test_move_thread_rebinds_task_directory_and_releases_resident_session(tmp_pa
             space="productivity", project_id_value="", project_path=str(source),
         )
         assert task["id"] in service._productivity_sessions
-        with pytest.raises(ValueError, match="演进"):
-            await service.move_thread(
-                thread_id=task["id"], project_id_value="productivity:cleo-evolution",
-            )
 
         # The last turn's Git undo checkpoint belongs to the source repository.
         service.store.update_manifest(task["id"], undo_checkpoint={

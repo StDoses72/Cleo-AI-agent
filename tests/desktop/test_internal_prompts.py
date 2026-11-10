@@ -1,4 +1,8 @@
-"""Desktop-generated evolution instructions stay internal; users see their own requests."""
+"""Prompts the desktop generated for earlier self-iteration tasks stay folded.
+
+Users see their own requests.
+Local evolution was removed, but tasks it created are still on disk and must keep rendering.
+"""
 
 import pytest
 

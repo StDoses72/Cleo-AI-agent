@@ -17,8 +17,6 @@ if (process.platform !== "win32") {
     await cp(join(ui, "node_modules/electron/dist"), bundle, { recursive: true });
     await rename(join(bundle, "electron.exe"), join(bundle, "Cleo.exe"));
     await rm(join(bundle, "resources/default_app.asar"));
-    // Match the real builders: every official package also carries its source snapshot.
-    await run(process.execPath, [join(ui, "../scripts/bundle-evolution-source.mjs"), join(bundle, "resources")]);
     const source = join(root, "source");
     await mkdir(source);
     await cp(join(ui, "electron"), join(source, "electron"), { recursive: true });
@@ -33,7 +31,7 @@ void app.whenReady().then(async () => {
   if (!app.requestSingleInstanceLock()) throw new Error("Startup lock is still held");
   const window = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: true, contextIsolation: false, sandbox: false } });
   await window.loadURL("data:text/html,<h1>Installed release fixture</h1>");
-  await window.webContents.executeJavaScript('require("electron").ipcRenderer.invoke("cleo:evolution:healthy")');
+  await window.webContents.executeJavaScript('require("electron").ipcRenderer.invoke("cleo:program:healthy")');
   await appendFile(process.env.CLEO_SMOKE_STARTED, JSON.stringify({ version: app.getVersion(), executable: process.execPath }) + "\\n");
   setTimeout(() => app.quit(), 1000);
 }).catch(error => { console.error(error); app.exit(1); });`);

@@ -14,12 +14,12 @@ export async function runHandoff(store, hooks) {
       const build = await hooks.withLock(async () => {
         if (index) {
           await store.recover(targets[index]);
-          await store.stage(targets[index], { restartError: tr("evolution_handoff.the_previous_application_did_not_start_successfully_cleo_returned_to_a_working_versio") });
+          await store.stage(targets[index], { restartError: tr("program_handoff.the_selected_version_did_not_start_cleo_returned_to_a_working_version") });
         }
         return store.activate();
       });
       const transaction = (await store.read()).transaction;
-      await hooks.progress(index ? tr("evolution_handoff.restoring_a_working_version") : tr("evolution_handoff.starting_the_modified_cleo"),
+      await hooks.progress(index ? tr("evolution_handoff.restoring_a_working_version") : tr("program_handoff.starting_the_selected_cleo_version"),
         index ? tr("evolution_handoff.the_new_version_could_not_start_rolling_back_automatically_your_data_is_unchanged") : tr("evolution_handoff.this_window_closes_automatically_once_the_main_interface_and_backend_are_ready"));
       child = await hooks.launch(build, transaction.id);
       if (await hooks.waitHealthy(child, transaction.id, build.id)) {

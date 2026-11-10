@@ -2,8 +2,8 @@ import { t as tr, getLanguage, setLanguage } from "./i18n.mjs";
 import { randomUUID } from "node:crypto";
 import { readUiLanguage } from "./language.mjs";
 import { launchDesktop } from "./program-launch.mjs";
-import { waitForControllerReady } from "./program-recovery.mjs";
-import { createEvolutionDesktop, runEvolutionMonitorProcess } from "./evolution-desktop.mjs";
+import { waitForControllerReady, showRecovery } from "./program-recovery.mjs";
+import { ProgramVersions } from "./program-versions.mjs";
 import { rmSync } from "node:fs";
 import {
   app, BrowserWindow, Menu, Tray, WebContentsView, clipboard, dialog, globalShortcut, ipcMain, nativeImage, nativeTheme, protocol, screen, session, shell,
@@ -36,11 +36,8 @@ import { readJson } from "./program-store.mjs";
 import { createStorageQueue, defaultLauncherPaths, reclaimStorage, storageInventory } from "./storage-reclaim.mjs";
 import { defaultRuntimeRoot } from "./online-runtime.mjs";
 
-/** The theme chosen in the main window (light/dark), handed to secondary windows; null = system. */
+/** The theme chosen in the main window (light/dark), handed to the restart window; null = system. */
 let windowTheme = null;
-if (process.argv.includes("--cleo-evolution-monitor")) {
-  await runEvolutionMonitorProcess();
-} else {
 const here = dirname(fileURLToPath(import.meta.url));
 const alphaChannel = configureReleaseChannel(app);
 let desktopTray;
@@ -82,15 +79,11 @@ const dependencies = new DependencyUpdater({
   cleoHome: backend.runtimePaths().cleoHome,
   onState: (state) => updater.setState({ dependencies: state }),
 });
-let mainInteractive = false;
-const evolutionDesktop = createEvolutionDesktop({
-  controlRoot, backend, computer, downloads: releaseDownloads, updater,
-  onVersionsState: () => updater.setState({ operationBusy: programUpdates.busy || versions.phase !== "idle",
+const versions = new ProgramVersions({
+  app, root: controlRoot, dataHome: backend.runtimePaths().cleoHome, downloads: releaseDownloads,
+  onState: () => updater.setState({ operationBusy: programUpdates.busy || versions.phase !== "idle",
     blocksTasks: programUpdates.blocksTasks || versions.phase !== "idle" }),
-  programUpdates: () => programUpdates, setup: () => setup, applyVersion,
-  windowTheme: () => windowTheme, mainInteractive: () => mainInteractive,
 });
-const versions = evolutionDesktop.versions;
 const programUpdates = new SelectableProgramUpdates({ updater, versions, apply: applyVersion,
   hasRunningTask: () => backend.pending.size > 0 || setup.busy });
 /** Purpose: Describe Cleo-owned storage and reclaim what no retained program references.
@@ -116,7 +109,6 @@ const storageOptions = () => ({
 const storage = createStorageQueue();
 app.on("cleo:healthy", (transactionId) => {
   storageReady = true;
-  mainInteractive = true;
   // Reclaim after the program proved itself; locked entries stay journaled for the next start.
   void storage(() => reclaimStorage(storageOptions())).then(result => {
     if (result.removed.length || result.failed.length) console.log(`Storage cleanup: removed ${result.removed.length}, failed ${result.failed.length}, freed ${result.freedBytes} bytes.`);
@@ -131,7 +123,7 @@ app.on("cleo:healthy", (transactionId) => {
 });
 const setup = new SetupManager({ root: join(process.env.CLEO_HOME || backend.runtimePaths().cleoHome, "setup"),
   version: app.getVersion(),
-  toolsRoot: join(controlRoot, "tools"), python: process.env.CLEO_PYTHON || backend.runtimePaths().python || (process.platform === "win32" ? "python" : "python3"),
+  python: process.env.CLEO_PYTHON || backend.runtimePaths().python || (process.platform === "win32" ? "python" : "python3"),
   resourcesPath: process.resourcesPath,
   repairRuntime: async () => {
     if (!dependencies.runtime) throw new Error(tr("main.the_runtime_bundled_with_the_application_cannot_start_reinstall_cleo_and_try_again"));
@@ -142,14 +134,15 @@ const setup = new SetupManager({ root: join(process.env.CLEO_HOME || backend.run
   },
 });
 
-/** Purpose: Hand off activation after explicit consent. Input: build id; current user data is always retained. Output: app restart. */
+/** Purpose: Hand a version switch to the restart controller after explicit consent.
+ * Input: retained build id; current user data is always kept. Output: app restart, or true when already active.
+ */
 async function applyVersion(id) {
   if (backend.pending.size) throw new Error(tr("main.wait_for_the_current_task_to_finish_or_stop_it_before_applying_changes"));
   const state = await versions.store.read();
   if (state.active === id) return true;
   const tx = await versions.stage(id);
   try {
-    await evolutionDesktop.openMonitor();
     const controller = await launchDesktop(process.execPath,
       [`--cleo-apply-parent=${process.pid}`, `--user-data-dir=${app.getPath("userData")}`,
         ...(windowTheme ? [`--cleo-theme=${windowTheme}`] : [])],
@@ -171,7 +164,6 @@ const allowedMethods = new Set([
   "set_ui_language",
   "load_workspace",
   "load_memory",
-  "open_evolution_thread",
   "load_thread",
   "create_thread",
   "delete_thread",
@@ -228,6 +220,12 @@ const allowedMethods = new Set([
   "reset_workspace",
 ]);
 
+// Methods the renderer may still name although their feature is gone (local evolution, ADR 0009).
+// They are answered here and never reach the backend; delete an entry once ui/src stops requesting it.
+const retiredMethods = new Set([
+  "open_evolution_thread",
+]);
+
 // Share the platform icon between the window and tray.
 const iconFile = process.platform === "win32" ? "cleo.ico" : "cleo.png";
 const iconPath = app.isPackaged
@@ -245,7 +243,7 @@ desktopTray = createTrayController({
 const backgroundMemory = createBackgroundMemoryScheduler({
   backend,
   canRun: () => !programUpdates.closed && !programUpdates.busy && !setup.busy
-    && versions.phase === "idle" && !evolutionDesktop.editing && backend.pending.size === 0,
+    && versions.phase === "idle" && backend.pending.size === 0,
   onError: error => console.error("Background memory:", error.message),
 });
 
@@ -283,8 +281,6 @@ function createWindow() {
     if (url !== window.webContents.getURL()) event.preventDefault();
   });
   desktopTray.attachWindow(window);
-  window.webContents.on("did-start-loading", () => { mainInteractive = false; });
-  window.webContents.on("render-process-gone", () => { mainInteractive = false; });
   window.once("ready-to-show", () => {
     if (!desktopTray.isQuitting()) window.show();
   });
@@ -357,8 +353,7 @@ app.whenReady().then(async () => {
   });
   ipcMain.on("cleo:window-theme", (event, theme) => {
     if (theme !== "light" && theme !== "dark") return;
-    // Secondary windows (restart window here, the companion window in its own process) follow the
-    // theme chosen in the main window rather than the system's.
+    // The restart window follows the theme chosen in the main window rather than the system's.
     windowTheme = theme;
     nativeTheme.themeSource = theme;
     if (process.platform !== "win32" && process.platform !== "linux") return;
@@ -372,11 +367,12 @@ app.whenReady().then(async () => {
   ipcMain.handle("cleo:request", async (event, payload) => {
     if (programUpdates.closed) throw new Error(tr("main.cleo_is_shutting_down_try_again_later"));
     const method = String(payload?.method || "");
+    if (retiredMethods.has(method)) throw new Error(tr("main.local_evolution_is_no_longer_part_of_cleo"));
     if (!allowedMethods.has(method)) throw new Error(`Unsupported desktop method: ${method}`);
     const streamId = payload?.streamId ? String(payload.streamId) : null;
     const controlsRun = method === "stream_turn" || method === "steer_run";
-    if (controlsRun && (programUpdates.blocksTasks || setup.busy || evolutionDesktop.controlling)) {
-      throw new Error(tr("main.wait_for_the_evolution_operation_to_finish_before_editing_code"));
+    if (controlsRun && (programUpdates.blocksTasks || setup.busy)) {
+      throw new Error(tr("main.wait_for_the_version_or_setup_operation_to_finish"));
     }
     const params = payload?.params || {};
     const onEvent = (streamEvent) => {
@@ -384,22 +380,18 @@ app.whenReady().then(async () => {
         event.sender.send("cleo:stream-event", { streamId, event: streamEvent });
       }
     };
-    if (programUpdates.closed) throw new Error(tr("main.cleo_is_shutting_down_try_again_later"));
-    const isEvolution = controlsRun && await evolutionDesktop.ownsThread(params.thread_id);
-    if (programUpdates.closed) throw new Error(tr("main.cleo_is_shutting_down_try_again_later"));
-    const tracksTurn = method === "stream_turn" && !isEvolution && typeof params.thread_id === "string";
+    const tracksTurn = method === "stream_turn" && typeof params.thread_id === "string";
     if (controlsRun) {
+      // A turn must not start while a program switch is journaled or a version operation is writing.
       const transaction = (await versions.store.read()).transaction;
-      if (programUpdates.blocksTasks || transaction || (versions.phase !== "idle" && (!versions.readOnlyOperation || isEvolution)))
+      if (programUpdates.closed) throw new Error(tr("main.cleo_is_shutting_down_try_again_later"));
+      if (programUpdates.blocksTasks || transaction || versions.phase !== "idle")
         throw new Error(tr("main.wait_for_the_current_version_operation_to_finish"));
     }
-    if (isEvolution && programUpdates.busy) throw new Error(tr("main.wait_for_the_current_version_operation_to_finish"));
     if (tracksTurn) computer.broker.turnStarted(params.thread_id, params.run_id);
     let result;
     try {
-      result = isEvolution && method === "stream_turn"
-        ? await evolutionDesktop.turn(params, onEvent)
-        : await backend.request(method, params, onEvent);
+      result = await backend.request(method, params, onEvent);
     } finally {
       // Queued computer actions of a finished turn must never run in a later one.
       if (tracksTurn) computer.broker.turnEnded(params.thread_id);
@@ -416,7 +408,7 @@ app.whenReady().then(async () => {
         if (!window.isDestroyed()) window.webContents.send("cleo:language-changed", result);
       }
     }
-    // Backends without hot reload (older versions selected by evolution) still need a restart.
+    // Backends without hot reload still need a restart.
     if (!backend.hotReload && ["save_model_profile", "save_dream_settings", "create_model_connection",
       "select_chat_model", "rename_model_connection", "remove_model_connection"].includes(method)) {
       await backend.restart();
@@ -483,9 +475,19 @@ app.whenReady().then(async () => {
     if (backend.pending.size) throw new Error(tr("main.wait_for_the_current_task_to_finish_or_stop_it_before_reclaiming_storage"));
     return storage(() => reclaimStorage(storageOptions(), { manual: true }));
   });
-  ipcMain.handle("cleo:evolution:state", () => evolutionDesktop.state());
-  ipcMain.handle("cleo:evolution:action", (event, payload) => evolutionDesktop.action(event, payload));
-  if (!app.isPackaged) ipcMain.handle("cleo:evolution:healthy", () => { mainInteractive = true; });
+  // The version and recovery chooser, opened from inside the app; a selection restarts into that program.
+  ipcMain.handle("cleo:program:recovery", (event) => {
+    if (setup.busy) throw new Error(tr("main.wait_for_dependency_installation_to_finish"));
+    if (backend.pending.size) throw new Error(tr("main.wait_for_the_current_task_to_finish_or_stop_it"));
+    if (programUpdates.closed) throw new Error(tr("main.cleo_is_shutting_down_try_again_later"));
+    return programUpdates.run(async () => {
+      await versions.operation("preparing", () => versions.ensureBaseline());
+      const selected = await showRecovery(versions.store, { selectOnly: true, parentWindow: BrowserWindow.fromWebContents(event.sender) });
+      if (selected) return applyVersion(selected);
+    });
+  });
+  // bootstrap.mjs owns the startup confirmation in a packaged app; development has no version switch to confirm.
+  if (!app.isPackaged) ipcMain.handle("cleo:program:healthy", () => {});
   // Downloaded updates never authorize installation. Selection is explicit and recoverable.
   try { backend.runtime = await dependencies.prepare(); }
   catch (error) { updater.setState({ dependencies: { phase: "error", error: error.message } }); }
@@ -493,8 +495,6 @@ app.whenReady().then(async () => {
   desktopTray.start();
   createWindow();
   backgroundMemory.start();
-  const monitorTimer = evolutionDesktop.start();
-  app.once("will-quit", () => clearInterval(monitorTimer));
   // External setup and internal runtime updates require a user-approved setup action.
   const refresh = () => programUpdates.check().catch((error) => console.error("Update check:", error.message));
   if (!process.env.CLEO_EVOLUTION_TRANSACTION) setTimeout(() => void refresh(), 1500);
@@ -503,11 +503,10 @@ app.whenReady().then(async () => {
 });
 
 app.on("before-quit", createQuitBarrier({
-  close: [() => backgroundMemory.stop(), () => setup.close(), () => computer.close(), () => evolutionDesktop.closeReleases(), () => programUpdates.close(), () => backend.shutdown(), () => dependencies.close(),
-    () => releaseDownloads.close(), () => versions.close(), () => evolutionDesktop.cancelLogin()],
+  close: [() => backgroundMemory.stop(), () => setup.close(), () => computer.close(), () => programUpdates.close(), () => backend.shutdown(), () => dependencies.close(),
+    () => releaseDownloads.close(), () => versions.close()],
   onError: error => console.error("Cleo shutdown failed:", error),
   quit: () => app.quit(),
 }));
 
-}
 }

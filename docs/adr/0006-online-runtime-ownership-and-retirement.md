@@ -59,4 +59,4 @@
 - PR #157（本决定的实现），PR #144（"只留一份"策略，Refs #141），issue #141，已关闭的前身 #118。
 - `ui/electron/online-runtime.mjs`（`RUNTIME_REGISTRY`、`parseRuntimeRegistry`、`recordRuntimeOwner`、`findInstalledRuntime`）、`ui/electron/storage-reclaim.mjs`（`storageInventory`、`reclaimStorage`）、`ui/src/types.ts::StorageEntry`。
 - 测试：`ui/tests/storage-reclaim.test.mjs`、`ui/tests/online-runtime.test.mjs`。
-- 文档：`docs/cleo-evolution.md` "在线运行环境" 段落。
+- 文档：`docs/program-versions.md`「版本保留与清理」中的在线运行环境段落（原在 `docs/cleo-evolution.md`）。

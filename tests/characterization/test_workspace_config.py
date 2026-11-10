@@ -36,8 +36,8 @@ def test_read_only_catalogs(backend: Backend, cleo_home: CleoHome, replacements:
         "productivity_models": backend.call("get_productivity_models", provider="scripted",
                                             project_path=str(cleo_home.workspace)),
         "config_template_keys": sorted(backend.call("get_config_templates")),
-        "is_evolution_thread_unknown": backend.call_error(
-            "is_evolution_thread", thread_id="missing").name,
+        "load_thread_unknown": backend.call_error(
+            "load_thread", thread_id="missing").name,
     }, replacements)
 
 

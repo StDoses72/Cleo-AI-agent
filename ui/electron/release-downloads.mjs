@@ -26,7 +26,7 @@ async function verified(path, manifest, signal) {
   }
 }
 
-/** One verified artifact per profile, shared by update and evolution callers. */
+/** One verified artifact per profile, shared by update checks and version switching. */
 export class ReleaseDownloads {
   constructor({ root, fetchImpl = globalThis.fetch, legacyPaths = () => [] }) {
     this.root = resolve(root);

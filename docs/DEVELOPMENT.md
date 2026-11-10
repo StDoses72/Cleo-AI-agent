@@ -68,7 +68,7 @@ UI 样式入口是 `ui/src/index.css`，它按顺序 `@import` `ui/src/styles/` 
 
 侧栏线程卡片显示该会话使用的 harness：开发任务显示编码 harness（Codex / Claude / ACP 客户端名），对话显示模型名，数据来自线程的 `runtime.provider` / `runtime.model`。回复完成时若用户没有停留在该线程（或窗口不在前台），线程记为未读：卡片加粗并显示"新回复"，Renderer 通过 `cleoWindow.setBadge(count, overlayPng)` 把未读数交给主进程，macOS / Linux 用 `app.setBadgeCount`，Windows 用 `setOverlayIcon` 叠加 Renderer 绘制的数字；打开线程或窗口回到前台即视为已读，归零时恢复原图标。未读状态只保存在内存中，不写入会话。
 
-`npm --prefix ui run smoke:history` 在系统临时目录构建并清理独立测试应用，覆盖万条记录翻页、虚拟列表、滚动锚点、提问和过程折叠。设置 `CLEO_SMOKE_REGRESSION=1` 可同时运行原有桌面、审批和自我迭代 smoke；设置 `TEMP` / `TMP` 可将全部临时内容集中到指定测试目录。
+`npm --prefix ui run smoke:history` 在系统临时目录构建并清理独立测试应用，覆盖万条记录翻页、虚拟列表、滚动锚点、提问和过程折叠。设置 `CLEO_SMOKE_REGRESSION=1` 可同时运行原有桌面和审批 smoke；设置 `TEMP` / `TMP` 可将全部临时内容集中到指定测试目录。
 
 ## 配置开发环境
 
@@ -208,7 +208,7 @@ python scripts\update_project.py `
 
 启动时，Cleo 从当前程序版本对应的独立 `runtimes/` 目录选择已经验证的 Python/工具运行时；导入或 Codex 版本检查失败会回到随应用打包的版本。启动后及持续运行期间每 24 小时自动检查依赖更新，通过验证后下次启动生效；失败保留当前运行版本。依赖更新与整包更新独立。
 
-安装版每六小时检查正式发布，下载和安装都需要用户操作。普通更新与进化版本管理共用 `ReleaseDownloads`：按用户配置目录、平台、版本和 SHA-256 隔离缓存；包完整校验后才可解压。同一个包的并发请求共享下载，旧缓存经过校验后可复用。下载完成不会在下次启动时自行安装。Linux `.deb` 的系统安装仍由包管理器维护。
+安装版每六小时检查正式发布，下载和安装都需要用户操作。更新检查与版本切换共用 `ReleaseDownloads`：按用户配置目录、平台、版本和 SHA-256 隔离缓存；包完整校验后才可解压。同一个包的并发请求共享下载，旧缓存经过校验后可复用。下载完成不会在下次启动时自行安装。Linux `.deb` 的系统安装仍由包管理器维护。
 
 ## Windows 桌面发布
 
@@ -256,11 +256,11 @@ Set-Location ..
 
 下载器会校验 checksum 并原子替换程序目录。自动更新依赖 GitHub Release 中同时存在 ZIP、SHA256 和 `release.json`，三者版本与内容必须一致。
 
-v0.4 起，桌面“重启并安装”通过 `ProgramUpdates` 协调进化版本切换，复用已校验的安装包，不再另行下载。更新窗口立即进入准备状态，校验/解压与重启阶段均保持互斥，重复点击合并为一次操作。下载不覆盖本地候选构建；存在本轮进化、未保存候选或运行任务时，正式版切换会被拒绝。
+v0.4 起，桌面“重启并安装”通过 `ProgramUpdates` 协调版本切换（`ProgramVersions`），复用已校验的安装包，不再另行下载。更新窗口立即进入准备状态，校验/解压与重启阶段均保持互斥，重复点击合并为一次操作。有任务在运行时，正式版切换会被拒绝；状态中有旧版本留下的未完成本地修改或未保存候选构建时同样拒绝，并提示回到那个版本处理。
 
-新程序保留在用户配置目录的进化构建区。控制器就绪后原程序退出；控制器持有单实例锁，记录可恢复交易、归档旧进化源码并准备新基准，再启动所选版本。健康确认完成交易；失败恢复原程序和源码基准，聊天、记忆与配置始终保留。退出应用会等待下载和解包/构建子进程停止。
+新程序保留在用户配置目录的控制目录（`userData/evolution/builds`，目录名是磁盘格式，见 [ADR 0009](adr/0009-remove-local-evolution.md)）。控制器就绪后原程序退出；控制器持有单实例锁，记录可恢复交易、归档旧版本留下的源码工作区，再启动所选版本。健康确认完成交易；失败恢复原程序和归档，聊天、记忆与配置始终保留。退出应用会等待下载和解包子进程停止。
 
-桌面不再内置原地替换安装器：`DesktopUpdater.install()` 只把已校验的下载交给进化版本切换，`scripts/download.ps1` 仅用于源码目录的手动安装。正式版本健康启动后，`launcher-refresh.mjs` 会把 `%LOCALAPPDATA%\Programs\Cleo` 的启动器整体替换为当前运行的构建（保留 Inno 卸载程序），并更新卸载项的 DisplayVersion；Windows 文件锁会记入 `state.json` 的 `launcherRefresh`，下次健康启动重试。`program-updates.test.mjs` 验证真实下载、版本管理与交易组合，`smoke-program-updates.mjs` 验证界面的忙碌、草稿保护和失败重试。
+桌面不再内置原地替换安装器：`DesktopUpdater.install()` 只把已校验的下载交给版本切换，`scripts/download.ps1` 仅用于源码目录的手动安装。正式版本健康启动后，`launcher-refresh.mjs` 会把 `%LOCALAPPDATA%\Programs\Cleo` 的启动器整体替换为当前运行的构建（保留 Inno 卸载程序），并更新卸载项的 DisplayVersion；Windows 文件锁会记入 `state.json` 的 `launcherRefresh`，下次健康启动重试。`program-updates.test.mjs` 验证真实下载、版本管理与交易组合，`smoke-program-updates.mjs` 验证界面的忙碌和失败重试。
 
 ## 变更契约
 
