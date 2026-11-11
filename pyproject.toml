@@ -9,7 +9,8 @@ description = "A local-first AI workspace for chat, developer agents, resumable 
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-  "agent-client-protocol>=0.11",
+  # 1.0 removed helpers Cleo imports (text_block); stay on 0.x until the ACP provider is ported.
+  "agent-client-protocol>=0.11,<1",
   "claude-agent-sdk>=0.2",
   "deepagents",
   "fastmcp>=3.4",
