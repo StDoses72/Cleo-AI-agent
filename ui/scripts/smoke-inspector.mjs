@@ -36,6 +36,7 @@ await page.addInitScript((data) => {
     },
     getUpdateState: async () => ({ phase: "unsupported", currentVersion: "test" }),
     onUpdateState: () => () => {},
+    confirmHealthy: async () => {},
   };
 }, fixture);
 await page.reload();
@@ -84,7 +85,7 @@ try {
     await page.waitForFunction((compact) => matchMedia("(max-width: 1180px)").matches === compact, width < 1180);
     if (!(await page.getByTestId("inspector").count())) await page.getByRole("button", { name: "打开检查器", exact: true }).click();
     for (const tab of ["changes", "history", "run"]) {
-      await page.locator(".inspector-tabs button").nth(tab === "run" ? 2 : 0).click();
+      await page.locator(`.inspector-tabs [data-tab="${tab === "run" ? "details" : "changes"}"]`).click();
       const name = `${tab}-${width}`;
       try {
         if (tab !== "run") {
@@ -97,7 +98,8 @@ try {
           }
           await verifyScroll(".diff-viewer pre", ".changes-panel", [".inspector-header", ".change-history-picker", ".changed-files", ".diff-viewer header"]);
         } else {
-          await verifyScroll(".terminal-output", ".run-panel", [".inspector-header", ".run-status", ".terminal-head"]);
+          // Details is one scrolling page; the tab header must stay put while the output scrolls.
+          await verifyScroll(".terminal-output", ".details-panel", [".inspector-header"]);
         }
         results.push({ name, status: "passed" });
       } catch (error) {

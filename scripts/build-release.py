@@ -304,11 +304,12 @@ def build(*, locked_dependencies: bool = False, online: bool = False) -> None:
             shutil.copy2(ROOT / source, defaults / destination)
         if (ROOT / "skills").exists():
             shutil.copytree(ROOT / "skills", defaults / "skills")
-        run(node, ROOT / "scripts/bundle-evolution-source.mjs", resources, cwd=ROOT)
         metadata = {
             "schema_version": 2 if online else 1,
             "evolution_protocol": 3 if online else 2,
-            "build_kind": "local" if os.environ.get("CLEO_EVOLUTION_BASE_TAG") else "official",
+            # Field names are read by published programs; evolution_protocol is the
+            # data-preserving switch protocol.
+            "build_kind": "official",
             "app": "Cleo",
             "version": version,
             "platform": target["id"],

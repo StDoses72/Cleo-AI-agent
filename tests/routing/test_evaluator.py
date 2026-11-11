@@ -132,7 +132,7 @@ def test_harness_evaluator_uses_existing_isolated_transport(monkeypatch):
             seen.append(cwd)
             return "{}"
 
-        monkeypatch.setattr("cleo.desktop.evolution_planning.subscription_text", complete)
+        monkeypatch.setattr("cleo.integrations.subscriptions.subscription_text", complete)
         assert (await complete_assessment(profile, "instructions", "subtask")).text == "{}"
         assert seen and not seen[0].exists()
 

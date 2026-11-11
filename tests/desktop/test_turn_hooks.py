@@ -4,11 +4,8 @@ import asyncio
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
-import pytest
-
 from cleo.desktop.turn_hooks import (
     ComputerUseHook,
-    EvolutionPolicy,
     SkillExpander,
     TurnRequest,
     timed_reply,
@@ -19,16 +16,6 @@ MANIFEST = {"id": "t", "space": "productivity", "project": "p"}
 
 async def _emit(_event):
     return None
-
-
-def test_evolution_tasks_only_accept_commands_that_keep_the_managed_session() -> None:
-    policy = EvolutionPolicy(lambda manifest: manifest.get("evolution", False))
-    evolution = {**MANIFEST, "evolution": True}
-    policy.check(TurnRequest(evolution, "/model gpt", _emit))
-    policy.check(TurnRequest(evolution, "plain request", _emit))
-    policy.check(TurnRequest(MANIFEST, "/cd ..", _emit))
-    with pytest.raises(ValueError, match="进化任务不能切换"):
-        policy.check(TurnRequest(evolution, "/cd ..", _emit))
 
 
 def test_computer_use_rewrites_the_prompt_or_handles_the_turn() -> None:

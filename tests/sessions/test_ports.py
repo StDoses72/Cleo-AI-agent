@@ -93,3 +93,35 @@ def test_preference_context_is_not_saved_as_user_evidence(tmp_path):
     assert repository.append_events.call_args_list[0].kwargs['events'][0]['content'] == (
         'Actual user request'
     )
+
+
+def test_the_preferences_a_turn_was_given_are_recorded_and_not_consolidated(tmp_path):
+    from cleo.memory.dream_projection import project_events
+    from cleo.memory.provenance import MEMORY_CONTEXT_EVENT
+    from cleo.memory.reader import PreferenceContext
+
+    repository = create_autospec(SessionRepository, instance=True, spec_set=True)
+    repository.load_manifest.side_effect = FileNotFoundError('new session')
+    provider = create_autospec(AgentProvider, instance=True)
+    provider.name = 'test-provider'
+    provider.create_session.return_value = ProviderSession('native', 'native')
+    provider.prompt.return_value = ProviderTurn(
+        native_session_id='native', turn_id='t', status='completed', response='done', events=(),
+    )
+
+    def context(space, project):
+        text = PreferenceContext('Scoped preference: explain concisely.')
+        text.entries = ({'id': 'p1', 'content': 'explain concisely'},)
+        return text
+
+    service = AgentService(tmp_path, session_store=repository, memory_context=context)
+    service.register(provider)
+    asyncio.run(service.run(provider.name, 'Actual user request', project='course'))
+    recorded = [call.kwargs for call in repository.append_event.call_args_list
+                if (call.kwargs.get('data') or {}).get('provider_event_type') == MEMORY_CONTEXT_EVENT]
+    assert len(recorded) == 1
+    assert recorded[0]['data']['payload']['entries'] == [{'id': 'p1', 'content': 'explain concisely'}]
+    assert recorded[0]['data']['payload']['count'] == 1
+    # Memory consolidation does not read the record back as new evidence.
+    event = {'id': 'e1', 'seq': 1, 'type': 'provider_event', 'data': recorded[0]['data']}
+    assert project_events([event]) == []

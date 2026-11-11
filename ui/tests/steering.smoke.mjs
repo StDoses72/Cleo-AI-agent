@@ -133,8 +133,7 @@ try {
         throw new Error(`Unhandled fixture method: ${method}`);
       },
       onStreamEvent: callback => { listeners.add(callback); return () => listeners.delete(callback); },
-      getEvolutionState: async () => ({ phase: "idle", supported: false, builds: [], releases: [] }),
-      onEvolutionState: () => () => {}, confirmHealthy: async () => {},
+      confirmHealthy: async () => {},
       getUpdateState: async () => ({ phase: "unsupported", currentVersion: "0.4.8" }),
       onUpdateState: () => () => {},
     };

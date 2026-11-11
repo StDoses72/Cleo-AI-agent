@@ -17,7 +17,7 @@ export function useInspectorResize(layoutKey: string, visible: boolean) {
     if (!shell) return;
     const measure = () => {
       const sidebar = parseFloat(getComputedStyle(shell).getPropertyValue("--sidebar-width")) || 0;
-      const available = Math.max(0, shell.clientWidth - 56 - sidebar);
+      const available = Math.max(0, shell.clientWidth - sidebar);
       const max = Math.floor(available >= 280 + 360 ? available - 360 : available / 2);
       setBounds({ min: Math.min(280, max), max });
     };
@@ -60,7 +60,16 @@ export function useInspectorResize(layoutKey: string, visible: boolean) {
     setPreferredWidth(clamp(next));
   };
 
-  return { setShell, dragging, style: { "--inspector-preferred-width": `${width}px` } as CSSProperties,
+  // Wide review: one click gives the panel all the room the conversation can spare, and back.
+  const restoreWidth = useRef(370);
+  const wide = width >= bounds.max - 1 && bounds.max > bounds.min;
+  const toggleWide = () => {
+    if (wide) { setPreferredWidth(clamp(restoreWidth.current)); return; }
+    restoreWidth.current = width;
+    setPreferredWidth(bounds.max);
+  };
+
+  return { setShell, dragging, wide, toggleWide, style: { "--inspector-preferred-width": `${width}px` } as CSSProperties,
     handleProps: { role: "separator", tabIndex: 0, "aria-label": tr("useinspectorresize.resize_inspector"), "aria-orientation": "vertical" as const,
       "aria-valuemin": bounds.min, "aria-valuemax": bounds.max, "aria-valuenow": width,
       onPointerDown, onPointerMove, onPointerUp: stop, onPointerCancel: stop, onLostPointerCapture: stop, onKeyDown } };

@@ -63,8 +63,7 @@ try {
         if (method === "stream_turn") return null;
         throw new Error(`Unhandled fixture method: ${method}`);
       },
-      getEvolutionState: async () => ({ phase: "idle", supported: false, builds: [], releases: [] }),
-      onEvolutionState: () => () => {}, confirmHealthy: async () => {}, onStreamEvent: () => () => {},
+      confirmHealthy: async () => {}, onStreamEvent: () => () => {},
       getUpdateState: async () => ({ phase: "unsupported", currentVersion: "0.5.14" }),
       onUpdateState: () => () => {},
     };

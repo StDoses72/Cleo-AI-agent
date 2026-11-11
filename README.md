@@ -6,7 +6,7 @@ Cleo is a local-first AI workspace that brings general chat, developer agents, r
 
 The project supports native desktop builds for Windows, macOS and Linux, backed by a local Python service, plus a stdio MCP entry point. User data stays on the local device by default; inference is provided by the API provider or external agent harness selected by the user.
 
-> Current version: [v0.12.2](https://github.com/StDoses72/Cleo-AI-agent/releases/tag/v0.12.2) · [Download the desktop app](https://stdoses72.github.io/Cleo-AI-agent/)
+> Current version: [v0.13.0](https://github.com/StDoses72/Cleo-AI-agent/releases/tag/v0.13.0) · [Download the desktop app](https://stdoses72.github.io/Cleo-AI-agent/)
 
 Codex development conversations toggle Fast mode with the lightning button on the runtime pill's card, saved per conversation. Fast mode consumes more credits; availability depends on the model and account, and the button is hidden where it is unsupported.
 
@@ -26,7 +26,7 @@ General assistants and coding agents usually keep separate histories, permission
 
 | Surface | Audience | Primary use |
 | --- | --- | --- |
-| Cleo Desktop | End users and developers | Conversation and project management, chat, Productivity, memory inspection, model settings, updates, and local evolution |
+| Cleo Desktop | End users and developers | Conversation and project management, chat, Productivity, memory inspection, model settings, and updates |
 | `cleo-codex-mcp` | Integrators | Expose `codex` and `codex-reply` over stdio MCP |
 
 ## Highlights
@@ -36,8 +36,7 @@ General assistants and coding agents usually keep separate histories, permission
 - Paginated message history, collapsible intermediate activity, and native Codex/Claude questions.
 - Edit an earlier message to rewind the conversation to that point and resend it; queue follow-ups while a turn runs and steer them in when you choose.
 - Local skill discovery, search, and invocation in native Claude/Codex development sessions.
-- Local evolution from requirements and source edits through build checks, application, acceptance, and version saving.
-- Source snapshot contributions through independent receiving branches, with PR status and merge investigation and repair.
+- Official updates with a visible restart, automatic rollback to the previous program, and an independent recovery entry point.
 - A provider-neutral coding-harness data plane plus optional Codex-specific controls.
 - An append-only `events.jsonl` source of truth, atomic manifests, and rebuildable SQLite indexes.
 - `non_productivity` and `productivity` memory spaces, with explicit project filters for applicable preferences.
@@ -107,9 +106,7 @@ Linux and macOS use the same Python package and JSON formats. See [platform supp
 - **Messages**: hover a message to copy it. Hover one of your earlier messages and choose Edit to rewind the conversation to that point and resend the new text. This works for Cleo chat and for Codex and Claude development tasks after the latest harness switch; files already written by later turns are not reverted.
 - **While Cleo is working**: new messages go into a queue above the input. Press **Steer** to deliver a queued message into the running turn; otherwise the queue is sent as the next message when the turn finishes. A stopped or failed turn keeps the queue so you can send, edit, or remove each message.
 - **Development and skills**: select a working directory and a Claude/Codex harness, type `/` to find a local skill, then select it, add arguments, and send. Reopen the session after installing a skill to refresh the catalog. See [local skills](docs/local-skills.en.md).
-- **Local evolution**: describe a change in the evolution view, wait for checks and packaging to pass, then apply it. After trying the build, confirm acceptance directly; feedback is optional, and applying alone does not count as acceptance. Save a version you like, continue editing, or discard the current changes. See [local evolution](docs/cleo-evolution.en.md) and [direct acceptance](docs/direct-acceptance.en.md).
-- **Version updates**: check official releases in Settings → Updates. The evolution version picker also offers official and saved local versions. Switching program versions does not roll chats, memory, or configuration back to an earlier snapshot.
-- **Source contributions**: open the PR dialog and select a checked local build and an empty receiving branch created by a maintainer. Request a branch first if needed. Contributions contain a full source snapshot excluding local configuration, conversations, and runtime data; maintainers decide when to merge and release. See [contribution targets and merge assistance](docs/contribution-targets.en.md).
+- **Version updates**: check official releases in Settings → Updates and pick an earlier or pre-release version under Other versions. Cleo restarts into the selected program, returns to the previous one if it fails to start, and keeps a fallback program reachable from a separate recovery entry point. Switching program versions does not roll chats, memory, or configuration back to an earlier snapshot. See [program versions and recovery](docs/program-versions.en.md).
 
 ## Architecture at a glance
 
@@ -176,9 +173,8 @@ Cleo-AI-agent/
 - [Backend contributor guide](docs/BACKEND_CODE_REVIEW.md)
 - [Runtime and data maintenance guide](docs/Cleo_Runtime_State_Maintenance_Guide.docx)
 - [Memory-system design record](docs/CASTMIND_MEMORY_MIGRATION.md)
-- [Local evolution and recovery](docs/cleo-evolution.en.md)
+- [Program versions and recovery](docs/program-versions.en.md)
 - [Local skills](docs/local-skills.en.md)
-- [Source contributions and merge assistance](docs/contribution-targets.en.md)
 
 The main usage guides are available in Chinese and English. Internal development references and research notes retain their original language.
 

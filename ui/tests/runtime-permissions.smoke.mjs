@@ -70,8 +70,7 @@ try {
         }
         throw new Error(`Unhandled fixture method: ${method}`);
       },
-      getEvolutionState: async () => ({ phase: "idle", supported: false, builds: [], releases: [] }),
-      onEvolutionState: () => () => {}, confirmHealthy: async () => {}, onStreamEvent: () => () => {},
+      confirmHealthy: async () => {}, onStreamEvent: () => () => {},
       getUpdateState: async () => ({ phase: "unsupported", currentVersion: "0.4.8" }),
       onUpdateState: () => () => {},
     };
@@ -93,7 +92,8 @@ try {
   assert.equal(await menu.getByRole("menuitemradio", { checked: true }).getAttribute("data-value"), "review");
   await page.keyboard.press("Escape"); await menuClosed();
   assert.equal(await presetValue(), "review", "Escape must not change the preset");
-  await preset.click(); await page.getByTestId("composer-input").click(); await menuClosed();
+  // A click outside the menu (the wider menu can cover part of the input) closes it.
+  await preset.click(); await page.locator(".breadcrumb strong").click(); await menuClosed();
   await preset.click(); await page.keyboard.press("ArrowDown"); await page.keyboard.press("Enter"); await presetSettled();
   await menuClosed();
   assert.equal(await presetValue(), "full", "ArrowDown from 帮我审批 then Enter picks 完全访问");
@@ -119,10 +119,15 @@ try {
   await page.evaluate(() => { window.permissionTest.running = false; });
   await choose("review"); await presetSettled();
   if (process.env.CLEO_SMOKE_OUTPUT) await page.screenshot({ path: join(process.env.CLEO_SMOKE_OUTPUT, "session-permissions.png") });
-  const settings = page.getByRole("dialog", { name: "设置", exact: true });
+  // Per-task file access and approval live in the details panel's Details tab, next to the run.
+  const settings = page.getByTestId("inspector");
   const open = async () => {
-    await page.getByRole("button", { name: "设置", exact: true }).click();
-    await settings.getByRole("button", { name: "运行设置", exact: true }).click();
+    if (!await settings.count()) await page.getByRole("button", { name: "打开检查器", exact: true }).click();
+    await settings.getByRole("tab", { name: "概况", exact: true }).click();
+  };
+  const reopen = async () => {
+    await settings.getByRole("tab", { name: /变更/ }).click();
+    await settings.getByRole("tab", { name: "概况", exact: true }).click();
   };
   const access = settings.getByLabel("文件访问", { exact: true });
   const approval = settings.getByLabel("审批方式", { exact: true });
@@ -140,16 +145,14 @@ try {
   assert.equal(await settings.getByTestId("permission-menu").isVisible(), true,
     "IME Escape must not dismiss the permission menu");
   await page.keyboard.press("Escape");
-  assert.equal(await settings.isVisible(), true, "Escape from the permission menu closed settings");
+  assert.equal(await settings.isVisible(), true, "Escape from the permission menu closed the details panel");
   await menuClosed();
   assert.equal(await settingsPreset.evaluate(element => element === document.activeElement), true,
     "Closing the permission menu must return focus to its trigger");
   assert.equal(await settingsPreset.getAttribute("data-value"), valueBeforeEscape);
   assert.equal(await page.evaluate(() => window.permissionTest.calls.length), callsBeforeEscape,
     "Dismissing the permission menu must not save a preset");
-  await page.keyboard.press("Escape");
-  await settings.waitFor({ state: "hidden" });
-  await open();
+  await reopen();
   assert.equal(await approval.inputValue(), "auto_review");
   await access.selectOption("full-access"); await settled();
   assert.equal(await approval.inputValue(), "auto_review", "Access must not change approval policy");
@@ -180,26 +183,28 @@ try {
   await page.evaluate(() => { window.permissionTest.running = false; window.permissionTest.hold = true; });
   await access.selectOption("workspace-write");
   await page.waitForFunction(() => Boolean(window.permissionTest.release));
-  await settings.getByRole("button", { name: "外观", exact: true }).click();
-  await settings.getByRole("button", { name: "运行设置", exact: true }).click();
+  await reopen();
   await page.evaluate(() => { window.permissionTest.hold = false; });
   await access.selectOption("read-only"); await settled();
   await page.evaluate(() => window.permissionTest.release());
   await page.waitForTimeout(100);
   assert.equal(await access.inputValue(), "read-only", "Late permission response replaced newer settings");
 
-  await settings.getByRole("button", { name: "关闭设置", exact: true }).click();
   await page.getByRole("button", { name: /^统一 managed 与 native sessions/ }).click();
   await open();
   assert.equal(await access.inputValue(), "workspace-write", "Permissions leaked into another task");
   assert.equal(await approval.inputValue(), "auto_review");
-  await settings.getByRole("button", { name: "外观", exact: true }).click();
-  await settings.getByRole("button", { name: "浅色", exact: true }).click();
-  await settings.getByRole("button", { name: "运行设置", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "设置", exact: true });
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await dialog.getByRole("button", { name: "外观", exact: true }).click();
+  await dialog.getByRole("button", { name: "浅色", exact: true }).click();
+  await dialog.getByRole("button", { name: "关闭设置", exact: true }).click();
+  await open();
   await page.setViewportSize({ width: 760, height: 900 });
+  // A compact window gives the open details panel the sidebar's room; wait for that before measuring.
+  await page.waitForFunction(() => document.querySelector(".app-shell").classList.contains("sidebar-collapsed"));
   if (process.env.CLEO_SMOKE_OUTPUT) await page.screenshot({ path: join(process.env.CLEO_SMOKE_OUTPUT, "permissions-light-narrow.png") });
-  assert.equal(await settings.evaluate(el => el.scrollWidth <= el.clientWidth), true);
-  await settings.getByRole("button", { name: "关闭设置", exact: true }).click();
+  assert.equal(await settings.locator(".details-panel").evaluate(el => el.scrollWidth <= el.clientWidth), true);
   if (!await page.locator(".thread-sidebar").isVisible()) {
     await page.getByRole("button", { name: "展开侧栏", exact: true }).click();
   }
@@ -213,7 +218,6 @@ try {
   await settings.getByText("此任务使用运行后端的权限配置。").waitFor();
   assert.equal(await access.count(), 0, "Unsupported permission controls must not be offered");
   assert.equal(await approval.count(), 0);
-  await settings.getByRole("button", { name: "关闭设置", exact: true }).click();
   for (const [provider, initial, selected, choices] of [
     ["claude", "default", "auto", [["default", "人工审批"], ["auto", "自动审查"], ["acceptEdits", "自动允许编辑"]]],
     ["native-acp", "deny_all", "auto_allow", [["user", "人工审批"], ["auto_allow", "自动允许请求"], ["deny_all", "自动拒绝请求"]]],
@@ -225,6 +229,8 @@ try {
         reason: "此服务不提供独立的文件访问范围设置。",
       }, settingsRevision: runtime.settingsRevision + 1 });
     }, { provider, initial, choices });
+    // In a compact window the open details panel takes the sidebar's room; close it to switch tasks.
+    if (await settings.count()) await settings.getByRole("button", { name: "关闭检查器", exact: true }).click();
     await page.getByRole("button", { name: /^统一 managed 与 native sessions/ }).click();
     await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
     await open();
@@ -233,7 +239,6 @@ try {
     await approval.selectOption(selected);
     await approval.and(page.locator(":enabled")).waitFor();
     assert.equal(await approval.inputValue(), selected);
-    await settings.getByRole("button", { name: "关闭设置", exact: true }).click();
   }
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.evaluate(() => {
@@ -250,7 +255,7 @@ try {
   await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
   await page.getByText("Audit complete", { exact: true }).waitFor();
   assert.equal(await page.getByTestId("approval-prompt").count(), 0, "Automatic audit history must not require a manual decision");
-  await page.getByTestId("tool-group").getByRole("button").click();
+  await page.getByTestId("work-group").getByRole("button").click();
   const denied = page.getByTestId("tool-process").filter({ hasText: "自动审查 · 已拒绝" });
   await denied.locator("summary").click();
   await denied.getByText(/native review reason/).waitFor();

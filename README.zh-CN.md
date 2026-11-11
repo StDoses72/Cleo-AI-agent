@@ -6,7 +6,7 @@ Cleo 是一套本地优先的 AI 工作空间：它把通用对话、开发者�
 
 项目提供 Windows、macOS、Linux 桌面构建支持，由本地 Python 后端服务驱动，另有 stdio MCP 入口。用户数据默认保存在本机；模型推理由用户配置的 API provider 或外部 agent harness 提供。
 
-> 当前版本：[v0.12.2](https://github.com/StDoses72/Cleo-AI-agent/releases/tag/v0.12.2) · [下载桌面版](https://stdoses72.github.io/Cleo-AI-agent/)
+> 当前版本：[v0.13.0](https://github.com/StDoses72/Cleo-AI-agent/releases/tag/v0.13.0) · [下载桌面版](https://stdoses72.github.io/Cleo-AI-agent/)
 
 ## Cleo 解决什么问题
 
@@ -22,7 +22,7 @@ Cleo 是一套本地优先的 AI 工作空间：它把通用对话、开发者�
 
 | 入口 | 面向对象 | 主要用途 |
 | --- | --- | --- |
-| Cleo Desktop | 日常用户、开发者 | 会话与项目管理、通用聊天、Productivity、记忆查看、模型设置、版本更新和本地进化 |
+| Cleo Desktop | 日常用户、开发者 | 会话与项目管理、通用聊天、Productivity、记忆查看、模型设置和版本更新 |
 | `cleo-codex-mcp` | 工具集成方 | 通过 stdio MCP 暴露 `codex` 与 `codex-reply` 两个工具 |
 
 ## 核心能力
@@ -32,8 +32,7 @@ Cleo 是一套本地优先的 AI 工作空间：它把通用对话、开发者�
 - 历史消息分页加载、过程折叠，以及 Codex/Claude 的原生提问交互。
 - 编辑之前的消息，对话回到那一刻并重新发送；运行期间的新消息先进入队列，需要时再手动 Steer 进当前回合。
 - 原生 Claude/Codex 开发会话中的本机 skills 发现、搜索与调用。
-- 本地进化：从需求描述、源码修改、检查构建到应用体验、验收与版本保存。
-- 通过独立接收分支贡献源码快照，查看 PR 状态并发起合并调查与修复。
+- 正式版本更新：可见的重启过程、启动失败自动回到上一个程序，以及独立的恢复入口。
 - 面向代码工作的统一 harness adapter，包含 provider-neutral 数据面和可选的 Codex 控制面。
 - append-only `events.jsonl` 会话事实源、原子 manifest 和可重建 SQLite 索引。
 - `non_productivity` 与 `productivity` 两个 memory space；读取偏好时显式限定项目范围。
@@ -108,9 +107,7 @@ Linux/macOS 使用相同的 Python 包和 JSON 配置。原生桌面构建、安
 - **消息操作**：鼠标移到消息上可复制；移到自己之前的消息上点编辑，对话会回到那条消息之前并发送修改后的内容。适用于 Cleo 对话，以及最近一次切换 harness 之后的 Codex、Claude 开发任务；之后回合已写入的文件不会回退。
 - **运行中输入**：Cleo 工作时发送的消息进入输入框上方的队列。点 **Steer** 立即送入当前回合；不操作则在本回合结束后作为下一条消息发送。停止或失败的回合会保留队列，可逐条发送、编辑或移除。
 - **开发与 skills**：选择工作目录及 Claude/Codex harness，在输入框键入 `/` 搜索本机 skill，选择后补充参数并发送。安装新 skill 后重新打开会话以刷新列表；详见[本地 skills](docs/local-skills.md)。
-- **本地进化**：进入进化页描述修改需求，等待实际检查与构建通过后应用。体验后可直接点击验收，反馈为可选项；应用本身不代表验收通过。满意后保存，不满意可继续修改或放弃本轮修改。详见[本地进化](docs/cleo-evolution.md)和[直接验收](docs/direct-acceptance.md)。
-- **更新版本**：在设置的更新页检查正式版本；本地进化中的版本入口可选择正式或已保存的本地版本。切换程序版本不会把聊天、记忆和配置还原到旧快照。
-- **贡献源码**：从「提交 PR」选择已检查的本地版本和维护者创建的空接收分支；没有目标分支时先提交分支申请。程序提交完整源码快照，排除本机配置、对话和运行数据；由维护者决定合并与发布。详见[贡献目标与合并辅助](docs/contribution-targets.md)。
+- **更新版本**：在设置的更新页检查正式版本，「其他版本」可选择历史或预发布版本。Cleo 重启进入所选程序，启动失败时回到上一个程序，并保留可从独立恢复入口进入的保底程序。切换程序版本不会把聊天、记忆和配置还原到旧快照。详见[程序版本与恢复](docs/program-versions.md)。
 
 ## 系统如何工作
 
@@ -178,9 +175,8 @@ Cleo-AI-agent/
 - [运行时与数据维护指南](docs/Cleo_Runtime_State_Maintenance_Guide.docx)：变更 runtime、session 或 memory 时的操作手册。
 - [记忆系统设计记录](docs/CASTMIND_MEMORY_MIGRATION.md)：分层记忆方案的来源与取舍。
 - [双向记忆读取](docs/MEMORY_READING.md)：跨空间检索、会话续读和仅限 SDK 子进程的 MCP 接入。
-- [本地进化](docs/cleo-evolution.md)：修改、检查、应用、保存与恢复。
+- [程序版本与恢复](docs/program-versions.md)：更新、切换、回退与保底入口。
 - [本地 skills](docs/local-skills.md)：支持的 harness、目录与调用方式。
-- [源码贡献](docs/contribution-targets.md)：空接收分支、源码快照与 PR 合并辅助。
 
 ## 开发与验证
 

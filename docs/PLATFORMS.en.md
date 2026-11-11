@@ -32,9 +32,9 @@ macOS installers and apps are not notarized. For a trusted official download tha
 - **Debian/Ubuntu**: double-click the DEB to use the system software installer, or run `sudo apt install ./Cleo-linux-x64.deb`. Install subsequent versions through the package manager. The package configures the Electron sandbox helper and includes a desktop launcher.
 - **Linux portable**: complete local development builds can be extracted into a writable directory and run as `Cleo/Cleo`. Published slim program archives require a prepared runtime; use the DEB for first installation. The system must support Electron's user-namespace sandbox.
 
-Portable updates verify platform, architecture, length, and SHA-256 before switching programs. Resolve unsaved evolution changes first. If startup fails, recovery returns to the earlier program while preserving current user data. The Debian package does not self-update system directories.
+Portable updates verify platform, architecture, length, and SHA-256 before switching programs. Unsaved local changes left by an earlier version must be resolved in that version first. If startup fails, recovery returns to the earlier program while preserving current user data. The Debian package does not self-update system directories.
 
-Online packages use manifest schema 2 and evolution protocol 3. New clients prepare dependencies before offering a version switch. Older clients reject the new format and must first migrate through the graphical installer. New clients continue accepting full protocol-2 packages.
+Online packages use manifest schema 2 and `evolution_protocol` 3. New clients prepare dependencies before offering a version switch. Older clients reject the new format and must first migrate through the graphical installer. New clients continue accepting full protocol-2 packages.
 
 ## Run and build from source
 

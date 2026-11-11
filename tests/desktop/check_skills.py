@@ -46,7 +46,6 @@ def main():
                 productivity=SimpleNamespace(default_provider="codex"),
             )
             service._activate = lambda _: None
-            service._is_evolution = lambda _: False
             service._productivity_provider = lambda name: SimpleNamespace(type=f"{name}_sdk")
             service._runs = RunSupervisor()
             service._stream_productivity = AsyncMock()

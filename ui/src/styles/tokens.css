@@ -1,5 +1,5 @@
 /*
- * Cleo design tokens — "linen" palette (clean neutral greys, white panels).
+ * Cleo design tokens — flat neutral palette: full-bleed panes split by hairlines, small radii.
  *
  * One restrained colour family per theme:
  *   linen (chrome)  → window frame, rail, sidebar
@@ -15,23 +15,23 @@
   --font-code: "JetBrains Mono", "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   --mono: var(--font-code);
 
-  --font-size-body: 15px;
-  --font-size-control: 13.5px;
-  --font-size-caption: 12.5px;
+  --font-size-body: 14px;
+  --font-size-control: 13px;
+  --font-size-caption: 12px;
   --font-size-dialog-title: 18px;
-  --font-size-page-title: 28px;
-  --line-height-body: 1.7;
+  --font-size-page-title: 22px;
+  --line-height-body: 1.65;
 
-  --radius-xs: 8px;
-  --radius-sm: 10px;
-  --radius-md: 14px;
-  --radius-lg: 18px;
-  --radius-xl: 22px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
   --radius-pill: 999px;
 
-  --gutter: 10px;
+  --gutter: 0px;
   --rail-width: 64px;
-  --titlebar-height: 44px;
+  --titlebar-height: 38px;
 
   --ease-out: cubic-bezier(0.2, 0.75, 0.2, 1);
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
@@ -43,23 +43,24 @@
 
   /* Light theme (default) */
   color: #27272a;
-  background: #f4f4f2;
+  background: #f7f7f6;
 
-  --chrome: #f4f4f2;
-  --sidebar: #f4f4f2;
+  --chrome: #f7f7f6;
+  --sidebar: #f7f7f6;
   --canvas: #ffffff;
-  --surface: #f6f6f4;
+  --surface: #f4f4f3;
   --surface-raised: #ffffff;
-  --surface-hover: #eeeeeb;
-  --surface-active: #e5e5e1;
-  --panel-border: transparent;
-  --border: rgba(39, 39, 42, 0.06);
-  --border-strong: rgba(39, 39, 42, 0.12);
+  --surface-hover: #efefed;
+  --surface-active: #e8e8e5;
+  --panel-border: rgba(24, 24, 27, 0.09);
+  --border: rgba(24, 24, 27, 0.08);
+  --border-strong: rgba(24, 24, 27, 0.15);
 
   --text: #27272a;
   --text-soft: #4b4b4f;
-  --muted: #7d7d82;
-  --muted-2: #a4a4a8;
+  /* Secondary text stays readable on white: --muted ≈ 5:1, --muted-2 (quiet hints only) ≈ 3.6:1. */
+  --muted: #6b6b70;
+  --muted-2: #87878d;
   --text-muted: var(--muted);
 
   --accent: #45454a;
@@ -78,32 +79,34 @@
   --danger: #d06b66;
   --purple: #8b82cc;
 
-  --shadow-sm: 0 1px 2px rgba(39, 39, 42, 0.04), 0 2px 8px rgba(39, 39, 42, 0.03);
-  --shadow: 0 12px 36px rgba(39, 39, 42, 0.07), 0 1px 2px rgba(39, 39, 42, 0.03);
-  --shadow-lg: 0 30px 80px rgba(39, 39, 42, 0.12);
-  --panel-shadow: 0 1px 2px rgba(39, 39, 42, 0.02), 0 8px 28px rgba(39, 39, 42, 0.035);
+  --shadow-sm: 0 1px 2px rgba(24, 24, 27, 0.05);
+  --shadow: 0 6px 20px rgba(24, 24, 27, 0.08), 0 0 0 1px rgba(24, 24, 27, 0.06);
+  --shadow-lg: 0 16px 48px rgba(24, 24, 27, 0.14), 0 0 0 1px rgba(24, 24, 27, 0.06);
+  /* Dialogs, cards and menus: lifted just enough to read as above the page, no glow. */
+  --shadow-popup: 0 8px 28px rgba(24, 24, 27, 0.10), 0 1px 2px rgba(24, 24, 27, 0.06);
+  --panel-shadow: none;
   --canvas-glow: none;
 }
 
 :root[data-theme="dark"] {
   color: #ececea;
-  background: #18181b;
+  background: #111113;
 
-  --chrome: #18181b;
-  --sidebar: #18181b;
-  --canvas: #212124;
-  --surface: #28282c;
-  --surface-raised: #2d2d31;
-  --surface-hover: #323237;
-  --surface-active: #3a3a40;
-  --panel-border: transparent;
-  --border: rgba(236, 236, 234, 0.07);
-  --border-strong: rgba(236, 236, 234, 0.14);
+  --chrome: #111113;
+  --sidebar: #111113;
+  --canvas: #161618;
+  --surface: #1d1d20;
+  --surface-raised: #1f1f22;
+  --surface-hover: #242428;
+  --surface-active: #2c2c31;
+  --panel-border: rgba(236, 236, 234, 0.08);
+  --border: rgba(236, 236, 234, 0.08);
+  --border-strong: rgba(236, 236, 234, 0.15);
 
   --text: #ececea;
   --text-soft: #cfcfcd;
-  --muted: #98989e;
-  --muted-2: #6f6f76;
+  --muted: #a2a2a8;
+  --muted-2: #7f7f86;
 
   --accent: #e2e2e0;
   --accent-strong: #f2f2f0;
@@ -119,8 +122,9 @@
   --danger: #de8e88;
   --purple: #aba4dc;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
-  --shadow: 0 12px 36px rgba(0, 0, 0, 0.35);
-  --shadow-lg: 0 30px 80px rgba(0, 0, 0, 0.5);
-  --panel-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(236, 236, 234, 0.08);
+  --shadow-lg: 0 18px 54px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(236, 236, 234, 0.08);
+  --shadow-popup: 0 10px 32px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --panel-shadow: none;
 }

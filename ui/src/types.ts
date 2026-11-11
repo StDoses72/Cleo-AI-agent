@@ -159,6 +159,8 @@ export type TimelineItem = {
       steer?: SteerReceipt;
       /** Files the user sent with this message; the agent received them separately. */
       attachments?: Attachment[];
+      /** The saved preferences this turn was given (recorded by the backend before the turn ran). */
+      memoryContext?: { count: number; entries: { id: string; content: string }[] };
     }
   | {
       id: string;
@@ -179,6 +181,9 @@ export type TimelineItem = {
       command: string;
       status: "running" | "done" | "error";
       output?: string;
+      /** A finished command's exit code and duration, when the harness reports them. */
+      exitCode?: number;
+      durationMs?: number;
       permission?: { source: string; policy: string; decision: string };
       approvalAudit?: boolean;
     }
@@ -198,6 +203,42 @@ export interface ChangeFile {
   additions: number;
   deletions: number;
   diff: string;
+}
+
+export type SourceControlOp = "status" | "root" | "revertFile" | "revertHunk" | "commit" | "push" | "createPullRequest" | "pullRequest"
+  | "listFiles" | "createWorktree" | "removeWorktree";
+
+/** What the review toolbar needs to know about a task's repository. */
+export interface SourceControlStatus {
+  repository: boolean;
+  /** The working tree's top folder: projects in one checkout share it. */
+  root?: string;
+  branch?: string | null;
+  upstream?: string | null;
+  /** Commits not on the remote: against the upstream, or against the remote's default branch
+   * for a branch that was never pushed. `null` when it cannot be told. */
+  ahead?: number | null;
+  behind?: number;
+  changedFiles?: number;
+  remote?: string | null;
+  canCreatePullRequest?: boolean;
+}
+
+/** The open pull request for the task's branch, as GitHub reports it. */
+export interface PullRequestStatus {
+  number: number;
+  title: string;
+  state: "OPEN" | "CLOSED" | "MERGED" | string;
+  url: string;
+  draft: boolean;
+  checks: { passed: number; failed: number; pending: number };
+}
+
+/** Files of the task's repository for @-mentions (tracked plus untracked, ignored files left out). */
+export interface RepositoryFiles {
+  repository: boolean;
+  files: string[];
+  truncated?: boolean;
 }
 
 export interface ChangeSet {
@@ -279,6 +320,9 @@ export interface Thread {
   pendingApprovals?: ApprovalRequest[];
   waitingFor?: "approval" | "question";
   skills?: LocalSkill[];
+  /** For a subtask that subtask routing delegated: the conversation that started it. */
+  parentId?: string | null;
+  routingTaskId?: string | null;
   id: string;
   space: ThreadSpace;
   projectId: string;
@@ -763,6 +807,8 @@ export interface CleoClient {
     action: MemoryReviewAction,
   ): Promise<WorkspaceSnapshot>;
   undoChanges(threadId: string): Promise<UndoChangesResult>;
+  /** Git actions on a task's folder (status, revert a file, commit, push, pull request, worktree). */
+  sourceControl<T = unknown>(op: SourceControlOp, params: Record<string, unknown>): Promise<T>;
   resetWorkspace(): Promise<void>;
 }
 

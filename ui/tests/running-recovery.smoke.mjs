@@ -59,8 +59,7 @@ try {
   await page.addInitScript(() => {
     window.cleoDesktop = {
       request: (method, params) => window.recoveryRequest(method, params), onStreamEvent: () => () => {},
-      getEvolutionState: async () => ({ phase: "idle", builds: [], releases: [], supported: false }),
-      onEvolutionState: () => () => {}, confirmHealthy: async () => {},
+      confirmHealthy: async () => {},
       getUpdateState: async () => ({ phase: "unsupported", currentVersion: "test" }), onUpdateState: () => () => {},
     };
   });

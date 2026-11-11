@@ -160,7 +160,7 @@ Cleo thread 的标题由首条 `user_message` 确定，也可作为纯 metadata 
 绑定、SQLite registry、compact、memory state 与 conversation chunks 会一起转移。
 一旦 source 已被 DreamAgent consolidation，迁移会被拒绝，以免旧 project 的长期记忆
 无法可靠回收。桌面端通过 `move_thread` RPC 和对话菜单的「加入项目…」暴露这一能力，
-`/project move <name>` 对聊天和开发任务同样可用：运行中、跨空间、自我演进任务和带
+`/project move <name>` 对聊天和开发任务同样可用：运行中、跨空间和带
 harness 交接快照的任务会被拒绝并说明原因；开发任务迁移后 `cwd` 指向目标项目目录，驻留
 的 harness 会话关闭并在下一轮以新目录恢复，上一轮的 Git 撤销点被丢弃
 （[ADR 0002](adr/0002-move-conversation-into-project.md)）。
@@ -310,8 +310,8 @@ AgentAdapter.rewind（编辑较早的用户消息）
 ```
 
 `session_<status>` 事件记录本回合的原生 turn ID，Codex 编辑时可直接定位；缺少记录时
-按提示文本从新到旧对齐原生回合。只有最近一次 harness 交接之后的回合可以编辑，ACP 与
-进化任务不提供编辑。编辑只回退对话，不回退已写入工作区的文件。
+按提示文本从新到旧对齐原生回合。只有最近一次 harness 交接之后的回合可以编辑，ACP
+任务不提供编辑。编辑只回退对话，不回退已写入工作区的文件。
 
 主聊天中的 `/productivity` 是交互式终端入口，退出后会恢复原 Cleo space/project/thread。
 `main.py --productivity` 仍作为直接启动和脚本入口。两者都通过 provider factory 读取

@@ -56,9 +56,14 @@
   position: absolute;
   z-index: 40;
   left: 0;
-  width: 264px;
+  width: 300px;
   padding: 6px;
   animation: pop-in 140ms ease both;
+}
+
+.permission-menu.end {
+  right: 0;
+  left: auto;
 }
 
 .permission-menu.up {
@@ -140,4 +145,12 @@
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Descriptions wrap so every preset is fully explained before it is chosen. */
+.permission-option-copy small {
+  overflow: visible;
+  line-height: 1.45;
+  text-overflow: clip;
+  white-space: normal;
 }

@@ -3,14 +3,15 @@ import { t as tr } from "../../electron/i18n.mjs";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { BackgroundMemorySettingsPanel } from "./model-settings/BackgroundMemorySettingsPanel";
 import { MemorySourcesSettings } from "./MemorySourcesSettings";
-import { UpdateVersionPicker } from "./UpdateVersionPicker";
+import { UpdateVersionPicker, VersionRecovery } from "./UpdateVersionPicker";
 import { RoutingSettingsPanel } from "./model-settings/RoutingSettingsPanel";
 import { handleDialogKeyDown, Modal } from "./Modal";
 import { PermissionSelector } from "./PermissionSelector";
-import { accessLabel, approvalLabel, effortLabels, projectLabel, projectPathLabel } from "../runtime-labels";
+import { accessLabel, approvalLabel, projectLabel, projectPathLabel } from "../runtime-labels";
 import {
   ArrowDownToLine,
   ArrowRight,
+  Bell,
   Boxes,
   Brain,
   Check,
@@ -23,6 +24,7 @@ import {
   FolderOpen,
   MessageCircle,
   Moon,
+  PanelLeft,
   PanelRight,
   Plus,
   Search,
@@ -30,6 +32,7 @@ import {
   RefreshCw,
   Save,
   Settings2,
+  Keyboard,
   SlidersHorizontal,
   Sparkles,
   Sun,
@@ -61,16 +64,28 @@ export interface CommandAction {
   hint: string;
   icon: typeof Command;
   shortcut?: string;
+  /** Secondary text shown after the label, e.g. a thread's project and harness. */
+  detail?: string;
   run: () => void;
 }
 
 interface CommandPaletteProps {
   open: boolean;
   actions: CommandAction[];
+  /** Conversations, newest first; searched by title, summary and detail. */
+  threads?: CommandAction[];
   onClose: () => void;
 }
 
-export function CommandPalette({ open, actions, onClose }: CommandPaletteProps) {
+/** Recent conversations listed before the user types anything. */
+const RECENT_THREADS = 5;
+const THREAD_MATCHES = 20;
+
+/** Purpose: One place to jump anywhere: run a command or open any conversation by name.
+ * Input: commands and conversations. Output: a keyboard-first list; with no query it shows the
+ * commands and a few recent conversations, with a query the matching commands, then conversations.
+ */
+export function CommandPalette({ open, actions, threads = [], onClose }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   useEffect(() => {
@@ -79,16 +94,20 @@ export function CommandPalette({ open, actions, onClose }: CommandPaletteProps) 
       setSelectedIndex(0);
     }
   }, [open]);
-  const filtered = useMemo(() => {
+  const sections = useMemo(() => {
     const value = query.trim().toLocaleLowerCase();
-    return value
-      ? actions.filter(
-          (action) =>
-            action.label.toLocaleLowerCase().includes(value) ||
-            action.hint.toLocaleLowerCase().includes(value),
-        )
-      : actions;
-  }, [actions, query]);
+    const matches = (action: CommandAction) => [action.label, action.hint, action.detail ?? ""]
+      .some(text => text.toLocaleLowerCase().includes(value));
+    if (!value) return [
+      { id: "commands", label: tr("overlays.suggestions"), items: actions },
+      { id: "threads", label: tr("overlays.recent_conversations"), items: threads.slice(0, RECENT_THREADS) },
+    ].filter(section => section.items.length);
+    return [
+      { id: "commands", label: tr("overlays.commands"), items: actions.filter(matches) },
+      { id: "threads", label: tr("overlays.conversations"), items: threads.filter(matches).slice(0, THREAD_MATCHES) },
+    ].filter(section => section.items.length);
+  }, [actions, threads, query]);
+  const filtered = useMemo(() => sections.flatMap(section => section.items), [sections]);
 
   if (!open) return null;
   return (
@@ -124,25 +143,32 @@ export function CommandPalette({ open, actions, onClose }: CommandPaletteProps) 
           <kbd>Esc</kbd>
         </label>
         <div className="command-results" id="command-results" role="listbox" aria-label={tr("approvalprompt.command")}>
-          <span className="command-section-label">{tr("overlays.suggestions")}</span>
-          {filtered.map(({ id, label, icon: Icon, shortcut, run }, index) => (
-            <button
-              className={index === selectedIndex ? "focused" : ""}
-              id={`command-${id}`}
-              role="option"
-              aria-selected={index === selectedIndex}
-              onMouseMove={() => setSelectedIndex(index)}
-              type="button"
-              key={id}
-              onClick={() => {
-                run();
-                onClose();
-              }}
-            >
-              <span className="command-icon"><Icon size={16} /></span>
-              <span><strong>{label}</strong></span>
-              {shortcut ? <kbd>{shortcut}</kbd> : <ArrowRight size={14} />}
-            </button>
+          {sections.map(section => (
+            <div className="command-section" role="group" aria-label={section.label} key={section.id} data-section={section.id}>
+              <span className="command-section-label">{section.label}</span>
+              {section.items.map(({ id, label, detail, icon: Icon, shortcut, run }) => {
+                const index = filtered.findIndex(item => item.id === id);
+                return (
+                  <button
+                    className={index === selectedIndex ? "focused" : ""}
+                    id={`command-${id}`}
+                    role="option"
+                    aria-selected={index === selectedIndex}
+                    onMouseMove={() => setSelectedIndex(index)}
+                    type="button"
+                    key={id}
+                    onClick={() => {
+                      run();
+                      onClose();
+                    }}
+                  >
+                    <span className="command-icon"><Icon size={16} /></span>
+                    <span className="command-label"><strong>{label}</strong>{detail ? <small>{detail}</small> : null}</span>
+                    {shortcut ? <kbd>{shortcut}</kbd> : <ArrowRight size={14} />}
+                  </button>
+                );
+              })}
+            </div>
           ))}
           {!filtered.length ? <div className="command-empty">{tr("overlays.no_matching_commands")}</div> : null}
         </div>
@@ -377,6 +403,8 @@ export function RemoveProjectDialog({
 interface SettingsModalProps {
   language: "zh-CN" | "en";
   onLanguageChange: (language: "zh-CN" | "en") => Promise<void>;
+  notificationsOn?: boolean;
+  onNotificationsChange?: (on: boolean) => void;
   open: boolean;
   theme: "dark" | "light";
   motionEnabled: boolean;
@@ -411,16 +439,27 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-type SettingsPage = "appearance" | "agent" | "instructions" | "models" | "models-add" | "models-dream" | "routing" | "import" | "updates" | "data";
+/* Settings hold application defaults only; per-task model, effort and permissions live in the composer. */
+type SettingsPage = "appearance" | "instructions" | "models" | "models-add" | "models-dream" | "routing" | "import" | "updates" | "data";
 const settingsTitles: Record<SettingsPage, string> = {
-  get appearance() { return tr("overlays.appearance"); }, get agent() { return tr("overlays.run_settings"); }, get instructions() { return tr("overlays.chat_instructions"); }, get models() { return tr("overlays.current_configuration"); },
-  get "models-add"() { return tr("overlays.new_connection"); }, get "models-dream"() { return tr("modelsettingspanel.dream_agent"); }, get import() { return tr("overlays.import"); }, get updates() { return tr("overlays.software_updates"); }, get data() { return tr("overlays.data_and_memory"); },
+  get appearance() { return tr("overlays.appearance"); }, get instructions() { return tr("overlays.chat_instructions"); }, get models() { return tr("settings.models_nav"); },
+  get "models-add"() { return tr("overlays.new_connection"); }, get "models-dream"() { return tr("settings.memory_nav"); }, get import() { return tr("settings.import_nav"); }, get updates() { return tr("settings.updates_nav"); }, get data() { return tr("settings.storage_nav"); },
   get routing() { return tr("routing.subtask_routing"); },
 };
+const settingsGroups: { label: () => string; pages: { id: SettingsPage; icon: typeof Command; also?: SettingsPage[] }[] }[] = [
+  { label: () => tr("settings.group_general"), pages: [{ id: "appearance", icon: Sparkles }, { id: "updates", icon: RefreshCw }] },
+  { label: () => tr("settings.group_agent"), pages: [
+    { id: "models", icon: Boxes, also: ["models-add"] }, { id: "routing", icon: SlidersHorizontal },
+    { id: "instructions", icon: FileText }, { id: "import", icon: ArrowDownToLine },
+  ] },
+  { label: () => tr("settings.group_memory"), pages: [{ id: "models-dream", icon: Brain }, { id: "data", icon: Database }] },
+];
 
 export function SettingsModal({
   language,
   onLanguageChange,
+  notificationsOn = true,
+  onNotificationsChange,
   open,
   theme,
   motionEnabled,
@@ -479,26 +518,23 @@ export function SettingsModal({
         <aside>
           <div className="settings-brand"><span aria-hidden="true" /><strong>{tr("overlays.settings")}</strong></div>
           <nav aria-label={tr("overlays.settings_navigation")}>
-            <button className={page === "appearance" ? "active" : ""} aria-current={page === "appearance" ? "page" : undefined} type="button" onClick={() => setPage("appearance")}><Sparkles size={16} />{tr("overlays.appearance")}</button>
-            <button className={page === "agent" ? "active" : ""} aria-current={page === "agent" ? "page" : undefined} type="button" onClick={() => setPage("agent")}><SlidersHorizontal size={16} />{tr("overlays.run_settings")}</button>
-            <button className={page === "instructions" ? "active" : ""} aria-current={page === "instructions" ? "page" : undefined} type="button" onClick={() => setPage("instructions")}><FileText size={16} />{tr("overlays.chat_instructions")}</button>
-            <button className="settings-model-group" type="button" onClick={() => setPage("models")}><Boxes size={16} />{tr("inspector.model")}</button>
-            <div className="settings-model-subnav">
-              <button className={page === "models" ? "active" : ""} aria-current={page === "models" ? "page" : undefined} onClick={() => setPage("models")}><SlidersHorizontal size={15} />{tr("overlays.current_configuration")}</button>
-              <button className={page === "models-add" ? "active" : ""} aria-current={page === "models-add" ? "page" : undefined} onClick={() => setPage("models-add")}><Plus size={15} />{tr("overlays.new_connection")}</button>
-              <button className={page === "models-dream" ? "active" : ""} aria-current={page === "models-dream" ? "page" : undefined} onClick={() => setPage("models-dream")}><Moon size={15} />{tr("modelsettingspanel.dream_agent")}</button>
-              <button className={page === "routing" ? "active" : ""} aria-current={page === "routing" ? "page" : undefined} onClick={() => setPage("routing")}><SlidersHorizontal size={15} />{tr("routing.subtask_routing")}</button>
-            </div>
-            <button className={page === "import" ? "active" : ""} aria-current={page === "import" ? "page" : undefined} type="button" onClick={() => setPage("import")}><ArrowDownToLine size={16} />{tr("overlays.import")}</button>
-            <button className={page === "updates" ? "active" : ""} aria-current={page === "updates" ? "page" : undefined} type="button" onClick={() => setPage("updates")}><RefreshCw size={16} />{tr("overlays.updates")}</button>
-            <button className={page === "data" ? "active" : ""} aria-current={page === "data" ? "page" : undefined} type="button" onClick={() => setPage("data")}><Database size={16} />{tr("overlays.data_and_memory")}</button>
+            {settingsGroups.map(group => (
+              <div className="settings-nav-group" key={group.label()}>
+                <span className="settings-nav-label">{group.label()}</span>
+                {group.pages.map(({ id, icon: Icon, also = [] }) => {
+                  const current = page === id || also.includes(page);
+                  return <button key={id} className={current ? "active" : ""} aria-current={current ? "page" : undefined} type="button"
+                    onClick={() => setPage(id)}><Icon size={15} />{settingsTitles[id]}</button>;
+                })}
+              </div>
+            ))}
           </nav>
           {window.cleoDesktop?.setup && <button className="settings-setup-link" type="button"
             onClick={() => { onClose(); window.dispatchEvent(new Event("cleo:open-setup")); }}><Wrench size={16} />{tr("overlays.check_runtime_environment")}</button>}
         </aside>
         <section className="settings-content">
           <header className="settings-header">
-            <div className="settings-breadcrumb">{tr("overlays.settings")}<ChevronRight size={12} />{isModels && <>{tr("inspector.model")}<ChevronRight size={12} /></>}<span>{settingsTitles[page]}</span></div>
+            <div className="settings-breadcrumb">{tr("overlays.settings")}<ChevronRight size={12} />{page === "models-add" && <>{settingsTitles.models}<ChevronRight size={12} /></>}<span>{settingsTitles[page]}</span></div>
             <div className="settings-heading"><h2>{settingsTitles[page]}</h2>{page === "models" && <button className="settings-primary" onClick={() => setPage("models-add")}><Plus size={15} />{tr("overlays.new_connection")}</button>}</div>
           </header>
           <div className="settings-scroll" ref={scrollRef}>
@@ -531,16 +567,20 @@ export function SettingsModal({
                   <button className={theme === "light" ? "active" : ""} type="button" onClick={() => onThemeChange("light")}><span className="theme-preview light"><Sun size={16} /></span><span>{tr("overlays.light")}</span>{theme === "light" ? <Check size={14} /> : null}</button>
                 </div>
               </SettingsRow>
+              {onNotificationsChange ? <SettingsRow title={tr("settings.notifications")} description={tr("app.notifications_hint")}>
+                <label className="switch"><input type="checkbox" aria-label={tr("settings.notifications")} checked={notificationsOn}
+                  onChange={(event) => onNotificationsChange(event.target.checked)} /><span /></label>
+              </SettingsRow> : null}
               <SettingsRow title={tr("overlays.motion_effects")}><label className="switch"><input type="checkbox" aria-label={tr("overlays.motion_effects")} checked={motionEnabled} onChange={(event) => onMotionChange(event.target.checked)} /><span /></label></SettingsRow>
             </div>
-          ) : page === "agent" ? (
-            <div className="settings-page">
-              {runtimeThread && <p className="settings-scope">{tr("overlays.current_task")}{runtimeThread.title}</p>}
-              <SettingsRow title={tr("conversation.provider")}><span className="settings-value">{runtime.provider}</span></SettingsRow>
-              <SettingsRow title={tr("overlays.current_task_model")}>{runtime.editable === false ? <span className="settings-value">{runtime.model}</span> : <select aria-label={tr("overlays.current_task_model")} value={runtime.model} onChange={event => onRuntimeChange({ model: event.target.value })}>{(runtime.models?.length ? runtime.models : [runtime.model]).map(model => <option key={model}>{model}</option>)}</select>}</SettingsRow>
-              <SettingsRow title={tr("conversation.reasoning_effort")}><div className="segmented-control">{supportedEfforts.length ? supportedEfforts.map((effort) => <button className={runtime.effort === effort ? "active" : ""} type="button" key={effort} onClick={() => onRuntimeChange({ effort })}>{effortLabels[effort] ?? effort}</button>) : <span className="settings-value">{tr("conversation.determined_by_the_model")}</span>}</div></SettingsRow>
-              <RuntimePermissions key={runtimeThread?.id ?? "draft"} runtime={runtime}
-                threadId={runtimeThread?.id} onChange={onPermissionsChange} />
+          ) : page === "models-dream" ? (
+            <div className="settings-page settings-memory-page">
+              <BackgroundMemorySettingsPanel active={open} busy={modelSettingsLoading} dreamEnabled={modelSettings?.dreamEnabled}
+                onConfigureDream={() => scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" })} />
+              <details className="settings-advanced">
+                <summary>{tr("memorysources.optional")}</summary>
+                <MemorySourcesSettings active={open} />
+              </details>
             </div>
           ) : page === "instructions" || page === "import" || page === "routing" || isModels ? null : page === "updates" ? (
             <UpdateSettingsPage
@@ -552,18 +592,13 @@ export function SettingsModal({
             />
           ) : (
             <div className="settings-page">
-              <BackgroundMemorySettingsPanel active={open} busy={modelSettingsLoading}
-                onConfigureDream={() => setPage("models-dream")} />
-              <details className="settings-advanced">
-                <summary>{tr("memorysources.optional")}</summary>
-                <MemorySourcesSettings active={open} />
-              </details>
-              {onStorageInventory && <StorageSettings active={open} onInventory={onStorageInventory} onReclaim={onReclaimStorage}
-                blocked={storageBlocked} onRevealPath={onRevealPath} />}
-              <details className="settings-advanced"><summary>{tr("connectionwizard.advanced_settings")}</summary>
-                <SettingsRow title={tr("overlays.configuration_templates")}><div className="settings-actions"><button type="button" onClick={() => onCopyConfigTemplate("cleo")}>{tr("overlays.copy_cleo_configuration")}</button><button type="button" onClick={() => onCopyConfigTemplate("harnesses")}>{tr("overlays.copy_runtime_configuration")}</button></div></SettingsRow>
-                <SettingsRow title={tr("overlays.reset_workspace")}><button className="settings-action danger" type="button" onClick={() => { if (window.confirm(tr("overlays.reset_the_repository_to_local_main_and_remove_untracked_files_this_action_cannot_be_u"))) onResetWorkspace(); }}>{tr("overlays.reset_workspace")}</button></SettingsRow>
-              </details>
+              {onStorageInventory ? <StorageSettings active={open} onInventory={onStorageInventory} onReclaim={onReclaimStorage}
+                blocked={storageBlocked} onRevealPath={onRevealPath} />
+                : <SettingsRow title={tr("overlays.storage_usage")}><p className="settings-hint" data-testid="storage-unavailable">{tr("overlays.storage_usage_desktop_only")}</p></SettingsRow>}
+              {/* Maintenance actions are listed, not hidden behind a disclosure: this page exists for them. */}
+              <h3 className="settings-subheading">{tr("overlays.maintenance")}</h3>
+              <SettingsRow title={tr("overlays.configuration_templates")}><div className="settings-actions"><button type="button" onClick={() => onCopyConfigTemplate("cleo")}>{tr("overlays.copy_cleo_configuration")}</button><button type="button" onClick={() => onCopyConfigTemplate("harnesses")}>{tr("overlays.copy_runtime_configuration")}</button></div></SettingsRow>
+              <SettingsRow title={tr("overlays.reset_workspace")}><button className="settings-action danger" type="button" onClick={() => { if (window.confirm(tr("overlays.reset_the_repository_to_local_main_and_remove_untracked_files_this_action_cannot_be_u"))) onResetWorkspace(); }}>{tr("overlays.reset_workspace")}</button></SettingsRow>
             </div>
           )}
           </div>
@@ -573,7 +608,9 @@ export function SettingsModal({
   );
 }
 
-function RuntimePermissions({ runtime, threadId, onChange }: {
+/** Purpose: Fine-grained file access and approval for one task (beyond the composer's presets).
+ * Lives in the details panel's Details tab, next to the run it governs. */
+export function RuntimePermissions({ runtime, threadId, onChange }: {
   runtime: RuntimeProfile;
   threadId?: string;
   onChange?: (threadId: string, update: RuntimeUpdate) => Promise<void>;
@@ -827,6 +864,7 @@ function UpdateSettingsPage({
         <button type="button" disabled={busy || (state.phase === "ready" && Boolean(state.installBlocked))} onClick={action.run}>{action.label}</button>
       </div>}
       <UpdateVersionPicker state={state} busy={Boolean(busy)} onSelect={tag => void check(tag)} />
+      <VersionRecovery busy={Boolean(busy)} />
       {state.dependencies && <details className="settings-advanced"><summary>{tr("overlays.runtime_dependencies")}{state.dependencies.phase === "error" ? tr("overlays.update_incomplete") : ""}</summary><p>{
         state.dependencies.phase === "ready" ? tr("overlays.runtime_dependencies_were_updated_and_verified_they_will_take_effect_on_the_next_laun")
           : state.dependencies.phase === "error" ? tr("overlays.dependency_update_did_not_complete_continuing_with_the_current_version_value", { p0: state.dependencies.error || "" })
@@ -991,9 +1029,16 @@ export const commandIcons = {
   plus: Plus,
   chat: MessageCircle,
   code: Code2,
+  folder: FolderOpen,
   memory: Brain,
   inspector: PanelRight,
+  sidebar: PanelLeft,
+  light: Sun,
+  bell: Bell,
+  next: ArrowRight,
+  dark: Moon,
   settings: Settings2,
+  keyboard: Keyboard,
 };
 
 export const spaceLabels: Record<WorkspaceSpace, string> = {

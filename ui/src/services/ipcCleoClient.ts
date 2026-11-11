@@ -29,6 +29,7 @@ import type {
   Thread,
   ThreadSpace,
   UndoChangesResult,
+  SourceControlOp,
   WorkspaceSnapshot,
   TimelinePage,
   TimelineContent,
@@ -369,6 +370,11 @@ export class IpcCleoClient implements CleoClient {
 
   undoChanges(threadId: string): Promise<UndoChangesResult> {
     return this.bridge.request("undo_changes", { thread_id: threadId });
+  }
+
+  sourceControl<T = unknown>(op: SourceControlOp, params: Record<string, unknown>): Promise<T> {
+    if (!window.cleoDesktop?.git) return Promise.reject(new Error("Source control needs the Cleo desktop app."));
+    return window.cleoDesktop.git<T>(op, params);
   }
 
   async resetWorkspace(): Promise<void> {

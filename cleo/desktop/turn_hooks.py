@@ -2,7 +2,7 @@
 
 ``stream_turn`` runs every ``TurnHook`` in two phases:
 
-- ``check`` before the run is reserved; a hook rejects a turn by raising (evolution policy);
+- ``check`` before the run is reserved; a hook rejects a turn by raising;
 - ``prepare`` after the thread is activated; a hook may rewrite the prompt (``/computeruse``,
   local skills) or report that it handled the turn by returning False.
 
@@ -21,14 +21,6 @@ from cleo.i18n import tr
 
 Emit = Callable[[dict[str, Any]], Awaitable[None]]
 
-# Evolution tasks run in a managed workspace with fixed permissions; only commands that
-# cannot change the directory, the task or the permissions are allowed there.
-EVOLUTION_COMMANDS = frozenset({
-    "/help", "/cwd", "/git", "/diff", "/model", "/effort", "/rename", "/compact",
-    "/computeruse",
-})
-
-
 @dataclass(slots=True)
 class TurnRequest:
     manifest: dict[str, Any]
@@ -45,16 +37,6 @@ class TurnHook:
     async def prepare(self, request: TurnRequest) -> bool:
         """Purpose: Adjust the turn. Output: False when the hook handled the turn itself."""
         return True
-
-
-class EvolutionPolicy(TurnHook):
-    def __init__(self, is_evolution: Callable[[dict[str, Any]], bool]) -> None:
-        self._is_evolution = is_evolution
-
-    def check(self, request: TurnRequest) -> None:
-        if self._is_evolution(request.manifest) and request.prompt.startswith("/"):
-            if request.prompt.split(" ", 1)[0] not in EVOLUTION_COMMANDS:
-                raise ValueError(tr("turn_hooks.evolution_tasks_cannot_change_working_directorie"))
 
 
 class ComputerUseHook(TurnHook):

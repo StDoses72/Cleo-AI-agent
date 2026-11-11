@@ -7,7 +7,7 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { basename, dirname, join, posix, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { EvolutionStore, exists } from "../electron/evolution-store.mjs";
+import { ProgramStore, exists } from "../electron/program-store.mjs";
 import { RUNTIME_REGISTRY } from "../electron/online-runtime.mjs";
 import { desktopPlatform } from "../electron/platform.mjs";
 import { createStorageQueue, defaultLauncherPaths, namespaceKey, planKey, reclaimStorage, storageInventory, venvHome, versionKey } from "../electron/storage-reclaim.mjs";
@@ -23,7 +23,7 @@ async function fixture(t) {
     await rm(root, { recursive: true, force: true });
   });
   const dataHome = join(root, "home");
-  const store = new EvolutionStore(join(root, "control"), dataHome);
+  const store = new ProgramStore(join(root, "control"), dataHome);
   await mkdir(join(dataHome, "memory"), { recursive: true });
   await writeFile(join(dataHome, "memory", "notes.md"), "real memory".repeat(10));
   await mkdir(join(dataHome, "data"), { recursive: true });
@@ -638,7 +638,7 @@ test("legacy script installations outside discoverable locations keep completed 
     installed_at: new Date().toISOString(), sha256: hex(64) }));
   const runtime = await f.addOnlineRuntime(await planKey(resources), "0.9.0");
   const alphaHome = join(f.root, "alpha-home");
-  const store = new EvolutionStore(join(f.root, "alpha-control"), alphaHome);
+  const store = new ProgramStore(join(f.root, "alpha-control"), alphaHome);
   const options = { dataHome: alphaHome, store, onlineRoots: [f.online], installedExecutables: [] };
   const inventory = await storageInventory(options);
   assert.equal(inventory.entries.find(entry => entry.path === runtime).action, "keep");

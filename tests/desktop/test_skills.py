@@ -96,7 +96,6 @@ def test_desktop_dispatch_uses_selected_harness_and_keeps_builtins(skill_home, t
         MEMORY_DIR=tmp_path / "memory", productivity=SimpleNamespace(default_provider="codex"),
     )
     service._activate = lambda _: None
-    service._is_evolution = lambda _: False
     service._productivity_provider = lambda name: SimpleNamespace(type=f"{name}_sdk")
     service._runs = RunSupervisor()
     service._background_memory = SimpleNamespace(cancel=AsyncMock())

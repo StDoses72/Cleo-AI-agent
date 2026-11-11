@@ -13,7 +13,6 @@ def test_native_restrictions_disable_presets_without_granting_fallback_access():
     assert presets["review"]["disabledReason"] == "Reviewer disabled"
     assert presets["ask"]["disabledReason"] is None
     assert presets["ask"]["update"] == {"access": "workspace-write", "approval": "user"}
-    assert permission_choices("codex_sdk", fixed=True)["approval"] == []
 
 
 def test_claude_presets_never_claim_to_supply_a_codex_sandbox():

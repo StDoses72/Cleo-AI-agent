@@ -89,21 +89,18 @@ try {
       files: async (operation) => operation === "list"
         ? { entries: [{ path: "sample.pdf", name: "sample.pdf", kind: "file", size: 12 }], truncated: false }
         : { path: "sample.pdf", kind: "pdf", url: "about:blank", size: 12 },
-      getEvolutionState: async () => ({ phase: "idle", builds: [], releases: [], supported: false }),
-      onEvolutionState: () => () => {},
       getUpdateState: async () => ({ phase: "unsupported", currentVersion: "test" }),
       onUpdateState: () => () => {}, confirmHealthy: async () => {}, setTheme: () => {},
     };
   }, { snapshot });
   await page.reload();
   await page.getByText("最后一条消息应完整显示在输入框上方。", { exact: true }).waitFor();
-  assert.equal(await page.locator(".conversation-chrome .evolution-cases").count(), 0, "Improvement controls should not occupy the conversation header");
+  // The conversation menu no longer offers to change Cleo itself (local evolution was removed, ADR 0009).
   await page.locator(".thread-actions-wrap > button").click();
-  await page.getByRole("button", { name: uiLabel("改进 Cleo"), exact: true }).click();
-  await page.waitForFunction(value => document.querySelector('[data-testid="composer-input"]')?.value === value, uiLabel("请改进 Cleo："));
-  assert.equal(await page.getByRole("dialog", { name: uiLabel("改进 Cleo"), exact: true }).count(), 0);
-  await page.getByRole("navigation", { name: uiLabel("工作区") }).getByRole("button", { name: uiLabel("开发"), exact: true }).click();
-  await page.getByText("最后一条消息应完整显示在输入框上方。", { exact: true }).waitFor();
+  await page.locator(".thread-actions-menu").waitFor();
+  assert.equal(await page.locator(".thread-actions-menu").getByRole("button", { name: /改进 Cleo|Improve Cleo/ }).count(), 0);
+  await page.keyboard.press("Escape");
+  await page.locator(".thread-actions-menu").waitFor({ state: "detached" });
 
   const viewport = page.locator(".conversation-viewport");
   const inspector = page.getByTestId("inspector");
@@ -179,12 +176,22 @@ try {
     const state = await page.evaluate(() => {
       const row = document.querySelector('[data-row-id="layout-159"]');
       const box = row?.getBoundingClientRect();
+      const card = document.querySelector('[data-testid="changes-card"]')?.getBoundingClientRect();
       const composer = document.querySelector(".composer").getBoundingClientRect();
       const view = document.querySelector(".conversation-viewport").getBoundingClientRect();
-      return { row: box ? { top: box.top, bottom: box.bottom } : null, composerTop: composer.top, viewportTop: view.top };
+      return { row: box ? { top: box.top, bottom: box.bottom } : null, card: card ? { top: card.top, bottom: card.bottom } : null,
+        composerTop: composer.top, viewportTop: view.top };
     });
-    assert(state.row && state.row.top >= state.viewportTop - 1 && state.row.bottom <= state.composerTop + 1,
-      `Last message is covered by the composer (${label}): ${JSON.stringify(state)}`);
+    // The end of the conversation sits above the composer: the turn's changes card when there is one
+    // (the reply above it may scroll in a small window), otherwise the whole last reply.
+    if (state.card) {
+      assert(state.card.top >= state.viewportTop - 1 && state.card.bottom <= state.composerTop + 1,
+        `Changes card is covered by the composer (${label}): ${JSON.stringify(state)}`);
+      assert(state.row && state.row.bottom <= state.card.top + 1, `Last reply overlaps the changes card (${label})`);
+    } else {
+      assert(state.row && state.row.top >= state.viewportTop - 1 && state.row.bottom <= state.composerTop + 1,
+        `Last message is covered by the composer (${label}): ${JSON.stringify(state)}`);
+    }
   }
   async function checkScrollAndHitTargets(label) {
     await viewport.hover();
@@ -289,7 +296,7 @@ try {
   await page.getByText("最后一条消息应完整显示在输入框上方。", { exact: true }).waitFor();
 
   await openInspector();
-  await inspector.locator(".inspector-tabs").getByRole("button", { name: uiLabel("文件") }).click();
+  await inspector.locator(".inspector-tabs").getByRole("tab", { name: uiLabel("文件") }).click();
   await inspector.getByRole("button", { name: "sample.pdf" }).click();
   await inspector.locator(".files-pdf").waitFor();
   const divider = inspector.getByRole("separator", { name: uiLabel("上下拖动调整 PDF 预览高度") });
@@ -310,7 +317,7 @@ try {
   assert(draggedHeight >= raisedHeight + 30, "Pointer drag did not resize the file preview");
   const draggedPdfHeight = await inspector.locator(".files-pdf").evaluate(element => element.getBoundingClientRect().height);
   assert(draggedPdfHeight <= raisedPdfHeight - 30, "PDF preview did not resize with the pointer drag");
-  await inspector.locator(".inspector-tabs").getByRole("button", { name: new RegExp("^" + uiLabel("变更 ").trim()) }).click();
+  await inspector.locator(".inspector-tabs").getByRole("tab", { name: new RegExp("^" + uiLabel("变更 ").trim()) }).click();
 
   const scenarios = [
     { name: "wide", width: 1600, height: 1000, zoom: 1 },
@@ -332,8 +339,8 @@ try {
       await checkLastMessage(label);
       await checkScrollAndHitTargets(label);
       await checkRuntimeMenu(label);
-      for (const tab of [uiLabel("上下文"), uiLabel("运行"), new RegExp("^" + uiLabel("变更 ").trim())]) {
-        await inspector.locator(".inspector-tabs").getByRole("button", { name: tab }).click();
+      for (const tab of [uiLabel("概况"), uiLabel("文件"), new RegExp("^" + uiLabel("变更 ").trim())]) {
+        await inspector.locator(".inspector-tabs").getByRole("tab", { name: tab }).click();
         await checkGeometry(label);
       }
       await captureScreenshot(`layout-${label}.png`);

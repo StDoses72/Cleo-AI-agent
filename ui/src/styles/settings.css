@@ -109,6 +109,11 @@
 .update-hero { padding-bottom: 16px; border-bottom: 1px solid var(--border); }
 .update-hero h3 { margin: 0; color: var(--text-soft); font-size: var(--font-size-dialog-title); }
 .update-hero p { margin: 6px 0 0; color: var(--muted); font-size: var(--font-size-control); line-height: 1.65; }
+.update-version-picker { margin: 16px 0; min-width: 0; }
+.update-version-picker label { display: grid; gap: 8px; font-size: var(--font-size-control); }
+.update-version-picker select { width: 100%; min-width: 0; max-width: 100%; padding: 10px; color: var(--text); background: var(--surface); border: 1px solid var(--border-strong); border-radius: 7px; }
+.update-version-picker button { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); }
+.update-version-picker p { font-size: var(--font-size-control); overflow-wrap: anywhere; }
 .update-progress { height: 4px; margin-top: 15px; overflow: hidden; border-radius: 4px; background: var(--surface-active); }
 .update-progress i { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width 180ms ease; }
 .update-actions { display: flex; gap: 7px; margin-top: 15px; }
@@ -218,3 +223,8 @@
 .harness-sync-list small { color: var(--muted); }
 .harness-sync-keys { margin: 0 0 8px; color: var(--muted); font-size: var(--font-size-caption); word-break: break-all; user-select: text; }
 .settings-success { color: var(--success); font-size: var(--font-size-body); }
+
+/* Grouped settings navigation: a quiet label over each group of pages. */
+.settings-nav-group { display: flex; flex-direction: column; gap: 1px; }
+.settings-nav-group + .settings-nav-group { margin-top: 14px; }
+.settings-nav-label { padding: 0 10px 4px; color: var(--muted-2); font-size: 11px; font-weight: 600; letter-spacing: 0.02em; }

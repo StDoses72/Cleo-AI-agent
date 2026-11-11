@@ -181,7 +181,7 @@ export function ConnectionWizard({ existing, settings, busy, onApply, onDone, ac
           {step === "connect" && type === "account" && account && <>
             <p className="ms-meta">{account.billing}</p>
             <ConnectionScope note={account.note} />
-            {login?.status === "pending" ? <div className="ms-waiting"><div className="ms-spinner" /><h3>{tr("connectionwizard.waiting_for_account_authorization")}</h3>{login.url?.startsWith("https://") && <a className="ms-secondary" href={login.url} target="_blank" rel="noreferrer">{tr("connectionwizard.open_the_official_sign_in_page")}<ExternalLink /></a>}<button className="ms-quiet" disabled={working} onClick={() => void cancelLogin()}>{tr("githublogin.cancel_sign_in")}</button></div> : <>
+            {login?.status === "pending" ? <div className="ms-waiting"><div className="ms-spinner" /><h3>{tr("connectionwizard.waiting_for_account_authorization")}</h3>{login.url?.startsWith("https://") && <a className="ms-secondary" href={login.url} target="_blank" rel="noreferrer">{tr("connectionwizard.open_the_official_sign_in_page")}<ExternalLink /></a>}<button className="ms-quiet" disabled={working} onClick={() => void cancelLogin()}>{tr("connectionwizard.cancel_sign_in")}</button></div> : <>
               <button className="ms-primary ms-full" disabled={locked} onClick={() => void startLogin()}><ExternalLink />{working ? tr("connectionwizard.connecting") : account.login}</button>
               {error && <button className="ms-quiet ms-full" disabled={locked} onClick={() => void readModels()}>{tr("connectiondetails.retry_check")}</button>}
             </>}

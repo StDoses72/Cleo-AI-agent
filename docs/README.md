@@ -9,10 +9,9 @@
 1. [快速开始](GETTING_STARTED.md)：选择桌面版或源码运行，完成首次模型配置并执行第一条任务。
 2. [配置与安全边界](CONFIGURATION.md)：理解 `cleo.json`、`harnesses.json`、本地数据路径和权限边界。
 3. [运行时与数据维护指南](Cleo_Runtime_State_Maintenance_Guide.docx)：备份、迁移、恢复和排查本地状态。
-4. [本地进化](cleo-evolution.md)：描述需求、构建应用、验收、保存与恢复版本。
+4. [程序版本与恢复](program-versions.md)：更新、切换版本、启动失败回退与保底入口。
 5. [本地 skills](local-skills.md)：在开发会话中发现和调用本机技能。
-6. [源码贡献](contribution-targets.md)：申请接收分支、提交源码快照并查看 PR 状态。
-7. [子任务路由](benchmark-routing.md)：连接候选、Artificial Analysis 数据、评估器、受约束委派与任务用量。
+6. [子任务路由](benchmark-routing.md)：连接候选、Artificial Analysis 数据、评估器、受约束委派与任务用量。
 
 ## 我想理解系统
 
@@ -37,6 +36,8 @@
 - [ADR 0004 Claude 回合与后台任务的生命周期归 provider 所有](adr/0004-claude-turn-and-background-task-lifecycle.md)
 - [ADR 0005 Codex CLI 只随 Python 运行时分发一次](adr/0005-single-codex-cli-distribution.md)
 - [ADR 0006 在线运行环境的归属登记与基于证据的退役](adr/0006-online-runtime-ownership-and-retirement.md)
+- [ADR 0008 桌面 UI 改为单侧栏信息架构、平铺视觉，并补齐审查与 git 闭环](adr/0008-single-sidebar-flat-ui-and-review-loop.md)（设计说明见 [UI/UX 重构 v2](UI_UX_REFACTOR_v2.md)）
+- [ADR 0009 移除本地进化，保留并改名它与正式更新共用的版本基础设施](adr/0009-remove-local-evolution.md)（保留行为见[程序版本与恢复](program-versions.md)）
 
 ## 文档维护约定
 

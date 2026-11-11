@@ -44,8 +44,7 @@ try {
     console.error(await window.locator("body").innerText());
     throw error;
   }
-  await window.getByRole("button", { name: "对话", exact: true }).click();
-  await window.getByTestId("new-thread").click();
+  await window.getByTestId("new-chat").click();
   await window.getByTestId("runtime-selector").click();
   await window.getByText("gpt-5.4-mini", { exact: true }).waitFor();
   await window.getByTestId("runtime-selector").click();

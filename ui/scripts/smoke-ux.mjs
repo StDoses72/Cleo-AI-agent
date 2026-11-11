@@ -59,9 +59,9 @@ try {
     await page.getByTestId("conversation").waitFor();
     await rail("设置").click();
     for (const [label, color, symbolColor] of [
-      ["浅色", "#e9e9e6", "#59636f"],
-      ["深色", "#0b0e12", "#848c98"],
-      ["浅色", "#e9e9e6", "#59636f"],
+      ["浅色", "#f7f7f6", "#59636f"],
+      ["深色", "#111113", "#98989e"],
+      ["浅色", "#f7f7f6", "#59636f"],
     ]) {
       await rail(label).click();
       await page.waitForFunction(() => window.cleoWindow !== undefined);
@@ -71,20 +71,19 @@ try {
     await app.evaluate(() => { globalThis.uxTitleBarOverlay = null; });
     await page.reload();
     await page.getByTestId("conversation").waitFor();
-    assert.equal((await app.evaluate(() => globalThis.uxTitleBarOverlay))?.color, "#e9e9e6", "Saved light theme must restore native controls");
+    assert.equal((await app.evaluate(() => globalThis.uxTitleBarOverlay))?.color, "#f7f7f6", "Saved light theme must restore native controls");
     await rail("设置").click();
     await rail("深色").click();
     await page.keyboard.press("Escape");
   });
   await check("chat-welcome", async () => {
-    await rail("对话").click();
-    await page.getByTestId("new-thread").click();
+    await page.getByTestId("new-chat").click();
     await page.getByRole("heading", { name: "今天想聊些什么？" }).waitFor();
     await page.locator(".suggestion-list button").first().click();
     assert.ok((await input.inputValue()).length > 0, "Suggestion should populate an editable draft");
     assert.equal(await page.getByTestId("stop-button").count(), 0);
     assert.equal(await page.getByTestId("runtime-selector").getAttribute("data-effort"), null, "Chat has no reasoning effort");
-    await rail("运行记录").click();
+    await page.getByRole("button", { name: "打开检查器", exact: true }).click();
     await page.locator(".run-status").getByText("尚未运行", { exact: true }).waitFor();
   });
   await check("command-keyboard", async () => {
@@ -96,10 +95,10 @@ try {
     await page.getByRole("dialog", { name: "设置", exact: true }).waitFor();
     await page.keyboard.press("Escape");
     await page.keyboard.press("Control+k");
-    await search.fill("打开");
+    await search.fill("新建");
     await search.press("ArrowDown");
     await search.press("Enter");
-    await page.getByRole("heading", { name: "对话", exact: true }).waitFor();
+    await page.getByTestId("draft-row").filter({ hasText: "对话" }).waitFor();
   });
   await check("rename-dialog", async () => {
     await page.locator(".thread-actions-wrap > button").click();
@@ -112,26 +111,29 @@ try {
     await dialog.waitFor({ state: "hidden" });
   });
   await check("draft-isolation", async () => {
+    // Only the composer's own chips: sent messages in the history show their attachments too.
+    const composerChips = page.getByTestId("composer-attachments").locator(".attachment-chip");
+    await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
     await input.fill("只属于开发任务的草稿");
     await input.evaluate((element) => {
       const transfer = new DataTransfer();
       transfer.items.add(new File(["draft attachment"], "draft.txt", { type: "text/plain" }));
       element.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: transfer }));
     });
-    await page.locator(".attachment-chip").first().waitFor();
-    await rail("对话").click();
+    await composerChips.first().waitFor();
+    await page.getByTestId("new-chat").click();
     assert.equal(await input.inputValue(), "");
-    assert.equal(await page.locator(".attachment-chip").count(), 0);
+    assert.equal(await composerChips.count(), 0);
     await input.fill("只属于对话的草稿");
     await rail("记忆").click();
-    await rail("对话").click();
+    await page.getByTestId("new-chat").click();
     assert.equal(await input.inputValue(), "只属于对话的草稿");
-    await rail("开发").click();
+    await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
     assert.equal(await input.inputValue(), "只属于开发任务的草稿");
-    assert.equal(await page.locator(".attachment-chip").count(), 1);
+    assert.equal(await composerChips.count(), 1);
     await page.getByTestId("new-thread").click();
     assert.equal(await input.inputValue(), "");
-    assert.equal(await page.locator(".attachment-chip").count(), 0);
+    assert.equal(await composerChips.count(), 0);
   });
   await check("concurrent-send-preserves-drafts", async () => {
     await input.fill("审批测试 A");
@@ -161,8 +163,8 @@ try {
   });
   await check("model-connection-checkbox-layout", async () => {
     await rail("设置").click();
-    await rail("模型").click();
-    await page.locator(".settings-model-subnav").getByRole("button", { name: "新增连接", exact: true }).click();
+    await rail("模型连接").click();
+    await page.locator(".settings-heading").getByRole("button", { name: "新增连接", exact: true }).click();
     await page.getByRole("button", { name: "O OpenAI", exact: true }).click();
     await page.getByLabel("API Key").fill("test-only-api-key");
     await page.getByRole("button", { name: "验证并继续", exact: true }).click();
@@ -186,8 +188,6 @@ try {
     const workspace = { ...fixture, threads: [], activeThreadId: null, activeSpace: "chat" };
     const ux = window.__ux = { creates: 0, sent: [], failCreate: false, releaseCreate: null };
     window.cleoDesktop = {
-      getEvolutionState: async () => ({ phase: "idle", builds: [], releases: [], supported: false }),
-      onEvolutionState: () => () => {},
       confirmHealthy: async () => {},
       getUpdateState: async () => ({ phase: "unsupported", currentVersion: "test" }),
       onUpdateState: () => () => {},

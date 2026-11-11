@@ -42,8 +42,7 @@ DESKTOP_METHODS: tuple[RpcMethod, ...] = (
     *_methods("renderer", "load_workspace", "load_memory", "add_project", "remove_project",
               "restore_chat_backups", "reset_workspace"),
     # Threads.
-    *_methods("renderer", "load_thread", "create_thread", "delete_thread", "move_thread",
-              "open_evolution_thread"),
+    *_methods("renderer", "load_thread", "create_thread", "delete_thread", "move_thread"),
     # Turns and runs.
     RpcMethod("stream_turn", "renderer", streaming=True),
     *_methods("renderer", "steer_run", "rewind_thread", "cancel_run", "resolve_approval",
@@ -70,13 +69,10 @@ DESKTOP_METHODS: tuple[RpcMethod, ...] = (
     *_methods("renderer", "get_memory_review_details", "review_memory_source",
               "get_background_memory_state", "save_background_memory_settings",
               "get_memory_sources", "save_memory_sources"),
-    # Electron main process only: evolution guard, computer use and lifecycle.
-    *_methods("main", "is_evolution_thread", "release_runtime", "computer_host",
-              "computer_host_stop", "computer_owner", "computer_scope",
+    # Electron main process only: computer use and lifecycle.
+    *_methods("main", "computer_host", "computer_host_stop", "computer_owner", "computer_scope",
               "run_background_memory_review", "cancel_background_memory_review"),
     RpcMethod("shutdown", "main", server=True),
-    # No client calls these any more.
-    *_methods("unused", "analyze_evolution_request"),
 )
 
 

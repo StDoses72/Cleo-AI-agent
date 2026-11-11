@@ -11,7 +11,7 @@ from cleo.config.settings import AgentProfile
 from cleo.harnesses.control import SessionOptions
 from cleo.integrations import claude_cli, subscriptions
 from cleo.integrations.harnesses.claude import ClaudeProvider, _ClaudeRuntime
-from cleo.integrations.runtime_diagnostics import StderrCapture, diagnostic_text
+from cleo.integrations.runtime_diagnostics import StderrCapture, diagnostic_text, model_error_text
 from cleo.integrations.subscriptions import AgentMcp
 
 
@@ -137,6 +137,26 @@ def test_diagnostics_redact_before_truncation_and_bound_stderr(monkeypatch):
         assert capture.text() == "initial failure [stderr truncated]"
 
     asyncio.run(exercise())
+
+
+def test_model_errors_read_the_same_whatever_the_sdk_prints():
+    class StatusError(Exception):
+        """Shaped like the OpenAI and Anthropic SDKs' APIStatusError: status and parsed body."""
+
+        def __init__(self, text, status_code, body):
+            super().__init__(text)
+            self.status_code, self.body = status_code, body
+
+    openai_body = {"error": {"message": "fake upstream failure", "type": "server_error"}}
+    # Newer OpenAI SDKs print the whole body; older ones printed the message.
+    assert model_error_text(StatusError(f"Error code: 500 - {openai_body}", 500, openai_body)) \
+        == "Error code: 500 - fake upstream failure"
+    anthropic_body = {"type": "error", "error": {"type": "overloaded_error", "message": "Overloaded"}}
+    assert model_error_text(StatusError("raw", 529, anthropic_body)) == "Error code: 529 - Overloaded"
+    # Without the provider's own message the exception's text is kept.
+    assert model_error_text(StatusError("Error code: 502 - <html>", 502, "<html>")) == "Error code: 502 - <html>"
+    assert model_error_text(StatusError("Error code: 400", 400, {"error": {"code": "x"}})) == "Error code: 400"
+    assert model_error_text(RuntimeError("connection reset")) == "connection reset"
 
 
 def test_cli_reports_mcp_status_without_assuming_it_caused_failure(tmp_path, monkeypatch):

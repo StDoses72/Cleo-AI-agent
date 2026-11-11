@@ -29,11 +29,6 @@ contextBridge.exposeInMainWorld("cleoWindow", {
 if (!process.argv.includes("--cleo-desktop-mock")) {
   contextBridge.exposeInMainWorld("cleoDesktop", {
     getUiLanguage: () => ipcRenderer.invoke("cleo:request", { method: "get_ui_language", params: {} }),
-    onCompanionThread: listener => {
-      const handler = (_event, thread) => listener(thread);
-      ipcRenderer.on("cleo:companion-thread", handler);
-      return () => ipcRenderer.removeListener("cleo:companion-thread", handler);
-    },
     setup: (action, params = {}) => ipcRenderer.invoke("cleo:setup", action, params),
     computer: (action = "state", params = {}) => ipcRenderer.invoke("cleo:computer", action, params),
     onComputerState: (listener) => {
@@ -42,6 +37,7 @@ if (!process.argv.includes("--cleo-desktop-mock")) {
       return () => ipcRenderer.removeListener("cleo:computer:state", handler);
     },
     files: (op, params = {}) => ipcRenderer.invoke("cleo:files", op, params),
+    git: (op, params = {}) => ipcRenderer.invoke("cleo:git", op, params),
     request: (method, params = {}, streamId = null) =>
       ipcRenderer.invoke("cleo:request", { method, params, streamId }),
     onStreamEvent: (listener) => {
@@ -80,14 +76,10 @@ if (!process.argv.includes("--cleo-desktop-mock")) {
       const result = await ipcRenderer.invoke("cleo:open-local-path", { href, workspacePath });
       if (!result?.ok) throw new Error(result?.error || (uiLanguage === "en" ? "Could not open the local file" : "无法打开本地文件"));
     },
-    getEvolutionState: () => ipcRenderer.invoke("cleo:evolution:state"),
-    evolutionAction: (action, params = {}) => ipcRenderer.invoke("cleo:evolution:action", { action, ...params }),
-    confirmHealthy: () => ipcRenderer.invoke("cleo:evolution:healthy"),
-    onEvolutionState: (listener) => {
-      const handler = (_event, state) => listener(state);
-      ipcRenderer.on("cleo:evolution:state", handler);
-      return () => ipcRenderer.removeListener("cleo:evolution:state", handler);
-    },
+    // Startup confirmation for the version switch controller: the journal clears only after this.
+    confirmHealthy: () => ipcRenderer.invoke("cleo:program:healthy"),
+    // Opens the version and recovery chooser from inside the app; a selection restarts Cleo.
+    openRecovery: () => ipcRenderer.invoke("cleo:program:recovery"),
     getUpdateState: () => ipcRenderer.invoke("cleo:update:get-state"),
     checkForUpdates: (tag) => ipcRenderer.invoke("cleo:update:check", tag),
     downloadUpdate: () => ipcRenderer.invoke("cleo:update:download"),

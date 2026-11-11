@@ -31,6 +31,9 @@ PINNED = {
     12: "3301892058774d49258c4690fb3f827f4d6f86860c782a16e097daf48e0932cc",
     # 13 adds attachment records; the frozen legacy sessions carry none.
     13: "3301892058774d49258c4690fb3f827f4d6f86860c782a16e097daf48e0932cc",
+    # 14 adds command exit codes/durations and the memories a turn was given; the frozen
+    # legacy sessions carry neither.
+    14: "3301892058774d49258c4690fb3f827f4d6f86860c782a16e097daf48e0932cc",
 }
 
 

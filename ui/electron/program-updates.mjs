@@ -1,11 +1,11 @@
 import { t as tr } from "./i18n.mjs";
 import { versionForReleaseTag } from "./release-channel.mjs";
 
-/** Coordinate user-requested program changes across the update and evolution entry points. */
+/** Coordinate user-requested program changes so only one version operation runs at a time. */
 export class ProgramUpdates {
-  constructor({ updater, evolution, apply, hasRunningTask = () => false }) {
+  constructor({ updater, versions, apply, hasRunningTask = () => false }) {
     this.updater = updater;
-    this.evolution = evolution;
+    this.versions = versions;
     this.apply = apply;
     this.hasRunningTask = hasRunningTask;
     this.active = false;
@@ -50,11 +50,11 @@ export class ProgramUpdates {
       const version = this.updater.manifest.version;
       this.updater.setState({ phase: "installing", installStage: "preparing", error: null });
       try {
-        await this.evolution.assertOfficialSwitchAllowed();
-        const releases = await this.evolution.releases();
+        await this.versions.assertOfficialSwitchAllowed();
+        const releases = await this.versions.releases();
         const release = releases.find(item => versionForReleaseTag(item.tag) === version);
         if (!release) throw new Error(tr("program_updates.the_downloaded_release_was_not_found_check_for_updates_again"));
-        const id = await this.evolution.downloadRelease(release.tag, {
+        const id = await this.versions.downloadRelease(release.tag, {
           onProgress: (downloadedBytes, totalBytes) => this.updater.setState({ downloadedBytes, totalBytes }),
         });
         this.updater.setState({ installStage: "restarting" });

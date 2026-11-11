@@ -31,7 +31,7 @@ stable `/skill:name:id` commands, so each source remains selectable. Files with
 be invoked; discovery never modifies existing skill files.
 
 This first stage supports native Claude/Codex development sessions only. Chat,
-evolution sessions, other ACP harnesses, plugin registry discovery, and
+other ACP harnesses, plugin registry discovery, and
 cross-harness reuse are outside its scope. Reopen a thread to refresh its catalog
 after installing skills. This is instruction loading, not emulation of all
 vendor-specific execution options; existing harness permissions still apply.

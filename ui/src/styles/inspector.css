@@ -34,7 +34,7 @@
 .inspector {
   position: relative;
   display: flex;
-  grid-column: 4;
+  grid-column: 3;
   grid-row: 2;
   min-width: 0;
   min-height: 0;

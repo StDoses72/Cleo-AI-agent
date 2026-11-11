@@ -145,9 +145,9 @@ class ChatRuntime:
             if not isinstance(error, Exception):
                 phase(None)
                 raise
-            from cleo.integrations.runtime_diagnostics import diagnostic_text
+            from cleo.integrations.runtime_diagnostics import diagnostic_text, model_error_text
 
-            detail = diagnostic_text(str(error), prompt=prompt) or type(error).__name__
+            detail = diagnostic_text(model_error_text(error), prompt=prompt) or type(error).__name__
             await asyncio.to_thread(
                 self._store.append_event, session_id=manifest["id"],
                 space=manifest["space"], project=manifest["project"], event_type="error",

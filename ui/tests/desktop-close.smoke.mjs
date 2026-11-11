@@ -90,7 +90,7 @@ try {
   const initial = await window.evaluate(() => window.cleoDesktop.request("get_background_memory_state"));
   assert.equal(initial.enabled, false, "Automatic memory organization must be opt-in.");
   await window.getByRole("button", { name: "设置", exact: true }).click();
-  await window.getByRole("button", { name: "数据与记忆", exact: true }).click();
+  await window.getByRole("button", { name: "记忆整理", exact: true }).click();
   const settings = window.getByRole("form", { name: "后台记忆整理设置" });
   const automatic = settings.getByRole("checkbox", { name: "后台记忆整理", exact: true });
   assert.equal(await automatic.isChecked(), false);

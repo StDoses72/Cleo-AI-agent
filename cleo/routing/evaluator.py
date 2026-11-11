@@ -70,7 +70,7 @@ async def complete_assessment(profile, instructions, prompt):
         })
     # Existing planning transport uses a disposable directory, read-only Codex sandbox,
     # and Claude's disabled native tools. It never receives the live project's cwd/index.
-    from cleo.desktop.evolution_planning import subscription_text
+    from cleo.integrations.subscriptions import subscription_text
     from cleo.runtime.task_usage import event_usage, usage_observer
 
     events = []

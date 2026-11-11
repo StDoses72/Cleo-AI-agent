@@ -7,8 +7,12 @@ import type { BackgroundMemoryState } from "../../types";
 const toDraft = (state: BackgroundMemoryState) => ({ enabled: state.enabled,
   intervalMinutes: String(state.intervalMinutes), pendingThreshold: String(state.pendingThreshold) });
 
-export function BackgroundMemorySettingsPanel({ active, busy, onConfigureDream }: {
-  active: boolean; busy: boolean; onConfigureDream: () => void;
+export function BackgroundMemorySettingsPanel({ active, busy, dreamEnabled, onConfigureDream }: {
+  active: boolean; busy: boolean;
+  /** Whether Dream Agent is on, as last saved on this page: newer than the state read when the panel
+   * opened, so turning Dream Agent off or on above shows here at once (unsaved drafts are kept). */
+  dreamEnabled?: boolean;
+  onConfigureDream: () => void;
 }) {
   const [state, setState] = useState<BackgroundMemoryState | null>(null);
   const [draft, setDraft] = useState({ enabled: false, intervalMinutes: "30", pendingThreshold: "5" });
@@ -52,7 +56,8 @@ export function BackgroundMemorySettingsPanel({ active, busy, onConfigureDream }
   };
   const disabled = loading || saving || busy || !state;
   const changed = state && JSON.stringify(draft) !== JSON.stringify(toDraft(state));
-  const status = state?.dreamEnabled === false ? tr("backgroundmemorysettingspanel.memory_consolidation_is_paused") : !state?.enabled ? tr("backgroundmemorysettingspanel.disabled")
+  const dreamOff = (dreamEnabled ?? state?.dreamEnabled) === false;
+  const status = dreamOff ? tr("backgroundmemorysettingspanel.memory_consolidation_is_paused") : !state?.enabled ? tr("backgroundmemorysettingspanel.disabled")
     : state.running ? tr("backgroundmemorysettingspanel.consolidating_in_the_background") : state.status === "failed" ? tr("backgroundmemorysettingspanel.the_last_consolidation_failed")
     : state.status === "cancelled" ? tr("backgroundmemorysettingspanel.paused_waiting_for_the_next_consolidation") : tr("backgroundmemorysettingspanel.waiting_for_the_next_consolidation");
 
@@ -63,7 +68,7 @@ export function BackgroundMemorySettingsPanel({ active, busy, onConfigureDream }
         disabled={disabled} onChange={event => { setDraft({ ...draft, enabled: event.target.checked }); setSaved(false); }} /><span /></label>
     </div>
     <p className="ms-muted">{tr("backgroundmemorysettingspanel.off_by_default_uses_the_memory_model_selected_above_and_may_incur_model_usage_charges")}</p>
-    {state?.dreamEnabled === false && <p className="ms-muted">{tr("backgroundmemorysettingspanel.enable_and_save_memory_consolidation_above_before_background_consolidation_can_run")}</p>}
+    {dreamOff && <p className="ms-muted">{tr("backgroundmemorysettingspanel.enable_and_save_memory_consolidation_above_before_background_consolidation_can_run")}</p>}
     <div className="ms-background-triggers">
       <label className="ms-field"><span>{tr("backgroundmemorysettingspanel.interval_minutes")}</span><input type="number" min="1" max="1440" step="1" required
         aria-label={tr("backgroundmemorysettingspanel.interval_minutes")} disabled={disabled} value={draft.intervalMinutes}

@@ -40,6 +40,7 @@ try {
       cleoClient.startSubscriptionLogin = async () => { window.loginCalls++; throw new Error("login should be explicit"); };
     });
     await page.getByRole("button", { name: "设置", exact: true }).click();
+    await page.getByRole("button", { name: "模型连接", exact: true }).click();
     await page.getByRole("button", { name: "新增连接", exact: true }).first().click();
     await page.getByRole("tab", { name: "账号登录", exact: true }).click();
     await page.getByRole("button", { name: /Claude Code$/ }).click();
@@ -47,7 +48,7 @@ try {
     assert(await page.evaluate(() => window.probeCalls.some(value => value.backend === "claude_code")));
     assert.equal(await page.evaluate(() => window.loginCalls), 0);
     await page.getByRole("button", { name: "添加连接", exact: true }).click();
-    await page.getByRole("heading", { name: "当前配置", exact: true }).waitFor();
+    await page.getByRole("heading", { name: "模型连接", exact: true }).waitFor();
     await page.locator(".ms-connections").getByText("Claude Code · 个人账号", { exact: true }).waitFor();
   });
   await check("connections: details check automatically and offer retry only on failure", async page => {
@@ -61,7 +62,7 @@ try {
       };
     });
     await page.getByRole("button", { name: "设置", exact: true }).click();
-    await page.getByRole("button", { name: "当前配置", exact: true }).click();
+    await page.getByRole("button", { name: "模型连接", exact: true }).click();
     await page.getByRole("button", { name: "管理 Codex · 个人", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "连接详情", exact: true });
     await dialog.getByRole("alert").filter({ hasText: "connection unavailable" }).waitFor();
@@ -76,7 +77,7 @@ try {
   });
   await check("connections: choosing a default model takes one selection", async page => {
     await page.getByRole("button", { name: "设置", exact: true }).click();
-    await page.getByRole("button", { name: "当前配置", exact: true }).click();
+    await page.getByRole("button", { name: "模型连接", exact: true }).click();
     await page.getByRole("button", { name: "切换模型", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "选择对话默认模型", exact: true });
     await dialog.getByRole("radio", { name: /GPT-6 Astra/ }).click();
@@ -94,6 +95,7 @@ try {
       };
     });
     await page.getByRole("button", { name: "设置", exact: true }).click();
+    await page.getByRole("button", { name: "模型连接", exact: true }).click();
     await page.getByRole("button", { name: "新增连接", exact: true }).first().click();
     await page.getByRole("tab", { name: "账号登录", exact: true }).click();
     await page.getByRole("button", { name: /Claude Code$/ }).click();
@@ -113,6 +115,7 @@ try {
       cleoClient.checkModelConnection = async () => { throw new Error("未找到 claude。请安装客户端或指定路径。"); };
     });
     await page.getByRole("button", { name: "设置", exact: true }).click();
+    await page.getByRole("button", { name: "模型连接", exact: true }).click();
     await page.getByRole("button", { name: "新增连接", exact: true }).first().click();
     await page.getByRole("tab", { name: "账号登录", exact: true }).click();
     await page.getByRole("button", { name: /Claude Code$/ }).click();
@@ -130,7 +133,7 @@ try {
       };
     });
     await page.getByRole("button", { name: "设置", exact: true }).click();
-    await page.getByRole("button", { name: "当前配置", exact: true }).click();
+    await page.getByRole("button", { name: "模型连接", exact: true }).click();
     await page.getByRole("button", { name: "切换模型", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "选择对话默认模型", exact: true });
     await dialog.getByRole("radio", { name: /GPT-6 Astra/ }).click();
@@ -141,15 +144,15 @@ try {
     await dialog.getByRole("radio", { name: /GPT-6 Astra/ }).click();
     await dialog.waitFor({ state: "hidden" });
   });
-  await check("memory controls: Dream Agent config and automatic consolidation have separate homes", async page => {
+  await check("memory controls: the Dream Agent model and automatic consolidation share one page", async page => {
     await page.getByRole("button", { name: "设置", exact: true }).click();
-    await page.getByRole("button", { name: "Dream Agent", exact: true }).click();
-    await page.getByRole("heading", { name: "Dream Agent", exact: true }).waitFor();
-    assert.equal(await page.getByRole("checkbox", { name: "后台记忆整理", exact: true }).count(), 0);
+    await page.getByRole("button", { name: "记忆整理", exact: true }).click();
+    await page.getByRole("heading", { name: "记忆整理", exact: true }).waitFor();
     await page.getByRole("radio", { name: /跟随对话/ }).waitFor();
-    await page.getByRole("button", { name: "数据与记忆", exact: true }).click();
     const automatic = page.getByRole("checkbox", { name: "后台记忆整理", exact: true });
     const optional = page.getByText("可选记忆来源", { exact: true });
+    assert.ok((await page.getByRole("radio", { name: /跟随对话/ }).boundingBox()).y < (await automatic.boundingBox()).y,
+      "the model choice comes before the schedule that uses it");
     assert.equal(await page.getByLabel("来源标识", { exact: true }).isVisible(), false);
     assert.ok((await automatic.boundingBox()).y < (await optional.boundingBox()).y);
     await optional.click();
@@ -165,8 +168,8 @@ try {
     await page.getByRole("spinbutton", { name: "待整理会话数" }).fill("3");
     await page.getByRole("button", { name: "保存后台设置", exact: true }).click();
     await page.getByText("后台整理设置已保存", { exact: true }).waitFor();
-    await page.getByRole("button", { name: "Dream Agent", exact: true }).click();
-    await page.getByRole("button", { name: "数据与记忆", exact: true }).click();
+    await page.getByRole("button", { name: "外观", exact: true }).click();
+    await page.getByRole("button", { name: "记忆整理", exact: true }).click();
     assert.equal(await automatic.isChecked(), true);
     assert.equal(await page.getByRole("spinbutton", { name: "整理间隔（分钟）" }).inputValue(), "12");
     await automatic.uncheck();
@@ -180,9 +183,8 @@ try {
     assert.equal(await page.getByRole("button", { name: "本次忽略", exact: true }).count(), 0);
     await page.evaluate(async () => { (await import("/electron/i18n.mjs")).setLanguage("en"); });
     await page.getByRole("button", { name: "Settings", exact: true }).click();
-    await page.getByRole("button", { name: "Dream Agent", exact: true }).click();
-    await page.getByRole("heading", { name: "Dream Agent", exact: true }).waitFor();
-    await page.getByRole("button", { name: "Data and memory", exact: true }).click();
+    await page.getByRole("button", { name: "Memory consolidation", exact: true }).click();
+    await page.getByRole("heading", { name: "Memory consolidation", exact: true }).waitFor();
     await page.getByRole("checkbox", { name: "Background memory consolidation", exact: true }).waitFor();
     await page.getByText("Optional memory sources", { exact: true }).waitFor();
     assert.equal(await page.getByRole("region", { name: "Memory sources", exact: true }).isVisible(), false);
@@ -291,17 +293,18 @@ try {
       cleoClient.loadThread = async id => ({ ...await original(id), usage: { used: null, limit: 128000, input: null, output: null } });
     });
     await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
-    await page.getByRole("button", { name: "上下文", exact: true }).click();
+    await page.getByRole("tab", { name: "概况", exact: true }).click();
     const usage = page.locator(".inspector-section").filter({ has: page.locator(".usage-copy") });
     await usage.locator(".usage-copy").getByText("—", { exact: true }).waitFor();
     assert.doesNotMatch(await usage.innerText(), /0%/);
     assert.equal(await usage.locator(".usage-track").count(), 0);
     await page.locator(".memory-context summary").first().click();
-    await page.locator(".memory-context").getByText(/体验型 UI 应以独立应用交付/).waitFor();
+    // The summary shows the start of the recorded text; the opened body shows all of it.
+    await page.locator(".memory-context details[open] p").getByText(/体验型 UI 应以独立应用交付/).first().waitFor();
   });
   await check("information: memory model changes remain drafts until saved", async page => {
     await page.getByRole("button", { name: "设置", exact: true }).click();
-    await page.getByRole("button", { name: "Dream Agent", exact: true }).click();
+    await page.getByRole("button", { name: "记忆整理", exact: true }).click();
     await page.getByRole("radio", { name: /停用 Dream Agent/ }).click();
     assert.equal(await page.evaluate(async () => {
       const { cleoClient } = await import("/src/services/cleoClient.ts");
@@ -309,7 +312,7 @@ try {
     }), true);
     assert.equal(await page.getByText("自动记忆整理已暂停", { exact: true }).count(), 0);
     await page.getByRole("button", { name: "外观", exact: true }).click();
-    await page.getByRole("button", { name: "Dream Agent", exact: true }).click();
+    await page.getByRole("button", { name: "记忆整理", exact: true }).click();
     assert.equal(await page.getByRole("radio", { name: /停用 Dream Agent/ }).getAttribute("aria-checked"), "true");
     await page.getByRole("button", { name: "保存设置", exact: true }).click();
     await page.getByText("记忆整理设置已保存", { exact: true }).waitFor();
@@ -337,15 +340,21 @@ try {
     await page.getByRole("dialog", { name: "设置", exact: true }).waitFor();
     await page.keyboard.press("Escape");
     await page.keyboard.press("Control+k");
-    await search.fill("打开");
+    await search.fill("新建");
     const selected = page.getByRole("option", { selected: true });
-    await selected.filter({ hasText: "打开 Cleo 对话" }).waitFor();
+    await selected.filter({ hasText: "新建任务" }).waitFor();
     await search.press("ArrowDown");
-    await selected.filter({ hasText: "打开开发任务" }).waitFor();
+    await selected.filter({ hasText: "新建对话" }).waitFor();
     await search.press("ArrowUp");
-    await selected.filter({ hasText: "打开 Cleo 对话" }).waitFor();
+    await selected.filter({ hasText: "新建任务" }).waitFor();
+    await search.press("ArrowDown");
     await search.press("Enter");
-    await page.getByRole("heading", { name: "对话", exact: true }).waitFor();
+    await page.getByTestId("draft-row").filter({ hasText: "对话" }).waitFor();
+    await page.keyboard.press("Control+k");
+    await search.fill("CSV");
+    await selected.filter({ hasText: "把导出的 CSV 合并成一张表" }).waitFor();
+    await search.press("Enter");
+    await page.locator(".breadcrumb strong").filter({ hasText: "把导出的 CSV 合并成一张表" }).waitFor();
   });
   await check("deletion failures remain visible inside the confirmation dialog", async page => {
     await page.evaluate(async () => {
@@ -386,7 +395,7 @@ try {
   });
   await check("nested dialogs own focus, Escape and global shortcuts", async page => {
     await page.getByRole("button", { name: "设置", exact: true }).click();
-    await page.getByRole("button", { name: "当前配置", exact: true }).click();
+    await page.getByRole("button", { name: "模型连接", exact: true }).click();
     await page.getByRole("button", { name: "切换模型", exact: true }).click();
     const nested = page.getByRole("dialog", { name: "选择对话默认模型", exact: true });
     for (let i = 0; i < 20; i++) {
@@ -394,7 +403,8 @@ try {
       assert.equal(await nested.evaluate(e => e.contains(document.activeElement)), true);
     }
     await page.keyboard.press("Control+n");
-    assert.equal(await page.getByTestId("conversation").getAttribute("data-cache-count"), "6");
+    // The demo task keeps its 8 timeline items: Ctrl+N inside a nested dialog must not start a new task.
+    assert.equal(await page.getByTestId("conversation").getAttribute("data-cache-count"), "8");
     await page.keyboard.press("Escape");
     await nested.waitFor({ state: "hidden" });
     assert.equal(await page.getByRole("dialog", { name: "设置", exact: true }).count(), 1);
@@ -500,7 +510,7 @@ try {
       };
     });
     await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
-    await page.getByTestId("tool-group").getByRole("button").first().click();
+    await page.getByTestId("work-group").getByRole("button").first().click();
     await page.getByRole("button", { name: "展开输出", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "完整历史正文" });
     await dialog.getByText(/Tool output/).waitFor();
@@ -580,10 +590,12 @@ try {
     await page.getByRole("button", { name: "关闭设置", exact: true }).click();
     await page.getByRole("button", { name: "设置", exact: true }).click();
     assert.equal(await input.inputValue(), "unsaved audit draft");
+    await page.getByRole("button", { name: "模型连接", exact: true }).click();
     await page.getByRole("button", { name: "新增连接", exact: true }).first().click();
     await page.getByRole("button", { name: /OpenAI/ }).click();
     await page.getByLabel("连接名称", { exact: true }).fill("unfinished connection");
     await page.getByRole("button", { name: "外观", exact: true }).click();
+    await page.getByRole("button", { name: "模型连接", exact: true }).click();
     await page.getByRole("button", { name: "新增连接", exact: true }).first().click();
     assert.equal(await page.getByLabel("连接名称", { exact: true }).inputValue(), "unfinished connection");
   });
@@ -598,7 +610,7 @@ try {
       };
     });
     await page.getByRole("button", { name: "设置", exact: true }).click();
-    await page.getByRole("button", { name: "当前配置", exact: true }).click();
+    await page.getByRole("button", { name: "模型连接", exact: true }).click();
     await page.getByRole("alert").filter({ hasText: "model settings offline" }).waitFor();
     await page.getByRole("button", { name: "重试", exact: true }).click();
     await page.getByText("新对话默认模型", { exact: true }).waitFor();
@@ -632,7 +644,7 @@ try {
     });
     await page.getByRole("button", { name: "记忆", exact: true }).click();
     await page.waitForFunction(() => window.memoryReads.length === 1);
-    await page.getByRole("button", { name: "开发", exact: true }).click();
+    await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
     assert.equal(await page.getByTestId("composer-input").inputValue(), "keep my draft");
     await page.getByRole("button", { name: "记忆", exact: true }).click();
     await page.evaluate(() => window.memoryReads[0](123));
@@ -640,11 +652,11 @@ try {
     assert.doesNotMatch(await page.getByTestId("memory-nav-pending").innerText(), /123/);
     await page.evaluate(() => window.memoryReads[1](17));
     await page.getByTestId("memory-nav-pending").getByText("17", { exact: true }).waitFor();
-    await page.getByRole("button", { name: "开发", exact: true }).click();
+    await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
     assert.equal(await page.getByTestId("composer-input").inputValue(), "keep my draft");
   });
-  for (const space of ["开发", "对话"]) await check(`${space} completion refreshes memory without leaving the conversation`, async page => {
-    await page.getByRole("button", { name: space, exact: true }).click();
+  for (const [space, start] of [["开发", "new-thread"], ["对话", "new-chat"]]) await check(`${space} completion refreshes memory without leaving the conversation`, async page => {
+    await page.getByTestId(start).click();
     await page.evaluate(async () => {
       const { cleoClient } = await import("/src/services/cleoClient.ts");
       const baseline = await cleoClient.loadWorkspace();
@@ -690,10 +702,10 @@ try {
         { id: "a2", type: "message", role: "assistant", content: "已完成", turnId: "turn" },
       ]);
     });
-    assert.deepEqual(blocks.map(block => block.id), ["u1", "a1", "tool-group-t1", "u2", "tool-group-t2", "a2"]);
+    assert.deepEqual(blocks.map(block => block.id), ["u1", "a1", "work-group-t1", "u2", "work-group-t2", "a2"]);
     assert.equal(new Set(blocks.map(block => block.id)).size, blocks.length);
   });
-  await check("Thought groups lead the turn even when a tool call arrives first", async page => {
+  await check("one work group keeps a turn's thoughts and tool calls in arrival order", async page => {
     const blocks = await page.evaluate(async () => {
       const { groupTimelineItems } = await import("/src/components/Conversation.tsx");
       return groupTimelineItems([
@@ -703,8 +715,414 @@ try {
         { id: "t2", type: "tool", name: "Edit", status: "running", turnId: "turn" },
       ]);
     });
-    assert.deepEqual(blocks.map(block => block.id), ["u1", "thought-group-t1", "tool-group-t1"]);
+    assert.deepEqual(blocks.map(block => block.id), ["u1", "work-group-t1"]);
+    assert.deepEqual(blocks[1].items.map(item => item.id), ["t1", "th1", "t2"]);
     assert.equal(blocks[1].hasAnswer, false);
+  });
+  await check("plans and questions keep their place between work logs", async page => {
+    const blocks = await page.evaluate(async () => {
+      const { groupTimelineItems } = await import("/src/components/Conversation.tsx");
+      return groupTimelineItems([
+        { id: "u1", type: "message", role: "user", content: "开始", turnId: "turn" },
+        { id: "read", type: "tool", name: "Read", status: "done", turnId: "turn" },
+        { id: "plan", type: "plan", title: "计划", steps: [], turnId: "turn" },
+        { id: "write", type: "tool", name: "Edit", status: "done", turnId: "turn" },
+      ]);
+    });
+    assert.deepEqual(blocks.map(block => block.id), ["u1", "work-group-read", "plan", "work-group-write"]);
+  });
+  await check("diff line numbers skip the no-newline marker", async page => {
+    const lines = await page.evaluate(async () => {
+      const { numberDiff } = await import("/src/components/Inspector.tsx");
+      return numberDiff(["@@ -1 +1 @@", "-old", "\\ No newline at end of file", "+new"].join("\n"));
+    });
+    assert.deepEqual(lines.map(line => [line.kind, line.oldLine, line.newLine]),
+      [["hunk", null, null], ["deleted", 1, null], ["meta", null, null], ["added", null, 1]]);
+  });
+  await check("diff metadata before the first hunk carries no line numbers", async page => {
+    const lines = await page.evaluate(async () => {
+      const { numberDiff } = await import("/src/components/Inspector.tsx");
+      return numberDiff(["diff --git a/x b/x", "new file mode 100644", "Binary files /dev/null and b/x differ",
+        "diff --git a/y b/y", "rename from old", "@@ -0,0 +1 @@", "+hello"].join("\n"));
+    });
+    assert.deepEqual(lines.map(line => line.newLine), [null, null, null, null, null, null, 1]);
+  });
+  await check("one hunk becomes a patch with its file header; reverting it keeps the file's other hunks", async page => {
+    const patch = await page.evaluate(async () => {
+      const { hunkPatch } = await import("/src/components/Inspector.tsx");
+      return hunkPatch({ path: "a.ts", status: "modified", additions: 2, deletions: 2,
+        diff: ["diff --git a/a.ts b/a.ts", "index 1..2 100644", "--- a/a.ts", "+++ b/a.ts", "@@ -1 +1 @@", "-a", "+b", "@@ -9 +9 @@", "-y", "+z"].join("\n") }, 1);
+    });
+    assert.equal(patch, ["diff --git a/a.ts b/a.ts", "index 1..2 100644", "--- a/a.ts", "+++ b/a.ts", "@@ -9 +9 @@", "-y", "+z", ""].join("\n"));
+    page.on("dialog", dialog => void dialog.accept());
+    await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
+    const files = page.locator(".changed-files .changed-file");
+    await files.first().waitFor();
+    const before = await files.count();
+    await page.getByTestId("revert-hunk").first().click();
+    await page.waitForFunction(count => document.querySelectorAll(".changed-files .changed-file").length === count - 1, before);
+  });
+  await check("wide review gives the details panel the spare room and restores it", async page => {
+    await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
+    const panel = page.getByTestId("inspector");
+    await panel.waitFor();
+    const width = () => panel.evaluate(element => Math.round(element.getBoundingClientRect().width));
+    const before = await width();
+    await page.getByTestId("inspector-wide").click();
+    await page.waitForFunction(start => document.querySelector('[data-testid="inspector"]').getBoundingClientRect().width > start + 100, before);
+    assert.ok((await page.getByTestId("conversation").boundingBox()).width >= 359, "the conversation keeps its minimum width");
+    await page.getByTestId("inspector-wide").click();
+    await page.waitForFunction(start => Math.abs(document.querySelector('[data-testid="inspector"]').getBoundingClientRect().width - start) < 2, before);
+  });
+  await check("keys typed in a review note stay in the note", async page => {
+    await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
+    const diff = page.locator(".diff-viewer pre");
+    await diff.focus();
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("c");
+    const note = page.locator(".diff-comment-form textarea");
+    await note.waitFor();
+    await page.keyboard.type("check case");
+    await page.keyboard.press("Enter");
+    assert.equal(await note.inputValue(), "check case\n", "c and Enter inside the note must be text, not review commands");
+    await page.keyboard.press("Escape");
+    await note.waitFor({ state: "detached" });
+    assert.equal(await page.evaluate(() => document.activeElement?.tagName), "PRE", "closing the note returns focus to the diff");
+  });
+  await check("@ lists project files and inserts the chosen path", async page => {
+    await page.getByTestId("new-thread").click();
+    const input = page.getByTestId("composer-input");
+    await input.click();
+    await page.keyboard.type("看看 @inspec");
+    const menu = page.getByTestId("mention-menu");
+    await menu.getByRole("option").first().waitFor();
+    assert.match(await menu.getByRole("option").first().innerText(), /Inspector\.tsx/);
+    await page.keyboard.press("Enter");
+    assert.equal(await input.inputValue(), "看看 @src/components/Inspector.tsx ");
+    await menu.waitFor({ state: "detached" });
+    // An address is not a mention.
+    await page.keyboard.type("mail a@b");
+    assert.equal(await page.getByTestId("mention-menu").count(), 0);
+  });
+  await check("review notes survive a send that never reached the agent", async page => {
+    await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
+    await page.locator(".diff-viewer pre").focus();
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("c");
+    await page.keyboard.type("keep me");
+    await page.keyboard.press("Control+Enter");
+    const bar = page.getByTestId("review-comments");
+    await bar.waitFor();
+    await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      cleoClient.streamTurn = async function* () { throw new Error("backend offline"); };
+    });
+    await bar.getByRole("button", { name: "发给 Agent" }).click();
+    await page.getByText("审查意见没有发出，已保留，可以重试。").waitFor();
+    assert.match(await bar.innerText(), /1 条审查意见/);
+    // A runtime update before the failure is not delivery either.
+    await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      const runtime = (await cleoClient.loadThread("desktop-ui")).runtime;
+      cleoClient.streamTurn = async function* () { yield { type: "runtime", runtime }; throw new Error("setup failed"); };
+    });
+    await page.getByText("审查意见没有发出，已保留，可以重试。").waitFor({ state: "hidden", timeout: 8000 }).catch(() => {});
+    await bar.getByRole("button", { name: "发给 Agent" }).click();
+    await page.getByText("审查意见没有发出，已保留，可以重试。").waitFor();
+    assert.match(await bar.innerText(), /1 条审查意见/);
+  });
+  await check("a failed file list offers Retry instead of claiming there are no files", async page => {
+    await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      const original = cleoClient.sourceControl.bind(cleoClient);
+      let failures = 1;
+      cleoClient.sourceControl = async (op, params) => {
+        if (op === "listFiles" && failures-- > 0) throw new Error("git unavailable");
+        return original(op, params);
+      };
+    });
+    await page.getByTestId("new-thread").click();
+    await page.getByTestId("composer-input").click();
+    await page.keyboard.type("@insp");
+    const menu = page.getByTestId("mention-menu");
+    await menu.getByText("读取项目文件失败。").waitFor();
+    await menu.getByRole("button", { name: "重试", exact: true }).click();
+    await menu.getByRole("option").first().waitFor();
+    assert.match(await menu.getByRole("option").first().innerText(), /Inspector\.tsx/);
+  });
+  await check("the runtime menu lists the harness's models and a named effort control", async page => {
+    await page.getByTestId("new-thread").click();
+    await page.getByTestId("runtime-selector").click();
+    const models = page.getByTestId("runtime-model-list");
+    await models.getByRole("button").first().waitFor();
+    assert.ok(await models.getByRole("button").count() >= 2);
+    const effort = page.getByTestId("effort-selector");
+    assert.equal(await effort.getAttribute("role"), "radiogroup");
+    await effort.focus();
+    await page.keyboard.press("End");
+    await page.waitForFunction(() => document.querySelector('[data-testid="effort-selector"] [aria-checked="true"]')?.textContent !== "低");
+    await models.getByRole("button").nth(1).click();
+    assert.match(await page.getByTestId("runtime-selector").innerText(), /terra/i);
+  });
+  await check("delegated subtasks nest under their parent and link back", async page => {
+    const sidebar = page.getByTestId("thread-list");
+    assert.equal(await sidebar.getByTestId("subtask-row").count(), 2);
+    await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
+    const list = page.getByTestId("subtask-list");
+    await list.waitFor();
+    assert.equal(await list.locator(".subtask-row").count(), 2);
+    await list.locator(".subtask-row").first().click();
+    await page.getByTestId("subtask-parent").click();
+    await page.locator(".breadcrumb strong").filter({ hasText: "完成独立桌面 UI" }).waitFor();
+    // The task-boundary classifier is not presented as a reviewer of the work.
+    const collaboration = await page.getByTestId("collaboration-line").innerText();
+    assert.match(collaboration, /侧栏与导航重构/);
+    assert.doesNotMatch(collaboration, /任务边界判断/);
+  });
+  await check("commands show their exit code and duration; failures count in the summary", async page => {
+    await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
+    const summary = page.getByTestId("work-group").filter({ hasText: "查阅记忆" });
+    await summary.waitFor();
+    assert.match(await summary.innerText(), /1 个失败/);
+    await summary.getByRole("button").click();
+    const exits = page.getByTestId("tool-exit");
+    await exits.first().waitFor();
+    assert.deepEqual(await exits.allInnerTexts(), ["退出码 1", "退出码 0"]);
+  });
+  await check("a turn shows the preferences it was given, in the timeline and in the details panel", async page => {
+    await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
+    const note = page.getByTestId("memory-context").first();
+    await note.waitFor();
+    assert.match(await note.innerText(), /提供了 2 条记忆偏好/);
+    await note.getByRole("button").click();
+    await note.getByText(/每次修改后简短列出变更文件/).waitFor();
+    await page.getByRole("tab", { name: "概况", exact: true }).click();
+    const supplied = page.getByTestId("memory-supplied");
+    await supplied.waitFor();
+    assert.match(await supplied.innerText(), /最近一轮提供的记忆\s*2/);
+  });
+  await check("Ctrl+Shift+M and Ctrl+Shift+A open the model and access menus from anywhere", async page => {
+    await page.getByTestId("new-thread").click();
+    await page.locator(".thread-sidebar").click({ position: { x: 5, y: 5 } }).catch(() => {});
+    await page.keyboard.press("Control+Shift+M");
+    await page.getByTestId("runtime-menu").waitFor();
+    // The keyboard lands on the current choice, not on the menu's first button.
+    await page.waitForFunction(() => document.activeElement?.closest('[data-testid="runtime-menu"]')
+      && document.activeElement.getAttribute("aria-pressed") === "true");
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => document.activeElement?.getAttribute("data-testid") === "runtime-selector");
+    await page.getByTestId("runtime-menu").waitFor({ state: "detached" });
+    await page.keyboard.press("Control+Shift+A");
+    await page.getByTestId("permission-menu").waitFor();
+  });
+  await check("Ctrl+L and the palette put the cursor in the composer", async page => {
+    await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
+    const focused = () => page.evaluate(() => document.activeElement?.getAttribute("data-testid"));
+    await page.locator(".thread-sidebar").click({ position: { x: 5, y: 5 } }).catch(() => {});
+    await page.keyboard.press("Control+L");
+    assert.equal(await focused(), "composer-input");
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.keyboard.press("Control+K");
+    await page.keyboard.type("聚焦输入框");
+    await page.keyboard.press("Enter");
+    await page.waitForFunction(() => document.activeElement?.getAttribute("data-testid") === "composer-input");
+  });
+  await check("saved review notes: kept for tasks the list does not show; round-7 fingerprints read as not checked", async page => {
+    await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
+    await page.locator(".diff-viewer pre").focus();
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("c");
+    await page.keyboard.type("legacy note");
+    await page.keyboard.press("Control+Enter");
+    const note = page.locator(".diff-comment", { hasText: "legacy note" });
+    await note.waitFor();
+    assert.equal(await note.locator(".diff-comment-stale").count(), 0, "a new note is on the current change");
+    // The task list is capped, so a task missing from it may still exist: its notes stay. A note saved
+    // before hunk fingerprints (no "h1:" prefix) cannot be compared and says so.
+    await page.evaluate(() => {
+      const notes = JSON.parse(localStorage.getItem("cleo-review-notes") || "{}");
+      for (const list of Object.values(notes)) for (const item of list) item.diffHash = String(item.diffHash).replace(/^h1:/, "");
+      notes["task-not-in-the-list"] = [{ id: "kept", path: "a.ts", line: 1, side: "new", excerpt: "+a", text: "keep me" }];
+      localStorage.setItem("cleo-review-notes", JSON.stringify(notes));
+    });
+    await page.reload();
+    await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
+    await note.waitFor();
+    assert.match(await note.innerText(), /版本未核对/);
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("cleo-review-notes") || "{}"));
+    assert.ok(saved["task-not-in-the-list"]?.length, "notes of a task missing from the list are kept");
+  });
+  await check("review notes follow outside switches A → B → A of an unpushed branch, and say why while they wait", async page => {
+    await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
+    await page.locator(".diff-viewer pre").focus();
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("c");
+    await page.keyboard.type("written on main");
+    await page.keyboard.press("Control+Enter");
+    const bar = page.getByTestId("review-comments");
+    await bar.waitFor();
+    const hold = page.getByTestId("branch-hold");
+    // The checkout is switched outside Cleo, on branches never pushed (no upstream: nothing on GitHub
+    // to follow). The workspace's record of the branch changes only when the workspace is reloaded,
+    // and then to `recordedBranch`.
+    await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      const original = cleoClient.sourceControl.bind(cleoClient);
+      const load = cleoClient.loadWorkspace.bind(cleoClient);
+      Object.assign(window, { liveBranch: "main", recordedBranch: "main", workspaceLoads: 0 });
+      cleoClient.loadWorkspace = async (...args) => {
+        window.workspaceLoads += 1;
+        const snapshot = await load(...args);
+        return { ...snapshot, projects: snapshot.projects.map((project) => project.branch === "main" ? { ...project, branch: window.recordedBranch } : project) };
+      };
+      cleoClient.sourceControl = async (op, params) => {
+        const result = await original(op, params);
+        return op === "status" ? { ...result, branch: window.liveBranch, upstream: null, canCreatePullRequest: false } : result;
+      };
+    });
+    // A → B while the record lags: notes hidden, none can be added, and the Changes tab says why.
+    await page.evaluate(() => { window.liveBranch = "feature-b"; window.dispatchEvent(new Event("focus")); });
+    await page.getByTestId("source-control").getByText("feature-b", { exact: true }).waitFor();
+    await hold.waitFor();
+    assert.match(await hold.innerText(), /feature-b[\s\S]*main[\s\S]*（已保留 1 条，不会丢失）/);
+    await bar.waitFor({ state: "detached" });
+    assert.equal(await page.locator("button.diff-comment-add").count(), 0, "no note can be added on an unconfirmed branch");
+    await page.waitForFunction(() => window.workspaceLoads > 0);
+    // "Check again" once the record can catch up: both say feature-b, where the main note does not belong.
+    await page.evaluate(() => { window.recordedBranch = "feature-b"; });
+    await hold.getByRole("button", { name: "重新检查" }).click();
+    await hold.waitFor({ state: "detached" });
+    assert.equal(await bar.count(), 0, "a note written on main does not show on feature-b");
+    // B → A: the workspace is reloaded again on the way back and the note returns.
+    await page.evaluate(() => { window.liveBranch = "main"; window.recordedBranch = "main"; window.dispatchEvent(new Event("focus")); });
+    await bar.waitFor();
+    assert.match(await bar.innerText(), /1 条审查意见/);
+    assert.equal(await hold.count(), 0);
+  });
+  await check("a pull request stays with its branch when a refresh fails after a switch", async page => {
+    await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      const original = cleoClient.sourceControl.bind(cleoClient);
+      window.prBranch = "feature-a";
+      cleoClient.sourceControl = async (op, params) => {
+        if (op === "status") {
+          const status = await original(op, params);
+          return { ...status, branch: window.prBranch, upstream: `origin/${window.prBranch}`, ahead: 0 };
+        }
+        if (op === "pullRequest") {
+          if (window.prBranch !== "feature-a") throw new Error("HTTP 503: Service Unavailable");
+          return { pullRequest: { number: 7, title: "Feature A", state: "OPEN", url: "https://github.com/demo/cleo/pull/7",
+            draft: false, checks: { passed: 1, failed: 0, pending: 0 } } };
+        }
+        return original(op, params);
+      };
+    });
+    await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
+    const row = page.getByTestId("source-control");
+    await row.waitFor();
+    // The row may have read git before the answers above were in place; coming back to the window
+    // makes it read again (every repository refreshes on focus).
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await row.getByTestId("pull-request-status").waitFor();
+    assert.match(await row.getByTestId("pull-request-status").innerText(), /#7/);
+    await page.evaluate(() => { window.prBranch = "feature-b"; window.dispatchEvent(new Event("focus")); });
+    await row.getByText("feature-b", { exact: true }).waitFor();
+    await row.getByRole("button", { name: "重试", exact: true }).waitFor();
+    assert.equal(await row.getByTestId("pull-request-status").count(), 0, "branch B must not show branch A's pull request");
+  });
+  await check("a file in the conversation's changes card opens its own diff", async page => {
+    await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
+    const files = page.getByTestId("changes-card-file");
+    await files.first().waitFor();
+    const target = await files.last().innerText();
+    await files.last().click();
+    await page.locator('#inspector-tab-changes[aria-selected="true"]').waitFor();
+    const selected = page.locator('.inspector [role="option"][aria-selected="true"]');
+    await page.waitForFunction(path => document.querySelector('.inspector [role="option"][aria-selected="true"]')?.textContent?.includes(path.split("/").pop()), target);
+    assert.match(await selected.innerText(), new RegExp(target.split("/").pop().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  });
+  await check("a model list that arrives late does not take focus back from the composer", async page => {
+    await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      const original = cleoClient.getProductivityModels.bind(cleoClient);
+      window.modelCalls = 0;
+      cleoClient.getProductivityModels = async (...args) => {
+        window.modelCalls += 1;
+        await new Promise((resolve) => setTimeout(resolve, 900));
+        return original(...args);
+      };
+    });
+    await page.getByTestId("new-thread").click();
+    await page.getByTestId("runtime-selector").click();
+    await page.getByTestId("runtime-menu").waitFor();
+    await page.waitForFunction(() => document.activeElement?.closest('[data-testid="runtime-menu"]'));
+    const callsAtOpen = await page.evaluate(() => window.modelCalls);
+    await page.keyboard.press("Control+L");
+    const focused = () => page.evaluate(() => document.activeElement?.getAttribute("data-testid"));
+    assert.equal(await focused(), "composer-input");
+    // Let the delayed model answers land; the cursor stays where the user put it.
+    await page.waitForFunction(() => window.modelCalls > 0);
+    await page.waitForTimeout(1600);
+    assert.ok((await page.evaluate(() => window.modelCalls)) >= callsAtOpen && callsAtOpen > 0, "the menu loaded models after opening");
+    assert.equal(await focused(), "composer-input");
+  });
+  await check("a late model list leaves focus alone when the user's focus was in the menu first", async page => {
+    await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      const original = cleoClient.getProductivityModels.bind(cleoClient);
+      window.modelAnswers = 0;
+      cleoClient.getProductivityModels = async (...args) => {
+        await new Promise((resolve) => setTimeout(resolve, 900));
+        const models = await original(...args);
+        window.modelAnswers += 1;
+        return models;
+      };
+    });
+    await page.getByTestId("new-thread").click();
+    await page.getByTestId("runtime-selector").click();
+    await page.getByTestId("runtime-menu").waitFor();
+    // To the harness list and back, with the keyboard put on the harness row before the menu places
+    // it: the placement turn of the new screen belongs to the user.
+    await page.evaluate(async () => {
+      const settle = async () => { for (let step = 0; step < 6; step += 1) await Promise.resolve(); };
+      document.querySelector('[data-testid="runtime-model-row"]').click();
+      await settle();
+      document.querySelector('.runtime-menu button[aria-label="返回当前设置"]').click();
+      await settle();
+      document.querySelector('[data-testid="runtime-model-row"]').focus();
+    });
+    const focused = () => page.evaluate(() => document.activeElement?.getAttribute("data-testid"));
+    await page.waitForTimeout(120);
+    assert.equal(await focused(), "runtime-model-row", "the menu kept the user's focus on the harness row");
+    const answersBefore = await page.evaluate(() => window.modelAnswers);
+    await page.keyboard.press("Control+L");
+    assert.equal(await focused(), "composer-input");
+    await page.waitForFunction((before) => window.modelAnswers > before, answersBefore, { timeout: 5000 });
+    await page.waitForTimeout(300);
+    assert.equal(await focused(), "composer-input");
+  });
+  await check("the 160-character memory caveat appears only when the library's text runs past the record", async page => {
+    const results = await page.evaluate(async () => {
+      const { compareRecordedMemory } = await import("/src/components/Inspector.tsx");
+      const full = "偏".repeat(160);
+      return [
+        compareRecordedMemory(full, full),
+        compareRecordedMemory(full, `${full}，以及之后补充的一句`),
+        compareRecordedMemory(full, "改".repeat(160)),
+        compareRecordedMemory("短的偏好", "短的偏好"),
+        compareRecordedMemory("短的偏好", "短的偏好，补充一句"),
+        compareRecordedMemory(full, undefined),
+        compareRecordedMemory("😀".repeat(160), "😀".repeat(160)),
+      ];
+    });
+    assert.deepEqual(results, ["same", "partial", "changed", "same", "changed", "missing", "same"]);
+  });
+  await check("Ctrl+/ opens the keyboard shortcut sheet", async page => {
+    await page.keyboard.press("Control+/");
+    await page.getByTestId("shortcuts-sheet").waitFor();
+    assert.match(await page.getByTestId("shortcuts-sheet").innerText(), /引用项目文件/);
+    await page.keyboard.press("Escape");
+    await page.getByTestId("shortcuts-sheet").waitFor({ state: "hidden" });
   });
   await check("attachments: sent messages show chips, not a pasted file list, before and after sending", async page => {
     await page.evaluate(async () => {

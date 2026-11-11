@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import { basename, dirname, isAbsolute, join, posix, relative, resolve, win32 } from "node:path";
 import { desktopPlatform, installationRoot } from "./platform.mjs";
 import { compareVersions } from "./updater.mjs";
-import { readJson } from "./evolution-store.mjs";
+import { readJson } from "./program-store.mjs";
 import { runtimeInUse } from "./install-state.mjs";
 import { parseRuntimeRegistry, RUNTIME_REGISTRY } from "./online-runtime.mjs";
 
@@ -139,7 +139,7 @@ async function snapshotHomes(fs, runtimesRoot) {
 }
 
 /** Purpose: Where the installers place a launcher, for either release channel, whether or not that
- * installation ever opened the evolution registry (a chat-only install has no builds or journal).
+ * installation ever opened the program registry (a chat-only install has no builds or journal).
  * Input: platform and environment. Output: candidate executables; missing ones are ignored by the inventory.
  */
 export function defaultLauncherPaths(platform = process.platform, environment = process.env) {
@@ -168,7 +168,7 @@ export function createStorageQueue() {
 }
 
 /** Purpose: Gather every program location whose runtimes must survive.
- * Input: evolution state, builds directory, current process, installed launchers. Output: resources paths with labels.
+ * Input: registry state, builds directory, current process, installed launchers. Output: resources paths with labels.
  */
 async function liveResources({ fs, state, buildsRoot, target, currentResources, currentVersion, installedExecutables, siblings = [] }) {
   const references = new Map();
@@ -201,7 +201,7 @@ async function liveResources({ fs, state, buildsRoot, target, currentResources, 
   }
   for (const executable of installedExecutables || []) {
     try {
-      // A launcher that never opened the evolution registry is still a program with a runtime.
+      // A launcher that never opened the program registry is still a program with a runtime.
       if (!await probe(fs, executable)) continue;
       const resources = join(installationRoot(executable, target), target.resources);
       const version = await bundleVersion(fs, resources, target);
@@ -241,7 +241,7 @@ async function bundleVersion(fs, resources, target) {
 }
 
 /** Purpose: Build an auditable inventory of Cleo-owned storage with a keep-or-reclaim decision per entry.
- * Input: data home, evolution store, current process locations and policy. Output: entries, totals and the reasons.
+ * Input: data home, program store, current process locations and policy. Output: entries, totals and the reasons.
  * Unknown content is always kept; user data is listed for size only.
  */
 export async function storageInventory({
@@ -510,10 +510,10 @@ export async function storageInventory({
     await push(entry);
   }
 
-  // Retained programs and data backups are governed by the evolution store; list them with their reasons.
+  // Retained programs and data backups are governed by the program store; list them with their reasons.
   const keepRoles = new Map();
   const role = (id, label) => { if (id) keepRoles.set(id, [...(keepRoles.get(id) || []), label]); };
-  role(state.active, tr("storage_reclaim.current_program")); role(state.baseline, tr("storage_reclaim.initial_working_version")); role(state.workspaceBase, tr("storage_reclaim.evolution_baseline"));
+  role(state.active, tr("storage_reclaim.current_program")); role(state.baseline, tr("storage_reclaim.initial_working_version")); role(state.workspaceBase, tr("storage_reclaim.base_of_earlier_local_changes"));
   role(state.latestSaved, tr("storage_reclaim.most_recently_saved_version")); role(state.candidate, tr("storage_reclaim.candidate_build")); role(state.downloadedOfficial, tr("storage_reclaim.downloaded_update"));
   for (const id of await listDirectory(fs, buildsRoot)) {
     const path = join(buildsRoot, id);

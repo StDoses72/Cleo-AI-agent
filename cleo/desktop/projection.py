@@ -13,12 +13,15 @@ from typing import Any
 from cleo.harnesses.events import event_payload
 from cleo.harnesses.models import AgentEvent
 from cleo.i18n import get_language, tr
+from cleo.memory.provenance import MEMORY_CONTEXT_EVENT
 
 _DIFF_HEADER = re.compile(r'^diff --git ("(?:\\.|[^"])*"|a/.+?) ("(?:\\.|[^"])*"|b/.+)$')
 _INCOMPLETE_TOOL_OUTPUT_KEY = "projection.the_task_ended_without_a_completion_event_for_th"
 
 
-_EVOLUTION_REQUIREMENTS = "Cleo self-iteration requirements:\n"
+# Local evolution was removed (docs/adr/0009-remove-local-evolution.md). Tasks it created keep the
+# prompts the desktop generated for it, so the markers below stay as a read-only display rule.
+_SELF_ITERATION_REQUIREMENTS = "Cleo self-iteration requirements:\n"
 _ACCEPTANCE_MARKER = re.compile(r"^\[\[CLEO_ACCEPTANCE_REQUEST:[^\]\n]+\]\]\n")
 _FROZEN_CASES = (
     "\n\n以下案例已经由桌面保存并冻结。",
@@ -38,14 +41,14 @@ _DIAGNOSTIC_DATA = (
 
 
 def internal_prompt_display(content: str) -> str:
-    """Purpose: Hide desktop-generated evolution instructions from the conversation.
+    """Purpose: Hide instructions the desktop generated for earlier self-iteration tasks.
 
-    Input: Prompt text as sent to the coding agent. Output: Only what the user asked:
+    Input: Prompt text as it was sent to the coding agent. Output: Only what the user asked:
     the request itself (with the user's own supplements), or a short label for a
     desktop-initiated repair. Unrecognized text is returned unchanged.
     """
     text = content
-    if text.startswith(_EVOLUTION_REQUIREMENTS):
+    if text.startswith(_SELF_ITERATION_REQUIREMENTS):
         _, separator, request = text.partition("\n\nUser request:\n")
         if separator:
             text = request
@@ -86,7 +89,7 @@ def internal_prompt_display(content: str) -> str:
 
 
 def visible_user_prompt(content: str, data: dict | None = None) -> str:
-    """Purpose: Present task text without generated computer-use or evolution instructions.
+    """Purpose: Present task text without generated computer-use or self-iteration instructions.
 
     Input: Saved prompt and optional display metadata. Output: User-facing text,
     including a read-only compatibility view for older generated messages.
@@ -266,15 +269,18 @@ def timeline_from_events(
                     tools[f"{current_turn_key}:{tool_id}"] = item
                 items.append(item)
             item["status"] = "error" if source.get("status") == "failed" else "done"
+            _apply_tool_outcome(item, source)
             if source.get("permission"):
                 item["permission"] = source["permission"]
-            output = _content_text(source.get("output") or content)
+            output = _content_text(source.get("output") or source.get("aggregatedOutput") or content)
             if output:
                 item["output"] = output
         elif event_type == "question_request":
             question = {"id": payload["id"], "type": "question", "request": dict(payload)}
             questions[payload["id"]] = question
             items.append(question)
+        elif event_type == "provider_event" and data.get("provider_event_type") == MEMORY_CONTEXT_EVENT:
+            _attach_memory_context(items, payload)
         elif event_type in {"approval_review", "permission_response"} or (
             event_type == "provider_event" and data.get("provider_event_type") in {
                 "item/autoApprovalReview/started", "item/autoApprovalReview/completed",
@@ -622,9 +628,10 @@ def stream_event_item(event: AgentEvent, state: dict[str, Any]) -> list[dict[str
             }
         tool = dict(tool)
         tool["status"] = "error" if item.get("status") == "failed" else "done"
+        _apply_tool_outcome(tool, item)
         if item.get("permission"):
             tool["permission"] = item["permission"]
-        result = _content_text(item.get("output") or event.text)
+        result = _content_text(item.get("output") or item.get("aggregatedOutput") or event.text)
         if result:
             tool["output"] = result
         state[f"tool:{event_key}"] = tool
@@ -771,6 +778,42 @@ def steer_item(receipt: dict[str, Any]) -> dict[str, Any]:
 def _tool_name(source: dict[str, Any]) -> str:
     """Purpose: Tool label; ACP sends a readable ``title`` instead of a tool name (Q4)."""
     return str(source.get("tool") or source.get("name") or source.get("title") or "tool")
+
+
+def _attach_memory_context(items: list[dict[str, Any]], payload: dict[str, Any]) -> None:
+    """Purpose: Put the preferences a turn was given on that turn's user message.
+
+    Input: the timeline built so far and the recorded payload (ids, short excerpts, count).
+    Output: the latest user message gains ``memoryContext``; nothing changes when the message is
+    not on this page.
+    """
+    entries = [
+        {"id": str(entry.get("id") or ""), "content": str(entry.get("content") or "")}
+        for entry in payload.get("entries") or [] if isinstance(entry, dict)
+    ]
+    count = payload.get("count")
+    for item in reversed(items):
+        if item.get("type") == "message" and item.get("role") == "user":
+            item["memoryContext"] = {
+                "count": count if isinstance(count, int) and count >= 0 else len(entries),
+                "entries": entries,
+            }
+            return
+
+
+def _apply_tool_outcome(tool: dict[str, Any], source: dict[str, Any]) -> None:
+    """Purpose: Copy a finished command's exit code and duration onto its timeline item.
+
+    Input: the item being built and the provider's result payload (Codex ``commandExecution``
+    reports ``exitCode`` and ``durationMs``). Output: the fields are set only when the provider
+    reported them as numbers, so the desktop can show "exit 1 · 3.2 s" without guessing.
+    """
+    exit_code = source.get("exitCode")
+    if isinstance(exit_code, int) and not isinstance(exit_code, bool):
+        tool["exitCode"] = exit_code
+    duration = source.get("durationMs")
+    if isinstance(duration, (int, float)) and not isinstance(duration, bool) and duration >= 0:
+        tool["durationMs"] = int(duration)
 
 
 _RAW_INPUT_KEYS = ("command", "cmd", "path", "file_path", "abs_path", "url", "query")

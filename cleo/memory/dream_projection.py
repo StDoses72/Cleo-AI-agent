@@ -10,13 +10,16 @@ from functools import lru_cache
 from typing import Any
 
 from cleo.memory.compaction import _redact_text
+from cleo.memory.provenance import MEMORY_CONTEXT_EVENT
 from cleo.memory.tool_body import bounded_tool_text
 from cleo.sessions.rewind import active_events
 
 PROJECTION_VERSION = 2
 BLOCK_BUDGET = 20_000
 MAX_BLOCK_BYTES = 64_000
-_NOISE = {"thread/tokenUsage/updated", "account/rateLimits/updated"}
+# Injected-memory records repeat existing preferences; consolidating them would feed memory back
+# into itself as if the user had said it again.
+_NOISE = {"thread/tokenUsage/updated", "account/rateLimits/updated", MEMORY_CONTEXT_EVENT}
 _SECRET_KEY = re.compile(
     r"(?i)^(?:.*[_-])?(api[_-]?key|authorization|password|secret|token|access[_-]?token|"
     r"refresh[_-]?token)$"

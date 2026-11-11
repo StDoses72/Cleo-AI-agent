@@ -217,7 +217,7 @@ export class DesktopUpdater {
     }
   }
 
-  /** Purpose: Hand a verified download to the evolution version switch; Cleo never replaces itself in place.
+  /** Purpose: Hand a verified download to the version switch; Cleo never replaces itself in place.
    * Input: switch callback receiving the manifest version. Output: true once the callback reports a completed switch.
    */
   async install(installVersion) {

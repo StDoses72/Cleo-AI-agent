@@ -19,8 +19,8 @@ try {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.getByTestId("conversation").waitFor();
-  await page.getByRole("button", { name: "开发", exact: true }).click();
-  await page.getByTestId("new-thread").click();
+  // The "+" on the development section always starts a development task (approvals only exist there).
+  await page.getByTestId("new-task-in-section").click();
   const input = page.getByTestId("composer-input");
   const prompt = page.getByTestId("approval-prompt");
   const stop = page.getByTestId("stop-button");

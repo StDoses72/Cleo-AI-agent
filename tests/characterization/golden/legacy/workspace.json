@@ -117,9 +117,11 @@
           "type": "message"
         }
       ],
+      "parentId": null,
       "pendingApprovals": [],
       "pendingQuestions": [],
       "projectId": "chat:general",
+      "routingTaskId": null,
       "runtime": {
         "access": ".",
         "approval": "Cleo 工具策略",
@@ -217,9 +219,11 @@
           "type": "message"
         }
       ],
+      "parentId": null,
       "pendingApprovals": [],
       "pendingQuestions": [],
       "projectId": "chat:research",
+      "routingTaskId": null,
       "runtime": {
         "access": ".",
         "approval": "Cleo 工具策略",
@@ -413,9 +417,11 @@
           "type": "message"
         }
       ],
+      "parentId": null,
       "pendingApprovals": [],
       "pendingQuestions": [],
       "projectId": "productivity:workspace",
+      "routingTaskId": null,
       "runtime": {
         "access": "default",
         "approval": "deny_all",
@@ -701,9 +707,11 @@
         },
         "id": "<agent:1>",
         "items": [],
+        "parentId": null,
         "pendingApprovals": [],
         "pendingQuestions": [],
         "projectId": "productivity:workspace",
+        "routingTaskId": null,
         "runtime": {
           "access": "default",
           "approval": "deny_all",
@@ -801,9 +809,11 @@
         },
         "id": "<thread:1>",
         "items": [],
+        "parentId": null,
         "pendingApprovals": [],
         "pendingQuestions": [],
         "projectId": "chat:research",
+        "routingTaskId": null,
         "runtime": {
           "access": ".",
           "approval": "Cleo 工具策略",
@@ -924,9 +934,11 @@
             "type": "message"
           }
         ],
+        "parentId": null,
         "pendingApprovals": [],
         "pendingQuestions": [],
         "projectId": "chat:general",
+        "routingTaskId": null,
         "runtime": {
           "access": ".",
           "approval": "Cleo 工具策略",

@@ -37,6 +37,7 @@ from cleo.harnesses.models import (
 )
 from cleo.harnesses.provider import AgentProvider, NativeSessionNotFoundError
 from cleo.i18n import tr
+from cleo.memory.provenance import MEMORY_CONTEXT_EVENT
 from cleo.runtime.usage import RateLimitWindowUsage
 from cleo.sessions.ports import SessionRepository
 
@@ -590,6 +591,30 @@ class AgentService:
             context = (
                 self._memory_context(self._space, route.project) if self._memory_context else ""
             )
+            # Record which preferences this turn was given (ids and a short excerpt), so the
+            # desktop can show them on the turn. Memory consolidation ignores this event.
+            supplied = getattr(context, "entries", ()) or ()
+            if supplied:
+                self._store.append_event(
+                    space=self._space,
+                    project=route.project,
+                    session_id=session_id,
+                    event_type="provider_event",
+                    actor="system",
+                    data={
+                        "provider_event_type": MEMORY_CONTEXT_EVENT,
+                        "payload": {
+                            "version": 1,
+                            "turn_id": turn_key,
+                            "count": len(supplied),
+                            "entries": [
+                                {"id": str(entry.get("id") or ""),
+                                 "content": str(entry.get("content") or "")[:160]}
+                                for entry in supplied[:30]
+                            ],
+                        },
+                    },
+                )
             context = "\n\n".join(part for part in (context, route.handoff) if part)
             if route.handoff_id:
                 self._store.append_event(

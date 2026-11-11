@@ -98,4 +98,38 @@
   /* Narrow panes anchor the menu to the composer instead of the pill, still rising from the pill's row. */
   .composer .runtime-menu { left: 12px; right: auto; bottom: 40px; width: calc(100% - 24px); max-width: 300px; max-height: max(80px, calc(100cqh - var(--composer-clearance) - 60px)); display: flex; flex-direction: column; }
   .runtime-menu-list { min-height: 0; }
+  /* The card (modes, models, effort) scrolls inside the capped menu instead of spilling over the pill. */
+  .composer .runtime-menu .runtime-card { min-height: 0; overflow-y: auto; }
 }
+
+/* Agent questions dock above the composer like approvals: a non-modal card, the timeline stays visible. */
+.conversation-bottom .question-card { pointer-events: auto; }
+.question-card {
+  width: min(var(--reading-width), calc(100% - 48px));
+  /* About a third of the window: the questions scroll inside, the conversation stays readable above. */
+  max-height: min(40vh, 380px);
+  margin: 0 auto 8px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-sm);
+}
+.question-card form { display: flex; max-height: inherit; flex-direction: column; }
+.question-card header { display: flex; align-items: center; gap: 8px; padding: 10px 10px 10px 14px; border-bottom: 1px solid var(--border); }
+.question-card header > svg { color: var(--muted); }
+.question-card h2 { flex: 1; margin: 0; font-size: var(--font-size-control); font-weight: 600; }
+.question-card header button { display: grid; width: 26px; height: 26px; padding: 0; place-items: center; border-radius: var(--radius-sm); color: var(--muted); }
+.question-card header button:hover { color: var(--text); background: var(--surface-hover); }
+.question-card-body { min-height: 0; flex: 1; overflow-y: auto; padding: 4px 14px 8px; }
+.question-card fieldset { margin: 10px 0; }
+.question-card legend { color: var(--muted); font-size: 12px; font-weight: 600; }
+.question-card .question-text { margin: 2px 0 6px; font-size: var(--font-size-control); }
+.question-card .question-option { margin: 4px 0; padding: 8px 10px; border-radius: var(--radius-sm); }
+.question-card .question-option:has(input:checked) { border-color: var(--text); background: var(--surface-hover); }
+.question-card .question-custom { margin-top: 8px; font-size: 12px; }
+.question-card .question-custom textarea, .question-card .question-custom input { padding: 7px 9px; border-radius: var(--radius-sm); background: var(--canvas); }
+.question-card footer { margin: 0; padding: 8px 10px; border-top: 1px solid var(--border); gap: 6px; }
+.question-card footer button { height: 28px; padding: 0 12px; border-radius: var(--radius-sm); font-size: var(--font-size-caption); }
+.question-banner { margin: 0 auto 8px; width: min(var(--reading-width), calc(100% - 48px)); border-radius: var(--radius-md); }

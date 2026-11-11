@@ -13,6 +13,7 @@ from typing import Any
 
 from cleo.memory.compact_file import decode_compact, read_compact_file
 from cleo.memory.paths import compact_path, events_path, manifest_path, memory_database_path
+from cleo.memory.provenance import MEMORY_CONTEXT_EVENT
 from cleo.memory.tool_body import TOOL_BODY_VERSION, bounded_tool_text
 from cleo.sessions.rewind import active_events
 
@@ -478,6 +479,10 @@ def project_compact_events(
         event_id = str(event.get("id") or "")
         event_type = str(event.get("type") or "")
         if not event_id or event_id in represented_ids:
+            continue
+        # A record of injected preferences is not session evidence (see cleo.memory.provenance).
+        data = event.get("data") if isinstance(event.get("data"), dict) else {}
+        if data.get("provider_event_type") == MEMORY_CONTEXT_EVENT:
             continue
         if event_type in {
             "session_failed",

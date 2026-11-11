@@ -32,9 +32,10 @@ def thread_status(status: Any) -> str:
 
 
 def visible_title(title: Any) -> str | None:
-    """Purpose: Keep titles saved from internal evolution prompts out of the UI.
+    """Purpose: Keep titles saved from earlier self-iteration prompts out of the UI.
 
     Input: Persisted manifest title. Output: Display title; the stored value is unchanged.
+    Local evolution was removed; tasks it created keep these titles on disk.
     """
     if isinstance(title, str) and title.startswith(
         ("Cleo self-iteration requirements", "[[CLEO_ACCEPTANCE_REQUEST:"),
@@ -145,6 +146,10 @@ def thread_view(
         "runtime": runtime,
         "terminal": terminal_lines(events),
         "skills": skills,
+        # A subtask that subtask routing delegated: the conversation that started it, so the
+        # desktop can list it under its parent instead of as an unrelated task.
+        "parentId": manifest.get("parent_session_id") or None,
+        "routingTaskId": manifest.get("routing_task_id") or None,
     }
 
 

@@ -110,8 +110,6 @@ try {
         throw new Error(`Unhandled test method: ${method}`);
       },
       onStreamEvent(listener) { listeners.add(listener); return () => listeners.delete(listener); },
-      getEvolutionState: async () => ({ phase: "idle", builds: [], releases: [], supported: false }),
-      onEvolutionState: () => () => {},
       getUpdateState: async () => ({ phase: "unsupported", currentVersion: "test" }),
       onUpdateState: () => () => {}, confirmHealthy: async () => {}, setTheme: () => {},
     };
@@ -297,11 +295,11 @@ try {
   await page.evaluate(() => window.emitTest({ type: "upsert-item", item: { id: "tool-live", turnId: "live-turn", type: "tool", name: "test", command: "test", status: "running" } }));
   assert(await page.getByText(thought.content, { exact: true }).isVisible());
   await page.evaluate(() => window.emitTest({ type: "upsert-item", item: { id: "answer-live", turnId: "live-turn", type: "message", role: "assistant", content: "最终回答", time: "" } }));
-  await page.getByTestId("thought-group").getByRole("button").waitFor();
-  assert.equal(await page.getByTestId("thought-group").getByRole("button").getAttribute("aria-expanded"), "false");
-  await page.getByTestId("thought-group").getByRole("button").click();
+  await page.getByTestId("work-group").getByRole("button").waitFor();
+  assert.equal(await page.getByTestId("work-group").getByRole("button").getAttribute("aria-expanded"), "false");
+  await page.getByTestId("work-group").getByRole("button").click();
   await page.evaluate(() => window.emitTest({ type: "upsert-item", item: { id: "answer-live", turnId: "live-turn", type: "message", role: "assistant", content: "最终回答继续输出", time: "" } }));
-  assert.equal(await page.getByTestId("thought-group").getByRole("button").getAttribute("aria-expanded"), "true");
+  assert.equal(await page.getByTestId("work-group").getByRole("button").getAttribute("aria-expanded"), "true");
   await page.evaluate(() => window.askTest("claude"));
   const dialog = page.getByRole("dialog", { name: "Agent 提问" });
   await dialog.waitFor();
@@ -367,7 +365,7 @@ try {
   application = undefined;
   }
   if (process.env.CLEO_SMOKE_REGRESSION === "1") {
-    for (const script of ["smoke.mjs", "smoke-approvals.mjs", "smoke-evolution.mjs"]) {
+    for (const script of ["smoke.mjs", "smoke-approvals.mjs"]) {
       const result = spawnSync(process.execPath, [join(ui, "scripts", script)], {
         cwd: ui, stdio: "inherit", windowsHide: true,
         env: { ...process.env, CLEO_SMOKE_APP_DIR: appDir, CLEO_SMOKE_OUTPUT: join(scratch, script), CLEO_HOME: join(scratch, "home") },

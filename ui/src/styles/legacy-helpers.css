@@ -2,7 +2,7 @@
 
 small { font-size: var(--font-size-caption); }
 [role="alert"] { user-select: text; overflow-wrap: anywhere; }
-.property-list dd, .ms-detail-info dd, .settings-value, .evolution-dialog p { user-select: text; }
+.property-list dd, .ms-detail-info dd, .settings-value { user-select: text; }
 .titlebar-context > span { max-width: min(40vw, 480px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tool-process[open] .tool-main code { white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 .memory-summary { display: flex; flex-wrap: wrap; gap: 8px 24px; padding: 12px 0; color: var(--muted); font-size: var(--font-size-caption); }

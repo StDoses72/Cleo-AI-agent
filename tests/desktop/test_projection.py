@@ -128,6 +128,52 @@ def test_timeline_from_events_projects_messages_and_tools() -> None:
     assert [item["type"] for item in items] == ["message", "tool", "message"]
     assert items[1]["status"] == "done"
     assert items[1]["output"] == "clean"
+    assert "exitCode" not in items[1] and "durationMs" not in items[1]
+
+
+def test_the_memories_a_turn_was_given_sit_on_its_user_message() -> None:
+    from cleo.memory.provenance import MEMORY_CONTEXT_EVENT
+
+    events = [
+        {"id": "u1", "type": "user_message", "content": "first"},
+        {"id": "a1", "type": "assistant_message", "content": "ok"},
+        {"id": "u2", "type": "user_message", "content": "second"},
+        {"id": "m2", "type": "provider_event", "data": {"provider_event_type": MEMORY_CONTEXT_EVENT, "payload": {
+            "version": 1, "turn_id": "t2", "count": 2,
+            "entries": [{"id": "p1", "content": "prefers a desktop app"}, {"id": "p2", "content": "answer first"}],
+        }}},
+        {"id": "a2", "type": "assistant_message", "content": "done"},
+    ]
+
+    items = timeline_from_events(events)
+
+    assert [item["type"] for item in items] == ["message", "message", "message", "message"]
+    assert "memoryContext" not in items[0]
+    assert items[2]["memoryContext"] == {"count": 2, "entries": [
+        {"id": "p1", "content": "prefers a desktop app"}, {"id": "p2", "content": "answer first"}]}
+
+
+def test_command_results_carry_exit_code_duration_and_aggregated_output() -> None:
+    """Codex reports a command's exit code, duration and combined output on completion."""
+    result = {"id": "call-1", "type": "commandExecution", "status": "completed",
+              "exitCode": 1, "durationMs": 3210.4, "aggregatedOutput": "1 failed"}
+    events = [
+        {"id": "t1", "type": "tool_call",
+         "data": {"payload": {"item": {"id": "call-1", "tool": "shell", "command": "npm test"}}}},
+        {"id": "t2", "type": "tool_result", "data": {"payload": {"item": result}}},
+    ]
+
+    stored = timeline_from_events(events)[0]
+    live = stream_event_item(AgentEvent(provider="codex", type="tool_result", data={"payload": {"item": result}}), {})[0]["item"]
+
+    for item in (stored, live):
+        assert item["exitCode"] == 1
+        assert item["durationMs"] == 3210
+        assert item["output"] == "1 failed"
+    # Booleans and negative numbers are not exit codes or durations.
+    odd = dict(result, exitCode=True, durationMs=-5)
+    odd_item = timeline_from_events([events[0], {"id": "t3", "type": "tool_result", "data": {"payload": {"item": odd}}}])[0]
+    assert "exitCode" not in odd_item and "durationMs" not in odd_item
 
 
 @pytest.mark.parametrize("running_status", ["inProgress", "in_progress"])

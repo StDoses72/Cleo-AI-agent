@@ -117,8 +117,6 @@ def test_desktop_done_waits_for_incremental_compact_publication(
         desktop._workspace_root = lambda _manifest: str(tmp_path)
         desktop._steer_mode = lambda _manifest: "boundary"
         desktop._ensure_productivity_session = AsyncMock()
-        desktop._is_evolution = lambda _manifest: False
-        desktop._evolution_prompt = lambda _manifest, prompt: prompt
         desktop._runtime_profile = lambda _manifest: {"contextWindow": 64000}
         desktop._session_provider_type = lambda _manifest: "codex_sdk"
         desktop._debug = lambda *_args: None

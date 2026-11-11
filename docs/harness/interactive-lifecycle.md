@@ -179,6 +179,12 @@ result     {"num_turns":1,"result":"NOTIFIED: …\nFINAL: both done","origin":{"
 
 为什么不改 service / UI：阶段回复是普通 `agent_message`，后台任务是普通 tool 条目，终态仍是一个 `session_completed`；把"多阶段"压回现有事件词汇，上层无需知道 Claude 的后台语义。代价是等待期间该 turn 仍处于 running：UI 照常排队用户的新消息（现有行为），不会把新输入接到旧任务上，但长期运行的后台 shell（如 dev server）会在 600 秒静默后随本轮结束并被断开，而不是无限 loading。
 
+### 2.3b 回合开头的记忆来源记录与命令结果（ADR 0008）
+
+- `AgentService._prompt` 在注入项目偏好之后、调用 provider 之前，若 `memory_context` 返回的文本带有 `entries`（`cleo.memory.reader.PreferenceContext`），追加一条 `provider_event`：`provider_event_type = "cleo/memory_context"`，`payload = {version: 1, turn_id, count, entries: [{id, content(≤160 字)}]}`。它不是 provider 原生事件，与 `cleo/handoff_submitted` 同类；常量在 `cleo/memory/provenance.py`。
+- 消费方：桌面投影（`cleo/desktop/projection.py`）把它挂到本轮用户消息的 `memoryContext`；记忆整理的 Dream 投影（`_NOISE`）与 compaction fallback 跳过它，注入内容不会回流为新证据。
+- 命令结果：投影从 Codex `commandExecution` 的结果里读取 `exitCode`、`durationMs`（以及 `aggregatedOutput` 作为输出），写入工具条目；其他 harness 不报告这两项时不显示。投影版本 `PROJECTION_VERSION` 为 14。
+
 ### 2.4 没有改动、仍需后续决定的点
 
 - 聊天入口的 Claude 问答：要支持，需要 `ChatRuntime` 接 `question_request` 并在聊天 UI 提供弹窗；当前文本回退是刻意的。
