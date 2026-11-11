@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import type { Project, Thread, ThreadSpace, WorkspaceSpace } from "../types";
 
-export type SidebarView = WorkspaceSpace | "evolution";
+export type SidebarView = WorkspaceSpace;
 
 interface ThreadSidebarProps {
   /** What the main pane shows; the matching nav entry or thread is highlighted. */
@@ -46,11 +46,9 @@ interface ThreadSidebarProps {
   onCreateChat: () => void;
   onOpenSearch: () => void;
   onOpenMemory: () => void;
-  onOpenEvolution: () => void;
   onOpenSettings: () => void;
   /** Memory sources waiting for consolidation, shown on the Memory entry. */
   memoryPending?: number;
-  evolutionUnread?: boolean;
   recoverableChatBackups: number;
   onRestoreChatHistory: () => void;
   backendMode: "local" | "mock";
@@ -95,8 +93,7 @@ function worktreeParentPath(project: Project) {
   return at > 0 ? path.slice(0, at) : null;
 }
 
-/** Purpose: The one navigation column. Primary actions and the two secondary destinations
- * (memory, self-evolution) sit at the top; below, every conversation is listed exactly once:
+/** Purpose: The one navigation column. Primary actions and the memory library sit at the top; below, every conversation is listed exactly once:
  * work that is running or waiting on the user under "in progress" (with its project named),
  * everything else under development tasks grouped by project, then chats with Cleo. Rows stay
  * flat; indentation alone shows what belongs where.
@@ -117,10 +114,8 @@ export function ThreadSidebar({
   onCreateChat,
   onOpenSearch,
   onOpenMemory,
-  onOpenEvolution,
   onOpenSettings,
   memoryPending = 0,
-  evolutionUnread = false,
   recoverableChatBackups,
   onRestoreChatHistory,
   backendMode,
@@ -290,12 +285,6 @@ export function ThreadSidebar({
           <Brain size={15} />
           <span>{tr("app.memory")}</span>
           {memoryPending ? <small title={tr("memoryview.pending_sources")}>{memoryPending}</small> : null}
-        </button>
-        <button className={`sidebar-nav-item ${view === "evolution" ? "active" : ""}`} type="button" onClick={onOpenEvolution}
-          aria-current={view === "evolution" ? "page" : undefined} aria-label={tr("app.evolution")} title={tr("sidebar.evolution_hint")}
-          data-unread={evolutionUnread || undefined}>
-          <GitBranch size={15} />
-          <span>{tr("app.evolution")}</span>
         </button>
       </nav>
 

@@ -89,22 +89,18 @@ try {
       files: async (operation) => operation === "list"
         ? { entries: [{ path: "sample.pdf", name: "sample.pdf", kind: "file", size: 12 }], truncated: false }
         : { path: "sample.pdf", kind: "pdf", url: "about:blank", size: 12 },
-      getEvolutionState: async () => ({ phase: "idle", builds: [], releases: [], supported: false }),
-      onEvolutionState: () => () => {},
       getUpdateState: async () => ({ phase: "unsupported", currentVersion: "test" }),
       onUpdateState: () => () => {}, confirmHealthy: async () => {}, setTheme: () => {},
     };
   }, { snapshot });
   await page.reload();
   await page.getByText("最后一条消息应完整显示在输入框上方。", { exact: true }).waitFor();
-  assert.equal(await page.locator(".conversation-chrome .evolution-cases").count(), 0, "Improvement controls should not occupy the conversation header");
+  // The conversation menu no longer offers to change Cleo itself (local evolution was removed, ADR 0009).
   await page.locator(".thread-actions-wrap > button").click();
-  await page.getByRole("button", { name: uiLabel("改进 Cleo"), exact: true }).click();
-  await page.waitForFunction(value => document.querySelector('[data-testid="composer-input"]')?.value === value, uiLabel("请改进 Cleo："));
-  assert.equal(await page.getByRole("dialog", { name: uiLabel("改进 Cleo"), exact: true }).count(), 0);
-  // Back from evolution through the shared sidebar: open the conversation again.
-  await page.getByRole("button", { name: /^检查聊天、输入框与侧栏布局/ }).click();
-  await page.getByText("最后一条消息应完整显示在输入框上方。", { exact: true }).waitFor();
+  await page.locator(".thread-actions-menu").waitFor();
+  assert.equal(await page.locator(".thread-actions-menu").getByRole("button", { name: /改进 Cleo|Improve Cleo/ }).count(), 0);
+  await page.keyboard.press("Escape");
+  await page.locator(".thread-actions-menu").waitFor({ state: "detached" });
 
   const viewport = page.locator(".conversation-viewport");
   const inspector = page.getByTestId("inspector");

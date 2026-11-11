@@ -40,8 +40,7 @@ try {
         if (method === "get_agent_instructions") return { content: "", path: "AGENTS.md", exists: false };
         throw new Error(`Unhandled fixture method: ${method}`);
       },
-      getEvolutionState: async () => ({ phase: "idle", supported: false, builds: [], releases: [] }),
-      onEvolutionState: () => () => {}, confirmHealthy: async () => {}, onStreamEvent: () => () => {},
+      confirmHealthy: async () => {}, onStreamEvent: () => () => {},
       getUpdateState: async () => update,
       onUpdateState: listener => { listeners.add(listener); return () => listeners.delete(listener); },
       checkForUpdates: async tag => {

@@ -110,8 +110,6 @@ try {
         throw new Error(`Unhandled test method: ${method}`);
       },
       onStreamEvent(listener) { listeners.add(listener); return () => listeners.delete(listener); },
-      getEvolutionState: async () => ({ phase: "idle", builds: [], releases: [], supported: false }),
-      onEvolutionState: () => () => {},
       getUpdateState: async () => ({ phase: "unsupported", currentVersion: "test" }),
       onUpdateState: () => () => {}, confirmHealthy: async () => {}, setTheme: () => {},
     };

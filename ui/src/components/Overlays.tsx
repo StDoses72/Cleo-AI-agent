@@ -3,7 +3,7 @@ import { t as tr } from "../../electron/i18n.mjs";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { BackgroundMemorySettingsPanel } from "./model-settings/BackgroundMemorySettingsPanel";
 import { MemorySourcesSettings } from "./MemorySourcesSettings";
-import { UpdateVersionPicker } from "./UpdateVersionPicker";
+import { UpdateVersionPicker, VersionRecovery } from "./UpdateVersionPicker";
 import { RoutingSettingsPanel } from "./model-settings/RoutingSettingsPanel";
 import { handleDialogKeyDown, Modal } from "./Modal";
 import { PermissionSelector } from "./PermissionSelector";
@@ -22,7 +22,6 @@ import {
   Database,
   FileText,
   FolderOpen,
-  GitBranch,
   MessageCircle,
   Moon,
   PanelLeft,
@@ -865,6 +864,7 @@ function UpdateSettingsPage({
         <button type="button" disabled={busy || (state.phase === "ready" && Boolean(state.installBlocked))} onClick={action.run}>{action.label}</button>
       </div>}
       <UpdateVersionPicker state={state} busy={Boolean(busy)} onSelect={tag => void check(tag)} />
+      <VersionRecovery busy={Boolean(busy)} />
       {state.dependencies && <details className="settings-advanced"><summary>{tr("overlays.runtime_dependencies")}{state.dependencies.phase === "error" ? tr("overlays.update_incomplete") : ""}</summary><p>{
         state.dependencies.phase === "ready" ? tr("overlays.runtime_dependencies_were_updated_and_verified_they_will_take_effect_on_the_next_laun")
           : state.dependencies.phase === "error" ? tr("overlays.dependency_update_did_not_complete_continuing_with_the_current_version_value", { p0: state.dependencies.error || "" })
@@ -1031,7 +1031,6 @@ export const commandIcons = {
   code: Code2,
   folder: FolderOpen,
   memory: Brain,
-  evolution: GitBranch,
   inspector: PanelRight,
   sidebar: PanelLeft,
   light: Sun,

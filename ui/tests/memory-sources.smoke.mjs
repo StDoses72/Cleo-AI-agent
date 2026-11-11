@@ -80,8 +80,7 @@ try {
         if (method === "get_config_status") return { version: 1, error: null, restartRequired: false };
         throw new Error(`Unhandled fixture method: ${method}`);
       },
-      getEvolutionState: async () => ({ phase: "idle", supported: false, builds: [], releases: [] }),
-      onEvolutionState: () => () => {}, confirmHealthy: async () => {}, onStreamEvent: () => () => {},
+      confirmHealthy: async () => {}, onStreamEvent: () => () => {},
       getUpdateState: async () => ({ phase: "idle", currentVersion: "0.11.0", latestVersion: null, error: null }),
       onUpdateState: () => () => {},
     };

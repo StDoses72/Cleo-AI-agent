@@ -2,10 +2,7 @@ import { t as tr } from "../electron/i18n.mjs";
 import { DependencySetup } from "./components/DependencySetup";
 import { modifierKey } from "./platform";
 import { QuestionDialog } from "./components/QuestionDialog";
-import { EvolutionPanel } from "./components/EvolutionPanel";
-import { useEvolution } from "./useEvolution";
 import { useInspectorResize } from "./useInspectorResize";
-import "./components/evolution.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { renderBadge } from "./badge";
 import { harnessLabel, projectLabel } from "./runtime-labels";
@@ -32,7 +29,7 @@ import { ThreadSidebar } from "./components/ThreadSidebar";
 import { projectBranchName, useCleoWorkspace } from "./useCleoWorkspace";
 import { cleoClient } from "./services/cleoClient";
 import { useLanguage, setLanguage, type UiLanguage } from "./i18n";
-import type { ConfigStatus, MemoryViewMode, Project, RepositoryFiles, Thread, UpdateState, WorkspaceSpace } from "./types";
+import type { ConfigStatus, MemoryViewMode, Project, RepositoryFiles, Thread, UpdateState } from "./types";
 
 export function App() {
   const language = useLanguage();
@@ -40,144 +37,31 @@ export function App() {
     setLanguage(await cleoClient.setUiLanguage(value));
     await workspace.refreshLanguage();
   };
-  const evolution = useEvolution();
-  const [evolutionOpen, setEvolutionOpen] = useState(() => localStorage.getItem("cleo-view") === "evolution");
-  const workspace = useCleoWorkspace(evolutionOpen);
-  // Actions that must run against the workspace view (not evolution) wait until evolution has closed,
-  // then call the latest hook instance, whose handlers no longer see the evolution view as open.
+  const workspace = useCleoWorkspace();
+  // Handlers that outlive this render (system notifications) act on the latest workspace.
   const workspaceRef = useRef(workspace);
   workspaceRef.current = workspace;
-  const afterLeavingEvolution = useRef<(() => void) | null>(null);
-  const inWorkspace = (action: (current: typeof workspace) => void) => {
-    if (!evolutionOpen) { action(workspace); return; }
-    afterLeavingEvolution.current = () => action(workspaceRef.current);
-    setEvolutionOpen(false);
+  const newTask = () => {
+    if (workspace.activeSpace === "memory") workspace.selectSpace("productivity");
+    void workspace.createThread();
   };
-  useEffect(() => {
-    if (evolutionOpen || !afterLeavingEvolution.current) return;
-    const action = afterLeavingEvolution.current;
-    afterLeavingEvolution.current = null;
-    action();
-  }, [evolutionOpen]);
-  const newTask = () => inWorkspace(current => {
-    if (current.activeSpace === "memory") current.selectSpace("productivity");
-    void current.createThread();
-  });
-  const newChat = () => inWorkspace(current => {
-    current.selectSpace("chat");
-    void current.createThread();
-  });
+  const newChat = () => {
+    workspace.selectSpace("chat");
+    void workspace.createThread();
+  };
   // The "+" on the development section always starts a development task, even while a chat is open.
-  const newDevTask = () => inWorkspace(current => {
-    current.selectSpace("productivity");
-    void current.createThread();
-  });
+  const newDevTask = () => {
+    workspace.selectSpace("productivity");
+    void workspace.createThread();
+  };
   const openMemory = () => {
-    setEvolutionOpen(false);
     setMemoryView("all");
     workspace.selectSpace("memory");
   };
-  const openEvolution = () => {
-    setEvolutionOpen(true);
-    void evolution.refresh().catch(() => {});
-  };
-  const [improvementDraft, setImprovementDraft] = useState<string | null>(null);
-  const openingEvolution = useRef(false);
-  const [openingEvolutionUi, setOpeningEvolutionUi] = useState(false);
-  const [evolutionIssue, setEvolutionIssue] = useState<string | null>(null);
-  const preparingEvolution = useRef(false);
-  const [preparingTurn, setPreparingTurn] = useState(false);
-  const retryEvolution = useRef<(() => void) | null>(null);
-  const evolutionThread = evolutionOpen && Boolean(evolution.state?.threadId)
-    && workspace.activeThreadId === evolution.state?.threadId;
-
-  const startEvolution = async (newThread = false): Promise<Thread | null> => {
-    if (openingEvolution.current) return null;
-    openingEvolution.current = true;
-    setOpeningEvolutionUi(true);
-    setEvolutionIssue(null);
-    try {
-      if (!evolution.state?.prepared) await evolution.run("prepare");
-      const thread = await workspace.openEvolutionThread(newThread ? null : evolution.state?.threadId);
-      await evolution.run("thread", { id: thread.id });
-      return thread;
-    } catch (error) {
-      setEvolutionIssue(error instanceof Error ? error.message : tr("app.could_not_open_the_evolution_chat"));
-      return null;
-    } finally {
-      openingEvolution.current = false;
-      setOpeningEvolutionUi(false);
-    }
-  };
-  /** Purpose: Send ordinary instructions directly to the selected evolution harness.
-   * Input: user text and optional existing task. Output: one coding turn, no acceptance planning.
-   */
-  const sendEvolutionPrompt = async (prompt: string, preserveDraft = false, threadId?: string) => {
-    if (!prompt.trim() || preparingEvolution.current) return;
-    preparingEvolution.current = true;
-    setPreparingTurn(true);
-    setEvolutionIssue(null);
-    try {
-      const thread = threadId ? await workspace.openEvolutionThread(threadId)
-        : evolutionThread ? workspace.activeThread : await startEvolution(true);
-      if (!thread) return;
-      retryEvolution.current = () => { void sendEvolutionPrompt(prompt, true, thread.id); };
-      await evolution.run("thread", { id: thread.id });
-      await workspace.sendPrompt(prompt, thread, { preserveDraft });
-    } catch (error) {
-      setEvolutionIssue(error instanceof Error ? error.message : tr("app.could_not_start_editing"));
-    } finally { preparingEvolution.current = false; setPreparingTurn(false); await evolution.refresh(); }
-  };
-  /** Purpose: Return compiler/runtime diagnostics to the same agent. Input: none. Output: repair turn. */
-  const repairEvolution = async () => {
-    retryEvolution.current = () => { void repairEvolution(); };
-    try {
-      const prompt = await evolution.run<string>("repairPrompt");
-      await sendEvolutionPrompt(prompt, true, evolution.state?.threadId || undefined);
-    } catch (error) { setEvolutionIssue(error instanceof Error ? error.message : tr("app.could_not_start_the_repair")); }
-  };
-  const evolutionAction = (action: string, params: Record<string, unknown> = {}) => {
-    if (["releasePermission", "previewMergedRelease", "contributionBranches", "checkContribution", "mergeAssistance", "releases"].includes(action)) return evolution.inspect(action, params);
-    retryEvolution.current = () => evolutionAction(action, params);
-    setEvolutionIssue(null);
-    if (action === "repairContribution") {
-      return evolution.run<string>("contributionRepairPrompt", params).then(async (prompt) => {
-        setEvolutionOpen(true);
-        await sendEvolutionPrompt(prompt, true);
-      }).catch((error: unknown) => setEvolutionIssue(error instanceof Error ? error.message : tr("app.could_not_start_the_pr_repair")));
-    }
-    return evolution.run(action, params).then((result) => {
-      if (action === "discard" || action === "select") workspace.beginEvolutionDraft();
-      return result;
-    }).catch((error: unknown) => {
-      setEvolutionIssue(error instanceof Error ? error.message : tr("app.operation_failed"));
-      if (["previewRelease", "publishRelease", "publishMergedRelease", "previewMergedRelease", "releaseBuilds", "publishReleasePackages", "releasePackageStatus", "releasePermission", "startRelease", "submit", "requestBranch"].includes(action)) throw error;
-    });
-  };
-
   useEffect(() => {
-    if (!evolutionOpen || !improvementDraft) return;
-    workspace.setPrompt(improvementDraft);
-    setImprovementDraft(null);
-  }, [evolutionOpen, improvementDraft]);
-
-  useEffect(() => {
-    localStorage.setItem("cleo-view", evolutionOpen ? "evolution" : "workspace");
-  }, [evolutionOpen]);
-  useEffect(() => {
-    if (evolutionOpen && workspace.snapshot && evolution.state && !evolution.state.threadId
-        && !openingEvolution.current && !preparingEvolution.current) workspace.beginEvolutionDraft();
-  }, [evolutionOpen, Boolean(workspace.snapshot), evolution.state?.threadId]);
-  useEffect(() => {
-    if (workspace.snapshot) void window.cleoDesktop?.confirmHealthy().then(() => evolution.refresh()).catch(() => {});
+    // Tells the version switcher this program started; otherwise it rolls back to the previous one.
+    if (workspace.snapshot) void window.cleoDesktop?.confirmHealthy().catch(() => {});
   }, [Boolean(workspace.snapshot)]);
-  useEffect(() => {
-    if (evolutionOpen && workspace.snapshot && evolution.state?.prepared && evolution.state.threadId && !evolutionThread
-        && !openingEvolution.current && !preparingEvolution.current && !evolutionIssue) {
-      void startEvolution();
-    }
-  }, [evolutionOpen, Boolean(workspace.snapshot), evolution.state?.prepared, evolution.state?.threadId,
-    openingEvolutionUi, preparingTurn]);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [compactColumns, setCompactColumns] = useState(() => window.matchMedia("(max-width: 1010px)").matches);
@@ -189,13 +73,13 @@ export function App() {
   }, []);
   // The details panel's open/closed choice is remembered per kind of conversation.
   const [inspectorBySpace, setInspectorBySpace] = useState(() => {
-    const fallback = { chat: false, productivity: true, evolution: false };
+    const fallback = { chat: false, productivity: true };
     try { return { ...fallback, ...JSON.parse(localStorage.getItem("cleo-inspector") ?? "{}") } as typeof fallback; } catch { return fallback; }
   });
-  const inspectorSpace = evolutionOpen ? "evolution" : workspace.activeSpace === "chat" ? "chat" : "productivity";
+  const inspectorSpace = workspace.activeSpace === "chat" ? "chat" : "productivity";
   // An unsent draft has nothing to inspect, so it starts with the panel closed; opening it there
   // does not change the remembered choice for saved tasks.
-  const drafting = !evolutionOpen && workspace.activeSpace !== "memory" && Boolean(workspace.snapshot) && !workspace.activeThread;
+  const drafting = workspace.activeSpace !== "memory" && Boolean(workspace.snapshot) && !workspace.activeThread;
   const [draftInspectorOpen, setDraftInspectorOpen] = useState(false);
   useEffect(() => { if (drafting) setDraftInspectorOpen(false); }, [drafting, workspace.activeProjectId]);
   const inspectorOpen = drafting ? draftInspectorOpen : inspectorBySpace[inspectorSpace];
@@ -248,9 +132,9 @@ export function App() {
     }).catch(() => { /* The task timeline reports connection failures. */ });
     return () => { cancelled = true; };
   }, [computerRun, inspectorSpace]);
-  const showInspector = inspectorOpen && (evolutionOpen || workspace.activeSpace !== "memory");
+  const showInspector = inspectorOpen && workspace.activeSpace !== "memory";
   const sidebarHidden = sidebarCollapsed || (compactColumns && showInspector);
-  const inspectorResize = useInspectorResize(`${sidebarHidden}:${evolutionOpen}`, showInspector);
+  const inspectorResize = useInspectorResize(String(sidebarHidden), showInspector);
   const [commandOpen, setCommandOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -291,12 +175,8 @@ export function App() {
     totalBytes: 0,
     error: null,
   });
-  const localCandidate = evolution.state?.builds.find(build => build.id === evolution.state?.candidate);
-  const unfinishedEvolution = evolution.state?.iteration || evolution.state?.draftDirty
-    || (localCandidate?.kind === "local" && !localCandidate.savedAt);
   const displayedUpdateState: UpdateState = { ...updateState,
-    installBlocked: workspace.anyRunning ? tr("app.wait_for_the_running_tasks_to_finish")
-      : unfinishedEvolution ? tr("app.save_or_discard_the_current_evolution_changes_before_installing_an_update") : null,
+    installBlocked: workspace.anyRunning ? tr("app.wait_for_the_running_tasks_to_finish") : null,
   };
   const toastTimerRef = useRef<number | null>(null);
   // Configuration edits apply live; surface the ones that did not load or need a restart.
@@ -324,7 +204,6 @@ export function App() {
   };
 
   useEffect(() => window.cleoWindow?.onOpenMemory?.(() => {
-    setEvolutionOpen(false);
     setSettingsOpen(false);
     setCommandOpen(false);
     setMemoryView("all");
@@ -356,21 +235,12 @@ export function App() {
         : state === "attention" ? tr("notify.needs_attention") : tr("notify.finished");
       const show = () => {
         const notice = new Notification(thread.title, { body, tag: `cleo-${thread.id}` });
-        notice.onclick = () => { window.focus(); setEvolutionOpen(false); workspaceRef.current.selectThread(thread.id); };
+        notice.onclick = () => { window.focus(); workspaceRef.current.selectThread(thread.id); };
       };
       if (Notification.permission === "granted") show();
       else if (Notification.permission === "default") void Notification.requestPermission().then(result => { if (result === "granted") show(); });
     }
   }, [workspace.snapshot?.threads, notificationsOn]);
-  // Unread evolution replies mark the sidebar's evolution entry; other threads carry their own dot.
-  const unreadSpaces = useMemo(() => {
-    const spaces = new Set<WorkspaceSpace | "evolution">();
-    for (const id of workspace.unreadThreadIds) {
-      const thread = workspace.snapshot?.threads.find(item => item.id === id);
-      if (thread) spaces.add(thread.projectId === "productivity:cleo-evolution" ? "evolution" : thread.space);
-    }
-    return spaces;
-  }, [workspace.unreadThreadIds, workspace.snapshot?.threads]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -388,7 +258,7 @@ export function App() {
     // Start compact windows with space for the conversation, but let an opened
     // inspector stay available when resizing the window or dragging its boundary.
     if (window.matchMedia("(max-width: 1180px)").matches)
-      setInspectorBySpace({ chat: false, productivity: false, evolution: false });
+      setInspectorBySpace({ chat: false, productivity: false });
   }, []);
 
   useEffect(() => {
@@ -429,11 +299,10 @@ export function App() {
   };
   /** Step through conversations in the order the palette lists them (newest first). */
   const cycleThread = (step: number) => {
-    const ids = (workspace.snapshot?.threads ?? []).filter(thread => thread.projectId !== "productivity:cleo-evolution").map(thread => thread.id);
+    const ids = (workspace.snapshot?.threads ?? []).map(thread => thread.id);
     if (!ids.length) return;
     const index = ids.indexOf(workspace.activeThreadId ?? "");
     const next = ids[(index + step + ids.length) % ids.length] ?? ids[0];
-    setEvolutionOpen(false);
     workspace.selectThread(next);
   };
   const openComposerMenu = (selector: string) => {
@@ -451,8 +320,7 @@ export function App() {
   const shortcuts = useRef<Record<string, () => void>>({});
   shortcuts.current = {
     palette: () => setCommandOpen((open) => !open),
-    // A new task from the keyboard stays out of the evolution view, which owns its own drafts.
-    task: () => { if (!evolutionOpen) newTask(); },
+    task: newTask,
     chat: newChat,
     sidebar: toggleSidebar,
     details: () => setInspectorOpen((open) => !open),
@@ -544,13 +412,6 @@ export function App() {
         hint: tr("app.view_saved_memories"),
         icon: commandIcons.memory,
         run: openMemory,
-      },
-      {
-        id: "evolution",
-        label: tr("app.open_evolution"),
-        hint: tr("sidebar.evolution_hint"),
-        icon: commandIcons.evolution,
-        run: openEvolution,
       },
       {
         id: "inspector",
@@ -646,13 +507,13 @@ export function App() {
         run: () => setShortcutsOpen(true),
       },
     ],
-    [inspectorOpen, sidebarHidden, theme, workspace, evolutionOpen, notificationsOn, language],
+    [inspectorOpen, sidebarHidden, theme, workspace, notificationsOn, language],
   );
   // Every conversation is reachable from the palette by name, newest first.
   const threadCommands = useMemo<CommandAction[]>(() => {
     const snapshot = workspace.snapshot;
     if (!snapshot) return [];
-    return snapshot.threads.filter(thread => thread.projectId !== "productivity:cleo-evolution").map(thread => {
+    return snapshot.threads.map(thread => {
       const project = snapshot.projects.find(item => item.id === thread.projectId);
       return {
         id: `thread-${thread.id}`,
@@ -661,21 +522,18 @@ export function App() {
         detail: [projectLabel(project) || (thread.space === "chat" ? tr("app.chat") : ""), harnessLabel(thread.runtime, thread.space)]
           .filter(Boolean).join(" · "),
         icon: thread.space === "chat" ? commandIcons.chat : commandIcons.code,
-        run: () => { setEvolutionOpen(false); workspace.selectThread(thread.id); },
+        run: () => workspace.selectThread(thread.id),
       };
     });
   }, [workspace.snapshot?.threads, workspace.snapshot?.projects, workspace.selectThread, language]);
 
   if (!workspace.snapshot) return <><DependencySetup /><LoadingScreen error={workspace.loadingError} onRetry={workspace.retryLoading} /></>;
 
-  const activeRuntime = evolutionOpen && !evolutionThread ? workspace.draftRuntime : workspace.activeThreadRuntime ?? workspace.draftRuntime;
-  const selectedThread = evolutionOpen && !evolutionThread ? null : workspace.activeThread;
-  const conversationThread = selectedThread;
-  const conversationProject: Project | null = evolutionOpen
-    ? { id: "productivity:cleo-evolution", space: "productivity", name: "Cleo", path: evolution.state?.source || "", accent: "cyan" }
-    : workspace.activeProject;
+  const activeRuntime = workspace.activeThreadRuntime ?? workspace.draftRuntime;
+  const conversationThread = workspace.activeThread;
+  const conversationProject: Project | null = workspace.activeProject;
   // Git actions and worktrees are offered for development tasks in a real repository folder.
-  const gitProject = !evolutionOpen && Boolean(conversationProject && !conversationProject.managed && conversationProject.branch);
+  const gitProject = Boolean(conversationProject && !conversationProject.managed && conversationProject.branch);
   // Review notes belong to a task in one repository and on one branch: a task moved elsewhere, or a
   // checkout switched to another branch, does not show them on unrelated code (they come back).
   // When git reports another branch than the workspace's record (a checkout switched outside Cleo),
@@ -729,27 +587,17 @@ export function App() {
   const settingsRuntime = activeRuntime.effort || !selectedRuntimeModel?.defaultEffort
     ? activeRuntime
     : { ...activeRuntime, effort: selectedRuntimeModel.defaultEffort };
-  const evolutionUnavailable = !evolutionOpen ? null : !evolution.state
-    ? evolution.loadError ? tr("app.could_not_load_evolution_status_try_again") : tr("app.loading_evolution_status")
-    : !evolution.state.supported ? tr("app.local_evolution_is_unavailable_in_this_environment") : null;
-  let composerBlocked = workspace.harnessSwitchStatus || evolutionUnavailable;
-  if (!composerBlocked && (updateState.blocksTasks || (evolutionOpen && updateState.operationBusy))) {
-    composerBlocked = tr("app.wait_for_the_current_version_operation_to_finish");
-  }
-  if (!composerBlocked && evolutionOpen && (evolution.state?.phase !== "idle"
-      || (!workspace.running && (preparingTurn || openingEvolutionUi || evolution.pending)))) {
-    composerBlocked = tr("app.wait_for_the_current_operation_to_finish");
-  }
+  let composerBlocked: string | null = workspace.harnessSwitchStatus || null;
+  if (!composerBlocked && updateState.blocksTasks) composerBlocked = tr("app.wait_for_the_current_version_operation_to_finish");
   if (!composerBlocked && workspace.startingRun) composerBlocked = tr("app.submitting_please_wait");
   if (!composerBlocked && workspace.creatingWorktree) composerBlocked = tr("sourcecontrol.creating_worktree");
   // A delegated subtask that is running belongs to its parent's run: it is stopped or continued
   // from the parent, so its own composer waits instead of starting a second, unrelated run.
-  if (!composerBlocked && !evolutionOpen && conversationThread?.routingTaskId && conversationThread.status === "running" && !workspace.running) {
+  if (!composerBlocked && conversationThread?.routingTaskId && conversationThread.status === "running" && !workspace.running) {
     composerBlocked = tr("conversation.subtask_runs_in_parent");
   }
   const appClasses = [
     "app-shell",
-    evolutionOpen ? "evolution-open" : "",
     sidebarHidden ? "sidebar-collapsed" : "",
     showInspector ? "inspector-open" : "inspector-closed",
     inspectorResize.dragging ? "inspector-resizing" : "",
@@ -766,15 +614,15 @@ export function App() {
       </div>}
       <DependencySetup />
       <ThreadSidebar
-        view={evolutionOpen ? "evolution" : workspace.activeSpace}
-        projects={workspace.snapshot.projects.filter((project) => project.id !== "productivity:cleo-evolution")}
-        threads={workspace.snapshot.threads.filter((thread) => thread.projectId !== "productivity:cleo-evolution")}
+        view={workspace.activeSpace}
+        projects={workspace.snapshot.projects}
+        threads={workspace.snapshot.threads}
         activeProjectId={workspace.activeProjectId}
-        activeThreadId={evolutionOpen ? null : workspace.activeThreadId}
-        onStartThread={(projectId) => inWorkspace(current => {
-          if (current.activeSpace !== "productivity") current.selectSpace("productivity");
-          void current.createThread(projectId);
-        })}
+        activeThreadId={workspace.activeThreadId}
+        onStartThread={(projectId) => {
+          if (workspace.activeSpace !== "productivity") workspace.selectSpace("productivity");
+          void workspace.createThread(projectId);
+        }}
         onRemoveProject={project => { setRemoveError(null); setProjectPendingRemoval(project); }}
         onRemoveWorktree={project => {
           if (!window.confirm(tr("sidebar.remove_worktree_confirm", { p0: project.branch ?? project.name }))) return;
@@ -788,23 +636,21 @@ export function App() {
                 .catch((forced: unknown) => notify(forced instanceof Error ? forced.message : tr("app.operation_failed"), "error"));
             });
         }}
-        onSelectThread={(threadId) => { setEvolutionOpen(false); workspace.selectThread(threadId); }}
+        onSelectThread={(threadId) => workspace.selectThread(threadId)}
         onDeleteThread={thread => { setDeleteError(null); setThreadPendingDeletion(thread); }}
         onCreateThread={newTask}
         onCreateDevTask={newDevTask}
         onCreateChat={newChat}
         onOpenSearch={() => setCommandOpen(true)}
         onOpenMemory={openMemory}
-        onOpenEvolution={openEvolution}
         onOpenSettings={() => setSettingsOpen(true)}
         memoryPending={workspace.snapshot.memoryOverview.summary.pending_sources}
-        evolutionUnread={unreadSpaces.has("evolution")}
         recoverableChatBackups={workspace.snapshot.backend?.recoverableChatBackups ?? 0}
         onRestoreChatHistory={() => void workspace.restoreChatHistory().catch((error: unknown) => notify(error instanceof Error ? error.message : tr("app.could_not_restore_previous_chats"), "error"))}
         backendMode={workspace.snapshot.backend?.mode ?? "mock"}
         unreadThreadIds={workspace.unreadThreadIds}
       />
-      {!evolutionOpen && workspace.activeSpace === "memory" ? (
+      {workspace.activeSpace === "memory" ? (
         <MemoryView
           overview={workspace.snapshot.memoryOverview}
           mode={memoryView}
@@ -817,35 +663,27 @@ export function App() {
         />
       ) : (
           <Conversation
-          header={evolutionOpen ? <EvolutionPanel state={evolution.state} error={evolutionIssue || evolution.error}
-            busy={openingEvolutionUi || evolution.pending || updateState.operationBusy || Boolean(evolution.state && evolution.state.phase !== "idle")}
-            running={workspace.running} otherTasksRunning={workspace.anyRunning && !workspace.running} inspectorOpen={showInspector} onToggleInspector={() => setInspectorOpen((open) => !open)}
-            onAction={evolutionAction} onRetry={() => {
-              if (evolution.loadError || !retryEvolution.current) void evolution.refresh().catch(() => {});
-              else retryEvolution.current();
-            }} onRepair={() => { void repairEvolution(); }} /> : undefined}
-          onImprove={!evolutionOpen && conversationThread && window.cleoDesktop ? () => { setImprovementDraft(tr("app.please_improve_cleo")); setEvolutionOpen(true); } : undefined}
           prompt={workspace.prompt}
           skills={workspace.skills}
           onPromptChange={workspace.setPrompt}
           sendError={workspace.sendError}
           harnessSwitchStatus={workspace.harnessSwitchStatus}
-          pendingHarnessSwitch={evolutionOpen && !evolutionThread ? null : workspace.pendingHarnessSwitch}
+          pendingHarnessSwitch={workspace.pendingHarnessSwitch}
           sendBlocked={composerBlocked}
           onRename={workspace.renameThread}
-          onMoveToProject={conversationThread && !evolutionOpen ? async (projectId) => {
+          onMoveToProject={conversationThread ? async (projectId) => {
             const target = workspace.snapshot?.projects.find((project) => project.id === projectId);
             await workspace.moveThread(conversationThread.id, projectId);
             notify(tr("app.conversation_moved_to_value", { p0: target ? projectLabel(target) : projectId }));
           } : undefined}
           thread={conversationThread}
           project={conversationProject}
-          projects={evolutionOpen ? [] : workspace.snapshot.projects.filter((project) => project.id !== "productivity:cleo-evolution")}
+          projects={workspace.snapshot.projects}
           activeProjectId={workspace.activeProjectId}
           onSelectProject={workspace.retargetDraft}
           onChooseWorkspace={() => void workspace.chooseWorkspace().catch((error: unknown) => notify(error instanceof Error ? error.message : tr("app.could_not_open_the_working_directory"), "error"))}
           choosingWorkspace={workspace.choosingWorkspace}
-          space={!evolutionOpen && workspace.activeSpace === "chat" ? "chat" : "productivity"}
+          space={workspace.activeSpace === "chat" ? "chat" : "productivity"}
           runtime={activeRuntime}
           runtimeCatalog={workspace.runtimeCatalog}
           productivityModels={workspace.productivityModels}
@@ -857,10 +695,10 @@ export function App() {
           sidebarCollapsed={sidebarHidden}
           inspectorOpen={showInspector}
           onToggleSidebar={toggleSidebar}
+          onOpenSettings={() => setSettingsOpen(true)}
           onToggleInspector={() => setInspectorOpen((open) => !open)}
           onOpenCommand={() => setCommandOpen(true)}
           onSend={(prompt) => void (workspace.running ? workspace.queueMessage(prompt)
-            : evolutionOpen ? sendEvolutionPrompt(prompt)
             : drafting && isolateDraft && gitProject ? workspace.sendInWorktree(prompt).then((sent) => {
               // The worktree choice belongs to this one draft; the next new task starts in the folder again.
               if (sent) setIsolateDraft(false);
@@ -872,19 +710,19 @@ export function App() {
             ? { enabled: isolateDraft, onToggle: () => setIsolateDraft((value) => !value) } : undefined}
           onListFiles={gitProject && workspace.activeSpace === "productivity"
             ? () => workspace.runSourceControl<RepositoryFiles>("listFiles").then((result) => result.files) : undefined}
-          onSteerDraft={evolutionOpen ? undefined : (text) => void workspace.steerDraft(text)}
+          onSteerDraft={(text) => void workspace.steerDraft(text)}
           // Delegated subtasks carry a routing task id; a fork records its parent too but is not a subtask.
           subtasks={conversationThread ? workspace.snapshot.threads.filter((thread) => thread.parentId === conversationThread.id && thread.routingTaskId) : []}
           parentThread={conversationThread?.parentId && conversationThread.routingTaskId
             ? workspace.snapshot.threads.find((thread) => thread.id === conversationThread.parentId) ?? null : null}
-          onOpenThread={(threadId) => { setEvolutionOpen(false); workspace.selectThread(threadId); }}
+          onOpenThread={(threadId) => workspace.selectThread(threadId)}
           changesVisible={showInspector && inspectorTab === "changes"}
           queuedMessages={workspace.queuedMessages}
           onSteerQueued={id => void workspace.steerQueued(id)}
           onSendQueued={workspace.sendQueued}
           onEditQueued={workspace.editQueued}
           onRemoveQueued={workspace.removeQueued}
-          onEditMessage={evolutionOpen ? undefined : workspace.editMessage}
+          onEditMessage={workspace.editMessage}
           onRetrySteer={receipt => void workspace.retrySteer(receipt)}
           onRestoreSteer={workspace.restoreSteer}
           steeringBusy={workspace.steeringBusy}
@@ -905,7 +743,7 @@ export function App() {
           onEffortChange={(effort) => workspace.updateRuntime({ effort })}
           onServiceTierChange={(serviceTier) => workspace.updateRuntime({ serviceTier })}
           onPermissionChange={workspace.activeThread?.id ? (update) => workspace.updatePermissions(workspace.activeThread!.id, update)
-            : evolutionOpen ? undefined : workspace.setDraftPermissions}
+            : workspace.setDraftPermissions}
           attachments={workspace.attachments}
           onPickAttachments={workspace.pickAttachments}
           onPrepareAttachments={workspace.prepareAttachments}
@@ -969,7 +807,7 @@ export function App() {
           onUndo={conversationThread?.space === "productivity" && conversationThread.canUndo ? undoLatestTurn : undefined}
           undoing={undoingChanges}
           computerAvailable={Boolean(window.cleoDesktop?.computer)}
-          sourceBusy={Boolean(conversationProject && !evolutionOpen && workspace.checkoutBusy(conversationProject.id) && !workspace.running)}
+          sourceBusy={Boolean(conversationProject && workspace.checkoutBusy(conversationProject.id) && !workspace.running)}
           runSourceControl={gitProject && conversationThread?.space === "productivity" ? workspace.runSourceControl : undefined}
           reviewComments={threadComments}
           branchHold={branchHold}
@@ -979,7 +817,7 @@ export function App() {
           onSendReviewComments={sendReviewComments}
           // Only the notes on screen: notes kept for another branch or folder of this task stay.
           onClearReviewComments={() => updateThreadComments((comments) => comments.filter((comment) => !threadComments.some((shown) => shown.id === comment.id)))}
-          onPermissionsChange={evolutionOpen ? undefined : workspace.updatePermissions}
+          onPermissionsChange={workspace.updatePermissions}
         />
       ) : null}
       <CommandPalette open={commandOpen} actions={commandActions} threads={threadCommands} onClose={() => setCommandOpen(false)} />
@@ -994,7 +832,7 @@ export function App() {
         motionEnabled={motionEnabled}
         onMotionChange={setMotionEnabled}
         runtime={settingsRuntime}
-        runtimeThread={selectedThread}
+        runtimeThread={conversationThread}
         onPermissionsChange={workspace.updatePermissions}
         supportedEfforts={supportedEfforts}
         modelSettings={workspace.modelSettings}

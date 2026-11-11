@@ -188,8 +188,6 @@ try {
     const workspace = { ...fixture, threads: [], activeThreadId: null, activeSpace: "chat" };
     const ux = window.__ux = { creates: 0, sent: [], failCreate: false, releaseCreate: null };
     window.cleoDesktop = {
-      getEvolutionState: async () => ({ phase: "idle", builds: [], releases: [], supported: false }),
-      onEvolutionState: () => () => {},
       confirmHealthy: async () => {},
       getUpdateState: async () => ({ phase: "unsupported", currentVersion: "test" }),
       onUpdateState: () => () => {},

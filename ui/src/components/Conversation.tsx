@@ -46,6 +46,7 @@ import {
   MoreHorizontal,
   Paperclip,
   PanelLeftClose,
+  Settings2,
   PanelRightClose,
   Copy,
   CornerDownRight,
@@ -88,9 +89,8 @@ import { checkHarnessConnections } from "../connected-harnesses";
 interface ConversationProps {
   history?: ReturnType<typeof useTimelineHistory>;
   questionUI?: ReactNode;
-  preparation?: ReactNode;
-  onImprove?: () => void;
-  header?: ReactNode;
+  /** Shown in the header while the sidebar (and its settings entry) is hidden. */
+  onOpenSettings?: () => void;
   thread: Thread | null;
   project: Project | null;
   /** Projects of this space; with onSelectProject, an unsent draft shows where it will run and can move. */
@@ -183,9 +183,7 @@ const suggestions = {
 export function Conversation({
   history,
   questionUI,
-  preparation,
-  onImprove,
-  header,
+  onOpenSettings,
   thread,
   project,
   projects,
@@ -409,7 +407,7 @@ export function Conversation({
 
   return (
     <main className="conversation-shell" data-testid="conversation" data-cache-count={thread?.items.length ?? 0} data-cache-first={thread?.items[0]?.id ?? ""}>
-      <div className="conversation-chrome">{header ?? <ConversationHeader
+      <div className="conversation-chrome"><ConversationHeader
         thread={thread}
         project={project}
         space={space}
@@ -428,12 +426,12 @@ export function Conversation({
         onRename={onRename}
         onMoveToProject={onMoveToProject}
         projects={projects}
-        onImprove={onImprove}
+        onOpenSettings={onOpenSettings}
         busy={running || Boolean(sendBlocked)}
         parentThread={parentThread}
         onOpenThread={onOpenThread}
         changesVisible={changesVisible}
-      />}</div>
+      /></div>
 
       <div className="conversation-body" style={{ "--composer-clearance": `${bottomInset}px` } as CSSProperties}>
         {history?.error && <div className="history-error" role="alert">{history.error}<button onClick={() => void history.retry()}>{tr("conversation.retry_loading")}</button></div>}
@@ -446,7 +444,6 @@ export function Conversation({
             if (event.deltaY > 0 && view.scrollHeight - view.clientHeight - view.scrollTop < 160 && thread?.history?.hasAfter) void history?.load("after");
           }
         }}>
-          {preparation}
         {thread?.items.length ? (
           <>
             <VirtualTimeline rows={rows} viewport={viewportRef} follow={stickToBottomRef} bottomInset={bottomInset} threadId={thread.id} render={renderRow} onScroll={trackScrollPosition}
@@ -561,7 +558,7 @@ function ConversationHeader({
   onRename,
   onMoveToProject,
   projects,
-  onImprove,
+  onOpenSettings,
   busy,
   parentThread,
   onOpenThread,
@@ -589,7 +586,7 @@ function ConversationHeader({
   | "onThreadCommand"
   | "onRename"
   | "onMoveToProject"
-  | "onImprove"
+  | "onOpenSettings"
 > & { busy: boolean }) {
   const [threadMenuOpen, setThreadMenuOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
@@ -601,7 +598,7 @@ function ConversationHeader({
     setMoveOpen(false);
   }, [thread?.id]);
   const moveTargets = thread ? (projects ?? []).filter((candidate) => (candidate.space ?? "chat") === thread.space
-    && candidate.id !== thread.projectId && candidate.id !== "productivity:cleo-evolution") : [];
+    && candidate.id !== thread.projectId) : [];
   useEffect(() => {
     if (!threadMenuOpen) return;
     const closeOutside = (event: PointerEvent) => {
@@ -633,6 +630,14 @@ function ConversationHeader({
         >
           <PanelLeftClose size={17} />
         </button>
+        {/* The sidebar holds the settings entry; while it is hidden (narrow windows with the details
+            panel open, or collapsed by the user) settings stay one click away here. */}
+        {sidebarCollapsed && onOpenSettings ? (
+          <button className="icon-button" type="button" aria-label={tr("overlays.settings")} title={tr("overlays.settings")}
+            data-testid="header-settings" onClick={onOpenSettings}>
+            <Settings2 size={16} />
+          </button>
+        ) : null}
         <div className="breadcrumb">
           <span className="breadcrumb-project">{(project && projectLabel(project)) || "Cleo"}</span>
           <ChevronRight size={13} />
@@ -673,7 +678,6 @@ function ConversationHeader({
               {space === "productivity" && thread?.canUndo ? <button type="button" disabled={running || undoing}
                 onClick={() => { setThreadMenuOpen(false); onUndo(); }}>{tr("inspector.undo_latest_turn")}</button> : null}
               <button type="button" onClick={() => { setThreadMenuOpen(false); onShowRun(); }}>{tr("conversation.view_run_history")}</button>
-              {onImprove && <button type="button" onClick={() => { setThreadMenuOpen(false); onImprove(); }}>{tr("conversation.improve_cleo")}</button>}
               <button type="button" onClick={() => {
                 setThreadMenuOpen(false);
                 setRenameOpen(true);
@@ -1385,13 +1389,12 @@ function ContextRing({ used, limit, onClick }: { used: number; limit: number; on
 
 /** Purpose: Keep the shared composer welcome focused on the current task. Input: project/space. Output: relevant example requests. */
 function WelcomeState({ project, space, onUseSuggestion }: { project: Project | null; space: ThreadSpace; onUseSuggestion: (prompt: string) => void }) {
-  const evolving = project?.id === "productivity:cleo-evolution";
-  const prompts = evolving ? [tr("conversation.make_cleo_s_interface_clearer"), tr("conversation.add_a_feature_i_need_to_cleo"), tr("conversation.help_improve_my_experience_with_cleo")] : suggestions[space];
+  const prompts = suggestions[space];
   return (
     <div className="welcome-state">
       <div className="welcome-mark" aria-hidden="true"><span>C</span></div>
-      <h2>{evolving ? tr("conversation.how_would_you_like_to_change_cleo") : space === "chat" ? tr("conversation.what_would_you_like_to_talk_about") : tr("conversation.start_a_new_task")}</h2>
-      {!evolving && project && space === "productivity" ? (
+      <h2>{space === "chat" ? tr("conversation.what_would_you_like_to_talk_about") : tr("conversation.start_a_new_task")}</h2>
+      {project && space === "productivity" ? (
         <p>{isGeneralProject(project)
           ? tr("conversation.this_standalone_task_has_no_project_attached_use_it_for_one_off_scripts_exploration_a")
           : tr("conversation.this_task_runs_in_the_value_project_directory", { p0: projectLabel(project) })}</p>

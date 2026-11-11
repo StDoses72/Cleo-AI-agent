@@ -36,10 +36,7 @@ await page.addInitScript((data) => {
     },
     getUpdateState: async () => ({ phase: "unsupported", currentVersion: "test" }),
     onUpdateState: () => () => {},
-    // The app subscribes to evolution state at start; this fixture has none to report.
-    onEvolutionState: () => () => {},
     confirmHealthy: async () => {},
-    getEvolutionState: async () => { throw new Error("Evolution is not part of this test"); },
   };
 }, fixture);
 await page.reload();

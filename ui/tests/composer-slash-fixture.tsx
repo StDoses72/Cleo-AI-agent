@@ -1,42 +1,21 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Conversation } from "../src/components/Conversation";
-import { EvolutionCases } from "../src/components/EvolutionCases";
-import { EvolutionPreparation } from "../src/components/EvolutionPreparation";
-import type { EvolutionAcceptanceState, EvolutionRequest } from "../src/evolution-types";
 import type { LocalSkill } from "../src/types";
 import "../src/index.css";
-import "../src/components/evolution.css";
 
-declare global {
-  interface Window {
-    fixtureSnapshot: () => Promise<{ acceptance: EvolutionAcceptanceState; requests: EvolutionRequest[] }>;
-    fixtureAction: (action: string, params: Record<string, unknown>) => Promise<void>;
-  }
-}
-
+/** The real composer with a harness whose local skills the slash menu searches. */
 function Fixture() {
-  const [data, setData] = useState<Awaited<ReturnType<typeof window.fixtureSnapshot>>>();
   const [prompt, setPrompt] = useState("");
   const [provider, setProvider] = useState("codex");
   const [sent, setSent] = useState<string[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [showComposer, setShowComposer] = useState(true);
   const skills: LocalSkill[] = (provider === "codex" ? ["grill-me", "grilling", "other"] : ["claude-only"])
     .map((name) => ({ name, command: `/${name}`, source: provider, path: `/fixture/${name}/SKILL.md` }));
-  const refresh = async () => setData(await window.fixtureSnapshot());
-  useEffect(() => { void refresh(); }, []);
-  const action = async (name: string, params: Record<string, unknown> = {}) => {
-    setBusy(true);
-    try { await window.fixtureAction(name, params); }
-    finally { await refresh(); setBusy(false); }
-  };
-  return <div style={{ maxWidth: 1000, margin: "20px auto", height: "calc(100vh - 40px)", overflowY: "auto" }}>
+  return <div style={{ maxWidth: 1000, margin: "20px auto", height: "calc(100vh - 40px)" }}>
     <style>{".fixture-conversation > .conversation-shell { height: 100%; }"}</style>
     <button onClick={() => setProvider(provider === "codex" ? "claude" : "codex")}>切换测试 harness</button>
-    <button onClick={() => setShowComposer(false)}>查看验收测试</button>
     <output data-testid="sent">{JSON.stringify(sent)}</output>
-    {showComposer && <div className="fixture-conversation" style={{ height: 500, position: "relative" }}><Conversation
+    <div className="fixture-conversation" style={{ height: 500, position: "relative" }}><Conversation
       thread={null} project={null} space="productivity"
       runtime={{ provider, model: "test", effort: null, access: "workspace-write", approval: "deny_all", editable: true }}
       runtimeCatalog={null} productivityModels={{}} runtimeModelsLoading={null} runtimeModelsError={null}
@@ -50,14 +29,7 @@ function Fixture() {
       onRemoveAttachment={() => {}} onShowRun={() => {}} onShowContext={() => {}} onRevealPath={() => {}}
       onOpenPath={() => {}} onThreadCommand={() => {}} commands={["/help", "/git"]} skills={skills}
       approvalRequest={null} approvalPending={false} approvalError={null} onResolveApproval={() => {}}
-    /></div>}
-    <EvolutionCases state={data?.acceptance} requests={data?.requests} busy={busy} canReview
-      onAction={(name, params) => { void action(name, params); }} onCreate={async () => {}}
-      onImprove={(caseId, body, id) => action("feedback", { caseId, body, id, threadId: "thread" })} />
-    <EvolutionPreparation requests={data?.requests || []} acceptance={data?.acceptance} busy={busy}
-      onResume={(request, clarification, skipClarification) => { void action("resume", {
-        id: request.id, threadId: request.threadId, prompt: request.prompt, clarification, skipClarification,
-      }); }} />
+    /></div>
   </div>;
 }
 createRoot(document.getElementById("root")!).render(<Fixture />);

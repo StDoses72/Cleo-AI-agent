@@ -42,31 +42,22 @@ try {
   await application.context().addInitScript(({ snapshot }) => {
     const base = snapshot.threads.find(thread => thread.space === "productivity");
     const runtime = { ...snapshot.runtime, provider: "codex", model: "gpt-6-astra", effort: "low" };
-    const thread = { ...base, id: "program-updates", title: "更新与进化互斥检查", runtime,
+    const thread = { ...base, id: "program-updates", title: "更新与任务互斥检查", runtime,
       items: [{ id: "update-message", type: "message", role: "assistant", time: "12:00", content: "后台下载时可以继续编辑消息。" }],
       history: { before: "0", after: "0", hasBefore: false, hasAfter: false, total: 1, revision: "1" },
     };
     let update = { phase: "ready", currentVersion: "0.3.11", latestVersion: "0.4.0", error: null,
       downloadedBytes: 700 * 1024 * 1024, totalBytes: 700 * 1024 * 1024,
       operationBusy: false, blocksTasks: false, installStage: null };
-    let evolution = { phase: "idle", supported: true, prepared: true, currentVersion: "0.3.11",
-      active: "official-0.3.11", baseline: "official-0.3.11", baseTag: "v0.3.11", source: null, threadId: null,
-      error: null, logs: "", builds: [], releases: [], pullRequest: null, recoveryPath: null,
-      iteration: null, draftDirty: false };
     const updateListeners = new Set();
-    const evolutionListeners = new Set();
     const calls = { check: 0, download: 0, install: 0, turn: 0 };
     let finishInstall;
     const setUpdate = patch => {
       update = { ...update, ...patch };
       for (const listener of updateListeners) listener(update);
     };
-    const setEvolution = patch => {
-      evolution = { ...evolution, ...patch };
-      for (const listener of evolutionListeners) listener(evolution);
-    };
     window.__programUpdatesTest = {
-      setUpdate, setEvolution, calls,
+      setUpdate, calls,
       completeInstall(error = null) {
         setUpdate({ phase: error ? "ready" : "updated", error, operationBusy: false, blocksTasks: false, installStage: null });
         finishInstall?.(false);
@@ -90,8 +81,6 @@ try {
         throw new Error(`Unhandled program-update fixture method: ${method}`);
       },
       onStreamEvent: () => () => {},
-      getEvolutionState: async () => evolution,
-      onEvolutionState: listener => { evolutionListeners.add(listener); return () => evolutionListeners.delete(listener); },
       getUpdateState: async () => update,
       onUpdateState: listener => { updateListeners.add(listener); return () => updateListeners.delete(listener); },
       checkForUpdates: async () => { calls.check += 1; return update; },
@@ -112,7 +101,6 @@ try {
   const send = page.getByTestId("send-button");
   const updateAction = page.locator(".update-actions button");
   const setUpdate = patch => page.evaluate(patch => window.__programUpdatesTest.setUpdate(patch), patch);
-  const setEvolution = patch => page.evaluate(patch => window.__programUpdatesTest.setEvolution(patch), patch);
   const counts = () => page.evaluate(() => ({ ...window.__programUpdatesTest.calls }));
   const closeSettings = async () => {
     if (await settings.isVisible()) await settings.getByRole("button", { name: "关闭设置", exact: true }).click();
@@ -127,12 +115,6 @@ try {
     // IPC events schedule a React render; wait for the resulting control state.
     await button.and(page.locator(disabled ? ":disabled" : ":enabled")).waitFor();
     assert.equal(await button.isDisabled(), disabled, message);
-  }
-  async function assertInstallDisabled(message) {
-    await assertDisabled(notice.getByRole("button", { name: "重启安装", exact: true }), true, message);
-    await assertDisabled(updateAction, true, message);
-    await notice.getByText("请先保存或放弃本轮进化，再安装更新。", { exact: true }).waitFor();
-    assert.match(await notice.innerText(), /先保存或放弃本轮进化/);
   }
   async function assertNoEnabledInstall() {
     const buttons = page.getByRole("button", { name: /重启.*安装/ });
@@ -161,14 +143,8 @@ try {
   assert.doesNotMatch(await settings.innerText(), /下次启动自动安装/);
   assert.match(await settings.innerText(), /点击后重启安装/);
   await assertDisabled(updateAction, false);
-  await setEvolution({ iteration: { base: "official-0.3.11", startedAt: "2026-09-13T12:00:00Z" } });
-  await assertInstallDisabled("Unsaved iteration must block both install entries");
-  await setEvolution({ iteration: null, draftDirty: true });
-  await assertInstallDisabled("Dirty draft must block both install entries");
-  await setEvolution({ draftDirty: false, latestSaved: "local-saved" });
-  await assertDisabled(updateAction, false, "Saving the iteration should restore installation");
   await assertDisabled(notice.getByRole("button", { name: "重启安装", exact: true }), false);
-  console.log("PASS: ready copy, iteration/draft guards, saved-iteration recovery");
+  console.log("PASS: ready copy and both install entries");
 
   await closeSettings();
   await input.fill("下载期间保留的草稿");
@@ -228,12 +204,10 @@ try {
       const label = `${scenario.name}-${theme}`;
       await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
       await setUpdate({ phase: "ready", error: null, operationBusy: false, blocksTasks: false });
-      await setEvolution({ iteration: { base: "official-0.3.11", startedAt: "2026-09-13T12:00:00Z" } });
       await openUpdates();
-      await assertInstallDisabled(label);
-      await checkGeometry(`${label}-blocked`);
-      await captureScreenshot(`program-updates-${label}-blocked.png`);
-      await setEvolution({ iteration: null });
+      await assertDisabled(updateAction, false, label);
+      await checkGeometry(`${label}-ready`);
+      await captureScreenshot(`program-updates-${label}-ready.png`);
       await setUpdate({ phase: "installing", operationBusy: true, blocksTasks: true, installStage: "preparing" });
       await notice.getByText("正在校验并解压更新…", { exact: true }).waitFor();
       await checkGeometry(`${label}-preparing`);
@@ -245,7 +219,7 @@ try {
   assert.deepEqual(errors, [], "Renderer errors during update checks");
   assert.deepEqual(await counts(), { check: 0, download: 0, install: 2, turn: 0 });
   console.log(JSON.stringify({ status: "passed", scenarios: 6,
-    checks: ["draft-protection", "shared-busy-state", "download-keeps-chat", "install-blocks-tasks", "retry", "themes", "overflow"] }));
+    checks: ["shared-busy-state", "download-keeps-chat", "install-blocks-tasks", "retry", "themes", "overflow"] }));
 } catch (error) {
   if (page && !page.isClosed()) {
     console.error(await page.evaluate(() => ({ notice: document.querySelector(".update-notice")?.innerText,

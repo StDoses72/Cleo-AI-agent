@@ -38,28 +38,11 @@ async function bridge(language) {
   return { desktop: exposed.cleoDesktop, ipcRenderer, invoked };
 }
 
-test("the evolution bridge the renderer still calls is inert and never reaches the main process", async () => {
-  const { desktop, ipcRenderer, invoked } = await bridge("zh-CN");
-  const state = await desktop.getEvolutionState();
-  assert.equal(state.supported, false);
-  assert.equal(state.phase, "idle");
-  assert.equal(state.prepared, false);
-  assert.equal(state.threadId, null);
-  assert.deepEqual([state.builds.length, state.releases.length], [0, 0]);
-  await assert.rejects(desktop.evolutionAction("prepare"), /不再提供本地进化/);
-  await assert.rejects(desktop.evolutionAction("recovery", { id: "base" }), /不再提供本地进化/);
-  for (const subscribe of [desktop.onEvolutionState, desktop.onCompanionThread]) {
-    let calls = 0;
-    const unsubscribe = subscribe(() => calls++);
-    ipcRenderer.emit("cleo:evolution:state", {}, {});
-    ipcRenderer.emit("cleo:companion-thread", {}, {});
-    assert.equal(typeof unsubscribe, "function");
-    unsubscribe();
-    assert.equal(calls, 0);
+test("the bridge no longer exposes local evolution (ADR 0009)", async () => {
+  const { desktop } = await bridge("zh-CN");
+  for (const name of ["getEvolutionState", "evolutionAction", "onEvolutionState", "onCompanionThread"]) {
+    assert.equal(desktop[name], undefined, `${name} should be gone`);
   }
-  assert.deepEqual(invoked, []);
-  ipcRenderer.emit("cleo:language-changed", {}, "en");
-  await assert.rejects(desktop.evolutionAction("build"), /no longer part of Cleo/);
 });
 
 test("startup confirmation and in-app recovery use the version switch channels", async () => {

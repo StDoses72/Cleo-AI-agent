@@ -8,14 +8,12 @@ async function boundary() {
   const main = await readFile(new URL("../electron/main.mjs", import.meta.url), "utf8");
   const allowlist = main.match(/const allowedMethods = new Set\(\[[\s\S]*?\]\);/);
   assert.ok(allowlist, "desktop method allowlist must exist");
-  const retired = main.match(/const retiredMethods = new Set\(\[[\s\S]*?\]\);/);
-  assert.ok(retired, "retired method table must exist");
   const start = main.indexOf('ipcMain.handle("cleo:request",');
   const end = main.indexOf('ipcMain.handle("cleo:pick-attachments",', start);
   assert.ok(start >= 0 && end > start, "real request handler must be located");
   const calls = [];
   let handler;
-  vm.runInNewContext(`${allowlist[0]}\n${retired[0]}\n${main.slice(start, end)}`, {
+  vm.runInNewContext(`${allowlist[0]}\n${main.slice(start, end)}`, {
     ipcMain: { handle: (_channel, callback) => { handler = callback; } },
     programUpdates: { closed: false, blocksTasks: false, busy: false },
     backend: { request: async (method, params) => {
@@ -45,10 +43,7 @@ test("every literal renderer bridge request is registered by the desktop", async
   const client = await readFile(new URL("../src/services/ipcCleoClient.ts", import.meta.url), "utf8");
   const declaration = main.match(/const allowedMethods = new Set\(\[[\s\S]*?\]\);/)[0];
   const registered = new Set([...declaration.matchAll(/"([a-z_]+)"/g)].map(match => match[1]));
-  // A retired method is answered by the desktop itself, so the renderer may still name it for now.
-  const retired = new Set([...main.match(/const retiredMethods = new Set\(\[[\s\S]*?\]\);/)[0].matchAll(/"([a-z_]+)"/g)].map(match => match[1]));
   const requested = [...client.matchAll(/this\.bridge\.request\(\s*"([a-z_]+)"/g)].map(match => match[1]);
   assert.ok(requested.includes("switch_harness"));
-  assert.deepEqual(requested.filter(method => !registered.has(method) && !retired.has(method)), []);
-  assert.deepEqual([...retired].filter(method => registered.has(method)), [], "a method is either served or retired");
+  assert.deepEqual(requested.filter(method => !registered.has(method)), []);
 });

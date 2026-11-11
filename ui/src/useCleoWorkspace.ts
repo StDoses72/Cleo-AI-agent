@@ -29,7 +29,6 @@ import type {
   WorkspaceSnapshot,
   WorkspaceSpace,
 } from "./types";
-import { visiblePrompt } from "./visible-prompt";
 import { projectsInSpace } from "./runtime-labels";
 import { nextPendingSwitch, runtimeWithPendingSwitch, type PendingHarnessSwitch } from "./harness-handoff";
 
@@ -56,7 +55,6 @@ const emptyDraft: ComposerDraft = { prompt: "", attachments: [] };
 
 /** The development project that binds no folder; chosen when nothing else is selected. */
 const GENERAL_PRODUCTIVITY_PROJECT = "productivity:general";
-const EVOLUTION_PROJECT = "productivity:cleo-evolution";
 
 /** Purpose: Compare folder paths across separators and, on Windows drives, letter case. */
 function normalizedPath(path: string) {
@@ -67,7 +65,7 @@ function normalizedPath(path: string) {
 /** The project a draft lands in when the user picks nothing: the space's general project
  * (no folder bound) whenever it is listed, otherwise the first ordinary project. */
 function defaultProjectFor(projects: Parameters<typeof projectsInSpace>[0], space: ThreadSpace) {
-  return projectsInSpace(projects, space).find((project) => project.id !== EVOLUTION_PROJECT);
+  return projectsInSpace(projects, space)[0];
 }
 
 /** Purpose: The branch name in a project's record, as git's own branch name.
@@ -78,7 +76,7 @@ export function projectBranchName(branch: string | null | undefined): string | n
   return /^(?:No commits yet|Initial commit) on (.+)$/.exec(branch)?.[1] ?? branch;
 }
 
-export function useCleoWorkspace(evolutionOpen = false) {
+export function useCleoWorkspace() {
   const [draftRoutingMode, setDraftRoutingMode] = useState<"manual" | "auto" | null>(null);
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
   /** Threads whose latest reply finished while the user was not looking at them. */
@@ -135,10 +133,9 @@ export function useCleoWorkspace(evolutionOpen = false) {
   const [workspaceSpace, setActiveSpace] = useState<WorkspaceSpace>("productivity");
   const [workspaceProjectId, setActiveProjectId] = useState("cleo-agent");
   const [workspaceThreadId, setActiveThreadId] = useState<string | null>("desktop-ui");
-  const [evolutionThreadId, setEvolutionThreadId] = useState<string | null>(null);
-  const activeSpace = evolutionOpen ? "productivity" : workspaceSpace;
-  const activeProjectId = evolutionOpen ? EVOLUTION_PROJECT : workspaceProjectId;
-  const activeThreadId = evolutionOpen ? evolutionThreadId : workspaceThreadId;
+  const activeSpace = workspaceSpace;
+  const activeProjectId = workspaceProjectId;
+  const activeThreadId = workspaceThreadId;
   useEffect(() => {
     if (activeSpace !== "memory") return;
     const refresh = () => { if (!document.hidden) void refreshMemory(); };
@@ -216,14 +213,8 @@ export function useCleoWorkspace(evolutionOpen = false) {
   const queuesRef = useRef(queues);
   queuesRef.current = queues;
   const selectionRef = useRef(0);
-  const evolutionSelectionRef = useRef(0);
-  const viewRef = useRef(evolutionOpen);
   const snapshotRef = useRef(snapshot);
   snapshotRef.current = snapshot;
-  if (viewRef.current !== evolutionOpen) {
-    viewRef.current = evolutionOpen;
-    selectionRef.current += 1;
-  }
   const selectionBySpaceRef = useRef<Partial<Record<ThreadSpace, {
     projectId: string;
     threadId: string | null;
@@ -264,20 +255,18 @@ export function useCleoWorkspace(evolutionOpen = false) {
             (provider) => provider.id === catalog.defaultProductivityProvider,
           )?.defaultModel ?? "",
         );
-        const ordinaryThreads = loaded.threads.filter((thread) => thread.projectId !== EVOLUTION_PROJECT);
-        const ordinaryProjects = loaded.projects.filter((project) => project.id !== EVOLUTION_PROJECT);
-        const initialThread = ordinaryThreads.find(
+        const initialThread = loaded.threads.find(
           (thread) => thread.id === loaded.activeThreadId,
-        ) ?? ordinaryThreads[0];
+        ) ?? loaded.threads[0];
         if (initialThread) {
           setActiveSpace(initialThread.space);
           setActiveProjectId(initialThread.projectId);
           setActiveThreadId(initialThread.id);
         } else {
           const initialSpace = loaded.activeSpace ?? "productivity";
-          const initialProject = defaultProjectFor(ordinaryProjects, initialSpace);
+          const initialProject = defaultProjectFor(loaded.projects, initialSpace);
           setActiveSpace(initialSpace);
-          setActiveProjectId(initialProject?.id ?? ordinaryProjects[0]?.id ?? "");
+          setActiveProjectId(initialProject?.id ?? loaded.projects[0]?.id ?? "");
           setActiveThreadId(null);
         }
       })
@@ -300,8 +289,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
     [activeProjectId, snapshot],
   );
   useEffect(() => {
-    if (activeSpace === "memory" || activeProject?.space !== activeSpace
-        || activeProject.id === "productivity:cleo-evolution") return;
+    if (activeSpace === "memory" || activeProject?.space !== activeSpace) return;
     selectionBySpaceRef.current[activeSpace] = {
       projectId: activeProjectId,
       threadId: activeThreadId,
@@ -375,14 +363,14 @@ export function useCleoWorkspace(evolutionOpen = false) {
 
   const skillKey = `${draftRuntime.provider}:${activeProject?.path ?? ""}`;
   useEffect(() => {
-    if (activeThread || activeSpace !== "productivity" || evolutionOpen
+    if (activeThread || activeSpace !== "productivity"
         || !runtimeCatalog?.productivityProviders.some(provider => provider.id === draftRuntime.provider)) return;
     let cancelled = false;
     void cleoClient.getLocalSkills(draftRuntime.provider, activeProject?.path)
       .then((skills) => { if (!cancelled) setDraftSkills({ key: skillKey, skills }); })
       .catch(() => { if (!cancelled) setDraftSkills({ key: skillKey, skills: [] }); });
     return () => { cancelled = true; };
-  }, [activeThread?.id, activeSpace, evolutionOpen, skillKey, runtimeCatalog]);
+  }, [activeThread?.id, activeSpace, skillKey, runtimeCatalog]);
 
   useEffect(() => {
     focusRef.current = {
@@ -494,27 +482,6 @@ export function useCleoWorkspace(evolutionOpen = false) {
     });
   };
   const questions = useQuestions(activeThread, updateThread);
-  const companionRuns = useRef(new Set<string>());
-  const companionUpdate = useRef((thread: Thread) => {});
-  companionUpdate.current = thread => {
-    if (runLocks.current.has(thread.id) && !companionRuns.current.has(thread.id)) return;
-    if (thread.status === "running" && thread.activeRunId) {
-      companionRuns.current.add(thread.id);
-      runLocks.current.set(thread.id, thread.activeRunId);
-    } else {
-      companionRuns.current.delete(thread.id);
-      runLocks.current.delete(thread.id);
-    }
-    updateThread(thread.id, current => ({ ...current, ...thread }));
-    setRuns(current => {
-      const next = { ...current };
-      if (thread.status === "running") next[thread.id] = thread.activeRunId || "companion";
-      else delete next[thread.id];
-      return next;
-    });
-    questions.restore(thread.id, thread.pendingQuestions || [], questions.version(thread.id));
-  };
-  useEffect(() => window.cleoDesktop?.onCompanionThread?.(thread => companionUpdate.current(thread)), []);
   useEffect(() => {
     if (!Object.keys(restoredRuns).length) return;
     let active = true;
@@ -561,14 +528,14 @@ export function useCleoWorkspace(evolutionOpen = false) {
   }, [restoredRuns]);
   useEffect(() => {
     setSnapshot(current => current && { ...current, threads: current.threads.map(thread =>
-      [activeThreadId, workspaceThreadId, evolutionThreadId].includes(thread.id) || runLocks.current.has(thread.id)
+      thread.id === activeThreadId || runLocks.current.has(thread.id)
         ? thread : { ...thread, items: [] }) });
     if (activeThread?.history?.total && !activeThread.items.length) void history.load("latest");
-  }, [activeThreadId, workspaceThreadId, evolutionThreadId, runs]);
+  }, [activeThreadId, runs]);
 
   const selectSpace = (space: WorkspaceSpace) => {
     clearLoadingError();
-    if (space === activeSpace && activeProject?.id !== "productivity:cleo-evolution") return;
+    if (space === activeSpace) return;
     selectionRef.current += 1;
     setActiveSpace(space);
     if (space === "memory" || !snapshot) return;
@@ -590,12 +557,12 @@ export function useCleoWorkspace(evolutionOpen = false) {
     }
     const projectForSpace = defaultProjectFor(snapshot.projects, space);
     const preferredProjectId =
-      activeProject?.space === space && activeProject.id !== "productivity:cleo-evolution"
+      activeProject?.space === space
         ? activeProjectId : projectForSpace?.id ?? "";
     const next =
       snapshot.threads.find(
         (thread) => thread.space === space && thread.projectId === preferredProjectId,
-      ) ?? snapshot.threads.find((thread) => thread.space === space && thread.projectId !== EVOLUTION_PROJECT);
+      ) ?? snapshot.threads.find((thread) => thread.space === space);
     if (next) {
       setActiveProjectId(next.projectId);
       setActiveThreadId(next.id);
@@ -628,7 +595,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
   const selectThread = (threadId: string) => {
     clearLoadingError();
     const thread = snapshot?.threads.find((candidate) => candidate.id === threadId);
-    if (!thread || thread.projectId === EVOLUTION_PROJECT) return;
+    if (!thread) return;
     const selection = ++selectionRef.current;
     const version = threadVersions.current.get(threadId);
     setActiveSpace(thread.space);
@@ -652,16 +619,13 @@ export function useCleoWorkspace(evolutionOpen = false) {
       });
   };
 
-  /** Purpose: Open an empty task in whichever view is on screen.
+  /** Purpose: Open an empty task.
    * Input: optionally the project to park the draft in (a sidebar group's "+"); otherwise the
-   * draft stays where the user is. Output: the active view's selection is cleared; saved
-   * tasks stay untouched. Each view owns its own selected thread, so clearing the workspace
-   * selection while the evolution view is open left the old task on screen and the action
-   * did nothing at all.
+   * draft stays where the user is. Output: the selection is cleared; saved tasks stay untouched.
    */
   const startNewThread = (projectId?: string) => {
     selectionRef.current += 1;
-    if (projectId && !evolutionOpen) setActiveProjectId(projectId);
+    if (projectId) setActiveProjectId(projectId);
     if (activeSpace === "chat" && runtimeCatalog?.defaultNonProductivityProfile) {
       setDraftProfileId(runtimeCatalog.defaultNonProductivityProfile);
     }
@@ -671,27 +635,25 @@ export function useCleoWorkspace(evolutionOpen = false) {
       setDraftEffort(activeThreadRuntime?.effort ?? draftEffort);
       setDraftServiceTier(activeThreadRuntime?.serviceTier ?? "default");
       // The next task inherits the permissions of the one on screen, like its model.
-      if (activeThread.runtime && activeThread.projectId !== EVOLUTION_PROJECT) {
+      if (activeThread.runtime) {
         setDraftPermissionsState({
           provider: activeThread.runtime.provider,
           access: activeThread.runtime.access, approval: activeThread.runtime.approval,
         });
       }
     }
-    if (evolutionOpen) beginEvolutionDraft();
-    else setActiveThreadId(null);
+    setActiveThreadId(null);
   };
 
   const createThread = async () => {
     const selection = ++selectionRef.current;
     const space: ThreadSpace = activeSpace === "chat" ? "chat" : "productivity";
     const project = snapshot?.projects.find(
-      (candidate) => candidate.id === activeProjectId && candidate.space === space
-        && candidate.id !== EVOLUTION_PROJECT,
+      (candidate) => candidate.id === activeProjectId && candidate.space === space,
     ) ?? (space === "productivity"
       ? snapshot?.projects.find((candidate) => candidate.id === GENERAL_PRODUCTIVITY_PROJECT)
       : undefined)
-      ?? snapshot?.projects.find((candidate) => candidate.space === space && candidate.id !== EVOLUTION_PROJECT);
+      ?? snapshot?.projects.find((candidate) => candidate.space === space);
     if (!project && space === "chat") throw new Error(tr("usecleoworkspace.open_a_working_directory_first"));
     // Development work binds no folder by default: it belongs to the general project.
     const thread = await cleoClient.createThread(
@@ -728,50 +690,6 @@ export function useCleoWorkspace(evolutionOpen = false) {
     return thread;
   };
 
-  /** Purpose: Show an empty evolution composer with the ordinary harness picker.
-   * Input: none. Output: a separate draft; existing conversations remain saved.
-   */
-  const beginEvolutionDraft = () => {
-    evolutionSelectionRef.current += 1;
-    setEvolutionThreadId(null);
-  };
-
-  /** Purpose: Restore evolution independently of ordinary navigation, including during streaming.
-   * Input: saved ID or null for a new thread. Output: cached timeline and evolution selection only.
-   */
-  const openEvolutionThread = async (threadId: string | null = null) => {
-    const cached = snapshotRef.current?.threads.find((thread) => thread.id === threadId
-      && thread.projectId === EVOLUTION_PROJECT);
-    if (cached) {
-      setEvolutionThreadId(cached.id);
-      // Never reload over in-flight chunks; this cache receives the stream even when hidden.
-      if (runLocks.current.has(cached.id)) return cached;
-    }
-    if (!threadId && runLocks.current.size) throw new Error(tr("usecleoworkspace.wait_for_running_tasks_to_finish"));
-    if (!window.cleoDesktop) throw new Error(tr("usecleoworkspace.local_iteration_requires_the_desktop_app"));
-    const selected = ++evolutionSelectionRef.current;
-    const result = await window.cleoDesktop.request<{ thread: Thread; workspace: WorkspaceSnapshot }>(
-      "open_evolution_thread", { thread_id: threadId, provider: draftProvider || undefined,
-        model: draftModel || undefined, effort: draftEffort ?? undefined,
-        service_tier: draftRuntime.supportsFastMode ? draftServiceTier : undefined },
-    );
-    // A late response must still register a newly created stream target, but cannot replace
-    // another view's selected conversation or its newer timeline with a whole stale snapshot.
-    setSnapshot((current) => current ? {
-      ...current,
-      projects: [...current.projects, ...result.workspace.projects.filter(
-        (project) => !current.projects.some((existing) => existing.id === project.id),
-      )],
-      threads: [
-        current.threads.find((thread) => thread.id === result.thread.id && thread.status === "running")
-          ?? result.thread,
-        ...current.threads.filter((thread) => thread.id !== result.thread.id),
-      ],
-    } : result.workspace);
-    if (evolutionSelectionRef.current === selected) setEvolutionThreadId(result.thread.id);
-    return result.thread;
-  };
-
   /** Purpose: Register a selected folder and carry the unsent draft into its composer.
    * Input: Native directory selection. Output: Registered workspace; cancellation keeps selection.
    * A late dialog result must not replace a task the user selected in the meantime.
@@ -791,7 +709,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
         throw new Error(tr("usecleoworkspace.folder_added_but_its_project_could_not_be_located_select_it_in_the_project_list"));
       }
       if (selectionRef.current === selection) {
-        if (activeThreadId === null && activeSpace !== "memory" && !evolutionOpen) {
+        if (activeThreadId === null && activeSpace !== "memory") {
           retargetDraft(projectId);
         } else {
           selectionRef.current += 1;
@@ -890,8 +808,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
         });
       }
     }
-    const canNavigate = () => selectionRef.current === selection
-      && viewRef.current === evolutionOpen && thread.projectId !== EVOLUTION_PROJECT;
+    const canNavigate = () => selectionRef.current === selection;
     // Creating the conversation took time; a git action may have started in this checkout since.
     // Checked again right before the turn starts, so the agent never edits files under it.
     const startingProject = projectById(thread.projectId) ?? targetProject;
@@ -907,7 +824,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
       id: `${threadId}-user-${Date.now()}`,
       type: "message",
       role: "user",
-      content: visiblePrompt(prompt),
+      content: prompt,
       time: currentTime(),
       // Chips show at once; the backend's turn-started item carries the saved records.
       ...(pendingAttachments.length ? { attachments: pendingAttachments.map(({ base64: _bytes, ...chip }) => chip) } : {}),
@@ -922,8 +839,8 @@ export function useCleoWorkspace(evolutionOpen = false) {
     }));
     updateThread(threadId, (current) => ({
       ...current,
-      title: current.items.length === 0 ? visiblePrompt(prompt).slice(0, 26) : current.title,
-      summary: visiblePrompt(prompt).slice(0, 64),
+      title: current.items.length === 0 ? prompt.slice(0, 26) : current.title,
+      summary: prompt.slice(0, 64),
       status: "running",
       steerReady: false,
       updatedAt: tr("memoryview.just_now"),
@@ -1005,7 +922,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
         } else if (event.type === "refresh") {
           const refreshed = await refreshWorkspace(() => cleoClient.loadWorkspace());
           const next = refreshed.threads.find((item) => item.id === event.activeThreadId);
-          if (canNavigate() && next?.projectId !== EVOLUTION_PROJECT) {
+          if (canNavigate()) {
             setActiveSpace(event.space);
             setActiveThreadId(event.activeThreadId);
             if (next) setActiveProjectId(next.projectId);
@@ -1719,7 +1636,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
     if (!wasSelected) return;
     const parentPath = normalizedPath(projectToRemove.path ?? "").split("/.cleo/worktrees/")[0];
     const parent = refreshed.projects.find(project => project.space === "productivity" && project.path && normalizedPath(project.path) === parentPath)
-      ?? refreshed.projects.find(project => project.space === "productivity" && project.id !== EVOLUTION_PROJECT);
+      ?? refreshed.projects.find(project => project.space === "productivity");
     selectionRef.current += 1;
     setActiveSpace("productivity");
     setActiveProjectId(parent?.id ?? "");
@@ -1875,7 +1792,7 @@ export function useCleoWorkspace(evolutionOpen = false) {
     history,
     refreshLanguage,
     questions,
-    skills: activeThread?.skills ?? (draftSkills?.key === skillKey && !evolutionOpen ? draftSkills.skills : []),
+    skills: activeThread?.skills ?? (draftSkills?.key === skillKey ? draftSkills.skills : []),
     snapshot: snapshot && { ...snapshot, threads: snapshot.threads.map(thread => ({ ...thread, waitingFor: waitingFor(thread) })) },
     loadingError,
     memoryError,
@@ -1921,8 +1838,6 @@ export function useCleoWorkspace(evolutionOpen = false) {
     createThread: startNewThread,
     chooseWorkspace,
     choosingWorkspace,
-    openEvolutionThread,
-    beginEvolutionDraft,
     sendPrompt,
     queuedMessages: activeThreadId ? queues[activeThreadId] ?? [] : [],
     queueMessage,

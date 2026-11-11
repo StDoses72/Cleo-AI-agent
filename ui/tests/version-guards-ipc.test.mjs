@@ -16,7 +16,7 @@ async function boundary() {
     assert.ok(from >= 0 && to > from, `main.mjs must contain ${start}`);
     return main.slice(from, to);
   };
-  const declarations = ["allowedMethods", "retiredMethods"].map(name =>
+  const declarations = ["allowedMethods"].map(name =>
     main.match(new RegExp(`const ${name} = new Set\\(\\[[\\s\\S]*?\\]\\);`))?.[0]);
   assert.ok(declarations.every(Boolean), "method tables must exist");
   const updates = [];
@@ -103,9 +103,9 @@ test("in-app recovery retains a baseline first and restarts only into an explici
   await assert.rejects(async () => openRecovery(event), /正在退出/);
 });
 
-test("the removed evolution thread method reports the feature as gone without reaching the backend", async () => {
+test("removed evolution methods never reach the backend", async () => {
   const { request, calls } = await boundary();
-  await assert.rejects(request({}, { method: "open_evolution_thread", params: {} }), /不再提供本地进化/);
+  await assert.rejects(request({}, { method: "open_evolution_thread", params: {} }), /Unsupported desktop method/);
   await assert.rejects(request({}, { method: "analyze_evolution_request", params: {} }), /Unsupported desktop method/);
   assert.deepEqual(calls, []);
 });

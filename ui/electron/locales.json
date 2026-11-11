@@ -23,22 +23,6 @@
     "zh-CN": "语言设置保存失败",
     "en": "Could not save the language setting"
   },
-  "app.could_not_open_the_evolution_chat": {
-    "zh-CN": "无法打开进化对话",
-    "en": "Could not open the evolution chat"
-  },
-  "app.could_not_start_editing": {
-    "zh-CN": "无法开始修改",
-    "en": "Could not start editing"
-  },
-  "app.could_not_start_the_repair": {
-    "zh-CN": "无法开始修复",
-    "en": "Could not start the repair"
-  },
-  "app.could_not_start_the_pr_repair": {
-    "zh-CN": "无法开始 PR 修复",
-    "en": "Could not start the PR repair"
-  },
   "app.operation_failed": {
     "zh-CN": "操作失败",
     "en": "Operation failed"
@@ -46,10 +30,6 @@
   "app.wait_for_the_running_tasks_to_finish": {
     "zh-CN": "请先等待运行中的任务结束。",
     "en": "Wait for the running tasks to finish."
-  },
-  "app.save_or_discard_the_current_evolution_changes_before_installing_an_update": {
-    "zh-CN": "请先保存或放弃本轮进化，再安装更新。",
-    "en": "Save or discard the current evolution changes before installing an update."
   },
   "app.update_failed": {
     "zh-CN": "更新操作失败",
@@ -119,25 +99,9 @@
     "zh-CN": "修改外观、模型与数据选项",
     "en": "Change appearance, models, and data settings"
   },
-  "app.could_not_load_evolution_status_try_again": {
-    "zh-CN": "进化状态读取失败，请先重试。",
-    "en": "Could not load evolution status. Try again."
-  },
-  "app.loading_evolution_status": {
-    "zh-CN": "正在读取进化状态…",
-    "en": "Loading evolution status…"
-  },
-  "app.local_evolution_is_unavailable_in_this_environment": {
-    "zh-CN": "当前运行方式不支持本地进化。",
-    "en": "Local evolution is unavailable in this environment."
-  },
   "app.wait_for_the_current_version_operation_to_finish": {
     "zh-CN": "请等待当前版本操作完成…",
     "en": "Wait for the current version operation to finish…"
-  },
-  "app.wait_for_the_current_operation_to_finish": {
-    "zh-CN": "请等待当前操作完成…",
-    "en": "Wait for the current operation to finish…"
   },
   "app.submitting_please_wait": {
     "zh-CN": "正在提交，请稍候…",
@@ -146,10 +110,6 @@
   "app.memory": {
     "zh-CN": "记忆",
     "en": "Memory"
-  },
-  "app.evolution": {
-    "zh-CN": "进化",
-    "en": "Evolution"
   },
   "app.development": {
     "zh-CN": "开发",
@@ -170,10 +130,6 @@
   "app.could_not_restore_previous_chats": {
     "zh-CN": "无法恢复旧对话",
     "en": "Could not restore previous chats"
-  },
-  "app.please_improve_cleo": {
-    "zh-CN": "请改进 Cleo：",
-    "en": "Please improve Cleo:"
   },
   "app.the_working_directory_is_not_a_git_repository_so_changes_cannot_be_reverted": {
     "zh-CN": "当前工作目录不是 Git 仓库，无法回退。",
@@ -791,134 +747,6 @@
     "zh-CN": "已返回",
     "en": "Returned"
   },
-  "contributionmerge.could_not_load_check_results_try_again": {
-    "zh-CN": "未能读取检查结果，请重试。",
-    "en": "Could not load check results. Try again."
-  },
-  "contributionmerge.checks_failed": {
-    "zh-CN": "检查未通过",
-    "en": "Checks failed"
-  },
-  "contributionmerge.checks_running": {
-    "zh-CN": "检查进行中",
-    "en": "Checks running"
-  },
-  "contributionmerge.checks_passed": {
-    "zh-CN": "检查通过",
-    "en": "Checks passed"
-  },
-  "contributionmerge.check_results_pending": {
-    "zh-CN": "检查结果待确认",
-    "en": "Check results pending"
-  },
-  "contributionmerge.pr_merge_assistance": {
-    "zh-CN": "PR 合并辅助",
-    "en": "PR merge assistance"
-  },
-  "contributionmerge.submission_compatibility": {
-    "zh-CN": "提交兼容性",
-    "en": "Submission compatibility"
-  },
-  "contributionmerge.loading": {
-    "zh-CN": "正在读取",
-    "en": "Loading"
-  },
-  "contributionmerge.pr_status": {
-    "zh-CN": " PR 状态",
-    "en": " PR status"
-  },
-  "contributionmerge.submission_requirements": {
-    "zh-CN": "提交条件",
-    "en": "Submission requirements"
-  },
-  "contributionmerge.merged": {
-    "zh-CN": "已合并",
-    "en": "Merged"
-  },
-  "contributionmerge.closed": {
-    "zh-CN": "已关闭",
-    "en": "Closed"
-  },
-  "contributionmerge.changes_can_be_submitted_to_this_branch": {
-    "zh-CN": "可以向此分支提交",
-    "en": "Changes can be submitted to this branch"
-  },
-  "contributionmerge.no_textual_conflicts": {
-    "zh-CN": "无文本冲突",
-    "en": "No textual conflicts"
-  },
-  "contributionmerge.merge_conflicts_found": {
-    "zh-CN": "存在合并冲突",
-    "en": "Merge conflicts found"
-  },
-  "contributionmerge.merge_requirements_pending": {
-    "zh-CN": "合并条件待确认",
-    "en": "Merge requirements pending"
-  },
-  "contributionmerge.view_changes": {
-    "zh-CN": "查看具体差异",
-    "en": "View changes"
-  },
-  "contributionmerge.view_check_details": {
-    "zh-CN": "查看检查详情",
-    "en": "View check details"
-  },
-  "contributionmerge.you_do_not_have_write_access_to_the_source_repository_the_author_or_a_maintainer_must": {
-    "zh-CN": "没有源仓库写权限，需由作者或维护者更新。",
-    "en": "You do not have write access to the source repository. The author or a maintainer must update it."
-  },
-  "contributionmerge.write_access_has_not_been_confirmed": {
-    "zh-CN": "写入权限待确认。",
-    "en": "Write access has not been confirmed."
-  },
-  "contributionmerge.investigate_and_fix_the_original_pr": {
-    "zh-CN": "调查并修复原 PR",
-    "en": "Investigate and fix the original PR"
-  },
-  "contributionmerge.check_details": {
-    "zh-CN": "检查详情",
-    "en": "Check details"
-  },
-  "contributionmerge.target": {
-    "zh-CN": "目标：",
-    "en": "Target:"
-  },
-  "contributionmerge.source": {
-    "zh-CN": "源：",
-    "en": "Source:"
-  },
-  "contributionmerge.selected_version": {
-    "zh-CN": "选定版本",
-    "en": "Selected version"
-  },
-  "contributionmerge.commit": {
-    "zh-CN": "提交 ",
-    "en": "Commit "
-  },
-  "contributionmerge.source_files": {
-    "zh-CN": " 个源码文件",
-    "en": " source files"
-  },
-  "contributionmerge.having_no_textual_conflicts_does_not_mean_review_requirements_are_satisfied": {
-    "zh-CN": " · 无文本冲突不代表已满足审查要求。",
-    "en": " · Having no textual conflicts does not mean review requirements are satisfied."
-  },
-  "contributionmerge.github_merge_status": {
-    "zh-CN": "GitHub 合并状态：",
-    "en": "GitHub merge status:"
-  },
-  "contributionmerge.checks": {
-    "zh-CN": "检查",
-    "en": "Checks"
-  },
-  "contributionmerge.unknown": {
-    "zh-CN": "未知",
-    "en": "Unknown"
-  },
-  "contributionmerge.no_ci_check_results_yet": {
-    "zh-CN": "尚无 CI 检查记录。",
-    "en": "No CI check results yet."
-  },
   "conversation.help_me_plan_a_relaxed_fun_weekend": {
     "zh-CN": "帮我想一个轻松有趣的周末计划",
     "en": "Help me plan a relaxed, fun weekend"
@@ -1050,10 +878,6 @@
   "conversation.conversation_actions": {
     "zh-CN": "会话操作",
     "en": "Conversation actions"
-  },
-  "conversation.improve_cleo": {
-    "zh-CN": "改进 Cleo",
-    "en": "Improve Cleo"
   },
   "conversation.move_to_project": {
     "zh-CN": "加入项目…",
@@ -1230,22 +1054,6 @@
   "conversation.execution_allowed": {
     "zh-CN": " · 已允许执行",
     "en": " · Execution allowed"
-  },
-  "conversation.make_cleo_s_interface_clearer": {
-    "zh-CN": "让 Cleo 的界面更清晰一些",
-    "en": "Make Cleo's interface clearer"
-  },
-  "conversation.add_a_feature_i_need_to_cleo": {
-    "zh-CN": "为 Cleo 增加一个我需要的功能",
-    "en": "Add a feature I need to Cleo"
-  },
-  "conversation.help_improve_my_experience_with_cleo": {
-    "zh-CN": "帮我改善 Cleo 的使用体验",
-    "en": "Help improve my experience with Cleo"
-  },
-  "conversation.how_would_you_like_to_change_cleo": {
-    "zh-CN": "你想让 Cleo 怎样改变？",
-    "en": "How would you like to change Cleo?"
   },
   "conversation.what_would_you_like_to_talk_about": {
     "zh-CN": "今天想聊些什么？",
@@ -1503,693 +1311,33 @@
     "zh-CN": "安装所选依赖",
     "en": "Install selected dependencies"
   },
-  "evolutioncases.passed": {
-    "zh-CN": "通过",
-    "en": "Passed"
-  },
-  "evolutioncases.run_failed": {
-    "zh-CN": "运行失败",
-    "en": "Run failed"
-  },
-  "evolutioncases.pending_confirmation": {
-    "zh-CN": "待确认",
-    "en": "Pending confirmation"
-  },
-  "evolutioncases.behavior_acceptance": {
-    "zh-CN": "行为验收",
-    "en": "Behavior acceptance"
-  },
-  "evolutioncases.acceptance_checklist": {
-    "zh-CN": "验收清单",
-    "en": "Acceptance checklist"
-  },
-  "evolutioncases.items_awaiting_acceptance": {
-    "zh-CN": "{p0} 项待验收",
-    "en": "{p0} items awaiting acceptance"
-  },
-  "evolutioncases.create_an_improvement_case_from_this_conversation": {
-    "zh-CN": "从此对话创建改进案例",
-    "en": "Create an improvement case from this conversation"
-  },
-  "evolutioncases.add_goal": {
-    "zh-CN": "添加目标",
-    "en": "Add goal"
-  },
-  "evolutioncases.view_goals_and_results": {
-    "zh-CN": "查看目标与结果",
-    "en": "View goals and results"
-  },
-  "evolutioncases.awaiting_checks": {
-    "zh-CN": "等待检查",
-    "en": "Awaiting checks"
-  },
-  "evolutioncases.action": {
-    "zh-CN": "操作：",
-    "en": "Action:"
-  },
-  "evolutioncases.evidence_and_history": {
-    "zh-CN": "依据与历史",
-    "en": "Evidence and history"
-  },
-  "evolutioncases.before_changes": {
-    "zh-CN": "修改前",
-    "en": "Before changes"
-  },
-  "evolutioncases.source_analysis_not_tested": {
-    "zh-CN": "（源码分析，未实测）",
-    "en": "(source analysis; not tested)"
-  },
-  "evolutioncases.not_recorded": {
-    "zh-CN": "未记录",
-    "en": "Not recorded"
-  },
-  "evolutioncases.reason_for_adjustment": {
-    "zh-CN": "调整原因：",
-    "en": "Reason for adjustment:"
-  },
-  "evolutioncases.no_additional_evidence": {
-    "zh-CN": "无附加证据",
-    "en": "No additional evidence"
-  },
-  "evolutioncases.apply_the_changes_before_confirming_the_result": {
-    "zh-CN": "应用修改后可确认效果。",
-    "en": "Apply the changes before confirming the result."
-  },
-  "evolutioncases.confirm_result": {
-    "zh-CN": "确认效果",
-    "en": "Confirm result"
-  },
-  "evolutioncases.cancel_this_item": {
-    "zh-CN": "取消此项",
-    "en": "Cancel this item"
-  },
-  "evolutioncases.history": {
-    "zh-CN": "历史记录 · ",
-    "en": "History · "
-  },
-  "evolutioncases.items": {
-    "zh-CN": " 项",
-    "en": " items"
-  },
-  "evolutioncases.cancelled_not_counted_as_passed": {
-    "zh-CN": "已取消，未记为通过",
-    "en": "Cancelled; not counted as passed"
-  },
-  "evolutioncases.result_confirmed": {
-    "zh-CN": "已确认效果",
-    "en": "Result confirmed"
-  },
-  "evolutioncases.goal_adjusted": {
-    "zh-CN": "已调整目标",
-    "en": "Goal adjusted"
-  },
-  "evolutioncases.archived": {
-    "zh-CN": "已归档",
-    "en": "Archived"
-  },
-  "evolutioncases.original_evidence": {
-    "zh-CN": "原始证据",
-    "en": "Original evidence"
-  },
-  "evolutioncases.close_case": {
-    "zh-CN": "关闭案例",
-    "en": "Close case"
-  },
-  "evolutioncases.record_the_problem_and_expected_outcome_for_later_acceptance_checks": {
-    "zh-CN": "记录问题和期望效果，作为后续验收依据。",
-    "en": "Record the problem and expected outcome for later acceptance checks."
-  },
-  "evolutioncases.save_failed": {
-    "zh-CN": "保存失败",
-    "en": "Save failed"
-  },
-  "evolutioncases.case_name": {
-    "zh-CN": "案例名称",
-    "en": "Case name"
-  },
-  "evolutioncases.expected_behavior": {
-    "zh-CN": "预期行为",
-    "en": "Expected behavior"
-  },
-  "evolutioncases.for_example_preserve_progress_when_the_model_returns_invalid_output_then_try_to_corre": {
-    "zh-CN": "例如：模型返回格式错误时，保留已有进度并自动尝试纠正，最多三次",
-    "en": "For example: preserve progress when the model returns invalid output, then try to correct it up to three times"
-  },
-  "evolutioncases.includes_the_loaded_conversation_from": {
-    "zh-CN": "将附带「",
-    "en": "Includes the loaded conversation from “"
-  },
-  "evolutioncases.label": {
-    "zh-CN": "」已加载的对话记录。",
-    "en": "”."
-  },
-  "evolutioncases.save_case_and_open_evolution": {
-    "zh-CN": "保存案例并打开进化",
-    "en": "Save case and open Evolution"
-  },
-  "evolutioncases.continue_editing": {
-    "zh-CN": "继续修改",
-    "en": "Continue editing"
-  },
-  "evolutioncases.feedback_history_value": {
-    "zh-CN": "反馈记录：{p0}",
-    "en": "Feedback history: {p0}"
-  },
-  "evolutioncases.you": {
-    "zh-CN": "你",
-    "en": "You"
-  },
-  "evolutioncases.implementation_has_finished_review_the_build_results_apply_the_changes_and_check_the_": {
-    "zh-CN": "本轮实现已结束，请查看构建结果；应用后再次验收。",
-    "en": "Implementation has finished. Review the build results, apply the changes, and check the outcome again."
-  },
-  "evolutioncases.implementation_was_interrupted_continue_in_the_conversation": {
-    "zh-CN": "实现已中断，可在对话中继续。",
-    "en": "Implementation was interrupted. Continue in the conversation."
-  },
-  "evolutioncases.updating_based_on_your_feedback": {
-    "zh-CN": "正在根据反馈修改。",
-    "en": "Updating based on your feedback."
-  },
-  "evolutioncases.acceptance_expectations_are_saved_preparing_to_continue": {
-    "zh-CN": "已保留验收预期，准备继续修改。",
-    "en": "Acceptance expectations are saved. Preparing to continue."
-  },
-  "evolutioncases.feedback_saved_preparing_to_continue_provide_any_additional_information_in_the_conver": {
-    "zh-CN": "反馈已保存，正在准备；如需补充信息，请在对话中确认。",
-    "en": "Feedback saved. Preparing to continue; provide any additional information in the conversation."
-  },
-  "evolutioncases.additional_feedback_value": {
-    "zh-CN": "继续反馈：{p0}",
-    "en": "Additional feedback: {p0}"
-  },
-  "evolutioncases.describe_the_actual_behavior_optional": {
-    "zh-CN": "补充实际表现（可选）",
-    "en": "Describe the actual behavior (optional)"
-  },
-  "evolutioncases.continue_editing_value": {
-    "zh-CN": "继续修改：{p0}",
-    "en": "Continue editing: {p0}"
-  },
-  "evolutioncases.adjust_goal": {
-    "zh-CN": "调整目标",
-    "en": "Adjust goal"
-  },
-  "evolutioncases.action_conditions": {
-    "zh-CN": "操作条件",
-    "en": "Action conditions"
-  },
-  "evolutioncases.revised_goal": {
-    "zh-CN": "调整后的目标",
-    "en": "Revised goal"
-  },
-  "evolutioncases.reason_for_adjustment_2": {
-    "zh-CN": "调整原因",
-    "en": "Reason for adjustment"
-  },
-  "evolutioncases.save_goal": {
-    "zh-CN": "保存目标",
-    "en": "Save goal"
-  },
-  "evolutioncontribution.could_not_read_the_target_branch_try_again": {
-    "zh-CN": "未能读取目标分支，请重试。",
-    "en": "Could not read the target branch. Try again."
-  },
-  "evolutioncontribution.choose_a_separate_receiving_branch_the_main_branch_and_submission_base_template_canno": {
-    "zh-CN": "请选择独立的接收分支，不能使用 main 或 submission-base 模板。",
-    "en": "Choose a separate receiving branch. The main branch and submission-base template cannot be used."
-  },
-  "evolutioncontribution.prepare_and_verify_the_source_for_the_selected_version_first": {
-    "zh-CN": "请先准备并核验所选版本的源码。",
-    "en": "Prepare and verify the source for the selected version first."
-  },
-  "evolutioncontribution.no_submission_result_was_received_retry_to_confirm": {
-    "zh-CN": "未收到提交结果，请重试核对。",
-    "en": "No submission result was received. Retry to confirm."
-  },
-  "evolutioncontribution.contribute_changes": {
-    "zh-CN": "贡献提交",
-    "en": "Contribute changes"
-  },
-  "evolutioncontribution.publish_release": {
-    "zh-CN": "发布版本",
-    "en": "Publish release"
-  },
-  "evolutioncontribution.submission_method": {
-    "zh-CN": "提交方式",
-    "en": "Submission method"
-  },
-  "evolutioncontribution.submit_a_pr_to_an_existing_branch": {
-    "zh-CN": "向已有分支提交 PR",
-    "en": "Submit a PR to an existing branch"
-  },
-  "evolutioncontribution.request_a_new_target_branch": {
-    "zh-CN": "申请新建目标分支",
-    "en": "Request a new target branch"
-  },
-  "evolutioncontribution.submit_local_version": {
-    "zh-CN": "提交本地版本",
-    "en": "Submit local version"
-  },
-  "evolutioncontribution.choose_a_local_version": {
-    "zh-CN": "请选择本地版本",
-    "en": "Choose a local version"
-  },
-  "evolutioncontribution.local_version_value": {
-    "zh-CN": "本地版本 · {p0}",
-    "en": "Local version · {p0}"
-  },
-  "evolutioncontribution.source_preparation_required": {
-    "zh-CN": " · 待准备源码",
-    "en": " · Source preparation required"
-  },
-  "evolutioncontribution.switch_to_this_version_and_prepare_its_source_first": {
-    "zh-CN": "请先切换到此版本并准备源码。",
-    "en": "Switch to this version and prepare its source first."
-  },
-  "evolutioncontribution.prepare_source_for_the_current_version": {
-    "zh-CN": "准备当前版本源码",
-    "en": "Prepare source for the current version"
-  },
-  "evolutioncontribution.target_branch": {
-    "zh-CN": "目标分支",
-    "en": "Target branch"
-  },
-  "evolutioncontribution.loading_branches": {
-    "zh-CN": "正在读取分支…",
-    "en": "Loading branches…"
-  },
-  "evolutioncontribution.choose_a_target_branch": {
-    "zh-CN": "请选择目标分支",
-    "en": "Choose a target branch"
-  },
-  "evolutioncontribution.unavailable": {
-    "zh-CN": " · 不可用",
-    "en": " · Unavailable"
-  },
-  "evolutioncontribution.no_receiving_branches": {
-    "zh-CN": "暂无接收分支",
-    "en": "No receiving branches"
-  },
-  "evolutioncontribution.pr_title": {
-    "zh-CN": "PR 标题",
-    "en": "PR title"
-  },
-  "evolutioncontribution.requested_branch_name": {
-    "zh-CN": "申请分支名称",
-    "en": "Requested branch name"
-  },
-  "evolutioncontribution.pr_description": {
-    "zh-CN": "PR 说明",
-    "en": "PR description"
-  },
-  "evolutioncontribution.request_description": {
-    "zh-CN": "申请说明",
-    "en": "Request description"
-  },
-  "evolutioncontribution.the_main_branch_and_submission_base_template_cannot_be_used_as_target_branches": {
-    "zh-CN": "不允许以 main 或 submission-base 模板为目标分支。",
-    "en": "The main branch and submission-base template cannot be used as target branches."
-  },
-  "evolutioncontribution.submitting": {
+  "questiondialog.submitting": {
     "zh-CN": "正在提交…",
     "en": "Submitting…"
   },
-  "evolutioncontribution.create_new_pr": {
-    "zh-CN": "创建新 PR",
-    "en": "Create new PR"
-  },
-  "evolutioncontribution.submit_branch_request": {
-    "zh-CN": "提交分支申请",
-    "en": "Submit branch request"
-  },
-  "evolutioncontribution.request_submitted_the_target_branch_has_not_been_created_yet": {
-    "zh-CN": "申请已提交，目标分支尚待创建。",
-    "en": "Request submitted. The target branch has not been created yet."
-  },
-  "evolutioncontribution.view_request": {
-    "zh-CN": "查看申请",
-    "en": "View request"
-  },
-  "evolutioncontribution.target_branch_request": {
-    "zh-CN": "目标分支申请",
-    "en": "Target branch request"
-  },
-  "evolutioncontribution.checking_branch_status": {
-    "zh-CN": "正在确认分支状态…",
-    "en": "Checking branch status…"
-  },
-  "evolutioncontribution.branch_ready": {
-    "zh-CN": "分支已就绪",
-    "en": "Branch ready"
-  },
-  "evolutioncontribution.waiting_for_branch_creation": {
-    "zh-CN": "等待创建分支",
-    "en": "Waiting for branch creation"
-  },
-  "evolutioncontribution.requested_version": {
-    "zh-CN": "申请版本：",
-    "en": "Requested version:"
-  },
-  "evolutioncontribution.submit_a_pr_to_this_branch": {
-    "zh-CN": "向该分支提交 PR",
-    "en": "Submit a PR to this branch"
-  },
-  "evolutionpanel.preparing": {
-    "zh-CN": "正在准备",
-    "en": "Preparing"
-  },
-  "evolutionpanel.checking_and_building": {
-    "zh-CN": "正在检查并构建",
-    "en": "Checking and building"
-  },
-  "evolutionpanel.restarting": {
-    "zh-CN": "正在重启",
-    "en": "Restarting"
-  },
-  "evolutionpanel.downloading_the_official_release": {
-    "zh-CN": "正在下载正式版",
-    "en": "Downloading the official release"
-  },
-  "evolutionpanel.connecting_to_github": {
-    "zh-CN": "正在连接 GitHub",
-    "en": "Connecting to GitHub"
-  },
-  "evolutionpanel.submitting_pr": {
-    "zh-CN": "正在提交 PR",
-    "en": "Submitting PR"
-  },
-  "evolutionpanel.switching_versions": {
-    "zh-CN": "正在切换版本",
-    "en": "Switching versions"
-  },
-  "evolutionpanel.saving": {
-    "zh-CN": "正在保存",
-    "en": "Saving"
-  },
-  "evolutionpanel.checking_changes": {
-    "zh-CN": "正在检查修改",
-    "en": "Checking changes"
-  },
-  "evolutionpanel.creating_github_release": {
-    "zh-CN": "正在创建 GitHub Release",
-    "en": "Creating GitHub Release"
-  },
-  "evolutionpanel.current_version": {
-    "zh-CN": "当前版本",
-    "en": "Current version"
-  },
-  "evolutionpanel.experimental_version": {
-    "zh-CN": "实验版",
-    "en": "Experimental version"
-  },
-  "evolutionpanel.release": {
-    "zh-CN": "发布版",
-    "en": "Release"
-  },
-  "evolutionpanel.pre_release": {
+  "updateversionpicker.pre_release": {
     "zh-CN": "预发布版",
     "en": "Pre-release"
   },
-  "evolutionpanel.stable_release": {
+  "updateversionpicker.stable_release": {
     "zh-CN": "正式版",
     "en": "Stable release"
   },
-  "evolutionpanel.saved_local_version": {
-    "zh-CN": "已保存的本地版",
-    "en": "Saved local version"
-  },
-  "evolutionpanel.local_version_value": {
-    "zh-CN": "本地版 · {p0}",
-    "en": "Local version · {p0}"
-  },
-  "evolutionpanel.unsaved_changes": {
-    "zh-CN": "未保存的修改",
-    "en": "Unsaved changes"
-  },
-  "evolutionpanel.could_not_load_releases_try_again": {
-    "zh-CN": "未能读取发布版本，请重试。",
-    "en": "Could not load releases. Try again."
-  },
-  "evolutionpanel.editing": {
-    "zh-CN": "正在修改…",
-    "en": "Editing…"
-  },
-  "evolutionpanel.waiting_for_github_authorization": {
-    "zh-CN": "等待 GitHub 授权",
-    "en": "Waiting for GitHub authorization"
-  },
-  "evolutionpanel.other_tasks_are_running": {
-    "zh-CN": "其他任务正在运行，结束后才能修改 Cleo",
-    "en": "Other tasks are running; Cleo can be changed once they finish"
-  },
-  "evolutionpanel.checks_failed_changes_cannot_be_applied_yet": {
-    "zh-CN": "检查未通过，修改尚不可应用",
-    "en": "Checks failed; changes cannot be applied yet"
-  },
-  "evolutionpanel.checks_passed_ready_to_apply": {
-    "zh-CN": "检查通过，可以应用",
-    "en": "Checks passed; ready to apply"
-  },
-  "evolutionpanel.the_current_version_can_be_saved": {
-    "zh-CN": "可以保存当前版本",
-    "en": "The current version can be saved"
-  },
-  "evolutionpanel.no_program_changes": {
-    "zh-CN": "暂无程序改动",
-    "en": "No program changes"
-  },
-  "evolutionpanel.changes_need_checking": {
-    "zh-CN": "改动待检查",
-    "en": "Changes need checking"
-  },
-  "evolutionpanel.version": {
-    "zh-CN": "版本",
-    "en": "Version"
-  },
-  "evolutionpanel.submit_and_publish": {
-    "zh-CN": "提交与发布",
-    "en": "Submit and publish"
-  },
-  "evolutionpanel.pr_history": {
-    "zh-CN": "PR 历史",
-    "en": "PR history"
-  },
-  "evolutionpanel.save_local_version": {
-    "zh-CN": "保存本地版本",
-    "en": "Save local version"
-  },
-  "evolutionpanel.discard_current_changes": {
-    "zh-CN": "放弃本轮修改",
-    "en": "Discard current changes"
-  },
-  "evolutionpanel.evolution_actions": {
-    "zh-CN": "进化操作",
-    "en": "Evolution actions"
-  },
-  "evolutionpanel.choose_version": {
+  "updateversionpicker.choose_version": {
     "zh-CN": "选择版本",
     "en": "Choose version"
-  },
-  "evolutionpanel.in_use": {
-    "zh-CN": "正在使用",
-    "en": "In use"
   },
   "evolutionpanel.evolution_status": {
     "zh-CN": "进化状态",
     "en": "Evolution status"
   },
-  "evolutionpanel.view_code_changes": {
-    "zh-CN": "查看代码变更",
-    "en": "View code changes"
-  },
-  "evolutionpanel.history": {
-    "zh-CN": "历史",
-    "en": "History"
-  },
-  "evolutionpanel.continue_connecting_to_github": {
-    "zh-CN": "继续连接 GitHub",
-    "en": "Continue connecting to GitHub"
-  },
-  "evolutionpanel.new_pr": {
-    "zh-CN": "新建 PR",
-    "en": "New PR"
-  },
-  "evolutionpanel.continue_connecting": {
-    "zh-CN": "继续连接",
-    "en": "Continue connecting"
-  },
-  "evolutionpanel.editing_actions": {
-    "zh-CN": "修改操作",
-    "en": "Editing actions"
-  },
-  "evolutionpanel.release_logs": {
-    "zh-CN": "发布日志",
-    "en": "Release logs"
-  },
-  "evolutionpanel.stop_publishing": {
-    "zh-CN": "停止发布",
-    "en": "Stop publishing"
-  },
-  "evolutionpanel.publishing_incomplete": {
-    "zh-CN": "发布未完成",
-    "en": "Publishing incomplete"
-  },
-  "evolutionpanel.continue_publishing": {
-    "zh-CN": "继续发布",
-    "en": "Continue publishing"
-  },
-  "evolutionpanel.published": {
-    "zh-CN": " 已发布",
-    "en": " published"
-  },
-  "evolutionpanel.check_changes": {
-    "zh-CN": "检查改动",
-    "en": "Check changes"
-  },
-  "evolutionpanel.apply": {
-    "zh-CN": "应用",
-    "en": "Apply"
-  },
-  "evolutionpanel.view_publishing_failure": {
-    "zh-CN": "查看发布失败原因",
-    "en": "View publishing failure"
-  },
-  "evolutionpanel.pr_submission_result": {
-    "zh-CN": "PR 提交结果",
-    "en": "PR submission result"
-  },
-  "evolutionpanel.new_pr_created": {
-    "zh-CN": "新 PR 已创建",
-    "en": "New PR created"
-  },
-  "evolutionpanel.view": {
-    "zh-CN": "查看 #",
-    "en": "View #"
-  },
-  "evolutionpanel.view_status": {
-    "zh-CN": "查看状态",
-    "en": "View status"
-  },
-  "evolutionpanel.dismiss_submission_notice": {
-    "zh-CN": "关闭提交提示",
-    "en": "Dismiss submission notice"
-  },
-  "evolutionpanel.let_cleo_fix_this": {
-    "zh-CN": "让 Cleo 修复",
-    "en": "Let Cleo fix this"
-  },
-  "evolutionpanel.publish_this_pr_version": {
-    "zh-CN": "发布该 PR 版本",
-    "en": "Publish this PR version"
-  },
-  "evolutionpanel.based_on_value": {
-    "zh-CN": "基于 {p0}",
-    "en": "Based on {p0}"
-  },
-  "evolutionpanel.selected_version": {
-    "zh-CN": "所选版本",
-    "en": "Selected version"
-  },
-  "evolutionpanel.use_this_version": {
-    "zh-CN": "使用此版本",
-    "en": "Use this version"
-  },
-  "evolutionpanel.find_a_release": {
-    "zh-CN": "查找发布版本",
-    "en": "Find a release"
-  },
-  "evolutionpanel.loading_releases": {
-    "zh-CN": "正在读取发布版本…",
-    "en": "Loading releases…"
-  },
-  "evolutionpanel.choose_a_version": {
+  "updateversionpicker.choose_a_version": {
     "zh-CN": "请选择版本",
     "en": "Choose a version"
   },
-  "evolutionpanel.no_longer_available": {
-    "zh-CN": " · 已不可用",
-    "en": " · No longer available"
-  },
-  "evolutionpanel.in_use_2": {
+  "updateversionpicker.in_use": {
     "zh-CN": " · 正在使用",
     "en": " · In use"
-  },
-  "evolutionpanel.download_selected_version": {
-    "zh-CN": "下载所选版本",
-    "en": "Download selected version"
-  },
-  "evolutionpanel.starting_version": {
-    "zh-CN": "本轮起点：",
-    "en": "Starting version:"
-  },
-  "evolutionpanel.discard_changes": {
-    "zh-CN": "放弃修改",
-    "en": "Discard changes"
-  },
-  "evolutionpanel.independent_version_recovery": {
-    "zh-CN": "独立版本恢复",
-    "en": "Independent version recovery"
-  },
-  "evolutionpanel.this_replaces_the_last_saved_local_version": {
-    "zh-CN": "将替换上一次保存的本地版本。",
-    "en": "This replaces the last saved local version."
-  },
-  "evolutionpanel.name_optional": {
-    "zh-CN": "名称（可选）",
-    "en": "Name (optional)"
-  },
-  "evolutionpanel.local_version_name": {
-    "zh-CN": "本地版本名称",
-    "en": "Local version name"
-  },
-  "evolutionpanel.leave_blank_to_use_value": {
-    "zh-CN": "留空使用 {p0}",
-    "en": "Leave blank to use {p0}"
-  },
-  "evolutionpanel.leave_blank_to_use_the_default_name": {
-    "zh-CN": "留空使用默认名称",
-    "en": "Leave blank to use the default name"
-  },
-  "evolutionpanel.confirm_save": {
-    "zh-CN": "确认保存",
-    "en": "Confirm save"
-  },
-  "evolutionpanel.return_to": {
-    "zh-CN": "回到「",
-    "en": "Return to “"
-  },
-  "evolutionpanel.cleo_will_restart_automatically": {
-    "zh-CN": "，Cleo 会自动重启",
-    "en": "; Cleo will restart automatically"
-  },
-  "evolutionpanel.confirm_discard": {
-    "zh-CN": "确认放弃",
-    "en": "Confirm discard"
-  },
-  "evolutionpreparation.acceptance_preparation_for_this_iteration": {
-    "zh-CN": "本轮验收准备",
-    "en": "Acceptance preparation for this iteration"
-  },
-  "evolutionpreparation.additional_requirements": {
-    "zh-CN": "补充需求",
-    "en": "Additional requirements"
-  },
-  "evolutionpreparation.add_details_and_continue": {
-    "zh-CN": "补充并继续",
-    "en": "Add details and continue"
-  },
-  "evolutionpreparation.skip_and_continue": {
-    "zh-CN": "跳过并继续",
-    "en": "Skip and continue"
-  },
-  "evolutionpreparation.analyze_again": {
-    "zh-CN": "重新分析",
-    "en": "Analyze again"
-  },
-  "evolutionpreparation.the_previous_changes_are_incomplete_acceptance_goals_have_been_preserved": {
-    "zh-CN": "上次修改尚未完成，验收目标已保留。",
-    "en": "The previous changes are incomplete. Acceptance goals have been preserved."
   },
   "filespanel.could_not_read_the_folder": {
     "zh-CN": "无法读取文件夹",
@@ -2295,69 +1443,9 @@
     "zh-CN": "文件较大，只显示开头部分。",
     "en": "This file is large. Only its beginning is shown."
   },
-  "githublogin.github_sign_in": {
-    "zh-CN": "GitHub 登录",
-    "en": "GitHub sign-in"
-  },
-  "githublogin.github_connection": {
-    "zh-CN": "GitHub 连接",
-    "en": "GitHub connection"
-  },
-  "githublogin.repository_release_permission": {
-    "zh-CN": "仓库发布权限",
-    "en": "Repository release permission"
-  },
-  "githublogin.repository_release_permission_has_not_been_confirmed": {
-    "zh-CN": "仓库发布权限尚未确认。",
-    "en": "Repository release permission has not been confirmed."
-  },
-  "githublogin.diagnostics": {
-    "zh-CN": "诊断：",
-    "en": "Diagnostics:"
-  },
-  "githublogin.github_one_time_code": {
-    "zh-CN": "GitHub 一次性验证码",
-    "en": "GitHub one-time code"
-  },
-  "githublogin.copy_code": {
-    "zh-CN": "复制验证码",
-    "en": "Copy code"
-  },
-  "githublogin.enter_this_code_at_github_com_login_device": {
-    "zh-CN": "在 github.com/login/device 输入此验证码",
-    "en": "Enter this code at github.com/login/device"
-  },
-  "githublogin.copy_failed_select_and_copy_the_code_manually": {
-    "zh-CN": "复制失败，请手动选择并复制验证码。",
-    "en": "Copy failed. Select and copy the code manually."
-  },
-  "githublogin.submit_pr_publish": {
-    "zh-CN": "提交 PR / 发布",
-    "en": "Submit PR / publish"
-  },
-  "githublogin.continue_pr_submission": {
-    "zh-CN": "继续提交 PR",
-    "en": "Continue PR submission"
-  },
-  "githublogin.open_github_authorization_page": {
-    "zh-CN": "打开 GitHub 授权页面",
-    "en": "Open GitHub authorization page"
-  },
-  "githublogin.cancel_sign_in": {
+  "connectionwizard.cancel_sign_in": {
     "zh-CN": "取消登录",
     "en": "Cancel sign-in"
-  },
-  "githublogin.reconnect_github": {
-    "zh-CN": "重新连接 GitHub",
-    "en": "Reconnect GitHub"
-  },
-  "githublogin.connect_github": {
-    "zh-CN": "连接 GitHub",
-    "en": "Connect GitHub"
-  },
-  "githublogin.check_connection": {
-    "zh-CN": "检查连接",
-    "en": "Check connection"
   },
   "harnessimportpage.skills": {
     "zh-CN": "技能",
@@ -4171,230 +3259,6 @@
     "zh-CN": "提交答案",
     "en": "Submit answer"
   },
-  "releasepackages.publishing_requested_waiting_for_the_workflow_run_to_appear": {
-    "zh-CN": "发布请求已提交，等待工作流创建运行记录。",
-    "en": "Publishing requested; waiting for the workflow run to appear."
-  },
-  "releasepackages.publishing_installation_packages": {
-    "zh-CN": "安装包发布中。",
-    "en": "Publishing installation packages."
-  },
-  "releasepackages.installation_packages_published_the_workflow_succeeded_and_packages_manifests_and_che": {
-    "zh-CN": "安装包发布完成：工作流成功，四个平台安装包、清单和校验文件齐全。",
-    "en": "Installation packages published: the workflow succeeded and packages, manifests, and checksums are present for all four platforms."
-  },
-  "releasepackages.package_publishing_failed_review_the_workflow_error_fix_it_and_retry_with_the_same_ta": {
-    "zh-CN": "安装包发布失败。请查看工作流错误，修复后使用相同标签和构建重试。",
-    "en": "Package publishing failed. Review the workflow error, fix it, and retry with the same tag and build."
-  },
-  "releasepackages.no_matching_run_was_found_yet_the_request_may_still_be_processing_refresh_later": {
-    "zh-CN": "尚未找到对应运行记录。请求可能仍在处理，请稍后刷新。",
-    "en": "No matching run was found yet. The request may still be processing; refresh later."
-  },
-  "releasepackages.the_workflow_succeeded_previously_but_remote_files_or_release_metadata_are_incomplete": {
-    "zh-CN": "工作流曾成功，但远端文件或发布信息不完整，不能确认安装包可用。请查看工作流及 Release。",
-    "en": "The workflow succeeded previously, but remote files or release metadata are incomplete. Package availability cannot be confirmed. Review the workflow and Release."
-  },
-  "releasepackages.publish_installation_packages": {
-    "zh-CN": "发布安装包",
-    "en": "Publish installation packages"
-  },
-  "releasepackages.package_publication_has_not_been_confirmed": {
-    "zh-CN": "安装包尚未确认发布。",
-    "en": "Package publication has not been confirmed."
-  },
-  "releasepackages.find_matching_build": {
-    "zh-CN": "查找匹配构建",
-    "en": "Find matching build"
-  },
-  "releasepackages.no_complete_build_exists_for_this_commit_a_successful_manual_desktop_platforms_build_": {
-    "zh-CN": "没有该提交的完整构建。需要成功的 Desktop platforms 手动构建及四个平台未过期的产物；PR 检查不包含完整 Windows 安装包。",
-    "en": "No complete build exists for this commit. A successful manual Desktop platforms build with unexpired artifacts for all four platforms is required; PR checks do not include the complete Windows installer."
-  },
-  "releasepackages.view_desktop_platforms": {
-    "zh-CN": "查看 Desktop platforms",
-    "en": "View Desktop platforms"
-  },
-  "releasepackages.successful_build": {
-    "zh-CN": "成功构建",
-    "en": "Successful build"
-  },
-  "releasepackages.build_run_id": {
-    "zh-CN": "构建 Run ID",
-    "en": "Build run ID"
-  },
-  "releasepackages.view_build": {
-    "zh-CN": "查看构建",
-    "en": "View build"
-  },
-  "releasepackages.refresh_package_status": {
-    "zh-CN": "刷新安装包状态",
-    "en": "Refresh package status"
-  },
-  "releasepackages.package_status_is_unconfirmed": {
-    "zh-CN": "安装包状态待确认。",
-    "en": "Package status is unconfirmed."
-  },
-  "releasepackages.view_publishing_workflow": {
-    "zh-CN": "查看发布工作流",
-    "en": "View publishing workflow"
-  },
-  "releasepackages.view_packages": {
-    "zh-CN": "查看安装包",
-    "en": "View packages"
-  },
-  "releasepublisher.local_version_value": {
-    "zh-CN": "本地版本 {p0}",
-    "en": "Local version {p0}"
-  },
-  "releasepublisher.merged_pr_version": {
-    "zh-CN": "PR 合并版本",
-    "en": "Merged PR version"
-  },
-  "releasepublisher.target_branch_needs_verification": {
-    "zh-CN": "目标分支待核验",
-    "en": "Target branch needs verification"
-  },
-  "releasepublisher.currently_running_version": {
-    "zh-CN": "当前运行的版本",
-    "en": "Currently running version"
-  },
-  "releasepublisher.changes_awaiting_application": {
-    "zh-CN": "待应用的修改",
-    "en": "Changes awaiting application"
-  },
-  "releasepublisher.no_pr_submitted": {
-    "zh-CN": "未提交 PR",
-    "en": "No PR submitted"
-  },
-  "releasepublisher.awaiting_merge": {
-    "zh-CN": "待合并",
-    "en": "Awaiting merge"
-  },
-  "releasepublisher.could_not_confirm_release_requirements_try_again": {
-    "zh-CN": "未能确认发布条件，请重试。",
-    "en": "Could not confirm release requirements. Try again."
-  },
-  "releasepublisher.could_not_verify_the_selected_pr_try_again": {
-    "zh-CN": "未能核验所选 PR，请重试。",
-    "en": "Could not verify the selected PR. Try again."
-  },
-  "releasepublisher.could_not_confirm_release_permission_try_again": {
-    "zh-CN": "未能确认发布权限，请重试。",
-    "en": "Could not confirm release permission. Try again."
-  },
-  "releasepublisher.enter_a_valid_version_such_as_v1_2_3_or_v1_2_3_beta_1": {
-    "zh-CN": "请输入合法版本号，例如 v1.2.3 或 v1.2.3-beta.1。",
-    "en": "Enter a valid version, such as v1.2.3 or v1.2.3-beta.1."
-  },
-  "releasepublisher.no_publishing_job_was_received_retry_to_confirm": {
-    "zh-CN": "未收到发布任务，请重试核对。",
-    "en": "No publishing job was received. Retry to confirm."
-  },
-  "releasepublisher.create_github_release": {
-    "zh-CN": "创建 GitHub Release",
-    "en": "Create GitHub Release"
-  },
-  "releasepublisher.publish_local_version": {
-    "zh-CN": "发布本地版本",
-    "en": "Publish local version"
-  },
-  "releasepublisher.choose_a_local_version_to_publish": {
-    "zh-CN": "请选择要发布的本地版本",
-    "en": "Choose a local version to publish"
-  },
-  "releasepublisher.local_version": {
-    "zh-CN": "本地版本",
-    "en": "Local version"
-  },
-  "releasepublisher.other_pr_versions_local_copies_removed": {
-    "zh-CN": "其他 PR 版本（本地副本已清理）",
-    "en": "Other PR versions (local copies removed)"
-  },
-  "releasepublisher.merge_status_needs_verification": {
-    "zh-CN": "合并状态待核验",
-    "en": "Merge status needs verification"
-  },
-  "releasepublisher.no_local_versions_available_to_publish": {
-    "zh-CN": "暂无可发布的本地版本",
-    "en": "No local versions available to publish"
-  },
-  "releasepublisher.this_version_has_no_pr_yet_it_can_be_published_after_merging": {
-    "zh-CN": "此版本还没有 PR，合并后才能发布。",
-    "en": "This version has no PR yet. It can be published after merging."
-  },
-  "releasepublisher.create_a_pr_for_this_version": {
-    "zh-CN": "为此版本新建 PR",
-    "en": "Create a PR for this version"
-  },
-  "releasepublisher.view_pr": {
-    "zh-CN": "查看 PR",
-    "en": "View PR"
-  },
-  "releasepublisher.release_version": {
-    "zh-CN": "发布版本号",
-    "en": "Release version"
-  },
-  "releasepublisher.version_tag": {
-    "zh-CN": "版本标签",
-    "en": "Version tag"
-  },
-  "releasepublisher.version_format_v1_2_3_or_v1_2_3_beta_1": {
-    "zh-CN": "版本号格式：v1.2.3 或 v1.2.3-beta.1。",
-    "en": "Version format: v1.2.3 or v1.2.3-beta.1."
-  },
-  "releasepublisher.release_type": {
-    "zh-CN": "发布类型",
-    "en": "Release type"
-  },
-  "releasepublisher.title_and_description_optional": {
-    "zh-CN": "标题与说明（可选）",
-    "en": "Title and description (optional)"
-  },
-  "releasepublisher.release_title": {
-    "zh-CN": "发布标题",
-    "en": "Release title"
-  },
-  "releasepublisher.defaults_to_the_version_number": {
-    "zh-CN": "默认使用版本号",
-    "en": "Defaults to the version number"
-  },
-  "releasepublisher.release_notes": {
-    "zh-CN": "发布说明",
-    "en": "Release notes"
-  },
-  "releasepublisher.connect_github_first": {
-    "zh-CN": "请先连接 GitHub。",
-    "en": "Connect GitHub first."
-  },
-  "releasepublisher.checking_the_release_source": {
-    "zh-CN": "正在核对发布来源…",
-    "en": "Checking the release source…"
-  },
-  "releasepublisher.confirming_release_permission": {
-    "zh-CN": "正在确认发布权限…",
-    "en": "Confirming release permission…"
-  },
-  "releasepublisher.publishing_account": {
-    "zh-CN": "发布账号：",
-    "en": "Publishing account:"
-  },
-  "releasepublisher.starting_publication": {
-    "zh-CN": "正在启动发布…",
-    "en": "Starting publication…"
-  },
-  "releasepublisher.publish": {
-    "zh-CN": "发布",
-    "en": "Publish"
-  },
-  "releasepublisher.checking_release_permission_pr_merge_status_and_committed_source": {
-    "zh-CN": "正在检查发布权限、PR 合并状态及提交源码…",
-    "en": "Checking release permission, PR merge status, and committed source…"
-  },
-  "releasepublisher.publishing_job_started": {
-    "zh-CN": "发布任务已启动",
-    "en": "Publishing job started"
-  },
   "threadsidebar.development_tasks": {
     "zh-CN": "开发任务",
     "en": "Development tasks"
@@ -4711,14 +3575,6 @@
     "zh-CN": "请先打开一个工作目录。",
     "en": "Open a working directory first."
   },
-  "usecleoworkspace.wait_for_running_tasks_to_finish": {
-    "zh-CN": "请先等待运行中的任务完成。",
-    "en": "Wait for running tasks to finish."
-  },
-  "usecleoworkspace.local_iteration_requires_the_desktop_app": {
-    "zh-CN": "本地迭代需要在桌面应用中运行。",
-    "en": "Local iteration requires the desktop app."
-  },
   "usecleoworkspace.folder_added_but_its_project_could_not_be_located_select_it_in_the_project_list": {
     "zh-CN": "文件夹已添加，但无法定位项目，请在项目列表中选择。",
     "en": "Folder added, but its project could not be located. Select it in the project list."
@@ -4831,10 +3687,6 @@
     "zh-CN": "无法读取对话指令",
     "en": "Could not load chat instructions"
   },
-  "useevolution.use_local_iteration_in_the_cleo_desktop_app": {
-    "zh-CN": "请在 Cleo 桌面应用中使用本地迭代。",
-    "en": "Use local iteration in the Cleo desktop app."
-  },
   "useinspectorresize.resize_inspector": {
     "zh-CN": "调整检查器宽度",
     "en": "Resize inspector"
@@ -4863,10 +3715,6 @@
     "zh-CN": "请继续完成本轮需求，修复桌面检查发现的代码错误。",
     "en": "Continue the current request and fix the code errors found by desktop checks."
   },
-  "visible_prompt.fix_the_issues_found_by_checks": {
-    "zh-CN": "修复检查发现的问题",
-    "en": "Fix the issues found by checks"
-  },
   "visible_prompt.the_previous_application_failed_to_start": {
     "zh-CN": "上次应用未能正常启动，",
     "en": "The previous application failed to start,"
@@ -4874,10 +3722,6 @@
   "visible_prompt.diagnostic_data": {
     "zh-CN": "诊断数据",
     "en": "Diagnostic data"
-  },
-  "visible_prompt.fix_the_previous_application_s_startup_issue": {
-    "zh-CN": "修复上次应用的启动问题",
-    "en": "Fix the previous application's startup issue"
   },
   "visible_prompt.investigate_and_fix": {
     "zh-CN": "请调查并修复",
@@ -6211,14 +5055,6 @@
     "zh-CN": "、",
     "en": ", "
   },
-  "visible_prompt.original_pr_caption": {
-    "zh-CN": "请调查并修复原 PR {p0}。",
-    "en": "Investigate and fix original PR {p0}."
-  },
-  "visible_prompt.compatibility_caption": {
-    "zh-CN": "请调查并修复提交到 {p0} 的兼容性问题。",
-    "en": "Investigate and fix compatibility issues when submitting to {p0}."
-  },
   "memorysources.title": {
     "zh-CN": "记忆来源",
     "en": "Memory sources"
@@ -6398,14 +5234,6 @@
   "sidebar.search": {
     "zh-CN": "搜索",
     "en": "Search"
-  },
-  "sidebar.evolution_hint": {
-    "zh-CN": "描述你想要的改变，让 Cleo 修改自己的界面和功能",
-    "en": "Describe a change and let Cleo edit its own interface and features"
-  },
-  "app.open_evolution": {
-    "zh-CN": "打开进化",
-    "en": "Open evolution"
   },
   "app.toggle_sidebar_hint": {
     "zh-CN": "显示或隐藏左侧导航",
@@ -6746,10 +5574,6 @@
   "app.new_chat": {
     "zh-CN": "新建对话",
     "en": "New chat"
-  },
-  "evolutionpanel.version_unknown": {
-    "zh-CN": "正在读取版本…",
-    "en": "Reading the version…"
   },
   "sourcecontrol.checkout_busy": {
     "zh-CN": "这个项目里还有任务在运行，等它结束后再撤销或提交。",
@@ -7199,8 +6023,16 @@
     "zh-CN": "早期本地修改的基础版本",
     "en": "Base of earlier local changes"
   },
-  "main.local_evolution_is_no_longer_part_of_cleo": {
-    "zh-CN": "Cleo 已不再提供本地进化。",
-    "en": "Local evolution is no longer part of Cleo."
+  "overlays.version_recovery": {
+    "zh-CN": "版本恢复",
+    "en": "Version recovery"
+  },
+  "overlays.version_recovery_hint": {
+    "zh-CN": "回到之前安装或保存过的版本。选好后 Cleo 会重启；聊天、记忆和配置保持不变。",
+    "en": "Go back to a version installed or saved earlier. Cleo restarts once you choose; chats, memory and settings stay as they are."
+  },
+  "overlays.open_version_recovery": {
+    "zh-CN": "选择版本…",
+    "en": "Choose a version…"
   }
 }

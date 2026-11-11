@@ -220,12 +220,6 @@ const allowedMethods = new Set([
   "reset_workspace",
 ]);
 
-// Methods the renderer may still name although their feature is gone (local evolution, ADR 0009).
-// They are answered here and never reach the backend; delete an entry once ui/src stops requesting it.
-const retiredMethods = new Set([
-  "open_evolution_thread",
-]);
-
 // Share the platform icon between the window and tray.
 const iconFile = process.platform === "win32" ? "cleo.ico" : "cleo.png";
 const iconPath = app.isPackaged
@@ -367,7 +361,6 @@ app.whenReady().then(async () => {
   ipcMain.handle("cleo:request", async (event, payload) => {
     if (programUpdates.closed) throw new Error(tr("main.cleo_is_shutting_down_try_again_later"));
     const method = String(payload?.method || "");
-    if (retiredMethods.has(method)) throw new Error(tr("main.local_evolution_is_no_longer_part_of_cleo"));
     if (!allowedMethods.has(method)) throw new Error(`Unsupported desktop method: ${method}`);
     const streamId = payload?.streamId ? String(payload.streamId) : null;
     const controlsRun = method === "stream_turn" || method === "steer_run";

@@ -212,86 +212,7 @@
 :root .loading-brand { border-radius: var(--radius-md); }
 :root .loading-line i { background: var(--accent); }
 
-/* ----- Evolution: same flat controls ----- */
-:root .evolution-toolbar { background: var(--canvas); border-bottom-color: var(--border); }
-:root .evolution-topline { min-height: 46px; padding: 6px 10px 6px 12px; }
-:root .evolution-topline > strong { font-size: 14px; font-weight: 650; letter-spacing: -0.01em; }
-:root .evolution-accent { color: var(--text); }
-:root .evolution-toolbar button { border-radius: var(--radius-sm); font-weight: 500; }
-:root .evolution-version-trigger { height: 28px; padding: 0 10px; border: 1px solid var(--border); background: transparent; }
-:root .evolution-version-trigger:hover:not(:disabled) { background: var(--surface-hover); }
-:root .evolution-version-trigger b { font-weight: 600; }
-:root .evolution-top-actions { gap: 2px; }
-:root .evolution-top-actions button { height: 28px; padding: 0 10px; color: var(--muted); }
-:root .evolution-top-actions button:hover,
-:root .evolution-top-actions button[aria-pressed="true"] { color: var(--text); background: var(--surface-hover); }
-:root .evolution-top-actions button[aria-label="新建 PR"],
-:root .evolution-top-actions button[aria-label="继续连接 GitHub"] { color: var(--accent-ink); background: var(--accent); font-weight: 600; }
-:root .evolution-top-actions button[aria-label="新建 PR"]:hover:not(:disabled),
-:root .evolution-top-actions button[aria-label="继续连接 GitHub"]:hover:not(:disabled) { color: var(--accent-ink); background: var(--accent-strong); }
-:root .evolution-actionbar { padding: 4px 12px 12px; }
-:root .evolution-status strong { color: var(--text); font-weight: 600; }
-/* Waiting for other tasks is information, not an alarm: quiet text. */
-:root .evolution-status.waiting strong { color: var(--muted); font-weight: 500; }
-:root .evolution-version-loading { display: inline-flex; align-items: center; gap: 6px; padding: 0 4px; color: var(--muted); font-size: var(--font-size-caption); }
-:root .evolution-actions button { height: 30px; padding: 0 12px; border: 1px solid var(--border); background: transparent; }
-:root .evolution-actions button:hover:not(:disabled) { background: var(--surface-hover); }
-:root .evolution-primary,
-:root .evolution-toolbar .evolution-primary,
-:root .evolution-dialog .evolution-primary { border: 0; color: var(--accent-ink); background: var(--accent); font-weight: 600; }
-:root .evolution-toolbar .evolution-primary:hover:not(:disabled),
-:root .evolution-dialog .evolution-primary:hover:not(:disabled) { background: var(--accent-strong); }
-:root .evolution-spin { color: var(--text); }
-:root .evolution-error { margin: 0 12px 12px; padding: 10px 12px; border-radius: var(--radius-md); }
-:root .evolution-error button { border: 0; border-radius: var(--radius-sm); padding: 4px 10px; color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
-:root .evolution-notice,
-:root .evolution-log { margin-left: 12px; margin-right: 12px; }
-:root .evolution-pr-notice { padding: 6px 12px 10px; color: var(--text); }
-:root .evolution-pr-notice a,
-:root .evolution-pr-history a,
-:root .evolution-dialog a { color: var(--text); text-decoration-color: var(--border-strong); text-underline-offset: 3px; }
-:root .evolution-github { margin: 0 12px 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: transparent; }
-:root .evolution-github button { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--canvas); box-shadow: none; }
-:root .evolution-cases { background: transparent; }
-:root .evolution-cases button { border: 1px solid var(--border); border-radius: var(--radius-sm); background: transparent; }
-:root .evolution-cases button:hover:not(:disabled) { background: var(--surface-hover); }
-:root .evolution-case { border-top-color: var(--border); }
-:root .evolution-manual-review textarea { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--canvas); }
-:root .evolution-preparation button { border: 0; border-radius: var(--radius-sm); }
-
-:root .evolution-dialog { border: 1px solid var(--border-strong); border-radius: var(--radius-xl); padding: 22px; box-shadow: var(--shadow-lg); }
-:root .evolution-dialog::backdrop { background: rgba(10, 10, 12, 0.32); }
-:root[data-theme="dark"] .evolution-dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
-:root .evolution-dialog-title h2 { font-weight: 650; letter-spacing: -0.01em; }
-:root .evolution-dialog-title button { border-radius: var(--radius-sm); color: var(--muted); }
-:root .evolution-dialog-title button:hover { color: var(--text); background: var(--surface-hover); }
-:root .evolution-dialog label { color: var(--text-soft); font-weight: 500; }
-:root .evolution-dialog input,
-:root .evolution-dialog select,
-:root .evolution-dialog textarea { border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--canvas); transition: border-color 140ms ease; }
-:root .evolution-dialog input:focus,
-:root .evolution-dialog select:focus,
-:root .evolution-dialog textarea:focus { outline: 0; border-color: color-mix(in srgb, var(--text) 35%, transparent); background: var(--canvas); }
-:root .evolution-dialog button:not(.evolution-dialog-title button) { border: 1px solid var(--border); border-radius: var(--radius-sm); background: transparent; font-weight: 500; }
-:root .evolution-dialog button:not(.evolution-dialog-title button):hover:not(:disabled) { background: var(--surface-hover); }
-:root .evolution-dialog .evolution-primary:hover:not(:disabled) { background: var(--accent-strong); }
-:root .evolution-toolbar button:disabled,
-:root .evolution-dialog button:disabled { opacity: 1; color: var(--muted-2); cursor: not-allowed; }
-:root .evolution-dialog button:not(.evolution-dialog-title button):disabled { background: transparent; }
-:root .evolution-dialog .evolution-primary:disabled,
-:root .evolution-toolbar .evolution-primary:disabled { color: var(--muted-2); background: var(--surface-active); }
-:root .evolution-top-actions button:disabled { color: var(--muted-2); background: transparent; }
-:root .evolution-top-actions button[aria-label="新建 PR"]:disabled { color: var(--muted-2); background: var(--surface-active); }
-:root .evolution-version-list { gap: 6px; }
-:root .evolution-version-list button { padding: 10px 12px; border-radius: var(--radius-md); }
-:root .evolution-version-list button:disabled { opacity: 0.55; }
-:root .evolution-release { border-top-color: var(--border); }
-:root .evolution-release-entry { border: 1px solid var(--border); border-radius: var(--radius-md); background: transparent; }
-:root .evolution-pr-history article { border-top-color: var(--border); }
-:root .evolution-feedback form { border-color: var(--border-strong); border-radius: var(--radius-md); background: var(--canvas); }
-:root .evolution-feedback form:focus-within { border-color: color-mix(in srgb, var(--text) 30%, transparent); background: var(--canvas); }
-:root .evolution-feedback-history p { border-radius: var(--radius-md); }
-:root .evolution-feedback-user { background: var(--surface-active); }
+/* ----- Settings: version picker and recovery ----- */
 :root .update-version-picker select,
 :root .update-version-picker button { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--canvas); }
 
@@ -304,7 +225,6 @@
 :root .question-dialog,
 :root .history-reader,
 :root .shortcuts-dialog,
-:root .evolution-dialog,
 :root .setup-dialog,
 :root .update-notice { border: 1px solid var(--border-strong); border-radius: var(--radius-lg); box-shadow: var(--shadow-popup); }
 :root .toast { border-radius: var(--radius-md); box-shadow: var(--shadow-popup); }

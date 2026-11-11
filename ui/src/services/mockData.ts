@@ -287,8 +287,8 @@ export const threads: Thread[] = [
     changes: [],
     usage: { used: 14210, limit: 200000, input: 12100, output: 2110 },
     items: [
-      { id: "user-sidebar-sub", type: "message", role: "user", content: "把四个空间合并成一条侧栏，保留记忆与进化入口。", time: "16:40" },
-      { id: "assistant-sidebar-sub", type: "message", role: "assistant", content: "侧栏已合并：新任务、搜索、记忆、进化在顶部，下面按项目列出任务。", time: "16:44" },
+      { id: "user-sidebar-sub", type: "message", role: "user", content: "把四个空间合并成一条侧栏，保留记忆入口。", time: "16:40" },
+      { id: "assistant-sidebar-sub", type: "message", role: "assistant", content: "侧栏已合并：新任务、搜索、记忆在顶部，下面按项目列出任务。", time: "16:44" },
     ],
   },
   {

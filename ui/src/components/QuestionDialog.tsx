@@ -63,7 +63,7 @@ export function QuestionDialog({ questions }: { questions: ReturnType<typeof use
           })}
         </div>
         {questions.error && <p role="alert" className="question-error">{questions.error}</p>}
-        <footer><button type="button" onClick={questions.collapse}>{tr("questiondialog.answer_later")}</button><button type="submit" disabled={questions.busy}>{questions.busy ? tr("evolutioncontribution.submitting") : tr("questiondialog.submit_answer")}</button></footer>
+        <footer><button type="button" onClick={questions.collapse}>{tr("questiondialog.answer_later")}</button><button type="submit" disabled={questions.busy}>{questions.busy ? tr("questiondialog.submitting") : tr("questiondialog.submit_answer")}</button></footer>
       </form>
     </section>
   );
