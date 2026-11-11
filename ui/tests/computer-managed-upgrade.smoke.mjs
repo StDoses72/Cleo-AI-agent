@@ -6,6 +6,9 @@
  * index before it answered, ran past the switch's 90-second check on a 700 MB history and was
  * rolled back. `--source` runs the same history checks against this checkout (no package, so no
  * switch to confirm); it needs CLEO_PYTHON.
+ *
+ * CLEO_SMOKE_HOME=<directory> uses that data home instead of the seeded one, to time a switch on a
+ * copy of a real history before a release. Point it at a COPY: the program under test writes to it.
  */
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -29,7 +32,10 @@ const statePath = join(profile, "evolution/state.json");
 const transactionId = "computer-managed-upgrade-smoke";
 const handoffOnly = process.env.CLEO_SMOKE_HANDOFF_ONLY === "1";
 const source = process.argv.includes("--source");
-const home = join(root, "home");
+const suppliedHome = process.env.CLEO_SMOKE_HOME ? resolve(process.env.CLEO_SMOKE_HOME) : null;
+const home = suppliedHome || join(root, "home");
+// The program that starts a switch waits this long for the new one to confirm (waitHealthy).
+const SWITCH_LIMIT_SECONDS = 90;
 // Each log is larger than what the backend still indexes while listing (DEFER_REBUILD_BYTES, 64 KiB).
 const HISTORY = ["cleo_upgrade_history_1", "cleo_upgrade_history_2", "cleo_upgrade_history_3", "cleo_upgrade_history_4"];
 const sessionDirectory = id => join(home, "memory", "non_productivity", "projects", "general", "sessions", id);
@@ -193,7 +199,7 @@ try {
     builds: [], transaction: { id: transactionId, phase: "starting", from: "old", to: "candidate" } }));
   await writeFile(join(root, "preview.png"), Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGP8zwACTGCSAQANHQEDgslx/wAAAABJRU5ErkJggg==", "base64"));
-  await seedHistory();
+  if (!suppliedHome) await seedHistory();
   if (source) {
     // A checkout has no installer to seed its configuration.
     const defaults = join(ui, "..", "cleo", "config", "templates");
@@ -210,36 +216,45 @@ try {
     CLEO_HARNESSES_CONFIG_PATH: "", CLEO_EVOLUTION_CHILD: "1", CLEO_EVOLUTION_TRANSACTION: transactionId };
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.CLEO_DESKTOP_MOCK;
+  const launchedAt = Date.now();
   application = await electron.launch({ ...(source ? {} : { executablePath }),
     cwd: source ? ui : dirname(executablePath),
     args: [...(source ? [ui] : []), `--user-data-dir=${profile}`], env, timeout: 30_000 });
-  const window = await application.firstWindow({ timeout: 15_000 });
-  await window.getByTestId("composer-input").waitFor({ timeout: 30_000 });
-  const workspace = await window.evaluate(() => window.cleoDesktop.request("load_workspace"));
-  assert.equal(workspace.backend.connected, true, "Managed startup must connect the real packaged backend");
+  const window = await application.firstWindow({ timeout: 30_000 });
+  // The same condition the switching program polls for, timed from the moment it starts this one.
+  let confirmedSeconds = null;
   if (!source) {
-    const deadline = Date.now() + 15_000;
+    const deadline = launchedAt + SWITCH_LIMIT_SECONDS * 1000;
     let state;
     do {
       state = JSON.parse(await readFile(statePath, "utf8"));
       if (!state.transaction && state.lastApplication?.id === transactionId) break;
       await new Promise(done => setTimeout(done, 100));
     } while (Date.now() < deadline);
-    assert.equal(state.transaction, null, "The real UI must acknowledge managed startup");
+    confirmedSeconds = (Date.now() - launchedAt) / 1000;
+    assert.equal(state.transaction, null,
+      `Startup was not confirmed within the ${SWITCH_LIMIT_SECONDS} seconds a version switch allows`);
     assert.equal(state.lastApplication?.id, transactionId, "Health acknowledgment must match the handoff");
     assert.equal(state.active, "candidate");
     assert.equal(await application.evaluate(({ app }) => app.isPackaged), true);
   }
-  // Startup was confirmed with the earlier history on disk: every conversation is listed, and at
-  // most the one the workspace opened had its index built. The others wait until they are opened.
-  const listed = new Set(workspace.threads.map(thread => thread.id));
-  assert.deepEqual(HISTORY.filter(id => !listed.has(id)), [], "Earlier conversations must be listed");
-  const built = builtIndexes();
-  assert.ok(built <= 1, `Startup indexed ${built} of ${HISTORY.length} earlier conversations; only the open one may be`);
+  await window.getByTestId("composer-input").waitFor({ timeout: 30_000 });
+  const workspace = await window.evaluate(() => window.cleoDesktop.request("load_workspace"));
+  assert.equal(workspace.backend.connected, true, "Managed startup must connect the real packaged backend");
+  let built = null;
+  if (!suppliedHome) {
+    // Startup was confirmed with the earlier history on disk: every conversation is listed, and at
+    // most the one the workspace opened had its index built. The others wait until they are opened.
+    const listed = new Set(workspace.threads.map(thread => thread.id));
+    assert.deepEqual(HISTORY.filter(id => !listed.has(id)), [], "Earlier conversations must be listed");
+    built = builtIndexes();
+    assert.ok(built <= 1, `Startup indexed ${built} of ${HISTORY.length} earlier conversations; only the open one may be`);
+  }
   // The release gate stops here: the package took over a pending switch and confirmed startup.
-  if (handoffOnly || source) {
+  if (handoffOnly || source || suppliedHome) {
     console.log(JSON.stringify({ status: "passed", check: source ? "startup-history-source" : "managed-upgrade-handoff",
-      realBackend: true, transactionAcknowledged: !source, earlierConversations: HISTORY.length, indexedAtStartup: built }));
+      realBackend: true, transactionAcknowledged: !source, confirmedSeconds,
+      conversations: workspace.threads.length, indexedAtStartup: built }));
   } else {
     await computerPanelChecks(window);
     console.log(JSON.stringify({ status: "passed", check: "computer-managed-upgrade",
@@ -263,6 +278,7 @@ try {
       if (child.exitCode === null) throw error;
     }
   }
+  // Only the directory this run allocated is removed; a supplied data home is never touched here.
   assert.equal(dirname(root), resolve(tmpdir()), "Cleanup must stay inside our allocated test directory");
   await rm(root, { recursive: true, force: true });
 }
