@@ -1,6 +1,6 @@
 # 0008. 桌面 UI 改为单侧栏信息架构、平铺视觉，并在界面里补齐审查与 git 闭环
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-11-08
 
 ## Context

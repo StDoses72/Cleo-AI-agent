@@ -1,6 +1,6 @@
 # 0009. 移除本地进化，保留并改名它与正式更新共用的版本基础设施
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-11-10
 
 ## Context

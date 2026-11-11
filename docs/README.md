@@ -37,6 +37,7 @@
 - [ADR 0005 Codex CLI 只随 Python 运行时分发一次](adr/0005-single-codex-cli-distribution.md)
 - [ADR 0006 在线运行环境的归属登记与基于证据的退役](adr/0006-online-runtime-ownership-and-retirement.md)
 - [ADR 0008 桌面 UI 改为单侧栏信息架构、平铺视觉，并补齐审查与 git 闭环](adr/0008-single-sidebar-flat-ui-and-review-loop.md)（设计说明见 [UI/UX 重构 v2](UI_UX_REFACTOR_v2.md)）
+- [ADR 0009 移除本地进化，保留并改名它与正式更新共用的版本基础设施](adr/0009-remove-local-evolution.md)（保留行为见[程序版本与恢复](program-versions.md)）
 
 ## 文档维护约定
 
