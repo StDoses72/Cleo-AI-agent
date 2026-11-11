@@ -1,6 +1,8 @@
-# Cleo v0.13.0
+# Cleo v0.13.1
 
-Cleo v0.13.0 rebuilds the desktop interface around one sidebar, a work log and a review-and-git loop, adopts a flat visual style, and removes local evolution. Official updates, version switching, safe restart with rollback and recovery are kept.
+Cleo v0.13.1 rebuilds the desktop interface around one sidebar, a work log and a review-and-git loop, adopts a flat visual style, and removes local evolution. Official updates, version switching, safe restart with rollback and recovery are kept. Startup no longer slows down as the conversation history grows.
+
+v0.13.1 replaces v0.13.0, which was withdrawn on the day it was published: on a large history its first start took longer than the 90 seconds a version switch allows, so the update was rolled back.
 
 ## One sidebar and a flat interface
 
@@ -21,7 +23,7 @@ Cleo v0.13.0 rebuilds the desktop interface around one sidebar, a work log and a
 
 ## Local evolution is removed
 
-- Cleo no longer edits, builds and applies its own source from inside the app. The evolution page, acceptance cases, companion and monitor windows, in-app PR contribution, merge assistance and in-app release publishing are gone, together with the managed build tools and the optional "self-iteration tools" setup item. The reasons and the full list are in [ADR 0009](https://github.com/StDoses72/Cleo-AI-agent/blob/v0.13.0/docs/adr/0009-remove-local-evolution.md).
+- Cleo no longer edits, builds and applies its own source from inside the app. The evolution page, acceptance cases, companion and monitor windows, in-app PR contribution, merge assistance and in-app release publishing are gone, together with the managed build tools and the optional "self-iteration tools" setup item. The reasons and the full list are in [ADR 0009](https://github.com/StDoses72/Cleo-AI-agent/blob/v0.13.1/docs/adr/0009-remove-local-evolution.md).
 - To change Cleo itself, open its repository as an ordinary development project and use the review-and-git loop above.
 - Official updates are unchanged: Settings → About & updates still checks releases and lets you choose another version. Cleo restarts into the selected program, returns to the previous one if it fails to start, and keeps a fallback program. Version recovery, formerly inside the evolution page, is now on the same settings page.
 - Existing installations keep their data. The control directory, `state.json` and release manifests keep their format, and chats, memory and settings are not touched.
@@ -33,22 +35,30 @@ Cleo v0.13.0 rebuilds the desktop interface around one sidebar, a work log and a
 - Local versions saved earlier remain on disk and can be selected from version recovery.
 - Release packages no longer bundle `evolution-source.tar.gz`, and the `--cleo-import-bundle` option is removed.
 
+## Startup
+
+- Loading the workspace no longer depends on how much history there is. On a copy of a real 700 MB history (47 conversations), the time from starting the backend to a loaded workspace went from 41 seconds on every start, and 95 seconds on the first start after the update, to about 7 seconds.
+- Only the conversation you open pays for its history. Listed conversations are no longer re-indexed, and their whole event logs are no longer read for task usage or harness-switch status.
+- Timeline indexes written by v0.12.2 are used as they are, so neither the update nor a return to v0.12.2 rebuilds them. Commands in turns recorded before the update do not show an exit code or duration; new turns do.
+- A release check now starts the installed package on a data home that already holds large conversations and fails if startup indexes them.
+
 ## Fixes
 
 - Chat model errors show the provider's own message (for example `Error code: 500 - …`) instead of the raw response body some SDK versions print.
 
 ## Documentation
 
-- [ADR 0008](https://github.com/StDoses72/Cleo-AI-agent/blob/v0.13.0/docs/adr/0008-single-sidebar-flat-ui-and-review-loop.md) records the interface decisions, with the design notes and review scores in `docs/UI_UX_REFACTOR_v2.md`.
-- [ADR 0009](https://github.com/StDoses72/Cleo-AI-agent/blob/v0.13.0/docs/adr/0009-remove-local-evolution.md) records the evolution removal and its data-compatibility guarantees. `docs/program-versions.md` describes updates, version switching, rollback and recovery as they are now.
+- [ADR 0008](https://github.com/StDoses72/Cleo-AI-agent/blob/v0.13.1/docs/adr/0008-single-sidebar-flat-ui-and-review-loop.md) records the interface decisions, with the design notes and review scores in `docs/UI_UX_REFACTOR_v2.md`.
+- [ADR 0009](https://github.com/StDoses72/Cleo-AI-agent/blob/v0.13.1/docs/adr/0009-remove-local-evolution.md) records the evolution removal and its data-compatibility guarantees. `docs/program-versions.md` describes updates, version switching, rollback and recovery as they are now.
+- [ADR 0010](https://github.com/StDoses72/Cleo-AI-agent/blob/v0.13.1/docs/adr/0010-startup-cost-independent-of-history.md) records why v0.13.0 failed to install on a large history and the rule that came out of it.
 
 ## Installers
 
-- [Windows x64 EXE](https://github.com/StDoses72/Cleo-AI-agent/releases/download/v0.13.0/Cleo-windows-x64-setup.exe)
-- [macOS Apple Silicon PKG](https://github.com/StDoses72/Cleo-AI-agent/releases/download/v0.13.0/Cleo-macos-arm64.pkg)
-- [macOS Intel PKG](https://github.com/StDoses72/Cleo-AI-agent/releases/download/v0.13.0/Cleo-macos-x64.pkg)
-- [Linux x64 DEB](https://github.com/StDoses72/Cleo-AI-agent/releases/download/v0.13.0/Cleo-linux-x64.deb)
+- [Windows x64 EXE](https://github.com/StDoses72/Cleo-AI-agent/releases/download/v0.13.1/Cleo-windows-x64-setup.exe)
+- [macOS Apple Silicon PKG](https://github.com/StDoses72/Cleo-AI-agent/releases/download/v0.13.1/Cleo-macos-arm64.pkg)
+- [macOS Intel PKG](https://github.com/StDoses72/Cleo-AI-agent/releases/download/v0.13.1/Cleo-macos-x64.pkg)
+- [Linux x64 DEB](https://github.com/StDoses72/Cleo-AI-agent/releases/download/v0.13.1/Cleo-linux-x64.deb)
 
-Installers prepare the verified runtime dependencies during installation. Each package has a matching SHA-256 file. macOS packages retain the existing ad-hoc signing approach; see the [platform guide](https://github.com/StDoses72/Cleo-AI-agent/blob/v0.13.0/docs/PLATFORMS.en.md) for installation details.
+Installers prepare the verified runtime dependencies during installation. Each package has a matching SHA-256 file. macOS packages retain the existing ad-hoc signing approach; see the [platform guide](https://github.com/StDoses72/Cleo-AI-agent/blob/v0.13.1/docs/PLATFORMS.en.md) for installation details.
 
-[Full changelog](https://github.com/StDoses72/Cleo-AI-agent/compare/v0.12.2...v0.13.0)
+[Full changelog](https://github.com/StDoses72/Cleo-AI-agent/compare/v0.12.2...v0.13.1)
