@@ -100,7 +100,7 @@ def thread_view(
     editable_turn_ids: list[str],
     pending_questions: list[dict[str, Any]],
     changes: list[dict[str, Any]],
-    skills: list[dict[str, Any]],
+    skills: list[dict[str, Any]] | None,
 ) -> dict[str, Any]:
     """Purpose: One thread as the sidebar and conversation view show it.
 
@@ -138,7 +138,7 @@ def thread_view(
         "pendingApprovals": pending_approvals,
         "editableTurnIds": editable_turn_ids,
         "items": items if include_history else [],
-        "history": {key: value for key, value in page.items() if key != "items"},
+        "history": {key: value for key, value in page.items() if key not in {"items", "stale"}},
         "pendingQuestions": pending_questions,
         "changes": changes,
         "changeHistory": change_history_from_events(events),

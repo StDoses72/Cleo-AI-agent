@@ -183,7 +183,7 @@ result     {"num_turns":1,"result":"NOTIFIED: …\nFINAL: both done","origin":{"
 
 - `AgentService._prompt` 在注入项目偏好之后、调用 provider 之前，若 `memory_context` 返回的文本带有 `entries`（`cleo.memory.reader.PreferenceContext`），追加一条 `provider_event`：`provider_event_type = "cleo/memory_context"`，`payload = {version: 1, turn_id, count, entries: [{id, content(≤160 字)}]}`。它不是 provider 原生事件，与 `cleo/handoff_submitted` 同类；常量在 `cleo/memory/provenance.py`。
 - 消费方：桌面投影（`cleo/desktop/projection.py`）把它挂到本轮用户消息的 `memoryContext`；记忆整理的 Dream 投影（`_NOISE`）与 compaction fallback 跳过它，注入内容不会回流为新证据。
-- 命令结果：投影从 Codex `commandExecution` 的结果里读取 `exitCode`、`durationMs`（以及 `aggregatedOutput` 作为输出），写入工具条目；其他 harness 不报告这两项时不显示。投影版本 `PROJECTION_VERSION` 为 14。
+- 命令结果：投影从 Codex `commandExecution` 的结果里读取 `exitCode`、`durationMs`（以及 `aggregatedOutput` 作为输出），写入工具条目；其他 harness 不报告这两项时不显示。这些都是新增的可选字段，投影版本 `PROJECTION_VERSION` 保持 13：提升它会让共享数据的每个程序版本整体重建索引（[ADR 0010](../adr/0010-startup-cost-independent-of-history.md)），所以旧回合从下一轮起才带这些字段。
 
 ### 2.4 没有改动、仍需后续决定的点
 

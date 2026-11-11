@@ -48,7 +48,7 @@ Release manifests use `evolution_protocol: 2` for switching with current data pr
 
 ## Startup and recovery windows
 
-Switching and rollback use a visible restart controller. It waits for both the main window and the backend to become ready; process creation alone is not success. If startup fails, it stops the failed program, then tries the previous program and the fallback. If all attempts fail, the progress window turns into a recovery selector that stays available.
+Switching and rollback use a visible restart controller. It waits for both the main window and the backend to become ready; process creation alone is not success. The wait is at most 90 seconds, enforced by the program that started the switch, so installed versions cannot change it: the new program must load its workspace and confirm within that time, and loading the workspace must not grow with the size of the history ([ADR 0010](adr/0010-startup-cost-independent-of-history.md)). If startup fails, it stops the failed program, then tries the previous program and the fallback. If all attempts fail, the progress window turns into a recovery selector that stays available.
 
 ## Compatibility with earlier versions
 
