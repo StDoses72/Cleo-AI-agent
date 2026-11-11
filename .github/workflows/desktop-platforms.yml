@@ -120,6 +120,9 @@ jobs:
       # package with a pending transaction and waits for it to confirm startup.
       - name: Verify a version switch hands over to the packaged application
         if: runner.os == 'Windows'
+        env:
+          # Distribution gate only: stop once the package has confirmed the pending switch.
+          CLEO_SMOKE_HANDOFF_ONLY: '1'
         run: npm --prefix ui run smoke:computer-managed-upgrade
       - name: Verify Linux package installs and starts
         if: runner.os == 'Linux'

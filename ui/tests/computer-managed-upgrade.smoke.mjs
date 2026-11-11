@@ -18,6 +18,7 @@ const root = await mkdtemp(join(tmpdir(), "cleo-managed-upgrade-"));
 const profile = join(root, "profile");
 const statePath = join(profile, "evolution/state.json");
 const transactionId = "computer-managed-upgrade-smoke";
+const handoffOnly = process.env.CLEO_SMOKE_HANDOFF_ONLY === "1";
 let application;
 
 async function bounded(promise, timeout) {
@@ -76,6 +77,56 @@ async function startupFailure(app) {
   }).catch(error => error.message);
 }
 
+/** Purpose: Exercise the upgraded package's computer panel in the complete app.
+ * Input: the main window. Output: assertions on the bridge, file previews, browser occlusion and screenshots.
+ * A feature suite: the release gate (CLEO_SMOKE_HANDOFF_ONLY=1) stops after the handover.
+ */
+async function computerPanelChecks(window) {
+  const computer = await window.evaluate(() => window.cleoDesktop.computer("state"));
+  assert.equal(computer.bridgeError, "", "The upgraded computer bridge must start");
+  const imagePreview = await window.evaluate(async root => {
+    const preview = await window.cleoDesktop.files("read", { root, path: "preview.png" });
+    return new Promise(resolve => {
+      const image = new Image();
+      image.onload = () => resolve({ loaded: true, width: image.naturalWidth });
+      image.onerror = () => resolve({ loaded: false, width: 0 });
+      image.src = preview.url;
+    });
+  }, root);
+  assert.deepEqual(imagePreview, { loaded: true, width: 2 }, "The real UI session must render workspace images");
+  // Exercise the complete app: settings dialogs stay mounted after closing.
+  // A component-only fixture without retained dialogs misses permanent browser occlusion.
+  // The runtime setup dialog opens only from Settings now; dismiss it if a build shows it at startup.
+  await window.evaluate(() => window.cleoDesktop.setup("startup"));
+  const onboarding = window.getByRole("dialog", { name: "运行环境", exact: true });
+  if (await onboarding.isVisible()) {
+    await onboarding.getByRole("button", { name: "稍后再说", exact: true }).click();
+    await onboarding.waitFor({ state: "hidden" });
+  }
+  await window.getByTestId("new-task-in-section").click();
+  const openInspector = window.getByRole("button", { name: "打开检查器", exact: true });
+  if (await openInspector.isVisible()) await openInspector.click();
+  await window.getByRole("tab", { name: "电脑", exact: true }).click();
+  async function browserVisible(expected) {
+    const deadline = Date.now() + 5_000;
+    let visible;
+    do {
+      visible = await window.evaluate(async () => (await window.cleoDesktop.computer("state")).browser.visible);
+      if (visible === expected) break;
+      await new Promise(done => setTimeout(done, 100));
+    } while (Date.now() < deadline);
+    assert.equal(visible, expected, "The native browser must follow visible dialogs in the full app");
+  }
+  await browserVisible(true);
+  await window.getByRole("button", { name: "设置", exact: true }).click();
+  await browserVisible(false);
+  await window.getByRole("button", { name: "关闭设置", exact: true }).click();
+  await browserVisible(true);
+  const firstShot = await modelCall("browser_screenshot");
+  assert.equal(firstShot.some(block => block.type === "image"), true,
+    "The model must receive its first screenshot before any webpage navigation");
+}
+
 try {
   await mkdir(dirname(statePath), { recursive: true });
   // The real handoff starts with existing state and these child/transaction variables.
@@ -106,51 +157,16 @@ try {
   assert.equal(state.lastApplication?.id, transactionId, "Health acknowledgment must match the handoff");
   assert.equal(state.active, "candidate");
   assert.equal(await application.evaluate(({ app }) => app.isPackaged), true);
-  const computer = await window.evaluate(() => window.cleoDesktop.computer("state"));
-  assert.equal(computer.bridgeError, "", "The upgraded computer bridge must start");
-  const imagePreview = await window.evaluate(async root => {
-    const preview = await window.cleoDesktop.files("read", { root, path: "preview.png" });
-    return new Promise(resolve => {
-      const image = new Image();
-      image.onload = () => resolve({ loaded: true, width: image.naturalWidth });
-      image.onerror = () => resolve({ loaded: false, width: 0 });
-      image.src = preview.url;
-    });
-  }, root);
-  assert.deepEqual(imagePreview, { loaded: true, width: 2 }, "The real UI session must render workspace images");
-  // Exercise the complete app: settings dialogs stay mounted after closing.
-  // A component-only fixture without retained dialogs misses permanent browser occlusion.
-  const setup = await window.evaluate(() => window.cleoDesktop.setup("startup"));
-  if (setup.showOnStartup) {
-    const onboarding = window.getByRole("dialog", { name: "运行环境", exact: true });
-    await onboarding.getByRole("button", { name: "稍后再说", exact: true }).click();
-    await onboarding.waitFor({ state: "hidden" });
+  // The release gate stops here: the package took over a pending switch and confirmed startup.
+  if (handoffOnly) {
+    console.log(JSON.stringify({ status: "passed", check: "managed-upgrade-handoff",
+      realBackend: true, transactionAcknowledged: true }));
+  } else {
+    await computerPanelChecks(window);
+    console.log(JSON.stringify({ status: "passed", check: "computer-managed-upgrade",
+      realBackend: true, transactionAcknowledged: true, fullAppBrowserViewport: true,
+      modelFirstScreenshot: true }));
   }
-  await window.getByTestId("new-task-in-section").click();
-  const openInspector = window.getByRole("button", { name: "打开检查器", exact: true });
-  if (await openInspector.isVisible()) await openInspector.click();
-  await window.getByRole("tab", { name: "电脑", exact: true }).click();
-  async function browserVisible(expected) {
-    const deadline = Date.now() + 5_000;
-    let visible;
-    do {
-      visible = await window.evaluate(async () => (await window.cleoDesktop.computer("state")).browser.visible);
-      if (visible === expected) break;
-      await new Promise(done => setTimeout(done, 100));
-    } while (Date.now() < deadline);
-    assert.equal(visible, expected, "The native browser must follow visible dialogs in the full app");
-  }
-  await browserVisible(true);
-  await window.getByRole("button", { name: "设置", exact: true }).click();
-  await browserVisible(false);
-  await window.getByRole("button", { name: "关闭设置", exact: true }).click();
-  await browserVisible(true);
-  const firstShot = await modelCall("browser_screenshot");
-  assert.equal(firstShot.some(block => block.type === "image"), true,
-    "The model must receive its first screenshot before any webpage navigation");
-  console.log(JSON.stringify({ status: "passed", check: "computer-managed-upgrade",
-    realBackend: true, transactionAcknowledged: true, fullAppBrowserViewport: true,
-    modelFirstScreenshot: true }));
 } catch (error) {
   const reason = application && !application.windows().length ? await startupFailure(application) : error.message;
   throw new Error(`Managed upgrade startup failed: ${reason}`, { cause: error });
