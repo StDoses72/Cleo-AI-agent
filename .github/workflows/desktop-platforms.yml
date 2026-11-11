@@ -116,6 +116,11 @@ jobs:
       - name: Verify Windows tray lifecycle and background settings
         if: runner.os == 'Windows'
         run: node ui/tests/desktop-close.smoke.mjs
+      # An update is delivered as a version switch: the previous program's controller starts this
+      # package with a pending transaction and waits for it to confirm startup.
+      - name: Verify a version switch hands over to the packaged application
+        if: runner.os == 'Windows'
+        run: npm --prefix ui run smoke:computer-managed-upgrade
       - name: Verify Linux package installs and starts
         if: runner.os == 'Linux'
         run: |
