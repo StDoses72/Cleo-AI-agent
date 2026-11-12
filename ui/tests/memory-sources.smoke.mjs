@@ -153,7 +153,7 @@ try {
   await page.waitForFunction(() => !document.querySelector('.ms-save-footer'));
   assert.equal((await request("get_model_settings")).dreamEnabled, false);
   await page.getByRole("button", { name: "记忆整理", exact: true }).click();
-  await page.getByText("Dream Agent 已停用，请先在上方启用并保存。", { exact: true }).waitFor();
+  await page.getByText("Dream Agent 已停用", { exact: true }).waitFor();
   assert.equal(await automatic.isChecked(), true);
   await automatic.uncheck();
   await page.getByRole("button", { name: "保存后台设置", exact: true }).click();

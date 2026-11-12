@@ -65,7 +65,7 @@ export function ProjectTarget({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={tr("projecttarget.project_for_value_value", { p0: noun, p1: noFolder ? tr("inspector.no_project") : projectLabel(active) })}
-        title={noFolder ? tr("projecttarget.standalone_value_no_project_attached_click_to_choose_a_project", { p0: noun }) : active?.path}
+        title={noFolder ? undefined : active?.path}
         disabled={disabled}
         onClick={() => setOpen((current) => !current)}
         data-testid="project-target"

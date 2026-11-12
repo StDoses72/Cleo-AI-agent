@@ -38,9 +38,6 @@
 .queued-message button.queued-steer { display: inline-flex; width: auto; gap: 4px; padding: 0 9px; border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); color: var(--accent); font-weight: 600; }
 .queued-message button.queued-steer:hover { background: var(--accent-soft); }
 .queued-message button:disabled { cursor: default; opacity: .45; }
-.virtual-process-row { margin: 0 0 12px; padding: 12px 16px; border-left: 2px solid var(--border); }
-.virtual-process-row .thought-copy { font-size: var(--font-size-body); line-height: var(--line-height-body); }
-.virtual-process-row .thought-entry { margin: 0; }
 .history-error { padding: 8px 20px; color: var(--muted); font-size: var(--font-size-control); user-select: text; }
 .history-error button { margin-left: 12px; }
 .conversation-body > .history-error { position: absolute; top: 8px; left: 24px; right: 24px; z-index: 3; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-raised); }
@@ -91,15 +88,14 @@
   .conversation-header .branch-button, .conversation-header .undo-button span { display: none; }
   .composer-dock { padding: 10px 14px max(14px, env(safe-area-inset-bottom)); }
   .timeline { padding-right: 20px; padding-left: 20px; }
-  .composer-footer { align-items: flex-end; gap: 6px; }
+  /* Scoped under .composer so it outranks the base footer rule whichever stylesheet loads last. */
+  .composer .composer-footer { align-items: flex-end; gap: 6px; }
   .composer-tools { flex-wrap: wrap; flex: 1; }
   .composer .runtime-selector { position: static; min-width: 0; max-width: 100%; }
   .runtime-selector-trigger { max-width: 145px; }
   /* Narrow panes anchor the menu to the composer instead of the pill, still rising from the pill's row. */
   .composer .runtime-menu { left: 12px; right: auto; bottom: 40px; width: calc(100% - 24px); max-width: 300px; max-height: max(80px, calc(100cqh - var(--composer-clearance) - 60px)); display: flex; flex-direction: column; }
   .runtime-menu-list { min-height: 0; }
-  /* The card (modes, models, effort) scrolls inside the capped menu instead of spilling over the pill. */
-  .composer .runtime-menu .runtime-card { min-height: 0; overflow-y: auto; }
 }
 
 /* Agent questions dock above the composer like approvals: a non-modal card, the timeline stays visible. */

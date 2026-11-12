@@ -33,8 +33,8 @@ try {
   await search.press("Escape");
   assert.equal(await dialog.getByRole("button", { name: "路由模型", exact: true }).getAttribute("aria-expanded"), "false");
   const toggle = dialog.getByRole("checkbox", { name: "自动路由", exact: true });
-  assert.equal(await toggle.isChecked(), true);
-  await toggle.uncheck();
+  assert.equal(await toggle.isChecked(), false, "Subtask routing is off until it is switched on here");
+  assert.equal(await dialog.getByLabel("默认执行方式", { exact: true }).count(), 0, "The switch is the only routing choice");
   await dialog.getByLabel("路由执行权限", { exact: true }).selectOption("full");
   await dialog.getByLabel("路由选择偏好", { exact: true }).selectOption("cost");
   await dialog.getByText("高级设置", {exact:true}).click();
@@ -50,7 +50,7 @@ try {
   assert.equal(await dialog.getByLabel("子任务分配方式", { exact: true }).inputValue(), "evaluator");
   assert.equal(await dialog.getByRole("checkbox", { name: "使用已确认的本地反馈", exact: true }).isChecked(), false);
   assert.equal(await dialog.getByRole("checkbox", { name: "按任务统计用量", exact: true }).isChecked(), true);
-  assert.equal(await dialog.getByText("评估 → 分配 → 交接 → 验收", { exact: true }).count(), 1);
+  assert.equal(await dialog.getByText("评估 → 分配 → 交接 → 验收", { exact: true }).count(), 0);
   await dialog.locator(".settings-scroll").evaluate(element => element.scrollTo(0, 0));
   await mkdir(join(ui, "output/routing"), { recursive: true });
   await page.screenshot({ path: join(ui, "output/routing/settings-offline.png") });

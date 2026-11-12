@@ -77,7 +77,7 @@ export function ApprovalPrompt({ request, pending, error, onResolve }: ApprovalP
       ? tr("approvalprompt.this_command_needs_access_beyond_the_current_sandbox_or_to_a_protected_area_confirm_t")
       : request.kind === "file_change"
         ? tr("approvalprompt.this_file_change_is_outside_the_write_access_granted_to_the_current_session")
-        : tr("approvalprompt.the_current_service_needs_your_confirmation")
+        : ""
   );
 
   const onceLabel = request.decisionLabels?.accept
@@ -112,7 +112,7 @@ export function ApprovalPrompt({ request, pending, error, onResolve }: ApprovalP
         <code>{detail}</code>
       </div>
 
-      <p className="approval-reason">{reason}</p>
+      {reason ? <p className="approval-reason">{reason}</p> : null}
       {request.kind === "permissions" && request.permissions && request.command && <details className="approval-details">
         <summary>{tr("approvalprompt.request_details")}</summary><pre>{JSON.stringify(request.permissions, null, 2)}</pre>
       </details>}
@@ -191,7 +191,6 @@ export function ApprovalPrompt({ request, pending, error, onResolve }: ApprovalP
           >
             <span>
               <strong>{denyCard === "decline" ? (request.decisionLabels?.decline || tr("approvalprompt.deny")) : tr("approvalprompt.cancel_this_request")}</strong>
-              <small>{denyCard === "decline" ? tr("approvalprompt.do_not_perform_this_operation") : tr("approvalprompt.stop_waiting_and_end_this_request")}</small>
             </span>
             {footerCancel ? <X size={15} /> : <kbd>Esc</kbd>}
           </button>

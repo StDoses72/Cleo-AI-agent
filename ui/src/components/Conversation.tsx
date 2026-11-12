@@ -23,7 +23,6 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import { normalizeMath } from "../markdown-math";
 import {
-  ArrowLeft,
   ArrowDown,
   ArrowUp,
   Brain,
@@ -52,7 +51,6 @@ import {
   CornerDownRight,
   Pencil,
   RotateCcw,
-  Zap,
   Sparkles,
   Square,
   X,
@@ -63,7 +61,6 @@ import type {
   ProductivityModelCatalog,
   Project,
   RuntimeCatalog,
-  ReasoningEffort,
   RuntimeProfile,
   RuntimeUpdate,
   SteerReceipt,
@@ -79,12 +76,12 @@ import { PermissionSelector } from "./PermissionSelector";
 import { ApprovalPrompt } from "./ApprovalPrompt";
 import { MoveThreadDialog, RenameThreadDialog } from "./Overlays";
 import { handleDialogKeyDown } from "./Modal";
-import { approvalLabel, effortLabels, isGeneralProject, projectLabel } from "../runtime-labels";
+import { approvalLabel, projectLabel } from "../runtime-labels";
 import { ProjectTarget } from "./ProjectTarget";
 import { mentionAt, mentionText, rankFiles } from "./fileMentions";
 import { modifierKey } from "../platform";
 import { toolFailed } from "../toolOutcome";
-import { checkHarnessConnections } from "../connected-harnesses";
+import { RuntimePicker } from "./RuntimePicker";
 
 interface ConversationProps {
   history?: ReturnType<typeof useTimelineHistory>;
@@ -138,7 +135,6 @@ interface ConversationProps {
   onSelectNonProductivityProfile: (profileId: string) => void;
   onLoadProductivityModels: (provider: string, refresh?: boolean, background?: boolean) => Promise<ProductivityModelCatalog>;
   onSelectProductivityRuntime: (provider: string, model: string) => void;
-  onRoutingModeChange?: (mode: "manual" | "auto") => void;
   onEffortChange: (effort: NonNullable<RuntimeProfile["effort"]>) => void | Promise<void>;
   onPermissionChange?: (update: RuntimeUpdate) => Promise<void>;
   onServiceTierChange?: (tier: "default" | "fast") => void;
@@ -228,7 +224,6 @@ export function Conversation({
   onSelectNonProductivityProfile,
   onLoadProductivityModels,
   onSelectProductivityRuntime,
-  onRoutingModeChange,
   onEffortChange,
   onServiceTierChange,
   onPermissionChange,
@@ -278,39 +273,43 @@ export function Conversation({
   );
   const currentTurn = timelineItems.slice(timelineItems.findLastIndex(item => item.type === "message" && item.role === "user") + 1);
   const waiting = Boolean(approvalRequest || waitingForAnswer);
-  const activeProcess = running && !waiting && !thread?.history?.hasAfter
-    // The live turn's work log counts as active until its answer lands, even between two steps.
-    ? currentTurn.findLast(item => item.type === "work-group" && item.items.some(entry => entry.status === "running"))
-      ?? currentTurn.findLast(item => item.type === "work-group" && !item.hasAnswer) : undefined;
-  const showActivity = running && !waiting && !thread?.history?.hasAfter && !activeProcess
-    && !currentTurn.some(item => item.type === "message" && item.role === "assistant" && item.content.trim());
+  const live = running && !thread?.history?.hasAfter;
+  // The live turn writes its work straight into the timeline: thoughts as prose, tool calls as one
+  // quiet line each. Work folds to a summary line once a reply lands after it, or the turn is over.
+  const isFolded = (block: WorkGroupBlock) => block.answered || !(live && currentTurn.includes(block));
+  const liveTool = live && !waiting && currentTurn.some(block => block.type === "work-group"
+    && block.items.some(entry => entry.type === "tool" && entry.status === "running"));
+  const lastBlock = currentTurn.at(-1);
+  // A running tool spins on its own line and a streaming reply moves by itself; anything else
+  // (a thought, a plan, the pause between two steps) gets the "working" line under the turn.
+  const showActivity = live && !waiting && !liveTool
+    && !(lastBlock?.type === "message" && lastBlock.role === "assistant" && lastBlock.content.trim());
 
-  const [expansion, setExpansion] = useState<Record<string, { open: boolean; answered: boolean }>>({});
+  // Manual toggles only: folded work, tool runs and tool rows all start closed.
+  const [expansion, setExpansion] = useState<Record<string, boolean>>({});
   const stateKey = (id: string) => `${thread?.id}:${id}`;
-  const isOpen = (block: TimelineBlock) => {
-    const saved = expansion[stateKey(block.id)];
-    // Work stays open until the turn's final answer arrives, then collapses once; a manual toggle after that wins.
-    // Only the live turn's work opens by itself (until its answer lands); past turns stay folded,
-    // including ones that ended without an answer.
-    if (block.type === "work-group") return block.hasAnswer && !saved?.answered ? false
-      : saved?.open ?? (!block.hasAnswer && (block.items.some(entry => entry.status === "running") || (running && currentTurn.includes(block))));
-    return saved?.open ?? false;
-  };
-  const toggle = (id: string, open: boolean, answered = false) => setExpansion(current => {
-    if (current[stateKey(id)]?.open === open && current[stateKey(id)]?.answered === answered) return current;
-    const next = { ...current, [stateKey(id)]: { open, answered } };
-    return Object.fromEntries(Object.entries(next).slice(-1000));
+  const isOpen = (id: string) => expansion[stateKey(id)] ?? false;
+  const toggle = (id: string, open: boolean) => setExpansion(current => {
+    if (current[stateKey(id)] === open) return current;
+    return Object.fromEntries(Object.entries({ ...current, [stateKey(id)]: open }).slice(-1000));
   });
-  useLayoutEffect(() => {
-    const changed = timelineItems.filter((block): block is WorkGroupBlock => block.type === "work-group" && block.hasAnswer && !expansion[stateKey(block.id)]?.answered);
-    if (!changed.length) return;
-    setExpansion(current => Object.fromEntries(Object.entries({ ...current, ...Object.fromEntries(changed.map(block => [stateKey(block.id), { open: false, answered: true }])) }).slice(-1000)));
-  }, [timelineItems, thread?.id, expansion]);
   const rows: TimelineRow[] = [];
   for (const block of timelineItems) {
-    rows.push(block);
-    if (!isOpen(block)) continue;
-    if (block.type === "work-group") rows.push(...block.items.map((item, index) => ({ id: item.id, type: "work-row" as const, item, index })));
+    if (block.type !== "work-group") { rows.push(block); continue; }
+    const folded = isFolded(block);
+    if (folded) rows.push(block);
+    if (folded && !isOpen(block.id)) continue;
+    for (const part of splitToolRuns(block.items)) {
+      if (!Array.isArray(part)) { rows.push({ id: part.id, type: "work-row", item: part, inFold: folded, inRun: false }); continue; }
+      const run: ToolRunRow = { id: `tool-run-${part[0].id}`, type: "tool-run", items: part, inFold: folded };
+      rows.push(run);
+      if (!isOpen(run.id)) continue;
+      rows.push(...part.map((item, index) => ({ id: item.id, type: "work-row" as const, item, inFold: folded, inRun: true,
+        end: index === part.length - 1 })));
+    }
+    // The last opened row closes its list: the gap to what follows sits below the hairline.
+    const last = rows.at(-1)!;
+    if (folded && last.type !== "work-group") rows[rows.length - 1] = { ...last, end: true } as TimelineRow;
   }
   const [reader, setReader] = useState<{ item: TimelineItem; field: string; offset: number; text: string; next: number; total: number } | null>(null);
   const [readerError, setReaderError] = useState("");
@@ -384,19 +383,35 @@ export function Conversation({
   }, [thread?.id, thread?.items.length, thread?.history?.before, thread?.history?.after, history?.busy, history?.error, bottomInset]);
 
   const editableTurns = useMemo(() => new Set(thread?.editableTurnIds ?? []), [thread?.editableTurnIds]);
+  // A turn's duration sits under its last message. The user message carries it until the reply
+  // arrives and may still hold it afterwards; it is shown once, where it ends up.
+  const timingOwners = useMemo(() => {
+    const owners = new Map<string, string>();
+    for (const entry of thread?.items ?? []) if (entry.timing) owners.set(entry.timing.id, entry.id);
+    return owners;
+  }, [thread?.items]);
   const renderRow = (row: TimelineRow) => {
     let item: TimelineItem | undefined;
     let content: ReactNode;
-    if (row.type === "work-group") content = <WorkGroupEntry item={row} expanded={isOpen(row)}
-      onToggle={() => toggle(row.id, !isOpen(row), row.hasAnswer)} active={row.id === activeProcess?.id} />;
+    // Spinners belong to the live turn only, and pause while it waits on the user.
+    const spinning = (items: ProcessItem[]) => live && !waiting && items.some(entry => entry.status === "running")
+      && currentTurn.some(block => block.type === "work-group" && block.items.includes(items[0]));
+    if (row.type === "work-group") content = <WorkLine kind="summary" depth={0}>
+      <WorkSummary variant="turn" items={row.items} expanded={isOpen(row.id)}
+        onToggle={() => toggle(row.id, !isOpen(row.id))} active={spinning(row.items)} /></WorkLine>;
+    else if (row.type === "tool-run") content = <WorkLine kind="summary" depth={Number(row.inFold)} end={row.end}>
+      <WorkSummary variant="tools" items={row.items} expanded={isOpen(row.id)}
+        onToggle={() => toggle(row.id, !isOpen(row.id))} active={spinning(row.items)} /></WorkLine>;
     else if (row.type === "work-row") {
       item = row.item;
-      content = <div className="work-process-list virtual-process-row" data-kind={row.item.type}>{row.item.type === "thought"
-        ? <ThoughtEntry item={row.item} projectPath={project?.path ?? null} onOpenPath={onOpenPath} />
-        : <ToolProcess tool={row.item} index={row.index}
-          open={expansion[stateKey(row.id)]?.open} onToggle={open => toggle(row.id, open)} />}</div>;
+      content = <WorkLine kind={row.item.type} depth={Number(row.inFold) + Number(row.inRun)} end={row.end}>
+        {row.item.type === "thought"
+          ? <ThoughtEntry item={row.item} projectPath={project?.path ?? null} onOpenPath={onOpenPath} />
+          : <ToolProcess tool={row.item} active={spinning([row.item])}
+            open={expansion[stateKey(row.id)]} onToggle={open => toggle(row.id, open)} />}</WorkLine>;
     } else { item = row; content = <TimelineEntry item={row} projectPath={project?.path ?? null} onOpenPath={onOpenPath}
       threadId={thread?.id ?? ""} activeTurnId={running ? thread?.currentTiming?.turnId : null}
+      showTiming={!row.timing || timingOwners.get(row.timing.id) === row.id}
       editable={!running && !waitingForAnswer && Boolean(onEditMessage) && editableTurns.has(row.id)}
       onEditMessage={onEditMessage} onRevealPath={onRevealPath}
       steeringBusy={steeringBusy} onRetrySteer={onRetrySteer} onRestoreSteer={onRestoreSteer} />; }
@@ -419,7 +434,6 @@ export function Conversation({
         onToggleInspector={onToggleInspector}
         onOpenCommand={onOpenCommand}
         onShowRun={onShowRun}
-        onShowChanges={onShowChanges}
         onUndo={onUndo}
         onRevealPath={onRevealPath}
         onThreadCommand={onThreadCommand}
@@ -430,7 +444,6 @@ export function Conversation({
         busy={running || Boolean(sendBlocked)}
         parentThread={parentThread}
         onOpenThread={onOpenThread}
-        changesVisible={changesVisible}
       /></div>
 
       <div className="conversation-body" style={{ "--composer-clearance": `${bottomInset}px` } as CSSProperties}>
@@ -450,14 +463,16 @@ export function Conversation({
               footer={<>{showActivity && <div className="turn-activity" role="status"><LoaderCircle className="spin" size={14} /><span>{tr("conversation.working")}</span></div>}
                 <SubtaskList subtasks={subtasks} onOpen={onOpenThread} />
                 {/* Who is doing the work shows while the run is live too, next to its subtasks. */}
-                <CollaborationLine usage={thread.taskUsage} onOpen={onShowContext} />
-                {!running && space === "productivity" && thread.changes.length ? <ChangesCard thread={thread} undoing={undoing}
+                <CollaborationLine usage={thread.taskUsage} listed={subtasks} onOpen={onShowContext} />
+                {/* The one way from the conversation into review. With the Changes tab open beside
+                    it, that tab has the files and the actions; the card stays as a one-line record. */}
+                {!running && space === "productivity" && thread.changes.length ? <ChangesCard thread={thread} undoing={undoing} compact={changesVisible}
                   onReview={onShowChanges} onReviewFile={onShowChangeFile} onUndo={thread.canUndo ? onUndo : undefined} /> : null}
                 {thread.currentTiming && (running || !thread.items.some(item => item.timing?.id === thread.currentTiming?.id))
                   && <Timing key={thread.currentTiming.id} summary={thread.currentTiming} />}</>} />
           </>
         ) : (
-          <WelcomeState project={project} space={space} onUseSuggestion={onPromptChange} />
+          <WelcomeState space={space} onUseSuggestion={onPromptChange} />
         )}
       </div>
 
@@ -512,7 +527,6 @@ export function Conversation({
         onSelectNonProductivityProfile={onSelectNonProductivityProfile}
         onLoadProductivityModels={onLoadProductivityModels}
         onSelectProductivityRuntime={onSelectProductivityRuntime}
-        onRoutingModeChange={onRoutingModeChange}
         onEffortChange={onEffortChange}
         onServiceTierChange={onServiceTierChange}
         onPermissionChange={onPermissionChange}
@@ -551,7 +565,6 @@ function ConversationHeader({
   onToggleInspector,
   onOpenCommand,
   onShowRun,
-  onShowChanges,
   onUndo,
   onRevealPath,
   onThreadCommand,
@@ -562,12 +575,10 @@ function ConversationHeader({
   busy,
   parentThread,
   onOpenThread,
-  changesVisible,
 }: Pick<
   ConversationProps,
   | "parentThread"
   | "onOpenThread"
-  | "changesVisible"
   | "thread"
   | "project"
   | "projects"
@@ -580,7 +591,6 @@ function ConversationHeader({
   | "onToggleInspector"
   | "onOpenCommand"
   | "onShowRun"
-  | "onShowChanges"
   | "onUndo"
   | "onRevealPath"
   | "onThreadCommand"
@@ -652,16 +662,6 @@ function ConversationHeader({
         </div>
       </div>
       <div className="header-actions">
-        {space === "productivity" && thread?.changes.length && !changesVisible ? (
-          <button className="diff-pill" type="button" onClick={onShowChanges} data-testid="diff-pill"
-            aria-label={tr("conversation.review_value_changed_files", { p0: thread.changes.length })}
-            title={tr("conversation.review_value_changed_files", { p0: thread.changes.length })}>
-            <FileDiff size={13} />
-            <span>{tr("conversation.value_files", { p0: thread.changes.length })}</span>
-            <ins>+{thread.changes.reduce((total, file) => total + file.additions, 0)}</ins>
-            <del>-{thread.changes.reduce((total, file) => total + file.deletions, 0)}</del>
-          </button>
-        ) : null}
         {project?.branch ? (
           <button className="branch-button" type="button" onClick={() => onRevealPath(project.path)}
             title={project.dirtyFiles ? tr("threadsidebar.value_value_changed_files", { p0: project.branch, p1: project.dirtyFiles }) : project.branch}>
@@ -721,38 +721,68 @@ function ConversationHeader({
 type ToolTimelineItem = Extract<TimelineItem, { type: "tool" }>;
 type ThoughtTimelineItem = Extract<TimelineItem, { type: "thought" }>;
 type ProcessItem = ToolTimelineItem | ThoughtTimelineItem;
-/** One turn's reasoning and tool calls, in the order they happened, behind a one-line summary. */
+/** A stretch of one turn's reasoning and tool calls, in the order they happened. While its turn is
+ * live it is written straight into the timeline; afterwards it sits behind a one-line summary. */
 type WorkGroupBlock = {
   id: string;
   type: "work-group";
   items: ProcessItem[];
-  hasAnswer: boolean;
+  /** A reply landed after this work in the same turn. */
+  answered: boolean;
 };
 type TimelineBlock = Exclude<TimelineItem, { type: "thought" | "tool" }> | WorkGroupBlock;
-type TimelineRow = TimelineBlock | { id: string; type: "work-row"; item: ProcessItem; index: number };
+/** Two or more tool calls in a row, behind one line. */
+type ToolRunRow = { id: string; type: "tool-run"; items: ToolTimelineItem[]; inFold: boolean; end?: boolean };
+/** `inFold`/`inRun`: opened from a folded turn / from a tool run. `end`: the last row of an opened list. */
+type TimelineRow = TimelineBlock | ToolRunRow
+  | { id: string; type: "work-row"; item: ProcessItem; inFold: boolean; inRun: boolean; end?: boolean };
 
 const isProcess = (item: TimelineItem): item is ProcessItem => item.type === "thought" || item.type === "tool";
+
+/** Purpose: Lay a work group out the way it reads: each thought by itself, each uninterrupted
+ * series of tool calls together. Input: the group's items in arrival order. Output: thoughts and
+ * lone tool calls as items, series of two or more tool calls as arrays.
+ */
+export function splitToolRuns(items: ProcessItem[]): (ProcessItem | ToolTimelineItem[])[] {
+  const parts: (ProcessItem | ToolTimelineItem[])[] = [];
+  let run: ToolTimelineItem[] = [];
+  const closeRun = () => {
+    if (run.length) parts.push(run.length === 1 ? run[0] : run);
+    run = [];
+  };
+  for (const item of items) {
+    if (item.type === "tool") { run.push(item); continue; }
+    closeRun();
+    parts.push(item);
+  }
+  closeRun();
+  return parts;
+}
 
 /** Purpose: Fold runs of thoughts and tool calls into chronological work groups.
  * Input: timeline items in arrival order. Output: blocks in arrival order where each uninterrupted
  * run of process items becomes one work group; messages (an answer, or the user steering mid-turn),
  * plans, notices and questions are boundaries, so the order of decisions and actions is kept.
+ * A group is `answered` once an assistant reply follows it in the same turn.
  */
 export function groupTimelineItems(items: TimelineItem[]): TimelineBlock[] {
   const blocks: TimelineBlock[] = [];
   let turn: TimelineItem[] = [];
   let turnId = "initial";
+  // This turn's groups that no reply has followed yet.
+  let unanswered: WorkGroupBlock[] = [];
 
   const flushTurn = () => {
     if (!turn.length) return;
-    const hasAnswer = turn.some(entry => entry.turnHasAnswer);
     // Plans, questions and notices are boundaries: work before and after them stays on its own side.
     // The first group keeps the segment's id (stable while it streams); later groups use their first item.
     let run: ProcessItem[] = [];
     let first = true;
     const closeRun = () => {
       if (!run.length) return;
-      blocks.push({ id: `work-group-${first ? turn[0].id : run[0].id}`, type: "work-group", items: run, hasAnswer });
+      const group: WorkGroupBlock = { id: `work-group-${first ? turn[0].id : run[0].id}`, type: "work-group", items: run, answered: false };
+      blocks.push(group);
+      unanswered.push(group);
       run = [];
       first = false;
     };
@@ -768,12 +798,19 @@ export function groupTimelineItems(items: TimelineItem[]): TimelineBlock[] {
   for (const item of items) {
     if (item.type === "message") {
       flushTurn();
+      // Without turn ids a reply belongs to the work before it and a user message opens a new turn.
+      const sameTurn = item.turnId === undefined ? item.role === "assistant" : item.turnId === turnId;
+      if (!sameTurn) unanswered = [];
+      else if (item.role === "assistant" && item.content.trim()) {
+        for (const group of unanswered) group.answered = true;
+        unanswered = [];
+      }
       blocks.push(item);
       turnId = item.turnId ?? item.id;
       continue;
     }
     const next = item.turnId ?? turnId;
-    if (next !== turnId && turn.length) flushTurn();
+    if (next !== turnId) { flushTurn(); unanswered = []; }
     turnId = next;
     turn.push(item);
   }
@@ -790,11 +827,14 @@ function TimelineEntry({
   onRetrySteer,
   onRestoreSteer,
   activeTurnId,
+  showTiming = true,
   editable = false,
   onEditMessage,
   onRevealPath,
 }: {
-  item: TimelineBlock;
+  item: Exclude<TimelineBlock, WorkGroupBlock>;
+  /** False when a later message of the turn shows the same duration. */
+  showTiming?: boolean;
   threadId: string;
   editable?: boolean;
   onEditMessage?: ConversationProps["onEditMessage"];
@@ -806,7 +846,6 @@ function TimelineEntry({
   onRestoreSteer?: ConversationProps["onRestoreSteer"];
   activeTurnId?: string | null;
 }) {
-  if (item.type === "work-group") return <WorkGroupEntry item={item} />;
   if (item.type === "plan") return <PlanEntry item={item} />;
   if (item.type === "question") return <section className="question-history" data-testid="question-history">
     <strong>{item.request.status === "answered" ? tr("conversation.agent_question_answered") : item.request.status === "pending" ? tr("conversation.waiting_for_an_answer") : item.request.status === "cancelled" ? tr("conversation.question_cancelled") : tr("conversation.this_question_has_expired_ask_the_agent_to_send_it_again")}</strong>
@@ -836,7 +875,7 @@ function TimelineEntry({
               document.querySelector<HTMLTextAreaElement>('[data-testid="composer-input"]')?.focus();
             }}>{tr("conversation.restore_to_composer")}</button>}
         </div>}
-        {(item.timing || item.role === "assistant") && item.turnId !== activeTurnId && <Timing key={item.timing?.id ?? item.id}
+        {showTiming && (item.timing || item.role === "assistant") && item.turnId !== activeTurnId && <Timing key={item.timing?.id ?? item.id}
           summary={item.timing} error={item.timingError} />}
       </article>
     );
@@ -848,7 +887,7 @@ function TimelineEntry({
       </span>
       <div>
         <strong>{item.title}</strong>
-        <p>{item.detail}</p>
+        {item.detail ? <p>{item.detail}</p> : null}
       </div>
     </div>
   );
@@ -1055,8 +1094,10 @@ type ToolKind = typeof TOOL_KINDS[number];
  * of counting opaque tool names. Input: the harness's tool name. Output: one coarse kind. Cleo's own
  * memory tools (searching long-term memory, reading an earlier conversation) are their own kind:
  * they are the turns' real, visible uses of memory. */
-export function toolKind(name: string): ToolKind {
+export function toolKind(name: string, command = false): ToolKind {
   const value = name.toLowerCase();
+  // A harness that reports a command without naming its tool (the backend's "tool" placeholder) ran it.
+  if (value === "tool" && command) return "run";
   if (/(cleo_memory|long_term_memory|memory_|_memory|read_thread)/.test(value)) return "memory";
   if (/(edit|write|patch|apply|create_file|str_replace|notebook)/.test(value)) return "edit";
   if (/(^read|view|grep|glob|search|^ls$|list|find|open_file)/.test(value)) return "read";
@@ -1066,42 +1107,53 @@ export function toolKind(name: string): ToolKind {
   return "other";
 }
 
-/** Purpose: The one-line header for a turn's work: what it is doing now, or a count of what it did.
- * Input: the work group, whether its rows are shown, and whether it is the turn's live process.
- * Output: a quiet row ("正在处理 · 读取文件…" / "已处理 · 3 个工具 · 2 段思考"); expanding it lists
- * every thought and tool call in order as virtual rows beneath.
+/** A call whose harness did not name its tool arrives as "tool"; its command says what it was. */
+const toolLabel = (tool: ToolTimelineItem) => tool.name === "tool" && tool.command ? "" : tool.name;
+
+const workCount = (kind: ToolKind | "thoughts", count: number) => tr(`conversation.work_${kind}`, { p0: count });
+
+/** Purpose: One line that stands for work the reader can open: a finished stretch of a turn, or a
+ * run of tool calls (live or done).
+ * Input: the items it stands for, which of the two it is, whether its rows are shown, and whether
+ * it is running in the live turn. Output: a quiet row ("已处理 · 运行 2 条命令 · 1 段思考" for a
+ * turn, "运行 2 条命令 · 读取 1 次" for a tool run, with the running command beside it); opening it
+ * lists what it stands for as rows beneath.
  */
-function WorkGroupEntry({ item, expanded: controlled, onToggle, active }: {
-  item: WorkGroupBlock;
-  expanded?: boolean;
-  onToggle?: () => void;
-  active?: boolean;
+function WorkSummary({ items, variant, expanded, onToggle, active }: {
+  items: ProcessItem[];
+  variant: "turn" | "tools";
+  expanded: boolean;
+  onToggle: () => void;
+  active: boolean;
 }) {
-  const [localExpanded, setExpanded] = useState(false);
-  const expanded = controlled ?? localExpanded;
-  const tools = item.items.filter((entry): entry is ToolTimelineItem => entry.type === "tool");
-  const thoughts = item.items.length - tools.length;
+  const tools = items.filter((entry): entry is ToolTimelineItem => entry.type === "tool");
+  const thoughts = items.length - tools.length;
   const errors = tools.filter((tool) => toolFailed(tool) && !tool.approvalAudit).length;
   // Commands that reported how long they ran add up to the turn's command time.
   const commandTime = tools.reduce((total, tool) => total + (tool.durationMs ?? 0), 0);
-  const running = active ?? item.items.some((entry) => entry.status === "running");
-  const current = running ? item.items.findLast((entry) => entry.status === "running") : undefined;
-  const live = current && !expanded ? liveLine(current.type === "tool" ? [current.name, current.command].filter(Boolean).join(" · ") : current.content) : "";
+  const current = active ? tools.findLast((tool) => tool.status === "running") : undefined;
+  const live = current && !expanded ? liveLine([toolLabel(current), current.command].filter(Boolean).join(" · ")) : "";
   const counts = new Map<ToolKind, number>();
-  for (const tool of tools) counts.set(toolKind(tool.name), (counts.get(toolKind(tool.name)) ?? 0) + 1);
+  for (const tool of tools) {
+    const kind = toolKind(tool.name, Boolean(tool.command));
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  }
   const parts = [
-    ...TOOL_KINDS.filter((kind) => counts.get(kind)).map((kind) => tr(`conversation.work_${kind}`, { p0: counts.get(kind) })),
-    thoughts ? tr("conversation.work_thoughts", { p0: thoughts }) : "",
-    commandTime && !running ? tr("conversation.work_command_time", { p0: formatDuration(commandTime) }) : "",
+    ...TOOL_KINDS.filter((kind) => counts.get(kind)).map((kind) => workCount(kind, counts.get(kind)!)),
+    thoughts ? workCount("thoughts", thoughts) : "",
+    commandTime && !active ? tr("conversation.work_command_time", { p0: formatDuration(commandTime) }) : "",
   ].filter(Boolean);
-  const status = running ? "running" : errors ? "error" : "done";
+  // A tool run is named by what it did; a folded turn by the fact that it is over.
+  const title = variant === "turn" ? (active ? tr("conversation.working") : tr("conversation.work_done"))
+    : (parts.shift() ?? "").replace(/^[a-z]/, (letter) => letter.toUpperCase());
+  const status = active ? "running" : errors ? "error" : "done";
   return (
-    <section className={`work-group ${status}`} data-testid="work-group">
-      <button type="button" aria-expanded={expanded} onClick={onToggle ?? (() => setExpanded((value) => !value))}>
+    <section className={`work-group ${variant} ${status}`} data-testid={variant === "turn" ? "work-group" : "tool-run"}>
+      <button type="button" aria-expanded={expanded} onClick={onToggle}>
         <span className="work-group-icon" aria-hidden="true">
-          {running ? <LoaderCircle className="spin" size={13} /> : errors ? <CircleAlert size={13} /> : <Check size={13} />}
+          {active ? <LoaderCircle className="spin" size={13} /> : errors ? <CircleAlert size={13} /> : <Check size={13} />}
         </span>
-        <strong>{running ? tr("conversation.working") : tr("conversation.work_done")}</strong>
+        <strong>{title}</strong>
         {parts.length ? <small>{parts.join(" · ")}</small> : null}
         {errors ? <small className="work-group-errors">{tr("conversation.work_failed", { p0: errors })}</small> : null}
         {live ? <span className="work-group-live" aria-live="polite">{live}</span> : null}
@@ -1111,6 +1163,19 @@ function WorkGroupEntry({ item, expanded: controlled, onToggle, active }: {
   );
 }
 
+/** Purpose: One row of a turn's work, placed by where it was opened from.
+ * Input: what the row is, how many summary lines it sits under (0 = written straight into the
+ * timeline), and whether it is the last row of an opened list. Output: the row, hanging off one
+ * hairline per summary above it.
+ */
+function WorkLine({ kind, depth, end, children }: { kind: "summary" | "thought" | "tool"; depth: number; end?: boolean; children: ReactNode }) {
+  let content = children;
+  for (let level = 0; level < depth; level++) content = <div className="work-indent">{content}</div>;
+  return <div className={`work-line${end ? " end" : ""}`} data-kind={kind} data-depth={depth}>{content}</div>;
+}
+
+/** Purpose: The agent's own words between its steps, set as running prose like a reply — only
+ * quieter, so the final answer still reads as the answer. */
 function ThoughtEntry({
   item,
   projectPath,
@@ -1122,8 +1187,7 @@ function ThoughtEntry({
 }) {
   return (
     <div className={`thought-entry ${item.status}`}>
-      <Sparkles size={15} />
-      <div className="thought-copy">
+      <div className="thought-copy message-copy">
         <MarkdownContent content={item.content} projectPath={projectPath} onOpenPath={onOpenPath} />
       </div>
     </div>
@@ -1194,7 +1258,13 @@ export function formatDuration(ms: number) {
   return tr("conversation.duration_minutes", { p0: minutes, p1: String(Math.round(seconds % 60)).padStart(2, "0") });
 }
 
-function ToolProcess({ tool, index, open, onToggle }: { tool: ToolTimelineItem; index: number; open?: boolean; onToggle?: (open: boolean) => void }) {
+function ToolProcess({ tool, active = false, open, onToggle }: {
+  tool: ToolTimelineItem;
+  /** Running in the live turn: its icon spins. */
+  active?: boolean;
+  open?: boolean;
+  onToggle?: (open: boolean) => void;
+}) {
   // A failed command opens by itself on its output, so the reason is one glance away (approval
   // audit rows are records, not failures, and stay folded).
   const failedWithOutput = toolFailed(tool) && !tool.approvalAudit && Boolean(tool.output);
@@ -1202,27 +1272,23 @@ function ToolProcess({ tool, index, open, onToggle }: { tool: ToolTimelineItem; 
     <details className={`tool-process ${toolFailed(tool) ? "error" : tool.status}`} data-testid="tool-process" open={open ?? failedWithOutput}
       onToggle={event => onToggle?.(event.currentTarget.open)}>
       <summary>
-        <span className="tool-process-index">{String(index + 1).padStart(2, "0")}</span>
+        {/* Same columns as a summary line: state, what ran, then its outcome at the row's end. */}
+        <span className="tool-status" role={tool.approvalAudit ? undefined : "img"} aria-hidden={tool.approvalAudit || undefined}
+          aria-label={tool.approvalAudit ? undefined : tool.status === "running" ? tr("conversation.running") : toolFailed(tool) ? tr("conversation.failed") : tr("conversation.done")}>
+          {active ? <LoaderCircle className="spin" size={13} /> : tool.status === "running" ? <Circle size={13} />
+            : toolFailed(tool) ? <CircleAlert size={13} /> : <Check size={13} />}
+        </span>
         <span className="tool-main">
-          <span>
-            <strong>{tool.name}</strong>
-            {!tool.approvalAudit && <small>{tool.status === "running" ? tr("conversation.running") : toolFailed(tool) ? tr("conversation.failed") : tr("conversation.done")}</small>}
-            {/* A command's own outcome, when the harness reports it: exit code and how long it took. */}
-            {typeof tool.exitCode === "number" ? <small className={`tool-exit ${tool.exitCode ? "failed" : ""}`} data-testid="tool-exit">
-              {tr("conversation.exit_code_value", { p0: tool.exitCode })}</small> : null}
-            {typeof tool.durationMs === "number" ? <small className="tool-duration">{formatDuration(tool.durationMs)}</small> : null}
-          </span>
+          {toolLabel(tool) ? <strong>{toolLabel(tool)}</strong> : null}
           {(tool.command || !tool.approvalAudit) && <code>{tool.command || tr("conversation.waiting_for_tool_input")}</code>}
         </span>
-        {tool.status === "running" ? (
-          <Circle size={14} />
-        ) : toolFailed(tool) && !tool.output ? (
-          <X size={14} />
-        ) : tool.output ? (
-          <ChevronRight className="tool-process-chevron" size={14} />
-        ) : (
-          <Check size={14} />
-        )}
+        {/* A command's own outcome, when the harness reports it: exit code and how long it took. */}
+        {typeof tool.exitCode === "number" || typeof tool.durationMs === "number" ? <span className="tool-meta">
+          {typeof tool.exitCode === "number" ? <small className={`tool-exit ${tool.exitCode ? "failed" : ""}`} data-testid="tool-exit">
+            {tr("conversation.exit_code_value", { p0: tool.exitCode })}</small> : null}
+          {typeof tool.durationMs === "number" ? <small className="tool-duration">{formatDuration(tool.durationMs)}</small> : null}
+        </span> : null}
+        {tool.output || tool.permission ? <ChevronRight className="tool-process-chevron" size={13} /> : null}
       </summary>
       {tool.permission && <p className="tool-permission">{tool.permission.source} · {approvalLabel(tool.permission.policy)} {tr("conversation.execution_allowed")}</p>}
       {tool.output ? <pre>{tool.output}</pre> : null}
@@ -1235,9 +1301,11 @@ function ToolProcess({ tool, index, open, onToggle }: { tool: ToolTimelineItem; 
  * listing the changed files with line counts, a Review action that opens the Changes tab and, when
  * the latest reply can be reverted, Undo.
  */
-function ChangesCard({ thread, undoing, onReview, onReviewFile, onUndo }: {
+function ChangesCard({ thread, undoing, compact = false, onReview, onReviewFile, onUndo }: {
   thread: Thread;
   undoing?: boolean;
+  /** The Changes tab is open: only the count line, without the file list and actions it already has. */
+  compact?: boolean;
   onReview?: () => void;
   /** Each listed file opens its own diff in the Changes tab. */
   onReviewFile?: (path: string) => void;
@@ -1246,7 +1314,16 @@ function ChangesCard({ thread, undoing, onReview, onReviewFile, onUndo }: {
   const files = thread.changes;
   const additions = files.reduce((total, file) => total + file.additions, 0);
   const deletions = files.reduce((total, file) => total + file.deletions, 0);
-  const shown = files.slice(0, 4);
+  const shown = compact ? [] : files.slice(0, 4);
+  if (compact) return (
+    <section className="changes-card compact" data-testid="changes-card" aria-label={tr("conversation.workspace_changes")}>
+      <header>
+        <FileDiff size={14} />
+        <strong>{tr("conversation.value_files_changed", { p0: files.length })}</strong>
+        <ins>+{additions}</ins><del>-{deletions}</del>
+      </header>
+    </section>
+  );
   return (
     <section className="changes-card" data-testid="changes-card" aria-label={tr("conversation.workspace_changes")}>
       <header>
@@ -1286,8 +1363,7 @@ function MemoryContextNote({ context }: { context: NonNullable<Extract<TimelineI
   const [open, setOpen] = useState(false);
   return (
     <div className="memory-context-note" data-testid="memory-context">
-      <button type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}
-        title={tr("conversation.memory_context_hint")}>
+      <button type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
         <Brain size={12} />
         <span>{tr("conversation.memory_context_value", { p0: context.count })}</span>
         <ChevronRight size={12} className={open ? "rotated" : ""} />
@@ -1309,9 +1385,15 @@ const BOUNDARY_PART = "任务边界判断";
 /** Purpose: Who did this task's work, from the backend's per-task usage ledger: the main session,
  * each delegated job (named by its ledger part) and the reviewer, each with its model. Rows wrap
  * instead of truncating, so every model stays readable; the line opens the usage table. */
-function CollaborationLine({ usage, onOpen }: { usage?: Thread["taskUsage"]; onOpen: () => void }) {
+function CollaborationLine({ usage, listed = [], onOpen }: {
+  usage?: Thread["taskUsage"];
+  /** Subtasks already listed right above with their harness and model; they are not named again. */
+  listed?: Thread[];
+  onOpen: () => void;
+}) {
   const parts = usage?.scope === "task" ? usage.breakdown ?? [] : [];
-  const workers = parts.filter((part) => part.role === "worker");
+  const titles = new Set(listed.map((subtask) => subtask.title));
+  const workers = parts.filter((part) => part.role === "worker" && !titles.has(part.part ?? ""));
   const evaluators = parts.filter((part) => part.role === "evaluator" && part.part !== BOUNDARY_PART);
   if (!workers.length && !evaluators.length) return null;
   const main = parts.find((part) => part.role === "main");
@@ -1326,16 +1408,16 @@ function CollaborationLine({ usage, onOpen }: { usage?: Thread["taskUsage"]; onO
     ...unique(evaluators, tr("conversation.collab_role_evaluator")).map((entry) => ({ ...entry, role: tr("conversation.collab_role_evaluator") })),
   ];
   return (
-    <button type="button" className="collaboration-line" data-testid="collaboration-line" onClick={onOpen}
-      title={tr("conversation.collaboration_hint")}>
+    <button type="button" className="collaboration-line" data-testid="collaboration-line" onClick={onOpen}>
       <Users size={13} />
       <span>{tr("conversation.collaboration")}</span>
-      {entries.map(({ role, row }) => (
+      {entries.map(({ role, row }, index) => (
         <small key={`${role}|${row.provider}|${row.model}`} title={[row.provider, row.model].filter(Boolean).join(" · ")}>
           <em>{role}</em>{row.model || row.provider}
+          {/* The arrow travels with the last name, so a wrap never leaves it alone on a line. */}
+          {index === entries.length - 1 ? <ChevronRight size={13} /> : null}
         </small>
       ))}
-      <ChevronRight size={13} />
     </button>
   );
 }
@@ -1387,18 +1469,13 @@ function ContextRing({ used, limit, onClick }: { used: number; limit: number; on
   );
 }
 
-/** Purpose: Keep the shared composer welcome focused on the current task. Input: project/space. Output: relevant example requests. */
-function WelcomeState({ project, space, onUseSuggestion }: { project: Project | null; space: ThreadSpace; onUseSuggestion: (prompt: string) => void }) {
+/** Purpose: Keep the shared composer welcome focused on the current task. Input: space. Output: relevant example requests. */
+function WelcomeState({ space, onUseSuggestion }: { space: ThreadSpace; onUseSuggestion: (prompt: string) => void }) {
   const prompts = suggestions[space];
   return (
     <div className="welcome-state">
       <div className="welcome-mark" aria-hidden="true"><span>C</span></div>
       <h2>{space === "chat" ? tr("conversation.what_would_you_like_to_talk_about") : tr("conversation.start_a_new_task")}</h2>
-      {project && space === "productivity" ? (
-        <p>{isGeneralProject(project)
-          ? tr("conversation.this_standalone_task_has_no_project_attached_use_it_for_one_off_scripts_exploration_a")
-          : tr("conversation.this_task_runs_in_the_value_project_directory", { p0: projectLabel(project) })}</p>
-      ) : null}
       <div className="suggestion-list">
         {prompts.map((suggestion) => (
           <button type="button" key={suggestion} onClick={() => {
@@ -1448,7 +1525,6 @@ function Composer({
   onSelectNonProductivityProfile,
   onLoadProductivityModels,
   onSelectProductivityRuntime,
-  onRoutingModeChange,
   onEffortChange,
   onServiceTierChange,
   onPermissionChange,
@@ -1492,7 +1568,6 @@ function Composer({
   | "onSelectNonProductivityProfile"
   | "onLoadProductivityModels"
   | "onSelectProductivityRuntime"
-  | "onRoutingModeChange"
   | "onEffortChange"
   | "onServiceTierChange"
   | "onPermissionChange"
@@ -1782,9 +1857,6 @@ function Composer({
         </ul> : null}
         {attachmentError ? <div className="attachment-error" role="alert">{attachmentError}</div> : null}
         {harnessSwitchStatus ? <div className="harness-switch-status" role="status">{harnessSwitchStatus}</div> : null}
-        {!harnessSwitchStatus && pendingHarnessSwitch ? <div className="harness-switch-status" role="status" data-testid="harness-pending">
-          {tr("conversation.the_next_message_will_hand_off_to_value_value_select_the_current_runtime_to_cancel", { p0: pendingHarnessSwitch.provider, p1: pendingHarnessSwitch.model })}
-        </div> : null}
         {!harnessSwitchStatus && runtime?.handoffStatus === "submitted" ? <div className="harness-switch-status" role="status">{tr("conversation.the_handoff_was_submitted_but_its_first_turn_is_incomplete_check_the_actions_already_")}</div> : null}
         {sendError ? <div className="attachment-error" role="alert">{sendError}</div> : null}
         {computerUseSelected && <div className="attachment-row"><span className="attachment-chip computer-use-chip">
@@ -1835,8 +1907,7 @@ function Composer({
                 />
                 {worktree ? (
                   <button type="button" className={`worktree-toggle ${worktree.enabled ? "active" : ""}`} aria-pressed={worktree.enabled}
-                    data-testid="worktree-toggle" onClick={worktree.onToggle}
-                    title={worktree.enabled ? tr("conversation.worktree_on_hint") : tr("conversation.worktree_off_hint")}>
+                    data-testid="worktree-toggle" onClick={worktree.onToggle}>
                     <GitBranchPlus size={14} />
                     <span>{worktree.enabled ? tr("conversation.new_worktree") : tr("conversation.current_folder")}</span>
                   </button>
@@ -1848,20 +1919,15 @@ function Composer({
               <Paperclip size={16} />
             </button>
             <span className="composer-divider" />
-            <RuntimeSelector
-              space={space}
+            {space === "productivity" ? <RuntimePicker
               runtime={runtime}
               catalog={runtimeCatalog}
               productivityModels={productivityModels}
-              loadingProvider={runtimeModelsLoading}
-              error={runtimeModelsError}
               running={running}
               switching={Boolean(harnessSwitchStatus)}
               pendingSwitch={Boolean(pendingHarnessSwitch)}
-              onSelectProfile={onSelectNonProductivityProfile}
               onLoadModels={onLoadProductivityModels}
               onSelectProductivityRuntime={onSelectProductivityRuntime}
-              onRoutingModeChange={onRoutingModeChange}
               effort={selectedEffort}
               supportedEfforts={supportedEfforts}
               defaultEffort={selectedModel?.defaultEffort ?? null}
@@ -1869,7 +1935,8 @@ function Composer({
               serviceTier={runtime.serviceTier ?? null}
               supportsFastMode={Boolean(runtime.supportsFastMode)}
               onServiceTierChange={onServiceTierChange}
-            />
+            /> : <ChatModelSelector runtime={runtime} catalog={runtimeCatalog} running={running}
+              onSelectProfile={onSelectNonProductivityProfile} />}
             {space === "productivity" && <PermissionSelector key={runtime.provider} runtime={runtime}
               onChange={onPermissionChange} disabled={Boolean(harnessSwitchStatus) || Boolean(pendingHarnessSwitch)} />}
           </div>
@@ -1881,7 +1948,7 @@ function Composer({
           {canSteer && onSteerDraft ? (
             <button className="steer-button" type="button" data-testid="steer-now"
               disabled={steeringBusy || !prompt.trim() || attachments.length > 0}
-              title={attachments.length ? tr("conversation.steer_without_attachments") : tr("conversation.steer_now_hint", { p0: modifierKey })}
+              title={attachments.length ? undefined : tr("conversation.steer_now_hint", { p0: modifierKey })}
               onClick={() => onSteerDraft(composerText)}>
               <CornerDownRight size={13} />{tr("conversation.steer_now")}
             </button>
@@ -1944,115 +2011,28 @@ function AttachmentChips({ attachments, onRemove, onReveal, className = "attachm
   </div>;
 }
 
-/** Purpose: One pill for how a task runs: harness, model, reasoning effort and speed.
- * Input: live catalogs, the current runtime and selection callbacks. Output: the pill reads
- * "harness · model · effort[ · 快速]". Its menu opens on a card: a fast-mode toggle (only when
- * the harness and model support it), the current effort over the model name (which leads to
- * the harness and model lists), a reset to the model's defaults, and an effort slider. Picking
- * a model returns to the card so effort and speed can be set right away. Chat shows the
- * model only.
+/** Purpose: The chat composer's model chip: which saved model connection answers.
+ * Input: the chat model profiles and the one in use. Output: a chip naming the model, with a menu
+ * of the profiles; picking one switches the chat to it.
  */
-function RuntimeSelector({
-  space,
-  runtime,
-  catalog,
-  productivityModels,
-  loadingProvider,
-  error,
-  running,
-  switching,
-  pendingSwitch = false,
-  onSelectProfile,
-  onLoadModels,
-  onSelectProductivityRuntime,
-  onRoutingModeChange,
-  effort = "",
-  supportedEfforts = [],
-  defaultEffort = null,
-  onEffortChange,
-  serviceTier = null,
-  supportsFastMode = false,
-  onServiceTierChange,
-}: {
-  space: ThreadSpace;
+function ChatModelSelector({ runtime, catalog, running, onSelectProfile }: {
   runtime: RuntimeProfile;
   catalog: RuntimeCatalog | null;
-  productivityModels: Record<string, ProductivityModelCatalog>;
-  loadingProvider: string | null;
-  error: string | null;
   running: boolean;
-  switching: boolean;
-  /** A harness pick awaits the next message; the pill reads as it will after the handoff. */
-  pendingSwitch?: boolean;
   onSelectProfile: (profileId: string) => void;
-  onLoadModels: (provider: string, refresh?: boolean, background?: boolean) => Promise<ProductivityModelCatalog>;
-  onSelectProductivityRuntime: (provider: string, model: string) => void;
-  onRoutingModeChange?: (mode: "manual" | "auto") => void;
-  effort?: ReasoningEffort | "";
-  supportedEfforts?: ReasoningEffort[];
-  defaultEffort?: ReasoningEffort | null;
-  onEffortChange?: (effort: ReasoningEffort) => void | Promise<void>;
-  serviceTier?: "default" | "fast" | null;
-  supportsFastMode?: boolean;
-  onServiceTierChange?: (tier: "default" | "fast") => void;
 }) {
-  const development = space === "productivity";
-  // A picked effort shows at once here; the preview outlives the commit until the committed
-  // effort arrives from the backend, so the choice never snaps back meanwhile.
-  const [previewEffort, setPreviewEffort] = useState<ReasoningEffort | null>(null);
-  const committedEffort = useRef<{ effort: ReasoningEffort } | null>(null);
-  const shownEffort = previewEffort ?? effort;
-  const effortLabel = development && shownEffort ? effortLabels[shownEffort] ?? shownEffort : "";
-  const showSpeed = development && supportsFastMode && Boolean(onServiceTierChange);
-  const settingsLocked = running || switching;
   const [open, setOpen] = useState(false);
-  const [providerScreen, setProviderScreen] = useState<string | null>(null);
-  const [connectedModels, setConnectedModels] = useState<Record<string, ProductivityModelCatalog>>({});
-  const [checking, setChecking] = useState(false);
-  const [checkVersion, setCheckVersion] = useState(0);
-  const loadModelsRef = useRef(onLoadModels);
-  loadModelsRef.current = onLoadModels;
-  // The development menu opens on the settings card; the harness list is a screen behind it.
-  const [screen, setScreen] = useState<"card" | "providers">("card");
   const wrapRef = useRef<HTMLDivElement>(null);
-  // Like the permission menu: opening moves the keyboard into the menu (so Enter and Esc act on it,
-  // not on the composer), and closing it with the keyboard returns focus to the trigger.
   const triggerRef = useRef<HTMLButtonElement>(null);
-  // Each screen places the keyboard once. `placementDone` says that turn is over; `placedFocus` is
-  // where the menu itself put focus (null when it left the user's own focus alone). Afterwards the
-  // menu moves focus again only while it is still where the menu put it, so once the user has it —
-  // from the start or later, inside the menu, back in the composer, anywhere — a late model list
-  // leaves it alone.
-  const placementDone = useRef(false);
-  const placedFocus = useRef<HTMLElement | null>(null);
-  useEffect(() => { placementDone.current = false; placedFocus.current = null; }, [open, screen, providerScreen]);
   useEffect(() => {
     if (!open) return;
+    // Opening moves the keyboard into the menu, so Enter and Esc act on it, not on the composer.
     const frame = requestAnimationFrame(() => {
       const menu = wrapRef.current?.querySelector<HTMLElement>(".runtime-menu");
-      if (!menu) return;
-      const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      const first = !placementDone.current;
-      if (first && active && menu.contains(active)) {
-        // Already inside the menu (they clicked or tabbed in): the placement turn is the user's.
-        placementDone.current = true;
-        return;
+      if (menu && !menu.contains(document.activeElement)) {
+        (menu.querySelector<HTMLElement>("[aria-pressed='true']") ?? menu.querySelector<HTMLElement>("button"))?.focus();
       }
-      if (!first && (!placedFocus.current || active !== placedFocus.current)) return;
-      // The current choice first (the selected model), else the menu's first control. Two queries:
-      // one selector list would return whichever match comes first in the document. The model list
-      // can arrive after the menu opens; then focus moves on to the selected model.
-      const target = menu.querySelector<HTMLElement>("[aria-pressed='true']:not(:disabled)")
-        ?? (first ? menu.querySelector<HTMLElement>("button:not(:disabled), input") : null);
-      if (!target) return;
-      if (target !== active) target.focus();
-      placementDone.current = true;
-      placedFocus.current = target;
     });
-    return () => cancelAnimationFrame(frame);
-  }, [open, screen, providerScreen, productivityModels, connectedModels]);
-  useEffect(() => {
-    if (!open) return;
     const closeOutside = (event: PointerEvent) => {
       if (!wrapRef.current?.contains(event.target as Node)) setOpen(false);
     };
@@ -2065,314 +2045,39 @@ function RuntimeSelector({
     document.addEventListener("pointerdown", closeOutside);
     document.addEventListener("keydown", closeOnEscape);
     return () => {
+      cancelAnimationFrame(frame);
       document.removeEventListener("pointerdown", closeOutside);
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [open]);
-  useEffect(() => {
-    setPreviewEffort(null);
-    committedEffort.current = null;
-  }, [effort, open]);
-  const commitEffort = (value: ReasoningEffort | undefined) => {
-    if (!value || value === (committedEffort.current?.effort ?? effort)) return;
-    const commit = { effort: value };
-    committedEffort.current = commit;
-    void Promise.resolve(onEffortChange?.(value)).then(() => {
-      if (committedEffort.current !== commit) return;
-      setPreviewEffort(null);
-      committedEffort.current = null;
-    });
-  };
-  const chooseEffort = (value: ReasoningEffort | undefined) => {
-    if (!value) return;
-    setPreviewEffort(value);
-    commitEffort(value);
-  };
-  const effortIndex = Math.max(0, supportedEfforts.indexOf(shownEffort as ReasoningEffort));
-  const canReset = (defaultEffort !== null && defaultEffort !== shownEffort) || serviceTier === "fast";
-  const resetSettings = () => {
-    if (defaultEffort !== null && defaultEffort !== shownEffort) {
-      setPreviewEffort(defaultEffort);
-      commitEffort(defaultEffort);
-    }
-    if (serviceTier === "fast") onServiceTierChange?.("default");
-  };
   const profiles = catalog?.nonProductivityProfiles ?? [];
-  const providers = (catalog?.productivityProviders ?? []).filter(provider => connectedModels[provider.id]);
-  const selectedProfile = profiles.find(
-    (profile) => profile.id === runtime.profileId,
-  );
-  const selectedProvider = providers.find(
-    (provider) => provider.id === providerScreen,
-  );
-  const selectedModels = providerScreen ? (productivityModels[providerScreen]
-    ?? connectedModels[providerScreen])?.models : undefined;
-  // The card lists the current harness's models directly; other harnesses are one screen away.
-  const [modelQuery, setModelQuery] = useState("");
-  const currentModels = (productivityModels[runtime.provider] ?? connectedModels[runtime.provider])?.models ?? [];
-  const modelNeedle = modelQuery.trim().toLowerCase();
-  const visibleModels = modelNeedle
-    ? currentModels.filter((model) => `${model.label} ${model.id} ${model.description ?? ""}`.toLowerCase().includes(modelNeedle))
-    : currentModels;
-  useEffect(() => { if (!open) setModelQuery(""); }, [open]);
-
-  useEffect(() => {
-    if (!open || space !== "productivity" || !catalog) return;
-    let cancelled = false;
-    setConnectedModels({});
-    setChecking(true);
-    void checkHarnessConnections(catalog.productivityProviders,
-      provider => loadModelsRef.current(provider, true, true),
-      (provider, models) => {
-        if (!cancelled) setConnectedModels(current => ({ ...current, [provider.id]: models }));
-      }).finally(() => { if (!cancelled) setChecking(false); });
-    return () => { cancelled = true; };
-  }, [open, space, catalog, checkVersion]);
-
-  useEffect(() => {
-    setOpen(false);
-    setProviderScreen(null);
-  }, [space]);
-
-  const toggleMenu = () => {
-    setOpen((current) => {
-      if (current) setProviderScreen(null);
-      else setScreen("card");
-      return !current;
-    });
-  };
-  const openProvider = (provider: string) => {
-    setProviderScreen(provider);
-    void onLoadModels(provider, true).catch(() => undefined);
-  };
-
   return (
     <div className="model-menu-wrap runtime-selector" ref={wrapRef}>
-      <button
-        ref={triggerRef}
-        className="text-control runtime-selector-trigger"
-        type="button"
-        disabled={(running && space === "chat") || switching || !catalog}
-        aria-label={development ? tr("conversation.choose_runtime_model_reasoning_effort_and_speed") : tr("conversation.choose_chat_model")}
-        aria-expanded={open}
-        onClick={toggleMenu}
-        data-testid="runtime-selector"
-        data-effort={development ? effort || undefined : undefined}
-        data-speed={showSpeed ? serviceTier ?? "" : undefined}
-        data-pending-switch={pendingSwitch ? "true" : undefined}
-      >
-        <span>{space === "productivity" ? runtime.routingMode === "auto" ? `子任务路由 · 主模型 ${runtime.provider} / ` : `${runtime.provider} · ` : ""}{runtime.model}</span>
-        {effortLabel ? <small className="runtime-selector-extra">{`· ${effortLabel}`}</small> : null}
-        {showSpeed && serviceTier === "fast" ? <small className="runtime-selector-extra">{tr("conversation.fast")}</small> : null}
+      <button ref={triggerRef} className="text-control runtime-selector-trigger" type="button" disabled={running || !catalog}
+        aria-label={tr("conversation.choose_chat_model")} aria-expanded={open} onClick={() => setOpen((current) => !current)}
+        data-testid="runtime-selector">
+        <span>{runtime.model}</span>
         <ChevronDown size={13} />
       </button>
       {open ? (
         <div className="model-menu runtime-menu surface-popover" data-testid="runtime-menu">
-          {space === "chat" ? (
-            <>
-              <div className="runtime-menu-heading">
-                <span>{tr("conversation.model_configuration")}</span>
-              </div>
-              <div className="runtime-menu-list">
-                {profiles.map((profile) => (
-                  <button
-                    className="runtime-menu-row"
-                    type="button"
-                    key={profile.id}
-                    onClick={() => {
-                      onSelectProfile(profile.id);
-                      setOpen(false);
-                    }}
-                  >
-                    <span className="runtime-menu-copy">
-                      <strong>{profile.model}</strong>
-                      <small>{profile.label ? `${profile.label} · ` : ""}{profile.provider}</small>
-                    </span>
-                    {(selectedProfile?.id ?? runtime.profileId) === profile.id ? <Check size={14} /> : null}
-                  </button>
-                ))}
-              </div>
-            </>
-          ) : providerScreen ? (
-            <>
-              <div className="runtime-menu-heading runtime-menu-heading-back">
-                <button type="button" aria-label={tr("conversation.back_to_providers")} onClick={() => { setProviderScreen(null); setScreen("providers"); }}>
-                  <ArrowLeft size={14} />
-                </button>
-                <span>{selectedProvider?.id ?? providerScreen}</span>
-                <small>{providerTypeLabel(selectedProvider?.type)}</small>
-              </div>
-              <div className="runtime-menu-list">
-                {loadingProvider === providerScreen ? (
-                  <div className="runtime-menu-status"><LoaderCircle className="spin" size={14} />{tr("conversation.loading_models")}</div>
-                ) : error ? (
-                  <div className="runtime-menu-status error" role="alert">
-                    <span>{error}</span>
-                    <button type="button" onClick={() => openProvider(providerScreen)}>{tr("conversation.retry_loading_models")}</button>
-                  </div>
-                ) : (
-                  selectedModels?.map((model) => (
-                    <button
-                      className="runtime-menu-row"
-                      type="button"
-                      key={model.id}
-                      onClick={() => {
-                        onSelectProductivityRuntime(providerScreen, model.id);
-                        setProviderScreen(null);
-                        setScreen("card");
-                      }}
-                    >
-                      <span className="runtime-menu-copy">
-                        <strong>{model.label}</strong>
-                        {model.description ? <small>{model.description}</small> : null}
-                      </span>
-                      {runtime.provider === providerScreen && runtime.model === model.id ? <Check size={14} /> : null}
-                    </button>
-                  ))
-                )}
-              </div>
-            </>
-          ) : screen === "providers" ? (
-            <>
-              <div className="runtime-menu-heading runtime-menu-heading-back">
-                <button type="button" aria-label={tr("conversation.back_to_current_settings")} onClick={() => setScreen("card")}>
-                  <ArrowLeft size={14} />
-                </button>
-                <span>{tr("conversation.choose_runtime")}</span>
-                <small>{tr("conversation.hand_off_with_the_next_message")}</small>
-                <button type="button" disabled={checking} onClick={() => setCheckVersion(value => value + 1)}>{tr("routing.refresh")}</button>
-              </div>
-              <div className="runtime-menu-list">
-                {checking && <div className="runtime-menu-status" role="status"><LoaderCircle className="spin" size={14} />正在检查客户端连接…</div>}
-                {providers.map((provider) => (
-                  <button
-                    className="runtime-menu-row"
-                    type="button"
-                    key={provider.id}
-                    onClick={() => openProvider(provider.id)}
-                  >
-                    <span className="runtime-menu-copy">
-                      <strong>{provider.id}</strong>
-                      <small>{providerTypeLabel(provider.type)}{provider.defaultModel ? ` · ${provider.defaultModel}` : ""}</small>
-                    </span>
-                    {provider.id === runtime.provider ? <Check size={14} /> : <ChevronRight size={14} />}
-                  </button>
-                ))}
-                {!checking && !providers.length && <div className="runtime-menu-status">暂无连接检查通过的客户端，请先安装并登录开发客户端，再刷新。</div>}
-              </div>
-            </>
-          ) : (
-            <div className="runtime-card" data-testid="runtime-card">
-              <div className="runtime-menu-list" aria-label="执行方式">
-                <button className="runtime-menu-row" type="button" disabled={settingsLocked} onClick={() => {
-                  onRoutingModeChange?.("manual"); setScreen("providers");
-                }}><span className="runtime-menu-copy"><strong>指定 harness</strong></span>{runtime.routingMode !== "auto" ? <Check size={14} /> : <ChevronRight size={14} />}</button>
-                <button className="runtime-menu-row" type="button" disabled={settingsLocked} onClick={() => {
-                  onRoutingModeChange?.("auto"); setOpen(false);
-                }}><span className="runtime-menu-copy"><strong>子任务路由</strong></span>{runtime.routingMode === "auto" ? <Check size={14} /> : null}</button>
-              </div>
-              <section className="runtime-section" aria-label={tr("conversation.models_of_value", { p0: runtime.provider })}>
-                <div className="runtime-section-label">
-                  <span>{tr("conversation.models_of_value", { p0: runtime.provider })}</span>
-                  <button
-                    className="runtime-card-model"
-                    type="button"
-                    aria-label={tr("conversation.change_runtime_or_model")}
-                    title={tr("conversation.change_runtime_or_model")}
-                    data-testid="runtime-model-row"
-                    onClick={() => setScreen("providers")}
-                  >
-                    {tr("conversation.switch_harness")}<ChevronRight size={13} />
-                  </button>
-                </div>
-                {currentModels.length > 6 ? (
-                  <input className="runtime-model-search" type="search" value={modelQuery} placeholder={tr("conversation.search_models")}
-                    aria-label={tr("conversation.search_models")} onChange={(event) => setModelQuery(event.target.value)} data-testid="runtime-model-search" />
-                ) : null}
-                <div className="runtime-model-list" data-testid="runtime-model-list">
-                  {visibleModels.map((model) => (
-                    <button className="runtime-model-row" type="button" key={model.id} disabled={settingsLocked}
-                      aria-pressed={runtime.model === model.id} onClick={() => onSelectProductivityRuntime(runtime.provider, model.id)}>
-                      <span>{model.label}</span>
-                      {runtime.model === model.id ? <Check size={14} /> : null}
-                    </button>
-                  ))}
-                  {currentModels.length && !visibleModels.length ? <p className="runtime-menu-status">{tr("conversation.no_matching_models")}</p> : null}
-                  {!currentModels.length ? <p className="runtime-model-current">{runtime.model}</p> : null}
-                </div>
-              </section>
-              <div className="runtime-card-top">
-                <span className="runtime-section-label-text">{tr("conversation.reasoning_effort")}</span>
-                {showSpeed ? (
-                  <button
-                    className={`runtime-card-fast ${serviceTier === "fast" ? "active" : ""}`}
-                    type="button"
-                    aria-pressed={serviceTier === "fast"}
-                    aria-label={tr("conversation.fast_mode")}
-                    title={serviceTier === "fast" ? tr("conversation.fast_mode_is_on_faster_responses_with_higher_usage") : tr("conversation.enable_fast_mode_faster_responses_with_higher_usage_availability_depends_on_the_model")}
-                    disabled={settingsLocked}
-                    data-testid="speed-toggle"
-                    onClick={() => onServiceTierChange?.(serviceTier === "fast" ? "default" : "fast")}
-                  >
-                    <Zap size={16} />
-                  </button>
-                ) : null}
-                <button
-                  className="runtime-card-reset"
-                  type="button"
-                  aria-label={tr("conversation.restore_defaults")}
-                  title={tr("conversation.restore_the_model_s_default_reasoning_effort_and_standard_speed")}
-                  disabled={settingsLocked || !canReset}
-                  data-testid="runtime-reset"
-                  onClick={resetSettings}
-                >
-                  <RotateCcw size={15} />
-                </button>
-              </div>
-              {supportedEfforts.length ? (
-                // One named segment per level, lightest on the left. The group is a single tab stop;
-                // arrow keys, Home and End move the choice like a native radio group.
-                <div
-                  className={`runtime-effort-segments${settingsLocked ? " disabled" : ""}`}
-                  role="radiogroup"
-                  aria-label={tr("conversation.reasoning_effort")}
-                  aria-disabled={settingsLocked || undefined}
-                  tabIndex={settingsLocked ? -1 : 0}
-                  title={tr("conversation.reasoning_effort_value", { p0: effortLabel || tr("conversation.determined_by_the_model") })}
-                  data-testid="effort-selector"
-                  data-value={shownEffort}
-                  data-options={JSON.stringify(supportedEfforts)}
-                  onKeyDown={(event) => {
-                    if (settingsLocked) return;
-                    const last = supportedEfforts.length - 1;
-                    const next = event.key === "Home" ? 0 : event.key === "End" ? last
-                      : event.key === "ArrowLeft" || event.key === "ArrowDown" ? Math.max(0, effortIndex - 1)
-                        : event.key === "ArrowRight" || event.key === "ArrowUp" ? Math.min(last, effortIndex + 1) : null;
-                    if (next === null) return;
-                    event.preventDefault();
-                    chooseEffort(supportedEfforts[next]);
-                  }}
-                >
-                  {supportedEfforts.map(level => (
-                    <button type="button" role="radio" key={level} tabIndex={-1} disabled={settingsLocked}
-                      aria-checked={level === shownEffort} className={level === shownEffort ? "active" : ""}
-                      onClick={() => chooseEffort(level)}>
-                      {effortLabels[level] ?? level}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          )}
+          <div className="runtime-menu-heading">
+            <span>{tr("conversation.model_configuration")}</span>
+          </div>
+          <div className="runtime-menu-list">
+            {profiles.map((profile) => (
+              <button className="runtime-menu-row" type="button" key={profile.id} aria-pressed={runtime.profileId === profile.id}
+                onClick={() => { onSelectProfile(profile.id); setOpen(false); }}>
+                <span className="runtime-menu-copy">
+                  <strong>{profile.model}</strong>
+                  <small>{profile.label ? `${profile.label} · ` : ""}{profile.provider}</small>
+                </span>
+                {runtime.profileId === profile.id ? <Check size={14} /> : null}
+              </button>
+            ))}
+          </div>
         </div>
       ) : null}
     </div>
   );
-}
-
-function providerTypeLabel(type?: string) {
-  if (type === "codex_sdk") return "Codex";
-  if (type === "claude_sdk") return "Claude";
-  if (type === "acp") return tr("conversation.external_client");
-  return tr("conversation.provider");
 }

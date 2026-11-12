@@ -157,7 +157,7 @@ try {
   state = baseState({ browser: { ...baseState().browser, tabs: [], activeTabId: null, hibernated: { at: Date.now(), tabs: [{ url: "https://example.com/", title: "示例" }] } } });
   await page.evaluate(next => window.pushComputerState(next), state);
   await page.getByTestId("browser-hibernated").getByText("浏览器已休眠").waitFor();
-  await page.getByText("已休眠，打开后重新加载。").waitFor();
+  await page.getByText("已休眠", { exact: true }).waitFor();
   await page.getByRole("button", { name: "重新打开" }).click();
   assert.deepEqual(actions.filter(item => item.action === "browser").at(-1).params, { threadId: "fixture", action: "wake" });
   // Another conversation's browser never flashes through this panel.

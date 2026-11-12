@@ -17,7 +17,10 @@ export function subscribeLanguage(listener) {
   return () => listeners.delete(listener);
 }
 function message(key, params, selectedLanguage) {
-  const entry = recoveryMessages[key] ?? messages[key];
+  // Counting exactly one: a message with a `_one` sibling uses it ("1 file changed"). Languages
+  // without a singular form carry the same text in both.
+  const one = params.p0 === 1 ? `${key}_one` : "";
+  const entry = (one && (recoveryMessages[one] ?? messages[one])) || (recoveryMessages[key] ?? messages[key]);
   const template = entry?.[selectedLanguage] ?? entry?.en ?? key;
   return template.replace(/\{(\w+)\}/g, (match, name) => Object.hasOwn(params, name) ? String(params[name]) : match);
 }

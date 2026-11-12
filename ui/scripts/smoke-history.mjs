@@ -120,14 +120,14 @@ try {
   const inspector = page.getByTestId("inspector");
   if (await inspector.count()) await inspector.getByRole("button", { name: "关闭检查器", exact: true }).click();
   const viewport = page.locator(".conversation-viewport");
-  // Speed is the lightning toggle on the runtime pill's card; the pill reports the current value.
+  // Speed is the switch in the effort chip's menu; the model chip reports the current value.
   const pill = page.getByTestId("runtime-selector");
+  const effortChip = page.getByTestId("effort-selector");
   const setSpeed = async value => {
-    await pill.click();
-    const toggle = page.getByTestId("speed-toggle");
-    if ((await toggle.getAttribute("aria-pressed")) !== String(value === "fast")) await toggle.click();
+    await effortChip.click();
+    await page.getByTestId("speed-toggle").setChecked(value === "fast");
     await page.keyboard.press("Escape");
-    await page.getByTestId("runtime-menu").waitFor({ state: "detached" });
+    await page.getByTestId("effort-menu").waitFor({ state: "detached" });
   };
   assert.equal(await pill.getAttribute("data-speed"), "default");
   await setSpeed("fast");
@@ -285,10 +285,10 @@ try {
   await page.getByTestId("composer-input").fill("Start");
   await page.getByTestId("send-button").click();
   await page.waitForFunction(() => document.querySelector('[data-testid="stop-button"]'));
-  await pill.click();
+  await effortChip.click();
   assert.equal(await page.getByTestId("speed-toggle").isDisabled(), true, "Speed must not change during a running turn");
   await page.keyboard.press("Escape");
-  await page.getByTestId("runtime-menu").waitFor({ state: "detached" });
+  await page.getByTestId("effort-menu").waitFor({ state: "detached" });
   const thought = { id: "thought-live", turnId: "live-turn", type: "thought", content: "正在分析当前问题", status: "done" };
   await page.evaluate(item => window.emitTest({ type: "upsert-item", item }), thought);
   await page.getByText(thought.content, { exact: true }).waitFor();

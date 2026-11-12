@@ -12,7 +12,7 @@ const MENU_WIDTH = 300;
  * Input: Current/pending session settings and an awaited session-bound save callback.
  * Output: A pill styled like the composer's other controls whose menu opens above it (so it
  * never runs off the bottom of the window), with arrow-key, Escape and click-outside handling;
- * the pill's tooltip explains the effective state and save errors show beside it. In a panel
+ * the pill's tooltip names the current preset and save errors show beside it. In a panel
  * with room below, `placement="down"` opens the menu underneath instead.
  */
 export function PermissionSelector({ runtime, onChange, disabled = false, placement = "up" }: {
@@ -73,7 +73,7 @@ export function PermissionSelector({ runtime, onChange, disabled = false, placem
   if (unified) return <div className="permission-selector">
     <button type="button" className="text-control permission-selector-trigger" disabled
       aria-label={tr("permissionselector.session_permissions")} data-testid="permission-selector"
-      data-value={unified} title={tr("routing.permissions_managed")}>
+      data-value={unified}>
       <ShieldCheck size={14} /><span>{tr(`routing.permission_${unified}`)} · {tr("routing.routing")}</span>
     </button>
   </div>;
@@ -119,7 +119,7 @@ export function PermissionSelector({ runtime, onChange, disabled = false, placem
     <button className="text-control permission-selector-trigger" type="button" ref={triggerRef}
       aria-label={tr("permissionselector.session_permissions")} aria-haspopup="menu" aria-expanded={open} data-testid="permission-selector"
       data-value={current?.value ?? "custom"}
-      title={[current?.description ?? actual, pending ? tr("permissionselector.applies_next_turn_current_value", { p0: actual }) : "", runtime.permissionOptions?.reason ?? ""].filter(Boolean).join("\n")}
+      title={current?.label ?? actual}
       disabled={disabled || saving} onClick={() => setOpen(value => !value)}>
       <ShieldCheck size={14} />
       <span className="permission-selector-label">{current?.label ?? tr("permissionselector.custom_permissions")}</span>
@@ -133,11 +133,11 @@ export function PermissionSelector({ runtime, onChange, disabled = false, placem
           const checked = preset.value === current?.value;
           return <button key={preset.value} className={`permission-option ${checked ? "selected" : ""}`} type="button"
             role="menuitemradio" aria-checked={checked} disabled={Boolean(preset.disabledReason)}
-            title={preset.disabledReason ?? preset.description} data-testid="permission-option" data-value={preset.value}
+            title={preset.disabledReason ?? undefined} data-testid="permission-option" data-value={preset.value}
             onClick={() => { setOpen(false); triggerRef.current?.focus(); void save(preset.value); }}>
             <span className="permission-option-copy">
               <strong>{preset.label}</strong>
-              {(preset.disabledReason || preset.description) && <small>{preset.disabledReason ?? preset.description}</small>}
+              {preset.disabledReason && <small>{preset.disabledReason}</small>}
             </span>
             {checked && <Check size={14} />}
           </button>;

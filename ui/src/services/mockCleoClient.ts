@@ -66,7 +66,7 @@ export class MockCleoClient implements CleoClient {
   }
 
   private routingSettings: import("../routing-types").RoutingSettings = {
-    revision: "mock", enabled: true, preference: "quality", fallbackCandidate: "codex/demo@high",
+    revision: "mock", enabled: false, preference: "quality", fallbackCandidate: "codex/demo@high",
     automaticUpgrade: false, crossBackendDelegation: false,
     candidates: [{ id: "codex/demo@high", provider: "codex", backend: "codex_sdk", model: "demo",
       effort: "high", enabled: true, tier: "strong", available: true, costType: "subscription",
@@ -411,7 +411,7 @@ export class MockCleoClient implements CleoClient {
             type: "notice",
             tone: "info",
             title: decision === "cancel" ? "请求已取消" : "命令已拒绝",
-            detail: "Cleo 已收到你的决定，并停止了这次命令执行。",
+            detail: "",
           },
         };
         yield { type: "done", summary: "命令已由用户拒绝" };
@@ -592,7 +592,7 @@ export class MockCleoClient implements CleoClient {
     }
     const thread = snapshot.threads.find(thread => thread.id === _threadId);
     if (thread) thread.status = "attention";
-    this.histories.get(_threadId)?.push({ id: `cancel-${Date.now()}`, type: "notice", tone: "info", title: "已停止当前运行", detail: "可以继续发送新请求。" });
+    this.histories.get(_threadId)?.push({ id: `cancel-${Date.now()}`, type: "notice", tone: "info", title: "已停止当前运行", detail: "" });
     for (const [id, question] of this.questions) {
       if (question.request.threadId === _threadId) { question.resolve(null); this.questions.delete(id); }
     }

@@ -270,6 +270,9 @@ function MemoryLedger({
       <div className="memory-list" data-testid="memory-ledger">
         {entries.length ? entries.map((memory) => {
           const expanded = memory.id === expandedId;
+          // A short entry's title is its own text (or the start of it): say it once.
+          const plain = (text: string) => text.replace(/[\s。．.；;…]+$/u, "").trim();
+          const repeats = plain(memory.content).startsWith(plain(memory.title));
           return (
             <article key={memory.id} className={expanded ? "expanded" : ""}>
               <div className={`memory-scope ${memory.scope}`}>
@@ -277,7 +280,7 @@ function MemoryLedger({
               </div>
               <div className="memory-copy">
                 <button type="button" className="memory-entry-toggle" onClick={() => onToggle(memory.id)} aria-expanded={expanded}>
-                  <span><h3>{memory.title}</h3><p>{memory.content}</p></span>
+                  <span><h3>{repeats ? memory.content : memory.title}</h3>{repeats ? null : <p>{memory.content}</p>}</span>
                   <ChevronDown size={15} />
                 </button>
                 <footer>

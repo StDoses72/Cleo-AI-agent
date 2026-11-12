@@ -141,10 +141,10 @@ export function FilesPanel({ root, threadId = null, reveal, onNotify, onCopyText
   const lines = useMemo(() => (preview?.text ?? "").split(/\r?\n/).slice(0, MAX_LINES), [preview?.text]);
 
   if (!root) {
-    return <div className="inspector-empty"><FolderClosed size={22} /><strong>{tr("filespanel.no_working_directory")}</strong><span>{tr("filespanel.choose_a_project_folder_for_this_task_to_browse_and_preview_its_files_here")}</span></div>;
+    return <div className="inspector-empty"><FolderClosed size={22} /><strong>{tr("filespanel.no_working_directory")}</strong></div>;
   }
   if (!files) {
-    return <div className="inspector-empty"><CircleAlert size={22} /><strong>{tr("filespanel.file_sidebar_unavailable")}</strong><span>{tr("filespanel.use_this_feature_in_the_cleo_desktop_app")}</span></div>;
+    return <div className="inspector-empty"><CircleAlert size={22} /><strong>{tr("filespanel.file_sidebar_unavailable")}</strong></div>;
   }
 
   const renderTree = (path: string, depth: number): React.ReactNode => {
@@ -185,7 +185,7 @@ export function FilesPanel({ root, threadId = null, reveal, onNotify, onCopyText
     </div>
     <div className="files-preview">
       {error && <p className="computer-panel-error"><CircleAlert size={14} />{error}</p>}
-      {!preview && !error && <div className="inspector-empty"><File size={22} /><strong>{tr("filespanel.select_a_file_to_preview")}</strong><span>{tr("filespanel.file_links_in_the_conversation_also_locate_files_here")}</span></div>}
+      {!preview && !error && <div className="inspector-empty"><File size={22} /><strong>{tr("filespanel.select_a_file_to_preview")}</strong></div>}
       {preview && <>
         <header className="files-preview-header">
           <span title={preview.path}>{preview.path}</span><small>{size(preview.size)}</small>
@@ -195,7 +195,7 @@ export function FilesPanel({ root, threadId = null, reveal, onNotify, onCopyText
         </header>
         {preview.kind === "image" && <div className="files-image"><img src={preview.url} alt={preview.path} /></div>}
         {preview.kind === "pdf" && <iframe className="files-pdf" title={preview.path} src={preview.url} />}
-        {preview.kind === "binary" && <div className="inspector-empty"><File size={22} /><strong>{tr("filespanel.binary_file")}</strong><span>{tr("filespanel.a_text_preview_is_unavailable_open_it_in_a_system_application")}</span></div>}
+        {preview.kind === "binary" && <div className="inspector-empty"><File size={22} /><strong>{tr("filespanel.binary_file")}</strong></div>}
         {preview.kind === "markdown" && <div className="files-markdown">
           <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: "ignore", errorColor: "#c96b63" }]]} urlTransform={(url) => {
             if (/^(https?:|mailto:|#)/i.test(url)) return url;
@@ -204,7 +204,6 @@ export function FilesPanel({ root, threadId = null, reveal, onNotify, onCopyText
             {normalizeMath(preview.text ?? "")}</ReactMarkdown>
         </div>}
         {(preview.kind === "text" || preview.kind === "html") && <>
-          {preview.kind === "html" && <p className="computer-panel-hint">{tr("filespanel.html_source_click")}<Globe size={11} /> {tr("filespanel.to_preview_the_page_in_the_built_in_browser")}</p>}
           <pre className="files-code" tabIndex={0} aria-label={tr("filespanel.file_contents")}>{lines.map((text, index) => <span key={index} ref={line === index + 1 ? highlighted : undefined}
             className={line === index + 1 ? "target" : ""}><i>{index + 1}</i><code>{text || " "}</code></span>)}</pre>
           {(preview.truncated || (preview.text ?? "").split(/\r?\n/).length > MAX_LINES) && <p className="computer-panel-hint">{tr("filespanel.this_file_is_large_only_its_beginning_is_shown")}</p>}

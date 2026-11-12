@@ -312,7 +312,8 @@ export function ThreadSidebar({
         {sections.map(({ space, loose, folders, count }) => {
           const sectionId = `section:${space}`;
           const label = space === "chat" ? tr("app.chat") : tr("app.development");
-          const noun = space === "chat" ? tr("app.chat") : tr("computerpanel.task");
+          // The noun sits inside sentences ("No task yet", "Standalone task"), so it is not capitalised.
+          const noun = (space === "chat" ? tr("app.chat") : tr("computerpanel.task")).toLocaleLowerCase();
           const draftProject = draftSpace === space ? projects.find((project) => project.id === activeProjectId) : undefined;
           const draftIsLoose = draftSpace === space && (!draftProject || isGeneralProject(draftProject));
           const empty = !count && draftSpace !== space;

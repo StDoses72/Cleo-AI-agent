@@ -141,6 +141,7 @@
   color: var(--danger);
 }
 
+
 .branch-button {
   max-width: 190px;
   height: 28px;
@@ -259,6 +260,13 @@
 
 .message-entry.assistant .message-copy {
   padding-left: 30px;
+}
+
+/* Paragraphs avoid a last line of one or two characters. */
+.message-copy p,
+.message-copy li,
+.message-copy blockquote {
+  text-wrap: pretty;
 }
 
 .message-copy > :first-child {
@@ -522,58 +530,6 @@
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 40%, transparent);
 }
 
-.thought-entry {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin: 0 0 14px;
-  color: var(--muted);
-  font-size: var(--font-size-caption);
-}
-
-.thought-entry > svg {
-  flex: 0 0 auto;
-  margin-top: 2px;
-}
-
-.thought-copy {
-  min-width: 0;
-  line-height: 1.65;
-  user-select: text;
-}
-
-.thought-copy > :first-child {
-  margin-top: 0;
-}
-
-.thought-copy > :last-child {
-  margin-bottom: 0;
-}
-
-.thought-copy p,
-.thought-copy ul,
-.thought-copy ol,
-.thought-copy pre {
-  margin: 0 0 8px;
-}
-
-.thought-copy ul,
-.thought-copy ol {
-  padding-left: 18px;
-}
-
-.thought-copy code {
-  font-size: 0.9em;
-}
-
-.thought-entry.done svg {
-  color: var(--purple);
-}
-
-.thought-entry.running svg {
-  color: var(--accent);
-}
-
 .plan-entry {
   margin: 0 0 24px 30px;
   padding: 14px 16px;
@@ -710,17 +666,10 @@
   color: var(--accent);
 }
 
-.tool-group-copy,
-.tool-main {
+.tool-group-copy {
   display: flex;
   min-width: 0;
   flex: 1;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.tool-group-copy {
-  flex-direction: row;
   align-items: center;
   gap: 8px;
 }
@@ -752,31 +701,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.tool-main > span {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.tool-main strong {
-  color: var(--text-soft);
-  font-size: var(--font-size-caption);
-  font-weight: 600;
-}
-
-.tool-main small {
-  color: var(--muted-2);
-  font-size: var(--font-size-caption);
-}
-
-.tool-main code {
-  overflow: hidden;
-  color: var(--muted);
-  font-size: var(--font-size-caption);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .tool-process-list {
   border-top: 1px solid var(--border);
   background: color-mix(in srgb, var(--chrome) 45%, transparent);
@@ -794,20 +718,6 @@
   margin-bottom: 0;
 }
 
-.virtual-process-row {
-  margin: 0 0 8px 30px;
-  padding: 6px 14px 6px 16px;
-  border-left: 2px solid var(--border);
-}
-
-/* Expanded process rows read as quiet notes, never as cards: no fill, body-sized text, plain headings. */
-.virtual-process-row .thought-copy,
-.thought-process-list .thought-copy {
-  color: var(--muted);
-  font-size: var(--font-size-control);
-  line-height: 1.6;
-}
-
 .thought-copy h1,
 .thought-copy h2,
 .thought-copy h3,
@@ -817,70 +727,6 @@
   font-size: inherit;
   font-weight: 600;
   line-height: inherit;
-}
-
-.tool-process {
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-}
-
-.tool-process:last-child {
-  border-bottom: 0;
-}
-
-.tool-process summary {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  cursor: pointer;
-  list-style: none;
-}
-
-.tool-process summary:hover {
-  background: color-mix(in srgb, var(--surface-hover) 50%, transparent);
-}
-
-.tool-process summary::-webkit-details-marker {
-  display: none;
-}
-
-.tool-process summary > svg {
-  flex: 0 0 auto;
-  color: var(--success);
-}
-
-.tool-process.running summary > svg {
-  color: var(--accent);
-}
-
-.tool-process.error summary > svg {
-  color: var(--danger);
-}
-
-.tool-process-index {
-  color: var(--muted-2);
-  font-family: var(--font-code);
-  font-size: 11px;
-}
-
-.tool-process-chevron {
-  transition: transform 140ms ease;
-}
-
-.tool-process[open] .tool-process-chevron {
-  transform: rotate(90deg);
-}
-
-.tool-process pre {
-  margin: 0;
-  padding: 10px 14px;
-  border-top: 1px solid var(--border);
-  color: var(--muted);
-  background: color-mix(in srgb, var(--chrome) 70%, transparent);
-  font-size: var(--font-size-caption);
-  line-height: 1.6;
-  user-select: text;
-  white-space: pre-wrap;
 }
 
 /* ---------- Notices ---------- */
@@ -941,8 +787,10 @@
 .turn-activity {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 0 4px 30px;
+  gap: 7px;
+  margin-bottom: 14px;
+  padding: 3px 0;
+  line-height: 20px;
   color: var(--muted);
   font-size: var(--font-size-control);
 }
@@ -1058,12 +906,34 @@
   transform: rotate(45deg) translate(1px, -1px);
 }
 
-/* ---------- Work log: one summary line per turn, chronological rows beneath ---------- */
-.work-group {
-  margin: 0 0 10px;
+/* ---------- Work log ----------
+ * While a turn is live its work is written straight into the timeline: thoughts as prose, each
+ * run of tool calls as one quiet line. Once a reply lands (or the turn ends) that whole stretch
+ * sits behind one summary line. Opened rows hang off a hairline, one level per summary above. */
+.work-line {
+  display: flow-root;
 }
 
-.work-group > button {
+.work-line[data-depth="0"] {
+  margin-bottom: 10px;
+}
+
+.work-line[data-depth="0"][data-kind="thought"] {
+  margin-bottom: 14px;
+}
+
+.work-line.end {
+  margin-bottom: 12px;
+}
+
+.work-indent {
+  margin-left: 7px;
+  padding-left: 15px;
+  border-left: 1px solid var(--border-strong);
+}
+
+.work-group > button,
+.tool-process > summary {
   display: flex;
   max-width: 100%;
   align-items: center;
@@ -1073,16 +943,19 @@
   border-radius: var(--radius-sm);
   color: var(--muted);
   font-size: var(--font-size-control);
+  line-height: 20px;
   text-align: left;
   transition: color 120ms ease, background 120ms ease;
 }
 
-.work-group > button:hover {
+.work-group > button:hover,
+.tool-process > summary:hover {
   color: var(--text-soft);
   background: var(--surface-hover);
 }
 
-.work-group-icon {
+.work-group-icon,
+.tool-status {
   display: grid;
   width: 16px;
   height: 16px;
@@ -1091,17 +964,31 @@
   color: var(--muted-2);
 }
 
-.work-group.running .work-group-icon { color: var(--text); }
+.work-group.running .work-group-icon,
+.tool-process.running .tool-status { color: var(--text); }
 .work-group.error .work-group-icon,
-.work-group-errors { color: var(--danger); }
+.work-group-errors,
+.tool-process.error .tool-status { color: var(--danger); }
 
-.work-group strong {
+.work-group strong,
+.tool-main strong {
+  flex: 0 0 auto;
   color: var(--text-soft);
+  font-size: var(--font-size-control);
   font-weight: 550;
   white-space: nowrap;
 }
 
+/* In a narrow pane the counts give way first; the title, failures and arrow stay whole. */
+.work-group small:not(.work-group-errors) {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .work-group small {
+  flex: 0 0 auto;
   color: var(--muted);
   font-size: var(--font-size-control);
   font-variant-numeric: tabular-nums;
@@ -1118,120 +1005,143 @@
   min-width: 0;
   overflow: hidden;
   color: var(--muted-2);
+  font-family: var(--font-code);
+  font-size: var(--font-size-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.work-group-chevron {
+.work-group-chevron,
+.tool-process-chevron {
   flex: 0 0 auto;
   color: var(--muted-2);
   transition: transform 140ms ease;
 }
 
-.work-group-chevron.rotated {
+.work-group-chevron.rotated,
+.tool-process[open] .tool-process-chevron {
   transform: rotate(90deg);
 }
 
-/* Expanded rows hang off a hairline under the summary, in arrival order. */
-.work-process-list.virtual-process-row {
-  margin: 0 0 2px 7px;
-  padding: 2px 0 2px 14px;
-  border-left: 1px solid var(--border-strong);
+/* Thoughts read like a reply, one step quieter, so the answer still reads as the answer. */
+.thought-entry {
+  min-width: 0;
 }
 
-.work-process-list .thought-entry {
-  margin: 0;
-  padding: 3px 0;
+.thought-copy.message-copy {
+  color: var(--muted);
 }
 
-.work-process-list .thought-entry > svg {
-  width: 13px;
-  height: 13px;
-  margin-top: 4px;
-  color: var(--muted-2);
+.thought-copy.message-copy strong {
+  color: var(--text-soft);
 }
 
-.work-process-list .tool-process {
-  border: 0;
+.thought-copy.message-copy p,
+.thought-copy.message-copy ul,
+.thought-copy.message-copy ol,
+.thought-copy.message-copy pre {
+  margin-bottom: 8px;
 }
 
-.work-process-list .tool-process summary {
-  gap: 8px;
-  padding: 3px 6px 3px 0;
-  border-radius: var(--radius-xs);
+.thought-copy.message-copy > :last-child {
+  margin-bottom: 0;
 }
 
-.work-process-list .tool-process-index {
+.work-indent .thought-entry {
+  padding: 3px 0 5px;
+}
+
+.work-indent .thought-copy.message-copy {
+  font-size: var(--font-size-control);
+  line-height: 1.6;
+}
+
+/* A tool call: state, name and command on one line, its outcome held at the row's end so
+   commands start in one column whatever each call reported. */
+.tool-process {
+  min-width: 0;
+}
+
+.tool-process > summary {
+  width: fit-content;
+  cursor: pointer;
+  list-style: none;
+}
+
+.tool-process > summary::-webkit-details-marker {
   display: none;
 }
 
-.work-process-list .tool-main {
-  flex-direction: row;
+.tool-main {
+  display: flex;
+  min-width: 0;
+  flex: 0 1 auto;
   align-items: baseline;
   gap: 8px;
 }
 
-.work-process-list .tool-main > span {
-  flex: 0 0 auto;
-}
-
-.work-process-list .tool-main strong {
-  color: var(--text-soft);
-  font-size: var(--font-size-control);
-  font-weight: 550;
-}
-
-.work-process-list .tool-main small {
-  display: none;
-}
-
-/* The status word is implied by the row's icon, but a command's exit code and duration stay. */
-.work-process-list .tool-main small.tool-exit,
-.work-process-list .tool-main small.tool-duration {
-  display: inline;
-}
-
-.work-process-list .tool-main code {
+.tool-main code {
   min-width: 0;
-  flex: 1;
+  flex: 0 1 auto;
+  overflow: hidden;
   color: var(--muted);
-  font-size: 12px;
+  font-family: var(--font-code);
+  font-size: var(--font-size-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.work-process-list .tool-process summary > svg {
-  width: 13px;
-  height: 13px;
+.tool-meta {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
   color: var(--muted-2);
-}
-
-.work-process-list .tool-process.error summary > svg { color: var(--danger); }
-.work-process-list .tool-process.running summary > svg { color: var(--text); }
-
-.work-process-list .tool-process pre {
-  margin: 2px 0 6px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-}
-
-/* ---------- Header diff pill ---------- */
-.diff-pill {
-  display: inline-flex;
-  height: 26px;
-  align-items: center;
-  gap: 6px;
-  padding: 0 9px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  color: var(--text-soft);
   font-size: var(--font-size-caption);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.diff-pill:hover { color: var(--text); background: var(--surface-hover); }
-.diff-pill svg { color: var(--muted); }
-.diff-pill ins,
-.diff-pill del { font-family: var(--font-code); font-size: 11px; }
+.tool-meta small {
+  font-size: inherit;
+}
+
+.tool-meta .tool-exit.failed {
+  color: var(--danger);
+}
+
+/* Opened, the command wraps in full above its output. */
+.tool-process[open] > summary {
+  align-items: flex-start;
+}
+
+.tool-process[open] .tool-main code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.tool-process .tool-permission {
+  margin: 2px 0 4px 23px;
+  color: var(--muted);
+  font-size: var(--font-size-caption);
+}
+
+.tool-process pre {
+  max-height: 320px;
+  margin: 4px 0 6px 23px;
+  padding: 8px 12px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  background: var(--surface);
+  font-family: var(--font-code);
+  font-size: var(--font-size-caption);
+  line-height: 1.6;
+  user-select: text;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 
 /* ---------- End-of-turn changes card ---------- */
 .changes-card {
@@ -1251,6 +1161,11 @@
   background: var(--surface);
   font-size: var(--font-size-control);
 }
+
+/* Beside the open Changes tab the card is one quiet line: the tab has the files and the actions. */
+.changes-card.compact { border: 0; border-radius: 0; }
+.changes-card.compact > header { min-height: 26px; padding: 0; border-bottom: 0; color: var(--muted); background: transparent; }
+.changes-card.compact > header strong { color: var(--text-soft); font-weight: 550; }
 
 .changes-card > header > svg { color: var(--muted); }
 .changes-card > header strong { color: var(--text); font-weight: 600; }
@@ -1381,7 +1296,7 @@
 /* Each contributor wraps as a unit ("子任务 claude-opus-5-5"); nothing is cut off. */
 .collaboration-line small { display: inline-flex; align-items: baseline; gap: 5px; color: var(--text-soft); font-size: 12px; white-space: nowrap; }
 .collaboration-line small em { color: var(--muted); font-style: normal; }
-.collaboration-line > svg:last-child { flex: 0 0 auto; color: var(--muted-2); }
+.collaboration-line small > svg { flex: 0 0 auto; align-self: center; margin-left: 3px; color: var(--muted-2); }
 
 /* The saved preferences a turn was given: a quiet line under the user's message. */
 .memory-context-note {

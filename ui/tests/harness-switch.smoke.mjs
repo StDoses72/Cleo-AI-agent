@@ -37,6 +37,8 @@ try {
     };
     cleoClient.pickAttachments = async () => [{ name: "queued.txt", path: "mock-attachment://queued.txt",
       mimeType: "text/plain", size: 12 }];
+    // Stop is accepted at once; the test then lets the held mock stream run out.
+    cleoClient.cancelRun = async () => true;
     const create = cleoClient.createThread.bind(cleoClient);
     cleoClient.createThread = (...args) => { window.harnessFixture.created++; return create(...args); };
     const original = cleoClient.switchHarness.bind(cleoClient);
@@ -57,27 +59,48 @@ try {
   const input = page.locator("textarea").first();
   const selected = await page.locator(".thread-row.active").innerText();
   const trigger = page.getByTestId("runtime-selector");
-  // The pill's first line is "harness · model"; effort and speed follow once models load.
+  const menu = page.getByTestId("runtime-menu");
+  // The model chip reads "harness · model name"; the name replaces the id once the models load.
   const pillModel = () => trigger.locator("span").first().innerText();
+  await page.waitForFunction(() => document.querySelector('[data-testid="runtime-selector"]')?.textContent.includes("codex · GPT-5.6-Sol"));
   const originalRuntime = await pillModel();
   const fixture = () => page.evaluate(() => ({ calls: window.harnessFixture.calls.length,
     created: window.harnessFixture.created, sent: window.harnessFixture.sent }));
+  // The menu opens on the current harness's models; its heading leads to the harness list, a
+  // harness leads to its models, and picking a model closes the menu.
   const choose = async (provider, model) => {
     await trigger.click();
-    await page.getByTestId("runtime-model-row").click();
-    await page.getByTestId("runtime-menu").getByRole("button", { name: provider }).click();
-    await page.getByRole("button", { name: model }).click();
-    // The menu returns to the settings card after a model is picked; dismiss it.
-    await page.keyboard.press("Escape");
-    await page.getByTestId("runtime-menu").waitFor({ state: "detached" });
+    await menu.getByTestId("runtime-harness-back").click();
+    await menu.locator('[data-testid="runtime-harness"][data-connection="connected"]').filter({ hasText: provider }).click();
+    await menu.getByTestId("runtime-model").filter({ hasText: model }).click();
+    await menu.waitFor({ state: "detached" });
   };
-  const pending = page.getByTestId("harness-pending");
+  // Effort is a chip of its own; its menu lists the levels and holds the fast-mode switch.
+  const effort = page.getByTestId("effort-selector");
+  const effortMenu = page.getByTestId("effort-menu");
+  const closeEffortMenu = async () => {
+    await page.keyboard.press("Escape");
+    await effortMenu.waitFor({ state: "detached" });
+  };
+  const toggleSpeed = async () => {
+    await effort.click();
+    await effortMenu.getByTestId("speed-toggle").click();
+  };
+  const pickEffort = async level => {
+    const levels = JSON.parse(await effort.getAttribute("data-options"));
+    await effort.click();
+    await effortMenu.getByRole("menuitemradio").nth(levels.indexOf(level)).click();
+    await effortMenu.waitFor({ state: "detached" });
+  };
+  // A pending pick is marked on the chip itself; no sentence about it is shown.
+  const pending = page.locator('[data-testid="runtime-selector"][data-pending-switch="true"]');
 
   // Picking a harness shows the pick, hands nothing off and leaves the draft alone.
   await input.fill("Unsent constraint: keep the draft");
   await choose(/^claude/, /Claude Opus 5/);
   await pending.waitFor();
-  assert.equal(await pillModel(), "claude · claude-opus-5");
+  assert.equal(await page.getByTestId("harness-pending").count(), 0);
+  assert.equal(await pillModel(), "claude · Claude Opus 5");
   assert.equal(await trigger.getAttribute("data-pending-switch"), "true");
   assert.equal(await trigger.isEnabled(), true);
   assert.equal(await input.inputValue(), "Unsent constraint: keep the draft");
@@ -94,7 +117,7 @@ try {
   // Sending with a pick hands off first; a failed handoff keeps the draft and the live harness.
   await choose(/^claude/, /Claude Opus 5/);
   await input.press("Enter");
-  await page.getByRole("status").filter({ hasText: /正在连接 claude/ }).waitFor();
+  await page.getByRole("status").filter({ hasText: /正在交接到 claude/ }).waitFor();
   assert.equal(await trigger.isEnabled(), false);
   await page.evaluate(() => window.harnessFixture.reject(new Error("Harness login failed")));
   await page.getByRole("alert").filter({ hasText: "Harness login failed" }).waitFor();
@@ -106,9 +129,9 @@ try {
   // Pick again and send: exactly one handoff, then the message streams on the same task.
   await choose(/^claude/, /Claude Opus 5/);
   await input.press("Enter");
-  await page.getByRole("status").filter({ hasText: /正在连接 claude/ }).waitFor();
+  await page.getByRole("status").filter({ hasText: /正在交接到 claude/ }).waitFor();
   await page.evaluate(() => window.harnessFixture.resolve());
-  await page.waitForFunction(() => document.querySelector('[data-testid="runtime-selector"]')?.textContent.includes("claude · claude-opus-5"));
+  await page.waitForFunction(() => document.querySelector('[data-testid="runtime-selector"]')?.textContent.includes("claude · Claude Opus 5"));
   await page.waitForFunction(() => Boolean(window.harnessFixture.finishTurn));
   assert.equal(await pending.count(), 0);
   assert.equal(await input.inputValue(), "");
@@ -117,19 +140,28 @@ try {
   assert.equal(state.sent.length, 1);
   assert.equal(state.sent[0][1], "Unsent constraint: keep the draft");
 
-  // A pick during a running turn waits too; the queued message hands off once the turn ends.
+  // While a turn runs its models are listed but cannot be picked, and nothing is handed off.
+  await trigger.click();
+  await menu.getByTestId("runtime-model").first().waitFor();
+  assert.equal(await menu.locator('[data-testid="runtime-model"]:not(:disabled)').count(), 0,
+    "A model must not be picked while a turn is running");
+  await page.keyboard.press("Escape");
+  await menu.waitFor({ state: "detached" });
+  assert.equal(await pending.count(), 0);
+  assert.equal((await fixture()).calls, 2);
+  await page.evaluate(() => window.harnessFixture.finishTurn());
+  await page.waitForFunction(() => !window.harnessFixture.finishTurn);
+
+  // A pick after the turn waits for the next message, which hands off on the same task.
   await choose(/^codex/, /GPT-5.6-Terra/);
   await pending.waitFor();
-  assert.equal(await pillModel(), "codex · gpt-5.6-terra");
+  assert.equal(await pillModel(), "codex · GPT-5.6-Terra");
   assert.equal((await fixture()).calls, 2);
   await input.fill("Finish the next step on codex");
   await input.press("Enter");
-  await page.getByTestId("queue-button").waitFor({ state: "detached" }).catch(() => {});
-  assert.equal((await fixture()).calls, 2);
-  await page.evaluate(() => window.harnessFixture.finishTurn());
-  await page.getByRole("status").filter({ hasText: /正在连接 codex/ }).waitFor();
+  await page.getByRole("status").filter({ hasText: /正在交接到 codex/ }).waitFor();
   await page.evaluate(() => window.harnessFixture.resolve());
-  await page.waitForFunction(() => document.querySelector('[data-testid="runtime-selector"]')?.textContent.includes("codex · gpt-5.6-terra"));
+  await page.waitForFunction(() => document.querySelector('[data-testid="runtime-selector"]')?.textContent.includes("codex · GPT-5.6-Terra"));
   await page.waitForFunction(() => Boolean(window.harnessFixture.finishTurn));
   await page.evaluate(() => window.harnessFixture.finishTurn());
   state = await fixture();
@@ -143,12 +175,13 @@ try {
   assert.equal(state.sent[1][1], "Finish the next step on codex");
   assert.equal(await page.locator(".thread-row.active").innerText().then(t => t.split("\n")[0]), selected.split("\n")[0]);
 
-  // Both automatic and manual queue delivery retain text and attachments when handoff fails.
+  // Queue delivery retains text and attachments when its handoff fails, however often it is retried.
+  // A harness cannot be picked during the run, so the queued message is kept by stopping the turn
+  // and is sent by hand once a harness is picked.
   await page.waitForFunction(() => !window.harnessFixture.finishTurn);
   await input.fill("Original turn before failed queued handoff");
   await input.press("Enter");
   await page.waitForFunction(() => Boolean(window.harnessFixture.finishTurn));
-  await choose(/^claude/, /Claude Opus 5/);
   await page.getByRole("button", { name: "添加附件", exact: true }).click();
   await input.fill("Queued text must survive handoff failure");
   await input.press("Enter");
@@ -156,8 +189,15 @@ try {
   await queue.waitFor();
   await input.fill("Independent unsent draft");
   const sentBeforeFailure = (await fixture()).sent.length;
+  await page.getByTestId("stop-button").click();
+  await page.getByTestId("stop-button").waitFor({ state: "detached" });
   await page.evaluate(() => window.harnessFixture.finishTurn());
-  await page.getByRole("status").filter({ hasText: /正在连接 claude/ }).waitFor();
+  await page.waitForFunction(() => !window.harnessFixture.finishTurn);
+  await queue.waitFor();
+  assert.equal((await fixture()).sent.length, sentBeforeFailure, "A stopped turn must not deliver its queue");
+  await choose(/^claude/, /Claude Opus 5/);
+  await queue.getByRole("button", { name: "发送", exact: true }).click();
+  await page.getByRole("status").filter({ hasText: /正在交接到 claude/ }).waitFor();
   await page.evaluate(() => window.harnessFixture.reject(new Error("Queued handoff failed")));
   await page.getByRole("alert").filter({ hasText: "Queued handoff failed" }).waitFor();
   await queue.waitFor();
@@ -167,7 +207,7 @@ try {
   assert.equal((await fixture()).sent.length, sentBeforeFailure);
   await choose(/^claude/, /Claude Opus 5/);
   await queue.getByRole("button", { name: "发送", exact: true }).click();
-  await page.getByRole("status").filter({ hasText: /正在连接 claude/ }).waitFor();
+  await page.getByRole("status").filter({ hasText: /正在交接到 claude/ }).waitFor();
   await page.evaluate(() => window.harnessFixture.reject(new Error("Manual queued handoff failed")));
   await page.getByRole("alert").filter({ hasText: "Manual queued handoff failed" }).waitFor();
   await queue.waitFor();
@@ -183,28 +223,27 @@ try {
   await page.waitForFunction(() => !window.harnessFixture.finishTurn);
 
   // Same-provider model changes preserve Fast, and an explicit standard-speed pick is applied.
-  await trigger.click();
-  await page.getByTestId("speed-toggle").click();
+  await toggleSpeed();
   await page.waitForFunction(() => document.querySelector('[data-testid="runtime-selector"]').dataset.speed === "fast");
-  await page.keyboard.press("Escape");
+  assert.equal(await effortMenu.getByTestId("speed-toggle").isChecked(), true);
+  await closeEffortMenu();
   await choose(/^codex/, /GPT-5.6-Sol/);
   assert.equal(await trigger.getAttribute("data-speed"), "fast");
   await input.fill("Keep Fast on the new model");
   await input.press("Enter");
-  await page.getByRole("status").filter({ hasText: /正在连接 codex/ }).waitFor();
+  await page.getByRole("status").filter({ hasText: /正在交接到 codex/ }).waitFor();
   await page.evaluate(() => window.harnessFixture.resolve());
   await page.waitForFunction(() => Boolean(window.harnessFixture.finishTurn));
   assert.equal(await trigger.getAttribute("data-speed"), "fast");
   await page.evaluate(() => window.harnessFixture.finishTurn());
   await page.waitForFunction(() => !window.harnessFixture.finishTurn);
   await choose(/^codex/, /GPT-5.6-Terra/);
-  await trigger.click();
-  await page.getByTestId("speed-toggle").click();
+  await toggleSpeed();
   assert.equal(await trigger.getAttribute("data-speed"), "default");
-  await page.keyboard.press("Escape");
+  await closeEffortMenu();
   await input.fill("Use standard speed on the new model");
   await input.press("Enter");
-  await page.getByRole("status").filter({ hasText: /正在连接 codex/ }).waitFor();
+  await page.getByRole("status").filter({ hasText: /正在交接到 codex/ }).waitFor();
   await page.evaluate(() => window.harnessFixture.resolve());
   await page.waitForFunction(() => Boolean(window.harnessFixture.finishTurn));
   assert.equal(await trigger.getAttribute("data-speed"), "default");
@@ -212,29 +251,26 @@ try {
   await page.waitForFunction(() => !window.harnessFixture.finishTurn);
 
   // If the speed update fails after the model changed, keep the draft and report the live runtime.
-  await trigger.click();
-  await page.getByTestId("speed-toggle").click();
+  await toggleSpeed();
   await page.waitForFunction(() => document.querySelector('[data-testid="runtime-selector"]').dataset.speed === "fast");
-  await page.keyboard.press("Escape");
+  await closeEffortMenu();
   await choose(/^codex/, /GPT-5.6-Sol/);
-  await trigger.click();
-  await page.getByTestId("speed-toggle").click();
-  await page.keyboard.press("Escape");
+  await toggleSpeed();
+  await closeEffortMenu();
   await page.evaluate(() => { window.harnessFixture.failUpdate = true; });
   const sentBeforeSpeedFailure = (await fixture()).sent.length;
   await input.fill("Keep this draft if standard speed cannot be applied");
   await input.press("Enter");
-  await page.getByRole("status").filter({ hasText: /正在连接 codex/ }).waitFor();
+  await page.getByRole("status").filter({ hasText: /正在交接到 codex/ }).waitFor();
   await page.evaluate(() => window.harnessFixture.resolve());
   await page.getByRole("alert").filter({ hasText: "Runtime update rejected" }).waitFor();
   assert.equal((await fixture()).sent.length, sentBeforeSpeedFailure);
   assert.equal(await input.inputValue(), "Keep this draft if standard speed cannot be applied");
-  assert.equal(await pillModel(), "codex · gpt-5.6-sol");
+  assert.equal(await pillModel(), "codex · GPT-5.6-Sol");
   assert.equal(await trigger.getAttribute("data-speed"), "fast");
-  await trigger.click();
-  await page.getByTestId("speed-toggle").click();
+  await toggleSpeed();
   await page.waitForFunction(() => document.querySelector('[data-testid="runtime-selector"]').dataset.speed === "default");
-  await page.keyboard.press("Escape");
+  await closeEffortMenu();
   await input.press("Enter");
   await page.waitForFunction(() => Boolean(window.harnessFixture.finishTurn));
   await page.evaluate(() => window.harnessFixture.finishTurn());
@@ -242,17 +278,14 @@ try {
 
   // A rejected effort update rolls the preview back and can be retried with the same value.
   await page.evaluate(() => { window.harnessFixture.failUpdate = true; });
-  await trigger.click();
-  const effort = page.getByTestId("effort-selector");
   const originalEffort = await effort.getAttribute("data-value");
-  await effort.focus();
-  await page.keyboard.press("End");
+  assert.notEqual(originalEffort, "ultra");
+  await pickEffort("ultra");
   await page.getByRole("alert").filter({ hasText: "Runtime update rejected" }).waitFor();
   await page.waitForFunction(value => document.querySelector('[data-testid="effort-selector"]').dataset.value === value, originalEffort);
   assert.equal(await trigger.getAttribute("data-effort"), originalEffort);
   await page.evaluate(() => { window.harnessFixture.holdUpdate = true; });
-  await effort.focus();
-  await page.keyboard.press("End");
+  await pickEffort("ultra");
   await page.waitForFunction(() => Boolean(window.harnessFixture.finishUpdate));
   assert.equal(await effort.getAttribute("data-value"), "ultra");
   assert.equal(await trigger.getAttribute("data-effort"), originalEffort);
@@ -260,22 +293,26 @@ try {
   await page.waitForFunction(() => document.querySelector('[data-testid="runtime-selector"]').dataset.effort === "ultra");
   assert.equal(await effort.getAttribute("data-value"), "ultra");
 
-  // Pointer dragging still previews locally, commits once on release and waits for acknowledgment.
-  const updatesBeforeDrag = await page.evaluate(() => window.harnessFixture.updates.length);
+  // A level picked from the menu previews at once, is sent once and waits for acknowledgment;
+  // picking the previewed level again sends nothing more.
+  const updatesBeforePick = await page.evaluate(() => window.harnessFixture.updates.length);
   await page.evaluate(() => { window.harnessFixture.holdUpdate = true; window.harnessFixture.finishUpdate = null; });
-  const slider = await effort.boundingBox();
-  await page.mouse.move(slider.x + slider.width - 2, slider.y + slider.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(slider.x + 2, slider.y + slider.height / 2, { steps: 10 });
+  await pickEffort("low");
   assert.equal(await effort.getAttribute("data-value"), "low");
-  assert.equal(await page.evaluate(() => window.harnessFixture.updates.length), updatesBeforeDrag);
-  await page.mouse.up();
   await page.waitForFunction(() => Boolean(window.harnessFixture.finishUpdate));
-  assert.equal(await page.evaluate(() => window.harnessFixture.updates.length), updatesBeforeDrag + 1);
+  assert.equal(await page.evaluate(() => window.harnessFixture.updates.length), updatesBeforePick + 1);
+  await effort.click();
+  const previewed = effortMenu.getByRole("menuitemradio", { checked: true });
+  assert.equal(await previewed.count(), 1);
+  assert.equal(await effortMenu.getByRole("menuitemradio").first().getAttribute("aria-checked"), "true");
+  await previewed.click();
+  await effortMenu.waitFor({ state: "detached" });
+  assert.equal(await page.evaluate(() => window.harnessFixture.updates.length), updatesBeforePick + 1);
   assert.equal(await effort.getAttribute("data-value"), "low");
   assert.equal(await trigger.getAttribute("data-effort"), "ultra");
   await page.evaluate(() => { window.harnessFixture.holdUpdate = false; window.harnessFixture.finishUpdate(); });
   await page.waitForFunction(() => document.querySelector('[data-testid="runtime-selector"]').dataset.effort === "low");
+  assert.equal(await effort.getAttribute("data-value"), "low");
   assert.deepEqual(errors, []);
   console.log("PASS: deferred handoff, queue failure/retry with attachments, same-provider speed, effort failure/retry (mock UI)");
 } finally {

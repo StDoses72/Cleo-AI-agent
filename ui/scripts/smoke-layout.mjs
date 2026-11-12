@@ -227,8 +227,8 @@ try {
       await menu.evaluate(element => Promise.all(element.getAnimations().map(animation => animation.finished)));
       const state = await page.evaluate(() => {
         const shell = document.querySelector(".conversation-shell").getBoundingClientRect();
-        const menu = document.querySelector(".runtime-menu").getBoundingClientRect();
-        const list = document.querySelector(".runtime-menu-list");
+        const menu = document.querySelector('[data-testid="runtime-menu"]').getBoundingClientRect();
+        const list = document.querySelector('[data-testid="runtime-model-list"], [data-testid="runtime-harness-list"]');
         return { shell: shell.toJSON(), menu: menu.toJSON(), scrollHeight: list?.scrollHeight ?? 0, clientHeight: list?.clientHeight ?? 0 };
       });
       assert(state.menu.left >= state.shell.left - 2 && state.menu.right <= state.shell.right + 2
@@ -236,28 +236,28 @@ try {
       `Runtime ${stage} menu extends outside the conversation (${label}): ${JSON.stringify(state)}`);
       return state;
     };
+    // The menu opens on the current harness's models; its heading leads to the harness list and
+    // a harness leads back to its models.
     await trigger.click();
-    await checkBounds("card");
-    await menu.getByTestId("runtime-model-row").click();
+    await checkBounds("models");
+    await menu.getByTestId("runtime-harness-back").click();
     await checkBounds("harness");
-    await menu.locator(".runtime-menu-row").filter({ hasText: "codex" }).click();
-    await page.waitForFunction(() => document.querySelectorAll(".runtime-menu-row").length === 30);
+    await menu.getByTestId("runtime-harness").filter({ hasText: "codex" }).click();
+    await page.waitForFunction(() => document.querySelectorAll('[data-testid="runtime-model"]').length === 30);
     const state = await checkBounds("model");
     assert(state.scrollHeight > state.clientHeight + 100, `Long model list does not scroll (${label})`);
-    const list = menu.locator(".runtime-menu-list");
+    const list = menu.getByTestId("runtime-model-list");
     await list.hover();
     await page.mouse.wheel(0, 10000);
     await page.waitForFunction(() => {
-      const list = document.querySelector(".runtime-menu-list");
+      const list = document.querySelector('[data-testid="runtime-model-list"]');
       return list.scrollHeight - list.scrollTop - list.clientHeight < 3;
     });
     await captureScreenshot(`layout-model-menu-${label}.png`);
     // Select the current model to prove that a scrolled row receives a real click,
     // without leaving the historical conversation for a new draft task.
     await menu.getByRole("button", { name: /gpt-6-astra/ }).click();
-    // Picking a model returns to the settings card; Escape closes the menu.
-    await menu.getByTestId("runtime-card").waitFor();
-    await page.keyboard.press("Escape");
+    // Picking a model closes the menu.
     await menu.waitFor({ state: "detached" });
     assert.equal(await trigger.getAttribute("aria-expanded"), "false");
     await trigger.click();

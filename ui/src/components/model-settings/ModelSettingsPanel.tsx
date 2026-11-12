@@ -84,10 +84,10 @@ export function ModelSettingsPanel({ page, settings, busy, activeProfileId, onAp
     {page === "dream" && <>
       <div className="ms-section-label">{tr("modelsettingspanel.model_selection_mode")}</div>
       <div className="ms-dream-options" role="radiogroup" aria-label={tr("modelsettingspanel.memory_model_selection_mode")}>{([
-        ["follow", tr("modelsettingspanel.follow_chat_model"), tr("modelsettingspanel.use_the_source_conversation_s_model"), Layers],
-        ["fixed", tr("modelsettingspanel.separate_model"), tr("modelsettingspanel.choose_a_dedicated_model_for_memory_consolidation"), SlidersHorizontal],
-        ["off", tr("modelsettingspanel.disable_automatic_consolidation"), tr("modelsettingspanel.keep_conversation_records_and_pause_automatic_consolidation"), Pause],
-      ] as const).map(([mode, label, description, Icon]) => <button key={mode} role="radio" aria-checked={draft.mode === mode} className={draft.mode === mode ? "selected" : ""} disabled={busy} onClick={() => setDraft({ ...draft, mode })}><i className="ms-radio" /><span><strong>{label}{mode === "follow" && <em>{tr("modelsettingspanel.default")}</em>}</strong><small>{description}</small></span><Icon /></button>)}</div>
+        ["follow", tr("modelsettingspanel.follow_chat_model"), Layers],
+        ["fixed", tr("modelsettingspanel.separate_model"), SlidersHorizontal],
+        ["off", tr("modelsettingspanel.disable_automatic_consolidation"), Pause],
+      ] as const).map(([mode, label, Icon]) => <button key={mode} role="radio" aria-checked={draft.mode === mode} className={draft.mode === mode ? "selected" : ""} disabled={busy} onClick={() => setDraft({ ...draft, mode })}><i className="ms-radio" /><span><strong>{label}{mode === "follow" && <em>{tr("modelsettingspanel.default")}</em>}</strong></span><Icon /></button>)}</div>
       {draft.mode === "fixed" && <div className="ms-dream-preview"><div className="ms-section-label">{tr("modelsettingspanel.memory_consolidation_model")}</div><Summary profile={fixedDream} model={draft.model}><button className="ms-secondary" disabled={busy} onClick={() => setPicker({ target: "dream" })}>{tr("connectionwizard.choose_model")}</button></Summary></div>}
       {changed && <div className="ms-save-footer"><span>{tr("modelsettingspanel.unsaved_changes")}</span><button className="ms-quiet" disabled={busy} onClick={() => setDraft(dreamChoice(settings))}>{tr("backgroundmemorysettingspanel.discard_changes")}</button><button className="ms-primary" disabled={busy} onClick={() => void saveDream()}>{busy ? tr("dependencysetup.working") : tr("modelsettingspanel.save_settings")}</button></div>}
     </>}

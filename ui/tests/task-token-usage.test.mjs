@@ -43,7 +43,8 @@ test("context shows the latest request footprint and explains the separate meani
   } }));
   assert.match(html, /16%/);
   assert.match(html, /41.8k \/ 258.4k/);
-  assert.match(html, /容量随模型/);
+  assert.match(html, /输入 41,558 · 输出 260/);
+  assert.doesNotMatch(html, /容量随模型|可能下降/, "the hint is the two numbers, not an explanation");
   const missing = renderToStaticMarkup(React.createElement(ContextUsage, { usage: {
     used: 10969124, limit: 258400, input: 41558, output: 260,
   } }));
@@ -58,7 +59,7 @@ test("uncertain boundaries and missing telemetry are disclosed without inventing
   } }));
   assert.doesNotMatch(html, /任务判断待确认/);
   assert.match(html, /— token/);
-  assert.match(html, /尚未完整上报/);
+  assert.match(html, /1 条未上报/);
   assert.doesNotMatch(html, /<strong>0<\/strong>/);
 });
 

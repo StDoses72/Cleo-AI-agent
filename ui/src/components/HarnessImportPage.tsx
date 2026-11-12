@@ -58,7 +58,6 @@ export function HarnessImportPage({ active, onRevealPath }: { active: boolean; o
         <div className="harness-sync-paths"><span>{status.localPath}</span>
           {status.localExists && <button type="button" aria-label={tr("harnessimportpage.open_the_local_value_directory", { p0: harnessNames[status.harness] })} onClick={() => onRevealPath(status.localPath)}><FolderOpen size={13} /></button>}
         </div>
-        <p>{tr("harnessimportpage.shared_native_explanation")}</p>
         <ul className="harness-sync-list">{status.items.map(item => <li key={item.id}><span>{item.name}</span><small>{kindLabels[item.kind] || item.kind}</small></li>)}</ul>
       </section>;
       const group = (state: HarnessSyncItem["state"]) => status.items.filter(item => item.state === state);

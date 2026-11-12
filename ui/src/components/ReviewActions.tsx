@@ -187,7 +187,7 @@ export function SourceControlRow({ run, paths, busy, busyReason, onNotify }: {
             </button>
           ) : status.canCreatePullRequest ? (
             <button type="button" disabled={disabled || !canOpenPr} onClick={() => void perform("createPullRequest")}
-              title={canOpenPr ? tr("review.create_pull_request_hint") : tr("review.push_before_pull_request")}>
+              title={canOpenPr ? tr("review.create_pull_request_hint") : undefined}>
               {pending === "createPullRequest" ? <LoaderCircle className="spin" size={13} /> : <GitPullRequest size={13} />}{tr("review.pull_request")}
             </button>
           ) : null}
