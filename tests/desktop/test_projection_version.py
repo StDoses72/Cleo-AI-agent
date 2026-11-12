@@ -3,6 +3,11 @@
 ``TimelineIndex`` keeps each session's projected items on disk and keeps using them while
 the version matches, so a change to ``timeline_from_events`` output without a version bump
 leaves old sessions showing the old projection next to new events projected the new way.
+
+A bump is not free: every program version that shares the data rebuilds an index whose stored
+version differs from its own, and versions up to v0.13.0 do that for every listed conversation
+while they start. Bump when the old rows are wrong for the new code; a change that only adds
+optional fields keeps the number (see ``tests/desktop/test_startup_cost.py``).
 """
 
 from __future__ import annotations
@@ -31,9 +36,9 @@ PINNED = {
     12: "3301892058774d49258c4690fb3f827f4d6f86860c782a16e097daf48e0932cc",
     # 13 adds attachment records; the frozen legacy sessions carry none.
     13: "3301892058774d49258c4690fb3f827f4d6f86860c782a16e097daf48e0932cc",
-    # 14 adds command exit codes/durations and the memories a turn was given; the frozen
-    # legacy sessions carry neither.
-    14: "3301892058774d49258c4690fb3f827f4d6f86860c782a16e097daf48e0932cc",
+    # v0.13.0 shipped 14 for command exit codes/durations and the memories a turn was given. Both
+    # only add optional fields, and the bump made the update fail on large histories, so the
+    # number went back to 13: indexes v0.12.2 wrote stay valid in both directions.
 }
 
 

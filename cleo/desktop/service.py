@@ -7,6 +7,7 @@ import base64
 import mimetypes
 import os
 import secrets
+import sqlite3
 import sys
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -227,6 +228,10 @@ class DesktopService:
             self.store.list_sessions(), key=lambda row: not self._runs.is_running(row["id"])
         )
         records: list[dict[str, Any]] = []
+        # Loading the workspace is what a version switch waits for before it accepts the new program
+        # (90 seconds, fixed in programs already installed), so nothing here may grow with the size
+        # of the history: listed conversations never rebuild their index or read their whole log.
+        previews: dict[str, dict[str, Any]] = {}
         for row in rows:
             if len(records) >= 100 and not self._runs.is_running(row["id"]):
                 break
@@ -234,20 +239,27 @@ class DesktopService:
                 manifest = self.store.load_manifest(str(row["id"]))
                 if self._is_removed_project(manifest):
                     continue
-                page = await asyncio.to_thread(TimelineIndex(self.store, manifest).page, limit=1)
+                page = await asyncio.to_thread(
+                    TimelineIndex(self.store, manifest).page, limit=1, rebuild=False)
             except (FileNotFoundError, OSError, ValueError):
                 continue
+            # An index waiting for its rebuild belongs to a large log: the conversation has content.
             if (manifest["space"] == "non_productivity" and not page["total"]
-                    and not self._runs.is_running(manifest["id"])):
+                    and not page.get("stale") and not self._runs.is_running(manifest["id"])):
                 continue
             records.append(manifest)
+            previews[manifest["id"]] = page
         manifests = records
         self._debug("load projects")
         projects = await self._projects(manifests)
         self._debug("load threads")
         selected = next((m["id"] for m in manifests if m["id"] == self.runtime.current_thread_id),
                         manifests[0]["id"] if manifests else None)
-        threads = [await self._thread(m, include_history=m["id"] == selected) for m in manifests]
+        threads = [
+            await self._thread(m) if m["id"] == selected
+            else await self._thread(m, include_history=False, preview=previews[m["id"]])
+            for m in manifests
+        ]
         self._debug("load overview")
         memory = await self.load_memory()
         self._debug("load result")
@@ -2616,13 +2628,23 @@ class DesktopService:
         *,
         events: list[dict[str, Any]] | None = None,
         include_history: bool = True,
+        preview: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        """Purpose: One conversation as the desktop shows it.
+
+        Input: its manifest. ``include_history=False`` makes a sidebar row from ``preview`` (the
+        latest index page, read without a rebuild): no steer recovery, no task usage and nothing
+        else that reads the whole event log; those happen when the conversation is opened.
+        Output: the thread view.
+        """
         if events is None:
             events = (await asyncio.to_thread(TimelineIndex(self.store, manifest).recent_events)
                       if include_history else [])
-        page = await self.load_timeline(
-            thread_id=manifest["id"], limit=80 if include_history else 1,
-        )
+        if include_history:
+            page = await self.load_timeline(thread_id=manifest["id"], limit=80)
+        else:
+            page = preview if preview is not None else await asyncio.to_thread(
+                TimelineIndex(self.store, manifest).page, limit=1, rebuild=False)
         changes = []
         if include_history and manifest["space"] == "productivity" and manifest.get("cwd"):
             diff = read_git_diff(manifest["cwd"])
@@ -2631,15 +2653,15 @@ class DesktopService:
                 if diff is None
                 else changes_from_diff(diff)
             )
-        runtime = self._runtime_profile(manifest)
+        runtime = self._runtime_profile(manifest, detail=include_history)
         timings, timing_error = await self._timing_summaries(
             session_id=manifest["id"], kind="reply", limit=1,
         )
         can_undo = await asyncio.to_thread(self._can_undo, manifest)
         thread_id = manifest["id"]
-        # A subtask delegated by subtask routing runs inside the run of the conversation that started
-        # the delegation, not in the desktop's run registry: it is running while its own session
-        # says so and some ancestor's run is live (routing nests a few levels deep).
+        # A subtask delegated by subtask routing runs inside the run of the conversation that
+        # started the delegation, not in the desktop's run registry: it is running while its own
+        # session says so and some ancestor's run is live (routing nests a few levels deep).
         running = self._runs.is_running(thread_id) or bool(
             manifest.get("routing_task_id") and manifest.get("status") == "running"
             and self._ancestor_run_live(manifest)
@@ -2667,11 +2689,16 @@ class DesktopService:
             editable_turn_ids=editable_turn_ids,
             pending_questions=await self.get_pending_questions(thread_id=thread_id),
             changes=changes,
-            skills=[skill.entry() for skill in self._local_skills(manifest)],
+            # Skills are searched from the open conversation's composer; a sidebar row has none.
+            skills=([skill.entry() for skill in self._local_skills(manifest)]
+                    if include_history else None),
         )
-        from cleo.runtime.task_usage import task_usage
+        if include_history:
+            # Task usage sums the conversation's whole event log (and its subtasks'), so only the
+            # conversation being opened pays for it.
+            from cleo.runtime.task_usage import task_usage
 
-        result["taskUsage"] = await asyncio.to_thread(task_usage, self.store, manifest["id"])
+            result["taskUsage"] = await asyncio.to_thread(task_usage, self.store, manifest["id"])
         return result
 
     def _ancestor_run_live(self, manifest: dict[str, Any], depth: int = 8) -> bool:
@@ -2715,8 +2742,15 @@ class DesktopService:
                 or value not in ("default", "fast")):
             raise ValueError(tr("service.speed_tiers_support_only_codex_standard_or_fast"))
 
-    def _runtime_profile(self, manifest: dict[str, Any] | None) -> dict[str, Any]:
-        from cleo.harnesses.context import handoff_status
+    def _runtime_profile(
+        self, manifest: dict[str, Any] | None, *, detail: bool = True,
+    ) -> dict[str, Any]:
+        """Purpose: The model, permissions and limits a conversation runs with.
+
+        Input: its manifest (None for an unsent chat). ``detail=False`` is for sidebar rows: it
+        leaves out the harness-switch status, which only the open conversation shows.
+        Output: the runtime profile the desktop renders.
+        """
         from cleo.runtime.context_capacity import context_capacity
         if manifest is None or manifest.get("space") == "non_productivity":
             options = (
@@ -2794,7 +2828,7 @@ class DesktopService:
                     else "user" if provider_type == "acp" else "default")
             ),
             "contextWindow": context_capacity(self.settings, model, provider_type, provider),
-            "handoffStatus": handoff_status(self.store.read_events(manifest["id"])),
+            "handoffStatus": self._handoff_status(manifest) if detail else None,
             "editable": True,
             "supportsQuestions": Capability.QUESTIONS in capabilities,
             "settingsRevision": manifest.get("runtime_settings_revision", 0),
@@ -2804,6 +2838,20 @@ class DesktopService:
                if permission_preset != "inherit" else {}),
             "pendingPermissions": self._pending_permissions_profile(manifest),
         }
+
+    def _handoff_status(self, manifest: dict[str, Any]) -> str | None:
+        """Purpose: Where the latest harness switch stands, read from the timeline index.
+
+        Input: the conversation's manifest. Output: prepared, submitted, completed or None. The
+        index holds every event, so this decodes the few switch events instead of the whole log;
+        a conversation whose history cannot be indexed reports no switch.
+        """
+        from cleo.harnesses.context import handoff_status
+
+        try:
+            return handoff_status(TimelineIndex(self.store, manifest).handoff_events())
+        except (OSError, ValueError, sqlite3.Error):
+            return None
 
     def _routing_permission_setting(self, manifest):
         """Purpose: Describe the user-selected route-wide execution preset.

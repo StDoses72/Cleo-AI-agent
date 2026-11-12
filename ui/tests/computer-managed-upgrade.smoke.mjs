@@ -1,12 +1,24 @@
-/** Real-package regression for applying a computer-use upgrade with existing evolution state. */
+/** Real-package regression for a version switch: the program that takes over must confirm startup.
+ *
+ * It starts the package as the target of a pending switch, on a data home that already holds
+ * conversations with large event logs and no timeline index, the way an update finds a user's
+ * history. Startup must be confirmed without indexing those conversations: v0.13.0 rebuilt every
+ * index before it answered, ran past the switch's 90-second check on a 700 MB history and was
+ * rolled back. `--source` runs the same history checks against this checkout (no package, so no
+ * switch to confirm); it needs CLEO_PYTHON.
+ *
+ * CLEO_SMOKE_HOME=<directory> uses that data home instead of the seeded one, to time a switch on a
+ * copy of a real history before a release. Point it at a COPY: the program under test writes to it.
+ */
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { createConnection } from "node:net";
+import { DatabaseSync } from "node:sqlite";
 import { _electron as electron } from "playwright";
 import { desktopPlatform } from "../electron/platform.mjs";
 
@@ -19,7 +31,59 @@ const profile = join(root, "profile");
 const statePath = join(profile, "evolution/state.json");
 const transactionId = "computer-managed-upgrade-smoke";
 const handoffOnly = process.env.CLEO_SMOKE_HANDOFF_ONLY === "1";
+const source = process.argv.includes("--source");
+const suppliedHome = process.env.CLEO_SMOKE_HOME ? resolve(process.env.CLEO_SMOKE_HOME) : null;
+const home = suppliedHome || join(root, "home");
+// The program that starts a switch waits this long for the new one to confirm (waitHealthy).
+const SWITCH_LIMIT_SECONDS = 90;
+// Each log is larger than what the backend still indexes while listing (DEFER_REBUILD_BYTES, 64 KiB).
+const HISTORY = ["cleo_upgrade_history_1", "cleo_upgrade_history_2", "cleo_upgrade_history_3", "cleo_upgrade_history_4"];
+const sessionDirectory = id => join(home, "memory", "non_productivity", "projects", "general", "sessions", id);
 let application;
+
+/** Purpose: Give the data home conversations the way an earlier version left them, minus indexes.
+ * Input: none. Output: chat sessions under the home's memory directory, each with a manifest and a
+ * 200 KiB event log; the session index and every timeline index are left for the program to build.
+ */
+async function seedHistory() {
+  for (const [number, id] of HISTORY.entries()) {
+    const directory = sessionDirectory(id);
+    await mkdir(directory, { recursive: true });
+    const at = `2026-10-0${number + 1}T10:00:00.000000+00:00`;
+    const base = { schema_version: 1, session_id: id, space: "non_productivity", project: "general", created_at: at };
+    const events = [
+      { ...base, id: `${id}-created`, seq: 1, type: "session_created", actor: "system",
+        data: { provider: "cleo", owner_type: "user", native_session_id: null, owner_id: null, cwd: null,
+          parent_session_id: null, tags: [] } },
+      { ...base, id: `${id}-user`, seq: 2, type: "user_message", actor: "user", content: `History ${number + 1}` },
+      { ...base, id: `${id}-answer`, seq: 3, type: "assistant_message", actor: "assistant",
+        content: `Answer ${number + 1}. ${"A long reply from an earlier version. ".repeat(5400)}` },
+      { ...base, id: `${id}-done`, seq: 4, type: "session_completed", actor: "system", data: { previous_status: "created" } },
+    ];
+    await writeFile(join(directory, "events.jsonl"), events.map(event => `${JSON.stringify(event)}\n`).join(""));
+    await writeFile(join(directory, "manifest.json"), JSON.stringify({ schema_version: 1, id, space: "non_productivity",
+      project: "general", provider: "cleo", native_session_id: null, owner_type: "user", owner_id: null,
+      status: "completed", title: `Upgrade history ${number + 1}`, cwd: null, parent_session_id: null, tags: [],
+      last_event_seq: 4, created_at: at, updated_at: at }, null, 2));
+    assert.ok((await stat(join(directory, "events.jsonl"))).size > 128 * 1024, "the seeded log must be large");
+  }
+}
+
+/** Purpose: Count the seeded conversations whose timeline index the program has built.
+ * Input: none. Output: how many hold projection metadata; a missing or table-only file counts as not built.
+ */
+function builtIndexes() {
+  let built = 0;
+  for (const id of HISTORY) {
+    let database;
+    try {
+      database = new DatabaseSync(join(sessionDirectory(id), ".desktop-timeline-v1.sqlite3"), { readOnly: true });
+      if (database.prepare("SELECT count(*) AS rows FROM metadata").get().rows) built += 1;
+    } catch { /* No index file, or none of its tables yet. */ }
+    finally { database?.close(); }
+  }
+  return built;
+}
 
 async function bounded(promise, timeout) {
   let timer;
@@ -135,32 +199,62 @@ try {
     builds: [], transaction: { id: transactionId, phase: "starting", from: "old", to: "candidate" } }));
   await writeFile(join(root, "preview.png"), Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGP8zwACTGCSAQANHQEDgslx/wAAAABJRU5ErkJggg==", "base64"));
-  const env = { ...process.env, CLEO_HOME: join(root, "home"), CLEO_CONFIG_PATH: "",
+  if (!suppliedHome) await seedHistory();
+  if (source) {
+    // A checkout has no installer to seed its configuration.
+    const defaults = join(ui, "..", "cleo", "config", "templates");
+    const config = JSON.parse(await readFile(join(defaults, "cleo.example.json"), "utf8"));
+    for (const agent of Object.values(config.profiles.agents)) {
+      agent.api_key = "test-not-a-real-key";
+      agent.base_url = "http://127.0.0.1:9/v1";
+    }
+    await mkdir(join(home, "config"), { recursive: true });
+    await writeFile(join(home, "config", "cleo.json"), JSON.stringify(config));
+    await copyFile(join(defaults, "harnesses.example.json"), join(home, "config", "harnesses.json"));
+  }
+  const env = { ...process.env, CLEO_HOME: home, CLEO_CONFIG_PATH: "",
     CLEO_HARNESSES_CONFIG_PATH: "", CLEO_EVOLUTION_CHILD: "1", CLEO_EVOLUTION_TRANSACTION: transactionId };
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.CLEO_DESKTOP_MOCK;
-  application = await electron.launch({ executablePath, cwd: dirname(executablePath),
-    args: [`--user-data-dir=${profile}`], env, timeout: 30_000 });
-  const window = await application.firstWindow({ timeout: 15_000 });
+  const launchedAt = Date.now();
+  application = await electron.launch({ ...(source ? {} : { executablePath }),
+    cwd: source ? ui : dirname(executablePath),
+    args: [...(source ? [ui] : []), `--user-data-dir=${profile}`], env, timeout: 30_000 });
+  const window = await application.firstWindow({ timeout: 30_000 });
+  // The same condition the switching program polls for, timed from the moment it starts this one.
+  let confirmedSeconds = null;
+  if (!source) {
+    const deadline = launchedAt + SWITCH_LIMIT_SECONDS * 1000;
+    let state;
+    do {
+      state = JSON.parse(await readFile(statePath, "utf8"));
+      if (!state.transaction && state.lastApplication?.id === transactionId) break;
+      await new Promise(done => setTimeout(done, 100));
+    } while (Date.now() < deadline);
+    confirmedSeconds = (Date.now() - launchedAt) / 1000;
+    assert.equal(state.transaction, null,
+      `Startup was not confirmed within the ${SWITCH_LIMIT_SECONDS} seconds a version switch allows`);
+    assert.equal(state.lastApplication?.id, transactionId, "Health acknowledgment must match the handoff");
+    assert.equal(state.active, "candidate");
+    assert.equal(await application.evaluate(({ app }) => app.isPackaged), true);
+  }
   await window.getByTestId("composer-input").waitFor({ timeout: 30_000 });
-  const connected = await window.evaluate(async () =>
-    (await window.cleoDesktop.request("load_workspace")).backend.connected);
-  assert.equal(connected, true, "Managed startup must connect the real packaged backend");
-  const deadline = Date.now() + 15_000;
-  let state;
-  do {
-    state = JSON.parse(await readFile(statePath, "utf8"));
-    if (!state.transaction && state.lastApplication?.id === transactionId) break;
-    await new Promise(done => setTimeout(done, 100));
-  } while (Date.now() < deadline);
-  assert.equal(state.transaction, null, "The real UI must acknowledge managed startup");
-  assert.equal(state.lastApplication?.id, transactionId, "Health acknowledgment must match the handoff");
-  assert.equal(state.active, "candidate");
-  assert.equal(await application.evaluate(({ app }) => app.isPackaged), true);
+  const workspace = await window.evaluate(() => window.cleoDesktop.request("load_workspace"));
+  assert.equal(workspace.backend.connected, true, "Managed startup must connect the real packaged backend");
+  let built = null;
+  if (!suppliedHome) {
+    // Startup was confirmed with the earlier history on disk: every conversation is listed, and at
+    // most the one the workspace opened had its index built. The others wait until they are opened.
+    const listed = new Set(workspace.threads.map(thread => thread.id));
+    assert.deepEqual(HISTORY.filter(id => !listed.has(id)), [], "Earlier conversations must be listed");
+    built = builtIndexes();
+    assert.ok(built <= 1, `Startup indexed ${built} of ${HISTORY.length} earlier conversations; only the open one may be`);
+  }
   // The release gate stops here: the package took over a pending switch and confirmed startup.
-  if (handoffOnly) {
-    console.log(JSON.stringify({ status: "passed", check: "managed-upgrade-handoff",
-      realBackend: true, transactionAcknowledged: true }));
+  if (handoffOnly || source || suppliedHome) {
+    console.log(JSON.stringify({ status: "passed", check: source ? "startup-history-source" : "managed-upgrade-handoff",
+      realBackend: true, transactionAcknowledged: !source, confirmedSeconds,
+      conversations: workspace.threads.length, indexedAtStartup: built }));
   } else {
     await computerPanelChecks(window);
     console.log(JSON.stringify({ status: "passed", check: "computer-managed-upgrade",
@@ -184,6 +278,7 @@ try {
       if (child.exitCode === null) throw error;
     }
   }
+  // Only the directory this run allocated is removed; a supplied data home is never touched here.
   assert.equal(dirname(root), resolve(tmpdir()), "Cleanup must stay inside our allocated test directory");
   await rm(root, { recursive: true, force: true });
 }

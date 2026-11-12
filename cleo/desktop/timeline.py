@@ -17,8 +17,18 @@ from cleo.sessions.rewind import REWIND_EVENT
 PAGE_SIZE = 80
 PREVIEW_CHARS = 32768
 PAGE_BYTES = 512 * 1024
-# Bump whenever timeline_from_events changes its output, so cached indexes are rebuilt.
-PROJECTION_VERSION = 14
+# The version stored in every cached index. A different stored version makes the index rebuild from
+# the whole event log, here and in every other program version that shares the data: an earlier
+# program rebuilds everything it lists the moment it starts, which is how a rollback after v0.13.0
+# (version 14) ran past the version switch's 90-second startup check on a large history.
+# Bump it only when rows written by the previous projection are wrong for this code. A change that
+# only adds optional fields (exit codes, memory context) keeps the number: older conversations show
+# the new fields from their next turn on.
+PROJECTION_VERSION = 13
+# Listing conversations rebuilds an index only when its log is at most this large; anything bigger
+# waits until the conversation is opened. Small logs keep exact summaries and totals, and the
+# worst case for a full sidebar stays a few megabytes.
+DEFER_REBUILD_BYTES = 64 * 1024
 # A harness switch hands history to a new native session, which cannot rewind across it.
 HANDOFF_BOUNDARIES = (SWITCH_EVENT, DELIVERED_EVENT, "cleo/handoff_submitted")
 
@@ -76,12 +86,12 @@ class TimelineIndex:
             raise
         return db
 
-    def _sync(self, db):
+    def _sync(self, db, *, rebuild=True):
         # One rebuild must use one language even if the setting changes during I/O.
         with language_context(get_language()):
-            return self._sync_projection(db)
+            return self._sync_projection(db, rebuild)
 
-    def _sync_projection(self, db):
+    def _sync_projection(self, db, rebuild=True):
         db.execute("BEGIN IMMEDIATE")
         row = db.execute("SELECT value FROM metadata WHERE id=1").fetchone()
         old = json.loads(row[0]) if row else None
@@ -104,6 +114,19 @@ class TimelineIndex:
             or signature[:2] != old["signature"][:2]
             or signature[2] <= old["signature"][2]
         )
+        if reset and not rebuild and info is not None and info.st_size > DEFER_REBUILD_BYTES:
+            # A rebuild reads the whole event log. Whoever only lists conversations gets what the
+            # index already holds; the rebuild waits for a caller that opens this conversation.
+            # (A small log is cheap to rebuild, so it takes the ordinary path below.)
+            db.commit()
+            kept = old if old and isinstance(old.get("total"), int) and old.get("epoch") else None
+            return {
+                "epoch": kept["epoch"] if kept else "",
+                "offset": kept["offset"] if kept else 0,
+                "total": kept["total"] if kept else 0,
+                "turn_id": kept["turn_id"] if kept else "initial",
+                "stale": True,
+            }
         start = 0 if reset else old["offset"]
         epoch = uuid.uuid4().hex if reset else old["epoch"]
         if reset:
@@ -253,13 +276,20 @@ class TimelineIndex:
             raise ValueError(tr("timeline.history_changed_jump_to_latest_to_reload"))
         return position
 
-    def page(self, *, cursor=None, direction="latest", limit=PAGE_SIZE):
+    def page(self, *, cursor=None, direction="latest", limit=PAGE_SIZE, rebuild=True):
+        """Purpose: One page of logical items, newest first by default.
+
+        Input: cursor, direction and size; ``rebuild=False`` is for callers that list many
+        conversations: when the index of a large log would need a full rebuild they get its
+        current rows and ``stale: True`` instead, so the cost stays bounded whatever the history
+        size. New events are still appended either way. Output: items with stable cursors and the totals to page further.
+        """
         if direction not in {"latest", "before", "after"} or type(limit) is not int:
             raise ValueError(tr("timeline.invalid_history_pagination_parameters"))
         if not 1 <= limit <= 100 or (direction != "latest" and not isinstance(cursor, str)):
             raise ValueError(tr("timeline.invalid_history_pagination_parameters"))
         with closing(self._connect()) as db, db:
-            meta = self._sync(db)
+            meta = self._sync(db, rebuild=rebuild)
             pivot = (
                 meta["total"] + 1
                 if direction == "latest"
@@ -299,6 +329,7 @@ class TimelineIndex:
                 "hasBefore": first > 1,
                 "hasAfter": last < meta["total"],
                 "revision": f"{meta['epoch']}:{meta['offset']}",
+                **({"stale": True} if meta.get("stale") else {}),
             }
 
     def content(self, item_id, field, offset=0, limit=16384):
@@ -351,6 +382,23 @@ class TimelineIndex:
             receipts = [json.loads(row[0])["data"]["payload"] for row in rows]
             return [receipt for receipt in receipts if not unresolved
                     or receipt["status"] in {"queued", "sending"} or receipt.get("retryable")]
+
+    def handoff_events(self):
+        """Purpose: This conversation's harness-switch events, oldest first, without a log read.
+
+        Input: None. Output: the indexed switch, submitted and delivered events, in the shape
+        ``cleo.harnesses.context.handoff_status`` takes. Rows are matched on the compact JSON
+        the index stores, so only the few switch events are decoded.
+        """
+        with closing(self._connect()) as db, db:
+            self._sync(db)
+            rows = db.execute(
+                "SELECT body FROM events WHERE type='provider_event' AND ("
+                + " OR ".join("instr(body, ?) > 0" for _ in HANDOFF_BOUNDARIES)
+                + ") ORDER BY offset",
+                tuple(f'"provider_event_type":"{kind}"' for kind in HANDOFF_BOUNDARIES),
+            )
+            return [json.loads(row[0]) for row in rows]
 
     def recent_events(self):
         with closing(self._connect()) as db, db:

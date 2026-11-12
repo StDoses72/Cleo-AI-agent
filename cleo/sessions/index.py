@@ -67,50 +67,66 @@ class SqliteSessionIndex:
             self._ready = True
             return created
 
+    _UPSERT = """
+        INSERT INTO sessions(
+            id, space, project, provider, native_session_id, owner_type,
+            owner_id, status, title, cwd, parent_session_id, manifest_path,
+            last_event_seq, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            space = excluded.space,
+            project = excluded.project,
+            provider = excluded.provider,
+            native_session_id = excluded.native_session_id,
+            owner_type = excluded.owner_type,
+            owner_id = excluded.owner_id,
+            status = excluded.status,
+            title = excluded.title,
+            cwd = excluded.cwd,
+            parent_session_id = excluded.parent_session_id,
+            manifest_path = excluded.manifest_path,
+            last_event_seq = excluded.last_event_seq,
+            updated_at = excluded.updated_at
+        """
+
+    @staticmethod
+    def _values(manifest: dict[str, Any], manifest_path: Path) -> tuple[Any, ...]:
+        return (
+            manifest["id"],
+            manifest["space"],
+            manifest["project"],
+            manifest["provider"],
+            manifest.get("native_session_id"),
+            manifest["owner_type"],
+            manifest.get("owner_id"),
+            manifest["status"],
+            manifest.get("title"),
+            manifest.get("cwd"),
+            manifest.get("parent_session_id"),
+            str(manifest_path),
+            int(manifest.get("last_event_seq", 0)),
+            manifest["created_at"],
+            manifest["updated_at"],
+        )
+
     def upsert(self, manifest: dict[str, Any], manifest_path: Path) -> None:
         """Purpose: Insert or refresh the row of one manifest stored at ``manifest_path``."""
         self.ensure()
         with closing(sqlite3.connect(self.path)) as conn, conn:
-            conn.execute(
-                """
-                INSERT INTO sessions(
-                    id, space, project, provider, native_session_id, owner_type,
-                    owner_id, status, title, cwd, parent_session_id, manifest_path,
-                    last_event_seq, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
-                    space = excluded.space,
-                    project = excluded.project,
-                    provider = excluded.provider,
-                    native_session_id = excluded.native_session_id,
-                    owner_type = excluded.owner_type,
-                    owner_id = excluded.owner_id,
-                    status = excluded.status,
-                    title = excluded.title,
-                    cwd = excluded.cwd,
-                    parent_session_id = excluded.parent_session_id,
-                    manifest_path = excluded.manifest_path,
-                    last_event_seq = excluded.last_event_seq,
-                    updated_at = excluded.updated_at
-                """,
-                (
-                    manifest["id"],
-                    manifest["space"],
-                    manifest["project"],
-                    manifest["provider"],
-                    manifest.get("native_session_id"),
-                    manifest["owner_type"],
-                    manifest.get("owner_id"),
-                    manifest["status"],
-                    manifest.get("title"),
-                    manifest.get("cwd"),
-                    manifest.get("parent_session_id"),
-                    str(manifest_path),
-                    int(manifest.get("last_event_seq", 0)),
-                    manifest["created_at"],
-                    manifest["updated_at"],
-                ),
-            )
+            conn.execute(self._UPSERT, self._values(manifest, manifest_path))
+
+    def replace_all(self, manifests: list[tuple[dict[str, Any], Path]]) -> None:
+        """Purpose: Make the index hold exactly these manifests, in one transaction.
+
+        Input: every manifest found on disk with its path. Output: None. Readers see either the
+        previous rows or the new ones, never an empty index, and a rebuild costs one commit
+        instead of one per session.
+        """
+        self.ensure()
+        with closing(sqlite3.connect(self.path)) as conn, conn:
+            conn.execute("DELETE FROM sessions")
+            conn.executemany(
+                self._UPSERT, [self._values(manifest, path) for manifest, path in manifests])
 
     def row(self, session_id: str) -> sqlite3.Row | None:
         self.ensure()

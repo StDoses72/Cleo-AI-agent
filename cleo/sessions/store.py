@@ -521,8 +521,5 @@ class SessionStore:
     def rebuild_index(self) -> int:
         with self._lock:
             manifests = self._manifests.scan()
-            self._index.ensure()
-            self._index.clear()
-            for manifest, path in manifests:
-                self._index.upsert(manifest, path)
+            self._index.replace_all(manifests)
         return len(manifests)
