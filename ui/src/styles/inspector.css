@@ -55,8 +55,12 @@
   border-bottom: 1px solid var(--border);
 }
 
-.inspector-header > .icon-button {
+/* Widen and close sit together at the right edge. */
+.inspector-actions {
+  display: flex;
   flex-shrink: 0;
+  align-items: center;
+  gap: 2px;
 }
 
 .inspector-tabs {
@@ -158,15 +162,6 @@
 .property-list dd {
   color: var(--text);
   font-variant-numeric: tabular-nums;
-}
-
-.usage-track {
-  height: 6px;
-  background: var(--surface-active);
-}
-
-.usage-track span {
-  background: var(--accent-gradient);
 }
 
 .changed-files button {

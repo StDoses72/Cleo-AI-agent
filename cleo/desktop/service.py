@@ -180,6 +180,8 @@ class DesktopService:
         self._agent_factory = agent_factory
         self._dream_agent_factory = dream_agent_factory
         self._adapter_instance = adapter
+        # Account usage per harness: (time read, windows). A reading is reused for a minute.
+        self._harness_usage: dict[str, tuple[float, list[dict[str, Any]]]] = {}
         self._chat = ChatRuntime(
             store=store,
             new_agent=lambda manifest: self._new_agent(
@@ -1878,6 +1880,31 @@ class DesktopService:
         return await asyncio.to_thread(
             sync_items, harness, harness_home(harness), direction, items, settings=bool(settings),
         )
+
+    async def get_harness_usage(self, *, provider: str) -> dict[str, Any]:
+        """Purpose: How much of its plan the account a task harness is signed in to has used.
+
+        Input: Provider name. Output: ``{"windows": [...]}`` in the harness's own order, each
+        with its length in minutes, percent used, reset time (epoch seconds) and scope. Empty
+        when the harness has no such reading or it could not be read.
+        """
+        now = asyncio.get_running_loop().time()
+        cached = self._harness_usage.get(provider)
+        if cached and now - cached[0] < 60:
+            return {"windows": cached[1]}
+        try:
+            async with asyncio.timeout(40):
+                rows = await self._adapter().account_usage(provider)
+        except Exception as error:
+            self._debug(f"Account usage unavailable for {provider}: {error!r}")
+            return {"windows": []}
+        windows = [
+            {"minutes": row.window_minutes, "percent": row.used_percent,
+             "resetsAt": row.resets_at, "scope": row.scope}
+            for row in rows
+        ]
+        self._harness_usage[provider] = (now, windows)
+        return {"windows": windows}
 
     async def get_productivity_models(
         self,

@@ -294,13 +294,48 @@ try {
     });
     await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
     await page.getByRole("tab", { name: "概况", exact: true }).click();
-    const usage = page.locator(".inspector-section").filter({ has: page.locator(".usage-copy") });
-    await usage.locator(".usage-copy").getByText("—", { exact: true }).waitFor();
-    assert.doesNotMatch(await usage.innerText(), /0%/);
-    assert.equal(await usage.locator(".usage-track").count(), 0);
+    // Without a reported footprint there is no ring to read a made-up 0% from.
+    await page.getByTestId("context-ring").waitFor({ state: "detached" });
+    assert.doesNotMatch(await page.getByTestId("composer").innerText(), /\d%/);
     await page.locator(".memory-context summary").first().click();
     // The summary shows the start of the recorded text; the opened body shows all of it.
     await page.locator(".memory-context details[open] p").getByText(/体验型 UI 应以独立应用交付/).first().waitFor();
+  });
+  await check("the context ring opens its own panel, and the details panel does not repeat it", async page => {
+    await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      const original = cleoClient.loadThread.bind(cleoClient);
+      cleoClient.loadThread = async id => ({ ...await original(id), usage: { used: 41818, limit: 258400, input: 41558, output: 260 } });
+    });
+    await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
+    const ring = page.getByTestId("context-ring");
+    const panel = page.getByTestId("context-panel");
+    await ring.getByText("16%", { exact: true }).waitFor();
+    assert.equal(await panel.count(), 0);
+    await ring.click();
+    await panel.getByText("41.8k / 258.4k", { exact: true }).waitFor();
+    assert.equal(await ring.getAttribute("aria-expanded"), "true");
+    // The harness account's usage is read when the panel opens: one row per window.
+    const rows = panel.getByTestId("context-usage").locator("dl > div");
+    await rows.first().waitFor();
+    assert.deepEqual(await rows.evaluateAll(nodes => nodes.map(node => [node.querySelector("dt").textContent, node.querySelector("dd span").textContent])),
+      [["5 小时", "42%"], ["本周", "18%"]]);
+    assert.match(await rows.first().locator("small").textContent(), /^(\d+\/\d+ )?\d\d:\d\d 重置$/);
+    // The panel rises above the ring, inside the window, and leaves the ring uncovered.
+    const ringBox = await ring.boundingBox();
+    const panelBox = await panel.boundingBox();
+    assert(panelBox.y >= 0 && panelBox.y + panelBox.height <= ringBox.y, JSON.stringify({ ringBox, panelBox }));
+    assert(panelBox.x >= 0 && panelBox.x + panelBox.width <= 1280, JSON.stringify(panelBox));
+    await page.keyboard.press("Escape");
+    await panel.waitFor({ state: "detached" });
+    assert.equal(await ring.evaluate(node => node === document.activeElement), true);
+    await ring.click();
+    await panel.waitFor();
+    await page.getByTestId("composer-input").click();
+    await panel.waitFor({ state: "detached" });
+    await page.getByRole("tab", { name: "概况", exact: true }).click();
+    await page.locator(".details-panel").waitFor();
+    assert.equal(await page.locator(".details-panel").getByText("上下文", { exact: true }).count(), 0);
   });
   await check("information: memory model changes remain drafts until saved", async page => {
     await page.getByRole("button", { name: "设置", exact: true }).click();
@@ -717,7 +752,73 @@ try {
     });
     assert.deepEqual(blocks.map(block => block.id), ["u1", "work-group-t1"]);
     assert.deepEqual(blocks[1].items.map(item => item.id), ["t1", "th1", "t2"]);
-    assert.equal(blocks[1].hasAnswer, false);
+    assert.equal(blocks[1].answered, false);
+  });
+  await check("work is answered once a reply follows it, and tool calls in a row form one run", async page => {
+    const result = await page.evaluate(async () => {
+      const { groupTimelineItems, splitToolRuns } = await import("/src/components/Conversation.tsx");
+      const tool = (id, extra = {}) => ({ id, type: "tool", name: "Read", status: "done", turnId: "turn", ...extra });
+      const blocks = groupTimelineItems([
+        { id: "u1", type: "message", role: "user", content: "开始", turnId: "turn" },
+        { id: "th1", type: "thought", content: "先看看", status: "done", turnId: "turn" },
+        tool("t1"), tool("t2"),
+        { id: "a1", type: "message", role: "assistant", content: "找到了，继续", turnId: "turn" },
+        { id: "th2", type: "thought", content: "再改", status: "done", turnId: "turn" },
+        tool("t3"),
+        { id: "u2", type: "message", role: "user", content: "下一件事", turnId: "next" },
+        tool("t4", { turnId: "next" }),
+        { id: "a2", type: "message", role: "assistant", content: "  ", turnId: "next" },
+      ]);
+      const groups = blocks.filter(block => block.type === "work-group");
+      return { answered: groups.map(group => group.answered),
+        parts: splitToolRuns(groups[0].items).map(part => Array.isArray(part) ? part.map(item => item.id) : part.id) };
+    });
+    // The reply follows the first stretch only; an empty reply answers nothing.
+    assert.deepEqual(result.answered, [true, false, false]);
+    assert.deepEqual(result.parts, ["th1", ["t1", "t2"]]);
+  });
+  await check("a live turn writes thoughts as prose and tool calls as one closed line, then folds on the answer", async page => {
+    await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      cleoClient.streamTurn = async function* (_thread, prompt) {
+        const turnId = "fold-turn";
+        yield { type: "turn-started", item: { id: turnId, turnId, type: "message", role: "user", content: prompt, time: "" } };
+        yield { type: "upsert-item", item: { id: "fold-thought", turnId, type: "thought", content: "先确认范围，再动手。", status: "done" } };
+        yield { type: "upsert-item", item: { id: "fold-tool-1", turnId, type: "tool", name: "tool", command: "rg --files", status: "done", exitCode: 0, durationMs: 320, output: "12 files" } };
+        yield { type: "upsert-item", item: { id: "fold-tool-2", turnId, type: "tool", name: "tool", command: "npm run typecheck", status: "running" } };
+        await new Promise(resolve => { window.answerFold = resolve; });
+        yield { type: "upsert-item", item: { id: "fold-tool-2", turnId, type: "tool", name: "tool", command: "npm run typecheck", status: "done", exitCode: 0, durationMs: 900 } };
+        yield { type: "upsert-item", item: { id: "fold-answer", turnId, type: "message", role: "assistant", content: "已完成。", time: "" } };
+        yield { type: "done", summary: "done" };
+      };
+    });
+    await page.getByTestId("composer-input").fill("fold demo");
+    await page.getByTestId("send-button").click();
+    const thought = page.locator('[data-row-id="fold-thought"]');
+    await thought.getByText("先确认范围，再动手。", { exact: true }).waitFor();
+    const run = page.locator('[data-row-id="tool-run-fold-tool-1"]').getByTestId("tool-run");
+    await run.waitFor();
+    // Live: the thought stands by itself, the two commands are one closed line naming what runs now.
+    assert.equal(await page.locator('[data-row-id="work-group-fold-thought"]').count(), 0, "live work must not sit behind a summary");
+    assert.equal(await run.getByRole("button").getAttribute("aria-expanded"), "false");
+    assert.match(await run.innerText(), /运行 2 条命令/);
+    assert.match(await run.innerText(), /npm run typecheck/);
+    assert.equal(await page.locator('[data-row-id="fold-tool-1"]').count(), 0, "tool calls must start closed");
+    assert.equal(await page.locator(".turn-activity").count(), 0, "a running tool already shows the turn is working");
+    await run.getByRole("button").click();
+    await page.locator('[data-row-id="fold-tool-1"]').getByTestId("tool-exit").waitFor();
+    await run.getByRole("button").click();
+    await page.evaluate(() => window.answerFold());
+    // Answered: the whole stretch is one closed summary line above the reply.
+    const fold = page.locator('[data-row-id="work-group-fold-thought"]').getByRole("button");
+    await fold.waitFor();
+    assert.equal(await fold.getAttribute("aria-expanded"), "false");
+    assert.equal(await thought.count(), 0, "thoughts must fold away once the answer lands");
+    assert.match(await fold.innerText(), /运行 2 条命令/);
+    assert.match(await fold.innerText(), /1 段思考/);
+    await fold.click();
+    await thought.getByText("先确认范围，再动手。", { exact: true }).waitFor();
+    assert.equal(await run.getByRole("button").getAttribute("aria-expanded"), "false", "an opened summary lists tool runs closed");
   });
   await check("plans and questions keep their place between work logs", async page => {
     const blocks = await page.evaluate(async () => {
@@ -818,7 +919,7 @@ try {
       cleoClient.streamTurn = async function* () { throw new Error("backend offline"); };
     });
     await bar.getByRole("button", { name: "发给 Agent" }).click();
-    await page.getByText("审查意见没有发出，已保留，可以重试。").waitFor();
+    await page.getByText("审查意见未发出").waitFor();
     assert.match(await bar.innerText(), /1 条审查意见/);
     // A runtime update before the failure is not delivery either.
     await page.evaluate(async () => {
@@ -828,7 +929,7 @@ try {
     });
     await page.getByText("审查意见没有发出，已保留，可以重试。").waitFor({ state: "hidden", timeout: 8000 }).catch(() => {});
     await bar.getByRole("button", { name: "发给 Agent" }).click();
-    await page.getByText("审查意见没有发出，已保留，可以重试。").waitFor();
+    await page.getByText("审查意见未发出").waitFor();
     assert.match(await bar.innerText(), /1 条审查意见/);
   });
   await check("a failed file list offers Retry instead of claiming there are no files", async page => {
@@ -854,15 +955,80 @@ try {
     await page.getByTestId("new-thread").click();
     await page.getByTestId("runtime-selector").click();
     const models = page.getByTestId("runtime-model-list");
-    await models.getByRole("button").first().waitFor();
-    assert.ok(await models.getByRole("button").count() >= 2);
-    const effort = page.getByTestId("effort-selector");
-    assert.equal(await effort.getAttribute("role"), "radiogroup");
-    await effort.focus();
-    await page.keyboard.press("End");
-    await page.waitForFunction(() => document.querySelector('[data-testid="effort-selector"] [aria-checked="true"]')?.textContent !== "低");
-    await models.getByRole("button").nth(1).click();
+    await models.getByTestId("runtime-model").first().waitFor();
+    assert.ok(await models.getByTestId("runtime-model").count() >= 2);
+    // Picking a model closes the menu; the chip names it.
+    await models.getByTestId("runtime-model").nth(1).click();
+    await page.getByTestId("runtime-menu").waitFor({ state: "detached" });
     assert.match(await page.getByTestId("runtime-selector").innerText(), /terra/i);
+    // Effort is a chip of its own: a menu of named levels, the current one checked.
+    const effort = page.getByTestId("effort-selector");
+    const before = await effort.getAttribute("data-value");
+    await effort.click();
+    const levels = page.getByTestId("effort-menu").getByRole("menuitemradio");
+    assert.ok(await levels.count() >= 2);
+    assert.equal(await page.getByTestId("effort-menu").locator('[role="menuitemradio"][aria-checked="true"]').count(), 1);
+    await levels.last().click();
+    await page.getByTestId("effort-menu").waitFor({ state: "detached" });
+    await page.waitForFunction(value => document.querySelector('[data-testid="effort-selector"]').dataset.value !== value, before);
+  });
+  await check("the model menu keeps a harness that fails its check, marked not connected, and grows with a long model list", async page => {
+    await page.getByTestId("new-thread").click();
+    await page.getByTestId("runtime-selector").click();
+    const menu = page.getByTestId("runtime-menu");
+    await menu.getByTestId("runtime-model").first().waitFor();
+    const shortHeight = (await menu.boundingBox()).height;
+    await page.keyboard.press("Escape");
+    await menu.waitFor({ state: "detached" });
+    await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      const original = cleoClient.getProductivityModels.bind(cleoClient);
+      cleoClient.getProductivityModels = async (provider, ...rest) => {
+        if (provider === "claude") throw new Error("Claude is not signed in");
+        const catalog = await original(provider, ...rest);
+        return { ...catalog, models: [...catalog.models, ...Array.from({ length: 10 }, (_, index) => ({
+          id: `extra-${index}`, label: `Extra model ${index + 1}`, description: "", isDefault: false, defaultEffort: null, supportedEfforts: [] }))] };
+      };
+    });
+    await page.getByTestId("runtime-selector").click();
+    // More than eight models: a search field, and a menu as tall as its list, inside the window.
+    await menu.getByTestId("runtime-model-search").waitFor();
+    assert.equal(await menu.getByTestId("runtime-model").count(), 12);
+    const box = await menu.boundingBox();
+    assert.ok(box.height > shortHeight + 100, `the menu grows with its list (${shortHeight} → ${box.height})`);
+    assert.ok(box.y >= 0, "the menu stays inside the window");
+    await menu.getByTestId("runtime-model-search").fill("extra model 7");
+    assert.deepEqual(await menu.getByTestId("runtime-model").allInnerTexts(), ["Extra model 7"]);
+    // The harness that failed stays in the list, where it cannot be picked.
+    await menu.getByTestId("runtime-harness-back").click();
+    const claude = menu.getByTestId("runtime-harness").filter({ hasText: "claude" });
+    await page.waitForFunction(() => [...document.querySelectorAll('[data-testid="runtime-harness"]')]
+      .some(row => row.dataset.connection === "unavailable"));
+    assert.equal(await claude.getAttribute("data-connection"), "unavailable");
+    assert.equal(await claude.isDisabled(), true);
+    assert.match(await claude.innerText(), /未连接/);
+    assert.equal(await menu.getByTestId("runtime-harness").filter({ hasText: "codex" }).isEnabled(), true);
+  });
+  await check("the model menu opens on the harness list when the current harness has nothing to offer", async page => {
+    await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      const original = cleoClient.getProductivityModels.bind(cleoClient);
+      cleoClient.getProductivityModels = async (provider, ...rest) => {
+        if (provider === "codex") throw new Error("Codex is not signed in");
+        return original(provider, ...rest);
+      };
+    });
+    await page.getByTestId("new-thread").click();
+    await page.getByTestId("runtime-selector").click();
+    const menu = page.getByTestId("runtime-menu");
+    await page.waitForFunction(() => document.querySelector('[data-testid="runtime-menu"]')?.dataset.page === "harnesses");
+    assert.equal(await menu.getByTestId("runtime-harness").filter({ hasText: "codex" }).isDisabled(), true);
+    // Picking a harness leads to its models; picking one of them is the switch, and closes the menu.
+    await menu.getByTestId("runtime-harness").filter({ hasText: "claude" }).click();
+    await menu.getByTestId("runtime-model").first().click();
+    await menu.waitFor({ state: "detached" });
+    assert.match(await page.getByTestId("runtime-selector").innerText(), /^claude · /);
+    assert.equal(await page.getByTestId("harness-pending").count(), 0);
   });
   await check("delegated subtasks nest under their parent and link back", async page => {
     const sidebar = page.getByTestId("thread-list");
@@ -876,7 +1042,11 @@ try {
     await page.locator(".breadcrumb strong").filter({ hasText: "完成独立桌面 UI" }).waitFor();
     // The task-boundary classifier is not presented as a reviewer of the work.
     const collaboration = await page.getByTestId("collaboration-line").innerText();
-    assert.match(collaboration, /侧栏与导航重构/);
+    // The subtasks are listed right above with their harness and model; the line names only who
+    // else took part (the main session and the reviewer), not the same subtasks again.
+    assert.doesNotMatch(collaboration, /侧栏与导航重构/);
+    assert.match(collaboration, /主任务/);
+    assert.match(collaboration, /评审/);
     assert.doesNotMatch(collaboration, /任务边界判断/);
   });
   await check("commands show their exit code and duration; failures count in the summary", async page => {
@@ -885,6 +1055,10 @@ try {
     await summary.waitFor();
     assert.match(await summary.innerText(), /1 个失败/);
     await summary.getByRole("button").click();
+    // Tool calls in a row are one closed line inside the opened summary.
+    const runs = page.getByTestId("tool-run").getByRole("button");
+    await runs.first().waitFor();
+    for (let index = 0; index < await runs.count(); index++) await runs.nth(index).click();
     const exits = page.getByTestId("tool-exit");
     await exits.first().waitFor();
     assert.deepEqual(await exits.allInnerTexts(), ["退出码 1", "退出码 0"]);
@@ -908,7 +1082,7 @@ try {
     await page.getByTestId("runtime-menu").waitFor();
     // The keyboard lands on the current choice, not on the menu's first button.
     await page.waitForFunction(() => document.activeElement?.closest('[data-testid="runtime-menu"]')
-      && document.activeElement.getAttribute("aria-pressed") === "true");
+      && document.activeElement.getAttribute("aria-current") === "true");
     await page.keyboard.press("Escape");
     await page.waitForFunction(() => document.activeElement?.getAttribute("data-testid") === "runtime-selector");
     await page.getByTestId("runtime-menu").waitFor({ state: "detached" });
@@ -984,7 +1158,7 @@ try {
     await page.evaluate(() => { window.liveBranch = "feature-b"; window.dispatchEvent(new Event("focus")); });
     await page.getByTestId("source-control").getByText("feature-b", { exact: true }).waitFor();
     await hold.waitFor();
-    assert.match(await hold.innerText(), /feature-b[\s\S]*main[\s\S]*（已保留 1 条，不会丢失）/);
+    assert.match(await hold.innerText(), /feature-b[\s\S]*main[\s\S]*1 条意见已隐藏/);
     await bar.waitFor({ state: "detached" });
     assert.equal(await page.locator("button.diff-comment-add").count(), 0, "no note can be added on an unconfirmed branch");
     await page.waitForFunction(() => window.workspaceLoads > 0);
@@ -1032,6 +1206,13 @@ try {
   });
   await check("a file in the conversation's changes card opens its own diff", async page => {
     await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
+    // Beside the open Changes tab the card is one line; its file list shows when that tab is not in view.
+    if (await page.locator('#inspector-tab-changes[aria-selected="true"]').count()) {
+      await page.getByTestId("changes-card").waitFor();
+      assert.equal(await page.getByTestId("changes-card-file").count(), 0, "the card must not repeat the Changes tab's file list");
+      assert.equal(await page.getByTestId("changes-card").getByRole("button").count(), 0, "the card must not repeat the Changes tab's actions");
+      await page.locator("#inspector-tab-details").click();
+    }
     const files = page.getByTestId("changes-card-file");
     await files.first().waitFor();
     const target = await files.last().innerText();
@@ -1081,19 +1262,19 @@ try {
     await page.getByTestId("new-thread").click();
     await page.getByTestId("runtime-selector").click();
     await page.getByTestId("runtime-menu").waitFor();
-    // To the harness list and back, with the keyboard put on the harness row before the menu places
-    // it: the placement turn of the new screen belongs to the user.
+    // To the harness list and back, with the keyboard put on the heading before the menu places
+    // it: the placement turn of the new page belongs to the user.
     await page.evaluate(async () => {
       const settle = async () => { for (let step = 0; step < 6; step += 1) await Promise.resolve(); };
-      document.querySelector('[data-testid="runtime-model-row"]').click();
+      document.querySelector('[data-testid="runtime-harness-back"]').click();
       await settle();
-      document.querySelector('.runtime-menu button[aria-label="返回当前设置"]').click();
+      document.querySelector('[data-testid="runtime-harness"]').click();
       await settle();
-      document.querySelector('[data-testid="runtime-model-row"]').focus();
+      document.querySelector('[data-testid="runtime-harness-back"]').focus();
     });
     const focused = () => page.evaluate(() => document.activeElement?.getAttribute("data-testid"));
     await page.waitForTimeout(120);
-    assert.equal(await focused(), "runtime-model-row", "the menu kept the user's focus on the harness row");
+    assert.equal(await focused(), "runtime-harness-back", "the menu kept the user's focus on the heading");
     const answersBefore = await page.evaluate(() => window.modelAnswers);
     await page.keyboard.press("Control+L");
     assert.equal(await focused(), "composer-input");

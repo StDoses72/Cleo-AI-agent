@@ -1,8 +1,6 @@
 import { t as tr } from "../../../electron/i18n.mjs";
 import type { ModelProfileSummary } from "../../types";
 
-export const accountCheckScope = () => tr("catalog.checks_client_connectivity_sign_in_status_and_the_model_list_only_no_model_request_wa");
-
 export const apiProviders = [
   { id: "openai", name: "OpenAI", mark: "O", provider: "openai", baseUrl: "https://api.openai.com/v1" },
   { id: "anthropic", name: "Anthropic", mark: "A", provider: "anthropic", baseUrl: "https://api.anthropic.com" },
@@ -12,12 +10,12 @@ export const apiProviders = [
   { id: "custom", get name() { return tr("catalog.custom_provider"); }, mark: "{}", provider: "openai", baseUrl: "" },
 ];
 
-export const accounts: Record<string, { name: string; mark: string; login: string; billing: string; note: string }> = {
+export const accounts: Record<string, { name: string; mark: string; login: string; billing: string; note?: string }> = {
   get codex() { return { name: "Codex", mark: "O", login: tr("catalog.sign_in_with_a_chatgpt_account"), billing: tr("catalog.uses_codex_quota"), note: tr("catalog.sign_in_separately_in_cleo_new_sessions_are_stored_separately_from_codex_app_history_") }; },
-  get claude_code() { return { name: "Claude Code", mark: "A", login: tr("catalog.sign_in_with_a_claude_account"), billing: tr("catalog.billed_under_claude_code_rules"), note: tr("catalog.available_quota_for_non_interactive_calls_depends_on_your_current_account_plan") }; },
-  get gemini() { return { name: "Gemini CLI", mark: "G", login: tr("catalog.sign_in_with_a_google_account"), billing: tr("catalog.uses_gemini_cli_quota"), note: tr("catalog.use_your_account_s_available_cli_quota_through_the_official_client") }; },
-  get copilot() { return { name: "GitHub Copilot", mark: "G", login: tr("catalog.sign_in_with_a_github_account"), billing: tr("catalog.uses_copilot_quota"), note: tr("catalog.available_models_and_usage_depend_on_your_copilot_plan") }; },
-  get grok() { return { name: "Grok", mark: "x", login: tr("catalog.sign_in_with_a_grok_account"), billing: tr("catalog.uses_grok_subscription_quota"), note: tr("catalog.use_your_account_s_available_subscription_quota_through_grok_build") }; },
+  get claude_code() { return { name: "Claude Code", mark: "A", login: tr("catalog.sign_in_with_a_claude_account"), billing: tr("catalog.billed_under_claude_code_rules") }; },
+  get gemini() { return { name: "Gemini CLI", mark: "G", login: tr("catalog.sign_in_with_a_google_account"), billing: tr("catalog.uses_gemini_cli_quota") }; },
+  get copilot() { return { name: "GitHub Copilot", mark: "G", login: tr("catalog.sign_in_with_a_github_account"), billing: tr("catalog.uses_copilot_quota") }; },
+  get grok() { return { name: "Grok", mark: "x", login: tr("catalog.sign_in_with_a_grok_account"), billing: tr("catalog.uses_grok_subscription_quota") }; },
 };
 
 export const profileLabel = (profile: ModelProfileSummary) => profile.displayName || profile.name;

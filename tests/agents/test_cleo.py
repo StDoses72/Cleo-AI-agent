@@ -36,8 +36,9 @@ def test_agent_stream_text_uses_async_graph_streaming(tmp_path) -> None:
         return [text async for text in agent.stream_text("hello", thread_id="thread-1")]
 
     assert asyncio.run(collect()) == ["hello", " world"]
-    assert agent.context_usage.used_tokens == 150
-    assert agent.context_usage.ratio == 0.15
+    # Occupancy is the request's input side; the 30 output tokens are not in the window yet.
+    assert agent.context_usage.used_tokens == 120
+    assert agent.context_usage.ratio == 0.12
 
 
 def test_user_content_distinguishes_images_from_common_documents() -> None:

@@ -131,6 +131,12 @@ def inspect_git_status(cwd: str) -> GitStatus | None:
     header = lines[0].removeprefix("## ").strip() if lines else "HEAD"
     branch_part, _, divergence = header.partition(" [")
     branch, separator, upstream = branch_part.partition("...")
+    if " " in branch:
+        # Before the first commit, and on a detached HEAD, git prints a sentence here ("No commits
+        # yet on <branch>", "HEAD (no branch)", translated in other locales). A ref name never
+        # contains a space, so ask for the name itself.
+        head = _git(repo_root, "symbolic-ref", "--short", "-q", "HEAD")
+        branch = head.stdout.strip() if head.returncode == 0 else ""
     ahead = 0
     behind = 0
     for direction, value in _DIVERGENCE.findall(divergence):

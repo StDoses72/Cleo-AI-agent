@@ -23,9 +23,7 @@
   .tool-group,
   .plan-entry,
   .notice-entry,
-  .question-history,
-  .virtual-process-row,
-  .turn-activity { margin-left: 0; padding-left: 0; }
+  .question-history { margin-left: 0; padding-left: 0; }
   .thought-group,
   .tool-group,
   .plan-entry,

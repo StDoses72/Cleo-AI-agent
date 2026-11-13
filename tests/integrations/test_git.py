@@ -8,6 +8,7 @@ from cleo.desktop.projection import changes_from_diff
 from cleo.integrations.git import (
     create_git_checkpoint,
     finalize_git_checkpoint,
+    inspect_git_status,
     read_git_checkpoint_diff,
     read_git_diff,
     undo_git_checkpoint,
@@ -30,6 +31,33 @@ def _git_output(cwd, *args: str) -> str:
         capture_output=True,
         text=True,
     ).stdout
+
+
+def test_status_names_the_branch_of_a_repository_without_commits(tmp_path) -> None:
+    """Before the first commit git prints "No commits yet on <branch>"; the name is the branch."""
+    _git(tmp_path, "init")
+    _git(tmp_path, "checkout", "-b", "trunk")
+
+    status = inspect_git_status(str(tmp_path))
+
+    assert status is not None
+    assert status.branch == "trunk"
+    assert status.upstream is None
+
+
+def test_status_of_a_detached_head_has_no_sentence_for_a_branch(tmp_path) -> None:
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "test@example.com")
+    _git(tmp_path, "config", "user.name", "Test")
+    (tmp_path / "a.txt").write_text("a", encoding="utf-8")
+    _git(tmp_path, "add", "a.txt")
+    _git(tmp_path, "commit", "-m", "first")
+    _git(tmp_path, "checkout", "--detach")
+
+    status = inspect_git_status(str(tmp_path))
+
+    assert status is not None
+    assert status.branch == "HEAD"
 
 
 def test_undo_visibility_uses_tree_changes_instead_of_checkpoint_commit_ids(tmp_path):

@@ -295,11 +295,9 @@ export function MoveThreadDialog({ thread, project, projects, running, onMove, o
             ))}
           </div>
         ) : <p className="move-thread-note">{tr("overlays.no_other_projects_in_this_space")}</p>}
-        {target ? (
+        {target && productivity ? (
           <p className="move-thread-note" data-testid="move-thread-directory">
-            {productivity
-              ? tr("overlays.move_task_directory_note", { p0: directoryOf(project), p1: directoryOf(target) })
-              : tr("overlays.move_chat_note", { p0: nameOf(target) })}
+            {tr("overlays.move_task_directory_note", { p0: directoryOf(project), p1: directoryOf(target) })}
           </p>
         ) : null}
         <p className="move-thread-note">{tr("overlays.move_keeps_history_note")}</p>
@@ -318,7 +316,6 @@ export function MoveThreadDialog({ thread, project, projects, running, onMove, o
 
 interface DeleteThreadDialogProps {
   threadTitle: string | null;
-  productivity: boolean;
   deleting: boolean;
   error?: string | null;
   onCancel: () => void;
@@ -327,7 +324,6 @@ interface DeleteThreadDialogProps {
 
 export function DeleteThreadDialog({
   threadTitle,
-  productivity,
   deleting,
   error,
   onCancel,
@@ -344,9 +340,7 @@ export function DeleteThreadDialog({
         <span className="delete-thread-icon"><Trash2 size={18} /></span>
         <div>
           <h2 id="delete-thread-title">{tr("overlays.delete")}{threadTitle}”？</h2>
-          <p id="delete-thread-detail">
-            {tr("overlays.this_action_cannot_be_undone")}{productivity ? tr("overlays.sessions_in_external_clients_will_be_preserved") : ""}
-          </p>
+          <p id="delete-thread-detail">{tr("overlays.this_action_cannot_be_undone")}</p>
         </div>
         {error && <p className="dialog-error" role="alert">{error}</p>}
         <footer>
@@ -378,7 +372,7 @@ export function RemoveProjectDialog({
   if (!project) return null;
   return (
     <Modal open className="overlay-backdrop delete-thread-backdrop" role="alertdialog"
-      labelledBy="remove-project-title" describedBy="remove-project-detail" onClose={removing ? undefined : onCancel}>
+      labelledBy="remove-project-title" onClose={removing ? undefined : onCancel}>
       <div
         className="delete-thread-dialog"
         onMouseDown={(event) => event.stopPropagation()}
@@ -386,7 +380,6 @@ export function RemoveProjectDialog({
         <span className="delete-thread-icon"><Trash2 size={18} /></span>
         <div>
           <h2 id="remove-project-title">{tr("overlays.remove")}{projectLabel(project)}”？</h2>
-          <p id="remove-project-detail">{tr("overlays.local_files_and_historical_tasks_will_not_be_deleted")}</p>
         </div>
         {error && <p className="dialog-error" role="alert">{error}</p>}
         <footer>
@@ -567,7 +560,7 @@ export function SettingsModal({
                   <button className={theme === "light" ? "active" : ""} type="button" onClick={() => onThemeChange("light")}><span className="theme-preview light"><Sun size={16} /></span><span>{tr("overlays.light")}</span>{theme === "light" ? <Check size={14} /> : null}</button>
                 </div>
               </SettingsRow>
-              {onNotificationsChange ? <SettingsRow title={tr("settings.notifications")} description={tr("app.notifications_hint")}>
+              {onNotificationsChange ? <SettingsRow title={tr("settings.notifications")}>
                 <label className="switch"><input type="checkbox" aria-label={tr("settings.notifications")} checked={notificationsOn}
                   onChange={(event) => onNotificationsChange(event.target.checked)} /><span /></label>
               </SettingsRow> : null}
@@ -594,7 +587,9 @@ export function SettingsModal({
             <div className="settings-page">
               {onStorageInventory ? <StorageSettings active={open} onInventory={onStorageInventory} onReclaim={onReclaimStorage}
                 blocked={storageBlocked} onRevealPath={onRevealPath} />
-                : <SettingsRow title={tr("overlays.storage_usage")}><p className="settings-hint" data-testid="storage-unavailable">{tr("overlays.storage_usage_desktop_only")}</p></SettingsRow>}
+                // The explanation is the row's description: as a control it could not wrap and ran over the title.
+                : <div className="settings-row"><div><strong>{tr("overlays.storage_usage")}</strong>
+                  <p data-testid="storage-unavailable">{tr("overlays.storage_usage_desktop_only")}</p></div></div>}
               {/* Maintenance actions are listed, not hidden behind a disclosure: this page exists for them. */}
               <h3 className="settings-subheading">{tr("overlays.maintenance")}</h3>
               <SettingsRow title={tr("overlays.configuration_templates")}><div className="settings-actions"><button type="button" onClick={() => onCopyConfigTemplate("cleo")}>{tr("overlays.copy_cleo_configuration")}</button><button type="button" onClick={() => onCopyConfigTemplate("harnesses")}>{tr("overlays.copy_runtime_configuration")}</button></div></SettingsRow>
@@ -629,10 +624,7 @@ export function RuntimePermissions({ runtime, threadId, onChange }: {
     finally { inFlight.current = false; setSaving(false); }
   };
   if (runtime.routingMode === "auto" && runtime.routingPermissionPreset
-      && runtime.routingPermissionPreset !== "inherit") return <>
-    <PermissionSelector runtime={runtime} />
-    <p className="settings-scope">在子任务路由设置中统一修改执行权限。</p>
-  </>;
+      && runtime.routingPermissionPreset !== "inherit") return <PermissionSelector runtime={runtime} />;
   return <>
     <PermissionSelector key={runtime.provider} runtime={runtime} disabled={saving} placement="down"
       onChange={threadId && onChange ? update => onChange(threadId, update) : undefined} />
@@ -656,7 +648,6 @@ export function RuntimePermissions({ runtime, threadId, onChange }: {
         : tr("overlays.pending_permissions_belong_to_the_previous_provider_choose_them_again_or_discard_the_")}</p>
       <button className="settings-action" disabled={saving} onClick={() => void change({ discardPendingPermissions: true })}>{tr("backgroundmemorysettingspanel.discard_changes")}</button>
     </div>}
-    {runtime.permissionOptions?.reason && <p className="settings-scope">{runtime.permissionOptions.reason}</p>}
     {saving && <p className="settings-scope" role="status">{tr("overlays.saving")}</p>}
     {error && <p className="settings-error" role="alert">{error}</p>}
   </>;
@@ -723,7 +714,7 @@ function StorageSettings({ active, onInventory, onReclaim, blocked, onRevealPath
   const listed = useMemo(() => inventory ? [...inventory.entries]
     .filter(entry => entry.kind !== "user-data")
     .sort((a, b) => Number(b.action === "reclaim") - Number(a.action === "reclaim") || b.bytes - a.bytes) : [], [inventory]);
-  const description = !inventory ? (busy === "inventory" ? tr("overlays.calculating_storage_used_by_cleo_owned_files") : tr("overlays.measures_dependency_snapshots_runtimes_installers_backups_and_user_data"))
+  const description = !inventory ? (busy === "inventory" ? tr("overlays.calculating_storage_used_by_cleo_owned_files") : undefined)
     : tr("overlays.total_value_reclaimable_valuevalue", { p0: formatStorage(inventory.totalBytes), p1: formatStorage(inventory.reclaimableBytes), p2: inventory.pending.length ? tr("overlays.value_items_could_not_be_deleted_last_time_and_will_be_retried_automatically", { p0: inventory.pending.length }) : "" });
   return (
     <section className="storage-settings" aria-label={tr("overlays.storage_usage")}>
@@ -751,12 +742,11 @@ function StorageSettings({ active, onInventory, onReclaim, blocked, onRevealPath
             {listed.map(entry => (
               <li key={entry.id} className={entry.action}>
                 <strong>{entry.action === "reclaim" ? tr("overlays.reclaimable") : tr("overlays.retained")} · {storageKindLabels[entry.kind]}{entry.version ? ` ${entry.version}` : ""} · {formatStorage(entry.bytes)}</strong>
-                <span>{entry.reason}{entry.action === "reclaim" && entry.policy === "manual" ? tr("overlays.manual_cleanup_only") : ""}</span>
                 <button type="button" onClick={() => onRevealPath(entry.path)}><code>{entry.path}</code></button>
               </li>
             ))}
           </ul>
-          <p className="settings-scope">{tr("overlays.data_directory")}{inventory.dataHome} {tr("overlays.program_directory")}{inventory.controlRoot}{tr("overlays.sizes_are_approximate_recursive_file_totals")}</p>
+          <p className="settings-scope">{tr("overlays.data_directory")}{inventory.dataHome} {tr("overlays.program_directory")}{inventory.controlRoot}</p>
         </details>
       )}
     </section>
@@ -880,13 +870,12 @@ export function ConfigNotice({ status, onRecheck }: { status: ConfigStatus | nul
   if (!status || (!status.error && !status.restartRequired)) return null;
   const key = `${status.version}:${status.error}:${status.restartRequired}`;
   if (dismissed === key) return null;
-  const detail = status.error ?? tr("overlays.data_directory_changes_were_saved_and_will_take_effect_after_restarting_cleo");
   return (
     <aside className="update-notice config-notice" role="status">
       <span className="update-notice-icon"><CircleAlert size={16} /></span>
       <div>
         <strong>{status.error ? tr("overlays.configuration_was_not_fully_applied") : tr("overlays.restart_cleo_to_apply_changes")}</strong>
-        <small title={detail}>{detail}</small>
+        {status.error ? <small title={status.error}>{status.error}</small> : null}
       </div>
       <button type="button" onClick={onRecheck}>{tr("dependencysetup.check_again")}</button>
       <button type="button" className="config-notice-close" aria-label={tr("overlays.dismiss_configuration_notice")} title={tr("overlays.dismiss_configuration_notice")} onClick={() => setDismissed(key)}><X size={14} /></button>

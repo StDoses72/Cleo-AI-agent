@@ -1,0 +1,140 @@
+/* Context meter: the ring beside the send button and the panel it opens above itself. */
+.context-meter {
+  position: relative;
+  display: inline-flex;
+}
+
+.context-ring {
+  display: inline-flex;
+  height: 30px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.context-ring:hover,
+.context-ring[aria-expanded="true"] {
+  background: var(--surface-hover);
+}
+
+.context-ring-track { stroke: var(--border-strong); }
+.context-ring-value { stroke: var(--text-soft); }
+.context-meter.high .context-ring-value { stroke: var(--warning); }
+
+.context-meter-panel {
+  position: absolute;
+  z-index: 40;
+  right: 0;
+  bottom: 34px;
+  display: grid;
+  width: max-content;
+  min-width: 216px;
+  max-width: min(320px, calc(100vw - 32px));
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-lg);
+  color: var(--text-soft);
+  font-size: var(--font-size-control);
+  line-height: 1.4;
+  animation: pop-in 140ms ease both;
+}
+
+.context-meter-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
+  white-space: nowrap;
+}
+
+.context-meter-head strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.context-meter-head span,
+.context-meter-rows dd {
+  font-variant-numeric: tabular-nums;
+}
+
+.context-meter-track {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--surface-active);
+}
+
+.context-meter-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--text-soft);
+}
+
+.context-meter.high .context-meter-track span {
+  background: var(--warning);
+}
+
+/* The harness account's usage windows, under a hairline. */
+.context-meter-section {
+  display: grid;
+  gap: 6px;
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.context-meter-section > strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.context-meter-section > strong svg {
+  color: var(--muted);
+}
+
+.context-meter-section[aria-busy="true"] .context-meter-rows {
+  display: none;
+}
+
+.context-meter-rows {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.context-meter-rows div {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  white-space: nowrap;
+}
+
+.context-meter-rows dt {
+  color: var(--text-soft);
+}
+
+.context-meter-rows dd {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+}
+
+.context-meter-rows dd small {
+  color: var(--muted);
+  font-size: var(--font-size-caption);
+}
+
+.context-meter-rows dd span {
+  min-width: 4ch;
+  color: var(--text);
+  text-align: right;
+}

@@ -14,6 +14,19 @@ test("the picker only offers harnesses whose model discovery succeeds", async ()
   assert.deepEqual(found, [{ provider: candidates[3], models: catalog }]);
 });
 
+test("harnesses that fail their check or offer no models are reported as unavailable", async () => {
+  const candidates = ["codex", "gemini", "opencode"].map(id => ({ id }));
+  const connected = [];
+  const unavailable = [];
+  await checkHarnessConnections(candidates, async provider => {
+    if (provider === "opencode") return { provider, source: "acp", models: [{ id: "glm" }] };
+    if (provider === "gemini") return { provider, source: "acp", models: [] };
+    throw new Error("Client missing or not logged in");
+  }, provider => connected.push(provider.id), provider => unavailable.push(provider.id));
+  assert.deepEqual(connected, ["opencode"]);
+  assert.deepEqual(unavailable.sort(), ["codex", "gemini"]);
+});
+
 test("successful harnesses appear before a slow client finishes checking", async () => {
   let finish;
   const slow = new Promise(resolve => { finish = resolve; });

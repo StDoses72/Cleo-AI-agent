@@ -22,14 +22,11 @@ import {
 } from "lucide-react";
 import type { ChangeFile, MemoryEntry, Project, RuntimeProfile, RuntimeUpdate, Thread } from "../types";
 import { accessLabel, approvalLabel, effortLabels, isGeneralProject, projectLabel, projectPathLabel } from "../runtime-labels";
-import { Timing } from "./Timing";
 import { TaskTokenUsage } from "./TaskTokenUsage";
-import { ContextUsage } from "./ContextUsage";
 import { ComputerPanel } from "./ComputerPanel";
 import { FilesPanel, type FileReveal } from "./FilesPanel";
 import { BranchHoldNotice, CommentForm, ReviewCommentsBar, SourceControlRow, type BranchHold, type ReviewComment, type RunSourceControl } from "./ReviewActions";
 import { RuntimePermissions } from "./Overlays";
-import { toolFailed } from "../toolOutcome";
 
 /** "details" holds what used to be two tabs (run output and context); the old ids still open it. */
 export type InspectorTab = "changes" | "details" | "files" | "computer";
@@ -141,15 +138,17 @@ export function Inspector({
             </button>
           ))}
         </div>
-        {onToggleWide ? (
-          // Wide review: the panel takes all the room the conversation can spare, and back.
-          <button className="icon-button" type="button" aria-pressed={wide} data-testid="inspector-wide"
-            aria-label={wide ? tr("inspector.restore_width") : tr("inspector.widen_for_review")}
-            title={wide ? tr("inspector.restore_width") : tr("inspector.widen_for_review")} onClick={onToggleWide}>
-            {wide ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
-          </button>
-        ) : null}
-        <button className="icon-button" type="button" aria-label={tr("app.close_inspector")} title={tr("app.close_inspector")} onClick={onClose}><X size={16} /></button>
+        <div className="inspector-actions">
+          {onToggleWide ? (
+            // Wide review: the panel takes all the room the conversation can spare, and back.
+            <button className="icon-button" type="button" aria-pressed={wide} data-testid="inspector-wide"
+              aria-label={wide ? tr("inspector.restore_width") : tr("inspector.widen_for_review")}
+              title={wide ? tr("inspector.restore_width") : tr("inspector.widen_for_review")} onClick={onToggleWide}>
+              {wide ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+            </button>
+          ) : null}
+          <button className="icon-button" type="button" aria-label={tr("app.close_inspector")} title={tr("app.close_inspector")} onClick={onClose}><X size={16} /></button>
+        </div>
       </header>
       <div className="inspector-panel" id="inspector-panel" role="tabpanel" aria-labelledby={`inspector-tab-${activeTab}`}>
         {activeTab === "computer" ? (
@@ -365,7 +364,6 @@ function ChangesPanel({ thread, repositoryPath, reveal = null, onNotify, onCopyT
         <div className="inspector-empty">
           <GitBranch size={20} />
           <strong>{tr("inspector.no_file_changes")}</strong>
-          <small>{tr("inspector.no_file_changes_hint")}</small>
         </div>
       </div>
     );
@@ -385,7 +383,7 @@ function ChangesPanel({ thread, repositoryPath, reveal = null, onNotify, onCopyT
               value={selectedSetId}
               onChange={(event) => setSelectedSetId(event.target.value)}
             >
-              <option value="workspace">{tr("inspector.current_workspace")}{thread?.changes.length ?? 0} {tr("inspector.files")}</option>
+              <option value="workspace">{tr("inspector.current_workspace")}{tr("conversation.value_files", { p0: thread?.changes.length ?? 0 })}</option>
               {history.map((changeSet) => (
                 <option value={changeSet.id} key={changeSet.id}>
                   {changeSet.title} · {changeSet.createdAt} · {changeSet.changes.length} {tr("inspector.files_2")}</option>
@@ -415,7 +413,7 @@ function ChangesPanel({ thread, repositoryPath, reveal = null, onNotify, onCopyT
       ) : (
         <>
           <div className="change-summary">
-            <span>{changes.length} {tr("inspector.files")}</span>
+            <span>{tr("conversation.value_files", { p0: changes.length })}</span>
             <div><strong>+{additions}</strong><em>-{deletions}</em></div>
           </div>
           <div className="changed-files" role="listbox" aria-label={tr("inspector.changed_files")}>
@@ -549,8 +547,8 @@ function DiffViewer({ file, onNotify, onCopyText, onOpenFile, comments = [], onA
                   <MessageSquare size={12} /><span>{note.text}</span>
                   {/* The line still reads the same, but its hunk is not the one the note was written on
                       (or the note predates fingerprints). */}
-                  {!hasHunkFingerprint(note) ? <small className="diff-comment-stale" title={tr("review.note_version_unverified_hint")}>{tr("review.note_version_unverified")}</small>
-                    : note.diffHash !== hunkFingerprintOfIndex(lines, index) ? <small className="diff-comment-stale" title={tr("review.note_file_changed_hint")}>{tr("review.note_file_changed")}</small> : null}
+                  {!hasHunkFingerprint(note) ? <small className="diff-comment-stale">{tr("review.note_version_unverified")}</small>
+                    : note.diffHash !== hunkFingerprintOfIndex(lines, index) ? <small className="diff-comment-stale">{tr("review.note_file_changed")}</small> : null}
                   {onRemoveComment ? <button type="button" aria-label={tr("conversation.remove")} onClick={() => onRemoveComment(note.id)}><X size={12} /></button> : null}
                 </span>
               ))}
@@ -565,8 +563,10 @@ function DiffViewer({ file, onNotify, onCopyText, onOpenFile, comments = [], onA
   );
 }
 
-/** Purpose: Everything about the run in one scroll: status and timing, output, context and token
- * use, run settings, the working directory and the memories available to this conversation.
+/** Purpose: What the conversation itself does not show about the run: its state, terminal output,
+ * context and token use, permissions, the working directory and the memories it was given. The
+ * turn's duration, its tool calls and (for development tasks) the harness, model and effort are
+ * already in the conversation and the composer, and are not repeated here.
  */
 function DetailsPanel({
   thread,
@@ -596,7 +596,6 @@ function DetailsPanel({
     return null;
   }, [thread?.items]);
   const relevantMemories = useMemo(() => memories.slice(0, 3), [memories]);
-  const tools = thread?.items.filter((item) => item.type === "tool").slice(-8) ?? [];
   return (
     <div className="details-panel run-panel context-panel">
       <section className="run-status">
@@ -604,20 +603,11 @@ function DetailsPanel({
         <div><strong>{waiting === "approval" ? tr("threadsidebar.awaiting_approval") : waiting === "question" ? tr("conversation.waiting_for_an_answer")
           : running ? tr("inspector.agent_is_running") : hasIssue ? tr("inspector.the_last_run_needs_attention") : completed ? tr("inspector.the_last_run_completed") : tr("inspector.not_run_yet")}</strong>{(running || hasIssue || completed) && <small>{thread?.updatedAt}</small>}</div>
       </section>
-      <Timing key={thread?.currentTiming?.id ?? thread?.id} summary={thread?.currentTiming} error={thread?.timingError} />
       <section className="inspector-section">
         <div className="section-kicker"><Terminal size={14} /><span>{tr("inspector.terminal_output")}</span></div>
         {thread?.terminal?.length ? (
           <pre className="terminal-output" tabIndex={0} role="region" aria-label={tr("inspector.terminal_output")}>{thread.terminal.join("")}{running && <span className="cursor">▋</span>}</pre>
         ) : <p className="muted details-empty">{tr("inspector.no_execution_output_yet")}</p>}
-        {tools.length ? (
-          <div className="run-events">
-            {tools.map((item) => item.type === "tool" ? <div className={toolFailed(item) ? "issue" : ""} key={item.id}>{toolFailed(item) ? <CircleAlert size={13} /> : item.status === "running" ? <Circle size={13} /> : <CircleCheck size={13} />}<span>{item.name}</span><time>{item.status === "running" ? tr("conversation.running") : toolFailed(item) ? (typeof item.exitCode === "number" ? tr("conversation.exit_code_value", { p0: item.exitCode }) : tr("conversation.failed")) : tr("conversation.done")}</time></div> : null)}
-          </div>
-        ) : null}
-      </section>
-      <section className="inspector-section">
-        <ContextUsage usage={thread?.usage} />
       </section>
       <section className="inspector-section">
         <div className="section-kicker"><Cpu size={14} /><span>{tr("routing.task_usage")}</span></div>
@@ -625,21 +615,20 @@ function DetailsPanel({
       </section>
       <section className="inspector-section">
         <div className="section-kicker"><ShieldCheck size={14} /><span>{tr("inspector.run_settings")}</span></div>
-        <dl className="property-list">
+        {/* A development task's harness, model and effort are the composer pill; a chat's pill names only the model. */}
+        {thread?.space === "productivity" ? null : <dl className="property-list">
           <div><dt>{tr("conversation.provider")}</dt><dd>{runtime.provider}</dd></div>
           <div><dt>{tr("inspector.model")}</dt><dd>{runtime.model}</dd></div>
           <div><dt>{tr("conversation.reasoning_effort")}</dt><dd>{runtime.effort ? effortLabels[runtime.effort] ?? runtime.effort : tr("conversation.determined_by_the_model")}</dd></div>
-          {thread?.space === "productivity" ? null : <>
-            <div><dt>{tr("inspector.access")}</dt><dd title={runtime.access}>{accessLabel(runtime.access)}</dd></div>
-            <div><dt>{tr("inspector.approval")}</dt><dd title={runtime.approval}>{approvalLabel(runtime.approval)}</dd></div>
-          </>}
-        </dl>
+          <div><dt>{tr("inspector.access")}</dt><dd title={runtime.access}>{accessLabel(runtime.access)}</dd></div>
+          <div><dt>{tr("inspector.approval")}</dt><dd title={runtime.approval}>{approvalLabel(runtime.approval)}</dd></div>
+        </dl>}
         {thread?.space === "productivity" ? (
           <div className="details-permissions">
             <RuntimePermissions key={thread.id} runtime={runtime} threadId={thread.id} onChange={onPermissionsChange} />
           </div>
         ) : null}
-        <button className="workspace-context-row" type="button" onClick={() => project?.path && onRevealPath(project.path)}><span className={`project-glyph compact ${isGeneralProject(project) ? "plain" : ""}`} style={{ "--project-accent": project?.accent } as CSSProperties}>{isGeneralProject(project) ? <FolderMinus size={12} /> : projectLabel(project).slice(0, 1)}</span><div><strong>{projectLabel(project) || tr("inspector.no_project")}</strong><small>{projectPathLabel(project) || tr("inspector.standalone_task_without_a_project_directory")}</small></div></button>
+        <button className="workspace-context-row" type="button" onClick={() => project?.path && onRevealPath(project.path)}><span className={`project-glyph compact ${isGeneralProject(project) ? "plain" : ""}`} style={{ "--project-accent": project?.accent } as CSSProperties}>{isGeneralProject(project) ? <FolderMinus size={12} /> : projectLabel(project).slice(0, 1)}</span><div><strong>{projectLabel(project) || tr("inspector.no_project")}</strong>{projectPathLabel(project) ? <small>{projectPathLabel(project)}</small> : null}</div></button>
       </section>
       {supplied?.count ? (
         <section className="inspector-section memory-context" data-testid="memory-supplied">

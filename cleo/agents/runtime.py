@@ -14,7 +14,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk, convert_to_messag
 
 from cleo.config.settings import AgentProfile, settings
 from cleo.harnesses.availability import ModelAvailability, observed_turn, profile_scope
-from cleo.harnesses.events import capture_context_usage
+from cleo.harnesses.events import CONTEXT_USAGE_EVENTS, capture_context_usage
 from cleo.i18n import tr
 from cleo.integrations.subscriptions import AgentMcp, create_runtime
 from cleo.runtime.usage import ContextWindowUsage
@@ -215,9 +215,7 @@ class RuntimeGraph:
                         prompt.extend(_codex_content(user.content))
 
                     async def on_event(event):
-                        is_usage = (
-                            event.data.get("provider_event_type") == "thread/tokenUsage/updated"
-                        )
+                        is_usage = event.data.get("provider_event_type") in CONTEXT_USAGE_EVENTS
                         if event.type == "assistant_message_chunk" and event.text:
                             await queue.put(AIMessageChunk(
                                 content=event.text, response_metadata={"cleo_native_usage": True},

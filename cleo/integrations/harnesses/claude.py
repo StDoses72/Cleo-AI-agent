@@ -28,6 +28,7 @@ from claude_agent_sdk import (
 from cleo.harnesses.approvals import PermissionBroker
 from cleo.harnesses.capabilities import Capability
 from cleo.harnesses.control import HarnessModel, SessionOptions
+from cleo.harnesses.events import context_usage_data, request_input_tokens
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 from cleo.harnesses.provider import ProviderSession, ProviderTurn
 from cleo.harnesses.questions import QuestionBroker, normalize_questions
@@ -115,6 +116,9 @@ class _ClaudeRuntime:
     owed_wakeups: int = 0
     # Set by cancel/close while waiting: the stream was dropped on purpose, not by a crash.
     wait_abandoned: bool = False
+    # The model's context window as Claude reports it, and the occupancy last published.
+    context_window: int | None = None
+    context_reported: tuple[int, int | None] | None = None
 
 
 class ClaudeProvider:
@@ -339,6 +343,7 @@ class ClaudeProvider:
         replacement.approvals.enabled = runtime.approvals.enabled
         runtime.approvals = replacement.approvals
         runtime.permission_verified = replacement.permission_verified
+        runtime.context_window = replacement.context_window or runtime.context_window
         runtime.needs_reconnect = False
 
     async def rewind(self, session_id: str, *, prompt: str, later: list[str],
@@ -396,6 +401,15 @@ class ClaudeProvider:
                 "claude.could_not_read_the_claude_conversation_record_no",
             ) + detail)
         return json.loads(stdout)
+
+    async def account_usage(self):
+        """Purpose: The signed-in account's plan usage windows, without a task session.
+
+        Input: None. Output: ``RateLimitWindowUsage`` rows in the server's order.
+        """
+        from cleo.integrations.harnesses.claude_usage import read_claude_usage
+
+        return await read_claude_usage(env=claude_environment(dict(os.environ)))
 
     async def list_models(self, project_path: str = ".") -> tuple[HarnessModel, ...]:
         """Purpose: Combine live Claude choices with explicitly configured model IDs.
@@ -462,6 +476,8 @@ class ClaudeProvider:
         cancelled_while_waiting = False
         timed_out_reason: str | None = None
         wait_ceiling = background_wait_seconds()
+        # Model of the conversation's own latest request; its window is the one that fills.
+        context_model: str | None = None
 
         async with runtime.lock:
             if runtime.needs_reconnect:
@@ -472,6 +488,7 @@ class ClaudeProvider:
             runtime.owed_wakeups = 0
             runtime.waiting = False
             runtime.wait_abandoned = False
+            runtime.context_reported = None
 
             async def question_event(event):
                 events.append(event)
@@ -480,6 +497,16 @@ class ClaudeProvider:
             async def publish(event: AgentEvent) -> None:
                 events.append(event)
                 await emit_event(on_event, event)
+
+            async def publish_context(used: int) -> None:
+                # One request can arrive as several messages; publish each reading once.
+                reading = (used, runtime.context_window)
+                if reading == runtime.context_reported:
+                    return
+                runtime.context_reported = reading
+                await publish(AgentEvent(
+                    provider=self.name, type="status", data=context_usage_data(*reading),
+                ))
 
             runtime.questions.bind(
                 question_event if runtime.questions.enabled and on_event else None,
@@ -550,6 +577,12 @@ class ClaudeProvider:
                         if runtime.waiting:
                             runtime.waiting = False
                             result_message = None
+                        # A subagent's requests fill its own window, not this conversation's.
+                        used = (request_input_tokens(getattr(message, "usage", None))
+                                if message.parent_tool_use_id is None else None)
+                        if used is not None:
+                            context_model = message.model
+                            await publish_context(used)
                         for block in message.content:
                             event = self._block_event(block)
                             if event is None:
@@ -588,6 +621,13 @@ class ClaudeProvider:
                         result_message = message
                         last_turn_id = message.uuid or last_turn_id
                         runtime.native_session_id = message.session_id
+                        # The result names each model's window; a model switch changes it.
+                        entry = (getattr(message, "model_usage", None) or {}).get(context_model)
+                        window = entry.get("contextWindow") if isinstance(entry, dict) else None
+                        if isinstance(window, int) and window > 0:
+                            runtime.context_window = window
+                            if runtime.context_reported is not None:
+                                await publish_context(runtime.context_reported[0])
                         # Zero-turn background notification results are bookkeeping frames.
                         # Preserve any nonzero telemetry, even if the CLI reports no turns.
                         has_activity = message.num_turns or message.total_cost_usd or any(
@@ -1070,7 +1110,26 @@ class ClaudeProvider:
             context_binding=context,
             external_home=external_home,
             computer_client=computer_client,
+            context_window=await self._context_window(client),
         )
+
+    @staticmethod
+    async def _context_window(client: Any) -> int | None:
+        """Purpose: The connected model's context window, as Claude's own ``/context`` reports it.
+
+        Input: A connected SDK client. Output: tokens, or None when this runtime cannot say.
+        """
+        read = getattr(client, "get_context_usage", None)
+        if not callable(read):
+            return None
+        try:
+            async with asyncio.timeout(5):
+                report = await read()
+        except Exception:
+            return None
+        window = report.get("maxTokens") if isinstance(report, dict) else None
+        known = isinstance(window, int) and not isinstance(window, bool) and window > 0
+        return window if known else None
 
     def computer_session(self, client_key: str) -> str | None:
         """Purpose: Find the session whose computer MCP server uses a key. Output: session id."""

@@ -120,12 +120,21 @@
 .memory-list-heading > div { display: flex; align-items: center; gap: 8px; }
 .memory-list-heading svg { color: var(--accent); }
 .memory-list-heading small { color: var(--muted-2); font-size: var(--font-size-caption); }
-.memory-list { border-top: 1px solid var(--border-strong); }
+/* One label column for the whole list, as wide as its longest label in the current language, so a
+   label never runs into the text beside it and every entry starts at the same edge. */
+.memory-list {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 14px;
+  border-top: 1px solid var(--border-strong);
+}
+
+.memory-list > :not(article) { grid-column: 1 / -1; }
 
 .memory-list article {
   display: grid;
-  grid-template-columns: 52px minmax(0, 1fr);
-  gap: 14px;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
   padding: 16px 0;
   border-bottom: 1px solid var(--border);
 }
@@ -134,6 +143,7 @@
   width: fit-content;
   height: fit-content;
   padding: 4px 7px;
+  white-space: nowrap;
   border-radius: 5px;
   color: var(--accent);
   background: var(--accent-soft);
@@ -143,7 +153,7 @@
 
 .memory-scope.project { color: var(--purple); background: color-mix(in srgb, var(--purple) 11%, transparent); }
 .memory-copy { min-width: 0; user-select: text; }
-.memory-entry-toggle { display: flex; width: 100%; min-width: 0; align-items: flex-start; gap: 18px; color: inherit; text-align: left; }
+.memory-entry-toggle { display: flex; width: 100%; min-width: 0; align-items: flex-start; gap: 18px; padding: 0; color: inherit; text-align: left; }
 .memory-entry-toggle > span { min-width: 0; flex: 1; }
 .memory-entry-toggle > svg { flex: 0 0 auto; margin-top: 1px; color: var(--muted-2); transition: transform 150ms ease, color 150ms ease; }
 .memory-entry-toggle:hover > svg { color: var(--accent); }

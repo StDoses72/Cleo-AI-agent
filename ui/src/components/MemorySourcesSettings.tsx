@@ -40,7 +40,6 @@ export function MemorySourcesSettings({ active }: { active: boolean }) {
   };
   return <section className="memory-sources-settings" aria-label={tr("memorysources.title")}>
     <h3>{tr("memorysources.title")}</h3>
-    <p>{tr("memorysources.description")}</p>
     {error && <p role="alert">{error}</p>}
     {state && <>
       {state.sources.map(source => <div className="settings-row" key={source.id}>
@@ -57,7 +56,7 @@ export function MemorySourcesSettings({ active }: { active: boolean }) {
             disabled_sources: event.target.checked ? state.settings.disabled_sources.filter(id => id !== source.id)
               : [...state.settings.disabled_sources, source.id] })} /><span /></label>
       </div>)}
-      <div className="settings-row"><div><strong>{tr("memorysources.sync")}</strong><p>{tr("memorysources.sync_help")}</p></div>
+      <div className="settings-row"><div><strong>{tr("memorysources.sync")}</strong></div>
         <label className="switch"><input type="checkbox" aria-label={tr("memorysources.sync")} disabled={busy}
           checked={state.settings.sync_enabled} onChange={event => void save({ ...state.settings, sync_enabled: event.target.checked })} /><span /></label>
       </div>

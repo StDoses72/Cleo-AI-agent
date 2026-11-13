@@ -305,34 +305,6 @@
   white-space: nowrap;
 }
 
-.usage-track {
-  height: 4px;
-  overflow: hidden;
-  border-radius: 6px;
-  background: var(--surface-active);
-}
-
-.usage-track span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--accent);
-  transition: width 500ms ease;
-}
-
-.usage-copy {
-  justify-content: space-between;
-  margin-top: 8px;
-  color: var(--muted);
-  font-family: var(--font-ui);
-  font-size: var(--font-size-caption);
-}
-
-.usage-copy small {
-  color: var(--muted-2);
-  font-size: inherit;
-}
-
 .workspace-context-row {
   display: flex;
   align-items: center;

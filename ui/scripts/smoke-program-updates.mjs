@@ -141,7 +141,8 @@ try {
   await notice.getByRole("button", { name: "重启安装", exact: true }).waitFor();
   await openUpdates();
   assert.doesNotMatch(await settings.innerText(), /下次启动自动安装/);
-  assert.match(await settings.innerText(), /点击后重启安装/);
+  // The ready state is a label; the button beside it says what a click does.
+  assert.match(await settings.innerText(), /Cleo 0\.4\.0 已就绪/);
   await assertDisabled(updateAction, false);
   await assertDisabled(notice.getByRole("button", { name: "重启安装", exact: true }), false);
   console.log("PASS: ready copy and both install entries");

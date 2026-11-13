@@ -7,11 +7,15 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True)
 class RateLimitWindowUsage:
-    """One account-level Codex usage window reported by app-server."""
+    """One usage window of the account a harness is signed in to, as that harness reports it.
+
+    ``scope`` names what a narrower window is for (a model, say); None covers the whole account.
+    """
 
     used_percent: int
     window_minutes: int | None = None
     resets_at: int | None = None
+    scope: str | None = None
 
 
 @dataclass(slots=True)

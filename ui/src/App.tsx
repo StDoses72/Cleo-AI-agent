@@ -739,7 +739,6 @@ export function App() {
           onSelectProductivityRuntime={(provider, model) => {
             void workspace.selectProductivityRuntime(provider, model);
           }}
-          onRoutingModeChange={(routingMode) => workspace.updateRuntime({ routingMode })}
           onEffortChange={(effort) => workspace.updateRuntime({ effort })}
           onServiceTierChange={(serviceTier) => workspace.updateRuntime({ serviceTier })}
           onPermissionChange={workspace.activeThread?.id ? (update) => workspace.updatePermissions(workspace.activeThread!.id, update)
@@ -869,7 +868,6 @@ export function App() {
       />
       <DeleteThreadDialog
         threadTitle={threadPendingDeletion?.title ?? null}
-        productivity={threadPendingDeletion?.space === "productivity"}
         deleting={deletingThread}
         error={deleteError}
         onCancel={() => setThreadPendingDeletion(null)}

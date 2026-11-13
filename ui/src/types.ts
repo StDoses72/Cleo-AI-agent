@@ -248,11 +248,24 @@ export interface ChangeSet {
   changes: ChangeFile[];
 }
 
+/** Context occupancy: the input side of the latest request against the window the harness reports. */
 export interface Usage {
   used: number | null;
   limit: number;
   input: number | null;
   output: number | null;
+}
+
+/** One usage window of the account a harness is signed in to: its length, percent used, reset (epoch seconds), and what a narrower window is for. */
+export interface HarnessUsageWindow {
+  minutes: number | null;
+  percent: number;
+  resetsAt: number | null;
+  scope: string | null;
+}
+
+export interface HarnessUsage {
+  windows: HarnessUsageWindow[];
 }
 
 export interface LocalSkill {
@@ -781,6 +794,7 @@ export interface CleoClient {
   getRuntimeCatalog(): Promise<RuntimeCatalog>;
   getConfigStatus(): Promise<ConfigStatus | null>;
   getProductivityModels(provider: string, projectPath?: string): Promise<ProductivityModelCatalog>;
+  getHarnessUsage(provider: string): Promise<HarnessUsage>;
   getLocalSkills(provider: string, projectPath?: string): Promise<LocalSkill[]>;
   getHarnessSync(): Promise<HarnessSyncStatus[]>;
   syncHarnessItems(harness: string, direction: "import" | "export", items: string[], settings?: boolean): Promise<HarnessSyncResult>;

@@ -5,7 +5,6 @@ import { cleoClient } from "../../services/cleoClient";
 import type { ApplyModelSettings, ModelProfileSummary, ModelSettings } from "../../types";
 import { billingLabel, isAccount, modelLabel, profileLabel, profileModels, providerInfo } from "./catalog";
 import { ModelDialog } from "./ModelDialog";
-import { ConnectionScope } from "./ConnectionScope";
 
 export type ConnectionStatus = { state: "connected" | "manual" | "error" | "checking"; message?: string };
 
@@ -22,6 +21,8 @@ export function ConnectionDetails({ profile, settings, busy, activeProfileId, st
   const alive = useRef(true);
   const generation = useRef(0);
   const used = settings.activeAgent === profile.name || settings.activeDreamAgent === profile.name || activeProfileId === profile.name;
+  // Hovering an unused connection has nothing to say; its popover opens only for the confirmation.
+  const popoverShown = popover === "pinned" || (popover === "hint" && used);
   useEffect(() => {
     alive.current = true;
     const dismiss = (event: PointerEvent) => { if (!anchor.current?.contains(event.target as Node)) setPopover("hidden"); };
@@ -56,7 +57,6 @@ export function ConnectionDetails({ profile, settings, busy, activeProfileId, st
         <div><dt>{tr("connectiondetails.configured_models")}</dt><dd>{profileModels(profile).length} {tr("memoryview.items")}</dd></div>
       </dl>
       <div className="ms-detail-models">{profileModels(profile).map(id => <span key={id}>{modelLabel(id)}</span>)}</div>
-      {isAccount(profile) && <ConnectionScope />}
       {status?.state === "manual" && <p className="ms-muted" role="status">{status.message}</p>}
       {status?.state === "error" && <p className="ms-error" role="alert">{status.message || tr("connectiondetails.this_connection_has_not_passed_verification")}</p>}
       {error && <p className="ms-error" role="alert">{error}</p>}
@@ -64,9 +64,9 @@ export function ConnectionDetails({ profile, settings, busy, activeProfileId, st
     </div>
     <footer className="ms-dialog-footer">
       <div className="ms-remove-action" ref={anchor} onPointerEnter={() => setPopover(value => value === "pinned" ? value : "hint")} onPointerLeave={() => setPopover(value => value === "hint" ? "hidden" : value)} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setPopover("hidden"); }}>
-        <button className="ms-danger" data-unavailable={used} aria-expanded={popover !== "hidden"} aria-controls="model-remove-popover" disabled={busy} onFocus={() => setPopover(value => value === "pinned" ? value : "hint")} onClick={() => setPopover("pinned")}>{tr("connectiondetails.remove_connection")}</button>
-        {popover !== "hidden" && <div className="ms-remove-popover" id="model-remove-popover" role={popover === "hint" ? "tooltip" : "region"} aria-label={tr("connectiondetails.connection_removal_notice")}>
-          {used ? <><strong><Info />{tr("connectiondetails.cannot_remove_yet")}{popover === "pinned" && <button className="ms-icon" aria-label={tr("connectiondetails.close_removal_notice")} onClick={() => setPopover("hidden")}><X /></button>}</strong><p>{tr("connectiondetails.this_connection_is_in_use")}<br />{tr("connectiondetails.switch_to_another_model_before_removing_it")}</p></> : popover === "pinned" ? <><strong>{tr("connectiondetails.remove_this_connection")}</strong><p>{tr("connectiondetails.existing_conversations_will_be_preserved")}</p><div><button className="ms-quiet" onClick={() => setPopover("hidden")}>{tr("computerpanel.cancel")}</button><button className="ms-remove-confirm" disabled={busy} onClick={() => { if (!used) void run(() => cleoClient.removeModelConnection(profile.name)); }}>{tr("connectiondetails.confirm_removal")}</button></div></> : <p>{tr("connectiondetails.removing_this_connection_preserves_existing_conversations")}</p>}
+        <button className="ms-danger" data-unavailable={used} aria-expanded={popoverShown} aria-controls="model-remove-popover" disabled={busy} onFocus={() => setPopover(value => value === "pinned" ? value : "hint")} onClick={() => setPopover("pinned")}>{tr("connectiondetails.remove_connection")}</button>
+        {popoverShown && <div className="ms-remove-popover" id="model-remove-popover" role={popover === "hint" ? "tooltip" : "region"} aria-label={tr("connectiondetails.connection_removal_notice")}>
+          {used ? <><strong><Info />{tr("connectiondetails.cannot_remove_yet")}{popover === "pinned" && <button className="ms-icon" aria-label={tr("connectiondetails.close_removal_notice")} onClick={() => setPopover("hidden")}><X /></button>}</strong><p>{tr("connectiondetails.this_connection_is_in_use")}<br />{tr("connectiondetails.switch_to_another_model_before_removing_it")}</p></> : <><strong>{tr("connectiondetails.remove_this_connection")}</strong><div><button className="ms-quiet" onClick={() => setPopover("hidden")}>{tr("computerpanel.cancel")}</button><button className="ms-remove-confirm" disabled={busy} onClick={() => { if (!used) void run(() => cleoClient.removeModelConnection(profile.name)); }}>{tr("connectiondetails.confirm_removal")}</button></div></>}
         </div>}
       </div>
       <div className="ms-footer-actions">{status?.state === "error" && <button className="ms-secondary" disabled={busy} onClick={() => void check()}>{tr("connectiondetails.retry_check")}</button>}<button className="ms-primary" disabled={busy || !name.trim() || name.trim() === profileLabel(profile)} onClick={() => void run(() => cleoClient.renameModelConnection(profile.name, name.trim()))}>{busy ? tr("backgroundmemorysettingspanel.saving") : tr("connectiondetails.save_changes")}</button></div>

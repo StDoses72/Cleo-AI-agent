@@ -3,6 +3,7 @@ import type {
   MemorySourcesState,
   HarnessSyncResult,
   HarnessSyncStatus,
+  HarnessUsage,
   CleoClient,
   AgentInstructions,
   Attachment,
@@ -66,7 +67,7 @@ export class MockCleoClient implements CleoClient {
   }
 
   private routingSettings: import("../routing-types").RoutingSettings = {
-    revision: "mock", enabled: true, preference: "quality", fallbackCandidate: "codex/demo@high",
+    revision: "mock", enabled: false, preference: "quality", fallbackCandidate: "codex/demo@high",
     automaticUpgrade: false, crossBackendDelegation: false,
     candidates: [{ id: "codex/demo@high", provider: "codex", backend: "codex_sdk", model: "demo",
       effort: "high", enabled: true, tier: "strong", available: true, costType: "subscription",
@@ -411,7 +412,7 @@ export class MockCleoClient implements CleoClient {
             type: "notice",
             tone: "info",
             title: decision === "cancel" ? "请求已取消" : "命令已拒绝",
-            detail: "Cleo 已收到你的决定，并停止了这次命令执行。",
+            detail: "",
           },
         };
         yield { type: "done", summary: "命令已由用户拒绝" };
@@ -552,7 +553,7 @@ export class MockCleoClient implements CleoClient {
     yield { type: "changes", changes: clone(uiChanges.slice(0, 2)) };
     yield {
       type: "usage",
-      usage: { used: 12480, limit: 128000, input: 2840, output: 1910 },
+      usage: { used: 12480, limit: 128000, input: 10570, output: 1910 },
     };
 
     await delay(540);
@@ -592,7 +593,7 @@ export class MockCleoClient implements CleoClient {
     }
     const thread = snapshot.threads.find(thread => thread.id === _threadId);
     if (thread) thread.status = "attention";
-    this.histories.get(_threadId)?.push({ id: `cancel-${Date.now()}`, type: "notice", tone: "info", title: "已停止当前运行", detail: "可以继续发送新请求。" });
+    this.histories.get(_threadId)?.push({ id: `cancel-${Date.now()}`, type: "notice", tone: "info", title: "已停止当前运行", detail: "" });
     for (const [id, question] of this.questions) {
       if (question.request.threadId === _threadId) { question.resolve(null); this.questions.delete(id); }
     }
@@ -715,6 +716,25 @@ export class MockCleoClient implements CleoClient {
   }
 
   async getLocalSkills() { return []; }
+
+  async getHarnessUsage(provider: string): Promise<HarnessUsage> {
+    await delay(180);
+    const soon = Math.floor(Date.now() / 1000) + 2 * 3600;
+    const later = Math.floor(Date.now() / 1000) + 4 * 86400;
+    if (provider === "codex") {
+      return { windows: [
+        { minutes: 300, percent: 42, resetsAt: soon, scope: null },
+        { minutes: 10080, percent: 18, resetsAt: later, scope: null },
+      ] };
+    }
+    if (provider === "claude") {
+      return { windows: [
+        { minutes: 10080, percent: 6, resetsAt: later, scope: null },
+        { minutes: 10080, percent: 11, resetsAt: later, scope: "Opus" },
+      ] };
+    }
+    return { windows: [] };
+  }
 
   async getHarnessSync(): Promise<HarnessSyncStatus[]> {
     await delay(120);

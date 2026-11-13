@@ -341,6 +341,6 @@ def test_subscription_usage_reaches_agent_and_saved_history(tmp_path, monkeypatc
         return [text async for text in agent.stream_text("hello", thread_id="chat")]
 
     assert asyncio.run(exercise()) == ["hello"]
-    expected = {"used": 150, "limit": 256000, "input": 120, "output": 30}
+    expected = {"used": 120, "limit": 256000, "input": 120, "output": 30}
     assert usage_view(agent.context_usage) == expected
     assert usage_from_events(store.read_events("chat"), 100000) == expected

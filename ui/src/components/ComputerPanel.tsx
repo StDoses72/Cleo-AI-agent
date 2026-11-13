@@ -187,7 +187,6 @@ export function ComputerPanel({ thread, running, onStop }: { thread: Thread | nu
       {mode === "browser" && <button className="icon-button" type="button" aria-label={expanded ? tr("computerpanel.collapse_browser") : tr("computerpanel.expand_browser")}
         onClick={() => setExpanded(value => !value)}>{expanded ? <Minimize size={15} /> : <Expand size={15} />}</button>}
     </header>
-    {!threadId && <p className="computer-panel-hint">{tr("computerpanel.select_or_create_a_task_to_choose_where_ai_can_operate")}</p>}
     {state?.bridgeError && <p className="computer-panel-error"><CircleAlert size={14} />{state.bridgeError}</p>}
 
     {authorization && <div className="computer-authorization" role="alert">
@@ -255,7 +254,7 @@ export function ComputerPanel({ thread, running, onStop }: { thread: Thread | nu
           </div></div>
       </div>}
       {activeTab?.fileChooser && <div className="browser-banner" role="alert">
-        <CircleAlert size={14} /><div><strong>{tr("computerpanel.the_page_requests_a_file")}</strong><p>{tr("computerpanel.ai_can_upload_only_files_in_this_task_s_working_directory_you_can_also_choose_a_file_")}</p>
+        <CircleAlert size={14} /><div><strong>{tr("computerpanel.the_page_requests_a_file")}</strong>
           <div className="computer-authorization-actions">
             <button type="button" onClick={() => void browserAction("pickFiles")}>{tr("computerpanel.choose_file")}</button>
             <button type="button" onClick={() => void browserAction("cancelFiles")}>{tr("computerpanel.cancel")}</button>
@@ -273,14 +272,11 @@ export function ComputerPanel({ thread, running, onStop }: { thread: Thread | nu
       </div>}
       <div className="browser-viewport" ref={viewport} data-testid="browser-viewport">
         {!browser?.tabs.length && <div className="browser-empty"><Globe size={28} /><span>{hibernated ? tr("computerpanel.browser_asleep_hint") : tr("computerpanel.enter_a_url_to_browse_ai_also_opens_pages_here_when_running_computeruse_tasks")}</span></div>}
-        {modalOpen && <div className="browser-empty"><span>{tr("computerpanel.the_browser_view_is_temporarily_hidden_while_a_dialog_is_open")}</span></div>}
       </div>
       {browser?.notices[0] && Date.now() - browser.notices[0].at < 60000 && <p className="computer-panel-hint">{browser.notices[0].text}</p>}
     </> : <div className="computer-host-panel">
       <Monitor size={28} />
       <strong>{state?.threads[threadId ?? ""]?.hostAuthorized ? tr("computerpanel.ai_is_authorized_to_control_this_computer") : tr("computerpanel.local_computer_mode")}</strong>
-      <p>{tr("computerpanel.ai_uses_the_real_mouse_and_keyboard_to_operate_windows_applications_a_red_status_bar_")}</p>
-      <p>{tr("computerpanel.ai_does_not_control_cleo_s_own_windows_use_the_built_in_browser_for_web_tasks_to_avoi")}</p>
       <form className="computer-shortcut" onSubmit={event => { event.preventDefault(); if (shortcut.trim()) void act("shortcut", { value: shortcut.trim() }).then(() => setShortcut("")); }}>
         <label>{tr("computerpanel.emergency_stop_shortcut")}<input value={shortcut} placeholder={state?.stopShortcut ?? "Control+Alt+Escape"} onChange={event => setShortcut(event.target.value)} /></label>
         <button type="submit" disabled={busy || !shortcut.trim()}>{tr("computerpanel.save")}</button>

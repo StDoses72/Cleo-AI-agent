@@ -4,8 +4,8 @@
     "en": "Retired home migration"
   },
   "memorysources.migration_retained": {
-    "zh-CN": "旧数据保留用于恢复。已验证仅表示文件内容一致，原生恢复能力在打开时验证。报告：",
-    "en": "Originals remain for recovery. Verified means byte integrity; native resume is checked on open. Report:"
+    "zh-CN": "报告：",
+    "en": "Report:"
   },
   "harnessimportpage.shared_native_home": {
     "zh-CN": "共用原生目录",
@@ -100,8 +100,8 @@
     "en": "Change appearance, models, and data settings"
   },
   "app.wait_for_the_current_version_operation_to_finish": {
-    "zh-CN": "请等待当前版本操作完成…",
-    "en": "Wait for the current version operation to finish…"
+    "zh-CN": "正在更新版本…",
+    "en": "Updating version…"
   },
   "app.submitting_please_wait": {
     "zh-CN": "正在提交，请稍候…",
@@ -136,8 +136,8 @@
     "en": "The working directory is not a Git repository, so changes cannot be reverted."
   },
   "app.revert_the_file_changes_made_by_the_latest_reply_while_preserving_changes_that_existe": {
-    "zh-CN": "将回退最近一次回答产生的文件改动，并保留回答前已有的改动。是否继续？",
-    "en": "Revert the file changes made by the latest reply while preserving changes that existed beforehand?"
+    "zh-CN": "回退最近一次回答的文件改动？",
+    "en": "Revert the latest reply's file changes?"
   },
   "app.reverted_this_reply_s_changes_to_value_files": {
     "zh-CN": "已回退本次回答对 {p0} 个文件的改动",
@@ -160,8 +160,8 @@
     "en": "Could not open the local file"
   },
   "app.wait_for_running_tasks_to_finish_before_reclaiming_storage": {
-    "zh-CN": "请先等待运行中的任务结束，再清理存储。",
-    "en": "Wait for running tasks to finish before reclaiming storage."
+    "zh-CN": "有任务在运行",
+    "en": "Tasks are running"
   },
   "app.configuration_template_copied": {
     "zh-CN": "配置模板已复制",
@@ -212,8 +212,8 @@
     "en": "Waiting for confirmation to continue"
   },
   "approvalprompt.this_command_needs_access_beyond_the_current_sandbox_or_to_a_protected_area_confirm_t": {
-    "zh-CN": "该命令需要超出当前沙箱或写入受保护区域。请确认后继续。",
-    "en": "This command needs access beyond the current sandbox or to a protected area. Confirm to continue."
+    "zh-CN": "该命令需要超出当前沙箱或写入受保护区域。",
+    "en": "This command needs access beyond the current sandbox or to a protected area."
   },
   "approvalprompt.this_file_change_is_outside_the_write_access_granted_to_the_current_session": {
     "zh-CN": "这项文件修改超出了当前会话已经授予的写入范围。",
@@ -460,8 +460,8 @@
     "en": "Built-in browser"
   },
   "computerpanel.local_computer_mode_currently_supports_windows_only": {
-    "zh-CN": "本机电脑模式目前仅支持 Windows",
-    "en": "Local computer mode currently supports Windows only"
+    "zh-CN": "仅 Windows",
+    "en": "Windows only"
   },
   "computerpanel.local_computer": {
     "zh-CN": "本机电脑",
@@ -552,12 +552,12 @@
     "en": "The browser is asleep"
   },
   "computerpanel.browser_asleep_detail_value": {
-    "zh-CN": "这个会话的浏览器连续 10 分钟没有使用，{p0} 个标签页的页面资源已释放以节省内存。重新打开会按保存的网址重新加载，不会恢复未提交的表单或页面脚本状态；登录数据保留。",
-    "en": "This conversation's browser went unused for 10 minutes, so the pages of {p0} tab(s) were released to save memory. Reopening reloads the saved addresses; unsubmitted forms and page script state are not restored, and login data is kept."
+    "zh-CN": "{p0} 个标签页已休眠",
+    "en": "{p0} tabs asleep"
   },
   "computerpanel.browser_asleep_hint": {
-    "zh-CN": "已休眠，打开后重新加载。",
-    "en": "Asleep; pages reload when reopened."
+    "zh-CN": "已休眠",
+    "en": "Asleep"
   },
   "computerpanel.reopen_pages": {
     "zh-CN": "重新打开",
@@ -600,8 +600,8 @@
     "en": "Downloads"
   },
   "computerpanel.no_downloads_yet_files_are_saved_to": {
-    "zh-CN": "还没有下载。文件会保存到 ",
-    "en": "No downloads yet. Files are saved to "
+    "zh-CN": "还没有下载 · ",
+    "en": "No downloads · "
   },
   "computerpanel.completed_show_in_folder": {
     "zh-CN": "已完成 · 在文件夹中显示",
@@ -652,8 +652,8 @@
     "en": "Reload"
   },
   "computerpanel.enter_a_url_to_browse_ai_also_opens_pages_here_when_running_computeruse_tasks": {
-    "zh-CN": "在地址栏输入网址开始浏览。AI 执行 /computeruse 任务时也会在这里打开网页。",
-    "en": "Enter a URL to browse. AI also opens pages here when running /computeruse tasks."
+    "zh-CN": "输入网址开始浏览",
+    "en": "Enter a URL to browse"
   },
   "computerpanel.the_browser_view_is_temporarily_hidden_while_a_dialog_is_open": {
     "zh-CN": "对话框打开时浏览器画面暂时隐藏。",
@@ -684,12 +684,12 @@
     "en": "Save"
   },
   "computerpanel.value_is_active_press_it_in_any_application_to_stop_immediately": {
-    "zh-CN": "{p0} 已生效，在任何应用中按下都会立即停止。",
-    "en": "{p0} is active. Press it in any application to stop immediately."
+    "zh-CN": "{p0} 已生效",
+    "en": "{p0} active"
   },
   "computerpanel.the_shortcut_becomes_active_after_you_authorize_local_control": {
-    "zh-CN": "授权本机控制后快捷键生效。",
-    "en": "The shortcut becomes active after you authorize local control."
+    "zh-CN": "快捷键未生效",
+    "en": "Shortcut inactive"
   },
   "computerpanel.revoke_access_and_switch_to_the_built_in_browser": {
     "zh-CN": "撤销授权，切回内置浏览器",
@@ -708,8 +708,8 @@
     "en": "Stop"
   },
   "computerpanel.ai_is_paused_and_pending_actions_have_been_cancelled_on_resuming_ai_takes_a_new_scree": {
-    "zh-CN": "AI 已暂停，未执行的操作已取消。交回后 AI 会重新截图，不会沿用旧坐标。",
-    "en": "AI is paused and pending actions have been cancelled. On resuming, AI takes a new screenshot instead of reusing old coordinates."
+    "zh-CN": "AI 已暂停，未执行的操作已取消",
+    "en": "AI paused; pending actions cancelled"
   },
   "computerpanel.stopped_value": {
     "zh-CN": "已停止{p0}",
@@ -732,8 +732,8 @@
     "en": "Recent computer actions"
   },
   "computerpanel.enter_computeruse_followed_by_your_task_ai_uses_the_target_selected_here": {
-    "zh-CN": "输入 /computeruse 和任务内容，AI 会使用这里选择的目标。",
-    "en": "Enter /computeruse followed by your task. AI uses the target selected here."
+    "zh-CN": "还没有操作",
+    "en": "No actions yet"
   },
   "computerpanel.waiting_for_control": {
     "zh-CN": "等待交回",
@@ -844,8 +844,8 @@
     "en": "Revert Git changes"
   },
   "conversation.revert_project_git_changes_from_the_latest_turn_excludes_browser_and_desktop_actions": {
-    "zh-CN": "回退最近一轮对项目 Git 文件的修改；不包含浏览器或桌面操作",
-    "en": "Revert project Git changes from the latest turn; excludes browser and desktop actions"
+    "zh-CN": "回退最近一轮的 Git 改动",
+    "en": "Revert the latest turn's Git changes"
   },
   "conversation.reverting": {
     "zh-CN": "撤销中",
@@ -916,8 +916,8 @@
     "en": "Question cancelled"
   },
   "conversation.this_question_has_expired_ask_the_agent_to_send_it_again": {
-    "zh-CN": "旧提问已失效，请让 Agent 重新提问",
-    "en": "This question has expired. Ask the agent to send it again."
+    "zh-CN": "提问已失效",
+    "en": "Question expired"
   },
   "conversation.hidden": {
     "zh-CN": "（已隐藏）",
@@ -936,8 +936,8 @@
     "en": "Waiting for delivery"
   },
   "conversation.send_after_the_current_reply": {
-    "zh-CN": "当前回复结束后发送",
-    "en": "Send after the current reply"
+    "zh-CN": "已排队",
+    "en": "Queued"
   },
   "conversation.delivering": {
     "zh-CN": "正在投递",
@@ -1112,8 +1112,8 @@
     "en": "The next message will hand off to {p0} · {p1}. Select the current runtime to cancel."
   },
   "conversation.the_handoff_was_submitted_but_its_first_turn_is_incomplete_check_the_actions_already_": {
-    "zh-CN": "交接已提交但尚未完成首轮，继续前请核对已执行的操作",
-    "en": "The handoff was submitted but its first turn is incomplete. Check the actions already performed before continuing."
+    "zh-CN": "交接首轮未完成",
+    "en": "Handoff first turn incomplete"
   },
   "conversation.remove_computer_use": {
     "zh-CN": "移除 Computer Use",
@@ -1208,28 +1208,28 @@
     "en": "Fast mode"
   },
   "conversation.fast_mode_is_on_faster_responses_with_higher_usage": {
-    "zh-CN": "快速模式已开启：更快，消耗更多额度",
-    "en": "Fast mode is on: faster responses with higher usage"
+    "zh-CN": "快速模式",
+    "en": "Fast mode"
   },
   "conversation.enable_fast_mode_faster_responses_with_higher_usage_availability_depends_on_the_model": {
-    "zh-CN": "开启快速模式：更快，消耗更多额度；可用性取决于模型和账号",
-    "en": "Enable fast mode: faster responses with higher usage; availability depends on the model and account"
+    "zh-CN": "快速模式",
+    "en": "Fast mode"
   },
   "conversation.change_runtime_or_model": {
     "zh-CN": "更换运行方式或模型",
     "en": "Change runtime or model"
   },
   "conversation.determined_by_the_model": {
-    "zh-CN": "由模型决定",
-    "en": "Determined by the model"
+    "zh-CN": "默认",
+    "en": "Default"
   },
   "conversation.restore_defaults": {
     "zh-CN": "恢复默认",
     "en": "Restore defaults"
   },
   "conversation.restore_the_model_s_default_reasoning_effort_and_standard_speed": {
-    "zh-CN": "恢复模型默认的思考深度和标准速度",
-    "en": "Restore the model's default reasoning effort and standard speed"
+    "zh-CN": "恢复默认",
+    "en": "Restore defaults"
   },
   "conversation.reasoning_effort": {
     "zh-CN": "思考深度",
@@ -1372,8 +1372,8 @@
     "en": "Loading…"
   },
   "filespanel.showing_the_first_2_000_items_only": {
-    "zh-CN": "仅显示前 2000 项。",
-    "en": "Showing the first 2,000 items only."
+    "zh-CN": "前 2000 项",
+    "en": "First 2,000 items"
   },
   "filespanel.working_directory_files": {
     "zh-CN": "工作目录文件",
@@ -1440,8 +1440,8 @@
     "en": "File contents"
   },
   "filespanel.this_file_is_large_only_its_beginning_is_shown": {
-    "zh-CN": "文件较大，只显示开头部分。",
-    "en": "This file is large. Only its beginning is shown."
+    "zh-CN": "仅显示开头",
+    "en": "Beginning only"
   },
   "connectionwizard.cancel_sign_in": {
     "zh-CN": "取消登录",
@@ -1472,8 +1472,8 @@
     "en": "{p0}: copied {p1} items to {p2}"
   },
   "harnessimportpage.skipped_value_existing_destination_items_without_overwriting_them": {
-    "zh-CN": "，{p0} 项因目标已存在而跳过（不会覆盖）",
-    "en": "; skipped {p0} existing destination items without overwriting them"
+    "zh-CN": "，跳过 {p0} 项",
+    "en": "; skipped {p0}"
   },
   "harnessimportpage.comparing_local_and_cleo_configurations": {
     "zh-CN": "正在对比本机与 Cleo 的配置…",
@@ -1724,8 +1724,8 @@
     "en": "Retrying consolidation…"
   },
   "memoryview.automatic_retries_exhausted": {
-    "zh-CN": "自动重试已用尽，需要手动重试",
-    "en": "Automatic retries exhausted; retry manually"
+    "zh-CN": "自动重试已用尽",
+    "en": "Automatic retries exhausted"
   },
   "memoryview.could_not_retry_consolidation": {
     "zh-CN": "无法重试整理",
@@ -1984,8 +1984,8 @@
     "en": "Off by default. Uses the model selected on the Dream Agent page and may incur model usage charges."
   },
   "backgroundmemorysettingspanel.enable_and_save_memory_consolidation_above_before_background_consolidation_can_run": {
-    "zh-CN": "Dream Agent 已停用，请先在上方启用并保存。",
-    "en": "Dream Agent is disabled. Enable it above and save first."
+    "zh-CN": "Dream Agent 已停用",
+    "en": "Dream Agent is off"
   },
   "backgroundmemorysettingspanel.interval_minutes": {
     "zh-CN": "整理间隔（分钟）",
@@ -2060,8 +2060,8 @@
     "en": "Uses Codex quota"
   },
   "catalog.sign_in_separately_in_cleo_new_sessions_are_stored_separately_from_codex_app_history_": {
-    "zh-CN": "与本机 Codex 共用登录、配置和会话目录；登录变更影响使用同一目录的客户端，同一账号共享 Codex 额度。",
-    "en": "Shares the native Codex login, configuration and session directory. Login changes affect clients using that directory; the same account shares Codex quota."
+    "zh-CN": "与本机 Codex 共用登录",
+    "en": "Shares the local Codex login"
   },
   "catalog.sign_in_with_a_claude_account": {
     "zh-CN": "使用 Claude 账号登录",
@@ -2216,12 +2216,12 @@
     "en": "Close removal notice"
   },
   "connectiondetails.this_connection_is_in_use": {
-    "zh-CN": "这个连接正在被使用。",
-    "en": "This connection is in use."
+    "zh-CN": "使用中",
+    "en": "In use"
   },
   "connectiondetails.switch_to_another_model_before_removing_it": {
-    "zh-CN": "切换所用模型后，才可移除。",
-    "en": "Switch to another model before removing it."
+    "zh-CN": "",
+    "en": ""
   },
   "connectiondetails.remove_this_connection": {
     "zh-CN": "移除这个连接？",
@@ -2344,8 +2344,8 @@
     "en": "Client path"
   },
   "connectionwizard.automatically_find_a_locally_installed_client": {
-    "zh-CN": "自动查找本机已安装的客户端",
-    "en": "Automatically find a locally installed client"
+    "zh-CN": "自动",
+    "en": "Automatic"
   },
   "connectionwizard.connection_verified": {
     "zh-CN": "连接验证成功",
@@ -2368,8 +2368,8 @@
     "en": "Search available models"
   },
   "connectionwizard.no_models_found_you_can_enter_a_model_id_manually": {
-    "zh-CN": "没有找到模型，可手动填写模型 ID。",
-    "en": "No models found. You can enter a model ID manually."
+    "zh-CN": "没有找到模型",
+    "en": "No models found"
   },
   "connectionwizard.model_name": {
     "zh-CN": "模型名称",
@@ -2608,24 +2608,24 @@
     "en": "Target project"
   },
   "overlays.no_other_projects_in_this_space": {
-    "zh-CN": "这个空间还没有其他项目，先在侧栏添加一个项目。",
-    "en": "There are no other projects in this space yet; add one from the sidebar first."
+    "zh-CN": "没有其他项目",
+    "en": "No other projects"
   },
   "overlays.move_task_directory_note": {
-    "zh-CN": "加入后，后续执行的工作目录将从 {p0} 改为 {p1}。已有文件、Git 仓库和附件不会被移动；下一轮会在新目录继续当前 harness 会话，若该 harness 无法在新目录恢复会提示错误。",
-    "en": "After moving, later turns run in {p1} instead of {p0}. Existing files, the Git repository and attachments are not moved; the next turn continues the current harness session in the new directory and reports an error if that harness cannot resume there."
+    "zh-CN": "工作目录：{p0} → {p1}",
+    "en": "Working folder: {p0} → {p1}"
   },
   "overlays.move_chat_note": {
     "zh-CN": "加入后，这个对话会归入“{p0}”的记忆与上下文。",
     "en": "After moving, this conversation belongs to the memory and context of “{p0}”."
   },
   "overlays.move_keeps_history_note": {
-    "zh-CN": "会话 ID、标题、消息和附件引用保持不变；上一轮的 Git 撤销点会随迁移作废。已整理进记忆的会话和带 harness 交接快照的任务暂不支持迁移。",
-    "en": "The conversation keeps its ID, title, messages and attachment references; the last turn's Git undo point is discarded by the move. A conversation already consolidated into memory, or a task carrying a harness handoff snapshot, cannot move yet."
+    "zh-CN": "上一轮的撤销点将作废",
+    "en": "The last turn's undo point will be discarded"
   },
   "overlays.wait_for_the_run_to_finish_before_moving": {
-    "zh-CN": "会话正在运行，等待结束后再加入项目。",
-    "en": "The conversation is running; wait for it to finish before moving it."
+    "zh-CN": "会话运行中",
+    "en": "Conversation is running"
   },
   "overlays.moving": {
     "zh-CN": "正在加入…",
@@ -2800,12 +2800,12 @@
     "en": "(unavailable)"
   },
   "overlays.applies_next_run_current_value_value": {
-    "zh-CN": "下次运行生效 · 当前：{p0} · {p1}",
-    "en": "Applies next run · Current: {p0} · {p1}"
+    "zh-CN": "当前：{p0} · {p1}",
+    "en": "Current: {p0} · {p1}"
   },
   "overlays.pending_permissions_belong_to_the_previous_provider_choose_them_again_or_discard_the_": {
-    "zh-CN": "待生效权限属于之前的服务，请重新选择或取消更改。",
-    "en": "Pending permissions belong to the previous provider. Choose them again or discard the changes."
+    "zh-CN": "待生效权限已失效",
+    "en": "Pending permissions no longer apply"
   },
   "overlays.saving": {
     "zh-CN": "正在保存…",
@@ -2848,12 +2848,12 @@
     "en": "Could not calculate storage usage."
   },
   "overlays.delete_approximately_value_of_reclaimable_data_dependency_snapshots_left_by_deleted_p": {
-    "zh-CN": "将删除约 {p0} 可回收内容：已删除程序遗留的依赖快照、没有程序使用的运行环境、过期安装包和可重建的下载缓存。\n用户数据、数据备份和保留的程序不受影响。",
-    "en": "Delete approximately {p0} of reclaimable data: dependency snapshots left by deleted programs, unused runtimes, outdated installers, and rebuildable download caches.\nUser data, data backups, and retained programs are unaffected."
+    "zh-CN": "将删除约 {p0} 可回收内容：已删除程序遗留的依赖快照、没有程序使用的运行环境、过期安装包和可重建的下载缓存。",
+    "en": "Delete approximately {p0} of reclaimable data: dependency snapshots left by deleted programs, unused runtimes, outdated installers, and rebuildable download caches."
   },
   "overlays.freed_value_value_items_were_in_use_and_could_not_be_deleted_they_will_be_retried_on_": {
-    "zh-CN": "已释放 {p0}；{p1} 项被占用未能删除，下次启动会重试。",
-    "en": "Freed {p0}; {p1} items were in use and could not be deleted. They will be retried on the next launch."
+    "zh-CN": "已释放 {p0}；{p1} 项待重试",
+    "en": "Freed {p0}; {p1} pending retry"
   },
   "overlays.freed_value": {
     "zh-CN": "已释放 {p0}。",
@@ -2876,8 +2876,8 @@
     "en": "Total: {p0}; reclaimable: {p1}{p2}."
   },
   "overlays.value_items_could_not_be_deleted_last_time_and_will_be_retried_automatically": {
-    "zh-CN": "；{p0} 项上次未能删除，将自动重试",
-    "en": "; {p0} items could not be deleted last time and will be retried automatically"
+    "zh-CN": "；{p0} 项待重试",
+    "en": "; {p0} pending retry"
   },
   "overlays.storage_usage": {
     "zh-CN": "存储占用",
@@ -2960,8 +2960,8 @@
     "en": "Another version operation is in progress."
   },
   "overlays.development_builds_do_not_check_for_updates": {
-    "zh-CN": "开发版本不检查更新",
-    "en": "Development builds do not check for updates"
+    "zh-CN": "开发版本",
+    "en": "Development build"
   },
   "overlays.loading_version_information": {
     "zh-CN": "正在获取版本信息…",
@@ -3000,8 +3000,8 @@
     "en": "Downloading {p0} / {p1}."
   },
   "overlays.cleo_value_is_ready_click_to_restart_and_install": {
-    "zh-CN": "Cleo {p0} 已准备好，点击后重启安装。",
-    "en": "Cleo {p0} is ready. Click to restart and install."
+    "zh-CN": "Cleo {p0} 已就绪",
+    "en": "Cleo {p0} ready"
   },
   "overlays.starting_the_new_version": {
     "zh-CN": "正在启动新版本…",
@@ -3056,20 +3056,20 @@
     "en": " · Update incomplete"
   },
   "overlays.runtime_dependencies_were_updated_and_verified_they_will_take_effect_on_the_next_laun": {
-    "zh-CN": "运行依赖已更新并通过检查，下次启动自动生效。",
-    "en": "Runtime dependencies were updated and verified. They will take effect on the next launch."
+    "zh-CN": "运行依赖已更新",
+    "en": "Runtime dependencies updated"
   },
   "overlays.dependency_update_did_not_complete_continuing_with_the_current_version_value": {
-    "zh-CN": "依赖更新未完成，继续使用当前版本。{p0}",
-    "en": "Dependency update did not complete; continuing with the current version.{p0}"
+    "zh-CN": "依赖更新未完成。{p0}",
+    "en": "Dependency update incomplete.{p0}"
   },
   "overlays.checking_and_updating_sdks_and_browser_tools_in_the_background": {
     "zh-CN": "正在后台检查并更新 SDK 和浏览器工具…",
     "en": "Checking and updating SDKs and browser tools in the background…"
   },
   "overlays.using_verified_runtime_dependencies": {
-    "zh-CN": "当前使用已验证的运行依赖。",
-    "en": "Using verified runtime dependencies."
+    "zh-CN": "运行依赖正常",
+    "en": "Runtime dependencies OK"
   },
   "overlays.data_directory_changes_were_saved_and_will_take_effect_after_restarting_cleo": {
     "zh-CN": "数据目录的修改已保存，重启 Cleo 后生效。",
@@ -3180,8 +3180,8 @@
     "en": "Session permissions"
   },
   "permissionselector.applies_next_turn_current_value": {
-    "zh-CN": "下轮生效 · 当前：{p0}",
-    "en": "Applies next turn · Current: {p0}"
+    "zh-CN": "当前：{p0}",
+    "en": "Current: {p0}"
   },
   "permissionselector.custom_permissions": {
     "zh-CN": "自定义权限",
@@ -3216,8 +3216,8 @@
     "en": "Detach project {p0}"
   },
   "projecttarget.detach_this_value_from_its_project_the_project_stays_in_the_list": {
-    "zh-CN": "取消关联，{p0}改为不关联项目（项目保留在列表中）",
-    "en": "Detach this {p0} from its project; the project stays in the list"
+    "zh-CN": "取消关联",
+    "en": "Detach"
   },
   "projecttarget.choosing_a_folder": {
     "zh-CN": "正在选择文件夹…",
@@ -3296,8 +3296,8 @@
     "en": "Remove project {p0}"
   },
   "threadsidebar.remove_project_without_deleting_local_files": {
-    "zh-CN": "移除项目（不删除本地文件）",
-    "en": "Remove project without deleting local files"
+    "zh-CN": "移除项目",
+    "en": "Remove project"
   },
   "threadsidebar.no_value_yet": {
     "zh-CN": "还没有{p0}",
@@ -3492,8 +3492,8 @@
     "en": "Full access"
   },
   "runtime_labels.managed_by_provider": {
-    "zh-CN": "由服务管理",
-    "en": "Managed by provider"
+    "zh-CN": "默认",
+    "en": "Default"
   },
   "runtime_labels.manual_approval": {
     "zh-CN": "手动审批",
@@ -3544,12 +3544,12 @@
     "en": "Could not refresh memories"
   },
   "usecleoworkspace.selected_value_waiting_for_the_current_turn_to_finish_before_handing_off": {
-    "zh-CN": "已选择 {p0}，等待当前轮结束后交接…",
-    "en": "Selected {p0}; waiting for the current turn to finish before handing off…"
+    "zh-CN": "本轮结束后交接到 {p0}",
+    "en": "Handing off to {p0} after this turn"
   },
   "usecleoworkspace.connecting_to_value_and_handing_off_context": {
-    "zh-CN": "正在连接 {p0} 并交接上下文…",
-    "en": "Connecting to {p0} and handing off context…"
+    "zh-CN": "正在交接到 {p0}…",
+    "en": "Handing off to {p0}…"
   },
   "usecleoworkspace.could_not_load_the_local_workspace": {
     "zh-CN": "无法加载本地工作区",
@@ -3588,8 +3588,8 @@
     "en": "Could not create the conversation. Try again."
   },
   "usecleoworkspace.switch_failed_the_original_session_remains_available": {
-    "zh-CN": "切换失败，原会话可继续使用。",
-    "en": "Switch failed. The original session remains available."
+    "zh-CN": "切换失败",
+    "en": "Switch failed"
   },
   "usecleoworkspace.run_needs_attention": {
     "zh-CN": "运行需要查看",
@@ -3636,12 +3636,12 @@
     "en": "The steering receipt does not match the target run"
   },
   "usecleoworkspace.value_retrying_will_verify_the_same_message": {
-    "zh-CN": "{p0}；重试会核对同一条消息。",
-    "en": "{p0}; retrying will verify the same message."
+    "zh-CN": "{p0}",
+    "en": "{p0}"
   },
   "usecleoworkspace.submission_is_not_confirmed_retrying_will_verify_the_same_message": {
-    "zh-CN": "尚未确认提交结果，重试会核对同一条消息。",
-    "en": "Submission is not confirmed. Retrying will verify the same message."
+    "zh-CN": "提交未确认",
+    "en": "Submission not confirmed"
   },
   "usecleoworkspace.wait_for_the_current_run_to_finish_before_editing_a_message": {
     "zh-CN": "请等待当前运行结束后再编辑消息。",
@@ -3660,8 +3660,8 @@
     "en": "Could not load the model list. Try again."
   },
   "usecleoworkspace.harness_switched_the_skills_list_is_temporarily_unavailable": {
-    "zh-CN": "Harness 已切换；技能列表暂时无法读取。",
-    "en": "Harness switched; the skills list is temporarily unavailable."
+    "zh-CN": "无法读取技能列表",
+    "en": "Could not load skills"
   },
   "usecleoworkspace.only_development_tasks_can_revert_git_changes": {
     "zh-CN": "只有开发任务可以回退 Git 改动。",
@@ -5172,8 +5172,8 @@
     "en": "Original files retained"
   },
   "memorysources.legacy_excluded": {
-    "zh-CN": "旧记忆中互相矛盾的条目已排除，不影响其他有效偏好。",
-    "en": "Contradictory legacy entries are excluded. Other valid preferences remain available."
+    "zh-CN": "已排除矛盾的旧条目",
+    "en": "Contradictory legacy entries excluded"
   },
   "modelsettingspanel.dream_agent": {
     "zh-CN": "Dream Agent",
@@ -5459,9 +5459,25 @@
     "zh-CN": "上下文已用 {p0}%",
     "en": "{p0}% of context used"
   },
-  "conversation.context_used_detail": {
-    "zh-CN": "上下文已用 {p0}%（{p1}k / {p2}k），点击查看详情",
-    "en": "{p0}% of context used ({p1}k / {p2}k); click for details"
+  "contextmeter.usage": {
+    "zh-CN": "用量",
+    "en": "Usage"
+  },
+  "contextmeter.week": {
+    "zh-CN": "本周",
+    "en": "Week"
+  },
+  "contextmeter.hours": {
+    "zh-CN": "{p0} 小时",
+    "en": "{p0}-hour"
+  },
+  "contextmeter.days": {
+    "zh-CN": "{p0} 天",
+    "en": "{p0}-day"
+  },
+  "contextmeter.resets": {
+    "zh-CN": "{p0} 重置",
+    "en": "resets {p0}"
   },
   "conversation.work_run": {
     "zh-CN": "运行 {p0} 条命令",
@@ -5556,8 +5572,8 @@
     "en": "Storage and maintenance"
   },
   "conversation.no_matching_commands": {
-    "zh-CN": "没有匹配的命令或技能，继续输入会作为普通消息发送。",
-    "en": "No matching command or skill; keep typing to send it as a message."
+    "zh-CN": "没有匹配的命令或技能",
+    "en": "No matching commands or skills"
   },
   "conversation.no_commands_for_this_harness": {
     "zh-CN": "当前运行方式没有可用的斜杠命令或本地技能。",
@@ -5576,8 +5592,8 @@
     "en": "New chat"
   },
   "sourcecontrol.checkout_busy": {
-    "zh-CN": "这个项目里还有任务在运行，等它结束后再撤销或提交。",
-    "en": "A task is still running in this project; wait for it to finish before reverting or committing."
+    "zh-CN": "项目中有任务在运行",
+    "en": "A task is running in this project"
   },
   "sourcecontrol.creating_worktree": {
     "zh-CN": "正在创建 worktree…",
@@ -5616,8 +5632,8 @@
     "en": "Remove worktree {p0}? The folder is deleted and the branch kept; git refuses if there are uncommitted changes."
   },
   "sidebar.worktree_removed": {
-    "zh-CN": "worktree 已移除，分支仍保留",
-    "en": "Worktree removed; the branch is kept"
+    "zh-CN": "worktree 已移除",
+    "en": "Worktree removed"
   },
   "settings.notifications": {
     "zh-CN": "桌面通知",
@@ -5664,8 +5680,8 @@
     "en": "A git action is running in this checkout; send once it finishes."
   },
   "review.comments_not_sent": {
-    "zh-CN": "审查意见没有发出，已保留，可以重试。",
-    "en": "The review notes were not sent; they are kept so you can retry."
+    "zh-CN": "审查意见未发出",
+    "en": "Review notes not sent"
   },
   "conversation.project_files": {
     "zh-CN": "项目文件",
@@ -5680,8 +5696,8 @@
     "en": "No matching files"
   },
   "conversation.no_project_files": {
-    "zh-CN": "这个项目没有可引用的文件（需要 git 仓库）",
-    "en": "No files to mention here (needs a git repository)"
+    "zh-CN": "没有可引用的文件",
+    "en": "No files to mention"
   },
   "review.nothing_to_push": {
     "zh-CN": "没有需要推送的提交",
@@ -5795,6 +5811,30 @@
     "zh-CN": "命令耗时 {p0}",
     "en": "commands took {p0}"
   },
+  "conversation.work_run_one": {
+    "zh-CN": "运行 {p0} 条命令",
+    "en": "ran {p0} command"
+  },
+  "conversation.work_web_one": {
+    "zh-CN": "浏览器操作 {p0} 次",
+    "en": "{p0} browser action"
+  },
+  "conversation.work_agent_one": {
+    "zh-CN": "{p0} 个子任务",
+    "en": "{p0} subtask"
+  },
+  "conversation.work_other_one": {
+    "zh-CN": "{p0} 个其他工具",
+    "en": "{p0} other tool"
+  },
+  "conversation.work_memory_one": {
+    "zh-CN": "查阅记忆 {p0} 次",
+    "en": "{p0} memory lookup"
+  },
+  "conversation.work_thoughts_one": {
+    "zh-CN": "{p0} 段思考",
+    "en": "{p0} thought"
+  },
   "conversation.exit_code_value": {
     "zh-CN": "退出码 {p0}",
     "en": "exit {p0}"
@@ -5848,8 +5888,8 @@
     "en": "Steer"
   },
   "conversation.steer_now_hint": {
-    "zh-CN": "现在插入当前运行，而不是排队（{p0} Enter）",
-    "en": "Send into the current run now instead of queueing ({p0} Enter)"
+    "zh-CN": "立即插入（{p0} Enter）",
+    "en": "Steer now ({p0} Enter)"
   },
   "conversation.steer_without_attachments": {
     "zh-CN": "带附件的消息只能排队",
@@ -5912,8 +5952,8 @@
     "en": "Memories given to the latest turn"
   },
   "conversation.subtask_runs_in_parent": {
-    "zh-CN": "这个子任务正在父任务的运行中执行；要停止或补充要求，请在父任务里操作。",
-    "en": "This subtask is running inside its parent's run; stop it or add instructions from the parent task."
+    "zh-CN": "子任务运行中",
+    "en": "Subtask running"
   },
   "inspector.memory_changed_since": {
     "zh-CN": "记忆库中现在的内容：",
@@ -5936,8 +5976,8 @@
     "en": "File access and approval"
   },
   "overlays.storage_usage_desktop_only": {
-    "zh-CN": "数据目录、依赖快照和可回收空间在桌面版中计算并显示；网页预览没有本地文件可统计。",
-    "en": "The data folder, dependency snapshots and reclaimable space are measured in the desktop app; the web preview has no local files to measure."
+    "zh-CN": "仅桌面版可用",
+    "en": "Desktop app only"
   },
   "overlays.maintenance": {
     "zh-CN": "维护",
@@ -6000,16 +6040,16 @@
     "en": "(written before change versions were recorded; check it still applies)"
   },
   "inspector.memory_excerpt_partial": {
-    "zh-CN": "这一轮只记录了这条偏好的前 160 个字符，之后部分的改动无法比对。",
-    "en": "Only the first 160 characters of this preference were recorded for the turn; changes after them cannot be compared."
+    "zh-CN": "仅记录前 160 字符",
+    "en": "First 160 characters only"
   },
   "review.branch_unconfirmed": {
-    "zh-CN": "git 报告当前分支是 {p0}，Cleo 记录的是 {p1}。两者一致之前，审查意见先隐藏，也不能新增。",
-    "en": "Git reports branch {p0}, but Cleo's record says {p1}. Until they agree, review notes are hidden and new ones can't be added."
+    "zh-CN": "分支不一致：{p0} / {p1}",
+    "en": "Branch mismatch: {p0} / {p1}"
   },
   "review.branch_unconfirmed_kept": {
-    "zh-CN": "git 报告当前分支是 {p0}，Cleo 记录的是 {p1}。两者一致之前，审查意见先隐藏（已保留 {p2} 条，不会丢失），也不能新增。",
-    "en": "Git reports branch {p0}, but Cleo's record says {p1}. Until they agree, review notes are hidden ({p2} kept, not lost) and new ones can't be added."
+    "zh-CN": "分支不一致：{p0} / {p1} · {p2} 条意见已隐藏",
+    "en": "Branch mismatch: {p0} / {p1} · {p2} notes hidden"
   },
   "review.check_branch_again": {
     "zh-CN": "重新检查",
@@ -6028,11 +6068,91 @@
     "en": "Version recovery"
   },
   "overlays.version_recovery_hint": {
-    "zh-CN": "回到之前安装或保存过的版本。选好后 Cleo 会重启；聊天、记忆和配置保持不变。",
-    "en": "Go back to a version installed or saved earlier. Cleo restarts once you choose; chats, memory and settings stay as they are."
+    "zh-CN": "选择后 Cleo 会重启",
+    "en": "Cleo restarts after you choose"
   },
   "overlays.open_version_recovery": {
     "zh-CN": "选择版本…",
     "en": "Choose a version…"
+  },
+  "runtimepicker.checking": {
+    "zh-CN": "检测中…",
+    "en": "Checking…"
+  },
+  "runtimepicker.unavailable": {
+    "zh-CN": "未连接",
+    "en": "Not connected"
+  },
+  "runtimepicker.check_again": {
+    "zh-CN": "重新检测连接",
+    "en": "Check connections again"
+  },
+  "conversation.value_files_changed_one": {
+    "zh-CN": "{p0} 个文件有改动",
+    "en": "{p0} file changed"
+  },
+  "conversation.value_files_one": {
+    "zh-CN": "{p0} 个文件",
+    "en": "{p0} file"
+  },
+  "conversation.and_value_more_files_one": {
+    "zh-CN": "还有 {p0} 个文件",
+    "en": "{p0} more file"
+  },
+  "review.commit_value_files_one": {
+    "zh-CN": "提交 {p0} 个文件",
+    "en": "Commit {p0} file"
+  },
+  "conversation.plan_complete_value_one": {
+    "zh-CN": "计划完成 · {p0} 步",
+    "en": "Plan done · {p0} step"
+  },
+  "conversation.review_value_changed_files_one": {
+    "zh-CN": "查看 {p0} 个改动文件",
+    "en": "Review {p0} changed file"
+  },
+  "app.reverted_this_reply_s_changes_to_value_files_one": {
+    "zh-CN": "已回退本次回答对 {p0} 个文件的改动",
+    "en": "Reverted this reply's changes to {p0} file"
+  },
+  "conversation.value_entries_one": {
+    "zh-CN": "{p0} 条",
+    "en": "{p0} entry"
+  },
+  "conversation.value_items_one": {
+    "zh-CN": "{p0} 项",
+    "en": "{p0} item"
+  },
+  "taskusage.waiting_for_a_task": {
+    "zh-CN": "等待任务",
+    "en": "Waiting for a task"
+  },
+  "taskusage.model_usage_of_this_task": {
+    "zh-CN": "当前任务模型用量",
+    "en": "Model usage of this task"
+  },
+  "taskusage.model_and_role": {
+    "zh-CN": "模型 / 分工",
+    "en": "Model / role"
+  },
+  "taskusage.calls": {
+    "zh-CN": "调用",
+    "en": "Calls"
+  },
+  "runtimepicker.search_harnesses": {
+    "zh-CN": "搜索 harness",
+    "en": "Search harnesses"
+  },
+  "runtimepicker.no_matching_harnesses": {
+    "zh-CN": "没有匹配的 harness",
+    "en": "No matching harnesses"
+  },
+  "taskusage.calls_unreported": {
+    "zh-CN": "{p0} 条未上报",
+    "en": "{p0} calls unreported"
+  },
+  "taskusage.calls_unreported_one": {
+    "zh-CN": "{p0} 条未上报",
+    "en": "{p0} call unreported"
   }
 }

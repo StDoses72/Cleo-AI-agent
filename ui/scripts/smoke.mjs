@@ -131,29 +131,29 @@ try {
   await window.getByTestId("new-thread").click();
   await window.getByTestId("conversation").waitFor();
   await window.getByText("开始新任务").waitFor();
-  // The pill opens on a settings card; the model row leads to the harness and model lists.
+  // The model chip opens on the current harness's models; its heading leads to the other harnesses.
   await window.getByTestId("runtime-selector").click();
-  await window.getByTestId("runtime-model-row").click();
-  await window.getByText("claude", { exact: true }).click();
-  await window.getByText("Claude Opus 5", { exact: true }).waitFor();
-  await window.getByText("Claude Opus 5", { exact: true }).click();
-  // Picking a model returns to the card, whose slider spans the model's efforts.
+  await window.getByTestId("runtime-harness-back").click();
+  await window.getByTestId("runtime-harness").filter({ hasText: "claude" }).click();
+  await window.getByTestId("runtime-model").filter({ hasText: "Claude Opus 5" }).click();
+  await window.getByTestId("runtime-menu").waitFor({ state: "detached" });
+  // The effort chip lists the picked model's levels.
   assert(
     await window.getByTestId("effort-selector").getAttribute("data-options")
       === JSON.stringify(["low", "medium", "high", "xhigh", "max"]),
     "Claude effort options did not match the harness catalog",
   );
-  await window.getByTestId("runtime-model-row").click();
-  await window.getByText("codex", { exact: true }).click();
-  await window.getByText("GPT-5.6-Terra", { exact: true }).waitFor();
+  await window.getByTestId("runtime-selector").click();
+  await window.getByTestId("runtime-harness-back").click();
+  await window.getByTestId("runtime-harness").filter({ hasText: "codex" }).click();
+  await window.getByTestId("runtime-model").filter({ hasText: "GPT-5.6-Terra" }).waitFor();
   await window.screenshot({ path: join(outputDir, "03-runtime-selector.png") });
-  await window.getByText("GPT-5.6-Terra", { exact: true }).click();
-  await window.getByTestId("runtime-selector").getByText("codex · gpt-5.6-terra", { exact: true }).waitFor();
-  await window.getByTestId("effort-selector").focus();
-  await window.keyboard.press("Home");
-  assert(await window.getByTestId("runtime-selector").getAttribute("data-effort") === "low", "Draft effort was not selectable");
-  await window.keyboard.press("Escape");
-  await window.getByTestId("runtime-menu").waitFor({ state: "detached" });
+  await window.getByTestId("runtime-model").filter({ hasText: "GPT-5.6-Terra" }).click();
+  await window.getByTestId("runtime-selector").getByText("codex · GPT-5.6-Terra", { exact: true }).waitFor();
+  await window.getByTestId("effort-selector").click();
+  await window.getByTestId("effort-menu").getByRole("menuitemradio").first().click();
+  await window.getByTestId("effort-menu").waitFor({ state: "detached" });
+  await window.waitForFunction(() => document.querySelector('[data-testid="runtime-selector"]').dataset.effort === "low");
   await window.screenshot({ path: join(outputDir, "03-new-thread.png") });
 
   await window.evaluate(() => {
@@ -200,17 +200,16 @@ try {
   await window.getByTestId("send-button").click();
   await window.waitForFunction(() => document.querySelectorAll('[data-testid="composer"] .attachment-chip').length === 0);
   await window.getByTestId("stop-button").waitFor();
-  await window.getByTestId("work-group").first().waitFor({ timeout: 20_000 });
-  // The live turn's work log stays open until the final answer lands, thoughts and tools in arrival order.
+  // The live turn writes its work straight into the timeline: thoughts as prose, tool calls as closed lines.
   await window.getByTestId("timeline").locator(".thought-entry").getByText("正在整理", { exact: false }).first().waitFor({ timeout: 20_000 });
-  await window.getByTestId("timeline").locator(".work-process-list[data-kind=tool]").first().waitFor({ timeout: 5_000 });
+  await window.getByTestId("timeline").locator(".work-line[data-kind=tool]").first().waitFor({ timeout: 5_000 });
   const streamingLayout = await window.evaluate(() => {
     const timeline = document.querySelector('[data-testid="timeline"]');
-    const work = timeline?.querySelector('[data-testid="work-group"]');
     const assistant = timeline?.querySelector(".message-entry.assistant");
     const viewport = document.querySelector(".conversation-viewport");
     return {
-      workExpanded: work?.querySelector("button")?.getAttribute("aria-expanded"),
+      // Live work is never behind a summary line.
+      workExpanded: timeline?.querySelector('[data-testid="work-group"]') ? "false" : "true",
       assistant: Boolean(assistant),
       distanceFromBottom: viewport
         ? viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight
@@ -231,6 +230,9 @@ try {
     assert(await workButtons.nth(index).getAttribute("aria-expanded") === "false", "Completed work log was not collapsed by default");
   }
   for (let index = 0; index < workGroups; index++) await workButtons.nth(index).click();
+  // Inside an opened log, tool calls in a row are one closed line; open those too to count every call.
+  const toolRuns = window.getByTestId("tool-run").getByRole("button");
+  for (let index = 0; index < await toolRuns.count(); index++) await toolRuns.nth(index).click();
   assert(await window.locator(".thought-entry").count() === 2, "The work log did not retain all progress text");
   assert(await window.getByTestId("tool-process").count() === 3, "The work log did not retain every tool call");
   assert(await window.locator(".plan-entry").count() === 1, "Plan updates created duplicate cards");
@@ -310,7 +312,7 @@ try {
   await window.screenshot({ path: join(outputDir, "06c-settings-models.png") });
   await window.getByRole("button", { name: "关于与更新", exact: true }).click();
   await window.getByRole("heading", { name: "关于与更新", exact: true }).waitFor();
-  await window.getByText("开发版本不检查更新", { exact: false }).waitFor();
+  await window.getByText("开发版本", { exact: true }).waitFor();
   await window.screenshot({ path: join(outputDir, "06d-settings-updates.png") });
   await window.keyboard.press("Escape");
 
@@ -380,7 +382,6 @@ try {
   const productivityRowsBeforeDelete = await window.locator(productivityRows).count();
   await window.locator(productivityRows).first().hover();
   await window.locator(productivityRows).first().getByTestId("delete-thread").click();
-  await window.getByText("外部客户端中的会话会保留。", { exact: false }).waitFor();
   await window.getByRole("button", { name: "永久删除", exact: true }).click();
   await window.waitForFunction(
     ([selector, count]) => document.querySelectorAll(selector).length === count - 1,

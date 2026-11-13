@@ -63,11 +63,10 @@ export function BackgroundMemorySettingsPanel({ active, busy, dreamEnabled, onCo
 
   return <form className="model-settings ms-background-memory" aria-label={tr("backgroundmemorysettingspanel.background_memory_consolidation_settings")} onSubmit={event => { event.preventDefault(); void save(); }}>
     <div className="settings-row">
-      <div><strong>{tr("backgroundmemorysettingspanel.background_memory_consolidation")}</strong><p>{tr("backgroundmemorysettingspanel.consolidate_on_a_schedule_or_when_the_session_backlog_reaches_the_threshold_yield_to_")}</p></div>
+      <div><strong>{tr("backgroundmemorysettingspanel.background_memory_consolidation")}</strong></div>
       <label className="switch"><input type="checkbox" aria-label={tr("backgroundmemorysettingspanel.background_memory_consolidation")} checked={draft.enabled}
         disabled={disabled} onChange={event => { setDraft({ ...draft, enabled: event.target.checked }); setSaved(false); }} /><span /></label>
     </div>
-    <p className="ms-muted">{tr("backgroundmemorysettingspanel.off_by_default_uses_the_memory_model_selected_above_and_may_incur_model_usage_charges")}</p>
     {dreamOff && <p className="ms-muted">{tr("backgroundmemorysettingspanel.enable_and_save_memory_consolidation_above_before_background_consolidation_can_run")}</p>}
     <div className="ms-background-triggers">
       <label className="ms-field"><span>{tr("backgroundmemorysettingspanel.interval_minutes")}</span><input type="number" min="1" max="1440" step="1" required

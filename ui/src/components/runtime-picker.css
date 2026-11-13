@@ -1,0 +1,338 @@
+/* Runtime picker: chips in the composer, menus that drill from a harness into its models.
+   Flat rows, hairline dividers; a menu is as tall as what it lists and scrolls beyond the cap. */
+.runtime-picker {
+  position: relative;
+}
+
+/* The chip names the model in full; only a long name is cut. */
+.runtime-picker .runtime-selector-trigger {
+  max-width: 300px;
+}
+
+.runtime-picker-menu {
+  position: absolute;
+  z-index: 40;
+  bottom: 34px;
+  left: 0;
+  display: flex;
+  width: max-content;
+  min-width: 232px;
+  max-width: min(360px, calc(100vw - 32px));
+  /* Up to most of the conversation above the composer, never off the top of the window. */
+  max-height: min(560px, max(180px, calc(100cqh - var(--composer-clearance, 140px) - 24px)));
+  flex-direction: column;
+  padding: 6px;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  color: var(--text-soft);
+  font-size: var(--font-size-control);
+  line-height: 1.4;
+  animation: pop-in 140ms ease both;
+}
+
+.runtime-picker-menu button {
+  font: inherit;
+}
+
+.rp-effort-menu {
+  min-width: 176px;
+}
+
+.rp-head {
+  display: flex;
+  min-height: 30px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px 0 8px;
+  border-radius: var(--radius-sm);
+  text-align: left;
+}
+
+.rp-head strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rp-head small {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-left: 16px;
+  color: var(--muted);
+  font-size: var(--font-size-caption);
+  white-space: nowrap;
+}
+
+.rp-head > .rp-icon,
+.rp-head > .rp-link {
+  margin-left: auto;
+}
+
+.rp-back {
+  width: 100%;
+  padding: 0 8px 0 4px;
+  color: var(--muted);
+}
+
+.rp-back:hover {
+  background: var(--surface-hover);
+}
+
+.rp-back > svg {
+  flex: 0 0 auto;
+}
+
+.rp-icon {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: var(--radius-xs);
+  color: var(--muted);
+}
+
+.rp-icon:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.rp-search {
+  height: 28px;
+  flex: 0 0 auto;
+  margin: 4px 2px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  background: var(--canvas);
+  font: inherit;
+  outline: none;
+}
+
+.rp-search:focus {
+  border-color: var(--border-strong);
+}
+
+.rp-list {
+  display: flex;
+  min-height: 0;
+  flex: 0 1 auto;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 2px;
+  overflow-y: auto;
+}
+
+.rp-item {
+  display: flex;
+  width: 100%;
+  min-height: 30px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--text-soft);
+  text-align: left;
+}
+
+.rp-item > span:not(.rp-dot),
+.rp-item > strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rp-item > svg {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--muted-2);
+}
+
+.rp-item:hover:not(:disabled),
+.rp-item:focus-visible {
+  background: var(--surface-hover);
+  outline: none;
+}
+
+.rp-item[aria-current="true"],
+.rp-item[aria-checked="true"] {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.rp-item[aria-current="true"] > svg,
+.rp-item[aria-checked="true"] > svg {
+  color: var(--text);
+}
+
+.rp-item:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+/* A harness row: state, name, then the model it would run, with the way in at the end. */
+.rp-harness strong {
+  flex: 0 0 auto;
+  color: var(--text);
+  font-weight: 550;
+}
+
+.rp-harness small {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  padding-left: 12px;
+  color: var(--muted);
+  font-size: var(--font-size-caption);
+  font-weight: 400;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rp-harness > svg {
+  margin-left: 0;
+}
+
+.rp-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--success);
+}
+
+.rp-harness[data-connection="checking"] .rp-dot {
+  background: var(--muted-2);
+  animation: rp-pulse 1s ease-in-out infinite;
+}
+
+.rp-harness[data-connection="unavailable"] .rp-dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--muted-2);
+}
+
+@keyframes rp-pulse {
+  50% { opacity: 0.35; }
+}
+
+.rp-status {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin: 0;
+  padding: 8px 12px;
+  color: var(--muted);
+  font-size: var(--font-size-caption);
+}
+
+.rp-section {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 8px 2px 2px;
+  border-top: 1px solid var(--border);
+}
+
+.rp-row {
+  display: flex;
+  min-height: 24px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 6px;
+  color: var(--text-soft);
+  white-space: nowrap;
+}
+
+.rp-toggle {
+  cursor: pointer;
+}
+
+.rp-segments {
+  display: flex;
+  gap: 2px;
+  margin: 0 4px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.rp-segments:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  outline-offset: 2px;
+}
+
+.rp-segments.disabled {
+  opacity: 0.55;
+}
+
+.rp-segments button {
+  min-width: 0;
+  flex: 1 1 auto;
+  padding: 4px 7px;
+  border-radius: var(--radius-xs);
+  color: var(--muted);
+  font-size: var(--font-size-caption);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.rp-segments button:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.rp-segments button.active {
+  color: var(--text);
+  background: var(--canvas);
+  font-weight: 600;
+  box-shadow: 0 0 0 1px var(--border-strong);
+}
+
+.rp-link {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  color: var(--muted);
+  font-size: var(--font-size-caption);
+  white-space: nowrap;
+}
+
+.rp-link:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.rp-link:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* Narrow panes: the chips may wrap onto two rows, so a menu rises from the composer's top edge
+   (never over its own chip) and may use the composer's width. */
+@container (max-width: 520px) {
+  .composer .runtime-picker {
+    position: static;
+  }
+
+  .composer .runtime-picker .runtime-selector-trigger {
+    max-width: 170px;
+  }
+
+  .composer .runtime-picker-menu {
+    bottom: calc(100% + 6px);
+    left: 12px;
+    max-width: calc(100% - 24px);
+  }
+}

@@ -30,7 +30,7 @@ export function BenchmarkConnectionPanel({ value, disabled, onSave }: {
       {benchmark.retrievedAt && <time dateTime={benchmark.retrievedAt}>{new Date(benchmark.retrievedAt).toLocaleString()}</time>}
     </div>
     <p className="benchmark-coverage">所选 {groups.length} 个模型 · 精确匹配 {matched} · 系列参考 {family} · 待匹配 {groups.length - matched - family}</p>
-    {benchmark.error && !benchmark.error.startsWith("benchmark_cache_") && <p className="settings-error" role="status">{benchmark.error === "aa_http_401" ? "密钥无效，请更新连接" : benchmark.error === "aa_http_403" ? "当前密钥无此数据权限" : benchmark.error === "aa_http_429" ? "数据请求额度已用完，稍后重试" : "数据暂未更新"}{benchmark.recordCount ? " · 保留现有缓存" : " · 使用保守回退"}</p>}
+    {benchmark.error && !benchmark.error.startsWith("benchmark_cache_") && <p className="settings-error" role="status">{benchmark.error === "aa_http_401" ? "密钥无效，请更新连接" : benchmark.error === "aa_http_403" ? "当前密钥无此数据权限" : benchmark.error === "aa_http_429" ? "数据请求额度已用完，稍后重试" : "数据暂未更新"}</p>}
     <details className="routing-details"><summary>模型参考数据</summary>
       <div className="benchmark-models">{groups.map(group => {
         const exact = group.variants.find(item => item.referenceGrade === "exact");
@@ -38,7 +38,7 @@ export function BenchmarkConnectionPanel({ value, disabled, onSave }: {
         const record = variant?.referenceRecords?.length === 1 ? variant.referenceRecords[0] : undefined;
         return <div key={group.id} className="benchmark-model"><strong>{group.model}</strong><small>{group.connection}</small>
           <span>{exact ? "精确匹配" : variant ? "系列参考" : "未匹配"}</span>
-          <small>{record ? `能力 ${record.scores.artificial_analysis_intelligence_index ?? "—"} · 输入 $${record.input_usd_per_million ?? "—"}/M · 输出 $${record.output_usd_per_million ?? "—"}/M · ${record.output_tokens_per_second ?? "—"} token/s` : "等待模型版本与评测对应"}</small></div>;
+          <small>{record ? `能力 ${record.scores.artificial_analysis_intelligence_index ?? "—"} · 输入 $${record.input_usd_per_million ?? "—"}/M · 输出 $${record.output_usd_per_million ?? "—"}/M · ${record.output_tokens_per_second ?? "—"} token/s` : "未匹配"}</small></div>;
       })}</div>
     </details>
     <details className="routing-details"><summary>数据连接设置</summary>
@@ -49,7 +49,6 @@ export function BenchmarkConnectionPanel({ value, disabled, onSave }: {
         <div className="benchmark-connection-row"><button type="submit" className="settings-action" disabled={disabled}>保存连接</button>
           {benchmark.keyConfigured && <button type="button" className="settings-action" disabled={disabled} onClick={() => void save(true)}>移除密钥</button>}</div>
       </form>
-      <p>Free 提供模型指数、基础价格与速度；完整 coding-agent 评测单独处理。权限以 API 响应为准。</p>
     </details>
     <p className="benchmark-source"><a href="https://artificialanalysis.ai/data-api/docs" target="_blank" rel="noreferrer">数据来源：Artificial Analysis</a></p>
   </div>;

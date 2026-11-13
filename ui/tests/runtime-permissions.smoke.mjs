@@ -114,7 +114,7 @@ try {
     return [runtime.approval, runtime.pendingPermissions];
   }), ["user", { provider: "codex", approval: "auto_review", access: "workspace-write" }]);
   assert.equal(await page.getByText(/下轮生效/).count(), 0, "The pending explanation must not take up composer space");
-  assert.match(await preset.getAttribute("title"), /下轮生效 · 当前：请求批准/);
+  assert.doesNotMatch(await preset.getAttribute("title") ?? "", /下轮生效|当前：/, "The chip's tooltip is its label, not an explanation");
   assert.equal(await page.locator(".permission-selector small").count(), 0);
   await page.evaluate(() => { window.permissionTest.running = false; });
   await choose("review"); await presetSettled();
@@ -169,7 +169,7 @@ try {
   await page.evaluate(() => { window.permissionTest.running = true; });
   await access.selectOption("read-only"); await settled();
   await approval.selectOption("user"); await settled();
-  await settings.getByText("下次运行生效 · 当前：完全访问 · 拒绝审批请求").waitFor();
+  await settings.getByText("当前：完全访问 · 拒绝审批请求").waitFor();
   assert.deepEqual(await page.evaluate(() => {
     const runtime = window.permissionTest.fixture.threads.find(t => t.id === "desktop-ui").runtime;
     return [runtime.access, runtime.approval, runtime.pendingPermissions];
@@ -215,7 +215,8 @@ try {
   });
   await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
   await open();
-  await settings.getByText("此任务使用运行后端的权限配置。").waitFor();
+  await settings.locator(".details-permissions").waitFor();
+  assert.equal(await settings.getByText("此任务使用运行后端的权限配置。").count(), 0, "The backend's note about its own permissions is not shown");
   assert.equal(await access.count(), 0, "Unsupported permission controls must not be offered");
   assert.equal(await approval.count(), 0);
   for (const [provider, initial, selected, choices] of [
@@ -256,6 +257,8 @@ try {
   await page.getByText("Audit complete", { exact: true }).waitFor();
   assert.equal(await page.getByTestId("approval-prompt").count(), 0, "Automatic audit history must not require a manual decision");
   await page.getByTestId("work-group").getByRole("button").click();
+  // The three calls in a row are one closed line inside the opened summary.
+  await page.getByTestId("tool-run").getByRole("button").click();
   const denied = page.getByTestId("tool-process").filter({ hasText: "自动审查 · 已拒绝" });
   await denied.locator("summary").click();
   await denied.getByText(/native review reason/).waitFor();
@@ -273,11 +276,11 @@ try {
   await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
   assert.equal(await preset.getAttribute("data-value"), "full");
   assert.equal(await preset.isDisabled(), true);
-  assert.match(await preset.getAttribute("title"), /子任务路由.*统一/);
+  assert.equal(await preset.getAttribute("title"), null);
   await open();
   assert.equal(await access.count(), 0);
   assert.equal(await approval.count(), 0);
-  await settings.getByText("在子任务路由设置中统一修改执行权限。", { exact: true }).waitFor();
+  assert.equal(await settings.getByText("在子任务路由设置中统一修改执行权限。", { exact: true }).count(), 0);
   assert.deepEqual(errors, []);
   console.log("PASS: independent permissions, automatic review, saved/pending state, failure recovery, discard, stale responses, task isolation, native Claude/ACP modes, durable audit display, dark/light and narrow layout");
 } finally {

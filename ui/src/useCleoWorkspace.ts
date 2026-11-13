@@ -77,7 +77,6 @@ export function projectBranchName(branch: string | null | undefined): string | n
 }
 
 export function useCleoWorkspace() {
-  const [draftRoutingMode, setDraftRoutingMode] = useState<"manual" | "auto" | null>(null);
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
   /** Threads whose latest reply finished while the user was not looking at them. */
   const [unreadThreadIds, setUnreadThreadIds] = useState<string[]>([]);
@@ -316,7 +315,7 @@ export function useCleoWorkspace() {
       ) ?? runtimeCatalog?.nonProductivityProfiles[0];
       return {
         profileId: profile?.id,
-        routingMode: draftRoutingMode ?? runtimeCatalog?.defaultRoutingMode ?? "manual",
+        routingMode: runtimeCatalog?.defaultRoutingMode ?? "manual",
         provider: profile?.provider ?? "Cleo",
         model: profile?.model ?? tr("connectionwizard.choose_model"),
         effort: "high",
@@ -332,7 +331,7 @@ export function useCleoWorkspace() {
     return {
       provider: (provider?.id ?? draftProvider) || tr("usecleoworkspace.choose_sdk_acp"),
       model: draftModel || provider?.defaultModel || tr("connectionwizard.choose_model"),
-      routingMode: draftRoutingMode ?? runtimeCatalog?.defaultRoutingMode ?? "manual",
+      routingMode: runtimeCatalog?.defaultRoutingMode ?? "manual",
       effort: draftEffort,
       serviceTier: provider?.type === "codex_sdk" ? draftServiceTier : null,
       supportsFastMode: provider?.type === "codex_sdk",
@@ -342,7 +341,7 @@ export function useCleoWorkspace() {
       contextWindow: 0,
       editable: false,
     };
-  }, [activeSpace, draftEffort, draftPermissionUpdate, draftServiceTier, draftModel, draftProfileId, draftProvider, runtimeCatalog, draftRoutingMode]);
+  }, [activeSpace, draftEffort, draftPermissionUpdate, draftServiceTier, draftModel, draftProfileId, draftProvider, runtimeCatalog]);
 
   // What the pill and card show for the active task: its live runtime, or the pick awaiting handoff.
   const activeThreadRuntime = useMemo(() => activeThread?.runtime
@@ -663,7 +662,6 @@ export function useCleoWorkspace() {
         ? {
             projectPath: project?.path,
             profileId: draftProfileId || runtimeCatalog?.defaultNonProductivityProfile,
-            routingMode: draftRuntime.routingMode,
           }
         : {
             projectPath: project?.managed ? undefined : project?.path,
@@ -671,7 +669,6 @@ export function useCleoWorkspace() {
             model: draftModel || undefined,
             effort: draftEffort ?? undefined,
             serviceTier: draftRuntime.supportsFastMode ? draftServiceTier : undefined,
-            routingMode: draftRuntime.routingMode,
             ...draftPermissionUpdate,
           },
     );
@@ -1084,7 +1081,7 @@ export function useCleoWorkspace() {
           type: "notice",
           tone: "info",
           title: tr("usecleoworkspace.current_run_stopped"),
-          detail: tr("usecleoworkspace.you_can_edit_the_prompt_and_send_it_again"),
+          detail: "",
         },
       ],
     }));
@@ -1282,7 +1279,6 @@ export function useCleoWorkspace() {
   };
 
   const updateRuntime = (update: RuntimeUpdate) => {
-    if (update.routingMode) setDraftRoutingMode(update.routingMode);
     const pendingSwitch = activeThreadId ? pendingSwitchesRef.current[activeThreadId] : undefined;
     if (activeThreadId && pendingSwitch && (update.effort || update.serviceTier)) {
       // Effort and speed for a harness that has not been handed off yet travel with the handoff.

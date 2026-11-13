@@ -191,7 +191,6 @@ export function ConnectionWizard({ existing, settings, busy, onApply, onDone, ac
           </>}
           {step === "models" && <>
             {probe?.status === "connected" && <div className="ms-connected"><Check />{type === "account" ? tr("connectiondetails.client_checks_passed") : tr("connectionwizard.connection_verified")}</div>}
-            {type === "account" && <ConnectionScope />}
             <label className="ms-field"><span>{tr("connectiondetails.connection_name")}</span><input value={name} onChange={e => setName(e.target.value)} disabled={busy} /></label>
             <div className="ms-models-label">{tr("connectionwizard.select_models_to_add")}<span>{tr("connectionwizard.selected")}{chosen.length}</span></div>
             <input className="ms-model-filter" aria-label={tr("connectionwizard.filter_available_models")} placeholder={tr("connectionwizard.search_available_models")} value={modelQuery} onChange={e => setModelQuery(e.target.value)} />

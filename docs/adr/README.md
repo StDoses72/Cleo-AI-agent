@@ -39,6 +39,7 @@
 | [0006](0006-online-runtime-ownership-and-retirement.md) | 在线运行环境的归属登记与基于证据的退役 | Accepted |
 | [0008](0008-single-sidebar-flat-ui-and-review-loop.md) | 桌面 UI 改为单侧栏信息架构、平铺视觉，并补齐审查与 git 闭环 | Accepted |
 | [0009](0009-remove-local-evolution.md) | 移除本地进化，保留并改名它与正式更新共用的版本基础设施 | Accepted |
-| [0010](0010-startup-cost-independent-of-history.md) | 加载工作区的开销不随历史规模增长；投影版本只在旧索引出错时提升 | Proposed |
+| [0010](0010-startup-cost-independent-of-history.md) | 加载工作区的开销不随历史规模增长；投影版本只在旧索引出错时提升 | Accepted |
+| [0011](0011-one-context-measure-and-on-demand-account-usage.md) | 上下文占用对所有 harness 用同一口径；账号用量在打开面板时按需读取 | Proposed |
 
 每个引入 ADR 的 PR 自己在此表追加对应行（并行 PR 之间的小冲突在合并时解决），这样任何一个 PR 合并后索引都是完整的。0001–0006 随同一个集成 PR 合入 `main`，状态在集成时改为 Accepted；0008–0009 随 v0.13.0 的集成 PR 合入。

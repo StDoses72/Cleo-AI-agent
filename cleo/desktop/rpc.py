@@ -53,8 +53,8 @@ DESKTOP_METHODS: tuple[RpcMethod, ...] = (
     # Settings, catalogs and instructions.
     *_methods("renderer", "get_config_status", "get_config_templates", "get_agent_instructions",
               "save_agent_instructions", "get_model_settings", "get_runtime_catalog",
-              "get_productivity_models", "get_local_skills", "get_harness_sync",
-              "sync_harness_items", "get_ui_language", "set_ui_language"),
+              "get_productivity_models", "get_harness_usage", "get_local_skills",
+              "get_harness_sync", "sync_harness_items", "get_ui_language", "set_ui_language"),
     *_methods("renderer", "get_routing_settings", "save_routing_settings",
               "refresh_routing_benchmarks", "save_benchmark_connection", "submit_routing_feedback"),
     # Model connections (configuration writes).

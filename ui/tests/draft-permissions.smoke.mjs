@@ -112,10 +112,10 @@ try {
         await page.getByTestId("new-thread").click();
         await choosePermission("full");
         await page.getByTestId("runtime-selector").click();
-        await page.getByTestId("runtime-model-row").click();
-        await page.getByTestId("runtime-menu").getByRole("button", { name: /^custom-claude/ }).click();
-        await page.getByRole("button", { name: /^Test model/ }).click();
-        await page.keyboard.press("Escape");
+        await page.getByTestId("runtime-harness-back").click();
+        await page.getByTestId("runtime-harness").filter({ hasText: /^custom-claude/ }).click();
+        await page.getByTestId("runtime-model").filter({ hasText: /^Test model/ }).click();
+        await page.getByTestId("runtime-menu").waitFor({ state: "detached" });
         assert.equal(await permissionValue(), "ask");
         const switched = await send();
         assert.deepEqual([switched.provider, switched.access, switched.approval], ["custom-claude", undefined, "default"]);

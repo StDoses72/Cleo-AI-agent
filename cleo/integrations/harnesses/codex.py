@@ -702,7 +702,23 @@ class CodexProvider:
                 None,
                 response_model=GetAccountRateLimitsResponse,
             )
-        snapshot = response.rate_limits
+        return self._usage_windows(response.rate_limits)
+
+    async def account_usage(self) -> tuple[RateLimitWindowUsage, ...]:
+        """Purpose: The signed-in account's usage windows, without a task session.
+
+        Input: None; a temporary client asks app-server. Output: short and weekly windows.
+        """
+        async with self._client() as client:
+            response = await client._client.request(
+                "account/rateLimits/read",
+                None,
+                response_model=GetAccountRateLimitsResponse,
+            )
+        return self._usage_windows(response.rate_limits)
+
+    @staticmethod
+    def _usage_windows(snapshot: Any) -> tuple[RateLimitWindowUsage, ...]:
         return tuple(
             RateLimitWindowUsage(
                 used_percent=max(0, min(int(window.used_percent), 100)),
