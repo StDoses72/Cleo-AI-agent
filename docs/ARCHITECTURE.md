@@ -327,8 +327,11 @@ notification 实时输出到终端。productivity 内的 `/resume` 使用相同�
 session 时，`AgentAdapter` 会把这些选项重新应用到 provider runtime；只有用户显式修改
 运行参数时才更新该 thread 的已保存档位。
 
-Codex 的 `thread/tokenUsage/updated` 会归一化为 `status` event，同时驱动 CLI context
-状态栏；展示值来自 SDK 的 `totalTokens` 与 `modelContextWindow`。第二条状态栏显示当前
+各 harness 的上下文读数都归一化为 `status` event：Codex 的 `thread/tokenUsage/updated`、
+ACP 的 `usage_update`，以及 Claude provider 按每次请求发布的 `cleo/context_usage`。
+`cleo/harnesses/events.py` 用同一口径投影它们：占用是最近一次请求放进窗口的输入（新输入、
+缓存读取、缓存写入），不含输出；窗口取 harness 上报的值。它同时驱动 CLI context 状态栏和
+桌面端的圆环，见 [ADR 0011](adr/0011-one-context-measure-and-on-demand-account-usage.md)。第二条状态栏显示当前
 reasoning effort、sandbox、approval mode 与 Cleo 只读计算的 Git branch/dirty count。
 
 `AgentAdapter` 的通用数据面仍只负责 create/resume/prompt/cancel/close；Codex 特有的

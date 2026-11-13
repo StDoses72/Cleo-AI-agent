@@ -336,9 +336,14 @@ its model, reasoning effort, sandbox, and approval behavior in `runtime_options`
 When a native session is resumed, `AgentAdapter` reapplies those values to the
 provider runtime; the saved settings change only after an explicit user update.
 
-Codex `thread/tokenUsage/updated` notifications are normalized as `status` events
-and drive the CLI context bar using the SDK's `totalTokens` and
-`modelContextWindow` values. A second status bar shows reasoning effort, sandbox,
+Every harness's context reading is normalized as a `status` event: Codex
+`thread/tokenUsage/updated`, ACP `usage_update`, and the `cleo/context_usage`
+event the Claude provider publishes for each request. `cleo/harnesses/events.py`
+projects them with one definition: occupancy is the input the latest request put
+in the window (new input, cache reads and cache writes), without output, over
+the window the harness reports. It drives the CLI context bar and the desktop
+ring; see [ADR 0011](adr/0011-one-context-measure-and-on-demand-account-usage.md).
+A second status bar shows reasoning effort, sandbox,
 approval behavior, and a read-only Git branch/dirty-count projection.
 
 The generic `AgentAdapter` data plane remains limited to

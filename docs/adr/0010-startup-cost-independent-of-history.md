@@ -1,6 +1,6 @@
 # 0010. 加载工作区的开销不随历史规模增长；投影版本只在旧索引出错时提升
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-11-11
 
 ## Context
