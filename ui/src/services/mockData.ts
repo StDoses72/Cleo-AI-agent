@@ -172,7 +172,7 @@ export const threads: Thread[] = [
         changes: uiChanges.slice(0, 2),
       },
     ],
-    usage: { used: 38420, limit: 128000, input: 6320, output: 4418 },
+    usage: { used: 38420, limit: 128000, input: 34002, output: 4418 },
     // A routed task: the main session plus two delegated subtasks and the evaluator that judged them.
     taskUsage: {
       scope: "task", title: "完成独立桌面 UI", total: 61240, input: 51200, output: 10040, reportedCalls: 4, missingCalls: 0, complete: true,
@@ -319,7 +319,7 @@ export const threads: Thread[] = [
     updatedAt: "今天 14:22",
     status: "attention",
     changes: [],
-    usage: { used: 21980, limit: 128000, input: 4810, output: 3091 },
+    usage: { used: 21980, limit: 128000, input: 18889, output: 3091 },
     items: [
       {
         id: "user-session",
@@ -350,7 +350,7 @@ export const threads: Thread[] = [
     updatedAt: "昨天",
     status: "completed",
     changes: [],
-    usage: { used: 8870, limit: 128000, input: 1900, output: 1102 },
+    usage: { used: 8870, limit: 128000, input: 7768, output: 1102 },
     items: [
       {
         id: "assistant-limits",
@@ -371,7 +371,7 @@ export const threads: Thread[] = [
     updatedAt: "前天",
     status: "completed",
     changes: [],
-    usage: { used: 5120, limit: 128000, input: 1210, output: 640 },
+    usage: { used: 5120, limit: 128000, input: 4480, output: 640 },
     items: [
       {
         id: "user-merge",
@@ -399,7 +399,7 @@ export const threads: Thread[] = [
     updatedAt: "今天 09:10",
     status: "idle",
     changes: [],
-    usage: { used: 5260, limit: 128000, input: 1210, output: 870 },
+    usage: { used: 5260, limit: 128000, input: 4390, output: 870 },
     items: [
       {
         id: "user-plan",
@@ -428,7 +428,7 @@ export const threads: Thread[] = [
     updatedAt: "周六",
     status: "idle",
     changes: [],
-    usage: { used: 9030, limit: 128000, input: 2130, output: 1340 },
+    usage: { used: 9030, limit: 128000, input: 7690, output: 1340 },
     items: [
       {
         id: "assistant-tone",

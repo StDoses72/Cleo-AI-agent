@@ -133,6 +133,8 @@ class _AcpClientHost:
             "tool_call": "tool_call",
             "tool_call_update": "tool_result",
             "plan": "plan_update",
+            # Context occupancy is kept with the other status readings a conversation replays.
+            "usage_update": "status",
         }.get(native_event_type, "provider_event")
         plan_event = None
         if native_event_type in {"tool_call", "tool_call_update"}:

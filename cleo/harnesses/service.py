@@ -830,6 +830,14 @@ class AgentService:
         method = self._capability(route.provider, "account_rate_limits")
         return await method(route.provider_session_id)
 
+    async def account_usage(self, provider: str) -> tuple[RateLimitWindowUsage, ...]:
+        """Read the usage windows of the account a provider is signed in to (optional).
+
+        No session is needed; a provider without such a reading raises NotImplementedError.
+        """
+        method = self._capability(self._provider(provider), "account_usage")
+        return await method()
+
     def session_options(self, session_id: str) -> SessionOptions:
         """读取会话当前的运行时选项(model/effort/approval/sandbox)。"""
         route = self._route(session_id)

@@ -8,6 +8,7 @@ import uuid
 from pathlib import Path
 
 from cleo.harnesses.availability import unsupported_reason
+from cleo.harnesses.events import CONTEXT_USAGE_EVENTS
 from cleo.routing.benchmarks import BenchmarkCache
 from cleo.routing.catalog import CandidateCatalog, atomic_json
 from cleo.routing.context import build_context, validate_recommendation
@@ -359,7 +360,7 @@ class RoutingService:
                         "usage",
                         "token_usage",
                     }
-                    and event.data.get("provider_event_type") != "thread/tokenUsage/updated"
+                    and event.data.get("provider_event_type") not in CONTEXT_USAGE_EVENTS
                 ):
                     observed_tools = True
                 payload = event.data.get("payload", event.data)

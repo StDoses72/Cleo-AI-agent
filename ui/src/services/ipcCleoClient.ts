@@ -3,6 +3,7 @@ import type {
   MemorySourcesState,
   HarnessSyncResult,
   HarnessSyncStatus,
+  HarnessUsage,
   LocalSkill,
   Attachment,
   ApprovalDecision,
@@ -66,6 +67,10 @@ export class IpcCleoClient implements CleoClient {
 
   saveBenchmarkConnection(update: import("../routing-types").BenchmarkConnectionUpdate): Promise<import("../routing-types").RoutingSettings> {
     return this.bridge.request("save_benchmark_connection", { update });
+  }
+
+  getHarnessUsage(provider: string): Promise<HarnessUsage> {
+    return this.bridge.request("get_harness_usage", { provider });
   }
 
   getLocalSkills(provider: string, projectPath?: string): Promise<LocalSkill[]> {

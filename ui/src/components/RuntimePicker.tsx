@@ -1,30 +1,11 @@
 import { t as tr } from "../../electron/i18n.mjs";
-import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Check, ChevronDown, ChevronLeft, ChevronRight, LoaderCircle, RefreshCw } from "lucide-react";
 import type { ProductivityModelCatalog, ReasoningEffort, RuntimeCatalog, RuntimeProfile } from "../types";
 import { checkHarnessConnections } from "../connected-harnesses";
 import { effortLabels } from "../runtime-labels";
+import { useDismiss } from "./useDismiss";
 import "./runtime-picker.css";
-
-/** Close a popover on a click outside it or on Escape, handing focus back to its trigger. */
-function useDismiss(open: boolean, close: () => void, wrap: RefObject<HTMLElement | null>, trigger: RefObject<HTMLElement | null>) {
-  useEffect(() => {
-    if (!open) return;
-    const outside = (event: PointerEvent) => { if (!wrap.current?.contains(event.target as Node)) close(); };
-    const escape = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      const inside = wrap.current?.contains(document.activeElement);
-      close();
-      if (inside) { event.preventDefault(); event.stopPropagation(); trigger.current?.focus(); }
-    };
-    document.addEventListener("pointerdown", outside);
-    document.addEventListener("keydown", escape);
-    return () => {
-      document.removeEventListener("pointerdown", outside);
-      document.removeEventListener("keydown", escape);
-    };
-  }, [open]);
-}
 
 /** Arrow keys walk a menu's enabled rows, from the search field too. */
 function moveFocus(event: KeyboardEvent<HTMLElement>) {

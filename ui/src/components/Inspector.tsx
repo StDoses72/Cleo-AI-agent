@@ -23,7 +23,6 @@ import {
 import type { ChangeFile, MemoryEntry, Project, RuntimeProfile, RuntimeUpdate, Thread } from "../types";
 import { accessLabel, approvalLabel, effortLabels, isGeneralProject, projectLabel, projectPathLabel } from "../runtime-labels";
 import { TaskTokenUsage } from "./TaskTokenUsage";
-import { ContextUsage } from "./ContextUsage";
 import { ComputerPanel } from "./ComputerPanel";
 import { FilesPanel, type FileReveal } from "./FilesPanel";
 import { BranchHoldNotice, CommentForm, ReviewCommentsBar, SourceControlRow, type BranchHold, type ReviewComment, type RunSourceControl } from "./ReviewActions";
@@ -139,15 +138,17 @@ export function Inspector({
             </button>
           ))}
         </div>
-        {onToggleWide ? (
-          // Wide review: the panel takes all the room the conversation can spare, and back.
-          <button className="icon-button" type="button" aria-pressed={wide} data-testid="inspector-wide"
-            aria-label={wide ? tr("inspector.restore_width") : tr("inspector.widen_for_review")}
-            title={wide ? tr("inspector.restore_width") : tr("inspector.widen_for_review")} onClick={onToggleWide}>
-            {wide ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
-          </button>
-        ) : null}
-        <button className="icon-button" type="button" aria-label={tr("app.close_inspector")} title={tr("app.close_inspector")} onClick={onClose}><X size={16} /></button>
+        <div className="inspector-actions">
+          {onToggleWide ? (
+            // Wide review: the panel takes all the room the conversation can spare, and back.
+            <button className="icon-button" type="button" aria-pressed={wide} data-testid="inspector-wide"
+              aria-label={wide ? tr("inspector.restore_width") : tr("inspector.widen_for_review")}
+              title={wide ? tr("inspector.restore_width") : tr("inspector.widen_for_review")} onClick={onToggleWide}>
+              {wide ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+            </button>
+          ) : null}
+          <button className="icon-button" type="button" aria-label={tr("app.close_inspector")} title={tr("app.close_inspector")} onClick={onClose}><X size={16} /></button>
+        </div>
       </header>
       <div className="inspector-panel" id="inspector-panel" role="tabpanel" aria-labelledby={`inspector-tab-${activeTab}`}>
         {activeTab === "computer" ? (
@@ -607,9 +608,6 @@ function DetailsPanel({
         {thread?.terminal?.length ? (
           <pre className="terminal-output" tabIndex={0} role="region" aria-label={tr("inspector.terminal_output")}>{thread.terminal.join("")}{running && <span className="cursor">▋</span>}</pre>
         ) : <p className="muted details-empty">{tr("inspector.no_execution_output_yet")}</p>}
-      </section>
-      <section className="inspector-section">
-        <ContextUsage usage={thread?.usage} />
       </section>
       <section className="inspector-section">
         <div className="section-kicker"><Cpu size={14} /><span>{tr("routing.task_usage")}</span></div>

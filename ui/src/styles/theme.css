@@ -158,8 +158,6 @@
 :root .change-history-picker select { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--canvas); }
 :root .changed-files button.active { background: var(--surface-active); }
 :root .changed-files button.active svg { color: var(--text); }
-:root .usage-track { height: 6px; border-radius: 3px; background: var(--surface-active); }
-:root .usage-track span { background: var(--accent); }
 :root .terminal-head { border: 1px solid var(--border); border-bottom: 0; border-radius: var(--radius-sm) var(--radius-sm) 0 0; background: var(--surface); }
 :root .terminal-output,
 :root[data-theme="light"] .terminal-output { border: 0; border-radius: 0 0 var(--radius-sm) var(--radius-sm); color: #dcdcda; background: #1f1f22; }

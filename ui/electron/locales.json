@@ -5459,9 +5459,25 @@
     "zh-CN": "上下文已用 {p0}%",
     "en": "{p0}% of context used"
   },
-  "conversation.context_used_detail": {
-    "zh-CN": "上下文 {p0}%（{p1}k / {p2}k）",
-    "en": "Context {p0}% ({p1}k / {p2}k)"
+  "contextmeter.usage": {
+    "zh-CN": "用量",
+    "en": "Usage"
+  },
+  "contextmeter.week": {
+    "zh-CN": "本周",
+    "en": "Week"
+  },
+  "contextmeter.hours": {
+    "zh-CN": "{p0} 小时",
+    "en": "{p0}-hour"
+  },
+  "contextmeter.days": {
+    "zh-CN": "{p0} 天",
+    "en": "{p0}-day"
+  },
+  "contextmeter.resets": {
+    "zh-CN": "{p0} 重置",
+    "en": "resets {p0}"
   },
   "conversation.work_run": {
     "zh-CN": "运行 {p0} 条命令",

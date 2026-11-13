@@ -294,13 +294,48 @@ try {
     });
     await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
     await page.getByRole("tab", { name: "概况", exact: true }).click();
-    const usage = page.locator(".inspector-section").filter({ has: page.locator(".usage-copy") });
-    await usage.locator(".usage-copy").getByText("—", { exact: true }).waitFor();
-    assert.doesNotMatch(await usage.innerText(), /0%/);
-    assert.equal(await usage.locator(".usage-track").count(), 0);
+    // Without a reported footprint there is no ring to read a made-up 0% from.
+    await page.getByTestId("context-ring").waitFor({ state: "detached" });
+    assert.doesNotMatch(await page.getByTestId("composer").innerText(), /\d%/);
     await page.locator(".memory-context summary").first().click();
     // The summary shows the start of the recorded text; the opened body shows all of it.
     await page.locator(".memory-context details[open] p").getByText(/体验型 UI 应以独立应用交付/).first().waitFor();
+  });
+  await check("the context ring opens its own panel, and the details panel does not repeat it", async page => {
+    await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      const original = cleoClient.loadThread.bind(cleoClient);
+      cleoClient.loadThread = async id => ({ ...await original(id), usage: { used: 41818, limit: 258400, input: 41558, output: 260 } });
+    });
+    await page.getByRole("button", { name: /^完成独立桌面 UI/ }).click();
+    const ring = page.getByTestId("context-ring");
+    const panel = page.getByTestId("context-panel");
+    await ring.getByText("16%", { exact: true }).waitFor();
+    assert.equal(await panel.count(), 0);
+    await ring.click();
+    await panel.getByText("41.8k / 258.4k", { exact: true }).waitFor();
+    assert.equal(await ring.getAttribute("aria-expanded"), "true");
+    // The harness account's usage is read when the panel opens: one row per window.
+    const rows = panel.getByTestId("context-usage").locator("dl > div");
+    await rows.first().waitFor();
+    assert.deepEqual(await rows.evaluateAll(nodes => nodes.map(node => [node.querySelector("dt").textContent, node.querySelector("dd span").textContent])),
+      [["5 小时", "42%"], ["本周", "18%"]]);
+    assert.match(await rows.first().locator("small").textContent(), /^(\d+\/\d+ )?\d\d:\d\d 重置$/);
+    // The panel rises above the ring, inside the window, and leaves the ring uncovered.
+    const ringBox = await ring.boundingBox();
+    const panelBox = await panel.boundingBox();
+    assert(panelBox.y >= 0 && panelBox.y + panelBox.height <= ringBox.y, JSON.stringify({ ringBox, panelBox }));
+    assert(panelBox.x >= 0 && panelBox.x + panelBox.width <= 1280, JSON.stringify(panelBox));
+    await page.keyboard.press("Escape");
+    await panel.waitFor({ state: "detached" });
+    assert.equal(await ring.evaluate(node => node === document.activeElement), true);
+    await ring.click();
+    await panel.waitFor();
+    await page.getByTestId("composer-input").click();
+    await panel.waitFor({ state: "detached" });
+    await page.getByRole("tab", { name: "概况", exact: true }).click();
+    await page.locator(".details-panel").waitFor();
+    assert.equal(await page.locator(".details-panel").getByText("上下文", { exact: true }).count(), 0);
   });
   await check("information: memory model changes remain drafts until saved", async page => {
     await page.getByRole("button", { name: "设置", exact: true }).click();

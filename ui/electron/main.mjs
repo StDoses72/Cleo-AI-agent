@@ -194,6 +194,7 @@ const allowedMethods = new Set([
   "get_runtime_catalog",
   "get_config_status",
   "get_productivity_models",
+  "get_harness_usage",
   "get_local_skills",
   "get_harness_sync",
   "sync_harness_items",

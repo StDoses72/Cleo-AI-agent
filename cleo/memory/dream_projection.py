@@ -19,7 +19,8 @@ BLOCK_BUDGET = 20_000
 MAX_BLOCK_BYTES = 64_000
 # Injected-memory records repeat existing preferences; consolidating them would feed memory back
 # into itself as if the user had said it again.
-_NOISE = {"thread/tokenUsage/updated", "account/rateLimits/updated", MEMORY_CONTEXT_EVENT}
+_NOISE = {"thread/tokenUsage/updated", "account/rateLimits/updated", "usage_update",
+          "cleo/context_usage", MEMORY_CONTEXT_EVENT}
 _SECRET_KEY = re.compile(
     r"(?i)^(?:.*[_-])?(api[_-]?key|authorization|password|secret|token|access[_-]?token|"
     r"refresh[_-]?token)$"

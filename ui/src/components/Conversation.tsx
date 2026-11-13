@@ -82,6 +82,7 @@ import { mentionAt, mentionText, rankFiles } from "./fileMentions";
 import { modifierKey } from "../platform";
 import { toolFailed } from "../toolOutcome";
 import { RuntimePicker } from "./RuntimePicker";
+import { ContextMeter } from "./ContextMeter";
 
 interface ConversationProps {
   history?: ReturnType<typeof useTimelineHistory>;
@@ -534,7 +535,6 @@ export function Conversation({
         onPickAttachments={onPickAttachments}
         onPrepareAttachments={onPrepareAttachments}
         onRemoveAttachment={onRemoveAttachment}
-        onShowContext={onShowContext}
         worktree={thread ? undefined : worktree}
         onListFiles={onListFiles}
         fileListKey={project?.path ?? ""}
@@ -1450,25 +1450,6 @@ function SubtaskList({ subtasks, onOpen }: { subtasks: Thread[]; onOpen?: (threa
   );
 }
 
-/** Purpose: How full the model's context window is, as a small ring beside the send button. */
-function ContextRing({ used, limit, onClick }: { used: number; limit: number; onClick: () => void }) {
-  const ratio = Math.max(0, Math.min(1, used / limit));
-  const percent = Math.round(ratio * 100);
-  const circumference = 2 * Math.PI * 7;
-  return (
-    <button type="button" className={`context-ring ${percent >= 85 ? "high" : ""}`} onClick={onClick} data-testid="context-ring"
-      aria-label={tr("conversation.context_used_value", { p0: percent })}
-      title={tr("conversation.context_used_detail", { p0: percent, p1: (used / 1000).toFixed(1), p2: (limit / 1000).toFixed(0) })}>
-      <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
-        <circle cx="9" cy="9" r="7" fill="none" strokeWidth="2" className="context-ring-track" />
-        <circle cx="9" cy="9" r="7" fill="none" strokeWidth="2" className="context-ring-value"
-          strokeDasharray={`${circumference * ratio} ${circumference}`} transform="rotate(-90 9 9)" strokeLinecap="round" />
-      </svg>
-      <span>{percent}%</span>
-    </button>
-  );
-}
-
 /** Purpose: Keep the shared composer welcome focused on the current task. Input: space. Output: relevant example requests. */
 function WelcomeState({ space, onUseSuggestion }: { space: ThreadSpace; onUseSuggestion: (prompt: string) => void }) {
   const prompts = suggestions[space];
@@ -1532,7 +1513,6 @@ function Composer({
   onPickAttachments,
   onPrepareAttachments,
   onRemoveAttachment,
-  onShowContext,
   commands,
   skills = [],
   approvalRequest,
@@ -1575,7 +1555,6 @@ function Composer({
   | "onPickAttachments"
   | "onPrepareAttachments"
   | "onRemoveAttachment"
-  | "onShowContext"
   | "commands"
   | "skills"
   | "approvalRequest"
@@ -1941,9 +1920,8 @@ function Composer({
               onChange={onPermissionChange} disabled={Boolean(harnessSwitchStatus) || Boolean(pendingHarnessSwitch)} />}
           </div>
           <div className="composer-send-actions">
-          {usage && usage.used != null && usage.limit > 0 ? (
-            <ContextRing used={usage.used} limit={usage.limit} onClick={onShowContext} />
-          ) : null}
+          <ContextMeter usage={usage} provider={space === "productivity" ? runtime.provider : undefined}
+            onLoadUsage={(provider) => cleoClient.getHarnessUsage(provider)} />
           {/* While a turn runs the message can wait in the queue (Enter) or go into the run now (Steer). */}
           {canSteer && onSteerDraft ? (
             <button className="steer-button" type="button" data-testid="steer-now"

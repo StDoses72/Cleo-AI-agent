@@ -3,6 +3,7 @@ import type {
   MemorySourcesState,
   HarnessSyncResult,
   HarnessSyncStatus,
+  HarnessUsage,
   CleoClient,
   AgentInstructions,
   Attachment,
@@ -552,7 +553,7 @@ export class MockCleoClient implements CleoClient {
     yield { type: "changes", changes: clone(uiChanges.slice(0, 2)) };
     yield {
       type: "usage",
-      usage: { used: 12480, limit: 128000, input: 2840, output: 1910 },
+      usage: { used: 12480, limit: 128000, input: 10570, output: 1910 },
     };
 
     await delay(540);
@@ -715,6 +716,25 @@ export class MockCleoClient implements CleoClient {
   }
 
   async getLocalSkills() { return []; }
+
+  async getHarnessUsage(provider: string): Promise<HarnessUsage> {
+    await delay(180);
+    const soon = Math.floor(Date.now() / 1000) + 2 * 3600;
+    const later = Math.floor(Date.now() / 1000) + 4 * 86400;
+    if (provider === "codex") {
+      return { windows: [
+        { minutes: 300, percent: 42, resetsAt: soon, scope: null },
+        { minutes: 10080, percent: 18, resetsAt: later, scope: null },
+      ] };
+    }
+    if (provider === "claude") {
+      return { windows: [
+        { minutes: 10080, percent: 6, resetsAt: later, scope: null },
+        { minutes: 10080, percent: 11, resetsAt: later, scope: "Opus" },
+      ] };
+    }
+    return { windows: [] };
+  }
 
   async getHarnessSync(): Promise<HarnessSyncStatus[]> {
     await delay(120);

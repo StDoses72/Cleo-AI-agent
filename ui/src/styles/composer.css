@@ -843,22 +843,5 @@ select.text-control:hover {
 .worktree-toggle:hover { color: var(--text); background: var(--surface-hover); }
 .worktree-toggle.active { color: var(--text); background: var(--surface-active); }
 
-.context-ring {
-  display: inline-flex;
-  height: 30px;
-  align-items: center;
-  gap: 5px;
-  padding: 0 6px;
-  border-radius: var(--radius-sm);
-  color: var(--muted);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
-.context-ring:hover { background: var(--surface-hover); }
-.context-ring-track { stroke: var(--border-strong); }
-.context-ring-value { stroke: var(--text-soft); }
-.context-ring.high .context-ring-value { stroke: var(--warning); }
-
 .slash-empty p { margin: 0; padding: 4px 10px 8px; color: var(--muted); font-size: var(--font-size-caption); }
 .slash-menu .mention-retry { display: inline; width: auto; margin-left: 8px; padding: 1px 6px; border: 1px solid var(--border); border-radius: var(--radius-xs); color: var(--text-soft); font-size: var(--font-size-caption); }

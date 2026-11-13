@@ -286,11 +286,11 @@ class Agent:
 
         input_tokens = _usage_int(usage, "input_tokens", "prompt_tokens")
         output_tokens = _usage_int(usage, "output_tokens", "completion_tokens")
-        total_tokens = _usage_int(usage, "total_tokens")
-        if total_tokens is None and (input_tokens is not None or output_tokens is not None):
-            total_tokens = (input_tokens or 0) + (output_tokens or 0)
+        # Occupancy is the request's input side, as for every harness (see
+        # cleo/harnesses/events.py); a provider that reports only a total falls back to it.
         self.context_usage.update(
-            used_tokens=total_tokens,
+            used_tokens=(input_tokens if input_tokens is not None
+                         else _usage_int(usage, "total_tokens")),
             window_tokens=_usage_int(usage, "context_window"),
             input_tokens=input_tokens,
             output_tokens=output_tokens,

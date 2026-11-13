@@ -1872,6 +1872,45 @@ def test_delete_thread_handles_chat_and_productivity_sessions(tmp_path: Path) ->
     asyncio.run(scenario())
 
 
+def test_harness_usage_lists_the_accounts_windows_and_is_empty_when_unreadable(
+    tmp_path: Path,
+) -> None:
+    from cleo.runtime.usage import RateLimitWindowUsage
+
+    async def scenario() -> None:
+        service = _service(tmp_path)
+        calls: list[str] = []
+
+        async def account_usage(provider: str):
+            calls.append(provider)
+            if provider == "opencode":
+                raise NotImplementedError("Provider 'opencode' does not support account usage.")
+            if provider == "broken":
+                raise RuntimeError("not signed in")
+            return (
+                RateLimitWindowUsage(used_percent=42, window_minutes=300, resets_at=1_800_000_000),
+                RateLimitWindowUsage(used_percent=11, window_minutes=10_080, scope="Opus"),
+            )
+
+        service._adapter_instance = SimpleNamespace(account_usage=account_usage, aclose=_async_none)
+        expected = {"windows": [
+            {"minutes": 300, "percent": 42, "resetsAt": 1_800_000_000, "scope": None},
+            {"minutes": 10_080, "percent": 11, "resetsAt": None, "scope": "Opus"},
+        ]}
+        assert await service.get_harness_usage(provider="codex") == expected
+        # A reading is reused for a minute; opening the panel twice asks the harness once.
+        assert await service.get_harness_usage(provider="codex") == expected
+        assert calls == ["codex"]
+        # A harness without such a reading, or one that failed to answer, shows nothing.
+        assert await service.get_harness_usage(provider="opencode") == {"windows": []}
+        assert await service.get_harness_usage(provider="broken") == {"windows": []}
+        # A failure is not remembered: the next opening asks again.
+        assert await service.get_harness_usage(provider="broken") == {"windows": []}
+        assert calls == ["codex", "opencode", "broken", "broken"]
+
+    asyncio.run(scenario())
+
+
 def test_runtime_catalog_and_profile_selection_use_configured_models(tmp_path: Path) -> None:
     async def scenario() -> None:
         service = _service(tmp_path)

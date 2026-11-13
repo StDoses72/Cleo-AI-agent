@@ -11,7 +11,7 @@ const server = await createServer({ root: ui, configFile: false,
   server: { middlewareMode: true, hmr: false }, esbuild: { jsx: "automatic" } });
 after(() => server.close());
 const { TaskTokenUsage } = await server.ssrLoadModule("/src/components/TaskTokenUsage.tsx");
-const { ContextUsage } = await server.ssrLoadModule("/src/components/ContextUsage.tsx");
+const { ContextMeter, ContextPanel } = await server.ssrLoadModule("/src/components/ContextMeter.tsx");
 
 test("current task renders compact model calls, tokens and reference USD without history", () => {
   const html = renderToStaticMarkup(React.createElement(TaskTokenUsage, { usage: {
@@ -37,19 +37,58 @@ test("current task renders compact model calls, tokens and reference USD without
   assert.doesNotMatch(html, /历史任务|900 token|<details>/);
 });
 
-test("context shows the latest request footprint and explains the separate meaning", () => {
-  const html = renderToStaticMarkup(React.createElement(ContextUsage, { usage: {
-    used: 41818, limit: 258400, input: 41558, output: 260,
-  } }));
-  assert.match(html, /16%/);
-  assert.match(html, /41.8k \/ 258.4k/);
-  assert.match(html, /输入 41,558 · 输出 260/);
-  assert.doesNotMatch(html, /容量随模型|可能下降/, "the hint is the two numbers, not an explanation");
-  const missing = renderToStaticMarkup(React.createElement(ContextUsage, { usage: {
-    used: 10969124, limit: 258400, input: 41558, output: 260,
-  } }));
-  assert.match(missing, /上报值超出容量/);
-  assert.doesNotMatch(missing, /4245%/);
+test("context ring shows the latest request footprint and its panel the numbers behind it", () => {
+  const usage = { used: 41818, limit: 258400, input: 41558, output: 260 };
+  const ring = renderToStaticMarkup(React.createElement(ContextMeter, { usage }));
+  assert.match(ring, /16%/);
+  assert.match(ring, /aria-expanded="false"/);
+  assert.doesNotMatch(ring, /context-meter-panel/, "the panel is closed until the ring is clicked");
+  const panel = renderToStaticMarkup(React.createElement(ContextPanel, { usage }));
+  assert.match(panel, /41\.8k \/ 258\.4k/);
+  assert.doesNotMatch(panel, /容量随模型|可能下降/, "numbers, not an explanation");
+  assert.doesNotMatch(panel, /用量|context-meter-section/, "no usage section without a reading");
+});
+
+test("context panel lists the account's usage windows and leaves out what it cannot name", () => {
+  const usage = { used: 41818, limit: 258400, input: 41818, output: 260 };
+  const now = new Date(2026, 10, 13, 9, 0).getTime();
+  const at = (...parts) => Math.floor(new Date(...parts).getTime() / 1000);
+  const panel = renderToStaticMarkup(React.createElement(ContextPanel, { usage, now, windows: [
+    { minutes: 300, percent: 42, resetsAt: at(2026, 10, 13, 14, 30), scope: null },
+    { minutes: 10080, percent: 6, resetsAt: at(2026, 10, 19, 13, 0), scope: null },
+    { minutes: 10080, percent: 11, resetsAt: null, scope: "Opus" },
+    { minutes: 43200, percent: 3, resetsAt: at(2026, 11, 1, 0, 5), scope: null },
+    // Already reset, and a window of unknown length: neither is shown.
+    { minutes: 300, percent: 99, resetsAt: at(2026, 10, 13, 8, 0), scope: null },
+    { minutes: null, percent: 77, resetsAt: null, scope: null },
+  ] }));
+  const rows = [...panel.matchAll(/<dt>(.*?)<\/dt><dd>(.*?)<\/dd>/g)].map(([, name, value]) => [name, value.replace(/<[^>]+>/g, " ").trim().replace(/\s+/g, " ")]);
+  assert.deepEqual(rows, [
+    ["5 小时", "14:30 重置 42%"],
+    ["本周", "11/19 13:00 重置 6%"],
+    ["本周 · Opus", "11%"],
+    ["30 天", "12/1 00:05 重置 3%"],
+  ]);
+  assert.match(panel, /<strong>用量<\/strong>/);
+  const none = renderToStaticMarkup(React.createElement(ContextPanel, { usage, now, windows: [
+    { minutes: null, percent: 77, resetsAt: null, scope: null },
+  ] }));
+  assert.doesNotMatch(none, /用量/);
+});
+
+test("context ring is absent without a reported footprint and never exceeds a full circle", () => {
+  for (const usage of [undefined, { used: null, limit: 128000, input: null, output: null },
+    { used: 4000, limit: 0, input: 3000, output: 1000 }]) {
+    assert.equal(renderToStaticMarkup(React.createElement(ContextMeter, { usage })), "");
+  }
+  const over = { used: 10969124, limit: 258400, input: 41558, output: 260 };
+  const ring = renderToStaticMarkup(React.createElement(ContextMeter, { usage: over }));
+  assert.match(ring, /100%/);
+  assert.match(ring, /class="context-meter high"/);
+  assert.doesNotMatch(ring, /4245%/);
+  const panel = renderToStaticMarkup(React.createElement(ContextPanel, { usage: over }));
+  assert.match(panel, /10\.97M \/ 258\.4k/, "the reported numbers are shown as they came");
+  assert.match(panel, /width:100%/);
 });
 
 test("uncertain boundaries and missing telemetry are disclosed without inventing zero", () => {
