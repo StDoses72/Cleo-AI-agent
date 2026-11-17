@@ -2,7 +2,7 @@
 
 [English](README.md) | [文档中心](docs/README.md) | [架构说明](docs/ARCHITECTURE.md)
 
-Cleo 是一套本地优先的 AI 工作空间：它把通用对话、开发者代理、会话恢复和可追溯记忆统一在一个桌面端中，同时允许团队按自己的模型、工具和数据边界部署。
+Cleo 是一个面向 agent harness 编排的集成平台：在同一个桌面工作区里运行 Codex、Claude Code 和 ACP agent，并与通用对话共用会话、记忆和子任务路由。它本地优先，团队可以按自己的模型、工具、harness 和数据边界部署。
 
 项目提供 Windows、macOS、Linux 桌面构建支持，由本地 Python 后端服务驱动，另有 stdio MCP 入口。用户数据默认保存在本机；模型推理由用户配置的 API provider 或外部 agent harness 提供。
 

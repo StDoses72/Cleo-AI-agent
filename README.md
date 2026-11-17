@@ -2,7 +2,7 @@
 
 [中文](README.zh-CN.md) | [Documentation](docs/README.en.md) | [Architecture](docs/ARCHITECTURE.en.md)
 
-Cleo is a local-first AI workspace that brings general chat, developer agents, resumable sessions, and evidence-backed memory into one desktop experience. Teams can supply their own models, tools, harnesses, and data boundaries.
+Cleo is an integration platform for agent harness orchestration. It runs Codex, Claude Code, and ACP agents from one desktop workspace, alongside general chat, with shared sessions, memory, and subtask routing across them. It is local-first: teams supply their own models, tools, harnesses, and data boundaries.
 
 The project supports native desktop builds for Windows, macOS and Linux, backed by a local Python service, plus a stdio MCP entry point. User data stays on the local device by default; inference is provided by the API provider or external agent harness selected by the user.
 
