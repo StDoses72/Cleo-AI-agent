@@ -197,6 +197,10 @@
   overscroll-behavior: contain;
 }
 
+/* The pane is focusable for keyboard scrolling; a pointer must not ring the whole pane. */
+.conversation-viewport:focus { outline: none; }
+.conversation-viewport:focus-visible { box-shadow: inset 0 0 0 1px var(--border-strong); }
+
 .timeline {
   width: var(--reading-width);
   margin: 0 auto;
@@ -965,9 +969,6 @@
 
 .work-group.running .work-group-icon,
 .tool-process.running .tool-status { color: var(--text); }
-.work-group.error .work-group-icon,
-.work-group-errors,
-.tool-process.error .tool-status { color: var(--danger); }
 
 .work-group strong,
 .tool-main strong {

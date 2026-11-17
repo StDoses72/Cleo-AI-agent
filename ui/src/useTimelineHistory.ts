@@ -9,7 +9,7 @@ export function useTimelineHistory(thread: Thread | null, update: (id: string, f
   const follow = useRef(true);
   const positions = useRef(new Map<string, boolean>());
   if (latest.current.thread) positions.current.set(latest.current.thread.id,
-    follow.current && !latest.current.thread.history?.hasAfter);
+    !latest.current.thread.history?.hasAfter);
   latest.current = { thread, update };
   const generation = useRef(0);
   const inFlight = useRef(false);
@@ -27,7 +27,8 @@ export function useTimelineHistory(thread: Thread | null, update: (id: string, f
     setBusy(null); setError(null); setUnread(false);
   }, [thread?.id]);
 
-  const load = async (direction: "latest" | "before" | "after", beforeApply?: () => void, preserveUnpersisted = false) => {
+  /** `keepPosition` refreshes the latest page without pinning the view to its end. */
+  const load = async (direction: "latest" | "before" | "after", beforeApply?: () => void, preserveUnpersisted = false, keepPosition = false) => {
     const { thread: current } = latest.current;
     if (!current || (inFlight.current && direction !== "latest")) return;
     if (inFlight.current) generation.current++;
@@ -40,7 +41,7 @@ export function useTimelineHistory(thread: Thread | null, update: (id: string, f
       if (token !== generation.current || latest.current.thread?.id !== current.id) return;
       beforeApply?.();
       latest.current.update(current.id, saved => mergeTimelinePage(saved, page, direction, current, preserveUnpersisted));
-      if (direction === "latest") { follow.current = true; setFollowing(true); setUnread(false); }
+      if (direction === "latest" && !keepPosition) { follow.current = true; setFollowing(true); setUnread(false); }
       return true;
     } catch (failure) {
       if (token === generation.current) setError(failure instanceof Error ? failure.message : tr("usetimelinehistory.could_not_load_history"));
@@ -54,9 +55,12 @@ export function useTimelineHistory(thread: Thread | null, update: (id: string, f
     isActive: (id: string) => latest.current.thread?.id === id,
     retry: () => load(retryDirection.current),
     follow: (value: boolean) => { follow.current = value; setFollowing(value); if (value) setUnread(false); },
+    /** The loaded window ends at the newest item, so live output belongs in it wherever the view is. */
     isFollowing: (id: string) => latest.current.thread?.id === id
-      ? follow.current && !latest.current.thread.history?.hasAfter
+      ? !latest.current.thread.history?.hasAfter
       : positions.current.get(id) ?? true,
+    /** The view is pinned to the end and moves with new output. */
+    isPinned: (id: string) => latest.current.thread?.id !== id || follow.current,
     notify: (id: string) => { if (latest.current.thread?.id === id) setUnread(true); },
   };
 }

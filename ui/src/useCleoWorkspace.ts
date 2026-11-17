@@ -463,7 +463,7 @@ export function useCleoWorkspace() {
     if (projected.type === "message" && projected.steer && projected.steer.threadId !== threadId) return;
     acknowledgeSteer(threadId, projected);
     const following = history.isFollowing(threadId);
-    if (!following) history.notify(threadId);
+    if (!following || !history.isPinned(threadId)) history.notify(threadId);
     updateThread(threadId, current => {
       const index = current.items.findIndex(item => item.id === projected.id);
       const previous = current.items[index];
@@ -1016,7 +1016,7 @@ export function useCleoWorkspace() {
             }),
           }))).catch(() => {});
         }
-        if (history.isActive(threadId) && history.isFollowing(threadId) && thread.history) await history.load("latest");
+        if (history.isActive(threadId) && history.isFollowing(threadId) && thread.history) await history.load("latest", undefined, false, true);
         // Messages queued during a run go next; a stopped or failed run keeps them for the user.
         if (!failed && !cancellingRuns.current.has(token) && queuesRef.current[threadId]?.length
             && !runLocks.current.has(threadId)) {
@@ -1085,7 +1085,7 @@ export function useCleoWorkspace() {
         },
       ],
     }));
-    if (history.isActive(threadId) && history.isFollowing(threadId)) await history.load("latest");
+    if (history.isActive(threadId) && history.isFollowing(threadId)) await history.load("latest", undefined, false, true);
   };
 
   const resolveApproval = async (decision: ApprovalDecision) => {

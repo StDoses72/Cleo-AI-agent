@@ -133,29 +133,16 @@ try {
   const approval = settings.getByLabel("审批方式", { exact: true });
   const settled = () => access.and(page.locator(":enabled")).waitFor();
   await open();
-  // Escape dismisses only the nested permission menu; a second Escape closes settings.
-  const settingsPreset = settings.getByTestId("permission-selector");
-  const callsBeforeEscape = await page.evaluate(() => window.permissionTest.calls.length);
-  const valueBeforeEscape = await settingsPreset.getAttribute("data-value");
-  await settingsPreset.click();
-  await settings.getByTestId("permission-menu").waitFor();
-  await settings.getByRole("menuitemradio", { checked: true }).dispatchEvent("keydown", {
-    key: "Escape", isComposing: true, bubbles: true,
-  });
-  assert.equal(await settings.getByTestId("permission-menu").isVisible(), true,
-    "IME Escape must not dismiss the permission menu");
-  await page.keyboard.press("Escape");
-  assert.equal(await settings.isVisible(), true, "Escape from the permission menu closed the details panel");
-  await menuClosed();
-  assert.equal(await settingsPreset.evaluate(element => element === document.activeElement), true,
-    "Closing the permission menu must return focus to its trigger");
-  assert.equal(await settingsPreset.getAttribute("data-value"), valueBeforeEscape);
-  assert.equal(await page.evaluate(() => window.permissionTest.calls.length), callsBeforeEscape,
-    "Dismissing the permission menu must not save a preset");
-  await reopen();
+  // Presets are chosen in the composer only; the panel keeps the two separate settings (#169).
+  await access.waitFor();
+  assert.equal(await settings.getByTestId("permission-selector").count(), 0,
+    "The details panel repeats the composer's permission preset");
+  assert.equal(await access.inputValue(), "workspace-write", "The composer preset did not reach file access");
   assert.equal(await approval.inputValue(), "auto_review");
   await access.selectOption("full-access"); await settled();
   assert.equal(await approval.inputValue(), "auto_review", "Access must not change approval policy");
+  assert.equal(await preset.getAttribute("data-value"), "custom",
+    "Separate settings that match no preset must show as custom in the composer");
   await page.evaluate(() => { window.permissionTest.fail = true; });
   await approval.selectOption("deny_all");
   await settings.getByRole("alert").getByText("权限未保存：服务暂时不可用").waitFor();
@@ -165,6 +152,8 @@ try {
   await approval.selectOption("deny_all"); await settled();
   assert.equal(await approval.inputValue(), "deny_all");
   assert.equal(await settings.getByRole("alert").count(), 0);
+  assert.equal(await preset.getAttribute("data-value"), "full",
+    "Separate settings that match a preset must show as that preset in the composer");
 
   await page.evaluate(() => { window.permissionTest.running = true; });
   await access.selectOption("read-only"); await settled();
