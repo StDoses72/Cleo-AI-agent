@@ -6,7 +6,7 @@ Cleo is an integration platform for agent harness orchestration. It runs Codex, 
 
 The project supports native desktop builds for Windows, macOS and Linux, backed by a local Python service, plus a stdio MCP entry point. User data stays on the local device by default; inference is provided by the API provider or external agent harness selected by the user.
 
-> Current version: [v0.14.0](https://github.com/StDoses72/Cleo-AI-agent/releases/tag/v0.14.0) · [Download the desktop app](https://stdoses72.github.io/Cleo-AI-agent/)
+> Current version: [v0.14.1](https://github.com/StDoses72/Cleo-AI-agent/releases/tag/v0.14.1) · [Download the desktop app](https://stdoses72.github.io/Cleo-AI-agent/)
 
 A development task picks a harness and then one of its models from one menu; reasoning effort is a control of its own beside it. Codex conversations toggle Fast mode in the reasoning-effort menu, saved per conversation. Fast mode consumes more credits; availability depends on the model and account, and the switch is hidden where it is unsupported.
 
@@ -181,7 +181,7 @@ Cleo-AI-agent/
 - [Program versions and recovery](docs/program-versions.en.md)
 - [Local skills](docs/local-skills.en.md)
 - [Architecture decision records](docs/adr/README.md) (Chinese)
-- [Release notes for v0.14.0](docs/release-notes-v0.14.0.md)
+- [Release notes for v0.14.1](docs/release-notes-v0.14.1.md)
 
 The main usage guides are available in Chinese and English. Internal development references and research notes retain their original language.
 
