@@ -194,19 +194,13 @@ Codex Python SDK 使用官方配套的 `openai-codex-cli-bin`；桌面版通过 
 
 `requirements.txt` 是带平台条件的跨平台 Python 精确锁文件；两个 `package-lock.json` 记录对应的 npm 解析结果。这些文件由更新命令生成，不应手工编辑。仓库忽略的 `uv.lock` 仅供本地使用。更新命令检测到已有 `.venv` 时，会自动通过 `uv sync --upgrade --extra dev --prerelease=disallow` 刷新本地锁文件并升级开发依赖，需要安装 `uv`。没有 `.venv` 的 CI 环境不会创建它；`--check` 不修改环境。最低版本约束仍表示兼容性要求，锁文件记录最新稳定且兼容的解析结果。
 
-更新 Python 和两个 npm 锁文件（需要 Node/npm；默认在 Docker 解析镜像里解析 Python 依赖）：
+更新 Python 和两个 npm 锁文件（需要 Node/npm 和 `uv`；Python 依赖由本机 `uv` 解析）：
 
 ```powershell
 python scripts\update_project.py
 ```
 
-Docker 不可用但已安装 `uv` 时：
-
-```powershell
-python scripts\update_project.py --local-resolver
-```
-
-`--skip-build` 仍可传入但不再有作用：应用镜像随 CLI 一起移除，这个脚本不再构建镜像。
+`--local-resolver` 和 `--skip-build` 仍可传入但不再有作用：本机 `uv` 是唯一的解析方式，这个脚本也不构建镜像。
 
 使用镜像源时可以同时保留官方 PyPI 作为缺失包 fallback：
 
