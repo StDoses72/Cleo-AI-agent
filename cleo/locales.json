@@ -267,6 +267,10 @@
     "zh-CN": "运行需要查看",
     "en": "Run needs attention"
   },
+  "projection.run_cancelled": {
+    "zh-CN": "运行已取消",
+    "en": "Run cancelled"
+  },
   "projection.the_task_ended_before_the_tool_completed": {
     "zh-CN": "任务在工具完成前结束。",
     "en": "The task ended before the tool completed."
