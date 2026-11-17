@@ -8,7 +8,7 @@ The project supports native desktop builds for Windows, macOS and Linux, backed 
 
 > Current version: [v0.14.0](https://github.com/StDoses72/Cleo-AI-agent/releases/tag/v0.14.0) · [Download the desktop app](https://stdoses72.github.io/Cleo-AI-agent/)
 
-Codex development conversations toggle Fast mode with the lightning button on the runtime pill's card, saved per conversation. Fast mode consumes more credits; availability depends on the model and account, and the button is hidden where it is unsupported.
+A development task picks a harness and then one of its models from one menu; reasoning effort is a control of its own beside it. Codex conversations toggle Fast mode in the reasoning-effort menu, saved per conversation. Fast mode consumes more credits; availability depends on the model and account, and the switch is hidden where it is unsupported.
 
 Codex and Claude share their native login, configuration and session directories, honoring `CODEX_HOME` and `CLAUDE_CONFIG_DIR`. Portable history from retired Cleo homes migrates without overwriting native data; originals remain available for recovery. See the [configuration guide](docs/CONFIGURATION.en.md).
 
@@ -33,9 +33,12 @@ General assistants and coding agents usually keep separate histories, permission
 
 - Streaming chat and one-shot tasks with JPEG, PNG, WebP, and GIF attachments.
 - Codex subscription chat sends images through the Codex runtime and retains image context when restoring history or asking follow-up questions.
-- Paginated message history, collapsible intermediate activity, and native Codex/Claude questions.
+- Paginated message history and native Codex/Claude questions. A running turn shows its thinking as prose with each run of tool calls on one line, and folds behind a summary once the reply arrives.
+- One context measure for every harness, shown as a ring beside the send button; its panel also lists the Codex or Claude account's usage windows and reset times.
 - Edit an earlier message to rewind the conversation to that point and resend it; queue follow-ups while a turn runs and steer them in when you choose.
 - Local skill discovery, search, and invocation in native Claude/Codex development sessions.
+- Constrained subtask routing: the session's model stays the coordinator and delegates subtasks to connected harness models. See [subtask routing](docs/benchmark-routing.md) (Chinese).
+- Computer use through the built-in per-conversation browser or the local Windows desktop.
 - Official updates with a visible restart, automatic rollback to the previous program, and an independent recovery entry point.
 - A provider-neutral coding-harness data plane plus optional Codex-specific controls.
 - An append-only `events.jsonl` source of truth, atomic manifests, and rebuildable SQLite indexes.
@@ -106,6 +109,7 @@ Linux and macOS use the same Python package and JSON formats. See [platform supp
 - **Messages**: hover a message to copy it. Hover one of your earlier messages and choose Edit to rewind the conversation to that point and resend the new text. This works for Cleo chat and for Codex and Claude development tasks after the latest harness switch; files already written by later turns are not reverted.
 - **While Cleo is working**: new messages go into a queue above the input. Press **Steer** to deliver a queued message into the running turn; otherwise the queue is sent as the next message when the turn finishes. A stopped or failed turn keeps the queue so you can send, edit, or remove each message.
 - **Development and skills**: select a working directory and a Claude/Codex harness, type `/` to find a local skill, then select it, add arguments, and send. Reopen the session after installing a skill to refresh the catalog. See [local skills](docs/local-skills.en.md).
+- **Context and usage**: the ring beside the send button shows the input the latest request put in the context window over the window the harness reports. Click it for the figures and, on Codex and Claude, the account's usage windows. A value that cannot be read is not shown.
 - **Version updates**: check official releases in Settings → Updates and pick an earlier or pre-release version under Other versions. Cleo restarts into the selected program, returns to the previous one if it fails to start, and keeps a fallback program reachable from a separate recovery entry point. Switching program versions does not roll chats, memory, or configuration back to an earlier snapshot. See [program versions and recovery](docs/program-versions.en.md).
 
 ## Architecture at a glance
@@ -167,6 +171,7 @@ Cleo-AI-agent/
 
 - [Documentation index](docs/README.en.md)
 - [Getting started](docs/GETTING_STARTED.en.md)
+- [Platforms and installation](docs/PLATFORMS.en.md)
 - [Configuration and security](docs/CONFIGURATION.en.md)
 - [Architecture](docs/ARCHITECTURE.en.md)
 - [Development and releases](docs/DEVELOPMENT.md)
@@ -175,6 +180,8 @@ Cleo-AI-agent/
 - [Memory-system design record](docs/CASTMIND_MEMORY_MIGRATION.md)
 - [Program versions and recovery](docs/program-versions.en.md)
 - [Local skills](docs/local-skills.en.md)
+- [Architecture decision records](docs/adr/README.md) (Chinese)
+- [Release notes for v0.14.0](docs/release-notes-v0.14.0.md)
 
 The main usage guides are available in Chinese and English. Internal development references and research notes retain their original language.
 

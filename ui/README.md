@@ -31,13 +31,17 @@ Renderer 不应直接读取文件、环境变量或 API Key。Python 配置读�
 
 同一次应用运行中，“开发”和“对话”分别保留最后选中的项目与线程；切换到其他页面再返回时恢复原位置，也保留新任务和空项目的草稿。只有原项目或线程已不存在时才选择可用的替代项。这些页面选择不跨应用重启保存。
 
-新建 Codex 会话、连接验证和账号登录共用 Cleo 的 `data/codex` 状态目录，独立于默认 Codex 应用。需在 Cleo 内登录；不会复制原 Codex 的登录文件和全局配置。恢复旧会话时仅在专用目录明确报告“会话不存在”后才查找原目录；认证、网络和其他错误直接报告。旧会话及其原生分支仍保留原存储位置。
+Codex 和 Claude 的会话、连接验证和账号登录使用本机原生目录（`CODEX_HOME` / `CLAUDE_CONFIG_DIR` 优先，否则 `~/.codex` / `~/.claude`），与原生客户端共用登录和历史。旧版 Cleo 专用目录 `data/codex`、`data/claude` 中可移植的内容会补充到原生目录，原件保留；规则见[配置说明](../docs/CONFIGURATION.md)。
 
 消息操作只在悬停时显示为图标：复制，以及对自己消息的编辑。编辑会调用 `rewind_thread` 回退到该消息之前，再以新文本发送。运行期间输入的消息进入输入框上方的队列：点 Steer 立即送入当前回合，否则在回合正常结束后作为下一条消息发送；停止或失败时保留队列。
 
-## 源码运行
+开发任务的输入框里，`RuntimePicker` 提供两个控件：模型控件显示「harness · 模型」，菜单先列当前 harness 的模型，标题回到 harness 列表，检查未通过的 harness 仍列出并标为未连接；思考深度控件的菜单里有快速模式和恢复默认。快速模式只在 harness 和模型支持时显示，按对话保存，运行期间不可切换；它消耗更多额度，可用性取决于模型、账号与管理员策略。子任务路由只在设置里开关。
 
-Codex 开发对话的输入框旁提供“标准速度／快速”选择，按对话保存，恢复会话后继续生效。旧对话尚未选择时显示“速度随配置”，保留原生配置。运行期间不可切换。快速模式消耗更多额度，可用性取决于模型、账号与管理员策略；标准速度会显式清除原生会话的快速档位。Claude 和 ACP 不显示此选项。
+发送按钮旁的圆环（`ContextMeter`）显示上下文占用：最近一次请求放进窗口的输入除以 harness 上报的窗口，没有窗口就不显示。点开面板可看数值，并按需读取 Codex 或 Claude 账号的用量窗口与重置时间。
+
+运行中的回合把思考写成正文，每段工具调用收成一行；回复出现或回合结束后，整段折叠为一行摘要。界面文案只保留标签和状态，不写解释性句子。
+
+## 源码运行
 
 先在仓库根目录准备 Python 3.12 环境和 `config/cleo.json`，再运行：
 
@@ -82,6 +86,8 @@ npm run typecheck
 npm run test:backend
 npm run smoke
 npm run smoke:inspector
+npm run smoke:uiux
+npm run smoke:layout
 npm run smoke:real
 npm run smoke:packaged
 ```
@@ -92,8 +98,12 @@ npm run smoke:packaged
 | `test:backend` | backend 进程管理和 updater 单元测试 |
 | `smoke` | 确定性 mock 下的主要界面流程 |
 | `smoke:inspector` | 普通/窄窗口中的 diff、历史文件列表与终端独立滚动，长内容不撑宽侧栏 |
+| `smoke:uiux` | 运行中与折叠后的回合、运行方式菜单、圆环面板等界面回归 |
+| `smoke:layout` | 窄窗口下各面板不溢出、不换行 |
 | `smoke:real` | 源码模式真实 Python JSONL IPC |
 | `smoke:packaged` | 最终独立 runtime、路径和应用启动 |
+
+Windows 上从 PowerShell 运行这些命令；需要 Python 的 smoke 可用 `CLEO_PYTHON` / `CLEO_TEST_PYTHON` 指向仓库的 `.venv`。其余专项 smoke（权限、项目、steering、计时、更新设置等）见 `package.json` 的 `scripts`。
 
 `smoke:packaged` 按平台查找 `release/Cleo` 或 `release/Cleo.app`，也可用 `CLEO_EXECUTABLE` 指定安装后的程序。涉及 Python protocol、数据目录、preload 或 package layout 的改动必须运行 real/packaged smoke。
 

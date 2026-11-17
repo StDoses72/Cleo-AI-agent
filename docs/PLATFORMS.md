@@ -111,8 +111,7 @@ macOS PKG 使用 `/Library/Application Support/Cleo/runtimes/online`，Linux DEB
 macOS 尚未通过 Apple 公证。如果系统提示无法验证安装器或应用，先点「完成」，在确认包来自
 官方发布后进入「系统设置 → 隐私与安全性 → 仍要打开」并确认。
 参见 [Apple 操作说明](https://support.apple.com/102445)。安装器不会移除隔离属性或关闭 Gatekeeper。
-基础运行环境由安装器准备，应用不再自动弹出依赖安装向导；Docker 和独立桌面等可选功能，
-以及运行环境修复，仍可从设置中手动打开。
+基础运行环境由安装器准备，应用不再自动弹出依赖安装向导；运行环境修复仍可从设置中手动打开。
 
 macOS/Linux 便携包通过各自的 manifest 选择更新，校验平台、架构、长度和 SHA-256 后，
 与 Windows 共用程序保留区、版本切换交易和独立恢复控制器（见[程序版本与恢复](program-versions.md)）。

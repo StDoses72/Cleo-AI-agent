@@ -29,9 +29,12 @@ Cleo 是一套本地优先的 AI 工作空间：它把通用对话、开发者�
 
 - 流式通用对话与一次性任务，支持 JPEG、PNG、WebP 和 GIF 附件。
 - Codex 订阅对话可直接发送图片，继续使用 Codex 额度；恢复历史与后续追问保留图片上下文。
-- 历史消息分页加载、过程折叠，以及 Codex/Claude 的原生提问交互。
+- 历史消息分页加载，以及 Codex/Claude 的原生提问交互。运行中的回合把思考写成正文，每段工具调用收成一行；回复出现后整段折叠为一行摘要。
+- 所有 harness 使用同一口径的上下文占用，显示为发送按钮旁的圆环；面板同时列出 Codex 或 Claude 账号的用量窗口与重置时间。
 - 编辑之前的消息，对话回到那一刻并重新发送；运行期间的新消息先进入队列，需要时再手动 Steer 进当前回合。
 - 原生 Claude/Codex 开发会话中的本机 skills 发现、搜索与调用。
+- 受约束的子任务路由：会话当前模型始终是协调者，把子任务委派给已连接的 harness 模型。详见[子任务路由](docs/benchmark-routing.md)。
+- 电脑使用：按会话隔离的内置浏览器，或本机 Windows 桌面。详见[电脑使用](docs/computer-use.md)。
 - 正式版本更新：可见的重启过程、启动失败自动回到上一个程序，以及独立的恢复入口。
 - 面向代码工作的统一 harness adapter，包含 provider-neutral 数据面和可选的 Codex 控制面。
 - append-only `events.jsonl` 会话事实源、原子 manifest 和可重建 SQLite 索引。
@@ -65,7 +68,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 首次进入应用后，在“设置 → 模型”中配置 provider、模型、API Key 和可选 Base URL，再分别选择 Cleo 与 DreamAgent 使用的 profile。API Key 只写入本地配置，桌面读取接口不会回传明文。
 
-使用 Codex 开发对话时，可在运行药丸的卡片里用闪电按钮切换快速模式；选择按对话保存。快速模式消耗更多额度，可用性取决于模型和账号，不支持时不显示该按钮。
+开发任务在同一个菜单里先选 harness 再选它的模型，思考深度是旁边独立的控件。使用 Codex 时，可在思考深度菜单里切换快速模式；选择按对话保存。快速模式消耗更多额度，可用性取决于模型和账号，不支持时不显示该开关。
 
 Codex/Claude 的登录、配置、历史和 skills 共用本机原生目录，尊重 `CODEX_HOME` / `CLAUDE_CONFIG_DIR`。旧专用区域按可核验规则迁移可移植内容，保留原件和冲突报告，不覆盖目标登录、配置或同 ID 历史；详见[配置说明](docs/CONFIGURATION.md)。
 
@@ -107,6 +110,7 @@ Linux/macOS 使用相同的 Python 包和 JSON 配置。原生桌面构建、安
 - **消息操作**：鼠标移到消息上可复制；移到自己之前的消息上点编辑，对话会回到那条消息之前并发送修改后的内容。适用于 Cleo 对话，以及最近一次切换 harness 之后的 Codex、Claude 开发任务；之后回合已写入的文件不会回退。
 - **运行中输入**：Cleo 工作时发送的消息进入输入框上方的队列。点 **Steer** 立即送入当前回合；不操作则在本回合结束后作为下一条消息发送。停止或失败的回合会保留队列，可逐条发送、编辑或移除。
 - **开发与 skills**：选择工作目录及 Claude/Codex harness，在输入框键入 `/` 搜索本机 skill，选择后补充参数并发送。安装新 skill 后重新打开会话以刷新列表；详见[本地 skills](docs/local-skills.md)。
+- **上下文与用量**：发送按钮旁的圆环显示最近一次请求放进上下文窗口的输入，除以 harness 上报的窗口。点开可看具体数值，Codex 和 Claude 还会列出账号的用量窗口。读不到的数值不显示。
 - **更新版本**：在设置的更新页检查正式版本，「其他版本」可选择历史或预发布版本。Cleo 重启进入所选程序，启动失败时回到上一个程序，并保留可从独立恢复入口进入的保底程序。切换程序版本不会把聊天、记忆和配置还原到旧快照。详见[程序版本与恢复](docs/program-versions.md)。
 
 ## 系统如何工作
@@ -168,15 +172,19 @@ Cleo-AI-agent/
 ## 文档导航
 
 - [快速开始](docs/GETTING_STARTED.md)：安装、首次配置和第一条任务。
+- [平台与安装](docs/PLATFORMS.md)：各平台安装包、数据位置、更新与签名边界。
 - [配置与安全边界](docs/CONFIGURATION.md)：模型、目录、工具、harness 与数据路径。
 - [架构说明](docs/ARCHITECTURE.md) / [English](docs/ARCHITECTURE.en.md)：组件、数据流和持久化模型。
-- [开发与发布](docs/DEVELOPMENT.md)：本地环境、测试、依赖锁定、Docker 和 Windows 发布。
+- [开发与发布](docs/DEVELOPMENT.md)：本地环境、测试、依赖锁定和桌面发布。
 - [后端代码导读](docs/BACKEND_CODE_REVIEW.md)：面向贡献者的阅读顺序与 review 清单。
 - [运行时与数据维护指南](docs/Cleo_Runtime_State_Maintenance_Guide.docx)：变更 runtime、session 或 memory 时的操作手册。
 - [记忆系统设计记录](docs/CASTMIND_MEMORY_MIGRATION.md)：分层记忆方案的来源与取舍。
 - [双向记忆读取](docs/MEMORY_READING.md)：跨空间检索、会话续读和仅限 SDK 子进程的 MCP 接入。
 - [程序版本与恢复](docs/program-versions.md)：更新、切换、回退与保底入口。
 - [本地 skills](docs/local-skills.md)：支持的 harness、目录与调用方式。
+- [子任务路由](docs/benchmark-routing.md)与[电脑使用](docs/computer-use.md)。
+- [ADR 索引](docs/adr/README.md)：架构与行为边界的决策记录。
+- [v0.14.0 发布说明](docs/release-notes-v0.14.0.md)。
 
 ## 开发与验证
 

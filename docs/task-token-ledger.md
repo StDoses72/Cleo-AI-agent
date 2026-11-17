@@ -47,7 +47,9 @@ Until a semantic title is available, the panel says "当前任务" rather than c
 Context capacity comes from the selected model's local runtime metadata, including the
 runtime's effective capacity percentage when present, or its configured catalog capacity.
 `max_tokens` limits generation and is not used as a context capacity. Native notifications
-supersede metadata. Model changes clear the old occupancy; unknown capacities show a dash.
+supersede metadata. Model changes clear the old occupancy. Occupancy is shown by the ring
+beside the send button, with one definition for every harness (ADR 0011); without a known
+window no ring is shown.
 
 USD prefers reliable harness-reported cost, then exact calibrated input/output/cache rates.
 Subscription amounts remain API-equivalent amounts, with their basis available on hover.

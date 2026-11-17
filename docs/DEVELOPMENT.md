@@ -37,34 +37,44 @@ npm start
 ## 代码所有权
 
 ```text
+cleo/bootstrap/               组合根：显式加载配置并装配长生命周期对象
 cleo/agents/                  通用 Cleo 与 DreamAgent
 cleo/agents/tools/            shell、browser、memory、Codex 等 agent tools
-cleo/config/                  Pydantic 配置模型、加载器和模板
-cleo/desktop/                 JSONL stdio 协议、use case service 和 UI projection
+cleo/config/                  Pydantic 配置模型、加载器、模板与带版本的热加载快照
+cleo/desktop/                 JSONL stdio 协议与方法表、use case service、运行登记和 UI projection
 cleo/harnesses/               provider-neutral model、data plane 与 control plane
 cleo/integrations/harnesses/  Codex、Claude 与 ACP provider 实现
 cleo/memory/                  compaction、store、sources、state、路径与后台整理进程（worker）
 cleo/sessions/                session 事实源与 registry
-cleo/runtime/                 当前交互状态与 context usage
+cleo/runtime/                 界面导航状态、context usage、任务用量台账与计时
+cleo/routing/                 受约束的子任务路由
+cleo/computer/                内置浏览器与本机电脑控制的桥接
+cleo/mcp/                     stdio MCP 入口
 ui/                           Electron main/preload、React renderer 和 smoke tests
 tests/                        与上述 Python 责任域对应的测试
 ```
 
-依赖方向应保持清晰：入口可以组合 core service；session 与 memory 不应反向依赖 CLI；provider SDK 类型不应泄漏到 `SessionStore` 或 UI renderer。
+依赖方向应保持清晰：入口可以组合 core service；session 与 memory 不应反向依赖桌面入口；后端不得引入终端界面代码（`tests/test_boundaries.py`）；provider SDK 类型不应泄漏到 `SessionStore` 或 UI renderer。
 
 ### 桌面历史与交互提问
 
 `load_timeline` 按逻辑条目提供 `latest` / `before` / `after` 游标分页，默认每页 80 条。会话目录中的 `.desktop-timeline-v1.sqlite3` 是可重建索引；`events.jsonl` 仍是事实源。索引只增量读取追加事件，工具结果、计划、提问和回答按稳定 ID 更新原条目。索引重建会使旧游标失效，界面可通过“回到最新”恢复。
 
-Renderer 最多缓存 500 条、约 4 MiB 的预览内容，动态高度虚拟列表只挂载可见行和缓冲行。长正文通过 `read_timeline_content` 分段读取。浏览历史时不会自动跳到新消息；页面查找和跨屏选择只覆盖挂载的内容。这些限制不改变模型上下文或删除持久历史。思考与工具过程组默认收起，运行中只在组标题里显示一行当前步骤的摘要，不会随着事件到达弹出新的卡片；用户展开后，同一轮首次出现非空最终回答时自动收起一次，随后保留用户的展开选择。
+Renderer 最多缓存 500 条、约 4 MiB 的预览内容，动态高度虚拟列表只挂载可见行和缓冲行。长正文通过 `read_timeline_content` 分段读取。浏览历史时不会自动跳到新消息；页面查找和跨屏选择只覆盖挂载的内容。这些限制不改变模型上下文或删除持久历史。回合运行期间，思考以正文写进时间线，每段连续的工具调用收成一行；这段过程之后出现回复，或回合结束时，整段折叠为一行摘要。工具行依次显示状态、名称、命令、退出码和耗时；harness 没有给出工具名的命令计为命令。
 
 Codex `item/tool/requestUserInput` 与 Claude `AskUserQuestion` 接入独立的 `QuestionBroker`，通过 `question_request` / `question_response` 持久化，桌面端使用 `get_pending_questions` / `resolve_question`。必须显式提交所有问题；权限自动批准策略、弹窗收起和超时都不会代答。取消运行会释放等待，重启后旧问题显示连接失效；不支持原生提问的入口继续使用文本对话。Claude 支持原生多选，Codex 使用其当前单选/文本协议。
 
 Claude Code 的一次 `ResultMessage` 只结束一个前台轮次：`Bash(run_in_background=true)` 或后台 agent 仍可继续运行，完成后 CLI 会在同一条流上唤醒模型再跑一轮（`task_notification` → 新的 `init` → 回复 → 带 `origin.kind == "task-notification"` 的 result）。`ClaudeProvider.prompt` 以 `background_tasks_changed` / `task_started` / `task_notification` 帧跟踪后台任务，把它们投影为时间线里的工具条目，在阶段 result 后写入 `status` 事件（`claude/stage_completed`）并继续消费同一条流，直到某个 result 到来时已无后台任务；阶段回复与最终回复都归属原始 turn，问答与审批在阶段之间保持可答。每个 `task_notification` 都欠模型一次唤醒结果：多个任务一起完成时 CLI 先发 `num_turns: 0` 的空 result，最后一个 result 才带回复，所以结束条件是"没有后台任务且没有未消费的唤醒结果"，不是任务集合为空。`ambient: true` 的任务（会话级 watcher）不算本轮工作。等待上限由 `CLEO_CLAUDE_BACKGROUND_WAIT_SECONDS` 控制（默认 600 秒，按帧间静默计时）：超时把本轮记为 `failed` 并附原因（阶段回复仍在时间线里，但最终回复没有到）；`0` 是明确的不等待，返回阶段回复为 `completed`。超时、等待期间取消、或唤醒轮次开始后流在 result 之前结束，都会断开这条流并在下一次 prompt 以原生 session 重连，避免迟到的唤醒回复串入后续用户轮次；流提前结束按错误处理，不沿用上一阶段的 result。
 
-UI 样式入口是 `ui/src/index.css`，它按顺序 `@import` `ui/src/styles/` 下的模块：`tokens.css` 定义颜色、字号、圆角、阴影等设计变量（含浅色主题覆盖），`base.css` 是全局重置，`shell.css` / `sidebar.css` / `conversation.css` / `composer.css` / `inspector.css` 分别对应窗口框架、侧栏、对话、输入框和检查器，`memory.css`、`settings.css`、`inspector-panels.css` 承载各面板，`overlays.css` 负责弹窗、命令面板和提示，`responsive.css` 与 `motion.css` 收尾。新面板沿用 `--font-ui` 与 `--font-code` 和统一字号变量，颜色只引用 tokens，不自行写死色值。
+UI 样式入口是 `ui/src/index.css`，它按顺序 `@import` `ui/src/styles/` 下的模块：`tokens.css` 定义颜色、字号、圆角、阴影等设计变量，`base.css` 是全局重置，`legacy-helpers.css` 保留旧的辅助类，`shell.css` / `sidebar.css` / `conversation.css` / `composer.css` / `inspector.css` 分别对应窗口框架、侧栏、对话、输入框和检查器，`memory.css`、`settings.css`、`inspector-panels.css` 承载各面板，`overlays.css` 负责弹窗、命令面板和提示，`responsive.css`、`theme.css` 与 `motion.css` 收尾。自带样式的组件把 CSS 放在组件旁边并自行导入，例如 `components/runtime-picker.css`、`context-meter.css`、`timeline.css`。新面板沿用 `--font-ui` 与 `--font-code` 和统一字号变量，颜色只引用 tokens，不自行写死色值。
 
 对话正文、思考过程和文件预览里的 Markdown 都经 `remark-math` + `rehype-katex` 渲染数学公式：渲染前经 `ui/src/markdown-math.ts` 归一化：`\(` `\)` 转为 `$...$`，`\[` `\]` 转为 `$$...$$`，代码块与行内代码不处理；位于词首且紧跟数字的 `$`（如 `$5`）视为货币并转义。KaTeX 的样式与字体随 Vite 打包进 `dist/assets`，满足 CSP 的 `font-src 'self'`；公式语法错误时按原文显示，不中断渲染。
+
+开发任务的运行方式由 `RuntimePicker` 选择：模型控件显示「harness · 模型」，菜单先列当前 harness 的模型，标题回到 harness 列表；菜单打开时逐个检查 harness，未通过的仍列出并标为未连接。思考深度是独立的控件，快速模式和恢复默认在它的菜单里。子任务路由只在设置里开关，新任务跟随该设置，不再保存自己的模式。
+
+发送按钮旁的圆环由 `ContextMeter` 绘制：占用是最近一次请求放进窗口的输入除以 harness 上报的窗口，所有 harness 同一口径；没有窗口就不画圆环。点开面板时通过 `get_harness_usage` 读取 Codex 或 Claude 账号的用量窗口，读数复用一分钟，读不到的行不显示（[ADR 0011](adr/0011-one-context-measure-and-on-demand-account-usage.md)）。
+
+界面文案只保留标签和状态：解释、安抚和留余地的句子不写进界面；破坏性操作的确认、授权同意文本和真实错误保留。
 
 侧栏线程卡片显示该会话使用的 harness：开发任务显示编码 harness（Codex / Claude / ACP 客户端名），对话显示模型名，数据来自线程的 `runtime.provider` / `runtime.model`。回复完成时若用户没有停留在该线程（或窗口不在前台），线程记为未读：卡片加粗并显示"新回复"，Renderer 通过 `cleoWindow.setBadge(count, overlayPng)` 把未读数交给主进程，macOS / Linux 用 `app.setBadgeCount`，Windows 用 `setOverlayIcon` 叠加 Renderer 绘制的数字；打开线程或窗口回到前台即视为已读，归零时恢复原图标。未读状态只保存在内存中，不写入会话。
 
@@ -142,6 +152,10 @@ npm run smoke
 - `smoke:real`：验证源码模式的真实 JSONL IPC。
 - `smoke:packaged`：验证带独立 Python runtime 的最终发布包。
 - `smoke:approvals`：隔离的 mock 窗口验证浏览器确认、拒绝、取消与连续停止后重发。
+- `smoke:uiux`：运行中与折叠后的回合、运行方式菜单、圆环面板等界面回归。
+- `smoke:layout`、`smoke:inspector`：窄窗口与检查器的布局。
+
+在 Windows 上从 PowerShell 运行这些命令；smoke 需要带 Cleo 依赖的 Python，可用 `CLEO_PYTHON` / `CLEO_TEST_PYTHON` 指向仓库的 `.venv`。
 
 ### 浏览器授权排查
 
@@ -210,7 +224,7 @@ python scripts\update_project.py `
 
 安装版每六小时检查正式发布，下载和安装都需要用户操作。更新检查与版本切换共用 `ReleaseDownloads`：按用户配置目录、平台、版本和 SHA-256 隔离缓存；包完整校验后才可解压。同一个包的并发请求共享下载，旧缓存经过校验后可复用。下载完成不会在下次启动时自行安装。Linux `.deb` 的系统安装仍由包管理器维护。
 
-## Windows 桌面发布
+## 桌面发布
 
 实验版独立编号，例如 GitHub 标签 `alpha-0.0.1`、发布名称 `Cleo α 0.0.1（实验版）`，包内版本为 `0.0.1-alpha`。必须标记为 Pre-release，不成为 Latest。安装版使用独立的 `Cleo Alpha` 配置及数据目录；显式设置的 `CLEO_HOME` 和 `--user-data-dir` 仍优先。正式版继续使用 `v` 标签及原来的目录。Linux 包管理版本用 `0.0.1~alpha`，保证排序低于同号稳定版。
 

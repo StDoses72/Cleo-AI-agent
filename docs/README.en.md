@@ -2,7 +2,7 @@
 
 [中文](README.md) | [Project overview](../README.md)
 
-Guides for installing, configuring, and using Cleo Desktop and its terminal workflows.
+Guides for installing, configuring, and using Cleo Desktop.
 
 ## Use Cleo
 
@@ -12,6 +12,8 @@ Guides for installing, configuring, and using Cleo Desktop and its terminal work
 4. [Program versions and recovery](program-versions.en.md): update, switch versions, roll back a failed start, and reach the fallback program.
 5. [Local skills](local-skills.en.md): discover and invoke skills in development sessions.
 6. [Subtask routing (Chinese)](benchmark-routing.md): connected candidates, Artificial Analysis data, evaluator selection, constrained delegation, and task usage.
+7. [Computer use (Chinese)](computer-use.md): the per-conversation built-in browser and local computer control.
+8. [Release notes for v0.14.0](release-notes-v0.14.0.md); earlier versions are in `release-notes-v*.md`.
 
 ## Understand and develop the project
 
@@ -33,5 +35,9 @@ Decisions that change the architecture, data model, or a user-visible behaviour 
 - [0004 The Claude turn and background-task lifecycle belongs to the provider](adr/0004-claude-turn-and-background-task-lifecycle.md)
 - [0005 The Codex CLI ships once, from the Python runtime only](adr/0005-single-codex-cli-distribution.md)
 - [0006 Online runtime ownership registry and evidence-based retirement](adr/0006-online-runtime-ownership-and-retirement.md)
+- [0008 Single-sidebar information architecture, flat visuals, and a review and git loop for the desktop UI](adr/0008-single-sidebar-flat-ui-and-review-loop.md)
+- [0009 Local evolution is removed; the version infrastructure it shared with official updates is kept and renamed](adr/0009-remove-local-evolution.md)
+- [0010 Loading the workspace does not grow with history; a projection version is raised only when an old index is wrong](adr/0010-startup-cost-independent-of-history.md)
+- [0011 One context measure for every harness; account usage is read on demand when the panel opens](adr/0011-one-context-measure-and-on-demand-account-usage.md)
 
 The main usage guides have Chinese and English editions. Research notes and internal development references retain their original language.

@@ -7,25 +7,33 @@
 ## 我想使用 Cleo
 
 1. [快速开始](GETTING_STARTED.md)：选择桌面版或源码运行，完成首次模型配置并执行第一条任务。
-2. [配置与安全边界](CONFIGURATION.md)：理解 `cleo.json`、`harnesses.json`、本地数据路径和权限边界。
-3. [运行时与数据维护指南](Cleo_Runtime_State_Maintenance_Guide.docx)：备份、迁移、恢复和排查本地状态。
-4. [程序版本与恢复](program-versions.md)：更新、切换版本、启动失败回退与保底入口。
-5. [本地 skills](local-skills.md)：在开发会话中发现和调用本机技能。
-6. [子任务路由](benchmark-routing.md)：连接候选、Artificial Analysis 数据、评估器、受约束委派与任务用量。
+2. [平台与安装](PLATFORMS.md)：各平台安装包、数据位置、更新、签名边界与发布附件。
+3. [配置与安全边界](CONFIGURATION.md)：理解 `cleo.json`、`harnesses.json`、本地数据路径和权限边界。
+4. [订阅登录与 DreamAgent](SUBSCRIPTION_CHAT.md)：用官方 CLI 登录的订阅连接。
+5. [运行时与数据维护指南](Cleo_Runtime_State_Maintenance_Guide.docx)：备份、迁移、恢复和排查本地状态。
+6. [程序版本与恢复](program-versions.md)：更新、切换版本、启动失败回退与保底入口。
+7. [本地 skills](local-skills.md)：在开发会话中发现和调用本机技能。
+8. [子任务路由](benchmark-routing.md)：连接候选、Artificial Analysis 数据、评估器、受约束委派与任务用量；执行权限见[子任务路由的统一权限](routing-permissions.md)。
+9. [电脑使用](computer-use.md)：按会话隔离的内置浏览器与本机电脑控制。
+10. 各版本的变化见 `release-notes-v*.md`，最新为 [v0.14.0](release-notes-v0.14.0.md)。
 
 ## 我想理解系统
 
 - [架构说明](ARCHITECTURE.md)：产品边界、组件关系、会话模型、harness 与记忆数据流。
 - [Architecture (English)](ARCHITECTURE.en.md)：英文架构说明。
 - [记忆系统设计记录](CASTMIND_MEMORY_MIGRATION.md)：为什么采用 event log、compact、SQLite evidence 与分区记忆。
+- [Markdown 记忆与迁移](MEMORY_MARKDOWN_GIT.md)：项目偏好以 Markdown 保存、由内嵌 Git 记录历史。
+- [双向记忆读取](MEMORY_READING.md)：跨空间检索、会话续读和仅限 SDK 子进程的 MCP 接入。
+- [任务用量台账](task-token-ledger.md)（英文）：任务边界、token 归属与美元参考。
 - [Harness 交互式问答与回合生命周期](harness/interactive-lifecycle.md)：Claude / Codex / ACP 的原生问答、审批、回合结束与后台任务协议，Cleo 的适配方式与 adapter 层架构判断。
 
 ## 我想参与开发
 
 1. [开发与发布](DEVELOPMENT.md)：环境、测试、依赖锁定与桌面发布。
 2. [后端代码导读](BACKEND_CODE_REVIEW.md)：从入口到 session、harness、memory 和 desktop 的阅读路线。
-3. [Desktop 子系统说明](../ui/README.md)：Electron/React 边界、IPC、构建和 smoke test。
-4. [仓库贡献规则](../AGENTS.md)：代码修改和 review 的长期约束。
+3. [后端架构 v2](refactor/BACKEND_ARCHITECTURE_V2.md)与[行为基线测试](refactor/CHARACTERIZATION_TESTS.md)：重构的设计过程与 golden 测试。
+4. [Desktop 子系统说明](../ui/README.md)：Electron/React 边界、IPC、构建和 smoke test。
+5. [仓库贡献规则](../AGENTS.md)：代码修改和 review 的长期约束。
 
 ## ADR（架构决策记录）
 
@@ -40,6 +48,10 @@
 - [ADR 0009 移除本地进化，保留并改名它与正式更新共用的版本基础设施](adr/0009-remove-local-evolution.md)（保留行为见[程序版本与恢复](program-versions.md)）
 - [ADR 0010 加载工作区的开销不随历史规模增长；投影版本只在旧索引出错时提升](adr/0010-startup-cost-independent-of-history.md)
 - [ADR 0011 上下文占用对所有 harness 用同一口径；账号用量在打开面板时按需读取](adr/0011-one-context-measure-and-on-demand-account-usage.md)
+
+## 历史文档
+
+以下文档记录当时的调研、草案或某个版本的状态，不随实现更新：`DREAM_*.md`、`MEMORY_REDESIGN_PROPOSAL.md`、`MEMORY_SYSTEMS_RESEARCH.md`、`UI_UX_AUDIT_v0.4.8.md`、`UI_UX_IMPLEMENTATION.md`、`UI_UX_REFACTOR_v2.md`、`routing-v0.10.2.md`、`subtask-routing-*.md`、`harness-contribution-investigation.md`、`non-codex-harness-investigation.md`，以及各版本的发布说明。
 
 ## 文档维护约定
 

@@ -67,7 +67,7 @@ Cleo 与原生客户端共用登录和配置；登录或退出会影响使用相
 - `agent` 用于前台 Cleo。
 - `dream_agent` 用于后台记忆整理；省略或设为 `null` 时跟随来源 Chat 会话的模型。
 - `api_key` 在内存中使用 secret 类型，但配置文件本身仍是明文，必须保护文件权限。
-- `max_tokens` 既传给模型，也用于 context 状态展示；应填写 provider 实际支持的值。
+- `max_tokens` 是传给模型的生成上限，应填写 provider 实际支持的值；上下文窗口取自模型元数据，不由它决定。
 
 Chat 也支持通过官方 CLI 登录的订阅连接，DreamAgent 可跟随会话或指定已配置的模型。
 连接配置、登录步骤和各家限制见 [订阅登录与 DreamAgent](SUBSCRIPTION_CHAT.md)。
@@ -174,7 +174,7 @@ ACP 的 `env` 可能包含 secret；不要把含真实 token 的 `harnesses.json
 - `project`：Cleo memory scope。通用聊天中是逻辑名称；Productivity 中通常由工作目录名称派生。
 - `cwd`：外部 coding harness 实际读写的文件目录。
 
-`--project` 不会改变 Productivity 的代码目录，`--cwd` 也不会让通用聊天跨 project 读取记忆。
+切换聊天的 project 不会改变开发任务的代码目录，改变 `cwd` 也不会让通用聊天跨 project 读取记忆。
 
 ## 本地文件的权威级别
 

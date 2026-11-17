@@ -1,11 +1,8 @@
 # Cleo 后端贡献者导读与 Code Review 清单
 
-> **注意**：本文描述的是 v0.7.1 的架构。终端 CLI/TUI 与 Docker 运行方式已在 v0.8 移除，后端只作为桌面端的本地服务运行；重构后的目标架构见 [docs/refactor/BACKEND_ARCHITECTURE_V2.md](refactor/BACKEND_ARCHITECTURE_V2.md)。
-
-
 这份文档面向准备修改 Cleo core、接入新 provider 或进行完整 review 的开发者。目标不是机械地逐行阅读 Python，而是建立可验证的系统模型，并能够回答三个问题：一次普通聊天如何落盘、一次 Productivity 请求如何穿过 provider、一次会话如何变成 evidence-backed 长期记忆。
 
-前端不在主阅读路线中。理解 Desktop 时先读 Python 的协议边界与 service，再读 Electron bridge 和 React renderer。
+后端只作为桌面端的本地服务和 stdio MCP 入口运行，没有终端 CLI。前端不在主阅读路线中。理解 Desktop 时先读 Python 的协议边界与 service，再读 Electron bridge 和 React renderer。
 
 ## Review 基线
 
@@ -27,13 +24,13 @@ git diff --check
 1. `events.jsonl` 是会话事实源；manifest、compact、SQLite index 和 Markdown 都是投影。
 2. 每条 session/memory 数据都属于 `space + project + session_id`；两个 space 不能串数据。
 3. `AgentAdapter` 只暴露 provider-neutral 数据面；Codex 特有控制面是可选能力。
-4. CLI 和 Desktop 是两个入口，但共享 Agent、SessionStore、Runtime、Adapter 与 memory 流程。
+4. Desktop 是唯一的图形入口；`cleo/bootstrap/container.py` 是唯一装配长生命周期对象的地方，回合经 `RunSupervisor` 登记后交给 agent system。
 5. DreamAgent 只能从经过校验的 compact 提取持久知识，并用 evidence event ID 保持可追溯。
 
 整体路径：
 
 ```text
-CLI / Desktop request
+Desktop request (JSONL)
         │
         ├── non_productivity ── Agent ── LangGraph / LLM
         │
@@ -58,10 +55,11 @@ CLI / Desktop request
 读：
 
 - `docs/ARCHITECTURE.md`
-- `cleo/cli/application.py::amain`
+- `cleo/bootstrap/container.py`
 - `cleo/desktop/server.py::ProtocolServer`
+- `cleo/desktop/rpc.py`
 
-确认两个入口最终都构造相同的核心对象。特别检查 Desktop 协议是否只在 stdout 写 JSONL，
+确认配置在启动时显式加载、核心对象只在组合根装配，协议方法都登记在方法表里。特别检查 Desktop 协议是否只在 stdout 写 JSONL，
 诊断信息是否只去 stderr；否则一条普通日志就会破坏 Electron 协议。
 
 ### 10–35 分钟：抓住事实源
@@ -102,7 +100,8 @@ SQLite 失败是否会损坏事实源、resume 如何从事件恢复消息。
 - `cleo/memory/compaction.py::compact_events`
 - `cleo/memory/compaction.py::load_validated_compact`
 - `cleo/memory/state.py::needs_consolidation`
-- `cleo/cli/lifecycle.py::_run_dream_agent`
+- `cleo/memory/consolidation.py`
+- `cleo/desktop/background_memory.py::BackgroundMemory`
 - `cleo/agents/dream.py`
 - `tests/memory/test_pipeline.py` 与 `tests/agents/test_dream.py`
 
@@ -115,9 +114,10 @@ SQLite 失败是否会损坏事实源、resume 如何从事件恢复消息。
 
 - `cleo/desktop/service.py::DesktopService.create_thread`
 - `DesktopService.stream_turn`
-- `DesktopService._stream_chat`
+- `cleo/desktop/turn_hooks.py` 与 `cleo/desktop/runs.py::RunSupervisor`
+- `cleo/desktop/agent_system.py`、`cleo/desktop/chat_runtime.py::ChatRuntime`
 - `DesktopService._stream_productivity`
-- `cleo/desktop/projection.py`
+- `cleo/desktop/projection.py` 与 `cleo/desktop/timeline.py`
 - `cleo/desktop/configuration.py`
 - `tests/desktop/`
 
@@ -131,20 +131,21 @@ productivity session 的真实 `project_path/cwd`；模型 API Key 只能写入�
 
 ### A. 配置与路径边界
 
-读 `cleo/config/settings.py` 和 `tests/config/`。从 `_app_home`、`_config_path`、
-`load_settings` 一路追到 `SettingsModel`。
+读 `cleo/config/settings.py`、`cleo/config/service.py` 和 `tests/config/`。从 `_app_home`、`_config_path`、
+`load_settings` 一路追到 `SettingsModel`，再看 `ConfigService` 的快照、热加载与 `bind_run`。
 
 检查：
 
 - 源码运行与打包运行是否使用预期的数据根目录。
 - 相对路径是否基于 active directory profile，而不是进程偶然的 cwd。
 - agent profile、harness provider 与 active profile 的校验是否在启动时失败得足够明确。
+- 配置热加载后，运行中的回合是否仍使用它开始时的快照。
 - secret 是否可能进入异常文本、Desktop 响应、event 或日志。
 
 ### B. 普通聊天生命周期
 
-读 `cleo/agents/cleo.py`、`cleo/cli/chat.py`、`cleo/cli/lifecycle.py`，再读对应的
-`tests/agents/` 与 `tests/cli/`。
+读 `cleo/agents/cleo.py`、`cleo/desktop/chat_runtime.py`、`cleo/sessions/messages.py`，再读对应的
+`tests/agents/` 与 `tests/desktop/test_chat_runtime.py`。
 
 完整追踪：
 
@@ -152,10 +153,10 @@ productivity session 的真实 `project_path/cwd`；模型 API Key 只能写入�
 user input
   → Agent.stream_text
   → streamed chunks / usage
-  → _sync_session_events
-  → SessionStore
+  → SessionStore.sync_langchain_messages
+  → events.jsonl
   → compact + conversation chunks
-  → detached DreamAgent worker
+  → 后台记忆整理（开启时）
 ```
 
 检查异常、取消、空回复与恢复后的去重。流式 chunk 不应直接成为持久化事实；完成后的语义
@@ -163,15 +164,16 @@ user input
 
 ### C. 记忆一致性
 
-读 `cleo/memory/store.py`、`state.py`、`persona.py` 和
+读 `cleo/memory/store.py`、`state.py`、`markdown.py`、`repository.py` 和
 `cleo/agents/tools/dream_agent_tools.py`。
 
 检查：
 
-- atomic memory 是否有稳定 fingerprint，重复 consolidation 是否幂等。
-- 每条持久记忆是否引用同 scope 的真实 evidence event ID。
+- 重复 consolidation 是否幂等，检查点能否在取消或重启后继续。
+- 每条偏好编辑是否引用同 scope 的真实 evidence event ID。
 - session 移动、conversation chunk 替换和删除是否同时更新旧/新 project。
-- `PERSONA.md` 是否只从 persona SQLite 渲染，是否避免泄露 project/session 来源。
+- `MEMORY.md` 是否原子发布并提交到内嵌 Git，发布失败是否不推进完成状态。
+- 旧 `PERSONA.md` 与 `persona.sqlite3` 是否保持不读取、不注入、不改写。
 - 文件原子替换和 SQLite transaction 失败后，状态是否可重试。
 
 ### D. 真实故障边界
@@ -182,7 +184,7 @@ user input
 - `cleo/agents/tools/browser_tools.py`
 - `cleo/integrations/harnesses/claude.py`
 - `cleo/integrations/harnesses/acp.py`
-- `cleo/cli/productivity.py`
+- `cleo/desktop/steering.py`
 
 这里重点找外部边界问题：路径逃逸、subprocess 生命周期、timeout、取消、输出上限、网络地址
 校验、provider 断连和 best-effort cleanup。不要把 provider 的偶发故障静默解释成成功。
@@ -192,7 +194,7 @@ user input
 ### 普通聊天
 
 ```text
-application/chat or DesktopService
+DesktopService.stream_turn → ChatRuntime.stream
   → Agent.stream_text
   → LangChain messages
   → SessionStore.sync_langchain_messages
@@ -203,7 +205,7 @@ application/chat or DesktopService
 ### Productivity
 
 ```text
-productivity CLI or DesktopService
+DesktopService.stream_turn → _stream_productivity
   → AgentAdapter.create/resume_session
   → provider.prompt
   → AgentEvent
@@ -216,8 +218,8 @@ productivity CLI or DesktopService
 ```text
 validated compact
   → manual skip OR DreamAgent
-  → atomic memories + evidence
-  → MEMORY.md / PERSONA.md
+  → 带证据的偏好编辑
+  → MEMORY.md 原子发布 + 内嵌 Git 提交
   → completed consolidation state
 ```
 
@@ -233,7 +235,9 @@ validated compact
 | `cleo/harnesses/`、provider integrations | `tests/integrations/` | 事件归一化、取消、native session |
 | `cleo/memory/` | `tests/memory/` | evidence、幂等、scope、失败恢复 |
 | `cleo/desktop/` | `tests/desktop/` | JSONL 协议、cwd、UI 投影、密钥隐藏 |
-| `cleo/cli/` | `tests/cli/` | dispatch、resume、生命周期、交互命令 |
+| `cleo/routing/` | `tests/routing/` | 硬约束、候选过滤、权限不被扩大 |
+| `cleo/runtime/` | `tests/runtime/` | 上下文读数、任务用量台账、计时 |
+| 重构前后的行为基线 | `tests/characterization/` | golden 与现有行为不一致 |
 | 全局依赖边界 | `tests/test_boundaries.py` | 反向依赖与入口耦合 |
 
 推荐使用“先生产代码、后测试、再回生产代码”的顺序。测试通过只证明已覆盖的契约，不等于
@@ -244,7 +248,7 @@ validated compact
 当变更涉及 Desktop、memory 或 provider 接入时，重点检查：
 
 - `cleo/desktop/server.py`：JSONL 并发请求与 shutdown。
-- `cleo/desktop/service.py`：CLI 能力到 App use case 的映射。
+- `cleo/desktop/service.py`：桌面 use case；新方法须同时登记到 `cleo/desktop/rpc.py`。
 - `cleo/desktop/configuration.py`：模型/API profile 的原子写入与 secret 输出边界。
 - `cleo/desktop/projection.py`：canonical event 到 UI timeline 的无副作用投影。
 - `cleo/memory/overview.py`：记忆 UI 的只读汇总。
@@ -274,7 +278,7 @@ correctness，最后才是命名和风格。不要在 review 过程中顺手重�
 ## Review 完成条件
 
 - 能从入口手画三条数据流，并为每个箭头指出函数。
-- 能解释 event log、manifest、compact、session SQLite、memory SQLite、persona SQLite 的权威级别。
+- 能解释 event log、manifest、compact、session SQLite、memory SQLite、时间线索引和项目 `MEMORY.md` 的权威级别。
 - 能解释 non-productivity 与 productivity 为什么不能自动共享项目记忆。
 - 能指出 provider-neutral API 与 Codex 专属控制面的边界。
 - 已检查 scope 内所有新增、修改、删除和 untracked 文件；没有只看 tracked diff。

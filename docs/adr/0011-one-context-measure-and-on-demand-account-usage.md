@@ -1,6 +1,6 @@
 # 0011. 上下文占用对所有 harness 用同一口径；账号用量在打开面板时按需读取
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-11-13
 
 ## Context
