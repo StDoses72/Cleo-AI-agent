@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cleo-ai-agent"
 version = "0.14.0"
-description = "A local-first AI workspace for chat, developer agents, resumable sessions, and scoped memory."
+description = "An integration platform for agent harness orchestration: run Codex, Claude Code, and ACP agents from one desktop workspace, with shared sessions, memory, and subtask routing across them."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
