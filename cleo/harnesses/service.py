@@ -493,13 +493,15 @@ class AgentService:
         )
         thought_number = 0
         previous_type = ""
+        # Timeline id of a reply that is still arriving as text chunks.
+        streaming_message: str | None = None
         live_events: set[int] = set()
         last_message: tuple[str, str] | None = None
         closing = False
         delivery_error: Exception | asyncio.CancelledError | None = None
 
         async def relay(event: AgentEvent) -> None:
-            nonlocal thought_number, previous_type, last_message
+            nonlocal thought_number, previous_type, last_message, streaming_message
             if closing:
                 return
             payload = event_payload(event)
@@ -513,8 +515,17 @@ class AgentService:
             data = {**event.data, "turn_id": turn_key}
             phase = source.get("phase") or payload.get("phase")
             if event.type == "agent_message":
-                data["timeline_id"] = f"{turn_key}:message:{secrets.token_hex(6)}"
+                # The finished message takes the place of the text streamed ahead of it.
+                data["timeline_id"] = (
+                    streaming_message or f"{turn_key}:message:{secrets.token_hex(6)}"
+                )
+                streaming_message = None
                 last_message = (event.text or "", data["timeline_id"])
+                previous_type = event.type
+            elif event.type == "assistant_message_chunk" and payload.get("stream") == "message":
+                if streaming_message is None:
+                    streaming_message = f"{turn_key}:message:{secrets.token_hex(6)}"
+                data["timeline_id"] = streaming_message
                 previous_type = event.type
             elif event.type == "thought" or phase == "commentary":
                 if previous_type != "thought":

@@ -29,7 +29,7 @@ def test_update_syncs_existing_development_environment_only_when_writing(tmp_pat
         index_url="https://pypi.org/simple", extra_index_url="https://fallback.example/simple",
     ))
     monkeypatch.setattr(updater, "_validate_pyproject", lambda: None)
-    monkeypatch.setattr(updater, "_compile_requirements_locally", lambda **kwargs: False)
+    monkeypatch.setattr(updater, "_compile_requirements", lambda **kwargs: False)
     monkeypatch.setattr(updater, "_update_node_dependencies", lambda **kwargs: False)
     monkeypatch.setattr(updater.shutil, "which", lambda _: "uv")
     commands = []
@@ -66,7 +66,7 @@ def test_python_resolution_refreshes_stable_versions_instead_of_reusing_old_lock
         Path(output).write_text("openai-codex==0.155.1\n")
 
     monkeypatch.setattr(updater, "_run", resolve)
-    updater._compile_requirements_locally(
+    updater._compile_requirements(
         check_only=False, index_url="https://pypi.org/simple", extra_index_url="",
     )
     assert "openai-codex==0.155.1" in lock.read_text()

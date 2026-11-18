@@ -501,3 +501,146 @@ def test_stream_ending_while_a_reply_is_owed_is_an_error():
     with pytest.raises(RuntimeError, match="still owed"):
         asyncio.run(asyncio.wait_for(provider.prompt("s", "run it"), 3))
     assert client.disconnected == 1 and runtime.needs_reconnect
+
+
+def absorbed_notice(task=TASK, tool="tool-1"):
+    """Frames of a completion that Claude reads inside the turn that is still running."""
+    return [
+        _system("task_updated", task_id=task["task_id"], run_id=task["run_id"],
+                patch={"status": "completed"}),
+        _system("task_notification", task_id=task["task_id"], run_id=task["run_id"],
+                tool_use_id=tool, status="completed", output_file="f", summary="done"),
+        _system("background_tasks_changed", tasks=[]),
+    ]
+
+
+def turn_that_absorbs_its_notices():
+    """Issue #178: the task ends while the turn still works, so no wake-up turn follows."""
+    return [
+        *stage_one()[:4],
+        *absorbed_notice(),
+        AssistantMessage(content=[TextBlock(text="FINAL: BG_DONE")], model="test"),
+        _result("FINAL: BG_DONE"),
+    ]
+
+
+def test_notice_absorbed_by_the_running_turn_ends_with_that_turn(monkeypatch):
+    monkeypatch.setattr("cleo.integrations.harnesses.claude.ABSORBED_SETTLE_SECONDS", 0.2)
+    client = Client(turn_that_absorbs_its_notices(), hold_after_first=True)
+    provider, runtime = _provider(client)
+    received = []
+
+    turn = asyncio.run(asyncio.wait_for(provider.prompt("s", "run it", received.append), 2))
+
+    assert turn.status == "completed" and turn.response == "FINAL: BG_DONE"
+    assert client.disconnected == 0 and not runtime.needs_reconnect
+    assert not [e for e in received if e.type == "status"], "no stage boundary was crossed"
+    assert not runtime.active and not runtime.waiting
+    assert runtime.absorbable_wakeups == 0 and runtime.owed_wakeups == 0
+
+
+def test_notice_left_queued_when_the_turn_ends_still_gets_its_follow_up_reply(monkeypatch):
+    monkeypatch.setattr("cleo.integrations.harnesses.claude.ABSORBED_SETTLE_SECONDS", 0.5)
+    origin = {"kind": "task-notification", "producer": "session-task", "runId": "run-1"}
+    client = Client([
+        *stage_one()[:4],
+        *absorbed_notice(),
+        AssistantMessage(content=[TextBlock(text="STAGE1: started")], model="test"),
+        _result("STAGE1: started"),
+        _system("init", session_id="native"),
+        AssistantMessage(content=[TextBlock(text="STAGE2: BG_DONE")], model="test"),
+        _result("STAGE2: BG_DONE", origin=origin),
+    ], hold_after_first=True)
+    provider, runtime = _provider(client)
+    received = []
+
+    turn = asyncio.run(asyncio.wait_for(provider.prompt("s", "run it", received.append), 2))
+
+    assert turn.status == "completed" and turn.response == "STAGE2: BG_DONE"
+    assert [e.text for e in received if e.type == "agent_message"] == [
+        "STAGE1: started", "STAGE2: BG_DONE",
+    ]
+    assert client.disconnected == 0 and not runtime.needs_reconnect
+
+
+def test_cancel_inside_the_settle_window_keeps_the_finished_reply(monkeypatch):
+    monkeypatch.setattr("cleo.integrations.harnesses.claude.ABSORBED_SETTLE_SECONDS", 30)
+
+    async def scenario():
+        client = Client(turn_that_absorbs_its_notices(), hold_after_first=True)
+        provider, runtime = _provider(client)
+        task = asyncio.create_task(provider.prompt("s", "run it"))
+        await asyncio.wait_for(client.holding.wait(), 1)
+        await provider.cancel("s")
+        turn = await asyncio.wait_for(task, 1)
+        assert turn.status == "completed" and turn.response == "FINAL: BG_DONE"
+        assert runtime.needs_reconnect
+
+    asyncio.run(scenario())
+
+
+def _delta(kind, text):
+    from claude_agent_sdk import StreamEvent
+
+    field = "thinking" if kind == "thinking_delta" else "text"
+    return StreamEvent(uuid="u", session_id="native", event={
+        "type": "content_block_delta", "index": 0, "delta": {"type": kind, field: text}})
+
+
+def streamed_turn():
+    from claude_agent_sdk import ThinkingBlock
+
+    return [
+        _delta("thinking_delta", "plan "), _delta("thinking_delta", "first"),
+        AssistantMessage(content=[ThinkingBlock(thinking="plan first", signature="s")],
+                         model="test"),
+        _delta("text_delta", "Hel"), _delta("text_delta", "lo"),
+        AssistantMessage(content=[TextBlock(text="Hello")], model="test"),
+        _result("Hello"),
+    ]
+
+
+def test_reply_and_thinking_stream_as_they_are_written():
+    provider, _ = _provider(Client(streamed_turn()))
+    received = []
+
+    turn = asyncio.run(provider.prompt("s", "hi", received.append))
+
+    assert [(e.type, e.text) for e in received] == [
+        ("thought", "plan "), ("thought", "first"),
+        ("assistant_message_chunk", "Hel"), ("assistant_message_chunk", "lo"),
+        ("agent_message", "Hello"),
+    ], "streamed thinking is not repeated by its finished block; the reply closes its chunks"
+    assert turn.status == "completed" and turn.response == "Hello"
+
+
+def test_service_shows_one_message_for_a_streamed_reply(tmp_path, monkeypatch):
+    from cleo.desktop.projection import stream_event_item
+
+    store = SessionStore(tmp_path / "memory")
+    service = AgentService(tmp_path, session_store=store)
+    provider = ClaudeProvider()
+    monkeypatch.setattr(provider, "_connect", AsyncMock(
+        return_value=_ClaudeRuntime(Client(streamed_turn()), SessionOptions(), str(tmp_path)),
+    ))
+    service.register(provider)
+
+    async def scenario():
+        session = await service.create_session("claude", str(tmp_path))
+        live = []
+        await service.prompt(session.id, "hi", on_event=live.append)
+        state, shown = {}, {}
+        for event in live:
+            for update in stream_event_item(event, state):
+                if update.get("type") == "upsert-item" and update["item"]["type"] == "message":
+                    shown[update["item"]["id"]] = update["item"]["content"]
+        assert list(shown.values()) == ["Hello"], "chunks and the finished reply are one item"
+        events = store.read_events(session.id)
+        assert [e["content"] for e in events if e["type"] == "assistant_message"][:1] == ["Hello"]
+        assert not [e for e in events if e["type"] == "assistant_fragment"]
+        items = timeline_from_events(events)
+        assert [i["content"] for i in items if i["type"] == "thought"] == ["plan first"]
+        assert [i["content"] for i in items if i["type"] == "message"
+                and i.get("role") == "assistant"] == ["Hello"]
+
+    asyncio.run(scenario())

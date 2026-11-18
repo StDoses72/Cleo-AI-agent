@@ -12,9 +12,6 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT_PATH = PROJECT_ROOT / "pyproject.toml"
 REQUIREMENTS_PATH = PROJECT_ROOT / "requirements.txt"
-RESOLVER_DOCKERFILE = PROJECT_ROOT / "docker" / "requirements.Dockerfile"
-RESOLVER_IMAGE = "cleo-dependency-resolver:local"
-RESOLVER_CACHE_VOLUME = "cleo-uv-cache"
 DEFAULT_INDEX_URL = os.environ.get("CLEO_PYPI_INDEX_URL", "https://pypi.org/simple")
 DEFAULT_EXTRA_INDEX_URL = os.environ.get("CLEO_PYPI_EXTRA_INDEX_URL", "")
 
@@ -47,12 +44,6 @@ def _validate_pyproject() -> None:
     )
 
 
-def _check_docker() -> None:
-    if shutil.which("docker") is None:
-        raise RuntimeError("Docker CLI was not found on PATH")
-    _run(["docker", "version", "--format", "{{.Server.Version}}"])
-
-
 def _normalized_requirements(generated_path: Path) -> str:
     generated = generated_path.read_text(encoding="utf-8").replace("\r\n", "\n")
     generated = generated.lstrip()
@@ -68,75 +59,7 @@ def _normalized_requirements(generated_path: Path) -> str:
     return f"{header}{generated.rstrip()}\n"
 
 
-def _build_resolver_image(index_url: str, extra_index_url: str) -> None:
-    command = [
-        "docker",
-        "build",
-        "--file",
-        str(RESOLVER_DOCKERFILE),
-        "--tag",
-        RESOLVER_IMAGE,
-        "--build-arg",
-        f"PIP_INDEX_URL={index_url}",
-    ]
-    if extra_index_url:
-        command.extend(["--build-arg", f"PIP_EXTRA_INDEX_URL={extra_index_url}"])
-    command.append(".")
-    _run(command)
-
-
 def _compile_requirements(
-    *,
-    check_only: bool,
-    index_url: str,
-    extra_index_url: str,
-) -> bool:
-    with tempfile.TemporaryDirectory(prefix="cleo-dependencies-") as output_dir:
-        output_path = Path(output_dir) / "requirements.txt"
-        command = [
-            "docker",
-            "run",
-            "--rm",
-            "--mount",
-            f"type=bind,source={PROJECT_ROOT},target=/src,readonly",
-            "--mount",
-            f"type=bind,source={output_dir},target=/out",
-            "--mount",
-            f"type=volume,source={RESOLVER_CACHE_VOLUME},target=/root/.cache/uv",
-        ]
-        if extra_index_url:
-            # uv searches UV_INDEX first and uses UV_DEFAULT_INDEX as the fallback.
-            command.extend(["--env", f"UV_INDEX={index_url}"])
-            command.extend(["--env", f"UV_DEFAULT_INDEX={extra_index_url}"])
-        else:
-            command.extend(["--env", f"UV_DEFAULT_INDEX={index_url}"])
-        command.extend(
-            [
-                "--workdir",
-                "/src",
-                RESOLVER_IMAGE,
-                "pip",
-                "compile",
-                "--upgrade",
-                "--refresh",
-                "--prerelease=disallow",
-                "--universal",
-                "--only-binary=:all:",
-                "--strip-extras",
-                "--no-header",
-                "--no-annotate",
-                "--no-emit-index-url",
-                "--output-file=/out/requirements.txt",
-                "/src/pyproject.toml",
-            ]
-        )
-        _run(command)
-        generated = _normalized_requirements(output_path)
-
-    return _apply_requirements(generated, check_only=check_only)
-
-
-def _compile_requirements_locally(
     *,
     check_only: bool,
     index_url: str,
@@ -261,10 +184,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--local-resolver",
         action="store_true",
-        help=(
-            "Resolve the cross-platform Python lock with local uv instead of the "
-            "Docker resolver image."
-        ),
+        help="Accepted for existing callers; local uv is the only resolver.",
     )
     parser.add_argument(
         "--check",
@@ -275,7 +195,7 @@ def _parse_args() -> argparse.Namespace:
         "--index-url",
         default=DEFAULT_INDEX_URL,
         help=(
-            "Python package index used by uv and the Docker resolver. Defaults to "
+            "Python package index used by uv. Defaults to "
             "CLEO_PYPI_INDEX_URL or https://pypi.org/simple."
         ),
     )
@@ -294,20 +214,11 @@ def main() -> int:
     args = _parse_args()
     try:
         _validate_pyproject()
-        if args.local_resolver:
-            stale = _compile_requirements_locally(
-                check_only=args.check,
-                index_url=args.index_url,
-                extra_index_url=args.extra_index_url,
-            )
-        else:
-            _check_docker()
-            _build_resolver_image(args.index_url, args.extra_index_url)
-            stale = _compile_requirements(
-                check_only=args.check,
-                index_url=args.index_url,
-                extra_index_url=args.extra_index_url,
-            )
+        stale = _compile_requirements(
+            check_only=args.check,
+            index_url=args.index_url,
+            extra_index_url=args.extra_index_url,
+        )
         node_stale = _update_node_dependencies(check_only=args.check)
         if args.check:
             return 1 if stale or node_stale else 0

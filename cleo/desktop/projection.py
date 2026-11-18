@@ -304,15 +304,17 @@ def timeline_from_events(
             "session_cancelled",
             "session_closed",
         }:
-            _finalize_running_tools(tools.values())
+            unfinished = _finalize_running_tools(tools.values())
             if event_type == "session_completed":
                 continue
             from cleo.harnesses.availability import display_execution_error
 
-            detail = display_execution_error(
-                content or tr("projection.the_task_ended_before_the_tool_completed"),
-            )
-            error_key = f"{current_turn_key}\0{detail}"
+            # A tool is blamed only when one was actually left running.
+            fallback = (tr("projection.the_task_ended_before_the_tool_completed") if unfinished
+                        else "" if event_type == "session_cancelled"
+                        else tr("projection.run_ended"))
+            detail = display_execution_error(content or fallback) if content or fallback else ""
+            error_key = f"{current_turn_key}\0{event_type if not detail else detail}"
             if error_key in seen_errors:
                 continue
             seen_errors[error_key] = True
@@ -320,8 +322,9 @@ def timeline_from_events(
                 {
                     "id": event_id,
                     "type": "notice",
-                    "tone": "warning",
-                    "title": tr("projection.run_needs_attention"),
+                    "tone": "warning" if detail else "info",
+                    "title": tr("projection.run_needs_attention") if detail
+                    else tr("projection.run_cancelled"),
                     "detail": detail,
                 }
             )
@@ -494,7 +497,17 @@ def stream_event_item(event: AgentEvent, state: dict[str, Any]) -> list[dict[str
     event_key = str(event_identifier or len(state))
     if event.type != "thought":
         state.pop("thought:active_id", None)
-    if event.type == "assistant_message_chunk" and event.text:
+    if (event.type == "assistant_message_chunk" and event.text
+            and payload.get("stream") == "message" and event.data.get("timeline_id")):
+        # A message streamed ahead of its finished form: both carry the same timeline id.
+        identifier = str(event.data["timeline_id"])
+        content = str(state.get(f"message:{identifier}") or "") + event.text
+        state[f"message:{identifier}"] = content
+        state["assistant"] = content
+        output.append({"type": "upsert-item", "item": _message(
+            identifier, "assistant", content, None,
+        )})
+    elif event.type == "assistant_message_chunk" and event.text:
         active_id = state.get("assistant:active_id")
         if not isinstance(active_id, str):
             active_id = (

@@ -17,6 +17,7 @@ from claude_agent_sdk import (
     PermissionResultAllow,
     PermissionResultDeny,
     ResultMessage,
+    StreamEvent,
     SystemMessage,
     TextBlock,
     ThinkingBlock,
@@ -57,6 +58,9 @@ CLAUDE_EFFORTS = ("low", "medium", "high", "xhigh", "max")
 
 BACKGROUND_WAIT_ENV = "CLEO_CLAUDE_BACKGROUND_WAIT_SECONDS"
 DEFAULT_BACKGROUND_WAIT_SECONDS = 600.0
+# How long a finished turn waits for a follow-up turn to open when the only thing outstanding
+# is a completion notice that arrived while the turn was running (see ``absorbable_wakeups``).
+ABSORBED_SETTLE_SECONDS = 3.0
 """How long a turn keeps waiting, after a stage result, for background tasks to wake Claude.
 
 A Claude Code turn ends with a ``ResultMessage`` even while ``Bash(run_in_background=True)``
@@ -114,6 +118,11 @@ class _ClaudeRuntime:
     # results first and the last one carries the reply, so the task set alone cannot say
     # whether the final reply was received.
     owed_wakeups: int = 0
+    # task_notification frames that arrived while a turn was running. Claude reads such a
+    # completion inside that turn (no result of its own) unless the turn ends first, in which
+    # case it opens a follow-up turn at once. Which of the two happened is only known after
+    # the running turn's result: a follow-up either opens within the settle window or not.
+    absorbable_wakeups: int = 0
     # Set by cancel/close while waiting: the stream was dropped on purpose, not by a crash.
     wait_abandoned: bool = False
     # The model's context window as Claude reports it, and the occupancy last published.
@@ -486,6 +495,7 @@ class ClaudeProvider:
             runtime.active = True
             runtime.background.clear()
             runtime.owed_wakeups = 0
+            runtime.absorbable_wakeups = 0
             runtime.waiting = False
             runtime.wait_abandoned = False
             runtime.context_reported = None
@@ -519,6 +529,10 @@ class ClaudeProvider:
                 stream = runtime.client.receive_messages()
                 loop = asyncio.get_running_loop()
                 deadline = None
+                # True while the wait is only for a follow-up turn that may never open.
+                settling = False
+                # Thinking already shown delta by delta; its finished block is not sent again.
+                streamed_thinking = False
                 while True:
                     if runtime.waiting:
                         remaining = max(deadline - loop.time(), 0)
@@ -526,6 +540,10 @@ class ClaudeProvider:
                             async with asyncio.timeout(remaining):
                                 message = await anext(stream)
                         except TimeoutError:
+                            if settling:
+                                # No follow-up opened: the running turn read the notices
+                                # itself, so its result was the final one.
+                                break
                             timed_out_reason = tr(
                                 "claude.background_tasks_exceeded_the_wait_limit",
                                 p0=int(wait_ceiling),
@@ -533,6 +551,12 @@ class ClaudeProvider:
                             await self._abandon_background(runtime, publish, timed_out_reason)
                             break
                         except (StopAsyncIteration, Exception) as exc:
+                            if settling and (runtime.wait_abandoned
+                                             or isinstance(exc, StopAsyncIteration)):
+                                # The reply was already complete; only the stream is gone.
+                                runtime.waiting = False
+                                runtime.needs_reconnect = True
+                                break
                             if not runtime.wait_abandoned:
                                 if isinstance(exc, StopAsyncIteration):
                                     raise RuntimeError(
@@ -548,7 +572,9 @@ class ClaudeProvider:
                             break
                         # Any frame while waiting (progress, notification, wake-up turn)
                         # restarts the ceiling; the wait counts silence, not total time.
-                        deadline = loop.time() + wait_ceiling
+                        # A settle window is not extended: only a follow-up turn ends it.
+                        if not settling:
+                            deadline = loop.time() + wait_ceiling
                     else:
                         try:
                             message = await anext(stream)
@@ -570,12 +596,27 @@ class ClaudeProvider:
                                 # Its result is now the one that counts: a stream that ends
                                 # before it must not pass the stage result off as final.
                                 runtime.waiting = False
+                                settling = False
                                 result_message = None
                         else:
                             await self._track_background(runtime, message, publish)
+                    elif isinstance(message, StreamEvent):
+                        # A subagent's partial output belongs to its own tool item, not here.
+                        if message.parent_tool_use_id is not None:
+                            continue
+                        if runtime.waiting:
+                            runtime.waiting = False
+                            settling = False
+                            result_message = None
+                        partial = self._partial_event(message.event)
+                        if partial is not None:
+                            streamed_thinking = streamed_thinking or partial.type == "thought"
+                            events.append(partial)
+                            await emit_event(on_event, partial)
                     elif isinstance(message, AssistantMessage):
                         if runtime.waiting:
                             runtime.waiting = False
+                            settling = False
                             result_message = None
                         # A subagent's requests fill its own window, not this conversation's.
                         used = (request_input_tokens(getattr(message, "usage", None))
@@ -584,6 +625,10 @@ class ClaudeProvider:
                             context_model = message.model
                             await publish_context(used)
                         for block in message.content:
+                            if (isinstance(block, ThinkingBlock) and streamed_thinking
+                                    and message.parent_tool_use_id is None):
+                                streamed_thinking = False
+                                continue
                             event = self._block_event(block)
                             if event is None:
                                 continue
@@ -670,9 +715,25 @@ class ClaudeProvider:
                         if stage > 0 or origin_kind == "task-notification":
                             # One result per task_notification; empty ``num_turns: 0`` results
                             # precede the reply when completions are answered together.
-                            runtime.owed_wakeups = max(0, runtime.owed_wakeups - 1)
+                            if runtime.owed_wakeups > 0:
+                                runtime.owed_wakeups -= 1
+                            elif runtime.absorbable_wakeups > 0:
+                                runtime.absorbable_wakeups -= 1
                         if not runtime.background and runtime.owed_wakeups <= 0:
-                            break
+                            if runtime.absorbable_wakeups <= 0 or wait_ceiling <= 0 or (
+                                message.is_error or message.stop_reason == "cancelled"
+                            ):
+                                break
+                            # Every notice left arrived while a turn was running. The turn
+                            # that just ended may have read them all; a follow-up turn, if
+                            # one is queued, opens at once.
+                            if stage == 0:
+                                stage = 1
+                            settling = True
+                            runtime.waiting = True
+                            deadline = loop.time() + ABSORBED_SETTLE_SECONDS
+                            continue
+                        settling = False
                         if message.is_error or message.stop_reason == "cancelled":
                             # The turn ended abnormally while tasks still run: their later
                             # wake-ups must not be read as the next user turn's reply.
@@ -722,6 +783,7 @@ class ClaudeProvider:
                 runtime.waiting = False
                 runtime.background.clear()
                 runtime.owed_wakeups = 0
+                runtime.absorbable_wakeups = 0
                 await runtime.questions.cancel_all()
                 runtime.questions.callback = None
                 await runtime.approvals.cancel_all()
@@ -804,8 +866,13 @@ class ClaudeProvider:
                 )
         elif subtype == "task_notification":
             task_id = str(data.get("task_id") or "")
-            # Every notification wakes the model once, whether or not the task was seen start.
-            runtime.owed_wakeups += 1
+            # A notice that reaches an idle session wakes the model for a turn of its own,
+            # whether or not the task was seen start. One that arrives while a turn runs is
+            # usually read inside that turn and then has no result of its own.
+            if runtime.waiting:
+                runtime.owed_wakeups += 1
+            else:
+                runtime.absorbable_wakeups += 1
             if task_id in runtime.background:
                 status = str(data.get("status") or "completed")
                 await self._background_finished(
@@ -1052,6 +1119,8 @@ class ClaudeProvider:
             mcp_servers=memory.claude_servers(computer_client) if memory else {},
             can_use_tool=can_use_tool,
             hooks={"PreToolUse": [HookMatcher(matcher="AskUserQuestion", hooks=[ask_hook])]},
+            # Text and thinking arrive as they are written, the way the native client shows them.
+            include_partial_messages=True,
         )
         client = ClaudeSDKClient(options=options)
         await client.connect()
@@ -1143,6 +1212,27 @@ class ClaudeProvider:
         if self._memory_mcp is None or not self._memory_mcp.routing_enabled:
             return None
         return self._sessions[session_id].computer_client
+
+    def _partial_event(self, raw: Any) -> AgentEvent | None:
+        """Purpose: Turn one raw API stream event into the text or thinking it adds.
+
+        Input: ``StreamEvent.event`` (``content_block_delta`` and the frames around it).
+        Output: an ``assistant_message_chunk`` for reply text (marked ``stream: message`` so the
+        finished ``agent_message`` replaces it), a ``thought`` for thinking, else None.
+        """
+        if not isinstance(raw, dict) or raw.get("type") != "content_block_delta":
+            return None
+        delta = raw.get("delta")
+        if not isinstance(delta, dict):
+            return None
+        if delta.get("type") == "text_delta" and delta.get("text"):
+            return AgentEvent(
+                provider=self.name, type="assistant_message_chunk", text=str(delta["text"]),
+                data={"provider_event_type": "stream_event", "payload": {"stream": "message"}},
+            )
+        if delta.get("type") == "thinking_delta" and delta.get("thinking"):
+            return AgentEvent(provider=self.name, type="thought", text=str(delta["thinking"]))
+        return None
 
     def _block_event(self, block: object) -> AgentEvent | None:
         """把 SDK 消息 block 映射为统一的 ``AgentEvent``。

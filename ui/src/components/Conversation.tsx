@@ -84,6 +84,10 @@ import { toolFailed } from "../toolOutcome";
 import { RuntimePicker } from "./RuntimePicker";
 import { ContextMeter } from "./ContextMeter";
 
+/** Space a just-sent question needs beneath it for the start of the reply, and its gap from the top. */
+const REPLY_ROOM = 160;
+const QUESTION_TOP = 20;
+
 interface ConversationProps {
   history?: ReturnType<typeof useTimelineHistory>;
   questionUI?: ReactNode;
@@ -259,6 +263,13 @@ export function Conversation({
   const localFollowRef = useRef(true);
   const stickToBottomRef = history?.followRef ?? localFollowRef;
   useLayoutEffect(() => { stickToBottomRef.current = true; }, [thread?.id]);
+  // Reading position of the turn just sent: the question is placed once, then the view stays put
+  // while the reply grows. `turnSpace` pads a short turn so the question can sit near the top.
+  const turnSpaceRef = useRef<HTMLDivElement>(null);
+  const heldQuestion = useRef<{ id: string; offset: number } | null>(null);
+  const placedTop = useRef<number | null>(null);
+  const sentSeen = useRef<{ thread?: string; id: string | null }>({ id: null });
+  const [belowFold, setBelowFold] = useState(false);
   useLayoutEffect(() => {
     const bottom = bottomRef.current;
     if (!bottom) return;
@@ -360,12 +371,61 @@ export function Conversation({
     return () => cancelAnimationFrame(frame);
   }, [reader?.next, readerLoading, readerError]);
 
+  /** Size the turn padding to what the held question still needs, and note output below the fold. */
+  const measureTail = () => {
+    const viewport = viewportRef.current;
+    const space = turnSpaceRef.current;
+    if (!viewport || !space) { if (belowFold) setBelowFold(false); return; }
+    const held = heldQuestion.current;
+    const question = held ? viewport.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(held.id)}"]`) : null;
+    let height = 0;
+    if (held && question && space.parentElement) {
+      const end = space.getBoundingClientRect();
+      const turn = end.top - question.getBoundingClientRect().top;
+      const tail = space.parentElement.getBoundingClientRect().bottom - end.bottom;
+      height = Math.max(0, Math.floor(viewport.clientHeight - bottomInset - held.offset - turn - tail));
+    }
+    if (space.style.height !== `${height}px`) space.style.height = `${height}px`;
+    const hidden = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight > 1;
+    if (hidden !== belowFold) setBelowFold(hidden);
+  };
+  const lastItem = thread?.items.at(-1);
+  const sentId = lastItem?.type === "message" && lastItem.role === "user" && !lastItem.steer ? lastItem.id : null;
+  useLayoutEffect(() => {
+    const seen = sentSeen.current;
+    const opened = seen.thread !== thread?.id;
+    sentSeen.current = { thread: thread?.id, id: sentId ?? (opened ? null : seen.id) };
+    if (opened) { heldQuestion.current = null; placedTop.current = null; return; }
+    if (!sentId || sentId === seen.id) return;
+    const viewport = viewportRef.current;
+    const question = viewport?.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(sentId)}"]`);
+    if (!viewport || !question) return;
+    // From here the reply is read at the reader's pace: output no longer drags the view.
+    stickToBottomRef.current = false;
+    history?.follow(false);
+    const view = viewport.getBoundingClientRect();
+    const rect = question.getBoundingClientRect();
+    const visible = viewport.clientHeight - bottomInset;
+    if (view.top + visible - rect.bottom >= REPLY_ROOM) return;
+    // No room under the question: move it up once, as far as still leaves the reply its room.
+    heldQuestion.current = { id: sentId, offset: Math.min(QUESTION_TOP, visible - REPLY_ROOM - rect.height) };
+    measureTail();
+    viewport.scrollTop += question.getBoundingClientRect().top - view.top - heldQuestion.current.offset;
+    placedTop.current = viewport.scrollTop;
+  }, [thread?.id, sentId]);
+  useLayoutEffect(measureTail);
+
   const trackScrollPosition = () => {
     const viewport = viewportRef.current;
     if (!viewport) return;
     const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
-    stickToBottomRef.current = distanceFromBottom <= 1 && !thread?.history?.hasAfter;
-    history?.follow(stickToBottomRef.current);
+    // The scroll that placed the question is not the reader reaching the end.
+    measureTail();
+    if (placedTop.current === null || Math.abs(viewport.scrollTop - placedTop.current) > 1) {
+      placedTop.current = null;
+      stickToBottomRef.current = distanceFromBottom <= 1 && !thread?.history?.hasAfter;
+      history?.follow(stickToBottomRef.current);
+    }
     if (history?.busy || history?.error) return;
     const prefetchDistance = Math.max(240, viewport.clientHeight / 2);
     if (viewport.scrollTop < prefetchDistance && thread?.history?.hasBefore) void history?.load("before");
@@ -452,6 +512,11 @@ export function Conversation({
         {history?.busy && <div className="history-loading" data-direction={history.busy} role="status" aria-label={tr("conversation.loading_history")}><LoaderCircle className="spin" size={14} /></div>}
         <div className="conversation-viewport" ref={viewportRef} tabIndex={0} aria-label={tr("conversation.conversation_history")} onWheel={event => {
           if (event.deltaY < 0) { stickToBottomRef.current = false; history?.follow(false); }
+          // Scrolling down against the end is the reader asking to follow the output.
+          else if (event.deltaY > 0 && !thread?.history?.hasAfter
+              && event.currentTarget.scrollHeight - event.currentTarget.scrollTop - event.currentTarget.clientHeight <= 1) {
+            placedTop.current = null; stickToBottomRef.current = true; history?.follow(true);
+          }
           if (!history?.busy && !history?.error) {
             const view = event.currentTarget;
             if (event.deltaY < 0 && view.scrollTop < 160 && thread?.history?.hasBefore) void history?.load("before");
@@ -470,7 +535,8 @@ export function Conversation({
                 {!running && space === "productivity" && thread.changes.length ? <ChangesCard thread={thread} undoing={undoing} compact={changesVisible}
                   onReview={onShowChanges} onReviewFile={onShowChangeFile} onUndo={thread.canUndo ? onUndo : undefined} /> : null}
                 {thread.currentTiming && (running || !thread.items.some(item => item.timing?.id === thread.currentTiming?.id))
-                  && <Timing key={thread.currentTiming.id} summary={thread.currentTiming} />}</>} />
+                  && <Timing key={thread.currentTiming.id} summary={thread.currentTiming} />}
+                <div className="turn-space" ref={turnSpaceRef} aria-hidden="true" /></>} />
           </>
         ) : (
           <WelcomeState space={space} onUseSuggestion={onPromptChange} />
@@ -478,7 +544,8 @@ export function Conversation({
       </div>
 
       <div className="conversation-bottom" ref={bottomRef}>
-      {(history?.unread || thread?.history?.hasAfter || (history && !history.following)) && <button className="history-latest" aria-label={tr("conversation.jump_to_latest")} title={history?.unread ? tr("conversation.new_messages_jump_to_latest") : tr("conversation.jump_to_latest")} data-unread={history?.unread || undefined} onClick={() => {
+      {(thread?.history?.hasAfter || ((history?.unread || (history && !history.following)) && belowFold)) && <button className="history-latest" aria-label={tr("conversation.jump_to_latest")} title={history?.unread ? tr("conversation.new_messages_jump_to_latest") : tr("conversation.jump_to_latest")} data-unread={history?.unread || undefined} onClick={() => {
+        placedTop.current = null;
         void history?.load("latest", () => { stickToBottomRef.current = true; });
       }}><ArrowDown size={17} aria-hidden="true" /></button>}
       {questionUI}
@@ -853,6 +920,26 @@ function TimelineEntry({
       {item.request.answers?.[question.id] && <p className="question-history-answer">{question.secret ? tr("conversation.hidden") : item.request.answers[question.id].join("、")}</p>}</div>)}
   </section>;
   if (item.type === "message") {
+    const receipt = item.steer && <>
+      <span>{({ queued: item.steer.mode === "native" ? tr("conversation.waiting_for_delivery") : tr("conversation.send_after_the_current_reply"),
+        sending: tr("conversation.delivering"), received: tr("conversation.received"), failed: tr("conversation.not_delivered"),
+        cancelled: tr("conversation.delivery_cancelled"), uncertain: tr("conversation.receipt_not_confirmed") })[item.steer.status]}</span>
+      {item.steer.error && <span className="steer-error">{item.steer.error}</span>}
+      {item.steer.retryable && onRetrySteer && <button type="button" disabled={steeringBusy}
+        onClick={() => onRetrySteer(item.steer!)}>{tr("app.retry")}</button>}
+      {["failed", "cancelled", "uncertain"].includes(item.steer.status) && onRestoreSteer
+        && <button type="button" onClick={() => {
+          onRestoreSteer(item.steer!);
+          document.querySelector<HTMLTextAreaElement>('[data-testid="composer-input"]')?.focus();
+        }}>{tr("conversation.restore_to_composer")}</button>}
+    </>;
+    // Text that never reached the model is a status line, not a message; it opens on its content.
+    if (item.steer && (item.steer.status === "cancelled" || item.steer.status === "failed")) return (
+      <details className="steer-receipt steer-undelivered" data-testid="steer-receipt" data-status={item.steer.status}>
+        <summary><ChevronRight className="steer-undelivered-chevron" size={13} aria-hidden="true" />{receipt}</summary>
+        <p>{item.content}</p>
+      </details>
+    );
     return (
       <article className={`message-entry ${item.role}`} aria-label={item.role === "user" ? tr("conversation.your_message") : tr("conversation.cleo_s_reply")}>
         {(item.role === "assistant" || item.time) && <div className="message-meta">
@@ -862,19 +949,7 @@ function TimelineEntry({
         <MessageText key={`${threadId}:${item.id}`} item={item} threadId={threadId}
           projectPath={projectPath} onOpenPath={onOpenPath} onEdit={editable ? onEditMessage : undefined}
           onRevealPath={onRevealPath} />
-        {item.steer && <div className="steer-receipt" data-testid="steer-receipt" data-status={item.steer.status}>
-          <span>{({ queued: item.steer.mode === "native" ? tr("conversation.waiting_for_delivery") : tr("conversation.send_after_the_current_reply"),
-            sending: tr("conversation.delivering"), received: tr("conversation.received"), failed: tr("conversation.not_delivered"),
-            cancelled: tr("conversation.delivery_cancelled"), uncertain: tr("conversation.receipt_not_confirmed") })[item.steer.status]}</span>
-          {item.steer.error && <span className="steer-error">{item.steer.error}</span>}
-          {item.steer.retryable && onRetrySteer && <button disabled={steeringBusy}
-            onClick={() => onRetrySteer(item.steer!)}>{tr("app.retry")}</button>}
-          {["failed", "cancelled", "uncertain"].includes(item.steer.status) && onRestoreSteer
-            && <button onClick={() => {
-              onRestoreSteer(item.steer!);
-              document.querySelector<HTMLTextAreaElement>('[data-testid="composer-input"]')?.focus();
-            }}>{tr("conversation.restore_to_composer")}</button>}
-        </div>}
+        {item.steer && <div className="steer-receipt" data-testid="steer-receipt" data-status={item.steer.status}>{receipt}</div>}
         {showTiming && (item.timing || item.role === "assistant") && item.turnId !== activeTurnId && <Timing key={item.timing?.id ?? item.id}
           summary={item.timing} error={item.timingError} />}
       </article>
@@ -1265,11 +1340,9 @@ function ToolProcess({ tool, active = false, open, onToggle }: {
   open?: boolean;
   onToggle?: (open: boolean) => void;
 }) {
-  // A failed command opens by itself on its output, so the reason is one glance away (approval
-  // audit rows are records, not failures, and stay folded).
-  const failedWithOutput = toolFailed(tool) && !tool.approvalAudit && Boolean(tool.output);
+  // Details stay folded until the reader opens them, whatever the command printed or returned.
   return (
-    <details className={`tool-process ${toolFailed(tool) ? "error" : tool.status}`} data-testid="tool-process" open={open ?? failedWithOutput}
+    <details className={`tool-process ${toolFailed(tool) ? "error" : tool.status}`} data-testid="tool-process" open={open ?? false}
       onToggle={event => onToggle?.(event.currentTarget.open)}>
       <summary>
         {/* Same columns as a summary line: state, what ran, then its outcome at the row's end. */}

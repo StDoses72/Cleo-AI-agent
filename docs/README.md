@@ -15,7 +15,7 @@
 7. [本地 skills](local-skills.md)：在开发会话中发现和调用本机技能。
 8. [子任务路由](benchmark-routing.md)：连接候选、Artificial Analysis 数据、评估器、受约束委派与任务用量；执行权限见[子任务路由的统一权限](routing-permissions.md)。
 9. [电脑使用](computer-use.md)：按会话隔离的内置浏览器与本机电脑控制。
-10. 各版本的变化见 `release-notes-v*.md`，最新为 [v0.14.0](release-notes-v0.14.0.md)。
+10. 各版本的变化见 `release-notes-v*.md`，最新为 [v0.14.1](release-notes-v0.14.1.md)。
 
 ## 我想理解系统
 
@@ -48,6 +48,8 @@
 - [ADR 0009 移除本地进化，保留并改名它与正式更新共用的版本基础设施](adr/0009-remove-local-evolution.md)（保留行为见[程序版本与恢复](program-versions.md)）
 - [ADR 0010 加载工作区的开销不随历史规模增长；投影版本只在旧索引出错时提升](adr/0010-startup-cost-independent-of-history.md)
 - [ADR 0011 上下文占用对所有 harness 用同一口径；账号用量在打开面板时按需读取](adr/0011-one-context-measure-and-on-demand-account-usage.md)
+- [ADR 0012 Claude 在运行中的回合里读到的完成通知不单独等待回复](adr/0012-claude-notices-read-inside-a-running-turn.md)
+- [ADR 0013 流式回复期间阅读位置归读者；「视口跟随」与「接收本轮输出」分开](adr/0013-reading-position-is-the-readers.md)
 
 ## 历史文档
 

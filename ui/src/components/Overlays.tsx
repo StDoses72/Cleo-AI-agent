@@ -603,7 +603,7 @@ export function SettingsModal({
   );
 }
 
-/** Purpose: Fine-grained file access and approval for one task (beyond the composer's presets).
+/** Purpose: Fine-grained file access and approval for one task. Presets live in the composer only.
  * Lives in the details panel's Details tab, next to the run it governs. */
 export function RuntimePermissions({ runtime, threadId, onChange }: {
   runtime: RuntimeProfile;
@@ -626,8 +626,6 @@ export function RuntimePermissions({ runtime, threadId, onChange }: {
   if (runtime.routingMode === "auto" && runtime.routingPermissionPreset
       && runtime.routingPermissionPreset !== "inherit") return <PermissionSelector runtime={runtime} />;
   return <>
-    <PermissionSelector key={runtime.provider} runtime={runtime} disabled={saving} placement="down"
-      onChange={threadId && onChange ? update => onChange(threadId, update) : undefined} />
     {(["access", "approval"] as const).map(field => {
       const title = field === "access" ? tr("overlays.file_access") : tr("overlays.approval_policy");
       const label = field === "access" ? accessLabel : approvalLabel;

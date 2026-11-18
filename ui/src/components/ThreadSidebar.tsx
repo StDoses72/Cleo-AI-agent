@@ -81,10 +81,6 @@ function needsYou(thread: Thread) {
   return Boolean(thread.waitingFor) || thread.status === "attention";
 }
 
-function isActive(thread: Thread) {
-  return thread.status === "running" || needsYou(thread);
-}
-
 const WORKTREE_MARK = "/.cleo/worktrees/";
 /** The repository a Cleo worktree belongs to, from its path (`<repo>/.cleo/worktrees/<slug>`). */
 function worktreeParentPath(project: Project) {
@@ -163,8 +159,8 @@ export function ThreadSidebar({
     const ordered = projectsInSpace(projects, space);
     const folderProjects = ordered.filter((project) => !isGeneralProject(project));
     const folderIds = new Set(folderProjects.map((project) => project.id));
-    // Work that is running or waiting on the user is listed once, at the top, until it settles.
-    const inSpace = topLevel.filter((thread) => thread.space === space && !isActive(thread));
+    // Work waiting on the user is listed once, at the top; a running thread stays where it lives.
+    const inSpace = topLevel.filter((thread) => thread.space === space && !needsYou(thread));
     // Folder-less threads, and threads whose folder is no longer listed, are plain rows.
     const loose = inSpace.filter((thread) => !folderIds.has(thread.projectId));
     const group = (project: Project): FolderGroup => ({
@@ -183,7 +179,6 @@ export function ThreadSidebar({
     return { space, loose, folders, count: inSpace.length };
   }), [projects, topLevel]);
   const waitingOnYou = useMemo(() => topLevel.filter(needsYou), [topLevel]);
-  const running = useMemo(() => topLevel.filter((thread) => thread.status === "running" && !needsYou(thread)), [topLevel]);
   /** The subtasks of one conversation, indented under its row; a subtask's own subtasks nest below it. */
   const renderChildren = (parent: Thread, depth = 0): ReactNode => {
     const children = childrenOf.get(parent.id);
@@ -289,7 +284,7 @@ export function ThreadSidebar({
       </nav>
 
       <div className="thread-list" data-testid="thread-list">
-        {([["section:attention", tr("sidebar.needs_you"), waitingOnYou], ["section:working", tr("sidebar.running"), running]] as const)
+        {([["section:attention", tr("sidebar.needs_you"), waitingOnYou]] as const)
           .map(([id, label, rows]) => rows.length ? (
             <SidebarSection key={id} id={id} label={label} count={rows.length}
               collapsed={collapsed.includes(id)} onToggle={() => toggleCollapsed(id)}>
@@ -508,13 +503,13 @@ function ThreadRow({
             : unread ? <span className="thread-unread-dot" /> : null}
         </span>
         <span className="thread-title-line"><strong>{thread.title}</strong></span>
-        {/* Work that needs the user or is still running says so in words, not only with a dot. */}
+        {/* Work that needs the user says so in words; a run is the dot alone (its label is read aloud). */}
         {context ? (
           <span className="thread-subline">
             <small className="thread-context">{context}</small>
-            {stateLabel ? <small className={`thread-state ${status}`}>{stateLabel}</small> : null}
+            {stateLabel && status !== "running" ? <small className={`thread-state ${status}`}>{stateLabel}</small> : null}
           </span>
-        ) : status === "running" || status === "attention"
+        ) : status === "attention"
           ? <small className={`thread-state ${status}`}>{stateLabel}</small>
           : harness ? <small className="thread-harness" title={childModel || undefined}>{harness}</small> : null}
       </button>

@@ -823,6 +823,12 @@ select.text-control:hover {
 /* ---------- Steer receipts ---------- */
 .steer-receipt { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin-top: 8px; color: var(--muted); font-size: var(--font-size-caption); }
 .steer-receipt button { padding: 0; color: var(--text-soft); text-decoration: underline; }
+.steer-receipt.steer-undelivered { display: block; margin: 0 0 12px; }
+.steer-undelivered > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; list-style: none; cursor: pointer; }
+.steer-undelivered > summary::-webkit-details-marker { display: none; }
+.steer-undelivered-chevron { flex: 0 0 auto; margin-right: -6px; transition: transform 120ms ease; }
+.steer-undelivered[open] .steer-undelivered-chevron { transform: rotate(90deg); }
+.steer-undelivered > p { margin: 6px 0 0 19px; color: var(--text-soft); font-size: var(--font-size-control); white-space: pre-wrap; overflow-wrap: anywhere; }
 .steer-error { flex-basis: 100%; }
 .tool-permission { margin: 8px 0; color: var(--muted); font-size: var(--font-size-caption); }
 
