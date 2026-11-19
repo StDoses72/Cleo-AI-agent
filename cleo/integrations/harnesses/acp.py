@@ -26,7 +26,7 @@ from acp.schema import (
 )
 
 from cleo.harnesses.approvals import PermissionBroker
-from cleo.harnesses.capabilities import Capability
+from cleo.harnesses.capabilities import PROVIDER_CAPABILITIES
 from cleo.harnesses.control import HarnessModel, SessionOptions
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 from cleo.harnesses.provider import ProviderSession, ProviderTurn
@@ -327,7 +327,7 @@ class AcpProvider:
     """
 
     provider_type = "acp"
-    capabilities = frozenset({Capability.USER_APPROVALS})
+    capabilities = PROVIDER_CAPABILITIES["acp"]
 
     def __init__(
         self, name: str, spec: AcpAgentSpec, *, memory_mcp: MemoryMcp | None = None,

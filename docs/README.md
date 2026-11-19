@@ -50,6 +50,7 @@
 - [ADR 0011 上下文占用对所有 harness 用同一口径；账号用量在打开面板时按需读取](adr/0011-one-context-measure-and-on-demand-account-usage.md)
 - [ADR 0012 Claude 在运行中的回合里读到的完成通知不单独等待回复](adr/0012-claude-notices-read-inside-a-running-turn.md)
 - [ADR 0013 流式回复期间阅读位置归读者；「视口跟随」与「接收本轮输出」分开](adr/0013-reading-position-is-the-readers.md)
+- [ADR 0015 首屏与发送不等待 harness SDK 的导入；开始写消息时提前打开 harness 会话](adr/0015-start-and-send-without-waiting-on-harness-imports.md)
 
 ## 历史文档
 

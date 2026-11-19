@@ -10,14 +10,14 @@ import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-
-from acp.schema import McpServerStdio
-from openai_codex import CodexConfig, Sandbox
+from typing import TYPE_CHECKING
 
 from cleo.config.settings import AgentProfile, settings
 from cleo.i18n import tr
-from cleo.integrations.harnesses.acp import AcpAgentSpec, AcpProvider
-from cleo.integrations.harnesses.codex import CodexProvider
+
+if TYPE_CHECKING:
+    from acp.schema import McpServerStdio
+    from openai_codex import CodexConfig
 
 RUNTIMES = {
     "codex": {
@@ -190,6 +190,8 @@ class AgentMcp:
         """
         if approval_mode != "deny_all":
             raise ValueError("Subscription assessments require deny-all approvals")
+        from openai_codex import CodexConfig
+
         return CodexConfig(
             codex_bin=executable(self.profile),
             env=runtime_environment(),
@@ -203,6 +205,8 @@ class AgentMcp:
         )
 
     def acp_servers(self) -> list[McpServerStdio]:
+        from acp.schema import McpServerStdio
+
         return [McpServerStdio(name="cleo-tools", command=sys.executable, args=self.args, env=[])]
 
     def claude_servers(self) -> dict:
@@ -210,7 +214,13 @@ class AgentMcp:
 
 
 def create_runtime(profile: AgentProfile, mcp: AgentMcp):
+    from cleo.integrations.harnesses.acp import AcpAgentSpec, AcpProvider
+
     if profile.backend == "codex":
+        from openai_codex import Sandbox
+
+        from cleo.integrations.harnesses.codex import CodexProvider
+
         return CodexProvider(
             None if profile.model == "default" else profile.model,
             sandbox=Sandbox.read_only,

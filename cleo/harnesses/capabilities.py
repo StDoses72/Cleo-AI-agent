@@ -41,6 +41,20 @@ REQUIRED_METHODS: dict[Capability, tuple[str, ...]] = {
 }
 
 
+# What each harness type can do; its provider class declares the same set.
+PROVIDER_CAPABILITIES: dict[str, frozenset[Capability]] = {
+    "codex_sdk": frozenset({
+        Capability.REWIND, Capability.NATIVE_STEER, Capability.QUESTIONS,
+        Capability.USER_APPROVALS, Capability.SERVICE_TIER, Capability.FORK,
+        Capability.NATIVE_HISTORY, Capability.COMPACT,
+    }),
+    "claude_sdk": frozenset({
+        Capability.REWIND, Capability.QUESTIONS, Capability.USER_APPROVALS,
+    }),
+    "acp": frozenset({Capability.USER_APPROVALS}),
+}
+
+
 def capabilities_of(provider: Any) -> frozenset[Capability]:
     """Purpose: The capabilities a provider (instance or class) declares; none if absent."""
     return frozenset(getattr(provider, "capabilities", ()))

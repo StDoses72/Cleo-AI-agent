@@ -62,7 +62,7 @@ from cleo.desktop.turn_hooks import (
     timed_reply,
 )
 from cleo.harnesses.capabilities import Capability, capabilities_of
-from cleo.harnesses.control import HarnessModel
+from cleo.harnesses.control import HarnessModel, SessionOptions
 from cleo.i18n import tr
 from cleo.integrations.git import (
     create_git_checkpoint,
@@ -202,6 +202,10 @@ class DesktopService:
 
         self._subscription_logins = SubscriptionLogins()
         self._productivity_sessions: dict[str, Any] = {}
+        # Harness sessions being opened, so a background prepare and a send share one open.
+        self._session_openings: dict[str, asyncio.Future] = {}
+        self._background: set[asyncio.Task] = set()
+        self._harnesses_warmed = False
         self._runs = RunSupervisor()
         self._memory_operations = 0
         self._manual_memory_tasks: set[asyncio.Task] = set()
@@ -273,6 +277,8 @@ class DesktopService:
             ),
             manifests[0] if manifests else None,
         )
+        # The first screen is ready; import the harness SDKs off the event loop for what follows.
+        self._warm_harnesses()
         return workspace_view(
             projects=projects,
             threads=threads,
@@ -1144,6 +1150,8 @@ class DesktopService:
                 project_path=project_path,
                 model=selected_model,
                 project=project or path_name(project_path, "general"),
+                **({"options": SessionOptions(model=selected_model, effort=effort)}
+                   if effort is not None else {}),
             )
             await self._adopt_productivity_session(
                 session, effort=effort, service_tier=service_tier,
@@ -1797,7 +1805,11 @@ class DesktopService:
         return self._config.status() if self._config is not None else None
 
     async def get_runtime_catalog(self) -> dict[str, Any]:
-        registered = set(self._adapter().providers)
+        """Purpose: The chat profiles and development harnesses a new task can pick.
+
+        Output: Enabled harnesses from settings, as the adapter registers them. Building the
+        adapter here imported every harness SDK before the first screen (#183).
+        """
         profiles = [
             {
                 "id": name,
@@ -1813,7 +1825,7 @@ class DesktopService:
 
         providers = []
         for name, provider in task_providers(self.settings.productivity).items():
-            if not provider.enabled or name not in registered:
+            if not provider.enabled:
                 continue
             providers.append(
                 {
@@ -3056,9 +3068,77 @@ class DesktopService:
         return session
 
     async def _ensure_productivity_session(self, manifest: dict[str, Any]) -> Any:
+        """Purpose: The task's live harness session, opening (resuming) it when needed.
+
+        Concurrent callers, such as a background ``prepare_thread`` and the send it prepared
+        for, share one open; a failed open is not kept, so the next caller tries again.
+        """
         existing = self._productivity_sessions.get(manifest["id"])
         if existing is not None:
             return existing
+        opening = self._session_openings.get(manifest["id"])
+        if opening is None:
+            opening = asyncio.ensure_future(self._open_productivity_session(manifest))
+            self._session_openings[manifest["id"]] = opening
+            opening.add_done_callback(
+                lambda _done, key=manifest["id"]: self._session_openings.pop(key, None))
+        return await asyncio.shield(opening)
+
+    async def prepare_thread(self, *, thread_id: str) -> dict[str, bool]:
+        """Purpose: Open a development task's harness session while the user writes.
+
+        Input: The task. Output: whether an open is under way; it returns at once. Resuming a
+        harness starts its process and Cleo's MCP servers (several seconds), which otherwise
+        all wait behind the first message after a restart (#183). A failure here is dropped;
+        the send that follows opens the session again and reports it.
+        """
+        manifest = self.store.load_manifest(thread_id)
+        if manifest["space"] != "productivity" or self._runs.is_running(thread_id):
+            return {"preparing": False}
+        if thread_id in self._productivity_sessions or thread_id in self._session_openings:
+            return {"preparing": True}
+        task = asyncio.create_task(self._ensure_productivity_session(manifest))
+        self._background.add(task)
+
+        def settled(done: asyncio.Task) -> None:
+            self._background.discard(done)
+            if not done.cancelled():
+                done.exception()
+
+        task.add_done_callback(settled)
+        return {"preparing": True}
+
+    def _warm_harnesses(self) -> None:
+        """Purpose: Import the enabled harness providers in a worker thread after first paint.
+
+        The first screen no longer imports them; without this the first message or model list
+        would wait for the SDK imports (seconds) instead (#183).
+        """
+        if self._harnesses_warmed:
+            return
+        self._harnesses_warmed = True
+        modules = {
+            "codex_sdk": "cleo.integrations.harnesses.codex",
+            "claude_sdk": "cleo.integrations.harnesses.claude",
+            "acp": "cleo.integrations.harnesses.acp",
+        }
+        wanted = sorted({modules[provider.type] for provider in task_providers(
+            self.settings.productivity).values() if provider.enabled and provider.type in modules})
+
+        def load() -> None:
+            import importlib
+
+            for name in (*wanted, "cleo.integrations.harnesses.factory"):
+                try:
+                    importlib.import_module(name)
+                except Exception:
+                    pass
+
+        task = asyncio.create_task(asyncio.to_thread(load))
+        self._background.add(task)
+        task.add_done_callback(self._background.discard)
+
+    async def _open_productivity_session(self, manifest: dict[str, Any]) -> Any:
         from cleo.harnesses.handoff import pending_handoff
 
         events = self.store.read_events(manifest["id"])

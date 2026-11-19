@@ -18,9 +18,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 from threading import RLock
-from typing import Any
-
-from langchain_core.messages import BaseMessage
+from typing import TYPE_CHECKING, Any
 
 from cleo.memory.paths import session_directory, validate_name, validate_space
 from cleo.sessions.compact import CompactProjection
@@ -36,6 +34,9 @@ from cleo.sessions.index import SqliteSessionIndex
 from cleo.sessions.manifests import MANIFEST_SCHEMA_VERSION, JsonManifestRepository
 from cleo.sessions.messages import history_from_events, message_events, title_from_events
 from cleo.sessions.rewind import REWIND_EVENT
+
+if TYPE_CHECKING:
+    from langchain_core.messages import BaseMessage
 
 __all__ = ["EVENT_SCHEMA_VERSION", "MANIFEST_SCHEMA_VERSION", "SessionStore"]
 

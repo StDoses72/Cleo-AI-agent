@@ -208,6 +208,10 @@ export class IpcCleoClient implements CleoClient {
     return result.cancelled;
   }
 
+  prepareThread(threadId: string): Promise<{ preparing: boolean }> {
+    return this.bridge.request("prepare_thread", { thread_id: threadId });
+  }
+
   getTiming(timingId: string): Promise<import("../types").TimingDetails> {
     return this.bridge.request("get_timing", { timing_id: timingId });
   }

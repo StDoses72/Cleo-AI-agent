@@ -248,3 +248,21 @@ test("a fresh backend process starts without the previous process's hot-reload f
   assert.equal(children.length, 2);
   assert.equal(bridge.hotReload, false, "An older backend must be restarted after config changes");
 });
+
+test("requests made while the launch check runs wait for it and keep their order", async t => {
+  const { bridge, children } = mockBackend(t);
+  let finish;
+  bridge.preparing = new Promise(resolve => { finish = resolve; }).finally(() => { bridge.preparing = null; });
+  const first = bridge.request("load_workspace");
+  const second = bridge.request("get_runtime_catalog");
+  await new Promise(setImmediate);
+  assert.equal(children.length, 0, "Nothing starts before the runtime check ends");
+  finish();
+  await new Promise(setImmediate);
+  assert.equal(children.length, 1);
+  assert.deepEqual(children[0].messages.map(message => message.method), ["load_workspace", "get_runtime_catalog"]);
+  children[0].reply(0, { ready: true });
+  children[0].reply(1, { catalog: true });
+  assert.deepEqual(await first, { ready: true });
+  assert.deepEqual(await second, { catalog: true });
+});

@@ -26,12 +26,16 @@ export class BackendBridge {
     this.closePromise = null;
     this.spawnImpl = spawnImpl;
     this.runtime = null;
+    // While the packaged runtime is still being checked at launch, requests wait for it and
+    // then go out in the order they were made; afterwards a request starts the process at once.
+    this.preparing = null;
     // Set from load_workspace: the running backend applies configuration changes live.
     this.hotReload = false;
   }
 
   request(method, params = {}, onEvent = null) {
     if (this.stopped || this.closing) return Promise.reject(new Error(tr("backend.the_cleo_backend_is_shutting_down_and_cannot_accept_new_requests")));
+    if (this.preparing) return this.preparing.then(() => this.request(method, params, onEvent));
     this.start();
     return this.#send(this.process, method, params, onEvent);
   }
