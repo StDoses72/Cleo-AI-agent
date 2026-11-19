@@ -1,6 +1,6 @@
 # 0015. 首屏与发送不等待 harness SDK 的导入；开始写消息时提前打开 harness 会话
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-11-19
 
 ## Context

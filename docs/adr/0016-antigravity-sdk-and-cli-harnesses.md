@@ -1,6 +1,6 @@
 # 0016. Gemini 开发会话分两条路径接入：订阅额度走 Antigravity CLI（`agy acp`），API Key / Google Cloud 走 Antigravity SDK
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-11-19
 
 ## Context

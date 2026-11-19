@@ -1,6 +1,6 @@
 # 0014. Codex 速度档位按模型目录提供；模型不提供已保存的档位时以标准速度运行并保留选择
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-11-19
 
 ## Context
