@@ -55,6 +55,7 @@ const emptyDraft: ComposerDraft = { prompt: "", attachments: [] };
 
 /** The development project that binds no folder; chosen when nothing else is selected. */
 const GENERAL_PRODUCTIVITY_PROJECT = "productivity:general";
+const LAST_PERMISSIONS_KEY = "cleo-last-permissions";
 
 /** Purpose: Compare folder paths across separators and, on Windows drives, letter case. */
 function normalizedPath(path: string) {
@@ -204,6 +205,21 @@ export function useCleoWorkspace() {
   const [draftPermissions, setDraftPermissionsState] = useState<{
     provider: string; access?: string; approval?: string;
   } | null>(null);
+  // The permissions last chosen or started with, per harness: the default of the next new task.
+  const [lastPermissions, setLastPermissions] = useState<Record<string, { access?: string; approval?: string }>>(() => {
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem(LAST_PERMISSIONS_KEY) ?? "{}");
+      return saved && typeof saved === "object" && !Array.isArray(saved) ? saved as Record<string, { access?: string; approval?: string }> : {};
+    } catch { return {}; }
+  });
+  const rememberPermissions = (provider: string | undefined, access?: string | null, approval?: string | null) => {
+    if (!provider || (!access && !approval)) return;
+    setLastPermissions(current => {
+      const next = { ...current, [provider]: { ...current[provider], ...(access ? { access } : {}), ...(approval ? { approval } : {}) } };
+      try { localStorage.setItem(LAST_PERMISSIONS_KEY, JSON.stringify(next)); } catch { /* per-viewer convenience */ }
+      return next;
+    });
+  };
   const cancellingRuns = useRef(new Set<string>());
   const steeringRequests = useRef(new Map<string, { id: string; runId: string; text: string }>());
   const steeringLocks = useRef(new Set<string>());
@@ -298,7 +314,18 @@ export function useCleoWorkspace() {
   // The displayed permissions and create_thread payload share the same native values.
   const draftPermissionUpdate = useMemo(() => {
     const provider = runtimeCatalog?.productivityProviders.find(candidate => candidate.id === draftProvider);
-    const chosen = draftPermissions?.provider === provider?.id ? draftPermissions : null;
+    const picked = draftPermissions?.provider === provider?.id ? draftPermissions : null;
+    // Without a choice for this draft, a new task starts with what this harness last ran with,
+    // as long as the harness still offers those values.
+    const options = provider?.permissionOptions;
+    const offered = (field: "access" | "approval", value?: string) =>
+      !value || Boolean(options?.[field].some(choice => choice.value === value && !choice.disabledReason));
+    const last = provider ? lastPermissions[provider.id] : undefined;
+    const isPreset = Boolean(last && options?.presets?.some(preset => !preset.disabledReason
+      && preset.update.approval === last.approval && (!preset.update.access || preset.update.access === last.access)));
+    const remembered = last?.approval && (isPreset || (offered("approval", last.approval) && offered("access", last.access)))
+      ? last : null;
+    const chosen = picked ?? remembered;
     const fallback = provider?.permissionOptions?.presets?.[0]?.update;
     const access = chosen?.access ?? fallback?.access ?? provider?.permissionOptions?.access[0]?.value;
     const approval = chosen?.approval ?? fallback?.approval ?? provider?.permissionOptions?.approval[0]?.value;
@@ -306,7 +333,7 @@ export function useCleoWorkspace() {
       ...(provider?.type === "codex_sdk" && access ? { access } : {}),
       ...(approval ? { approval } : {}),
     };
-  }, [draftPermissions, draftProvider, runtimeCatalog]);
+  }, [draftPermissions, draftProvider, runtimeCatalog, lastPermissions]);
 
   const draftRuntime = useMemo<RuntimeProfile>(() => {
     if (activeSpace === "chat") {
@@ -358,6 +385,7 @@ export function useCleoWorkspace() {
       access: update.access ?? undefined,
       approval: update.approval ?? undefined,
     });
+    rememberPermissions(update.permissionProvider ?? draftProvider, update.access, update.approval);
   };
 
   const skillKey = `${draftRuntime.provider}:${activeProject?.path ?? ""}`;
@@ -633,13 +661,14 @@ export function useCleoWorkspace() {
       setDraftModel(activeThreadRuntime?.model ?? draftModel);
       setDraftEffort(activeThreadRuntime?.effort ?? draftEffort);
       setDraftServiceTier(activeThreadRuntime?.serviceTier ?? "default");
-      // The next task inherits the permissions of the one on screen, like its model.
-      if (activeThread.runtime) {
+      // The next task starts with the permissions last used on its harness; before any were
+      // used, with those of the task on screen, like its model.
+      if (activeThread.runtime && !lastPermissions[activeThread.runtime.provider]?.approval) {
         setDraftPermissionsState({
           provider: activeThread.runtime.provider,
           access: activeThread.runtime.access, approval: activeThread.runtime.approval,
         });
-      }
+      } else setDraftPermissionsState(null);
     }
     setActiveThreadId(null);
   };
@@ -672,6 +701,10 @@ export function useCleoWorkspace() {
             ...draftPermissionUpdate,
           },
     );
+    if (space !== "chat") {
+      rememberPermissions(draftProvider || runtimeCatalog?.defaultProductivityProvider,
+        draftPermissionUpdate.access, draftPermissionUpdate.approval);
+    }
     if (!project) {
       // An older backend lists general only after its first task; reload so the thread has a home.
       await refreshWorkspace(() => cleoClient.loadWorkspace()).catch(() => {});
@@ -1133,6 +1166,7 @@ export function useCleoWorkspace() {
   const updatePermissions = async (threadId: string, update: RuntimeUpdate) => {
     const runtime = await cleoClient.updateRuntime(threadId, update);
     updateThread(threadId, current => ({ ...current, runtime }));
+    if (!update.discardPendingPermissions) rememberPermissions(update.permissionProvider ?? runtime.provider, update.access, update.approval);
   };
 
   const submitSteer = async (threadId: string, runId: string, text: string, requestId: string, retry = false) => {
