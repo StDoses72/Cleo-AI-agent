@@ -108,6 +108,18 @@ try {
         const created = await send();
         assert.deepEqual([created.access, created.approval], [preset.update.access, preset.update.approval]);
       }
+      // A new task starts with the preset last used on its harness, also after a restart.
+      const lastPreset = provider.permissionOptions.presets?.at(-1);
+      if (lastPreset) {
+        await page.getByTestId("new-thread").click();
+        assert.equal(await permissionValue(), lastPreset.value, "A new task must default to the last used preset");
+        await page.reload();
+        await input.waitFor();
+        if (inherited) await page.getByTestId("new-thread").click();
+        assert.equal(await permissionValue(), lastPreset.value, "The last used preset must survive a restart");
+        const remembered = await send();
+        assert.deepEqual([remembered.access, remembered.approval], [lastPreset.update.access, lastPreset.update.approval]);
+      }
       if (provider.type === "codex_sdk") {
         await page.getByTestId("new-thread").click();
         await choosePermission("full");
