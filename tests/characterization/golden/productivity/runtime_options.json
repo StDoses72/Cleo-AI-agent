@@ -104,7 +104,7 @@
     ],
     "fast_mode_unsupported": [
       "ValueError",
-      "速度档位仅支持 Codex 的标准或快速模式。"
+      "速度档位仅支持 Codex 的标准、快速或极速模式。"
     ],
     "provider_mismatch": [
       "ValueError",
