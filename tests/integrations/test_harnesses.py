@@ -1036,3 +1036,41 @@ def test_attachment_records_are_saved_with_the_turn_and_shown_immediately(tmp_pa
         await adapter.aclose()
 
     asyncio.run(scenario())
+
+
+def test_claude_starts_with_launch_options_and_does_not_restart_for_them(tmp_path) -> None:
+    """A session that starts with an effort (a new draft, a resumed task) spawns the CLI once."""
+    from cleo.harnesses.control import SessionOptions
+    from cleo.integrations.harnesses.claude import ClaudeProvider, _ClaudeRuntime
+
+    provider = ClaudeProvider()
+    launches: list[dict] = []
+
+    async def connect(project_path, model, **options):
+        launches.append(options)
+        return _ClaudeRuntime(object(), SessionOptions(
+            model=model, effort=options.get("effort"),
+            approval_mode=options.get("permission_mode") or "acceptEdits"), project_path)
+
+    provider._connect = connect
+    reconnects: list[str] = []
+
+    async def reconnect(runtime, *_args):
+        reconnects.append("restart")
+
+    provider._reconnect_runtime = reconnect
+
+    async def scenario():
+        launch = SessionOptions(effort="high", approval_mode="default")
+        created = await provider.create_session(str(tmp_path), "m", launch_options=launch)
+        await provider.update_session_options(created.id, effort="high", approval_mode="default")
+        resumed = await provider.resume_session("native", str(tmp_path), "m",
+                                                launch_options=SessionOptions(effort="low"))
+        await provider.update_session_options(resumed.id, effort="low")
+        # An actual change still restarts, as Claude fixes effort at launch.
+        await provider.update_session_options(resumed.id, effort="max")
+
+    asyncio.run(scenario())
+    assert launches[0] == {"effort": "high", "permission_mode": "default"}
+    assert launches[1]["effort"] == "low" and launches[1]["permission_mode"] is None
+    assert reconnects == ["restart"]

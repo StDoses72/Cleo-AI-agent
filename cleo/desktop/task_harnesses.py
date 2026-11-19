@@ -4,8 +4,10 @@ import json
 from pathlib import Path
 
 from cleo.config.settings import (
+    PERSISTABLE_PROVIDER_TYPES,
     AcpHarnessOptions,
     AcpHarnessSettings,
+    AntigravityHarnessSettings,
     ClaudeHarnessSettings,
     ProductivityProviderSettings,
     ProductivitySettings,
@@ -30,6 +32,10 @@ def task_providers(settings: ProductivitySettings) -> dict[str, ProductivityProv
                 "opencode": ["acp"],
             }.items()
         },
+        # Gemini on a Google AI Pro / Ultra subscription: the Antigravity CLI's own ACP server.
+        "antigravity": AcpHarnessSettings(options=AcpHarnessOptions(command="agy", args=["acp"])),
+        # Gemini on an API key or Google Cloud through the Antigravity SDK (ADR 0016).
+        "antigravity-sdk": AntigravityHarnessSettings(),
     }
     return {**settings.providers, **{
         name: provider for name, provider in builtins.items() if name not in settings.providers
@@ -41,8 +47,12 @@ def register_task_provider(path: Path, name: str, provider: ProductivityProvider
 
     Input: Existing harnesses.json, selected preset name and existing-schema settings.
     Output: Atomically add one entry; unreadable/newer data and existing entries stay intact.
+    A type older versions cannot read is not written: it stays a runtime-only preset.
     """
     from cleo.desktop.configuration import _atomic_write
+
+    if provider.type not in PERSISTABLE_PROVIDER_TYPES:
+        return
 
     raw = json.loads(path.read_text(encoding="utf-8"))
     # Refuse unknown schemas rather than serializing them through lossy model defaults.

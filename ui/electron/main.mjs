@@ -181,6 +181,7 @@ const allowedMethods = new Set([
   "load_timeline",
   "read_timeline_content",
   "get_timing",
+  "prepare_thread",
   "update_runtime",
   "switch_harness",
   "get_config_templates",
@@ -483,11 +484,22 @@ app.whenReady().then(async () => {
   // bootstrap.mjs owns the startup confirmation in a packaged app; development has no version switch to confirm.
   if (!app.isPackaged) ipcMain.handle("cleo:program:healthy", () => {});
   // Downloaded updates never authorize installation. Selection is explicit and recoverable.
-  try { backend.runtime = await dependencies.prepare(); }
-  catch (error) { updater.setState({ dependencies: { phase: "error", error: error.message } }); }
-  setup.python = process.env.CLEO_PYTHON || backend.runtimePaths().python || (process.platform === "win32" ? "python" : "python3");
+  // The runtime check runs while the window opens; backend requests wait for it, and the backend
+  // starts as soon as it ends, so Python's imports overlap the renderer's load (#183).
+  const pythonOf = () => process.env.CLEO_PYTHON || backend.runtimePaths().python || (process.platform === "win32" ? "python" : "python3");
+  backend.preparing = dependencies.prepare()
+    .then(runtime => { backend.runtime = runtime; })
+    .catch(error => { updater.setState({ dependencies: { phase: "error", error: error.message } }); })
+    .finally(() => {
+      backend.preparing = null;
+      setup.python = pythonOf();
+    });
+  setup.python = pythonOf();
   desktopTray.start();
   createWindow();
+  void backend.preparing.then(() => {
+    try { backend.start(); } catch (error) { console.error("Backend start:", error.message); }
+  });
   backgroundMemory.start();
   // External setup and internal runtime updates require a user-approved setup action.
   const refresh = () => programUpdates.check().catch((error) => console.error("Update check:", error.message));

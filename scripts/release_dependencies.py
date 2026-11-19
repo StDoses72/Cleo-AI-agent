@@ -19,8 +19,9 @@ def record(root: Path, python: Path, browser: Path, output: Path) -> None:
     packages = json.loads(subprocess.check_output([
         str(python), "-I", "-c",
         "import json, importlib.metadata as m; "
-        "from cleo.desktop.dependencies import validate_claude_runtime, validate_codex_runtime; "
-        "validate_codex_runtime(); validate_claude_runtime(); "
+        "from cleo.desktop.dependencies import validate_antigravity_runtime, "
+        "validate_claude_runtime, validate_codex_runtime; "
+        "validate_codex_runtime(); validate_claude_runtime(); validate_antigravity_runtime(); "
         "print(json.dumps({d.metadata['Name'].lower().replace('_','-'): "
         "d.version for d in m.distributions()}))",
     ], text=True, timeout=60))

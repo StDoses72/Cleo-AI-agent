@@ -15,7 +15,7 @@
 7. [本地 skills](local-skills.md)：在开发会话中发现和调用本机技能。
 8. [子任务路由](benchmark-routing.md)：连接候选、Artificial Analysis 数据、评估器、受约束委派与任务用量；执行权限见[子任务路由的统一权限](routing-permissions.md)。
 9. [电脑使用](computer-use.md)：按会话隔离的内置浏览器与本机电脑控制。
-10. 各版本的变化见 `release-notes-v*.md`，最新为 [v0.14.1](release-notes-v0.14.1.md)。
+10. 各版本的变化见 `release-notes-v*.md`，最新为 [v0.14.2](release-notes-v0.14.2.md)。
 
 ## 我想理解系统
 
@@ -50,6 +50,9 @@
 - [ADR 0011 上下文占用对所有 harness 用同一口径；账号用量在打开面板时按需读取](adr/0011-one-context-measure-and-on-demand-account-usage.md)
 - [ADR 0012 Claude 在运行中的回合里读到的完成通知不单独等待回复](adr/0012-claude-notices-read-inside-a-running-turn.md)
 - [ADR 0013 流式回复期间阅读位置归读者；「视口跟随」与「接收本轮输出」分开](adr/0013-reading-position-is-the-readers.md)
+- [ADR 0014 Codex 速度档位按模型目录提供；模型不提供已保存的档位时以标准速度运行并保留选择](adr/0014-codex-speed-from-the-model-catalog.md)
+- [ADR 0015 首屏与发送不等待 harness SDK 的导入；开始写消息时提前打开 harness 会话](adr/0015-start-and-send-without-waiting-on-harness-imports.md)
+- [ADR 0016 Gemini 开发会话分两条路径接入：订阅额度走 Antigravity CLI，API Key / Google Cloud 走 Antigravity SDK](adr/0016-antigravity-sdk-and-cli-harnesses.md)
 
 ## 历史文档
 

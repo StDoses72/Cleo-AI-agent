@@ -30,8 +30,8 @@ def check(resources: Path) -> None:
              "import ssl; ssl.create_default_context(); "
              "from cleo.desktop.server import main; "
              "from cleo.desktop.dependencies import "
-             "validate_codex_runtime, validate_claude_runtime; "
-             "validate_codex_runtime(); validate_claude_runtime()"],
+             "validate_codex_runtime, validate_claude_runtime, validate_antigravity_runtime; "
+             "validate_codex_runtime(); validate_claude_runtime(); validate_antigravity_runtime()"],
             [node, "--version"],
             [node, browser / "node_modules/agent-browser/bin/agent-browser.js", "--version"],
         ]

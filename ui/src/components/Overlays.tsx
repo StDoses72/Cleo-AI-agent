@@ -603,8 +603,9 @@ export function SettingsModal({
   );
 }
 
-/** Purpose: Fine-grained file access and approval for one task. Presets live in the composer only.
- * Lives in the details panel's Details tab, next to the run it governs. */
+/** Purpose: The approval choice of a harness that offers no permission presets (ACP), which has no
+ * control in the composer. Every other task chooses its permissions from the composer's preset alone,
+ * and this renders nothing. */
 export function RuntimePermissions({ runtime, threadId, onChange }: {
   runtime: RuntimeProfile;
   threadId?: string;
@@ -623,8 +624,9 @@ export function RuntimePermissions({ runtime, threadId, onChange }: {
     catch (error) { setError(error instanceof Error ? error.message : tr("overlays.permission_changes_were_not_saved_try_again")); }
     finally { inFlight.current = false; setSaving(false); }
   };
+  if (runtime.permissionOptions?.presets?.length) return null;
   if (runtime.routingMode === "auto" && runtime.routingPermissionPreset
-      && runtime.routingPermissionPreset !== "inherit") return <PermissionSelector runtime={runtime} />;
+      && runtime.routingPermissionPreset !== "inherit") return null;
   return <>
     {(["access", "approval"] as const).map(field => {
       const title = field === "access" ? tr("overlays.file_access") : tr("overlays.approval_policy");

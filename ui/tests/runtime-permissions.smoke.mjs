@@ -119,70 +119,27 @@ try {
   await page.evaluate(() => { window.permissionTest.running = false; });
   await choose("review"); await presetSettled();
   if (process.env.CLEO_SMOKE_OUTPUT) await page.screenshot({ path: join(process.env.CLEO_SMOKE_OUTPUT, "session-permissions.png") });
-  // Per-task file access and approval live in the details panel's Details tab, next to the run.
+  // The composer preset is the one place a task's permissions are chosen. The details panel offers
+  // its own approval control only for a harness without presets.
   const settings = page.getByTestId("inspector");
   const open = async () => {
     if (!await settings.count()) await page.getByRole("button", { name: "打开检查器", exact: true }).click();
     await settings.getByRole("tab", { name: "概况", exact: true }).click();
   };
-  const reopen = async () => {
-    await settings.getByRole("tab", { name: /变更/ }).click();
-    await settings.getByRole("tab", { name: "概况", exact: true }).click();
-  };
   const access = settings.getByLabel("文件访问", { exact: true });
   const approval = settings.getByLabel("审批方式", { exact: true });
-  const settled = () => access.and(page.locator(":enabled")).waitFor();
   await open();
-  // Presets are chosen in the composer only; the panel keeps the two separate settings (#169).
-  await access.waitFor();
+  await settings.getByText("运行参数", { exact: true }).waitFor();
   assert.equal(await settings.getByTestId("permission-selector").count(), 0,
     "The details panel repeats the composer's permission preset");
-  assert.equal(await access.inputValue(), "workspace-write", "The composer preset did not reach file access");
-  assert.equal(await approval.inputValue(), "auto_review");
-  await access.selectOption("full-access"); await settled();
-  assert.equal(await approval.inputValue(), "auto_review", "Access must not change approval policy");
-  assert.equal(await preset.getAttribute("data-value"), "custom",
-    "Separate settings that match no preset must show as custom in the composer");
-  await page.evaluate(() => { window.permissionTest.fail = true; });
-  await approval.selectOption("deny_all");
-  await settings.getByRole("alert").getByText("权限未保存：服务暂时不可用").waitFor();
-  assert.equal(await approval.inputValue(), "auto_review");
-  assert.equal(await access.inputValue(), "full-access");
-  await page.evaluate(() => { window.permissionTest.fail = false; });
-  await approval.selectOption("deny_all"); await settled();
-  assert.equal(await approval.inputValue(), "deny_all");
-  assert.equal(await settings.getByRole("alert").count(), 0);
-  assert.equal(await preset.getAttribute("data-value"), "full",
-    "Separate settings that match a preset must show as that preset in the composer");
+  assert.equal(await access.count(), 0, "The details panel repeats file access beside the composer preset");
+  assert.equal(await approval.count(), 0, "The details panel repeats the approval policy beside the composer preset");
+  assert.equal(await settings.locator(".details-permissions").isVisible(), false);
 
-  await page.evaluate(() => { window.permissionTest.running = true; });
-  await access.selectOption("read-only"); await settled();
-  await approval.selectOption("user"); await settled();
-  await settings.getByText("当前：完全访问 · 拒绝审批请求").waitFor();
-  assert.deepEqual(await page.evaluate(() => {
-    const runtime = window.permissionTest.fixture.threads.find(t => t.id === "desktop-ui").runtime;
-    return [runtime.access, runtime.approval, runtime.pendingPermissions];
-  }), ["full-access", "deny_all", { provider: "codex", access: "read-only", approval: "user" }]);
-  if (process.env.CLEO_SMOKE_OUTPUT) await page.screenshot({ path: join(process.env.CLEO_SMOKE_OUTPUT, "permissions-dark.png") });
-  await settings.getByRole("button", { name: "取消更改", exact: true }).click(); await settled();
-  assert.equal(await access.inputValue(), "full-access");
-  assert.equal(await approval.inputValue(), "deny_all");
-
-  // A slow response from a previous settings page must not replace newer settings.
-  await page.evaluate(() => { window.permissionTest.running = false; window.permissionTest.hold = true; });
-  await access.selectOption("workspace-write");
-  await page.waitForFunction(() => Boolean(window.permissionTest.release));
-  await reopen();
-  await page.evaluate(() => { window.permissionTest.hold = false; });
-  await access.selectOption("read-only"); await settled();
-  await page.evaluate(() => window.permissionTest.release());
-  await page.waitForTimeout(100);
-  assert.equal(await access.inputValue(), "read-only", "Late permission response replaced newer settings");
-
+  await choose("full"); await presetSettled();
   await page.getByRole("button", { name: /^统一 managed 与 native sessions/ }).click();
-  await open();
-  assert.equal(await access.inputValue(), "workspace-write", "Permissions leaked into another task");
-  assert.equal(await approval.inputValue(), "auto_review");
+  await page.waitForFunction(() => document.querySelector('[data-testid="composer"] [data-testid="permission-selector"]')?.dataset.value === "review");
+  assert.equal(await presetValue(), "review", "Permissions leaked into another task");
   const dialog = page.getByRole("dialog", { name: "设置", exact: true });
   await page.getByRole("button", { name: "设置", exact: true }).click();
   await dialog.getByRole("button", { name: "外观", exact: true }).click();
@@ -271,7 +228,7 @@ try {
   assert.equal(await approval.count(), 0);
   assert.equal(await settings.getByText("在子任务路由设置中统一修改执行权限。", { exact: true }).count(), 0);
   assert.deepEqual(errors, []);
-  console.log("PASS: independent permissions, automatic review, saved/pending state, failure recovery, discard, stale responses, task isolation, native Claude/ACP modes, durable audit display, dark/light and narrow layout");
+  console.log("PASS: one permission entry in the composer, automatic review, saved/pending state, failure recovery, task isolation, native Claude/ACP modes, durable audit display, dark/light and narrow layout");
 } finally {
   await browser?.close(); await server.close();
   assert.equal(dirname(scratch), resolve(tmpdir()));

@@ -454,6 +454,23 @@ class AcpHarnessOptions(BaseModel):
     model_config_id: str | None = None
 
 
+class AntigravityHarnessOptions(BaseModel):
+    """antigravity_sdk harness 的专有选项(运行时内置,不写入 harnesses.json,见 ADR 0016)。
+
+    字段:
+        auth: "api_key" 读取 GEMINI_API_KEY;"vertex" 使用 Google Cloud ADC。
+        project / location: Vertex 的项目与区域;未填时读 GOOGLE_CLOUD_PROJECT / LOCATION。
+        approval_mode: 审批模式("user"/"auto_allow"/"deny_all")。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    auth: Literal["api_key", "vertex"] = "api_key"
+    project: str | None = None
+    location: str | None = None
+    approval_mode: Literal["user", "auto_allow", "deny_all"] = "user"
+
+
 class CodexHarnessSettings(HarnessProviderSettings):
     """discriminated union 中 type="codex_sdk" 的 provider 配置。
 
@@ -492,8 +509,21 @@ class AcpHarnessSettings(HarnessProviderSettings):
     options: AcpHarnessOptions
 
 
+class AntigravityHarnessSettings(HarnessProviderSettings):
+    """discriminated union 中 type="antigravity_sdk" 的 provider 配置。
+
+    旧版 Cleo 不认识这个类型,所以它只作为运行时内置选项存在(ADR 0016)。
+    """
+
+    type: Literal["antigravity_sdk"] = "antigravity_sdk"
+    options: AntigravityHarnessOptions = Field(default_factory=AntigravityHarnessOptions)
+
+
+# Types every shipped Cleo version can read from harnesses.json; others stay runtime-only.
+PERSISTABLE_PROVIDER_TYPES = frozenset({"codex_sdk", "claude_sdk", "acp"})
+
 ProductivityProviderSettings = Annotated[
-    CodexHarnessSettings | ClaudeHarnessSettings | AcpHarnessSettings,
+    CodexHarnessSettings | ClaudeHarnessSettings | AcpHarnessSettings | AntigravityHarnessSettings,
     Field(discriminator="type"),
 ]
 

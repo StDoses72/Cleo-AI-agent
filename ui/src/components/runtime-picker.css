@@ -259,6 +259,52 @@
   cursor: pointer;
 }
 
+/* Speed as a list (Standard, Fast, Ultrafast): name over the catalog's description, check at
+   the end. */
+.rp-speed {
+  gap: 0;
+  padding-top: 4px;
+}
+
+.rp-tier {
+  min-height: 40px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+.rp-item > span.rp-tier-text {
+  display: grid;
+  max-width: 248px;
+  gap: 1px;
+  white-space: normal;
+}
+
+.rp-tier-text > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rp-tier-text > small {
+  color: var(--muted);
+  font-size: var(--font-size-caption);
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+/* A saved speed the model does not offer. */
+.rp-note {
+  max-width: 248px;
+  margin: 0;
+  padding: 2px 8px 4px;
+  color: var(--warning, var(--muted));
+  font-size: var(--font-size-caption);
+}
+
+.runtime-selector-extra[data-unavailable="true"] {
+  color: var(--warning, var(--muted-2));
+}
+
 .rp-segments {
   display: flex;
   gap: 2px;

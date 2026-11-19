@@ -140,6 +140,11 @@ npm --prefix ui start
 
 检查 `config/harnesses.json` 的 `default_provider` 是否存在且启用，并确认对应 SDK 的认证状态或 ACP 命令可用。OpenCode 作为 ACP provider 时需要单独安装 OpenCode CLI。
 
+Gemini 有两个内置的开发任务 harness（见 [ADR 0016](adr/0016-antigravity-sdk-and-cli-harnesses.md)）：
+
+- `antigravity`：运行 Antigravity CLI 自带的 ACP 服务 `agy acp`，使用 Google AI Pro / Ultra 订阅额度。需要先安装 Antigravity CLI，并在 `agy` 或 `agy acp --login` 中用 Google 账号登录一次。
+- `antigravity-sdk`：通过随 Cleo 分发的 Antigravity SDK 调用 Gemini API。需要设置环境变量 `GEMINI_API_KEY`，或者在 Google Cloud 上设置 `GOOGLE_CLOUD_PROJECT` / `GOOGLE_CLOUD_LOCATION` 并执行 `gcloud auth application-default login`。SDK 不支持用 Google 账号登录，因此用不了订阅额度。
+
 ### 浏览器工具不可用
 
 源码运行需要可执行的 `agent-browser` 命令，以及本机 Chrome 或 Edge。桌面发布包已包含 Node runtime 和固定版本的 `agent-browser`。

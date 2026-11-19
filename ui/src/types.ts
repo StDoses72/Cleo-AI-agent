@@ -405,6 +405,16 @@ export type ReasoningEffort =
   | "max"
   | "ultra";
 
+/** A Codex speed: standard ("default"), Fast or Ultrafast. */
+export type ServiceTier = "default" | "fast" | "ultrafast";
+
+/** A speed a model offers beyond standard, with the harness catalog's own wording. */
+export interface ServiceTierOption {
+  id: Exclude<ServiceTier, "default">;
+  label: string;
+  description: string;
+}
+
 export interface MemoryEntry {
   id: string;
   scope: "project" | "preference";
@@ -434,7 +444,7 @@ export interface RuntimeProfile {
   model: string;
   models?: string[];
   effort: ReasoningEffort | null;
-  serviceTier?: "default" | "fast" | null;
+  serviceTier?: ServiceTier | null;
   supportsFastMode?: boolean;
   access: string;
   approval: string;
@@ -454,6 +464,8 @@ export interface RuntimeModelOption {
   isDefault: boolean;
   defaultEffort: ReasoningEffort | null;
   supportedEfforts: ReasoningEffort[];
+  /** Speeds beyond standard; absent when the harness catalog does not say. */
+  serviceTiers?: ServiceTierOption[];
 }
 
 export interface NonProductivityProfileOption {
@@ -465,7 +477,7 @@ export interface NonProductivityProfileOption {
   active: boolean;
 }
 
-export type ProductivityProviderType = "codex_sdk" | "claude_sdk" | "acp";
+export type ProductivityProviderType = "codex_sdk" | "claude_sdk" | "acp" | "antigravity_sdk";
 
 export interface ProductivityProviderOption {
   id: string;
@@ -496,7 +508,7 @@ export interface CreateThreadOptions {
   provider?: string;
   model?: string;
   effort?: ReasoningEffort;
-  serviceTier?: "default" | "fast";
+  serviceTier?: ServiceTier;
   profileId?: string;
   /** Permission preset chosen in the draft; applied to the new session before its first turn. */
   access?: string;
@@ -756,6 +768,8 @@ export interface CleoClient {
   getUiLanguage(): Promise<"zh-CN" | "en">;
   setUiLanguage(language: "zh-CN" | "en"): Promise<"zh-CN" | "en">;
   getTiming(timingId: string): Promise<TimingDetails>;
+  /** Open a development task's harness session in the background while a message is written. */
+  prepareThread(threadId: string): Promise<{ preparing: boolean }>;
   loadWorkspace(): Promise<WorkspaceSnapshot>;
   loadMemory(): Promise<Pick<WorkspaceSnapshot, "memories" | "memoryOverview">>;
   loadThread(threadId: string, activate?: boolean): Promise<Thread>;

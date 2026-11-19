@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cleo-ai-agent"
-version = "0.14.1"
+version = "0.14.2"
 description = "An integration platform for agent harness orchestration: run Codex, Claude Code, and ACP agents from one desktop workspace, with shared sessions, memory, and subtask routing across them."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
@@ -22,6 +22,7 @@ dependencies = [
   "httpx",
   "langgraph",
   "openai-codex>=0.155.1",
+  "google-antigravity>=0.1.24",
   "pillow>=11",
   "platformdirs>=4.4",
   "pydantic",

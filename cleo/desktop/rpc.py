@@ -42,7 +42,8 @@ DESKTOP_METHODS: tuple[RpcMethod, ...] = (
     *_methods("renderer", "load_workspace", "load_memory", "add_project", "remove_project",
               "restore_chat_backups", "reset_workspace"),
     # Threads.
-    *_methods("renderer", "load_thread", "create_thread", "delete_thread", "move_thread"),
+    *_methods("renderer", "load_thread", "create_thread", "delete_thread", "move_thread",
+              "prepare_thread"),
     # Turns and runs.
     RpcMethod("stream_turn", "renderer", streaming=True),
     *_methods("renderer", "steer_run", "rewind_thread", "cancel_run", "resolve_approval",

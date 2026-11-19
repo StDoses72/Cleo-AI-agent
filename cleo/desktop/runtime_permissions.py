@@ -69,6 +69,10 @@ def permission_choices(provider_type: str, *, support=None) -> dict:
         modes = [("ask", tr("runtime_permissions.request_approval"), "default", None),
                  ("review", tr("runtime_permissions.review_for_me"), "auto", None),
                  ("full", tr("runtime_permissions.full_access"), "bypassPermissions", None)]
+    elif provider_type == "antigravity_sdk":
+        choices = {"access": [], "approval": ACP_APPROVAL}
+        modes = [("ask", tr("runtime_permissions.request_approval"), "user", None),
+                 ("full", tr("runtime_permissions.full_access"), "auto_allow", None)]
     elif provider_type == "acp":
         return {"access": [], "approval": ACP_APPROVAL,
                 "reason": tr("runtime_permissions.this_provider_has_no_unified_permission_presets")}
