@@ -2766,7 +2766,7 @@ class DesktopService:
     @staticmethod
     def _validate_service_tier(capabilities: frozenset[Capability], value: Any) -> None:
         if (Capability.SERVICE_TIER not in capabilities
-                or value not in ("default", "fast")):
+                or value not in ("default", "fast", "ultrafast")):
             raise ValueError(tr("service.speed_tiers_support_only_codex_standard_or_fast"))
 
     def _runtime_profile(
@@ -3035,6 +3035,10 @@ class DesktopService:
             "isDefault": model.is_default,
             "defaultEffort": model.default_effort,
             "supportedEfforts": list(model.supported_efforts),
+            **({"serviceTiers": [
+                {"id": tier.id, "label": tier.label, "description": tier.description}
+                for tier in model.service_tiers
+            ]} if model.service_tiers is not None else {}),
         }
 
     async def _adopt_productivity_session(

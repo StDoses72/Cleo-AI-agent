@@ -1652,8 +1652,13 @@ def test_codex_speed_is_created_updated_and_projected_from_saved_options(tmp_pat
         manifest = service.store.load_manifest(thread["id"])
         assert manifest["runtime_options"]["service_tier"] == "default"
         assert service._runtime_profile(manifest)["serviceTier"] == "default"
-        for tier in ("default", "fast"):
+        for tier in ("default", "fast", "ultrafast"):
             service._validate_service_tier(service._capabilities("codex_sdk"), tier)
+        ultrafast = await service.update_runtime(
+            thread_id=thread["id"], update={"serviceTier": "ultrafast"},
+        )
+        assert ultrafast["serviceTier"] == "ultrafast"
+        assert adapter.updated_with["service_tier"] == "ultrafast"
         for provider, tier in [("claude_sdk", "fast"), ("codex_sdk", "invalid")]:
             with pytest.raises(ValueError, match="速度档位"):
                 service._validate_service_tier(service._capabilities(provider), tier)
@@ -2707,3 +2712,17 @@ def test_move_thread_rebinds_task_directory_and_releases_resident_session(tmp_pa
         assert service.store.load_manifest(handed["id"])["project"] == "source"
 
     asyncio.run(scenario())
+
+
+def test_model_catalog_carries_speeds_only_when_the_harness_reports_them():
+    from cleo.harnesses.control import HarnessModel, HarnessServiceTier
+
+    def model(tiers):
+        return HarnessModel(id="m", display_name="M", description="", is_default=True,
+                            default_effort=None, supported_efforts=(), service_tiers=tiers)
+
+    assert "serviceTiers" not in DesktopService._harness_model(model(None))
+    assert DesktopService._harness_model(model(()))["serviceTiers"] == []
+    assert DesktopService._harness_model(model((
+        HarnessServiceTier("ultrafast", "Ultrafast", "The fastest"),
+    )))["serviceTiers"] == [{"id": "ultrafast", "label": "Ultrafast", "description": "The fastest"}]

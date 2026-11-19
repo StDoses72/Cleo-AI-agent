@@ -70,6 +70,7 @@ import type {
   ApprovalDecision,
   ApprovalRequest,
   QueuedMessage,
+  ServiceTier,
   Usage,
 } from "../types";
 import { PermissionSelector } from "./PermissionSelector";
@@ -142,7 +143,7 @@ interface ConversationProps {
   onSelectProductivityRuntime: (provider: string, model: string) => void;
   onEffortChange: (effort: NonNullable<RuntimeProfile["effort"]>) => void | Promise<void>;
   onPermissionChange?: (update: RuntimeUpdate) => Promise<void>;
-  onServiceTierChange?: (tier: "default" | "fast") => void;
+  onServiceTierChange?: (tier: ServiceTier) => void;
   attachments: Attachment[];
   onPickAttachments: () => Promise<void>;
   onPrepareAttachments: (files: File[]) => Promise<void>;
@@ -1986,6 +1987,7 @@ function Composer({
               onEffortChange={onEffortChange}
               serviceTier={runtime.serviceTier ?? null}
               supportsFastMode={Boolean(runtime.supportsFastMode)}
+              serviceTiers={selectedModel?.serviceTiers}
               onServiceTierChange={onServiceTierChange}
             /> : <ChatModelSelector runtime={runtime} catalog={runtimeCatalog} running={running}
               onSelectProfile={onSelectNonProductivityProfile} />}

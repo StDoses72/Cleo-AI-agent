@@ -36,6 +36,7 @@ from cleo.harnesses.capabilities import Capability
 from cleo.harnesses.control import (
     HarnessAccount,
     HarnessModel,
+    HarnessServiceTier,
     NativeSession,
     NativeSessionDetail,
     NativeSessionPage,
@@ -52,6 +53,34 @@ from cleo.integrations.harnesses.memory import MemoryMcp
 from cleo.runtime.usage import RateLimitWindowUsage
 
 CODEX_APPROVAL_MODES = {"deny_all", "auto_review", "user"}
+CODEX_SERVICE_TIERS = ("default", "fast", "ultrafast")
+# Cleo's tier for each native catalog id: the catalog names Fast "priority", older
+# app-servers listed it as "fast" in additionalSpeedTiers.
+_NATIVE_SERVICE_TIERS = {"priority": "fast", "fast": "fast", "ultrafast": "ultrafast"}
+_SERVICE_TIER_LABELS = {"fast": "Fast", "ultrafast": "Ultrafast"}
+
+
+def _catalog_service_tiers(model: Any) -> tuple[HarnessServiceTier, ...]:
+    """Purpose: The speed tiers a native catalog entry offers, as Cleo's tiers.
+
+    Input: one model from ``model/list``. Output: Fast and Ultrafast in that order, each once,
+    from ``serviceTiers`` or, on app-servers without it, ``additionalSpeedTiers``.
+    """
+    tiers: dict[str, HarnessServiceTier] = {}
+    for tier in getattr(model, "service_tiers", None) or ():
+        cleo_tier = _NATIVE_SERVICE_TIERS.get(str(getattr(tier, "id", "")))
+        if cleo_tier and cleo_tier not in tiers:
+            tiers[cleo_tier] = HarnessServiceTier(
+                cleo_tier,
+                str(getattr(tier, "name", "") or _SERVICE_TIER_LABELS[cleo_tier]),
+                str(getattr(tier, "description", "") or ""),
+            )
+    if not tiers:
+        for raw in getattr(model, "additional_speed_tiers", None) or ():
+            cleo_tier = _NATIVE_SERVICE_TIERS.get(str(raw))
+            if cleo_tier and cleo_tier not in tiers:
+                tiers[cleo_tier] = HarnessServiceTier(cleo_tier, _SERVICE_TIER_LABELS[cleo_tier])
+    return tuple(tiers[tier] for tier in CODEX_SERVICE_TIERS if tier in tiers)
 
 
 @dataclass(slots=True)
@@ -120,6 +149,10 @@ class CodexProvider:
             raise ValueError(f"Unsupported Codex approval mode: {self._approval_mode}")
         self._sandbox = sandbox
         self._sessions: dict[str, _CodexRuntime] = {}
+        # Speed tiers per model from the last catalog read; "" keys the catalog's default model.
+        self._model_tiers: dict[str, frozenset[str]] = {}
+        # Models a turn already read the catalog for, so a model it lacks is not read again.
+        self._tier_reads: set[str] = set()
 
     async def create_session(
         self,
@@ -397,7 +430,7 @@ class CodexProvider:
         file access and review selection apply to the next turn, including after restore.
         """
         runtime = self._sessions[session_id]
-        if service_tier is not None and service_tier not in {"default", "fast"}:
+        if service_tier is not None and service_tier not in CODEX_SERVICE_TIERS:
             raise ValueError(tr("codex.unsupported_codex_speed_tier"))
         if effort is not None:
             ReasoningEffort(effort)
@@ -582,6 +615,7 @@ class CodexProvider:
             response = await client.models()
         from cleo.integrations.harnesses.codex_models import account_model_ids
 
+        self._remember_model_tiers(response.data)
         allowed = await account_model_ids()
         return tuple(
             HarnessModel(
@@ -598,9 +632,47 @@ class CodexProvider:
                            or getattr(model, "availability_nux", None) is not None
                            else str(model.model) in allowed if allowed is not None else None),
                 availability_source="account_catalog" if allowed is not None else "catalog_only",
+                service_tiers=_catalog_service_tiers(model),
             )
             for model in response.data
         )
+
+    def _remember_model_tiers(self, models: Any) -> None:
+        """Purpose: Keep each model's speed tiers so a turn sends only one its model offers.
+
+        Input: the ``model/list`` entries. Output: none; replaces the cached tiers.
+        """
+        tiers: dict[str, frozenset[str]] = {}
+        for model in models:
+            offered = frozenset(tier.id for tier in _catalog_service_tiers(model))
+            tiers[str(model.model)] = offered
+            if getattr(model, "is_default", False):
+                tiers[""] = offered
+        self._model_tiers = tiers
+
+    async def _effective_service_tier(self, runtime: _CodexRuntime) -> str | None:
+        """Purpose: The speed tier a turn actually runs at.
+
+        Input: the session. Output: its saved tier when the model offers it (or the catalog cannot
+        say), otherwise "default". The app-server silently runs an unoffered tier at standard
+        speed, so Cleo sends standard itself and keeps the saved choice for a model that offers it.
+        """
+        requested = runtime.options.service_tier
+        if requested in (None, "default"):
+            return requested
+        model = runtime.options.model or self._default_model or ""
+        if model not in self._model_tiers and model not in self._tier_reads:
+            self._tier_reads.add(model)
+            read_models = getattr(runtime.client, "models", None)
+            if callable(read_models):
+                try:
+                    self._remember_model_tiers((await read_models()).data)
+                except Exception:
+                    pass
+        offered = self._model_tiers.get(model)
+        if offered is None:
+            return requested
+        return requested if requested in offered else "default"
 
     async def list_native_sessions(
         self,
@@ -910,7 +982,8 @@ class CodexProvider:
             prompt = (guidance + "\n\n" + prompt if isinstance(prompt, str)
                       else [TextInput(guidance), *(prompt if isinstance(prompt, list)
                                                    else [prompt])])
-        if options.approval_mode != "user" and options.service_tier != "default":
+        service_tier = await self._effective_service_tier(runtime)
+        if options.approval_mode != "user" and service_tier != "default":
             return await runtime.thread.turn(
                 prompt,
                 approval_mode=(
@@ -921,7 +994,7 @@ class CodexProvider:
                 effort=ReasoningEffort(options.effort) if options.effort else None,
                 model=options.model,
                 sandbox=Sandbox(options.sandbox) if options.sandbox else None,
-                **({"service_tier": options.service_tier} if options.service_tier else {}),
+                **({"service_tier": service_tier} if service_tier else {}),
             )
         params = {
             "approvalPolicy": "on-request", "approvalsReviewer": "user",
@@ -938,9 +1011,9 @@ class CodexProvider:
                 params["approvalPolicy"] = policy.model_dump(mode="json")
             if reviewer is not None:
                 params["approvalsReviewer"] = reviewer.value
-        if options.service_tier is not None:
-            # Explicit null clears Fast; the high-level SDK omits None values.
-            params["serviceTier"] = "fast" if options.service_tier == "fast" else None
+        if service_tier is not None:
+            # Explicit null clears Fast and Ultrafast; the high-level SDK omits None values.
+            params["serviceTier"] = None if service_tier == "default" else service_tier
         started = await runtime.client._client.turn_start(
             runtime.thread.id,
             prompt if isinstance(prompt, str) else _to_wire_input(_normalize_run_input(prompt)),

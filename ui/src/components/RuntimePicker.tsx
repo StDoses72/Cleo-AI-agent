@@ -1,7 +1,7 @@
 import { t as tr } from "../../electron/i18n.mjs";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Check, ChevronDown, ChevronLeft, ChevronRight, LoaderCircle, RefreshCw } from "lucide-react";
-import type { ProductivityModelCatalog, ReasoningEffort, RuntimeCatalog, RuntimeProfile } from "../types";
+import type { ProductivityModelCatalog, ReasoningEffort, RuntimeCatalog, RuntimeProfile, ServiceTier, ServiceTierOption } from "../types";
 import { checkHarnessConnections } from "../connected-harnesses";
 import { effortLabels } from "../runtime-labels";
 import { useDismiss } from "./useDismiss";
@@ -44,6 +44,7 @@ export function RuntimePicker({
   onEffortChange,
   serviceTier = null,
   supportsFastMode = false,
+  serviceTiers,
   onServiceTierChange,
 }: {
   runtime: RuntimeProfile;
@@ -59,9 +60,11 @@ export function RuntimePicker({
   supportedEfforts?: ReasoningEffort[];
   defaultEffort?: ReasoningEffort | null;
   onEffortChange?: (effort: ReasoningEffort) => void | Promise<void>;
-  serviceTier?: "default" | "fast" | null;
+  serviceTier?: ServiceTier | null;
   supportsFastMode?: boolean;
-  onServiceTierChange?: (tier: "default" | "fast") => void;
+  /** The current model's speeds beyond standard; absent when the harness catalog does not say. */
+  serviceTiers?: ServiceTierOption[];
+  onServiceTierChange?: (tier: ServiceTier) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState<"models" | "harnesses">("models");
@@ -80,8 +83,7 @@ export function RuntimePicker({
   const locked = running || switching;
   const providers = catalog?.productivityProviders ?? [];
   const shownEffort = previewEffort ?? effort;
-  const showSpeed = supportsFastMode && Boolean(onServiceTierChange);
-  const fast = showSpeed && serviceTier === "fast";
+  const speed = speedState(supportsFastMode && Boolean(onServiceTierChange), serviceTier, serviceTiers);
 
   // What is known about a harness: this check's answer once it is in (a failed check offers no
   // models), the last loaded list while it runs.
@@ -166,10 +168,11 @@ export function RuntimePicker({
       setPreviewEffort(null);
     });
   };
-  const canReset = (defaultEffort !== null && defaultEffort !== shownEffort) || fast;
+  const speedChanged = speed !== null && (speed.effective !== "default" || speed.unavailable !== null);
+  const canReset = (defaultEffort !== null && defaultEffort !== shownEffort) || speedChanged;
   const reset = () => {
     if (defaultEffort !== null && defaultEffort !== shownEffort) chooseEffort(defaultEffort);
-    if (fast) onServiceTierChange?.("default");
+    if (speedChanged) onServiceTierChange?.("default");
   };
   const pickModel = (model: string) => {
     onSelectProductivityRuntime(viewed, model);
@@ -195,7 +198,7 @@ export function RuntimePicker({
           onClick={() => setOpen((current) => !current)}
           data-testid="runtime-selector"
           data-effort={effort || undefined}
-          data-speed={showSpeed ? serviceTier ?? "" : undefined}
+          data-speed={speed ? serviceTier ?? "" : undefined}
           data-pending-switch={pendingSwitch ? "true" : undefined}
         >
           <span>{runtime.provider} · {modelLabel(runtime.provider, runtime.model)}</span>
@@ -265,24 +268,55 @@ export function RuntimePicker({
           </div>
         ) : null}
       </div>
-      {supportedEfforts.length > 0 || showSpeed ? (
-        <EffortChip label={shownEffort ? effortLabels[shownEffort] ?? shownEffort : tr("conversation.fast_mode")}
-          fast={fast} locked={locked} disabled={switching} levels={supportedEfforts} value={shownEffort} onChoose={chooseEffort}
-          canReset={canReset} onReset={reset}
-          speed={showSpeed ? { fast, onChange: (next) => onServiceTierChange?.(next ? "fast" : "default") } : null} />
+      {supportedEfforts.length > 0 || speed ? (
+        <EffortChip label={shownEffort ? effortLabels[shownEffort] ?? shownEffort
+          : speed?.mode === "list" ? tierLabel(speed.effective) : tr("conversation.fast_mode")}
+          locked={locked} disabled={switching} levels={supportedEfforts} value={shownEffort} onChoose={chooseEffort}
+          canReset={canReset} onReset={reset} model={modelLabel(runtime.provider, runtime.model)}
+          speed={speed} onSpeedChange={(tier) => onServiceTierChange?.(tier)} />
       ) : null}
     </>
   );
 }
 
-/** Purpose: Reasoning effort as a chip of its own beside the model chip.
- * Input: the levels the model supports, the current one and what to do on a pick; the speed
- * switch when the harness has one. Output: the chip (the current level) and a short menu of the
- * levels, with the speed switch under them.
+type SpeedState = {
+  /** "list" when the model offers Ultrafast, "toggle" for Fast alone, null for no choice. */
+  mode: "list" | "toggle" | null;
+  offered: ServiceTierOption[];
+  /** The speed a turn runs at: the saved one when the model offers it, standard otherwise. */
+  effective: ServiceTier;
+  /** A saved speed the current model does not offer. */
+  unavailable: ServiceTier | null;
+};
+
+const tierLabel = (tier: ServiceTier) => tr(tier === "ultrafast" ? "conversation.speed_ultrafast"
+  : tier === "fast" ? "conversation.speed_fast" : "conversation.speed_standard");
+
+/** Purpose: What the speed control shows for the current model.
+ * Input: whether the harness has speeds, the saved speed and the model's catalog speeds (absent
+ * when the catalog does not say, which leaves Fast as the one choice, as before Ultrafast).
+ * Output: the state, or null when there is neither a choice nor a saved speed to report.
  */
-function EffortChip({ label, fast, locked, disabled, levels, value, onChoose, canReset, onReset, speed }: {
+function speedState(enabled: boolean, saved: ServiceTier | null, catalog: ServiceTierOption[] | undefined): SpeedState | null {
+  if (!enabled) return null;
+  const offered: ServiceTierOption[] = catalog ?? [{ id: "fast", label: tierLabel("fast"), description: "" }];
+  const tier = saved ?? "default";
+  const effective = tier === "default" || offered.some((option) => option.id === tier) ? tier : "default";
+  const unavailable = tier === effective ? null : tier;
+  const mode = offered.some((option) => option.id === "ultrafast") ? "list"
+    : offered.some((option) => option.id === "fast") ? "toggle" : null;
+  return mode || unavailable ? { mode, offered, effective, unavailable } : null;
+}
+
+/** Purpose: Reasoning effort as a chip of its own beside the model chip.
+ * Input: the levels the model supports, the current one and what to do on a pick; the model's
+ * speeds when the harness has them. Output: the chip (the current level and a non-standard
+ * speed) and a short menu of the levels with the speed under them: a switch for Fast alone, a
+ * list of Standard, Fast and Ultrafast when the model offers Ultrafast. A saved speed the model
+ * does not offer is named in the menu and the chip reads Standard.
+ */
+function EffortChip({ label, locked, disabled, levels, value, onChoose, canReset, onReset, model, speed, onSpeedChange }: {
   label: string;
-  fast: boolean;
   locked: boolean;
   disabled: boolean;
   levels: ReasoningEffort[];
@@ -290,7 +324,9 @@ function EffortChip({ label, fast, locked, disabled, levels, value, onChoose, ca
   onChoose: (level: ReasoningEffort) => void;
   canReset: boolean;
   onReset: () => void;
-  speed: { fast: boolean; onChange: (fast: boolean) => void } | null;
+  model: string;
+  speed: SpeedState | null;
+  onSpeedChange: (tier: ServiceTier) => void;
 }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -305,14 +341,22 @@ function EffortChip({ label, fast, locked, disabled, levels, value, onChoose, ca
     });
     return () => cancelAnimationFrame(frame);
   }, [open]);
+  const choose = (pick: () => void) => { pick(); setOpen(false); triggerRef.current?.focus(); };
+  const unavailableNote = speed?.unavailable
+    ? tr("conversation.speed_unavailable", { p0: tierLabel(speed.unavailable), p1: model }) : null;
+  const extra = !value || !speed ? null
+    : speed.unavailable ? `· ${tr("conversation.speed_standard")}`
+      : speed.effective === "fast" ? tr("conversation.fast")
+        : speed.effective === "ultrafast" ? tr("conversation.ultrafast") : null;
   return (
     <div className="runtime-picker rp-effort" ref={wrapRef}>
       <button ref={triggerRef} className="text-control runtime-selector-trigger" type="button" disabled={disabled}
         aria-label={tr("conversation.reasoning_effort")} aria-haspopup="menu" aria-expanded={open}
         onClick={() => setOpen((current) => !current)} data-testid="effort-selector" data-value={value}
-        data-options={JSON.stringify(levels)}>
+        data-options={JSON.stringify(levels)} data-speed={speed?.effective}
+        data-speed-unavailable={speed?.unavailable ?? undefined} title={unavailableNote ?? undefined}>
         <span>{label}</span>
-        {fast && value ? <small className="runtime-selector-extra">{tr("conversation.fast")}</small> : null}
+        {extra ? <small className="runtime-selector-extra" data-unavailable={speed?.unavailable ? "true" : undefined}>{extra}</small> : null}
         <ChevronDown size={13} />
       </button>
       {open ? (
@@ -326,19 +370,38 @@ function EffortChip({ label, fast, locked, disabled, levels, value, onChoose, ca
           <div className="rp-list">
             {levels.map((level) => (
               <button type="button" role="menuitemradio" key={level} className="rp-item" data-row disabled={locked}
-                aria-checked={level === value} onClick={() => { onChoose(level); setOpen(false); triggerRef.current?.focus(); }}>
+                aria-checked={level === value} onClick={() => choose(() => onChoose(level))}>
                 <span>{effortLabels[level] ?? level}</span>
                 {level === value ? <Check size={14} /> : null}
               </button>
             ))}
           </div>
-          {speed ? (
+          {speed?.mode === "list" ? (
+            <div className="rp-section rp-speed" role="group" aria-label={tr("conversation.speed")} data-testid="speed-menu">
+              {unavailableNote ? <p className="rp-note" role="status" data-testid="speed-unavailable">{unavailableNote}</p> : null}
+              {[{ id: "default" as const, label: tierLabel("default"), description: tr("conversation.speed_standard_description") },
+                ...speed.offered.map((option) => ({ ...option, label: tierLabel(option.id) }))].map((option) => (
+                <button type="button" role="menuitemradio" key={option.id} className="rp-item rp-tier" data-row disabled={locked}
+                  aria-checked={option.id === speed.effective} data-testid="speed-option" data-tier={option.id}
+                  onClick={() => choose(() => { if (option.id !== speed.effective || speed.unavailable) onSpeedChange(option.id); })}>
+                  <span className="rp-tier-text">
+                    <span>{option.label}</span>
+                    {option.description ? <small>{option.description}</small> : null}
+                  </span>
+                  {option.id === speed.effective ? <Check size={14} /> : null}
+                </button>
+              ))}
+            </div>
+          ) : speed ? (
             <div className="rp-section">
-              <label className="rp-row rp-toggle">
-                <span>{tr("conversation.fast_mode")}</span>
-                <span className="switch"><input type="checkbox" role="switch" checked={speed.fast} disabled={locked}
-                  data-testid="speed-toggle" onChange={(event) => speed.onChange(event.target.checked)} /><span /></span>
-              </label>
+              {unavailableNote ? <p className="rp-note" role="status" data-testid="speed-unavailable">{unavailableNote}</p> : null}
+              {speed.mode === "toggle" ? (
+                <label className="rp-row rp-toggle">
+                  <span>{tr("conversation.fast_mode")}</span>
+                  <span className="switch"><input type="checkbox" role="switch" checked={speed.effective === "fast"} disabled={locked}
+                    data-testid="speed-toggle" onChange={(event) => onSpeedChange(event.target.checked ? "fast" : "default")} /><span /></span>
+                </label>
+              ) : null}
             </div>
           ) : null}
         </div>
