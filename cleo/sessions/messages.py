@@ -3,11 +3,25 @@
 from __future__ import annotations
 
 from collections.abc import Set
-from typing import Any
-
-from langchain_core.messages import BaseMessage, message_to_dict, messages_from_dict
+from typing import TYPE_CHECKING, Any
 
 from cleo.sessions.rewind import active_events
+
+if TYPE_CHECKING:
+    from langchain_core.messages import BaseMessage
+
+
+# LangChain loads in about 0.4 s; titles and event reads, used at startup, do not need it.
+def message_to_dict(message: BaseMessage) -> dict[str, Any]:
+    from langchain_core.messages import message_to_dict as convert
+
+    return convert(message)
+
+
+def messages_from_dict(messages: list[dict[str, Any]]) -> list[BaseMessage]:
+    from langchain_core.messages import messages_from_dict as convert
+
+    return convert(messages)
 
 
 def title_text(content: Any) -> str:

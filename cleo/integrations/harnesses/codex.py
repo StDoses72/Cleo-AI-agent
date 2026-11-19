@@ -32,7 +32,7 @@ from openai_codex.generated.v2_all import (
     ThreadTurnsListResponse,
 )
 
-from cleo.harnesses.capabilities import Capability
+from cleo.harnesses.capabilities import PROVIDER_CAPABILITIES
 from cleo.harnesses.control import (
     HarnessAccount,
     HarnessModel,
@@ -115,11 +115,7 @@ class CodexProvider:
 
     name = "codex"
     provider_type = "codex_sdk"
-    capabilities = frozenset({
-        Capability.REWIND, Capability.NATIVE_STEER, Capability.QUESTIONS,
-        Capability.USER_APPROVALS, Capability.SERVICE_TIER, Capability.FORK,
-        Capability.NATIVE_HISTORY, Capability.COMPACT,
-    })
+    capabilities = PROVIDER_CAPABILITIES["codex_sdk"]
 
     def __init__(
         self,

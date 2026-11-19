@@ -228,8 +228,17 @@ export function useCleoWorkspace() {
   const updateDraft = (key: string, update: (draft: ComposerDraft) => ComposerDraft) => {
     setDrafts((current) => ({ ...current, [key]: update(current[key] ?? emptyDraft) }));
   };
+  // Tasks whose harness session was asked to open while their message is being written.
+  const preparedThreads = useRef(new Set<string>());
   const setPrompt = (prompt: string) => {
     updateDraft(draftKey, (current) => ({ ...current, prompt, error: undefined }));
+    // Starting a message in a development task opens (resumes) its harness in the background,
+    // so the send does not wait for the harness process and its tools to start (#183).
+    const thread = activeThread;
+    if (prompt.trim() && thread?.space === "productivity" && !preparedThreads.current.has(thread.id)) {
+      preparedThreads.current.add(thread.id);
+      void cleoClient.prepareThread(thread.id).catch(() => preparedThreads.current.delete(thread.id));
+    }
   };
   const appendAttachments = (selected: Attachment[], key = draftKey) => {
     updateDraft(key, (current) => ({ ...current, attachments: mergeAttachments(current.attachments, selected) }));

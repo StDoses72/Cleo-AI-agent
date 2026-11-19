@@ -117,14 +117,21 @@ class AgentService:
         project_path: str = ".",
         model: str | None = None,
         project: str | None = None,
+        *,
+        options: SessionOptions | None = None,
     ) -> AgentSession:
-        """在指定 provider 上创建新会话并登记路由与持久化 manifest。"""
+        """在指定 provider 上创建新会话并登记路由与持久化 manifest。
+
+        ``options`` are the options the caller is about to apply; a provider that fixes some
+        of them at launch (Claude's effort) starts with them instead of restarting later.
+        """
         implementation = self._provider(provider)
         resolved_path = self._project_directory(project_path)
+        launch = self._launch_arguments(implementation.create_session, options)
         session = await observed_turn(
             availability_store(self, self._project_root / "memory/.routing"),
             provider_scope(implementation), model, None,
-            lambda: implementation.create_session(resolved_path, model),
+            lambda: implementation.create_session(resolved_path, model, **launch),
         )
         return self._add_route(
             implementation,
@@ -189,6 +196,7 @@ class AgentService:
                     self._required_text(native_session_id, "native_session_id"),
                     resolved_path,
                     selected_model,
+                    **self._launch_arguments(implementation.resume_session, saved_options),
                 )
             )
         except NativeSessionNotFoundError:
@@ -249,6 +257,19 @@ class AgentService:
         if isinstance(options, SessionOptions):
             self._persist_options(restored.id, options)
         return restored
+
+    @staticmethod
+    def _launch_arguments(method: Callable[..., Any], options: SessionOptions | None) -> dict:
+        """Purpose: Pass launch options only to providers whose method declares them."""
+        if options is None:
+            return {}
+        import inspect
+
+        try:
+            parameters = inspect.signature(method).parameters
+        except (TypeError, ValueError):
+            return {}
+        return {"launch_options": options} if "launch_options" in parameters else {}
 
     async def switch_session(
         self,

@@ -230,12 +230,13 @@ class FakeAdapter(FakeProviderMetadata):
             ),
         )
 
-    async def create_session(self, provider, *, project_path, model, project):
+    async def create_session(self, provider, *, project_path, model, project, options=None):
         self.created_with = {
             "provider": provider,
             "project_path": project_path,
             "model": model,
             "project": project,
+            **({"options": options} if options is not None else {}),
         }
         session_id = "productivity-test"
         self.store.create_session(
@@ -1610,6 +1611,8 @@ def test_create_productivity_thread_uses_selected_workspace(tmp_path: Path) -> N
             "project_path": str(selected.resolve()),
             "model": "gpt-test",
             "project": "selected-project",
+            # The effort travels with the launch so a harness that fixes it there starts once.
+            "options": SessionOptions(model="gpt-test", effort="low"),
         }
         assert thread["projectId"] == "productivity:selected-project"
         assert thread["runtime"]["effort"] == "low"
@@ -1928,16 +1931,17 @@ def test_runtime_catalog_and_profile_selection_use_configured_models(tmp_path: P
         ]
         from cleo.desktop.runtime_permissions import permission_choices
 
-        assert catalog["productivityProviders"] == [
-            {
-                "id": "codex",
-                "type": "codex_sdk",
-                "defaultModel": "gpt-test",
-                "modelSource": "dynamic",
-                # Drafts pick a preset before the session exists, so the catalog lists them.
-                "permissionOptions": permission_choices("codex_sdk"),
-            }
-        ]
+        # Every enabled harness, built-ins included, as the adapter registers them.
+        assert catalog["productivityProviders"][0] == {
+            "id": "codex",
+            "type": "codex_sdk",
+            "defaultModel": "gpt-test",
+            "modelSource": "dynamic",
+            # Drafts pick a preset before the session exists, so the catalog lists them.
+            "permissionOptions": permission_choices("codex_sdk"),
+        }
+        assert {"claude", "opencode"} <= {
+            provider["id"] for provider in catalog["productivityProviders"]}
 
         models = await service.get_productivity_models(provider="codex")
         assert models["source"] == "sdk"
@@ -2726,3 +2730,57 @@ def test_model_catalog_carries_speeds_only_when_the_harness_reports_them():
     assert DesktopService._harness_model(model((
         HarnessServiceTier("ultrafast", "Ultrafast", "The fastest"),
     )))["serviceTiers"] == [{"id": "ultrafast", "label": "Ultrafast", "description": "The fastest"}]
+
+
+def test_prepare_thread_and_a_send_share_one_harness_open(tmp_path):
+    """Writing a message resumes the harness in the background; the send reuses that open."""
+    async def scenario():
+        service = _service(tmp_path)
+        adapter = FakeAdapter(service.store)
+        service._adapter_instance = adapter
+        thread = await service.create_thread(
+            space="productivity", project_id_value="productivity:workspace",
+            project_path=str(tmp_path / "workspace"),
+        )
+        service.store.update_manifest(thread["id"], native_session_id="native-1")
+        service._productivity_sessions.clear()
+        release = asyncio.Event()
+        opened = []
+
+        async def resume_session(provider, native_id, **kwargs):
+            opened.append(native_id)
+            await release.wait()
+            if len(opened) == 1:
+                raise RuntimeError("harness failed to start")
+            return SimpleNamespace(id=thread["id"], provider=provider)
+
+        adapter.resume_session = resume_session
+        assert await service.prepare_thread(thread_id=thread["id"]) == {"preparing": True}
+        assert await service.prepare_thread(thread_id=thread["id"]) == {"preparing": True}
+        manifest = service.store.load_manifest(thread["id"])
+        send = asyncio.create_task(service._ensure_productivity_session(manifest))
+        for _ in range(20):
+            await asyncio.sleep(0)
+        assert opened == ["native-1"]
+        # A failed background open is reported to the send waiting on it, then not kept.
+        release.set()
+        with pytest.raises(RuntimeError, match="failed to start"):
+            await send
+        assert thread["id"] not in service._session_openings
+        session = await service._ensure_productivity_session(manifest)
+        assert session.id == thread["id"] and opened == ["native-1", "native-1"]
+        assert await service.prepare_thread(thread_id=thread["id"]) == {"preparing": True}
+        assert len(opened) == 2
+
+    asyncio.run(scenario())
+
+
+def test_runtime_catalog_does_not_build_the_harness_adapter(tmp_path):
+    """The first screen waits on the catalog; building the adapter imported every harness SDK."""
+    async def scenario():
+        service = _service(tmp_path)
+        service._adapter = lambda: pytest.fail("catalog must not build the adapter")
+        catalog = await service.get_runtime_catalog()
+        assert "codex" in {provider["id"] for provider in catalog["productivityProviders"]}
+
+    asyncio.run(scenario())

@@ -9,14 +9,43 @@ from pathlib import Path
 from types import SimpleNamespace
 
 
+def _digest_cache() -> Path:
+    from cleo.config.settings import APP_HOME
+
+    return APP_HOME / "data" / "runtime-digests.json"
+
+
 @lru_cache(maxsize=32)
 def _binary_digest(path: str, size: int, modified: int) -> str:
-    """Purpose: Identify runtime bytes across install paths. Output: cached content digest."""
+    """Purpose: Identify runtime bytes across install paths. Output: cached content digest.
+
+    Hashing the bundled CLIs takes 0.5-3 s (Codex 385 MB, Claude 237 MB) and ran on the event
+    loop the first time each backend process opened a session, so the digest is kept on disk
+    under the file's path, size and modification time and computed again only when those change.
+    """
+    key = f"{path}|{size}|{modified}"
+    cache = _digest_cache()
+    try:
+        saved = json.loads(cache.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        saved = {}
+    if isinstance(saved, dict) and isinstance(saved.get(key), str):
+        return saved[key]
     digest = hashlib.sha256()
     with Path(path).open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(block)
-    return digest.hexdigest()
+    value = digest.hexdigest()
+    try:
+        from cleo.desktop.configuration import _atomic_write
+
+        kept = {name: item for name, item in (saved if isinstance(saved, dict) else {}).items()
+                if isinstance(item, str) and not name.startswith(f"{path}|")}
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_write(cache, {**kept, key: value})
+    except (OSError, ValueError, TypeError):
+        pass
+    return value
 
 
 def runtime_identity(family: str | None, executable: str | None = None) -> str | None:

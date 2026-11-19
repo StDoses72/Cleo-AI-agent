@@ -768,6 +768,8 @@ export interface CleoClient {
   getUiLanguage(): Promise<"zh-CN" | "en">;
   setUiLanguage(language: "zh-CN" | "en"): Promise<"zh-CN" | "en">;
   getTiming(timingId: string): Promise<TimingDetails>;
+  /** Open a development task's harness session in the background while a message is written. */
+  prepareThread(threadId: string): Promise<{ preparing: boolean }>;
   loadWorkspace(): Promise<WorkspaceSnapshot>;
   loadMemory(): Promise<Pick<WorkspaceSnapshot, "memories" | "memoryOverview">>;
   loadThread(threadId: string, activate?: boolean): Promise<Thread>;

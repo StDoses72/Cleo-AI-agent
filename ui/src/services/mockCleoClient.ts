@@ -180,6 +180,10 @@ export class MockCleoClient implements CleoClient {
       hasAfter: end < all.length, revision: String(all.length) };
   }
 
+  async prepareThread(_threadId: string): Promise<{ preparing: boolean }> {
+    return { preparing: false };
+  }
+
   async getTiming(_timingId: string): Promise<import("../types").TimingDetails> {
     throw new Error("此示例没有计时记录。");
   }

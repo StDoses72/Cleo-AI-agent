@@ -1,10 +1,15 @@
 """Codex configuration using the same native state as the user's app and CLI."""
 
+from __future__ import annotations
+
 import sys
 import tomllib
 from dataclasses import replace
+from typing import TYPE_CHECKING
 
-from openai_codex import CodexConfig
+if TYPE_CHECKING:
+    from openai_codex import CodexConfig
+
 
 
 def isolated_codex_config(config: CodexConfig | None = None) -> CodexConfig:
@@ -16,6 +21,8 @@ def isolated_codex_config(config: CodexConfig | None = None) -> CodexConfig:
     from cleo.integrations.harness_home import harness_environment, harness_home
 
     home = harness_home("codex")
+    from openai_codex import CodexConfig
+
     config = config or CodexConfig()
     defaults = ()
     if sys.platform == "win32":

@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from cleo.harnesses.approvals import PermissionBroker
-from cleo.harnesses.capabilities import Capability
+from cleo.harnesses.capabilities import PROVIDER_CAPABILITIES
 from cleo.harnesses.control import HarnessModel, SessionOptions
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
 from cleo.harnesses.provider import ProviderSession, ProviderTurn
@@ -84,7 +84,7 @@ class AntigravityProvider:
     """
 
     provider_type = "antigravity_sdk"
-    capabilities = frozenset({Capability.USER_APPROVALS})
+    capabilities = PROVIDER_CAPABILITIES["antigravity_sdk"]
 
     def __init__(
         self,

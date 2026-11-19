@@ -6,11 +6,13 @@ import json
 import sys
 from dataclasses import dataclass, replace
 from pathlib import Path
-
-from acp.schema import McpServerStdio
-from openai_codex import CodexConfig
+from typing import TYPE_CHECKING
 
 from cleo.harnesses.context import ContextBinding
+
+if TYPE_CHECKING:
+    from acp.schema import McpServerStdio
+    from openai_codex import CodexConfig
 
 
 @dataclass(frozen=True)
@@ -104,6 +106,8 @@ class MemoryMcp:
                 "mcp_servers.cleo_context.required=true",
             )
         )
+        from openai_codex import CodexConfig
+
         return CodexConfig(
             config_overrides=(
                 f"{prefix}.command={json.dumps(sys.executable)}",
@@ -130,6 +134,8 @@ class MemoryMcp:
         return {**servers, **server_configuration(self.computer_config_path, computer_client)}
 
     def acp_servers(self, computer_client: str | None = None) -> list[McpServerStdio]:
+        from acp.schema import McpServerStdio
+
         """Purpose: Compose local tools. Input: bound settings. Output: ACP stdio entries."""
         from cleo.integrations.computer import server_configuration
         return [McpServerStdio(name="cleo_memory", command=sys.executable,

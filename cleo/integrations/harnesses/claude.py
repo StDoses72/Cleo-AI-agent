@@ -27,7 +27,7 @@ from claude_agent_sdk import (
 )
 
 from cleo.harnesses.approvals import PermissionBroker
-from cleo.harnesses.capabilities import Capability
+from cleo.harnesses.capabilities import PROVIDER_CAPABILITIES
 from cleo.harnesses.control import HarnessModel, SessionOptions
 from cleo.harnesses.events import context_usage_data, request_input_tokens
 from cleo.harnesses.models import AgentEvent, EventCallback, emit_event
@@ -139,9 +139,7 @@ class ClaudeProvider:
 
     name = "claude"
     provider_type = "claude_sdk"
-    capabilities = frozenset({
-        Capability.REWIND, Capability.QUESTIONS, Capability.USER_APPROVALS,
-    })
+    capabilities = PROVIDER_CAPABILITIES["claude_sdk"]
 
     def __init__(
         self,
@@ -167,10 +165,23 @@ class ClaudeProvider:
         self._permission_mode = permission_mode
         self._sessions: dict[str, _ClaudeRuntime] = {}
 
+    def _launch(self, launch_options: SessionOptions | None) -> dict:
+        """Effort and permission mode to start the CLI with, so the session's first option
+        update does not restart it (a restart spawns the CLI and its MCP servers again)."""
+        if launch_options is None:
+            return {}
+        effort = launch_options.effort if launch_options.effort in CLAUDE_EFFORTS else None
+        permission = launch_options.approval_mode
+        if permission not in ClaudePermissionMode.__args__:
+            permission = None
+        return {"effort": effort, "permission_mode": permission}
+
     async def create_session(
         self,
         project_path: str,
         model: str | None = None,
+        *,
+        launch_options: SessionOptions | None = None,
     ) -> ProviderSession:
         """连接一个新的 Claude SDK client, 建立逻辑 session。
 
@@ -184,7 +195,9 @@ class ClaudeProvider:
             AgentAdapter 记录并用于后续 ``prompt`` 路由。
         """
         session_id = f"claude_{secrets.token_hex(6)}"
-        self._sessions[session_id] = await self._connect(project_path, model)
+        self._sessions[session_id] = await self._connect(
+            project_path, model, **self._launch(launch_options),
+        )
         return ProviderSession(id=session_id)
 
     async def resume_session(
@@ -192,6 +205,8 @@ class ClaudeProvider:
         native_session_id: str,
         project_path: str,
         model: str | None = None,
+        *,
+        launch_options: SessionOptions | None = None,
     ) -> ProviderSession:
         """以 resume 模式连接 SDK client, 恢复既有原生 session。
 
@@ -211,6 +226,7 @@ class ClaudeProvider:
         runtime = await self._connect(
             project_path, model, resume=native_session_id,
             external_home=claude_session_is_external(native_session_id),
+            **self._launch(launch_options),
         )
         runtime.native_session_id = native_session_id
         session_id = f"claude_{secrets.token_hex(6)}"

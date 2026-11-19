@@ -1,5 +1,7 @@
 """Runtime compatibility evidence is local metadata, never a paid probe."""
 import asyncio
+import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -17,6 +19,31 @@ def test_same_runtime_bytes_share_scope_across_install_paths(tmp_path):
     base = dict(name="codex", provider_type="codex_sdk", availability_identity="account")
     original = provider_scope(SimpleNamespace(**base, availability_runtime="cli-v1"))
     assert original != provider_scope(SimpleNamespace(**base, availability_runtime="cli-v2"))
+
+
+def test_runtime_digest_is_kept_on_disk_until_the_file_changes(tmp_path, monkeypatch):
+    from cleo.harnesses import availability
+
+    cache = tmp_path / "digests.json"
+    monkeypatch.setattr(availability, "_digest_cache", lambda: cache)
+    binary = tmp_path / "cli.exe"
+    binary.write_bytes(b"runtime-one")
+    availability._binary_digest.cache_clear()
+    first = runtime_identity("codex", str(binary))
+    assert list(json.loads(cache.read_text(encoding="utf-8")).values()) == [first]
+    # A new process reads the saved digest instead of hashing the bytes again.
+    availability._binary_digest.cache_clear()
+    opened = []
+    original_open = Path.open
+    monkeypatch.setattr(Path, "open", lambda self, *a, **k: opened.append(self)
+                        or original_open(self, *a, **k))
+    assert runtime_identity("codex", str(binary)) == first
+    assert binary not in opened
+    # A replaced binary is hashed again and replaces its old entry.
+    binary.write_bytes(b"runtime-two, longer")
+    second = runtime_identity("codex", str(binary))
+    assert second != first and list(json.loads(cache.read_text(encoding="utf-8")).values()) == [
+        second]
 
 
 def test_duplicate_native_and_terminal_error_render_once():
