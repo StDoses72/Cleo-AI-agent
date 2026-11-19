@@ -55,6 +55,18 @@ def validate_claude_runtime() -> str:
     return str(binary)
 
 
+def validate_antigravity_runtime() -> str:
+    """The Antigravity SDK's bundled localharness binary, which each session runs (ADR 0016)."""
+    import google.antigravity
+
+    binary = Path(google.antigravity.__file__).parent / "bin" / (
+        "localharness.exe" if os.name == "nt" else "localharness"
+    )
+    if not binary.is_file() or (os.name != "nt" and not os.access(binary, os.X_OK)):
+        raise FileNotFoundError("Antigravity SDK is missing its bundled localharness")
+    return str(binary)
+
+
 def write_state(root: Path, state: dict) -> None:
     temporary = root / "state.json.tmp"
     temporary.write_text(json.dumps(state) + "\n", encoding="utf-8")
@@ -112,8 +124,9 @@ def validate_runtime(python: Path, browser: Path) -> None:
         "from openai_codex.api import AsyncTurnHandle; "
         "from openai_codex import AsyncCodex, CodexConfig; "
         "assert hasattr(AsyncCodex, 'models'); "
-        "from cleo.desktop.dependencies import validate_claude_runtime, validate_codex_runtime; "
-        "validate_codex_runtime(); validate_claude_runtime()"
+        "from cleo.desktop.dependencies import validate_antigravity_runtime, "
+        "validate_claude_runtime, validate_codex_runtime; "
+        "validate_codex_runtime(); validate_claude_runtime(); validate_antigravity_runtime()"
     )])
     run([sys.executable, "-I", "-m", "uv", "pip", "check", "--python", python])
     node = browser / ("node.exe" if os.name == "nt" else "node")

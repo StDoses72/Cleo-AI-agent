@@ -12,6 +12,10 @@ NATIVE_PRESETS = {
         "review": {"approval_mode": "auto"},
         "full": {"approval_mode": "bypassPermissions"},
     },
+    "antigravity_sdk": {
+        "ask": {"approval_mode": "user"},
+        "full": {"approval_mode": "auto_allow"},
+    },
 }
 
 

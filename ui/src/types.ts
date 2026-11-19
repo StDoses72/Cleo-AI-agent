@@ -465,7 +465,7 @@ export interface NonProductivityProfileOption {
   active: boolean;
 }
 
-export type ProductivityProviderType = "codex_sdk" | "claude_sdk" | "acp";
+export type ProductivityProviderType = "codex_sdk" | "claude_sdk" | "acp" | "antigravity_sdk";
 
 export interface ProductivityProviderOption {
   id: string;
