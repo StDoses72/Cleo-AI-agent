@@ -25,7 +25,9 @@
     "gemini",
     "copilot",
     "grok",
-    "opencode"
+    "opencode",
+    "antigravity",
+    "antigravity-sdk"
   ],
   "listed_after_add": [
     "scripted",
@@ -34,7 +36,9 @@
     "gemini",
     "copilot",
     "grok",
-    "opencode"
+    "opencode",
+    "antigravity",
+    "antigravity-sdk"
   ],
   "listed_after_disable": [
     "scripted",
@@ -42,7 +46,9 @@
     "gemini",
     "copilot",
     "grok",
-    "opencode"
+    "opencode",
+    "antigravity",
+    "antigravity-sdk"
   ],
   "turn_items": [
     "message",

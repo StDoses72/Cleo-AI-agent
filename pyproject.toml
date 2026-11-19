@@ -22,6 +22,7 @@ dependencies = [
   "httpx",
   "langgraph",
   "openai-codex>=0.155.1",
+  "google-antigravity>=0.1.24",
   "pillow>=11",
   "platformdirs>=4.4",
   "pydantic",

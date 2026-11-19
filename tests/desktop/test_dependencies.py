@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -179,3 +180,17 @@ def test_claude_validation_rejects_a_source_install_without_its_cli(tmp_path, mo
     monkeypatch.setattr(claude_agent_sdk, "__file__", str(tmp_path / "__init__.py"))
     with pytest.raises(FileNotFoundError, match="missing its bundled CLI"):
         dependencies.validate_claude_runtime()
+
+
+def test_antigravity_runtime_requires_the_bundled_localharness(tmp_path, monkeypatch):
+    import google.antigravity
+
+    package = tmp_path / "antigravity"
+    (package / "bin").mkdir(parents=True)
+    monkeypatch.setattr(google.antigravity, "__file__", str(package / "__init__.py"))
+    with pytest.raises(FileNotFoundError, match="localharness"):
+        dependencies.validate_antigravity_runtime()
+    binary = package / "bin" / ("localharness.exe" if os.name == "nt" else "localharness")
+    binary.write_bytes(b"")
+    binary.chmod(0o755)
+    assert dependencies.validate_antigravity_runtime() == str(binary)

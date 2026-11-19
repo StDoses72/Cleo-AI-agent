@@ -51,6 +51,7 @@
 - [ADR 0012 Claude 在运行中的回合里读到的完成通知不单独等待回复](adr/0012-claude-notices-read-inside-a-running-turn.md)
 - [ADR 0013 流式回复期间阅读位置归读者；「视口跟随」与「接收本轮输出」分开](adr/0013-reading-position-is-the-readers.md)
 - [ADR 0014 Codex 速度档位按模型目录提供；模型不提供已保存的档位时以标准速度运行并保留选择](adr/0014-codex-speed-from-the-model-catalog.md)
+- [ADR 0016 Gemini 开发会话分两条路径接入：订阅额度走 Antigravity CLI，API Key / Google Cloud 走 Antigravity SDK](adr/0016-antigravity-sdk-and-cli-harnesses.md)
 
 ## 历史文档
 

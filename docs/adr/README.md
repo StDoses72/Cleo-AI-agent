@@ -44,5 +44,6 @@
 | [0012](0012-claude-notices-read-inside-a-running-turn.md) | Claude 在运行中的回合里读到的完成通知不单独等待回复 | Accepted |
 | [0013](0013-reading-position-is-the-readers.md) | 流式回复期间阅读位置归读者；「视口跟随」与「接收本轮输出」分开 | Accepted |
 | [0014](0014-codex-speed-from-the-model-catalog.md) | Codex 速度档位按模型目录提供；模型不提供已保存的档位时以标准速度运行并保留选择 | Proposed |
+| [0016](0016-antigravity-sdk-and-cli-harnesses.md) | Gemini 开发会话分两条路径接入：订阅额度走 Antigravity CLI（`agy acp`），API Key / Google Cloud 走 Antigravity SDK | Proposed |
 
 每个引入 ADR 的 PR 自己在此表追加对应行（并行 PR 之间的小冲突在合并时解决），这样任何一个 PR 合并后索引都是完整的。0001–0006 随同一个集成 PR 合入 `main`，状态在集成时改为 Accepted；0008–0009 随 v0.13.0 的集成 PR 合入；0010 随 v0.13.1、0011 随 v0.14.0、0012–0013 随 v0.14.1 合入。0007 的编号由尚未合并的 PR #161 占用。

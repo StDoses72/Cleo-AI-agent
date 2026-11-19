@@ -62,6 +62,7 @@ class TaskHarnessTests(unittest.IsolatedAsyncioTestCase):
         catalog = await service.get_runtime_catalog()
         self.assertEqual({p["id"] for p in catalog["productivityProviders"]}, {
             "codex", "claude", "gemini", "copilot", "grok", "opencode",
+            "antigravity", "antigravity-sdk",
         })
         self.assertEqual(before, service.settings.productivity.model_dump())
         self.assertEqual(original, config.read_bytes())
@@ -109,6 +110,25 @@ class TaskHarnessTests(unittest.IsolatedAsyncioTestCase):
             register_task_provider(path, "claude", ClaudeHarnessSettings())
             self.assertEqual(before, path.read_bytes())
             self.assertIn("codex", json.loads(before)["providers"])
+
+    async def test_only_types_older_versions_read_are_written_to_configuration(self):
+        from cleo.config.settings import ProductivitySettings
+        from cleo.desktop.task_harnesses import register_task_provider, task_providers
+
+        presets = task_providers(ProductivitySettings())
+        self.assertEqual(presets["antigravity"].options.command, "agy")
+        self.assertEqual(presets["antigravity"].options.args, ["acp"])
+        self.assertEqual(presets["antigravity-sdk"].type, "antigravity_sdk")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "harnesses.json"
+            path.write_text('{"providers": {"codex": {"type": "codex_sdk"}}}', encoding="utf-8")
+            original = path.read_bytes()
+            register_task_provider(path, "antigravity-sdk", presets["antigravity-sdk"])
+            self.assertEqual(path.read_bytes(), original)
+            register_task_provider(path, "antigravity", presets["antigravity"])
+            saved = json.loads(path.read_text(encoding="utf-8"))["providers"]
+            self.assertEqual(saved["antigravity"]["options"]["command"], "agy")
+            self.assertEqual(set(saved), {"codex", "antigravity"})
 
     async def test_claude_catalog_uses_the_selected_project(self):
         from cleo.harnesses.control import HarnessModel

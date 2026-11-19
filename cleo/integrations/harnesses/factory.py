@@ -10,6 +10,7 @@ from cleo.harnesses.adapter import AgentAdapter
 from cleo.harnesses.capabilities import Capability, capabilities_of
 from cleo.harnesses.provider import AgentProvider
 from cleo.integrations.harnesses.acp import AcpAgentSpec, AcpProvider
+from cleo.integrations.harnesses.antigravity import AntigravityProvider
 from cleo.integrations.harnesses.claude import ClaudeProvider
 from cleo.integrations.harnesses.codex import CodexProvider
 from cleo.integrations.harnesses.memory import MemoryMcp
@@ -23,6 +24,7 @@ _PROVIDER_CLASSES = {
     "codex_sdk": CodexProvider,
     "claude_sdk": ClaudeProvider,
     "acp": AcpProvider,
+    "antigravity_sdk": AntigravityProvider,
 }
 
 
@@ -85,6 +87,16 @@ def create_provider(
                 auto_approve=options.auto_approve,
                 model_config_id=options.model_config_id,
             ),
+        )
+    if settings.type == "antigravity_sdk":
+        options = settings.options
+        return AntigravityProvider(
+            name,
+            default_model=settings.model,
+            auth=options.auth,
+            project=options.project,
+            location=options.location,
+            approval_mode=options.approval_mode,
         )
     raise TypeError(f"Unsupported productivity provider settings: {type(settings)!r}")
 

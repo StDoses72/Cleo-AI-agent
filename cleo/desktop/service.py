@@ -1923,7 +1923,7 @@ class DesktopService:
 
         project_root = project_path or str(self.settings.active_directory_profile.root_path)
         async with asyncio.timeout(60):
-            if provider_settings.type in {"acp", "claude_sdk"}:
+            if provider_settings.type in {"acp", "claude_sdk", "antigravity_sdk"}:
                 control = self._adapter().provider_control(provider)
                 models = await control.list_models(project_root)
                 source = "acp" if provider_settings.type == "acp" else "sdk"

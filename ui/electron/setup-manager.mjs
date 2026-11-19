@@ -74,7 +74,7 @@ export class SetupManager {
   async inspect() {
     const [runtime, harnesses] = await Promise.all([
       this.probe(this.python, ["-I", "-X", "utf8", "-c", "from cleo.desktop.server import main; print('ready')"]),
-      this.probe(this.python, ["-I", "-X", "utf8", "-c", "from cleo.desktop.dependencies import validate_codex_runtime, validate_claude_runtime; validate_codex_runtime(); validate_claude_runtime(); print('ready')"]),
+      this.probe(this.python, ["-I", "-X", "utf8", "-c", "from cleo.desktop.dependencies import validate_codex_runtime, validate_claude_runtime, validate_antigravity_runtime; validate_codex_runtime(); validate_claude_runtime(); validate_antigravity_runtime(); print('ready')"]),
     ]);
     this.items = [
       { id: "runtime", title: tr("setup_manager.cleo_base_runtime"), ready: runtime.ok, detail: runtime.ok ? tr("setup_manager.cleo_python_is_ready") : runtime.detail, action: tr("setup_manager.repair_runtime"), optional: false },
