@@ -22,6 +22,7 @@ import type {
   RuntimeProfile,
   RuntimeUpdate,
   QueuedMessage,
+  ServiceTier,
   SteerReceipt,
   Thread,
   ThreadSpace,
@@ -199,7 +200,7 @@ export function useCleoWorkspace() {
   const [draftProvider, setDraftProvider] = useState("");
   const [draftModel, setDraftModel] = useState("");
   const [draftEffort, setDraftEffort] = useState<RuntimeProfile["effort"]>(null);
-  const [draftServiceTier, setDraftServiceTier] = useState<"default" | "fast">("default");
+  const [draftServiceTier, setDraftServiceTier] = useState<ServiceTier>("default");
   // The permission preset picked for a draft, kept per provider so switching harness resets it.
   const [draftPermissions, setDraftPermissionsState] = useState<{
     provider: string; access?: string; approval?: string;

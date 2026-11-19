@@ -1,11 +1,11 @@
-import type { ReasoningEffort, RuntimeCatalog, RuntimeProfile } from "./types";
+import type { ReasoningEffort, RuntimeCatalog, RuntimeProfile, ServiceTier } from "./types";
 
 /** A harness and model picked for an existing task that has not been handed off yet. */
 export interface PendingHarnessSwitch {
   provider: string;
   model: string;
   effort: ReasoningEffort | null;
-  serviceTier?: "default" | "fast";
+  serviceTier?: ServiceTier;
 }
 
 /** Purpose: Decide what a pick in the runtime menu leaves pending for an existing task.

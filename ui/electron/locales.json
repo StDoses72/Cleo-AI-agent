@@ -1175,6 +1175,34 @@
     "zh-CN": "· 快速",
     "en": "· Fast"
   },
+  "conversation.ultrafast": {
+    "zh-CN": "· 极速",
+    "en": "· Ultrafast"
+  },
+  "conversation.speed": {
+    "zh-CN": "速度",
+    "en": "Speed"
+  },
+  "conversation.speed_standard": {
+    "zh-CN": "标准",
+    "en": "Standard"
+  },
+  "conversation.speed_standard_description": {
+    "zh-CN": "默认速度",
+    "en": "Default speed"
+  },
+  "conversation.speed_fast": {
+    "zh-CN": "快速",
+    "en": "Fast"
+  },
+  "conversation.speed_ultrafast": {
+    "zh-CN": "极速",
+    "en": "Ultrafast"
+  },
+  "conversation.speed_unavailable": {
+    "zh-CN": "{p0}不适用于 {p1} · 使用标准",
+    "en": "{p0} unavailable for {p1} · using Standard"
+  },
   "conversation.model_configuration": {
     "zh-CN": "模型配置",
     "en": "Model configuration"

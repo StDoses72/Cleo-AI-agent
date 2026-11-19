@@ -15,6 +15,18 @@ class SteerRejected(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
+class HarnessServiceTier:
+    """A speed tier a model offers beyond standard speed.
+
+    id is Cleo's tier ("fast" or "ultrafast"); label and description are the native catalog's.
+    """
+
+    id: str
+    label: str
+    description: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class HarnessModel:
     """provider 支持的单个模型的描述。
 
@@ -27,6 +39,7 @@ class HarnessModel:
         is_default: 是否为 provider 默认模型。
         default_effort: 默认 effort 档位(可 None)。
         supported_efforts: 支持的 effort 档位元组。
+        service_tiers: 标准速度之外可选的速度档位;None 表示 harness 的目录没有给出。
     """
 
     id: str
@@ -37,6 +50,7 @@ class HarnessModel:
     supported_efforts: tuple[str, ...]
     available: bool | None = None
     availability_source: str = "catalog_only"
+    service_tiers: tuple[HarnessServiceTier, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,7 +64,7 @@ class SessionOptions:
         effort: 推理强度档位。
         approval_mode: 审批模式。
         sandbox: 沙箱级别。
-        service_tier: Codex 速度档位(default/fast)，None 沿用原生配置。
+        service_tier: Codex 速度档位(default/fast/ultrafast)，None 沿用原生配置。
     """
 
     model: str | None = None

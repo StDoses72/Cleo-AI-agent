@@ -774,8 +774,13 @@ export class MockCleoClient implements CleoClient {
           provider,
           source: "sdk",
           models: [
-            { id: "gpt-5.6-sol", label: "GPT-5.6-Sol", description: "Frontier coding model", isDefault: true, defaultEffort: "low", supportedEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"] },
-            { id: "gpt-5.6-terra", label: "GPT-5.6-Terra", description: "Balanced coding model", isDefault: false, defaultEffort: "medium", supportedEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"] },
+            { id: "gpt-5.6-sol", label: "GPT-5.6-Sol", description: "Frontier coding model", isDefault: true, defaultEffort: "low", supportedEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
+              serviceTiers: [{ id: "fast", label: "Fast", description: "1.5x speed, increased usage" }] },
+            { id: "gpt-5.6-terra", label: "GPT-5.6-Terra", description: "Balanced coding model", isDefault: false, defaultEffort: "medium", supportedEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
+              serviceTiers: [{ id: "fast", label: "Fast", description: "1.5x speed, increased usage" }] },
+            { id: "gpt-6.2-sol", label: "GPT-6.2-Sol", description: "Frontier coding model with Ultrafast", isDefault: false, defaultEffort: "medium", supportedEfforts: ["low", "medium", "high", "xhigh"],
+              serviceTiers: [{ id: "fast", label: "Fast", description: "2x speed, increased usage" },
+                { id: "ultrafast", label: "Ultrafast", description: "The fastest available responses for latency-sensitive work." }] },
           ],
         };
   }

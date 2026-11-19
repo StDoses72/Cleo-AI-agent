@@ -313,8 +313,51 @@ try {
   await page.evaluate(() => { window.harnessFixture.holdUpdate = false; window.harnessFixture.finishUpdate(); });
   await page.waitForFunction(() => document.querySelector('[data-testid="runtime-selector"]').dataset.effort === "low");
   assert.equal(await effort.getAttribute("data-value"), "low");
+
+  // A model that offers Ultrafast lists the three speeds instead of the Fast switch; a model
+  // without it keeps the switch, names the saved speed it lacks and runs at Standard.
+  if (await trigger.getAttribute("data-speed") !== "default") {
+    await toggleSpeed();
+    await page.waitForFunction(() => document.querySelector('[data-testid="runtime-selector"]').dataset.speed === "default");
+    await closeEffortMenu();
+  }
+  await choose(/^codex/, /GPT-6\.2-Sol/);
+  await effort.click();
+  assert.equal(await effortMenu.getByTestId("speed-toggle").count(), 0);
+  const tiers = effortMenu.getByTestId("speed-option");
+  assert.deepEqual(await tiers.evaluateAll(rows => rows.map(row => row.dataset.tier)), ["default", "fast", "ultrafast"]);
+  assert.equal(await effortMenu.locator('[data-tier="default"][aria-checked="true"]').count(), 1);
+  assert.match(await effortMenu.locator('[data-tier="ultrafast"]').innerText(), /latency-sensitive/);
+  await effortMenu.locator('[data-tier="ultrafast"]').click();
+  await effortMenu.waitFor({ state: "detached" });
+  await page.waitForFunction(() => document.querySelector('[data-testid="runtime-selector"]').dataset.speed === "ultrafast");
+  assert.equal(await effort.getAttribute("data-speed"), "ultrafast");
+  assert.match(await effort.innerText(), /极速/);
+  // The pick travels with the handoff and is saved on the task.
+  await input.fill("Run this at Ultrafast");
+  await input.press("Enter");
+  await page.getByRole("status").filter({ hasText: /正在交接到 codex/ }).waitFor();
+  await page.evaluate(() => window.harnessFixture.resolve());
+  await page.waitForFunction(() => Boolean(window.harnessFixture.finishTurn));
+  await page.evaluate(() => window.harnessFixture.finishTurn());
+  await page.waitForFunction(() => !window.harnessFixture.finishTurn);
+  assert.deepEqual(await page.evaluate(() => window.harnessFixture.updates.at(-1)[1]), { serviceTier: "ultrafast" });
+  assert.equal(await trigger.getAttribute("data-speed"), "ultrafast");
+  const updatesAfterUltrafast = await page.evaluate(() => window.harnessFixture.updates.length);
+  await choose(/^codex/, /GPT-5.6-Terra/);
+  assert.equal(await trigger.getAttribute("data-speed"), "ultrafast");
+  assert.equal(await effort.getAttribute("data-speed-unavailable"), "ultrafast");
+  assert.equal(await effort.getAttribute("data-speed"), "default");
+  await effort.click();
+  assert.match(await effortMenu.getByTestId("speed-unavailable").innerText(), /极速不适用于 GPT-5\.6-Terra/);
+  assert.equal(await effortMenu.getByTestId("speed-toggle").isChecked(), false);
+  await closeEffortMenu();
+  assert.equal(await page.evaluate(() => window.harnessFixture.updates.length), updatesAfterUltrafast);
+  await choose(/^codex/, /GPT-6\.2-Sol/);
+  assert.equal(await effort.getAttribute("data-speed"), "ultrafast");
+  assert.equal(await effort.getAttribute("data-speed-unavailable"), null);
   assert.deepEqual(errors, []);
-  console.log("PASS: deferred handoff, queue failure/retry with attachments, same-provider speed, effort failure/retry (mock UI)");
+  console.log("PASS: deferred handoff, queue failure/retry with attachments, same-provider speed, Ultrafast list and fallback, effort failure/retry (mock UI)");
 } finally {
   await browser?.close();
   await server.close();
