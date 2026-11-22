@@ -38,7 +38,7 @@ General assistants and coding agents usually keep separate histories, permission
 - Edit an earlier message to rewind the conversation to that point and resend it; queue follow-ups while a turn runs and steer them in when you choose.
 - Local skill discovery, search, and invocation in native Claude/Codex development sessions.
 - Constrained subtask routing: the session's model stays the coordinator and delegates subtasks to connected harness models. See [subtask routing](docs/benchmark-routing.md) (Chinese).
-- Computer use through the built-in per-conversation browser or the local Windows desktop.
+- Computer use in a target the agent picks per task: the built-in per-conversation browser, your own Chrome or Edge through the Cleo extension (background tabs, per-site approval), or the local Windows desktop.
 - Official updates with a visible restart, automatic rollback to the previous program, and an independent recovery entry point.
 - A provider-neutral coding-harness data plane plus optional Codex-specific controls.
 - An append-only `events.jsonl` source of truth, atomic manifests, and rebuildable SQLite indexes.

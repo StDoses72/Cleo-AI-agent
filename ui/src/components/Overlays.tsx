@@ -5,6 +5,7 @@ import { BackgroundMemorySettingsPanel } from "./model-settings/BackgroundMemory
 import { MemorySourcesSettings } from "./MemorySourcesSettings";
 import { UpdateVersionPicker, VersionRecovery } from "./UpdateVersionPicker";
 import { RoutingSettingsPanel } from "./model-settings/RoutingSettingsPanel";
+import { ComputerSettingsPage } from "./ComputerSettings";
 import { handleDialogKeyDown, Modal } from "./Modal";
 import { PermissionSelector } from "./PermissionSelector";
 import { accessLabel, approvalLabel, projectLabel, projectPathLabel } from "../runtime-labels";
@@ -39,6 +40,7 @@ import {
   Trash2,
   Wrench,
   X,
+  MonitorSmartphone,
 } from "lucide-react";
 import type {
   AgentInstructions,
@@ -433,17 +435,17 @@ interface SettingsModalProps {
 }
 
 /* Settings hold application defaults only; per-task model, effort and permissions live in the composer. */
-type SettingsPage = "appearance" | "instructions" | "models" | "models-add" | "models-dream" | "routing" | "import" | "updates" | "data";
+type SettingsPage = "appearance" | "instructions" | "models" | "models-add" | "models-dream" | "routing" | "import" | "computer" | "updates" | "data";
 const settingsTitles: Record<SettingsPage, string> = {
   get appearance() { return tr("overlays.appearance"); }, get instructions() { return tr("overlays.chat_instructions"); }, get models() { return tr("settings.models_nav"); },
   get "models-add"() { return tr("overlays.new_connection"); }, get "models-dream"() { return tr("settings.memory_nav"); }, get import() { return tr("settings.import_nav"); }, get updates() { return tr("settings.updates_nav"); }, get data() { return tr("settings.storage_nav"); },
-  get routing() { return tr("routing.subtask_routing"); },
+  get routing() { return tr("routing.subtask_routing"); }, get computer() { return tr("computersettings.nav"); },
 };
 const settingsGroups: { label: () => string; pages: { id: SettingsPage; icon: typeof Command; also?: SettingsPage[] }[] }[] = [
   { label: () => tr("settings.group_general"), pages: [{ id: "appearance", icon: Sparkles }, { id: "updates", icon: RefreshCw }] },
   { label: () => tr("settings.group_agent"), pages: [
     { id: "models", icon: Boxes, also: ["models-add"] }, { id: "routing", icon: SlidersHorizontal },
-    { id: "instructions", icon: FileText }, { id: "import", icon: ArrowDownToLine },
+    { id: "instructions", icon: FileText }, { id: "import", icon: ArrowDownToLine }, { id: "computer", icon: MonitorSmartphone },
   ] },
   { label: () => tr("settings.group_memory"), pages: [{ id: "models-dream", icon: Brain }, { id: "data", icon: Database }] },
 ];
@@ -532,6 +534,7 @@ export function SettingsModal({
           </header>
           <div className="settings-scroll" ref={scrollRef}>
           {page === "routing" && <RoutingSettingsPanel active={open} />}
+          {page === "computer" && <ComputerSettingsPage />}
           <div hidden={page !== "instructions"} className="settings-instructions-container">
             {agentInstructionsError && <p className="settings-error" role="alert">{agentInstructionsError}
               <button type="button" onClick={() => void onLoadAgentInstructions().catch(() => {})}>{tr("app.retry")}</button></p>}
@@ -575,7 +578,7 @@ export function SettingsModal({
                 <MemorySourcesSettings active={open} />
               </details>
             </div>
-          ) : page === "instructions" || page === "import" || page === "routing" || isModels ? null : page === "updates" ? (
+          ) : page === "instructions" || page === "import" || page === "routing" || page === "computer" || isModels ? null : page === "updates" ? (
             <UpdateSettingsPage
               active={open}
               state={updateState}

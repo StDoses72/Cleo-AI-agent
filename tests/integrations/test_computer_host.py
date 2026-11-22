@@ -360,6 +360,8 @@ def test_operations_queued_before_a_stop_never_run():
 
 def test_launch_and_switch_are_ui_level_and_skip_cleo():
     api = FakeApi()
+    search = {"hwnd": 20, "pid": 9, "title": "搜索", "monitor": 1}
+    api.foreground = lambda: search if ("key", 0x5B, False) in api.events else api.front
     host = controller(api)
     run(host, "launch", name="记事本")
     assert api.events[:2] == [("key", 0x5B, True), ("key", 0x5B, False)]
@@ -376,3 +378,40 @@ def test_unsupported_platform_and_unknown_operations():
         asyncio.run(HostController(platform="linux").run("screenshot", {}))
     with pytest.raises(HostError, match="不支持的本机操作"):
         run(controller(), "powershell", command="dir")
+
+
+def test_launch_waits_for_what_it_can_observe_and_reports_the_new_window():
+    api = FakeApi()
+    slept = []
+
+    def foreground():
+        # Start search takes the foreground once Win is released; the app comes up after Enter.
+        keys = [event for event in api.events if event[0] == "key"]
+        if ("key", 0x0D, False) in keys:
+            return {"hwnd": 30, "pid": 8, "title": "无标题 - 记事本", "monitor": 1}
+        if ("key", 0x5B, False) in keys:
+            return {"hwnd": 20, "pid": 9, "title": "搜索", "monitor": 1}
+        return api.front
+
+    api.foreground = foreground
+    host = controller(api, sleep=slept.append)
+    detail = run(host, "launch", name="记事本")["detail"]
+    assert "无标题 - 记事本" in detail
+    # One poll finds the search box, one finds the window: no fixed 0.8 s pause before typing.
+    assert sum(slept) < 1.6
+
+    # A window that never comes up is reported as such, after a bounded wait.
+    api.events.clear()
+    search = {"hwnd": 20, "pid": 9, "title": "搜索", "monitor": 1}
+    api.foreground = lambda: search if ("key", 0x5B, False) in api.events else api.front
+    slept.clear()
+    detail = run(host, "launch", name="Nothing")["detail"]
+    assert "截图确认" in detail
+    assert sum(slept) < 12
+
+    # Start search that never opens: nothing is typed into the window in front.
+    api.events.clear()
+    api.foreground = lambda: api.front
+    with pytest.raises(HostError, match="开始菜单"):
+        run(host, "launch", name="记事本")
+    assert not any(event[0] == "unicode" for event in api.events)

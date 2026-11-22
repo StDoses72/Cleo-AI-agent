@@ -40,9 +40,12 @@ for (const handled of [false, true]) {
         broker: { threadBusy: () => false },
         files: { respond: () => {} },
         bridge: { start: async () => "test-bridge" },
+        // A browser connected once keeps its host registration current; one never connected is left alone.
+        userBrowserPreferences: () => ({ setup: handled }),
+        userBrowserSetup: { prepare: async () => { registrations.push("user-browser"); return {}; } },
       });
       assert.equal(typeof reclaim?.busy, "function", "idle reclaim starts with the broker's busy check");
-      assert.deepEqual(registrations, handled ? ["browser"] : ["browser", "ui"]);
+      assert.deepEqual(registrations, handled ? ["browser", "user-browser"] : ["browser", "ui"]);
     } finally {
       if (previousBridge === undefined) delete process.env.CLEO_COMPUTER_BRIDGE;
       else process.env.CLEO_COMPUTER_BRIDGE = previousBridge;

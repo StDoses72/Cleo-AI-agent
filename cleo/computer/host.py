@@ -28,6 +28,14 @@ from cleo.i18n import tr
 
 MAX_EDGE = 1600
 TYPE_BATCH = 16
+# Launching through Start search: wait for what can be observed instead of fixed pauses. The
+# search box taking the foreground and the launched app's window coming to front are polled;
+# only the result list, which has no observable signal, keeps a fixed pause.
+LAUNCH_POLL = 0.05
+LAUNCH_SEARCH_WAIT = 1.5
+LAUNCH_INPUT_SETTLE = 0.15
+LAUNCH_RESULTS_WAIT = 1.0
+LAUNCH_WINDOW_WAIT = 8.0
 
 
 class HostError(Exception):
@@ -968,18 +976,42 @@ class HostController:
         self._guard_foreground(args)
         self._press_combo(*parse_keys(args.get("keys", "")))
 
+    def _wait_foreground(self, excluded: set[int], limit: float) -> dict | None:
+        """Purpose: Poll until a window other than ``excluded`` is in front, or give up."""
+        waited = 0.0
+        while waited < limit:
+            self._sleep(LAUNCH_POLL)
+            waited += LAUNCH_POLL
+            self._checkpoint()
+            current = self.api.foreground()
+            if current.get("hwnd") and current["hwnd"] not in excluded:
+                return current
+        return None
+
     def _launch(self, args: dict):
         name = args.get("name")
         if not isinstance(name, str) or not name.strip() or len(name) > 120:
             raise HostError(tr("host.invalid_application_name"))
+        name = name.strip()
+        before = int(self.api.foreground().get("hwnd") or 0)
         self._press_combo([MODIFIER_VK["win"]], None)
-        self._sleep(0.8)
+        search = self._wait_foreground({before}, LAUNCH_SEARCH_WAIT)
+        if search is None:
+            # Typing now would go into whatever window is in front; close the menu and say so.
+            self._press_combo([], 0x1B)
+            raise HostError(tr("host.start_search_did_not_open"))
+        self._sleep(LAUNCH_INPUT_SETTLE)
         self._checkpoint()
-        self._type_text(name.strip())
-        self._sleep(1.0)
+        self._type_text(name)
+        self._sleep(LAUNCH_RESULTS_WAIT)
         self._checkpoint()
         self._press_combo([], 0x0D)
-        return tr("host.searched_for_and_launched_value_through_the_star", p0=name.strip())
+        # Report the launched window, so the agent needs no extra wait-and-look round trip.
+        menu = int(search["hwnd"])
+        opened = self._wait_foreground({before, menu}, LAUNCH_WINDOW_WAIT)
+        if opened:
+            return tr("host.launched_value_front_value", p0=name, p1=opened.get("title", ""))
+        return tr("host.searched_for_and_launched_value_through_the_star", p0=name)
 
     def _switch(self, args: dict):
         name = args.get("name")

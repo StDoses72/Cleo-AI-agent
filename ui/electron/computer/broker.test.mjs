@@ -66,7 +66,7 @@ class FakePool extends EventEmitter {
   }
 }
 
-function setup({ platform = "win32", owner = null, scope = "" } = {}) {
+function setup({ platform = "win32", owner = null, scope = "", userBrowser = null, now } = {}) {
   const pool = new FakePool();
   pool.setForeground("thread-a");
   const browser = pool.forThread("thread-a");
@@ -88,7 +88,7 @@ function setup({ platform = "win32", owner = null, scope = "" } = {}) {
     if (method === "computer_scope") return { cwd: scope };
     return null;
   } };
-  const broker = new ComputerBroker({ browser: pool, host, backend, platform, protectedPids: [42] });
+  const broker = new ComputerBroker({ browser: pool, host, backend, platform, protectedPids: [42], userBrowser, ...(now ? { now } : {}) });
   return { broker, browser, pool, host, hostCalls, backendCalls };
 }
 
@@ -270,11 +270,15 @@ test("a panel stop of an authorized conversation leaves the desktop another conv
   assert.equal(broker.state().threads["thread-a"].mode, "browser", "thread-a's authorization is still revoked");
   assert.equal(broker.state().threads["thread-b"].mode, "host");
   assert.deepEqual(backendCalls.filter(([method]) => method === "cancel_run").map(([, params]) => params), [{ thread_id: "thread-a" }]);
-  // With the desktop free, stopping an authorized conversation still releases the controller.
+  // Ending thread-b's turn gives up its desktop authorization and releases the controller.
   broker.turnEnded("thread-b");
+  assert.equal(broker.state().threads["thread-b"].mode, "browser", "authorization belongs to the turn");
+  const afterTurn = hostCalls.filter(([op]) => op === "stop").length;
+  assert.equal(afterTurn, before + 1);
+  // With the desktop free, stopping an authorized conversation still releases the controller.
   await broker.setMode("thread-a", "host", { confirmed: true });
   await broker.stop({ source: "panel", threadId: "thread-a" });
-  assert.equal(hostCalls.filter(([op]) => op === "stop").length, before + 1);
+  assert.equal(hostCalls.filter(([op]) => op === "stop").length, afterTurn + 1);
 });
 
 test("a global stop cancels the run of every engaged conversation, not only the desktop owner", async () => {
@@ -490,4 +494,249 @@ test("browser-level shortcuts and address rules", async () => {
   assert.deepEqual(parseShortcut("ctrl+shift+Tab").modifiers, ["Control", "Shift"]);
   assert.equal(stopAccelerator("ctrl+alt+esc"), "Control+Alt+Escape");
   assert.throws(() => stopAccelerator("esc"), /至少需要两个修饰键/);
+});
+
+/** The user's own browser as the broker sees it through the extension. */
+class FakeUserBrowser extends EventEmitter {
+  constructor() {
+    super();
+    this.connected = true;
+    this.name = "Chrome";
+    this.list = [
+      { id: "11", windowId: 1, title: "Pull requests", url: "https://github.com/pulls", active: true, cleo: false, loading: false, dialog: null },
+      { id: "12", windowId: 1, title: "Issue #160", url: "https://github.com/x/issues/160", active: false, cleo: false, loading: false, dialog: null },
+      { id: "13", windowId: 2, title: "Bank", url: "https://bank.example.org/", active: true, cleo: false, loading: false, dialog: null },
+      { id: "14", windowId: 2, title: "Extensions", url: "chrome://extensions/", active: false, cleo: false, loading: false, dialog: null },
+    ];
+    this.actions = [];
+    this.geo = {};
+    this.detached = 0;
+    this.gate = null;
+  }
+  tabs() { return this.list; }
+  tab(id) { return this.list.find(tab => tab.id === String(id)) ?? null; }
+  async refreshTabs() { return this.list; }
+  async openTab(url) { const tab = { id: "20", windowId: 1, title: "", url, active: false, cleo: true, loading: true, dialog: null }; this.list.push(tab); return tab; }
+  async closeTab(id) {
+    if (!this.tab(id)?.cleo) throw new Error("only Cleo tabs");
+    this.list = this.list.filter(tab => tab.id !== id);
+    // Chrome reports the removal before the close request returns.
+    this.emit("tab-removed", id);
+  }
+  async capture(id) { this.geo[id] ??= "800x600@1"; this.actions.push(["capture", id]); return { png: Buffer.from("png"), width: 800, height: 600, geometry: this.geo[id] }; }
+  geometry(id) { return this.geo[id] ?? null; }
+  async liveUrl(id) { return this.live?.[id] ?? this.tab(id)?.url ?? ""; }
+  async click(id, x, y) { if (this.gate) await this.gate; this.actions.push(["click", id, x, y]); }
+  async type(id, value) { this.actions.push(["type", id, value]); }
+  async keys(id, keys) { this.actions.push(["keys", id, keys]); }
+  async navigate(id, url) { this.actions.push(["navigate", id, url]); }
+  async pageText() { return { title: "t", text: "hello", elements: [] }; }
+  async releaseAll() { return []; }
+  async detachAll() { this.detached++; }
+  state() { return { connected: this.connected, browser: { kind: "chrome", name: "Chrome" } }; }
+}
+
+/** Wait until the broker asks the user about a website, then return that request. */
+async function siteRequest(broker) {
+  for (let attempt = 0; attempt < 50 && !broker.state().siteRequests.length; attempt++) await new Promise(resolve => setImmediate(resolve));
+  return broker.state().siteRequests[0];
+}
+
+test("the agent picks the target with computer_mode; the desktop needs the user and the user's browser the extension", async () => {
+  const user = new FakeUserBrowser();
+  user.connected = false;
+  const { broker } = setup({ userBrowser: user });
+  broker.turnStarted("thread-a");
+  assert.match(text(await broker.catalog(T)), /computer_mode/);
+  assert.match(text(await broker.call(T, "computer_mode", { target: "user_browser", reason: "需要登录" })), /没有通过 Cleo 扩展连接/);
+  assert.equal(broker.state().threads["thread-a"].mode, "browser");
+  user.connected = true;
+  await broker.call(T, "computer_mode", { target: "user_browser", reason: "需要登录" });
+  assert.equal(broker.state().threads["thread-a"].mode, "user");
+  const catalog = text(await broker.catalog(T));
+  assert.match(catalog, /user_browser_screenshot/);
+  assert.doesNotMatch(catalog, /"browser_click"/);
+  await assert.rejects(broker.call(T, "browser_screenshot", {}), /当前目标是你的浏览器/);
+  // The extension going away drops the conversation back to the built-in browser.
+  user.connected = false;
+  assert.equal(broker.state().threads["thread-a"].mode, "browser");
+  user.connected = true;
+  await broker.call(T, "computer_mode", { target: "builtin_browser", reason: "本地预览" });
+  assert.equal(broker.state().threads["thread-a"].mode, "browser");
+  const asking = broker.call(T, "computer_mode", { target: "desktop", reason: "需要记事本" });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(broker.state().authorization.reason, "需要记事本");
+  await broker.answerAuthorization(broker.state().authorization.id, true);
+  assert.match(text(await asking), /已授权/);
+  assert.equal(broker.state().threads["thread-a"].mode, "host");
+  // Authorization and the chosen target belong to the turn.
+  broker.turnEnded("thread-a");
+  assert.equal(broker.state().threads["thread-a"].mode, "browser");
+  assert.equal(broker.state().threads["thread-a"].hostAuthorized, false);
+});
+
+test("each website of the user's browser is approved before the agent reads it", async () => {
+  const user = new FakeUserBrowser();
+  const { broker } = setup({ userBrowser: user });
+  broker.turnStarted("thread-a");
+  await broker.setMode("thread-a", "user");
+  const listed = json(await broker.call(T, "user_browser_tabs", { action: "list" }));
+  assert.deepEqual(listed.tabs.map(tab => tab.tab_id), ["11", "12", "13", "14"], "listing tabs needs no website approval");
+  const first = broker.call(T, "user_browser_screenshot", { tab_id: "12" });
+  const request = await siteRequest(broker);
+  assert.equal(request.host, "github.com");
+  assert.equal(user.actions.length, 0, "nothing is captured before the user answers");
+  broker.answerSite(request.id, "once");
+  await first;
+  await broker.call(T, "user_browser_screenshot", { tab_id: "11" });
+  assert.equal(broker.state().siteRequests.length, 0, "once covers the rest of this turn");
+  broker.turnEnded("thread-a");
+  broker.turnStarted("thread-a");
+  await broker.setMode("thread-a", "user");
+  const again = broker.call(T, "user_browser_screenshot", { tab_id: "12" });
+  broker.answerSite((await siteRequest(broker)).id, "always");
+  await again;
+  assert.deepEqual(broker.state().sites, ["github.com"]);
+  const bank = broker.call(T, "user_browser_screenshot", { tab_id: "13" });
+  broker.answerSite((await siteRequest(broker)).id, "deny");
+  await assert.rejects(bank, /拒绝了 Cleo 访问 bank\.example\.org/);
+  await assert.rejects(broker.call(T, "user_browser_screenshot", { tab_id: "14" }), /只支持 http 和 https/);
+  // Navigating to a new website asks again; opening a tab goes into the Cleo group.
+  const navigating = broker.call(T, "user_browser_navigate", { tab_id: "12", url: "docs.github.com/labels" });
+  broker.answerSite((await siteRequest(broker)).id, "once");
+  await navigating;
+  assert.deepEqual(user.actions.at(-1), ["navigate", "12", "https://docs.github.com/labels"]);
+  const opened = json(await broker.call(T, "user_browser_tabs", { action: "open" }));
+  assert.equal(opened.opened.tab_id, "20");
+  await assert.rejects(broker.call(T, "user_browser_tabs", { action: "close", tab_id: "11" }), /only Cleo tabs/);
+});
+
+test("user-browser input needs the latest screenshot of the same tab and viewport", async () => {
+  const user = new FakeUserBrowser();
+  const { broker } = setup({ userBrowser: user });
+  broker.sites.allow("github.com");
+  await broker.setMode("thread-a", "user");
+  const shot = json(await broker.call(T, "user_browser_screenshot", { tab_id: "12" })).screenshot;
+  assert.match(shot.screenshot_id, /^u-/);
+  await broker.call(T, "user_browser_click", { tab_id: "12", screenshot_id: shot.screenshot_id, x: 10, y: 20 });
+  assert.deepEqual(user.actions.at(-1), ["click", "12", 10, 20]);
+  await assert.rejects(broker.call(T, "user_browser_click", { tab_id: "11", screenshot_id: shot.screenshot_id, x: 1, y: 1 }), /不一致/);
+  user.geo["12"] = "900x600@1";
+  await assert.rejects(broker.call(T, "user_browser_click", { tab_id: "12", screenshot_id: shot.screenshot_id, x: 1, y: 1 }), /可见区域或缩放已变化/);
+  await broker.setMode("thread-a", "browser");
+  await assert.rejects(broker.call(T, "browser_click", { tab_id: "t1", screenshot_id: shot.screenshot_id, x: 1, y: 1 }), /来自你的浏览器/);
+});
+
+test("closing the target tab stops the agent there; it must ask instead of picking another tab", async () => {
+  const user = new FakeUserBrowser();
+  const { broker } = setup({ userBrowser: user });
+  broker.sites.allow("github.com");
+  broker.turnStarted("thread-a");
+  await broker.setMode("thread-a", "user");
+  await broker.call(T, "user_browser_screenshot", { tab_id: "12" });
+  assert.equal(broker.state().threads["thread-a"].userTarget.id, "12");
+  user.list = user.list.filter(tab => tab.id !== "12");
+  user.emit("tab-removed", "12");
+  assert.equal(broker.state().threads["thread-a"].userAlert, "closed");
+  await assert.rejects(broker.call(T, "user_browser_screenshot", { tab_id: "11" }), /不要自行改用其他标签页/);
+  broker.pickUserTarget("thread-a", "11");
+  const listed = json(await broker.call(T, "user_browser_tabs", { action: "list" }));
+  assert.match(listed.user_choice, /11/);
+  assert.equal(broker.state().threads["thread-a"].userAlert, null);
+});
+
+test("real input on the target tab hands control to the user; input elsewhere does not", async () => {
+  const user = new FakeUserBrowser();
+  const { broker, backendCalls } = setup({ userBrowser: user });
+  broker.sites.allow("github.com");
+  broker.turnStarted("thread-a");
+  await broker.setMode("thread-a", "user");
+  const shot = json(await broker.call(T, "user_browser_screenshot", { tab_id: "12" })).screenshot;
+  await broker.userInputOnTab("11");
+  assert.equal(broker.state().threads["thread-a"].userControl, "agent", "another tab is the user's own business");
+  await broker.userInputOnTab("12");
+  assert.equal(broker.state().threads["thread-a"].userControl, "user");
+  assert.equal(broker.phaseOf("thread-a"), "paused");
+  const waiting = broker.call(T, "user_browser_click", { tab_id: "12", screenshot_id: shot.screenshot_id, x: 1, y: 1 });
+  await new Promise(resolve => setTimeout(resolve, 30));
+  await broker.handback("user", "thread-a");
+  await assert.rejects(waiting, /交回控制/);
+  // Cancelling the browser's debugging bar revokes access and stops the run.
+  user.emit("lost", { reason: "canceled_by_user" });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(broker.state().threads["thread-a"].userAlert, "detached");
+  assert.ok(backendCalls.some(([method, params]) => method === "cancel_run" && params.thread_id === "thread-a"));
+  broker.turnEnded("thread-a");
+  assert.ok(user.detached >= 1, "the debugger is released when no turn needs the browser");
+});
+
+test("the computer page gets per-mode segments, steps, timing and the current phase", async () => {
+  let clock = 1000;
+  const user = new FakeUserBrowser();
+  const { broker, browser } = setup({ userBrowser: user, now: () => clock });
+  broker.sites.allow("github.com");
+  broker.turnStarted("thread-a");
+  assert.equal(broker.phaseOf("thread-a"), "idle");
+  await broker.call(T, "browser_screenshot", {});
+  clock += 4000;
+  await broker.call(T, "computer_mode", { target: "user_browser", reason: "登录" });
+  clock += 2000;
+  await broker.call(T, "user_browser_screenshot", { tab_id: "12" });
+  let release;
+  user.gate = new Promise(resolve => { release = resolve; });
+  assert.equal(broker.state().threads["thread-a"].activity.phase, "thinking");
+  const id = [...broker.observations.keys()].at(-1);
+  const clicking = broker.call(T, "user_browser_click", { tab_id: "12", screenshot_id: id, x: 1, y: 1 });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(broker.phaseOf("thread-a"), "acting");
+  clock += 500;
+  release();
+  await clicking;
+  const { segments } = broker.state().threads["thread-a"].activity;
+  assert.deepEqual(segments.map(segment => segment.mode), ["browser", "user"]);
+  assert.deepEqual(segments[1].steps.map(step => step.name), ["user_browser_screenshot", "user_browser_click"]);
+  assert.equal(segments[1].target, "Issue #160");
+  assert.equal(segments[0].timing.think, 4, "thinking before the switch belongs to the segment it leaves");
+  assert.equal(segments[1].timing.think, 2);
+  assert.equal(segments[1].timing.tool, 0.5);
+  assert.equal(browser.actions.length, 0);
+  await assert.rejects(broker.call(T, "user_browser_click", { tab_id: "12", screenshot_id: "u-missing", x: 1, y: 1 }), /screenshot_id/);
+  assert.equal(broker.phaseOf("thread-a"), "failed");
+  broker.turnEnded("thread-a");
+  assert.notEqual(broker.state().threads["thread-a"].activity.segments.at(-1).endedAt, null);
+  broker.turnStarted("thread-a");
+  assert.equal(broker.state().threads["thread-a"].activity.segments.length, 0, "a new turn reports only its own work");
+});
+
+test("review fixes: live address, own tab close, ended turns and lost browsers", async () => {
+  const user = new FakeUserBrowser();
+  const { broker } = setup({ userBrowser: user });
+  broker.sites.allow("github.com");
+  broker.turnStarted("thread-a");
+  await broker.setMode("thread-a", "user");
+  // The tab list still says github.com, but the page already redirected elsewhere: ask first.
+  user.live = { 12: "https://evil.example.net/login" };
+  const redirected = broker.call(T, "user_browser_screenshot", { tab_id: "12" });
+  const request = await siteRequest(broker);
+  assert.equal(request.host, "evil.example.net");
+  broker.answerSite(request.id, "deny");
+  await assert.rejects(redirected, /拒绝/);
+  user.live = {};
+  // Closing a tab the agent opened itself is not the user closing the target.
+  const opened = json(await broker.call(T, "user_browser_tabs", { action: "open", url: "github.com/new" })).opened;
+  await broker.call(T, "user_browser_tabs", { action: "close", tab_id: opened.tab_id });
+  assert.equal(broker.state().threads["thread-a"].userAlert, null);
+  await broker.call(T, "user_browser_screenshot", { tab_id: "12" });
+  // A request still open when the turn ends is denied; a late answer grants nothing.
+  const pending = broker.call(T, "user_browser_screenshot", { tab_id: "13" });
+  const late = await siteRequest(broker);
+  broker.turnEnded("thread-a");
+  await assert.rejects(pending, /拒绝|结束/);
+  assert.throws(() => broker.answerSite(late.id, "always"), /失效/);
+  assert.deepEqual(broker.state().sites, ["github.com"]);
+  // After the browser was lost, no call in that turn reaches it again.
+  broker.turnStarted("thread-a");
+  await broker.setMode("thread-a", "user");
+  await broker.userBrowserLost("canceled_by_user");
+  await assert.rejects(broker.call(T, "user_browser_screenshot", { tab_id: "12" }), /断开或被用户取消/);
 });

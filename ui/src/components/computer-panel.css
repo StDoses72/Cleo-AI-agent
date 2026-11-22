@@ -1,66 +1,133 @@
-.computer-panel { padding: 12px 14px; min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 9px; overflow: hidden; }
-.computer-panel.is-expanded { position: fixed; inset: 58px 18px 18px 80px; z-index: 100; background: var(--sidebar); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 18px 70px #0008; }
-.computer-panel-header { display: flex; align-items: center; gap: 8px; }
-.computer-panel-header > strong { font-size: 13px; flex: 1; }
-.computer-mode-switch { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-.computer-mode-switch button { display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; font-size: 11px; background: transparent; color: var(--muted); border: 0; }
-.computer-mode-switch button.active { background: var(--surface-raised); color: var(--text); }
-.computer-mode-switch button.active.host { color: #ff9b8f; }
-.computer-mode-switch button:disabled { opacity: .55; }
-.computer-panel-hint { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
-.computer-panel-error { margin: 0; display: flex; align-items: flex-start; gap: 6px; color: var(--warning); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+/* Computer page: only the target the agent uses now (header, its body, controls, steps), or a
+   summary of the turn afterwards. Flat sections split by hairlines, like the rest of Cleo. */
+.computer-panel { padding: 10px 14px 12px; min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 9px; overflow: auto; }
+.computer-panel.is-expanded { position: fixed; inset: 58px 18px 18px 80px; z-index: 100; background: var(--canvas); border: 1px solid var(--border-strong); border-radius: 10px; box-shadow: var(--shadow-popup); }
+.computer-panel.is-empty { justify-content: center; align-items: center; }
+.computer-empty { margin: 0; color: var(--muted-2); font-size: 12.5px; }
+.computer-panel-hint { margin: 0; color: var(--muted); font-size: 11.5px; line-height: 1.6; }
+.computer-panel-error { margin: 0; display: flex; align-items: flex-start; gap: 6px; color: var(--warning); font-size: 11.5px; line-height: 1.6; overflow-wrap: anywhere; }
 .computer-panel-error svg { flex-shrink: 0; margin-top: 2px; }
-.computer-authorization, .computer-host-confirm, .browser-banner { display: flex; gap: 10px; padding: 10px 12px; border-radius: 8px; border: 1px solid #a4524a; background: #3a1d1b66; font-size: 12px; line-height: 1.6; }
-.computer-authorization p, .browser-banner p { margin: 2px 0 6px; color: var(--muted); overflow-wrap: anywhere; }
-.computer-host-confirm { flex-direction: column; }
-.computer-host-confirm ul { margin: 0; padding-left: 18px; color: var(--muted); }
+.computer-quiet { margin: 0; color: var(--muted-2); font-size: 12px; }
+
+.computer-mode-head { display: flex; align-items: center; gap: 10px; min-height: 34px; padding-bottom: 9px; border-bottom: 1px solid var(--border); flex-shrink: 0; animation: computer-in .25s var(--ease-out, ease-out); }
+.computer-mode-head > div { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.computer-mode-head strong { font-size: 13px; font-weight: 600; }
+.computer-mode-head small { color: var(--muted); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.computer-mode-icon { width: 28px; height: 28px; border-radius: var(--radius-md, 8px); display: grid; place-items: center; background: var(--surface); color: var(--text-soft); flex: none; }
+.computer-mode-icon.host { color: var(--danger); }
+@keyframes computer-in { from { opacity: 0; transform: translateY(4px); } }
+
+.computer-state { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.computer-state i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted-2); flex: none; }
+.computer-state.run i { background: var(--success); animation: computer-pulse 1.1s ease-in-out infinite; }
+.computer-state.warn i { background: var(--warning); }
+.computer-state.bad i { background: var(--danger); }
+@keyframes computer-pulse { 50% { opacity: .3; } }
+
+.computer-section { display: flex; flex-direction: column; gap: 6px; padding-bottom: 9px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.computer-section-title { display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; color: var(--muted-2); }
+.computer-section-title button, .computer-alert button { border: 0; background: transparent; color: var(--text-soft); font-size: 12px; padding: 2px 6px; border-radius: var(--radius-sm, 6px); }
+.computer-section-title button:hover, .computer-alert button:hover { background: var(--surface-hover); }
+.computer-target { display: flex; gap: 8px; align-items: flex-start; }
+.computer-target svg { margin-top: 2px; color: var(--muted); flex: none; }
+.computer-target div { min-width: 0; display: flex; flex-direction: column; }
+.computer-target strong { font-size: 12.5px; font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.computer-target small { color: var(--muted); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.computer-picker { border: 1px solid var(--border-strong); border-radius: var(--radius-md, 8px); background: var(--surface-raised); max-height: 220px; overflow: auto; padding: 4px; }
+.computer-picker-window { display: block; font-size: 11px; color: var(--muted-2); padding: 6px 6px 2px; }
+.computer-picker button { width: 100%; display: flex; gap: 6px; align-items: center; border: 0; background: transparent; color: inherit; text-align: left; font-size: 12px; padding: 5px 6px; border-radius: 5px; }
+.computer-picker button span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.computer-picker button:hover { background: var(--surface-hover); }
+.computer-picker button.active { background: var(--surface-active); }
+.computer-group-chip { font-style: normal; font-size: 10.5px; padding: 0 5px; border-radius: 3px; background: #2f6fd6; color: #fff; }
+.computer-alert { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border-radius: var(--radius-md, 8px); background: var(--surface); font-size: 12px; flex-shrink: 0; }
+.computer-alert svg { color: var(--warning); margin-top: 2px; flex: none; }
+.computer-alert > div { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; justify-content: space-between; flex: 1; }
+.computer-alert strong { font-weight: 550; }
+
+.computer-kv { display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+.computer-kv span { color: var(--muted); }
+.computer-kv kbd { font-family: var(--font-code); font-size: 11px; padding: 1px 6px; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 4px; background: var(--surface-raised); }
+.computer-timing-bar { display: flex; height: 5px; border-radius: 3px; overflow: hidden; background: var(--border); }
+.computer-timing-bar i { display: block; height: 100%; transition: width .3s; }
+.computer-timing-bar .think, .computer-timing-legend .think::before { background: var(--purple, #8b82cc); }
+.computer-timing-bar .tool, .computer-timing-legend .tool::before { background: var(--success); }
+.computer-timing-bar .wait, .computer-timing-legend .wait::before { background: var(--warning); }
+.computer-timing-legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 5px; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.computer-timing-legend span::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+
+.computer-summary { display: flex; flex-direction: column; flex-shrink: 0; }
+.computer-summary-row { display: flex; gap: 8px; align-items: flex-start; padding: 7px 0; border-bottom: 1px solid var(--border); }
+.computer-summary-row svg { margin-top: 2px; color: var(--muted); flex: none; }
+.computer-summary-row div { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.computer-summary-row strong { font-size: 12.5px; font-weight: 550; }
+.computer-summary-row div small { color: var(--muted); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.computer-summary-row > small { color: var(--muted-2); font-size: 11.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.computer-control-bar { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-shrink: 0; }
+.computer-control-bar > div { display: flex; gap: 6px; flex: none; }
+.computer-control-bar button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm, 6px); padding: 4px 10px; background: var(--surface-raised); color: var(--text); font-size: 12px; }
+.computer-control-bar button.stop { color: var(--danger); }
+.computer-control-bar button:disabled { opacity: .45; }
+
+.computer-steps { flex-shrink: 0; }
+.computer-steps-head { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted-2); padding: 2px 0 4px; }
+.computer-step { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-top: 1px solid var(--border); font-size: 12px; animation: computer-in .2s ease-out; }
+.computer-step > i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted-2); flex: none; }
+.computer-step.running > i { background: var(--success); animation: computer-pulse 1s infinite; }
+.computer-step.error > i { background: var(--danger); }
+.computer-step.cancelled { color: var(--muted); }
+.computer-step > span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.computer-step small { font-size: 11.5px; color: var(--muted-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.computer-panel.is-expanded .computer-steps { display: none; }
+
+/* Built-in browser */
+.browser-banner { display: flex; gap: 10px; padding: 9px 11px; border-radius: var(--radius-md, 8px); border: 1px solid var(--border); background: var(--surface-raised); font-size: 12px; line-height: 1.6; flex-shrink: 0; }
+.browser-banner p { margin: 2px 0 6px; color: var(--muted); overflow-wrap: anywhere; }
+.browser-banner input { width: 100%; margin-bottom: 6px; background: var(--canvas); border: 1px solid var(--border); border-radius: 5px; padding: 5px; color: inherit; }
 .computer-authorization-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.computer-authorization-actions button, .computer-host-panel > button, .computer-shortcut button { border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; background: var(--surface-raised); color: var(--text); font-size: 12px; }
-.computer-authorization-actions button.danger { background: #8a2a22; border-color: #b8463c; color: #fff; }
-.browser-banner { border-color: var(--border); background: var(--surface-raised); }
-.browser-banner input { width: 100%; margin-bottom: 6px; background: var(--sidebar); border: 1px solid var(--border); border-radius: 5px; padding: 5px; color: inherit; }
+.computer-authorization-actions button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm, 6px); padding: 4px 10px; background: var(--surface-raised); color: var(--text); font-size: 12px; }
 .browser-tabs { display: flex; gap: 4px; overflow-x: auto; flex-shrink: 0; }
-.browser-tab { display: flex; align-items: center; max-width: 170px; min-width: 70px; border: 1px solid var(--border); border-radius: 7px; background: transparent; }
-.browser-tab.active { background: var(--surface-raised); }
-.browser-tab-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; padding: 4px 6px; font-size: 11px; background: transparent; border: 0; color: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.browser-tab { display: flex; align-items: center; max-width: 170px; min-width: 70px; border: 1px solid var(--border); border-radius: var(--radius-sm, 6px); background: transparent; }
+.browser-tab.active { background: var(--surface-raised); border-color: var(--border-strong); }
+.browser-tab-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; padding: 4px 6px; font-size: 11.5px; background: transparent; border: 0; color: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
 .browser-tab-close, .browser-tab-new { background: transparent; border: 0; color: var(--muted); padding: 3px 5px; display: inline-flex; align-items: center; }
 .browser-toolbar { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
-.browser-toolbar input { flex: 1; min-width: 0; background: var(--surface-raised); border: 1px solid var(--border); border-radius: 7px; padding: 6px 9px; color: inherit; font-size: 12px; }
+.browser-toolbar input { flex: 1; min-width: 0; background: var(--surface-raised); border: 1px solid var(--border-strong); border-radius: var(--radius-sm, 6px); padding: 5px 9px; color: inherit; font-size: 12px; }
 .browser-toolbar .icon-button { position: relative; }
 .browser-zoom { font-size: 11px; background: transparent; border: 1px solid var(--border); border-radius: 5px; color: var(--muted); padding: 3px 6px; }
-.browser-download-dot { position: absolute; top: 2px; right: 2px; width: 6px; height: 6px; border-radius: 50%; background: #67d9df; }
-.browser-downloads { display: flex; flex-direction: column; gap: 4px; max-height: 150px; overflow: auto; font-size: 11px; }
+.browser-download-dot { position: absolute; top: 2px; right: 2px; width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+.browser-downloads { display: flex; flex-direction: column; gap: 4px; max-height: 150px; overflow: auto; font-size: 11.5px; flex-shrink: 0; }
 .browser-downloads p { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
-.browser-downloads button { display: flex; justify-content: space-between; gap: 8px; text-align: left; background: var(--surface-raised); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; color: inherit; }
+.browser-downloads button { display: flex; justify-content: space-between; gap: 8px; text-align: left; background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--radius-sm, 6px); padding: 5px 8px; color: inherit; }
 .browser-downloads small { color: var(--muted); white-space: nowrap; }
-.browser-viewport { position: relative; flex: 1; min-height: 240px; border: 1px solid var(--border); border-radius: 8px; background: #fff; overflow: hidden; }
-.browser-empty { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 10px; align-items: center; justify-content: center; padding: 20px; text-align: center; color: #6b7682; background: var(--sidebar); font-size: 12px; line-height: 1.7; }
-.computer-host-panel { display: flex; flex-direction: column; gap: 10px; padding: 18px 16px; border: 1px solid #a4524a; border-radius: 8px; background: var(--surface-raised); overflow: auto; }
-.computer-host-panel > svg { color: #ff9b8f; }
-.computer-host-panel strong { font-size: 14px; font-weight: 550; }
-.computer-host-panel p, .computer-host-panel small { margin: 0; color: var(--muted); line-height: 1.7; font-size: 12px; }
-.computer-shortcut { display: flex; align-items: flex-end; gap: 8px; }
-.computer-shortcut label { flex: 1; display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--muted); }
-.computer-shortcut input { background: var(--sidebar); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; color: inherit; font-size: 12px; }
-.computer-control-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; flex-shrink: 0; }
-.computer-control-bar > span, .computer-control-bar button { display: inline-flex; align-items: center; gap: 6px; }
-.computer-control-bar > div { display: flex; gap: 6px; }
-.computer-control-bar i { height: 7px; width: 7px; background: var(--muted); border-radius: 50%; }
-.computer-control-bar i.is-running { background: #67d9df; }
-.computer-control-bar i.is-user { background: #f2c14e; }
-.computer-control-bar button { border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; background: var(--surface-raised); color: var(--text); }
-.computer-control-bar button.stop { border-color: #b8463c; color: #ff9b8f; }
-.computer-control-bar button:disabled { opacity: .5; }
-.computer-steps { flex-shrink: 0; max-height: 150px; overflow: auto; }
-.computer-steps h3 { margin: 4px 0 6px; font-size: 12px; font-weight: 550; }
-.computer-steps > p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
-.computer-step { display: flex; align-items: flex-start; gap: 9px; padding: 7px 0; border-top: 1px solid var(--border, #30363d); }
-.computer-step > i { width: 6px; height: 6px; margin-top: 5px; border-radius: 50%; background: #84909d; flex-shrink: 0; }
-.computer-step.running > i { background: #67d9df; }
-.computer-step.error > i { background: #e4a378; }
-.computer-step > div { min-width: 0; flex: 1; }
-.computer-step strong { display: block; font-size: 11px; font-weight: 500; }
-.computer-step small { font-size: 10px; color: var(--muted); white-space: nowrap; }
-.computer-panel.is-expanded .computer-steps { display: none; }
+.browser-viewport { position: relative; flex: 1; min-height: 240px; border: 1px solid var(--border-strong); border-radius: var(--radius-md, 8px); background: #fff; overflow: hidden; }
+.browser-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted-2); background: var(--surface); }
+
+/* Requests in the conversation: the desktop, or a website in the user's own browser. */
+.computer-approval { margin: 0 0 8px; padding: 11px 13px; border: 1px solid var(--border-strong); border-radius: var(--radius-lg, 10px); background: var(--surface-raised); box-shadow: var(--shadow-popup); display: flex; flex-direction: column; gap: 8px; animation: computer-in .25s ease-out; }
+.computer-approval header { display: flex; gap: 8px; align-items: flex-start; }
+.computer-approval header svg { margin-top: 2px; flex: none; color: var(--text-soft); }
+.computer-approval h3 { margin: 0; font-size: 13.5px; font-weight: 600; line-height: 1.45; }
+.computer-approval p, .computer-approval ul { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+.computer-approval ul { padding-left: 18px; }
+.computer-approval-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.computer-approval-actions button { border: 1px solid var(--border-strong); border-radius: var(--radius-sm, 6px); padding: 5px 11px; background: var(--surface-raised); color: var(--text); font-size: 12.5px; }
+.computer-approval-actions button:hover { background: var(--surface-hover); }
+.computer-approval-actions button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.computer-approval-actions button.danger { background: #b23a36; border-color: #b23a36; color: #fff; }
+.computer-approval-actions button.quiet { border-color: transparent; background: transparent; }
+
 .spin { animation: computer-spin 1s linear infinite; }
 @keyframes computer-spin { to { transform: rotate(360deg); } }
+
+/* Settings: Computer use */
+.computer-settings-heading { margin: 22px 0 2px; color: var(--muted); font-size: var(--font-size-caption, 12px); font-weight: 500; }
+.computer-settings-heading:first-child { margin-top: 4px; }
+.computer-settings .settings-row.compact { min-height: 48px; }
+.computer-settings-steps { display: flex; flex-direction: column; gap: 10px; padding: 12px 0 14px; border-bottom: 1px solid var(--border); }
+.computer-settings-steps ol { margin: 0; padding-left: 20px; color: var(--text-soft); font-size: var(--font-size-control, 13px); line-height: 1.9; }
+.computer-settings-steps .settings-action { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; }
+.computer-settings-empty { margin: 10px 0; color: var(--muted); font-size: var(--font-size-caption, 12px); }
+.computer-shortcut-form { display: flex; gap: 6px; align-items: center; }
+.computer-shortcut-form input { width: 170px; height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--text-soft); font-size: var(--font-size-control, 13px); }

@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Cleo",
+  "version": "1.0.0",
+  "description": "Lets the Cleo desktop app work in tabs you choose, in the background, with your permission per website.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAntMe2sGC+6ZBOKupvlEQTN5BcNvFntBDk+xP9mwF3ajrrlR3bp3DVKuxwRZS4ndV67gkKKbN6OjbJhZxyeDvhY6GFUlWm4KRACJJUppGJjcXt29wVFsM83v9Cykek61UE1LQKuBfNm+5C8pOw6zHfcw6uMykKOOeD+j2+nCVvXfto0hkVXh3nV+DIH2BdzlD5r4RTQbR9OQnzb/eEoLN+jMzk7fwbD5sCpzBb/pVKxTlkE0EtaJDrU3rqdJkEf4mN+V3UxyLei8BR6b5UrnA2pd0/ujR5anwPciIIhil0hUIPyD4bKBPCmuWumlGsdL7c4xl3IYW1+uTgNYpFN67hQIDAQAB",
+  "minimum_chrome_version": "116",
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": [
+    "debugger",
+    "tabs",
+    "tabGroups",
+    "nativeMessaging",
+    "alarms"
+  ],
+  "icons": {
+    "128": "icon-128.png"
+  },
+  "action": {
+    "default_title": "Cleo"
+  }
+}

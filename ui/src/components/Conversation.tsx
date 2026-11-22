@@ -75,6 +75,7 @@ import type {
 } from "../types";
 import { PermissionSelector } from "./PermissionSelector";
 import { ApprovalPrompt } from "./ApprovalPrompt";
+import { ComputerApprovals } from "./ComputerPanel";
 import { MoveThreadDialog, RenameThreadDialog } from "./Overlays";
 import { handleDialogKeyDown } from "./Modal";
 import { approvalLabel, projectLabel } from "../runtime-labels";
@@ -614,6 +615,7 @@ export function Conversation({
         approvalPending={approvalPending}
         approvalError={approvalError}
         onResolveApproval={onResolveApproval}
+        computerThreadId={thread?.id ?? null}
       />
       </div>
       </div>
@@ -1596,6 +1598,7 @@ function Composer({
   onListFiles,
   fileListKey = "",
   onSteerDraft,
+  computerThreadId = null,
 }: Pick<
   ConversationProps,
   | "prompt"
@@ -1641,7 +1644,8 @@ function Composer({
   | "onChooseWorkspace"
   | "choosingWorkspace"
 > & { steerReady?: boolean; drafting?: boolean; worktree?: ConversationProps["worktree"]; usage?: Usage;
-  onListFiles?: ConversationProps["onListFiles"]; fileListKey?: string; onSteerDraft?: ConversationProps["onSteerDraft"] }) {
+  onListFiles?: ConversationProps["onListFiles"]; fileListKey?: string; onSteerDraft?: ConversationProps["onSteerDraft"];
+  computerThreadId?: string | null }) {
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   // @-mentions: the caret position, the project's file list (read once per project) and the menu.
   const [caret, setCaret] = useState(0);
@@ -1837,6 +1841,7 @@ function Composer({
         error={approvalError}
         onResolve={onResolveApproval}
       />
+      <ComputerApprovals threadId={computerThreadId} />
       <div
         className={`composer ${running ? "running" : ""} ${draggingFiles ? "dragging-files" : ""}`}
         data-testid="composer"

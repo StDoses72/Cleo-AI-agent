@@ -23,6 +23,8 @@ window.addEventListener("DOMContentLoaded", () => {
     const handback = document.querySelector("[data-action='handback-desktop']");
     document.documentElement.lang = status.language;
     if (label) label.textContent = status.label;
+    const bar = document.querySelector(".bar");
+    if (bar) bar.dataset.phase = status.phase || "";
     if (shortcut) shortcut.textContent = status.shortcutLabel;
     for (const button of document.querySelectorAll("[data-action]")) {
       if (status.buttons[button.dataset.action]) button.textContent = status.buttons[button.dataset.action];
