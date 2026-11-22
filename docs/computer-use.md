@@ -139,4 +139,4 @@ AI 切换目标时，整页随之换成新目标的内容。任务结束后，�
 - `node tests/computer-panel.smoke.mjs`：电脑页的三种模式、本次摘要、对话中的确认卡片、设置 → 电脑操作和文件侧栏。
 - `tests/integrations/test_computer_host.py`：本机控制器的坐标换算、多显示器、用户活动检测、停止与按键释放，以及启动应用时按可观察信号等待（使用模拟的 Win32 层）。
 - `tests/integrations/test_computer_browser_native.py`、`tests/integrations/test_computer_host_native.py`：分别设置 `CLEO_TEST_ELECTRON`、`CLEO_TEST_HOST_INPUT=1` 后在真实 Electron / 真实输入下运行。
-- `scripts/bench_desktop_computer.py`：在真实桌面上用 `--launch legacy` 和 `--launch current` 分别计时一段固定流程，用于前后对比；它会发送真实输入，只能在空闲桌面上运行。
+- `scripts/bench_desktop_computer.py`（工具层）和 `scripts/compare-computer-use.mjs`（真实模型跑完整任务）：用于本机桌面的前后对比，方法和 2026-11-21 的实测结果见[电脑操作对比](benchmark-computer-use.md)。两者都会发送真实输入，只能在空闲桌面上运行。

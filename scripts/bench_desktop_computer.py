@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import re
 import statistics
 import sys
 import time
@@ -74,6 +75,11 @@ async def flow(controller: HostController, app: str, legacy: bool) -> list[dict]
     await step("scroll", "scroll", x=x, y=y, direction="down", amount=2, **sign)
     await step("clear text", "key", keys="delete", **sign)
     await step("close app", "key", keys="alt+f4", **sign)
+    # Answer "don't save" only when Notepad's own prompt is in front, never into another window.
+    await asyncio.sleep(0.6)
+    shot = await controller.run("screenshot", {})
+    if re.search(r"记事本|Notepad", shot.get("foreground") or "", re.I):
+        await controller.run("key", {"keys": "n", "signature": shot["signature"]})
     return steps
 
 

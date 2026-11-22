@@ -984,7 +984,8 @@ class HostController:
             waited += LAUNCH_POLL
             self._checkpoint()
             current = self.api.foreground()
-            if current.get("hwnd") and current["hwnd"] not in excluded:
+            # Untitled windows (shell surfaces, transient popups) are not the app being waited for.
+            if current.get("hwnd") and current["hwnd"] not in excluded and current.get("title"):
                 return current
         return None
 
