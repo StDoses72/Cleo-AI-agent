@@ -6418,5 +6418,9 @@
   "broker.ub_page_changed": {
     "zh-CN": "读取期间页面跳转到了另一个网站，内容未返回。请重新截图。",
     "en": "The page moved to another website while it was being read; nothing was returned. Take a new screenshot."
+  },
+  "broker.ub_page_changed_since_screenshot": {
+    "zh-CN": "截图之后页面已换到另一个网站，旧坐标作废。请重新截图。",
+    "en": "The page moved to another website after the screenshot; its coordinates have expired. Take a new screenshot."
   }
 }

@@ -77,12 +77,20 @@ try {
   assert.ok(tab, "the user's existing tab is listed");
   assert.equal(tab.showing, false, "the target is a background tab");
 
-  // The first screenshot of 127.0.0.1 waits for the user's answer.
-  const shooting = broker.call(T, "user_browser_screenshot", { tab_id: tab.tab_id });
+  // The page moves to another website while the user is being asked: the answer for the old
+  // site does not cover the new one, and nothing is captured on its strength.
+  const moving = broker.call(T, "user_browser_screenshot", { tab_id: tab.tab_id });
   await until(() => broker.state().siteRequests.length, "the website request");
   assert.equal(broker.state().siteRequests[0].host, "127.0.0.1");
+  await target.goto(`http://localhost:${server.address().port}/form`);
   broker.answerSite(broker.state().siteRequests[0].id, "once");
-  const shot = json(await shooting).screenshot;
+  await until(() => broker.state().siteRequests[0]?.host === "localhost", "a request for the new website");
+  broker.answerSite(broker.state().siteRequests[0].id, "deny");
+  await assert.rejects(moving, /localhost/);
+  await target.goto(`${origin}/form`);
+
+  // Back on 127.0.0.1, which the user allowed once in this turn.
+  const shot = json(await broker.call(T, "user_browser_screenshot", { tab_id: tab.tab_id })).screenshot;
   assert.ok(shot.width > 300 && shot.height > 200, `screenshot ${shot.width}x${shot.height}`);
 
   const read = json(await broker.call(T, "user_browser_read", { tab_id: tab.tab_id }));

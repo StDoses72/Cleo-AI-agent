@@ -525,7 +525,7 @@ class FakeUserBrowser extends EventEmitter {
   }
   async capture(id) { this.geo[id] ??= "800x600@1"; this.actions.push(["capture", id]); return { png: Buffer.from("png"), width: 800, height: 600, geometry: this.geo[id] }; }
   geometry(id) { return this.geo[id] ?? null; }
-  async liveUrl(id) { return this.live?.[id] ?? this.tab(id)?.url ?? ""; }
+  async liveUrl(id) { this.reads = (this.reads || 0) + 1; this.onRead?.(id); return this.live?.[id] ?? this.tab(id)?.url ?? ""; }
   async click(id, x, y) { if (this.gate) await this.gate; this.actions.push(["click", id, x, y]); }
   async type(id, value) { this.actions.push(["type", id, value]); }
   async keys(id, keys) { this.actions.push(["keys", id, keys]); }
@@ -739,4 +739,46 @@ test("review fixes: live address, own tab close, ended turns and lost browsers",
   await broker.setMode("thread-a", "user");
   await broker.userBrowserLost("canceled_by_user");
   await assert.rejects(broker.call(T, "user_browser_screenshot", { tab_id: "12" }), /断开或被用户取消/);
+});
+
+test("an approval is bound to the page at the moment of the action, not to the page that was asked about", async () => {
+  const user = new FakeUserBrowser();
+  const { broker } = setup({ userBrowser: user });
+  broker.turnStarted("thread-a");
+  await broker.setMode("thread-a", "user");
+
+  // The page moves to another website while the user is answering: the old answer does not
+  // cover it, the user is asked about the new site, and nothing is captured in between.
+  const shooting = broker.call(T, "user_browser_screenshot", { tab_id: "12" });
+  const first = await siteRequest(broker);
+  assert.equal(first.host, "github.com");
+  user.live = { 12: "https://bank.example.org/account" };
+  broker.answerSite(first.id, "once");
+  const second = await siteRequest(broker);
+  assert.equal(second.host, "bank.example.org", "the moved page is asked about on its own");
+  assert.equal(user.actions.filter(([kind]) => kind === "capture").length, 0, "nothing was captured on the strength of the old answer");
+  broker.answerSite(second.id, "deny");
+  await assert.rejects(shooting, /拒绝了 Cleo 访问 bank\.example\.org/);
+
+  // A capture taken while the page moved away is thrown away.
+  user.live = {};
+  broker.sites.allow("github.com");
+  user.onRead = () => { if (user.actions.some(([kind]) => kind === "capture")) user.live = { 12: "https://bank.example.org/account" }; };
+  await assert.rejects(broker.call(T, "user_browser_screenshot", { tab_id: "12" }), /跳转到了另一个网站/);
+  user.onRead = null;
+  user.live = {};
+
+  // Coordinates from a screenshot of one website are not used on another, even an approved one
+  // with the same viewport.
+  broker.sites.allow("docs.github.com");
+  const shot = json(await broker.call(T, "user_browser_screenshot", { tab_id: "12" })).screenshot;
+  user.live = { 12: "https://docs.github.com/labels" };
+  await assert.rejects(broker.call(T, "user_browser_click", { tab_id: "12", screenshot_id: shot.screenshot_id, x: 1, y: 1 }), /截图之后页面已换到另一个网站/);
+  assert.ok(!user.actions.some(([kind]) => kind === "click"), "no input reached the moved page");
+  // A page that moved to an unapproved website asks before any input as well.
+  user.live = { 12: "https://bank.example.org/account" };
+  const typing = broker.call(T, "user_browser_type", { tab_id: "12", screenshot_id: shot.screenshot_id, text: "secret" });
+  broker.answerSite((await siteRequest(broker)).id, "deny");
+  await assert.rejects(typing, /拒绝/);
+  assert.ok(!user.actions.some(([kind]) => kind === "type"), "nothing was typed into the unapproved page");
 });
