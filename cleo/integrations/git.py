@@ -360,45 +360,28 @@ def undo_git_checkpoint(value: dict[str, Any] | GitCheckpoint) -> GitUndoResult:
         checkpoint.before_index,
         checkpoint.after_index,
     )
-    reverse_patch = _git(
-        checkpoint.repo_root,
-        "diff",
-        "--binary",
-        "--full-index",
-        checkpoint.after_worktree,
-        checkpoint.before_worktree,
-        "--",
-        timeout=30,
-    )
-    if reverse_patch.returncode != 0:
-        raise RuntimeError(_git_error(reverse_patch, tr(
-            "git.git_could_not_create_this_turn_s_revert_patch",
-        )))
-
-    if reverse_patch.stdout:
-        checked = _git(
-            checkpoint.repo_root,
-            "apply",
-            "--check",
-            "--binary",
-            input_text=reverse_patch.stdout,
-            timeout=30,
+    with tempfile.TemporaryDirectory(prefix="cleo-git-undo-") as temporary:
+        patch = Path(temporary) / "revert.patch"
+        reverse_patch = _write_patch(
+            checkpoint.repo_root, checkpoint.after_worktree, checkpoint.before_worktree, patch,
         )
-        if checked.returncode != 0:
-            raise ValueError(_git_error(checked, tr(
-                "git.this_turn_s_changes_conflict_with_the_current_wo",
+        if reverse_patch.returncode != 0:
+            raise RuntimeError(_git_error(reverse_patch, tr(
+                "git.git_could_not_create_this_turn_s_revert_patch",
             )))
-        applied = _git(
-            checkpoint.repo_root,
-            "apply",
-            "--binary",
-            input_text=reverse_patch.stdout,
-            timeout=30,
-        )
-        if applied.returncode != 0:
-            raise RuntimeError(_git_error(applied, tr(
-                "git.git_could_not_apply_this_turn_s_revert_patch",
-            )))
+        if patch.stat().st_size:
+            checked = _git(
+                checkpoint.repo_root, "apply", "--check", "--binary", str(patch), timeout=30,
+            )
+            if checked.returncode != 0:
+                raise ValueError(_git_error(checked, tr(
+                    "git.this_turn_s_changes_conflict_with_the_current_wo",
+                )))
+            applied = _git(checkpoint.repo_root, "apply", "--binary", str(patch), timeout=30)
+            if applied.returncode != 0:
+                raise RuntimeError(_git_error(applied, tr(
+                    "git.git_could_not_apply_this_turn_s_revert_patch",
+                )))
 
     restored_index = _git(checkpoint.repo_root, "read-tree", checkpoint.before_index)
     if restored_index.returncode != 0:
@@ -495,24 +478,29 @@ def _validate_checkpoint_repository(checkpoint: GitCheckpoint) -> None:
 def _restore_after_worktree(checkpoint: GitCheckpoint) -> None:
     if checkpoint.after_worktree is None:
         return
-    forward_patch = _git(
-        checkpoint.repo_root,
-        "diff",
-        "--binary",
-        "--full-index",
-        checkpoint.before_worktree,
-        checkpoint.after_worktree,
-        "--",
-        timeout=30,
-    )
-    if forward_patch.returncode == 0 and forward_patch.stdout:
-        _git(
-            checkpoint.repo_root,
-            "apply",
-            "--binary",
-            input_text=forward_patch.stdout,
-            timeout=30,
+    with tempfile.TemporaryDirectory(prefix="cleo-git-undo-") as temporary:
+        patch = Path(temporary) / "restore.patch"
+        forward_patch = _write_patch(
+            checkpoint.repo_root, checkpoint.before_worktree, checkpoint.after_worktree, patch,
         )
+        if forward_patch.returncode == 0 and patch.stat().st_size:
+            _git(checkpoint.repo_root, "apply", "--binary", str(patch), timeout=30)
+
+
+def _write_patch(
+    repo_root: str, before: str, after: str, path: Path,
+) -> subprocess.CompletedProcess[str]:
+    """Purpose: Write the patch that turns ``before`` into ``after`` for ``git apply``.
+
+    Input: Two tree-ish names and the file to write. Output: The ``git diff`` result.
+    Git writes the file and reads it back itself: a pipe through Python's text mode
+    rewrites line endings on Windows, which breaks binary patches and LF files. Diff
+    drivers stay off, because a converter's text cannot restore the file it came from.
+    """
+    return _git(
+        repo_root, "diff", "--binary", "--full-index", "--no-ext-diff", "--no-textconv",
+        f"--output={path}", before, after, "--", timeout=30,
+    )
 
 
 def _git_error(result: subprocess.CompletedProcess[str], fallback: str) -> str:
@@ -524,7 +512,6 @@ def _git(
     cwd: str,
     *args: str,
     env: dict[str, str] | None = None,
-    input_text: str | None = None,
     timeout: int = 5,
 ) -> subprocess.CompletedProcess[str]:
     """执行一次 git 子命令(带 5 秒超时, 不抛异常)。
@@ -540,8 +527,7 @@ def _git(
         return subprocess.run(
             # core.longpaths lets Git for Windows work past MAX_PATH; others ignore it.
             ["git", "-c", "core.longpaths=true", "-C", cwd, *args],
-            stdin=subprocess.DEVNULL if input_text is None else None,
-            input=input_text,
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             encoding="utf-8",
