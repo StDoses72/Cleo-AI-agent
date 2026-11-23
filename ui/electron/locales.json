@@ -5968,8 +5968,8 @@
     "en": "Could not read the project's files."
   },
   "shortcuts.steer_now": {
-    "zh-CN": "运行中：现在插入当前运行（而不是排队）",
-    "en": "While running: send into the run now (instead of queueing)"
+    "zh-CN": "运行中提交补充指令，按当前运行环境立即或下轮投递",
+    "en": "Submit a follow-up during a run. Delivery is immediate or next turn, depending on the harness."
   },
   "review.pull_request_closed": {
     "zh-CN": "已关闭",
