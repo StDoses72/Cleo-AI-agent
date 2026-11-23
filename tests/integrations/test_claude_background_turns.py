@@ -614,9 +614,12 @@ def test_reply_and_thinking_stream_as_they_are_written():
     assert turn.status == "completed" and turn.response == "Hello"
 
 
-def test_service_shows_one_message_for_a_streamed_reply(tmp_path, monkeypatch):
+@pytest.mark.parametrize("interval, saved", [(60, ["Hello"]), (0, ["Hel", "lo"])])
+def test_service_shows_one_message_for_a_streamed_reply(tmp_path, monkeypatch, interval, saved):
     from cleo.desktop.projection import stream_event_item
 
+    # Streamed text waits for a save point: the interval, or whatever is logged next.
+    monkeypatch.setattr("cleo.harnesses.service.STREAMED_TEXT_SAVE_SECONDS", interval)
     store = SessionStore(tmp_path / "memory")
     service = AgentService(tmp_path, session_store=store)
     provider = ClaudeProvider()
@@ -636,8 +639,11 @@ def test_service_shows_one_message_for_a_streamed_reply(tmp_path, monkeypatch):
                     shown[update["item"]["id"]] = update["item"]["content"]
         assert list(shown.values()) == ["Hello"], "chunks and the finished reply are one item"
         events = store.read_events(session.id)
-        assert [e["content"] for e in events if e["type"] == "assistant_message"][:1] == ["Hello"]
-        assert [e["content"] for e in events if e["type"] == "assistant_fragment"] == ["Hel", "lo"]
+        replies = [(e["type"], e["content"]) for e in events
+                   if e["type"] in {"assistant_fragment", "assistant_message"}]
+        assert replies[:len(saved) + 1] == [
+            *(("assistant_fragment", text) for text in saved), ("assistant_message", "Hello"),
+        ], "streamed text is logged ahead of the reply that completes it"
         items = timeline_from_events(events)
         assert [i["content"] for i in items if i["type"] == "thought"] == ["plan first"]
         assert [i["content"] for i in items if i["type"] == "message"

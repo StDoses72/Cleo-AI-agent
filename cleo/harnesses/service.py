@@ -41,6 +41,10 @@ from cleo.memory.provenance import MEMORY_CONTEXT_EVENT
 from cleo.runtime.usage import RateLimitWindowUsage
 from cleo.sessions.ports import SessionRepository
 
+# Streamed reply text is shown at once and reaches the session log this often at most: an
+# append also rewrites the manifest and the index, which is slower than deltas arrive.
+STREAMED_TEXT_SAVE_SECONDS = 0.25
+
 
 @dataclass(slots=True)
 class _SessionRoute:
@@ -578,27 +582,56 @@ class AgentService:
 
         async def deliver() -> None:
             nonlocal delivery_error
+            clock = asyncio.get_running_loop().time
+            # Reply text already shown and not yet in the log, and when it began to wait.
+            unsaved: dict | None = None
+            waiting_since = 0.0
+
+            async def save(*records: dict) -> None:
+                """Append the waiting reply text, then ``records``, in arrival order."""
+                nonlocal unsaved
+                waiting, unsaved = unsaved, None
+                events = [*([waiting] if waiting else []), *records]
+                if events:
+                    await asyncio.to_thread(
+                        self._store.append_events,
+                        space=self._space,
+                        project=route.project,
+                        session_id=session_id,
+                        events=events,
+                    )
+
             while True:
                 item = await pending.get()
                 if item is None:
+                    # An interrupted reply ends here too: what was shown reaches the log.
+                    await save()
                     return
                 event, projected, stored, done = item
                 try:
-                    if stored is not None:
-                        await asyncio.to_thread(
-                            self._store.append_events,
-                            space=self._space,
-                            project=route.project,
-                            session_id=session_id,
-                            events=[stored],
-                        )
+                    if (stored is not None and stored["type"] == "assistant_fragment"
+                            and event_payload(event).get("stream") == "message"):
+                        # One append per delta would pace the stream at the speed of the log.
+                        message = stored["data"]["timeline_id"]
+                        if unsaved is not None and unsaved["data"]["timeline_id"] == message:
+                            unsaved["content"] += stored["content"]
+                        else:
+                            await save()
+                            unsaved, waiting_since = stored, clock()
                         live_events.add(id(event))
-                    try:
                         await emit_event(on_event, projected)
-                    except Exception:
-                        # A durable answer is final even if its UI notification closes.
-                        if event.type != "question_response" or stored is None:
-                            raise
+                        if clock() - waiting_since >= STREAMED_TEXT_SAVE_SECONDS:
+                            await save()
+                    else:
+                        if stored is not None:
+                            await save(stored)
+                            live_events.add(id(event))
+                        try:
+                            await emit_event(on_event, projected)
+                        except Exception:
+                            # A durable answer is final even if its UI notification closes.
+                            if event.type != "question_response" or stored is None:
+                                raise
                 except (Exception, asyncio.CancelledError) as exc:
                     # ACP notification tasks are independent of prompt: their errors
                     # must also fail the turn, even if nobody awaits that callback.
