@@ -11,17 +11,12 @@ export function loadWorkspaceWindow(window, { index, dialog, isQuitting }) {
     if (!canRecover() || prompting) return;
     prompting = true;
     console.error("Workspace window:", detail);
-    let retry;
-    try {
-      const answer = await dialog.showMessageBox(window, {
-        type: "error", title: "Cleo", message: tr("main.workspace_display_failed"), detail,
-        buttons: [tr("computerpanel.reload"), tr("main.dismiss_window_error")], defaultId: 0, cancelId: 1,
-      });
-      retry = answer.response === 0;
-    } finally {
-      prompting = false;
-    }
-    if (retry && canRecover()) await load();
+    const { response } = await dialog.showMessageBox(window, {
+      type: "error", title: "Cleo", message: tr("main.workspace_display_failed"), detail,
+      buttons: [tr("computerpanel.reload"), tr("main.dismiss_window_error")], defaultId: 0, cancelId: 1,
+    });
+    prompting = false;
+    if (response === 0 && canRecover()) await load();
   }
   window.webContents.on("render-process-gone", (_event, details) => {
     if (details.reason !== "clean-exit") void recover(details.reason);

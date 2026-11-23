@@ -378,19 +378,14 @@ try {
   // Exercise the actual Electron crash event. Only the native user's Retry selection is simulated.
   await application.evaluate(async ({ BrowserWindow, dialog }) => {
     const contents = BrowserWindow.getAllWindows()[0].webContents;
-    const original = dialog.showMessageBox;
     let prompted = false;
     dialog.showMessageBox = async () => { prompted = true; return { response: 0 }; };
-    try {
-      await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error("Renderer did not recover")), 15000);
-        contents.once("did-finish-load", () => { clearTimeout(timeout); resolve(); });
-        contents.forcefullyCrashRenderer();
-      });
-      if (!prompted || contents.isCrashed()) throw new Error("Workspace recovery failed");
-    } finally {
-      dialog.showMessageBox = original;
-    }
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("Renderer did not recover")), 15000);
+      contents.once("did-finish-load", () => { clearTimeout(timeout); resolve(); });
+      contents.forcefullyCrashRenderer();
+    });
+    if (!prompted || contents.isCrashed()) throw new Error("Workspace recovery failed");
   });
   await application.close();
   application = undefined;
