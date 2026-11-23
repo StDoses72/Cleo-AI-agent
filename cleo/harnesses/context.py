@@ -127,12 +127,14 @@ def _turn(event: dict, current: str) -> str:
 def project(events: list[dict]) -> list[dict]:
     """Normalize only demonstrably superseded fragments; never dedupe by text alone."""
     final_turns: set[str] = set()
+    complete_messages = set()
     current = ""
     for event in events:
         if event["type"] == "user_message" and not (event.get("data") or {}).get("steer_id"):
             current = event["id"]
         if event["type"] == "assistant_message":
             final_turns.add(_turn(event, current))
+            complete_messages.add((event.get("data") or {}).get("timeline_id") or event["id"])
     records: list[dict] = []
     current = ""
     fragments: dict[str, dict] = {}
@@ -148,10 +150,18 @@ def project(events: list[dict]) -> list[dict]:
         ).startswith("cleo/"):
             continue
         if kind == "assistant_fragment":
-            if turn and turn in final_turns:
-                continue
-            # Missing turn identity remains isolated, rather than merging unrelated answers.
-            key = turn or event["id"]
+            data = event.get("data") or {}
+            # A Claude turn can have a completed commentary block followed by an interrupted reply.
+            payload = data.get("payload")
+            message_id = data.get("timeline_id")
+            if message_id and isinstance(payload, dict) and payload.get("stream") == "message":
+                key = message_id
+                if key in complete_messages:
+                    continue
+            else:
+                if turn and turn in final_turns:
+                    continue
+                key = turn or event["id"]
             if key not in fragments:
                 fragments[key] = {
                     "ref": event["id"],

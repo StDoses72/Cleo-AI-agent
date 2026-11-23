@@ -7,7 +7,7 @@ import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { desktopPlatform } from "../electron/platform.mjs";
 import { ProgramStore, exists, writeJson } from "../electron/program-store.mjs";
-import { refreshInstalledLauncher, updateWindowsUninstallEntry, WINDOWS_INSTALLER_APP_ID, MAX_REFRESH_ATTEMPTS } from "../electron/launcher-refresh.mjs";
+import { configureLaunchShortcuts, refreshInstalledLauncher, updateWindowsUninstallEntry, WINDOWS_INSTALLER_APP_ID, MAX_REFRESH_ATTEMPTS } from "../electron/launcher-refresh.mjs";
 
 const target = desktopPlatform();
 const key = (path) => process.platform === "win32" ? resolve(path).toLowerCase() : resolve(path);
@@ -447,4 +447,32 @@ test("the Inno uninstall entry is located by its recorded App Path and shows the
   const { stdout } = await ps(`[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $a = Get-ItemProperty -LiteralPath '${hive}\\${WINDOWS_INSTALLER_APP_ID}_is1'; $b = Get-ItemProperty -LiteralPath '${hive}\\{OTHER}_is1'; [Console]::Out.Write((ConvertTo-Json -Compress -InputObject @{ version = $a.DisplayVersion; major = $a.VersionMajor; minor = $a.VersionMinor; other = $b.DisplayVersion }))`);
   assert.deepEqual(JSON.parse(stdout.trim()), { version: "0.9.0", major: 0, minor: 9, other: "1.0.0" });
   assert.deepEqual(await updateWindowsUninstallEntry(join(tmpdir(), "nowhere"), "0.9.0", { hives: [hive], appId: "{MISSING}" }), [], "a missing entry is not an error");
+});
+
+test("repair managed-build links and pin new launches to the verified installer", async t => {
+  const { store, launcher, refresh } = await fixture(t);
+  const desktop = join(store.root, "Desktop");
+  const appData = join(store.root, "Roaming");
+  const programs = join(appData, "Microsoft", "Windows", "Start Menu", "Programs");
+  const pins = join(appData, "Microsoft", "Internet Explorer", "Quick Launch", "User Pinned", "TaskBar");
+  const target = join(store.root, "builds", "retired-version", "Cleo", "Cleo.exe");
+  const links = new Map();
+  for (const folder of [desktop, programs, pins]) {
+    await mkdir(folder, { recursive: true });
+    const path = join(folder, "Cleo.lnk");
+    await writeFile(path, "");
+    links.set(path, { target, cwd: dirname(target), args: "", icon: target });
+  }
+  links.get(join(desktop, "Cleo.lnk")).args = "--cleo-recovery";
+  const writes = [];
+  let details;
+  const shell = { readShortcutLink: path => links.get(path),
+    writeShortcutLink(path, op, options) { writes.push([path, op, options]); return true; } };
+  const window = { isDestroyed: () => false, setAppDetails: value => { details = value; } };
+  const ready = await refresh();
+  // The refresh fixture uses native bundles. The Windows link code consumes its validated result.
+  await configureLaunchShortcuts({ ...ready, root: store.root, window, shell, appData, desktop, alpha: false });
+  assert.equal(details.relaunchCommand, `"${key(launcher)}"`);
+  assert.deepEqual(writes, [programs, pins].map(folder => [join(folder, "Cleo.lnk"), "update",
+    { target: key(launcher), cwd: dirname(key(launcher)), icon: key(launcher), iconIndex: 0 }]));
 });

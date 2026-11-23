@@ -26,6 +26,7 @@ import { createSourceControl } from "./source-control.mjs";
 import { SelectableUpdater, SelectableProgramUpdates } from "./selectable-updates.mjs";
 import { ReleaseDownloads } from "./release-downloads.mjs";
 import { createQuitBarrier } from "./shutdown.mjs";
+import { loadWorkspaceWindow } from "./workspace-window.mjs";
 import { createTrayController } from "./tray.mjs";
 import { createBackgroundMemoryScheduler } from "./background-memory.mjs";
 import { DependencyUpdater } from "./dependencies.mjs";
@@ -41,10 +42,7 @@ let windowTheme = null;
 const here = dirname(fileURLToPath(import.meta.url));
 const alphaChannel = configureReleaseChannel(app);
 let desktopTray;
-if (app.isPackaged && !acquireSingleInstance(app, () => {
-    const window = desktopTray?.isQuitting() ? null : desktopTray?.getWindow();
-    return window ? [window] : [];
-  })) {
+if (app.isPackaged && !acquireSingleInstance(app, () => desktopTray?.show())) {
   app.exit(0);
 } else {
 // Do not register ready handlers or publish a bridge after the instance lock was denied.
@@ -281,7 +279,9 @@ function createWindow() {
     if (!desktopTray.isQuitting()) window.show();
   });
   computer.attachWindow(window);
-  void window.loadFile(join(here, "../dist/index.html"));
+  loadWorkspaceWindow(window, {
+    index: join(here, "../dist/index.html"), dialog, isQuitting: desktopTray.isQuitting,
+  });
   return window;
 }
 

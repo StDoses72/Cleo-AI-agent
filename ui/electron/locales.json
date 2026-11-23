@@ -936,8 +936,24 @@
     "en": "Waiting for delivery"
   },
   "conversation.send_after_the_current_reply": {
-    "zh-CN": "已排队",
-    "en": "Queued"
+    "zh-CN": "等待本轮收尾后发送",
+    "en": "Waiting for this turn to finish"
+  },
+  "main.dismiss_window_error": {
+    "zh-CN": "暂不重试",
+    "en": "Dismiss"
+  },
+  "main.workspace_display_failed": {
+    "zh-CN": "无法显示 Cleo 工作区。要重新加载窗口吗？",
+    "en": "Cleo could not display the workspace. Reload the window?"
+  },
+  "conversation.send_next_turn": {
+    "zh-CN": "下轮发送",
+    "en": "Send next turn"
+  },
+  "conversation.send_next_turn_hint": {
+    "zh-CN": "本轮收尾后发送（{p0} Enter）",
+    "en": "Send after this turn finishes ({p0} Enter)"
   },
   "conversation.delivering": {
     "zh-CN": "正在投递",

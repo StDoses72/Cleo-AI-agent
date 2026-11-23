@@ -158,7 +158,7 @@ _UNTRACKED_DIFF_FILES = 50
 _UNTRACKED_DIFF_BYTES = 1024 * 1024
 
 
-def _untracked_diffs(repo_root: str) -> tuple[list[str], list[str]]:
+def _untracked_diffs(repo_root: str, options: tuple[str, ...]) -> tuple[list[str], list[str]]:
     """Purpose: New-file diffs for untracked files, as ``git diff`` shows staged ones.
 
     Input: Repository root. Output: The diffs, and the untracked paths left out (beyond
@@ -174,7 +174,7 @@ def _untracked_diffs(repo_root: str) -> tuple[list[str], list[str]]:
         except OSError:
             too_large = True
         result = None if too_large else _git(
-            repo_root, "diff", "--no-ext-diff", "--no-color", "--no-index", "--",
+            repo_root, "diff", *options, "--no-index", "--",
             "/dev/null", path,
         )
         # --no-index exits with 1 when the files differ, which is always the case here.
@@ -185,7 +185,7 @@ def _untracked_diffs(repo_root: str) -> tuple[list[str], list[str]]:
     return diffs, skipped
 
 
-def read_git_diff(cwd: str) -> str | None:
+def read_git_diff(cwd: str, *, textconv: bool = False) -> str | None:
     """Return the current diff, with untracked files shown as new files.
 
     Untracked files that are too many, too large or unreadable retain a file diff header.
@@ -194,17 +194,18 @@ def read_git_diff(cwd: str) -> str | None:
     if status is None:
         return None
 
-    result = _git(status.repo_root, "diff", "--no-ext-diff", "--no-color", "HEAD", "--")
+    # Automatic refresh must not launch a document converter for each changed binary.
+    options = ("--no-ext-diff", "--no-color", "--textconv" if textconv else "--no-textconv")
+    result = _git(status.repo_root, "diff", *options, "HEAD", "--")
     if result.returncode == 0:
         diff = result.stdout.rstrip()
     else:
-        unstaged = _git(status.repo_root, "diff", "--no-ext-diff", "--no-color", "--")
+        unstaged = _git(status.repo_root, "diff", *options, "--")
         staged = _git(
             status.repo_root,
             "diff",
             "--cached",
-            "--no-ext-diff",
-            "--no-color",
+            *options,
             "--",
         )
         diff = "\n".join(
@@ -213,7 +214,7 @@ def read_git_diff(cwd: str) -> str | None:
             if part.strip()
         )
 
-    untracked, skipped = _untracked_diffs(status.repo_root)
+    untracked, skipped = _untracked_diffs(status.repo_root, options)
     diff = "\n".join(part for part in (diff, *untracked) if part)
     for path in skipped:
         left, right = (json.dumps(prefix + path) for prefix in ("a/", "b/"))
@@ -322,6 +323,7 @@ def read_git_checkpoint_diff(value: dict[str, Any] | GitCheckpoint) -> str:
         checkpoint.repo_root,
         "diff",
         "--no-ext-diff",
+        "--no-textconv",
         "--no-color",
         checkpoint.before_worktree,
         checkpoint.after_worktree,

@@ -637,10 +637,33 @@ def test_service_shows_one_message_for_a_streamed_reply(tmp_path, monkeypatch):
         assert list(shown.values()) == ["Hello"], "chunks and the finished reply are one item"
         events = store.read_events(session.id)
         assert [e["content"] for e in events if e["type"] == "assistant_message"][:1] == ["Hello"]
-        assert not [e for e in events if e["type"] == "assistant_fragment"]
+        assert [e["content"] for e in events if e["type"] == "assistant_fragment"] == ["Hel", "lo"]
         items = timeline_from_events(events)
         assert [i["content"] for i in items if i["type"] == "thought"] == ["plan first"]
         assert [i["content"] for i in items if i["type"] == "message"
                 and i.get("role") == "assistant"] == ["Hello"]
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("attached", [True, False])
+def test_interrupted_claude_text_survives_reopen(tmp_path, monkeypatch, attached):
+    store = SessionStore(tmp_path / "memory")
+    service = AgentService(tmp_path, session_store=store)
+    provider = ClaudeProvider()
+    client = Client([_delta("text_delta", "only "), _delta("text_delta", "half")])
+    monkeypatch.setattr(provider, "_connect", AsyncMock(
+        return_value=_ClaudeRuntime(client, SessionOptions(), str(tmp_path)),
+    ))
+    service.register(provider)
+
+    async def scenario():
+        session = await service.create_session("claude", str(tmp_path))
+        with pytest.raises(RuntimeError, match="ResultMessage"):
+            await service.prompt(session.id, "hi", on_event=[].append if attached else None)
+        reopened = SessionStore(tmp_path / "memory")
+        items = timeline_from_events(reopened.read_events(session.id))
+        answers = [item["content"] for item in items if item.get("role") == "assistant"]
+        assert answers == ["only half"]
 
     asyncio.run(scenario())

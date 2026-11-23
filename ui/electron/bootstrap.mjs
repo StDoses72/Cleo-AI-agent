@@ -1,5 +1,5 @@
 import { t as tr } from "./i18n.mjs";
-import { app, dialog, ipcMain, nativeTheme } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from "electron";
 import { join, resolve } from "node:path";
 import { ProgramStore } from "./program-store.mjs";
 import { desktopDataHome } from "./platform.mjs";
@@ -78,13 +78,19 @@ async function boot() {
     }
   }
   const transactionId = process.env.CLEO_EVOLUTION_TRANSACTION;
-  ipcMain.handle("cleo:program:healthy", async () => {
+  ipcMain.handle("cleo:program:healthy", async (event) => {
     await store.exclusive(() => store.healthy(transactionId));
     app.emit("cleo:healthy", transactionId);
     if (process.platform === "win32") {
       // The Start Menu entry (Programs\Cleo) must carry the icon and version of the program that actually runs.
+      const window = BrowserWindow.fromWebContents(event.sender);
       void import("./launcher-refresh.mjs")
-        .then(({ refreshInstalledLauncher }) => refreshInstalledLauncher({ store, log: (text) => console.error(text) }))
+        .then(async ({ refreshInstalledLauncher, configureLaunchShortcuts }) => {
+          const { results } = await refreshInstalledLauncher({ store, log: (text) => console.error(text) });
+          await configureLaunchShortcuts({ results, root, shell, window,
+            appData: app.getPath("appData"), desktop: app.getPath("desktop"),
+            alpha: app.getVersion().endsWith("-alpha") });
+        })
         .catch((error) => console.error("Launcher refresh:", error.message));
     }
   });

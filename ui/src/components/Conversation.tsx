@@ -1678,6 +1678,8 @@ function Composer({
     if (!content || sendBlocked) return;
     onSend(content);
   };
+  const boundarySteer = runtime.steerMode === "boundary";
+  const steerLabel = boundarySteer ? tr("conversation.send_next_turn") : tr("conversation.steer_now");
   const canSteer = running && Boolean(runtime.steerMode) && Boolean(steerReady);
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (composing.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
@@ -1709,7 +1711,7 @@ function Composer({
       onCancel();
       return;
     }
-    // Ctrl/Cmd+Enter while a turn runs steers the text into it instead of queueing.
+    // Ctrl/Cmd+Enter submits through the active harness’s delivery mode.
     if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && canSteer && onSteerDraft) {
       event.preventDefault();
       if (prompt.trim() && !attachments.length && !steeringBusy) onSteerDraft(composerText);
@@ -1899,8 +1901,8 @@ function Composer({
               {message.attachments.filter(item => item.thumbnail).slice(0, 3).map(item => <img key={item.path} src={item.thumbnail} alt="" />)}
               <Paperclip size={12} />{message.attachments.length}</span> : null}
             {canSteer && !message.attachments.length && onSteerQueued && <button type="button" className="queued-steer"
-              title={tr("conversation.insert_into_the_current_run_now")} disabled={steeringBusy} onClick={() => onSteerQueued(message.id)} data-testid="steer-queued">
-              <CornerDownRight size={13} />Steer</button>}
+              title={boundarySteer ? steerLabel : tr("conversation.insert_into_the_current_run_now")} disabled={steeringBusy} onClick={() => onSteerQueued(message.id)} data-testid="steer-queued">
+              <CornerDownRight size={13} />{steerLabel}</button>}
             {!running && onSendQueued && <button type="button" aria-label={tr("conversation.send")} title={tr("conversation.send")} disabled={Boolean(sendBlocked)}
               onClick={() => onSendQueued(message.id)}><ArrowUp size={13} /></button>}
             {onEditQueued && <button type="button" aria-label={tr("conversation.edit")} title={tr("conversation.edit")} onClick={() => { onEditQueued(message.id); inputRef.current?.focus(); }}>
@@ -1997,13 +1999,12 @@ function Composer({
           <div className="composer-send-actions">
           <ContextMeter usage={usage} provider={space === "productivity" ? runtime.provider : undefined}
             onLoadUsage={(provider) => cleoClient.getHarnessUsage(provider)} />
-          {/* While a turn runs the message can wait in the queue (Enter) or go into the run now (Steer). */}
           {canSteer && onSteerDraft ? (
             <button className="steer-button" type="button" data-testid="steer-now"
               disabled={steeringBusy || !prompt.trim() || attachments.length > 0}
-              title={attachments.length ? undefined : tr("conversation.steer_now_hint", { p0: modifierKey })}
+              title={attachments.length ? undefined : tr(boundarySteer ? "conversation.send_next_turn_hint" : "conversation.steer_now_hint", { p0: modifierKey })}
               onClick={() => onSteerDraft(composerText)}>
-              <CornerDownRight size={13} />{tr("conversation.steer_now")}
+              <CornerDownRight size={13} />{steerLabel}
             </button>
           ) : null}
           {running && (

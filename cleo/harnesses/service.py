@@ -665,12 +665,12 @@ class AgentService:
                     },
                 )
             phase(tr("service.model_run_including_tools_and_waiting"))
-            if on_event is not None:
+            if on_event is not None or route.provider.name == "claude":
                 consumer = asyncio.create_task(deliver())
             turn = await route.provider.prompt(
                 route.provider_session_id,
                 context + "\n\nCurrent user request:\n" + prompt if context else prompt,
-                relay if on_event is not None else None,
+                relay if consumer is not None else None,
             )
         except (Exception, asyncio.CancelledError) as exc:
             prompt_error = exc
@@ -1193,10 +1193,10 @@ class AgentService:
             and event_payload(event).get("phase") == "commentary"
         ):
             event_type = "thought"
-        elif event_type == "assistant_message_chunk" and event_payload(event).get("phase") in {
-            "final_answer",
-            "final",
-        }:
+        elif event_type == "assistant_message_chunk" and (
+            event_payload(event).get("phase") in {"final_answer", "final"}
+            or (event_payload(event).get("stream") == "message" and event.data.get("timeline_id"))
+        ):
             event_type = "assistant_fragment"
         if event_type in {
             "agent_message_chunk",
