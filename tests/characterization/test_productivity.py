@@ -233,6 +233,8 @@ def test_boundary_steering_queues_follow_up_until_the_turn_ends(
     thread = _new_task(backend, cleo_home)
     stream = backend.stream_turn(thread["id"], "first step [[delay]]", run_id="run-steer")
     stream.wait_for(lambda event: event["type"] == "turn-started")
+    # The snapshot lists the agent's thought ahead of the follow-up: steer once it has arrived.
+    stream.wait_for(lambda event: event.get("item", {}).get("type") == "thought")
     receipt = backend.call("steer_run", thread_id=thread["id"], run_id="run-steer",
                            request_id="steer-1", text="also do the second step")
     duplicate = backend.call_error("steer_run", thread_id=thread["id"], run_id="run-steer",

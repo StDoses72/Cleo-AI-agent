@@ -977,6 +977,7 @@ try {
     await page.getByTestId("runtime-selector").click();
     const menu = page.getByTestId("runtime-menu");
     await menu.getByTestId("runtime-model").first().waitFor();
+    const listed = await menu.getByTestId("runtime-model").count();
     const shortHeight = (await menu.boundingBox()).height;
     await page.keyboard.press("Escape");
     await menu.waitFor({ state: "detached" });
@@ -993,7 +994,7 @@ try {
     await page.getByTestId("runtime-selector").click();
     // More than eight models: a search field, and a menu as tall as its list, inside the window.
     await menu.getByTestId("runtime-model-search").waitFor();
-    assert.equal(await menu.getByTestId("runtime-model").count(), 12);
+    assert.equal(await menu.getByTestId("runtime-model").count(), listed + 10);
     const box = await menu.boundingBox();
     assert.ok(box.height > shortHeight + 100, `the menu grows with its list (${shortHeight} → ${box.height})`);
     assert.ok(box.y >= 0, "the menu stays inside the window");
