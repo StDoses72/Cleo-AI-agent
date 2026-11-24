@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { _electron as electron } from "playwright";
-import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, rename, rm } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -361,6 +361,32 @@ try {
   });
   assert.equal(await page.getByRole("button", { name: "回答问题", exact: true }).count(), 0);
   assert.deepEqual(errors, []);
+
+  // Remove the entry bundle only from this smoke's disposable build, then recover via the visible link.
+  const bundleUrl = await page.locator('script[type="module"][src]').first().getAttribute("src");
+  const bundle = resolve(appDir, "dist", bundleUrl);
+  assert.equal(dirname(bundle), join(appDir, "dist", "assets"));
+  await rename(bundle, bundle + ".unavailable");
+  await page.reload();
+  const retry = page.locator("#workspace-recovery a");
+  await retry.waitFor();
+  await rename(bundle + ".unavailable", bundle);
+  await retry.click();
+  await page.getByTestId("conversation").waitFor();
+  assert.equal(await retry.isVisible(), false);
+
+  // Exercise the actual Electron crash event. Only the native user's Retry selection is simulated.
+  await application.evaluate(async ({ BrowserWindow, dialog }) => {
+    const contents = BrowserWindow.getAllWindows()[0].webContents;
+    let prompted = false;
+    dialog.showMessageBox = async () => { prompted = true; return { response: 0 }; };
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("Renderer did not recover")), 15000);
+      contents.once("did-finish-load", () => { clearTimeout(timeout); resolve(); });
+      contents.forcefullyCrashRenderer();
+    });
+    if (!prompted || contents.isCrashed()) throw new Error("Workspace recovery failed");
+  });
   await application.close();
   application = undefined;
   }

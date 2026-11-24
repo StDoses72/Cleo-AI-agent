@@ -71,14 +71,8 @@ export async function runtimeInUse(directory, filesystem = fs) {
   return false;
 }
 
-export function acquireSingleInstance(app, windows) {
+export function acquireSingleInstance(app, showWorkspace) {
   if (!app.requestSingleInstanceLock()) return false;
-  app.on("second-instance", () => {
-    const window = windows().find((item) => !item.isDestroyed());
-    if (!window) return;
-    if (window.isMinimized()) window.restore();
-    window.show();
-    window.focus();
-  });
+  app.on("second-instance", showWorkspace);
   return true;
 }

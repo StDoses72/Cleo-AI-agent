@@ -80,6 +80,45 @@ export function launcherRoot(path, target) {
   return installationRoot(join(dirname(path), target.executable), target);
 }
 
+/** Windows may pin the running managed build. Point ordinary Cleo links at a verified install
+ * so retiring that build cannot strand a pin. Leave recovery and custom command lines intact. */
+export async function configureLaunchShortcuts({ results, root, shell, window, appData, desktop, alpha }) {
+  const launcher = Object.entries(results ?? {}).find(([, entry]) =>
+    ["current", "recorded", "refreshed"].includes(entry.status))?.[0];
+  if (!launcher) return;
+  const name = alpha ? "Cleo Alpha" : "Cleo";
+  if (window && !window.isDestroyed()) window.setAppDetails({
+    appId: alpha ? "ai.cleo.desktop.alpha" : "ai.cleo.desktop", appIconPath: launcher,
+    relaunchCommand: `"${launcher}"`, relaunchDisplayName: name,
+  });
+
+  const locations = [desktop, join(appData, "Microsoft", "Windows", "Start Menu", "Programs"),
+    join(appData, "Microsoft", "Internet Explorer", "Quick Launch", "User Pinned", "TaskBar")];
+  for (const folder of locations) {
+    const path = join(folder, `${name}.lnk`);
+    if (!await exists(path)) continue;
+    try {
+      const link = shell.readShortcutLink(path);
+      const builds = join(root, "builds");
+      if (link.args || outside(builds, link.target)) continue;
+      const parts = relative(builds, link.target).split(/[\\/]/);
+      if (parts.length !== 3
+          || parts.slice(1).join("/").toLowerCase() !== "cleo/cleo.exe") continue;
+      const options = { target: launcher };
+      if (!link.cwd || resolve(link.cwd).toLowerCase() === dirname(link.target).toLowerCase()) {
+        options.cwd = dirname(launcher);
+      }
+      if (link.icon && !outside(builds, link.icon)) {
+        options.icon = launcher;
+        options.iconIndex = 0;
+      }
+      if (!shell.writeShortcutLink(path, "update", options)) throw new Error("Windows declined the update");
+    } catch (error) {
+      console.error(`Cleo shortcut ${path}:`, error.message);
+    }
+  }
+}
+
 /** Input: a lowercased Windows path. Output: the same path with the leaf spelled as it exists on disk, so a swap keeps it. */
 async function onDiskCase(path, filesystem) {
   try {
