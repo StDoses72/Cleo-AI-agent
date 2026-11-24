@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import test from "node:test";
-import { configureReleaseChannel, releaseTagForVersion, versionForReleaseTag } from "../electron/release-channel.mjs";
+import { appUserModelId, configureReleaseChannel, isAlphaVersion, releaseTagForVersion, versionForReleaseTag } from "../electron/release-channel.mjs";
+import { BUILDS_DIRECTORY, CONTROL_DIRECTORY } from "../electron/program-store.mjs";
 import { FILE_SCHEME, registerComputerSchemes } from "../electron/computer/schemes.mjs";
 
 test("preview scheme registers before ready and permits a later main replay", () => {
@@ -36,6 +37,18 @@ test("alpha tags have their own numbering and round-trip to package versions", (
   assert.equal(versionForReleaseTag("v0.4.8"), "0.4.8");
   assert.equal(releaseTagForVersion("0.4.8"), "v0.4.8");
   for (const tag of ["alpha-01.0.1", "alpha-0.0.1/other", "alpha-latest"]) assert.equal(versionForReleaseTag(tag), null);
+});
+
+test("the channel of a version decides the Windows app identity", () => {
+  assert.equal(isAlphaVersion("0.14.3-alpha"), true);
+  for (const version of ["0.14.3", "0.14.3-alpha.2", "", null, undefined, 14]) assert.equal(isAlphaVersion(version), false);
+  assert.equal(appUserModelId(true), "ai.cleo.desktop.alpha");
+  assert.equal(appUserModelId(false), "ai.cleo.desktop");
+});
+
+test("the program layout keeps the names retained programs already read", () => {
+  assert.equal(CONTROL_DIRECTORY, "evolution");
+  assert.equal(BUILDS_DIRECTORY, "builds");
 });
 
 test("alpha startup isolates the profile and core data while preserving explicit paths", () => {

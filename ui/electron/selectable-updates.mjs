@@ -6,7 +6,7 @@ import { createRequire } from "node:module";
 import { DesktopUpdater, compareVersions, validateManifest } from "./updater.mjs";
 import { ProgramUpdates } from "./program-updates.mjs";
 import { installRuntime } from "./online-runtime.mjs";
-import { exists, ownedPath } from "./program-store.mjs";
+import { BUILDS_DIRECTORY, exists, ownedPath } from "./program-store.mjs";
 import { alphaTagPattern, versionForReleaseTag } from "./release-channel.mjs";
 
 const repository = "StDoses72/Cleo-AI-agent";
@@ -119,7 +119,7 @@ export async function prepareSelectedRelease(manager, updater, tag, { onProgress
     const state = await manager.store.read();
     for (const build of state.builds) {
       if (build.kind !== "official" || build.version !== manifest.version || build.baseTag !== tag || build.sha256 !== manifest.sha256) continue;
-      const directory = ownedPath(manager.store.root, "builds", build.id);
+      const directory = ownedPath(manager.store.root, BUILDS_DIRECTORY, build.id);
       if (!await exists(ownedPath(directory, build.executable))) continue;
       await manager.store.build(build.id);
       await installRuntime({ resources: join(directory, manager.target.bundle, manager.target.resources),
@@ -128,7 +128,7 @@ export async function prepareSelectedRelease(manager, updater, tag, { onProgress
       return build.id;
     }
     const id = `official-${randomUUID()}`;
-    const directory = ownedPath(manager.store.root, "builds", id);
+    const directory = ownedPath(manager.store.root, BUILDS_DIRECTORY, id);
     try {
       await manager.extractArchive(archive, directory, { signal });
       await installRuntime({ resources: join(directory, manager.target.bundle, manager.target.resources),

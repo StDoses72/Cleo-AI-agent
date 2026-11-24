@@ -7,6 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { createRequire } from "node:module";
 import { cp, mkdir, readFile, lstat, readdir, open, rm } from "node:fs/promises";
 import { join, resolve, relative, isAbsolute, dirname } from "node:path";
+import { isAlphaVersion } from "./release-channel.mjs";
 
 const mutationQueues = new Map();
 const jsonQueues = new Map();
@@ -30,6 +31,10 @@ async function withJsonFile(path, action) {
 }
 
 export const DATA_ENTRIES = ["config", "data", "memory", "skills", "PERSONA.md", "AGENTS.md"];
+/** The control directory inside the profile. Its name is an on-disk format shared with every retained program. */
+export const CONTROL_DIRECTORY = "evolution";
+/** Where the control directory keeps programs: `<control root>/builds/<build id>/<bundle>/<executable>`. */
+export const BUILDS_DIRECTORY = "builds";
 
 /** Purpose: Read optional JSON state. Input: file and fallback. Output: parsed state; corruption is not hidden. */
 export async function readJson(path, fallback = null) {
@@ -132,7 +137,7 @@ export class ProgramStore {
     const state = await this.read();
     const build = state.builds.find((item) => item.id === id);
     if (!build || !/^[a-zA-Z0-9-]+$/.test(id)) throw new Error(tr("evolution_store.selected_build_not_found"));
-    const directory = ownedPath(this.root, "builds", id);
+    const directory = ownedPath(this.root, BUILDS_DIRECTORY, id);
     const executable = ownedPath(directory, build.executable);
     if (!await exists(executable)) throw new Error(tr("evolution_store.selected_build_files_are_missing_recover_using_the_fallback_version"));
     return { ...build, directory, executable };
@@ -257,7 +262,7 @@ export class ProgramStore {
     const latestSaved = saved.find((build) => build.id === state.latestSaved)?.id || saved[0]?.id || null;
     const keep = new Set([state.baseline, workspaceBase, latestSaved, state.active,
       state.selectedBase, state.iteration?.base, state.candidate, state.downloadedOfficial, state.pendingImport?.from].filter(Boolean));
-    const executingPath = relative(ownedPath(this.root, "builds"), resolve(process.execPath));
+    const executingPath = relative(ownedPath(this.root, BUILDS_DIRECTORY), resolve(process.execPath));
     if (!executingPath.startsWith("..") && !isAbsolute(executingPath)) keep.add(executingPath.split(/[\\\\/]/)[0]);
     // Missing recovery dependencies must not turn a damaged registry into destructive cleanup.
     try { for (const id of keep) await this.build(id); }
@@ -266,7 +271,7 @@ export class ProgramStore {
     const retired = state.builds.filter((build) => !keep.has(build.id)).map((build) => build.id);
     const filesystem = process.versions.electron
       ? createRequire(import.meta.url)("original-fs").promises : nativeFs;
-    const folders = await filesystem.readdir(ownedPath(this.root, "builds"));
+    const folders = await filesystem.readdir(ownedPath(this.root, BUILDS_DIRECTORY));
     const abandoned = folders.filter((id) => /^(baseline|local|official)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) && !keep.has(id));
     const pending = [...new Set([...(state.cleanupPending || []), ...retired, ...abandoned])]
       .filter((id) => /^[a-zA-Z0-9-]+$/.test(id) && !keep.has(id));
@@ -281,7 +286,7 @@ export class ProgramStore {
     const failures = [];
     for (const id of pending) {
       try {
-        const parent = ownedPath(this.root, "builds");
+        const parent = ownedPath(this.root, BUILDS_DIRECTORY);
         const directory = ownedPath(parent, id);
         const dataRelation = relative(directory, this.dataHome);
         const directoryRelation = relative(this.dataHome, directory);
@@ -291,7 +296,7 @@ export class ProgramStore {
         }
         // Do not traverse a relocated builds directory or an externally linked bundle.
         const rootPath = await filesystem.realpath(this.root);
-        if (await filesystem.realpath(parent) !== join(rootPath, "builds")) throw new Error("Linked builds directory.");
+        if (await filesystem.realpath(parent) !== join(rootPath, BUILDS_DIRECTORY)) throw new Error("Linked builds directory.");
         try {
           if ((await filesystem.lstat(directory)).isSymbolicLink()) throw new Error("Linked build directory.");
         } catch (error) { if (error.code !== "ENOENT") throw error; }
@@ -315,7 +320,7 @@ export class ProgramStore {
       previousRestartError: state.lastRestartError || null,
     };
     if (officialSelection) transaction.officialSelection = {
-      baseTag: build.baseTag || (build.version?.endsWith("-alpha")
+      baseTag: build.baseTag || (isAlphaVersion(build.version)
         ? `alpha-${build.version.slice(0, -6)}` : `v${build.version}`),
       sourceArchive: `source-history-${transaction.id}`,
       originalSelection: Object.fromEntries(SELECTION_FIELDS.map((name) => [name, state[name] ?? null])),

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { desktopPlatform } from "./platform.mjs";
 import { ReleaseDownloads } from "./release-downloads.mjs";
 import { releaseTagForVersion } from "./release-channel.mjs";
+import { CONTROL_DIRECTORY } from "./program-store.mjs";
 
 export const RELEASE_MANIFEST_URL =
   "https://github.com/StDoses72/Cleo-AI-agent/releases/latest/download/release.json";
@@ -118,7 +119,7 @@ export class DesktopUpdater {
 
   releaseDownloads() {
     this.downloads ??= new ReleaseDownloads({
-      root: join(this.app.getPath("userData"), "evolution", "downloads"),
+      root: join(this.app.getPath("userData"), CONTROL_DIRECTORY, "downloads"),
       fetchImpl: this.fetchImpl,
       legacyPaths: (manifest) => {
         const suffix = this.target.platform === "win32" ? "" : `-${this.target.id}`;

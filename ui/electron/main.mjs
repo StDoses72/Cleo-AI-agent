@@ -20,7 +20,7 @@ import {
   withThumbnails,
 } from "./attachments.mjs";
 import { BackendBridge } from "./backend.mjs";
-import { configureReleaseChannel } from "./release-channel.mjs";
+import { appUserModelId, configureReleaseChannel } from "./release-channel.mjs";
 import { openLocalHref } from "./local-files.mjs";
 import { createSourceControl } from "./source-control.mjs";
 import { SelectableUpdater, SelectableProgramUpdates } from "./selectable-updates.mjs";
@@ -33,7 +33,7 @@ import { DependencyUpdater } from "./dependencies.mjs";
 import { acquireSingleInstance } from "./install-state.mjs";
 
 import { SetupManager } from "./setup-manager.mjs";
-import { readJson } from "./program-store.mjs";
+import { CONTROL_DIRECTORY, readJson } from "./program-store.mjs";
 import { createStorageQueue, defaultLauncherPaths, reclaimStorage, storageInventory } from "./storage-reclaim.mjs";
 import { defaultRuntimeRoot } from "./online-runtime.mjs";
 
@@ -53,8 +53,8 @@ const computer = new ComputerUse({
   app, backend,
   electron: { BrowserWindow, WebContentsView, dialog, globalShortcut, nativeImage, screen, session, shell },
 });
-// Program versions, downloads and switch journals live here; the directory name is an on-disk format.
-const controlRoot = join(app.getPath("userData"), "evolution");
+// Program versions, downloads and switch journals live here.
+const controlRoot = join(app.getPath("userData"), CONTROL_DIRECTORY);
 const releaseDownloads = new ReleaseDownloads({
   root: join(controlRoot, "downloads"),
   legacyPaths: manifest => [
@@ -91,7 +91,7 @@ const programUpdates = new SelectableProgramUpdates({ updater, versions, apply: 
 const siblingChannel = () => {
   const cleoHome = backend.runtimePaths().cleoHome;
   const name = alphaChannel ? "Cleo" : "Cleo Alpha";
-  return { label: name, controlRoot: join(dirname(app.getPath("userData")), name, "evolution"),
+  return { label: name, controlRoot: join(dirname(app.getPath("userData")), name, CONTROL_DIRECTORY),
     dataHome: join(dirname(cleoHome), name) };
 };
 let storageReady = false;
@@ -286,7 +286,7 @@ function createWindow() {
   return window;
 }
 
-app.setAppUserModelId(alphaChannel ? "ai.cleo.desktop.alpha" : "ai.cleo.desktop");
+app.setAppUserModelId(appUserModelId(alphaChannel));
 app.whenReady().then(async () => {
   // The computer bridge must exist before the backend starts so tool processes can find it.
   // A failure here disables computer use only; Cleo itself must still start.

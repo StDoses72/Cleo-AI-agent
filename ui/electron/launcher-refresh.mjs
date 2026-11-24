@@ -5,9 +5,11 @@ import { createRequire } from "node:module";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { desktopPlatform, installationRoot } from "./platform.mjs";
-import { DATA_ENTRIES, exists, ownedPath, readJson } from "./program-store.mjs";
+import { BUILDS_DIRECTORY, DATA_ENTRIES, exists, ownedPath, readJson } from "./program-store.mjs";
 import { copyProgramBundle } from "./program-bundles.mjs";
 import { executableInUse } from "./install-state.mjs";
+import { appUserModelId, isAlphaVersion } from "./release-channel.mjs";
+import { defaultLauncherPaths as installedLauncherPaths } from "./storage-reclaim.mjs";
 
 /** The Inno Setup AppId from scripts/installers/windows.iss; its uninstall key is `<AppId>_is1`. */
 export const WINDOWS_INSTALLER_APP_ID = "{AD929A4D-0594-4D59-A698-5D8B26D72795}";
@@ -21,6 +23,9 @@ export const MAX_REFRESH_ATTEMPTS = 3;
 // Inno Setup's uninstaller and the source-checkout installer's receipt live beside Cleo.exe and are not part of a build.
 const PRESERVED_ENTRIES = /^(unins\d*\.(exe|dat|msg|dll)|install\.json)$/i;
 const SIBLING_PATTERN = /\.(refresh|retired)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// A managed Windows program sits at `<builds>/<build id>/<bundle>/<executable>`.
+const WINDOWS_TARGET = desktopPlatform("win32", "x64");
+const MANAGED_PROGRAM = `${WINDOWS_TARGET.bundle}/${WINDOWS_TARGET.executable}`.toLowerCase();
 
 function nativeFilesystem() {
   return process.versions.electron ? createRequire(import.meta.url)("original-fs").promises : nativeFs;
@@ -37,7 +42,7 @@ function outside(parent, path) {
 }
 
 function channelOf(version) {
-  return typeof version === "string" ? (version.endsWith("-alpha") ? "alpha" : "stable") : null;
+  return typeof version === "string" ? (isAlphaVersion(version) ? "alpha" : "stable") : null;
 }
 
 /** Input: launcher root and store. Output: true when user data or the program registry would travel with the swap.
@@ -67,8 +72,7 @@ function powershellLiteral(value) {
 
 /** Input: platform. Output: the installer's default launcher when the registry has never recorded one. */
 export function defaultLauncherPaths(platform = process.platform, environment = process.env) {
-  if (platform !== "win32" || !environment.LOCALAPPDATA) return [];
-  return [join(environment.LOCALAPPDATA, "Programs", "Cleo", "Cleo.exe")];
+  return platform === "win32" ? installedLauncherPaths(platform, environment) : [];
 }
 
 /** Input: recorded launcher path (lowercased on Windows) and target. Output: its bundle root, or a layout error. */
@@ -88,7 +92,7 @@ export async function configureLaunchShortcuts({ results, root, shell, window, a
   if (!launcher) return;
   const name = alpha ? "Cleo Alpha" : "Cleo";
   if (window && !window.isDestroyed()) window.setAppDetails({
-    appId: alpha ? "ai.cleo.desktop.alpha" : "ai.cleo.desktop", appIconPath: launcher,
+    appId: appUserModelId(alpha), appIconPath: launcher,
     relaunchCommand: `"${launcher}"`, relaunchDisplayName: name,
   });
 
@@ -99,11 +103,11 @@ export async function configureLaunchShortcuts({ results, root, shell, window, a
     if (!await exists(path)) continue;
     try {
       const link = shell.readShortcutLink(path);
-      const builds = join(root, "builds");
+      const builds = join(root, BUILDS_DIRECTORY);
       if (link.args || outside(builds, link.target)) continue;
       const parts = relative(builds, link.target).split(/[\\/]/);
       if (parts.length !== 3
-          || parts.slice(1).join("/").toLowerCase() !== "cleo/cleo.exe") continue;
+          || parts.slice(1).join("/").toLowerCase() !== MANAGED_PROGRAM) continue;
       const options = { target: launcher };
       if (!link.cwd || resolve(link.cwd).toLowerCase() === dirname(link.target).toLowerCase()) {
         options.cwd = dirname(launcher);
@@ -201,7 +205,7 @@ export async function refreshInstalledLauncher({
   const state = await store.read();
   const active = state.builds.find((build) => build.id === state.active);
   if (state.transaction || active?.kind !== "official" || !active.version) return { status: "skipped", reason: "no-official-build" };
-  if (outside(ownedPath(store.root, "builds"), executable)) return { status: "skipped", reason: "launcher-running" };
+  if (outside(ownedPath(store.root, BUILDS_DIRECTORY), executable)) return { status: "skipped", reason: "launcher-running" };
   let build;
   try { build = await store.build(active.id); }
   catch { return { status: "skipped", reason: "build-missing" }; }
