@@ -1302,7 +1302,11 @@ try {
   await check("Ctrl+/ opens the keyboard shortcut sheet", async page => {
     await page.keyboard.press("Control+/");
     await page.getByTestId("shortcuts-sheet").waitFor();
-    assert.match(await page.getByTestId("shortcuts-sheet").innerText(), /引用项目文件/);
+    const sheet = await page.getByTestId("shortcuts-sheet").innerText();
+    assert.match(sheet, /引用项目文件/);
+    assert.match(sheet, /插入运行或下轮发送/);
+    // Every row is a label: none ends a clause or a sentence.
+    assert.doesNotMatch(sheet, /[，。]/);
     await page.keyboard.press("Escape");
     await page.getByTestId("shortcuts-sheet").waitFor({ state: "hidden" });
   });
