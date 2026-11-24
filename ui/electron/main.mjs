@@ -26,7 +26,7 @@ import { createSourceControl } from "./source-control.mjs";
 import { SelectableUpdater, SelectableProgramUpdates } from "./selectable-updates.mjs";
 import { ReleaseDownloads } from "./release-downloads.mjs";
 import { createQuitBarrier } from "./shutdown.mjs";
-import { loadWorkspaceWindow } from "./workspace-window.mjs";
+import { loadWorkspaceWindow, reopenWorkspaceWindow } from "./workspace-window.mjs";
 import { createTrayController } from "./tray.mjs";
 import { createBackgroundMemoryScheduler } from "./background-memory.mjs";
 import { DependencyUpdater } from "./dependencies.mjs";
@@ -227,6 +227,7 @@ const iconPath = app.isPackaged
   : join(here, "../public", iconFile);
 desktopTray = createTrayController({
   app, Menu, Tray, nativeImage, iconPath, createWindow,
+  reopenWindow: reopenWorkspaceWindow,
   canOpen: () => !programUpdates.closed,
   onOpenMemory: window => {
     const send = () => { if (!window.isDestroyed()) window.webContents.send("cleo:open-memory"); };

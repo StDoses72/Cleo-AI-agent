@@ -1,7 +1,7 @@
 import { t as tr } from "./i18n.mjs";
 /** Keep the main window and its running work alive until an explicit application quit. */
 export function createTrayController({ app, Menu, Tray, nativeImage, iconPath, createWindow,
-  canOpen = () => true, onOpenMemory,
+  reopenWindow = () => {}, canOpen = () => true, onOpenMemory,
   onError = error => console.error("Cleo tray:", error.message), platform = process.platform }) {
   let window = null;
   let tray = null;
@@ -13,7 +13,7 @@ export function createTrayController({ app, Menu, Tray, nativeImage, iconPath, c
     if (!started || quitting || !canOpen()) return null;
     const current = getWindow();
     if (!current) return createWindow();
-    if (current.webContents.isCrashed()) current.webContents.reload();
+    reopenWindow(current);
     if (current.isMinimized()) current.restore();
     current.show();
     current.focus();

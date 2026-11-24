@@ -387,6 +387,30 @@ try {
     });
     if (!prompted || contents.isCrashed()) throw new Error("Workspace recovery failed");
   });
+
+  // A reload that fails and is dismissed leaves an empty window; opening Cleo again must load the workspace.
+  const index = join(appDir, "dist", "index.html");
+  await rename(index, index + ".unavailable");
+  await application.evaluate(async ({ BrowserWindow, dialog }) => {
+    const answers = [0, 1];
+    await new Promise(resolve => {
+      dialog.showMessageBox = async () => {
+        const response = answers.shift();
+        if (!answers.length) resolve();
+        return { response };
+      };
+      BrowserWindow.getAllWindows()[0].webContents.forcefullyCrashRenderer();
+    });
+  });
+  await rename(index + ".unavailable", index);
+  await application.evaluate(async ({ app, BrowserWindow }) => {
+    const contents = BrowserWindow.getAllWindows()[0].webContents;
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("Opening Cleo again did not load the workspace")), 15000);
+      contents.once("did-finish-load", () => { clearTimeout(timeout); resolve(); });
+      app.emit("activate");
+    });
+  });
   await application.close();
   application = undefined;
   }

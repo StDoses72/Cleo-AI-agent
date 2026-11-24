@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
-import { loadWorkspaceWindow } from "../electron/workspace-window.mjs";
+import { loadWorkspaceWindow, reopenWorkspaceWindow } from "../electron/workspace-window.mjs";
 import { createTrayController } from "../electron/tray.mjs";
 import { createQuitBarrier } from "../electron/shutdown.mjs";
 
@@ -32,7 +32,7 @@ function event() {
   return { prevented: false, preventDefault() { this.prevented = true; } };
 }
 
-function fixture({ platform = "win32", failure, canOpen = () => true } = {}) {
+function fixture({ platform = "win32", failure, canOpen = () => true, reopenWindow } = {}) {
   const windows = [], trays = [], errors = [], memory = [];
   const app = new EventEmitter();
   app.quitCalls = 0;
@@ -49,7 +49,6 @@ function fixture({ platform = "win32", failure, canOpen = () => true } = {}) {
     minimized = false;
     destroyed = false;
     focused = false;
-    webContents = { isCrashed: () => false };
     isDestroyed() { return this.destroyed; }
     isVisible() { return this.visible; }
     isMinimized() { return this.minimized; }
@@ -89,7 +88,7 @@ function fixture({ platform = "win32", failure, canOpen = () => true } = {}) {
   };
   const controller = createTrayController({
     app, Tray, nativeImage: { createFromPath: () => image }, iconPath: "cleo.png",
-    Menu: { buildFromTemplate: items => items }, platform, canOpen, createWindow,
+    Menu: { buildFromTemplate: items => items }, platform, canOpen, createWindow, reopenWindow,
     onError: error => errors.push(error),
     onOpenMemory: window => memory.push({ window, visible: window.isVisible() }),
   });
@@ -119,12 +118,16 @@ test("closing hides the live main window and tray or activation restores that sa
   assert.equal(f.windows.length, 1);
 });
 
-test("opening Cleo again reloads a dismissed renderer crash", () => {
-  const f = fixture();
-  let reloads = 0;
-  f.window.webContents = { isCrashed: () => true, reload: () => reloads++ };
-  f.controller.show();
-  assert.equal(reloads, 1);
+test("opening Cleo again asks the window it already has for its workspace", () => {
+  const asked = [];
+  const f = fixture({ reopenWindow: window => asked.push(window) });
+  f.window.hide();
+  f.click("打开 Cleo");
+  assert.deepEqual(asked, [f.window]);
+  f.window.destroy();
+  f.click("打开 Cleo");
+  assert.equal(f.windows.length, 2);
+  assert.deepEqual(asked, [f.window]);
 });
 
 test("memory management opens the window before delivering navigation", () => {
@@ -237,4 +240,39 @@ test("failed workspace load and renderer crash offer a retry without a reload lo
   quitting = true;
   window.webContents.emit("render-process-gone", {}, { reason: "killed" });
   assert.equal(reasons.length, 2);
+});
+
+test("opening Cleo again loads a workspace whose failure was dismissed and leaves a working one alone", async () => {
+  const failures = ["failed to load", "failed again"];
+  const tick = () => new Promise(resolve => setImmediate(resolve));
+  let loads = 0;
+  let dismiss;
+  const window = { webContents: new EventEmitter(), isDestroyed: () => false,
+    async loadFile() {
+      loads++;
+      if (failures.length) throw new Error(failures.shift());
+    } };
+  const dialog = { showMessageBox: () => new Promise(resolve => { dismiss = () => resolve({ response: 1 }); }) };
+  const loading = loadWorkspaceWindow(window, { index: "workspace", dialog, isQuitting: () => false });
+  await tick();
+  reopenWorkspaceWindow(window);
+  assert.equal(loads, 1, "the message is still open");
+  dismiss();
+  await loading;
+  reopenWorkspaceWindow(window);
+  assert.equal(loads, 2, "a dismissed first load is tried again");
+  await tick();
+  dismiss();
+  await tick();
+  reopenWorkspaceWindow(window);
+  assert.equal(loads, 3, "a dismissed retry is tried again");
+  await tick();
+  reopenWorkspaceWindow(window);
+  assert.equal(loads, 3, "a workspace that is showing is not loaded again");
+  window.webContents.emit("render-process-gone", {}, { reason: "crashed" });
+  await tick();
+  dismiss();
+  await tick();
+  reopenWorkspaceWindow(window);
+  assert.equal(loads, 4, "a dismissed crash is loaded again");
 });
