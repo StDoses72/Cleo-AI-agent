@@ -130,7 +130,7 @@ result     {"num_turns":1,"result":"NOTIFIED: …\nFINAL: both done","origin":{"
 
 | 入口 / harness | 原生问答 | 用户审批 | 回合结束信号 | 后台 / 多阶段 | Cleo `Capability` |
 | --- | --- | --- | --- | --- | --- |
-| 任务 `claude`（Agent SDK 0.2.174） | `AskUserQuestion` 经 hook + `can_use_tool` | `can_use_tool` | `ResultMessage` | 有：后台任务完成后 CLI 自行唤醒新轮次 | `REWIND, QUESTIONS, USER_APPROVALS` |
+| 任务 `claude`（Agent SDK 0.2.174） | `AskUserQuestion` 经 hook + `can_use_tool` | `can_use_tool` | `ResultMessage` | 有：后台任务完成后 CLI 自行唤醒新轮次 | `REWIND, QUESTIONS, USER_APPROVALS, LIVE_LOG` |
 | 聊天 `claude_code`（CLI stream-json） | 无（文本回退） | 无 | `type:"result"`，进程退出 | 无 | 无 |
 | 任务 `codex`（openai-codex 0.163.0） | `item/tool/requestUserInput` | `*/requestApproval`、elicitation | `turn/completed` | 无 | `QUESTIONS, USER_APPROVALS, NATIVE_STEER, FORK, …` |
 | ACP（0.12.1） | 无 | `session/request_permission` | `stop_reason` | 无 | `USER_APPROVALS` |

@@ -26,6 +26,9 @@ class Capability(StrEnum):
     # Read sessions created outside Cleo.
     NATIVE_HISTORY = "native_history"
     COMPACT = "compact"
+    # Keep what a turn produced when it is cut short, even with no client listening:
+    # this harness's events are logged as they arrive, not only when the turn returns.
+    LIVE_LOG = "live_log"
 
 
 # Provider methods a capability requires; the test suite checks both directions.
@@ -50,6 +53,7 @@ PROVIDER_CAPABILITIES: dict[str, frozenset[Capability]] = {
     }),
     "claude_sdk": frozenset({
         Capability.REWIND, Capability.QUESTIONS, Capability.USER_APPROVALS,
+        Capability.LIVE_LOG,
     }),
     "acp": frozenset({Capability.USER_APPROVALS}),
     "antigravity_sdk": frozenset({Capability.USER_APPROVALS}),
