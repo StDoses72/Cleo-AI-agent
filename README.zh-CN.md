@@ -34,7 +34,7 @@ Cleo 是一个面向 agent harness 编排的集成平台：在同一个桌面工
 - 编辑之前的消息，对话回到那一刻并重新发送；运行期间的新消息先进入队列，需要时再手动 Steer 进当前回合。
 - 原生 Claude/Codex 开发会话中的本机 skills 发现、搜索与调用。
 - 受约束的子任务路由：会话当前模型始终是协调者，把子任务委派给已连接的 harness 模型。详见[子任务路由](docs/benchmark-routing.md)。
-- 电脑使用：按会话隔离的内置浏览器，或本机 Windows 桌面。详见[电脑使用](docs/computer-use.md)。
+- 电脑使用：AI 按任务选择按会话隔离的内置浏览器、经 Cleo 扩展在后台标签页中操作的你的 Chrome / Edge，或本机 Windows 桌面。详见[电脑使用](docs/computer-use.md)。
 - 正式版本更新：可见的重启过程、启动失败自动回到上一个程序，以及独立的恢复入口。
 - 面向代码工作的统一 harness adapter，包含 provider-neutral 数据面和可选的 Codex 控制面。
 - append-only `events.jsonl` 会话事实源、原子 manifest 和可重建 SQLite 索引。

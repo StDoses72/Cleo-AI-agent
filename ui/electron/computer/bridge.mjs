@@ -5,7 +5,10 @@ import { t as tr } from "../i18n.mjs";
  * a private directory. The pipe name and a random token are written to a descriptor file whose
  * directory is readable only by the current user (and SYSTEM on Windows), so sandboxed commands
  * running as another account or with a restricted token cannot read it. Each request uses one
- * connection; closing the connection cancels the request.
+ * connection; closing the connection cancels the request. The one exception is a ``link`` from
+ * the browser extension's native host: it authenticates with its own token, published in a
+ * separate ``link-*.json`` descriptor that tool processes are never pointed at, and its
+ * connection stays open carrying newline-delimited messages both ways (see user-browser.mjs).
  */
 
 import { createServer } from "node:net";
@@ -37,11 +40,14 @@ export class ComputerBridge {
   /** Purpose: Scope a channel to one desktop instance. Input: private directory/handler.
    * Output: An independent descriptor which other instances cannot replace or remove.
    */
-  constructor({ directory, handler, platform = process.platform, protect = protectDirectory }) {
-    Object.assign(this, { directory, handler, platform, protect });
+  constructor({ directory, handler, onLink = null, platform = process.platform, protect = protectDirectory }) {
+    Object.assign(this, { directory, handler, onLink, platform, protect });
     this.server = null;
     this.token = randomBytes(32).toString("hex");
-    this.descriptorPath = join(directory, `bridge-${process.pid}-${randomBytes(8).toString("hex")}.json`);
+    this.linkToken = randomBytes(32).toString("hex");
+    const suffix = `${process.pid}-${randomBytes(8).toString("hex")}`;
+    this.descriptorPath = join(directory, `bridge-${suffix}.json`);
+    this.linkDescriptorPath = join(directory, `link-${suffix}.json`);
     this.address = null;
     this.sockets = new Set();
   }
@@ -60,12 +66,17 @@ export class ComputerBridge {
       this.server.listen(this.address, () => { this.server.off("error", reject); resolve(); });
     });
     if (this.platform !== "win32") chmodSync(this.address, 0o600);
-    const temporary = `${this.descriptorPath}.${randomBytes(4).toString("hex")}.tmp`;
-    writeFileSync(temporary, `${JSON.stringify({
-      version: 1, transport: this.platform === "win32" ? "pipe" : "unix", address: this.address, token: this.token, pid: process.pid,
-    })}\n`, { encoding: "utf8", mode: 0o600 });
-    renameSync(temporary, this.descriptorPath);
+    this.publish(this.descriptorPath, this.token);
+    if (this.onLink) this.publish(this.linkDescriptorPath, this.linkToken);
     return this.descriptorPath;
+  }
+
+  publish(path, token) {
+    const temporary = `${path}.${randomBytes(4).toString("hex")}.tmp`;
+    writeFileSync(temporary, `${JSON.stringify({
+      version: 1, transport: this.platform === "win32" ? "pipe" : "unix", address: this.address, token, pid: process.pid,
+    })}\n`, { encoding: "utf8", mode: 0o600 });
+    renameSync(temporary, path);
   }
 
   connection(socket) {
@@ -86,22 +97,29 @@ export class ComputerBridge {
       const newline = buffer.indexOf("\n");
       if (newline < 0) return;
       handled = true;
-      void this.respond(socket, buffer.slice(0, newline), abort.signal);
+      void this.respond(socket, buffer.slice(0, newline), abort.signal, buffer.slice(newline + 1));
     });
   }
 
-  authorized(token) {
-    if (typeof token !== "string" || token.length !== this.token.length) return false;
-    return timingSafeEqual(Buffer.from(token), Buffer.from(this.token));
+  authorized(token, expected = this.token) {
+    if (typeof token !== "string" || token.length !== expected.length) return false;
+    return timingSafeEqual(Buffer.from(token), Buffer.from(expected));
   }
 
-  async respond(socket, line, signal) {
+  async respond(socket, line, signal, rest = "") {
     let request;
     let reply;
     try {
       request = JSON.parse(line);
-      if (!this.authorized(request?.token)) {
+      const link = request?.op === "link";
+      // Each kind of client holds only its own token: a tool process cannot open a link.
+      if (!this.authorized(request?.token, link ? this.linkToken : this.token) || (link && !this.onLink)) {
         reply = { ok: false, error: tr("bridge.computer_control_channel_authentication_failed") };
+      } else if (link) {
+        // The socket now belongs to the link; it is not answered and closed like a tool call.
+        socket.removeAllListeners("data");
+        this.onLink(socket, request, rest);
+        return;
       } else {
         const content = await this.handler(request, signal);
         reply = { id: request.id, ok: true, content };
@@ -116,5 +134,6 @@ export class ComputerBridge {
     for (const socket of this.sockets) socket.destroy();
     await new Promise(resolve => (this.server ? this.server.close(() => resolve()) : resolve()));
     rmSync(this.descriptorPath, { force: true });
+    rmSync(this.linkDescriptorPath, { force: true });
   }
 }

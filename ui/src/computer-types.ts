@@ -1,7 +1,58 @@
 /** State shared by the Electron computer broker with Cleo's computer and files panels. */
 
-export type ComputerMode = "browser" | "host";
-export type ComputerTarget = "browser" | "desktop";
+/** The target a conversation works in: Cleo's built-in browser, the user's own browser through
+ * the Cleo extension, or the real desktop. The agent picks it; the page shows only this one. */
+export type ComputerMode = "browser" | "user" | "host";
+export type ComputerTarget = "browser" | "user" | "desktop";
+export type ComputerPhase = "idle" | "thinking" | "observing" | "acting" | "waiting" | "waiting-user" | "paused" | "failed";
+
+export interface ComputerStep {
+  id: string;
+  name: string;
+  detail: string;
+  status: "running" | "done" | "error" | "cancelled";
+  seconds: number;
+}
+
+/** One stretch of a turn's computer work in one mode; a mode switch starts the next one. */
+export interface ComputerSegment {
+  id: string;
+  mode: ComputerMode;
+  startedAt: number;
+  endedAt: number | null;
+  target: string;
+  timing: { think: number; tool: number; wait: number };
+  steps: ComputerStep[];
+  stepCount: number;
+}
+
+export interface ComputerActivity {
+  segments: ComputerSegment[];
+  phase: ComputerPhase;
+  current: string | null;
+  failure: { name: string; message: string } | null;
+}
+
+export interface UserBrowserTab {
+  id: string;
+  windowId: number;
+  title: string;
+  url: string;
+  active: boolean;
+  cleo: boolean;
+}
+
+export interface ComputerThreadState {
+  mode: ComputerMode;
+  hostAuthorized: boolean;
+  running?: boolean;
+  browserControl?: "agent" | "user";
+  browserActive?: boolean;
+  userControl?: "agent" | "user";
+  userAlert?: "closed" | "detached" | "disconnected" | null;
+  userTarget?: { id: string; title: string; url: string; windowId: number } | null;
+  activity?: ComputerActivity;
+}
 
 export interface BrowserTabState {
   id: string;
@@ -32,11 +83,17 @@ export interface BrowserDownload {
 export interface ComputerState {
   platform: string;
   hostSupported: boolean;
-  threads: Record<string, { mode: ComputerMode; hostAuthorized: boolean; browserControl?: "agent" | "user"; browserActive?: boolean }>;
+  threads: Record<string, ComputerThreadState>;
   lease: { threadId: string; running: boolean } | null;
   control: Record<ComputerTarget, "agent" | "user">;
   inflight: { threadId: string; target: ComputerTarget; name: string }[];
   authorization: { id: string; threadId: string; reason: string } | null;
+  siteRequests?: { id: string; threadId: string; host: string; title: string; browser: string }[];
+  sites?: string[];
+  hostPhase?: ComputerPhase;
+  userBrowser?: { connected: boolean; browser: { kind: string; name: string; version: string; extension: string } | null; tabs?: number };
+  userBrowserSetup?: { browsers: { kind: string; name: string; installed: boolean }[]; prepared: boolean; disabled: boolean; extensionDir: string };
+  userTabs?: UserBrowserTab[];
   stopping: boolean;
   lastStop: { at: number; source: string; threadId: string | null; released: string[]; cancelledRun: boolean; settled: boolean; hostError: string | null } | null;
   hostEngaged: boolean;

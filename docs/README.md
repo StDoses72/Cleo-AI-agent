@@ -14,7 +14,7 @@
 6. [程序版本与恢复](program-versions.md)：更新、切换版本、启动失败回退与保底入口。
 7. [本地 skills](local-skills.md)：在开发会话中发现和调用本机技能。
 8. [子任务路由](benchmark-routing.md)：连接候选、Artificial Analysis 数据、评估器、受约束委派与任务用量；执行权限见[子任务路由的统一权限](routing-permissions.md)。
-9. [电脑使用](computer-use.md)：按会话隔离的内置浏览器与本机电脑控制。
+9. [电脑使用](computer-use.md)：AI 按任务选择的三种目标——按会话隔离的内置浏览器、经 Cleo 扩展在后台操作的你的浏览器、本机电脑控制；本机桌面的前后实测见[电脑操作对比](benchmark-computer-use.md)。
 10. 各版本的变化见 `release-notes-v*.md`，最新为 [v0.14.2](release-notes-v0.14.2.md)。
 
 ## 我想理解系统
@@ -53,6 +53,7 @@
 - [ADR 0014 Codex 速度档位按模型目录提供；模型不提供已保存的档位时以标准速度运行并保留选择](adr/0014-codex-speed-from-the-model-catalog.md)
 - [ADR 0015 首屏与发送不等待 harness SDK 的导入；开始写消息时提前打开 harness 会话](adr/0015-start-and-send-without-waiting-on-harness-imports.md)
 - [ADR 0016 Gemini 开发会话分两条路径接入：订阅额度走 Antigravity CLI，API Key / Google Cloud 走 Antigravity SDK](adr/0016-antigravity-sdk-and-cli-harnesses.md)
+- [ADR 0017 电脑操作分三种目标并由 agent 选择；电脑页只显示正在使用的那一种；用户的浏览器经 Cleo 扩展在后台标签页中操作](adr/0017-agent-chosen-computer-modes.md)
 
 ## 历史文档
 

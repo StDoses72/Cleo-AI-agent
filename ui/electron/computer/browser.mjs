@@ -19,7 +19,8 @@ import { t as tr, getLanguage } from "../i18n.mjs";
 import { EventEmitter } from "node:events";
 import { existsSync, mkdirSync } from "node:fs";
 import { basename, extname, join } from "node:path";
-import { MODIFIER_VK, modifierMask, parseShortcut } from "./keys.mjs";
+import { parseShortcut } from "./keys.mjs";
+import { clickAt, dragBetween, insertText, moveTo, pageTextScript, pressKeys, releasePressed, wheelAt } from "./cdp-input.mjs";
 
 const DEFAULT_SIZE = { width: 1280, height: 800 };
 const NAVIGATION_SCHEMES = new Set(["http:", "https:", "cleo-file:"]);
@@ -743,115 +744,45 @@ export class CleoBrowser extends EventEmitter {
 
   async click(context, id, x, y, { button = "left", clicks = 1 } = {}) {
     const tab = await this.attach(this.requireTab(context, id));
-    const point = this.cssPoint(tab, x, y);
-    await this.input(tab, "Input.dispatchMouseEvent", { type: "mouseMoved", ...point, button: "none", pointerType: "mouse" });
-    const bit = { left: 1, right: 2, middle: 4 }[button];
-    for (let count = 1; count <= clicks; count++) {
-      tab.pressed.add(button);
-      await this.input(tab, "Input.dispatchMouseEvent", { type: "mousePressed", ...point, button, buttons: bit, clickCount: count, pointerType: "mouse" });
-      await this.input(tab, "Input.dispatchMouseEvent", { type: "mouseReleased", ...point, button, buttons: 0, clickCount: count, pointerType: "mouse" });
-      tab.pressed.delete(button);
-    }
+    await clickAt(this.sender(tab), this.cssPoint(tab, x, y), { button, clicks }, tab.pressed);
   }
 
   async move(context, id, x, y) {
     const tab = await this.attach(this.requireTab(context, id));
-    await this.input(tab, "Input.dispatchMouseEvent", { type: "mouseMoved", ...this.cssPoint(tab, x, y), button: "none", pointerType: "mouse" });
+    await moveTo(this.sender(tab), this.cssPoint(tab, x, y));
   }
 
   async drag(context, id, from, to, signal) {
     const tab = await this.attach(this.requireTab(context, id));
-    const start = this.cssPoint(tab, from.x, from.y);
-    const end = this.cssPoint(tab, to.x, to.y);
-    await this.input(tab, "Input.dispatchMouseEvent", { type: "mouseMoved", ...start, button: "none", pointerType: "mouse" });
-    tab.pressed.add("left");
-    try {
-      await this.input(tab, "Input.dispatchMouseEvent", { type: "mousePressed", ...start, button: "left", buttons: 1, clickCount: 1, pointerType: "mouse" });
-      const steps = 12;
-      for (let step = 1; step <= steps; step++) {
-        signal?.throwIfAborted();
-        const point = { x: start.x + (end.x - start.x) * step / steps, y: start.y + (end.y - start.y) * step / steps };
-        await this.input(tab, "Input.dispatchMouseEvent", { type: "mouseMoved", ...point, button: "left", buttons: 1, pointerType: "mouse" });
-        await wait(16);
-      }
-      await this.input(tab, "Input.dispatchMouseEvent", { type: "mouseReleased", ...end, button: "left", buttons: 0, clickCount: 1, pointerType: "mouse" });
-      tab.pressed.delete("left");
-    } finally {
-      if (tab.pressed.has("left")) await this.releaseInputs(context, tab.id).catch(() => {});
-    }
+    await dragBetween(this.sender(tab), this.cssPoint(tab, from.x, from.y), this.cssPoint(tab, to.x, to.y), tab.pressed, signal,
+      () => this.releaseInputs(context, tab.id));
   }
 
   async scroll(context, id, x, y, deltaX, deltaY) {
     const tab = await this.attach(this.requireTab(context, id));
-    const point = this.cssPoint(tab, x, y);
-    await this.input(tab, "Input.dispatchMouseEvent", { type: "mouseMoved", ...point, button: "none", pointerType: "mouse" });
-    await this.input(tab, "Input.dispatchMouseEvent", { type: "mouseWheel", ...point, deltaX, deltaY, pointerType: "mouse" });
-    await wait(250);
+    await wheelAt(this.sender(tab), this.cssPoint(tab, x, y), deltaX, deltaY);
   }
 
   async type(context, id, text, signal) {
     const tab = await this.attach(this.requireTab(context, id));
-    const lines = String(text).split(/\r?\n/);
-    for (let index = 0; index < lines.length; index++) {
-      signal?.throwIfAborted();
-      if (index) await this.press(tab, parseShortcut("Enter"));
-      // insertText reaches the focused element without key events; long text is chunked so
-      // stop requests take effect between chunks.
-      for (let offset = 0; offset < lines[index].length; offset += 500) {
-        signal?.throwIfAborted();
-        await this.input(tab, "Input.insertText", { text: lines[index].slice(offset, offset + 500) });
-      }
-    }
+    await insertText(this.sender(tab), this.releaser(tab), text, signal, tab.pressed);
   }
 
   async keys(context, id, shortcut) {
     const tab = await this.attach(this.requireTab(context, id));
-    await this.press(tab, parseShortcut(shortcut));
+    await pressKeys(this.sender(tab), this.releaser(tab), parseShortcut(shortcut), tab.pressed);
   }
 
-  async press(tab, { modifiers, key }) {
-    let mask = 0;
-    const down = [];
-    try {
-      for (const name of modifiers) {
-        mask |= modifierMask([name]);
-        down.push(name);
-        tab.pressed.add(`key:${name}`);
-        await this.input(tab, "Input.dispatchKeyEvent", { type: "rawKeyDown", key: name, code: `${name}Left`, windowsVirtualKeyCode: MODIFIER_VK[name], modifiers: mask });
-      }
-      if (key) {
-        const printable = key.text && !(mask & ~modifierMask(["Shift"]));
-        const text = printable ? (mask & modifierMask(["Shift"]) ? key.text.toUpperCase() : key.text) : "";
-        const keyName = key.key.length === 1 && (mask & modifierMask(["Shift"])) ? key.key.toUpperCase() : key.key;
-        await this.input(tab, "Input.dispatchKeyEvent", { type: text ? "keyDown" : "rawKeyDown", key: keyName, code: key.code,
-          windowsVirtualKeyCode: key.keyCode, modifiers: mask, ...(text ? { text, unmodifiedText: key.text } : {}) });
-        await this.input(tab, "Input.dispatchKeyEvent", { type: "keyUp", key: keyName, code: key.code, windowsVirtualKeyCode: key.keyCode, modifiers: mask });
-      }
-    } finally {
-      for (const name of down.reverse()) {
-        mask &= ~modifierMask([name]);
-        await this.command(tab, "Input.dispatchKeyEvent", { type: "keyUp", key: name, code: `${name}Left`, windowsVirtualKeyCode: MODIFIER_VK[name], modifiers: mask }, 2000).catch(() => {});
-        tab.pressed.delete(`key:${name}`);
-      }
-    }
-  }
+  /** Input dispatch for the shared helpers: stops at a page dialog instead of waiting on it. */
+  sender(tab) { return (method, params) => this.input(tab, method, params); }
+
+  releaser(tab) { return (method, params) => this.command(tab, method, params, 2000); }
 
   /** Purpose: Release mouse buttons and modifiers an interrupted AI action left pressed. */
   async releaseInputs(context, id) {
     const tab = context.tabs.get(id);
     if (!tab || !tab.attached || tab.wc.isDestroyed()) return [];
-    const released = [];
-    for (const item of [...tab.pressed]) {
-      if (item.startsWith("key:")) {
-        const name = item.slice(4);
-        await this.command(tab, "Input.dispatchKeyEvent", { type: "keyUp", key: name, code: `${name}Left`, windowsVirtualKeyCode: MODIFIER_VK[name], modifiers: 0 }, 2000).catch(() => {});
-      } else {
-        await this.command(tab, "Input.dispatchMouseEvent", { type: "mouseReleased", x: 0, y: 0, button: item, buttons: 0, clickCount: 1 }, 2000).catch(() => {});
-      }
-      tab.pressed.delete(item);
-      released.push(item);
-    }
-    return released;
+    return releasePressed(this.releaser(tab), tab.pressed);
   }
 
   /** Purpose: Release pressed inputs of one conversation, or of every conversation. */
@@ -893,22 +824,7 @@ export class CleoBrowser extends EventEmitter {
   async pageText(context, id, limit = 6000) {
     const tab = await this.attach(this.requireTab(context, id));
     const zoom = tab.wc.getZoomFactor() || 1;
-    const script = `(() => {
-      const text = (document.body?.innerText || "").replace(/\\n{3,}/g, "\\n\\n").slice(0, ${Math.max(500, Math.min(limit, 20000))});
-      const selector = 'a[href],button,input,select,textarea,[role=button],[role=link],[contenteditable=true],summary';
-      const items = [];
-      for (const element of document.querySelectorAll(selector)) {
-        const box = element.getBoundingClientRect();
-        if (box.width < 2 || box.height < 2 || box.bottom < 0 || box.right < 0 || box.top > innerHeight || box.left > innerWidth) continue;
-        const style = getComputedStyle(element);
-        if (style.visibility === "hidden" || style.display === "none") continue;
-        const label = (element.getAttribute("aria-label") || element.innerText || element.value || element.placeholder || element.title || element.name || "").trim().replace(/\\s+/g, " ").slice(0, 80);
-        items.push({ tag: element.tagName.toLowerCase(), type: element.type || "", label,
-          x: Math.round((box.left + box.width / 2) * ${zoom}), y: Math.round((box.top + box.height / 2) * ${zoom}) });
-        if (items.length >= 80) break;
-      }
-      return { title: document.title, text, elements: items };
-    })()`;
+    const script = pageTextScript(limit, zoom);
     const result = await this.command(tab, "Runtime.evaluate", { expression: script, returnByValue: true, awaitPromise: false }, 10000);
     if (result.exceptionDetails) throw new Error(tr("browser.could_not_read_the_page_content"));
     return result.result.value;

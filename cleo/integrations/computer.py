@@ -1,10 +1,11 @@
-"""Computer-use tools for every harness: Cleo's built-in browser or the local Windows desktop.
+"""Computer-use tools for every harness: Cleo's built-in browser, the user's own browser through
+the Cleo extension, or the local Windows desktop.
 
-Both built-in targets are served by the running Cleo desktop app (see ``cleo.computer.bridge``);
+All built-in targets are served by the running Cleo desktop app (see ``cleo.computer.bridge``);
 this module only relays tool calls and never needs Docker. ``computer-use.json`` keeps its old
-schema and is read, never rewritten: the target is chosen per task in the desktop UI, and an old
-``runtime`` value never grants local-computer control. A user-configured custom MCP ``command``
-is still honoured as before.
+schema and is read, never rewritten: the agent picks the target per task through the desktop
+app, and an old ``runtime`` value never grants local-computer control. A user-configured custom
+MCP ``command`` is still honoured as before.
 """
 
 from __future__ import annotations

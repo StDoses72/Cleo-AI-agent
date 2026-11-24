@@ -3,7 +3,7 @@
     "cleo_computer": [
       {
         "annotations": null,
-        "description": "Execute one tool returned by computer_tools, for example browser_screenshot or\nbrowser_click with tab_id and screenshot_id. Take a screenshot before acting.",
+        "description": "Execute one tool returned by computer_tools, for example browser_screenshot,\nuser_browser_click with tab_id and screenshot_id, or computer_mode to switch targets.\nTake a screenshot before acting.",
         "input_schema": {
           "additionalProperties": false,
           "properties": {
@@ -25,7 +25,7 @@
       },
       {
         "annotations": null,
-        "description": "List the current computer target (built-in browser or authorized local desktop) and\nits tools with input schemas. No action is performed.",
+        "description": "List the current computer target (built-in browser, the user's connected browser or the\nauthorized local desktop) and its tools with input schemas. No action is performed.",
         "input_schema": {
           "additionalProperties": false,
           "properties": {},

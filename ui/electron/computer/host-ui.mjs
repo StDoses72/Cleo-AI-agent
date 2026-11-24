@@ -9,6 +9,7 @@ import { t as tr, getLanguage } from "../i18n.mjs";
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { stopAccelerator } from "./keys.mjs";
+import { phaseLabel } from "./labels.mjs";
 
 export const DEFAULT_STOP_SHORTCUT = "Control+Alt+Escape";
 
@@ -106,11 +107,16 @@ export class HostControls {
     if (!this.window || this.window.isDestroyed()) return;
     const state = this.broker.state();
     const stopping = state.stopping || hostStopUnconfirmed(state);
+    // The bar says what the agent is doing on the desktop right now, not only that it is in control.
+    const activity = state.lease ? state.threads[state.lease.threadId]?.activity : null;
+    const step = activity?.segments.at(-1)?.steps.at(-1);
+    const phase = stopping ? "stopping" : state.control.desktop === "user" ? "paused" : activity?.phase && activity.phase !== "idle" ? activity.phase : "thinking";
     this.window.webContents.send("cleo:computer:status", {
-      control: state.control.desktop, stopping, shortcut: this.registered ? this.shortcut : "",
+      control: state.control.desktop, stopping, phase, shortcut: this.registered ? this.shortcut : "",
       language: getLanguage(),
-      label: stopping ? tr("overlay_preload.stopping") : state.control.desktop === "user"
-        ? tr("computerpanel.you_are_in_control_ai_paused") : tr("overlay_preload.cleo_is_controlling_the_local_mouse_and_keyboard"),
+      label: stopping ? tr("overlay_preload.stopping") : phase === "paused"
+        ? tr("computerpanel.you_are_in_control_ai_paused")
+        : `Cleo · ${phaseLabel(phase, activity?.current, step?.status === "running" ? step.detail : "")}`,
       shortcutLabel: this.registered ? tr("overlay_preload.value_emergency_stop", { p0: this.shortcut }) : tr("overlay_preload.shortcut_unavailable"),
       buttons: { "takeover-desktop": tr("computerpanel.take_over"), "handback-desktop": tr("computerpanel.return_control_to_ai"), stop: tr("computerpanel.stop") },
     });
