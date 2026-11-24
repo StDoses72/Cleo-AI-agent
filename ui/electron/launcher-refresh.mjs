@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import * as nativeFs from "node:fs/promises";
 import { createRequire } from "node:module";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { desktopPlatform, installationRoot } from "./platform.mjs";
 import { BUILDS_DIRECTORY, DATA_ENTRIES, exists, ownedPath, readJson } from "./program-store.mjs";
@@ -86,10 +86,15 @@ export function launcherRoot(path, target) {
 
 /** Windows may pin the running managed build. Point ordinary Cleo links at a verified install
  * so retiring that build cannot strand a pin. Leave recovery and custom command lines intact. */
-export async function configureLaunchShortcuts({ results, root, shell, window, appData, desktop, alpha }) {
-  const launcher = Object.entries(results ?? {}).find(([, entry]) =>
+export async function configureLaunchShortcuts({
+  results, root, shell, window, appData, desktop, alpha,
+  platform = process.platform, filesystem = nativeFilesystem(),
+}) {
+  const recorded = Object.entries(results ?? {}).find(([, entry]) =>
     ["current", "recorded", "refreshed"].includes(entry.status))?.[0];
-  if (!launcher) return;
+  if (!recorded) return;
+  // The registry keys a launcher by its lowercased path; links and the taskbar get the spelling on disk.
+  const launcher = platform === "win32" ? await onDiskCase(recorded, filesystem) : recorded;
   const name = alpha ? "Cleo Alpha" : "Cleo";
   if (window && !window.isDestroyed()) window.setAppDetails({
     appId: appUserModelId(alpha), appIconPath: launcher,
@@ -123,13 +128,22 @@ export async function configureLaunchShortcuts({ results, root, shell, window, a
   }
 }
 
-/** Input: a lowercased Windows path. Output: the same path with the leaf spelled as it exists on disk, so a swap keeps it. */
+/** Input: a Windows path in any letter case. Output: the same path with each segment spelled as it exists on disk.
+ * A segment that cannot be listed or is missing keeps the spelling it came with. Links are not resolved.
+ */
 async function onDiskCase(path, filesystem) {
-  try {
-    const name = basename(path);
-    const actual = (await filesystem.readdir(dirname(path))).find((entry) => entry.toLowerCase() === name.toLowerCase());
-    return actual ? join(dirname(path), actual) : path;
-  } catch { return path; }
+  const absolute = resolve(path);
+  const { root } = parse(absolute);
+  let spelled = /^[a-z]:[\\/]$/.test(root) ? root.toUpperCase() : root;
+  for (const segment of absolute.slice(root.length).split(/[\\/]/).filter(Boolean)) {
+    let actual = segment;
+    try {
+      const entries = await filesystem.readdir(spelled);
+      if (!entries.includes(segment)) actual = entries.find((entry) => entry.toLowerCase() === segment.toLowerCase()) ?? segment;
+    } catch { /* An unreadable parent keeps the recorded spelling of its child. */ }
+    spelled = join(spelled, actual);
+  }
+  return spelled;
 }
 
 /** Input: installed bundle root and target. Output: its release metadata version, or null when not a Cleo release. */
