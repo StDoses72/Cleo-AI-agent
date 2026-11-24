@@ -27,6 +27,7 @@ Limits in this release:
 
 - The text of a Claude reply that stops before it finishes is kept. It is in the conversation when you reopen it, and a handoff to another harness tells finished messages from unfinished ones.
 - While a Claude turn runs, the follow-up button reads "Send next turn", because Claude takes a follow-up when the current turn ends. Its receipt says it is waiting for the turn to finish. Harnesses that accept a follow-up mid-turn keep "Steer".
+- The keyboard shortcut sheet (Ctrl+/) lists Ctrl+Enter as "Steer or send next turn".
 
 ## Changes and undo
 
@@ -38,6 +39,7 @@ Limits in this release:
 - When the workspace fails to load or its renderer crashes, Cleo offers to reload it instead of leaving a window with only a title bar. If you dismiss the message, opening Cleo again loads the workspace. The condition behind the original blank-window report has not been confirmed on the reporter's machine.
 - Scrolling a long conversation no longer renders the rows that stay in view again. In a test of 500 rows and 25 small scrolls, row renders went from 350 to 1.
 - On Windows, a taskbar pin of the running app relaunches through the installed entry point, and ordinary Cleo shortcuts on the desktop, Start menu and taskbar that pointed into a versioned build folder are corrected.
+- Corrected shortcuts and the taskbar relaunch command keep the installed path's capitalization, for example `C:\Users\you\AppData\Local\Programs\Cleo\Cleo.exe`.
 
 ## Updating
 

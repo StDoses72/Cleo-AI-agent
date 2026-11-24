@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import test from "node:test";
 import { desktopPlatform } from "../electron/platform.mjs";
 import { ProgramStore, exists, writeJson } from "../electron/program-store.mjs";
@@ -470,9 +470,43 @@ test("repair managed-build links and pin new launches to the verified installer"
     writeShortcutLink(path, op, options) { writes.push([path, op, options]); return true; } };
   const window = { isDestroyed: () => false, setAppDetails: value => { details = value; } };
   const ready = await refresh();
+  assert.deepEqual(Object.keys(ready.results), [key(launcher)], "the registry keeps its lowercased key");
   // The refresh fixture uses native bundles. The Windows link code consumes its validated result.
   await configureLaunchShortcuts({ ...ready, root: store.root, window, shell, appData, desktop, alpha: false });
-  assert.equal(details.relaunchCommand, `"${key(launcher)}"`);
+  // The temporary directory itself may be spelled as an 8.3 alias; everything below it is listed on disk.
+  const written = details.appIconPath;
+  assert.equal(key(written), key(launcher));
+  assert.equal(relative(tmpdir(), written), relative(tmpdir(), launcher), "the path is written as it is spelled on disk");
+  assert.deepEqual(details, { appId: "ai.cleo.desktop", appIconPath: written,
+    relaunchCommand: `"${written}"`, relaunchDisplayName: "Cleo" });
   assert.deepEqual(writes, [programs, pins].map(folder => [join(folder, "Cleo.lnk"), "update",
-    { target: key(launcher), cwd: dirname(key(launcher)), icon: key(launcher), iconIndex: 0 }]));
+    { target: written, cwd: dirname(written), icon: written, iconIndex: 0 }]));
+  // A link that spells the managed build in another letter case is still recognised.
+  if (process.platform === "win32") {
+    writes.length = 0;
+    Object.assign(links.get(join(programs, "Cleo.lnk")), { target: target.toUpperCase(), cwd: dirname(target).toLowerCase() });
+    await configureLaunchShortcuts({ ...ready, root: store.root, window, shell, appData, desktop, alpha: false });
+    assert.deepEqual(writes.map(([path, , options]) => [path, options.target, options.cwd]),
+      [programs, pins].map(folder => [join(folder, "Cleo.lnk"), written, dirname(written)]));
+  }
+  await configureLaunchShortcuts({ ...ready, root: store.root, window, shell, appData, desktop, alpha: true });
+  assert.equal(details.appId, "ai.cleo.desktop.alpha");
+});
+
+test("a launcher folder that cannot be listed keeps its recorded spelling", { skip: process.platform !== "win32" }, async t => {
+  const { store, launcher, installRoot, refresh } = await fixture(t);
+  const ready = await refresh();
+  let details;
+  const window = { isDestroyed: () => false, setAppDetails: value => { details = value; } };
+  const filesystem = { ...fs, readdir: async (path, ...rest) => {
+    if (key(path) === key(dirname(installRoot))) throw Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+    return fs.readdir(path, ...rest);
+  } };
+  await configureLaunchShortcuts({ ...ready, root: store.root, window, shell: {}, filesystem,
+    appData: join(store.root, "Roaming"), desktop: join(store.root, "Desktop"), alpha: false });
+  const written = details.appIconPath;
+  assert.equal(key(written), key(launcher));
+  assert.equal(relative(tmpdir(), dirname(dirname(written))), relative(tmpdir(), dirname(installRoot)));
+  assert.equal(basename(dirname(written)), basename(installRoot).toLowerCase(), "the unlisted folder keeps the registry's spelling");
+  assert.equal(basename(written), basename(launcher), "segments below it are still read from disk");
 });

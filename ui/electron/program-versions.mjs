@@ -3,13 +3,13 @@ import { randomUUID, createHash } from "node:crypto";
 import { mkdir, readFile, rm } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createRequire } from "node:module";
-import { ProgramStore, exists, readJson, writeJson, ownedPath } from "./program-store.mjs";
+import { BUILDS_DIRECTORY, ProgramStore, exists, readJson, writeJson, ownedPath } from "./program-store.mjs";
 import { fetchRelease, extract, copyProgramBundle } from "./program-bundles.mjs";
 import { ReleaseDownloads } from "./release-downloads.mjs";
 import { installRuntime } from "./online-runtime.mjs";
 import { desktopPlatform, installationRoot } from "./platform.mjs";
 import { compareVersions, validateManifest } from "./updater.mjs";
-import { RELEASE_REPOSITORY as REPOSITORY, releaseTagForVersion, versionForReleaseTag } from "./release-channel.mjs";
+import { RELEASE_REPOSITORY as REPOSITORY, isAlphaVersion, releaseTagForVersion, versionForReleaseTag } from "./release-channel.mjs";
 
 const API = `https://api.github.com/repos/${REPOSITORY}`;
 
@@ -92,7 +92,7 @@ export class ProgramVersions {
     if (metadata?.app !== "Cleo" || metadata.platform !== this.target.id || ![2, 3].includes(metadata.evolution_protocol)
         || metadata.version !== this.app.getVersion() || !/^\d+\.\d+\.\d+(?:-alpha)?$/.test(metadata.version)
         || (metadata.build_kind && metadata.build_kind !== "official")) return null;
-    if (metadata.version.endsWith("-alpha") !== Boolean(active.version?.endsWith("-alpha"))) return null;
+    if (isAlphaVersion(metadata.version) !== isAlphaVersion(active.version)) return null;
     if (state.builds.some(build => build.id === state.baseline && build.version === metadata.version)) return null;
     const path = this.target.platform === "win32" ? resolve(this.executable).toLowerCase() : resolve(this.executable);
     const previous = state.installedReleases?.[path] || active.version;
@@ -112,10 +112,10 @@ export class ProgramVersions {
       const hash = await archiveHash(installed.source);
       let record = state.builds.find(build => build.kind === "official" && build.installSource === installed.path
         && build.version === installed.version && build.installHash === hash);
-      if (record && !await exists(join(this.store.root, "builds", record.id, record.executable))) record = null;
+      if (record && !await exists(join(this.store.root, BUILDS_DIRECTORY, record.id, record.executable))) record = null;
       if (!record) {
         const id = `official-${randomUUID()}`;
-        const directory = ownedPath(this.store.root, "builds", id);
+        const directory = ownedPath(this.store.root, BUILDS_DIRECTORY, id);
         try {
           const bundle = join(directory, this.target.bundle);
           await copyProgramBundle(installed.source, bundle, { signal });
@@ -143,7 +143,7 @@ export class ProgramVersions {
     if (!this.packaged) throw new Error(tr("program_versions.switching_versions_needs_a_packaged_cleo_app"));
     const id = `baseline-${randomUUID()}`;
     const bundle = this.target.bundle;
-    const directory = join(this.store.root, "builds", id, bundle);
+    const directory = join(this.store.root, BUILDS_DIRECTORY, id, bundle);
     this.log(tr("evolution.saving_the_current_working_program_and_independent_recovery_entry_point"));
     await mkdir(dirname(directory), { recursive: true });
     await copyProgramBundle(installationRoot(this.executable, this.target), directory, { signal: this.operationAbort?.signal });
@@ -156,7 +156,7 @@ export class ProgramVersions {
     if (process.platform === "win32") {
       // A separate shortcut remains usable even when the current app's JavaScript cannot load.
       const { shell } = createRequire(import.meta.url)("electron");
-      const shortcut = join(this.app.getPath("desktop"), this.app.getVersion().endsWith("-alpha")
+      const shortcut = join(this.app.getPath("desktop"), isAlphaVersion(this.app.getVersion())
         ? "Cleo Alpha 恢复.lnk" : "Cleo 恢复.lnk");
       if (!shell.writeShortcutLink(shortcut, "create", {
         target: baseline.executable, args: "--cleo-recovery",
@@ -197,7 +197,7 @@ export class ProgramVersions {
       const state = await this.store.read();
       for (const build of state.builds) {
         if (build.kind === "official" && build.version === manifest.version && build.sha256 === manifest.sha256) {
-          const directory = ownedPath(this.store.root, "builds", build.id);
+          const directory = ownedPath(this.store.root, BUILDS_DIRECTORY, build.id);
           if (!await exists(ownedPath(directory, build.executable))) continue;
           await this.store.build(build.id);
           await installRuntime({ resources: join(directory, this.target.bundle, this.target.resources),
@@ -207,7 +207,7 @@ export class ProgramVersions {
         }
       }
       const id = `official-${randomUUID()}`;
-      const directory = ownedPath(this.store.root, "builds", id);
+      const directory = ownedPath(this.store.root, BUILDS_DIRECTORY, id);
       try {
         await this.extractArchive(archive, directory, { signal });
         await installRuntime({ resources: join(directory, this.target.bundle, this.target.resources),

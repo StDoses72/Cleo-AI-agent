@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import { basename, dirname, isAbsolute, join, posix, relative, resolve, win32 } from "node:path";
 import { desktopPlatform, installationRoot } from "./platform.mjs";
 import { compareVersions } from "./updater.mjs";
-import { readJson } from "./program-store.mjs";
+import { BUILDS_DIRECTORY, readJson } from "./program-store.mjs";
 import { runtimeInUse } from "./install-state.mjs";
 import { parseRuntimeRegistry, RUNTIME_REGISTRY } from "./online-runtime.mjs";
 
@@ -213,7 +213,7 @@ async function liveResources({ fs, state, buildsRoot, target, currentResources, 
   for (const sibling of siblings) {
     const label = sibling.label || tr("storage_reclaim.cleo_from_another_channel");
     const siblingState = await readJson(join(sibling.controlRoot, "state.json"), {});
-    const siblingBuilds = join(sibling.controlRoot, "builds");
+    const siblingBuilds = join(sibling.controlRoot, BUILDS_DIRECTORY);
     const registered = new Map((siblingState.builds || []).map(build => [build.id, build]));
     for (const id of await listDirectory(fs, siblingBuilds)) {
       if (!BUILD.test(id)) continue;
@@ -253,7 +253,7 @@ export async function storageInventory({
 } = {}) {
   dataHome = resolve(dataHome);
   const state = await store.read();
-  const buildsRoot = join(store.root, "builds");
+  const buildsRoot = join(store.root, BUILDS_DIRECTORY);
   const entries = [];
   const size = path => directorySize(path, { fs, signal });
   // Startup passes measure only what they remove; walking retained programs and user data is for the UI.

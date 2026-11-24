@@ -1,15 +1,14 @@
 import { t as tr } from "./i18n.mjs";
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from "electron";
 import { join, resolve } from "node:path";
-import { ProgramStore } from "./program-store.mjs";
+import { CONTROL_DIRECTORY, ProgramStore } from "./program-store.mjs";
 import { desktopDataHome } from "./platform.mjs";
 import { configureReleaseChannel } from "./release-channel.mjs";
 import { setLanguage } from "./i18n.mjs";
 import { readUiLanguage } from "./language.mjs";
 
-configureReleaseChannel(app);
-// The control directory keeps its original name: it is an on-disk format shared with every retained program.
-const root = join(app.getPath("userData"), "evolution");
+const alphaChannel = configureReleaseChannel(app);
+const root = join(app.getPath("userData"), CONTROL_DIRECTORY);
 const dataHome = desktopDataHome({ platform: process.platform, environment: process.env,
   home: app.getPath("home"), userData: app.getPath("userData") });
 const store = new ProgramStore(root, dataHome);
@@ -88,8 +87,7 @@ async function boot() {
         .then(async ({ refreshInstalledLauncher, configureLaunchShortcuts }) => {
           const { results } = await refreshInstalledLauncher({ store, log: (text) => console.error(text) });
           await configureLaunchShortcuts({ results, root, shell, window,
-            appData: app.getPath("appData"), desktop: app.getPath("desktop"),
-            alpha: app.getVersion().endsWith("-alpha") });
+            appData: app.getPath("appData"), desktop: app.getPath("desktop"), alpha: alphaChannel });
         })
         .catch((error) => console.error("Launcher refresh:", error.message));
     }

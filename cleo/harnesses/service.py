@@ -698,7 +698,9 @@ class AgentService:
                     },
                 )
             phase(tr("service.model_run_including_tools_and_waiting"))
-            if on_event is not None or route.provider.name == "claude":
+            # Without a listener the events are logged once, when the turn returns; a
+            # provider that declares LIVE_LOG has them logged as they arrive instead.
+            if on_event is not None or Capability.LIVE_LOG in capabilities_of(route.provider):
                 consumer = asyncio.create_task(deliver())
             turn = await route.provider.prompt(
                 route.provider_session_id,
