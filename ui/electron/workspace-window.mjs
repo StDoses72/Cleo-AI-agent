@@ -1,13 +1,29 @@
 import { t as tr } from "./i18n.mjs";
 
+const reloads = new WeakMap();
+
+/** Opening Cleo again asks for a workspace that failed to show; one that is showing stays as it is. */
+export function reopenWorkspaceWindow(window) {
+  reloads.get(window)?.();
+}
+
 /** Reload the local workspace only on request; repeated failures must not start a crash loop. */
 export function loadWorkspaceWindow(window, { index, dialog, isQuitting }) {
   let prompting = false;
+  // Set from a failure until the next load starts: a dismissed message leaves the window empty.
+  let failed = false;
   const canRecover = () => !isQuitting() && !window.isDestroyed();
-  const load = () => window.loadFile(index).catch(error => {
-    if (error.code !== "ERR_ABORTED") return recover(error.message);
+  const load = () => {
+    failed = false;
+    return window.loadFile(index).catch(error => {
+      if (error.code !== "ERR_ABORTED") return recover(error.message);
+    });
+  };
+  reloads.set(window, () => {
+    if (failed && !prompting && canRecover()) void load();
   });
   async function recover(detail) {
+    failed = true;
     if (!canRecover() || prompting) return;
     prompting = true;
     console.error("Workspace window:", detail);
