@@ -6,7 +6,7 @@ Cleo 是一个面向 agent harness 编排的集成平台：在同一个桌面工
 
 项目提供 Windows、macOS、Linux 桌面构建支持，由本地 Python 后端服务驱动，另有 stdio MCP 入口。用户数据默认保存在本机；模型推理由用户配置的 API provider 或外部 agent harness 提供。
 
-> 当前版本：[v0.14.2](https://github.com/StDoses72/Cleo-AI-agent/releases/tag/v0.14.2) · [下载桌面版](https://stdoses72.github.io/Cleo-AI-agent/)
+> 当前版本：[v0.14.3](https://github.com/StDoses72/Cleo-AI-agent/releases/tag/v0.14.3) · [下载桌面版](https://stdoses72.github.io/Cleo-AI-agent/)
 
 ## Cleo 解决什么问题
 
@@ -184,7 +184,7 @@ Cleo-AI-agent/
 - [本地 skills](docs/local-skills.md)：支持的 harness、目录与调用方式。
 - [子任务路由](docs/benchmark-routing.md)与[电脑使用](docs/computer-use.md)。
 - [ADR 索引](docs/adr/README.md)：架构与行为边界的决策记录。
-- [v0.14.2 发布说明](docs/release-notes-v0.14.2.md)。
+- [v0.14.3 发布说明](docs/release-notes-v0.14.3.md)。
 
 ## 开发与验证
 

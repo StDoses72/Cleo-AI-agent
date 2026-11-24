@@ -15,7 +15,7 @@
 7. [本地 skills](local-skills.md)：在开发会话中发现和调用本机技能。
 8. [子任务路由](benchmark-routing.md)：连接候选、Artificial Analysis 数据、评估器、受约束委派与任务用量；执行权限见[子任务路由的统一权限](routing-permissions.md)。
 9. [电脑使用](computer-use.md)：AI 按任务选择的三种目标——按会话隔离的内置浏览器、经 Cleo 扩展在后台操作的你的浏览器、本机电脑控制；本机桌面的前后实测见[电脑操作对比](benchmark-computer-use.md)。
-10. 各版本的变化见 `release-notes-v*.md`，最新为 [v0.14.2](release-notes-v0.14.2.md)。
+10. 各版本的变化见 `release-notes-v*.md`，最新为 [v0.14.3](release-notes-v0.14.3.md)。
 
 ## 我想理解系统
 
