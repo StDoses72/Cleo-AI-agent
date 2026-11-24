@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
+import { loadWorkspaceWindow } from "../electron/workspace-window.mjs";
 import { createTrayController } from "../electron/tray.mjs";
 import { createQuitBarrier } from "../electron/shutdown.mjs";
 
@@ -48,6 +49,7 @@ function fixture({ platform = "win32", failure, canOpen = () => true } = {}) {
     minimized = false;
     destroyed = false;
     focused = false;
+    webContents = { isCrashed: () => false };
     isDestroyed() { return this.destroyed; }
     isVisible() { return this.visible; }
     isMinimized() { return this.minimized; }
@@ -115,6 +117,14 @@ test("closing hides the live main window and tray or activation restores that sa
   f.app.emit("activate");
   assert.equal(f.window.isVisible(), true);
   assert.equal(f.windows.length, 1);
+});
+
+test("opening Cleo again reloads a dismissed renderer crash", () => {
+  const f = fixture();
+  let reloads = 0;
+  f.window.webContents = { isCrashed: () => true, reload: () => reloads++ };
+  f.controller.show();
+  assert.equal(reloads, 1);
 });
 
 test("memory management opens the window before delivering navigation", () => {
@@ -202,4 +212,29 @@ test("restart preparation prevents opening or memory navigation", () => {
   f.click("记忆管理");
   assert.equal(f.window.isVisible(), false);
   assert.equal(f.memory.length, 0);
+});
+
+test("failed workspace load and renderer crash offer a retry without a reload loop", async () => {
+  const window = { webContents: new EventEmitter(), isDestroyed: () => false,
+    async loadFile(path) {
+      assert.equal(path, "workspace");
+      if (++loads === 1) throw new Error("failed to load");
+    } };
+  let loads = 0;
+  let quitting = false;
+  const reasons = [];
+  const dialog = { async showMessageBox(owner, options) {
+    assert.equal(owner, window);
+    reasons.push(options.detail);
+    return { response: reasons.length === 1 ? 0 : 1 };
+  } };
+  await loadWorkspaceWindow(window, { index: "workspace", dialog, isQuitting: () => quitting });
+  assert.equal(loads, 2);
+  window.webContents.emit("render-process-gone", {}, { reason: "crashed" });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(reasons, ["failed to load", "crashed"]);
+  assert.equal(loads, 2);
+  quitting = true;
+  window.webContents.emit("render-process-gone", {}, { reason: "killed" });
+  assert.equal(reasons.length, 2);
 });

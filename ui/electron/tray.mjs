@@ -13,6 +13,7 @@ export function createTrayController({ app, Menu, Tray, nativeImage, iconPath, c
     if (!started || quitting || !canOpen()) return null;
     const current = getWindow();
     if (!current) return createWindow();
+    if (current.webContents.isCrashed()) current.webContents.reload();
     if (current.isMinimized()) current.restore();
     current.show();
     current.focus();

@@ -13,7 +13,7 @@ interface Window {
   cleoDesktop?: {
     getUiLanguage?(): Promise<"zh-CN" | "en">;
     setup?(action: "startup" | "status" | "scan" | "install" | "dismiss", params?: Record<string, unknown>): Promise<import("./components/DependencySetup").SetupState>;
-    computer?(action: "state" | "viewport" | "browser" | "mode" | "authorize" | "takeover" | "handback" | "stop" | "shortcut" | "preview", params?: Record<string, unknown>): Promise<import("./computer-types").ComputerState>;
+    computer?(action: "state" | "viewport" | "browser" | "authorize" | "site" | "removeSite" | "userTabs" | "userTarget" | "userBrowser" | "takeover" | "handback" | "stop" | "shortcut" | "preview", params?: Record<string, unknown>): Promise<import("./computer-types").ComputerState>;
     onComputerState?(listener: (state: import("./computer-types").ComputerState) => void): () => void;
     files?<T = unknown>(op: "list" | "read" | "locate", params: Record<string, unknown>): Promise<T>;
     git?<T = unknown>(op: import("./types").SourceControlOp, params: Record<string, unknown>): Promise<T>;

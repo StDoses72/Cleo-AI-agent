@@ -10,14 +10,9 @@ test("a second normal launch focuses the existing window", () => {
   const app = new EventEmitter();
   app.requestSingleInstanceLock = () => true;
   const calls = [];
-  const window = {
-    isDestroyed: () => false, isMinimized: () => true,
-    restore: () => calls.push("restore"), show: () => calls.push("show"),
-    focus: () => calls.push("focus"),
-  };
-  assert.equal(acquireSingleInstance(app, () => [window]), true);
+  assert.equal(acquireSingleInstance(app, () => calls.push("open workspace")), true);
   app.emit("second-instance");
-  assert.deepEqual(calls, ["restore", "show", "focus"]);
+  assert.deepEqual(calls, ["open workspace"]);
   app.requestSingleInstanceLock = () => false;
   assert.equal(acquireSingleInstance(app, () => []), false);
 });

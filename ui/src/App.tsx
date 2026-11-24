@@ -121,12 +121,10 @@ export function App() {
   useEffect(() => {
     if (!computerRun || previewOpenedFor.current === computerRun) return;
     let cancelled = false;
-    // Browser tasks show the shared built-in browser; local-computer tasks act on real windows.
-    const threadId = computerRun.split(":")[0];
-    void window.cleoDesktop?.computer?.("state").then(state => {
+    // The computer page follows whichever target the agent uses, so it opens for every mode.
+    void window.cleoDesktop?.computer?.("state").then(() => {
       if (cancelled) return;
       previewOpenedFor.current = computerRun;
-      if (state.threads[threadId]?.mode === "host") return;
       setInspectorTab("computer");
       setInspectorBySpace(current => ({ ...current, [inspectorSpace]: true }));
     }).catch(() => { /* The task timeline reports connection failures. */ });

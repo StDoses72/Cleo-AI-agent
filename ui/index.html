@@ -10,9 +10,18 @@
     <meta name="color-scheme" content="dark light" />
     <link rel="icon" href="./cleo.png" />
     <title>Cleo</title>
+    <style>
+      #workspace-recovery { display: none; padding: 3rem; font: 1rem system-ui; }
+      #root:empty { display: none; }
+      #root:empty + #workspace-recovery { display: block; }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <main id="workspace-recovery" aria-label="Cleo">
+      <p>Cleo</p>
+      <a href="./index.html">重新加载工作区 / Reload workspace</a>
+    </main>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

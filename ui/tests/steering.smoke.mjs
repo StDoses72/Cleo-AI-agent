@@ -209,8 +209,10 @@ try {
   await page.getByRole("button", { name: /^统一 managed 与 native sessions/ }).click();
   await input.fill("B 的原始任务");
   await page.getByTestId("send-button").click();
-  await send("B 在本轮结束后接收的指令");
-  await page.getByTestId("steer-receipt").getByText("已排队", { exact: true }).waitFor();
+  await page.getByTestId("steer-now").getByText("下轮发送").waitFor();
+  await queue("B 在本轮结束后接收的指令");
+  await row("B 在本轮结束后接收的指令").getByRole("button", { name: "下轮发送" }).click();
+  await page.getByTestId("steer-receipt").getByText("等待本轮收尾后发送", { exact: true }).waitFor();
   await queue("B 停止后仍保留的消息");
   await page.getByTestId("stop-button").click();
   const cancelled = page.getByTestId("steer-receipt").filter({ hasText: "已取消投递" });

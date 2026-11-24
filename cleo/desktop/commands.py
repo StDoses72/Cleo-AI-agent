@@ -227,7 +227,7 @@ async def _task_git(context: CommandContext) -> None:
 
 
 async def _task_diff(context: CommandContext) -> None:
-    diff = await asyncio.to_thread(read_git_diff, context.session.project_path)
+    diff = await asyncio.to_thread(read_git_diff, context.session.project_path, textconv=True)
     await context.emit({"type": "changes", "changes": changes_from_diff(diff)})
     await context.service._notice(context.emit, tr(
         "commands.workspace_diff",

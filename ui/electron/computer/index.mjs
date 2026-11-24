@@ -1,5 +1,6 @@
 import { t as tr } from "../i18n.mjs";
-/** Wires Cleo's computer use into Electron: built-in browser, host control, bridge, files. */
+/** Wires Cleo's computer use into Electron: built-in browser, the user's browser through the Cleo
+ * extension, host control, bridge, files. */
 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,7 +8,9 @@ import { CleoBrowser } from "./browser.mjs";
 import { ComputerBridge } from "./bridge.mjs";
 import { ComputerBroker } from "./broker.mjs";
 import { FILE_SCHEME, WorkspaceFiles } from "./files.mjs";
-import { HostControls } from "./host-ui.mjs";
+import { HostControls, readPreferences, writePreferences } from "./host-ui.mjs";
+import { UserBrowser } from "./user-browser.mjs";
+import { UserBrowserSetup, installedBrowsers } from "./user-browser-setup.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -33,6 +36,16 @@ export class HostClient {
   }
 }
 
+/** Websites the user allowed for their own browser, kept with the other computer-use preferences. */
+export class PreferenceSitePolicy {
+  constructor(path) { this.path = path; }
+  entries() { const value = readPreferences(this.path).sites; return value && typeof value === "object" && !Array.isArray(value) ? value : {}; }
+  allowed(host) { const entries = this.entries(); return entries["*"] === "always" || entries[host] === "always"; }
+  allow(host) { writePreferences(this.path, { sites: { ...this.entries(), [host]: "always" } }); }
+  remove(host) { const next = { ...this.entries() }; delete next[host]; writePreferences(this.path, { sites: next }); }
+  list() { const entries = this.entries(); return Object.keys(entries).filter(host => entries[host] === "always").sort(); }
+}
+
 export class ComputerUse {
   constructor({ electron, app, backend }) {
     this.electron = electron;
@@ -44,16 +57,24 @@ export class ComputerUse {
       downloadsDir: join(app.getPath("downloads"), "Cleo"),
       overlay: { html: join(here, "agent-overlay.html"), preload: join(here, "overlay-preload.cjs") },
     });
-    this.broker = new ComputerBroker({ browser: this.browser, host: new HostClient(backend), backend, platform: process.platform });
+    this.preferencesPath = join(app.getPath("userData"), "computer-use-ui.json");
+    const bridgeDirectory = join(app.getPath("userData"), "computer-bridge");
+    this.userBrowser = new UserBrowser({ electron, enabled: () => !this.userBrowserPreferences().disabled });
+    this.userBrowserSetup = new UserBrowserSetup({ userData: app.getPath("userData"), bridgeDirectory });
+    this.broker = new ComputerBroker({ browser: this.browser, host: new HostClient(backend), backend, platform: process.platform,
+      userBrowser: this.userBrowser, sites: new PreferenceSitePolicy(this.preferencesPath) });
     this.controls = new HostControls({ electron, broker: this.broker,
-      preferencesPath: join(app.getPath("userData"), "computer-use-ui.json"),
+      preferencesPath: this.preferencesPath,
       files: { preload: join(here, "overlay-preload.cjs"), statusHtml: join(here, "host-status.html") } });
-    this.bridge = new ComputerBridge({ directory: join(app.getPath("userData"), "computer-bridge"),
-      handler: (request, signal) => this.dispatch(request, signal) });
+    this.bridge = new ComputerBridge({ directory: bridgeDirectory,
+      handler: (request, signal) => this.dispatch(request, signal),
+      onLink: (socket, request, rest) => this.userBrowser.accept(socket, request, rest) });
     this.windows = new Set();
     this.pushTimer = null;
     this.bridgeError = "";
     this.broker.on("state", () => this.push());
+    this.broker.on("sites", () => this.push());
+    this.userBrowser.on("state", () => this.push());
     this.browser.on("state", () => this.push());
     this.browser.on("user-input", ({ tab, event, input }) => this.userInput(tab, event, input));
     this.browser.on("file-chooser", () => this.push());
@@ -77,6 +98,35 @@ export class ComputerUse {
     }
     // Pages nobody used for ten minutes are released unless an action is still in flight.
     this.browser.startIdleReclaim?.({ busy: threadId => this.broker.threadBusy(threadId) });
+    // After the user connected a browser once, keep the host's paths current across updates.
+    if (this.userBrowserPreferences().setup) void this.userBrowserSetup.prepare().catch(() => {});
+  }
+
+  userBrowserPreferences() {
+    const value = readPreferences(this.preferencesPath).userBrowser;
+    return value && typeof value === "object" ? value : {};
+  }
+
+  /** Purpose: Connect or disconnect the user's browser from Settings. */
+  async userBrowserAction(params = {}) {
+    if (params.action === "connect") {
+      writePreferences(this.preferencesPath, { userBrowser: { ...this.userBrowserPreferences(), setup: true, disabled: false } });
+      const { extensionDir } = await this.userBrowserSetup.prepare();
+      if (params.kind) this.userBrowserSetup.openExtensionsPage(String(params.kind));
+      if (params.reveal !== false) this.electron.shell.showItemInFolder(join(extensionDir, "manifest.json"));
+      this.push();
+      return;
+    }
+    if (params.action === "disconnect") {
+      writePreferences(this.preferencesPath, { userBrowser: { ...this.userBrowserPreferences(), disabled: true } });
+      await this.userBrowser.disconnect();
+      return;
+    }
+    if (params.action === "reveal") {
+      this.electron.shell.showItemInFolder(join(this.userBrowserSetup.extensionDir, "manifest.json"));
+      return;
+    }
+    throw new Error(tr("index.unknown_computer_panel_action"));
   }
 
   async dispatch(request, signal) {
@@ -92,8 +142,20 @@ export class ComputerUse {
     this.browser.attachWindow(window);
   }
 
+  /** Which browsers are installed; looked up at most every 30 s, since state is pushed often. */
+  installedBrowsers() {
+    const now = Date.now();
+    if (!this.browserScan || now - this.browserScan.at > 30_000) {
+      this.browserScan = { at: now, list: installedBrowsers().map(({ kind, name, executable }) => ({ kind, name, installed: Boolean(executable) })) };
+    }
+    return this.browserScan.list;
+  }
+
   state() {
-    return { ...this.broker.state(), ...this.controls.status(), bridgeError: this.bridgeError };
+    const preferences = this.userBrowserPreferences();
+    return { ...this.broker.state(), ...this.controls.status(), bridgeError: this.bridgeError,
+      userBrowserSetup: { browsers: this.installedBrowsers(),
+        prepared: Boolean(preferences.setup), disabled: Boolean(preferences.disabled), extensionDir: this.userBrowserSetup.extensionDir } };
   }
 
   push() {
@@ -186,8 +248,12 @@ export class ComputerUse {
     if (action === "state") return this.state();
     if (action === "viewport") { this.setViewport(window, params.rect || null, params.threadId ? String(params.threadId) : null); return null; }
     if (action === "browser") return this.browserAction(window, params);
-    if (action === "mode") { await this.broker.setMode(String(params.threadId || ""), params.mode, { confirmed: params.confirmed === true }); return this.state(); }
     if (action === "authorize") { await this.broker.answerAuthorization(String(params.id || ""), params.granted === true); return this.state(); }
+    if (action === "site") { this.broker.answerSite(String(params.id || ""), String(params.choice || "")); return this.state(); }
+    if (action === "removeSite") { this.broker.sites.remove(String(params.host || "")); this.push(); return this.state(); }
+    if (action === "userTabs") { await this.userBrowser.refreshTabs(); return { ...this.state(), userTabs: this.userBrowser.tabs() }; }
+    if (action === "userTarget") { this.broker.pickUserTarget(String(params.threadId || ""), String(params.tabId || "")); return this.state(); }
+    if (action === "userBrowser") { await this.userBrowserAction(params); return this.state(); }
     if (action === "takeover") { await this.broker.takeover(params.target, "user", params.threadId ? String(params.threadId) : null); return this.state(); }
     if (action === "handback") { await this.broker.handback(params.target, params.threadId ? String(params.threadId) : null); return this.state(); }
     if (action === "stop") return { ...this.state(), stopResult: await this.broker.stop({ source: "panel", threadId: params.threadId ? String(params.threadId) : null }) };

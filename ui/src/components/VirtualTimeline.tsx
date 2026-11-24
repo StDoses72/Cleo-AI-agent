@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
 interface Row { id: string }
 
@@ -131,21 +131,24 @@ export function VirtualTimeline<T extends Row>({ rows, viewport, follow, bottomI
   return <div className="timeline virtual-timeline" ref={container} data-testid="timeline"
     data-mounted-count={end - first} data-row-count={rows.length}>
     <div aria-hidden="true" style={{ height: offsets[first] }} />
-    {rows.slice(first, end).map(row => <MeasuredRow key={row.id} id={row.id} nodes={nodes.current} observer={observer.current}>
-      {render(row)}
-    </MeasuredRow>)}
+    {rows.slice(first, end).map(row => <MeasuredRow key={row.id} row={row} render={render}
+      nodes={nodes.current} observer={observer.current} />)}
     <div aria-hidden="true" style={{ height: offsets.at(-1)! - offsets[end] }} />
     {footer}
   </div>;
 }
 
-function MeasuredRow({ id, children, nodes, observer }: {
-  id: string; children: ReactNode; nodes: Map<string, HTMLDivElement>; observer: ResizeObserver | null;
+// Scroll frames move the rendered window. Only newly visible or changed rows need their markdown rendered.
+function TimelineRow<T extends Row>({ row, render, nodes, observer }: {
+  row: T; render: (row: T) => ReactNode; nodes: Map<string, HTMLDivElement>; observer: ResizeObserver | null;
 }) {
+  const id = row.id;
   const ref = useCallback((node: HTMLDivElement | null) => {
     const previous = nodes.get(id);
     if (previous) observer?.unobserve(previous);
     if (node) { nodes.set(id, node); observer?.observe(node); } else nodes.delete(id);
   }, [id, nodes, observer]);
-  return <div ref={ref} data-row-id={id} className="virtual-timeline-row">{children}</div>;
+  return <div ref={ref} data-row-id={id} className="virtual-timeline-row">{render(row)}</div>;
 }
+
+const MeasuredRow = memo(TimelineRow) as typeof TimelineRow;

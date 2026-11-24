@@ -323,3 +323,43 @@ def test_turn_checkpoint_is_unavailable_outside_git(tmp_path) -> None:
     (tmp_path / ".git").mkdir()
 
     assert create_git_checkpoint(str(tmp_path), "thread-1") is None
+
+
+def test_automatic_diffs_do_not_run_document_converters(tmp_path):
+    from cleo.integrations.git import read_git_checkpoint_diff
+
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "test@example.com")
+    _git(tmp_path, "config", "user.name", "Test")
+    _git(tmp_path, "config", "diff.document.textconv", "false")
+    (tmp_path / ".gitattributes").write_text("*.docx diff=document\n")
+    document = tmp_path / "sample.docx"
+    document.write_bytes(b"before\0")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "baseline")
+    checkpoint = create_git_checkpoint(str(tmp_path), "turn")
+    document.write_bytes(b"after\0")
+    checkpoint = finalize_git_checkpoint(checkpoint)
+    for diff in (read_git_diff(str(tmp_path)), read_git_checkpoint_diff(checkpoint)):
+        assert [item["path"] for item in changes_from_diff(diff)] == ["sample.docx"]
+        assert "Binary files" in diff
+    # The revert patch is one more automatic diff, and it has to restore the original bytes.
+    undo_git_checkpoint(checkpoint)
+    assert document.read_bytes() == b"before\0"
+
+
+def test_undo_restores_line_endings_the_repository_keeps_as_written(tmp_path):
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "test@example.com")
+    _git(tmp_path, "config", "user.name", "Test")
+    _git(tmp_path, "config", "core.autocrlf", "false")
+    files = {"unix.txt": b"one\ntwo\n", "windows.txt": b"one\r\ntwo\r\n"}
+    for name, content in files.items():
+        (tmp_path / name).write_bytes(content)
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "baseline")
+    checkpoint = create_git_checkpoint(str(tmp_path), "turn")
+    for name, content in files.items():
+        (tmp_path / name).write_bytes(content.replace(b"two", b"TWO"))
+    undo_git_checkpoint(finalize_git_checkpoint(checkpoint))
+    assert {name: (tmp_path / name).read_bytes() for name in files} == files

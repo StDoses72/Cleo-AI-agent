@@ -6,7 +6,7 @@ Cleo 是一个面向 agent harness 编排的集成平台：在同一个桌面工
 
 项目提供 Windows、macOS、Linux 桌面构建支持，由本地 Python 后端服务驱动，另有 stdio MCP 入口。用户数据默认保存在本机；模型推理由用户配置的 API provider 或外部 agent harness 提供。
 
-> 当前版本：[v0.14.2](https://github.com/StDoses72/Cleo-AI-agent/releases/tag/v0.14.2) · [下载桌面版](https://stdoses72.github.io/Cleo-AI-agent/)
+> 当前版本：[v0.14.3](https://github.com/StDoses72/Cleo-AI-agent/releases/tag/v0.14.3) · [下载桌面版](https://stdoses72.github.io/Cleo-AI-agent/)
 
 ## Cleo 解决什么问题
 
@@ -34,7 +34,7 @@ Cleo 是一个面向 agent harness 编排的集成平台：在同一个桌面工
 - 编辑之前的消息，对话回到那一刻并重新发送；运行期间的新消息先进入队列，需要时再手动 Steer 进当前回合。
 - 原生 Claude/Codex 开发会话中的本机 skills 发现、搜索与调用。
 - 受约束的子任务路由：会话当前模型始终是协调者，把子任务委派给已连接的 harness 模型。详见[子任务路由](docs/benchmark-routing.md)。
-- 电脑使用：按会话隔离的内置浏览器，或本机 Windows 桌面。详见[电脑使用](docs/computer-use.md)。
+- 电脑使用：AI 按任务选择按会话隔离的内置浏览器、经 Cleo 扩展在后台标签页中操作的你的 Chrome / Edge，或本机 Windows 桌面。详见[电脑使用](docs/computer-use.md)。
 - 正式版本更新：可见的重启过程、启动失败自动回到上一个程序，以及独立的恢复入口。
 - 面向代码工作的统一 harness adapter，包含 provider-neutral 数据面和可选的 Codex 控制面。
 - append-only `events.jsonl` 会话事实源、原子 manifest 和可重建 SQLite 索引。
@@ -184,7 +184,7 @@ Cleo-AI-agent/
 - [本地 skills](docs/local-skills.md)：支持的 harness、目录与调用方式。
 - [子任务路由](docs/benchmark-routing.md)与[电脑使用](docs/computer-use.md)。
 - [ADR 索引](docs/adr/README.md)：架构与行为边界的决策记录。
-- [v0.14.2 发布说明](docs/release-notes-v0.14.2.md)。
+- [v0.14.3 发布说明](docs/release-notes-v0.14.3.md)。
 
 ## 开发与验证
 

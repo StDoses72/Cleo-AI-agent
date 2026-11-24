@@ -139,6 +139,23 @@ class ConversationContextTests(unittest.IsolatedAsyncioTestCase):
         projected = project(events)
         self.assertEqual([r["type"] for r in projected], ["user_message", "assistant_message"])
 
+    def test_incomplete_claude_message_survives_an_earlier_complete_message_in_same_turn(self):
+        from cleo.harnesses.context import project
+
+        def message(seq, kind, key, content):
+            return {
+                "id": str(seq), "seq": seq, "type": kind, "content": content,
+                "data": {"turn_id": "one", "timeline_id": key, "payload": {"stream": "message"}},
+            }
+
+        records = project([message(1, "assistant_fragment", "first", "Checking"),
+                           message(2, "assistant_message", "first", "Checking the file"),
+                           message(3, "assistant_fragment", "second", "Part "),
+                           message(4, "assistant_fragment", "second", "two")])
+        self.assertEqual([(r["type"], r["text"]) for r in records], [
+            ("assistant_message", "Checking the file"), ("incomplete_answer", "Part two"),
+        ])
+
     async def test_twenty_megabytes_of_tools_can_switch_with_bound_reader(self):
         async def create_context(cwd, model, binding):
             from cleo.harnesses.context import ContextReader
