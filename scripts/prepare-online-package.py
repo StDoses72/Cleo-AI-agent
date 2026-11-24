@@ -4,16 +4,21 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
 import json
 import shutil
+import ssl
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+# Seconds to wait before each further attempt at one download; the attempt after the last fails.
+RETRY_DELAYS = (2, 5, 15, 30)
 
 
 def sha(path: Path) -> str:
@@ -21,11 +26,43 @@ def sha(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def transient(error: BaseException) -> bool:
+    """Whether a download may succeed if tried again: a 5xx, a timeout or a dropped connection."""
+    if isinstance(error, urllib.error.HTTPError):
+        return error.code >= 500
+    if isinstance(error, urllib.error.URLError):
+        error = error.reason
+    return isinstance(error, TimeoutError | ConnectionError | http.client.IncompleteRead
+                      | ssl.SSLEOFError)
+
+
+def fetch(url: str, timeout: float, read=lambda response: response.read()):
+    """Purpose: GET ``url`` and return ``read(response)``, trying again after a transient failure.
+
+    Input: URL, socket timeout in seconds, and a reader that consumes the whole body (it runs
+    again from the start on each attempt). Output: the reader's result; the last transient
+    error once ``RETRY_DELAYS`` is used up, and any other error (a 4xx) at once.
+    """
+    for delay in (*RETRY_DELAYS, None):
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as response:
+                return read(response)
+        except Exception as error:
+            if delay is None or not transient(error):
+                raise
+            print(f"{url}: {error}; trying again in {delay} s", file=sys.stderr, flush=True)
+            time.sleep(delay)
+
+
 def artifact(url: str, version: str, expected: str, scratch: Path) -> dict:
     name = url.rsplit("/", 1)[1]
     path = scratch / name
-    with urllib.request.urlopen(url, timeout=120) as response, path.open("wb") as stream:
-        shutil.copyfileobj(response, stream)
+
+    def save(response) -> None:
+        with path.open("wb") as stream:
+            shutil.copyfileobj(response, stream)
+
+    fetch(url, 120, save)
     if sha(path) != expected:
         raise ValueError(f"Runtime archive checksum mismatch: {name}")
     return {"archive": name, "url": url, "version": version,
@@ -49,25 +86,22 @@ def prepare(resources: Path, source: Path, target: str) -> None:
     uv_version = subprocess.check_output(["uv", "--version"], text=True).split()[1]
     metadata_root = f"https://raw.githubusercontent.com/astral-sh/uv/{uv_version}/crates/"
     try:
-        response = urllib.request.urlopen(metadata_root + "uv-python/download-metadata.json",
-                                         timeout=60)
+        downloads = fetch(metadata_root + "uv-python/download-metadata.json", 60, json.load)
     except urllib.error.HTTPError as error:
         if error.code != 404:
             raise
-        response = urllib.request.urlopen(
-            metadata_root + "uv-python-managed/download-metadata.json", timeout=60,
-        )
-    with response:
-        python_metadata = json.load(response)[candidate["key"].replace("-macos-", "-darwin-")]
+        downloads = fetch(metadata_root + "uv-python-managed/download-metadata.json", 60,
+                          json.load)
+    python_metadata = downloads[candidate["key"].replace("-macos-", "-darwin-")]
     python_url, python_sha = python_metadata["url"], python_metadata["sha256"]
     node_platform = {"win32": "win", "darwin": "darwin", "linux": "linux"}[sys.platform]
     node_arch = "arm64" if target.endswith("arm64") else "x64"
     node_file = f"node-v{node_version}-{node_platform}-{node_arch}"
     node_file += ".zip" if sys.platform == "win32" else ".tar.gz"
     node_base = f"https://nodejs.org/dist/v{node_version}"
-    with urllib.request.urlopen(node_base + "/SHASUMS256.txt", timeout=60) as response:
-        node_sha = next(line.split()[0] for line in response.read().decode().splitlines()
-                        if line.split()[-1] == node_file)
+    node_sha = next(line.split()[0]
+                    for line in fetch(node_base + "/SHASUMS256.txt", 60).decode().splitlines()
+                    if line.split()[-1] == node_file)
     runtime = resources / "runtime"
     runtime.mkdir()
     subprocess.run(["uv", "build", "--wheel", "--out-dir", str(runtime), str(source)], check=True)
