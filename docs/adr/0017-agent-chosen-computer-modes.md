@@ -1,6 +1,6 @@
 # 0017. 电脑操作分三种目标并由 agent 选择；电脑页只显示正在使用的那一种；用户的浏览器经 Cleo 扩展在后台标签页中操作
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-11-21
 
 ## Context
