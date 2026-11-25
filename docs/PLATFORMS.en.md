@@ -51,7 +51,7 @@ npm ci --prefix ui
 npm --prefix ui start
 ```
 
-Configure a model before starting. macOS supports native menus, Command shortcuts, and left-side window controls. Applications launched from Finder include bundled runtimes and common CLI locations in the backend PATH.
+Configure a model before starting. macOS supports native menus, Command shortcuts, and left-side window controls. Applications launched from Finder include bundled runtimes and common CLI locations in the backend PATH. When none of them has a `claude` command, account connections use the Claude Code that the Claude desktop app keeps for itself (the newest runnable version under `~/Library/Application Support/Claude/claude-code/`, chosen again on every check).
 
 Build on the target OS and architecture. Install `uv`, then run:
 

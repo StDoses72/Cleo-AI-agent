@@ -104,7 +104,46 @@ def _runtime_path() -> str:
     return os.pathsep.join(dict.fromkeys(paths))
 
 
+def _version_order(name: str) -> tuple[int, ...]:
+    """Order version directory names numerically: 2.1.330 is newer than 2.1.99."""
+    return tuple(int(part) if part.isdigit() else -1 for part in name.split("."))
+
+
+def _claude_desktop_clients() -> list[Path]:
+    """Purpose: The Claude Code builds the Claude desktop application keeps for itself on macOS.
+
+    Output: runnable clients, the newest version first. The application downloads each version
+    into ``claude-code/<version>/<build>/`` under its own support directory and leaves earlier
+    ones behind, so the choice is made on every lookup: an update is picked up, and a version
+    whose files are gone is passed over.
+    """
+    root = Path.home() / "Library" / "Application Support" / "Claude" / "claude-code"
+    found = []
+    try:
+        versions = sorted((entry for entry in root.iterdir() if entry.is_dir()),
+                          key=lambda entry: _version_order(entry.name), reverse=True)
+        for version in versions:
+            builds = [entry / "claude.app" / "Contents" / "MacOS" / "claude"
+                      for entry in version.iterdir()]
+            runnable = [path for path in builds if path.is_file() and os.access(path, os.X_OK)]
+            found.extend(sorted(runnable, key=lambda path: path.stat().st_mtime, reverse=True))
+    except OSError:
+        pass  # No such application, or its directory cannot be read: nothing to offer.
+    return found
+
+
+# Clients a vendor's own application installs outside every command directory, by runtime and
+# platform. Each entry was seen on a real installation; issue #200 keeps the record.
+_VENDOR_CLIENTS = {("claude_code", "darwin"): _claude_desktop_clients}
+
+
 def executable(profile: AgentProfile) -> str:
+    """Purpose: The client program of an account connection.
+
+    Input: the connection. Output: its path. The command is searched on the process path, then
+    in the usual install directories. A client the user configured is looked for nowhere else;
+    the runtime's own command is also looked for where the vendor's application keeps it.
+    """
     configured = profile.executable or (
         os.environ.get("CLEO_CODEX_BIN") if profile.backend == "codex" else None
     )
@@ -112,6 +151,9 @@ def executable(profile: AgentProfile) -> str:
     resolved = shutil.which(command)
     if resolved is None:
         resolved = shutil.which(command, path=_runtime_path())
+    if resolved is None and not configured:
+        clients = _VENDOR_CLIENTS.get((profile.backend, sys.platform), list)()
+        resolved = str(clients[0]) if clients else None
     if resolved is None:
         raise FileNotFoundError(tr(
             "subscriptions.value_was_not_found_install_the_client_or_specif",

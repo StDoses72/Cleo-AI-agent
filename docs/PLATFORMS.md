@@ -36,7 +36,9 @@ npm --prefix ui start
 
 macOS 使用原生应用／编辑／窗口菜单、Command 快捷键和左侧窗口按钮。Finder 启动时，
 后端 PATH 会包含内置运行环境、Homebrew 和常见用户 CLI 目录；不会执行用户 shell 配置
-来探测 PATH。自定义位置可通过现有 provider 命令配置或环境 PATH 指定。
+来探测 PATH。这些位置都没有 `claude` 命令时，账号连接会使用 Claude 桌面应用自己保存的
+Claude Code（`~/Library/Application Support/Claude/claude-code/` 下版本最新且可运行的
+一份，每次检查时重新选择）。自定义位置可通过现有 provider 命令配置或环境 PATH 指定。
 
 ## 原生构建
 
