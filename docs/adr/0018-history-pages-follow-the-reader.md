@@ -1,6 +1,6 @@
 # 0018. 历史翻页只沿读者的方向推进；视野内的内容只在读者到达边缘时让位
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-11-25
 
 ## Context

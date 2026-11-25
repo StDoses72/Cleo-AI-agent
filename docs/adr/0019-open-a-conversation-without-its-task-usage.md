@@ -1,6 +1,6 @@
 # 0019. 打开会话不等待任务用量；晚到的会话详情并入，不再丢弃
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-11-25
 
 ## Context
