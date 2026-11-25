@@ -800,6 +800,42 @@ try {
     await page.waitForFunction(() => window.opened.filter(entry => entry.startsWith("view ")).length === 3);
     assert.deepEqual(await page.evaluate(() => window.opened.filter(entry => entry === "usage limits")), [], "a view left behind still read its usage");
   });
+  await check("a conversation renamed while it was opening keeps its new name", async page => {
+    await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      const view = cleoClient.loadThread.bind(cleoClient);
+      const turn = cleoClient.streamTurn.bind(cleoClient);
+      let name = null;
+      let first = true;
+      cleoClient.streamTurn = async function* (id, prompt, ...rest) {
+        if (!prompt.startsWith("/rename ")) { yield* turn(id, prompt, ...rest); return; }
+        name = prompt.slice("/rename ".length);
+      };
+      cleoClient.loadThread = async id => {
+        const loaded = await view(id);
+        if (id !== "limits") return loaded;
+        // The view asked for by the click is held until the rename is over, and still has the old name.
+        if (first) { first = false; await new Promise(resolve => { window.releaseView = resolve; }); return { ...loaded, canUndo: true }; }
+        return name ? { ...loaded, title: name } : loaded;
+      };
+    });
+    const header = page.locator(".conversation-chrome");
+    await page.getByRole("button", { name: /^修正 Codex 用量显示/ }).click();
+    await page.waitForFunction(() => window.releaseView && Number(document.querySelector("[data-cache-count]").dataset.cacheCount) > 0);
+    await header.locator(".thread-actions-wrap > button").click();
+    await header.getByRole("button", { name: "重命名", exact: true }).click();
+    await page.locator("#rename-input").fill("用量显示（已改名）");
+    await page.keyboard.press("Enter");
+    await header.getByText("用量显示（已改名）", { exact: true }).waitFor();
+    await page.locator(".rename-dialog").waitFor({ state: "detached" });
+    await page.evaluate(() => window.releaseView());
+    // The late view still brings what only it has (here: the last turn can be undone) ...
+    await header.locator(".thread-actions-wrap > button").click();
+    await header.getByRole("button", { name: "撤销上一轮", exact: true }).waitFor();
+    // ... and leaves the name that was given meanwhile.
+    assert.equal(await header.getByText("用量显示（已改名）", { exact: true }).count(), 1);
+    assert.equal(await header.getByText("修正 Codex 用量显示", { exact: true }).count(), 0);
+  });
   await check("a work group keeps its id while the loaded window moves over it", async page => {
     const ids = await page.evaluate(async () => {
       const { groupTimelineItems, keepWorkIds } = await import("/src/components/Conversation.tsx");

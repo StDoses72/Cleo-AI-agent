@@ -670,11 +670,19 @@ export function useCleoWorkspace() {
         loaded.items.forEach(item => acknowledgeSteer(threadId, item));
         if (selectionRef.current !== selection || runLocks.current.has(threadId)) return;
         // The newest page is asked for at the same time and usually arrives first. The view then
-        // brings everything else (what can be edited or undone, the changes, the skills) and
-        // leaves the timeline as it is by now.
+        // brings everything else (what can be edited or undone, the changes, the skills). Whatever
+        // was changed here while it was on its way is newer than the view and stays: the timeline
+        // that is loaded by now, a new name, new settings.
         const moved = threadVersions.current.get(threadId) !== version;
-        updateThread(threadId, current => !moved || !current.items.length || !current.history ? loaded : { ...loaded,
-          items: current.items, history: { ...current.history, total: Math.max(current.history.total, loaded.history?.total ?? 0) } });
+        const asked = thread as unknown as Record<string, unknown>;
+        updateThread(threadId, current => {
+          if (!moved) return loaded;
+          const newer = Object.fromEntries(Object.entries(current).filter(([field, value]) =>
+            field !== "items" && field !== "history" && value !== asked[field]));
+          const timeline = current.items.length && current.history ? { items: current.items,
+            history: { ...current.history, total: Math.max(current.history.total, loaded.history?.total ?? 0) } } : {};
+          return { ...loaded, ...newer, ...timeline };
+        });
         setActiveSpace(loaded.space);
         setActiveProjectId(loaded.projectId);
         // Last, with the conversation on screen.
