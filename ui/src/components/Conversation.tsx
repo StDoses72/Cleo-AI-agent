@@ -3,6 +3,7 @@ import { VirtualTimeline } from "./VirtualTimeline";
 import { Timing } from "./Timing";
 import { cleoClient } from "../services/cleoClient";
 import type { useTimelineHistory } from "../useTimelineHistory";
+import { MAX_TIMELINE_ITEMS, TIMELINE_PAGE_ITEMS } from "../timeline-cache";
 import "./timeline.css";
 import {
   useEffect,
@@ -264,7 +265,11 @@ export function Conversation({
   const [bottomInset, setBottomInset] = useState(140);
   const localFollowRef = useRef(true);
   const stickToBottomRef = history?.followRef ?? localFollowRef;
-  useLayoutEffect(() => { stickToBottomRef.current = true; }, [thread?.id]);
+  // Which way the reader last moved through the history. Paging only continues that way: a window of
+  // a few lines has both of its edges within reach, and loading at the one behind the reader would
+  // bring back what they just left.
+  const travel = useRef<"up" | "down" | null>(null);
+  useLayoutEffect(() => { stickToBottomRef.current = true; travel.current = null; }, [thread?.id]);
   // Reading position of the turn just sent: the question is placed once, then the view stays put
   // while the reply grows. `turnSpace` pads a short turn so the question can sit near the top.
   const turnSpaceRef = useRef<HTMLDivElement>(null);
@@ -281,10 +286,18 @@ export function Conversation({
     observer.observe(bottom);
     return () => observer.disconnect();
   }, []);
-  const timelineItems = useMemo(
-    () => groupTimelineItems(thread?.items ?? []),
-    [thread?.items],
-  );
+  // A folded turn and a run of tool calls are named after their first loaded item, which paging drops
+  // from the window. Each keeps the name it had, so it stays the same row, open or closed, measured
+  // and in place, while the window moves over it.
+  const workIds = useRef({ thread: thread?.id, groups: new Map<string, string>(), runs: new Map<string, string>() });
+  if (workIds.current.thread !== thread?.id) workIds.current = { thread: thread?.id, groups: new Map(), runs: new Map() };
+  const timelineItems = useMemo(() => {
+    const blocks = groupTimelineItems(thread?.items ?? []);
+    const ids = keepWorkIds(workIds.current.groups);
+    for (const block of blocks) if (block.type === "work-group") block.id = ids.id(block.id, block.items);
+    workIds.current.groups = ids.known;
+    return blocks;
+  }, [thread?.items]);
   const currentTurn = timelineItems.slice(timelineItems.findLastIndex(item => item.type === "message" && item.role === "user") + 1);
   const waiting = Boolean(approvalRequest || waitingForAnswer);
   const live = running && !thread?.history?.hasAfter;
@@ -308,14 +321,17 @@ export function Conversation({
     return Object.fromEntries(Object.entries({ ...current, [stateKey(id)]: open }).slice(-1000));
   });
   const rows: TimelineRow[] = [];
+  const runIds = keepWorkIds(workIds.current.runs);
   for (const block of timelineItems) {
     if (block.type !== "work-group") { rows.push(block); continue; }
     const folded = isFolded(block);
+    const shown = !folded || isOpen(block.id);
     if (folded) rows.push(block);
-    if (folded && !isOpen(block.id)) continue;
     for (const part of splitToolRuns(block.items)) {
-      if (!Array.isArray(part)) { rows.push({ id: part.id, type: "work-row", item: part, inFold: folded, inRun: false }); continue; }
-      const run: ToolRunRow = { id: `tool-run-${part[0].id}`, type: "tool-run", items: part, inFold: folded };
+      if (!Array.isArray(part)) { if (shown) rows.push({ id: part.id, type: "work-row", item: part, inFold: folded, inRun: false }); continue; }
+      // Named behind a closed fold too: it is the same run when the fold opens again.
+      const run: ToolRunRow = { id: runIds.id(`tool-run-${part[0].id}`, part), type: "tool-run", items: part, inFold: folded };
+      if (!shown) continue;
       rows.push(run);
       if (!isOpen(run.id)) continue;
       rows.push(...part.map((item, index) => ({ id: item.id, type: "work-row" as const, item, inFold: folded, inRun: true,
@@ -325,6 +341,7 @@ export function Conversation({
     const last = rows.at(-1)!;
     if (folded && last.type !== "work-group") rows[rows.length - 1] = { ...last, end: true } as TimelineRow;
   }
+  workIds.current.runs = runIds.known;
   const [reader, setReader] = useState<{ item: TimelineItem; field: string; offset: number; text: string; next: number; total: number } | null>(null);
   const [readerError, setReaderError] = useState("");
   const [readerLoading, setReaderLoading] = useState(false);
@@ -404,6 +421,7 @@ export function Conversation({
     if (!viewport || !question) return;
     // From here the reply is read at the reader's pace: output no longer drags the view.
     stickToBottomRef.current = false;
+    travel.current = null;
     history?.follow(false);
     const view = viewport.getBoundingClientRect();
     const rect = question.getBoundingClientRect();
@@ -417,7 +435,8 @@ export function Conversation({
   }, [thread?.id, sentId]);
   useLayoutEffect(measureTail);
 
-  const trackScrollPosition = () => {
+  /** The reader moved the view by `delta` pixels (negative is up). */
+  const trackScrollPosition = (delta = 0) => {
     const viewport = viewportRef.current;
     if (!viewport) return;
     const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
@@ -425,22 +444,64 @@ export function Conversation({
     measureTail();
     if (placedTop.current === null || Math.abs(viewport.scrollTop - placedTop.current) > 1) {
       placedTop.current = null;
+      if (delta) travel.current = delta < 0 ? "up" : "down";
       stickToBottomRef.current = distanceFromBottom <= 1 && !thread?.history?.hasAfter;
       history?.follow(stickToBottomRef.current);
     }
     if (history?.busy || history?.error) return;
     const prefetchDistance = Math.max(240, viewport.clientHeight / 2);
-    if (viewport.scrollTop < prefetchDistance && thread?.history?.hasBefore) void history?.load("before");
-    else if (distanceFromBottom < prefetchDistance && thread?.history?.hasAfter) void history?.load("after");
+    if (travel.current !== "down" && thread?.history?.hasBefore && reaches("before", viewport.scrollTop, prefetchDistance)) void history?.load("before");
+    else if (travel.current !== "up" && thread?.history?.hasAfter && reaches("after", distanceFromBottom, prefetchDistance)) void history?.load("after");
   };
 
+  /** Purpose: Tell whether a page loaded at one end would push a row in view out at the other.
+   * The cache holds a fixed number of items and a folded turn can be most of them, so the items
+   * that give way can be the very lines the reader is looking at. Input: where the page goes.
+   */
+  const dropsView = (direction: "before" | "after") => {
+    const viewport = viewportRef.current;
+    const items = thread?.items ?? [];
+    const giveWay = items.length + TIMELINE_PAGE_ITEMS - MAX_TIMELINE_ITEMS;
+    if (!viewport || giveWay <= 0) return false;
+    const view = viewport.getBoundingClientRect();
+    const shown = [...viewport.querySelectorAll<HTMLElement>("[data-row-id]")].filter(node => {
+      const rect = node.getBoundingClientRect();
+      return rect.bottom > view.top + 1 && rect.top < view.bottom - 1;
+    });
+    // The row in view nearest the end that gives way goes once the last of its items does.
+    const id = (direction === "before" ? shown.at(-1) : shown[0])?.dataset.rowId;
+    const row = rows.find(candidate => candidate.id === id);
+    if (!row) return false;
+    const members = row.type === "work-group" || row.type === "tool-run" ? row.items : [row.type === "work-row" ? row.item : row];
+    const index = items.indexOf(direction === "before" ? members[0] : members.at(-1)!);
+    return index >= 0 && (direction === "before" ? index >= items.length - giveWay : index < giveWay);
+  };
+  /** A page is due `distance` ahead of its edge. One that would take lines out of view waits for
+   * the edge itself, where the reader has nothing left to read on the way. */
+  const reaches = (direction: "before" | "after", toEdge: number, distance: number) =>
+    toEdge <= 1 || (toEdge < distance && !dropsView(direction));
+
+  // A window too short to scroll is filled without waiting for input. It grows from the end the
+  // reader is at: heading up keeps its start, anything else (pinned to the newest output, heading
+  // down, just opened) keeps its end, so a fill never pushes out what the reader is looking at.
+  // `filled` is the window the last fill left unchanged: the cache is full, asking again never ends.
+  const filled = useRef("");
   useEffect(() => {
     if (history?.busy || history?.error) return;
     const frame = requestAnimationFrame(() => {
       const viewport = viewportRef.current;
-      if (!viewport || viewport.scrollHeight > viewport.clientHeight + 2) return;
-      if (thread?.history?.hasAfter) void history?.load("after");
-      else if (thread?.history?.hasBefore) void history?.load("before");
+      if (!thread || !history || !viewport || viewport.scrollHeight > viewport.clientHeight + 2) return;
+      const retain = !stickToBottomRef.current && travel.current === "up" ? "start" : "end";
+      const { hasBefore, hasAfter } = thread.history ?? {};
+      const direction = retain === "start" ? (hasBefore ? "before" : hasAfter ? "after" : null)
+        : hasAfter ? "after" : hasBefore ? "before" : null;
+      const loaded = [thread.id, thread.items[0]?.id, thread.items.at(-1)?.id, thread.items.length, direction, retain].join("\n");
+      if (!direction || filled.current === loaded) return;
+      // A page that goes in at the kept end pushes loaded items out at the other. Lines in view only
+      // give way to the reader's own scrolling.
+      if ((direction === "before") === (retain === "start") && dropsView(direction)) return;
+      filled.current = loaded;
+      void history.load(direction, { retain }).then(applied => { if (!applied && filled.current === loaded) filled.current = ""; });
     });
     return () => cancelAnimationFrame(frame);
   }, [thread?.id, thread?.items.length, thread?.history?.before, thread?.history?.after, history?.busy, history?.error, bottomInset]);
@@ -484,7 +545,7 @@ export function Conversation({
   };
 
   return (
-    <main className="conversation-shell" data-testid="conversation" data-cache-count={thread?.items.length ?? 0} data-cache-first={thread?.items[0]?.id ?? ""}>
+    <main className="conversation-shell" data-testid="conversation" data-cache-count={thread?.items.length ?? 0} data-cache-first={thread?.items[0]?.id ?? ""} data-cache-last={thread?.items.at(-1)?.id ?? ""}>
       <div className="conversation-chrome"><ConversationHeader
         thread={thread}
         project={project}
@@ -513,6 +574,8 @@ export function Conversation({
         {history?.error && <div className="history-error" role="alert">{history.error}<button onClick={() => void history.retry()}>{tr("conversation.retry_loading")}</button></div>}
         {history?.busy && <div className="history-loading" data-direction={history.busy} role="status" aria-label={tr("conversation.loading_history")}><LoaderCircle className="spin" size={14} /></div>}
         <div className="conversation-viewport" ref={viewportRef} tabIndex={0} aria-label={tr("conversation.conversation_history")} onWheel={event => {
+          // Turning round counts from the input itself, also where the view cannot move any further.
+          if (event.deltaY) travel.current = event.deltaY < 0 ? "up" : "down";
           if (event.deltaY < 0) { stickToBottomRef.current = false; history?.follow(false); }
           // Scrolling down against the end is the reader asking to follow the output.
           else if (event.deltaY > 0 && !thread?.history?.hasAfter
@@ -521,8 +584,8 @@ export function Conversation({
           }
           if (!history?.busy && !history?.error) {
             const view = event.currentTarget;
-            if (event.deltaY < 0 && view.scrollTop < 160 && thread?.history?.hasBefore) void history?.load("before");
-            if (event.deltaY > 0 && view.scrollHeight - view.clientHeight - view.scrollTop < 160 && thread?.history?.hasAfter) void history?.load("after");
+            if (event.deltaY < 0 && thread?.history?.hasBefore && reaches("before", view.scrollTop, 160)) void history?.load("before");
+            if (event.deltaY > 0 && thread?.history?.hasAfter && reaches("after", view.scrollHeight - view.clientHeight - view.scrollTop, 160)) void history?.load("after");
           }
         }}>
         {thread?.items.length ? (
@@ -548,7 +611,8 @@ export function Conversation({
       <div className="conversation-bottom" ref={bottomRef}>
       {(thread?.history?.hasAfter || ((history?.unread || (history && !history.following)) && belowFold)) && <button className="history-latest" aria-label={tr("conversation.jump_to_latest")} title={history?.unread ? tr("conversation.new_messages_jump_to_latest") : tr("conversation.jump_to_latest")} data-unread={history?.unread || undefined} onClick={() => {
         placedTop.current = null;
-        void history?.load("latest", () => { stickToBottomRef.current = true; });
+        travel.current = null;
+        void history?.load("latest", { beforeApply: () => { stickToBottomRef.current = true; } });
       }}><ArrowDown size={17} aria-hidden="true" /></button>}
       {questionUI}
       <dialog ref={readerDialog} className="history-reader" data-content-kind={reader?.item.type} aria-label={tr("conversation.full_history_content")}
@@ -808,6 +872,25 @@ type TimelineRow = TimelineBlock | ToolRunRow
   | { id: string; type: "work-row"; item: ProcessItem; inFold: boolean; inRun: boolean; end?: boolean };
 
 const isProcess = (item: TimelineItem): item is ProcessItem => item.type === "thought" || item.type === "tool";
+
+/** Purpose: Let a group of work keep its id from one pass over the timeline to the next.
+ * Input: the item-to-group ids of the previous pass. Output: `id` names a group (the id held by
+ * the first of its items that was in a group before, when no other group has taken it; otherwise
+ * the given one), and `known` is the same map for this pass.
+ */
+export function keepWorkIds(previous: Map<string, string>) {
+  const known = new Map<string, string>();
+  const taken = new Set<string>();
+  return {
+    known,
+    id(own: string, items: { id: string }[]) {
+      const kept = items.map(item => previous.get(item.id)).find(id => id !== undefined && !taken.has(id)) ?? own;
+      taken.add(kept);
+      for (const item of items) known.set(item.id, kept);
+      return kept;
+    },
+  };
+}
 
 /** Purpose: Lay a work group out the way it reads: each thought by itself, each uninterrupted
  * series of tool calls together. Input: the group's items in arrival order. Output: thoughts and

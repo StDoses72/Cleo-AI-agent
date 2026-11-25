@@ -482,7 +482,7 @@ export function useCleoWorkspace() {
         runtime: (thread.runtime?.settingsRevision ?? 0) > (fresh.runtime?.settingsRevision ?? 0)
           ? thread.runtime : fresh.runtime };
     }) });
-    await history.load("latest", undefined, runLocks.current.has(activeThread?.id ?? ""));
+    await history.load("latest", { preserveUnpersisted: runLocks.current.has(activeThread?.id ?? "") });
   };
 
   const history = useTimelineHistory(activeThread, updateThread);
@@ -1059,7 +1059,7 @@ export function useCleoWorkspace() {
             }),
           }))).catch(() => {});
         }
-        if (history.isActive(threadId) && history.isFollowing(threadId) && thread.history) await history.load("latest", undefined, false, true);
+        if (history.isActive(threadId) && history.isFollowing(threadId) && thread.history) await history.load("latest", { keepPosition: true });
         // Messages queued during a run go next; a stopped or failed run keeps them for the user.
         if (!failed && !cancellingRuns.current.has(token) && queuesRef.current[threadId]?.length
             && !runLocks.current.has(threadId)) {
@@ -1128,7 +1128,7 @@ export function useCleoWorkspace() {
         },
       ],
     }));
-    if (history.isActive(threadId) && history.isFollowing(threadId)) await history.load("latest", undefined, false, true);
+    if (history.isActive(threadId) && history.isFollowing(threadId)) await history.load("latest", { keepPosition: true });
   };
 
   const resolveApproval = async (decision: ApprovalDecision) => {

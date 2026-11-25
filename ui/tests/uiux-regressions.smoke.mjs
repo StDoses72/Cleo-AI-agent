@@ -754,6 +754,25 @@ try {
     assert.deepEqual(blocks[1].items.map(item => item.id), ["t1", "th1", "t2"]);
     assert.equal(blocks[1].answered, false);
   });
+  await check("a work group keeps its id while the loaded window moves over it", async page => {
+    const ids = await page.evaluate(async () => {
+      const { groupTimelineItems, keepWorkIds } = await import("/src/components/Conversation.tsx");
+      const tool = id => ({ id, type: "tool", name: "Read", status: "done", turnId: "turn" });
+      const items = [{ id: "u1", type: "message", role: "user", content: "开始", turnId: "turn" },
+        tool("t1"), tool("t2"), tool("t3"), tool("t4"),
+        { id: "a1", type: "message", role: "assistant", content: "完成", turnId: "turn" }, tool("t5")];
+      let known = new Map();
+      // The window as loaded, with its start paged away, split by a plan, and with its end paged away.
+      return [items, items.slice(3), [...items.slice(3, 4), { id: "plan", type: "plan", steps: [], turnId: "turn" }, ...items.slice(4)], items.slice(0, 3)].map(loaded => {
+        const keeper = keepWorkIds(known);
+        const named = groupTimelineItems(loaded).filter(block => block.type === "work-group").map(block => keeper.id(block.id, block.items));
+        known = keeper.known;
+        return named;
+      });
+    });
+    assert.deepEqual(ids, [["work-group-t1", "work-group-t5"], ["work-group-t1", "work-group-t5"],
+      ["work-group-t1", "work-group-t4", "work-group-t5"], ["work-group-t1"]]);
+  });
   await check("work is answered once a reply follows it, and tool calls in a row form one run", async page => {
     const result = await page.evaluate(async () => {
       const { groupTimelineItems, splitToolRuns } = await import("/src/components/Conversation.tsx");

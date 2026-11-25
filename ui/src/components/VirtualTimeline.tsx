@@ -6,51 +6,54 @@ export function VirtualTimeline<T extends Row>({ rows, viewport, follow, bottomI
   rows: T[]; viewport: RefObject<HTMLDivElement | null>; follow: RefObject<boolean>;
   bottomInset?: number;
   footer?: ReactNode;
-  threadId: string; render: (row: T) => ReactNode; onScroll: () => void;
+  /** `onScroll` reports the reader moving the view, by how many pixels (negative is up). */
+  threadId: string; render: (row: T) => ReactNode; onScroll: (delta: number) => void;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const heights = useRef(new Map<string, number>());
   const nodes = useRef(new Map<string, HTMLDivElement>());
   const observer = useRef<ResizeObserver | null>(null);
-  const anchor = useRef<{ id: string; top: number } | null>(null);
+  // The reading position: the rows in view, top to bottom, each with its distance from the top of
+  // the view. The first one still loaded is held in place when the rows around it change.
+  const anchor = useRef<{ id: string; top: number }[]>([]);
   const previousThread = useRef(threadId);
-  const programmaticScrollTop = useRef<number | null>(null);
+  // The position this component last saw or set. Anything else is the reader's scrolling.
   const observedScrollTop = useRef<number | null>(null);
   const onScrollRef = useRef(onScroll);
   onScrollRef.current = onScroll;
   const [, refresh] = useState(0);
   // Native scrolling can move the viewport before its scroll event reaches React.
   const unobservedScroll = (top: number) => observedScrollTop.current !== null
-    && Math.abs(top - observedScrollTop.current) > 1
-    && (programmaticScrollTop.current === null || Math.abs(top - programmaticScrollTop.current) > 1);
-  const remember = useCallback(() => {
-    if (follow.current || !viewport.current) return;
+    && Math.abs(top - observedScrollTop.current) > 1;
+  const visibleRows = useCallback(() => {
+    if (!viewport.current) return [];
     const { top, bottom } = viewport.current.getBoundingClientRect();
-    let first: { id: string; top: number } | null = null;
+    const seen: { id: string; top: number }[] = [];
     for (const [id, element] of nodes.current) {
       const rect = element.getBoundingClientRect();
-      if (rect.bottom > top + 1 && rect.top < bottom && (!first || rect.top - top < first.top)) {
-        first = { id, top: rect.top - top };
-      }
+      if (rect.bottom > top + 1 && rect.top < bottom) seen.push({ id, top: rect.top - top });
     }
-    anchor.current = first;
-  }, [follow, viewport]);
+    return seen.sort((a, b) => a.top - b.top);
+  }, [viewport]);
+  const remember = useCallback(() => {
+    if (!follow.current) anchor.current = visibleRows();
+  }, [follow, visibleRows]);
 
   // The parent viewport ref is available after the complete layout commit.
   useEffect(() => {
     let frame = 0;
     const userScroll = () => {
-      programmaticScrollTop.current = null;
-      anchor.current = null;
+      anchor.current = [];
     };
     const updateScroll = () => {
       frame = 0;
       const top = viewport.current?.scrollTop;
       if (top === undefined) return;
-      const expected = programmaticScrollTop.current;
-      programmaticScrollTop.current = null;
+      const previous = observedScrollTop.current;
       observedScrollTop.current = top;
-      if (expected === null || Math.abs(top - expected) > 1) { onScrollRef.current(); remember(); }
+      // The event also follows a position the layout pass set, and one the page moved to by
+      // itself (it got shorter). Both were seen there; only a new position is the reader's.
+      if (previous === null || Math.abs(top - previous) > 1) { onScrollRef.current(top - (previous ?? top)); remember(); }
       refresh(value => value + 1);
     };
     const scroll = () => { if (!frame) frame = requestAnimationFrame(updateScroll); };
@@ -87,8 +90,8 @@ export function VirtualTimeline<T extends Row>({ rows, viewport, follow, bottomI
   }, []);
 
   if (previousThread.current !== threadId) {
-    heights.current.clear(); anchor.current = null; follow.current = true;
-    observedScrollTop.current = null; programmaticScrollTop.current = null;
+    heights.current.clear(); anchor.current = []; follow.current = true;
+    observedScrollTop.current = null;
     previousThread.current = threadId;
   }
   const activeIds = new Set(rows.map(row => row.id));
@@ -99,12 +102,20 @@ export function VirtualTimeline<T extends Row>({ rows, viewport, follow, bottomI
   const height = Math.max(1, (view?.clientHeight ?? 700) - bottomInset);
   const containerTop = view && container.current
     ? container.current.getBoundingClientRect().top - view.getBoundingClientRect().top + view.scrollTop : 0;
-  let scrollTop = Math.max(0, (view?.scrollTop ?? 0) - containerTop);
-  const anchorIndex = anchor.current ? rows.findIndex(row => row.id === anchor.current!.id) : -1;
-  if (!unobservedScroll(view?.scrollTop ?? 0)) {
-    if (follow.current) scrollTop = Math.max(0, offsets.at(-1)! - height);
-    else if (anchorIndex >= 0) scrollTop = Math.max(0, offsets[anchorIndex] - anchor.current!.top);
-  }
+  // Read before this render changes the page: a position nobody has seen yet is the reader's
+  // scrolling. One that differs only after the change is the page moving, and is no input.
+  const renderTop = view?.scrollTop ?? 0;
+  const moved = unobservedScroll(renderTop);
+  // With nothing remembered (input cleared it, or the reader moved), the rows are where the reader
+  // sees them right now. Taken before the change, the layout pass undoes exactly what it moved.
+  if (moved) anchor.current = visibleRows();
+  else if (!follow.current && !anchor.current.length) anchor.current = visibleRows();
+  let scrollTop = Math.max(0, renderTop - containerTop);
+  // Paging can drop the rows at the top of the view; the next one down that is still loaded holds.
+  const held = anchor.current.find(entry => activeIds.has(entry.id));
+  const anchorIndex = held ? rows.findIndex(row => row.id === held.id) : -1;
+  if (follow.current && !moved) scrollTop = Math.max(0, offsets.at(-1)! - height);
+  else if (anchorIndex >= 0) scrollTop = Math.max(0, offsets[anchorIndex] - held!.top);
   let first = 0;
   while (first < rows.length - 1 && offsets[first + 1] < scrollTop) first++;
   let end = first;
@@ -115,17 +126,18 @@ export function VirtualTimeline<T extends Row>({ rows, viewport, follow, bottomI
   useLayoutEffect(() => {
     const element = viewport.current;
     if (!element) return;
-    const previousTop = element.scrollTop;
-    if (unobservedScroll(previousTop)) { anchor.current = null; onScrollRef.current(); }
-    if (follow.current) element.scrollTop = element.scrollHeight;
-    else if (anchor.current) {
-      const node = nodes.current.get(anchor.current.id);
-      if (node) element.scrollTop += node.getBoundingClientRect().top
-        - element.getBoundingClientRect().top - anchor.current.top;
+    if (moved) onScrollRef.current(renderTop - observedScrollTop.current!);
+    const node = held && nodes.current.get(held.id);
+    if (follow.current) { element.scrollTop = element.scrollHeight; anchor.current = []; }
+    else if (held && node) {
+      const place = () => node.getBoundingClientRect().top - element.getBoundingClientRect().top;
+      element.scrollTop += place() - held.top;
+      // Rows above it are gone, or it cannot go back where it was (nothing is left above it): the
+      // reading position is what the page shows now.
+      if (held !== anchor.current[0] || Math.abs(place() - held.top) > 1) anchor.current = [];
     }
-    if (element.scrollTop !== previousTop) programmaticScrollTop.current = element.scrollTop;
     observedScrollTop.current = element.scrollTop;
-    if (!follow.current && !anchor.current) remember();
+    if (!follow.current && !anchor.current.length) remember();
   });
 
   return <div className="timeline virtual-timeline" ref={container} data-testid="timeline"

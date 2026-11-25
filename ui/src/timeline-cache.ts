@@ -2,6 +2,8 @@ import type { Thread, TimelineItem, TimelinePage } from "./types";
 
 export const MAX_TIMELINE_ITEMS = 500;
 export const MAX_TIMELINE_BYTES = 4 * 1024 * 1024;
+// Mirrors PAGE_SIZE in cleo/desktop/timeline.py.
+export const TIMELINE_PAGE_ITEMS = 80;
 // Mirrors PREVIEW_CHARS in cleo/desktop/timeline.py for tool output and commands.
 export const TIMELINE_PREVIEW_CHARS = 32768;
 
@@ -30,7 +32,15 @@ export function boundTimeline(items: TimelineItem[], retain: "start" | "end" = "
   return retain === "end" ? selected.reverse() : selected;
 }
 
-export function mergeTimelinePage(thread: Thread, page: TimelinePage, direction: "latest" | "before" | "after", requestedFrom?: Thread, preserveUnpersisted = false): Thread {
+/** Purpose: Merge one fetched page into the loaded window.
+ * Input: the thread, the page, where the page lies, the thread as it was when the page was
+ * requested, and whether unsaved items the page lacks stay. `retain` is the end of the window the
+ * reader is at, kept when the cache overflows (a page of older items is normally read from its
+ * start). `keepEarlier` refreshes the newest page under a reader who has gone back: what is loaded
+ * before that page stays. Output: the thread with the bounded window and its paging state.
+ */
+export function mergeTimelinePage(thread: Thread, page: TimelinePage, direction: "latest" | "before" | "after", requestedFrom?: Thread, preserveUnpersisted = false,
+  { retain = direction === "before" ? "start" : "end", keepEarlier = false }: { retain?: "start" | "end"; keepEarlier?: boolean } = {}): Thread {
   const baseline = new Map(requestedFrom?.items.map(item => [item.id, item]));
   const incoming = new Map(page.items.map(item => [item.id, item]));
   const live = new Map(requestedFrom ? thread.items.filter(item =>
@@ -46,7 +56,12 @@ export function mergeTimelinePage(thread: Thread, page: TimelinePage, direction:
   const existing = thread.items.map(item => live.get(item.id) ?? incoming.get(item.id) ?? item);
   const appended = [...live.values()].filter(item => !incoming.has(item.id) &&
     (item.order === undefined || item.order > (page.items.at(-1)?.order ?? -1)));
-  const joined = direction === "latest" ? [...fetched, ...appended]
+  // The loaded items that come before the page: up to the first one the page holds or follows.
+  const firstOrder = page.items[0]?.order;
+  const reached = keepEarlier && direction === "latest" ? thread.items.findIndex(item => incoming.has(item.id)
+    || (firstOrder !== undefined && item.order !== undefined && item.order >= firstOrder)) : 0;
+  const earlier = existing.slice(0, Math.max(0, reached));
+  const joined = direction === "latest" ? [...earlier, ...fetched, ...appended]
     : direction === "before" ? [...fetched, ...existing] : [...existing, ...fetched];
   const unique = [...new Map(joined.filter(item => {
     if (item.type !== "message" || item.role !== "assistant" || !item.turnId
@@ -76,16 +91,17 @@ export function mergeTimelinePage(thread: Thread, page: TimelinePage, direction:
       orderedIds.add(item.id);
     }
   }
-  const items = boundTimeline(ordered.length ? ordered : unique, direction === "before" ? "start" : "end");
+  const items = boundTimeline(ordered.length ? ordered : unique, retain);
   const old = thread.history;
   const { items: _items, ...info } = page;
+  // The page knows what lies beyond its own side; the other side is as it was, plus whatever the
+  // cache had to drop there.
+  const dropped = items.length < unique.length;
   return { ...thread, items, history: {
     ...info, total: Math.max(info.total, thread.history?.total ?? 0),
     before: items.find(item => item.cursor)?.cursor ?? page.before,
     after: [...items].reverse().find(item => item.cursor)?.cursor ?? page.after,
-    hasBefore: direction === "before" || direction === "latest" ? page.hasBefore
-      : Boolean(old?.hasBefore || items.length < unique.length),
-    hasAfter: direction === "after" || direction === "latest" ? page.hasAfter
-      : Boolean(old?.hasAfter || items.length < unique.length),
+    hasBefore: (direction === "after" || earlier.length ? Boolean(old?.hasBefore) : page.hasBefore) || (dropped && retain === "end"),
+    hasAfter: (direction === "before" ? Boolean(old?.hasAfter) : page.hasAfter) || (dropped && retain === "start"),
   } };
 }
