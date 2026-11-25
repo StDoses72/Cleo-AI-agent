@@ -134,6 +134,8 @@ def _claude_desktop_clients() -> list[Path]:
 
 # Clients a vendor's own application installs outside every command directory, by runtime and
 # platform. Each entry was seen on a real installation; issue #200 keeps the record.
+# Codex has no entry on purpose: Cleo runs the CLI that ships with its SDK and matches its
+# version (ADR 0005), never another application's copy such as the one inside ChatGPT.app.
 _VENDOR_CLIENTS = {("claude_code", "darwin"): _claude_desktop_clients}
 
 
