@@ -754,6 +754,107 @@ try {
     assert.deepEqual(blocks[1].items.map(item => item.id), ["t1", "th1", "t2"]);
     assert.equal(blocks[1].answered, false);
   });
+  await check("an opened conversation keeps the details that arrive after its newest page, and reads its usage last", async page => {
+    await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      const view = cleoClient.loadThread.bind(cleoClient);
+      window.opened = [];
+      // The whole view arrives well after the newest page, as it does for a long conversation.
+      cleoClient.loadThread = async id => {
+        const loaded = await view(id);
+        await new Promise(resolve => setTimeout(resolve, 400));
+        window.opened.push(`view ${id}`);
+        return { ...loaded, title: `${loaded.title}（已载入）` };
+      };
+      cleoClient.loadTaskUsage = async id => {
+        window.opened.push(`usage ${id}`);
+        await new Promise(resolve => setTimeout(resolve, id === "session-hub" ? 600 : 50));
+        window.opened.push(`usage ${id} read`);
+        return { scope: "task", total: 100, input: 80, output: 20, reportedCalls: 2, missingCalls: 0, complete: true, breakdown: [
+          { role: "main", model: "main-model", total: 60 }, { role: "worker", part: "代码实现", model: `worker-of-${id}`, total: 40 }] };
+      };
+    });
+    const header = page.locator(".conversation-chrome");
+    const line = page.getByTestId("collaboration-line");
+    await page.getByRole("button", { name: /^统一 managed 与 native sessions/ }).click();
+    await page.waitForFunction(() => Number(document.querySelector("[data-cache-count]").dataset.cacheCount) > 0
+      && document.querySelector("[data-cache-first]").dataset.cacheFirst !== "user-desktop");
+    assert.deepEqual(await page.evaluate(() => window.opened), [], "the newest page waited for the whole view");
+    await header.getByText("统一 managed 与 native sessions（已载入）", { exact: true }).waitFor();
+    assert.deepEqual(await page.evaluate(() => window.opened), ["view session-hub", "usage session-hub"], "usage is read once the view is in");
+    // Totals that arrive after the reader moved on belong to their own conversation only.
+    await page.getByRole("button", { name: /^修正 Codex 用量显示/ }).click();
+    await line.getByText("worker-of-limits").waitFor();
+    await page.waitForFunction(() => window.opened.includes("usage session-hub read"));
+    await page.waitForTimeout(100);
+    assert.equal(await line.getByText("worker-of-session-hub").count(), 0);
+    await header.getByText("修正 Codex 用量显示（已载入）", { exact: true }).waitFor();
+    // Back again: the totals already read are there before the view and the new read arrive.
+    await page.evaluate(() => { window.opened.length = 0; });
+    await page.getByRole("button", { name: /^统一 managed 与 native sessions/ }).click();
+    await line.getByText("worker-of-session-hub").waitFor();
+    assert.deepEqual(await page.evaluate(() => window.opened), [], "known totals waited for a new read");
+    // A view for a conversation the reader has left is not applied anywhere.
+    await page.getByRole("button", { name: /^修正 Codex 用量显示/ }).click();
+    await page.getByRole("button", { name: /^统一 managed 与 native sessions/ }).click();
+    await page.waitForFunction(() => window.opened.filter(entry => entry.startsWith("view ")).length === 3);
+    assert.deepEqual(await page.evaluate(() => window.opened.filter(entry => entry === "usage limits")), [], "a view left behind still read its usage");
+  });
+  await check("a conversation renamed while it was opening keeps its new name", async page => {
+    await page.evaluate(async () => {
+      const { cleoClient } = await import("/src/services/cleoClient.ts");
+      const view = cleoClient.loadThread.bind(cleoClient);
+      const turn = cleoClient.streamTurn.bind(cleoClient);
+      let name = null;
+      let first = true;
+      cleoClient.streamTurn = async function* (id, prompt, ...rest) {
+        if (!prompt.startsWith("/rename ")) { yield* turn(id, prompt, ...rest); return; }
+        name = prompt.slice("/rename ".length);
+      };
+      cleoClient.loadThread = async id => {
+        const loaded = await view(id);
+        if (id !== "limits") return loaded;
+        // The view asked for by the click is held until the rename is over, and still has the old name.
+        if (first) { first = false; await new Promise(resolve => { window.releaseView = resolve; }); return { ...loaded, canUndo: true }; }
+        return name ? { ...loaded, title: name } : loaded;
+      };
+    });
+    const header = page.locator(".conversation-chrome");
+    await page.getByRole("button", { name: /^修正 Codex 用量显示/ }).click();
+    await page.waitForFunction(() => window.releaseView && Number(document.querySelector("[data-cache-count]").dataset.cacheCount) > 0);
+    await header.locator(".thread-actions-wrap > button").click();
+    await header.getByRole("button", { name: "重命名", exact: true }).click();
+    await page.locator("#rename-input").fill("用量显示（已改名）");
+    await page.keyboard.press("Enter");
+    await header.getByText("用量显示（已改名）", { exact: true }).waitFor();
+    await page.locator(".rename-dialog").waitFor({ state: "detached" });
+    await page.evaluate(() => window.releaseView());
+    // The late view still brings what only it has (here: the last turn can be undone) ...
+    await header.locator(".thread-actions-wrap > button").click();
+    await header.getByRole("button", { name: "撤销上一轮", exact: true }).waitFor();
+    // ... and leaves the name that was given meanwhile.
+    assert.equal(await header.getByText("用量显示（已改名）", { exact: true }).count(), 1);
+    assert.equal(await header.getByText("修正 Codex 用量显示", { exact: true }).count(), 0);
+  });
+  await check("a work group keeps its id while the loaded window moves over it", async page => {
+    const ids = await page.evaluate(async () => {
+      const { groupTimelineItems, keepWorkIds } = await import("/src/components/Conversation.tsx");
+      const tool = id => ({ id, type: "tool", name: "Read", status: "done", turnId: "turn" });
+      const items = [{ id: "u1", type: "message", role: "user", content: "开始", turnId: "turn" },
+        tool("t1"), tool("t2"), tool("t3"), tool("t4"),
+        { id: "a1", type: "message", role: "assistant", content: "完成", turnId: "turn" }, tool("t5")];
+      let known = new Map();
+      // The window as loaded, with its start paged away, split by a plan, and with its end paged away.
+      return [items, items.slice(3), [...items.slice(3, 4), { id: "plan", type: "plan", steps: [], turnId: "turn" }, ...items.slice(4)], items.slice(0, 3)].map(loaded => {
+        const keeper = keepWorkIds(known);
+        const named = groupTimelineItems(loaded).filter(block => block.type === "work-group").map(block => keeper.id(block.id, block.items));
+        known = keeper.known;
+        return named;
+      });
+    });
+    assert.deepEqual(ids, [["work-group-t1", "work-group-t5"], ["work-group-t1", "work-group-t5"],
+      ["work-group-t1", "work-group-t4", "work-group-t5"], ["work-group-t1"]]);
+  });
   await check("work is answered once a reply follows it, and tool calls in a row form one run", async page => {
     const result = await page.evaluate(async () => {
       const { groupTimelineItems, splitToolRuns } = await import("/src/components/Conversation.tsx");

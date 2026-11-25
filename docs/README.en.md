@@ -13,7 +13,7 @@ Guides for installing, configuring, and using Cleo Desktop.
 5. [Local skills](local-skills.en.md): discover and invoke skills in development sessions.
 6. [Subtask routing (Chinese)](benchmark-routing.md): connected candidates, Artificial Analysis data, evaluator selection, constrained delegation, and task usage.
 7. [Computer use (Chinese)](computer-use.md): the per-conversation built-in browser and local computer control.
-8. [Release notes for v0.14.3](release-notes-v0.14.3.md); earlier versions are in `release-notes-v*.md`.
+8. [Release notes for v0.14.4](release-notes-v0.14.4.md); earlier versions are in `release-notes-v*.md`.
 
 ## Understand and develop the project
 

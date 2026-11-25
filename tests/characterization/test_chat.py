@@ -69,6 +69,7 @@ def test_first_turn_streams_persists_and_reloads(
         "stream": collapse_stream(stream.events),
         "llm_requests": [_request_view(body) for body in fake_llm.chat_requests()],
         "reloaded_thread": backend.call("load_thread", thread_id=created["id"]),
+        "task_usage": backend.call("load_task_usage", thread_id=created["id"]),
         "workspace_threads": [
             {key: thread[key] for key in ("id", "title", "summary", "status", "space")}
             for thread in backend.call("load_workspace")["threads"]

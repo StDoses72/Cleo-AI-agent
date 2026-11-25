@@ -143,30 +143,6 @@
       "status": "completed",
       "steerReady": false,
       "summary": "Echo: Add a gym session on Saturday",
-      "taskUsage": {
-        "breakdown": [
-          {
-            "cacheRead": 0,
-            "cacheWrite": 0,
-            "complete": true,
-            "input": 360,
-            "missingCalls": 0,
-            "model": "fake-chat",
-            "output": 90,
-            "provider": "cleo",
-            "reportedCalls": 3,
-            "reportedCostUsd": null,
-            "role": "main",
-            "total": 450
-          }
-        ],
-        "complete": true,
-        "input": 360,
-        "missingCalls": 0,
-        "output": 90,
-        "reportedCalls": 3,
-        "total": 450
-      },
       "terminal": [],
       "timingError": null,
       "title": "Weekly plan",
@@ -245,30 +221,6 @@
       "status": "completed",
       "steerReady": false,
       "summary": "Echo: Collect reading notes",
-      "taskUsage": {
-        "breakdown": [
-          {
-            "cacheRead": 0,
-            "cacheWrite": 0,
-            "complete": true,
-            "input": 120,
-            "missingCalls": 0,
-            "model": "fake-chat",
-            "output": 30,
-            "provider": "cleo",
-            "reportedCalls": 1,
-            "reportedCostUsd": null,
-            "role": "main",
-            "total": 150
-          }
-        ],
-        "complete": true,
-        "input": 120,
-        "missingCalls": 0,
-        "output": 30,
-        "reportedCalls": 1,
-        "total": 150
-      },
       "terminal": [],
       "timingError": null,
       "title": "Collect reading notes",
@@ -468,30 +420,6 @@
       "status": "completed",
       "steerReady": false,
       "summary": "ACP reply: Summarize what changed",
-      "taskUsage": {
-        "breakdown": [
-          {
-            "cacheRead": null,
-            "cacheWrite": null,
-            "complete": false,
-            "input": null,
-            "missingCalls": 2,
-            "model": "fake-model-a",
-            "output": null,
-            "provider": "scripted",
-            "reportedCalls": 0,
-            "reportedCostUsd": null,
-            "role": "main",
-            "total": null
-          }
-        ],
-        "complete": false,
-        "input": null,
-        "missingCalls": 2,
-        "output": null,
-        "reportedCalls": 0,
-        "total": null
-      },
       "terminal": [],
       "timingError": null,
       "title": "Write the notes file [[plan]] [[tool]] [[write]]",
@@ -912,30 +840,6 @@
         "status": "completed",
         "steerReady": false,
         "summary": "Echo: Add a gym session on Saturday",
-        "taskUsage": {
-          "breakdown": [
-            {
-              "cacheRead": 0,
-              "cacheWrite": 0,
-              "complete": true,
-              "input": 360,
-              "missingCalls": 0,
-              "model": "fake-chat",
-              "output": 90,
-              "provider": "cleo",
-              "reportedCalls": 3,
-              "reportedCostUsd": null,
-              "role": "main",
-              "total": 450
-            }
-          ],
-          "complete": true,
-          "input": 360,
-          "missingCalls": 0,
-          "output": 90,
-          "reportedCalls": 3,
-          "total": 450
-        },
         "terminal": [],
         "timingError": null,
         "title": "Weekly plan",

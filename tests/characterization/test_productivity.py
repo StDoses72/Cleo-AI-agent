@@ -55,6 +55,7 @@ def test_task_turn_with_tools_plan_and_file_change(
         "stream": collapse_stream(stream.events),
         "workspace_git_status": _git_status(cleo_home),
         "reloaded_thread": backend.call("load_thread", thread_id=created["id"]),
+        "task_usage": backend.call("load_task_usage", thread_id=created["id"]),
         "disk": {"session": files, "index": index_rows(cleo_home)},
     }, replacements)
 

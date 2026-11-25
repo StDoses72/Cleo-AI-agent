@@ -301,30 +301,6 @@
     "status": "completed",
     "steerReady": false,
     "summary": "Echo: keep this",
-    "taskUsage": {
-      "breakdown": [
-        {
-          "cacheRead": 0,
-          "cacheWrite": 0,
-          "complete": true,
-          "input": 240,
-          "missingCalls": 0,
-          "model": "fake-chat",
-          "output": 60,
-          "provider": "cleo",
-          "reportedCalls": 2,
-          "reportedCostUsd": null,
-          "role": "main",
-          "total": 300
-        }
-      ],
-      "complete": true,
-      "input": 240,
-      "missingCalls": 0,
-      "output": 60,
-      "reportedCalls": 2,
-      "total": 300
-    },
     "terminal": [],
     "timingError": null,
     "title": "keep this",

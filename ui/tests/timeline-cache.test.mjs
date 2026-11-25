@@ -143,3 +143,44 @@ test("language refresh retains a paused unpersisted reply and adopts the transla
   assert.equal(mergeTimelinePage(current, loaded, "latest", current).items.some(item => item.id === partial.id), false,
     "ordinary history replacement must still discard removed items");
 });
+
+test("a reply that finishes refreshes the newest page under the pages opened before it", () => {
+  const loaded = { items: all.slice(9760, 10000), history: { ...page(9760, 10000), hasBefore: true } };
+  const finished = { ...all[9999], content: "final", turnHasAnswer: true };
+  const newest = { ...page(9920, 10000), items: [...all.slice(9920, 9999), finished] };
+  const kept = mergeTimelinePage(loaded, newest, "latest", loaded, false, { keepEarlier: true });
+  assert.deepEqual(kept.items.map(item => item.id), all.slice(9760, 10000).map(item => item.id));
+  assert.equal(kept.items.at(-1).content, "final");
+  assert.deepEqual([kept.history.before, kept.history.hasBefore, kept.history.hasAfter], ["9760", true, false]);
+  // Without it, and when nothing loaded reaches the page, the newest page is the window.
+  assert.equal(mergeTimelinePage(loaded, newest, "latest", loaded).items.length, 80);
+  const apart = { items: all.slice(0, 80), history: page(0, 80) };
+  assert.equal(mergeTimelinePage(apart, newest, "latest", apart, false, { keepEarlier: true }).items[0].id, "9920");
+  // An unsaved item inside the refreshed page still goes; what was added meanwhile stays.
+  const partial = { id: "turn:answer", type: "message", role: "assistant", content: "partial" };
+  const live = { ...loaded, items: [...loaded.items, partial] };
+  assert.equal(mergeTimelinePage(live, newest, "latest", live, false, { keepEarlier: true }).items.some(item => item.id === partial.id), false);
+});
+
+test("a page keeps the end of the window the reader is at when the cache overflows", () => {
+  const full = { items: all.slice(500, 1000), history: { ...page(500, 1000), hasBefore: true, hasAfter: false } };
+  // Read from its start, a page of older items pushes the newest ones out.
+  const up = mergeTimelinePage(full, page(420, 500), "before");
+  assert.deepEqual([up.items[0].id, up.items.at(-1).id, up.history.hasBefore, up.history.hasAfter], ["420", "919", true, true]);
+  // Under a reader at the end, the window keeps its end: the older items it has no room for stay unloaded.
+  const pinned = mergeTimelinePage(full, page(420, 500), "before", undefined, false, { retain: "end" });
+  assert.deepEqual([pinned.items[0].id, pinned.items.at(-1).id, pinned.history.hasBefore, pinned.history.hasAfter], ["500", "999", true, false]);
+  assert.equal(pinned.history.before, "500");
+  const start = { items: all.slice(0, 500), history: { ...page(0, 500), hasAfter: true } };
+  const heldStart = mergeTimelinePage(start, page(500, 580), "after", undefined, false, { retain: "start" });
+  assert.deepEqual([heldStart.items[0].id, heldStart.items.at(-1).id, heldStart.history.hasBefore, heldStart.history.hasAfter], ["0", "499", false, true]);
+  const down = mergeTimelinePage(start, page(500, 580), "after");
+  assert.deepEqual([down.items[0].id, down.items.at(-1).id, down.history.hasBefore, down.history.hasAfter], ["80", "579", true, true]);
+});
+
+test("a newest page larger than the cache says that earlier items remain", () => {
+  const large = Array.from({ length: 80 }, (_, i) => ({ ...all[i], content: "x".repeat(60000) }));
+  const thread = mergeTimelinePage({ items: [] }, { ...page(0, 80), items: large, hasBefore: false }, "latest");
+  assert.ok(thread.items.length < 80);
+  assert.equal(thread.history.hasBefore, true);
+});

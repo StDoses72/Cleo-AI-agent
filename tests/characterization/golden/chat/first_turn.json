@@ -42,30 +42,6 @@
     "status": "idle",
     "steerReady": false,
     "summary": "等待第一条消息",
-    "taskUsage": {
-      "breakdown": [
-        {
-          "cacheRead": null,
-          "cacheWrite": null,
-          "complete": true,
-          "input": null,
-          "missingCalls": 0,
-          "model": "fake-chat",
-          "output": null,
-          "provider": "cleo",
-          "reportedCalls": 0,
-          "reportedCostUsd": null,
-          "role": "main",
-          "total": null
-        }
-      ],
-      "complete": true,
-      "input": null,
-      "missingCalls": 0,
-      "output": null,
-      "reportedCalls": 0,
-      "total": null
-    },
     "terminal": [],
     "timingError": null,
     "title": "新对话",
@@ -489,30 +465,6 @@
     "status": "completed",
     "steerReady": false,
     "summary": "Echo: Hello Cleo, plan my week",
-    "taskUsage": {
-      "breakdown": [
-        {
-          "cacheRead": 0,
-          "cacheWrite": 0,
-          "complete": true,
-          "input": 120,
-          "missingCalls": 0,
-          "model": "fake-chat",
-          "output": 30,
-          "provider": "cleo",
-          "reportedCalls": 1,
-          "reportedCostUsd": null,
-          "role": "main",
-          "total": 150
-        }
-      ],
-      "complete": true,
-      "input": 120,
-      "missingCalls": 0,
-      "output": 30,
-      "reportedCalls": 1,
-      "total": 150
-    },
     "terminal": [],
     "timingError": null,
     "title": "Hello Cleo, plan my week",
@@ -608,6 +560,30 @@
       "type": "done"
     }
   ],
+  "task_usage": {
+    "breakdown": [
+      {
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "complete": true,
+        "input": 120,
+        "missingCalls": 0,
+        "model": "fake-chat",
+        "output": 30,
+        "provider": "cleo",
+        "reportedCalls": 1,
+        "reportedCostUsd": null,
+        "role": "main",
+        "total": 150
+      }
+    ],
+    "complete": true,
+    "input": 120,
+    "missingCalls": 0,
+    "output": 30,
+    "reportedCalls": 1,
+    "total": 150
+  },
   "workspace_threads": [
     {
       "id": "<thread:1>",
