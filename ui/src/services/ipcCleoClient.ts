@@ -27,6 +27,7 @@ import type {
   RuntimeProfile,
   RuntimeUpdate,
   StreamEvent,
+  TaskUsage,
   Thread,
   ThreadSpace,
   UndoChangesResult,
@@ -95,6 +96,10 @@ export class IpcCleoClient implements CleoClient {
 
   async loadThread(threadId: string, activate = true): Promise<Thread> {
     return this.bridge.request("load_thread", { thread_id: threadId, ...(!activate ? { activate: false } : {}) });
+  }
+
+  loadTaskUsage(threadId: string): Promise<TaskUsage> {
+    return this.bridge.request("load_task_usage", { thread_id: threadId });
   }
 
   loadTimeline(threadId: string, direction = "latest" as "latest" | "before" | "after", cursor?: string): Promise<TimelinePage> {

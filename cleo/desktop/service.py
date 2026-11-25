@@ -334,6 +334,17 @@ class DesktopService:
             self._activate(manifest)
         return await self._thread(manifest)
 
+    async def load_task_usage(self, *, thread_id: str) -> dict[str, Any]:
+        """Purpose: What a conversation's task has consumed so far.
+
+        Input: the conversation. Output: the totals ``task-usage`` events carry during a run.
+        The sum reads the conversation's whole event log and its subtasks', so it is asked for on
+        its own: a conversation opens without waiting for it.
+        """
+        from cleo.runtime.task_usage import task_usage
+
+        return await asyncio.to_thread(task_usage, self.store, thread_id)
+
     async def load_timeline(self, *, thread_id: str, cursor: str | None = None,
                             direction: str = "latest", limit: int = 80) -> dict:
         manifest = self.store.load_manifest(thread_id)
@@ -2672,9 +2683,10 @@ class DesktopService:
         """Purpose: One conversation as the desktop shows it.
 
         Input: its manifest. ``include_history=False`` makes a sidebar row from ``preview`` (the
-        latest index page, read without a rebuild): no steer recovery, no task usage and nothing
-        else that reads the whole event log; those happen when the conversation is opened.
-        Output: the thread view.
+        latest index page, read without a rebuild): no steer recovery and nothing else that reads
+        the history index in full; those happen when the conversation is opened.
+        Output: the thread view. Neither form reads the whole event log: what the task has
+        consumed is ``load_task_usage``.
         """
         if events is None:
             events = (await asyncio.to_thread(TimelineIndex(self.store, manifest).recent_events)
@@ -2732,12 +2744,6 @@ class DesktopService:
             skills=([skill.entry() for skill in self._local_skills(manifest)]
                     if include_history else None),
         )
-        if include_history:
-            # Task usage sums the conversation's whole event log (and its subtasks'), so only the
-            # conversation being opened pays for it.
-            from cleo.runtime.task_usage import task_usage
-
-            result["taskUsage"] = await asyncio.to_thread(task_usage, self.store, manifest["id"])
         return result
 
     def _ancestor_run_live(self, manifest: dict[str, Any], depth: int = 8) -> bool:

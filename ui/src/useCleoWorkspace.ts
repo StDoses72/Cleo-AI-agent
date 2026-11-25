@@ -155,6 +155,10 @@ export function useCleoWorkspace() {
   const [recoveryErrors, setRecoveryErrors] = useState<Record<string, string>>({});
   const runLocks = useRef(new Map<string, string>());
   const threadVersions = useRef(new Map<string, number>());
+  // Per conversation: how many usage totals have been asked for or received, and the history
+  // revision the last read for a watched run was made at.
+  const usageReads = useRef(new Map<string, number>());
+  const usageRevisions = useRef(new Map<string, string>());
   const [startingKeys, setStartingKeys] = useState<string[]>([]);
   const runningThreadIds = Object.keys(runs);
   const running = Boolean(activeThreadId && runs[activeThreadId]);
@@ -287,6 +291,7 @@ export function useCleoWorkspace() {
           setActiveSpace(initialThread.space);
           setActiveProjectId(initialThread.projectId);
           setActiveThreadId(initialThread.id);
+          readTaskUsage(initialThread.id);
         } else {
           const initialSpace = loaded.activeSpace ?? "productivity";
           const initialProject = defaultProjectFor(loaded.projects, initialSpace);
@@ -440,6 +445,8 @@ export function useCleoWorkspace() {
                 if ((next.runtime?.settingsRevision ?? 0) < (thread.runtime?.settingsRevision ?? 0)) {
                   next = { ...next, runtime: thread.runtime };
                 }
+                // A thread view comes without what its task has consumed; that is read on its own.
+                if (!next.taskUsage && thread.taskUsage) next = { ...next, taskUsage: thread.taskUsage };
                 const items = boundTimeline(next.items);
                 return { ...next, items, history: next.history && {
                   ...next.history,
@@ -461,8 +468,9 @@ export function useCleoWorkspace() {
       if (!current) return refreshed;
       const live = new Map(current.threads.filter(thread => runLocks.current.has(thread.id)
         || threadVersions.current.get(thread.id) !== versions.get(thread.id)).map(thread => [thread.id, thread]));
+      const usage = new Map(current.threads.map(thread => [thread.id, thread.taskUsage]));
       return { ...refreshed, threads: [
-        ...refreshed.threads.map(thread => live.get(thread.id) ?? thread),
+        ...refreshed.threads.map(thread => live.get(thread.id) ?? { ...thread, taskUsage: thread.taskUsage ?? usage.get(thread.id) }),
         ...[...live.values()].filter(thread => !refreshed.threads.some(saved => saved.id === thread.id)),
       ] };
     });
@@ -483,6 +491,18 @@ export function useCleoWorkspace() {
           ? thread.runtime : fresh.runtime };
     }) });
     await history.load("latest", { preserveUnpersisted: runLocks.current.has(activeThread?.id ?? "") });
+  };
+
+  /** Purpose: Read what a conversation's task has consumed, off the path that opens it.
+   * The read sums the conversation's whole event log. Its result is dropped when a later read
+   * was started or the run reported newer totals meanwhile.
+   */
+  const readTaskUsage = (threadId: string) => {
+    const read = (usageReads.current.get(threadId) ?? 0) + 1;
+    usageReads.current.set(threadId, read);
+    void cleoClient.loadTaskUsage(threadId).then(usage => {
+      if (usageReads.current.get(threadId) === read) updateThread(threadId, current => ({ ...current, taskUsage: usage }));
+    }).catch(() => {});
   };
 
   const history = useTimelineHistory(activeThread, updateThread);
@@ -535,6 +555,11 @@ export function useCleoWorkspace() {
             items: current.items, history: current.history && { ...current.history,
               total: Math.max(current.history.total, loaded.history?.total ?? 0),
               hasAfter: current.history.hasAfter || loaded.history?.revision !== current.history.revision } });
+          // A run this window only watches reports no totals here: they are read as its log grows.
+          if (loaded.history && usageRevisions.current.get(id) !== loaded.history.revision) {
+            usageRevisions.current.set(id, loaded.history.revision);
+            readTaskUsage(id);
+          }
           if (approvalVersions.current.get(id) === approvalVersion) setPendingApprovals(current => [
             ...current.filter(request => request.threadId !== id), ...(loaded.pendingApprovals ?? []),
           ]);
@@ -643,11 +668,17 @@ export function useCleoWorkspace() {
       .loadThread(threadId)
       .then((loaded) => {
         loaded.items.forEach(item => acknowledgeSteer(threadId, item));
-        if (selectionRef.current !== selection || threadVersions.current.get(threadId) !== version
-            || runLocks.current.has(threadId)) return;
-        updateThread(threadId, () => loaded);
+        if (selectionRef.current !== selection || runLocks.current.has(threadId)) return;
+        // The newest page is asked for at the same time and usually arrives first. The view then
+        // brings everything else (what can be edited or undone, the changes, the skills) and
+        // leaves the timeline as it is by now.
+        const moved = threadVersions.current.get(threadId) !== version;
+        updateThread(threadId, current => !moved || !current.items.length || !current.history ? loaded : { ...loaded,
+          items: current.items, history: { ...current.history, total: Math.max(current.history.total, loaded.history?.total ?? 0) } });
         setActiveSpace(loaded.space);
         setActiveProjectId(loaded.projectId);
+        // Last, with the conversation on screen.
+        readTaskUsage(threadId);
       })
       .catch((error: unknown) => {
         if (selectionRef.current !== selection || threadVersions.current.get(threadId) !== version || runLocks.current.has(threadId)) return;
@@ -949,6 +980,7 @@ export function useCleoWorkspace() {
             ],
           }));
         } else if (event.type === "task-usage") {
+          usageReads.current.set(threadId, (usageReads.current.get(threadId) ?? 0) + 1);
           updateThread(threadId, (current) => ({ ...current, taskUsage: event.usage }));
         } else if (event.type === "usage") {
           updateThread(threadId, (current) => ({ ...current, usage: event.usage }));

@@ -67,30 +67,6 @@
     "status": "idle",
     "steerReady": false,
     "summary": "等待第一条消息",
-    "taskUsage": {
-      "breakdown": [
-        {
-          "cacheRead": null,
-          "cacheWrite": null,
-          "complete": true,
-          "input": null,
-          "missingCalls": 0,
-          "model": "fake-model-a",
-          "output": null,
-          "provider": "scripted",
-          "reportedCalls": 0,
-          "reportedCostUsd": null,
-          "role": "main",
-          "total": null
-        }
-      ],
-      "complete": true,
-      "input": null,
-      "missingCalls": 0,
-      "output": null,
-      "reportedCalls": 0,
-      "total": null
-    },
     "terminal": [],
     "timingError": null,
     "title": "新任务",
@@ -785,30 +761,6 @@
     "status": "completed",
     "steerReady": false,
     "summary": "ACP reply: Update notes [[plan]] [[tool]] [[write]]",
-    "taskUsage": {
-      "breakdown": [
-        {
-          "cacheRead": null,
-          "cacheWrite": null,
-          "complete": false,
-          "input": null,
-          "missingCalls": 1,
-          "model": "fake-model-a",
-          "output": null,
-          "provider": "scripted",
-          "reportedCalls": 0,
-          "reportedCostUsd": null,
-          "role": "main",
-          "total": null
-        }
-      ],
-      "complete": false,
-      "input": null,
-      "missingCalls": 1,
-      "output": null,
-      "reportedCalls": 0,
-      "total": null
-    },
     "terminal": [],
     "timingError": null,
     "title": "Update notes [[plan]] [[tool]] [[write]]",
@@ -1045,6 +997,30 @@
       "type": "done"
     }
   ],
+  "task_usage": {
+    "breakdown": [
+      {
+        "cacheRead": null,
+        "cacheWrite": null,
+        "complete": false,
+        "input": null,
+        "missingCalls": 1,
+        "model": "fake-model-a",
+        "output": null,
+        "provider": "scripted",
+        "reportedCalls": 0,
+        "reportedCostUsd": null,
+        "role": "main",
+        "total": null
+      }
+    ],
+    "complete": false,
+    "input": null,
+    "missingCalls": 1,
+    "output": null,
+    "reportedCalls": 0,
+    "total": null
+  },
   "workspace_git_status": [
     "?? notes.txt"
   ]

@@ -26,6 +26,7 @@ import type {
   RuntimeProfile,
   RuntimeUpdate,
   StreamEvent,
+  TaskUsage,
   Thread,
   ThreadSpace,
   TimelineItem,
@@ -131,6 +132,8 @@ export class MockCleoClient implements CleoClient {
       thread.items = items;
       thread.history = history;
       thread.editableTurnIds = this.editableTurns(thread.id);
+      // As in the backend: what a task has consumed is read on its own.
+      delete thread.taskUsage;
     }
     return result;
   }
@@ -145,7 +148,14 @@ export class MockCleoClient implements CleoClient {
     const thread = snapshot.threads.find((candidate) => candidate.id === threadId);
     if (!thread) throw new Error(`Unknown thread: ${threadId}`);
     const { items, ...history } = await this.loadTimeline(threadId);
-    return { ...clone(thread), items, history, editableTurnIds: this.editableTurns(threadId) };
+    const { taskUsage: _usage, ...view } = clone(thread);
+    return { ...view, items, history, editableTurnIds: this.editableTurns(threadId) };
+  }
+
+  async loadTaskUsage(threadId: string): Promise<TaskUsage> {
+    await delay(200);
+    const usage = snapshot.threads.find((candidate) => candidate.id === threadId)?.taskUsage;
+    return clone(usage ?? { total: null, input: null, output: null, reportedCalls: 0, missingCalls: 0, complete: true });
   }
 
   private editableTurns(threadId: string): string[] {

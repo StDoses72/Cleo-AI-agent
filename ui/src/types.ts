@@ -773,6 +773,8 @@ export interface CleoClient {
   loadWorkspace(): Promise<WorkspaceSnapshot>;
   loadMemory(): Promise<Pick<WorkspaceSnapshot, "memories" | "memoryOverview">>;
   loadThread(threadId: string, activate?: boolean): Promise<Thread>;
+  /** What the conversation's task has consumed. Read apart from the thread: it sums the whole event log. */
+  loadTaskUsage(threadId: string): Promise<TaskUsage>;
   loadTimeline(threadId: string, direction?: "latest" | "before" | "after", cursor?: string): Promise<TimelinePage>;
   readTimelineContent(threadId: string, itemId: string, field: string, offset: number): Promise<TimelineContent>;
   getPendingQuestions(threadId: string): Promise<QuestionRequest[]>;

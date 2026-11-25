@@ -163,6 +163,7 @@ const allowedMethods = new Set([
   "load_workspace",
   "load_memory",
   "load_thread",
+  "load_task_usage",
   "create_thread",
   "delete_thread",
   "move_thread",

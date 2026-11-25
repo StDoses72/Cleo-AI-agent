@@ -93,7 +93,8 @@ def test_loading_the_workspace_rebuilds_and_reads_only_the_open_conversation(tmp
         rebuilt = {name for name, index in indexes.items()
                    if _stored_version(index) == PROJECTION_VERSION}
         assert rebuilt == {opened}, "only the open conversation's index may be rebuilt"
-        assert set(read) <= {opened}, f"whole event logs were read for {sorted(set(read) - {opened})}"
+        assert read == [], f"whole event logs were read for {sorted(set(read))}"
+        assert "taskUsage" not in threads[opened]
         for name, thread in threads.items():
             if name == opened:
                 continue
@@ -111,7 +112,7 @@ def test_loading_the_workspace_rebuilds_and_reads_only_the_open_conversation(tmp
 
 def test_opening_a_conversation_rebuilds_its_index_and_fills_in_what_the_row_left_out(tmp_path) -> None:
     async def scenario() -> None:
-        service, indexes, _read = _desktop(tmp_path)
+        service, indexes, read = _desktop(tmp_path)
         workspace = await service.load_workspace()
         other = next(name for name in TASKS if name != workspace["activeThreadId"])
         assert _stored_version(indexes[other]) == 0
@@ -121,9 +122,17 @@ def test_opening_a_conversation_rebuilds_its_index_and_fills_in_what_the_row_lef
         assert _stored_version(indexes[other]) == PROJECTION_VERSION
         contents = [item.get("content") for item in thread["items"]]
         assert contents[0] == f"work on {other}" and contents[-1] == f"answer to work on {other}"
-        assert "taskUsage" in thread
         assert isinstance(thread["skills"], list)
         assert "handoffStatus" in thread["runtime"]
+        # Opening waits for nothing that reads the whole event log: the task's totals are their
+        # own request.
+        assert "taskUsage" not in thread
+        assert read == []
+
+        usage = await service.load_task_usage(thread_id=other)
+
+        assert read == [other]
+        assert usage["missingCalls"] == 1 and usage["complete"] is False
 
     asyncio.run(scenario())
 
