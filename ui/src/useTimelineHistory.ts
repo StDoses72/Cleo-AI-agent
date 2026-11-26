@@ -14,6 +14,9 @@ interface LoadOptions {
   keepPosition?: boolean;
   /** The end of the window the reader is at, kept when the cache overflows. */
   retain?: "start" | "end";
+  /** Asked when the page has arrived, with the window it would leave: false drops the page. The
+   * reader has gone on scrolling while it was on its way. */
+  accept?: (next: Thread) => boolean;
 }
 
 export function useTimelineHistory(thread: Thread | null, update: (id: string, fn: (t: Thread) => Thread) => void) {
@@ -46,7 +49,7 @@ export function useTimelineHistory(thread: Thread | null, update: (id: string, f
   }, [thread?.id]);
 
   const request = async (direction: Direction, options: LoadOptions = {}) => {
-    const { beforeApply, preserveUnpersisted = false, keepPosition = false, retain } = options;
+    const { beforeApply, preserveUnpersisted = false, keepPosition = false, retain, accept } = options;
     const { thread: current } = latest.current;
     if (!current || (inFlight.current && direction !== "latest")) return;
     if (inFlight.current) generation.current++;
@@ -57,9 +60,13 @@ export function useTimelineHistory(thread: Thread | null, update: (id: string, f
       const cursor = direction === "before" ? current.history?.before : current.history?.after;
       const page = await cleoClient.loadTimeline(current.id, cursor ? direction : "latest", cursor);
       if (token !== generation.current || latest.current.thread?.id !== current.id) return;
+      const merge = (saved: Thread) => mergeTimelinePage(saved, page, direction, current, preserveUnpersisted,
+        { retain, keepEarlier: keepPosition });
+      const shown = latest.current.thread;
+      const merged = accept && shown ? merge(shown) : null;
+      if (merged && !accept!(merged)) return false;
       beforeApply?.();
-      latest.current.update(current.id, saved => mergeTimelinePage(saved, page, direction, current, preserveUnpersisted,
-        { retain, keepEarlier: keepPosition }));
+      latest.current.update(current.id, saved => merged && saved === shown ? merged : merge(saved));
       applied.current = latest.current.thread;
       if (direction === "latest" && !keepPosition) { follow.current = true; setFollowing(true); setUnread(false); }
       return true;
@@ -70,7 +77,8 @@ export function useTimelineHistory(thread: Thread | null, update: (id: string, f
     }
   };
 
-  /** Purpose: Load one page and merge it into the window. Output: true once the page is applied.
+  /** Purpose: Load one page and merge it into the window. Output: true once the page is applied,
+   * false when `accept` turned it down.
    * A page before or after the window is not asked for while one is on its way, has arrived and is
    * not on screen yet, or failed and waits for the retry: scrolling asks again between two renders.
    */

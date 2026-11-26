@@ -3,7 +3,7 @@ import { VirtualTimeline } from "./VirtualTimeline";
 import { Timing } from "./Timing";
 import { cleoClient } from "../services/cleoClient";
 import type { useTimelineHistory } from "../useTimelineHistory";
-import { MAX_TIMELINE_ITEMS, TIMELINE_PAGE_ITEMS } from "../timeline-cache";
+import { timelineOverflow } from "../timeline-cache";
 import "./timeline.css";
 import {
   useEffect,
@@ -90,6 +90,11 @@ import { ContextMeter } from "./ContextMeter";
 /** Space a just-sent question needs beneath it for the start of the reply, and its gap from the top. */
 const REPLY_ROOM = 160;
 const QUESTION_TOP = 20;
+// How far the reader goes the other way, in pixels of wheel input and of movement, before paging
+// turns with them. A trackpad or a wheel coming to rest sends a tick or two the wrong way.
+const TURN_DISTANCE = 12;
+// The keys that scroll the history, each as a push of one line: more than TURN_DISTANCE, a key is meant.
+const KEY_PUSH: Record<string, number> = { ArrowUp: -40, PageUp: -40, Home: -40, ArrowDown: 40, PageDown: 40, End: 40 };
 
 interface ConversationProps {
   history?: ReturnType<typeof useTimelineHistory>;
@@ -265,11 +270,21 @@ export function Conversation({
   const [bottomInset, setBottomInset] = useState(140);
   const localFollowRef = useRef(true);
   const stickToBottomRef = history?.followRef ?? localFollowRef;
-  // Which way the reader last moved through the history. Paging only continues that way: a window of
+  // Which way the reader is heading through the history. Paging only continues that way: a window of
   // a few lines has both of its edges within reach, and loading at the one behind the reader would
-  // bring back what they just left.
+  // bring back what they just left. `against` is how far they have gone the other way since.
   const travel = useRef<"up" | "down" | null>(null);
-  useLayoutEffect(() => { stickToBottomRef.current = true; travel.current = null; }, [thread?.id]);
+  const against = useRef(0);
+  /** The reader went, or asked to go, `delta` pixels (negative is up). The first move sets the
+   * heading; after that it takes TURN_DISTANCE the other way to turn it. */
+  const head = (delta: number) => {
+    if (!delta) return;
+    const way = delta < 0 ? "up" : "down";
+    against.current = way === travel.current ? 0 : against.current + Math.abs(delta);
+    if (travel.current === null || against.current >= TURN_DISTANCE) { travel.current = way; against.current = 0; }
+  };
+  const rest = () => { travel.current = null; against.current = 0; };
+  useLayoutEffect(() => { stickToBottomRef.current = true; rest(); }, [thread?.id]);
   // Reading position of the turn just sent: the question is placed once, then the view stays put
   // while the reply grows. `turnSpace` pads a short turn so the question can sit near the top.
   const turnSpaceRef = useRef<HTMLDivElement>(null);
@@ -409,7 +424,11 @@ export function Conversation({
     if (hidden !== belowFold) setBelowFold(hidden);
   };
   const lastItem = thread?.items.at(-1);
-  const sentId = lastItem?.type === "message" && lastItem.role === "user" && !lastItem.steer ? lastItem.id : null;
+  // A message just sent is new at the end of the conversation: not saved yet, or the one a running
+  // turn started with. A user message that a page left at the end of the loaded window is only
+  // where paging stopped.
+  const sentId = lastItem?.type === "message" && lastItem.role === "user" && !lastItem.steer
+    && !thread?.history?.hasAfter && (running || lastItem.cursor === undefined) ? lastItem.id : null;
   useLayoutEffect(() => {
     const seen = sentSeen.current;
     const opened = seen.thread !== thread?.id;
@@ -421,7 +440,7 @@ export function Conversation({
     if (!viewport || !question) return;
     // From here the reply is read at the reader's pace: output no longer drags the view.
     stickToBottomRef.current = false;
-    travel.current = null;
+    rest();
     history?.follow(false);
     const view = viewport.getBoundingClientRect();
     const rect = question.getBoundingClientRect();
@@ -444,42 +463,89 @@ export function Conversation({
     measureTail();
     if (placedTop.current === null || Math.abs(viewport.scrollTop - placedTop.current) > 1) {
       placedTop.current = null;
-      if (delta) travel.current = delta < 0 ? "up" : "down";
+      head(delta);
       stickToBottomRef.current = distanceFromBottom <= 1 && !thread?.history?.hasAfter;
       history?.follow(stickToBottomRef.current);
     }
     if (history?.busy || history?.error) return;
     const prefetchDistance = Math.max(240, viewport.clientHeight / 2);
-    if (travel.current !== "down" && thread?.history?.hasBefore && reaches("before", viewport.scrollTop, prefetchDistance)) void history?.load("before");
-    else if (travel.current !== "up" && thread?.history?.hasAfter && reaches("after", distanceFromBottom, prefetchDistance)) void history?.load("after");
+    if (travel.current !== "down" && thread?.history?.hasBefore && reaches("before", viewport.scrollTop, prefetchDistance)) void turnPage("before");
+    else if (travel.current !== "up" && thread?.history?.hasAfter && reaches("after", distanceFromBottom, prefetchDistance)) void turnPage("after");
   };
 
+  /** The reader asks to go `delta` pixels (negative is up) with the wheel or a key. It counts where
+   * the view cannot move any further too: that is how a page is asked for at the edge. */
+  const push = (delta: number) => {
+    const view = viewportRef.current;
+    if (!view || !delta) return;
+    head(delta);
+    const toEnd = view.scrollHeight - view.clientHeight - view.scrollTop;
+    if (delta < 0) { stickToBottomRef.current = false; history?.follow(false); }
+    // Scrolling down against the end is the reader asking to follow the output.
+    else if (!thread?.history?.hasAfter && toEnd <= 1) { placedTop.current = null; stickToBottomRef.current = true; history?.follow(true); }
+    if (history?.busy || history?.error) return;
+    if (delta < 0 && heading("before") && thread?.history?.hasBefore && reaches("before", view.scrollTop, 160)) void turnPage("before");
+    if (delta > 0 && heading("after") && thread?.history?.hasAfter && reaches("after", toEnd, 160)) void turnPage("after");
+  };
+
+  // The rows as last rendered, for a page that arrives later than the render that asked for it.
+  const renderedRows = useRef(rows);
+  renderedRows.current = rows;
+  /** The rows in view, top to bottom, each with the items it stands for. */
+  const inView = () => {
+    const viewport = viewportRef.current;
+    if (!viewport) return [];
+    const view = viewport.getBoundingClientRect();
+    const byId = new Map(renderedRows.current.map(row => [row.id, row]));
+    return [...viewport.querySelectorAll<HTMLElement>("[data-row-id]")].flatMap(node => {
+      const rect = node.getBoundingClientRect();
+      const row = rect.bottom > view.top + 1 && rect.top < view.bottom - 1 ? byId.get(node.dataset.rowId!) : undefined;
+      return row ? [row.type === "work-group" || row.type === "tool-run" ? row.items : [row.type === "work-row" ? row.item : row]] : [];
+    });
+  };
   /** Purpose: Tell whether a page loaded at one end would push a row in view out at the other.
-   * The cache holds a fixed number of items and a folded turn can be most of them, so the items
-   * that give way can be the very lines the reader is looking at. Input: where the page goes.
+   * The cache holds a fixed number of items and bytes, and a folded turn can be most of them, so
+   * the items that give way can be the very lines the reader is looking at. Input: where the page
+   * goes. It reckons with the largest page there is; `turnPage` looks again at the one that came.
    */
   const dropsView = (direction: "before" | "after") => {
-    const viewport = viewportRef.current;
     const items = thread?.items ?? [];
-    const giveWay = items.length + TIMELINE_PAGE_ITEMS - MAX_TIMELINE_ITEMS;
-    if (!viewport || giveWay <= 0) return false;
-    const view = viewport.getBoundingClientRect();
-    const shown = [...viewport.querySelectorAll<HTMLElement>("[data-row-id]")].filter(node => {
-      const rect = node.getBoundingClientRect();
-      return rect.bottom > view.top + 1 && rect.top < view.bottom - 1;
-    });
+    const giveWay = timelineOverflow(items, direction === "before" ? "end" : "start");
+    const shown = giveWay ? inView() : [];
+    if (!shown.length) return false;
     // The row in view nearest the end that gives way goes once the last of its items does.
-    const id = (direction === "before" ? shown.at(-1) : shown[0])?.dataset.rowId;
-    const row = rows.find(candidate => candidate.id === id);
-    if (!row) return false;
-    const members = row.type === "work-group" || row.type === "tool-run" ? row.items : [row.type === "work-row" ? row.item : row];
-    const index = items.indexOf(direction === "before" ? members[0] : members.at(-1)!);
+    const index = items.indexOf(direction === "before" ? shown.at(-1)![0] : shown[0].at(-1)!);
     return index >= 0 && (direction === "before" ? index >= items.length - giveWay : index < giveWay);
   };
-  /** A page is due `distance` ahead of its edge. One that would take lines out of view waits for
-   * the edge itself, where the reader has nothing left to read on the way. */
-  const reaches = (direction: "before" | "after", toEdge: number, distance: number) =>
-    toEdge <= 1 || (toEdge < distance && !dropsView(direction));
+  // The side of the window whose page was turned down on arrival: it took lines out of view.
+  const declined = useRef("");
+  const side = (direction: "before" | "after") => [thread?.id, thread?.items[0]?.id, thread?.items.at(-1)?.id, thread?.items.length, direction].join("\n");
+  const heading = (direction: "before" | "after") => travel.current === (direction === "before" ? "up" : "down");
+  /** A page is due `distance` ahead of its edge. One that would take lines out of view waits until
+   * the reader is at the edge itself and heading into it: there is nothing left to read on the way. */
+  const reaches = (direction: "before" | "after", toEdge: number, distance: number) => toEdge < distance
+    && (declined.current === side(direction) || dropsView(direction) ? toEdge <= 1 && heading(direction) : true);
+  /** Purpose: Load the page on one side of the window, and apply it only if the reader still wants it.
+   * The page takes a while, and the reader goes on scrolling: when it arrives, it may push out the
+   * lines they are on now. That is only right where they stand at that edge, still heading into
+   * it; a window filling itself (`unasked`) never does it. Otherwise the page is dropped, and that
+   * side waits for the reader to reach the edge.
+   * Input: the side, the end of the window to keep. Output: as `history.load`.
+   */
+  const turnPage = (direction: "before" | "after", { retain, unasked = false }: { retain?: "start" | "end"; unasked?: boolean } = {}) => {
+    const asked = side(direction);
+    return history?.load(direction, { retain, accept: next => {
+      const kept = new Set(next.items.map(item => item.id));
+      if (inView().every(items => items.some(item => kept.has(item.id)))) return true;
+      const viewport = viewportRef.current;
+      const toEdge = !viewport ? Infinity : direction === "before" ? viewport.scrollTop
+        : viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop;
+      // At the edge, give or take the tick that is no turn.
+      if (!unasked && toEdge <= TURN_DISTANCE && heading(direction)) return true;
+      declined.current = asked;
+      return false;
+    } });
+  };
 
   // A window too short to scroll is filled without waiting for input. It grows from the end the
   // reader is at: heading up keeps its start, anything else (pinned to the newest output, heading
@@ -501,7 +567,8 @@ export function Conversation({
       // give way to the reader's own scrolling.
       if ((direction === "before") === (retain === "start") && dropsView(direction)) return;
       filled.current = loaded;
-      void history.load(direction, { retain }).then(applied => { if (!applied && filled.current === loaded) filled.current = ""; });
+      // A page that failed is asked for again; one turned down is not, the window stays as it is.
+      void turnPage(direction, { retain, unasked: true })?.then(applied => { if (applied === undefined && filled.current === loaded) filled.current = ""; });
     });
     return () => cancelAnimationFrame(frame);
   }, [thread?.id, thread?.items.length, thread?.history?.before, thread?.history?.after, history?.busy, history?.error, bottomInset]);
@@ -573,21 +640,9 @@ export function Conversation({
       <div className="conversation-body" style={{ "--composer-clearance": `${bottomInset}px` } as CSSProperties}>
         {history?.error && <div className="history-error" role="alert">{history.error}<button onClick={() => void history.retry()}>{tr("conversation.retry_loading")}</button></div>}
         {history?.busy && <div className="history-loading" data-direction={history.busy} role="status" aria-label={tr("conversation.loading_history")}><LoaderCircle className="spin" size={14} /></div>}
-        <div className="conversation-viewport" ref={viewportRef} tabIndex={0} aria-label={tr("conversation.conversation_history")} onWheel={event => {
-          // Turning round counts from the input itself, also where the view cannot move any further.
-          if (event.deltaY) travel.current = event.deltaY < 0 ? "up" : "down";
-          if (event.deltaY < 0) { stickToBottomRef.current = false; history?.follow(false); }
-          // Scrolling down against the end is the reader asking to follow the output.
-          else if (event.deltaY > 0 && !thread?.history?.hasAfter
-              && event.currentTarget.scrollHeight - event.currentTarget.scrollTop - event.currentTarget.clientHeight <= 1) {
-            placedTop.current = null; stickToBottomRef.current = true; history?.follow(true);
-          }
-          if (!history?.busy && !history?.error) {
-            const view = event.currentTarget;
-            if (event.deltaY < 0 && thread?.history?.hasBefore && reaches("before", view.scrollTop, 160)) void history?.load("before");
-            if (event.deltaY > 0 && thread?.history?.hasAfter && reaches("after", view.scrollHeight - view.clientHeight - view.scrollTop, 160)) void history?.load("after");
-          }
-        }}>
+        <div className="conversation-viewport" ref={viewportRef} tabIndex={0} aria-label={tr("conversation.conversation_history")}
+          onWheel={event => push(event.deltaY)}
+          onKeyDown={event => { if (event.target === event.currentTarget) push(KEY_PUSH[event.key] ?? 0); }}>
         {thread?.items.length ? (
           <>
             <VirtualTimeline rows={rows} viewport={viewportRef} follow={stickToBottomRef} bottomInset={bottomInset} threadId={thread.id} render={renderRow} onScroll={trackScrollPosition}
@@ -611,7 +666,7 @@ export function Conversation({
       <div className="conversation-bottom" ref={bottomRef}>
       {(thread?.history?.hasAfter || ((history?.unread || (history && !history.following)) && belowFold)) && <button className="history-latest" aria-label={tr("conversation.jump_to_latest")} title={history?.unread ? tr("conversation.new_messages_jump_to_latest") : tr("conversation.jump_to_latest")} data-unread={history?.unread || undefined} onClick={() => {
         placedTop.current = null;
-        travel.current = null;
+        rest();
         void history?.load("latest", { beforeApply: () => { stickToBottomRef.current = true; } });
       }}><ArrowDown size={17} aria-hidden="true" /></button>}
       {questionUI}
