@@ -840,6 +840,8 @@ export interface CleoClient {
   /** Git actions on a task's folder (status, revert a file, commit, push, pull request, worktree). */
   sourceControl<T = unknown>(op: SourceControlOp, params: Record<string, unknown>): Promise<T>;
   resetWorkspace(): Promise<void>;
+  /** Custom workflows. Absent on a backend that does not run them, and the page is not offered. */
+  readonly workflows?: import("./workflow-types").WorkflowClient;
 }
 
 export interface TimingSummary {

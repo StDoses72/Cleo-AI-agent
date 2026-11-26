@@ -39,6 +39,7 @@ import {
   Sun,
   Trash2,
   Wrench,
+  Workflow,
   X,
   MonitorSmartphone,
 } from "lucide-react";
@@ -1023,6 +1024,7 @@ export const commandIcons = {
   code: Code2,
   folder: FolderOpen,
   memory: Brain,
+  workflow: Workflow,
   inspector: PanelRight,
   sidebar: PanelLeft,
   light: Sun,

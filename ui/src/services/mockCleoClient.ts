@@ -38,6 +38,7 @@ import type {
   QuestionRequest,
 } from "../types";
 import { mockThumbnail, permissionPresets, snapshot, uiChanges } from "./mockData";
+import { MockWorkflowClient } from "./mockWorkflows";
 
 const delay = (milliseconds: number) =>
   new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
@@ -46,6 +47,7 @@ const clone = <T,>(value: T): T => structuredClone(value);
 
 
 export class MockCleoClient implements CleoClient {
+  readonly workflows = new MockWorkflowClient();
   private memorySourceSettings: MemorySourceSettings = { sync_enabled: false, sources: [], disabled_sources: [] };
   async getMemorySources(): Promise<MemorySourcesState> {
     return { settings: clone(this.memorySourceSettings), sources: ["cleo", "codex", "claude"].map(id => ({

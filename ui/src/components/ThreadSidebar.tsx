@@ -19,10 +19,11 @@ import {
   Settings2,
   SquarePen,
   Trash2,
+  Workflow,
 } from "lucide-react";
 import type { Project, Thread, ThreadSpace, WorkspaceSpace } from "../types";
 
-export type SidebarView = WorkspaceSpace;
+export type SidebarView = WorkspaceSpace | "workflows";
 
 interface ThreadSidebarProps {
   /** What the main pane shows; the matching nav entry or thread is highlighted. */
@@ -46,6 +47,8 @@ interface ThreadSidebarProps {
   onCreateChat: () => void;
   onOpenSearch: () => void;
   onOpenMemory: () => void;
+  /** Open the workflows page; the entry is shown only where the backend runs workflows. */
+  onOpenWorkflows?: () => void;
   onOpenSettings: () => void;
   /** Memory sources waiting for consolidation, shown on the Memory entry. */
   memoryPending?: number;
@@ -110,6 +113,7 @@ export function ThreadSidebar({
   onCreateChat,
   onOpenSearch,
   onOpenMemory,
+  onOpenWorkflows,
   onOpenSettings,
   memoryPending = 0,
   recoverableChatBackups,
@@ -281,6 +285,13 @@ export function ThreadSidebar({
           <span>{tr("app.memory")}</span>
           {memoryPending ? <small title={tr("memoryview.pending_sources")}>{memoryPending}</small> : null}
         </button>
+        {onOpenWorkflows ? (
+          <button className={`sidebar-nav-item ${view === "workflows" ? "active" : ""}`} type="button" onClick={onOpenWorkflows}
+            aria-current={view === "workflows" ? "page" : undefined} aria-label={tr("workflows.title")} data-testid="open-workflows">
+            <Workflow size={15} />
+            <span>{tr("workflows.title")}</span>
+          </button>
+        ) : null}
       </nav>
 
       <div className="thread-list" data-testid="thread-list">

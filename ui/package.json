@@ -15,7 +15,7 @@
     "smoke:baseline": "node tests/program-baseline.smoke.mjs",
     "smoke:installed-release": "node tests/installed-release.smoke.mjs",
     "smoke:installed-package": "node tests/installed-package.smoke.mjs",
-    "test:backend": "node --test electron/computer/*.test.mjs electron/platform.test.mjs electron/install-state.test.mjs electron/attachments.test.mjs electron/preload-sandbox.test.mjs electron/i18n.test.mjs electron/language.test.mjs electron/backend.test.mjs electron/dependencies.test.mjs electron/local-files.test.mjs electron/source-control.test.mjs electron/updater.test.mjs tests/timeline-cache.test.mjs tests/release-downloads.test.mjs tests/program-updates.test.mjs tests/shutdown.test.mjs tests/tray.test.mjs tests/background-memory.test.mjs tests/release-channel.test.mjs tests/selectable-updates.test.mjs tests/storage-reclaim.test.mjs electron/computer-bridge.test.mjs electron/desktop-instance-entry.test.mjs tests/connected-harnesses.test.mjs tests/routing-model-options.test.mjs tests/task-token-usage.test.mjs",
+    "test:backend": "node --test electron/computer/*.test.mjs electron/platform.test.mjs electron/install-state.test.mjs electron/attachments.test.mjs electron/preload-sandbox.test.mjs electron/i18n.test.mjs electron/language.test.mjs electron/backend.test.mjs electron/dependencies.test.mjs electron/local-files.test.mjs electron/source-control.test.mjs electron/updater.test.mjs tests/timeline-cache.test.mjs tests/release-downloads.test.mjs tests/program-updates.test.mjs tests/shutdown.test.mjs tests/tray.test.mjs tests/background-memory.test.mjs tests/release-channel.test.mjs tests/selectable-updates.test.mjs tests/storage-reclaim.test.mjs electron/computer-bridge.test.mjs electron/desktop-instance-entry.test.mjs tests/connected-harnesses.test.mjs tests/routing-model-options.test.mjs tests/task-token-usage.test.mjs tests/workflow-model.test.mjs",
     "smoke:tray": "node tests/desktop-close.smoke.mjs --source",
     "smoke:history": "node scripts/smoke-history.mjs",
     "smoke:uiux": "node tests/uiux-regressions.smoke.mjs",
@@ -42,7 +42,8 @@
     "check:release": "npm run build",
     "icons": "node scripts/build-icons.mjs",
     "smoke:language": "node tests/language.smoke.mjs",
-    "smoke:routing": "node tests/routing-settings.smoke.mjs"
+    "smoke:routing": "node tests/routing-settings.smoke.mjs",
+    "smoke:workflows": "node tests/workflows.smoke.mjs"
   },
   "dependencies": {
     "katex": "latest",

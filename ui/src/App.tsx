@@ -26,6 +26,7 @@ import {
   type CommandAction,
 } from "./components/Overlays";
 import { ThreadSidebar } from "./components/ThreadSidebar";
+import { WorkflowView, workflowHome, type WorkflowScreen } from "./components/workflows/WorkflowView";
 import { projectBranchName, useCleoWorkspace } from "./useCleoWorkspace";
 import { cleoClient } from "./services/cleoClient";
 import { useLanguage, setLanguage, type UiLanguage } from "./i18n";
@@ -41,22 +42,37 @@ export function App() {
   // Handlers that outlive this render (system notifications) act on the latest workspace.
   const workspaceRef = useRef(workspace);
   workspaceRef.current = workspace;
+  // The workflows page takes the main pane without changing which conversation is selected, so
+  // closing it returns to where the user was. Where it stands (an unsaved edit, a run) is kept.
+  const workflowClient = cleoClient.workflows;
+  const [workflowsOpen, setWorkflowsOpen] = useState(false);
+  const [workflowScreen, setWorkflowScreen] = useState<WorkflowScreen>(workflowHome);
+  const showWorkflows = workflowsOpen && Boolean(workflowClient);
   const newTask = () => {
+    setWorkflowsOpen(false);
     if (workspace.activeSpace === "memory") workspace.selectSpace("productivity");
     void workspace.createThread();
   };
   const newChat = () => {
+    setWorkflowsOpen(false);
     workspace.selectSpace("chat");
     void workspace.createThread();
   };
   // The "+" on the development section always starts a development task, even while a chat is open.
   const newDevTask = () => {
+    setWorkflowsOpen(false);
     workspace.selectSpace("productivity");
     void workspace.createThread();
   };
   const openMemory = () => {
+    setWorkflowsOpen(false);
     setMemoryView("all");
     workspace.selectSpace("memory");
+  };
+  /** Open a conversation from anywhere, leaving the workflows page if it is on screen. */
+  const openThread = (threadId: string) => {
+    setWorkflowsOpen(false);
+    workspace.selectThread(threadId);
   };
   useEffect(() => {
     // Tells the version switcher this program started; otherwise it rolls back to the previous one.
@@ -130,7 +146,7 @@ export function App() {
     }).catch(() => { /* The task timeline reports connection failures. */ });
     return () => { cancelled = true; };
   }, [computerRun, inspectorSpace]);
-  const showInspector = inspectorOpen && workspace.activeSpace !== "memory";
+  const showInspector = inspectorOpen && workspace.activeSpace !== "memory" && !showWorkflows;
   const sidebarHidden = sidebarCollapsed || (compactColumns && showInspector);
   const inspectorResize = useInspectorResize(String(sidebarHidden), showInspector);
   const [commandOpen, setCommandOpen] = useState(false);
@@ -204,6 +220,7 @@ export function App() {
   useEffect(() => window.cleoWindow?.onOpenMemory?.(() => {
     setSettingsOpen(false);
     setCommandOpen(false);
+    setWorkflowsOpen(false);
     setMemoryView("all");
     workspace.selectSpace("memory");
   }), [workspace.selectSpace]);
@@ -233,7 +250,7 @@ export function App() {
         : state === "attention" ? tr("notify.needs_attention") : tr("notify.finished");
       const show = () => {
         const notice = new Notification(thread.title, { body, tag: `cleo-${thread.id}` });
-        notice.onclick = () => { window.focus(); workspaceRef.current.selectThread(thread.id); };
+        notice.onclick = () => { window.focus(); setWorkflowsOpen(false); workspaceRef.current.selectThread(thread.id); };
       };
       if (Notification.permission === "granted") show();
       else if (Notification.permission === "default") void Notification.requestPermission().then(result => { if (result === "granted") show(); });
@@ -301,7 +318,7 @@ export function App() {
     if (!ids.length) return;
     const index = ids.indexOf(workspace.activeThreadId ?? "");
     const next = ids[(index + step + ids.length) % ids.length] ?? ids[0];
-    workspace.selectThread(next);
+    openThread(next);
   };
   const openComposerMenu = (selector: string) => {
     const trigger = document.querySelector<HTMLButtonElement>(`.composer ${selector}`);
@@ -411,6 +428,13 @@ export function App() {
         icon: commandIcons.memory,
         run: openMemory,
       },
+      ...(workflowClient ? [{
+        id: "workflows",
+        label: tr("workflows.open"),
+        hint: tr("workflows.open_hint"),
+        icon: commandIcons.workflow,
+        run: () => setWorkflowsOpen(true),
+      }] : []),
       {
         id: "inspector",
         label: inspectorOpen ? tr("app.close_inspector") : tr("app.open_inspector"),
@@ -520,7 +544,7 @@ export function App() {
         detail: [projectLabel(project) || (thread.space === "chat" ? tr("app.chat") : ""), harnessLabel(thread.runtime, thread.space)]
           .filter(Boolean).join(" · "),
         icon: thread.space === "chat" ? commandIcons.chat : commandIcons.code,
-        run: () => workspace.selectThread(thread.id),
+        run: () => openThread(thread.id),
       };
     });
   }, [workspace.snapshot?.threads, workspace.snapshot?.projects, workspace.selectThread, language]);
@@ -612,12 +636,13 @@ export function App() {
       </div>}
       <DependencySetup />
       <ThreadSidebar
-        view={workspace.activeSpace}
+        view={showWorkflows ? "workflows" : workspace.activeSpace}
         projects={workspace.snapshot.projects}
         threads={workspace.snapshot.threads}
         activeProjectId={workspace.activeProjectId}
         activeThreadId={workspace.activeThreadId}
         onStartThread={(projectId) => {
+          setWorkflowsOpen(false);
           if (workspace.activeSpace !== "productivity") workspace.selectSpace("productivity");
           void workspace.createThread(projectId);
         }}
@@ -634,13 +659,14 @@ export function App() {
                 .catch((forced: unknown) => notify(forced instanceof Error ? forced.message : tr("app.operation_failed"), "error"));
             });
         }}
-        onSelectThread={(threadId) => workspace.selectThread(threadId)}
+        onSelectThread={openThread}
         onDeleteThread={thread => { setDeleteError(null); setThreadPendingDeletion(thread); }}
         onCreateThread={newTask}
         onCreateDevTask={newDevTask}
         onCreateChat={newChat}
         onOpenSearch={() => setCommandOpen(true)}
         onOpenMemory={openMemory}
+        onOpenWorkflows={workflowClient ? () => setWorkflowsOpen(true) : undefined}
         onOpenSettings={() => setSettingsOpen(true)}
         memoryPending={workspace.snapshot.memoryOverview.summary.pending_sources}
         recoverableChatBackups={workspace.snapshot.backend?.recoverableChatBackups ?? 0}
@@ -648,7 +674,17 @@ export function App() {
         backendMode={workspace.snapshot.backend?.mode ?? "mock"}
         unreadThreadIds={workspace.unreadThreadIds}
       />
-      {workspace.activeSpace === "memory" ? (
+      {showWorkflows && workflowClient ? (
+        <WorkflowView
+          client={workflowClient}
+          screen={workflowScreen}
+          onScreenChange={setWorkflowScreen}
+          projects={workspace.snapshot.projects}
+          defaultProjectId={workspace.activeProjectId}
+          onNotify={notify}
+          onCopyText={(value) => void workspace.copyText(value)}
+        />
+      ) : workspace.activeSpace === "memory" ? (
         <MemoryView
           overview={workspace.snapshot.memoryOverview}
           mode={memoryView}
