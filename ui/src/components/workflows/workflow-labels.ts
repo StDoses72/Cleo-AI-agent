@@ -1,7 +1,7 @@
 import { getLanguage, relativeTime, t as tr } from "../../../electron/i18n.mjs";
 import { effortLabels } from "../../runtime-labels";
-import type { WorkflowDefinition, WorkflowExecutor, WorkflowRunStatus, WorkflowStep } from "../../workflow-types";
-import type { WorkflowIssue } from "./workflow-model";
+import type { WorkflowDefinition, WorkflowExecutor, WorkflowRunStatus } from "../../workflow-types";
+import { layers, loopEdges, type ConnectRefusal, type WorkflowIssue } from "./workflow-model";
 
 /** "Codex · gpt-5.6-sol · High"; a node without an executor follows the conversation that starts the run. */
 export function executorLabel(executorId: string | null, executors: readonly WorkflowExecutor[]) {
@@ -11,40 +11,48 @@ export function executorLabel(executorId: string | null, executors: readonly Wor
   return [executor.harness, executor.model, executor.effort ? effortLabels[executor.effort] : ""].filter(Boolean).join(" · ");
 }
 
-/** One step as a few words, for a workflow's one-line outline. */
-export function stepOutline(step: WorkflowStep) {
-  if (step.kind === "agent") return step.role || tr("workflows.unnamed_role");
-  if (step.kind === "parallel") {
-    return step.fanOut === "each"
-      ? tr("workflows.outline_each", { p0: step.branches[0]?.role || tr("workflows.unnamed_role") })
-      : tr("workflows.outline_parallel", { p0: step.branches.length, p1: step.label || tr("workflows.parallel") });
-  }
-  return tr("workflows.outline_loop", {
-    p0: step.body.map((node) => node.role || tr("workflows.unnamed_role")).join(" ⇄ "), p1: step.maxRounds,
-  });
-}
-
+/** Purpose: A workflow in one line: a few words per step in running order, nodes that run side
+ * by side joined with ∥, and a loop marked on the node that judges it. */
 export function workflowOutline(definition: WorkflowDefinition) {
-  return definition.steps.map(stepOutline);
+  const judged = new Map(loopEdges(definition).map((edge) => [edge.from, edge.loop!.maxRounds]));
+  return layers(definition).map((column) => {
+    const names = column.map((node) => {
+      const name = node.role || tr("workflows.unnamed_role");
+      const text = node.each !== null ? tr("workflows.outline_each", { p0: name }) : name;
+      return judged.has(node.id) ? tr("workflows.outline_loop", { p0: text, p1: judged.get(node.id)! }) : text;
+    });
+    return names.join(" ∥ ");
+  });
 }
 
 export function issueText(issue: WorkflowIssue) {
   const subject = issue.subject || tr("workflows.unnamed_role");
   switch (issue.code) {
     case "name_missing": return tr("workflows.issue_name_missing");
-    case "no_steps": return tr("workflows.issue_no_steps");
-    case "role_missing": return tr("workflows.issue_role_missing", { p0: issue.position ?? 1 });
+    case "no_nodes": return tr("workflows.issue_no_nodes");
+    case "start_unconnected": return tr("workflows.issue_start_unconnected");
+    case "end_unconnected": return tr("workflows.issue_end_unconnected");
+    case "role_missing": return tr("workflows.issue_role_missing");
     case "instructions_missing": return tr("workflows.issue_instructions_missing", { p0: subject });
     case "executor_unknown": return tr("workflows.issue_executor_unknown", { p0: subject });
     case "executor_unavailable": return tr("workflows.issue_executor_unavailable", { p0: subject });
-    case "branches_too_few": return tr("workflows.issue_branches_too_few", { p0: subject });
-    case "each_needs_previous": return tr("workflows.issue_each_needs_previous", { p0: subject });
-    case "each_needs_template": return tr("workflows.issue_each_needs_template", { p0: subject });
-    case "loop_empty": return tr("workflows.issue_loop_empty", { p0: subject });
-    case "judge_missing": return tr("workflows.issue_judge_missing", { p0: subject });
-    case "rounds_out_of_range": return tr("workflows.issue_rounds_out_of_range", { p0: subject });
-    case "items_out_of_range": return tr("workflows.issue_items_out_of_range", { p0: subject });
+    case "node_no_input": return tr("workflows.issue_node_no_input", { p0: subject });
+    case "node_no_output": return tr("workflows.issue_node_no_output", { p0: subject });
+    case "cycle": return tr("workflows.issue_cycle");
+    case "loop_target": return tr("workflows.issue_loop_target", { p0: subject });
+    case "loop_rounds": return tr("workflows.issue_loop_rounds", { p0: subject });
+    case "loop_leak": return tr("workflows.issue_loop_leak", { p0: subject });
+    case "loop_overlap": return tr("workflows.issue_loop_overlap", { p0: subject });
+    case "each_predecessor": return tr("workflows.issue_each_predecessor", { p0: subject });
+    case "each_range": return tr("workflows.issue_each_range", { p0: subject });
   }
+}
+
+/** Why an edge the user tried to draw was not made. */
+export function refusalText(refusal: ConnectRefusal) {
+  return refusal === "exists" ? tr("workflows.refused_exists")
+    : refusal === "second_loop" ? tr("workflows.refused_second_loop")
+    : refusal === "same" ? tr("workflows.refused_same") : tr("workflows.refused_direction");
 }
 
 export function runStatusLabel(status: WorkflowRunStatus) {

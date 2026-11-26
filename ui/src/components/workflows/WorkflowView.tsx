@@ -5,7 +5,7 @@ import { projectsInSpace } from "../../runtime-labels";
 import type { Project } from "../../types";
 import type { WorkflowClient, WorkflowDefinition, WorkflowLibrary, WorkflowRunSummary } from "../../workflow-types";
 import { duration } from "../Timing";
-import { StatusMark } from "./WorkflowDiagram";
+import { StatusMark } from "./WorkflowCanvas";
 import { WorkflowEditor } from "./WorkflowEditor";
 import { WorkflowLaunch, WorkflowRunView } from "./WorkflowRun";
 import { ago, runStatusLabel, workflowOutline } from "./workflow-labels";
@@ -96,11 +96,11 @@ export function WorkflowView({ client, screen, onScreenChange, projects, default
 
   if (screen.name === "editor") {
     const dirty = screen.baseline === null || JSON.stringify(screen.definition) !== screen.baseline;
-    const untouched = screen.baseline === null && !screen.definition.name.trim() && !screen.definition.steps.length;
+    const untouched = screen.baseline === null && !screen.definition.nodes.length;
     return (
       <main className="workflow-view" data-testid="workflow-view">
         <WorkflowEditor definition={screen.definition} executors={library.executors} saved={screen.baseline !== null} dirty={dirty}
-          saving={saving} error={actionError}
+          saving={saving} error={actionError} onNotify={onNotify}
           onChange={(definition) => onScreenChange({ ...screen, definition })}
           onSave={() => {
             setSaving(true);
@@ -184,7 +184,7 @@ export function WorkflowView({ client, screen, onScreenChange, projects, default
           </div>
         </div>
         <button type="button" className="wf-button primary" data-testid="new-workflow"
-          onClick={() => onScreenChange({ name: "editor", definition: newWorkflow(), baseline: null, task: "" })}>
+          onClick={() => onScreenChange({ name: "editor", definition: newWorkflow(tr("workflows.untitled")), baseline: null, task: "" })}>
           <Plus size={14} />{tr("workflows.new")}
         </button>
       </header>

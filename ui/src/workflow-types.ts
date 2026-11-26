@@ -1,10 +1,13 @@
 /**
  * Custom workflows: an orchestration the user owns. It says who must take part and in what
  * order; the agent inside a node cannot start or skip an edge. A node receives its input (the
- * task and what the step before it produced) and returns its output, and never sees the graph.
+ * task and what the nodes before it produced) and returns its output, and never sees the graph.
  *
- * Only three control structures exist: the top-level sequence, a bounded loop and a parallel
- * fan-out that joins before the next step.
+ * A workflow is drawn as a graph of agent nodes between two fixed ends, the task going in and
+ * the result coming out. Its edges are the only control structures there are: a node follows
+ * another (sequence), a node with several edges out starts them side by side and a node with
+ * several edges in waits for all of them (parallel and join), and an edge back to an earlier
+ * node repeats the stretch between them a bounded number of times (loop).
  */
 
 /** One execution choice from the shared candidate catalog: connection + harness + model + effort. */
@@ -24,8 +27,7 @@ export type WorkflowWorkspace = "shared" | "worktree";
 /** Whether the node may hand subtasks to other models; "default" follows the routing switch. */
 export type WorkflowDelegation = "default" | "on" | "off";
 
-export interface WorkflowAgentStep {
-  kind: "agent";
+export interface WorkflowNode {
   id: string;
   role: string;
   /** `null` runs on the model of the conversation that starts the workflow. */
@@ -34,40 +36,37 @@ export interface WorkflowAgentStep {
   access: WorkflowAccess;
   workspace: WorkflowWorkspace;
   delegation: WorkflowDelegation;
+  /** Runs one copy per item of the list the node before it returned, up to this many; `null` runs once. */
+  each: number | null;
+  /** Where the node sits on the canvas. Layout only: it never changes what runs. */
+  x: number;
+  y: number;
 }
 
-export interface WorkflowParallelStep {
-  kind: "parallel";
+export interface WorkflowEdge {
   id: string;
-  label: string;
-  /** "branches": every branch runs once, side by side. "each": one copy of the first branch
-   * per item of the list the previous step returned. */
-  fanOut: "branches" | "each";
-  branches: WorkflowAgentStep[];
-  /** Upper bound on copies for "each". */
-  maxItems: number;
+  /** A node id, or "start" for the task. */
+  from: string;
+  /** A node id, or "end" for the result. */
+  to: string;
+  /** Set on an edge back to an earlier node: taken while `from` judges the work as not passing,
+   * until the stretch between the two has run `maxRounds` times. */
+  loop?: {
+    maxRounds: number;
+    /** When the rounds run out without a pass: stop for the user, or carry on with what there is. */
+    onExhausted: "stop" | "continue";
+  };
 }
-
-export interface WorkflowLoopStep {
-  kind: "loop";
-  id: string;
-  label: string;
-  /** Run in order every round. */
-  body: WorkflowAgentStep[];
-  maxRounds: number;
-  /** The body step whose verdict ends the loop. */
-  judgeId: string;
-  /** When the rounds run out without a pass: stop for the user, or carry on with what there is. */
-  onExhausted: "stop" | "continue";
-}
-
-export type WorkflowStep = WorkflowAgentStep | WorkflowParallelStep | WorkflowLoopStep;
 
 export interface WorkflowDefinition {
   id: string;
   name: string;
   description: string;
-  steps: WorkflowStep[];
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+  /** Canvas positions of the two fixed ends. */
+  start: { x: number; y: number };
+  end: { x: number; y: number };
   /** Who wrote it first: the user, or Cleo from a task description. */
   origin: "user" | "drafted";
   /** Absent until it has been saved. */
@@ -76,10 +75,11 @@ export interface WorkflowDefinition {
 
 export type WorkflowNodeStatus = "pending" | "running" | "done" | "failed" | "cancelled";
 
-/** One agent session a run started. A loop step has one per round, an "each" branch one per item. */
-export interface WorkflowNodeRun {
+/** One agent session a run started. A node inside a loop has one per round, a node that runs
+ * per item one per item, and a retried node one per attempt. */
+export interface WorkflowSession {
   id: string;
-  stepId: string;
+  nodeId: string;
   role: string;
   executor: string;
   access: WorkflowAccess;
@@ -91,19 +91,9 @@ export interface WorkflowNodeRun {
   elapsedMs?: number;
   tokens?: number;
   output?: string;
-  /** A judge's decision in a loop. */
+  /** The decision of a node that judges a loop. */
   verdict?: "pass" | "revise";
   error?: string;
-}
-
-export interface WorkflowPhaseRun {
-  stepId: string;
-  kind: WorkflowStep["kind"];
-  label: string;
-  status: WorkflowNodeStatus;
-  round?: number;
-  maxRounds?: number;
-  nodes: WorkflowNodeRun[];
 }
 
 export type WorkflowRunStatus = "running" | "completed" | "failed" | "cancelled";
@@ -117,10 +107,13 @@ export interface WorkflowRun {
   task: string;
   projectId: string;
   status: WorkflowRunStatus;
-  phases: WorkflowPhaseRun[];
+  /** Every agent session the run started, oldest first. */
+  sessions: WorkflowSession[];
+  /** The round each loop is in, by the id of its edge back; absent before the loop is entered. */
+  rounds: Record<string, number>;
   startedAt: number;
   finishedAt?: number;
-  /** The last step's output, once the run completes. */
+  /** What reached the result, once the run completes. */
   result?: string;
   error?: string;
 }
@@ -153,6 +146,6 @@ export interface WorkflowClient {
   watch(runId: string): AsyncGenerator<WorkflowRun>;
   /** Stops every agent the run started. */
   cancel(runId: string): Promise<void>;
-  /** Run again from the phase that failed, keeping what the earlier phases produced. */
+  /** Run again from where it failed, keeping what the finished nodes produced. */
   retry(runId: string): Promise<void>;
 }
