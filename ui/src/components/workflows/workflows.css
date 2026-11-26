@@ -317,8 +317,10 @@ button.wf-node:hover { border-color: var(--muted-2); }
   .wf-step-toggle { padding-left: 10px; }
   .wf-plan-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) 64px; }
   .wf-plan-row > :nth-child(4) { display: none; }
+  /* The facts drop to a second line; the chevron stays at the end of the first. */
   .wf-run-node-header { flex-wrap: wrap; }
-  .wf-run-node-header > small { flex-basis: 100%; padding-left: 24px; text-align: left; }
+  .wf-run-node-header > .wf-chevron { order: 1; margin-left: auto; }
+  .wf-run-node-header > small { order: 2; flex-basis: 100%; padding-left: 24px; text-align: left; }
   .wf-run-nodes,
   .wf-phase-waiting { margin-left: 0; }
   .wf-banner { flex-wrap: wrap; }
