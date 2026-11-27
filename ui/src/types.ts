@@ -195,6 +195,8 @@ export type TimelineItem = {
       detail: string;
     }
   | { id: string; type: "question"; request: QuestionRequest }
+  /** A workflow started in this conversation; replaced by a newer copy as the run advances. */
+  | { id: string; type: "workflow"; run: import("./workflow-types").WorkflowRun }
 );
 
 export interface ChangeFile {

@@ -10,15 +10,14 @@
  * node repeats the stretch between them a bounded number of times (loop).
  */
 
-/** One execution choice from the shared candidate catalog: connection + harness + model + effort. */
-export interface WorkflowExecutor {
+/** A harness a node can run on, with the models it offers (each with its thinking levels and speeds). */
+export interface WorkflowHarness {
   id: string;
-  harness: string;
-  model: string;
-  effort: import("./types").ReasoningEffort | null;
+  label: string;
   available: boolean;
   /** Why it cannot run now (signed out, not installed); shown next to the choice. */
   reason?: string | null;
+  models: import("./types").RuntimeModelOption[];
 }
 
 export type WorkflowAccess = "read" | "write";
@@ -27,20 +26,36 @@ export type WorkflowWorkspace = "shared" | "worktree";
 /** Whether the node may hand subtasks to other models; "default" follows the routing switch. */
 export type WorkflowDelegation = "default" | "on" | "off";
 
-export interface WorkflowNode {
-  id: string;
+/** What a node is, apart from where it sits: the part that can be kept and used again. */
+export interface WorkflowNodeFields {
   role: string;
-  /** `null` runs on the model of the conversation that starts the workflow. */
-  executorId: string | null;
+  /** What the node is responsible for, in one text: written by the user or drafted by Cleo. */
   instructions: string;
+  /** `null` runs on the harness and model of the conversation that starts the workflow. */
+  harness: string | null;
+  model: string | null;
+  effort: import("./types").ReasoningEffort | null;
+  speed: import("./types").ServiceTier | null;
   access: WorkflowAccess;
   workspace: WorkflowWorkspace;
   delegation: WorkflowDelegation;
   /** Runs one copy per item of the list the node before it returned, up to this many; `null` runs once. */
   each: number | null;
+}
+
+export interface WorkflowNode extends WorkflowNodeFields {
+  id: string;
+  /** Cleo drafted the definition and the user has not opened it yet. */
+  drafted?: boolean;
   /** Where the node sits on the canvas. Layout only: it never changes what runs. */
   x: number;
   y: number;
+}
+
+/** A node definition the user kept for reuse. Placing it on a canvas copies it. */
+export interface WorkflowRole {
+  id: string;
+  fields: WorkflowNodeFields;
 }
 
 export interface WorkflowEdge {
@@ -118,34 +133,23 @@ export interface WorkflowRun {
   error?: string;
 }
 
-export interface WorkflowRunSummary {
-  id: string;
-  workflowId: string | null;
-  name: string;
-  task: string;
-  projectId: string;
-  status: WorkflowRunStatus;
-  startedAt: number;
-  finishedAt?: number;
-}
-
 export interface WorkflowLibrary {
   workflows: WorkflowDefinition[];
-  executors: WorkflowExecutor[];
-  runs: WorkflowRunSummary[];
+  harnesses: WorkflowHarness[];
+  roles: WorkflowRole[];
 }
 
+/** The library of workflows and node definitions. A workflow is started in a conversation, with
+ * the `/workflow` command, and its run arrives there as a timeline item; nothing here runs one. */
 export interface WorkflowClient {
   library(): Promise<WorkflowLibrary>;
   save(definition: WorkflowDefinition): Promise<WorkflowDefinition>;
   remove(workflowId: string): Promise<void>;
   /** Have Cleo propose a workflow for a task. Nothing is saved and nothing runs. */
   draft(task: string): Promise<WorkflowDefinition>;
-  start(definition: WorkflowDefinition, task: string, projectId: string): Promise<WorkflowRun>;
-  /** A run as it advances: the current state first, then every change until it stops. */
-  watch(runId: string): AsyncGenerator<WorkflowRun>;
-  /** Stops every agent the run started. */
-  cancel(runId: string): Promise<void>;
-  /** Run again from where it failed, keeping what the finished nodes produced. */
-  retry(runId: string): Promise<void>;
+  /** Have Cleo write one node's definition from a sentence. It is shown the workflow the node
+   * sits in, so it knows what comes before and after. Nothing is saved. */
+  draftNode(intent: string, definition: WorkflowDefinition, nodeId: string): Promise<Partial<WorkflowNodeFields>>;
+  saveRole(fields: WorkflowNodeFields): Promise<WorkflowRole>;
+  removeRole(roleId: string): Promise<void>;
 }

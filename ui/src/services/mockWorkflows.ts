@@ -1,11 +1,14 @@
 import { END, START, autoLayout, forwardEdges, loopBody, loopEdges } from "../components/workflows/workflow-model";
+import type { ReasoningEffort } from "../types";
 import type {
   WorkflowClient,
   WorkflowDefinition,
   WorkflowEdge,
-  WorkflowExecutor,
+  WorkflowHarness,
   WorkflowLibrary,
   WorkflowNode,
+  WorkflowNodeFields,
+  WorkflowRole,
   WorkflowRun,
   WorkflowSession,
 } from "../workflow-types";
@@ -15,22 +18,33 @@ import type {
 const clone = <T,>(value: T): T => structuredClone(value);
 const delay = (milliseconds: number) => new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
 
-export const mockExecutors: WorkflowExecutor[] = [
-  { id: "codex/gpt-5.6-sol@high", harness: "Codex", model: "gpt-5.6-sol", effort: "high", available: true },
-  { id: "codex/gpt-5.6-terra@medium", harness: "Codex", model: "gpt-5.6-terra", effort: "medium", available: true },
-  { id: "claude/claude-opus-5@high", harness: "Claude", model: "claude-opus-5", effort: "high", available: true },
-  { id: "claude/claude-sonnet-demo", harness: "Claude", model: "claude-sonnet-demo", effort: null, available: true },
-  { id: "antigravity/gemini-pro-demo", harness: "Antigravity", model: "gemini-pro-demo", effort: null, available: false, reason: "未登录" },
+const efforts: ReasoningEffort[] = ["low", "medium", "high", "xhigh"];
+const fast = [{ id: "fast" as const, label: "Fast", description: "1.5x speed, increased usage" }];
+
+/** The same harnesses and models the composer's picker offers in demo mode. */
+export const mockHarnesses: WorkflowHarness[] = [
+  { id: "codex", label: "Codex", available: true, models: [
+    { id: "gpt-5.6-sol", label: "GPT-5.6-Sol", description: "Frontier coding model", isDefault: true, defaultEffort: "medium", supportedEfforts: efforts, serviceTiers: fast },
+    { id: "gpt-5.6-terra", label: "GPT-5.6-Terra", description: "Balanced coding model", isDefault: false, defaultEffort: "medium", supportedEfforts: efforts, serviceTiers: fast },
+  ] },
+  { id: "claude", label: "Claude", available: true, models: [
+    { id: "claude-opus-5", label: "Claude Opus 5", description: "Configured model", isDefault: true, defaultEffort: "high", supportedEfforts: efforts },
+    { id: "claude-sonnet-demo", label: "Claude Sonnet (demo)", description: "Mock harness choice", isDefault: false, defaultEffort: null, supportedEfforts: [] },
+  ] },
+  { id: "antigravity", label: "Antigravity", available: false, reason: "未登录", models: [
+    { id: "gemini-pro-demo", label: "Gemini Pro (demo)", description: "Mock harness choice", isDefault: true, defaultEffort: null, supportedEfforts: [] },
+  ] },
 ];
 
-const SOL = "codex/gpt-5.6-sol@high";
-const TERRA = "codex/gpt-5.6-terra@medium";
-const OPUS = "claude/claude-opus-5@high";
-const SONNET = "claude/claude-sonnet-demo";
+type Runtime = Pick<WorkflowNodeFields, "harness" | "model" | "effort" | "speed">;
+const SOL: Runtime = { harness: "codex", model: "gpt-5.6-sol", effort: "high", speed: null };
+const TERRA: Runtime = { harness: "codex", model: "gpt-5.6-terra", effort: "medium", speed: "fast" };
+const OPUS: Runtime = { harness: "claude", model: "claude-opus-5", effort: "high", speed: null };
+const SONNET: Runtime = { harness: "claude", model: "claude-sonnet-demo", effort: null, speed: null };
 
-function node(id: string, role: string, executorId: string | null, instructions: string,
+function node(id: string, role: string, runtime: Runtime, instructions: string,
   options: Partial<Pick<WorkflowNode, "access" | "workspace" | "delegation" | "each">> = {}): WorkflowNode {
-  return { id, role, executorId, instructions, access: "read", workspace: "shared", delegation: "default", each: null, x: 0, y: 0, ...options };
+  return { id, role, ...runtime, instructions, access: "read", workspace: "shared", delegation: "default", each: null, x: 0, y: 0, ...options };
 }
 
 const edge = (id: string, from: string, to: string, loop?: WorkflowEdge["loop"]): WorkflowEdge => ({ id, from, to, ...(loop ? { loop } : {}) });
@@ -173,6 +187,10 @@ interface Progress {
 
 export class MockWorkflowClient implements WorkflowClient {
   private workflows = clone(seedWorkflows);
+  private roles: WorkflowRole[] = [{ id: "role-security", fields: {
+    role: "安全审查", ...OPUS, access: "read", workspace: "shared", delegation: "off", each: null,
+    instructions: "做什么：只看安全，包括输入校验、路径与权限、敏感信息是否外泄。\n交回：按严重程度排列的问题清单，没有问题时明确说没有。\n不做：不评价风格，不修改代码。",
+  } }];
   private readonly runs = new Map<string, WorkflowRun>();
   private readonly progress = new Map<string, Progress>();
   private readonly versions = new Map<string, number>();
@@ -192,11 +210,46 @@ export class MockWorkflowClient implements WorkflowClient {
 
   async library(): Promise<WorkflowLibrary> {
     await delay(180);
-    const runs = [...this.runs.values()].sort((left, right) => right.startedAt - left.startedAt).map((run) => ({
-      id: run.id, workflowId: run.workflowId, name: run.definition.name, task: run.task, projectId: run.projectId,
-      status: run.status, startedAt: run.startedAt, finishedAt: run.finishedAt,
-    }));
-    return { workflows: clone(this.workflows), executors: clone(mockExecutors), runs };
+    return { workflows: clone(this.workflows), harnesses: clone(mockHarnesses), roles: clone(this.roles) };
+  }
+
+  async saveRole(fields: WorkflowNodeFields): Promise<WorkflowRole> {
+    await delay(140);
+    if (!fields.role.trim()) throw new Error("先给这个节点起个名字。");
+    const role: WorkflowRole = { id: crypto.randomUUID(), fields: clone(fields) };
+    // Saving under a name that is already kept replaces that definition.
+    this.roles = [role, ...this.roles.filter((item) => item.fields.role !== fields.role)];
+    return clone(role);
+  }
+
+  async removeRole(roleId: string): Promise<void> {
+    await delay(100);
+    this.roles = this.roles.filter((item) => item.id !== roleId);
+  }
+
+  /** The demo's stand-in for the drafting agent: a definition shaped by what the sentence asks for
+   * and by the nodes around the one being written. */
+  async draftNode(intent: string, definition: WorkflowDefinition, nodeId: string): Promise<Partial<WorkflowNodeFields>> {
+    const text = intent.trim();
+    if (!text) throw new Error("先用一句话说它做什么。");
+    await delay(1100);
+    const forward = forwardEdges(definition);
+    const roleOf = (id: string) => id === START ? "任务" : id === END ? "结果" : definition.nodes.find((item) => item.id === id)?.role || "上一个节点";
+    const before = forward.filter((link) => link.to === nodeId).map((link) => roleOf(link.from));
+    const after = forward.filter((link) => link.from === nodeId).map((link) => roleOf(link.to));
+    const source = before.length ? `${before.join("、")}的产出` : "任务描述";
+    const target = after.length ? `交给${after.join("、")}` : "作为这一步的结果";
+    // What the sentence asks to be done decides the role; the first kind that fits wins.
+    const kinds: [RegExp, string, string, string, Partial<WorkflowNodeFields>][] = [
+      [/实现|修改代码|改代码|修复|开发|写代码|implement|fix|build/i, "执行者", "改动的摘要和检查结果", "不扩大范围，不改无关文件", { ...TERRA, access: "write" }],
+      [/反驳|审查|评审|把关|挑错|review|critic/i, "审查者", "通过或不通过的结论，不通过时逐条列出问题", "不替对方改，只指出问题", SOL],
+      [/规划|计划|拆成|拆解|出方案|plan/i, "规划者", "一份分步骤的方案，每一步写明怎样验证", "不修改任何文件", OPUS],
+      [/测试|验收|核对|test|verify|accept/i, "验收者", "逐项核对的结论和证据", "不修改代码", OPUS],
+      [/汇总|总结|合并|整理|summar/i, "汇总者", "一份合并后的结论，先列必须处理的", "不新增自己的意见", TERRA],
+    ];
+    const [, role, returns, limits, runtime] = kinds.find(([pattern]) => pattern.test(text)) ?? [/./, excerpt(text, 8).replace(/…$/, ""), "这一步的产出，写明依据", "不做这句话以外的事", {}];
+    return { role, ...runtime,
+      instructions: `做什么：${text.replace(/[。.]$/, "")}。依据${source}。\n交回：${returns}，${target}。\n不做：${limits}。` };
   }
 
   async save(definition: WorkflowDefinition): Promise<WorkflowDefinition> {
@@ -251,6 +304,14 @@ export class MockWorkflowClient implements WorkflowClient {
     ]);
   }
 
+  /** A saved workflow by id, as a conversation names it when it starts one. */
+  definition(workflowId: string): WorkflowDefinition | null {
+    const found = this.workflows.find((item) => item.id === workflowId);
+    return found ? clone(found) : null;
+  }
+
+  // What follows runs a workflow. It is not part of the library contract: a conversation's turn
+  // drives it, as the backend's orchestrator would be driven by the `/workflow` command.
   async start(definition: WorkflowDefinition, task: string, projectId: string): Promise<WorkflowRun> {
     await delay(240);
     if (!task.trim()) throw new Error("先写下这次要完成的任务。");
@@ -277,14 +338,20 @@ export class MockWorkflowClient implements WorkflowClient {
     }
   }
 
-  async cancel(runId: string): Promise<void> {
-    if (this.runs.get(runId)?.status === "running") this.stopRequests.add(runId);
+  /** Stops every agent of a run and returns once they have stopped. */
+  async stop(runId: string): Promise<void> {
+    if (this.runs.get(runId)?.status !== "running") return;
+    this.stopRequests.add(runId);
+    for (let waited = 0; waited < 1500 && this.runs.get(runId)?.status === "running"; waited += 40) await delay(40);
+    // One more beat, so whoever watches the run has read how it ended.
+    await delay(60);
   }
 
-  async retry(runId: string): Promise<void> {
+  /** Runs again from where it failed, keeping what the finished nodes produced. */
+  async resume(runId: string): Promise<boolean> {
     const run = this.runs.get(runId);
     const progress = this.progress.get(runId);
-    if (!run || !progress || run.status !== "failed") return;
+    if (!run || !progress || run.status !== "failed") return false;
     // A loop that ran out of rounds starts counting again.
     for (const back of loopEdges(run.definition)) {
       if (!progress.done.has(back.from) && (progress.rounds.get(back.id) ?? 0) >= back.loop!.maxRounds) {
@@ -297,6 +364,7 @@ export class MockWorkflowClient implements WorkflowClient {
     run.finishedAt = undefined;
     this.changed(runId);
     void this.execute(runId);
+    return true;
   }
 
   private createRun(definition: WorkflowDefinition, task: string, projectId: string, startedAt: number): WorkflowRun {
@@ -415,10 +483,11 @@ export class MockWorkflowClient implements WorkflowClient {
     options: { round?: number; item?: string; judge: boolean; listForNext: boolean; group: { aborted: boolean } }): Promise<Handoff> {
     const replay = this.instant.has(run.id);
     const now = () => replay ? progress.clock : Date.now();
-    const executor = mockExecutors.find((item) => item.id === current.executorId);
+    const harness = mockHarnesses.find((item) => item.id === current.harness);
+    const model = harness?.models.find((item) => item.id === current.model);
     const record: WorkflowSession = {
       id: crypto.randomUUID(), nodeId: current.id, role: current.role,
-      executor: executor ? `${executor.harness} · ${executor.model}` : "",
+      executor: harness && model ? `${harness.label} · ${model.label}` : "",
       access: current.access, workspace: current.workspace, status: "running",
       round: options.round, item: options.item, startedAt: now(),
     };

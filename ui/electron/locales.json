@@ -6451,21 +6451,9 @@
     "zh-CN": "让多个 agent 按固定流程完成任务",
     "en": "Run agents through a fixed sequence"
   },
-  "workflows.tab_workflows": {
-    "zh-CN": "工作流",
-    "en": "Workflows"
-  },
-  "workflows.tab_runs": {
-    "zh-CN": "运行记录",
-    "en": "Runs"
-  },
   "workflows.new": {
     "zh-CN": "新建工作流",
     "en": "New workflow"
-  },
-  "workflows.running_count": {
-    "zh-CN": "{p0} 个正在运行",
-    "en": "{p0} running"
   },
   "workflows.draft_placeholder": {
     "zh-CN": "描述一个任务，让 Cleo 起草工作流…",
@@ -6479,21 +6467,9 @@
     "zh-CN": "起草",
     "en": "Draft"
   },
-  "workflows.drafting": {
-    "zh-CN": "正在起草",
-    "en": "Drafting"
-  },
   "workflows.drafted_tag": {
     "zh-CN": "Cleo 起草",
     "en": "Drafted by Cleo"
-  },
-  "workflows.drafted_note": {
-    "zh-CN": "Cleo 根据任务起草了这个流程，还没有保存。可以直接在画布上改；运行前看一眼每个节点的模型、指令和权限。",
-    "en": "Cleo drafted this workflow from the task. It is not saved. Change it on the canvas, and check each node's model, instructions and access before running."
-  },
-  "workflows.launch_drafted_note": {
-    "zh-CN": "这是 Cleo 起草的流程。你确认后才会启动 agent。",
-    "en": "Cleo drafted this workflow. No agent starts until you approve."
   },
   "workflows.edit": {
     "zh-CN": "编辑",
@@ -6524,8 +6500,8 @@
     "en": "Delete {p0}"
   },
   "workflows.delete_confirm": {
-    "zh-CN": "删除工作流「{p0}」？运行记录会保留。",
-    "en": "Delete the workflow “{p0}”? Its past runs are kept."
+    "zh-CN": "删除工作流「{p0}」？",
+    "en": "Delete the workflow “{p0}”?"
   },
   "workflows.deleted_toast": {
     "zh-CN": "已删除「{p0}」",
@@ -6534,34 +6510,6 @@
   "workflows.saved_toast": {
     "zh-CN": "已保存「{p0}」",
     "en": "Saved “{p0}”"
-  },
-  "workflows.copied": {
-    "zh-CN": "已复制",
-    "en": "Copied"
-  },
-  "workflows.agent_bound": {
-    "zh-CN": "最多 {p0} 个 agent",
-    "en": "Up to {p0} agents"
-  },
-  "workflows.agent_bound_one": {
-    "zh-CN": "最多 {p0} 个 agent",
-    "en": "Up to {p0} agent"
-  },
-  "workflows.last_run": {
-    "zh-CN": "上次运行：",
-    "en": "Last run: "
-  },
-  "workflows.never_run": {
-    "zh-CN": "还没有运行过",
-    "en": "Never run"
-  },
-  "workflows.card_issues": {
-    "zh-CN": "有 {p0} 处问题，处理后才能运行",
-    "en": "{p0} issues to fix before it can run"
-  },
-  "workflows.card_issues_one": {
-    "zh-CN": "有 {p0} 处问题，处理后才能运行",
-    "en": "{p0} issue to fix before it can run"
   },
   "workflows.fix_issues_first": {
     "zh-CN": "先处理列出的问题",
@@ -6572,28 +6520,12 @@
     "en": "No workflows yet"
   },
   "workflows.empty_hint": {
-    "zh-CN": "新建一个，在画布上拖出流程；或在上面描述任务让 Cleo 起草。",
+    "zh-CN": "新建一个，在画布上画出流程；或在上面描述任务让 Cleo 起草。",
     "en": "Create one and draw the flow on a canvas, or describe a task above and let Cleo draft it."
-  },
-  "workflows.no_runs_title": {
-    "zh-CN": "还没有运行记录",
-    "en": "No runs yet"
-  },
-  "workflows.no_runs_hint": {
-    "zh-CN": "运行一个工作流后，它的过程和结果会留在这里。",
-    "en": "After a workflow runs, its steps and result stay here."
   },
   "workflows.load_failed": {
     "zh-CN": "无法读取工作流",
     "en": "Could not load workflows"
-  },
-  "workflows.back": {
-    "zh-CN": "返回",
-    "en": "Back"
-  },
-  "workflows.back_to_edit": {
-    "zh-CN": "返回修改",
-    "en": "Back"
   },
   "workflows.name": {
     "zh-CN": "工作流名称",
@@ -6602,14 +6534,6 @@
   "workflows.name_placeholder": {
     "zh-CN": "工作流名称",
     "en": "Workflow name"
-  },
-  "workflows.description": {
-    "zh-CN": "说明",
-    "en": "Description"
-  },
-  "workflows.description_placeholder": {
-    "zh-CN": "一句话说明它做什么",
-    "en": "What it does, in a sentence"
   },
   "workflows.save": {
     "zh-CN": "保存",
@@ -6643,10 +6567,6 @@
     "zh-CN": "结果",
     "en": "Result"
   },
-  "workflows.round_of": {
-    "zh-CN": "第 {p0} / {p1} 轮",
-    "en": "Round {p0} of {p1}"
-  },
   "workflows.round_value": {
     "zh-CN": "第 {p0} 轮",
     "en": "Round {p0}"
@@ -6667,21 +6587,9 @@
     "zh-CN": "{p0} 处问题",
     "en": "{p0} issue"
   },
-  "workflows.ready": {
-    "zh-CN": "可以运行 · 最多启动 {p0} 个 agent",
-    "en": "Ready to run · starts up to {p0} agents"
-  },
-  "workflows.ready_one": {
-    "zh-CN": "可以运行 · 最多启动 {p0} 个 agent",
-    "en": "Ready to run · starts up to {p0} agent"
-  },
   "workflows.max_items": {
     "zh-CN": "最多几项",
     "en": "Item limit"
-  },
-  "workflows.each_rule": {
-    "zh-CN": "上一个节点返回一份清单，清单里的每一项各启动一个这样的 agent；超过上限的项不会运行，任何一个失败会取消其余的。",
-    "en": "The node before it returns a list. Each item starts one copy of this agent; items past the limit do not run, and one failure cancels the rest."
   },
   "workflows.max_rounds": {
     "zh-CN": "最多几轮",
@@ -6699,10 +6607,6 @@
     "zh-CN": "带着现有结果继续",
     "en": "Continue with what there is"
   },
-  "workflows.loop_rule": {
-    "zh-CN": "「{p0}」判定未通过时回到「{p1}」，两者之间的节点重新运行；通过后才继续往下。节点自己不能跳过或结束循环。",
-    "en": "When “{p0}” does not pass the work, the run returns to “{p1}” and the nodes between them run again. It moves on only after a pass. A node cannot skip or end the loop itself."
-  },
   "workflows.outline_each": {
     "zh-CN": "逐项 · {p0}",
     "en": "{p0} per item"
@@ -6719,77 +6623,17 @@
     "zh-CN": "例如：规划者",
     "en": "For example: Planner"
   },
-  "workflows.executor": {
-    "zh-CN": "执行者",
-    "en": "Runs on"
-  },
-  "workflows.executor_inherit": {
-    "zh-CN": "跟随发起会话的模型",
-    "en": "The starting conversation's model"
-  },
-  "workflows.executor_unknown": {
-    "zh-CN": "已不存在的模型",
-    "en": "A model that no longer exists"
-  },
-  "workflows.executor_unavailable": {
-    "zh-CN": "不可用",
-    "en": "unavailable"
-  },
   "workflows.instructions": {
     "zh-CN": "指令",
     "en": "Instructions"
   },
   "workflows.instructions_placeholder": {
-    "zh-CN": "这个角色要做什么、产出什么",
-    "en": "What this role does and returns"
-  },
-  "workflows.instructions_hint": {
-    "zh-CN": "节点只收到任务和上一步的输出，看不到整个流程，所以它需要的背景要写在这里。",
-    "en": "A node receives only the task and the previous step's output, never the whole workflow, so write the context it needs here."
-  },
-  "workflows.access": {
-    "zh-CN": "文件权限",
-    "en": "File access"
-  },
-  "workflows.access_read": {
-    "zh-CN": "只读",
-    "en": "Read-only"
+    "zh-CN": "它负责什么、交回什么、不做什么",
+    "en": "What it is responsible for, what it returns, what it leaves alone"
   },
   "workflows.access_write": {
     "zh-CN": "可修改",
     "en": "Can edit"
-  },
-  "workflows.workspace": {
-    "zh-CN": "工作区",
-    "en": "Workspace"
-  },
-  "workflows.workspace_shared": {
-    "zh-CN": "任务文件夹",
-    "en": "Task folder"
-  },
-  "workflows.workspace_worktree": {
-    "zh-CN": "独立 worktree",
-    "en": "Own worktree"
-  },
-  "workflows.delegation": {
-    "zh-CN": "节点内委派",
-    "en": "Delegation inside the node"
-  },
-  "workflows.delegation_default": {
-    "zh-CN": "跟随路由开关",
-    "en": "Routing default"
-  },
-  "workflows.delegation_on": {
-    "zh-CN": "允许",
-    "en": "Allow"
-  },
-  "workflows.delegation_off": {
-    "zh-CN": "不允许",
-    "en": "Never"
-  },
-  "workflows.delegation_hint": {
-    "zh-CN": "允许后，这个节点可以在自己的回合里把子任务派给其他模型；流程规定的下一步不受影响。",
-    "en": "When allowed, this node may hand subtasks to other models during its own turn. The workflow's next step is unaffected."
   },
   "workflows.issue_name_missing": {
     "zh-CN": "工作流需要一个名称",
@@ -6803,70 +6647,6 @@
     "zh-CN": "「{p0}」没有指令",
     "en": "“{p0}” has no instructions"
   },
-  "workflows.issue_executor_unknown": {
-    "zh-CN": "「{p0}」绑定的模型已不存在",
-    "en": "The model bound to “{p0}” no longer exists"
-  },
-  "workflows.issue_executor_unavailable": {
-    "zh-CN": "「{p0}」绑定的模型现在不可用",
-    "en": "The model bound to “{p0}” is unavailable now"
-  },
-  "workflows.launch_title": {
-    "zh-CN": "运行「{p0}」",
-    "en": "Run “{p0}”"
-  },
-  "workflows.task": {
-    "zh-CN": "任务",
-    "en": "Task"
-  },
-  "workflows.task_placeholder": {
-    "zh-CN": "这次要完成什么？写清目标和范围。",
-    "en": "What should this run achieve? State the goal and the scope."
-  },
-  "workflows.task_required": {
-    "zh-CN": "先写下这次要完成的任务",
-    "en": "Write the task for this run first"
-  },
-  "workflows.project": {
-    "zh-CN": "项目",
-    "en": "Project"
-  },
-  "workflows.no_folder": {
-    "zh-CN": "不绑定文件夹",
-    "en": "No folder"
-  },
-  "workflows.plan": {
-    "zh-CN": "将要运行",
-    "en": "What will run"
-  },
-  "workflows.plan_summary": {
-    "zh-CN": "最多启动 {p0} 个 agent，其中 {p1} 个可以修改文件。开始后可以随时停止。",
-    "en": "Starts up to {p0} agents; {p1} can edit files. You can stop it at any time."
-  },
-  "workflows.approve_and_run": {
-    "zh-CN": "确认并运行",
-    "en": "Approve and run"
-  },
-  "workflows.stop": {
-    "zh-CN": "停止",
-    "en": "Stop"
-  },
-  "workflows.stopping": {
-    "zh-CN": "正在停止",
-    "en": "Stopping"
-  },
-  "workflows.run_again": {
-    "zh-CN": "再次运行",
-    "en": "Run again"
-  },
-  "workflows.save_as_workflow": {
-    "zh-CN": "保存为工作流",
-    "en": "Save as workflow"
-  },
-  "workflows.fact_status": {
-    "zh-CN": "状态",
-    "en": "Status"
-  },
   "workflows.fact_elapsed": {
     "zh-CN": "用时",
     "en": "Elapsed"
@@ -6878,26 +6658,6 @@
   "workflows.fact_tokens": {
     "zh-CN": "Token",
     "en": "Tokens"
-  },
-  "workflows.stopped_title": {
-    "zh-CN": "已停止",
-    "en": "Stopped"
-  },
-  "workflows.stopped_detail": {
-    "zh-CN": "已完成 {p0} / {p1} 个节点；所有 agent 都已停止。",
-    "en": "{p0} of {p1} nodes finished; every agent has stopped."
-  },
-  "workflows.result": {
-    "zh-CN": "结果",
-    "en": "Result"
-  },
-  "workflows.copy_result": {
-    "zh-CN": "复制结果",
-    "en": "Copy result"
-  },
-  "workflows.started_value": {
-    "zh-CN": "开始于 {p0}",
-    "en": "Started {p0}"
   },
   "workflows.status_pending": {
     "zh-CN": "等待中",
@@ -6940,32 +6700,12 @@
     "en": "The canvas is empty"
   },
   "workflows.canvas_empty_hint": {
-    "zh-CN": "右键画布新建节点，或把上方的节点拖进来。",
-    "en": "Right-click the canvas to create a node, or drag one in from above."
-  },
-  "workflows.canvas_hint": {
-    "zh-CN": "右键新建 · 从节点下方圆点拖出连线 · 连回前面的节点形成循环 · Delete 删除",
-    "en": "Right-click to create · drag from the dot under a node to connect · connect back for a loop · Delete removes"
-  },
-  "workflows.connect_to": {
-    "zh-CN": "连接到…",
-    "en": "Connect to…"
-  },
-  "workflows.copies": {
-    "zh-CN": "运行次数",
-    "en": "Runs"
-  },
-  "workflows.copies_once": {
-    "zh-CN": "一次",
-    "en": "Once"
+    "zh-CN": "右键画布，或用左上角的 + 新建节点。",
+    "en": "Right-click the canvas, or use + at the top left, to create a node."
   },
   "workflows.copies_each": {
-    "zh-CN": "按清单逐项",
-    "en": "Once per list item"
-  },
-  "workflows.copies_hint": {
-    "zh-CN": "这个节点在一次运行里只执行一次(在循环里则每轮一次)。",
-    "en": "The node runs once in a run (once per round inside a loop)."
+    "zh-CN": "按上一步的清单逐项运行",
+    "en": "Runs once per item of the previous list"
   },
   "workflows.each_mark": {
     "zh-CN": "按清单逐项运行，最多 {p0} 项",
@@ -6975,17 +6715,9 @@
     "zh-CN": "连线",
     "en": "Edge"
   },
-  "workflows.edge_rule": {
-    "zh-CN": "「{p0}」完成后，它的产出交给「{p1}」。节点自己不能跳过这一步。",
-    "en": "When “{p0}” finishes, its output goes to “{p1}”. A node cannot skip this step itself."
-  },
   "workflows.fact_nodes": {
     "zh-CN": "完成节点",
     "en": "Nodes done"
-  },
-  "workflows.failed_title": {
-    "zh-CN": "运行没有完成",
-    "en": "The run did not finish"
   },
   "workflows.retry_failed": {
     "zh-CN": "从失败处重试",
@@ -7018,30 +6750,6 @@
   "workflows.redo": {
     "zh-CN": "重做",
     "en": "Redo"
-  },
-  "workflows.guide_title": {
-    "zh-CN": "怎样搭建",
-    "en": "How to build"
-  },
-  "workflows.guide_create": {
-    "zh-CN": "右键画布新建节点，或把画布上方的节点拖进来。",
-    "en": "Right-click the canvas to create a node, or drag one in from the row above it."
-  },
-  "workflows.guide_connect": {
-    "zh-CN": "从节点下方的圆点拖出连线；拖到空白处会新建一个节点并连上。",
-    "en": "Drag from the dot under a node to connect it. Dropping on empty canvas creates a node and connects it."
-  },
-  "workflows.guide_shapes": {
-    "zh-CN": "一个节点连出多条线，后面的节点并行；连回前面的节点，形成有轮数上限的循环。",
-    "en": "Several edges out of one node run the next nodes side by side. An edge back to an earlier node makes a loop with a round limit."
-  },
-  "workflows.guide_edit": {
-    "zh-CN": "点选节点或连线在这里修改；按 Delete 删除，Ctrl+Z 撤销。",
-    "en": "Select a node or an edge to change it here. Delete removes it, Ctrl+Z undoes."
-  },
-  "workflows.inspector": {
-    "zh-CN": "属性",
-    "en": "Properties"
   },
   "workflows.node": {
     "zh-CN": "节点",
@@ -7103,10 +6811,6 @@
     "zh-CN": "新建节点",
     "en": "New node"
   },
-  "workflows.menu_connect_new": {
-    "zh-CN": "新建并连接",
-    "en": "Create and connect"
-  },
   "workflows.menu_delete_edge": {
     "zh-CN": "删除连线",
     "en": "Delete edge"
@@ -7118,26 +6822,6 @@
   "workflows.menu_duplicate_node": {
     "zh-CN": "复制节点",
     "en": "Duplicate node"
-  },
-  "workflows.next_steps": {
-    "zh-CN": "下一步",
-    "en": "Next"
-  },
-  "workflows.next_none": {
-    "zh-CN": "还没有下一步。从节点下方的圆点拖出连线，或在下面选择。",
-    "en": "No next step yet. Drag from the dot under the node, or choose below."
-  },
-  "workflows.next_isolated": {
-    "zh-CN": "这个节点还没有接入流程。",
-    "en": "This node is not part of the flow yet."
-  },
-  "workflows.next_loop": {
-    "zh-CN": "未通过时返回{p0} · 最多 {p1} 轮",
-    "en": "Back to {p0} if not passed · up to {p1} rounds"
-  },
-  "workflows.palette": {
-    "zh-CN": "拖入画布",
-    "en": "Drag in"
   },
   "workflows.port_hint": {
     "zh-CN": "拖出连线",
@@ -7195,20 +6879,140 @@
     "zh-CN": "一个节点只能判定一个循环",
     "en": "A node can judge only one loop"
   },
-  "workflows.sessions": {
-    "zh-CN": "运行过程",
-    "en": "Sessions"
-  },
-  "workflows.sessions_none": {
-    "zh-CN": "还没有 agent 启动。",
-    "en": "No agent has started yet."
-  },
-  "workflows.unlink_value": {
-    "zh-CN": "断开到{p0}的连线",
-    "en": "Remove the edge to {p0}"
-  },
   "workflows.untitled": {
     "zh-CN": "未命名工作流",
     "en": "Untitled workflow"
+  },
+  "workflows.remove_from_task": {
+    "zh-CN": "不用这个工作流",
+    "en": "Remove the workflow"
+  },
+  "workflows.flow": {
+    "zh-CN": "流程",
+    "en": "Flow"
+  },
+  "workflows.ask_placeholder": {
+    "zh-CN": "它做什么？回车让 Cleo 起草",
+    "en": "What does it do? Enter lets Cleo draft it"
+  },
+  "workflows.drafting_node": {
+    "zh-CN": "正在起草…",
+    "en": "Drafting…"
+  },
+  "workflows.add_hint": {
+    "zh-CN": "点击选择节点，或拖到画布上",
+    "en": "Click to choose a node, or drag onto the canvas"
+  },
+  "workflows.menu_saved": {
+    "zh-CN": "保存的节点",
+    "en": "Saved nodes"
+  },
+  "workflows.detail_style": {
+    "zh-CN": "节点内容的显示方式",
+    "en": "How a node's details show"
+  },
+  "workflows.detail_card": {
+    "zh-CN": "在节点旁显示",
+    "en": "Beside the node"
+  },
+  "workflows.detail_panel": {
+    "zh-CN": "在右侧显示",
+    "en": "At the side"
+  },
+  "workflows.run_hint": {
+    "zh-CN": "在新任务里运行",
+    "en": "Run in a new task"
+  },
+  "workflows.keep_role": {
+    "zh-CN": "保存这个节点，以后复用",
+    "en": "Keep this node for reuse"
+  },
+  "workflows.role_kept": {
+    "zh-CN": "已保存节点「{p0}」",
+    "en": "Kept the node “{p0}”"
+  },
+  "workflows.kept_roles": {
+    "zh-CN": "保存的节点",
+    "en": "Saved nodes"
+  },
+  "workflows.redraft_placeholder": {
+    "zh-CN": "一句话，让 Cleo 重写",
+    "en": "One sentence, and Cleo rewrites it"
+  },
+  "workflows.harness": {
+    "zh-CN": "Harness",
+    "en": "Harness"
+  },
+  "workflows.model": {
+    "zh-CN": "模型",
+    "en": "Model"
+  },
+  "workflows.effort": {
+    "zh-CN": "思考强度",
+    "en": "Thinking"
+  },
+  "workflows.effort_default": {
+    "zh-CN": "默认强度",
+    "en": "Default thinking"
+  },
+  "workflows.speed": {
+    "zh-CN": "速度",
+    "en": "Speed"
+  },
+  "workflows.speed_standard": {
+    "zh-CN": "标准速度",
+    "en": "Standard speed"
+  },
+  "workflows.runtime_inherit": {
+    "zh-CN": "跟随发起的对话",
+    "en": "Same as the conversation"
+  },
+  "workflows.runtime_inherit_short": {
+    "zh-CN": "跟随对话",
+    "en": "Conversation"
+  },
+  "workflows.runtime_unknown": {
+    "zh-CN": "已不存在的模型",
+    "en": "A model that no longer exists"
+  },
+  "workflows.runtime_unavailable": {
+    "zh-CN": "不可用",
+    "en": "unavailable"
+  },
+  "workflows.issue_runtime_unknown": {
+    "zh-CN": "「{p0}」选的模型已不存在",
+    "en": "The model chosen for “{p0}” no longer exists"
+  },
+  "workflows.issue_runtime_unavailable": {
+    "zh-CN": "「{p0}」选的 harness 现在不可用",
+    "en": "The harness chosen for “{p0}” is unavailable now"
+  },
+  "workflows.more": {
+    "zh-CN": "更多",
+    "en": "More"
+  },
+  "workflows.limit_write": {
+    "zh-CN": "可以修改文件",
+    "en": "May edit files"
+  },
+  "workflows.limit_worktree": {
+    "zh-CN": "在独立 worktree 里工作",
+    "en": "Works in its own worktree"
+  },
+  "workflows.limit_delegate": {
+    "zh-CN": "可以把子任务派给其他模型",
+    "en": "May hand subtasks to other models"
+  },
+  "workflows.show_graph": {
+    "zh-CN": "查看流程图",
+    "en": "Show the graph"
+  },
+  "workflows.pick_node": {
+    "zh-CN": "点流程图里的节点，看它的职责和产出。",
+    "en": "Pick a node in the graph to see what it was told and what it did."
+  },
+  "workflows.node_not_started": {
+    "zh-CN": "还没有轮到这个节点。",
+    "en": "This node has not started yet."
   }
 }

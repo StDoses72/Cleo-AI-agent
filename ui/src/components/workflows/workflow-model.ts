@@ -1,4 +1,4 @@
-import type { WorkflowDefinition, WorkflowEdge, WorkflowExecutor, WorkflowNode } from "../../workflow-types";
+import type { WorkflowDefinition, WorkflowEdge, WorkflowHarness, WorkflowNode, WorkflowNodeFields } from "../../workflow-types";
 
 /** The two fixed ends of every workflow: the task going in and the result coming out. */
 export const START = "start";
@@ -19,8 +19,8 @@ export type WorkflowIssueCode =
   | "end_unconnected"
   | "role_missing"
   | "instructions_missing"
-  | "executor_unknown"
-  | "executor_unavailable"
+  | "runtime_unknown"
+  | "runtime_unavailable"
   | "node_no_input"
   | "node_no_output"
   | "cycle"
@@ -47,9 +47,33 @@ export function newId() {
 
 export const snap = (value: number) => Math.round(value / GRID) * GRID;
 
-export function newNode(x: number, y: number, fields: Partial<WorkflowNode> = {}): WorkflowNode {
-  return { id: newId(), role: "", executorId: null, instructions: "", access: "read", workspace: "shared", delegation: "default",
-    each: null, ...fields, x: snap(x), y: snap(y) };
+export const blankFields: WorkflowNodeFields = { role: "", instructions: "", harness: null, model: null, effort: null, speed: null,
+  access: "read", workspace: "shared", delegation: "default", each: null };
+
+export function newNode(x: number, y: number, fields: Partial<WorkflowNodeFields> = {}): WorkflowNode {
+  return { id: newId(), ...blankFields, ...fields, x: snap(x), y: snap(y) };
+}
+
+/** A node's definition without its place on a canvas, as it is kept for reuse or copied. */
+export function fieldsOf(node: WorkflowNode): WorkflowNodeFields {
+  const { id: _id, x: _x, y: _y, drafted: _drafted, ...fields } = node;
+  return fields;
+}
+
+/** Purpose: Choose a harness or model for a node and drop what the new choice does not offer.
+ * Input: the node, the harnesses that exist and the change. Output: fields that hold together:
+ * a model of that harness, a thinking level and a speed that model has. */
+export function withRuntime(node: WorkflowNode, harnesses: readonly WorkflowHarness[],
+  change: Partial<Pick<WorkflowNodeFields, "harness" | "model" | "effort" | "speed">>): WorkflowNode {
+  const next = { ...node, ...change };
+  const harness = harnesses.find((item) => item.id === next.harness);
+  if (!harness) return { ...next, harness: change.harness === undefined ? next.harness : null, model: null, effort: null, speed: null };
+  const model = harness.models.find((item) => item.id === next.model) ?? harness.models.find((item) => item.isDefault) ?? harness.models[0];
+  if (!model) return { ...next, model: null, effort: null, speed: null };
+  const effort = next.effort && model.supportedEfforts.includes(next.effort) ? next.effort
+    : "model" in change || "harness" in change ? model.defaultEffort : null;
+  const speed = next.speed && next.speed !== "default" && model.serviceTiers?.some((tier) => tier.id === next.speed) ? next.speed : null;
+  return { ...next, model: model.id, effort, speed };
 }
 
 export function newWorkflow(name = ""): WorkflowDefinition {
@@ -179,8 +203,8 @@ function hasCycle(definition: WorkflowDefinition) {
 }
 
 /** Purpose: Everything that keeps a workflow from running, found before any agent starts.
- * Input: the definition and the executors that exist now. Output: issues in reading order. */
-export function workflowIssues(definition: WorkflowDefinition, executors: readonly WorkflowExecutor[]): WorkflowIssue[] {
+ * Input: the definition and the harnesses that exist now. Output: issues in reading order. */
+export function workflowIssues(definition: WorkflowDefinition, harnesses: readonly WorkflowHarness[]): WorkflowIssue[] {
   const issues: WorkflowIssue[] = [];
   if (!definition.name.trim()) issues.push({ code: "name_missing" });
   if (!definition.nodes.length) { issues.push({ code: "no_nodes" }); return issues; }
@@ -188,17 +212,17 @@ export function workflowIssues(definition: WorkflowDefinition, executors: readon
   if (!forward.some((edge) => edge.from === START)) issues.push({ code: "start_unconnected" });
   if (!forward.some((edge) => edge.to === END)) issues.push({ code: "end_unconnected" });
   if (hasCycle(definition)) issues.push({ code: "cycle" });
-  const known = new Map(executors.map((executor) => [executor.id, executor]));
+  const known = new Map(harnesses.map((harness) => [harness.id, harness]));
   const roles = new Map(definition.nodes.map((node) => [node.id, node.role.trim()]));
   for (const node of definition.nodes) {
     const subject = roles.get(node.id)!;
     // A node without a name is reported once; its other gaps show when it can be named in a message.
     if (!subject) { issues.push({ code: "role_missing", nodeId: node.id }); continue; }
     if (!node.instructions.trim()) issues.push({ code: "instructions_missing", nodeId: node.id, subject });
-    if (node.executorId !== null) {
-      const executor = known.get(node.executorId);
-      if (!executor) issues.push({ code: "executor_unknown", nodeId: node.id, subject });
-      else if (!executor.available) issues.push({ code: "executor_unavailable", nodeId: node.id, subject });
+    if (node.harness !== null) {
+      const harness = known.get(node.harness);
+      if (!harness || !harness.models.some((model) => model.id === node.model)) issues.push({ code: "runtime_unknown", nodeId: node.id, subject });
+      else if (!harness.available) issues.push({ code: "runtime_unavailable", nodeId: node.id, subject });
     }
     const sources = forward.filter((edge) => edge.to === node.id);
     if (!sources.length) issues.push({ code: "node_no_input", nodeId: node.id, subject });

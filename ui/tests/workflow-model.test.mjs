@@ -9,15 +9,20 @@ after(() => server.close());
 const model = await server.ssrLoadModule("/src/components/workflows/workflow-model.ts");
 const {
   END, NODE_HEIGHT, NODE_WIDTH, START, TERMINAL_HEIGHT,
-  addNode, agentBound, autoLayout, connect, duplicateWorkflow, layers, loopBody, newNode, newWorkflow, removeNode, workflowIssues,
+  addNode, agentBound, autoLayout, connect, duplicateWorkflow, fieldsOf, layers, loopBody, newNode, newWorkflow, removeNode, withRuntime, workflowIssues,
 } = model;
 
-const executors = [
-  { id: "codex/a@high", harness: "Codex", model: "a", effort: "high", available: true },
-  { id: "claude/b", harness: "Claude", model: "b", effort: null, available: false, reason: "signed out" },
+const harnesses = [
+  { id: "codex", label: "Codex", available: true, models: [
+    { id: "fast", label: "Fast", isDefault: false, supportedEfforts: ["low", "high"], defaultEffort: "low", serviceTiers: [{ id: "default", label: "Standard" }, { id: "priority", label: "Priority" }] },
+    { id: "deep", label: "Deep", isDefault: true, supportedEfforts: ["medium", "high"], defaultEffort: "medium" },
+  ] },
+  { id: "claude", label: "Claude", available: false, reason: "signed out", models: [
+    { id: "b", label: "B", isDefault: true, supportedEfforts: [], defaultEffort: null },
+  ] },
 ];
 const agent = (role, extra = {}) => newNode(0, 0, { role, instructions: `${role} instructions`, ...extra });
-const codes = (definition) => workflowIssues(definition, executors).map((issue) => issue.code);
+const codes = (definition) => workflowIssues(definition, harnesses).map((issue) => issue.code);
 /** A workflow from nodes and "from>to" pairs written with roles; "start" and "end" are the two ends. */
 function graph(nodes, links, name = "w") {
   let definition = nodes.reduce(addNode, newWorkflow(name));
@@ -69,10 +74,34 @@ test("an empty or unconnected workflow says what is missing", () => {
 
 test("a nameless node is reported once; a named one for each gap it has", () => {
   const blank = graph([newNode(0, 0)], []);
-  assert.deepEqual(workflowIssues(blank, executors).filter((issue) => issue.nodeId).map((issue) => issue.code), ["role_missing"]);
-  const definition = graph([newNode(0, 0, { role: "quiet" }), agent("gone", { executorId: "codex/removed" }), agent("offline", { executorId: "claude/b" })],
-    ["start>quiet", "quiet>gone", "gone>offline", "offline>end"]);
-  assert.deepEqual(codes(definition), ["instructions_missing", "executor_unknown", "executor_unavailable"]);
+  assert.deepEqual(workflowIssues(blank, harnesses).filter((issue) => issue.nodeId).map((issue) => issue.code), ["role_missing"]);
+  const definition = graph([newNode(0, 0, { role: "quiet" }), agent("gone", { harness: "codex", model: "removed" }), agent("offline", { harness: "claude", model: "b" }),
+    agent("unlisted", { harness: "other", model: "x" }), agent("set", { harness: "codex", model: "deep" })],
+    ["start>quiet", "quiet>gone", "gone>offline", "offline>unlisted", "unlisted>set", "set>end"]);
+  assert.deepEqual(codes(definition), ["instructions_missing", "runtime_unknown", "runtime_unavailable", "runtime_unknown"]);
+});
+
+test("choosing where a node runs keeps what still applies and drops what does not", () => {
+  const node = agent("worker");
+  const picked = withRuntime(node, harnesses, { harness: "codex" });
+  assert.deepEqual([picked.harness, picked.model, picked.effort, picked.speed], ["codex", "deep", "medium", null], "a harness brings its default model and effort");
+  const tuned = withRuntime(withRuntime(picked, harnesses, { model: "fast" }), harnesses, { effort: "high", speed: "priority" });
+  assert.deepEqual([tuned.model, tuned.effort, tuned.speed], ["fast", "high", "priority"]);
+  const moved = withRuntime(tuned, harnesses, { model: "deep" });
+  assert.deepEqual([moved.effort, moved.speed], ["high", null], "an effort both models have stays; a speed the model lacks goes");
+  assert.deepEqual([withRuntime(tuned, harnesses, { speed: "default" }).speed, withRuntime(tuned, harnesses, { speed: "unheard" }).speed], [null, null]);
+  const cleared = withRuntime(tuned, harnesses, { harness: null });
+  assert.deepEqual([cleared.harness, cleared.model, cleared.effort, cleared.speed], [null, null, null, null], "back to the conversation's own settings");
+  assert.equal(cleared.instructions, node.instructions);
+});
+
+test("a node kept for reuse is its definition, without its place or identity", () => {
+  const node = { ...newNode(40, 80, { role: "reviewer", instructions: "review", harness: "codex", model: "deep", access: "write", each: 3 }), drafted: true };
+  const kept = fieldsOf(node);
+  assert.deepEqual(Object.keys(kept).sort(), ["access", "delegation", "each", "effort", "harness", "instructions", "model", "role", "speed", "workspace"]);
+  const reused = newNode(0, 0, kept);
+  assert.notEqual(reused.id, node.id);
+  assert.deepEqual(fieldsOf(reused), kept);
 });
 
 test("nodes started by the same node run side by side and are joined by the node they all lead to", () => {

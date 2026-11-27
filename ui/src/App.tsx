@@ -27,6 +27,7 @@ import {
 } from "./components/Overlays";
 import { ThreadSidebar } from "./components/ThreadSidebar";
 import { WorkflowView, workflowHome, type WorkflowScreen } from "./components/workflows/WorkflowView";
+import { latestWorkflowRun } from "./components/workflows/WorkflowRun";
 import { projectBranchName, useCleoWorkspace } from "./useCleoWorkspace";
 import { cleoClient } from "./services/cleoClient";
 import { useLanguage, setLanguage, type UiLanguage } from "./i18n";
@@ -48,6 +49,28 @@ export function App() {
   const [workflowsOpen, setWorkflowsOpen] = useState(false);
   const [workflowScreen, setWorkflowScreen] = useState<WorkflowScreen>(workflowHome);
   const showWorkflows = workflowsOpen && Boolean(workflowClient);
+  // The saved workflows, by name, for the composer's `/workflow` menu.
+  const [workflowChoices, setWorkflowChoices] = useState<{ id: string; name: string }[]>([]);
+  const refreshWorkflowChoices = () => {
+    void workflowClient?.library().then((library) => setWorkflowChoices(library.workflows.map(({ id, name }) => ({ id, name })))).catch(() => {});
+  };
+  useEffect(refreshWorkflowChoices, [workflowClient]);
+  // A workflow started from the library runs in a conversation: a new task opens with the
+  // workflow chosen, waiting for the task it should be started with.
+  const [pendingWorkflow, setPendingWorkflow] = useState<string | null>(null);
+  const runWorkflow = (workflowId: string) => {
+    setWorkflowsOpen(false);
+    workspace.selectSpace("productivity");
+    void workspace.createThread();
+    setPendingWorkflow(workflowId);
+  };
+  useEffect(() => {
+    if (!pendingWorkflow || workspace.activeSpace !== "productivity" || workspace.activeThreadId !== null || showWorkflows) return;
+    workspace.setPrompt(`/workflow ${pendingWorkflow} `);
+    setPendingWorkflow(null);
+    requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.composer [data-testid="composer-input"]')?.focus());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingWorkflow, workspace.activeSpace, workspace.activeThreadId, workspace.activeProjectId, showWorkflows]);
   const newTask = () => {
     setWorkflowsOpen(false);
     if (workspace.activeSpace === "memory") workspace.selectSpace("productivity");
@@ -147,6 +170,17 @@ export function App() {
     return () => { cancelled = true; };
   }, [computerRun, inspectorSpace]);
   const showInspector = inspectorOpen && workspace.activeSpace !== "memory" && !showWorkflows;
+  // A workflow that starts running brings its graph forward once, beside the conversation.
+  const activeRun = latestWorkflowRun(workspace.activeThread?.items);
+  const shownRun = useRef<string | null>(null);
+  useEffect(() => {
+    if (activeRun?.status !== "running" || shownRun.current === activeRun.id) return;
+    shownRun.current = activeRun.id;
+    tabChosenFor.current = inspectedThreadId;
+    setInspectorTab("workflow");
+    setInspectorBySpace(current => ({ ...current, productivity: true }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRun?.id, activeRun?.status]);
   const sidebarHidden = sidebarCollapsed || (compactColumns && showInspector);
   const inspectorResize = useInspectorResize(String(sidebarHidden), showInspector);
   const [commandOpen, setCommandOpen] = useState(false);
@@ -679,10 +713,9 @@ export function App() {
           client={workflowClient}
           screen={workflowScreen}
           onScreenChange={setWorkflowScreen}
-          projects={workspace.snapshot.projects}
-          defaultProjectId={workspace.activeProjectId}
+          onRun={(definition) => runWorkflow(definition.id)}
+          onLibraryChange={refreshWorkflowChoices}
           onNotify={notify}
-          onCopyText={(value) => void workspace.copyText(value)}
         />
       ) : workspace.activeSpace === "memory" ? (
         <MemoryView
@@ -805,6 +838,8 @@ export function App() {
           }}
           onThreadCommand={(command) => void workspace.sendPrompt(command)}
           commands={workspace.snapshot.backend?.commands[workspace.activeSpace === "chat" ? "chat" : "productivity"] ?? []}
+          workflows={workflowChoices}
+          onShowWorkflow={() => showInspectorTab("workflow")}
           history={workspace.history}
           questionUI={<QuestionDialog questions={workspace.questions} />}
           approvalRequest={workspace.pendingApprovals.find(q => q.threadId === workspace.activeThreadId) ?? null}

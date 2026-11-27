@@ -27,9 +27,10 @@ import { ComputerPanel } from "./ComputerPanel";
 import { FilesPanel, type FileReveal } from "./FilesPanel";
 import { BranchHoldNotice, CommentForm, ReviewCommentsBar, SourceControlRow, type BranchHold, type ReviewComment, type RunSourceControl } from "./ReviewActions";
 import { RuntimePermissions } from "./Overlays";
+import { WorkflowRunPanel, latestWorkflowRun } from "./workflows/WorkflowRun";
 
 /** "details" holds what used to be two tabs (run output and context); the old ids still open it. */
-export type InspectorTab = "changes" | "details" | "files" | "computer";
+export type InspectorTab = "changes" | "details" | "files" | "computer" | "workflow";
 
 interface InspectorProps {
   running: boolean;
@@ -110,7 +111,10 @@ export function Inspector({
   wide = false,
   onToggleWide,
 }: InspectorProps) {
+  // A conversation that ran a workflow shows its graph; the tab exists only then.
+  const workflowRun = latestWorkflowRun(thread?.items);
   const tabs: { id: InspectorTab; label: string; count?: number }[] = [
+    ...(workflowRun ? [{ id: "workflow" as const, label: tr("workflows.flow") }] : []),
     { id: "changes", label: tr("inspector.changes"), count: thread?.changes.length || undefined },
     ...(window.cleoDesktop?.files || activeTab === "files" ? [{ id: "files" as const, label: tr("approvalprompt.file") }] : []),
     { id: "details", label: tr("inspector.details") },
@@ -151,7 +155,9 @@ export function Inspector({
         </div>
       </header>
       <div className="inspector-panel" id="inspector-panel" role="tabpanel" aria-labelledby={`inspector-tab-${activeTab}`}>
-        {activeTab === "computer" ? (
+        {activeTab === "workflow" && workflowRun ? (
+          <WorkflowRunPanel run={workflowRun} />
+        ) : activeTab === "computer" ? (
           <ComputerPanel thread={thread} running={running} onStop={onStop} />
         ) : activeTab === "files" ? (
           <FilesPanel root={project?.path || null} threadId={thread?.id ?? null} reveal={fileReveal} onNotify={onNotify} onCopyText={onCopyText}

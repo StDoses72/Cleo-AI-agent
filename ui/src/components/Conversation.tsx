@@ -5,6 +5,7 @@ import { cleoClient } from "../services/cleoClient";
 import type { useTimelineHistory } from "../useTimelineHistory";
 import { MAX_TIMELINE_ITEMS, TIMELINE_PAGE_ITEMS } from "../timeline-cache";
 import "./timeline.css";
+import { WorkflowRunCard } from "./workflows/WorkflowRun";
 import {
   useEffect,
   useMemo,
@@ -55,6 +56,7 @@ import {
   Sparkles,
   Square,
   X,
+  Workflow,
 } from "lucide-react";
 import type {
   LocalSkill,
@@ -173,6 +175,10 @@ interface ConversationProps {
   onThreadCommand: (command: string) => void;
   commands: string[];
   skills?: LocalSkill[];
+  /** Saved workflows the composer can start with `/workflow`. */
+  workflows?: { id: string; name: string }[];
+  /** Show the conversation's workflow run in the details panel. */
+  onShowWorkflow?: () => void;
   approvalRequest: ApprovalRequest | null;
   approvalPending: boolean;
   approvalError: string | null;
@@ -255,6 +261,8 @@ export function Conversation({
   onThreadCommand,
   commands,
   skills,
+  workflows = [],
+  onShowWorkflow,
   approvalRequest,
   approvalPending,
   approvalError,
@@ -538,6 +546,10 @@ export function Conversation({
       showTiming={!row.timing || timingOwners.get(row.timing.id) === row.id}
       editable={!running && !waitingForAnswer && Boolean(onEditMessage) && editableTurns.has(row.id)}
       onEditMessage={onEditMessage} onRevealPath={onRevealPath}
+      onShowWorkflow={onShowWorkflow}
+      // Only the latest run can be resumed, and not while the conversation is busy.
+      onRetryWorkflow={!running && row.type === "workflow" && row.id === timelineItems.findLast(item => item.type === "workflow")?.id
+        ? () => onThreadCommand("/workflow retry") : undefined}
       steeringBusy={steeringBusy} onRetrySteer={onRetrySteer} onRestoreSteer={onRestoreSteer} />; }
     return <>{content}{item?.more && Object.keys(item.more).filter(field => field === "output" || field === "command").map(field =>
       <button className="history-content-link" key={field} onClick={() => void readContent(item!, field)}>
@@ -675,6 +687,7 @@ export function Conversation({
         usage={thread?.usage}
         commands={commands}
         skills={skills ?? thread?.skills ?? []}
+        workflows={space === "productivity" ? workflows : []}
         approvalRequest={approvalRequest}
         approvalPending={approvalPending}
         approvalError={approvalError}
@@ -984,8 +997,12 @@ function TimelineEntry({
   editable = false,
   onEditMessage,
   onRevealPath,
+  onShowWorkflow,
+  onRetryWorkflow,
 }: {
   item: Exclude<TimelineBlock, WorkGroupBlock>;
+  onShowWorkflow?: () => void;
+  onRetryWorkflow?: () => void;
   /** False when a later message of the turn shows the same duration. */
   showTiming?: boolean;
   threadId: string;
@@ -1000,6 +1017,7 @@ function TimelineEntry({
   activeTurnId?: string | null;
 }) {
   if (item.type === "plan") return <PlanEntry item={item} />;
+  if (item.type === "workflow") return <WorkflowRunCard run={item.run} onOpen={onShowWorkflow} onRetry={onRetryWorkflow} />;
   if (item.type === "question") return <section className="question-history" data-testid="question-history">
     <strong>{item.request.status === "answered" ? tr("conversation.agent_question_answered") : item.request.status === "pending" ? tr("conversation.waiting_for_an_answer") : item.request.status === "cancelled" ? tr("conversation.question_cancelled") : tr("conversation.this_question_has_expired_ask_the_agent_to_send_it_again")}</strong>
     {item.request.questions.map(question => <div key={question.id}><p>{question.question}</p>
@@ -1674,6 +1692,7 @@ function Composer({
   onRemoveAttachment,
   commands,
   skills = [],
+  workflows = [],
   approvalRequest,
   approvalPending,
   approvalError,
@@ -1717,6 +1736,7 @@ function Composer({
   | "onRemoveAttachment"
   | "commands"
   | "skills"
+  | "workflows"
   | "approvalRequest"
   | "approvalPending"
   | "approvalError"
@@ -1762,7 +1782,8 @@ function Composer({
 
   const submit = () => {
     const content = prompt.trim() || (attachments.length ? tr("conversation.please_analyze_these_attachments") : "");
-    if (!content || sendBlocked) return;
+    // A workflow is started with a task: the chip alone is not sent.
+    if (!content || sendBlocked || (/^\/workflow \S+$/.test(content) && workflows.length)) return;
     onSend(content);
   };
   const boundarySteer = runtime.steerMode === "boundary";
@@ -1861,15 +1882,21 @@ function Composer({
   };
   const showCommands = /^\/[^\s]*$/.test(prompt) && dismissedPrefix !== prompt;
   const computerUseSelected = prompt.startsWith("/computeruse ");
-  const composerText = computerUseSelected ? prompt.slice("/computeruse ".length) : prompt;
+  // A workflow chosen from the menu rides in front of the text, like Computer Use: the composer
+  // shows it as a chip and the text that follows is the task it is started with.
+  const workflowPrefix = /^\/workflow (\S+) /.exec(prompt);
+  const chosenWorkflow = workflowPrefix ? workflows.find((workflow) => workflow.id === workflowPrefix[1]) : undefined;
+  const prefix = computerUseSelected ? "/computeruse " : chosenWorkflow ? workflowPrefix![0] : "";
+  const composerText = prompt.slice(prefix.length);
   const matchingCommands = showCommands
     ? commands.filter((command) => command.startsWith(prompt))
     : [];
+  const matchingWorkflows = showCommands && "/workflow".startsWith(prompt.toLowerCase()) ? workflows : [];
 
   const matchingSkills = showCommands
     ? skills.filter((skill) => skill.command.startsWith(prompt) || `/${skill.name}`.startsWith(prompt))
     : [];
-  const candidates = [...matchingSkills.map((skill) => skill.command), ...matchingCommands];
+  const candidates = [...matchingSkills.map((skill) => skill.command), ...matchingCommands, ...matchingWorkflows.map((workflow) => `/workflow ${workflow.id}`)];
   const candidateKey = candidates.join("\n");
   useEffect(() => { setSelectedCommand(0); }, [prompt, candidateKey, runtime.provider]);
   useEffect(() => { setDismissedPrefix(null); }, [runtime.provider]);
@@ -1913,7 +1940,7 @@ function Composer({
     const insert = mentionText(path);
     const next = composerText.slice(0, mention.start) + insert + composerText.slice(caret);
     const position = mention.start + insert.length;
-    setPrompt((computerUseSelected ? "/computeruse " : "") + next);
+    setPrompt(prefix + next);
     setCaret(position);
     requestAnimationFrame(() => { inputRef.current?.focus(); inputRef.current?.setSelectionRange(position, position); });
   };
@@ -1942,7 +1969,7 @@ function Composer({
             <span>{tr("conversation.drop_to_add_files")}</span>
           </div>
         ) : null}
-        {matchingCommands.length || matchingSkills.length ? (
+        {matchingCommands.length || matchingSkills.length || matchingWorkflows.length ? (
           <div className="slash-menu surface-popover" data-testid="slash-menu" id="slash-options" role="listbox" aria-label={tr("conversation.current_harness_skills_and_commands")}>
             <span>{tr("conversation.commands_and_skills")}</span>
             {matchingSkills.map((skill, index) => (
@@ -1955,6 +1982,15 @@ function Composer({
                 <code>{command}</code>
               </button>
             ))}
+            {matchingWorkflows.map((workflow, index) => {
+              const position = matchingSkills.length + matchingCommands.length + index;
+              return (
+                <button type="button" role="option" aria-selected={selectedCommand === position} id={`slash-option-${position}`} key={workflow.id} data-testid="slash-workflow"
+                  onMouseDown={(event) => event.preventDefault()} onClick={() => chooseCommand(`/workflow ${workflow.id}`)}>
+                  <code>/workflow</code><small>{workflow.name}</small>
+                </button>
+              );
+            })}
           </div>
         ) : showCommands ? (
           <div className="slash-menu surface-popover slash-empty" data-testid="slash-menu" role="status">
@@ -2002,6 +2038,10 @@ function Composer({
         {harnessSwitchStatus ? <div className="harness-switch-status" role="status">{harnessSwitchStatus}</div> : null}
         {!harnessSwitchStatus && runtime?.handoffStatus === "submitted" ? <div className="harness-switch-status" role="status">{tr("conversation.the_handoff_was_submitted_but_its_first_turn_is_incomplete_check_the_actions_already_")}</div> : null}
         {sendError ? <div className="attachment-error" role="alert">{sendError}</div> : null}
+        {chosenWorkflow && <div className="attachment-row"><span className="attachment-chip computer-use-chip" data-testid="workflow-chip">
+          <Workflow size={12} /><span>{chosenWorkflow.name}</span>
+          <button type="button" aria-label={tr("workflows.remove_from_task")} onClick={() => { setPrompt(composerText); inputRef.current?.focus(); }}><X size={12} /></button>
+        </span></div>}
         {computerUseSelected && <div className="attachment-row"><span className="attachment-chip computer-use-chip">
           <span>Computer Use</span>
           <button type="button" aria-label={tr("conversation.remove_computer_use")} onClick={() => { setPrompt(composerText); inputRef.current?.focus(); }}><X size={12} /></button>
@@ -2021,10 +2061,10 @@ function Composer({
           onChange={(event) => {
             setDismissedPrefix(null);
             setCaret(event.target.selectionStart);
-            setPrompt((computerUseSelected ? "/computeruse " : "") + event.target.value);
+            setPrompt(prefix + event.target.value);
           }}
           onKeyDown={(event) => {
-            if (computerUseSelected && !composerText && event.key === "Backspace" && !composing.current) {
+            if (prefix && !composerText && event.key === "Backspace" && !composing.current) {
               event.preventDefault(); setPrompt(""); return;
             }
             onKeyDown(event);

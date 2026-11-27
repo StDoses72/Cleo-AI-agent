@@ -1,44 +1,61 @@
 import { t as tr } from "../../../electron/i18n.mjs";
-import { Ban, Check, CircleAlert, Copy, LoaderCircle, Maximize, Minus, Network, Pencil, Plus, Repeat, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
+import { Ban, Check, CircleAlert, Copy, LoaderCircle, Maximize, Minus, Network, Pencil, Plus, Repeat, Sparkles, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 import type {
   WorkflowDefinition,
-  WorkflowExecutor,
+  WorkflowHarness,
   WorkflowNode,
+  WorkflowNodeFields,
   WorkflowNodeStatus,
   WorkflowRun,
 } from "../../workflow-types";
-import { executorLabel, refusalText } from "./workflow-labels";
+import { harnessName, refusalText } from "./workflow-labels";
 import {
   END, GRID, NODE_HEIGHT, NODE_WIDTH, START, TERMINAL_HEIGHT, TERMINAL_WIDTH,
-  addNode, autoLayout, connect, freeSpot, newNode, removeEdge, removeNode, snap,
+  addNode, autoLayout, connect, fieldsOf, newNode, removeEdge, removeNode, snap,
 } from "./workflow-model";
 
 export type CanvasSelection = { kind: "node" | "edge"; id: string } | null;
 
-/** A node the user can drop in ready-made: a role with its instructions already written. */
+/** A node the user can drop in ready-made. The blank one asks what it should do. */
 export interface NodePreset {
   key: string;
   label: string;
-  fields: Partial<WorkflowNode>;
+  /** Kept by the user rather than built in; listed apart. */
+  saved?: boolean;
+  fields: Partial<WorkflowNodeFields>;
+}
+
+interface Box { left: number; top: number; width: number; height: number }
+
+/** Where things are on screen, for what is drawn over the canvas beside a node or an edge. */
+export interface CanvasFrame {
+  width: number;
+  height: number;
+  node: (nodeId: string) => Box | null;
+  edge: (edgeId: string) => { left: number; top: number } | null;
 }
 
 interface WorkflowCanvasProps {
   definition: WorkflowDefinition;
-  executors: readonly WorkflowExecutor[];
+  harnesses: readonly WorkflowHarness[];
   selection: CanvasSelection;
   onSelect: (selection: CanvasSelection) => void;
   /** Absent on a canvas that only shows: nothing can be created, moved or connected. */
   onChange?: (definition: WorkflowDefinition) => void;
   presets?: readonly NodePreset[];
+  /** Write a blank node's definition from one sentence. */
+  onDraftNode?: (nodeId: string, intent: string) => void;
+  /** Nodes whose definition is being written now. */
+  drafting?: ReadonlySet<string>;
   /** With a run, every node shows where that run is. */
   run?: WorkflowRun | null;
   /** Ids of nodes and edges that keep the workflow from running. */
   flagged?: ReadonlySet<string>;
   /** A connection that cannot exist says why. */
   onNotice?: (message: string) => void;
-  /** Double-click on a node: the user wants to edit it. */
-  onOpenNode?: (nodeId: string) => void;
+  /** Drawn over the canvas, in its own coordinates: the card of what is selected. */
+  children?: (frame: CanvasFrame) => ReactNode;
 }
 
 interface View { x: number; y: number; k: number }
@@ -48,18 +65,20 @@ type Drag =
   | { kind: "pan"; startX: number; startY: number; viewX: number; viewY: number }
   | { kind: "node"; id: string; startX: number; startY: number; originX: number; originY: number; x: number; y: number; moved: boolean }
   | { kind: "connect"; from: string; x: number; y: number; over: string | null }
-  | { kind: "palette"; preset: NodePreset; startX: number; startY: number; x: number; y: number; moved: boolean };
+  | { kind: "add"; startX: number; startY: number; x: number; y: number; moved: boolean };
 
 interface Menu {
   left: number;
   top: number;
-  /** Where on the canvas it was opened, in the workflow's own coordinates. */
-  point: Point;
+  /** Where on the canvas it was opened, in the workflow's own coordinates; absent for the add button. */
+  point: Point | null;
   target: { kind: "canvas" } | { kind: "node"; id: string } | { kind: "edge"; id: string } | { kind: "connect"; from: string };
 }
 
 const MIN_ZOOM = 0.4;
 const MAX_ZOOM = 1.6;
+/** A run is shown no smaller than this, so node names stay readable in a narrow pane. */
+const READABLE_ZOOM = 0.7;
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
 
 /** Where a run has got to on one node: running while any of its sessions is, otherwise how the latest ended. */
@@ -72,16 +91,20 @@ export function nodeStatus(run: WorkflowRun, node: WorkflowNode): WorkflowNodeSt
   return sessions.slice(-(node.each ?? 1)).some((session) => session.status === "failed") ? "failed" : sessions.at(-1)!.status;
 }
 
-/** Purpose: The workflow as a graph the user builds by hand: nodes are dragged into place, created
- * from the right-click menu or the palette, and joined by dragging from a node's right edge.
- * An edge drawn back to an earlier node becomes a loop. Without `onChange` it only shows. */
-export function WorkflowCanvas({ definition, executors, selection, onSelect, onChange, presets = [], run, flagged, onNotice, onOpenNode }: WorkflowCanvasProps) {
+/** Purpose: The workflow as a graph the user builds by hand. Nodes are created from the right-click
+ * menu or the add button, dragged into place, and joined by dragging from the dot under a node; an
+ * edge drawn back to an earlier node becomes a loop. A node shows its name and a few marks only:
+ * what it is set to appears when it is opened. Without `onChange` the canvas only shows. */
+export function WorkflowCanvas({ definition, harnesses, selection, onSelect, onChange, presets = [], onDraftNode, drafting, run, flagged, onNotice, children }: WorkflowCanvasProps) {
   const editable = Boolean(onChange);
   const root = useRef<HTMLDivElement>(null);
   const markers = `wf-arrow-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const [view, setView] = useState<View>({ x: 0, y: 0, k: 1 });
+  const [size, setSize] = useState({ width: 0, height: 0 });
   const [drag, setDrag] = useState<Drag | null>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
+  /** The blank node that is asking what it should do. */
+  const [asking, setAsking] = useState<{ nodeId: string; text: string } | null>(null);
   const nodes = useMemo(() => new Map(definition.nodes.map((node) => [node.id, node])), [definition.nodes]);
   const judges = useMemo(() => new Set(definition.edges.filter((edge) => edge.loop).map((edge) => edge.from)), [definition.edges]);
 
@@ -99,7 +122,9 @@ export function WorkflowCanvas({ definition, executors, selection, onSelect, onC
   const inPort = (id: string, at: Point) => ({ x: at.x + (terminal(id) ? TERMINAL_WIDTH : NODE_WIDTH) / 2, y: at.y });
   const flank = (at: Point) => ({ x: at.x + NODE_WIDTH, y: at.y + NODE_HEIGHT / 2 });
   const forwardPath = (start: Point, end: Point, gap = 3) => {
-    const bend = clamp(Math.abs(end.y - start.y) / 2, 24, 100);
+    // A next node placed beside or above gets a wider curve, so the edge reads as one sweep.
+    const sideways = end.y - start.y < 48;
+    const bend = clamp(sideways ? Math.abs(end.x - start.x) / 2.5 : Math.abs(end.y - start.y) / 2, sideways ? 44 : 24, 100);
     return `M ${start.x} ${start.y} C ${start.x} ${start.y + bend}, ${end.x} ${end.y - bend}, ${end.x} ${end.y - gap}`;
   };
   const loopPath = (start: Point, end: Point) => {
@@ -112,6 +137,15 @@ export function WorkflowCanvas({ definition, executors, selection, onSelect, onC
     const box = root.current!.getBoundingClientRect();
     return { x: (clientX - box.left - view.x) / view.k, y: (clientY - box.top - view.y) / view.k };
   };
+
+  // Where a run is: the first node at work, else the one that failed.
+  const focusId = useMemo(() => {
+    if (!run) return null;
+    const states = definition.nodes.map((node) => [node.id, nodeStatus(run, node)] as const);
+    return (states.find(([, status]) => status === "running") ?? states.find(([, status]) => status === "failed"))?.[0] ?? null;
+  }, [run, definition.nodes]);
+  const focusRef = useRef(focusId);
+  focusRef.current = focusId;
 
   const fit = useCallback(() => {
     const element = root.current;
@@ -127,33 +161,40 @@ export function WorkflowCanvas({ definition, executors, selection, onSelect, onC
     const top = Math.min(...boxes.map((box) => box.y));
     const spanX = Math.max(...boxes.map((box) => box.x + box.w)) - left;
     const spanY = Math.max(...boxes.map((box) => box.y + box.h)) - top;
-    // Room for the palette above and the hint and zoom controls below.
-    const above = editable ? 60 : 24;
-    const below = editable ? 52 : 24;
-    const k = clamp(Math.min((width - 64) / spanX, (height - above - below) / spanY, 1), MIN_ZOOM, 1);
-    setView({ k, x: (width - spanX * k) / 2 - left * k, y: above + (height - above - below - spanY * k) / 2 - top * k });
-  }, [definition, editable]);
+    const k = clamp(Math.min((width - 64) / spanX, (height - 64) / spanY, 1), run ? READABLE_ZOOM : MIN_ZOOM, 1);
+    // A graph too large to read whole in its pane is shown around where the run is, from its start.
+    const focus = (run && definition.nodes.find((node) => node.id === focusRef.current)) || { ...definition.start, w: TERMINAL_WIDTH, h: TERMINAL_HEIGHT };
+    const along = (pane: number, low: number, span: number, at: number) => span * k <= pane - 32
+      ? (pane - span * k) / 2 - low * k
+      : clamp(pane / 2 - at * k, pane - 24 - (low + span) * k, 24 - low * k);
+    setView({ k,
+      x: along(width, left, spanX, focus.x + ("w" in focus ? focus.w : NODE_WIDTH) / 2),
+      y: along(height, top, spanY, focus.y + ("h" in focus ? focus.h : NODE_HEIGHT) / 2) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [definition, Boolean(run)]);
   // A workflow opens fitted to the canvas; after that the view is the user's.
   useLayoutEffect(() => {
     fit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [definition.id]);
-  // A canvas that only shows keeps the whole graph in view as its pane changes size.
   const fitRef = useRef(fit);
   fitRef.current = fit;
   useEffect(() => {
     const element = root.current;
-    if (editable || !element || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => fitRef.current());
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      const box = element.getBoundingClientRect();
+      setSize({ width: box.width, height: box.height });
+      // A canvas that only shows keeps the whole graph in view as its pane changes size.
+      if (!editable) fitRef.current();
+    });
     observer.observe(element);
     return () => observer.disconnect();
   }, [editable]);
 
-  // A node selected from elsewhere (a duplicate, an issue in the list, an undo) may lie outside the
-  // view; the view moves just far enough to show it. A node the user clicks is already in view.
-  const selectedNodeId = selection?.kind === "node" ? selection.id : null;
-  useEffect(() => {
-    const node = selectedNodeId ? nodes.get(selectedNodeId) : undefined;
+  /** Move the view just far enough to show a node that lies outside it. */
+  const reveal = (nodeId: string | null) => {
+    const node = nodeId ? nodes.get(nodeId) : undefined;
     const element = root.current;
     if (!node || !element) return;
     const { width, height } = element.getBoundingClientRect();
@@ -162,13 +203,23 @@ export function WorkflowCanvas({ definition, executors, selection, onSelect, onC
       const top = node.y * current.k + current.y;
       const right = left + NODE_WIDTH * current.k;
       const bottom = top + NODE_HEIGHT * current.k;
-      const above = editable ? 52 : 12;
       const dx = right > width - 16 ? width - 16 - right : left < 16 ? 16 - left : 0;
-      const dy = bottom > height - 48 ? height - 48 - bottom : top < above ? above - top : 0;
+      const dy = bottom > height - 48 ? height - 48 - bottom : top < 48 ? 48 - top : 0;
       return dx || dy ? { ...current, x: current.x + dx, y: current.y + dy } : current;
     });
+  };
+  // A node selected from elsewhere (a duplicate, an issue, an undo) may lie outside the view.
+  // A node the user clicks is already in view.
+  const selectedNodeId = selection?.kind === "node" ? selection.id : null;
+  useEffect(() => {
+    reveal(selectedNodeId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNodeId]);
+  // A run is followed: the node at work, or the one that failed, comes into view as the run moves.
+  useEffect(() => {
+    reveal(focusId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusId]);
 
   const zoom = (factor: number, originX?: number, originY?: number) => setView((current) => {
     const box = root.current!.getBoundingClientRect();
@@ -199,7 +250,15 @@ export function WorkflowCanvas({ definition, executors, selection, onSelect, onC
     window.addEventListener("pointerdown", close, true);
     return () => window.removeEventListener("pointerdown", close, true);
   }, [menu]);
+  const askElement = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (asking) askElement.current?.focus({ preventScroll: true }); }, [asking?.nodeId]);
 
+  // A menu that closes hands the keyboard back to the canvas, so Escape and Delete keep working.
+  const hadMenu = useRef(false);
+  useEffect(() => {
+    if (hadMenu.current && !menu && document.activeElement === document.body) root.current?.focus({ preventScroll: true });
+    hadMenu.current = Boolean(menu);
+  }, [menu]);
   const create = (preset: NodePreset, x: number, y: number, from?: string) => {
     if (!onChange) return;
     const node = newNode(x, y, preset.fields);
@@ -209,8 +268,11 @@ export function WorkflowCanvas({ definition, executors, selection, onSelect, onC
       if ("definition" in linked) next = linked.definition;
     }
     onChange(next);
-    onSelect({ kind: "node", id: node.id });
+    // A blank node asks what it should do, right where it is; a ready-made one is simply there.
+    if (!node.role && !node.instructions && onDraftNode) { setAsking({ nodeId: node.id, text: "" }); onSelect(null); }
+    else onSelect({ kind: "node", id: node.id });
   };
+  const blank = presets.find((preset) => preset.key === "blank") ?? { key: "blank", label: "", fields: {} };
   const link = (from: string, to: string) => {
     if (!onChange) return;
     const linked = connect(definition, from, to);
@@ -227,8 +289,7 @@ export function WorkflowCanvas({ definition, executors, selection, onSelect, onC
   const duplicate = (nodeId: string) => {
     const node = nodes.get(nodeId);
     if (!node || !onChange) return;
-    const { id: _original, ...fields } = node;
-    const copy = newNode(node.x + NODE_WIDTH + 24, node.y, fields);
+    const copy = newNode(node.x + NODE_WIDTH + 24, node.y, fieldsOf(node));
     onChange(addNode(definition, copy));
     onSelect({ kind: "node", id: copy.id });
   };
@@ -236,6 +297,10 @@ export function WorkflowCanvas({ definition, executors, selection, onSelect, onC
   const nodeUnder = (clientX: number, clientY: number) => {
     const hit = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>("[data-node-id]");
     return hit && root.current?.contains(hit) ? hit.dataset.nodeId ?? null : null;
+  };
+  const inside = (clientX: number, clientY: number) => {
+    const box = root.current!.getBoundingClientRect();
+    return clientX >= box.left && clientX <= box.right && clientY >= box.top && clientY <= box.bottom;
   };
   const pointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
@@ -289,31 +354,29 @@ export function WorkflowCanvas({ definition, executors, selection, onSelect, onC
         : { ...definition, nodes: definition.nodes.map((node) => node.id === drag.id ? { ...node, ...at } : node) });
     } else if (drag.kind === "connect") {
       const over = nodeUnder(event.clientX, event.clientY);
-      const box = root.current!.getBoundingClientRect();
-      const inside = event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom;
       if (over && over !== drag.from) link(drag.from, over);
       // Let go over empty canvas: choose what the new edge should lead to.
-      else if (!over && inside) openMenu(event.clientX, event.clientY, { kind: "connect", from: drag.from });
-    } else if (drag.kind === "palette") {
-      const box = root.current!.getBoundingClientRect();
-      const inside = event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom;
-      if (drag.moved && inside) {
+      else if (!over && inside(event.clientX, event.clientY)) openMenu(event.clientX, event.clientY, { kind: "connect", from: drag.from });
+    } else if (drag.kind === "add") {
+      // Dragged onto the canvas: a blank node lands there. Pressed in place: the menu of what to add.
+      if (drag.moved && inside(event.clientX, event.clientY)) {
         const point = toWorld(event.clientX, event.clientY);
-        create(drag.preset, point.x - NODE_WIDTH / 2, point.y - NODE_HEIGHT / 2);
-      } else if (!drag.moved) {
-        const spot = freeSpot(definition);
-        create(drag.preset, spot.x, spot.y);
-      }
+        create(blank, point.x - NODE_WIDTH / 2, point.y - NODE_HEIGHT / 2);
+      } else if (!drag.moved) openAddMenu();
     }
   };
 
-  const openMenu = (clientX: number, clientY: number, target: Menu["target"]) => {
+  const menuAt = (left: number, top: number, target: Menu["target"], point: Point | null) => {
     const box = root.current!.getBoundingClientRect();
     const rows = target.kind === "canvas" ? presets.length + 2 : target.kind === "connect" ? presets.length : target.kind === "node" ? 2 : 1;
-    const height = rows * 32 + 44;
-    setMenu({ target, point: toWorld(clientX, clientY),
-      left: clamp(clientX - box.left, 8, Math.max(8, box.width - 216)), top: clamp(clientY - box.top, 8, Math.max(8, box.height - height)) });
+    const height = rows * 32 + 52;
+    setMenu({ target, point, left: clamp(left, 8, Math.max(8, box.width - 216)), top: clamp(top, 8, Math.max(8, box.height - height)) });
   };
+  const openMenu = (clientX: number, clientY: number, target: Menu["target"]) => {
+    const box = root.current!.getBoundingClientRect();
+    menuAt(clientX - box.left, clientY - box.top, target, toWorld(clientX, clientY));
+  };
+  const openAddMenu = () => menuAt(12, 48, { kind: "canvas" }, null);
   const contextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     const target = event.target as Element;
@@ -326,13 +389,13 @@ export function WorkflowCanvas({ definition, executors, selection, onSelect, onC
   };
   const doubleClick = (event: MouseEvent<HTMLDivElement>) => {
     const target = event.target as Element;
-    if (target.closest("[data-canvas-control]")) return;
-    const id = target.closest<HTMLElement>("[data-node-id]")?.dataset.nodeId;
-    if (id && !terminal(id)) onOpenNode?.(id);
-    else if (!id && editable && !target.closest("[data-edge-id]")) openMenu(event.clientX, event.clientY, { kind: "canvas" });
+    if (!editable || target.closest("[data-canvas-control], [data-node-id], [data-edge-id]")) return;
+    openMenu(event.clientX, event.clientY, { kind: "canvas" });
   };
   const keyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape" && (menu || drag)) { event.stopPropagation(); setMenu(null); setDrag(null); return; }
+    // Escape closes what is open, from the canvas or from inside its card.
+    if (event.key === "Escape" && selection && !event.nativeEvent.isComposing) { onSelect(null); root.current?.focus({ preventScroll: true }); return; }
     if (!onChange || !selection || (event.target as Element).closest("[data-canvas-control]")) return;
     if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); remove(selection); return; }
     const steps: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
@@ -346,20 +409,44 @@ export function WorkflowCanvas({ definition, executors, selection, onSelect, onC
 
   const menuPreset = (preset: NodePreset) => {
     if (!menu) return;
-    // From a dragged edge the node's input lands where the edge was dropped; otherwise it centres on the click.
-    if (menu.target.kind === "connect") create(preset, menu.point.x - NODE_WIDTH / 2, menu.point.y, menu.target.from);
-    else create(preset, menu.point.x - NODE_WIDTH / 2, menu.point.y - NODE_HEIGHT / 2);
+    const at = menu.point ?? toWorld(root.current!.getBoundingClientRect().left + size.width / 2, root.current!.getBoundingClientRect().top + size.height / 2);
+    // From a dragged edge the node's input lands where the edge was dropped; otherwise it centres on the point.
+    if (menu.target.kind === "connect") create(preset, at.x - NODE_WIDTH / 2, at.y, menu.target.from);
+    else create(preset, at.x - NODE_WIDTH / 2, at.y - NODE_HEIGHT / 2);
     setMenu(null);
   };
   const draft = drag?.kind === "connect" ? (() => {
     const from = place(drag.from);
-    if (!from) return null;
-    return forwardPath(outPort(drag.from, from), drag, 0);
+    return from ? forwardPath(outPort(drag.from, from), drag, 0) : null;
   })() : null;
-  const ghost = drag?.kind === "palette" && drag.moved && root.current ? (() => {
+  const ghost = drag?.kind === "add" && drag.moved && root.current ? (() => {
     const box = root.current.getBoundingClientRect();
-    return { left: drag.x - box.left, top: drag.y - box.top, label: drag.preset.label };
+    return { left: drag.x - box.left, top: drag.y - box.top };
   })() : null;
+  const frame: CanvasFrame = {
+    width: size.width, height: size.height,
+    node: (nodeId) => {
+      const at = place(nodeId);
+      return at ? { left: at.x * view.k + view.x, top: at.y * view.k + view.y, width: NODE_WIDTH * view.k, height: NODE_HEIGHT * view.k } : null;
+    },
+    edge: (edgeId) => {
+      const edge = definition.edges.find((item) => item.id === edgeId);
+      const from = edge && place(edge.from);
+      const to = edge && place(edge.to);
+      if (!edge || !from || !to) return null;
+      const start = outPort(edge.from, from);
+      const end = inPort(edge.to, to);
+      const at = edge.loop ? loopPath(flank(from), flank(to)).label : { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
+      return { left: at.x * view.k + view.x, top: at.y * view.k + view.y };
+    },
+  };
+  const builtIn = presets.filter((preset) => !preset.saved);
+  const kept = presets.filter((preset) => preset.saved);
+  const presetButton = (preset: NodePreset) => (
+    <button type="button" role="menuitem" key={preset.key} data-testid={`menu-${preset.key}`} onClick={() => menuPreset(preset)}>
+      {preset.key === "blank" ? <Plus size={14} /> : <span className="wf-menu-dot" />}{preset.label}
+    </button>
+  );
 
   return (
     <div ref={root} className={`wf-canvas ${drag?.kind === "pan" ? "panning" : ""} ${drag?.kind === "connect" ? "connecting" : ""}`}
@@ -403,8 +490,8 @@ export function WorkflowCanvas({ definition, executors, selection, onSelect, onC
           const round = run?.rounds[edge.id];
           return (
             <div key={edge.id} className={`wf-loop-label ${selection?.kind === "edge" && selection.id === edge.id ? "selected" : ""}`}
-              data-edge-id={edge.id} style={{ left: label.x, top: label.y }}>
-              <Repeat size={11} />{round ? tr("workflows.round_of", { p0: round, p1: edge.loop!.maxRounds }) : tr("workflows.loop_label", { p0: edge.loop!.maxRounds })}
+              data-edge-id={edge.id} title={tr("workflows.loop_label", { p0: edge.loop!.maxRounds })} style={{ left: label.x, top: label.y }}>
+              <Repeat size={11} />{round ? `${round}/${edge.loop!.maxRounds}` : `≤${edge.loop!.maxRounds}`}
             </div>
           );
         })}
@@ -425,22 +512,45 @@ export function WorkflowCanvas({ definition, executors, selection, onSelect, onC
           const status = run ? nodeStatus(run, node) : undefined;
           const selected = selection?.kind === "node" && selection.id === node.id;
           const name = node.role || tr("workflows.unnamed_role");
+          const writing = drafting?.has(node.id);
+          const asked = asking?.nodeId === node.id;
           return (
             <div key={node.id} data-node-id={node.id} data-testid="workflow-node" data-status={status}
-              className={`wf-cnode ${selected ? "selected" : ""} ${flagged?.has(node.id) ? "flagged" : ""} ${drag?.kind === "node" && drag.id === node.id && drag.moved ? "dragging" : ""} ${drag?.kind === "connect" && drag.over === node.id ? "drop" : ""}`}
+              className={`wf-cnode ${selected ? "selected" : ""} ${flagged?.has(node.id) && !asked && !writing ? "flagged" : ""} ${drag?.kind === "node" && drag.id === node.id && drag.moved ? "dragging" : ""} ${drag?.kind === "connect" && drag.over === node.id ? "drop" : ""}`}
               style={{ left: at.x, top: at.y, width: NODE_WIDTH, height: NODE_HEIGHT }}
-              tabIndex={0} role="button" aria-pressed={selected} aria-label={`${name}${tr("punctuation.comma")}${executorLabel(node.executorId, executors)}`}
-              onFocus={() => { if (!selected) onSelect({ kind: "node", id: node.id }); }}>
+              tabIndex={0} role="button" aria-pressed={selected} aria-label={`${name}${tr("punctuation.comma")}${harnessName(node, harnesses)}`}
+              // Reached with the keyboard: the node opens. A press is handled where the pointer lands,
+              // so that pulling an edge out of a node does not open it.
+              onFocus={(event) => { if (!selected && event.target === event.currentTarget && event.currentTarget.matches(":focus-visible")) onSelect({ kind: "node", id: node.id }); }}>
               <span className="wf-port in" />
-              <span className="wf-cnode-copy">
-                <strong>{name}</strong>
-                <small>{executorLabel(node.executorId, executors)}</small>
-              </span>
+              {asked ? (
+                <input ref={askElement} className="wf-ask" data-canvas-control data-testid="node-intent" value={asking.text} maxLength={120}
+                  placeholder={tr("workflows.ask_placeholder")} aria-label={tr("workflows.ask_placeholder")}
+                  onChange={(event) => setAsking({ nodeId: node.id, text: event.target.value })}
+                  onBlur={() => setAsking((current) => current?.nodeId === node.id ? null : current)}
+                  onKeyDown={(event) => {
+                    event.stopPropagation();
+                    if (event.nativeEvent.isComposing) return;
+                    if (event.key === "Escape") setAsking(null);
+                    if (event.key === "Enter") {
+                      const intent = asking.text.trim();
+                      setAsking(null);
+                      if (intent) onDraftNode?.(node.id, intent); else onSelect({ kind: "node", id: node.id });
+                    }
+                  }} />
+              ) : (
+                <span className="wf-cnode-copy">
+                  <strong>{writing ? tr("workflows.drafting_node") : name}</strong>
+                  <small>{harnessName(node, harnesses)}</small>
+                </span>
+              )}
               <span className="wf-cnode-marks">
+                {writing ? <LoaderCircle size={13} className="spin" /> : null}
+                {node.drafted && !writing ? <em className="drafted" title={tr("workflows.drafted_tag")}><Sparkles size={11} /></em> : null}
                 {node.each !== null ? <em title={tr("workflows.each_mark", { p0: node.each })}>×{node.each}</em> : null}
                 {node.access === "write" ? <em title={tr("workflows.access_write")}><Pencil size={11} /></em> : null}
                 {judges.has(node.id) ? <em title={tr("workflows.judge")}><Repeat size={11} /></em> : null}
-                {status ? <StatusMark status={status} /> : flagged?.has(node.id) ? <CircleAlert size={13} className="wf-flag" /> : null}
+                {status ? <StatusMark status={status} /> : flagged?.has(node.id) && !asked && !writing ? <CircleAlert size={13} className="wf-flag" /> : null}
               </span>
               <span className="wf-port out" data-port="out" title={editable ? tr("workflows.port_hint") : undefined} />
             </div>
@@ -452,24 +562,18 @@ export function WorkflowCanvas({ definition, executors, selection, onSelect, onC
         <div className="wf-canvas-empty"><strong>{tr("workflows.canvas_empty_title")}</strong><span>{tr("workflows.canvas_empty_hint")}</span></div>
       ) : null}
       {editable ? (
-        <div className="wf-palette" data-canvas-control role="group" aria-label={tr("workflows.palette")}>
-          <span>{tr("workflows.palette")}</span>
-          {presets.map((preset) => (
-            <button type="button" key={preset.key} className="wf-palette-item" data-testid={`palette-${preset.key}`}
-              onPointerDown={(event) => {
-                if (event.button !== 0) return;
-                setMenu(null);
-                setDrag({ kind: "palette", preset, startX: event.clientX, startY: event.clientY, x: event.clientX, y: event.clientY, moved: false });
-                root.current?.setPointerCapture(event.pointerId);
-              }}
-              // Keyboard only: a pointer press is finished by the canvas, which holds the pointer.
-              onClick={(event) => { if (event.detail === 0) { const spot = freeSpot(definition); create(preset, spot.x, spot.y); } }}>
-              <Plus size={12} />{preset.label}
-            </button>
-          ))}
-        </div>
+        <button type="button" className="wf-add" data-canvas-control data-testid="workflow-add" aria-label={tr("workflows.menu_new")} title={tr("workflows.add_hint")}
+          onPointerDown={(event) => {
+            if (event.button !== 0) return;
+            setMenu(null);
+            setDrag({ kind: "add", startX: event.clientX, startY: event.clientY, x: event.clientX, y: event.clientY, moved: false });
+            root.current?.setPointerCapture(event.pointerId);
+          }}
+          // Keyboard only: a pointer press is finished by the canvas, which holds the pointer.
+          onClick={(event) => { if (event.detail === 0) openAddMenu(); }}>
+          <Plus size={16} />
+        </button>
       ) : null}
-      {editable ? <p className="wf-canvas-hint">{tr("workflows.canvas_hint")}</p> : null}
       <div className="wf-canvas-tools" data-canvas-control role="group" aria-label={tr("workflows.view_controls")}>
         <button type="button" className="icon-button" onClick={() => zoom(1 / 1.2)} aria-label={tr("workflows.zoom_out")} title={tr("workflows.zoom_out")}><Minus size={14} /></button>
         <span data-testid="workflow-zoom">{Math.round(view.k * 100)}%</span>
@@ -481,23 +585,20 @@ export function WorkflowCanvas({ definition, executors, selection, onSelect, onC
         ) : null}
       </div>
 
+      {children ? <div className="wf-overlay" data-canvas-control>{children(frame)}</div> : null}
+
       {menu ? (
         <div ref={menuElement} className="wf-menu surface-popover" role="menu" data-canvas-control data-testid="workflow-menu" style={{ left: menu.left, top: menu.top }}>
           {menu.target.kind === "canvas" || menu.target.kind === "connect" ? (
             <>
-              <span className="wf-menu-title">{menu.target.kind === "connect" ? tr("workflows.menu_connect_new") : tr("workflows.menu_new")}</span>
-              {presets.map((preset, index) => (
-                <button type="button" role="menuitem" key={preset.key} data-testid={`menu-${preset.key}`} onClick={() => menuPreset(preset)}>
-                  <Plus size={14} />{preset.label}
-                </button>
-              ))}
-              {menu.target.kind === "canvas" ? (
+              {builtIn.map(presetButton)}
+              {kept.length ? <><hr /><span className="wf-menu-title">{tr("workflows.menu_saved")}</span>{kept.map(presetButton)}</> : null}
+              {menu.target.kind === "canvas" && menu.point ? (
                 <>
                   <hr />
                   <button type="button" role="menuitem" onClick={() => { onChange?.(autoLayout(definition)); setMenu(null); requestAnimationFrame(() => fitRef.current()); }}>
                     <Network size={14} />{tr("workflows.tidy")}
                   </button>
-                  <button type="button" role="menuitem" onClick={() => { fit(); setMenu(null); }}><Maximize size={14} />{tr("workflows.fit")}</button>
                 </>
               ) : null}
             </>
@@ -514,7 +615,7 @@ export function WorkflowCanvas({ definition, executors, selection, onSelect, onC
           )}
         </div>
       ) : null}
-      {ghost ? <div className="wf-ghost" style={{ left: ghost.left, top: ghost.top }}>{ghost.label}</div> : null}
+      {ghost ? <div className="wf-ghost" style={{ left: ghost.left, top: ghost.top }}><Plus size={13} /></div> : null}
     </div>
   );
 }

@@ -1,14 +1,22 @@
 import { getLanguage, relativeTime, t as tr } from "../../../electron/i18n.mjs";
 import { effortLabels } from "../../runtime-labels";
-import type { WorkflowDefinition, WorkflowExecutor, WorkflowRunStatus } from "../../workflow-types";
+import type { WorkflowDefinition, WorkflowHarness, WorkflowNodeFields, WorkflowRunStatus } from "../../workflow-types";
 import { layers, loopEdges, type ConnectRefusal, type WorkflowIssue } from "./workflow-model";
 
-/** "Codex · gpt-5.6-sol · High"; a node without an executor follows the conversation that starts the run. */
-export function executorLabel(executorId: string | null, executors: readonly WorkflowExecutor[]) {
-  if (executorId === null) return tr("workflows.executor_inherit");
-  const executor = executors.find((item) => item.id === executorId);
-  if (!executor) return tr("workflows.executor_unknown");
-  return [executor.harness, executor.model, executor.effort ? effortLabels[executor.effort] : ""].filter(Boolean).join(" · ");
+/** The one word a node shows for where it runs: its harness, or that it follows the conversation. */
+export function harnessName(node: Pick<WorkflowNodeFields, "harness">, harnesses: readonly WorkflowHarness[]) {
+  if (node.harness === null) return tr("workflows.runtime_inherit_short");
+  return harnesses.find((item) => item.id === node.harness)?.label ?? node.harness;
+}
+
+/** "Claude · Claude Opus 5 · High · Fast"; a node without a harness follows the conversation that starts the run. */
+export function runtimeLabel(node: Pick<WorkflowNodeFields, "harness" | "model" | "effort" | "speed">, harnesses: readonly WorkflowHarness[]) {
+  if (node.harness === null) return tr("workflows.runtime_inherit");
+  const harness = harnesses.find((item) => item.id === node.harness);
+  const model = harness?.models.find((item) => item.id === node.model);
+  if (!harness || !model) return tr("workflows.runtime_unknown");
+  return [harness.label, model.label, node.effort ? effortLabels[node.effort] : "",
+    node.speed ? model.serviceTiers?.find((tier) => tier.id === node.speed)?.label ?? "" : ""].filter(Boolean).join(" · ");
 }
 
 /** Purpose: A workflow in one line: a few words per step in running order, nodes that run side
@@ -34,8 +42,8 @@ export function issueText(issue: WorkflowIssue) {
     case "end_unconnected": return tr("workflows.issue_end_unconnected");
     case "role_missing": return tr("workflows.issue_role_missing");
     case "instructions_missing": return tr("workflows.issue_instructions_missing", { p0: subject });
-    case "executor_unknown": return tr("workflows.issue_executor_unknown", { p0: subject });
-    case "executor_unavailable": return tr("workflows.issue_executor_unavailable", { p0: subject });
+    case "runtime_unknown": return tr("workflows.issue_runtime_unknown", { p0: subject });
+    case "runtime_unavailable": return tr("workflows.issue_runtime_unavailable", { p0: subject });
     case "node_no_input": return tr("workflows.issue_node_no_input", { p0: subject });
     case "node_no_output": return tr("workflows.issue_node_no_output", { p0: subject });
     case "cycle": return tr("workflows.issue_cycle");

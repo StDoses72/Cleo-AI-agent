@@ -39,6 +39,7 @@ import type {
 } from "../types";
 import { mockThumbnail, permissionPresets, snapshot, uiChanges } from "./mockData";
 import { MockWorkflowClient } from "./mockWorkflows";
+import { workflowCommand } from "../workflow-command";
 
 const delay = (milliseconds: number) =>
   new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
@@ -119,6 +120,8 @@ export class MockCleoClient implements CleoClient {
     ],
     activeAgent: "deepseek-flash", activeDreamAgent: "", dreamEnabled: true,
   };
+  /** The workflow run each conversation started last. */
+  private readonly workflowRuns = new Map<string, string>();
   private readonly approvalResolvers = new Map<string, { threadId: string; resolve: (decision: ApprovalDecision) => void }>();
   private readonly reviewingMemorySourceIds = new Set<string>();
   private readonly histories = new Map<string, TimelineItem[]>();
@@ -331,7 +334,10 @@ export class MockCleoClient implements CleoClient {
       const turnId = `mock-turn-${runId}`;
       const items = this.histories.get(threadId) ?? clone(snapshot.threads.find(t => t.id === threadId)?.items ?? []);
       this.histories.set(threadId, items);
-      const user: TimelineItem = { id: turnId, turnId, cursor: String(items.length), order: items.length, type: "message", role: "user", content: prompt, time: "",
+      // A workflow command shows as the task it was started with, as the backend folds its own commands.
+      const workflow = workflowCommand(prompt);
+      const shown = workflow ? workflow.task || "从失败处重试" : prompt;
+      const user: TimelineItem = { id: turnId, turnId, cursor: String(items.length), order: items.length, type: "message", role: "user", content: shown, time: "",
         ...(attachments.length ? { attachments: attachments.map(({ base64: _bytes, ...chip }) => chip) } : {}) };
       items.push(user);
       yield { type: "turn-started", item: user };
@@ -377,6 +383,8 @@ export class MockCleoClient implements CleoClient {
     prompt: string,
     _attachments: Attachment[] = [],
   ): AsyncGenerator<StreamEvent> {
+    const workflow = workflowCommand(prompt);
+    if (workflow) { yield* this.workflowTurn(threadId, workflow.target, workflow.task); return; }
     const runId = `${threadId}-${Date.now()}`;
     const isFailureDemo = /失败|error|fail/i.test(prompt);
     const needsApproval = /审批|approval|git commit/i.test(prompt);
@@ -598,9 +606,40 @@ export class MockCleoClient implements CleoClient {
     yield { type: "done", summary: prompt.slice(0, 54) };
   }
 
+  /** Purpose: A turn that runs a workflow. The run arrives as one timeline item, replaced as it
+   * advances; what reaches the result becomes the reply. `retry` resumes the conversation's last run. */
+  private async *workflowTurn(threadId: string, target: string, task: string): AsyncGenerator<StreamEvent> {
+    let runId = this.workflowRuns.get(threadId) ?? "";
+    if (target === "retry") {
+      if (!runId || !(await this.workflows.resume(runId))) { yield { type: "error", message: "这个对话里没有可以重试的工作流运行。" }; return; }
+    } else {
+      const definition = this.workflows.definition(target);
+      if (!definition) { yield { type: "error", message: "没有找到这个工作流，它可能已被删除。" }; return; }
+      if (!task) { yield { type: "error", message: "先写下这次要完成的任务。" }; return; }
+      const thread = snapshot.threads.find(item => item.id === threadId);
+      runId = (await this.workflows.start(definition, task, thread?.projectId ?? "")).id;
+      this.workflowRuns.set(threadId, runId);
+    }
+    let last: import("../workflow-types").WorkflowRun | null = null;
+    for await (const run of this.workflows.watch(runId)) {
+      last = run;
+      yield { type: "upsert-item", item: { id: `workflow-${runId}`, type: "workflow", run } };
+    }
+    if (last?.status === "completed" && last.result) {
+      // The reply is read as Markdown: bullets become list items and other lines their own paragraphs.
+      const reply = last.result.replace(/^· /gm, "- ").replace(/\n(?!- |\d+\. |\n)/g, "\n\n");
+      yield { type: "upsert-item", item: { id: `workflow-${runId}-result`, type: "message", role: "assistant", content: reply,
+        time: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) } };
+    }
+    yield { type: "done", summary: last?.definition.name ?? "" };
+  }
+
   async cancelRun(_threadId: string, runId?: string): Promise<boolean> {
     const activeRunId = this.activeRuns.get(_threadId);
     if (!activeRunId || (runId && activeRunId !== runId)) return false;
+    // A workflow stops its agents first, so the conversation receives the run as it ended.
+    const workflowRun = this.workflowRuns.get(_threadId);
+    if (workflowRun) await this.workflows.stop(workflowRun);
     this.runVersions.set(_threadId, (this.runVersions.get(_threadId) ?? 0) + 1);
     await delay(250);
     if (this.activeRuns.has(_threadId) && this.activeRuns.get(_threadId) !== activeRunId) return true;

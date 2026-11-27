@@ -32,6 +32,7 @@ import type {
 } from "./types";
 import { projectsInSpace } from "./runtime-labels";
 import { nextPendingSwitch, runtimeWithPendingSwitch, type PendingHarnessSwitch } from "./harness-handoff";
+import { workflowCommand } from "./workflow-command";
 
 function currentTime() {
   return new Date().toLocaleTimeString(getLanguage(), { hour: "2-digit", minute: "2-digit" });
@@ -899,11 +900,14 @@ export function useCleoWorkspace() {
     }
     if (lockKey !== threadId) runLocks.current.delete(lockKey);
     runLocks.current.set(threadId, token);
+    // A workflow command shows as the task it was given, here as in the saved conversation.
+    const workflow = workflowCommand(prompt);
+    const shown = workflow ? workflow.task || tr("workflows.retry_failed") : prompt;
     const userItem: TimelineItem = {
       id: `${threadId}-user-${Date.now()}`,
       type: "message",
       role: "user",
-      content: prompt,
+      content: shown,
       time: currentTime(),
       // Chips show at once; the backend's turn-started item carries the saved records.
       ...(pendingAttachments.length ? { attachments: pendingAttachments.map(({ base64: _bytes, ...chip }) => chip) } : {}),
@@ -918,8 +922,8 @@ export function useCleoWorkspace() {
     }));
     updateThread(threadId, (current) => ({
       ...current,
-      title: current.items.length === 0 ? prompt.slice(0, 26) : current.title,
-      summary: prompt.slice(0, 64),
+      title: current.items.length === 0 ? shown.slice(0, 26) : current.title,
+      summary: shown.slice(0, 64),
       status: "running",
       steerReady: false,
       updatedAt: tr("memoryview.just_now"),
