@@ -461,6 +461,11 @@ export class MockCleoClient implements CleoClient {
       // A workflow command shows as the task it was started with, as the backend folds its own commands.
       const workflow = workflowCommand(prompt);
       const shown = workflow ? workflow.task || "从失败处重试" : prompt;
+      // As the backend does: a conversation is named after the first thing asked in it.
+      if (!items.length) {
+        storedThread.title = (workflowNeeds(prompt) || shown).slice(0, 26);
+        storedThread.summary = (workflowNeeds(prompt) || shown).slice(0, 64);
+      }
       const user: TimelineItem = { id: turnId, turnId, cursor: String(items.length), order: items.length, type: "message", role: "user", content: shown, time: "",
         ...(attachments.length ? { attachments: attachments.map(({ base64: _bytes, ...chip }) => chip) } : {}) };
       items.push(user);

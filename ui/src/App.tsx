@@ -59,18 +59,8 @@ export function App() {
   useEffect(refreshWorkflowChoices, [workflowClient]);
   // A workflow started from the library runs in a conversation: a new task opens with the
   // workflow chosen, waiting for the task it should be started with.
-  // A workflow an agent wrote in a conversation is kept in the library, or opened on the canvas:
-  // as the saved copy if the library has it, otherwise as a new one not saved yet.
-  const addWorkflow = async (definition: WorkflowDefinition) => {
-    if (!workflowClient) return;
-    try {
-      const saved = await workflowClient.save(definition);
-      refreshWorkflowChoices();
-      notify(tr("workflows.saved_toast", { p0: saved.name }));
-    } catch (error) {
-      notify(error instanceof Error ? error.message : String(error), "error");
-    }
-  };
+  // A workflow an agent wrote in a conversation opens built on the canvas, where the user keeps
+  // it or not: as the saved copy if the library has it by now, otherwise as a new one.
   const openWorkflow = (definition: WorkflowDefinition) => {
     void workflowClient?.library().then((library) => {
       const saved = library.workflows.find((item) => item.id === definition.id);
@@ -882,7 +872,6 @@ export function App() {
           commands={workspace.snapshot.backend?.commands[workspace.activeSpace === "chat" ? "chat" : "productivity"] ?? []}
           workflows={workflowChoices}
           onShowWorkflow={() => showInspectorTab("workflow")}
-          onAddWorkflow={workflowClient ? addWorkflow : undefined}
           onOpenWorkflow={workflowClient ? openWorkflow : undefined}
           history={workspace.history}
           questionUI={<QuestionDialog questions={workspace.questions} />}

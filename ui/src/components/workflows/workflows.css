@@ -308,9 +308,7 @@
 
 /* ---------- A workflow an agent wrote, handed back in the conversation ---------- */
 .wf-proposal { display: flex; align-items: center; gap: 14px; margin: 6px 0; padding: 10px 14px 10px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--surface-raised); }
-.wf-proposal-open { display: block; width: 132px; height: 84px; flex: none; padding: 8px; border-radius: var(--radius-sm); background: var(--surface); cursor: pointer; }
-.wf-proposal-open:hover { background: var(--surface-hover); }
-.wf-proposal-open:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 58%, transparent); outline-offset: 1px; }
+.wf-proposal-thumb { width: 132px; height: 84px; flex: none; padding: 8px; border-radius: var(--radius-sm); background: var(--surface); }
 .wf-proposal-copy { display: grid; min-width: 0; flex: 1; gap: 3px; }
 .wf-proposal-copy strong { overflow: hidden; font-size: var(--font-size-body); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .wf-proposal-copy small { color: var(--muted-2); font-size: var(--font-size-caption); }

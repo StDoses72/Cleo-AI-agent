@@ -357,22 +357,30 @@ try {
   assert.equal(await page.getByTestId("composer-input").inputValue(), "/create-workflow 帮我创建一个工作流。以下是我的需求：");
   await page.getByTestId("composer-input").pressSequentially("修复设置页在窄屏下的布局缺陷");
   await page.getByTestId("send-button").click();
-  // What it writes comes back as one card: the shape, the name, and whether to keep it.
+  // What it writes comes back as one card: the shape and the name.
   const proposal = page.getByTestId("workflow-proposal");
   await proposal.waitFor({ timeout: 10_000 });
   assert.match(await proposal.innerText(), /审查 · 逐项修复 · 复核[\s\S]*3 个节点/);
+  assert.equal(await page.getByTestId("workflow-proposal-saved").count(), 0);
   assert.ok(await conversation(/修复设置页在窄屏下的布局缺陷/).count(), "The conversation is named after what was asked for");
   await page.screenshot({ path: join(output, "ask-ai.png") });
-  // Its shape opens it on the canvas before it is kept: a new workflow, not saved yet.
+  // Opening it shows it built on the canvas, not saved: keeping it is the user's step there.
   await page.getByTestId("workflow-proposal-open").click();
   await editor.waitFor({ timeout: 8_000 });
   assert.deepEqual(await counts(), [3, 4]);
   assert.equal(await page.getByTestId("workflow-state").innerText(), "未保存");
   await conversation(/修复设置页在窄屏下的布局缺陷/).click();
   await proposal.waitFor();
-  // Kept from the card, it is in the library and can be started like any other.
-  await page.getByTestId("workflow-proposal-add").click();
-  await page.getByTestId("workflow-proposal-added").waitFor();
+  await page.getByTestId("composer-input").fill("/work");
+  assert.equal(await page.getByTestId("slash-workflow").filter({ hasText: "审查 · 逐项修复 · 复核" }).count(), 0, "Looking at it did not keep it");
+  await page.getByTestId("composer-input").fill("");
+  // Saved on the canvas, it is in the library, the card says so, and it starts like any other.
+  await page.getByTestId("workflow-proposal-open").click();
+  await editor.waitFor();
+  await page.getByTestId("workflow-save").click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="workflow-state"]')?.classList.contains("saved"));
+  await conversation(/修复设置页在窄屏下的布局缺陷/).click();
+  await page.getByTestId("workflow-proposal-saved").waitFor();
   await page.getByTestId("composer-input").fill("/work");
   assert.equal(await page.getByTestId("slash-workflow").filter({ hasText: "审查 · 逐项修复 · 复核" }).count(), 1);
   await page.getByTestId("composer-input").fill("");

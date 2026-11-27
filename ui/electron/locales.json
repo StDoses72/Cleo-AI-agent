@@ -7003,13 +7003,9 @@
     "zh-CN": "帮我创建一个工作流。以下是我的需求：",
     "en": "Help me create a workflow. Here is what I need:"
   },
-  "workflows.add_to_library": {
-    "zh-CN": "加入工作流",
-    "en": "Add to workflows"
-  },
-  "workflows.added": {
-    "zh-CN": "已加入",
-    "en": "Added"
+  "workflows.proposal_open": {
+    "zh-CN": "打开",
+    "en": "Open"
   },
   "workflows.node_count": {
     "zh-CN": "{p0} 个节点",
