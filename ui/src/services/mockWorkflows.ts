@@ -1,5 +1,5 @@
 import { END, START, autoLayout, forwardEdges, loopBody, loopEdges } from "../components/workflows/workflow-model";
-import type { ReasoningEffort } from "../types";
+import type { ReasoningEffort, TimelineItem } from "../types";
 import type {
   WorkflowClient,
   WorkflowDefinition,
@@ -200,10 +200,14 @@ export class MockWorkflowClient implements WorkflowClient {
   private readonly instant = new Set<string>();
   /** Replayed runs that go on in real time once this many sessions are behind them, at this pace. */
   private readonly live = new Map<string, { after: number; pace: number }>();
+  /** Runs left under way that wait, at the session they are in, until someone looks at them. */
+  private readonly held = new Set<string>();
   /** The demo's failure path: this reviewer's first attempt hits a usage limit. A replayed run
    * names its own failure as `runId:nodeId` and leaves this one for the user's first run. */
   private readonly failOnce = new Set(["s2-maintain"]);
   private readonly replayed = new Set<string>();
+  /** What each session was handed when it started: the outputs it builds on, by who produced them. */
+  private readonly given = new Map<string, { from: string; text: string }[]>();
 
   async library(): Promise<WorkflowLibrary> {
     await delay(180);
@@ -319,14 +323,16 @@ export class MockWorkflowClient implements WorkflowClient {
 
   /** Purpose: A run that already happened, or is under way, when the demo opens. It is replayed
    * without waiting so its sessions and times read as real. `liveAfter` leaves it running: after
-   * that many sessions it continues in real time, `pace` times slower than a run the user starts.
-   * `failed` names a node whose first attempt fails; `retried` then resumes it once. */
+   * that many sessions it is in real time, where it waits in the session it reached until
+   * `release`, then goes on `pace` times slower than a run the user starts. Nothing about it
+   * changes while nobody looks. `failed` names a node whose first attempt fails; `retried` then
+   * resumes it once. */
   seed(workflowId: string, task: string, projectId: string,
     options: { startedAt: number; liveAfter?: number; pace?: number; failed?: string; retried?: boolean }): string {
     const run = this.createRun(seedWorkflows.find((item) => item.id === workflowId)!, task, projectId, options.startedAt);
     this.instant.add(run.id);
     this.replayed.add(run.id);
-    if (options.liveAfter !== undefined) this.live.set(run.id, { after: options.liveAfter, pace: options.pace ?? 1 });
+    if (options.liveAfter !== undefined) { this.live.set(run.id, { after: options.liveAfter, pace: options.pace ?? 1 }); this.held.add(run.id); }
     if (options.failed) this.failOnce.add(`${run.id}:${options.failed}`);
     void this.execute(run.id).then(() => {
       if (run.status !== "failed" || !options.retried) return;
@@ -337,10 +343,53 @@ export class MockWorkflowClient implements WorkflowClient {
     return run.id;
   }
 
+  /** Lets a run that was left waiting go on. */
+  release(runId: string) {
+    this.held.delete(runId);
+  }
+
   /** The run as it is now. */
   run(runId: string): WorkflowRun | null {
     const run = this.runs.get(runId);
     return run ? clone(run) : null;
+  }
+
+  /** Purpose: One session of a run as a conversation of its own: what the node was handed, what
+   * it did, and what it handed back. This is what opening a node in full shows. */
+  sessionConversation(run: WorkflowRun, session: WorkflowSession): { title: string; items: TimelineItem[] } {
+    const node = run.definition.nodes.find((item) => item.id === session.nodeId);
+    const at = (time: number) => new Date(time).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+    const started = session.startedAt ?? run.startedAt;
+    const handed = this.given.get(session.id) ?? [];
+    // Read as Markdown, like any message: bullets become list items, other lines paragraphs.
+    const prose = (text: string) => text.replace(/^· /gm, "- ").replace(/\n(?!- |\d+\. |\n)/g, "\n\n");
+    const brief = [
+      node?.instructions ?? "",
+      `任务：${run.task}`,
+      ...(session.item ? [`分配给你的这一项：${session.item}`] : []),
+      ...(session.round && session.round > 1 ? [`这是第 ${session.round} 轮。`] : []),
+      ...handed.flatMap((input) => [`**${input.from}交来的产出**`, prose(input.text)]),
+    ].filter(Boolean).join("\n\n");
+    const work = /执行|实现|修复|开发|implement|fix|build|execut/i.test(session.role)
+      ? { thought: "按交来的方案修改代码，并运行受影响的测试", command: "npm test -- export", output: "✓ export pagination (6)\n✓ export legacy records (3)\n9 passed" }
+      : /验收|测试|复核|确认|test|accept|verify|confirm/i.test(session.role)
+        ? { thought: "对照交来的产出逐项核对改动和运行记录", command: "git diff --stat main", output: " src/api/export.ts        | 61 ++++++++----\n tests/export.test.ts     | 46 ++++++++\n 2 files changed, 86 insertions(+), 21 deletions(-)" }
+        : { thought: "阅读相关模块和它的调用方，确认范围", command: "rg -n \"exportNotes|pageCursor\" src", output: "src/api/export.ts:14:export async function exportNotes(\nsrc/api/export.ts:52:  const pageCursor = next ?? null;\nsrc/routes/notes.ts:88:  return exportNotes(request.query);" };
+    const id = (part: string) => `${session.id}-${part}`;
+    const items: TimelineItem[] = [{ id: id("brief"), type: "message", role: "user", content: brief, time: at(started) }];
+    // A session still at work says so; what it did appears once it has handed its work back.
+    if (session.status === "running") items.push({ id: id("working"), type: "notice", tone: "info", title: "正在工作", detail: "这个节点还在运行，完成后这里会出现它做了什么和交回的产出。" });
+    else items.push({ id: id("thought"), type: "thought", content: work.thought, status: "done" });
+    if (session.status === "done") items.push(
+      { id: id("tool"), type: "tool", name: "shell", command: work.command, status: "done", exitCode: 0, durationMs: 300 + (hash(session.id) % 2400), output: work.output },
+      { id: id("reply"), type: "message", role: "assistant", content: prose(session.output ?? ""), time: at(started + (session.elapsedMs ?? 0)) });
+    else if (session.status === "failed") items.push({ id: id("failed"), type: "notice", tone: "warning", title: "这一次没有完成", detail: session.error ?? "" });
+    else if (session.status === "cancelled") items.push({ id: id("stopped"), type: "notice", tone: "info", title: "已停止", detail: "工作流里的另一处失败或被停止，这个会话随之取消。" });
+    // A node that was tried again has one session per attempt.
+    const attempts = run.sessions.filter((other) => other.nodeId === session.nodeId && other.round === session.round && other.item === session.item);
+    const title = [session.role, session.round ? `第 ${session.round} 轮` : "", session.item ? excerpt(session.item, 12) : "",
+      attempts.length > 1 ? `第 ${attempts.findIndex((other) => other.id === session.id) + 1} 次` : ""].filter(Boolean).join(" · ");
+    return { title, items };
   }
 
   async *watch(runId: string): AsyncGenerator<WorkflowRun> {
@@ -528,6 +577,14 @@ export class MockWorkflowClient implements WorkflowClient {
       access: current.access, workspace: current.workspace, status: "running",
       round: options.round, item: options.item, startedAt: now(),
     };
+    record.threadId = `node-${record.id}`;
+    // A node reads what the nodes before it produced; one a loop came back to also reads the verdict.
+    const role = (id: string) => run.definition.nodes.find((item) => item.id === id)?.role ?? "";
+    const back = loopEdges(run.definition).find((link) => link.to === current.id && (options.round ?? 1) > 1);
+    this.given.set(record.id, [
+      ...forwardEdges(run.definition).filter((link) => link.to === current.id && link.from !== START).map((link) => link.from),
+      ...(back ? [back.from] : []),
+    ].flatMap((id) => { const text = progress.outputs.get(id)?.text; return text ? [{ from: role(id), text }] : []; }));
     run.sessions.push(record);
     this.changed(run.id);
     const seed = hash(`${current.id}:${options.round ?? 0}:${options.item ?? ""}`);
@@ -539,6 +596,18 @@ export class MockWorkflowClient implements WorkflowClient {
     };
     if (replay) progress.clock += duration * 40;
     else {
+      // Left waiting: the time that passes meanwhile is not part of the run.
+      const since = Date.now();
+      while (this.held.has(run.id)) {
+        await delay(120);
+        if (this.stopRequests.has(run.id)) { finish("cancelled"); throw new Stopped(); }
+      }
+      const waited = Date.now() - since;
+      if (waited > 200) {
+        run.startedAt += waited;
+        for (const other of run.sessions) if (other.startedAt !== undefined) other.startedAt += waited;
+        this.changed(run.id);
+      }
       const started = Date.now();
       while (Date.now() - started < duration) {
         await delay(80);

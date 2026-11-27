@@ -1,5 +1,5 @@
 import { t as tr } from "../../../electron/i18n.mjs";
-import { ChevronDown, CircleAlert, PanelRight, Pencil, Repeat, RotateCcw, Workflow } from "lucide-react";
+import { ChevronDown, CircleAlert, Maximize2, PanelRight, Pencil, Repeat, RotateCcw, Workflow } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { cleoClient } from "../../services/cleoClient";
 import type { TimelineItem } from "../../types";
@@ -28,12 +28,21 @@ function useNow(ticking: boolean) {
   return now;
 }
 
+/** The session to open for a node: the one at work, else the latest one it ran. */
+export function nodeSession(run: WorkflowRun, nodeId: string): WorkflowSession | undefined {
+  const sessions = run.sessions.filter((session) => session.nodeId === nodeId && session.threadId);
+  return sessions.find((session) => session.status === "running") ?? sessions.at(-1);
+}
+
 /** Purpose: A workflow run where it happened, in the conversation: one quiet line per run, with a
- * mark per node. The graph and what each node did are in the details panel. */
-export function WorkflowRunCard({ run, onOpen, onRetry }: {
+ * mark per node. The graph and what each node did are in the details panel; a node that has run
+ * opens as a conversation of its own. */
+export function WorkflowRunCard({ run, onOpen, onOpenSession, onRetry }: {
   run: WorkflowRun;
   /** Show the run's graph in the details panel. */
   onOpen?: () => void;
+  /** Open a node's session as a conversation. */
+  onOpenSession?: (threadId: string) => void;
   /** Resume from the nodes that did not finish; absent while another run is going. */
   onRetry?: () => void;
 }) {
@@ -55,7 +64,15 @@ export function WorkflowRunCard({ run, onOpen, onRetry }: {
       <ol className="wf-run-strip">
         {nodes.map((node) => {
           const status = nodeStatus(run, node);
-          return <li key={node.id} data-status={status} title={`${node.role} · ${statusLabel(status)}`}><StatusMark status={status} /><span>{node.role}</span></li>;
+          const session = nodeSession(run, node.id);
+          return (
+            <li key={node.id} data-status={status} title={`${node.role} · ${statusLabel(status)}`}>
+              {session?.threadId && onOpenSession
+                ? <button type="button" data-testid="workflow-chip-open" title={tr("workflows.open_session_of", { p0: node.role })}
+                    onClick={() => onOpenSession(session.threadId!)}><StatusMark status={status} /><span>{node.role}</span></button>
+                : <><StatusMark status={status} /><span>{node.role}</span></>}
+            </li>
+          );
         })}
       </ol>
       {run.status === "failed" ? (
@@ -69,9 +86,15 @@ export function WorkflowRunCard({ run, onOpen, onRetry }: {
 }
 
 /** Purpose: The run beside its conversation: the graph with every node's state, and for the node
- * the user picks, what it was told to do and what it did. */
-export function WorkflowRunPanel({ run }: { run: WorkflowRun }) {
-  const [selection, setSelection] = useState<CanvasSelection>(null);
+ * the user picks, what it was told to do and what it did in brief. A node opens in full, as a
+ * conversation, from its button here or by a double click on the graph. */
+export function WorkflowRunPanel({ run, viewing, onOpenSession }: {
+  run: WorkflowRun;
+  /** The node session the conversation beside this panel is showing, if it is one. */
+  viewing?: { nodeId: string; sessionId: string } | null;
+  onOpenSession?: (threadId: string) => void;
+}) {
+  const [selection, setSelection] = useState<CanvasSelection>(viewing ? { kind: "node", id: viewing.nodeId } : null);
   const [harnesses, setHarnesses] = useState<WorkflowHarness[]>([]);
   const now = useNow(run.status === "running");
   useEffect(() => {
@@ -79,18 +102,23 @@ export function WorkflowRunPanel({ run }: { run: WorkflowRun }) {
     void cleoClient.workflows?.library().then((library) => { if (current) setHarnesses(library.harnesses); }).catch(() => {});
     return () => { current = false; };
   }, []);
-  // A new run starts with nothing picked.
-  useEffect(() => { setSelection(null); }, [run.id]);
+  // A new run starts with nothing picked; a node session that is open has its node picked.
+  useEffect(() => { setSelection(viewing ? { kind: "node", id: viewing.nodeId } : null); }, [run.id, viewing?.sessionId]);
+  const openNode = (nodeId: string) => {
+    const session = nodeSession(run, nodeId);
+    if (session?.threadId) onOpenSession?.(session.threadId);
+  };
   const node = selection?.kind === "node" ? run.definition.nodes.find((item) => item.id === selection.id) : undefined;
   const tokens = run.sessions.reduce((total, session) => total + (session.tokens ?? 0), 0);
   const finished = run.definition.nodes.filter((item) => nodeStatus(run, item) === "done").length;
   return (
     <div className="wf-run-panel" data-testid="workflow-run-panel" data-status={run.status}>
       <div className="wf-run-panel-graph">
-        <WorkflowCanvas definition={run.definition} harnesses={harnesses} run={run} selection={selection} onSelect={setSelection} />
+        <WorkflowCanvas definition={run.definition} harnesses={harnesses} run={run} selection={selection} onSelect={setSelection}
+          onOpenNode={onOpenSession ? openNode : undefined} />
       </div>
       <div className="wf-run-panel-detail">
-        {node ? <NodeRun node={node} run={run} harnesses={harnesses} now={now} /> : (
+        {node ? <NodeRun node={node} run={run} harnesses={harnesses} now={now} viewing={viewing?.sessionId} onOpenSession={onOpenSession} /> : (
           <>
             <header><strong>{run.definition.name}</strong><span className="wf-run-status" data-status={run.status}>{runStatusLabel(run.status)}</span></header>
             <dl className="wf-run-facts">
@@ -110,15 +138,23 @@ export function WorkflowRunPanel({ run }: { run: WorkflowRun }) {
 }
 
 /** One node of a run: what it was set to, then each session it ran, newest last. */
-function NodeRun({ node, run, harnesses, now }: { node: WorkflowNode; run: WorkflowRun; harnesses: readonly WorkflowHarness[]; now: number }) {
+function NodeRun({ node, run, harnesses, now, viewing, onOpenSession }: {
+  node: WorkflowNode; run: WorkflowRun; harnesses: readonly WorkflowHarness[]; now: number;
+  viewing?: string; onOpenSession?: (threadId: string) => void;
+}) {
   const sessions = run.sessions.filter((session) => session.nodeId === node.id);
   const status = nodeStatus(run, node);
+  const latest = nodeSession(run, node.id);
   return (
     <div data-testid="workflow-node-run">
       <header>
         <StatusMark status={status} />
         <strong>{node.role}</strong>
         <span className="wf-run-status" data-status={status}>{statusLabel(status)}</span>
+        {latest?.threadId && onOpenSession && latest.id !== viewing ? (
+          <button type="button" className="wf-button" data-testid="workflow-open-session" title={tr("workflows.open_session_hint")}
+            onClick={() => onOpenSession(latest.threadId!)}><Maximize2 size={13} />{tr("workflows.open_session")}</button>
+        ) : null}
       </header>
       <p className="wf-node-runtime">
         {runtimeLabel(node, harnesses)}
@@ -130,22 +166,26 @@ function NodeRun({ node, run, harnesses, now }: { node: WorkflowNode; run: Workf
         <summary>{tr("workflows.instructions")}<ChevronDown size={13} className="wf-chevron" /></summary>
         <pre>{node.instructions}</pre>
       </details>
-      {sessions.length ? sessions.map((session) => <SessionEntry key={session.id} session={session} now={now} />)
+      {sessions.length ? sessions.map((session) => <SessionEntry key={session.id} session={session} now={now} viewing={session.id === viewing}
+        onOpen={session.threadId && onOpenSession && sessions.length > 1 && session.id !== viewing ? () => onOpenSession(session.threadId!) : undefined} />)
         : <p className="wf-rule">{tr("workflows.node_not_started")}</p>}
     </div>
   );
 }
 
-function SessionEntry({ session, now }: { session: WorkflowSession; now: number }) {
+function SessionEntry({ session, now, viewing, onOpen }: { session: WorkflowSession; now: number; viewing?: boolean; onOpen?: () => void }) {
   const elapsed = session.elapsedMs ?? (session.startedAt ? Math.max(0, now - session.startedAt) : 0);
   return (
-    <article className="wf-session" data-status={session.status} data-testid="workflow-session">
+    <article className="wf-session" data-status={session.status} data-viewing={viewing || undefined} data-testid="workflow-session">
       <header>
         <StatusMark status={session.status} />
+        {viewing ? <em className="viewing">{tr("workflows.session_viewing")}</em> : null}
         {session.round ? <em>{tr("workflows.round_value", { p0: session.round })}</em> : null}
         {session.verdict ? <em className={`verdict ${session.verdict}`}>{session.verdict === "pass" ? tr("workflows.verdict_pass") : tr("workflows.verdict_revise")}</em> : null}
         {session.item ? <span className="wf-session-item" title={session.item}>{session.item}</span> : null}
         <small>{[duration(elapsed), session.tokens ? `${tokenCount(session.tokens)} tokens` : ""].filter(Boolean).join(" · ")}</small>
+        {onOpen ? <button type="button" className="icon-button" data-testid="workflow-session-open" onClick={onOpen}
+          aria-label={tr("workflows.open_session")} title={tr("workflows.open_session")}><Maximize2 size={13} /></button> : null}
       </header>
       {session.error ? <pre className="wf-run-output error">{session.error}</pre>
         : session.output ? <pre className="wf-run-output">{session.output}</pre>

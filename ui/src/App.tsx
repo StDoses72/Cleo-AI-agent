@@ -28,6 +28,7 @@ import {
 import { ThreadSidebar } from "./components/ThreadSidebar";
 import { WorkflowView, workflowHome, type WorkflowScreen } from "./components/workflows/WorkflowView";
 import { latestWorkflowRun } from "./components/workflows/WorkflowRun";
+import type { WorkflowRun } from "./workflow-types";
 import { projectBranchName, useCleoWorkspace } from "./useCleoWorkspace";
 import { cleoClient } from "./services/cleoClient";
 import { useLanguage, setLanguage, type UiLanguage } from "./i18n";
@@ -140,10 +141,13 @@ export function App() {
   const inspectedChanges = workspace.activeThread?.changes.length ?? 0;
   // A tab the user picked for this conversation is kept; otherwise new changes bring Changes forward.
   const tabChosenFor = useRef<string | null>(null);
+  const activeRunRef = useRef<WorkflowRun | null>(null);
   const chooseInspectorTab = (tab: InspectorTab) => { tabChosenFor.current = inspectedThreadId; setInspectorTab(tab); };
   useEffect(() => {
     tabChosenFor.current = null;
     setInspectorTab(current => current === "computer" && computerRunRef.current ? current
+      // Going between a workflow's conversation and its node sessions keeps the run's graph in view.
+      : current === "workflow" && activeRunRef.current ? current
       : workspace.activeThread?.changes.length ? "changes" : "details");
   }, [inspectedThreadId]);
   useEffect(() => {
@@ -172,7 +176,14 @@ export function App() {
   const showInspector = inspectorOpen && workspace.activeSpace !== "memory" && !showWorkflows;
   // A conversation's workflow run brings its graph forward once: a run that is going opens the
   // pane beside the conversation; one that has ended takes the tab unless the user picked another.
-  const activeRun = latestWorkflowRun(workspace.activeThread?.items);
+  // A node session shows the run it belongs to: the latest copy any loaded conversation holds.
+  const seenRuns = useRef(new Map<string, WorkflowRun>());
+  for (const thread of workspace.snapshot?.threads ?? []) {
+    for (const item of thread.items) if (item.type === "workflow") seenRuns.current.set(item.run.id, item.run);
+  }
+  const activeRun = latestWorkflowRun(workspace.activeThread?.items)
+    ?? (workspace.activeThread?.workflowSession ? seenRuns.current.get(workspace.activeThread.workflowSession.runId) ?? null : null);
+  activeRunRef.current = activeRun;
   const shownRun = useRef<string | null>(null);
   useEffect(() => {
     if (!activeRun || shownRun.current === activeRun.id) return;
@@ -571,7 +582,8 @@ export function App() {
   const threadCommands = useMemo<CommandAction[]>(() => {
     const snapshot = workspace.snapshot;
     if (!snapshot) return [];
-    return snapshot.threads.map(thread => {
+    // A workflow node's session is reached from its run, not by name.
+    return snapshot.threads.filter(thread => !thread.workflowSession).map(thread => {
       const project = snapshot.projects.find(item => item.id === thread.projectId);
       return {
         id: `thread-${thread.id}`,
@@ -589,6 +601,8 @@ export function App() {
 
   const activeRuntime = workspace.activeThreadRuntime ?? workspace.draftRuntime;
   const conversationThread = workspace.activeThread;
+  const listedThreads = workspace.snapshot.threads.some(thread => thread.workflowSession)
+    ? workspace.snapshot.threads.filter(thread => !thread.workflowSession) : workspace.snapshot.threads;
   const conversationProject: Project | null = workspace.activeProject;
   // Git actions and worktrees are offered for development tasks in a real repository folder.
   const gitProject = Boolean(conversationProject && !conversationProject.managed && conversationProject.branch);
@@ -649,6 +663,8 @@ export function App() {
   if (!composerBlocked && updateState.blocksTasks) composerBlocked = tr("app.wait_for_the_current_version_operation_to_finish");
   if (!composerBlocked && workspace.startingRun) composerBlocked = tr("app.submitting_please_wait");
   if (!composerBlocked && workspace.creatingWorktree) composerBlocked = tr("sourcecontrol.creating_worktree");
+  // A workflow node's session is driven by the workflow: it is read here, not written to.
+  if (!composerBlocked && conversationThread?.workflowSession) composerBlocked = tr("workflows.node_session_locked");
   // A delegated subtask that is running belongs to its parent's run: it is stopped or continued
   // from the parent, so its own composer waits instead of starting a second, unrelated run.
   if (!composerBlocked && conversationThread?.routingTaskId && conversationThread.status === "running" && !workspace.running) {
@@ -674,9 +690,11 @@ export function App() {
       <ThreadSidebar
         view={showWorkflows ? "workflows" : workspace.activeSpace}
         projects={workspace.snapshot.projects}
-        threads={workspace.snapshot.threads}
+        // A workflow node's session is opened from the run; in the list, the conversation the
+        // workflow runs in stands for it.
+        threads={listedThreads}
         activeProjectId={workspace.activeProjectId}
-        activeThreadId={workspace.activeThreadId}
+        activeThreadId={conversationThread?.workflowSession ? conversationThread.parentId ?? null : workspace.activeThreadId}
         onStartThread={(projectId) => {
           setWorkflowsOpen(false);
           if (workspace.activeSpace !== "productivity") workspace.selectSpace("productivity");
@@ -782,7 +800,7 @@ export function App() {
           onSteerDraft={(text) => void workspace.steerDraft(text)}
           // Delegated subtasks carry a routing task id; a fork records its parent too but is not a subtask.
           subtasks={conversationThread ? workspace.snapshot.threads.filter((thread) => thread.parentId === conversationThread.id && thread.routingTaskId) : []}
-          parentThread={conversationThread?.parentId && conversationThread.routingTaskId
+          parentThread={conversationThread?.parentId && (conversationThread.routingTaskId || conversationThread.workflowSession)
             ? workspace.snapshot.threads.find((thread) => thread.id === conversationThread.parentId) ?? null : null}
           onOpenThread={(threadId) => workspace.selectThread(threadId)}
           changesVisible={showInspector && inspectorTab === "changes"}
@@ -859,6 +877,8 @@ export function App() {
           onToggleWide={inspectorResize.toggleWide}
           // The snapshot copy carries waitingFor, so the details header can say "waiting" rather than "running".
           thread={workspace.snapshot.threads.find((thread) => thread.id === conversationThread?.id) ?? conversationThread}
+          workflowRun={activeRun}
+          onOpenThread={openThread}
           project={conversationProject}
           runtime={activeRuntime}
           memories={workspace.snapshot.memories}

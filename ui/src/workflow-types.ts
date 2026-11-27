@@ -109,6 +109,8 @@ export interface WorkflowSession {
   /** The decision of a node that judges a loop. */
   verdict?: "pass" | "revise";
   error?: string;
+  /** The conversation that holds this session's own timeline, where it can be opened in full. */
+  threadId?: string;
 }
 
 export type WorkflowRunStatus = "running" | "completed" | "failed" | "cancelled";

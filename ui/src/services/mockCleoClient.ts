@@ -143,7 +143,7 @@ export class MockCleoClient implements CleoClient {
     // They live in the project that is otherwise empty: a run that is going keeps its project's
     // checkout busy, and the project the demo opens on stays free for everything else.
     const project = "orbit-notes";
-    const going = this.workflows.seed("wf-plan-refute", "为笔记导出接口补上分页参数的校验", project, { startedAt: now, liveAfter: 2, pace: 45 });
+    const going = this.workflows.seed("wf-plan-refute", "为笔记导出接口补上分页参数的校验", project, { startedAt: now, liveAfter: 2, pace: 12 });
     const finished = this.workflows.seed("wf-cross-review", "评审笔记导出接口的分页改动", project,
       { startedAt: now - 2 * 3_600_000, failed: "s2-maintain", retried: true });
     // What is replayed settles before the next task; only the run left going carries on after it.
@@ -165,7 +165,7 @@ export class MockCleoClient implements CleoClient {
     };
     const review = this.workflows.run(finished)!;
     const threads = [
-      conversation("workflow-going", going, { status: "running", updatedAt: "刚刚", activeRunId: `workflow-${going}` }),
+      conversation("workflow-going", going, { status: "running", updatedAt: "刚刚", activeRunId: null }),
       conversation("workflow-finished", finished, { status: "completed", updatedAt: "2 小时前", activeRunId: null }, [
         { id: "workflow-finished-retry", type: "message", role: "user", content: "从失败处重试", time: clock((review.finishedAt ?? now) - 60_000) },
         { id: `workflow-${finished}-result`, type: "message", role: "assistant", content: workflowReply(review.result ?? ""), time: clock(review.finishedAt ?? now) },
@@ -175,8 +175,24 @@ export class MockCleoClient implements CleoClient {
     // They are listed after the conversation the demo opens on, which stays the first.
     const [first, ...rest] = snapshot.threads.filter((thread) => !threads.some((seeded) => seeded.id === thread.id));
     snapshot.threads = [first, ...threads, ...rest];
-    this.activeRuns.set("workflow-going", `workflow-${going}`);
-    void this.followWorkflow("workflow-going", going, `workflow-${going}`);
+    this.waiting = { threadId: "workflow-going", runId: going };
+  }
+
+  /** The run left under way waits until its conversation is opened, so that nothing in the demo
+   * moves on its own: from then on it is a run going elsewhere that this window watches. */
+  private waiting: { threadId: string; runId: string } | null = null;
+  private wake(threadId: string) {
+    const thread = snapshot.threads.find((item) => item.id === threadId);
+    const held = this.waiting;
+    if (!held || !thread || (thread.id !== held.threadId && thread.parentId !== held.threadId)) return;
+    this.waiting = null;
+    const conversation = snapshot.threads.find((item) => item.id === held.threadId);
+    if (!conversation || this.workflows.run(held.runId)?.status !== "running") return;
+    const token = `workflow-${held.runId}`;
+    conversation.activeRunId = token;
+    this.activeRuns.set(held.threadId, token);
+    this.workflows.release(held.runId);
+    void this.followWorkflow(held.threadId, held.runId, token);
   }
 
   /** Purpose: A workflow run that no turn of this window is waiting on: when it ends, the
@@ -194,8 +210,40 @@ export class MockCleoClient implements CleoClient {
       content: workflowReply(last.result), time: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) });
   }
 
+  /** Purpose: Every session a workflow node ran is a conversation of its own, under the one the
+   * workflow runs in: what the node was handed, what it did, what it handed back. They are made
+   * and brought up to date from the runs whenever conversations are read. */
+  private syncWorkflowSessions() {
+    for (const [parentId, items] of [...this.histories]) {
+      const parent = snapshot.threads.find((thread) => thread.id === parentId);
+      for (const item of parent ? items : []) {
+        const run = item.type === "workflow" ? this.workflows.run(item.run.id) : null;
+        for (const session of run?.sessions ?? []) {
+          if (!session.threadId) continue;
+          const node = run!.definition.nodes.find((candidate) => candidate.id === session.nodeId);
+          const { title, items: timeline } = this.workflows.sessionConversation(run!, session);
+          const provider = node?.harness ?? parent!.runtime?.provider ?? "codex";
+          const thread: Thread = {
+            id: session.threadId, parentId, workflowSession: { runId: run!.id, nodeId: session.nodeId, sessionId: session.id },
+            space: "productivity", projectId: parent!.projectId, title, summary: run!.definition.name, items: [], changes: [],
+            updatedAt: session.status === "running" ? "刚刚" : parent!.updatedAt,
+            status: session.status === "running" ? "running" : "completed",
+            usage: { used: session.tokens ?? 0, limit: 128000, input: Math.round((session.tokens ?? 0) * 0.82), output: Math.round((session.tokens ?? 0) * 0.18) },
+            runtime: { ...parent!.runtime!, provider, model: node?.model ?? parent!.runtime?.model ?? "", effort: node?.effort ?? null,
+              access: session.access === "write" ? "workspace-write" : "read-only",
+              permissionOptions: permissionPresets[provider as "codex" | "claude"] ?? parent!.runtime?.permissionOptions },
+          };
+          const at = snapshot.threads.findIndex((candidate) => candidate.id === thread.id);
+          if (at >= 0) snapshot.threads[at] = thread; else snapshot.threads.push(thread);
+          this.histories.set(thread.id, timeline);
+        }
+      }
+    }
+  }
+
   async loadWorkspace(): Promise<WorkspaceSnapshot> {
     await Promise.all([delay(520), this.seeded]);
+    this.syncWorkflowSessions();
     const result = clone(snapshot);
     for (const thread of result.threads) {
       const { items, ...history } = await this.loadTimeline(thread.id);
@@ -213,8 +261,11 @@ export class MockCleoClient implements CleoClient {
     return clone({ memories: snapshot.memories, memoryOverview: snapshot.memoryOverview });
   }
 
-  async loadThread(threadId: string): Promise<Thread> {
+  async loadThread(threadId: string, activate = true): Promise<Thread> {
     await delay(120);
+    // Opened by the user, not read in passing.
+    if (activate) this.wake(threadId);
+    this.syncWorkflowSessions();
     const thread = snapshot.threads.find((candidate) => candidate.id === threadId);
     if (!thread) throw new Error(`Unknown thread: ${threadId}`);
     const { items, ...history } = await this.loadTimeline(threadId);
@@ -229,6 +280,8 @@ export class MockCleoClient implements CleoClient {
   }
 
   private editableTurns(threadId: string): string[] {
+    // What a workflow node was handed is not the user's to rewrite.
+    if (snapshot.threads.find((thread) => thread.id === threadId)?.workflowSession) return [];
     const stored = this.histories.get(threadId) ?? snapshot.threads.find(t => t.id === threadId)?.items ?? [];
     return stored.filter(item => item.type === "message" && item.role === "user" && !item.steer).map(item => item.id);
   }
@@ -244,6 +297,7 @@ export class MockCleoClient implements CleoClient {
 
   async loadTimeline(threadId: string, direction: "latest" | "before" | "after" = "latest", cursor?: string): Promise<TimelinePage> {
     await delay(30);
+    this.syncWorkflowSessions();
     const stored = this.histories.get(threadId) ?? snapshot.threads.find(t => t.id === threadId)?.items ?? [];
     let turn = "initial";
     const all = stored.map((stale, index) => {
@@ -342,6 +396,8 @@ export class MockCleoClient implements CleoClient {
     await delay(180);
     const index = snapshot.threads.findIndex((thread) => thread.id === threadId);
     if (index >= 0) snapshot.threads.splice(index, 1);
+    // The sessions of a workflow that ran in it go with it.
+    snapshot.threads = snapshot.threads.filter((thread) => !(thread.workflowSession && thread.parentId === threadId));
     if (snapshot.activeThreadId === threadId) {
       snapshot.activeThreadId = snapshot.threads[index]?.id ?? snapshot.threads[index - 1]?.id ?? null;
     }

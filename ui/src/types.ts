@@ -338,6 +338,9 @@ export interface Thread {
   /** For a subtask that subtask routing delegated: the conversation that started it. */
   parentId?: string | null;
   routingTaskId?: string | null;
+  /** For the session of a workflow node: which run, node and session it is. Its parent is the
+   * conversation the workflow runs in; it is opened from the run, not listed among the tasks. */
+  workflowSession?: { runId: string; nodeId: string; sessionId: string } | null;
   id: string;
   space: ThreadSpace;
   projectId: string;

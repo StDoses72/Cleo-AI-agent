@@ -546,7 +546,7 @@ export function Conversation({
       showTiming={!row.timing || timingOwners.get(row.timing.id) === row.id}
       editable={!running && !waitingForAnswer && Boolean(onEditMessage) && editableTurns.has(row.id)}
       onEditMessage={onEditMessage} onRevealPath={onRevealPath}
-      onShowWorkflow={onShowWorkflow}
+      onShowWorkflow={onShowWorkflow} onOpenWorkflowSession={onOpenThread}
       // Only the latest run can be resumed, and not while the conversation is busy.
       onRetryWorkflow={!running && row.type === "workflow" && row.id === timelineItems.findLast(item => item.type === "workflow")?.id
         ? () => onThreadCommand("/workflow retry") : undefined}
@@ -801,9 +801,9 @@ function ConversationHeader({
           {/* A delegated subtask names the conversation that started it, one click away. */}
           {parentThread ? <>
             <button type="button" className="breadcrumb-parent" data-testid="subtask-parent" onClick={() => onOpenThread?.(parentThread.id)}
-              title={tr("conversation.back_to_parent_task")}>{parentThread.title}</button>
+              title={thread?.workflowSession ? tr("workflows.back_to_workflow") : tr("conversation.back_to_parent_task")}>{parentThread.title}</button>
             <ChevronRight size={13} />
-            <small className="breadcrumb-subtask">{tr("conversation.subtask")}</small>
+            <small className="breadcrumb-subtask">{thread?.workflowSession ? tr("workflows.node") : tr("conversation.subtask")}</small>
           </> : null}
           <strong>{thread?.title ?? (space === "chat" ? tr("conversation.new_chat") : tr("conversation.new_task"))}</strong>
         </div>
@@ -998,10 +998,12 @@ function TimelineEntry({
   onEditMessage,
   onRevealPath,
   onShowWorkflow,
+  onOpenWorkflowSession,
   onRetryWorkflow,
 }: {
   item: Exclude<TimelineBlock, WorkGroupBlock>;
   onShowWorkflow?: () => void;
+  onOpenWorkflowSession?: (threadId: string) => void;
   onRetryWorkflow?: () => void;
   /** False when a later message of the turn shows the same duration. */
   showTiming?: boolean;
@@ -1017,7 +1019,7 @@ function TimelineEntry({
   activeTurnId?: string | null;
 }) {
   if (item.type === "plan") return <PlanEntry item={item} />;
-  if (item.type === "workflow") return <WorkflowRunCard run={item.run} onOpen={onShowWorkflow} onRetry={onRetryWorkflow} />;
+  if (item.type === "workflow") return <WorkflowRunCard run={item.run} onOpen={onShowWorkflow} onOpenSession={onOpenWorkflowSession} onRetry={onRetryWorkflow} />;
   if (item.type === "question") return <section className="question-history" data-testid="question-history">
     <strong>{item.request.status === "answered" ? tr("conversation.agent_question_answered") : item.request.status === "pending" ? tr("conversation.waiting_for_an_answer") : item.request.status === "cancelled" ? tr("conversation.question_cancelled") : tr("conversation.this_question_has_expired_ask_the_agent_to_send_it_again")}</strong>
     {item.request.questions.map(question => <div key={question.id}><p>{question.question}</p>

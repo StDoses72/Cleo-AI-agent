@@ -7008,11 +7008,35 @@
     "en": "Show the graph"
   },
   "workflows.pick_node": {
-    "zh-CN": "点流程图里的节点，看它的职责和产出。",
-    "en": "Pick a node in the graph to see what it was told and what it did."
+    "zh-CN": "单击节点看概要，双击打开它的会话。",
+    "en": "Click a node for a summary; double-click to open its session."
   },
   "workflows.node_not_started": {
     "zh-CN": "还没有轮到这个节点。",
     "en": "This node has not started yet."
+  },
+  "workflows.open_session": {
+    "zh-CN": "打开会话",
+    "en": "Open session"
+  },
+  "workflows.open_session_hint": {
+    "zh-CN": "像普通会话一样打开这个节点；双击流程图里的节点也可以",
+    "en": "Open this node as a conversation; a double click on it in the graph does the same"
+  },
+  "workflows.open_session_of": {
+    "zh-CN": "打开「{p0}」的会话",
+    "en": "Open the session of “{p0}”"
+  },
+  "workflows.session_viewing": {
+    "zh-CN": "正在查看",
+    "en": "Open now"
+  },
+  "workflows.node_session_locked": {
+    "zh-CN": "这是工作流里一个节点的会话，由工作流推进。要调整方向，回到工作流的对话。",
+    "en": "This is the session of a workflow node, and the workflow drives it. To change course, go back to the workflow's conversation."
+  },
+  "workflows.back_to_workflow": {
+    "zh-CN": "回到运行这个工作流的对话",
+    "en": "Back to the conversation running this workflow"
   }
 }

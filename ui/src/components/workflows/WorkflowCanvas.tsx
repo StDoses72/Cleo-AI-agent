@@ -54,6 +54,8 @@ interface WorkflowCanvasProps {
   flagged?: ReadonlySet<string>;
   /** A connection that cannot exist says why. */
   onNotice?: (message: string) => void;
+  /** A node was opened in full (a double click, or Enter on it): where a run shows its sessions. */
+  onOpenNode?: (id: string) => void;
   /** Drawn over the canvas, in its own coordinates: the card of what is selected. */
   children?: (frame: CanvasFrame) => ReactNode;
 }
@@ -95,7 +97,7 @@ export function nodeStatus(run: WorkflowRun, node: WorkflowNode): WorkflowNodeSt
  * menu or the add button, dragged into place, and joined by dragging from the dot under a node; an
  * edge drawn back to an earlier node becomes a loop. A node shows its name and a few marks only:
  * what it is set to appears when it is opened. Without `onChange` the canvas only shows. */
-export function WorkflowCanvas({ definition, harnesses, selection, onSelect, onChange, presets = [], onDraftNode, drafting, run, flagged, onNotice, children }: WorkflowCanvasProps) {
+export function WorkflowCanvas({ definition, harnesses, selection, onSelect, onChange, presets = [], onDraftNode, drafting, run, flagged, onNotice, onOpenNode, children }: WorkflowCanvasProps) {
   const editable = Boolean(onChange);
   const root = useRef<HTMLDivElement>(null);
   const markers = `wf-arrow-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
@@ -521,7 +523,9 @@ export function WorkflowCanvas({ definition, harnesses, selection, onSelect, onC
               tabIndex={0} role="button" aria-pressed={selected} aria-label={`${name}${tr("punctuation.comma")}${harnessName(node, harnesses)}`}
               // Reached with the keyboard: the node opens. A press is handled where the pointer lands,
               // so that pulling an edge out of a node does not open it.
-              onFocus={(event) => { if (!selected && event.target === event.currentTarget && event.currentTarget.matches(":focus-visible")) onSelect({ kind: "node", id: node.id }); }}>
+              onFocus={(event) => { if (!selected && event.target === event.currentTarget && event.currentTarget.matches(":focus-visible")) onSelect({ kind: "node", id: node.id }); }}
+              onDoubleClick={onOpenNode ? () => onOpenNode(node.id) : undefined}
+              onKeyDown={onOpenNode ? (event) => { if (event.key === "Enter" && event.target === event.currentTarget) onOpenNode(node.id); } : undefined}>
               <span className="wf-port in" />
               {asked ? (
                 <input ref={askElement} className="wf-ask" data-canvas-control data-testid="node-intent" value={asking.text} maxLength={120}

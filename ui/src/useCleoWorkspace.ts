@@ -478,6 +478,17 @@ export function useCleoWorkspace() {
     return refreshed;
   };
 
+  // A workflow run starts sessions as it advances, and each is a conversation of its own: the
+  // list is read again whenever a run's sessions change, so a node can be opened as it works.
+  const workflowSessions = useRef(new Map<string, string>());
+  const noteWorkflowRun = (item: TimelineItem) => {
+    if (item.type !== "workflow") return;
+    const signature = item.run.sessions.map(session => `${session.id}:${session.status}`).join(",");
+    if (workflowSessions.current.get(item.run.id) === signature) return;
+    workflowSessions.current.set(item.run.id, signature);
+    void refreshWorkspace(() => cleoClient.loadWorkspace()).catch(() => {});
+  };
+
   const refreshLanguage = async () => {
     const [refreshed, catalog] = await Promise.all([
       refreshWorkspace(() => cleoClient.loadWorkspace()), cleoClient.getRuntimeCatalog(),
@@ -552,6 +563,7 @@ export function useCleoWorkspace() {
           const loaded = await cleoClient.loadThread(id, false);
           if (!active || runLocks.current.get(id) !== token) return;
           loaded.items.forEach(item => acknowledgeSteer(id, item));
+          loaded.items.forEach(noteWorkflowRun);
           updateThread(id, current => history.isFollowing(id) ? loaded : { ...loaded,
             items: current.items, history: current.history && { ...current.history,
               total: Math.max(current.history.total, loaded.history?.total ?? 0),
@@ -670,6 +682,13 @@ export function useCleoWorkspace() {
       .then((loaded) => {
         loaded.items.forEach(item => acknowledgeSteer(threadId, item));
         if (selectionRef.current !== selection || runLocks.current.has(threadId)) return;
+        // A run found going when its conversation is opened is watched from here on, as one
+        // found going when the app starts is.
+        if (loaded.activeRunId) {
+          runLocks.current.set(threadId, loaded.activeRunId);
+          setRuns(current => ({ ...current, [threadId]: loaded.activeRunId! }));
+          setRestoredRuns(current => ({ ...current, [threadId]: loaded.activeRunId! }));
+        }
         // The newest page is asked for at the same time and usually arrives first. The view then
         // brings everything else (what can be edited or undone, the changes, the skills). Whatever
         // was changed here while it was on its way is newer than the view and stays: the timeline
@@ -957,6 +976,7 @@ export function useCleoWorkspace() {
         } else if (event.type === "upsert-item") {
           const projected = { ...event.item, turnId: event.item.turnId ?? turnId };
           upsertTimelineItem(threadId, projected);
+          noteWorkflowRun(projected);
           if (event.item.type === "tool" && /subtask/i.test(event.item.name)) {
             delegating = true;
             if (Date.now() - lastListRefresh > 1500) refreshSubtasks();
