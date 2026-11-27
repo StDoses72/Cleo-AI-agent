@@ -196,17 +196,14 @@ export class MockWorkflowClient implements WorkflowClient {
   private readonly versions = new Map<string, number>();
   private readonly waiters = new Map<string, Set<() => void>>();
   private readonly stopRequests = new Set<string>();
-  /** Runs replayed without waiting, to seed the history. */
+  /** Runs replayed without waiting: what a conversation already holds when the demo opens. */
   private readonly instant = new Set<string>();
-  /** The demo's failure path: this reviewer's first attempt hits a usage limit. */
+  /** Replayed runs that go on in real time once this many sessions are behind them, at this pace. */
+  private readonly live = new Map<string, { after: number; pace: number }>();
+  /** The demo's failure path: this reviewer's first attempt hits a usage limit. A replayed run
+   * names its own failure as `runId:nodeId` and leaves this one for the user's first run. */
   private readonly failOnce = new Set(["s2-maintain"]);
-
-  constructor() {
-    // The history starts with one finished run, so the page has something to reopen.
-    const past = this.createRun(seedWorkflows[0], "给导出接口加上分页", "cleo-agent", Date.now() - 2 * 3_600_000);
-    this.instant.add(past.id);
-    void this.execute(past.id);
-  }
+  private readonly replayed = new Set<string>();
 
   async library(): Promise<WorkflowLibrary> {
     await delay(180);
@@ -320,6 +317,32 @@ export class MockWorkflowClient implements WorkflowClient {
     return clone(run);
   }
 
+  /** Purpose: A run that already happened, or is under way, when the demo opens. It is replayed
+   * without waiting so its sessions and times read as real. `liveAfter` leaves it running: after
+   * that many sessions it continues in real time, `pace` times slower than a run the user starts.
+   * `failed` names a node whose first attempt fails; `retried` then resumes it once. */
+  seed(workflowId: string, task: string, projectId: string,
+    options: { startedAt: number; liveAfter?: number; pace?: number; failed?: string; retried?: boolean }): string {
+    const run = this.createRun(seedWorkflows.find((item) => item.id === workflowId)!, task, projectId, options.startedAt);
+    this.instant.add(run.id);
+    this.replayed.add(run.id);
+    if (options.liveAfter !== undefined) this.live.set(run.id, { after: options.liveAfter, pace: options.pace ?? 1 });
+    if (options.failed) this.failOnce.add(`${run.id}:${options.failed}`);
+    void this.execute(run.id).then(() => {
+      if (run.status !== "failed" || !options.retried) return;
+      // The retry came a while after the failure.
+      this.progress.get(run.id)!.clock += 13 * 60_000;
+      void this.restart(run.id);
+    });
+    return run.id;
+  }
+
+  /** The run as it is now. */
+  run(runId: string): WorkflowRun | null {
+    const run = this.runs.get(runId);
+    return run ? clone(run) : null;
+  }
+
   async *watch(runId: string): AsyncGenerator<WorkflowRun> {
     for (;;) {
       const run = this.runs.get(runId);
@@ -349,9 +372,16 @@ export class MockWorkflowClient implements WorkflowClient {
 
   /** Runs again from where it failed, keeping what the finished nodes produced. */
   async resume(runId: string): Promise<boolean> {
-    const run = this.runs.get(runId);
-    const progress = this.progress.get(runId);
-    if (!run || !progress || run.status !== "failed") return false;
+    if (this.runs.get(runId)?.status !== "failed") return false;
+    // A retry the user asks for happens now, whenever the run it continues took place.
+    this.instant.delete(runId);
+    void this.restart(runId);
+    return true;
+  }
+
+  private restart(runId: string) {
+    const run = this.runs.get(runId)!;
+    const progress = this.progress.get(runId)!;
     // A loop that ran out of rounds starts counting again.
     for (const back of loopEdges(run.definition)) {
       if (!progress.done.has(back.from) && (progress.rounds.get(back.id) ?? 0) >= back.loop!.maxRounds) {
@@ -363,8 +393,7 @@ export class MockWorkflowClient implements WorkflowClient {
     run.error = undefined;
     run.finishedAt = undefined;
     this.changed(runId);
-    void this.execute(runId);
-    return true;
+    return this.execute(runId);
   }
 
   private createRun(definition: WorkflowDefinition, task: string, projectId: string, startedAt: number): WorkflowRun {
@@ -481,6 +510,14 @@ export class MockWorkflowClient implements WorkflowClient {
 
   private async runSession(run: WorkflowRun, progress: Progress, current: WorkflowNode,
     options: { round?: number; item?: string; judge: boolean; listForNext: boolean; group: { aborted: boolean } }): Promise<Handoff> {
+    // A run seeded as under way has replayed what is behind it: from here it goes on in real
+    // time, and what was replayed moves so that it ends now.
+    const live = this.live.get(run.id);
+    if (live && run.sessions.length >= live.after && this.instant.delete(run.id)) {
+      const shift = Date.now() - progress.clock;
+      run.startedAt += shift;
+      for (const earlier of run.sessions) if (earlier.startedAt !== undefined) earlier.startedAt += shift;
+    }
     const replay = this.instant.has(run.id);
     const now = () => replay ? progress.clock : Date.now();
     const harness = mockHarnesses.find((item) => item.id === current.harness);
@@ -494,7 +531,7 @@ export class MockWorkflowClient implements WorkflowClient {
     run.sessions.push(record);
     this.changed(run.id);
     const seed = hash(`${current.id}:${options.round ?? 0}:${options.item ?? ""}`);
-    const duration = 1000 + (seed % 1400);
+    const duration = (1000 + (seed % 1400)) * (replay ? 1 : live?.pace ?? 1);
     const finish = (status: WorkflowSession["status"]) => {
       record.status = status;
       record.elapsedMs = now() - record.startedAt!;
@@ -509,7 +546,7 @@ export class MockWorkflowClient implements WorkflowClient {
         if (options.group.aborted) { finish("cancelled"); throw new Aborted(); }
       }
     }
-    if (this.failOnce.delete(current.id)) {
+    if (this.failOnce.delete(`${run.id}:${current.id}`) || (!this.replayed.has(run.id) && this.failOnce.delete(current.id))) {
       record.error = "Claude 的用量窗口已满，约 12 分钟后重置。";
       finish("failed");
       throw new Error(`${current.role}没有完成：${record.error}`);

@@ -170,15 +170,17 @@ export function App() {
     return () => { cancelled = true; };
   }, [computerRun, inspectorSpace]);
   const showInspector = inspectorOpen && workspace.activeSpace !== "memory" && !showWorkflows;
-  // A workflow that starts running brings its graph forward once, beside the conversation.
+  // A conversation's workflow run brings its graph forward once: a run that is going opens the
+  // pane beside the conversation; one that has ended takes the tab unless the user picked another.
   const activeRun = latestWorkflowRun(workspace.activeThread?.items);
   const shownRun = useRef<string | null>(null);
   useEffect(() => {
-    if (activeRun?.status !== "running" || shownRun.current === activeRun.id) return;
+    if (!activeRun || shownRun.current === activeRun.id) return;
+    if (activeRun.status !== "running" && tabChosenFor.current === inspectedThreadId) return;
     shownRun.current = activeRun.id;
     tabChosenFor.current = inspectedThreadId;
     setInspectorTab("workflow");
-    setInspectorBySpace(current => ({ ...current, productivity: true }));
+    if (activeRun.status === "running") setInspectorBySpace(current => ({ ...current, productivity: true }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRun?.id, activeRun?.status]);
   const sidebarHidden = sidebarCollapsed || (compactColumns && showInspector);

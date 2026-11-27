@@ -10,7 +10,7 @@ import { chromium } from "playwright";
 // built by hand on the canvas (right-click, a node described in a sentence, edges pulled between
 // nodes) and its nodes are set in the card or the side panel. A workflow runs in a conversation,
 // started from the page or with `/workflow`; the saved ones cover a loop, a failure that is
-// retried, and a fan-out that is stopped.
+// retried, and a fan-out that is stopped. Two conversations open with a run already in them.
 const ui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const output = join(ui, "output/workflows");
 const scratch = await mkdtemp(join(tmpdir(), "cleo-workflows-ui-"));
@@ -56,6 +56,7 @@ try {
   // The conversation's run: the card in the timeline, and the same run beside it.
   const card = () => page.getByTestId("workflow-run-card").last();
   const panel = page.getByTestId("workflow-run-panel");
+  const nodeRun = page.getByTestId("workflow-node-run");
   const strip = () => card().locator(".wf-run-strip li").evaluateAll((items) => items.map((item) => item.dataset.status));
   const send = async (task) => {
     await page.getByTestId("composer-input").fill(task);
@@ -79,6 +80,33 @@ try {
 
   await page.goto(server.resolvedUrls.local[0]);
   await page.getByTestId("conversation").waitFor({ timeout: 15_000 });
+
+  // Two conversations already hold a workflow run. One is still going, in the second round of
+  // its loop: opening it shows the run where it stands, with its graph beside the conversation.
+  const conversation = (name) => page.getByTestId("thread-list").getByRole("button", { name }).first();
+  await conversation(/为笔记导出接口补上分页参数的校验/).click();
+  await card().waitFor();
+  assert.equal(await card().getByTestId("workflow-run-status").getAttribute("data-status"), "running");
+  assert.deepEqual(await strip(), ["running", "done", "pending", "pending"]);
+  await panel.waitFor();
+  assert.equal(await panel.locator(".wf-loop-label").innerText(), "2/3");
+  await panel.locator('[data-testid="workflow-node"]', { hasText: "反驳者" }).click();
+  assert.deepEqual(await nodeRun.locator("em.verdict").allTextContents(), ["需要修改"]);
+  await page.screenshot({ path: join(output, "seeded-running.png") });
+  // It is a run like any other: stopping the conversation's run cancels it.
+  await page.getByTestId("stop-button").click();
+  await settled("cancelled");
+  await page.getByTestId("stop-button").waitFor({ state: "detached" });
+  // The other finished after one reviewer failed and was retried; the failed attempt is kept.
+  await conversation(/评审笔记导出接口的分页改动/).click();
+  await card().waitFor();
+  assert.equal(await card().getByTestId("workflow-run-status").getAttribute("data-status"), "completed");
+  assert.deepEqual(await strip(), ["done", "done", "done", "done"]);
+  assert.match(await page.getByTestId("conversation").innerText(), /评审结论：可以合并/);
+  await panel.locator('[data-testid="workflow-node"]', { hasText: "可维护性审查" }).click();
+  assert.deepEqual(await nodeRun.getByTestId("workflow-session").evaluateAll((items) => items.map((item) => item.dataset.status)), ["failed", "done"]);
+  await page.screenshot({ path: join(output, "seeded-finished.png") });
+
   await page.getByTestId("open-workflows").click();
   await page.getByTestId("workflow-list").waitFor();
   assert.equal(await page.getByTestId("workflow-card").count(), 3);
@@ -233,7 +261,6 @@ try {
   assert.ok(await page.getByTestId("thread-list").getByRole("button", { name: /给会话导出接口加上分页/ }).count(), "The conversation is named after the task");
   // Beside the conversation: the graph, and for the node that is picked, what it was told and what it did.
   await panel.getByTestId("workflow-node").first().click();
-  const nodeRun = page.getByTestId("workflow-node-run");
   await nodeRun.waitFor();
   assert.equal(await nodeRun.getByTestId("workflow-session").count(), 1);
   await nodeRun.locator(".wf-node-brief summary").click();
