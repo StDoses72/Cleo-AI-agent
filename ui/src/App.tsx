@@ -582,7 +582,8 @@ export function App() {
   const threadCommands = useMemo<CommandAction[]>(() => {
     const snapshot = workspace.snapshot;
     if (!snapshot) return [];
-    // A workflow node's session is reached from its run, not by name.
+    // A workflow node's session is reached from its run or under its conversation, not by name:
+    // "规划者 · 第 2 轮" says nothing without the workflow it belongs to.
     return snapshot.threads.filter(thread => !thread.workflowSession).map(thread => {
       const project = snapshot.projects.find(item => item.id === thread.projectId);
       return {
@@ -601,8 +602,6 @@ export function App() {
 
   const activeRuntime = workspace.activeThreadRuntime ?? workspace.draftRuntime;
   const conversationThread = workspace.activeThread;
-  const listedThreads = workspace.snapshot.threads.some(thread => thread.workflowSession)
-    ? workspace.snapshot.threads.filter(thread => !thread.workflowSession) : workspace.snapshot.threads;
   const conversationProject: Project | null = workspace.activeProject;
   // Git actions and worktrees are offered for development tasks in a real repository folder.
   const gitProject = Boolean(conversationProject && !conversationProject.managed && conversationProject.branch);
@@ -663,8 +662,6 @@ export function App() {
   if (!composerBlocked && updateState.blocksTasks) composerBlocked = tr("app.wait_for_the_current_version_operation_to_finish");
   if (!composerBlocked && workspace.startingRun) composerBlocked = tr("app.submitting_please_wait");
   if (!composerBlocked && workspace.creatingWorktree) composerBlocked = tr("sourcecontrol.creating_worktree");
-  // A workflow node's session is driven by the workflow: it is read here, not written to.
-  if (!composerBlocked && conversationThread?.workflowSession) composerBlocked = tr("workflows.node_session_locked");
   // A delegated subtask that is running belongs to its parent's run: it is stopped or continued
   // from the parent, so its own composer waits instead of starting a second, unrelated run.
   if (!composerBlocked && conversationThread?.routingTaskId && conversationThread.status === "running" && !workspace.running) {
@@ -690,11 +687,9 @@ export function App() {
       <ThreadSidebar
         view={showWorkflows ? "workflows" : workspace.activeSpace}
         projects={workspace.snapshot.projects}
-        // A workflow node's session is opened from the run; in the list, the conversation the
-        // workflow runs in stands for it.
-        threads={listedThreads}
+        threads={workspace.snapshot.threads}
         activeProjectId={workspace.activeProjectId}
-        activeThreadId={conversationThread?.workflowSession ? conversationThread.parentId ?? null : workspace.activeThreadId}
+        activeThreadId={workspace.activeThreadId}
         onStartThread={(projectId) => {
           setWorkflowsOpen(false);
           if (workspace.activeSpace !== "productivity") workspace.selectSpace("productivity");
@@ -776,7 +771,7 @@ export function App() {
           productivityModels={workspace.productivityModels}
           runtimeModelsLoading={workspace.runtimeModelsLoading}
           runtimeModelsError={workspace.runtimeModelsError}
-          running={workspace.running}
+          running={workspace.running || Boolean(conversationThread?.workflowSession && conversationThread.status === "running")}
           waitingForAnswer={Boolean(workspace.questions.current)}
           undoing={undoingChanges}
           sidebarCollapsed={sidebarHidden}
@@ -800,6 +795,8 @@ export function App() {
           onSteerDraft={(text) => void workspace.steerDraft(text)}
           // Delegated subtasks carry a routing task id; a fork records its parent too but is not a subtask.
           subtasks={conversationThread ? workspace.snapshot.threads.filter((thread) => thread.parentId === conversationThread.id && thread.routingTaskId) : []}
+          // A workflow node's session is driven by the workflow: it is read, and shows as at work while its node runs.
+          readOnly={Boolean(conversationThread?.workflowSession)}
           parentThread={conversationThread?.parentId && (conversationThread.routingTaskId || conversationThread.workflowSession)
             ? workspace.snapshot.threads.find((thread) => thread.id === conversationThread.parentId) ?? null : null}
           onOpenThread={(threadId) => workspace.selectThread(threadId)}

@@ -167,6 +167,8 @@ interface ConversationProps {
   /** Subtasks delegated from this conversation, and (for a subtask) the conversation that started it. */
   subtasks?: Thread[];
   parentThread?: Thread | null;
+  /** The conversation is shown without a composer: the session of a workflow node, which the workflow drives. */
+  readOnly?: boolean;
   onOpenThread?: (threadId: string) => void;
   /** The details panel is showing this conversation's changes, so the header need not repeat them. */
   changesVisible?: boolean;
@@ -254,6 +256,7 @@ export function Conversation({
   onSteerDraft,
   subtasks = [],
   parentThread = null,
+  readOnly = false,
   onOpenThread,
   changesVisible = false,
   onRevealPath,
@@ -546,7 +549,7 @@ export function Conversation({
       showTiming={!row.timing || timingOwners.get(row.timing.id) === row.id}
       editable={!running && !waitingForAnswer && Boolean(onEditMessage) && editableTurns.has(row.id)}
       onEditMessage={onEditMessage} onRevealPath={onRevealPath}
-      onShowWorkflow={onShowWorkflow} onOpenWorkflowSession={onOpenThread}
+      onShowWorkflow={onShowWorkflow}
       // Only the latest run can be resumed, and not while the conversation is busy.
       onRetryWorkflow={!running && row.type === "workflow" && row.id === timelineItems.findLast(item => item.type === "workflow")?.id
         ? () => onThreadCommand("/workflow retry") : undefined}
@@ -615,7 +618,7 @@ export function Conversation({
                   && <Timing key={thread.currentTiming.id} summary={thread.currentTiming} />}
                 <div className="turn-space" ref={turnSpaceRef} aria-hidden="true" /></>} />
           </>
-        ) : (
+        ) : readOnly ? null : (
           <WelcomeState space={space} onUseSuggestion={onPromptChange} />
         )}
       </div>
@@ -640,7 +643,8 @@ export function Conversation({
         </>}
       </dialog>
 
-      <Composer
+      {/* A conversation that is only read has nothing to write in. */}
+      {readOnly ? null : <Composer
         key={thread?.id ?? `new:${space}:${project?.id}`}
         prompt={prompt}
         onPromptChange={onPromptChange}
@@ -693,7 +697,7 @@ export function Conversation({
         approvalError={approvalError}
         onResolveApproval={onResolveApproval}
         computerThreadId={thread?.id ?? null}
-      />
+      />}
       </div>
       </div>
     </main>
@@ -998,12 +1002,10 @@ function TimelineEntry({
   onEditMessage,
   onRevealPath,
   onShowWorkflow,
-  onOpenWorkflowSession,
   onRetryWorkflow,
 }: {
   item: Exclude<TimelineBlock, WorkGroupBlock>;
   onShowWorkflow?: () => void;
-  onOpenWorkflowSession?: (threadId: string) => void;
   onRetryWorkflow?: () => void;
   /** False when a later message of the turn shows the same duration. */
   showTiming?: boolean;
@@ -1019,7 +1021,7 @@ function TimelineEntry({
   activeTurnId?: string | null;
 }) {
   if (item.type === "plan") return <PlanEntry item={item} />;
-  if (item.type === "workflow") return <WorkflowRunCard run={item.run} onOpen={onShowWorkflow} onOpenSession={onOpenWorkflowSession} onRetry={onRetryWorkflow} />;
+  if (item.type === "workflow") return <WorkflowRunCard run={item.run} onOpen={onShowWorkflow} onRetry={onRetryWorkflow} />;
   if (item.type === "question") return <section className="question-history" data-testid="question-history">
     <strong>{item.request.status === "answered" ? tr("conversation.agent_question_answered") : item.request.status === "pending" ? tr("conversation.waiting_for_an_answer") : item.request.status === "cancelled" ? tr("conversation.question_cancelled") : tr("conversation.this_question_has_expired_ask_the_agent_to_send_it_again")}</strong>
     {item.request.questions.map(question => <div key={question.id}><p>{question.question}</p>

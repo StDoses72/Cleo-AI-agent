@@ -491,6 +491,20 @@
   text-align: left;
 }
 
+/* A workflow's conversation folds its node sessions: the mark that opens them sits before the row. */
+.thread-disclosure {
+  display: inline-grid;
+  width: 18px;
+  height: 22px;
+  flex: none;
+  margin: 0 -6px 0 4px;
+  place-items: center;
+  border-radius: var(--radius-xs);
+  color: var(--muted);
+}
+.thread-disclosure:hover { color: var(--text); background: var(--surface-active); }
+.thread-disclosure:focus-visible { outline: 1px solid color-mix(in srgb, var(--accent) 58%, transparent); outline-offset: -1px; }
+
 .thread-row-select:focus-visible {
   outline: 1px solid color-mix(in srgb, var(--accent) 58%, transparent);
   outline-offset: -1px;

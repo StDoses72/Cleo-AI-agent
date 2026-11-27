@@ -216,7 +216,7 @@ export class MockWorkflowClient implements WorkflowClient {
 
   async saveRole(fields: WorkflowNodeFields): Promise<WorkflowRole> {
     await delay(140);
-    if (!fields.role.trim()) throw new Error("先给这个节点起个名字。");
+    if (!fields.role.trim()) throw new Error("节点需要名称。");
     const role: WorkflowRole = { id: crypto.randomUUID(), fields: clone(fields) };
     // Saving under a name that is already kept replaces that definition.
     this.roles = [role, ...this.roles.filter((item) => item.fields.role !== fields.role)];
@@ -232,7 +232,7 @@ export class MockWorkflowClient implements WorkflowClient {
    * and by the nodes around the one being written. */
   async draftNode(intent: string, definition: WorkflowDefinition, nodeId: string): Promise<Partial<WorkflowNodeFields>> {
     const text = intent.trim();
-    if (!text) throw new Error("先用一句话说它做什么。");
+    if (!text) throw new Error("需要一句描述。");
     await delay(1100);
     const forward = forwardEdges(definition);
     const roleOf = (id: string) => id === START ? "任务" : id === END ? "结果" : definition.nodes.find((item) => item.id === id)?.role || "上一个节点";
@@ -315,7 +315,7 @@ export class MockWorkflowClient implements WorkflowClient {
   // drives it, as the backend's orchestrator would be driven by the `/workflow` command.
   async start(definition: WorkflowDefinition, task: string, projectId: string): Promise<WorkflowRun> {
     await delay(240);
-    if (!task.trim()) throw new Error("先写下这次要完成的任务。");
+    if (!task.trim()) throw new Error("需要一个任务。");
     const run = this.createRun(definition, task.trim(), projectId, Date.now());
     void this.execute(run.id);
     return clone(run);
@@ -377,18 +377,17 @@ export class MockWorkflowClient implements WorkflowClient {
         : { thought: "阅读相关模块和它的调用方，确认范围", command: "rg -n \"exportNotes|pageCursor\" src", output: "src/api/export.ts:14:export async function exportNotes(\nsrc/api/export.ts:52:  const pageCursor = next ?? null;\nsrc/routes/notes.ts:88:  return exportNotes(request.query);" };
     const id = (part: string) => `${session.id}-${part}`;
     const items: TimelineItem[] = [{ id: id("brief"), type: "message", role: "user", content: brief, time: at(started) }];
-    // A session still at work says so; what it did appears once it has handed its work back.
-    if (session.status === "running") items.push({ id: id("working"), type: "notice", tone: "info", title: "正在工作", detail: "这个节点还在运行，完成后这里会出现它做了什么和交回的产出。" });
-    else items.push({ id: id("thought"), type: "thought", content: work.thought, status: "done" });
+    items.push({ id: id("thought"), type: "thought", content: work.thought, status: session.status === "running" ? "running" : "done" });
     if (session.status === "done") items.push(
       { id: id("tool"), type: "tool", name: "shell", command: work.command, status: "done", exitCode: 0, durationMs: 300 + (hash(session.id) % 2400), output: work.output },
       { id: id("reply"), type: "message", role: "assistant", content: prose(session.output ?? ""), time: at(started + (session.elapsedMs ?? 0)) });
-    else if (session.status === "failed") items.push({ id: id("failed"), type: "notice", tone: "warning", title: "这一次没有完成", detail: session.error ?? "" });
-    else if (session.status === "cancelled") items.push({ id: id("stopped"), type: "notice", tone: "info", title: "已停止", detail: "工作流里的另一处失败或被停止，这个会话随之取消。" });
+    else if (session.status === "failed") items.push({ id: id("failed"), type: "notice", tone: "warning", title: "没有完成", detail: session.error ?? "" });
+    else if (session.status === "cancelled") items.push({ id: id("stopped"), type: "notice", tone: "info", title: "已取消", detail: "" });
     // A node that was tried again has one session per attempt.
     const attempts = run.sessions.filter((other) => other.nodeId === session.nodeId && other.round === session.round && other.item === session.item);
+    const attempt = attempts.findIndex((other) => other.id === session.id);
     const title = [session.role, session.round ? `第 ${session.round} 轮` : "", session.item ? excerpt(session.item, 12) : "",
-      attempts.length > 1 ? `第 ${attempts.findIndex((other) => other.id === session.id) + 1} 次` : ""].filter(Boolean).join(" · ");
+      attempt > 0 ? `重试${attempt > 1 ? ` ${attempt}` : ""}` : ""].filter(Boolean).join(" · ");
     return { title, items };
   }
 

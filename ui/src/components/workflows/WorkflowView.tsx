@@ -154,7 +154,7 @@ export function WorkflowView({ client, screen, onScreenChange, onRun, onLibraryC
                         .catch((error: unknown) => onNotify(message(error), "error"));
                     }}><Trash2 size={14} /></button>
                   <button type="button" className="wf-button primary" disabled={blocked} data-testid="workflow-card-run"
-                    title={blocked ? tr("workflows.fix_issues_first") : tr("workflows.run_hint")} onClick={() => onRun(definition)}>
+                    title={blocked ? tr("workflows.fix_issues_first") : undefined} onClick={() => onRun(definition)}>
                     <Play size={13} />{tr("workflows.run")}
                   </button>
                 </footer>
@@ -166,7 +166,6 @@ export function WorkflowView({ client, screen, onScreenChange, onRun, onLibraryC
         <div className="wf-empty" data-testid="workflow-empty">
           <Workflow size={20} />
           <strong>{tr("workflows.empty_title")}</strong>
-          <span>{tr("workflows.empty_hint")}</span>
         </div>
       )}
 

@@ -1,6 +1,6 @@
 import { t as tr } from "../../../electron/i18n.mjs";
 import { ArrowLeft, BookmarkPlus, Check, CircleAlert, LoaderCircle, MessageSquare, PanelRight, Play, Redo2, Sparkles, Trash2, Undo2, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, useLayoutEffect } from "react";
 import { effortLabels } from "../../runtime-labels";
 import type { WorkflowDefinition, WorkflowEdge, WorkflowHarness, WorkflowNode, WorkflowNodeFields, WorkflowRole } from "../../workflow-types";
 import { WorkflowCanvas, type CanvasFrame, type CanvasSelection, type NodePreset } from "./WorkflowCanvas";
@@ -135,14 +135,27 @@ export function WorkflowEditor({ definition, onChange, harnesses, roles, saved, 
       onRemove={() => { change(removeNode(definition, node.id)); setSelection(null); }}
       onClose={() => setSelection(null)} />
   ) : null;
-  /** A card beside its node: to the right where there is room, otherwise to the left; anchored at the node's top, or at its bottom low on the canvas. */
+  // The card is as tall as what it holds, which changes when "more" opens: its height is
+  // measured so that it can be kept whole inside the canvas.
+  const cardElement = useRef<HTMLDivElement>(null);
+  const [cardHeight, setCardHeight] = useState(0);
+  useLayoutEffect(() => {
+    const element = cardElement.current;
+    if (!element) return;
+    const measure = () => setCardHeight(element.offsetHeight);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [node?.id, detail]);
+  /** A card beside its node: to the right where there is room, otherwise to the left; level with
+   * the node's top, moved up as far as it must to stay inside the canvas. */
   const beside = (frame: CanvasFrame, nodeId: string) => {
     const box = frame.node(nodeId);
     if (!box) return null;
     const right = box.left + box.width + 12;
     const left = right + CARD_WIDTH <= frame.width - 8 ? right : Math.max(8, box.left - CARD_WIDTH - 12);
-    return box.top + box.height / 2 > frame.height / 2
-      ? { left, bottom: Math.max(8, frame.height - box.top - box.height - 8) } : { left, top: Math.max(8, box.top - 8) };
+    return { left, top: Math.max(8, Math.min(box.top - 8, frame.height - cardHeight - 8)) };
   };
 
   return (
@@ -185,7 +198,7 @@ export function WorkflowEditor({ definition, onChange, harnesses, roles, saved, 
             {saving ? <LoaderCircle size={14} className="spin" /> : null}{tr("workflows.save")}
           </button>
           <button type="button" className="wf-button primary" disabled={issues.length > 0 || saving} onClick={onRun} data-testid="workflow-run"
-            title={issues.length ? tr("workflows.fix_issues_first") : tr("workflows.run_hint")}>
+            title={issues.length ? tr("workflows.fix_issues_first") : undefined}>
             <Play size={14} />{tr("workflows.run")}
           </button>
         </div>
@@ -198,7 +211,7 @@ export function WorkflowEditor({ definition, onChange, harnesses, roles, saved, 
           if (node) {
             if (detail === "panel") return <aside className="wf-detail panel" data-testid="node-detail" aria-label={tr("workflows.node")}>{nodeCard}</aside>;
             const at = beside(frame, node.id);
-            return at ? <div className="wf-detail card surface-popover" data-testid="node-detail" role="dialog" aria-label={tr("workflows.node")} style={at}>{nodeCard}</div> : null;
+            return at ? <div ref={cardElement} className="wf-detail card surface-popover" data-testid="node-detail" role="dialog" aria-label={tr("workflows.node")} style={at}>{nodeCard}</div> : null;
           }
           if (!edge) return null;
           const at = frame.edge(edge.id);

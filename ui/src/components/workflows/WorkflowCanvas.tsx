@@ -563,10 +563,10 @@ export function WorkflowCanvas({ definition, harnesses, selection, onSelect, onC
       </div>
 
       {editable && !definition.nodes.length ? (
-        <div className="wf-canvas-empty"><strong>{tr("workflows.canvas_empty_title")}</strong><span>{tr("workflows.canvas_empty_hint")}</span></div>
+        <div className="wf-canvas-empty"><span>{tr("workflows.canvas_empty_hint")}</span></div>
       ) : null}
       {editable ? (
-        <button type="button" className="wf-add" data-canvas-control data-testid="workflow-add" aria-label={tr("workflows.menu_new")} title={tr("workflows.add_hint")}
+        <button type="button" className="wf-add" data-canvas-control data-testid="workflow-add" aria-label={tr("workflows.menu_new")} title={tr("workflows.menu_new")}
           onPointerDown={(event) => {
             if (event.button !== 0) return;
             setMenu(null);

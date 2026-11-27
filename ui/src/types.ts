@@ -339,7 +339,7 @@ export interface Thread {
   parentId?: string | null;
   routingTaskId?: string | null;
   /** For the session of a workflow node: which run, node and session it is. Its parent is the
-   * conversation the workflow runs in; it is opened from the run, not listed among the tasks. */
+   * conversation the workflow runs in, and it is listed under that conversation. */
   workflowSession?: { runId: string; nodeId: string; sessionId: string } | null;
   id: string;
   space: ThreadSpace;

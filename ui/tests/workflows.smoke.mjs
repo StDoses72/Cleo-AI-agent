@@ -93,19 +93,21 @@ try {
   await panel.locator('[data-testid="workflow-node"]', { hasText: "反驳者" }).click();
   assert.deepEqual(await nodeRun.locator("em.verdict").allTextContents(), ["需要修改"]);
   await page.screenshot({ path: join(output, "seeded-running.png") });
-  // A node that has started is a conversation of its own. Its mark on the run opens it: what the
-  // node was handed, and that it is still at work. It is read here, not written to.
+  // A node that has started is a conversation of its own. A double click on the graph opens it:
+  // what the node was handed, and that it is at work. It is read here, so there is nothing to write in.
   const crumb = page.locator(".breadcrumb strong");
   // A session's timeline arrives a moment after it opens.
   const says = (pattern) => page.waitForFunction((source) => new RegExp(source).test(document.querySelector('[data-testid="conversation"]')?.innerText ?? ""), pattern.source);
-  await card().getByTestId("workflow-chip-open").filter({ hasText: "规划者" }).click();
+  await panel.locator('[data-testid="workflow-node"]', { hasText: "规划者" }).dblclick();
   await page.getByTestId("subtask-parent").waitFor();
   assert.equal(await crumb.innerText(), "规划者 · 第 2 轮");
   await says(/反驳者交来的产出[\s\S]*结论：需要修改/);
-  await says(/正在工作/);
-  assert.equal(await page.getByTestId("send-button").isDisabled(), true);
+  await page.locator(".turn-activity").waitFor();
+  assert.equal(await page.getByTestId("composer-input").count(), 0);
   assert.equal(await panel.locator('[data-testid="workflow-session"][data-viewing]').count(), 1, "The graph stays beside the session and marks it");
-  assert.match(await page.locator(".thread-row.active").innerText(), /为笔记导出接口补上/, "The workflow's conversation stands for its node sessions in the list");
+  // In the list its sessions are folded under the workflow's conversation, which stands for them.
+  assert.equal(await page.getByTestId("subtask-row").filter({ hasText: "规划者" }).count(), 0);
+  assert.match(await page.locator(".thread-row.active").innerText(), /为笔记导出接口补上/);
   await page.getByTestId("subtask-parent").click();
   await card().waitFor();
   // It is a run like any other: stopping the conversation's run cancels it.
@@ -121,17 +123,20 @@ try {
   await panel.locator('[data-testid="workflow-node"]', { hasText: "可维护性审查" }).click();
   assert.deepEqual(await nodeRun.getByTestId("workflow-session").evaluateAll((items) => items.map((item) => item.dataset.status)), ["failed", "done"]);
   await page.screenshot({ path: join(output, "seeded-finished.png") });
-  // A click shows a node in brief, in the pane; its button there opens it in full.
-  await page.getByTestId("workflow-open-session").click();
+  // Unfolded in the list, each of its node sessions can be picked there: the retry, and the
+  // attempt that failed before it.
+  const listed = page.getByTestId("subtask-row").filter({ hasText: "可维护性审查" });
+  await page.locator(".thread-row", { hasText: "评审笔记导出接口" }).getByTestId("node-sessions-toggle").click();
+  assert.equal(await listed.count(), 2);
+  await listed.last().locator(".thread-row-select").click();
   await page.getByTestId("subtask-parent").waitFor();
-  assert.equal(await crumb.innerText(), "可维护性审查 · 第 2 次");
+  assert.equal(await crumb.innerText(), "可维护性审查 · 重试");
   await says(/只看可维护性[\s\S]*loadPage 与 loadMore/);
-  assert.equal(await page.getByTestId("thread-list").getByRole("button", { name: /可维护性审查/ }).count(), 0, "Node sessions are not listed among the tasks");
+  assert.match(await page.locator(".thread-row.active").innerText(), /可维护性审查/);
   await page.screenshot({ path: join(output, "node-session.png") });
-  // The attempt that failed is a session too, opened from its row in the pane.
-  await page.getByTestId("workflow-session-open").click();
-  await page.waitForFunction(() => document.querySelector(".breadcrumb strong")?.textContent === "可维护性审查 · 第 1 次");
-  await says(/这一次没有完成[\s\S]*用量窗口已满/);
+  await listed.first().locator(".thread-row-select").click();
+  await page.waitForFunction(() => document.querySelector(".breadcrumb strong")?.textContent === "可维护性审查");
+  await says(/没有完成[\s\S]*用量窗口已满/);
   // A double click on the graph opens a node directly; the node reads what the three before it produced.
   await panel.locator('[data-testid="workflow-node"]', { hasText: "汇总者" }).dblclick();
   await page.waitForFunction(() => document.querySelector(".breadcrumb strong")?.textContent === "汇总者");
@@ -346,7 +351,7 @@ try {
   await page.getByTestId("workflow-draft-submit").click();
   await editor.waitFor({ timeout: 8_000 });
   assert.deepEqual(await counts(), [3, 4]);
-  assert.equal(await page.getByTestId("workflow-state").innerText(), "尚未保存");
+  assert.equal(await page.getByTestId("workflow-state").innerText(), "未保存");
   await page.getByTestId("workflow-save").click();
   await page.waitForFunction(() => document.querySelector('[data-testid="workflow-state"]')?.classList.contains("saved"));
   await page.getByTestId("workflow-back").click();

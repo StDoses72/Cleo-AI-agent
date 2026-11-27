@@ -734,11 +734,11 @@ export class MockCleoClient implements CleoClient {
   private async *workflowTurn(threadId: string, target: string, task: string): AsyncGenerator<StreamEvent> {
     let runId = this.workflowRuns.get(threadId) ?? "";
     if (target === "retry") {
-      if (!runId || !(await this.workflows.resume(runId))) { yield { type: "error", message: "这个对话里没有可以重试的工作流运行。" }; return; }
+      if (!runId || !(await this.workflows.resume(runId))) { yield { type: "error", message: "没有可以重试的运行。" }; return; }
     } else {
       const definition = this.workflows.definition(target);
-      if (!definition) { yield { type: "error", message: "没有找到这个工作流，它可能已被删除。" }; return; }
-      if (!task) { yield { type: "error", message: "先写下这次要完成的任务。" }; return; }
+      if (!definition) { yield { type: "error", message: "工作流不存在。" }; return; }
+      if (!task) { yield { type: "error", message: "需要一个任务。" }; return; }
       const thread = snapshot.threads.find(item => item.id === threadId);
       runId = (await this.workflows.start(definition, task, thread?.projectId ?? "")).id;
       this.workflowRuns.set(threadId, runId);

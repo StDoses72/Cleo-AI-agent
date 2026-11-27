@@ -146,19 +146,30 @@ export function ThreadSidebar({
   }, [activeProjectId, activeThreadId, draftSpace]);
 
   // Subtasks that subtask routing delegated (they carry a routing task id) are listed under the
-  // conversation that started them, at any depth, never as tasks of their own. A fork also records
-  // its parent but is the user's own task, so it stays a normal row; so does a subtask whose
-  // parent is not listed.
+  // conversation that started them, at any depth, never as tasks of their own; so are the sessions
+  // of a workflow's nodes, under the conversation the workflow runs in. A fork also records its
+  // parent but is the user's own task, so it stays a normal row; so does a subtask whose parent
+  // is not listed.
   const { childrenOf, topLevel } = useMemo(() => {
     const ids = new Set(threads.map((thread) => thread.id));
     const children = new Map<string, Thread[]>();
     for (const thread of threads) {
-      if (!thread.parentId || !thread.routingTaskId || !ids.has(thread.parentId) || thread.parentId === thread.id) continue;
+      if (!thread.parentId || !(thread.routingTaskId || thread.workflowSession) || !ids.has(thread.parentId) || thread.parentId === thread.id) continue;
       children.set(thread.parentId, [...children.get(thread.parentId) ?? [], thread]);
     }
     const nestedIds = new Set([...children.values()].flat().map((thread) => thread.id));
     return { childrenOf: children, topLevel: threads.filter((thread) => !nestedIds.has(thread.id)) };
   }, [threads]);
+  // A workflow's node sessions stay folded under its conversation until asked for: there can be
+  // many, and the run's graph is the usual way in. Delegated subtasks always show.
+  const [openWorkflows, setOpenWorkflows] = useState<string[]>([]);
+  const disclosureOf = (thread: Thread) => childrenOf.get(thread.id)?.some((child) => child.workflowSession) ? {
+    open: openWorkflows.includes(thread.id),
+    onToggle: () => setOpenWorkflows((current) => current.includes(thread.id) ? current.filter((id) => id !== thread.id) : [...current, thread.id]),
+  } : undefined;
+  // While they are folded, the conversation stands for the node session that is open.
+  const shownActiveId = activeThread?.workflowSession && activeThread.parentId && !openWorkflows.includes(activeThread.parentId)
+    ? activeThread.parentId : activeThreadId;
   const sections = useMemo(() => (["productivity", "chat"] as const).map((space) => {
     const ordered = projectsInSpace(projects, space);
     const folderProjects = ordered.filter((project) => !isGeneralProject(project));
@@ -185,13 +196,13 @@ export function ThreadSidebar({
   const waitingOnYou = useMemo(() => topLevel.filter(needsYou), [topLevel]);
   /** The subtasks of one conversation, indented under its row; a subtask's own subtasks nest below it. */
   const renderChildren = (parent: Thread, depth = 0): ReactNode => {
-    const children = childrenOf.get(parent.id);
+    const children = childrenOf.get(parent.id)?.filter((child) => !child.workflowSession || openWorkflows.includes(parent.id));
     if (!children?.length || depth > 6) return null;
     return (
       <div className="thread-children" role="group" aria-label={tr("sidebar.subtasks_of_value", { p0: parent.title })}>
         {children.map((child) => (
           <Fragment key={child.id}>
-            <ThreadRow thread={child} child active={threadView && child.id === activeThreadId}
+            <ThreadRow thread={child} child active={threadView && child.id === shownActiveId} disclosure={disclosureOf(child)}
               unread={unreadThreadIds.includes(child.id)} onClick={() => onSelectThread(child.id)} onDelete={() => onDeleteThread(child)} />
             {renderChildren(child, depth + 1)}
           </Fragment>
@@ -258,11 +269,12 @@ export function ThreadSidebar({
       limit={limit}
       expanded={expanded}
       onExpand={(value) => setExpanded((current) => [...current, value])}
-      activeThreadId={threadView ? activeThreadId : null}
+      activeThreadId={threadView ? shownActiveId : null}
       unreadThreadIds={unreadThreadIds}
       onSelectThread={onSelectThread}
       onDeleteThread={onDeleteThread}
       renderChildren={renderChildren}
+      disclosureOf={disclosureOf}
     />
   );
 
@@ -304,7 +316,8 @@ export function ThreadSidebar({
                   <ThreadRow
                     thread={thread}
                     context={projectLabel(projectById.get(thread.projectId)) || (thread.space === "chat" ? tr("app.chat") : "")}
-                    active={threadView && thread.id === activeThreadId}
+                    active={threadView && thread.id === shownActiveId}
+                    disclosure={disclosureOf(thread)}
                     unread={unreadThreadIds.includes(thread.id)}
                     onClick={() => onSelectThread(thread.id)}
                     onDelete={() => onDeleteThread(thread)}
@@ -415,6 +428,9 @@ function DraftRow({ noun }: { noun: string }) {
   );
 }
 
+/** Folded sessions under a row, and the way to unfold them. */
+interface Disclosure { open: boolean; onToggle: () => void }
+
 function ThreadRows({
   id,
   threads,
@@ -426,6 +442,7 @@ function ThreadRows({
   onSelectThread,
   onDeleteThread,
   renderChildren,
+  disclosureOf,
 }: {
   id: string;
   threads: Thread[];
@@ -437,6 +454,7 @@ function ThreadRows({
   onSelectThread: (threadId: string) => void;
   onDeleteThread: (thread: Thread) => void;
   renderChildren?: (parent: Thread) => ReactNode;
+  disclosureOf?: (thread: Thread) => Disclosure | undefined;
 }) {
   // The selected thread is never hidden behind "显示更多": past the limit it is listed on its
   // own, after the short list, rather than unfolding every row.
@@ -450,6 +468,7 @@ function ThreadRows({
           <ThreadRow
             thread={thread}
             active={thread.id === activeThreadId}
+            disclosure={disclosureOf?.(thread)}
             unread={unreadThreadIds.includes(thread.id)}
             onClick={() => onSelectThread(thread.id)}
             onDelete={() => onDeleteThread(thread)}
@@ -474,6 +493,7 @@ function ThreadRow({
   unread = false,
   onClick,
   onDelete,
+  disclosure,
 }: {
   thread: Thread;
   /** Where the thread lives, shown in the "in progress" list where rows leave their folders.
@@ -481,6 +501,8 @@ function ThreadRow({
   context?: string;
   /** A delegated subtask, indented under its parent with its harness and model. */
   child?: boolean;
+  /** The row has sessions folded under it: a workflow's conversation and its node sessions. */
+  disclosure?: Disclosure;
   active: boolean;
   unread?: boolean;
   onClick: () => void;
@@ -504,6 +526,12 @@ function ThreadRow({
       data-unread={unread || undefined}
       data-testid={child ? "subtask-row" : undefined}
     >
+      {disclosure ? (
+        <button type="button" className="thread-disclosure" aria-expanded={disclosure.open} data-testid="node-sessions-toggle"
+          aria-label={tr("workflows.node_sessions")} title={tr("workflows.node_sessions")} onClick={disclosure.onToggle}>
+          {disclosure.open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+        </button>
+      ) : null}
       <button className="thread-row-select" type="button" onClick={onClick} title={hint}
         aria-label={stateLabel ? `${thread.title}（${stateLabel}）` : undefined}>
         {/* Status sits before the title so running and waiting rows read at a glance. */}
