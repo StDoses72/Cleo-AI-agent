@@ -5,6 +5,8 @@ import { cleoClient } from "../services/cleoClient";
 import type { useTimelineHistory } from "../useTimelineHistory";
 import { MAX_TIMELINE_ITEMS, TIMELINE_PAGE_ITEMS } from "../timeline-cache";
 import "./timeline.css";
+import type { WorkflowDefinition } from "../workflow-types";
+import { WorkflowProposalCard } from "./workflows/WorkflowProposal";
 import { WorkflowRunCard } from "./workflows/WorkflowRun";
 import {
   useEffect,
@@ -181,6 +183,10 @@ interface ConversationProps {
   workflows?: { id: string; name: string }[];
   /** Show the conversation's workflow run in the details panel. */
   onShowWorkflow?: () => void;
+  /** Keep a workflow an agent wrote in the library. */
+  onAddWorkflow?: (definition: WorkflowDefinition) => Promise<void>;
+  /** Open it on the canvas. */
+  onOpenWorkflow?: (definition: WorkflowDefinition) => void;
   approvalRequest: ApprovalRequest | null;
   approvalPending: boolean;
   approvalError: string | null;
@@ -266,6 +272,8 @@ export function Conversation({
   skills,
   workflows = [],
   onShowWorkflow,
+  onAddWorkflow,
+  onOpenWorkflow,
   approvalRequest,
   approvalPending,
   approvalError,
@@ -549,7 +557,7 @@ export function Conversation({
       showTiming={!row.timing || timingOwners.get(row.timing.id) === row.id}
       editable={!running && !waitingForAnswer && Boolean(onEditMessage) && editableTurns.has(row.id)}
       onEditMessage={onEditMessage} onRevealPath={onRevealPath}
-      onShowWorkflow={onShowWorkflow}
+      onShowWorkflow={onShowWorkflow} savedWorkflows={workflows} onAddWorkflow={onAddWorkflow} onOpenWorkflow={onOpenWorkflow}
       // Only the latest run can be resumed, and not while the conversation is busy.
       onRetryWorkflow={!running && row.type === "workflow" && row.id === timelineItems.findLast(item => item.type === "workflow")?.id
         ? () => onThreadCommand("/workflow retry") : undefined}
@@ -1003,10 +1011,16 @@ function TimelineEntry({
   onRevealPath,
   onShowWorkflow,
   onRetryWorkflow,
+  savedWorkflows = [],
+  onAddWorkflow,
+  onOpenWorkflow,
 }: {
   item: Exclude<TimelineBlock, WorkGroupBlock>;
   onShowWorkflow?: () => void;
   onRetryWorkflow?: () => void;
+  savedWorkflows?: readonly { id: string; name: string }[];
+  onAddWorkflow?: (definition: WorkflowDefinition) => Promise<void>;
+  onOpenWorkflow?: (definition: WorkflowDefinition) => void;
   /** False when a later message of the turn shows the same duration. */
   showTiming?: boolean;
   threadId: string;
@@ -1022,6 +1036,9 @@ function TimelineEntry({
 }) {
   if (item.type === "plan") return <PlanEntry item={item} />;
   if (item.type === "workflow") return <WorkflowRunCard run={item.run} onOpen={onShowWorkflow} onRetry={onRetryWorkflow} />;
+  if (item.type === "workflow-proposal") return <WorkflowProposalCard definition={item.definition}
+    added={savedWorkflows.some((saved) => saved.id === item.definition.id)}
+    onAdd={onAddWorkflow ? () => onAddWorkflow(item.definition) : undefined} onOpen={onOpenWorkflow ? () => onOpenWorkflow(item.definition) : undefined} />;
   if (item.type === "question") return <section className="question-history" data-testid="question-history">
     <strong>{item.request.status === "answered" ? tr("conversation.agent_question_answered") : item.request.status === "pending" ? tr("conversation.waiting_for_an_answer") : item.request.status === "cancelled" ? tr("conversation.question_cancelled") : tr("conversation.this_question_has_expired_ask_the_agent_to_send_it_again")}</strong>
     {item.request.questions.map(question => <div key={question.id}><p>{question.question}</p>

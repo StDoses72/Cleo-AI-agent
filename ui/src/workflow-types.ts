@@ -147,8 +147,6 @@ export interface WorkflowClient {
   library(): Promise<WorkflowLibrary>;
   save(definition: WorkflowDefinition): Promise<WorkflowDefinition>;
   remove(workflowId: string): Promise<void>;
-  /** Have Cleo propose a workflow for a task. Nothing is saved and nothing runs. */
-  draft(task: string): Promise<WorkflowDefinition>;
   /** Have Cleo write one node's definition from a sentence. It is shown the workflow the node
    * sits in, so it knows what comes before and after. Nothing is saved. */
   draftNode(intent: string, definition: WorkflowDefinition, nodeId: string): Promise<Partial<WorkflowNodeFields>>;

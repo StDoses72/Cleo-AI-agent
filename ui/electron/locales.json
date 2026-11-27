@@ -6455,21 +6455,9 @@
     "zh-CN": "新建工作流",
     "en": "New workflow"
   },
-  "workflows.draft_placeholder": {
-    "zh-CN": "描述任务，让 Cleo 起草",
-    "en": "Describe a task for Cleo to draft"
-  },
-  "workflows.draft_label": {
-    "zh-CN": "要起草工作流的任务",
-    "en": "Task to draft a workflow for"
-  },
-  "workflows.draft": {
-    "zh-CN": "起草",
-    "en": "Draft"
-  },
   "workflows.drafted_tag": {
-    "zh-CN": "Cleo 起草",
-    "en": "Drafted by Cleo"
+    "zh-CN": "AI 起草",
+    "en": "Drafted by AI"
   },
   "workflows.edit": {
     "zh-CN": "编辑",
@@ -6916,8 +6904,8 @@
     "en": "Saved nodes"
   },
   "workflows.redraft_placeholder": {
-    "zh-CN": "一句话，让 Cleo 重写",
-    "en": "One sentence, and Cleo rewrites it"
+    "zh-CN": "一句话，让 AI 重写",
+    "en": "One sentence, and AI rewrites it"
   },
   "workflows.harness": {
     "zh-CN": "Harness",
@@ -7002,5 +6990,33 @@
   "workflows.node_sessions": {
     "zh-CN": "节点会话",
     "en": "Node sessions"
+  },
+  "workflows.blank_canvas": {
+    "zh-CN": "空白画布",
+    "en": "Blank canvas"
+  },
+  "workflows.ask_ai": {
+    "zh-CN": "问 AI",
+    "en": "Ask AI"
+  },
+  "workflows.ask_prompt": {
+    "zh-CN": "帮我创建一个工作流。以下是我的需求：",
+    "en": "Help me create a workflow. Here is what I need:"
+  },
+  "workflows.add_to_library": {
+    "zh-CN": "加入工作流",
+    "en": "Add to workflows"
+  },
+  "workflows.added": {
+    "zh-CN": "已加入",
+    "en": "Added"
+  },
+  "workflows.node_count": {
+    "zh-CN": "{p0} 个节点",
+    "en": "{p0} nodes"
+  },
+  "workflows.node_count_one": {
+    "zh-CN": "{p0} 个节点",
+    "en": "{p0} node"
   }
 }

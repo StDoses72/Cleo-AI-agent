@@ -39,8 +39,9 @@ import type {
 } from "../types";
 import { mockThumbnail, permissionPresets, snapshot, uiChanges } from "./mockData";
 import { MockWorkflowClient } from "./mockWorkflows";
-import { workflowCommand } from "../workflow-command";
+import { CREATE_WORKFLOW_SKILL, workflowCommand, workflowNeeds } from "../workflow-command";
 import type { WorkflowRun } from "../workflow-types";
+import type { LocalSkill } from "../types";
 
 const delay = (milliseconds: number) =>
   new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
@@ -508,6 +509,7 @@ export class MockCleoClient implements CleoClient {
   ): AsyncGenerator<StreamEvent> {
     const workflow = workflowCommand(prompt);
     if (workflow) { yield* this.workflowTurn(threadId, workflow.target, workflow.task); return; }
+    if (workflowNeeds(prompt) !== null) { yield* this.createWorkflowTurn(prompt); return; }
     const runId = `${threadId}-${Date.now()}`;
     const isFailureDemo = /失败|error|fail/i.test(prompt);
     const needsApproval = /审批|approval|git commit/i.test(prompt);
@@ -729,6 +731,28 @@ export class MockCleoClient implements CleoClient {
     yield { type: "done", summary: prompt.slice(0, 54) };
   }
 
+  /** Purpose: The demo's stand-in for the skill that writes a workflow: from what the user says
+   * they need, a workflow handed back as one item for them to look at and add to their library. */
+  private async *createWorkflowTurn(prompt: string): AsyncGenerator<StreamEvent> {
+    const needs = workflowNeeds(prompt) ?? "";
+    const time = () => new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+    const turn = `create-${Date.now()}`;
+    await delay(420);
+    if (!needs) {
+      yield { type: "upsert-item", item: { id: `${turn}-ask`, type: "message", role: "assistant", content: "要创建什么样的工作流？", time: time() } };
+      yield { type: "done", summary: "" };
+      return;
+    }
+    yield { type: "upsert-item", item: { id: `${turn}-thought`, type: "thought", content: "按需求拆出节点，确定先后、并行和需要循环的地方", status: "running" } };
+    const definition = await this.workflows.draft(needs);
+    yield { type: "upsert-item", item: { id: `${turn}-thought`, type: "thought", content: "按需求拆出节点，确定先后、并行和需要循环的地方", status: "done" } };
+    yield { type: "upsert-item", item: { id: `proposal-${definition.id}`, type: "workflow-proposal", definition } };
+    // The drafter says why it chose this shape; that is the reply.
+    yield { type: "upsert-item", item: { id: `${turn}-reply`, type: "message", role: "assistant",
+      content: definition.description.split("任务：")[0].trim(), time: time() } };
+    yield { type: "done", summary: definition.name };
+  }
+
   /** Purpose: A turn that runs a workflow. The run arrives as one timeline item, replaced as it
    * advances; what reaches the result becomes the reply. `retry` resumes the conversation's last run. */
   private async *workflowTurn(threadId: string, target: string, task: string): AsyncGenerator<StreamEvent> {
@@ -891,7 +915,10 @@ export class MockCleoClient implements CleoClient {
     };
   }
 
-  async getLocalSkills() { return []; }
+  // The demo's one skill stands in for the one that writes a workflow from a description.
+  async getLocalSkills(): Promise<LocalSkill[]> {
+    return [{ name: CREATE_WORKFLOW_SKILL.slice(1), command: CREATE_WORKFLOW_SKILL, source: "Cleo", path: "skills/create-workflow/SKILL.md" }];
+  }
 
   async getHarnessUsage(provider: string): Promise<HarnessUsage> {
     await delay(180);

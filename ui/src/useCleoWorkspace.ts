@@ -32,7 +32,7 @@ import type {
 } from "./types";
 import { projectsInSpace } from "./runtime-labels";
 import { nextPendingSwitch, runtimeWithPendingSwitch, type PendingHarnessSwitch } from "./harness-handoff";
-import { workflowCommand } from "./workflow-command";
+import { workflowCommand, workflowNeeds } from "./workflow-command";
 
 function currentTime() {
   return new Date().toLocaleTimeString(getLanguage(), { hour: "2-digit", minute: "2-digit" });
@@ -941,8 +941,9 @@ export function useCleoWorkspace() {
     }));
     updateThread(threadId, (current) => ({
       ...current,
-      title: current.items.length === 0 ? shown.slice(0, 26) : current.title,
-      summary: shown.slice(0, 64),
+      // A conversation that opens by asking for a workflow is named after what was asked for.
+      title: current.items.length === 0 ? (workflowNeeds(prompt) || shown).slice(0, 26) : current.title,
+      summary: (workflowNeeds(prompt) || shown).slice(0, 64),
       status: "running",
       steerReady: false,
       updatedAt: tr("memoryview.just_now"),

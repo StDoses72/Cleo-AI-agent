@@ -1,6 +1,6 @@
 import { t as tr } from "../../../electron/i18n.mjs";
 import { CircleAlert, Copy, LoaderCircle, Play, Plus, Sparkles, Trash2, Workflow, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { WorkflowClient, WorkflowDefinition, WorkflowLibrary } from "../../workflow-types";
 import { WorkflowEditor } from "./WorkflowEditor";
 import { END, NODE_HEIGHT, NODE_WIDTH, START, TERMINAL_HEIGHT, TERMINAL_WIDTH, duplicateWorkflow, newWorkflow, workflowIssues } from "./workflow-model";
@@ -20,6 +20,8 @@ interface WorkflowViewProps {
   onScreenChange: (screen: WorkflowScreen) => void;
   /** Start the workflow: it runs in a conversation, so this leaves the page for one. */
   onRun: (definition: WorkflowDefinition) => void;
+  /** Describe a workflow to Cleo instead of drawing it: this leaves the page for a conversation. */
+  onAsk: () => void;
   /** The library changed (saved, removed): whoever lists workflows elsewhere reads it again. */
   onLibraryChange: () => void;
   onNotify: (message: string, tone?: "success" | "error") => void;
@@ -29,12 +31,20 @@ const message = (error: unknown) => error instanceof Error ? error.message : Str
 
 /** Purpose: The library: the workflows the user keeps and the node definitions saved for reuse.
  * A workflow is drawn in the editor here and started in a conversation. */
-export function WorkflowView({ client, screen, onScreenChange, onRun, onLibraryChange, onNotify }: WorkflowViewProps) {
+export function WorkflowView({ client, screen, onScreenChange, onRun, onAsk, onLibraryChange, onNotify }: WorkflowViewProps) {
   const [library, setLibrary] = useState<WorkflowLibrary | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [draftTask, setDraftTask] = useState("");
-  const [drafting, setDrafting] = useState(false);
-  const [draftError, setDraftError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const createMenu = useRef<HTMLDivElement>(null);
+  // The menu closes on a press anywhere else, and on Escape.
+  useEffect(() => {
+    if (!creating) return;
+    const close = (event: Event) => { if (!(event.target instanceof Node && createMenu.current?.contains(event.target))) setCreating(false); };
+    const key = (event: globalThis.KeyboardEvent) => { if (event.key === "Escape") setCreating(false); };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", key);
+    return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", key); };
+  }, [creating]);
   const [saving, setSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const requests = useRef(0);
@@ -99,37 +109,28 @@ export function WorkflowView({ client, screen, onScreenChange, onRun, onLibraryC
     );
   }
 
-  const draft = (event: FormEvent) => {
-    event.preventDefault();
-    const task = draftTask.trim();
-    if (!task || drafting) return;
-    setDrafting(true);
-    setDraftError(null);
-    void client.draft(task)
-      .then((definition) => { setDraftTask(""); onScreenChange({ name: "editor", definition, baseline: null }); })
-      .catch((error: unknown) => setDraftError(message(error)))
-      .finally(() => setDrafting(false));
-  };
-
   return (
     <main className="workflow-view" data-testid="workflow-view">
       <header className="wf-library-header">
         <h2>{tr("workflows.title")}</h2>
-        <button type="button" className="wf-button primary" data-testid="new-workflow"
-          onClick={() => onScreenChange({ name: "editor", definition: newWorkflow(tr("workflows.untitled")), baseline: null })}>
-          <Plus size={14} />{tr("workflows.new")}
-        </button>
+        <div className="wf-create" ref={createMenu}>
+          <button type="button" className="wf-button primary" data-testid="new-workflow" aria-haspopup="menu" aria-expanded={creating}
+            onClick={() => setCreating((open) => !open)}>
+            <Plus size={14} />{tr("workflows.new")}
+          </button>
+          {creating ? (
+            <div className="wf-menu surface-popover" role="menu" data-testid="new-workflow-menu">
+              <button type="button" role="menuitem" data-testid="new-blank"
+                onClick={() => { setCreating(false); onScreenChange({ name: "editor", definition: newWorkflow(tr("workflows.untitled")), baseline: null }); }}>
+                <Plus size={14} />{tr("workflows.blank_canvas")}
+              </button>
+              <button type="button" role="menuitem" data-testid="ask-ai" onClick={() => { setCreating(false); onAsk(); }}>
+                <Sparkles size={14} />{tr("workflows.ask_ai")}
+              </button>
+            </div>
+          ) : null}
+        </div>
       </header>
-
-      <form className="wf-draft-bar" onSubmit={draft} aria-busy={drafting}>
-        <Sparkles size={16} />
-        <input value={draftTask} disabled={drafting} maxLength={400} placeholder={tr("workflows.draft_placeholder")}
-          aria-label={tr("workflows.draft_label")} data-testid="workflow-draft-input" onChange={(event) => setDraftTask(event.target.value)} />
-        <button type="submit" className="wf-button" disabled={drafting || !draftTask.trim()} data-testid="workflow-draft-submit">
-          {drafting ? <LoaderCircle size={14} className="spin" /> : null}{tr("workflows.draft")}
-        </button>
-      </form>
-      {draftError ? <p className="wf-inline-error" role="alert">{draftError}</p> : null}
 
       {library.workflows.length ? (
         <div className="wf-gallery" data-testid="workflow-list">

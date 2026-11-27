@@ -28,7 +28,8 @@ import {
 import { ThreadSidebar } from "./components/ThreadSidebar";
 import { WorkflowView, workflowHome, type WorkflowScreen } from "./components/workflows/WorkflowView";
 import { latestWorkflowRun } from "./components/workflows/WorkflowRun";
-import type { WorkflowRun } from "./workflow-types";
+import type { WorkflowDefinition, WorkflowRun } from "./workflow-types";
+import { CREATE_WORKFLOW_SKILL } from "./workflow-command";
 import { projectBranchName, useCleoWorkspace } from "./useCleoWorkspace";
 import { cleoClient } from "./services/cleoClient";
 import { useLanguage, setLanguage, type UiLanguage } from "./i18n";
@@ -58,20 +59,43 @@ export function App() {
   useEffect(refreshWorkflowChoices, [workflowClient]);
   // A workflow started from the library runs in a conversation: a new task opens with the
   // workflow chosen, waiting for the task it should be started with.
-  const [pendingWorkflow, setPendingWorkflow] = useState<string | null>(null);
-  const runWorkflow = (workflowId: string) => {
+  // A workflow an agent wrote in a conversation is kept in the library, or opened on the canvas:
+  // as the saved copy if the library has it, otherwise as a new one not saved yet.
+  const addWorkflow = async (definition: WorkflowDefinition) => {
+    if (!workflowClient) return;
+    try {
+      const saved = await workflowClient.save(definition);
+      refreshWorkflowChoices();
+      notify(tr("workflows.saved_toast", { p0: saved.name }));
+    } catch (error) {
+      notify(error instanceof Error ? error.message : String(error), "error");
+    }
+  };
+  const openWorkflow = (definition: WorkflowDefinition) => {
+    void workflowClient?.library().then((library) => {
+      const saved = library.workflows.find((item) => item.id === definition.id);
+      setWorkflowScreen({ name: "editor", definition: saved ?? definition, baseline: saved ? JSON.stringify(saved) : null });
+      setWorkflowsOpen(true);
+    }).catch((error: unknown) => notify(error instanceof Error ? error.message : String(error), "error"));
+  };
+  const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
+  const startTaskWith = (prompt: string) => {
     setWorkflowsOpen(false);
     workspace.selectSpace("productivity");
     void workspace.createThread();
-    setPendingWorkflow(workflowId);
+    setPendingPrompt(prompt);
   };
+  const runWorkflow = (workflowId: string) => startTaskWith(`/workflow ${workflowId} `);
+  // Asking AI for a workflow is a conversation with the skill that writes one: it opens with the
+  // skill called, in the user's language, and waits for what they need.
+  const askForWorkflow = () => startTaskWith(`${CREATE_WORKFLOW_SKILL} ${tr("workflows.ask_prompt")}`);
   useEffect(() => {
-    if (!pendingWorkflow || workspace.activeSpace !== "productivity" || workspace.activeThreadId !== null || showWorkflows) return;
-    workspace.setPrompt(`/workflow ${pendingWorkflow} `);
-    setPendingWorkflow(null);
+    if (!pendingPrompt || workspace.activeSpace !== "productivity" || workspace.activeThreadId !== null || showWorkflows) return;
+    workspace.setPrompt(pendingPrompt);
+    setPendingPrompt(null);
     requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.composer [data-testid="composer-input"]')?.focus());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingWorkflow, workspace.activeSpace, workspace.activeThreadId, workspace.activeProjectId, showWorkflows]);
+  }, [pendingPrompt, workspace.activeSpace, workspace.activeThreadId, workspace.activeProjectId, showWorkflows]);
   const newTask = () => {
     setWorkflowsOpen(false);
     if (workspace.activeSpace === "memory") workspace.selectSpace("productivity");
@@ -729,6 +753,7 @@ export function App() {
           screen={workflowScreen}
           onScreenChange={setWorkflowScreen}
           onRun={(definition) => runWorkflow(definition.id)}
+          onAsk={askForWorkflow}
           onLibraryChange={refreshWorkflowChoices}
           onNotify={notify}
         />
@@ -857,6 +882,8 @@ export function App() {
           commands={workspace.snapshot.backend?.commands[workspace.activeSpace === "chat" ? "chat" : "productivity"] ?? []}
           workflows={workflowChoices}
           onShowWorkflow={() => showInspectorTab("workflow")}
+          onAddWorkflow={workflowClient ? addWorkflow : undefined}
+          onOpenWorkflow={workflowClient ? openWorkflow : undefined}
           history={workspace.history}
           questionUI={<QuestionDialog questions={workspace.questions} />}
           approvalRequest={workspace.pendingApprovals.find(q => q.threadId === workspace.activeThreadId) ?? null}

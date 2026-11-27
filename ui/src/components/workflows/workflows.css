@@ -61,11 +61,8 @@
 .wf-banner.failed > svg { flex: 0 0 auto; color: var(--danger); }
 
 /* ---------- Library ---------- */
-.wf-draft-bar { display: flex; align-items: center; gap: 10px; margin: 20px 0 6px; padding: 8px 8px 8px 14px; border: 1px solid var(--border-strong); border-radius: var(--radius-md); color: var(--muted); background: var(--surface); }
-.wf-draft-bar:focus-within { border-color: color-mix(in srgb, var(--accent) 55%, var(--border-strong)); }
-.wf-draft-bar input { min-width: 0; height: 32px; flex: 1; border: 0; outline: 0; color: var(--text); background: none; font-size: var(--font-size-body); }
-.wf-draft-bar input::placeholder { color: var(--muted-2); }
-.wf-draft-bar > svg { flex: 0 0 auto; }
+.wf-create { position: relative; }
+.wf-create .wf-menu { top: calc(100% + 6px); right: 0; width: 176px; }
 
 .wf-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 18px; margin-top: 22px; }
 .wf-tile { display: grid; min-width: 0; overflow: hidden; border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--surface-raised); transition: border-color 120ms ease, box-shadow 120ms ease; }
@@ -308,3 +305,12 @@
   .wf-detail.card,
   .wf-detail.panel { top: auto !important; right: 8px; bottom: 8px !important; left: 8px !important; width: auto; max-height: 62%; border: 1px solid var(--border-strong); border-radius: var(--radius-md); }
 }
+
+/* ---------- A workflow an agent wrote, handed back in the conversation ---------- */
+.wf-proposal { display: flex; align-items: center; gap: 14px; margin: 6px 0; padding: 10px 14px 10px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--surface-raised); }
+.wf-proposal-open { display: block; width: 132px; height: 84px; flex: none; padding: 8px; border-radius: var(--radius-sm); background: var(--surface); cursor: pointer; }
+.wf-proposal-open:hover { background: var(--surface-hover); }
+.wf-proposal-open:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 58%, transparent); outline-offset: 1px; }
+.wf-proposal-copy { display: grid; min-width: 0; flex: 1; gap: 3px; }
+.wf-proposal-copy strong { overflow: hidden; font-size: var(--font-size-body); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.wf-proposal-copy small { color: var(--muted-2); font-size: var(--font-size-caption); }
