@@ -252,8 +252,16 @@ try {
   assert.deepEqual([await detail.getByTestId("limit-write").isChecked(), await detail.getByTestId("limit-write").isDisabled()], [true, true]);
   await detail.locator('[data-field="harness"]').selectOption("codex");
   await detail.getByTestId("limit-write").uncheck();
-  await detail.getByTestId("limit-ask").check();
-  await detail.getByTestId("limit-ask").uncheck();
+  // A node that may edit is given a permission preset the way a session is.
+  assert.equal(await detail.getByTestId("permission-selector").count(), 0, "Reading never asks");
+  await detail.getByTestId("limit-write").check();
+  assert.equal(await detail.getByTestId("permission-selector").getAttribute("data-value"), "review");
+  await detail.getByTestId("permission-selector").click();
+  assert.deepEqual(await detail.getByTestId("permission-option").evaluateAll((items) => items.map((item) => item.dataset.value)), ["ask", "review", "full"]);
+  await page.screenshot({ path: join(output, "node-permission.png") });
+  await detail.getByTestId("permission-option").first().click();
+  assert.equal(await detail.getByTestId("permission-selector").getAttribute("data-value"), "ask");
+  await detail.getByTestId("limit-write").uncheck();
   // One sentence rewrites the definition; the name the user sees stays theirs to change.
   await detail.getByTestId("node-redraft").fill("审查方案有没有遗漏");
   await page.keyboard.press("Enter");
@@ -286,8 +294,14 @@ try {
   assert.deepEqual(await counts(), [2, 3]);
   // Tidy lays the flow out top to bottom.
   await page.getByTestId("workflow-tidy").click();
-  const [first, second] = [await node("拆解者").boundingBox(), await node("执行者").boundingBox()];
-  assert.ok(first.y < second.y && Math.abs(first.x - second.x) < 2);
+  // The nodes are read once they have settled where the layout put them.
+  let first, second;
+  for (let waited = 0; waited < 2_000; waited += 100) {
+    [first, second] = [await node("拆解者").boundingBox(), await node("执行者").boundingBox()];
+    if (first.y < second.y && Math.abs(first.x - second.x) < 2) break;
+    await page.waitForTimeout(100);
+  }
+  assert.ok(first.y < second.y && Math.abs(first.x - second.x) < 2, JSON.stringify([first, second]));
   await page.getByLabel("工作流名称", { exact: true }).fill("手工流程");
   await page.keyboard.press("Escape");
   await page.screenshot({ path: join(output, "built-by-hand.png") });

@@ -13,17 +13,17 @@ const {
 } = model;
 
 const harnesses = [
-  { id: "codex", label: "Codex", available: true, readOnly: true, tools: true, models: [
+  { id: "codex", label: "Codex", available: true, readOnly: true, tools: true, permissions: ["ask", "review", "full"], models: [
     { id: "fast", label: "Fast", isDefault: false, supportedEfforts: ["low", "high"], defaultEffort: "low", serviceTiers: [{ id: "default", label: "Standard" }, { id: "priority", label: "Priority" }] },
     { id: "deep", label: "Deep", isDefault: true, supportedEfforts: ["medium", "high"], defaultEffort: "medium" },
   ] },
-  { id: "claude", label: "Claude", available: false, reason: "signed out", readOnly: true, tools: true, models: [
+  { id: "claude", label: "Claude", available: false, reason: "signed out", readOnly: true, tools: true, permissions: ["ask", "review", "full"], models: [
     { id: "b", label: "B", isDefault: true, supportedEfforts: [], defaultEffort: null },
   ] },
-  { id: "acp", label: "ACP", available: true, readOnly: false, tools: true, models: [
+  { id: "acp", label: "ACP", available: true, readOnly: false, tools: true, permissions: [], models: [
     { id: "c", label: "C", isDefault: true, supportedEfforts: [], defaultEffort: null },
   ] },
-  { id: "bare", label: "Bare", available: true, readOnly: true, tools: false, models: [
+  { id: "bare", label: "Bare", available: true, readOnly: true, tools: false, permissions: ["ask", "full"], models: [
     { id: "d", label: "D", isDefault: true, supportedEfforts: [], defaultEffort: null },
   ] },
 ];
@@ -95,6 +95,14 @@ test("a harness that cannot hold a node to reading makes it one that may edit", 
   assert.equal(withRuntime({ ...node, harness: "acp", model: "c" }, harnesses, { model: "c" }).access, "write");
 });
 
+test("a node keeps its permission preset where the harness offers it", () => {
+  const node = agent("worker");
+  assert.equal(node.permission, "review");
+  assert.equal(withRuntime(node, harnesses, { harness: "codex" }).permission, "review");
+  assert.equal(withRuntime(node, harnesses, { harness: "bare" }).permission, "ask", "the first preset it has");
+  assert.equal(withRuntime(node, harnesses, { harness: "acp" }).permission, "review", "a harness with its own permissions leaves the node's alone");
+});
+
 test("a node that returns a verdict or a list needs a harness that receives tools", () => {
   const bare = { harness: "bare", model: "d" };
   const loop = graph([agent("plan"), agent("judge", bare)], ["start>plan", "plan>judge", "judge>plan", "judge>end"]);
@@ -122,7 +130,7 @@ test("choosing where a node runs keeps what still applies and drops what does no
 test("a node kept for reuse is its definition, without its place or identity", () => {
   const node = { ...newNode(40, 80, { role: "reviewer", instructions: "review", harness: "codex", model: "deep", access: "write", each: 3 }), drafted: true };
   const kept = fieldsOf(node);
-  assert.deepEqual(Object.keys(kept).sort(), ["access", "approval", "delegation", "each", "effort", "harness", "instructions", "model", "role", "speed", "workspace"]);
+  assert.deepEqual(Object.keys(kept).sort(), ["access", "delegation", "each", "effort", "harness", "instructions", "model", "permission", "role", "speed", "workspace"]);
   const reused = newNode(0, 0, kept);
   assert.notEqual(reused.id, node.id);
   assert.deepEqual(fieldsOf(reused), kept);

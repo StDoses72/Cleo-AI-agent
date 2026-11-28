@@ -145,6 +145,7 @@ export function WorkflowView({ client, screen, onScreenChange, onRun, onAsk, onL
                 <footer>
                   <strong title={definition.name}>{definition.name}</strong>
                   {blocked ? <CircleAlert size={14} className="wf-flag" aria-label={tr("workflows.fix_issues_first")} /> : null}
+                  <span className="wf-tile-tools">
                   <button type="button" className="icon-button" aria-label={tr("workflows.duplicate_value", { p0: definition.name })} title={tr("workflows.duplicate")}
                     onClick={() => void save(duplicateWorkflow(definition, tr("workflows.copy_name", { p0: definition.name })))
                       .catch((error: unknown) => onNotify(message(error), "error"))}><Copy size={14} /></button>
@@ -154,6 +155,7 @@ export function WorkflowView({ client, screen, onScreenChange, onRun, onAsk, onL
                       void client.remove(definition.id).then(refresh).then(() => { onLibraryChange(); onNotify(tr("workflows.deleted_toast", { p0: definition.name })); })
                         .catch((error: unknown) => onNotify(message(error), "error"));
                     }}><Trash2 size={14} /></button>
+                  </span>
                   <button type="button" className="wf-button primary" disabled={blocked} data-testid="workflow-card-run"
                     title={blocked ? tr("workflows.fix_issues_first") : undefined} onClick={() => onRun(definition)}>
                     <Play size={13} />{tr("workflows.run")}
@@ -196,9 +198,11 @@ export function WorkflowThumb({ definition }: { definition: WorkflowDefinition }
     ...definition.nodes.map((node) => ({ id: node.id, x: node.x, y: node.y, w: NODE_WIDTH, h: NODE_HEIGHT })),
   ];
   const at = new Map(boxes.map((box) => [box.id, box]));
-  const left = Math.min(...boxes.map((box) => box.x)) - 24;
+  // The same room on both sides, so the flow's axis is the tile's: a loop bulges to the right.
+  const side = definition.edges.some((edge) => edge.loop) ? 84 : 24;
+  const left = Math.min(...boxes.map((box) => box.x)) - side;
   const top = Math.min(...boxes.map((box) => box.y)) - 16;
-  const right = Math.max(...boxes.map((box) => box.x + box.w)) + 100;
+  const right = Math.max(...boxes.map((box) => box.x + box.w)) + side;
   const bottom = Math.max(...boxes.map((box) => box.y + box.h)) + 16;
   return (
     <svg className="wf-thumb" viewBox={`${left} ${top} ${right - left} ${bottom - top}`} preserveAspectRatio="xMidYMid meet" aria-hidden="true">

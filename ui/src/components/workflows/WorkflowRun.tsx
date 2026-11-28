@@ -53,6 +53,9 @@ export function WorkflowRunCard({ run, onOpen, onRetry }: {
         <strong>{run.definition.name}</strong>
         <span className="wf-run-status" data-status={run.status} data-testid="workflow-run-status">{runStatusLabel(run.status)}</span>
         <small>{finished}/{nodes.length} · {duration((run.finishedAt ?? now) - run.startedAt)}</small>
+        {run.status === "paused" && onRetry ? (
+          <button type="button" className="wf-button" onClick={onRetry} data-testid="workflow-continue"><Play size={13} />{tr("workflows.continue_run")}</button>
+        ) : null}
         {onOpen ? (
           <button type="button" className="icon-button" onClick={onOpen} data-testid="workflow-run-open"
             aria-label={tr("workflows.show_graph")} title={tr("workflows.show_graph")}><PanelRight size={15} /></button>
@@ -68,11 +71,6 @@ export function WorkflowRunCard({ run, onOpen, onRetry }: {
         <p className="wf-run-error" role="alert" data-testid="workflow-failure">
           <CircleAlert size={14} /><span>{run.error}</span>
           {onRetry ? <button type="button" className="wf-button" onClick={onRetry} data-testid="workflow-retry"><RotateCcw size={13} />{tr("workflows.retry_failed")}</button> : null}
-        </p>
-      ) : run.status === "paused" && onRetry ? (
-        <p className="wf-run-error paused" data-testid="workflow-paused">
-          <span />
-          <button type="button" className="wf-button" onClick={onRetry} data-testid="workflow-continue"><Play size={13} />{tr("workflows.continue_run")}</button>
         </p>
       ) : null}
     </section>

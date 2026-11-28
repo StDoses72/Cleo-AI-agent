@@ -49,7 +49,7 @@ export function newId() {
 export const snap = (value: number) => Math.round(value / GRID) * GRID;
 
 export const blankFields: WorkflowNodeFields = { role: "", instructions: "", harness: null, model: null, effort: null, speed: null,
-  access: "read", workspace: "shared", delegation: "default", approval: "auto", each: null };
+  access: "read", workspace: "shared", delegation: "default", permission: "review", each: null };
 
 export function newNode(x: number, y: number, fields: Partial<WorkflowNodeFields> = {}): WorkflowNode {
   return { id: newId(), ...blankFields, ...fields, x: snap(x), y: snap(y) };
@@ -68,7 +68,9 @@ export function withRuntime(node: WorkflowNode, harnesses: readonly WorkflowHarn
   change: Partial<Pick<WorkflowNodeFields, "harness" | "model" | "effort" | "speed">>): WorkflowNode {
   const chosen = harnesses.find((item) => item.id === (change.harness ?? node.harness));
   // A harness that cannot hold a node to reading leaves no such node to set.
-  const next = { ...node, ...change, ...(chosen && !chosen.readOnly ? { access: "write" as const } : {}) };
+  // Nor does a preset the harness lacks stay: the nearest it offers takes its place.
+  const preset = !chosen || !chosen.permissions.length || chosen.permissions.includes(node.permission) ? node.permission : chosen.permissions[0];
+  const next = { ...node, ...change, permission: preset, ...(chosen && !chosen.readOnly ? { access: "write" as const } : {}) };
   const harness = harnesses.find((item) => item.id === next.harness);
   if (!harness) return { ...next, harness: change.harness === undefined ? next.harness : null, model: null, effort: null, speed: null };
   const model = harness.models.find((item) => item.id === next.model) ?? harness.models.find((item) => item.isDefault) ?? harness.models[0];

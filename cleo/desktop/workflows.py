@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from cleo.desktop.task_harnesses import task_providers
+from cleo.routing.permissions import NATIVE_PRESETS
 from cleo.workflows.models import Definition, NodeFields
 from cleo.workflows.store import WorkflowStore
 
@@ -32,7 +33,9 @@ class WorkflowLibrary:
             "harnesses": [
                 {"id": name, "type": provider.type,
                  "readOnly": provider.type not in _NO_READ_ONLY,
-                 "tools": provider.type not in _NO_TOOLS}
+                 "tools": provider.type not in _NO_TOOLS,
+                 # The presets a session on it offers; none when it has only its own modes.
+                 "permissions": list(NATIVE_PRESETS.get(provider.type, {}))}
                 for name, provider in task_providers(self._productivity).items()
                 if provider.enabled
             ],

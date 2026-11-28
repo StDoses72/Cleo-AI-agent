@@ -7003,10 +7003,6 @@
     "zh-CN": "{p0} 个节点",
     "en": "{p0} node"
   },
-  "workflows.limit_ask": {
-    "zh-CN": "操作前询问",
-    "en": "Ask before acting"
-  },
   "workflows.issue_tools_missing": {
     "zh-CN": "「{p0}」要交回判定或清单，它的 harness 做不到",
     "en": "“{p0}” returns a verdict or a list, which its harness cannot do"
@@ -7018,5 +7014,9 @@
   "workflows.continue_run": {
     "zh-CN": "继续",
     "en": "Continue"
+  },
+  "workflows.permission": {
+    "zh-CN": "权限",
+    "en": "Permissions"
   }
 }

@@ -1,5 +1,7 @@
 /* Workflows: the library, the canvas editor, and a run as it shows in a conversation and beside it.
  * The graph carries the meaning; words appear when something is opened. */
+/* The chevron of a pop-up button, in the muted ink of each theme. */
+:root { --wf-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23858585' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); }
 .workflow-view {
   /* Layout follows the pane's own width: the sidebar may be open or closed beside it. */
   container: workflow / inline-size;
@@ -67,18 +69,22 @@
 .wf-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 18px; margin-top: 22px; }
 .wf-tile { display: grid; min-width: 0; overflow: hidden; border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--surface-raised); transition: border-color 120ms ease, box-shadow 120ms ease; }
 .wf-tile:hover { border-color: var(--muted-2); box-shadow: var(--shadow-sm); }
-.wf-tile-open { display: block; height: 168px; padding: 14px; background: var(--surface); }
+.wf-tile-open { display: grid; width: 100%; height: 168px; place-items: center; padding: 16px; background: var(--surface); }
 .wf-thumb { display: block; width: 100%; height: 100%; }
 .wf-thumb rect { fill: var(--surface-raised); stroke: var(--muted-2); stroke-width: 3; }
 .wf-thumb rect.end { fill: var(--surface-active); stroke: none; }
 .wf-thumb path { fill: none; stroke: var(--muted-2); stroke-width: 3; }
 .wf-thumb path.loop { stroke-dasharray: 10 8; }
-.wf-tile footer { display: flex; align-items: center; gap: 2px; padding: 8px 8px 8px 14px; border-top: 1px solid var(--border); }
+.wf-tile footer { display: flex; min-height: 46px; align-items: center; gap: 2px; padding: 0 10px 0 14px; border-top: 1px solid var(--border); }
 .wf-tile footer strong { overflow: hidden; min-width: 0; flex: 1; font-size: var(--font-size-control); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.wf-tile footer .icon-button { opacity: 0; }
-.wf-tile:hover footer .icon-button,
-.wf-tile:focus-within footer .icon-button { opacity: 1; }
-.wf-tile footer .wf-button { height: 28px; margin-left: 4px; padding: 0 10px; }
+/* Copy and delete appear over the picture's corner, so the name and the action keep the footer. */
+.wf-tile { position: relative; }
+.wf-tile-tools { display: flex; position: absolute; top: 8px; right: 8px; gap: 2px; padding: 2px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-raised); opacity: 0; transition: opacity 120ms ease; }
+.wf-tile:hover .wf-tile-tools,
+.wf-tile:focus-within .wf-tile-tools { opacity: 1; }
+.wf-tile-tools .icon-button { width: 26px; height: 26px; }
+.wf-tile footer .wf-flag { margin-right: 6px; }
+.wf-tile footer .wf-button { height: 28px; padding: 0 10px; }
 
 .wf-empty { display: flex; min-height: 190px; flex-direction: column; align-items: center; justify-content: center; gap: 6px; margin-top: 22px; border: 1px dashed var(--border-strong); border-radius: var(--radius-lg); color: var(--muted-2); text-align: center; }
 .wf-empty svg { margin-bottom: 4px; color: var(--muted); }
@@ -138,7 +144,7 @@
 .wf-link-draft { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 4 4; pointer-events: none; }
 
 .wf-terminal { display: grid; position: absolute; place-items: center; border: 1px solid transparent; border-radius: var(--radius-pill); color: var(--muted); background: var(--surface-active); font-size: var(--font-size-caption); }
-.wf-cnode { display: flex; position: absolute; align-items: center; gap: 8px; padding: 0 12px 0 14px; border: 1px solid var(--border-strong); border-radius: var(--radius-md); outline: 0; background: var(--surface-raised); box-shadow: var(--shadow-sm); }
+.wf-cnode { display: flex; position: absolute; align-items: center; justify-content: center; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-md); outline: 0; background: var(--surface-raised); box-shadow: var(--shadow-sm); }
 .wf-canvas[data-editable] .wf-cnode,
 .wf-canvas[data-editable] .wf-terminal { cursor: grab; }
 .wf-canvas:not([data-editable]) .wf-cnode { cursor: pointer; }
@@ -149,15 +155,18 @@
 .wf-cnode.dragging { z-index: 3; box-shadow: var(--shadow); cursor: grabbing; }
 .wf-cnode.drop,
 .wf-terminal.drop { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.wf-cnode-copy { display: grid; min-width: 0; flex: 1; gap: 2px; pointer-events: none; }
+/* The marks hang at the right edge; the words keep the same room on the left, so they stay centred. */
+.wf-cnode-copy { display: grid; min-width: 0; flex: 1; gap: 2px; padding: 0 24px; text-align: center; pointer-events: none; }
+.wf-cnode:has(.wf-cnode-marks > :nth-child(2)) .wf-cnode-copy { padding: 0 46px; }
+.wf-cnode:has(.wf-cnode-marks > :nth-child(3)) .wf-cnode-copy { padding: 0 68px; }
 .wf-cnode-copy strong { overflow: hidden; font-size: var(--font-size-control); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .wf-cnode-copy small { overflow: hidden; color: var(--muted-2); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.wf-cnode-marks { display: flex; flex: 0 0 auto; align-items: center; gap: 4px; color: var(--muted); }
+.wf-cnode-marks { display: flex; position: absolute; top: 0; right: 10px; bottom: 0; align-items: center; gap: 4px; color: var(--muted); }
 .wf-cnode-marks em,
 .wf-node-runtime em { display: inline-grid; min-width: 18px; height: 18px; place-items: center; padding: 0 4px; border-radius: var(--radius-xs); color: var(--muted); background: var(--surface-active); font-size: 11px; font-style: normal; font-variant-numeric: tabular-nums; }
 .wf-cnode-marks em.drafted { color: var(--highlight-ink); background: var(--highlight); }
 /* A blank node asks, on itself, what it should do. */
-.wf-ask { min-width: 0; height: 30px; flex: 1; padding: 0; border: 0; outline: 0; color: var(--text); background: none; font-size: var(--font-size-control); cursor: text; }
+.wf-ask { min-width: 0; height: 30px; flex: 1; padding: 0; border: 0; text-align: center; outline: 0; color: var(--text); background: none; font-size: var(--font-size-control); cursor: text; }
 .wf-ask::placeholder { color: var(--muted-2); }
 .wf-cnode[data-status="pending"] { opacity: 0.6; }
 .wf-cnode[data-status="running"] { border-color: var(--highlight-ink); background: color-mix(in srgb, var(--highlight) 40%, var(--surface-raised)); }
@@ -208,8 +217,7 @@
 .wf-detail.edge { display: flex; position: absolute; z-index: 20; align-items: center; gap: 6px; padding: 4px 4px 4px 10px; animation: pop-in 120ms ease both; }
 .wf-detail.edge:has(> .icon-button:only-child) { padding: 2px; }
 .wf-detail.edge label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--font-size-caption); white-space: nowrap; }
-.wf-detail.edge input,
-.wf-detail.edge select { height: 28px; padding: 0 6px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); outline: 0; color: var(--text); background: var(--canvas); font-size: var(--font-size-caption); }
+.wf-detail.edge input { height: 28px; padding: 0 6px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); outline: 0; color: var(--text); background: var(--canvas); font-size: var(--font-size-caption); text-align: center; }
 .wf-detail.edge input { width: 48px; }
 
 .wf-node-card { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 10px 12px 12px; }
@@ -226,14 +234,33 @@
 .wf-card-text:focus { border-color: color-mix(in srgb, var(--accent) 60%, var(--border-strong)); }
 .wf-card-ask { display: flex; align-items: center; gap: 8px; padding: 0 10px; border-radius: var(--radius-sm); color: var(--muted); background: var(--surface); }
 .wf-card-ask input { min-width: 0; height: 30px; flex: 1; border: 0; outline: 0; color: var(--text); background: none; font-size: var(--font-size-caption); }
-.wf-card-runtime { display: flex; flex-wrap: wrap; gap: 6px; }
-.wf-card-runtime select { min-width: 0; height: 28px; flex: 1 1 120px; padding: 0 6px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); outline: 0; color: var(--text); background: var(--canvas); font-size: var(--font-size-caption); }
+.wf-card-runtime { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+/* A lone choice takes the row. */
+.wf-card-runtime select:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.wf-card-runtime select,
+.wf-detail.edge select {
+  min-width: 0; height: 28px; padding: 0 24px 0 9px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); outline: 0;
+  appearance: none; color: var(--text); background: var(--canvas) var(--wf-chevron) no-repeat right 7px center / 12px; font-size: var(--font-size-caption); text-overflow: ellipsis; cursor: pointer;
+}
+.wf-card-runtime select:hover,
+.wf-detail.edge select:hover { border-color: var(--muted-2); }
+.wf-card-runtime select:focus-visible,
+.wf-detail.edge select:focus-visible,
+.wf-toggle input[type="number"]:focus-visible,
+.wf-detail.edge input:focus-visible { border-color: color-mix(in srgb, var(--accent) 60%, var(--border-strong)); }
 .wf-card-more { border-top: 1px solid var(--border); }
-.wf-card-more summary { padding: 8px 0 0; color: var(--muted); font-size: var(--font-size-caption); cursor: pointer; }
+.wf-card-more summary { display: flex; align-items: center; justify-content: space-between; padding: 8px 0 0; color: var(--muted); font-size: var(--font-size-caption); cursor: pointer; list-style: none; }
+.wf-card-more summary::-webkit-details-marker { display: none; }
+.wf-card-more summary:hover { color: var(--text-soft); }
 .wf-card-more[open] summary { margin-bottom: 4px; }
 .wf-toggle { display: flex; min-height: 32px; align-items: center; gap: 8px; color: var(--text-soft); font-size: var(--font-size-caption); }
 .wf-toggle > span { min-width: 0; flex: 1; }
-.wf-toggle input[type="number"] { width: 52px; height: 26px; padding: 0 6px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); outline: 0; color: var(--text); background: var(--canvas); font-size: var(--font-size-caption); }
+/* The session's permission pill, on a row of its own with its menu as wide as the card. */
+.wf-card-permission { display: flex; position: relative; min-height: 32px; align-items: center; gap: 8px; color: var(--text-soft); font-size: var(--font-size-caption); }
+.wf-card-permission > span { min-width: 0; flex: 1; }
+.wf-card-permission .permission-selector { position: static; }
+.wf-card-permission .permission-menu { right: 0; bottom: 34px; left: 0; width: auto; }
+.wf-toggle input[type="number"] { width: 52px; height: 26px; padding: 0 6px; text-align: center; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); outline: 0; color: var(--text); background: var(--canvas); font-size: var(--font-size-caption); }
 
 .wf-status-mark { display: inline-grid; width: 16px; height: 16px; flex: 0 0 auto; place-items: center; color: var(--muted-2); }
 .wf-status-mark[data-status="running"] { color: var(--text); }
@@ -252,13 +279,13 @@
 .wf-run-card header > svg { flex: 0 0 auto; color: var(--muted); }
 .wf-run-card header strong { overflow: hidden; min-width: 0; font-size: var(--font-size-control); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .wf-run-card header small { margin-left: auto; color: var(--muted-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wf-run-card header .wf-button { height: 26px; padding: 0 10px; }
 .wf-run-strip { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .wf-run-strip li { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px 2px 5px; border: 1px solid var(--border); border-radius: var(--radius-pill); color: var(--text-soft); font-size: var(--font-size-caption); }
 .wf-run-strip li[data-status="pending"] { color: var(--muted-2); }
 .wf-run-strip li[data-status="running"] { border-color: var(--highlight-ink); background: color-mix(in srgb, var(--highlight) 40%, transparent); }
 :root[data-theme="dark"] .wf-run-strip li[data-status="running"] { border-color: var(--highlight); background: color-mix(in srgb, var(--highlight) 14%, transparent); }
 .wf-run-strip li[data-status="failed"] { border-color: color-mix(in srgb, var(--danger) 55%, var(--border)); }
-.wf-run-error.paused { color: var(--text-soft); }
 .wf-run-error { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--danger); font-size: var(--font-size-caption); line-height: 1.5; }
 .wf-run-error > svg { flex: 0 0 auto; }
 .wf-run-error > span { min-width: 0; flex: 1; overflow-wrap: anywhere; }

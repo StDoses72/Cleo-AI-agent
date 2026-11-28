@@ -1,6 +1,6 @@
 import { getLanguage, relativeTime, t as tr } from "../../../electron/i18n.mjs";
 import { effortLabels } from "../../runtime-labels";
-import type { WorkflowDefinition, WorkflowHarness, WorkflowNodeFields, WorkflowRunStatus } from "../../workflow-types";
+import type { WorkflowDefinition, WorkflowHarness, WorkflowNodeFields, WorkflowPermission, WorkflowRunStatus } from "../../workflow-types";
 import { layers, loopEdges, type ConnectRefusal, type WorkflowIssue } from "./workflow-model";
 
 /** The one word a node shows for where it runs: its harness, or that it follows the conversation. */
@@ -55,6 +55,14 @@ export function issueText(issue: WorkflowIssue) {
     case "each_predecessor": return tr("workflows.issue_each_predecessor", { p0: subject });
     case "each_range": return tr("workflows.issue_each_range", { p0: subject });
   }
+}
+
+/** The presets a node can be given where its harness is not known yet: every one a session has. */
+export const PERMISSIONS: WorkflowPermission[] = ["ask", "review", "full"];
+
+/** A permission preset under the name the composer gives it. */
+export function permissionLabel(permission: WorkflowPermission) {
+  return permission === "ask" ? tr("permissions.ask") : permission === "review" ? tr("permissions.review") : tr("runtime_labels.full_access");
 }
 
 /** Why an edge the user tried to draw was not made. */

@@ -1,10 +1,11 @@
 import { t as tr } from "../../../electron/i18n.mjs";
-import { ArrowLeft, BookmarkPlus, Check, CircleAlert, LoaderCircle, Play, Redo2, Sparkles, Trash2, Undo2, X } from "lucide-react";
+import { ArrowLeft, BookmarkPlus, Check, ChevronDown, CircleAlert, LoaderCircle, Play, Redo2, Sparkles, Trash2, Undo2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, useLayoutEffect } from "react";
 import { effortLabels } from "../../runtime-labels";
-import type { WorkflowDefinition, WorkflowEdge, WorkflowHarness, WorkflowNode, WorkflowNodeFields, WorkflowRole } from "../../workflow-types";
+import type { WorkflowDefinition, WorkflowEdge, WorkflowHarness, WorkflowNode, WorkflowNodeFields, WorkflowPermission, WorkflowRole } from "../../workflow-types";
+import { PermissionSelector } from "../PermissionSelector";
 import { WorkflowCanvas, type CanvasFrame, type CanvasSelection, type NodePreset } from "./WorkflowCanvas";
-import { issueText } from "./workflow-labels";
+import { PERMISSIONS, issueText, permissionLabel } from "./workflow-labels";
 import { MAX_ITEMS, MAX_ROUNDS, fieldsOf, removeEdge, removeNode, withRuntime, workflowIssues, type WorkflowIssue } from "./workflow-model";
 
 interface WorkflowEditorProps {
@@ -241,6 +242,7 @@ function NodeCard({ node, harnesses, busy, issues, onChange, onRedraft, onKeep, 
   const [intent, setIntent] = useState("");
   const harness = harnesses.find((item) => item.id === node.harness);
   const model = harness?.models.find((item) => item.id === node.model);
+  const offered = harness ? harness.permissions : PERMISSIONS;
   const runtime = (change: Partial<Pick<WorkflowNodeFields, "harness" | "model" | "effort" | "speed">>, field: string) =>
     onChange(withRuntime(node, harnesses, change), field);
   return (
@@ -298,17 +300,24 @@ function NodeCard({ node, harnesses, busy, issues, onChange, onRedraft, onKeep, 
       </div>
 
       <details className="wf-card-more">
-        <summary>{tr("workflows.more")}</summary>
+        <summary>{tr("workflows.more")}<ChevronDown size={13} className="wf-chevron" /></summary>
         <Toggle label={tr("workflows.limit_write")} checked={node.access === "write"} testId="limit-write" disabled={harness?.readOnly === false}
           onChange={(checked) => onChange({ ...node, access: checked ? "write" : "read", workspace: checked ? node.workspace : "shared" }, "access")} />
         {node.access === "write" ? (
           <Toggle label={tr("workflows.limit_worktree")} checked={node.workspace === "worktree"}
             onChange={(checked) => onChange({ ...node, workspace: checked ? "worktree" : "shared" }, "workspace")} />
         ) : null}
+        {node.access === "write" && offered.length ? (
+          // The same control a session has, with the same three presets.
+          <div className="wf-card-permission">
+            <span>{tr("workflows.permission")}</span>
+            <PermissionSelector runtime={{ provider: node.harness ?? "", model: "", effort: null, access: "", approval: node.permission,
+              permissionOptions: { access: [], approval: [], presets: offered.map((value) => ({ value, label: permissionLabel(value), description: "", update: { approval: value } })) } }}
+              onChange={async (update) => onChange({ ...node, permission: update.approval as WorkflowPermission }, "permission")} />
+          </div>
+        ) : null}
         <Toggle label={tr("workflows.limit_delegate")} checked={node.delegation === "on"}
           onChange={(checked) => onChange({ ...node, delegation: checked ? "on" : "off" }, "delegation")} />
-        <Toggle label={tr("workflows.limit_ask")} checked={node.approval === "ask"} testId="limit-ask"
-          onChange={(checked) => onChange({ ...node, approval: checked ? "ask" : "auto" }, "approval")} />
         <Toggle label={tr("workflows.copies_each")} checked={node.each !== null}
           onChange={(checked) => onChange({ ...node, each: checked ? node.each ?? 4 : null }, "each")}>
           {node.each !== null ? (

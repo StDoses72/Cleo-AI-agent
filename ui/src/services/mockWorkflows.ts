@@ -23,19 +23,19 @@ const fast = [{ id: "fast" as const, label: "Fast", description: "1.5x speed, in
 
 /** The same harnesses and models the composer's picker offers in demo mode. */
 export const mockHarnesses: WorkflowHarness[] = [
-  { id: "codex", label: "Codex", available: true, readOnly: true, tools: true, models: [
+  { id: "codex", label: "Codex", available: true, readOnly: true, tools: true, permissions: ["ask", "review", "full"], models: [
     { id: "gpt-5.6-sol", label: "GPT-5.6-Sol", description: "Frontier coding model", isDefault: true, defaultEffort: "medium", supportedEfforts: efforts, serviceTiers: fast },
     { id: "gpt-5.6-terra", label: "GPT-5.6-Terra", description: "Balanced coding model", isDefault: false, defaultEffort: "medium", supportedEfforts: efforts, serviceTiers: fast },
   ] },
-  { id: "claude", label: "Claude", available: true, readOnly: true, tools: true, models: [
+  { id: "claude", label: "Claude", available: true, readOnly: true, tools: true, permissions: ["ask", "review", "full"], models: [
     { id: "claude-opus-5", label: "Claude Opus 5", description: "Configured model", isDefault: true, defaultEffort: "high", supportedEfforts: efforts },
     { id: "claude-sonnet-demo", label: "Claude Sonnet (demo)", description: "Mock harness choice", isDefault: false, defaultEffort: null, supportedEfforts: [] },
   ] },
   // An ACP harness has approvals and no sandbox: nothing holds a node on it to reading.
-  { id: "opencode", label: "OpenCode", available: true, readOnly: false, tools: true, models: [
+  { id: "opencode", label: "OpenCode", available: true, readOnly: false, tools: true, permissions: [], models: [
     { id: "opencode-default", label: "OpenCode (demo)", description: "Mock harness choice", isDefault: true, defaultEffort: null, supportedEfforts: [] },
   ] },
-  { id: "antigravity", label: "Antigravity", available: false, reason: "未登录", readOnly: true, tools: false, models: [
+  { id: "antigravity", label: "Antigravity", available: false, reason: "未登录", readOnly: true, tools: false, permissions: ["ask", "full"], models: [
     { id: "gemini-pro-demo", label: "Gemini Pro (demo)", description: "Mock harness choice", isDefault: true, defaultEffort: null, supportedEfforts: [] },
   ] },
 ];
@@ -47,8 +47,8 @@ const OPUS: Runtime = { harness: "claude", model: "claude-opus-5", effort: "high
 const SONNET: Runtime = { harness: "claude", model: "claude-sonnet-demo", effort: null, speed: null };
 
 function node(id: string, role: string, runtime: Runtime, instructions: string,
-  options: Partial<Pick<WorkflowNode, "access" | "workspace" | "delegation" | "each">> = {}): WorkflowNode {
-  return { id, role, ...runtime, instructions, access: "read", workspace: "shared", delegation: "default", approval: "auto", each: null, x: 0, y: 0, ...options };
+  options: Partial<Pick<WorkflowNode, "access" | "workspace" | "delegation" | "permission" | "each">> = {}): WorkflowNode {
+  return { id, role, ...runtime, instructions, access: "read", workspace: "shared", delegation: "default", permission: "review", each: null, x: 0, y: 0, ...options };
 }
 
 const edge = (id: string, from: string, to: string, loop?: WorkflowEdge["loop"]): WorkflowEdge => ({ id, from, to, ...(loop ? { loop } : {}) });
@@ -195,7 +195,7 @@ interface Progress {
 export class MockWorkflowClient implements WorkflowClient {
   private workflows = clone(seedWorkflows);
   private roles: WorkflowRole[] = [{ id: "role-security", fields: {
-    role: "安全审查", ...OPUS, access: "read", workspace: "shared", delegation: "off", approval: "auto", each: null,
+    role: "安全审查", ...OPUS, access: "read", workspace: "shared", delegation: "off", permission: "review", each: null,
     instructions: "做什么：只看安全，包括输入校验、路径与权限、敏感信息是否外泄。\n交回：按严重程度排列的问题清单，没有问题时明确说没有。\n不做：不评价风格，不修改代码。",
   } }];
   private readonly runs = new Map<string, WorkflowRun>();

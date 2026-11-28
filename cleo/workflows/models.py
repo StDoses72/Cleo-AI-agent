@@ -35,7 +35,8 @@ class NodeFields(Schema):
     access: Literal["read", "write"] = "read"
     workspace: Literal["shared", "worktree"] = "shared"
     delegation: Literal["default", "on", "off"] = "default"
-    approval: Literal["auto", "ask"] = "auto"
+    # The session permission preset the node runs under, where it may edit files.
+    permission: Literal["ask", "review", "full"] = "review"
     # One copy per item of the list the node before it returned, up to this many; None runs once.
     each: int | None = None
 

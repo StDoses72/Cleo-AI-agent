@@ -21,6 +21,8 @@ export interface WorkflowHarness {
   readOnly: boolean;
   /** It receives Cleo's tools, which is how a node returns a verdict or a list. */
   tools: boolean;
+  /** The permission presets a session on it offers, as the composer lists them; none when it has only its own. */
+  permissions: WorkflowPermission[];
   models: import("./types").RuntimeModelOption[];
 }
 
@@ -29,9 +31,9 @@ export type WorkflowAccess = "read" | "write";
 export type WorkflowWorkspace = "shared" | "worktree";
 /** Whether the node may hand subtasks to other models; "default" follows the routing switch. */
 export type WorkflowDelegation = "default" | "on" | "off";
-/** What a node does when an action needs approval: goes on within its limits, or asks in the
- * conversation that started the run. */
-export type WorkflowApproval = "auto" | "ask";
+/** A node's permission preset, the same three a session chooses from: ask the user (in the
+ * conversation that started the run), let the harness review, or go on without asking. */
+export type WorkflowPermission = "ask" | "review" | "full";
 
 /** What a node is, apart from where it sits: the part that can be kept and used again. */
 export interface WorkflowNodeFields {
@@ -46,7 +48,7 @@ export interface WorkflowNodeFields {
   access: WorkflowAccess;
   workspace: WorkflowWorkspace;
   delegation: WorkflowDelegation;
-  approval: WorkflowApproval;
+  permission: WorkflowPermission;
   /** Runs one copy per item of the list the node before it returned, up to this many; `null` runs once. */
   each: number | null;
 }

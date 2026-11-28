@@ -156,7 +156,11 @@ def test_the_desktop_serves_the_library_and_what_each_harness_can_be_held_to(tmp
     library = asyncio.run(scenario())
     harnesses = {item["id"]: item for item in library["harnesses"]}
     assert (harnesses["claude"]["readOnly"], harnesses["claude"]["tools"]) == (True, True)
-    assert harnesses["antigravity"]["readOnly"] is False
+    assert harnesses["claude"]["permissions"] == ["ask", "review", "full"]
+    assert harnesses["antigravity-sdk"]["permissions"] == ["ask", "full"]
+    subscription = harnesses["antigravity"]
+    assert (subscription["readOnly"], subscription["permissions"]) == (False, [])
+    assert library["workflows"][0]["nodes"][0]["permission"] == "review"
     assert harnesses["antigravity-sdk"]["tools"] is False
     assert asyncio.run(service.get_workflow_library())["workflows"] == []
     with pytest.raises(ValidationError):
