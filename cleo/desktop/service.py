@@ -59,6 +59,7 @@ from cleo.desktop.turn_hooks import (
     SkillExpander,
     TurnHook,
     TurnRequest,
+    WorkflowAuthor,
     timed_reply,
 )
 from cleo.desktop.workflow_runs import WorkflowRuns
@@ -1225,6 +1226,9 @@ class DesktopService:
         if not prompt:
             raise ValueError("prompt cannot be empty")
         manifest = self.store.load_manifest(thread_id)
+        # The reply to this command is read for the workflow it hands back.
+        authoring = (manifest["space"] == "productivity"
+                     and prompt.split(maxsplit=1)[0] == WorkflowAuthor.COMMAND)
         request = TurnRequest(manifest, prompt, emit)
         hooks = self._turn_hooks()
         for hook in hooks:
@@ -1346,6 +1350,8 @@ class DesktopService:
                 attachments = []
             await steering.close()
             if terminal and terminal["type"] == "done":
+                if authoring:
+                    await self._workflow_runs.propose(manifest, emit)
                 await emit(terminal)
         except asyncio.CancelledError:
             status = "interrupted" if manifest["space"] == "non_productivity" else "cancelled"
@@ -1381,6 +1387,8 @@ class DesktopService:
         """Purpose: The steps around every turn, in order (see ``turn_hooks``)."""
         return [
             ComputerUseHook(self._computer_command),
+            WorkflowAuthor(lambda: [item["id"] for item in
+                                    self._workflow_library().view()["harnesses"]]),
             SkillExpander(self._local_skills),
         ]
 
@@ -1888,6 +1896,14 @@ class DesktopService:
 
     async def remove_workflow_role(self, *, role_id: str) -> None:
         self._workflow_library().remove_role(role_id)
+
+    async def draft_workflow_node(self, *, intent: str, definition: dict[str, Any],
+                                  node_id: str) -> dict[str, Any]:
+        """Purpose: Have an agent write one node's definition from a sentence. Nothing is saved.
+
+        Output: The node's name, responsibility and access.
+        """
+        return await self._workflow_runs.draft_node(intent, definition, node_id)
 
     async def get_local_skills(
         self, *, provider: str, project_path: str | None = None

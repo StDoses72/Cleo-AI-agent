@@ -1578,5 +1578,13 @@
   "workflows.cannot_hold_to_reading": {
     "zh-CN": "「{p0}」设为只读，但它的 harness 不能强制只读。",
     "en": "“{p0}” may only read, but its harness cannot hold it to that."
+  },
+  "workflows.proposal_unreadable": {
+    "zh-CN": "没能读出交回的工作流",
+    "en": "The workflow handed back could not be read"
+  },
+  "workflows.intent_required": {
+    "zh-CN": "需要一句描述。",
+    "en": "A sentence is needed."
   }
 }

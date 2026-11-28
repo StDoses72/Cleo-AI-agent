@@ -209,3 +209,56 @@ def test_a_nodes_limits_become_native_options() -> None:
     assert node_options("antigravity_sdk", writer, effort=None, speed=None) == {
         "approval_mode": "user"}, "a preset the harness lacks falls back to asking"
     assert node_options("acp", writer, effort=None, speed=None) == {}
+
+
+def test_a_workflow_handed_back_in_a_reply_becomes_a_card(desk) -> None:
+    from tests.workflows.test_authoring import REPLY
+
+    def say(text: str) -> list[dict]:
+        desk.store.append_events(
+            space="productivity", project="general", session_id="talk", events=[
+                {"type": "user_message", "actor": "agent", "content": "/create-workflow twice"},
+                {"type": "assistant_message", "actor": "codex", "content": text}])
+        seen: list[dict] = []
+
+        async def emit(event: dict) -> None:
+            seen.append(event)
+
+        manifest = desk.store.load_manifest("talk")
+        asyncio.run(desk.service._workflow_runs.propose(manifest, emit))
+        return seen
+
+    assert say("What should the reviewers look at?") == []
+    seen = say(REPLY)
+    assert seen[0]["item"]["type"] == "workflow-proposal"
+    assert seen[0]["item"]["definition"]["name"] == "Plan, refute, build"
+    cards = [item for item in timeline_from_events(desk.store.read_events("talk"))
+             if item["type"] == "workflow-proposal"]
+    assert [card["definition"]["origin"] for card in cards] == ["drafted"]
+    assert asyncio.run(desk.service.get_workflow_library())["workflows"] == [], "nothing is saved"
+    assert say("```cleo-workflow\n{}\n```")[0]["item"]["type"] == "notice"
+
+
+def test_a_node_is_drafted_in_a_session_that_reads_and_is_not_kept(desk, tmp_path) -> None:
+    desk.service.settings.active_directory_profile = SimpleNamespace(root_path=tmp_path)
+    desk.service.settings.productivity = SimpleNamespace(default_provider="codex")
+    definition = graph([agent("Planner"), agent("blank")],
+                       ["start>Planner", "Planner>blank", "blank>end"]).model_dump(by_alias=True)
+
+    async def prompt(session_id, request, on_event=None):
+        desk.harnesses.prompts[session_id] = request
+        fields = '{"role": "Reviewer", "instructions": "Find gaps.", "access": "read"}'
+        return SimpleNamespace(status="completed", error=None,
+                               response=f"```cleo-node\n{fields}\n```")
+
+    desk.harnesses.prompt = prompt
+    fields = asyncio.run(desk.service.draft_workflow_node(
+        intent="check the plan", definition=definition, node_id="blank"))
+    assert fields == {"role": "Reviewer", "instructions": "Find gaps.", "access": "read"}
+    assert "receives from: Planner" in desk.harnesses.prompts["node-1"]
+    assert desk.harnesses.options["node-1"]["sandbox"] == "read-only"
+    assert desk.harnesses.closed == ["node-1"]
+    assert [row["id"] for row in desk.store.list_sessions()] == ["talk"]
+    with pytest.raises(ValueError):
+        asyncio.run(desk.service.draft_workflow_node(intent=" ", definition=definition,
+                                                     node_id="blank"))

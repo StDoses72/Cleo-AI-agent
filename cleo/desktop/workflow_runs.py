@@ -23,9 +23,10 @@ from cleo.desktop.projection import _message, stream_event_item
 from cleo.harnesses.capabilities import Capability
 from cleo.i18n import tr
 from cleo.routing.permissions import NATIVE_PRESETS
+from cleo.workflows.authoring import node_request, read_node, read_workflow
 from cleo.workflows.engine import Handoff, NodeFailed, NodeTask, execute, leave, new_run
 from cleo.workflows.handoff import node_prompt, read_reply
-from cleo.workflows.models import Harness, Node
+from cleo.workflows.models import Definition, Harness, Node
 from cleo.workflows.validation import workflow_issues
 
 Emit = Callable[[dict[str, Any]], Awaitable[None]]
@@ -240,6 +241,64 @@ class WorkflowRuns:
             # The run's card says what failed; the conversation only needs to ask for attention.
             service.store.update_manifest(manifest["id"], status="failed")
         await emit({"type": "done", "summary": run["definition"]["name"]})
+
+    async def propose(self, manifest: dict[str, Any], emit: Emit) -> None:
+        """Purpose: After a ``/create-workflow`` turn, put the workflow the agent handed back
+        into the conversation as a card. The user opens it on the canvas; saving is theirs.
+        A reply without a workflow (a question back, say) adds nothing."""
+        service = self._service
+        turn_id, reply = "initial", ""
+        for event in service.store.read_events(manifest["id"]):
+            steered = (event.get("data") or {}).get("steer_id")
+            if event.get("type") == "user_message" and not steered:
+                turn_id, reply = str(event.get("id")), ""
+            elif event.get("type") == "assistant_message" and isinstance(event.get("content"), str):
+                reply = event["content"]
+        try:
+            definition = read_workflow(reply)
+        except ValueError as error:
+            await emit({"type": "upsert-item", "item": {
+                "id": f"notice-{secrets.token_hex(4)}", "type": "notice", "tone": "warning",
+                "title": tr("workflows.proposal_unreadable"), "detail": str(error)}})
+            return
+        if definition is None:
+            return
+        body = definition.model_dump(by_alias=True)
+        written = service.store.append_event(
+            space=str(manifest["space"]), project=str(manifest["project"]),
+            session_id=str(manifest["id"]), event_type="workflow_proposal", actor="system",
+            data={"definition": body})
+        await emit({"type": "upsert-item", "item": {
+            "id": f"{turn_id}:{written['id']}", "type": "workflow-proposal", "definition": body,
+            "turnId": turn_id}})
+
+    async def draft_node(self, intent: str, definition: dict[str, Any],
+                         node_id: str) -> dict[str, Any]:
+        """Purpose: One node's definition from a sentence, written by the default harness in a
+        session that only reads and is not kept."""
+        service = self._service
+        intent = str(intent).strip()
+        if not intent:
+            raise ValueError(tr("workflows.intent_required"))
+        request = node_request(intent, Definition.model_validate(definition), node_id)
+        adapter = service._adapter()
+        provider = service.settings.productivity.default_provider
+        session = await adapter.create_session(
+            provider, project_path=str(service.settings.active_directory_profile.root_path),
+            model=None, project="general")
+        try:
+            kind = adapter.session_provider_type(session.id)
+            if kind in READ_ONLY:
+                await adapter.update_session_options(session.id, **READ_ONLY[kind])
+            result = await adapter.prompt(session.id, request)
+        finally:
+            try:
+                await asyncio.shield(adapter.close(session.id))
+            finally:
+                service.store.delete_session(session.id)
+        if result.status != "completed":
+            raise ValueError(result.error or result.status)
+        return read_node(result.response or "")
 
     async def _run_node(self, manifest: dict[str, Any], emit: Emit, run: dict[str, Any],
                         task: NodeTask) -> Handoff:

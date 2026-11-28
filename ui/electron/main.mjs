@@ -201,6 +201,7 @@ const allowedMethods = new Set([
   "remove_workflow",
   "save_workflow_role",
   "remove_workflow_role",
+  "draft_workflow_node",
   "get_harness_sync",
   "sync_harness_items",
   "save_model_profile",
