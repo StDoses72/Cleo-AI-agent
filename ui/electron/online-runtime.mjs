@@ -305,7 +305,7 @@ export async function installRuntime({ resources, root = defaultRuntimeRoot(), s
   }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (import.meta.main) {
   const controller = new AbortController();
   const cancel = () => controller.abort(new Error("Installation cancelled."));
   process.once("SIGINT", cancel); process.once("SIGTERM", cancel);

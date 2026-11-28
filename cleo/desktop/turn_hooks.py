@@ -60,6 +60,26 @@ class ComputerUseHook(TurnHook):
         return True
 
 
+class WorkflowAuthor(TurnHook):
+    """Turn ``/create-workflow <needs>`` into the request for a workflow (ADR 0021). The reply
+    is an ordinary one; the turn reads the workflow out of it afterwards."""
+
+    COMMAND = "/create-workflow"
+
+    def __init__(self, harnesses: Callable[[], list[str]]) -> None:
+        self._harnesses = harnesses
+
+    async def prepare(self, request: TurnRequest) -> bool:
+        if (request.manifest["space"] == "productivity"
+                and request.prompt.split(maxsplit=1)[0] == self.COMMAND):
+            from cleo.workflows.authoring import workflow_request
+
+            request.display_prompt = request.prompt
+            request.prompt = workflow_request(
+                request.prompt.removeprefix(self.COMMAND).strip(), self._harnesses())
+        return True
+
+
 class SkillExpander(TurnHook):
     """Replace ``/<skill>`` with the instructions of a local skill of the task's harness."""
 

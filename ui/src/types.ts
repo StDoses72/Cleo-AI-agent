@@ -195,6 +195,10 @@ export type TimelineItem = {
       detail: string;
     }
   | { id: string; type: "question"; request: QuestionRequest }
+  /** A workflow started in this conversation; replaced by a newer copy as the run advances. */
+  | { id: string; type: "workflow"; run: import("./workflow-types").WorkflowRun }
+  /** A workflow an agent wrote for the user: shown for them to look at and add to their library. */
+  | { id: string; type: "workflow-proposal"; definition: import("./workflow-types").WorkflowDefinition }
 );
 
 export interface ChangeFile {
@@ -336,6 +340,9 @@ export interface Thread {
   /** For a subtask that subtask routing delegated: the conversation that started it. */
   parentId?: string | null;
   routingTaskId?: string | null;
+  /** For the session of a workflow node: which run, node and session it is. Its parent is the
+   * conversation the workflow runs in, and it is listed under that conversation. */
+  workflowSession?: { runId: string; nodeId: string; sessionId: string } | null;
   id: string;
   space: ThreadSpace;
   projectId: string;
@@ -840,6 +847,8 @@ export interface CleoClient {
   /** Git actions on a task's folder (status, revert a file, commit, push, pull request, worktree). */
   sourceControl<T = unknown>(op: SourceControlOp, params: Record<string, unknown>): Promise<T>;
   resetWorkspace(): Promise<void>;
+  /** Custom workflows. Absent on a backend that does not run them, and the page is not offered. */
+  readonly workflows?: import("./workflow-types").WorkflowClient;
 }
 
 export interface TimingSummary {

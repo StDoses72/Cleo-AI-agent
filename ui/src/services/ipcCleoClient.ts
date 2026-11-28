@@ -39,8 +39,11 @@ import type {
   QuestionRequest,
 } from "../types";
 
+import { IpcWorkflowClient } from "./ipcWorkflows";
+
 export class IpcCleoClient implements CleoClient {
   private readonly bridge = window.cleoDesktop!;
+  readonly workflows = new IpcWorkflowClient((method, params) => this.bridge.request(method, params));
 
   getUiLanguage(): Promise<"zh-CN" | "en"> {
     return this.bridge.getUiLanguage?.() ?? Promise.resolve(window.cleoWindow?.language ?? "zh-CN");

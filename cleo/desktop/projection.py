@@ -275,6 +275,21 @@ def timeline_from_events(
             output = _content_text(source.get("output") or source.get("aggregatedOutput") or content)
             if output:
                 item["output"] = output
+        elif event_type == "workflow_run" and isinstance(data.get("run"), dict):
+            # Every change of a run is an event; they are all the same one item.
+            runs = state.setdefault("workflow_runs", {})
+            run = data["run"]
+            shown = runs.get(run.get("id"))
+            if shown is None:
+                turn = str(data.get("turn_id") or current_turn_key)
+                shown = {"id": f"{turn}:workflow-{run.get('id')}", "type": "workflow",
+                         "turnId": turn}
+                runs[run.get("id")] = shown
+                items.append(shown)
+            shown["run"] = run
+        elif event_type == "workflow_proposal" and isinstance(data.get("definition"), dict):
+            items.append({"id": event_id, "type": "workflow-proposal",
+                          "definition": data["definition"]})
         elif event_type == "question_request":
             question = {"id": payload["id"], "type": "question", "request": dict(payload)}
             questions[payload["id"]] = question

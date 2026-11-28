@@ -51,7 +51,8 @@
       "limit": 0,
       "output": null,
       "used": null
-    }
+    },
+    "workflowSession": null
   },
   "disk": {
     "index": [
@@ -474,7 +475,8 @@
       "limit": 0,
       "output": null,
       "used": null
-    }
+    },
+    "workflowSession": null
   },
   "stream": [
     {

@@ -27,11 +27,17 @@ import { ComputerPanel } from "./ComputerPanel";
 import { FilesPanel, type FileReveal } from "./FilesPanel";
 import { BranchHoldNotice, CommentForm, ReviewCommentsBar, SourceControlRow, type BranchHold, type ReviewComment, type RunSourceControl } from "./ReviewActions";
 import { RuntimePermissions } from "./Overlays";
+import type { WorkflowRun } from "../workflow-types";
+import { WorkflowRunPanel } from "./workflows/WorkflowRun";
 
 /** "details" holds what used to be two tabs (run output and context); the old ids still open it. */
-export type InspectorTab = "changes" | "details" | "files" | "computer";
+export type InspectorTab = "changes" | "details" | "files" | "computer" | "workflow";
 
 interface InspectorProps {
+  /** The workflow run this conversation shows: its own, or the one a node session belongs to. */
+  workflowRun?: WorkflowRun | null;
+  /** Open one of the run's node sessions as a conversation. */
+  onOpenThread?: (threadId: string) => void;
   running: boolean;
   onStop: () => void;
   resizeHandle?: ReactNode;
@@ -78,6 +84,8 @@ interface InspectorProps {
  * is doing and using, and (in the desktop app) the live browser or computer view.
  */
 export function Inspector({
+  workflowRun = null,
+  onOpenThread,
   running,
   onStop,
   resizeHandle,
@@ -110,7 +118,10 @@ export function Inspector({
   wide = false,
   onToggleWide,
 }: InspectorProps) {
+  // A conversation that ran a workflow, or is one of its node sessions, shows the run's graph;
+  // the tab exists only then.
   const tabs: { id: InspectorTab; label: string; count?: number }[] = [
+    ...(workflowRun ? [{ id: "workflow" as const, label: tr("workflows.flow") }] : []),
     { id: "changes", label: tr("inspector.changes"), count: thread?.changes.length || undefined },
     ...(window.cleoDesktop?.files || activeTab === "files" ? [{ id: "files" as const, label: tr("approvalprompt.file") }] : []),
     { id: "details", label: tr("inspector.details") },
@@ -151,7 +162,9 @@ export function Inspector({
         </div>
       </header>
       <div className="inspector-panel" id="inspector-panel" role="tabpanel" aria-labelledby={`inspector-tab-${activeTab}`}>
-        {activeTab === "computer" ? (
+        {activeTab === "workflow" && workflowRun ? (
+          <WorkflowRunPanel run={workflowRun} viewing={thread?.workflowSession ?? null} onOpenSession={onOpenThread} />
+        ) : activeTab === "computer" ? (
           <ComputerPanel thread={thread} running={running} onStop={onStop} />
         ) : activeTab === "files" ? (
           <FilesPanel root={project?.path || null} threadId={thread?.id ?? null} reveal={fileReveal} onNotify={onNotify} onCopyText={onCopyText}

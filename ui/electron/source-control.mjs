@@ -5,7 +5,7 @@
 import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, appendFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep, win32 } from "node:path";
 
 const COMMAND_TIMEOUT_MS = 60_000;
 const NETWORK_TIMEOUT_MS = 120_000;
@@ -37,7 +37,7 @@ function checkedRoot(root) {
 /** Purpose: Keep a repository-relative path inside the repository. */
 export function checkedRelativePath(root, path) {
   const value = String(path || "").replaceAll("\\", "/");
-  if (!value || isAbsolute(value) || value.split("/").includes("..")) throw new Error("The file path is outside the project.");
+  if (!value || win32.isAbsolute(value) || isAbsolute(value) || value.split("/").includes("..")) throw new Error("The file path is outside the project.");
   const absolute = resolve(root, value);
   const back = relative(root, absolute);
   if (!back || back.startsWith("..") || isAbsolute(back)) throw new Error("The file path is outside the project.");

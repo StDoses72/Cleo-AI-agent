@@ -59,8 +59,11 @@ from cleo.desktop.turn_hooks import (
     SkillExpander,
     TurnHook,
     TurnRequest,
+    WorkflowAuthor,
     timed_reply,
 )
+from cleo.desktop.workflow_runs import WorkflowRuns
+from cleo.desktop.workflows import WorkflowLibrary
 from cleo.harnesses.capabilities import Capability, capabilities_of
 from cleo.harnesses.control import HarnessModel, SessionOptions
 from cleo.i18n import tr
@@ -180,6 +183,7 @@ class DesktopService:
         self._agent_factory = agent_factory
         self._dream_agent_factory = dream_agent_factory
         self._adapter_instance = adapter
+        self._workflow_runs = WorkflowRuns(self)
         # Account usage per harness: (time read, windows). A reading is reused for a minute.
         self._harness_usage: dict[str, tuple[float, list[dict[str, Any]]]] = {}
         self._chat = ChatRuntime(
@@ -229,6 +233,7 @@ class DesktopService:
         return self.runtime.ui_language
 
     async def load_workspace(self) -> dict[str, Any]:
+        self._workflow_runs.sweep()
         self._debug("load rows")
         rows = sorted(
             self.store.list_sessions(), key=lambda row: not self._runs.is_running(row["id"])
@@ -1221,6 +1226,11 @@ class DesktopService:
         if not prompt:
             raise ValueError("prompt cannot be empty")
         manifest = self.store.load_manifest(thread_id)
+        if manifest.get("workflow_session"):
+            raise ValueError(tr("workflows.node_session_read_only"))
+        # The reply to this command is read for the workflow it hands back.
+        authoring = (manifest["space"] == "productivity"
+                     and prompt.split(maxsplit=1)[0] == WorkflowAuthor.COMMAND)
         request = TurnRequest(manifest, prompt, emit)
         hooks = self._turn_hooks()
         for hook in hooks:
@@ -1236,6 +1246,9 @@ class DesktopService:
         steering = None
         try:
             await self._background_memory.cancel()
+            if manifest["space"] == "productivity" and prompt.split(maxsplit=1)[0] == "/workflow":
+                await self._workflow_runs.turn(manifest, prompt, emit)
+                return
             if prompt.startswith("/"):
                 await self._run_command(manifest, prompt, emit)
                 return
@@ -1260,13 +1273,7 @@ class DesktopService:
             manifest = self.store.load_manifest(thread_id)
             if self._routing_permission_setting(manifest) != "inherit":
                 await emit({"type": "runtime", "runtime": self._runtime_profile(manifest)})
-            async with self._runs.workspace_guard:
-                root = await asyncio.to_thread(self._workspace_root, manifest)
-                peers = self._runs.claim_workspace(thread_id, root)
-                self.store.update_manifest(thread_id, undo_checkpoint_shared=False)
-                if peers:
-                    for key in [thread_id, *peers]:
-                        self.store.update_manifest(key, undo_checkpoint_shared=True)
+            await self._claim_workspace(manifest)
             terminal = None
 
             async def run_event(event):
@@ -1339,6 +1346,8 @@ class DesktopService:
                 attachments = []
             await steering.close()
             if terminal and terminal["type"] == "done":
+                if authoring:
+                    await self._workflow_runs.propose(manifest, emit)
                 await emit(terminal)
         except asyncio.CancelledError:
             status = "interrupted" if manifest["space"] == "non_productivity" else "cancelled"
@@ -1374,6 +1383,8 @@ class DesktopService:
         """Purpose: The steps around every turn, in order (see ``turn_hooks``)."""
         return [
             ComputerUseHook(self._computer_command),
+            WorkflowAuthor(lambda: [item["id"] for item in
+                                    self._workflow_library().view()["harnesses"]]),
             SkillExpander(self._local_skills),
         ]
 
@@ -1505,6 +1516,16 @@ class DesktopService:
         status = inspect_git_status(cwd)
         return os.path.normcase(str(Path(status.repo_root if status else cwd).resolve()))
 
+    async def _claim_workspace(self, manifest: dict[str, Any]) -> None:
+        """Disable per-turn undo when multiple runs can edit the same workspace."""
+        thread_id = manifest["id"]
+        async with self._runs.workspace_guard:
+            root = await asyncio.to_thread(self._workspace_root, manifest)
+            peers = self._runs.claim_workspace(thread_id, root)
+            self.store.update_manifest(thread_id, undo_checkpoint_shared=bool(peers))
+            for peer in peers:
+                self.store.update_manifest(peer, undo_checkpoint_shared=True)
+
     async def cancel_run(self, *, thread_id: str, run_id: str | None = None) -> dict[str, Any]:
         return await self._runs.cancel(thread_id, run_id)
 
@@ -1518,6 +1539,14 @@ class DesktopService:
         manifest = self.store.load_manifest(thread_id)
         from cleo.routing.approvals import resolve_worker_approval
 
+        node_session = self._workflow_runs.approval_owner(thread_id, approval_id)
+        if node_session is not None:
+            # A node may ask directly or delegate to a worker with a file-backed approval.
+            result = resolve_worker_approval(self.store, node_session, approval_id, decision)
+            if result is None:
+                result = await self._adapter().resolve_approval(node_session, approval_id, decision)
+            self._workflow_runs.approval_resolved(thread_id, approval_id)
+            return result
         routed = resolve_worker_approval(self.store, thread_id, approval_id, decision)
         if routed is not None:
             self._runs.drop_approval(thread_id, approval_id)
@@ -1856,6 +1885,33 @@ class DesktopService:
             "defaultProductivityProvider": self.settings.productivity.default_provider,
             "defaultRoutingMode": self._routing_mode(None),
         }
+
+    def _workflow_library(self) -> WorkflowLibrary:
+        return WorkflowLibrary(self.settings.DATA_DIR / "workflows", self.settings.productivity)
+
+    async def get_workflow_library(self) -> dict[str, Any]:
+        """Output: Saved workflows, kept node definitions and the harnesses a node can run on."""
+        return self._workflow_library().view()
+
+    async def save_workflow(self, *, definition: dict[str, Any]) -> dict[str, Any]:
+        return self._workflow_library().save(definition)
+
+    async def remove_workflow(self, *, workflow_id: str) -> None:
+        self._workflow_library().remove(workflow_id)
+
+    async def save_workflow_role(self, *, fields: dict[str, Any]) -> dict[str, Any]:
+        return self._workflow_library().save_role(fields)
+
+    async def remove_workflow_role(self, *, role_id: str) -> None:
+        self._workflow_library().remove_role(role_id)
+
+    async def draft_workflow_node(self, *, intent: str, definition: dict[str, Any],
+                                  node_id: str) -> dict[str, Any]:
+        """Purpose: Have an agent write one node's definition from a sentence. Nothing is saved.
+
+        Output: The node's name, responsibility and access.
+        """
+        return await self._workflow_runs.draft_node(intent, definition, node_id)
 
     async def get_local_skills(
         self, *, provider: str, project_path: str | None = None

@@ -58,6 +58,9 @@ DESKTOP_METHODS: tuple[RpcMethod, ...] = (
               "get_harness_sync", "sync_harness_items", "get_ui_language", "set_ui_language"),
     *_methods("renderer", "get_routing_settings", "save_routing_settings",
               "refresh_routing_benchmarks", "save_benchmark_connection", "submit_routing_feedback"),
+    # Workflows.
+    *_methods("renderer", "get_workflow_library", "save_workflow", "remove_workflow",
+              "save_workflow_role", "remove_workflow_role", "draft_workflow_node"),
     # Model connections (configuration writes).
     *_methods("renderer", "save_model_profile", "save_dream_settings", "check_model_connection",
               "create_model_connection", "select_chat_model", "rename_model_connection",

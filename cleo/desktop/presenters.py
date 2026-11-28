@@ -150,6 +150,9 @@ def thread_view(
         # desktop can list it under its parent instead of as an unrelated task.
         "parentId": manifest.get("parent_session_id") or None,
         "routingTaskId": manifest.get("routing_task_id") or None,
+        # A session a workflow node ran: which run and node, so the desktop lists it under
+        # the conversation the workflow runs in and shows it without a composer.
+        "workflowSession": manifest.get("workflow_session") or None,
     }
 
 

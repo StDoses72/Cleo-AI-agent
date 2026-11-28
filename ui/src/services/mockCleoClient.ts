@@ -38,6 +38,10 @@ import type {
   QuestionRequest,
 } from "../types";
 import { mockThumbnail, permissionPresets, snapshot, uiChanges } from "./mockData";
+import { MockWorkflowClient } from "./mockWorkflows";
+import { CREATE_WORKFLOW_SKILL, workflowCommand, workflowNeeds } from "../workflow-command";
+import type { WorkflowRun } from "../workflow-types";
+import type { LocalSkill } from "../types";
 
 const delay = (milliseconds: number) =>
   new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
@@ -45,7 +49,13 @@ const delay = (milliseconds: number) =>
 const clone = <T,>(value: T): T => structuredClone(value);
 
 
+/** What a workflow hands back, as the reply's Markdown: bullets become list items and other lines their own paragraphs. */
+const workflowReply = (result: string) => result.replace(/^· /gm, "- ").replace(/\n(?!- |\d+\. |\n)/g, "\n\n");
+
 export class MockCleoClient implements CleoClient {
+  readonly workflows = new MockWorkflowClient();
+  /** Settles once the conversations that open with a workflow run in them are in place. */
+  private readonly seeded = this.seedWorkflowConversations();
   private memorySourceSettings: MemorySourceSettings = { sync_enabled: false, sources: [], disabled_sources: [] };
   async getMemorySources(): Promise<MemorySourcesState> {
     return { settings: clone(this.memorySourceSettings), sources: ["cleo", "codex", "claude"].map(id => ({
@@ -117,6 +127,8 @@ export class MockCleoClient implements CleoClient {
     ],
     activeAgent: "deepseek-flash", activeDreamAgent: "", dreamEnabled: true,
   };
+  /** The workflow run each conversation started last. */
+  private readonly workflowRuns = new Map<string, string>();
   private readonly approvalResolvers = new Map<string, { threadId: string; resolve: (decision: ApprovalDecision) => void }>();
   private readonly reviewingMemorySourceIds = new Set<string>();
   private readonly histories = new Map<string, TimelineItem[]>();
@@ -124,8 +136,118 @@ export class MockCleoClient implements CleoClient {
   private readonly activeRuns = new Map<string, string>();
   private readonly questions = new Map<string, { request: QuestionRequest; resolve: (answers: Record<string, string[]> | null) => void }>();
 
+  /** Purpose: Three conversations that already hold a workflow run when the demo opens, so a run
+   * can be looked at without starting one. One is a loop in its second round and still going,
+   * slowly; one is a parallel review that failed, was retried and finished; one was under way
+   * when the app quit, and waits to be continued. */
+  private async seedWorkflowConversations() {
+    const now = Date.now();
+    // They live in the project that is otherwise empty: a run that is going keeps its project's
+    // checkout busy, and the project the demo opens on stays free for everything else.
+    const project = "orbit-notes";
+    const going = this.workflows.seed("wf-plan-refute", "为笔记导出接口补上分页参数的校验", project, { startedAt: now, liveAfter: 2, pace: 12 });
+    const finished = this.workflows.seed("wf-cross-review", "评审笔记导出接口的分页改动", project,
+      { startedAt: now - 2 * 3_600_000, failed: "s2-maintain", retried: true });
+    const left = this.workflows.seed("wf-plan-refute", "给导出文件名加上日期后缀", project, { startedAt: now - 26 * 3_600_000, quitAfter: 3 });
+    // What is replayed settles before the next task; only the run left going carries on after it.
+    await delay(0);
+    const clock = (at: number) => new Date(at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+    const conversation = (id: string, runId: string, more: Pick<Thread, "status" | "updatedAt" | "activeRunId">, after: TimelineItem[] = []): Thread => {
+      const run = this.workflows.run(runId)!;
+      const items: TimelineItem[] = [
+        { id: `${id}-task`, type: "message", role: "user", content: run.task, time: clock(run.startedAt) },
+        { id: `workflow-${runId}`, type: "workflow", run },
+        ...after,
+      ];
+      this.histories.set(id, items);
+      this.workflowRuns.set(id, runId);
+      return { id, space: "productivity", projectId: project, title: run.task.slice(0, 26), summary: run.definition.name, items: clone(items), changes: [],
+        usage: { used: 0, limit: 128000, input: 0, output: 0 },
+        runtime: { provider: "codex", model: "gpt-5.6-sol", effort: null, access: "workspace-write", approval: "user", permissionOptions: permissionPresets.codex },
+        ...more };
+    };
+    const review = this.workflows.run(finished)!;
+    const threads = [
+      conversation("workflow-going", going, { status: "running", updatedAt: "刚刚", activeRunId: null }),
+      conversation("workflow-finished", finished, { status: "completed", updatedAt: "2 小时前", activeRunId: null }, [
+        { id: "workflow-finished-retry", type: "message", role: "user", content: "从失败处重试", time: clock((review.finishedAt ?? now) - 60_000) },
+        { id: `workflow-${finished}-result`, type: "message", role: "assistant", content: workflowReply(review.result ?? ""), time: clock(review.finishedAt ?? now) },
+      ]),
+      conversation("workflow-paused", left, { status: "attention", updatedAt: "昨天", activeRunId: null }),
+    ];
+    // The data outlives this client while a page is being developed: what an earlier one left goes.
+    // They are listed after the conversation the demo opens on, which stays the first.
+    const [first, ...rest] = snapshot.threads.filter((thread) => !threads.some((seeded) => seeded.id === thread.id));
+    snapshot.threads = [first, ...threads, ...rest];
+    this.waiting = { threadId: "workflow-going", runId: going };
+  }
+
+  /** The run left under way waits until its conversation is opened, so that nothing in the demo
+   * moves on its own: from then on it is a run going elsewhere that this window watches. */
+  private waiting: { threadId: string; runId: string } | null = null;
+  private wake(threadId: string) {
+    const thread = snapshot.threads.find((item) => item.id === threadId);
+    const held = this.waiting;
+    if (!held || !thread || (thread.id !== held.threadId && thread.parentId !== held.threadId)) return;
+    this.waiting = null;
+    const conversation = snapshot.threads.find((item) => item.id === held.threadId);
+    if (!conversation || this.workflows.run(held.runId)?.status !== "running") return;
+    const token = `workflow-${held.runId}`;
+    conversation.activeRunId = token;
+    this.activeRuns.set(held.threadId, token);
+    this.workflows.release(held.runId);
+    void this.followWorkflow(held.threadId, held.runId, token);
+  }
+
+  /** Purpose: A workflow run that no turn of this window is waiting on: when it ends, the
+   * conversation gets its reply and stops being a running one, as a window that only watches sees. */
+  private async followWorkflow(threadId: string, runId: string, token: string) {
+    let last: WorkflowRun | null = null;
+    for await (const run of this.workflows.watch(runId)) last = run;
+    const thread = snapshot.threads.find((item) => item.id === threadId);
+    if (!thread || this.activeRuns.get(threadId) !== token) return;
+    this.activeRuns.delete(threadId);
+    thread.activeRunId = null;
+    thread.updatedAt = "刚刚";
+    thread.status = last?.status === "completed" ? "completed" : "attention";
+    if (last?.status === "completed" && last.result) this.histories.get(threadId)?.push({ id: `workflow-${runId}-result`, type: "message", role: "assistant",
+      content: workflowReply(last.result), time: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) });
+  }
+
+  /** Purpose: Every session a workflow node ran is a conversation of its own, under the one the
+   * workflow runs in: what the node was handed, what it did, what it handed back. They are made
+   * and brought up to date from the runs whenever conversations are read. */
+  private syncWorkflowSessions() {
+    for (const [parentId, items] of [...this.histories]) {
+      const parent = snapshot.threads.find((thread) => thread.id === parentId);
+      for (const item of parent ? items : []) {
+        const run = item.type === "workflow" ? this.workflows.run(item.run.id) : null;
+        for (const session of run?.sessions ?? []) {
+          if (!session.threadId) continue;
+          const node = run!.definition.nodes.find((candidate) => candidate.id === session.nodeId);
+          const { title, items: timeline } = this.workflows.sessionConversation(run!, session);
+          const provider = node?.harness ?? parent!.runtime?.provider ?? "codex";
+          const thread: Thread = {
+            id: session.threadId, parentId, workflowSession: { runId: run!.id, nodeId: session.nodeId, sessionId: session.id },
+            space: "productivity", projectId: parent!.projectId, title, summary: run!.definition.name, items: [], changes: [],
+            updatedAt: session.status === "running" ? "刚刚" : parent!.updatedAt,
+            status: session.status === "running" ? "running" : "completed",
+            usage: { used: session.tokens ?? 0, limit: 128000, input: Math.round((session.tokens ?? 0) * 0.82), output: Math.round((session.tokens ?? 0) * 0.18) },
+            runtime: { ...parent!.runtime!, provider, model: node?.model ?? parent!.runtime?.model ?? "", effort: node?.effort ?? null,
+              access: session.access === "write" ? "workspace-write" : "read-only",
+              permissionOptions: permissionPresets[provider as "codex" | "claude"] ?? parent!.runtime?.permissionOptions },
+          };
+          const at = snapshot.threads.findIndex((candidate) => candidate.id === thread.id);
+          if (at >= 0) snapshot.threads[at] = thread; else snapshot.threads.push(thread);
+          this.histories.set(thread.id, timeline);
+        }
+      }
+    }
+  }
+
   async loadWorkspace(): Promise<WorkspaceSnapshot> {
-    await delay(520);
+    await Promise.all([delay(520), this.seeded]);
+    this.syncWorkflowSessions();
     const result = clone(snapshot);
     for (const thread of result.threads) {
       const { items, ...history } = await this.loadTimeline(thread.id);
@@ -143,8 +265,11 @@ export class MockCleoClient implements CleoClient {
     return clone({ memories: snapshot.memories, memoryOverview: snapshot.memoryOverview });
   }
 
-  async loadThread(threadId: string): Promise<Thread> {
+  async loadThread(threadId: string, activate = true): Promise<Thread> {
     await delay(120);
+    // Opened by the user, not read in passing.
+    if (activate) this.wake(threadId);
+    this.syncWorkflowSessions();
     const thread = snapshot.threads.find((candidate) => candidate.id === threadId);
     if (!thread) throw new Error(`Unknown thread: ${threadId}`);
     const { items, ...history } = await this.loadTimeline(threadId);
@@ -159,6 +284,8 @@ export class MockCleoClient implements CleoClient {
   }
 
   private editableTurns(threadId: string): string[] {
+    // What a workflow node was handed is not the user's to rewrite.
+    if (snapshot.threads.find((thread) => thread.id === threadId)?.workflowSession) return [];
     const stored = this.histories.get(threadId) ?? snapshot.threads.find(t => t.id === threadId)?.items ?? [];
     return stored.filter(item => item.type === "message" && item.role === "user" && !item.steer).map(item => item.id);
   }
@@ -174,9 +301,12 @@ export class MockCleoClient implements CleoClient {
 
   async loadTimeline(threadId: string, direction: "latest" | "before" | "after" = "latest", cursor?: string): Promise<TimelinePage> {
     await delay(30);
+    this.syncWorkflowSessions();
     const stored = this.histories.get(threadId) ?? snapshot.threads.find(t => t.id === threadId)?.items ?? [];
     let turn = "initial";
-    const all = stored.map((original, index) => {
+    const all = stored.map((stale, index) => {
+      // A workflow run is read as it is now, whoever is following it.
+      const original = stale.type === "workflow" ? { ...stale, run: this.workflows.run(stale.run.id) ?? stale.run } : stale;
       if (original.type === "message" && original.role === "user") turn = original.id;
       return { ...original, turnId: original.turnId ?? turn, cursor: String(index), order: index };
     });
@@ -270,6 +400,8 @@ export class MockCleoClient implements CleoClient {
     await delay(180);
     const index = snapshot.threads.findIndex((thread) => thread.id === threadId);
     if (index >= 0) snapshot.threads.splice(index, 1);
+    // The sessions of a workflow that ran in it go with it.
+    snapshot.threads = snapshot.threads.filter((thread) => !(thread.workflowSession && thread.parentId === threadId));
     if (snapshot.activeThreadId === threadId) {
       snapshot.activeThreadId = snapshot.threads[index]?.id ?? snapshot.threads[index - 1]?.id ?? null;
     }
@@ -329,7 +461,16 @@ export class MockCleoClient implements CleoClient {
       const turnId = `mock-turn-${runId}`;
       const items = this.histories.get(threadId) ?? clone(snapshot.threads.find(t => t.id === threadId)?.items ?? []);
       this.histories.set(threadId, items);
-      const user: TimelineItem = { id: turnId, turnId, cursor: String(items.length), order: items.length, type: "message", role: "user", content: prompt, time: "",
+      // A workflow command shows as the task it was started with, as the backend folds its own commands.
+      const workflow = workflowCommand(prompt);
+      const paused = this.workflows.run(this.workflowRuns.get(threadId) ?? "")?.status === "paused";
+      const shown = workflow ? workflow.task || (paused ? "继续" : "从失败处重试") : prompt;
+      // As the backend does: a conversation is named after the first thing asked in it.
+      if (!items.length) {
+        storedThread.title = (workflowNeeds(prompt) || shown).slice(0, 26);
+        storedThread.summary = (workflowNeeds(prompt) || shown).slice(0, 64);
+      }
+      const user: TimelineItem = { id: turnId, turnId, cursor: String(items.length), order: items.length, type: "message", role: "user", content: shown, time: "",
         ...(attachments.length ? { attachments: attachments.map(({ base64: _bytes, ...chip }) => chip) } : {}) };
       items.push(user);
       yield { type: "turn-started", item: user };
@@ -375,6 +516,9 @@ export class MockCleoClient implements CleoClient {
     prompt: string,
     _attachments: Attachment[] = [],
   ): AsyncGenerator<StreamEvent> {
+    const workflow = workflowCommand(prompt);
+    if (workflow) { yield* this.workflowTurn(threadId, workflow.target, workflow.task); return; }
+    if (workflowNeeds(prompt) !== null) { yield* this.createWorkflowTurn(prompt); return; }
     const runId = `${threadId}-${Date.now()}`;
     const isFailureDemo = /失败|error|fail/i.test(prompt);
     const needsApproval = /审批|approval|git commit/i.test(prompt);
@@ -596,9 +740,60 @@ export class MockCleoClient implements CleoClient {
     yield { type: "done", summary: prompt.slice(0, 54) };
   }
 
+  /** Purpose: The demo's stand-in for the skill that writes a workflow: from what the user says
+   * they need, a workflow handed back as one item for them to look at and add to their library. */
+  private async *createWorkflowTurn(prompt: string): AsyncGenerator<StreamEvent> {
+    const needs = workflowNeeds(prompt) ?? "";
+    const time = () => new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+    const turn = `create-${Date.now()}`;
+    await delay(420);
+    if (!needs) {
+      yield { type: "upsert-item", item: { id: `${turn}-ask`, type: "message", role: "assistant", content: "要创建什么样的工作流？", time: time() } };
+      yield { type: "done", summary: "" };
+      return;
+    }
+    yield { type: "upsert-item", item: { id: `${turn}-thought`, type: "thought", content: "按需求拆出节点，确定先后、并行和需要循环的地方", status: "running" } };
+    const definition = await this.workflows.draft(needs);
+    yield { type: "upsert-item", item: { id: `${turn}-thought`, type: "thought", content: "按需求拆出节点，确定先后、并行和需要循环的地方", status: "done" } };
+    yield { type: "upsert-item", item: { id: `proposal-${definition.id}`, type: "workflow-proposal", definition } };
+    // The drafter says why it chose this shape; that is the reply.
+    yield { type: "upsert-item", item: { id: `${turn}-reply`, type: "message", role: "assistant",
+      content: definition.description.split("任务：")[0].trim(), time: time() } };
+    yield { type: "done", summary: definition.name };
+  }
+
+  /** Purpose: A turn that runs a workflow. The run arrives as one timeline item, replaced as it
+   * advances; what reaches the result becomes the reply. `retry` resumes the conversation's last run. */
+  private async *workflowTurn(threadId: string, target: string, task: string): AsyncGenerator<StreamEvent> {
+    let runId = this.workflowRuns.get(threadId) ?? "";
+    if (target === "retry") {
+      if (!runId || !(await this.workflows.resume(runId))) { yield { type: "error", message: "没有可以重试的运行。" }; return; }
+    } else {
+      const definition = this.workflows.definition(target);
+      if (!definition) { yield { type: "error", message: "工作流不存在。" }; return; }
+      if (!task) { yield { type: "error", message: "需要一个任务。" }; return; }
+      const thread = snapshot.threads.find(item => item.id === threadId);
+      runId = (await this.workflows.start(definition, task, thread?.projectId ?? "")).id;
+      this.workflowRuns.set(threadId, runId);
+    }
+    let last: WorkflowRun | null = null;
+    for await (const run of this.workflows.watch(runId)) {
+      last = run;
+      yield { type: "upsert-item", item: { id: `workflow-${runId}`, type: "workflow", run } };
+    }
+    if (last?.status === "completed" && last.result) {
+      yield { type: "upsert-item", item: { id: `workflow-${runId}-result`, type: "message", role: "assistant", content: workflowReply(last.result),
+        time: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) } };
+    }
+    yield { type: "done", summary: last?.definition.name ?? "" };
+  }
+
   async cancelRun(_threadId: string, runId?: string): Promise<boolean> {
     const activeRunId = this.activeRuns.get(_threadId);
     if (!activeRunId || (runId && activeRunId !== runId)) return false;
+    // A workflow stops its agents first, so the conversation receives the run as it ended.
+    const workflowRun = this.workflowRuns.get(_threadId);
+    if (workflowRun) await this.workflows.stop(workflowRun);
     this.runVersions.set(_threadId, (this.runVersions.get(_threadId) ?? 0) + 1);
     await delay(250);
     if (this.activeRuns.has(_threadId) && this.activeRuns.get(_threadId) !== activeRunId) return true;
@@ -729,7 +924,10 @@ export class MockCleoClient implements CleoClient {
     };
   }
 
-  async getLocalSkills() { return []; }
+  // The demo's one skill stands in for the one that writes a workflow from a description.
+  async getLocalSkills(): Promise<LocalSkill[]> {
+    return [{ name: CREATE_WORKFLOW_SKILL.slice(1), command: CREATE_WORKFLOW_SKILL, source: "Cleo", path: "skills/create-workflow/SKILL.md" }];
+  }
 
   async getHarnessUsage(provider: string): Promise<HarnessUsage> {
     await delay(180);

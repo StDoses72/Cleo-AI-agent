@@ -126,9 +126,10 @@ export function VirtualTimeline<T extends Row>({ rows, viewport, follow, bottomI
   useLayoutEffect(() => {
     const element = viewport.current;
     if (!element) return;
-    if (moved) onScrollRef.current(renderTop - observedScrollTop.current!);
+    const delta = moved ? renderTop - observedScrollTop.current! : 0;
     const node = held && nodes.current.get(held.id);
-    if (follow.current) { element.scrollTop = element.scrollHeight; anchor.current = []; }
+    // A reader who has just moved is where they put themselves, also away from the pinned end.
+    if (follow.current && !moved) { element.scrollTop = element.scrollHeight; anchor.current = []; }
     else if (held && node) {
       const place = () => node.getBoundingClientRect().top - element.getBoundingClientRect().top;
       element.scrollTop += place() - held.top;
@@ -137,6 +138,10 @@ export function VirtualTimeline<T extends Row>({ rows, viewport, follow, bottomI
       if (held !== anchor.current[0] || Math.abs(place() - held.top) > 1) anchor.current = [];
     }
     observedScrollTop.current = element.scrollTop;
+    // Reported with the rows back in place. Before that the page has already changed while the
+    // position has not: the distances to its edges are not the ones the reader sees. What the
+    // listener does to the page in turn is seen here as well.
+    if (delta) { onScrollRef.current(delta); observedScrollTop.current = element.scrollTop; }
     if (!follow.current && !anchor.current.length) remember();
   });
 

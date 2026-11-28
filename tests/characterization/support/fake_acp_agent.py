@@ -82,6 +82,7 @@ class ScriptedAgent:
     def __init__(self) -> None:
         self._conn: Any = None
         self._ids = itertools.count(1)
+        self._mcp: dict[str, list[dict]] = {}
         self._options = {"model": "fake-model-a", "effort": "high"}
         self._cancelled: dict[str, asyncio.Event] = {}
 
@@ -122,13 +123,16 @@ class ScriptedAgent:
     async def new_session(self, cwd: str, mcp_servers: Any = None,
                           **_kwargs: Any) -> NewSessionResponse:
         _log({"method": "session/new", "cwd": cwd, "mcp_servers": _servers(mcp_servers)})
-        return NewSessionResponse(session_id=f"acp-session-{next(self._ids)}",
+        session_id = f"acp-session-{next(self._ids)}"
+        self._mcp[session_id] = _servers(mcp_servers)
+        return NewSessionResponse(session_id=session_id,
                                   config_options=self._config())
 
     async def load_session(self, cwd: str, session_id: str, mcp_servers: Any = None,
                            **_kwargs: Any) -> LoadSessionResponse:
         _log({"method": "session/load", "cwd": cwd, "session_id": session_id,
               "mcp_servers": _servers(mcp_servers)})
+        self._mcp[session_id] = _servers(mcp_servers)
         return LoadSessionResponse(config_options=self._config())
 
     async def set_config_option(self, config_id: str, session_id: str, value: Any,
@@ -154,6 +158,16 @@ class ScriptedAgent:
               "text": "".join(getattr(block, "text", "") or "" for block in prompt)})
         cancelled = self._cancelled[session_id] = asyncio.Event()
         await self._send(session_id, update_agent_thought_text("Thinking about the request."))
+        if "[[workflow-review]]" in request and "Call submit_workflow_verdict" in request:
+            from fastmcp import Client
+            from fastmcp.client.transports import StdioTransport
+
+            server = next(s for s in self._mcp[session_id] if s["name"] == "cleo_memory")
+            transport = StdioTransport(command=server["command"], args=server["args"],
+                                       keep_alive=False)
+            async with Client(transport) as client:
+                await client.call_tool("submit_workflow_verdict", {
+                    "verdict": "pass", "feedback": "Reviewed via the node's MCP server."})
         if "[[plan]]" in request:
             await self._send(session_id, update_plan([
                 plan_entry("Inspect the workspace", status="completed"),

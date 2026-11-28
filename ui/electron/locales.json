@@ -6438,5 +6438,593 @@
   "broker.ub_page_changed_since_screenshot": {
     "zh-CN": "截图之后页面已换到另一个网站，旧坐标作废。请重新截图。",
     "en": "The page moved to another website after the screenshot; its coordinates have expired. Take a new screenshot."
+  },
+  "workflows.title": {
+    "zh-CN": "工作流",
+    "en": "Workflows"
+  },
+  "workflows.open": {
+    "zh-CN": "打开工作流",
+    "en": "Open workflows"
+  },
+  "workflows.open_hint": {
+    "zh-CN": "让多个 agent 按固定流程完成任务",
+    "en": "Run agents through a fixed sequence"
+  },
+  "workflows.new": {
+    "zh-CN": "新建工作流",
+    "en": "New workflow"
+  },
+  "workflows.drafted_tag": {
+    "zh-CN": "AI 起草",
+    "en": "Drafted by AI"
+  },
+  "workflows.edit": {
+    "zh-CN": "编辑",
+    "en": "Edit"
+  },
+  "workflows.run": {
+    "zh-CN": "运行",
+    "en": "Run"
+  },
+  "workflows.duplicate": {
+    "zh-CN": "复制一份",
+    "en": "Duplicate"
+  },
+  "workflows.duplicate_value": {
+    "zh-CN": "复制 {p0}",
+    "en": "Duplicate {p0}"
+  },
+  "workflows.copy_name": {
+    "zh-CN": "{p0} 副本",
+    "en": "{p0} copy"
+  },
+  "workflows.delete": {
+    "zh-CN": "删除",
+    "en": "Delete"
+  },
+  "workflows.delete_value": {
+    "zh-CN": "删除 {p0}",
+    "en": "Delete {p0}"
+  },
+  "workflows.delete_confirm": {
+    "zh-CN": "删除工作流「{p0}」？",
+    "en": "Delete the workflow “{p0}”?"
+  },
+  "workflows.deleted_toast": {
+    "zh-CN": "已删除「{p0}」",
+    "en": "Deleted “{p0}”"
+  },
+  "workflows.saved_toast": {
+    "zh-CN": "已保存「{p0}」",
+    "en": "Saved “{p0}”"
+  },
+  "workflows.fix_issues_first": {
+    "zh-CN": "先处理列出的问题",
+    "en": "Fix the listed issues first"
+  },
+  "workflows.empty_title": {
+    "zh-CN": "还没有工作流",
+    "en": "No workflows yet"
+  },
+  "workflows.load_failed": {
+    "zh-CN": "无法读取工作流",
+    "en": "Could not load workflows"
+  },
+  "workflows.name": {
+    "zh-CN": "工作流名称",
+    "en": "Workflow name"
+  },
+  "workflows.name_placeholder": {
+    "zh-CN": "工作流名称",
+    "en": "Workflow name"
+  },
+  "workflows.save": {
+    "zh-CN": "保存",
+    "en": "Save"
+  },
+  "workflows.saved": {
+    "zh-CN": "已保存",
+    "en": "Saved"
+  },
+  "workflows.unsaved_changes": {
+    "zh-CN": "未保存",
+    "en": "Unsaved"
+  },
+  "workflows.not_saved": {
+    "zh-CN": "未保存",
+    "en": "Unsaved"
+  },
+  "workflows.discard_confirm": {
+    "zh-CN": "放弃未保存的更改？",
+    "en": "Discard unsaved changes?"
+  },
+  "workflows.loop": {
+    "zh-CN": "循环",
+    "en": "Loop"
+  },
+  "workflows.diagram_task": {
+    "zh-CN": "任务",
+    "en": "Task"
+  },
+  "workflows.diagram_result": {
+    "zh-CN": "结果",
+    "en": "Result"
+  },
+  "workflows.round_value": {
+    "zh-CN": "第 {p0} 轮",
+    "en": "Round {p0}"
+  },
+  "workflows.judge": {
+    "zh-CN": "判定",
+    "en": "Judge"
+  },
+  "workflows.unnamed_role": {
+    "zh-CN": "未命名",
+    "en": "Unnamed"
+  },
+  "workflows.issues_title": {
+    "zh-CN": "{p0} 处问题",
+    "en": "{p0} issues"
+  },
+  "workflows.issues_title_one": {
+    "zh-CN": "{p0} 处问题",
+    "en": "{p0} issue"
+  },
+  "workflows.max_items": {
+    "zh-CN": "最多几项",
+    "en": "Item limit"
+  },
+  "workflows.max_rounds": {
+    "zh-CN": "最多几轮",
+    "en": "Round limit"
+  },
+  "workflows.on_exhausted": {
+    "zh-CN": "轮数用完仍未通过",
+    "en": "When the rounds run out"
+  },
+  "workflows.on_exhausted_stop": {
+    "zh-CN": "停下来交给我",
+    "en": "Stop and hand it to me"
+  },
+  "workflows.on_exhausted_continue": {
+    "zh-CN": "带着现有结果继续",
+    "en": "Continue with what there is"
+  },
+  "workflows.outline_each": {
+    "zh-CN": "逐项 · {p0}",
+    "en": "{p0} per item"
+  },
+  "workflows.outline_loop": {
+    "zh-CN": "{p0} ⟲ ≤{p1} 轮",
+    "en": "{p0} ⟲ ≤{p1} rounds"
+  },
+  "workflows.role": {
+    "zh-CN": "角色",
+    "en": "Role"
+  },
+  "workflows.role_placeholder": {
+    "zh-CN": "名称",
+    "en": "Name"
+  },
+  "workflows.instructions": {
+    "zh-CN": "指令",
+    "en": "Instructions"
+  },
+  "workflows.instructions_placeholder": {
+    "zh-CN": "它负责什么、交回什么、不做什么",
+    "en": "What it is responsible for, what it returns, what it leaves alone"
+  },
+  "workflows.access_write": {
+    "zh-CN": "可修改",
+    "en": "Can edit"
+  },
+  "workflows.issue_name_missing": {
+    "zh-CN": "工作流需要一个名称",
+    "en": "The workflow needs a name"
+  },
+  "workflows.issue_role_missing": {
+    "zh-CN": "有节点没有角色名",
+    "en": "A node has no role name"
+  },
+  "workflows.issue_instructions_missing": {
+    "zh-CN": "「{p0}」没有指令",
+    "en": "“{p0}” has no instructions"
+  },
+  "workflows.fact_elapsed": {
+    "zh-CN": "用时",
+    "en": "Elapsed"
+  },
+  "workflows.fact_agents": {
+    "zh-CN": "会话",
+    "en": "Sessions"
+  },
+  "workflows.fact_tokens": {
+    "zh-CN": "Token",
+    "en": "Tokens"
+  },
+  "workflows.status_pending": {
+    "zh-CN": "等待中",
+    "en": "Waiting"
+  },
+  "workflows.status_running": {
+    "zh-CN": "运行中",
+    "en": "Running"
+  },
+  "workflows.status_done": {
+    "zh-CN": "已完成",
+    "en": "Done"
+  },
+  "workflows.status_failed": {
+    "zh-CN": "失败",
+    "en": "Failed"
+  },
+  "workflows.status_cancelled": {
+    "zh-CN": "已取消",
+    "en": "Cancelled"
+  },
+  "workflows.verdict_pass": {
+    "zh-CN": "通过",
+    "en": "Pass"
+  },
+  "workflows.verdict_revise": {
+    "zh-CN": "需要修改",
+    "en": "Revise"
+  },
+  "workflows.canvas": {
+    "zh-CN": "工作流画布",
+    "en": "Workflow canvas"
+  },
+  "workflows.canvas_empty_hint": {
+    "zh-CN": "右键新建节点",
+    "en": "Right-click to add a node"
+  },
+  "workflows.copies_each": {
+    "zh-CN": "逐项运行",
+    "en": "Runs once per item"
+  },
+  "workflows.each_mark": {
+    "zh-CN": "按清单逐项运行，最多 {p0} 项",
+    "en": "Runs once per list item, up to {p0}"
+  },
+  "workflows.edge": {
+    "zh-CN": "连线",
+    "en": "Edge"
+  },
+  "workflows.fact_nodes": {
+    "zh-CN": "完成节点",
+    "en": "Nodes done"
+  },
+  "workflows.retry_failed": {
+    "zh-CN": "从失败处重试",
+    "en": "Retry from the failure"
+  },
+  "workflows.fit": {
+    "zh-CN": "适应画布",
+    "en": "Fit to view"
+  },
+  "workflows.tidy": {
+    "zh-CN": "整理布局",
+    "en": "Tidy layout"
+  },
+  "workflows.zoom_in": {
+    "zh-CN": "放大",
+    "en": "Zoom in"
+  },
+  "workflows.zoom_out": {
+    "zh-CN": "缩小",
+    "en": "Zoom out"
+  },
+  "workflows.view_controls": {
+    "zh-CN": "视图",
+    "en": "View"
+  },
+  "workflows.undo": {
+    "zh-CN": "撤销",
+    "en": "Undo"
+  },
+  "workflows.redo": {
+    "zh-CN": "重做",
+    "en": "Redo"
+  },
+  "workflows.node": {
+    "zh-CN": "节点",
+    "en": "Node"
+  },
+  "workflows.issue_no_nodes": {
+    "zh-CN": "画布上还没有节点",
+    "en": "The canvas has no nodes yet"
+  },
+  "workflows.issue_start_unconnected": {
+    "zh-CN": "「任务」还没有连到任何节点",
+    "en": "The task is not connected to any node"
+  },
+  "workflows.issue_end_unconnected": {
+    "zh-CN": "没有节点连到「结果」",
+    "en": "No node is connected to the result"
+  },
+  "workflows.issue_node_no_input": {
+    "zh-CN": "没有连线指向「{p0}」",
+    "en": "Nothing leads to “{p0}”"
+  },
+  "workflows.issue_node_no_output": {
+    "zh-CN": "「{p0}」没有下一步",
+    "en": "“{p0}” leads nowhere"
+  },
+  "workflows.issue_cycle": {
+    "zh-CN": "连线形成了没有上限的环",
+    "en": "The edges form a circle without a limit"
+  },
+  "workflows.issue_loop_target": {
+    "zh-CN": "循环「{p0}」要回到的节点已不在它前面",
+    "en": "The loop “{p0}” no longer returns to a node before it"
+  },
+  "workflows.issue_loop_rounds": {
+    "zh-CN": "循环「{p0}」的轮数要在 1 到 5 之间",
+    "en": "The loop “{p0}” needs a round limit from 1 to 5"
+  },
+  "workflows.issue_loop_leak": {
+    "zh-CN": "循环「{p0}」只能从起点进、从判定节点出",
+    "en": "The loop “{p0}” is entered at its start and left from its judge only"
+  },
+  "workflows.issue_loop_overlap": {
+    "zh-CN": "循环「{p0}」和另一个循环重叠了",
+    "en": "The loop “{p0}” overlaps another loop"
+  },
+  "workflows.issue_each_predecessor": {
+    "zh-CN": "「{p0}」前面要正好一个返回清单的节点",
+    "en": "“{p0}” needs exactly one node before it that returns a list"
+  },
+  "workflows.issue_each_range": {
+    "zh-CN": "「{p0}」的项数上限要在 2 到 8 之间",
+    "en": "“{p0}” needs an item limit from 2 to 8"
+  },
+  "workflows.loop_label": {
+    "zh-CN": "未通过时返回 · 最多 {p0} 轮",
+    "en": "Back if not passed · up to {p0} rounds"
+  },
+  "workflows.menu_new": {
+    "zh-CN": "新建节点",
+    "en": "New node"
+  },
+  "workflows.menu_delete_edge": {
+    "zh-CN": "删除连线",
+    "en": "Delete edge"
+  },
+  "workflows.menu_delete_node": {
+    "zh-CN": "删除节点",
+    "en": "Delete node"
+  },
+  "workflows.menu_duplicate_node": {
+    "zh-CN": "复制节点",
+    "en": "Duplicate node"
+  },
+  "workflows.port_hint": {
+    "zh-CN": "拖出连线",
+    "en": "Drag to connect"
+  },
+  "workflows.preset_blank": {
+    "zh-CN": "空白节点",
+    "en": "Blank node"
+  },
+  "workflows.preset_planner": {
+    "zh-CN": "规划者",
+    "en": "Planner"
+  },
+  "workflows.preset_planner_text": {
+    "zh-CN": "把任务拆成可验证的步骤：列出要改的文件、每一步的验收方式和风险。收到修改意见时逐条回应并修订方案。",
+    "en": "Break the task into steps that can be checked: the files to change, how each step is verified, and the risks. When objections come back, answer each one and revise the plan."
+  },
+  "workflows.preset_reviewer": {
+    "zh-CN": "反驳者",
+    "en": "Refuter"
+  },
+  "workflows.preset_reviewer_text": {
+    "zh-CN": "找出上一步产出里会失败的地方：遗漏的调用方、没有覆盖的边界、无法验证的步骤。没有阻断问题时判定通过。",
+    "en": "Find where the work before you would fail: callers it missed, cases it does not cover, steps that cannot be checked. Pass it when nothing blocks."
+  },
+  "workflows.preset_executor": {
+    "zh-CN": "执行者",
+    "en": "Executor"
+  },
+  "workflows.preset_executor_text": {
+    "zh-CN": "按上一步通过的方案修改代码，不扩大范围；每完成一步运行对应的检查。",
+    "en": "Change the code as the approved plan says, without widening the scope. Run the matching check after each step."
+  },
+  "workflows.preset_acceptance": {
+    "zh-CN": "验收者",
+    "en": "Acceptance"
+  },
+  "workflows.preset_acceptance_text": {
+    "zh-CN": "对照任务和方案逐项核对改动，给出通过或未通过的结论和证据。",
+    "en": "Check the changes against the task and the plan, item by item, and give a verdict with evidence."
+  },
+  "workflows.refused_exists": {
+    "zh-CN": "这两个节点已经连上了",
+    "en": "These two are already connected"
+  },
+  "workflows.refused_same": {
+    "zh-CN": "节点不能连到自己",
+    "en": "A node cannot connect to itself"
+  },
+  "workflows.refused_direction": {
+    "zh-CN": "连线要从「任务」出发、在「结果」结束",
+    "en": "Edges start from the task and finish at the result"
+  },
+  "workflows.refused_second_loop": {
+    "zh-CN": "一个节点只能判定一个循环",
+    "en": "A node can judge only one loop"
+  },
+  "workflows.untitled": {
+    "zh-CN": "未命名工作流",
+    "en": "Untitled workflow"
+  },
+  "workflows.remove_from_task": {
+    "zh-CN": "不用这个工作流",
+    "en": "Remove the workflow"
+  },
+  "workflows.flow": {
+    "zh-CN": "流程",
+    "en": "Flow"
+  },
+  "workflows.ask_placeholder": {
+    "zh-CN": "这个节点做什么？",
+    "en": "What does this node do?"
+  },
+  "workflows.drafting_node": {
+    "zh-CN": "正在起草…",
+    "en": "Drafting…"
+  },
+  "workflows.menu_saved": {
+    "zh-CN": "保存的节点",
+    "en": "Saved nodes"
+  },
+  "workflows.keep_role": {
+    "zh-CN": "保存节点",
+    "en": "Keep node"
+  },
+  "workflows.role_kept": {
+    "zh-CN": "已保存节点「{p0}」",
+    "en": "Kept the node “{p0}”"
+  },
+  "workflows.kept_roles": {
+    "zh-CN": "保存的节点",
+    "en": "Saved nodes"
+  },
+  "workflows.redraft_placeholder": {
+    "zh-CN": "一句话，让 AI 重写",
+    "en": "One sentence, and AI rewrites it"
+  },
+  "workflows.harness": {
+    "zh-CN": "Harness",
+    "en": "Harness"
+  },
+  "workflows.model": {
+    "zh-CN": "模型",
+    "en": "Model"
+  },
+  "workflows.effort": {
+    "zh-CN": "思考强度",
+    "en": "Thinking"
+  },
+  "workflows.effort_default": {
+    "zh-CN": "默认强度",
+    "en": "Default thinking"
+  },
+  "workflows.speed": {
+    "zh-CN": "速度",
+    "en": "Speed"
+  },
+  "workflows.speed_standard": {
+    "zh-CN": "标准速度",
+    "en": "Standard speed"
+  },
+  "workflows.runtime_inherit": {
+    "zh-CN": "跟随发起的对话",
+    "en": "Same as the conversation"
+  },
+  "workflows.runtime_inherit_short": {
+    "zh-CN": "跟随对话",
+    "en": "Conversation"
+  },
+  "workflows.runtime_unknown": {
+    "zh-CN": "已不存在的模型",
+    "en": "A model that no longer exists"
+  },
+  "workflows.runtime_unavailable": {
+    "zh-CN": "不可用",
+    "en": "unavailable"
+  },
+  "workflows.issue_runtime_unknown": {
+    "zh-CN": "「{p0}」选的模型已不存在",
+    "en": "The model chosen for “{p0}” no longer exists"
+  },
+  "workflows.issue_runtime_unavailable": {
+    "zh-CN": "「{p0}」选的 harness 现在不可用",
+    "en": "The harness chosen for “{p0}” is unavailable now"
+  },
+  "workflows.more": {
+    "zh-CN": "更多",
+    "en": "More"
+  },
+  "workflows.limit_write": {
+    "zh-CN": "可以修改文件",
+    "en": "May edit files"
+  },
+  "workflows.limit_worktree": {
+    "zh-CN": "独立 worktree",
+    "en": "Own worktree"
+  },
+  "workflows.limit_delegate": {
+    "zh-CN": "可以派子任务",
+    "en": "May delegate subtasks"
+  },
+  "workflows.show_graph": {
+    "zh-CN": "查看流程图",
+    "en": "Show the graph"
+  },
+  "workflows.pick_node": {
+    "zh-CN": "双击节点打开会话",
+    "en": "Double-click a node to open its session"
+  },
+  "workflows.session_viewing": {
+    "zh-CN": "正在查看",
+    "en": "Open now"
+  },
+  "workflows.back_to_workflow": {
+    "zh-CN": "回到启动这个工作流的对话",
+    "en": "Back to the conversation that started this workflow"
+  },
+  "workflows.node_sessions": {
+    "zh-CN": "节点会话",
+    "en": "Node sessions"
+  },
+  "workflows.blank_canvas": {
+    "zh-CN": "空白画布",
+    "en": "Blank canvas"
+  },
+  "workflows.ask_ai": {
+    "zh-CN": "问 AI",
+    "en": "Ask AI"
+  },
+  "workflows.ask_prompt": {
+    "zh-CN": "帮我创建一个工作流。以下是我的需求：",
+    "en": "Help me create a workflow. Here is what I need:"
+  },
+  "workflows.proposal_open": {
+    "zh-CN": "打开",
+    "en": "Open"
+  },
+  "workflows.node_count": {
+    "zh-CN": "{p0} 个节点",
+    "en": "{p0} nodes"
+  },
+  "workflows.node_count_one": {
+    "zh-CN": "{p0} 个节点",
+    "en": "{p0} node"
+  },
+  "workflows.issue_invalid_graph": {
+    "zh-CN": "检查重复的节点、连线编号和缺失的端点。",
+    "en": "Check for duplicate node or edge IDs and missing endpoints."
+  },
+  "workflows.issue_read_only_unavailable": {
+    "zh-CN": "「{p0}」的运行环境不能强制只读。",
+    "en": "The harness for {p0} cannot enforce read-only access."
+  },
+  "workflows.issue_tools_missing": {
+    "zh-CN": "「{p0}」要交回判定或清单，它的 harness 做不到",
+    "en": "“{p0}” returns a verdict or a list, which its harness cannot do"
+  },
+  "workflows.status_paused": {
+    "zh-CN": "已暂停",
+    "en": "Paused"
+  },
+  "workflows.continue_run": {
+    "zh-CN": "继续",
+    "en": "Continue"
+  },
+  "workflows.permission": {
+    "zh-CN": "权限",
+    "en": "Permissions"
   }
 }

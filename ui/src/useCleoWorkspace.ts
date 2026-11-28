@@ -32,6 +32,7 @@ import type {
 } from "./types";
 import { projectsInSpace } from "./runtime-labels";
 import { nextPendingSwitch, runtimeWithPendingSwitch, type PendingHarnessSwitch } from "./harness-handoff";
+import { workflowCommand, workflowNeeds } from "./workflow-command";
 
 function currentTime() {
   return new Date().toLocaleTimeString(getLanguage(), { hour: "2-digit", minute: "2-digit" });
@@ -477,6 +478,31 @@ export function useCleoWorkspace() {
     return refreshed;
   };
 
+  // A node receives its threadId after its first "running" event. Fetch just that
+  // child and ignore an older load if the same child has since finished.
+  const workflowSessions = useRef(new Map<string, string>());
+  const noteWorkflowRun = (item: TimelineItem) => {
+    if (item.type !== "workflow") return;
+    for (const session of item.run.sessions) {
+      const id = session.threadId;
+      if (!id || workflowSessions.current.get(id) === session.status) continue;
+      workflowSessions.current.set(id, session.status);
+      void cleoClient.loadThread(id, false).then(loaded => {
+        if (workflowSessions.current.get(id) !== session.status) return;
+        threadVersions.current.set(id, (threadVersions.current.get(id) ?? 0) + 1);
+        setSnapshot(current => {
+          if (!current) return current;
+          const exists = current.threads.some(thread => thread.id === id);
+          return { ...current, threads: exists ? current.threads.map(thread => thread.id === id
+            ? { ...thread, status: loaded.status, title: loaded.title, workflowSession: loaded.workflowSession }
+            : thread) : [...current.threads, loaded] };
+        });
+      }).catch(() => {
+        if (workflowSessions.current.get(id) === session.status) workflowSessions.current.delete(id);
+      });
+    }
+  };
+
   const refreshLanguage = async () => {
     const [refreshed, catalog] = await Promise.all([
       refreshWorkspace(() => cleoClient.loadWorkspace()), cleoClient.getRuntimeCatalog(),
@@ -551,6 +577,7 @@ export function useCleoWorkspace() {
           const loaded = await cleoClient.loadThread(id, false);
           if (!active || runLocks.current.get(id) !== token) return;
           loaded.items.forEach(item => acknowledgeSteer(id, item));
+          loaded.items.forEach(noteWorkflowRun);
           updateThread(id, current => history.isFollowing(id) ? loaded : { ...loaded,
             items: current.items, history: current.history && { ...current.history,
               total: Math.max(current.history.total, loaded.history?.total ?? 0),
@@ -669,6 +696,13 @@ export function useCleoWorkspace() {
       .then((loaded) => {
         loaded.items.forEach(item => acknowledgeSteer(threadId, item));
         if (selectionRef.current !== selection || runLocks.current.has(threadId)) return;
+        // A run found going when its conversation is opened is watched from here on, as one
+        // found going when the app starts is.
+        if (loaded.activeRunId) {
+          runLocks.current.set(threadId, loaded.activeRunId);
+          setRuns(current => ({ ...current, [threadId]: loaded.activeRunId! }));
+          setRestoredRuns(current => ({ ...current, [threadId]: loaded.activeRunId! }));
+        }
         // The newest page is asked for at the same time and usually arrives first. The view then
         // brings everything else (what can be edited or undone, the changes, the skills). Whatever
         // was changed here while it was on its way is newer than the view and stays: the timeline
@@ -899,11 +933,15 @@ export function useCleoWorkspace() {
     }
     if (lockKey !== threadId) runLocks.current.delete(lockKey);
     runLocks.current.set(threadId, token);
+    // A workflow command shows as the task it was given, here as in the saved conversation.
+    const workflow = workflowCommand(prompt);
+    const paused = thread.items.findLast((item) => item.type === "workflow")?.run.status === "paused";
+    const shown = workflow ? workflow.task || tr(paused ? "workflows.continue_run" : "workflows.retry_failed") : prompt;
     const userItem: TimelineItem = {
       id: `${threadId}-user-${Date.now()}`,
       type: "message",
       role: "user",
-      content: prompt,
+      content: shown,
       time: currentTime(),
       // Chips show at once; the backend's turn-started item carries the saved records.
       ...(pendingAttachments.length ? { attachments: pendingAttachments.map(({ base64: _bytes, ...chip }) => chip) } : {}),
@@ -918,8 +956,9 @@ export function useCleoWorkspace() {
     }));
     updateThread(threadId, (current) => ({
       ...current,
-      title: current.items.length === 0 ? prompt.slice(0, 26) : current.title,
-      summary: prompt.slice(0, 64),
+      // A conversation that opens by asking for a workflow is named after what was asked for.
+      title: current.items.length === 0 ? (workflowNeeds(prompt) || shown).slice(0, 26) : current.title,
+      summary: (workflowNeeds(prompt) || shown).slice(0, 64),
       status: "running",
       steerReady: false,
       updatedAt: tr("memoryview.just_now"),
@@ -953,6 +992,7 @@ export function useCleoWorkspace() {
         } else if (event.type === "upsert-item") {
           const projected = { ...event.item, turnId: event.item.turnId ?? turnId };
           upsertTimelineItem(threadId, projected);
+          noteWorkflowRun(projected);
           if (event.item.type === "tool" && /subtask/i.test(event.item.name)) {
             delegating = true;
             if (Date.now() - lastListRefresh > 1500) refreshSubtasks();

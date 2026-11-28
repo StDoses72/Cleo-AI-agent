@@ -26,6 +26,10 @@ import {
   type CommandAction,
 } from "./components/Overlays";
 import { ThreadSidebar } from "./components/ThreadSidebar";
+import { WorkflowView, workflowHome, type WorkflowScreen } from "./components/workflows/WorkflowView";
+import { latestWorkflowRun } from "./components/workflows/WorkflowRun";
+import type { WorkflowDefinition, WorkflowRun } from "./workflow-types";
+import { CREATE_WORKFLOW_SKILL } from "./workflow-command";
 import { projectBranchName, useCleoWorkspace } from "./useCleoWorkspace";
 import { cleoClient } from "./services/cleoClient";
 import { useLanguage, setLanguage, type UiLanguage } from "./i18n";
@@ -41,22 +45,72 @@ export function App() {
   // Handlers that outlive this render (system notifications) act on the latest workspace.
   const workspaceRef = useRef(workspace);
   workspaceRef.current = workspace;
+  // The workflows page takes the main pane without changing which conversation is selected, so
+  // closing it returns to where the user was. Where it stands (an unsaved edit, a run) is kept.
+  const workflowClient = cleoClient.workflows;
+  const [workflowsOpen, setWorkflowsOpen] = useState(false);
+  const [workflowScreen, setWorkflowScreen] = useState<WorkflowScreen>(workflowHome);
+  const showWorkflows = workflowsOpen && Boolean(workflowClient);
+  // The saved workflows, by name, for the composer's `/workflow` menu.
+  const [workflowChoices, setWorkflowChoices] = useState<{ id: string; name: string }[]>([]);
+  const refreshWorkflowChoices = () => {
+    void workflowClient?.library().then((library) => setWorkflowChoices(library.workflows.map(({ id, name }) => ({ id, name })))).catch(() => {});
+  };
+  useEffect(refreshWorkflowChoices, [workflowClient]);
+  // A workflow started from the library runs in a conversation: a new task opens with the
+  // workflow chosen, waiting for the task it should be started with.
+  // A workflow an agent wrote in a conversation opens built on the canvas, where the user keeps
+  // it or not: as the saved copy if the library has it by now, otherwise as a new one.
+  const openWorkflow = (definition: WorkflowDefinition) => {
+    void workflowClient?.library().then((library) => {
+      const saved = library.workflows.find((item) => item.id === definition.id);
+      setWorkflowScreen({ name: "editor", definition: saved ?? definition, baseline: saved ? JSON.stringify(saved) : null });
+      setWorkflowsOpen(true);
+    }).catch((error: unknown) => notify(error instanceof Error ? error.message : String(error), "error"));
+  };
+  const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
+  const startTaskWith = (prompt: string) => {
+    setWorkflowsOpen(false);
+    workspace.selectSpace("productivity");
+    void workspace.createThread();
+    setPendingPrompt(prompt);
+  };
+  const runWorkflow = (workflowId: string) => startTaskWith(`/workflow ${workflowId} `);
+  // Asking AI for a workflow is a conversation with the skill that writes one: it opens with the
+  // skill called, in the user's language, and waits for what they need.
+  const askForWorkflow = () => startTaskWith(`${CREATE_WORKFLOW_SKILL} ${tr("workflows.ask_prompt")}`);
+  useEffect(() => {
+    if (!pendingPrompt || workspace.activeSpace !== "productivity" || workspace.activeThreadId !== null || showWorkflows) return;
+    workspace.setPrompt(pendingPrompt);
+    setPendingPrompt(null);
+    requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.composer [data-testid="composer-input"]')?.focus());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingPrompt, workspace.activeSpace, workspace.activeThreadId, workspace.activeProjectId, showWorkflows]);
   const newTask = () => {
+    setWorkflowsOpen(false);
     if (workspace.activeSpace === "memory") workspace.selectSpace("productivity");
     void workspace.createThread();
   };
   const newChat = () => {
+    setWorkflowsOpen(false);
     workspace.selectSpace("chat");
     void workspace.createThread();
   };
   // The "+" on the development section always starts a development task, even while a chat is open.
   const newDevTask = () => {
+    setWorkflowsOpen(false);
     workspace.selectSpace("productivity");
     void workspace.createThread();
   };
   const openMemory = () => {
+    setWorkflowsOpen(false);
     setMemoryView("all");
     workspace.selectSpace("memory");
+  };
+  /** Open a conversation from anywhere, leaving the workflows page if it is on screen. */
+  const openThread = (threadId: string) => {
+    setWorkflowsOpen(false);
+    workspace.selectThread(threadId);
   };
   useEffect(() => {
     // Tells the version switcher this program started; otherwise it rolls back to the previous one.
@@ -101,10 +155,13 @@ export function App() {
   const inspectedChanges = workspace.activeThread?.changes.length ?? 0;
   // A tab the user picked for this conversation is kept; otherwise new changes bring Changes forward.
   const tabChosenFor = useRef<string | null>(null);
+  const activeRunRef = useRef<WorkflowRun | null>(null);
   const chooseInspectorTab = (tab: InspectorTab) => { tabChosenFor.current = inspectedThreadId; setInspectorTab(tab); };
   useEffect(() => {
     tabChosenFor.current = null;
     setInspectorTab(current => current === "computer" && computerRunRef.current ? current
+      // Going between a workflow's conversation and its node sessions keeps the run's graph in view.
+      : current === "workflow" && activeRunRef.current ? current
       : workspace.activeThread?.changes.length ? "changes" : "details");
   }, [inspectedThreadId]);
   useEffect(() => {
@@ -130,7 +187,27 @@ export function App() {
     }).catch(() => { /* The task timeline reports connection failures. */ });
     return () => { cancelled = true; };
   }, [computerRun, inspectorSpace]);
-  const showInspector = inspectorOpen && workspace.activeSpace !== "memory";
+  const showInspector = inspectorOpen && workspace.activeSpace !== "memory" && !showWorkflows;
+  // A conversation's workflow run brings its graph forward once: a run that is going opens the
+  // pane beside the conversation; one that has ended takes the tab unless the user picked another.
+  // A node session shows the run it belongs to: the latest copy any loaded conversation holds.
+  const seenRuns = useRef(new Map<string, WorkflowRun>());
+  for (const thread of workspace.snapshot?.threads ?? []) {
+    for (const item of thread.items) if (item.type === "workflow") seenRuns.current.set(item.run.id, item.run);
+  }
+  const activeRun = latestWorkflowRun(workspace.activeThread?.items)
+    ?? (workspace.activeThread?.workflowSession ? seenRuns.current.get(workspace.activeThread.workflowSession.runId) ?? null : null);
+  activeRunRef.current = activeRun;
+  const shownRun = useRef<string | null>(null);
+  useEffect(() => {
+    if (!activeRun || shownRun.current === activeRun.id) return;
+    if (activeRun.status !== "running" && tabChosenFor.current === inspectedThreadId) return;
+    shownRun.current = activeRun.id;
+    tabChosenFor.current = inspectedThreadId;
+    setInspectorTab("workflow");
+    if (activeRun.status === "running") setInspectorBySpace(current => ({ ...current, productivity: true }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRun?.id, activeRun?.status]);
   const sidebarHidden = sidebarCollapsed || (compactColumns && showInspector);
   const inspectorResize = useInspectorResize(String(sidebarHidden), showInspector);
   const [commandOpen, setCommandOpen] = useState(false);
@@ -204,6 +281,7 @@ export function App() {
   useEffect(() => window.cleoWindow?.onOpenMemory?.(() => {
     setSettingsOpen(false);
     setCommandOpen(false);
+    setWorkflowsOpen(false);
     setMemoryView("all");
     workspace.selectSpace("memory");
   }), [workspace.selectSpace]);
@@ -233,7 +311,7 @@ export function App() {
         : state === "attention" ? tr("notify.needs_attention") : tr("notify.finished");
       const show = () => {
         const notice = new Notification(thread.title, { body, tag: `cleo-${thread.id}` });
-        notice.onclick = () => { window.focus(); workspaceRef.current.selectThread(thread.id); };
+        notice.onclick = () => { window.focus(); setWorkflowsOpen(false); workspaceRef.current.selectThread(thread.id); };
       };
       if (Notification.permission === "granted") show();
       else if (Notification.permission === "default") void Notification.requestPermission().then(result => { if (result === "granted") show(); });
@@ -301,7 +379,7 @@ export function App() {
     if (!ids.length) return;
     const index = ids.indexOf(workspace.activeThreadId ?? "");
     const next = ids[(index + step + ids.length) % ids.length] ?? ids[0];
-    workspace.selectThread(next);
+    openThread(next);
   };
   const openComposerMenu = (selector: string) => {
     const trigger = document.querySelector<HTMLButtonElement>(`.composer ${selector}`);
@@ -411,6 +489,13 @@ export function App() {
         icon: commandIcons.memory,
         run: openMemory,
       },
+      ...(workflowClient ? [{
+        id: "workflows",
+        label: tr("workflows.open"),
+        hint: tr("workflows.open_hint"),
+        icon: commandIcons.workflow,
+        run: () => setWorkflowsOpen(true),
+      }] : []),
       {
         id: "inspector",
         label: inspectorOpen ? tr("app.close_inspector") : tr("app.open_inspector"),
@@ -511,7 +596,9 @@ export function App() {
   const threadCommands = useMemo<CommandAction[]>(() => {
     const snapshot = workspace.snapshot;
     if (!snapshot) return [];
-    return snapshot.threads.map(thread => {
+    // A workflow node's session is reached from its run or under its conversation, not by name:
+    // "规划者 · 第 2 轮" says nothing without the workflow it belongs to.
+    return snapshot.threads.filter(thread => !thread.workflowSession).map(thread => {
       const project = snapshot.projects.find(item => item.id === thread.projectId);
       return {
         id: `thread-${thread.id}`,
@@ -520,7 +607,7 @@ export function App() {
         detail: [projectLabel(project) || (thread.space === "chat" ? tr("app.chat") : ""), harnessLabel(thread.runtime, thread.space)]
           .filter(Boolean).join(" · "),
         icon: thread.space === "chat" ? commandIcons.chat : commandIcons.code,
-        run: () => workspace.selectThread(thread.id),
+        run: () => openThread(thread.id),
       };
     });
   }, [workspace.snapshot?.threads, workspace.snapshot?.projects, workspace.selectThread, language]);
@@ -612,12 +699,13 @@ export function App() {
       </div>}
       <DependencySetup />
       <ThreadSidebar
-        view={workspace.activeSpace}
+        view={showWorkflows ? "workflows" : workspace.activeSpace}
         projects={workspace.snapshot.projects}
         threads={workspace.snapshot.threads}
         activeProjectId={workspace.activeProjectId}
         activeThreadId={workspace.activeThreadId}
         onStartThread={(projectId) => {
+          setWorkflowsOpen(false);
           if (workspace.activeSpace !== "productivity") workspace.selectSpace("productivity");
           void workspace.createThread(projectId);
         }}
@@ -634,13 +722,14 @@ export function App() {
                 .catch((forced: unknown) => notify(forced instanceof Error ? forced.message : tr("app.operation_failed"), "error"));
             });
         }}
-        onSelectThread={(threadId) => workspace.selectThread(threadId)}
+        onSelectThread={openThread}
         onDeleteThread={thread => { setDeleteError(null); setThreadPendingDeletion(thread); }}
         onCreateThread={newTask}
         onCreateDevTask={newDevTask}
         onCreateChat={newChat}
         onOpenSearch={() => setCommandOpen(true)}
         onOpenMemory={openMemory}
+        onOpenWorkflows={workflowClient ? () => setWorkflowsOpen(true) : undefined}
         onOpenSettings={() => setSettingsOpen(true)}
         memoryPending={workspace.snapshot.memoryOverview.summary.pending_sources}
         recoverableChatBackups={workspace.snapshot.backend?.recoverableChatBackups ?? 0}
@@ -648,7 +737,17 @@ export function App() {
         backendMode={workspace.snapshot.backend?.mode ?? "mock"}
         unreadThreadIds={workspace.unreadThreadIds}
       />
-      {workspace.activeSpace === "memory" ? (
+      {showWorkflows && workflowClient ? (
+        <WorkflowView
+          client={workflowClient}
+          screen={workflowScreen}
+          onScreenChange={setWorkflowScreen}
+          onRun={(definition) => runWorkflow(definition.id)}
+          onAsk={askForWorkflow}
+          onLibraryChange={refreshWorkflowChoices}
+          onNotify={notify}
+        />
+      ) : workspace.activeSpace === "memory" ? (
         <MemoryView
           overview={workspace.snapshot.memoryOverview}
           mode={memoryView}
@@ -687,7 +786,7 @@ export function App() {
           productivityModels={workspace.productivityModels}
           runtimeModelsLoading={workspace.runtimeModelsLoading}
           runtimeModelsError={workspace.runtimeModelsError}
-          running={workspace.running}
+          running={workspace.running || Boolean(conversationThread?.workflowSession && conversationThread.status === "running")}
           waitingForAnswer={Boolean(workspace.questions.current)}
           undoing={undoingChanges}
           sidebarCollapsed={sidebarHidden}
@@ -711,7 +810,9 @@ export function App() {
           onSteerDraft={(text) => void workspace.steerDraft(text)}
           // Delegated subtasks carry a routing task id; a fork records its parent too but is not a subtask.
           subtasks={conversationThread ? workspace.snapshot.threads.filter((thread) => thread.parentId === conversationThread.id && thread.routingTaskId) : []}
-          parentThread={conversationThread?.parentId && conversationThread.routingTaskId
+          // A workflow node's session is driven by the workflow: it is read, and shows as at work while its node runs.
+          readOnly={Boolean(conversationThread?.workflowSession)}
+          parentThread={conversationThread?.parentId && (conversationThread.routingTaskId || conversationThread.workflowSession)
             ? workspace.snapshot.threads.find((thread) => thread.id === conversationThread.parentId) ?? null : null}
           onOpenThread={(threadId) => workspace.selectThread(threadId)}
           changesVisible={showInspector && inspectorTab === "changes"}
@@ -769,6 +870,9 @@ export function App() {
           }}
           onThreadCommand={(command) => void workspace.sendPrompt(command)}
           commands={workspace.snapshot.backend?.commands[workspace.activeSpace === "chat" ? "chat" : "productivity"] ?? []}
+          workflows={workflowChoices}
+          onShowWorkflow={() => showInspectorTab("workflow")}
+          onOpenWorkflow={workflowClient ? openWorkflow : undefined}
           history={workspace.history}
           questionUI={<QuestionDialog questions={workspace.questions} />}
           approvalRequest={workspace.pendingApprovals.find(q => q.threadId === workspace.activeThreadId) ?? null}
@@ -786,6 +890,8 @@ export function App() {
           onToggleWide={inspectorResize.toggleWide}
           // The snapshot copy carries waitingFor, so the details header can say "waiting" rather than "running".
           thread={workspace.snapshot.threads.find((thread) => thread.id === conversationThread?.id) ?? conversationThread}
+          workflowRun={activeRun}
+          onOpenThread={openThread}
           project={conversationProject}
           runtime={activeRuntime}
           memories={workspace.snapshot.memories}

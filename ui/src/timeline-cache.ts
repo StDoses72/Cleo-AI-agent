@@ -4,8 +4,34 @@ export const MAX_TIMELINE_ITEMS = 500;
 export const MAX_TIMELINE_BYTES = 4 * 1024 * 1024;
 // Mirrors PAGE_SIZE in cleo/desktop/timeline.py.
 export const TIMELINE_PAGE_ITEMS = 80;
+// Normal page payload budget in cache units. The backend always includes the first item, even
+// when oversized, and adds cursor metadata afterwards. Recheck the actual merge on arrival.
+export const TIMELINE_PAGE_BYTES = 2 * 512 * 1024;
 // Mirrors PREVIEW_CHARS in cleo/desktop/timeline.py for tool output and commands.
 export const TIMELINE_PREVIEW_CHARS = 32768;
+
+// What each loaded item weighs against MAX_TIMELINE_BYTES, kept from the pass that bounded it.
+const weights = new WeakMap<TimelineItem, number>();
+const weigh = (item: TimelineItem) => {
+  let bytes = weights.get(item);
+  if (bytes === undefined) weights.set(item, bytes = JSON.stringify(item).length * 2);
+  return bytes;
+};
+
+/** Purpose: Estimate how many loaded items a full page would push out of the window.
+ * The window is full at MAX_TIMELINE_ITEMS items or MAX_TIMELINE_BYTES, whichever comes first: a
+ * turn of tool calls with long output fills it with far fewer than 500 items.
+ * Input: the loaded items and the end they leave from. Output: how many of them go when a page of
+ * TIMELINE_PAGE_ITEMS items and TIMELINE_PAGE_BYTES arrives at the other end.
+ */
+export function timelineOverflow(items: TimelineItem[], from: "start" | "end"): number {
+  const count = items.length + TIMELINE_PAGE_ITEMS - MAX_TIMELINE_ITEMS;
+  let bytes = TIMELINE_PAGE_BYTES - MAX_TIMELINE_BYTES;
+  for (const item of items) bytes += weigh(item);
+  let gone = 0;
+  for (; gone < items.length && (gone < count || bytes > 0); gone++) bytes -= weigh(items[from === "start" ? gone : items.length - 1 - gone]);
+  return gone;
+}
 
 /** Purpose: Bound the history window by size and age while preserving complete live messages.
  * Input: Timeline items and the edge to retain. Output: Bounded rows; large tool payloads use previews.
@@ -24,7 +50,7 @@ export function boundTimeline(items: TimelineItem[], retain: "start" | "end" = "
         item.more = { ...item.more, [key]: value.length };
       }
     }
-    const size = JSON.stringify(item).length * 2;
+    const size = weigh(item);
     if (selected.length >= MAX_TIMELINE_ITEMS || (selected.length > 0 && bytes + size > MAX_TIMELINE_BYTES)) break;
     bytes += size;
     selected.push(item);

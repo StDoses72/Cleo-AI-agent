@@ -62,8 +62,13 @@ class MemoryMcp:
 
     def _tool_args(self, parent_key: str | None) -> list[str]:
         """Purpose: Bind delegation to its session. Input: key. Output: stdio arguments."""
-        return [*self.args, *(["--routing-parent-key", parent_key]
-                             if self.routing_enabled and parent_key else [])]
+        from cleo.workflows.receipts import current_receipt
+        args = self.args
+        if self.routing_enabled and parent_key:
+            args.extend(["--routing-parent-key", parent_key])
+        if path := current_receipt.get():
+            args.extend(["--workflow-receipt", str(path)])
+        return args
 
     def codex_config(
         self, *, approval_mode: str = "deny_all", computer_client: str | None = None,
@@ -95,7 +100,10 @@ class MemoryMcp:
                     + json.dumps("approve" if approval_mode == "deny_all" else "prompt")
                     for name in ("computer_tools", "computer_call")
                 )
+        from cleo.workflows.receipts import ITEMS_TOOL, VERDICT_TOOL, current_receipt
         prefix = "mcp_servers.cleo_memory"
+        receipts = tuple(f'{prefix}.tools.{name}.approval_mode="approve"'
+                         for name in (VERDICT_TOOL, ITEMS_TOOL)) if current_receipt.get() else ()
         context = (
             ()
             if self.context is None
@@ -114,6 +122,7 @@ class MemoryMcp:
                 f"{prefix}.args={json.dumps(self._tool_args(computer_client))}",
                 f"{prefix}.enabled=true",
                 f"{prefix}.required=true",
+                *receipts,
                 *context,
                 *computer,
                 *computer_permissions,
