@@ -49,5 +49,6 @@
 | [0017](0017-agent-chosen-computer-modes.md) | 电脑操作分三种目标并由 agent 选择；电脑页只显示正在使用的那一种；用户的浏览器经 Cleo 扩展在后台标签页中操作 | Accepted |
 | [0018](0018-history-pages-follow-the-reader.md) | 历史翻页只沿读者的方向推进；视野内的内容只在读者到达边缘时让位 | Accepted |
 | [0019](0019-open-a-conversation-without-its-task-usage.md) | 打开会话不等待任务用量；晚到的会话详情并入，不再丢弃 | Accepted |
+| [0020](0020-workflow-execution-semantics.md) | 自定义工作流由确定性的编排器在启动它的对话的一轮内执行；每个节点是一段子会话 | Proposed |
 
 每个引入 ADR 的 PR 自己在此表追加对应行（并行 PR 之间的小冲突在合并时解决），这样任何一个 PR 合并后索引都是完整的。0001–0006 随同一个集成 PR 合入 `main`，状态在集成时改为 Accepted；0008–0009 随 v0.13.0 的集成 PR 合入；0010 随 v0.13.1、0011 随 v0.14.0、0012–0013 随 v0.14.1、0014–0016 随 v0.14.2、0017 随 v0.14.3、0018–0019 随 v0.14.4 合入。0007 的编号由尚未合并的 PR #161 占用。
