@@ -262,3 +262,24 @@ def test_a_node_is_drafted_in_a_session_that_reads_and_is_not_kept(desk, tmp_pat
     with pytest.raises(ValueError):
         asyncio.run(desk.service.draft_workflow_node(intent=" ", definition=definition,
                                                      node_id="blank"))
+
+
+def test_a_node_apart_from_the_others_gets_a_worktree_that_is_kept(tmp_path) -> None:
+    import subprocess
+
+    from cleo.desktop.workflow_runs import add_worktree
+
+    def git(*arguments: str) -> str:
+        return subprocess.run(["git", "-C", str(tmp_path), *arguments], check=True,
+                              capture_output=True, text=True).stdout.strip()
+
+    git("init", "-q", "-b", "main")
+    (tmp_path / "a.txt").write_text("a\n", encoding="utf-8")
+    git("add", "a.txt")
+    git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "first")
+    path, branch = add_worktree(str(tmp_path), "abc123")
+    assert branch == "cleo/workflow-abc123"
+    assert (tmp_path / ".cleo/worktrees/workflow-abc123/a.txt").is_file()
+    assert path.endswith("workflow-abc123") and branch in git("branch", "--list", branch)
+    with pytest.raises(NodeFailed):
+        add_worktree(str(tmp_path), "abc123")

@@ -330,7 +330,9 @@ class WorkflowRuns:
             options = node_options(
                 kind, node, effort=node.effort if own else parent.get("effort"),
                 speed=node.speed if own else parent.get("service_tier"))
-            asks = node.access == "write" and options.get("approval_mode") not in {None, "deny_all"}
+            # Whatever the session may ask is asked of the user, in the conversation; only a
+            # session that is never to ask (reading, or full access) is left as it is.
+            asks = node.access == "write" and options.get("approval_mode") != "deny_all"
             if asks and Capability.USER_APPROVALS in adapter.session_capabilities(session.id):
                 await adapter.enable_user_approvals(session.id)
             if options:

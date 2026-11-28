@@ -96,3 +96,34 @@ def test_create_workflow_hands_back_a_card(backend: Backend, cleo_home: CleoHome
     assert backend.call("get_workflow_library")["workflows"] == [], "saving is the user's"
     # What was handed back can be saved as it is.
     assert backend.call("save_workflow", definition=definition)["name"] == definition["name"]
+
+
+def test_a_node_asks_for_approval_in_the_conversation_and_stops_with_it(
+    backend: Backend, cleo_home: CleoHome,
+) -> None:
+    definition = _workflow()
+    definition["nodes"][0]["instructions"] = "Run the check. [[permission]]"
+    definition["nodes"][1]["instructions"] = "Keep going. [[slow]]"
+    backend.call("save_workflow", definition=definition)
+    task = _task(backend, cleo_home)
+    stream = backend.stream_turn(task["id"], "/workflow wf-two-steps check it")
+    request = stream.wait_for(lambda event: event["type"] == "approval-request")["request"]
+    assert request["threadId"] == task["id"], "asked where the user is, not in the node's session"
+    waiting = backend.call("load_thread", thread_id=task["id"], activate=False)
+    assert [item["id"] for item in waiting["pendingApprovals"]] == [request["id"]]
+    backend.call("resolve_approval", thread_id=task["id"], approval_id=request["id"],
+                 decision="accept")
+    # The second node never ends by itself: stopping the conversation's run stops the workflow.
+    stream.wait_for(lambda event: event["type"] == "upsert-item"
+                    and event["item"]["type"] == "workflow"
+                    and len(event["item"]["run"]["sessions"]) == 2
+                    and event["item"]["run"]["sessions"][1].get("threadId"))
+    assert backend.call("cancel_run", thread_id=task["id"]) == {"cancelled": True}
+    stream.finish()
+    thread = backend.call("load_thread", thread_id=task["id"])
+    (card,) = _items(thread, "workflow")
+    run = card["run"]
+    assert run["status"] == "cancelled"
+    assert [session["status"] for session in run["sessions"]] == ["done", "cancelled"]
+    assert "(permission: allow)" in run["sessions"][0]["output"]
+    assert thread["pendingApprovals"] == []
