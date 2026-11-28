@@ -47,6 +47,16 @@ def test_a_reply_without_a_workflow_is_only_a_reply() -> None:
             read_workflow(broken)
 
 
+def test_example_shown_to_the_author_builds_a_runnable_review_loop() -> None:
+    example = read_workflow(workflow_request("Fix the editor", ["codex"]))
+    assert workflow_issues(example, HARNESSES, inherited="codex") == []
+    fixer, reviewer = example.nodes
+    assert (fixer.access, reviewer.access) == ("write", "read")
+    back = next(edge for edge in example.edges if edge.loop)
+    assert (back.from_, back.to) == (reviewer.id, fixer.id)
+    assert all(len(node.instructions.splitlines()) == 3 for node in example.nodes)
+
+
 def test_the_requests_say_what_a_workflow_is_and_where_a_node_sits() -> None:
     request = workflow_request("review every PR twice", ["codex", "claude"])
     assert "review every PR twice" in request and "codex, claude" in request
