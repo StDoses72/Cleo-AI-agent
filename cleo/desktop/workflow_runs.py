@@ -1,4 +1,4 @@
-"""A workflow run inside the turn of the conversation that started it (ADR 0020).
+"""A workflow run inside the turn of the conversation that started it (ADR 0021).
 
 ``/workflow <id> <task>`` starts a saved workflow; ``/workflow retry`` takes the conversation's
 last run up again from the nodes that did not finish. The run holds the conversation's run slot
@@ -20,13 +20,15 @@ from pathlib import Path
 from typing import Any
 
 from cleo.desktop.projection import _message, stream_event_item
+from cleo.desktop.workflows import WORKFLOW_TOOL_PROVIDERS
 from cleo.harnesses.capabilities import Capability
 from cleo.i18n import tr
 from cleo.routing.permissions import NATIVE_PRESETS
 from cleo.workflows.authoring import node_request, read_node, read_workflow
 from cleo.workflows.engine import Handoff, NodeFailed, NodeTask, execute, leave, new_run
-from cleo.workflows.handoff import node_prompt, read_reply
+from cleo.workflows.handoff import node_prompt
 from cleo.workflows.models import Definition, Harness, Node
+from cleo.workflows.receipts import collect, submission_scope
 from cleo.workflows.validation import workflow_issues
 
 Emit = Callable[[dict[str, Any]], Awaitable[None]]
@@ -101,7 +103,7 @@ class WorkflowRuns:
         self._service = service
         self._live: set[str] = set()
         # Approval requests of node sessions that are waiting, by id: the session that asked.
-        self._approvals: dict[str, str] = {}
+        self._approvals: dict[tuple[str, str], str] = {}
         self._swept = False
 
     @property
@@ -155,11 +157,11 @@ class WorkflowRuns:
             except (OSError, KeyError, ValueError):
                 self._save(run)
 
-    def approval_owner(self, approval_id: str) -> str | None:
-        return self._approvals.get(approval_id)
+    def approval_owner(self, thread_id: str, approval_id: str) -> str | None:
+        return self._approvals.get((thread_id, approval_id))
 
     def approval_resolved(self, thread_id: str, approval_id: str) -> None:
-        self._approvals.pop(approval_id, None)
+        self._approvals.pop((thread_id, approval_id), None)
         self._service._runs.drop_approval(thread_id, approval_id)
 
     async def turn(self, manifest: dict[str, Any], prompt: str, emit: Emit) -> None:
@@ -184,15 +186,23 @@ class WorkflowRuns:
                 raise ValueError(tr("workflows.not_found"))
             if not task:
                 raise ValueError(tr("workflows.task_required"))
-            used: dict[str, set[str]] = {}
-            for node in definition.nodes:
-                if node.harness is not None:
-                    used.setdefault(node.harness, set()).add(node.model or "")
-            # Models are the harness's to know: a model it does not have fails its node.
-            harnesses = [Harness(id=item["id"], read_only=item["readOnly"], tools=item["tools"],
-                                 models=frozenset(used.get(item["id"], ())))
-                         for item in library.view()["harnesses"]]
-            issues = workflow_issues(definition, harnesses)
+            harnesses = []
+            for item in library.view()["harnesses"]:
+                bound = [node for node in definition.nodes if node.harness == item["id"]]
+                models = {}
+                if bound:
+                    catalog = await service.get_productivity_models(
+                        provider=item["id"], project_path=manifest.get("cwd"))
+                    models = {model["id"]: model for model in catalog["models"]}
+                    for node in bound:
+                        model = models.get(node.model)
+                        if model and ((node.effort and node.effort not in model["supportedEfforts"])
+                                      or (node.speed and node.speed != "default" and node.speed
+                                          not in {t["id"] for t in model.get("serviceTiers", [])})):
+                            raise ValueError(tr("workflows.cannot_run", p0=node.role))
+                harnesses.append(Harness(id=item["id"], read_only=item["readOnly"],
+                                         tools=item["tools"], models=frozenset(models)))
+            issues = workflow_issues(definition, harnesses, inherited=manifest["provider"])
             if issues:
                 raise ValueError(tr("workflows.cannot_run", p0=issues[0].subject or issues[0].code))
             run = new_run(definition, task, workflow_id=definition.id,
@@ -218,7 +228,9 @@ class WorkflowRuns:
             await emit({"type": "upsert-item", "item": run_item(current)})
 
         async def runner(node_task: NodeTask) -> Handoff:
-            return await self._run_node(manifest, emit, run, node_task)
+            with submission_scope(node_task) as receipt:
+                reply = await self._run_node(manifest, emit, run, node_task)
+                return collect(receipt, reply)
 
         self._live.add(run["id"])
         self._marker(run["id"]).parent.mkdir(parents=True, exist_ok=True)
@@ -240,6 +252,8 @@ class WorkflowRuns:
         else:
             # The run's card says what failed; the conversation only needs to ask for attention.
             service.store.update_manifest(manifest["id"], status="failed")
+            await emit({"type": "error", "message": run.get("error") or tr("workflows.retry")})
+            return
         await emit({"type": "done", "summary": run["definition"]["name"]})
 
     async def propose(self, manifest: dict[str, Any], emit: Emit) -> None:
@@ -288,8 +302,9 @@ class WorkflowRuns:
             model=None, project="general")
         try:
             kind = adapter.session_provider_type(session.id)
-            if kind in READ_ONLY:
-                await adapter.update_session_options(session.id, **READ_ONLY[kind])
+            if kind not in READ_ONLY:
+                raise ValueError(tr("workflows.cannot_hold_to_reading", p0="draft"))
+            await adapter.update_session_options(session.id, **READ_ONLY[kind])
             result = await adapter.prompt(session.id, request)
         finally:
             try:
@@ -301,7 +316,7 @@ class WorkflowRuns:
         return read_node(result.response or "")
 
     async def _run_node(self, manifest: dict[str, Any], emit: Emit, run: dict[str, Any],
-                        task: NodeTask) -> Handoff:
+                        task: NodeTask) -> str:
         """One session of a node: opened under the conversation, held to the node's limits,
         given the node's one message, and closed whatever happens."""
         service, node, record = self._service, task.node, task.session
@@ -327,6 +342,8 @@ class WorkflowRuns:
             if task.changed:
                 await task.changed()
             kind = adapter.session_provider_type(session.id)
+            if (task.judge or task.lists) and kind not in WORKFLOW_TOOL_PROVIDERS:
+                raise NodeFailed(tr("workflows.cannot_run", p0=node.role))
             options = node_options(
                 kind, node, effort=node.effort if own else parent.get("effort"),
                 speed=node.speed if own else parent.get("service_tier"))
@@ -349,7 +366,7 @@ class WorkflowRuns:
                 for projected in stream_event_item(event, state):
                     if projected["type"] == "approval-request":
                         request = {**projected["request"], "threadId": manifest["id"]}
-                        self._approvals[request["id"]] = session.id
+                        self._approvals[(manifest["id"], request["id"])] = session.id
                         service._runs.add_approval(manifest["id"], request)
                         await emit({"type": "approval-request", "request": request})
                     elif projected["type"] == "approval-resolved":
@@ -366,7 +383,7 @@ class WorkflowRuns:
             raise
         finally:
             service._productivity_sessions.pop(session.id, None)
-            waiting = [key for key, owner in self._approvals.items() if owner == session.id]
+            waiting = [key[1] for key, owner in self._approvals.items() if owner == session.id]
             for approval_id in waiting:
                 self.approval_resolved(manifest["id"], approval_id)
             try:
@@ -375,4 +392,4 @@ class WorkflowRuns:
                 pass
         if result.status != "completed":
             raise NodeFailed(result.error or result.status)
-        return read_reply(task, result.response or "")
+        return result.response or ""

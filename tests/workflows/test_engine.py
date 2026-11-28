@@ -176,29 +176,37 @@ def test_no_more_than_four_sessions_run_at_once() -> None:
     assert run["status"] == "completed" and script.most == 4
 
 
-def test_a_reply_is_read_for_its_verdict_and_its_list() -> None:
-    from cleo.workflows.engine import NodeTask
-    from cleo.workflows.handoff import node_prompt, read_reply
-    from cleo.workflows.models import Node
+def test_retry_preserves_completed_items_and_explicitly_resumes_a_write() -> None:
+    definition = graph([agent("list"), agent("apply", each=2, access="write")],
+                       ["start>list", "list>apply", "apply>end"])
+    script = Script(list=Handoff("items", items=("first", "second")))
 
-    node = Node(id="n", role="Judge", instructions="Find what fails.")
-    judge = NodeTask(node=node, task="ship it", session={}, judge=True, round=2,
-                     inputs=(("Planner", "the plan"),))
-    prompt = node_prompt(judge)
-    assert prompt.startswith("Find what fails.") and "ship it" in prompt
-    assert "From Planner:\nthe plan" in prompt and "round 2" in prompt and "CLEO_VERDICT" in prompt
-    read = read_reply(judge, "Two gaps.\n1. No test.\n\nCLEO_VERDICT: Revise\n")
-    assert (read.verdict, read.text) == ("revise", "Two gaps.\n1. No test.")
-    with pytest.raises(NodeFailed):
-        read_reply(judge, "Looks fine to me.")
+    def apply(task):
+        if task.item == "second":
+            raise NodeFailed("save failed")
+        return Handoff("saved first")
 
-    lister = NodeTask(node=node, task="t", session={}, lists=True, item=None)
-    assert "CLEO_ITEMS_BEGIN" in node_prompt(lister) and "CLEO_VERDICT" not in node_prompt(lister)
-    reply = "Found:\nCLEO_ITEMS_BEGIN\n- first bug\n2. second bug\n\nCLEO_ITEMS_END"
-    listed = read_reply(lister, reply)
-    assert (listed.items, listed.text) == (("first bug", "second bug"), "Found:")
-    with pytest.raises(NodeFailed):
-        read_reply(lister, "CLEO_ITEMS_BEGIN\nCLEO_ITEMS_END")
-    plain = NodeTask(node=node, task="t", session={}, item="first bug")
-    assert "The one item assigned to you:\nfirst bug" in node_prompt(plain)
-    assert read_reply(plain, " done \n").text == "done"
+    script.replies["apply"] = apply
+    run, _ = carry(run_of(definition), script)
+    assert run["status"] == "failed"
+    assert [t[2] for t in script.seen if t[0] == "apply"] == ["first", "second"]
+    script.seen.clear()
+    script.replies["apply"] = "saved second"
+    carry(run, script)
+    assert [t[2] for t in script.seen] == ["second"]
+    assert run["result"] == "【first】\nsaved first\n\n【second】\nsaved second"
+
+
+def test_each_judge_submits_verdict_and_items_for_each_copy() -> None:
+    definition = graph(
+        [agent("list"), agent("review", each=2), agent("worker", each=2)],
+        ["start>list", "list>review", "review>list*2", "review>worker", "worker>end"])
+    def review(task):
+        assert task.judge and task.lists
+        return Handoff("feedback", verdict="revise" if task.item == "a" and task.round == 1
+                       else "pass", items=(task.item.upper(),))
+    script = Script(list=Handoff("items", items=("a", "b")), review=review)
+    run, _ = carry(run_of(definition), script)
+    assert run["status"] == "completed"
+    assert [t[1] for t in script.seen if t[0] == "review"] == [1, 1, 2, 2]
+    assert [t[2] for t in script.seen if t[0] == "worker"] == ["A", "B"]

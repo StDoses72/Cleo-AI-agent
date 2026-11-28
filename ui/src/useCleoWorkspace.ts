@@ -478,15 +478,29 @@ export function useCleoWorkspace() {
     return refreshed;
   };
 
-  // A workflow run starts sessions as it advances, and each is a conversation of its own: the
-  // list is read again whenever a run's sessions change, so a node can be opened as it works.
+  // A node receives its threadId after its first "running" event. Fetch just that
+  // child and ignore an older load if the same child has since finished.
   const workflowSessions = useRef(new Map<string, string>());
   const noteWorkflowRun = (item: TimelineItem) => {
     if (item.type !== "workflow") return;
-    const signature = item.run.sessions.map(session => `${session.id}:${session.status}`).join(",");
-    if (workflowSessions.current.get(item.run.id) === signature) return;
-    workflowSessions.current.set(item.run.id, signature);
-    void refreshWorkspace(() => cleoClient.loadWorkspace()).catch(() => {});
+    for (const session of item.run.sessions) {
+      const id = session.threadId;
+      if (!id || workflowSessions.current.get(id) === session.status) continue;
+      workflowSessions.current.set(id, session.status);
+      void cleoClient.loadThread(id, false).then(loaded => {
+        if (workflowSessions.current.get(id) !== session.status) return;
+        threadVersions.current.set(id, (threadVersions.current.get(id) ?? 0) + 1);
+        setSnapshot(current => {
+          if (!current) return current;
+          const exists = current.threads.some(thread => thread.id === id);
+          return { ...current, threads: exists ? current.threads.map(thread => thread.id === id
+            ? { ...thread, status: loaded.status, title: loaded.title, workflowSession: loaded.workflowSession }
+            : thread) : [...current.threads, loaded] };
+        });
+      }).catch(() => {
+        if (workflowSessions.current.get(id) === session.status) workflowSessions.current.delete(id);
+      });
+    }
   };
 
   const refreshLanguage = async () => {

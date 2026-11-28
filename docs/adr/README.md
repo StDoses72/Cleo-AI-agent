@@ -37,7 +37,7 @@
 | [0004](0004-claude-turn-and-background-task-lifecycle.md) | Claude 回合与后台任务的生命周期归 provider 所有 | Accepted |
 | [0005](0005-single-codex-cli-distribution.md) | Codex CLI 只随 Python 运行时分发一次 | Accepted |
 | [0006](0006-online-runtime-ownership-and-retirement.md) | 在线运行环境的归属登记与基于证据的退役 | Accepted |
-| [0007](0007-orchestration-layer-and-in-node-delegation.md) | 多 agent 协作拆成编排层与节点内委派层，子任务路由收窄为后者的一种实现 | Proposed |
+| [0007](0007-orchestration-layer-and-in-node-delegation.md) | 多 agent 协作拆成编排层与节点内委派层，子任务路由收窄为后者的一种实现 | Accepted |
 | [0008](0008-single-sidebar-flat-ui-and-review-loop.md) | 桌面 UI 改为单侧栏信息架构、平铺视觉，并补齐审查与 git 闭环 | Accepted |
 | [0009](0009-remove-local-evolution.md) | 移除本地进化，保留并改名它与正式更新共用的版本基础设施 | Accepted |
 | [0010](0010-startup-cost-independent-of-history.md) | 加载工作区的开销不随历史规模增长；投影版本只在旧索引出错时提升 | Accepted |
@@ -50,7 +50,7 @@
 | [0017](0017-agent-chosen-computer-modes.md) | 电脑操作分三种目标并由 agent 选择；电脑页只显示正在使用的那一种；用户的浏览器经 Cleo 扩展在后台标签页中操作 | Accepted |
 | [0018](0018-history-pages-follow-the-reader.md) | 历史翻页只沿读者的方向推进；视野内的内容只在读者到达边缘时让位 | Accepted |
 | [0019](0019-open-a-conversation-without-its-task-usage.md) | 打开会话不等待任务用量；晚到的会话详情并入，不再丢弃 | Accepted |
-| [0020](0020-a-turn-takes-distance-and-a-page-is-judged-on-arrival.md) | 换向要有距离；翻页结果到达时再判一次；窗口末尾的用户消息不等于刚发送的消息 | Proposed |
-| [0021](0021-workflow-execution-semantics.md) | 自定义工作流由确定性的编排器在启动它的对话的一轮内执行；每个节点是一段子会话 | Proposed |
+| [0020](0020-a-turn-takes-distance-and-a-page-is-judged-on-arrival.md) | 换向要有距离；翻页结果到达时再判一次；窗口末尾的用户消息不等于刚发送的消息 | Accepted |
+| [0021](0021-workflow-execution-semantics.md) | 自定义工作流由确定性的编排器在启动它的对话的一轮内执行；每个节点是一段子会话 | Accepted |
 
 每个引入 ADR 的 PR 自己在此表追加对应行（并行 PR 之间的小冲突在合并时解决），这样任何一个 PR 合并后索引都是完整的。0001–0006 随同一个集成 PR 合入 `main`，状态在集成时改为 Accepted；0008–0009 随 v0.13.0 的集成 PR 合入；0010 随 v0.13.1、0011 随 v0.14.0、0012–0013 随 v0.14.1、0014–0016 随 v0.14.2、0017 随 v0.14.3、0018–0019 随 v0.14.4 合入。

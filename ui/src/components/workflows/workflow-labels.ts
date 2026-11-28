@@ -53,6 +53,8 @@ export function issueText(issue: WorkflowIssue) {
     case "loop_rounds": return tr("workflows.issue_loop_rounds", { p0: subject });
     case "loop_leak": return tr("workflows.issue_loop_leak", { p0: subject });
     case "loop_overlap": return tr("workflows.issue_loop_overlap", { p0: subject });
+    case "invalid_graph": return tr("workflows.issue_invalid_graph");
+    case "read_only_unavailable": return tr("workflows.issue_read_only_unavailable", { p0: subject });
     case "tools_missing": return tr("workflows.issue_tools_missing", { p0: subject });
     case "each_predecessor": return tr("workflows.issue_each_predecessor", { p0: subject });
     case "each_range": return tr("workflows.issue_each_range", { p0: subject });

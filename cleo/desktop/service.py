@@ -1226,6 +1226,8 @@ class DesktopService:
         if not prompt:
             raise ValueError("prompt cannot be empty")
         manifest = self.store.load_manifest(thread_id)
+        if manifest.get("workflow_session"):
+            raise ValueError(tr("workflows.node_session_read_only"))
         # The reply to this command is read for the workflow it hands back.
         authoring = (manifest["space"] == "productivity"
                      and prompt.split(maxsplit=1)[0] == WorkflowAuthor.COMMAND)
@@ -1533,7 +1535,7 @@ class DesktopService:
         manifest = self.store.load_manifest(thread_id)
         from cleo.routing.approvals import resolve_worker_approval
 
-        node_session = self._workflow_runs.approval_owner(approval_id)
+        node_session = self._workflow_runs.approval_owner(thread_id, approval_id)
         if node_session is not None:
             # Asked by a workflow node's session, shown in the conversation the run is in.
             result = await self._adapter().resolve_approval(node_session, approval_id, decision)

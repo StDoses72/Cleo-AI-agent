@@ -67,6 +67,7 @@ try {
   // Each node's session is listed under the conversation and opens without a composer.
   await page.getByTestId("node-sessions-toggle").click();
   const sessions = page.getByTestId("subtask-row");
+  await sessions.nth(1).waitFor();
   assert.equal(await sessions.count(), 2);
   await sessions.filter({ hasText: "Planner" }).locator(".thread-row-select").click();
   await page.getByTestId("subtask-parent").waitFor();

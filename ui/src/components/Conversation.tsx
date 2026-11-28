@@ -522,7 +522,7 @@ export function Conversation({
   /** Purpose: Tell whether a page loaded at one end would push a row in view out at the other.
    * The cache holds a fixed number of items and bytes, and a folded turn can be most of them, so
    * the items that give way can be the very lines the reader is looking at. Input: where the page
-   * goes. It reckons with the largest page there is; `turnPage` looks again at the one that came.
+   * goes. It uses the ordinary page budget; `turnPage` checks the actual items on arrival.
    */
   const dropsView = (direction: "before" | "after") => {
     const items = thread?.items ?? [];

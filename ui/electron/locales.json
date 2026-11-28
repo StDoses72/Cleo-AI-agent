@@ -7003,6 +7003,14 @@
     "zh-CN": "{p0} 个节点",
     "en": "{p0} node"
   },
+  "workflows.issue_invalid_graph": {
+    "zh-CN": "检查重复的节点、连线编号和缺失的端点。",
+    "en": "Check for duplicate node or edge IDs and missing endpoints."
+  },
+  "workflows.issue_read_only_unavailable": {
+    "zh-CN": "「{p0}」的运行环境不能强制只读。",
+    "en": "The harness for {p0} cannot enforce read-only access."
+  },
   "workflows.issue_tools_missing": {
     "zh-CN": "「{p0}」要交回判定或清单，它的 harness 做不到",
     "en": "“{p0}” returns a verdict or a list, which its harness cannot do"

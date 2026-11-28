@@ -4,8 +4,8 @@ export const MAX_TIMELINE_ITEMS = 500;
 export const MAX_TIMELINE_BYTES = 4 * 1024 * 1024;
 // Mirrors PAGE_SIZE in cleo/desktop/timeline.py.
 export const TIMELINE_PAGE_ITEMS = 80;
-// The most a page weighs in this cache. The backend ends a page at PAGE_BYTES (512 KiB) of UTF-8;
-// the cache counts two bytes per UTF-16 unit, and a string never has more units than UTF-8 bytes.
+// Normal page payload budget in cache units. The backend always includes the first item, even
+// when oversized, and adds cursor metadata afterwards. Recheck the actual merge on arrival.
 export const TIMELINE_PAGE_BYTES = 2 * 512 * 1024;
 // Mirrors PREVIEW_CHARS in cleo/desktop/timeline.py for tool output and commands.
 export const TIMELINE_PREVIEW_CHARS = 32768;
@@ -18,7 +18,7 @@ const weigh = (item: TimelineItem) => {
   return bytes;
 };
 
-/** Purpose: Count the loaded items that the largest page would push out of the window.
+/** Purpose: Estimate how many loaded items a full page would push out of the window.
  * The window is full at MAX_TIMELINE_ITEMS items or MAX_TIMELINE_BYTES, whichever comes first: a
  * turn of tool calls with long output fills it with far fewer than 500 items.
  * Input: the loaded items and the end they leave from. Output: how many of them go when a page of

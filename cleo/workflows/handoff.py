@@ -1,29 +1,6 @@
-"""What a node is told and how its reply is read (ADR 0020).
+"""Compose the input of a workflow node (ADR 0021)."""
 
-A node that judges a loop, or whose successor runs once per item, ends its reply with a short
-marked block. The orchestrator reads that block and nothing else of the reply decides an edge;
-the block is not part of what the next node or the user is shown.
-"""
-
-from __future__ import annotations
-
-import re
-
-from cleo.workflows.engine import Handoff, NodeFailed, NodeTask
-
-VERDICT = re.compile(r"^\s*CLEO_VERDICT:\s*(pass|revise)\s*$", re.I | re.M)
-ITEMS = re.compile(r"^\s*CLEO_ITEMS_BEGIN\s*$(.*?)^\s*CLEO_ITEMS_END\s*$", re.S | re.M)
-_BULLET = re.compile(r"^\s*(?:[-*•·]|\d+[.)、])\s*")
-
-VERDICT_RULE = (
-    "You judge whether the work passes. End your reply with one line on its own, exactly "
-    "`CLEO_VERDICT: pass` or `CLEO_VERDICT: revise`. With `revise`, say above it what must change."
-)
-ITEMS_RULE = (
-    "The next step runs once for each item you list. End your reply with the list between two "
-    "lines, one item per line and each item complete in itself:\n"
-    "CLEO_ITEMS_BEGIN\n<item>\n<item>\nCLEO_ITEMS_END"
-)
+from cleo.workflows.engine import NodeTask
 
 
 def node_prompt(task: NodeTask) -> str:
@@ -40,30 +17,7 @@ def node_prompt(task: NodeTask) -> str:
     for role, text in task.inputs:
         parts.append(f"From {role}:\n{text}")
     if task.judge:
-        parts.append(VERDICT_RULE)
+        parts.append("Call submit_workflow_verdict with your pass or revise decision and feedback.")
     if task.lists:
-        parts.append(ITEMS_RULE)
+        parts.append("Call submit_workflow_items with the ordered work items for the next step.")
     return "\n\n".join(part for part in parts if part)
-
-
-def read_reply(task: NodeTask, reply: str, *, tokens: int | None = None) -> Handoff:
-    """Input: The node's task and its final reply. Output: The handoff, without the marked
-    blocks. Raises NodeFailed when a block an edge depends on is missing."""
-    verdict = None
-    items: tuple[str, ...] = ()
-    text = reply
-    if task.judge:
-        found = VERDICT.findall(reply)
-        if not found:
-            raise NodeFailed(f"{task.node.role} did not return a verdict.")
-        verdict = found[-1].lower()
-        text = VERDICT.sub("", text)
-    if task.lists:
-        block = ITEMS.search(reply)
-        listed = block.group(1) if block else ""
-        lines = [_BULLET.sub("", line).strip() for line in listed.splitlines()]
-        items = tuple(line for line in lines if line)
-        if not items:
-            raise NodeFailed(f"{task.node.role} did not return a list.")
-        text = ITEMS.sub("", text)
-    return Handoff(text=text.strip(), verdict=verdict, items=items, tokens=tokens)

@@ -1567,6 +1567,10 @@
     "zh-CN": "需要一个任务。",
     "en": "A task is needed."
   },
+  "workflows.node_session_read_only": {
+    "zh-CN": "节点会话由工作流运行。请返回启动它的对话。",
+    "en": "This node session belongs to a workflow. Return to its conversation."
+  },
   "workflows.nothing_to_take_up": {
     "zh-CN": "没有可以继续或重试的运行。",
     "en": "There is no run to continue or retry."

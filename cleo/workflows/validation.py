@@ -68,7 +68,8 @@ def _has_cycle(definition: Definition) -> bool:
     return any(visit(node) for node in [START, *(item.id for item in definition.nodes)])
 
 
-def workflow_issues(definition: Definition, harnesses: Iterable[Harness]) -> list[Issue]:
+def workflow_issues(definition: Definition, harnesses: Iterable[Harness],
+                    inherited: str | None = None) -> list[Issue]:
     """Input: A definition and the harnesses that exist now. Output: Issues in reading order;
     an empty list means the workflow can run."""
     issues: list[Issue] = []
@@ -78,6 +79,13 @@ def workflow_issues(definition: Definition, harnesses: Iterable[Harness]) -> lis
         issues.append(Issue(code="no_nodes"))
         return issues
     forward = [edge for edge in definition.edges if edge.loop is None]
+    ids = {node.id for node in definition.nodes}
+    if (len(ids) != len(definition.nodes) or {START, END} & ids
+            or len({edge.id for edge in definition.edges}) != len(definition.edges)
+            or any(edge.from_ not in ids | {START} or edge.to not in ids | {END}
+                   or (edge.loop and (edge.from_ not in ids or edge.to not in ids))
+                   for edge in definition.edges)):
+        return [Issue(code="invalid_graph")]
     if not any(edge.from_ == START for edge in forward):
         issues.append(Issue(code="start_unconnected"))
     if not any(edge.to == END for edge in forward):
@@ -99,12 +107,16 @@ def workflow_issues(definition: Definition, harnesses: Iterable[Harness]) -> lis
 
         if not node.instructions.strip():
             report("instructions_missing")
-        harness = known.get(node.harness) if node.harness is not None else None
+        harness = known.get(node.harness or inherited)
         if node.harness is not None:
             if harness is None or node.model not in harness.models:
                 report("runtime_unknown")
             elif not harness.available:
                 report("runtime_unavailable")
+        if node.harness is None and inherited is not None and harness is None:
+            report("runtime_unknown")
+        if harness and node.access == "read" and not harness.read_only:
+            report("read_only_unavailable")
         # A verdict or a list comes back through a tool; a node that follows the conversation
         # is checked when it starts.
         returns = any(edge.from_ == node.id and (edge.loop is not None or edge.to in lists)

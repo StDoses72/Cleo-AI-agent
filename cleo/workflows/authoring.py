@@ -1,4 +1,4 @@
-"""Having an agent write a workflow, or one node of it (ADR 0020).
+"""Having an agent write a workflow, or one node of it (ADR 0021).
 
 The agent is told what a workflow is made of and hands back one marked JSON block in a small
 shape: no canvas positions and no ids of its own choosing beyond short node keys. What it hands

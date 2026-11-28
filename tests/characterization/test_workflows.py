@@ -127,3 +127,18 @@ def test_a_node_asks_for_approval_in_the_conversation_and_stops_with_it(
     assert [session["status"] for session in run["sessions"]] == ["done", "cancelled"]
     assert "(permission: allow)" in run["sessions"][0]["output"]
     assert thread["pendingApprovals"] == []
+
+
+def test_judge_returns_a_receipt_over_the_harness_stdio_connection(backend, cleo_home):
+    definition = _workflow()
+    definition["nodes"][1]["instructions"] = "Review the plan. [[workflow-review]]"
+    definition["edges"].append({"id": "back", "from": "do", "to": "plan",
+                                "loop": {"maxRounds": 2, "onExhausted": "stop"}})
+    backend.call("save_workflow", definition=definition)
+    task = _task(backend, cleo_home)
+    stream = backend.stream_turn(task["id"], "/workflow wf-two-steps inspect the export")
+    stream.finish()
+    card, = _items(backend.call("load_thread", thread_id=task["id"]), "workflow")
+    assert card["run"]["status"] == "completed"
+    assert card["run"]["sessions"][-1]["verdict"] == "pass"
+    assert "Reviewed via the node's MCP server." in card["run"]["result"]

@@ -1,5 +1,5 @@
 """The workflow library as the desktop serves it: saved workflows, kept node definitions and
-what each harness can be held to (ADR 0020)."""
+what each harness can be held to (ADR 0021)."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from cleo.workflows.store import WorkflowStore
 
 # A generic ACP harness has approvals and no sandbox: nothing holds a node on it to reading.
 _NO_READ_ONLY = {"acp"}
+WORKFLOW_TOOL_PROVIDERS = {"codex_sdk", "claude_sdk", "acp"}
 
 
 class WorkflowLibrary:
@@ -31,9 +32,7 @@ class WorkflowLibrary:
             "harnesses": [
                 {"id": name, "type": provider.type,
                  "readOnly": provider.type not in _NO_READ_ONLY,
-                 # A verdict or a list comes back in the reply for now (ADR 0020), which every
-                 # harness can do; this turns false for some once it comes back through a tool.
-                 "tools": True,
+                 "tools": provider.type in WORKFLOW_TOOL_PROVIDERS,
                  # The presets a session on it offers; none when it has only its own modes.
                  "permissions": list(NATIVE_PRESETS.get(provider.type, {}))}
                 for name, provider in task_providers(self._productivity).items()

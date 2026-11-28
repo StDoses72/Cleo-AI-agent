@@ -1,6 +1,7 @@
 """Memory tools and optional host-bound delegation, launched over stdio."""
 
 import argparse
+from pathlib import Path
 
 from fastmcp import FastMCP
 
@@ -10,7 +11,8 @@ from cleo.memory.sources import SOURCE_INSTRUCTIONS, SOURCE_TOOLS, MemorySources
 
 def create_server(memory_root: str, index_path: str | None = None,
                   source_config: str | None = None, *,
-                  routing_parent_key: str | None = None) -> FastMCP:
+                  routing_parent_key: str | None = None,
+                  workflow_receipt: Path | None = None) -> FastMCP:
     """Purpose: Expose source readers and delegation. Input: bound launch scope. Output: MCP."""
     reader = MemoryReader(memory_root, index_path)
     from cleo.routing.tools import ROUTING_INSTRUCTIONS, register_mcp_tools
@@ -30,6 +32,9 @@ def create_server(memory_root: str, index_path: str | None = None,
             getattr(sources, name))
     if routing_parent_key:
         register_mcp_tools(server, memory_root, routing_parent_key, index_path)
+    if workflow_receipt is not None:
+        from cleo.workflows.receipts import register_tools
+        register_tools(server, workflow_receipt)
     return server
 
 
@@ -41,6 +46,7 @@ def main() -> None:
     parser.add_argument("--context-session")
     parser.add_argument("--context-snapshot")
     parser.add_argument("--routing-parent-key")
+    parser.add_argument("--workflow-receipt", type=Path)
     args = parser.parse_args()
     if args.context_session or args.context_snapshot:
         if not (args.context_session and args.context_snapshot):
@@ -51,7 +57,7 @@ def main() -> None:
     else:
         server = create_server(
             args.memory_root, args.session_index_path, args.source_config,
-            routing_parent_key=args.routing_parent_key,
+            routing_parent_key=args.routing_parent_key, workflow_receipt=args.workflow_receipt,
         )
     server.run(
         transport="stdio",

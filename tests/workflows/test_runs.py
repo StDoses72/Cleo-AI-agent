@@ -3,6 +3,7 @@
 import asyncio
 import json
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -76,6 +77,8 @@ def desk(tmp_path):
     harnesses = Harnesses(store, {})
     service = DesktopService(settings_model=settings, store=store, runtime=SimpleNamespace(),
                              adapter=harnesses)
+    service.get_productivity_models = AsyncMock(return_value={
+        "models": [{"id": "opus", "supportedEfforts": ["high"]}]})
     store.create_session(session_id="talk", space="productivity", project="general",
                          provider="codex", owner_type="user", cwd=str(tmp_path))
     store.update_manifest("talk", runtime_options={"model": "gpt", "effort": "low"})
@@ -149,7 +152,7 @@ def test_a_failed_run_is_taken_up_again_in_the_same_card(desk) -> None:
     run = card(desk)
     assert run["status"] == "failed" and "usage limit" in run["error"]
     assert [session["status"] for session in run["sessions"]] == ["done"] + ["failed"] * 4
-    assert seen[-1]["type"] == "done" and desk.store.load_manifest("talk")["status"] == "failed"
+    assert seen[-1]["type"] == "error" and desk.store.load_manifest("talk")["status"] == "failed"
 
     desk.harnesses.replies["b"] = "b at last"
     seen = turn(desk, "/workflow retry")
@@ -283,3 +286,17 @@ def test_a_node_apart_from_the_others_gets_a_worktree_that_is_kept(tmp_path) -> 
     assert path.endswith("workflow-abc123") and branch in git("branch", "--list", branch)
     with pytest.raises(NodeFailed):
         add_worktree(str(tmp_path), "abc123")
+
+
+def test_missing_model_or_unsupported_inherited_handoff_stops_before_the_first_node(desk):
+    save(desk, graph([agent("first"), agent("later", harness="claude", model="absent")],
+                     ["start>first", "first>later", "later>end"]))
+    with pytest.raises(ValueError):
+        turn(desk, "/workflow wf verify")
+    assert desk.harnesses.count == 0
+    save(desk, graph([agent("plan"), agent("judge")],
+                     ["start>plan", "plan>judge", "judge>plan*2", "judge>end"]))
+    desk.store.update_manifest("talk", provider="antigravity-sdk")
+    with pytest.raises(ValueError):
+        turn(desk, "/workflow wf verify")
+    assert desk.harnesses.count == 0

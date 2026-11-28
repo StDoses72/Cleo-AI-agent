@@ -1,4 +1,4 @@
-"""The orchestrator: code that pushes a task along a workflow's edges (ADR 0020).
+"""The orchestrator: code that pushes a task along a workflow's edges (ADR 0021).
 
 It decides what runs next from the definition the run started with and from what each node
 handed back; the agent inside a node never sees the graph. How a node's session is actually
@@ -15,7 +15,7 @@ import asyncio
 import secrets
 import time
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from cleo.workflows.models import END, START, Definition, Node
@@ -116,16 +116,15 @@ async def execute(run: dict[str, Any], runner: Runner, changed: Changed) -> dict
     progress = run["progress"]
     done: set[str] = set(progress["done"])
     outputs: dict[str, dict[str, Any]] = progress["outputs"]
+    partial = progress.setdefault("partial", {})
     slots = asyncio.Semaphore(CONCURRENCY)
 
     async def note() -> None:
         progress["done"] = sorted(done)
         await changed(run)
 
-    # A loop that ran out of rounds starts counting again when the run is taken up again.
-    for edge in loops:
-        if edge.from_ not in done and run["rounds"].get(edge.id, 0) >= edge.loop.max_rounds:
-            del run["rounds"][edge.id]
+    for edge_id in progress.pop("exhausted", []):
+        run["rounds"].pop(edge_id, None)
     run.update(status="running")
     for key in ("error", "finishedAt", "result"):
         run.pop(key, None)
@@ -138,8 +137,14 @@ async def execute(run: dict[str, Any], runner: Runner, changed: Changed) -> dict
         return node_id == START or node_id in done
 
     async def session(node: Node, *, round_: int | None, item: str | None, judge: bool,
-                      lists: bool) -> Handoff:
-        back = next((edge for edge in loops if edge.to == node.id and (round_ or 1) > 1), None)
+                      lists: bool, index: int = 0) -> Handoff:
+        # A successful item and its receipt are checkpointed together, including the
+        # interval before its siblings (or the scheduler) finish.
+        receipts = partial.setdefault(node.id, {})
+        if saved := receipts.get(str(index)):
+            return Handoff(**{**saved, "items": tuple(saved["items"])})
+        back = next((edge for edge in loops if edge.to == node.id
+                     and outputs.get(edge.from_, {}).get("verdict") == "revise"), None)
         given = [*(source for source in sources(node.id) if source != START),
                  *([back.from_] if back else [])]
         inputs = tuple((nodes[source].role, outputs[source]["text"])
@@ -169,7 +174,7 @@ async def execute(run: dict[str, Any], runner: Runner, changed: Changed) -> dict
                     record["error"] = str(error) or type(error).__name__
                     _close(record, "failed")
                     await note()
-                    if attempt >= RETRIES:
+                    if node.access == "write" or attempt >= RETRIES:
                         raise NodeFailed(f"{node.role}: {record['error']}") from error
                     continue
                 record["output"] = handoff.text
@@ -177,6 +182,7 @@ async def execute(run: dict[str, Any], runner: Runner, changed: Changed) -> dict
                     record["verdict"] = handoff.verdict
                 if handoff.tokens is not None:
                     record["tokens"] = handoff.tokens
+                receipts[str(index)] = asdict(handoff)
                 _close(record, "done")
                 await note()
                 return handoff
@@ -201,7 +207,8 @@ async def execute(run: dict[str, Any], runner: Runner, changed: Changed) -> dict
         if not items:
             raise NodeFailed(f"{node.role}: the node before it returned no list.")
         results = await asyncio.gather(
-            *(session(node, round_=round_, item=item, judge=False, lists=False) for item in items),
+            *(session(node, round_=round_, item=item, judge=judge, lists=lists, index=index)
+              for index, item in enumerate(items)),
             return_exceptions=True)
         for result in results:
             if isinstance(result, BaseException):
@@ -209,7 +216,9 @@ async def execute(run: dict[str, Any], runner: Runner, changed: Changed) -> dict
         outputs[node.id] = {
             "text": "\n\n".join(f"【{item}】\n{result.text}"
                                 for item, result in zip(items, results, strict=True)),
-            "verdict": None, "items": [],
+            "verdict": ("pass" if all(r.verdict == "pass" for r in results) else "revise")
+            if judge else None,
+            "items": [entry for result in results for entry in result.items],
         }
 
     running: dict[str, asyncio.Task[None]] = {}
@@ -232,6 +241,7 @@ async def execute(run: dict[str, Any], runner: Runner, changed: Changed) -> dict
                 if error is not None:
                     failure = failure or str(error)
                     continue
+                partial.pop(node_id, None)
                 done.add(node_id)
                 back = next((edge for edge in loops if edge.from_ == node_id), None)
                 if back is None or outputs[node_id].get("verdict") == "pass":
@@ -241,6 +251,7 @@ async def execute(run: dict[str, Any], runner: Runner, changed: Changed) -> dict
                     run["rounds"][back.id] = round_ + 1
                     done.difference_update(bodies[back.id])
                 elif back.loop.on_exhausted == "stop":
+                    progress.setdefault("exhausted", []).append(back.id)
                     # Nothing after the loop may start: the work was never passed.
                     done.difference_update(bodies[back.id])
                     failure = failure or (

@@ -1056,7 +1056,13 @@ class ClaudeProvider:
                 "hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "ask"}
             }
 
+        from cleo.workflows.receipts import ITEMS_TOOL, VERDICT_TOOL, current_receipt
+        receipt_tools = [f"mcp__cleo_memory__{name}" for name in (ITEMS_TOOL, VERDICT_TOOL)
+                         if current_receipt.get() and self._memory_mcp]
+
         async def can_use_tool(tool_name, input_data, context):
+            if tool_name in receipt_tools:
+                return PermissionResultAllow(updated_input=input_data)
             if (
                 memory
                 and memory.context
@@ -1134,6 +1140,7 @@ class ClaudeProvider:
             env=claude_environment(external=external_home),
             mcp_servers=memory.claude_servers(computer_client) if memory else {},
             can_use_tool=can_use_tool,
+            **({"allowed_tools": receipt_tools} if receipt_tools else {}),
             hooks={"PreToolUse": [HookMatcher(matcher="AskUserQuestion", hooks=[ask_hook])]},
             # Text and thinking arrive as they are written, the way the native client shows them.
             include_partial_messages=True,

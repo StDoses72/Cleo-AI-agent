@@ -61,7 +61,7 @@ class ComputerUseHook(TurnHook):
 
 
 class WorkflowAuthor(TurnHook):
-    """Turn ``/create-workflow <needs>`` into the request for a workflow (ADR 0020). The reply
+    """Turn ``/create-workflow <needs>`` into the request for a workflow (ADR 0021). The reply
     is an ordinary one; the turn reads the workflow out of it afterwards."""
 
     COMMAND = "/create-workflow"

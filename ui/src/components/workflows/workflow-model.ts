@@ -23,6 +23,8 @@ export type WorkflowIssueCode =
   | "runtime_unavailable"
   | "node_no_input"
   | "node_no_output"
+  | "invalid_graph"
+  | "read_only_unavailable"
   | "cycle"
   | "loop_target"
   | "loop_rounds"
@@ -214,6 +216,13 @@ export function workflowIssues(definition: WorkflowDefinition, harnesses: readon
   if (!definition.name.trim()) issues.push({ code: "name_missing" });
   if (!definition.nodes.length) { issues.push({ code: "no_nodes" }); return issues; }
   const forward = forwardEdges(definition);
+  const ids = new Set(definition.nodes.map(node => node.id));
+  if (ids.size !== definition.nodes.length || ids.has(START) || ids.has(END)
+      || new Set(definition.edges.map(edge => edge.id)).size !== definition.edges.length
+      || definition.edges.some(edge => (!ids.has(edge.from) && edge.from !== START)
+        || (!ids.has(edge.to) && edge.to !== END) || (edge.loop && (!ids.has(edge.from) || !ids.has(edge.to))))) {
+    return [{ code: "invalid_graph" }];
+  }
   if (!forward.some((edge) => edge.from === START)) issues.push({ code: "start_unconnected" });
   if (!forward.some((edge) => edge.to === END)) issues.push({ code: "end_unconnected" });
   if (hasCycle(definition)) issues.push({ code: "cycle" });
@@ -228,6 +237,7 @@ export function workflowIssues(definition: WorkflowDefinition, harnesses: readon
       const harness = known.get(node.harness);
       if (!harness || !harness.models.some((model) => model.id === node.model)) issues.push({ code: "runtime_unknown", nodeId: node.id, subject });
       else if (!harness.available) issues.push({ code: "runtime_unavailable", nodeId: node.id, subject });
+      if (harness && !harness.readOnly && node.access === "read") issues.push({ code: "read_only_unavailable", nodeId: node.id, subject });
     }
     // A verdict or a list comes back through a tool; a node that follows the conversation is checked when it starts.
     const returns = definition.edges.some((edge) => edge.from === node.id
