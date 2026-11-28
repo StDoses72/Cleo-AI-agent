@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { boundTimeline, mergeTimelinePage, MAX_TIMELINE_BYTES } from "../src/timeline-cache.ts";
+import { boundTimeline, mergeTimelinePage, timelineOverflow, MAX_TIMELINE_BYTES } from "../src/timeline-cache.ts";
 
 const all = Array.from({ length: 10000 }, (_, i) => ({ id: String(i), cursor: String(i), type: "message", role: i % 2 ? "assistant" : "user", content: `item ${i}`, time: "" }));
 const page = (start, end) => ({ items: all.slice(start, end), before: String(start), after: String(end - 1), hasBefore: start > 0, hasAfter: end < all.length, total: all.length, revision: "1" });
@@ -22,6 +22,24 @@ test("ten thousand items traverse both directions with a bounded, duplicate-free
     assert.ok(thread.items.length <= 500);
   }
   assert.equal(thread.items.at(-1).id, "9999");
+});
+
+test("the items a full page pushes out are counted by weight as well as by number", () => {
+  assert.equal(timelineOverflow(all.slice(0, 420), "start"), 0);
+  assert.equal(timelineOverflow(all.slice(0, 450), "start"), 30);
+  assert.equal(timelineOverflow(all.slice(0, 500), "end"), 80);
+  // Sixty tool calls with a full preview fill the cache, and a page of them needs a quarter of it.
+  const tool = i => ({ id: `tool-${i}`, type: "tool", name: "Read", status: "done", command: "", output: "y".repeat(32768) });
+  const loaded = boundTimeline([all[0], ...Array.from({ length: 60 }, (_, i) => tool(i))]);
+  assert.equal(loaded.length, 61);
+  const gone = timelineOverflow(loaded, "start");
+  assert.ok(gone > 1 && gone < loaded.length, `${gone} of ${loaded.length} items`);
+  // The count is for the largest page: this one is 512 KiB as the backend measures it, and the
+  // window keeps at least the items that were not counted.
+  const page = Array.from({ length: 15 }, (_, i) => tool(100 + i));
+  assert.ok(Buffer.byteLength(JSON.stringify(page)) <= 512 * 1024);
+  const kept = boundTimeline([...loaded, ...page]).filter(item => loaded.some(old => old.id === item.id));
+  assert.ok(kept.length >= loaded.length - gone && kept.length < loaded.length, `${kept.length} kept, ${gone} counted`);
 });
 
 test("overlapping pages replace updated tools without duplicates", () => {

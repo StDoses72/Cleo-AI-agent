@@ -38,15 +38,38 @@ try {
         ? { id, turnId: turn, turnHasAnswer: true, type: "message", role: roles[i + 1], content: `Work message ${i + 1}`, time: "12:00" }
         : { id, turnId: turn, turnHasAnswer: true, type: "tool", name: "test", command: `step ${i + 1}`, status: "done" };
     });
-    const storage = { history: rows, questions: [], work };
+    const session = (prefix, title, length, userAt, output) => Array.from({ length }, (_, i) => {
+      const id = `${prefix}-${i + 1}`;
+      const user = userAt(i);
+      if (user) turn = id;
+      return user === undefined
+        ? { id, turnId: turn, turnHasAnswer: true, type: "tool", name: "test", command: `step ${i + 1}`, status: "done", ...(output ? { output } : {}) }
+        : { id, turnId: turn, turnHasAnswer: true, type: "message", role: user ? "user" : "assistant", content: `${title} message ${i + 1}`, time: "12:00" };
+    });
+    // Ten ordinary turns, then one whose 200 tool calls carry 30 KB of output each, then two short
+    // turns: the cache is full at 4 MiB with some sixty of the calls, and a page of them ends at
+    // 512 KiB like the backend's.
+    const heavy = session("h", "Heavy", 225, i => i < 21 || i > 220 ? i % 2 === 0 : undefined, "x".repeat(30000));
+    // Fifty turns of two messages, a long turn that ends in its reply, and a last turn of tool calls.
+    // One page ends on that turn's question; the final page takes twenty messages off the top of a
+    // full window and adds two lines below.
+    const tail = session("t", "Tail", 600, i => i < 101 ? i % 2 === 0 : i === 579 ? true : i === 578 || i === 599 ? false : undefined);
+    const storage = { history: rows, questions: [], work, heavy, tail };
     const runtime = { provider: "codex", model: "test", effort: "low", serviceTier: "default", supportsFastMode: true, access: "workspace-write", approval: "user", contextWindow: 128000, editable: true };
-    const titles = { history: "万条历史", questions: "交互提问", work: "长工具组" };
+    const titles = { history: "万条历史", questions: "交互提问", work: "长工具组", heavy: "长输出", tail: "收尾" };
     const threads = Object.keys(titles).map(id => ({ id, space: "productivity", projectId: "p", title: titles[id], status: "idle", summary: "", updatedAt: "", items: [], changes: [], usage: {}, runtime }));
+    // As cleo/desktop/timeline.py: at most 80 items and 512 KiB, counted from the cursor outwards.
+    const weights = {};
     const pageOf = (id, direction = "latest", cursor) => {
       const all = storage[id];
+      const weight = weights[id] ??= [];
+      const weigh = index => weight[index] ??= JSON.stringify(all[index]).length;
+      const fits = (index, count, size) => count < 80 && (!count || size + weigh(index) <= 512 * 1024);
       const pivot = Number(cursor);
-      const start = direction === "latest" ? Math.max(0, all.length - 80) : direction === "before" ? Math.max(0, pivot - 80) : pivot + 1;
-      const end = direction === "before" ? pivot : Math.min(all.length, start + 80);
+      let start = direction === "after" ? pivot + 1 : direction === "before" ? pivot : all.length;
+      let end = start;
+      if (direction === "after") for (let size = 0; end < all.length && fits(end, end - start, size); end++) size += weigh(end);
+      else for (let size = 0; start > 0 && fits(start - 1, end - start, size); start--) size += weigh(start - 1);
       return { items: all.slice(start, end).map((item, i) => ({ ...item, cursor: String(start + i) })), total: all.length,
         before: String(start), after: String(end - 1), hasBefore: start > 0, hasAfter: end < all.length, revision: String(all.length) };
     };
@@ -80,7 +103,7 @@ try {
     };
     window.cleoDesktop = {
       async request(method, params = {}, streamId) {
-        if (method === "load_workspace") return { ...snapshot, projects: [{ id: "p", name: "Test", path: "fixture", space: "productivity", accent: "cyan" }], threads: [load("history"), threads[1], threads[2]], activeThreadId: "history", activeSpace: "productivity", runtime };
+        if (method === "load_workspace") return { ...snapshot, projects: [{ id: "p", name: "Test", path: "fixture", space: "productivity", accent: "cyan" }], threads: [load("history"), ...threads.slice(1)], activeThreadId: "history", activeSpace: "productivity", runtime };
         if (method === "load_memory") return structuredClone({ memories: snapshot.memories, memoryOverview: snapshot.memoryOverview });
         if (method === "get_runtime_catalog") return { nonProductivityProfiles: [], defaultNonProductivityProfile: "", defaultProductivityProvider: "codex", productivityProviders: [{ id: "codex", type: "codex_sdk", defaultModel: "test", modelSource: "config" }] };
         if (method === "get_productivity_models") return { provider: "codex", source: "sdk", models: [{ id: "test", label: "test", isDefault: true, defaultEffort: "low", supportedEfforts: ["low"] }] };
@@ -160,30 +183,38 @@ try {
   const settle = () => page.evaluate(async () => {
     for (let frame = 0; frame < 3 || (frame < 300 && document.querySelector(".history-loading")); frame++) await new Promise(resolve => requestAnimationFrame(resolve));
   });
-  const wheel = async delta => { await viewport.hover(); await page.mouse.wheel(0, delta); await settle(); };
-  /** Record, frame by frame, the loaded window and the messages in view, so one frame out of place is caught. */
-  const trace = () => page.evaluate(() => {
+  /** `stray`: a tick the other way first, as a trackpad or a wheel coming to rest sends them. */
+  const wheel = async (delta, stray = 0) => {
+    await viewport.hover();
+    if (stray) await page.mouse.wheel(0, -Math.sign(delta) * stray);
+    await page.mouse.wheel(0, delta);
+    await settle();
+  };
+  /** Record, frame by frame, the loaded window, the messages in view (ids start with `prefix`) and
+   * how far the view is from both ends, so one frame out of place is caught. */
+  const trace = (prefix = "w-") => page.evaluate(prefix => {
     window.historyRequests.length = 0;
     window.frames = [];
     cancelAnimationFrame(window.traceFrame);
     const sample = () => {
       const shell = document.querySelector("[data-cache-first]");
-      const view = document.querySelector(".conversation-viewport").getBoundingClientRect();
+      const viewport = document.querySelector(".conversation-viewport");
+      const view = viewport.getBoundingClientRect();
       const number = id => Number(id.slice(id.lastIndexOf("-") + 1));
-      const shown = [...document.querySelectorAll('[data-row-id^="w-"]')].filter(row => {
-        const rect = row.getBoundingClientRect();
-        return rect.bottom > view.top + 1 && rect.top < view.bottom - 1;
-      }).map(row => number(row.dataset.rowId));
-      window.frames.push({ first: number(shell.dataset.cacheFirst), last: number(shell.dataset.cacheLast), shown });
+      const rows = [...document.querySelectorAll(`[data-row-id^="${prefix}"]`)].map(row => ({ id: number(row.dataset.rowId), rect: row.getBoundingClientRect() }))
+        .filter(row => row.rect.bottom > view.top + 1 && row.rect.top < view.bottom - 1);
+      window.frames.push({ first: number(shell.dataset.cacheFirst), last: number(shell.dataset.cacheLast), shown: rows.map(row => row.id),
+        spans: rows.map(row => [row.rect.top - view.top, row.rect.bottom - view.top]), height: view.height,
+        toStart: viewport.scrollTop, toEnd: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop });
       window.traceFrame = requestAnimationFrame(sample);
     };
     sample();
-  });
+  }, prefix);
   const traced = () => page.evaluate(() => { cancelAnimationFrame(window.traceFrame); return { frames: window.frames, requests: window.historyRequests.map(request => request.direction) }; });
   /** Heading one way, no frame may show the window, or the message at the leading edge of the view,
    * further back than an earlier frame did; no page is asked for behind the reader; and every
    * message passes through the view, none skipped. */
-  const oneWay = ({ frames, requests }, down, label) => {
+  const oneWay = ({ frames, requests }, down, label, messages = [1, 4, 5, 53, 54, 74, 75, 578, 579, 584, 585, 623]) => {
     const said = `${label} (${requests.join(" → ")})`;
     assert(!requests.includes(down ? "before" : "after"), `${said}: a page was loaded behind the reader`);
     const back = (now, then) => down ? now < then : now > then;
@@ -199,8 +230,24 @@ try {
       lead = leading;
     }
     const seen = new Set(frames.flatMap(frame => frame.shown));
-    assert.deepEqual([1, 4, 5, 53, 54, 74, 75, 578, 579, 584, 585, 623].filter(message => !seen.has(message)), [], `${said}: messages never came into view`);
+    assert.deepEqual(messages.filter(message => !seen.has(message)), [], `${said}: messages never came into view`);
   };
+  /** A page takes a message that is still well in view out of the window only under a reader who
+   * stands at the edge it is loaded at. */
+  const givesWayAtEdge = ({ frames }, down, label) => frames.slice(1).forEach((frame, index) => {
+    const before = frames[index];
+    if (before.first === frame.first && before.last === frame.last) return;
+    before.shown.forEach((message, row) => {
+      const [top, bottom] = before.spans[row];
+      if (frame.shown.includes(message) || (down ? bottom < 100 : top > before.height - 100)) return;
+      const toEdge = down ? before.toEnd : before.toStart;
+      assert(toEdge <= 1, `${label}: message ${message} left the view when a page arrived, ${Math.round(toEdge)}px before the reader reached the edge`);
+    });
+  });
+  const place = id => page.evaluate(id => {
+    const row = document.querySelector(`[data-row-id="${id}"]`);
+    return row ? row.getBoundingClientRect().top - document.querySelector(".conversation-viewport").getBoundingClientRect().top : null;
+  }, id);
   await page.getByText("长工具组", { exact: true }).click();
   await page.getByText("Work message 623", { exact: true }).waitFor();
   await settle();
@@ -226,31 +273,69 @@ try {
     });
     await settle();
   };
-  const toTop = async label => {
-    for (let step = 0; step < 200 && (await cache("first") !== "w-1" || await viewport.evaluate(view => view.scrollTop > 0)); step++) await wheel(-120);
-    assert.equal(await cache("first"), "w-1", `${label}: scrolling up did not reach the first message`);
-    assert(await page.getByText("Work message 1", { exact: true }).isVisible());
+  const toTop = async (label, { stray = 0, first = "w-1", text = "Work message 1" } = {}) => {
+    for (let step = 0; step < 200 && (await cache("first") !== first || await viewport.evaluate(view => view.scrollTop > 0)); step++) await wheel(-120, stray);
+    assert.equal(await cache("first"), first, `${label}: scrolling up did not reach the first message`);
+    assert(await page.getByText(text, { exact: true }).isVisible());
   };
-  const toLatest = async label => {
-    for (let step = 0; step < 200 && (await cache("last") !== "w-623" || await page.locator(".history-latest").count()); step++) await wheel(120);
-    assert.equal(await cache("last"), "w-623", `${label}: scrolling down did not reach the newest message`);
+  const toLatest = async (label, { stray = 0, last = "w-623", text = "Work message 623" } = {}) => {
+    for (let step = 0; step < 200 && (await cache("last") !== last || await page.locator(".history-latest").count()); step++) await wheel(120, stray);
+    assert.equal(await cache("last"), last, `${label}: scrolling down did not reach the newest message`);
     assert.equal(await page.locator(".history-latest").count(), 0, `${label}: the view did not arrive at the end`);
-    assert(await page.getByText("Work message 623", { exact: true }).isVisible());
+    assert(await page.getByText(text, { exact: true }).isVisible());
   };
-  // The four-line window a little taller than the view, and exactly as tall as it.
-  for (const overflow of [35, 0]) {
-    const label = overflow ? "a window slightly taller than the view" : "a window exactly as tall as the view";
+  // The four-line window a little taller than the view, and exactly as tall as it. Then once more
+  // with a small tick the wrong way before every step: it is no turn, and loads nothing behind.
+  for (const [overflow, stray] of [[35, 0], [0, 0], [35, 2]]) {
+    const label = `${overflow ? "a window slightly taller than the view" : "a window exactly as tall as the view"}${stray ? ", with stray ticks" : ""}`;
     await windowHeight(overflow);
     await trace();
-    await toTop(label);
+    await toTop(label, { stray });
     oneWay(await traced(), false, `${label}, up`);
     await trace();
-    await toLatest(label);
+    await toLatest(label, { stray });
     const down = await traced();
     assert(down.frames.some(frame => frame.first === 81 && frame.last === 580), `${label}: the long turn never filled the window`);
     oneWay(down, true, `${label}, down`);
     assert.equal(await folds.first().getAttribute("data-row-id"), longTurn, `${label}: the long turn became another row on the way`);
   }
+  // With its messages cut short, the first window does not scroll. An arrow key asks for the next
+  // page there like the wheel does, although nothing moves.
+  await windowHeight(35);
+  await toTop("a key at the edge");
+  const short = await page.evaluateHandle(() => Object.assign(document.head.appendChild(document.createElement("style")),
+    { textContent: `[data-row-id^="w-"] { max-height: 24px; overflow: hidden; }` }));
+  await settle();
+  assert(await viewport.evaluate(view => view.scrollHeight <= view.clientHeight), "The shortened first window should fit the view");
+  assert.equal(await cache("first"), "w-1");
+  await viewport.focus();
+  await page.keyboard.press("ArrowDown");
+  await page.waitForFunction(() => document.querySelector("[data-cache-first]").dataset.cacheFirst !== "w-1", null, { timeout: 5000 })
+    .catch(() => assert.fail("An arrow key at the end of a window too short to scroll did not load the next page"));
+  await short.evaluate(style => style.remove());
+  await settle();
+  // A page asked for at an edge arrives after the reader has turned and left that edge. It would
+  // take the lines they are on now out of the window, so it is dropped: window and view stay.
+  await toTop("a late page");
+  for (let step = 0; step < 200 && await cache("first") !== "w-81"; step++) await wheel(120);
+  await settle();
+  await page.evaluate(() => { window.holdHistory = true; });
+  for (let step = 0; step < 5 && !await page.evaluate(() => Boolean(window.releaseHistory)); step++) {
+    await viewport.hover();
+    await page.mouse.wheel(0, -120);
+    await page.waitForTimeout(300);
+  }
+  assert(await page.evaluate(() => Boolean(window.releaseHistory)), "Turning round at the top edge did not ask for the page behind");
+  await viewport.hover();
+  await page.mouse.wheel(0, 120);
+  await page.waitForFunction(() => document.querySelector(".conversation-viewport").scrollTop > 10);
+  await page.waitForTimeout(300);
+  const late = { first: await cache("first"), top: await place("w-578") };
+  await page.evaluate(() => { window.releaseHistory(); window.releaseHistory = null; });
+  await settle();
+  await page.waitForTimeout(100);
+  assert.equal(await cache("first"), late.first, "A page that arrived after the reader had left its edge replaced what they were reading");
+  assert(Math.abs(await place("w-578") - late.top) <= 2, `A page that arrived late moved the reader's message from ${late.top} to ${await place("w-578")}`);
   // Turning round takes effect with the first input: in the four-line window the earlier messages
   // come back, and heading down again still arrives at the end. The long turn, opened, stays open.
   await windowHeight(35);
@@ -268,6 +353,69 @@ try {
   await toLatest("turning round");
   assert.equal(await page.locator(`[data-row-id="${longTurn}"]`).getByRole("button").getAttribute("aria-expanded"), "true", "the opened long turn closed while the window moved over it");
   await page.locator(`[data-row-id="${longTurn}"]`).getByRole("button").click();
+  await page.evaluate(() => {
+    document.head.appendChild(document.createElement("style")).textContent = `[data-row-id^="h-"], [data-row-id^="t-"] { min-height: 240px; } [data-row-id="t-579"] { min-height: 2400px; }`;
+  });
+  // Tool calls with long output fill the cache by weight: sixty of them, not five hundred, and a
+  // page of them pushes every message before the turn out at once. Those messages stay until the
+  // reader stands at the edge, and both ways through the turn arrive.
+  await page.getByText("长输出", { exact: true }).click();
+  await page.getByText("Heavy message 225", { exact: true }).waitFor();
+  await settle();
+  const heavyMessages = [...Array.from({ length: 21 }, (_, i) => i + 1), 222, 223, 224, 225];
+  await trace("h-");
+  await toTop("long output", { first: "h-1", text: "Heavy message 1" });
+  const heavyUp = await traced();
+  oneWay(heavyUp, false, "long output, up", heavyMessages);
+  givesWayAtEdge(heavyUp, false, "long output, up");
+  await trace("h-");
+  await toLatest("long output", { last: "h-225", text: "Heavy message 225" });
+  const heavyDown = await traced();
+  oneWay(heavyDown, true, "long output, down", heavyMessages);
+  givesWayAtEdge(heavyDown, true, "long output, down");
+  // A page ahead of the reader ends on a user message. It is not one they just sent: the view
+  // stays on what they are reading instead of moving that message to the top.
+  await page.getByText("收尾", { exact: true }).click();
+  await page.getByText("Tail message 600", { exact: true }).waitFor();
+  await settle();
+  for (let step = 0; step < 40 && await cache("first") !== "t-1"; step++) await wheel(-10000000);
+  assert.equal(await cache("last"), "t-500");
+  /** Put the view 300px above the end of the window, where the next page is asked for, and hold that page. */
+  const nearEnd = async () => {
+    await page.evaluate(() => {
+      window.holdHistory = true;
+      const view = document.querySelector(".conversation-viewport");
+      view.scrollTop = view.scrollHeight - view.clientHeight - 300;
+    });
+    await page.waitForFunction(() => window.releaseHistory);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  };
+  const arrived = async last => {
+    await page.waitForFunction(last => document.querySelector("[data-cache-last]").dataset.cacheLast === last, last);
+    await page.waitForTimeout(500);
+    await settle();
+  };
+  await nearEnd();
+  const question = await place("t-100");
+  await page.evaluate(() => { window.releaseHistory(); window.releaseHistory = null; });
+  await arrived("t-580");
+  assert(Math.abs(await place("t-100") - question) <= 2, `A page that ends on a user message moved the reader from ${question} to ${await place("t-100")}, as if they had just sent it`);
+  // The last page arrives while the reader's latest move has not reached the timeline yet, and it
+  // takes far more off the top than it adds below. The reader is in the middle of a long reply:
+  // they stay there, and are not taken for someone who has arrived at the newest message.
+  await nearEnd();
+  const reply = await place("t-579");
+  await page.evaluate(() => {
+    // The timeline hears of a scroll in the next frame. That frame is put off until the page is in.
+    const frame = window.requestAnimationFrame;
+    window.requestAnimationFrame = callback => setTimeout(() => frame(callback), 200);
+    setTimeout(() => { window.requestAnimationFrame = frame; }, 400);
+    document.querySelector(".conversation-viewport").scrollTop += 30;
+    window.releaseHistory(); window.releaseHistory = null;
+  });
+  await arrived("t-600");
+  assert(Math.abs(await place("t-579") - (reply - 30)) <= 2, `The last page moved the reader's reply from ${reply} to ${await place("t-579")}`);
+  assert(await page.locator(".history-latest").count(), "The last page pinned a reader in the middle of a reply to the newest message");
   await page.getByText("万条历史", { exact: true }).click();
   await page.getByText("History item 9999", { exact: true }).waitFor();
   // A page of earlier history arrives under a reader at the top edge: the message they were on

@@ -3,6 +3,7 @@ import importlib.util
 import io
 import json
 import re
+import socket
 import urllib.error
 from pathlib import Path
 
@@ -153,6 +154,8 @@ def network(monkeypatch):
     pytest.param(builder.http.client.IncompleteRead(b"half"), id="incomplete-read"),
     pytest.param(urllib.error.URLError(builder.ssl.SSLEOFError(8, "EOF in violation of protocol")),
                  id="tls-stream-closed"),
+    pytest.param(urllib.error.URLError(socket.gaierror(
+        8, "nodename nor servname provided, or not known")), id="name-not-resolved"),
 ])
 def test_a_transient_download_failure_is_tried_again(network, failure):
     network.serve(failure, io.BytesIO(b"metadata"))

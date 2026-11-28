@@ -7,6 +7,7 @@ import hashlib
 import http.client
 import json
 import shutil
+import socket
 import ssl
 import subprocess
 import sys
@@ -27,13 +28,14 @@ def sha(path: Path) -> str:
 
 
 def transient(error: BaseException) -> bool:
-    """Whether a download may succeed if tried again: a 5xx, a timeout or a dropped connection."""
+    """Whether a download may succeed if tried again: a 5xx, a timeout, a dropped connection, or a
+    host name the resolver did not answer for (a build runner's lookup fails now and then)."""
     if isinstance(error, urllib.error.HTTPError):
         return error.code >= 500
     if isinstance(error, urllib.error.URLError):
         error = error.reason
     return isinstance(error, TimeoutError | ConnectionError | http.client.IncompleteRead
-                      | ssl.SSLEOFError)
+                      | ssl.SSLEOFError | socket.gaierror)
 
 
 def fetch(url: str, timeout: float, read=lambda response: response.read()):
