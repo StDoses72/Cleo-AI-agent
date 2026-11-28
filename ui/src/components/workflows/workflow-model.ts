@@ -28,6 +28,7 @@ export type WorkflowIssueCode =
   | "loop_rounds"
   | "loop_leak"
   | "loop_overlap"
+  | "tools_missing"
   | "each_predecessor"
   | "each_range";
 
@@ -48,7 +49,7 @@ export function newId() {
 export const snap = (value: number) => Math.round(value / GRID) * GRID;
 
 export const blankFields: WorkflowNodeFields = { role: "", instructions: "", harness: null, model: null, effort: null, speed: null,
-  access: "read", workspace: "shared", delegation: "default", each: null };
+  access: "read", workspace: "shared", delegation: "default", approval: "auto", each: null };
 
 export function newNode(x: number, y: number, fields: Partial<WorkflowNodeFields> = {}): WorkflowNode {
   return { id: newId(), ...blankFields, ...fields, x: snap(x), y: snap(y) };
@@ -65,7 +66,9 @@ export function fieldsOf(node: WorkflowNode): WorkflowNodeFields {
  * a model of that harness, a thinking level and a speed that model has. */
 export function withRuntime(node: WorkflowNode, harnesses: readonly WorkflowHarness[],
   change: Partial<Pick<WorkflowNodeFields, "harness" | "model" | "effort" | "speed">>): WorkflowNode {
-  const next = { ...node, ...change };
+  const chosen = harnesses.find((item) => item.id === (change.harness ?? node.harness));
+  // A harness that cannot hold a node to reading leaves no such node to set.
+  const next = { ...node, ...change, ...(chosen && !chosen.readOnly ? { access: "write" as const } : {}) };
   const harness = harnesses.find((item) => item.id === next.harness);
   if (!harness) return { ...next, harness: change.harness === undefined ? next.harness : null, model: null, effort: null, speed: null };
   const model = harness.models.find((item) => item.id === next.model) ?? harness.models.find((item) => item.isDefault) ?? harness.models[0];
@@ -224,6 +227,10 @@ export function workflowIssues(definition: WorkflowDefinition, harnesses: readon
       if (!harness || !harness.models.some((model) => model.id === node.model)) issues.push({ code: "runtime_unknown", nodeId: node.id, subject });
       else if (!harness.available) issues.push({ code: "runtime_unavailable", nodeId: node.id, subject });
     }
+    // A verdict or a list comes back through a tool; a node that follows the conversation is checked when it starts.
+    const returns = definition.edges.some((edge) => edge.from === node.id
+      && (edge.loop || definition.nodes.some((other) => other.id === edge.to && other.each !== null)));
+    if (returns && known.get(node.harness ?? "")?.tools === false) issues.push({ code: "tools_missing", nodeId: node.id, subject });
     const sources = forward.filter((edge) => edge.to === node.id);
     if (!sources.length) issues.push({ code: "node_no_input", nodeId: node.id, subject });
     if (!forward.some((edge) => edge.from === node.id)) issues.push({ code: "node_no_output", nodeId: node.id, subject });

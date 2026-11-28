@@ -136,9 +136,10 @@ export class MockCleoClient implements CleoClient {
   private readonly activeRuns = new Map<string, string>();
   private readonly questions = new Map<string, { request: QuestionRequest; resolve: (answers: Record<string, string[]> | null) => void }>();
 
-  /** Purpose: Two conversations that already hold a workflow run when the demo opens, so a run
+  /** Purpose: Three conversations that already hold a workflow run when the demo opens, so a run
    * can be looked at without starting one. One is a loop in its second round and still going,
-   * slowly; the other is a parallel review that failed once, was retried and finished. */
+   * slowly; one is a parallel review that failed, was retried and finished; one was under way
+   * when the app quit, and waits to be continued. */
   private async seedWorkflowConversations() {
     const now = Date.now();
     // They live in the project that is otherwise empty: a run that is going keeps its project's
@@ -147,6 +148,7 @@ export class MockCleoClient implements CleoClient {
     const going = this.workflows.seed("wf-plan-refute", "为笔记导出接口补上分页参数的校验", project, { startedAt: now, liveAfter: 2, pace: 12 });
     const finished = this.workflows.seed("wf-cross-review", "评审笔记导出接口的分页改动", project,
       { startedAt: now - 2 * 3_600_000, failed: "s2-maintain", retried: true });
+    const left = this.workflows.seed("wf-plan-refute", "给导出文件名加上日期后缀", project, { startedAt: now - 26 * 3_600_000, quitAfter: 3 });
     // What is replayed settles before the next task; only the run left going carries on after it.
     await delay(0);
     const clock = (at: number) => new Date(at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
@@ -171,6 +173,7 @@ export class MockCleoClient implements CleoClient {
         { id: "workflow-finished-retry", type: "message", role: "user", content: "从失败处重试", time: clock((review.finishedAt ?? now) - 60_000) },
         { id: `workflow-${finished}-result`, type: "message", role: "assistant", content: workflowReply(review.result ?? ""), time: clock(review.finishedAt ?? now) },
       ]),
+      conversation("workflow-paused", left, { status: "attention", updatedAt: "昨天", activeRunId: null }),
     ];
     // The data outlives this client while a page is being developed: what an earlier one left goes.
     // They are listed after the conversation the demo opens on, which stays the first.
@@ -460,7 +463,8 @@ export class MockCleoClient implements CleoClient {
       this.histories.set(threadId, items);
       // A workflow command shows as the task it was started with, as the backend folds its own commands.
       const workflow = workflowCommand(prompt);
-      const shown = workflow ? workflow.task || "从失败处重试" : prompt;
+      const paused = this.workflows.run(this.workflowRuns.get(threadId) ?? "")?.status === "paused";
+      const shown = workflow ? workflow.task || (paused ? "继续" : "从失败处重试") : prompt;
       // As the backend does: a conversation is named after the first thing asked in it.
       if (!items.length) {
         storedThread.title = (workflowNeeds(prompt) || shown).slice(0, 26);

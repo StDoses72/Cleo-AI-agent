@@ -1,5 +1,5 @@
 import { t as tr } from "../../../electron/i18n.mjs";
-import { ChevronDown, CircleAlert, PanelRight, Pencil, Repeat, RotateCcw, Workflow } from "lucide-react";
+import { ChevronDown, CircleAlert, PanelRight, Pencil, Play, Repeat, RotateCcw, Workflow } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { cleoClient } from "../../services/cleoClient";
 import type { TimelineItem } from "../../types";
@@ -68,6 +68,11 @@ export function WorkflowRunCard({ run, onOpen, onRetry }: {
         <p className="wf-run-error" role="alert" data-testid="workflow-failure">
           <CircleAlert size={14} /><span>{run.error}</span>
           {onRetry ? <button type="button" className="wf-button" onClick={onRetry} data-testid="workflow-retry"><RotateCcw size={13} />{tr("workflows.retry_failed")}</button> : null}
+        </p>
+      ) : run.status === "paused" && onRetry ? (
+        <p className="wf-run-error paused" data-testid="workflow-paused">
+          <span />
+          <button type="button" className="wf-button" onClick={onRetry} data-testid="workflow-continue"><Play size={13} />{tr("workflows.continue_run")}</button>
         </p>
       ) : null}
     </section>

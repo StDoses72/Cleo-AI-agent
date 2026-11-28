@@ -114,23 +114,24 @@ try {
   await page.getByTestId("stop-button").click();
   await settled("cancelled");
   await page.getByTestId("stop-button").waitFor({ state: "detached" });
-  // The other finished after one reviewer failed and was retried; the failed attempt is kept.
+  // The other finished after one reviewer failed, three retries of its own included, and the
+  // user had it tried again; the failed attempts are kept.
   await conversation(/评审笔记导出接口的分页改动/).click();
   await card().waitFor();
   assert.equal(await card().getByTestId("workflow-run-status").getAttribute("data-status"), "completed");
   assert.deepEqual(await strip(), ["done", "done", "done", "done"]);
   assert.match(await page.getByTestId("conversation").innerText(), /评审结论：可以合并/);
   await panel.locator('[data-testid="workflow-node"]', { hasText: "可维护性审查" }).click();
-  assert.deepEqual(await nodeRun.getByTestId("workflow-session").evaluateAll((items) => items.map((item) => item.dataset.status)), ["failed", "done"]);
+  assert.deepEqual(await nodeRun.getByTestId("workflow-session").evaluateAll((items) => items.map((item) => item.dataset.status)), ["failed", "failed", "failed", "failed", "done"]);
   await page.screenshot({ path: join(output, "seeded-finished.png") });
   // Unfolded in the list, each of its node sessions can be picked there: the retry, and the
   // attempt that failed before it.
   const listed = page.getByTestId("subtask-row").filter({ hasText: "可维护性审查" });
   await page.locator(".thread-row", { hasText: "评审笔记导出接口" }).getByTestId("node-sessions-toggle").click();
-  assert.equal(await listed.count(), 2);
+  assert.equal(await listed.count(), 5);
   await listed.last().locator(".thread-row-select").click();
   await page.getByTestId("subtask-parent").waitFor();
-  assert.equal(await crumb.innerText(), "可维护性审查 · 重试");
+  assert.equal(await crumb.innerText(), "可维护性审查 · 重试 4");
   await says(/只看可维护性[\s\S]*loadPage 与 loadMore/);
   assert.match(await page.locator(".thread-row.active").innerText(), /可维护性审查/);
   await page.screenshot({ path: join(output, "node-session.png") });
@@ -144,6 +145,16 @@ try {
   await page.getByTestId("subtask-parent").click();
   await card().waitFor();
   assert.equal(await crumb.innerText(), "评审笔记导出接口的分页改动");
+  // A third was under way when the app quit: it waits where it was left, and goes on from there.
+  await conversation(/给导出文件名加上日期后缀/).click();
+  await card().waitFor();
+  assert.equal(await card().getByTestId("workflow-run-status").getAttribute("data-status"), "paused");
+  assert.deepEqual(await strip(), ["done", "cancelled", "pending", "pending"]);
+  await page.screenshot({ path: join(output, "seeded-paused.png") });
+  await page.getByTestId("workflow-continue").click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="workflow-run-status"]')?.dataset.status === "running");
+  await settled("completed");
+  assert.deepEqual(await strip(), ["done", "done", "done", "done"]);
 
   await page.getByTestId("open-workflows").click();
   await page.getByTestId("workflow-list").waitFor();
@@ -170,7 +181,7 @@ try {
   await rounds.fill("3");
   assert.equal(await page.getByTestId("workflow-issues").count(), 0);
 
-  // What a node is set to opens beside it, or in a panel at the side; the choice is remembered.
+  // What a node is set to opens beside it.
   await node("反驳者").click();
   const detail = page.getByTestId("node-detail");
   await detail.waitFor();
@@ -178,16 +189,6 @@ try {
   assert.match(await detail.locator('[data-field="instructions"]').inputValue(), /找出方案里会失败的地方/);
   assert.equal(await detail.locator('[data-field="harness"]').inputValue(), "codex");
   await page.screenshot({ path: join(output, "node-card.png") });
-  await page.getByTestId("detail-panel").click();
-  assert.match(await detail.getAttribute("class"), /\bpanel\b/);
-  await page.screenshot({ path: join(output, "node-panel.png") });
-  await page.getByTestId("workflow-back").click();
-  await tile("多模型交叉评审").locator(".wf-tile-open").click();
-  await editor.waitFor();
-  await node("汇总者").click();
-  assert.match(await detail.getAttribute("class"), /\bpanel\b/, "The panel is still the choice in another workflow");
-  await page.getByTestId("detail-card").click();
-  assert.match(await detail.getAttribute("class"), /\bcard\b/);
   await page.getByTestId("workflow-back").click();
 
   // Building by hand. A blank node asks what it should do, and Cleo writes its definition.
@@ -246,6 +247,13 @@ try {
   await detail.getByTestId("limit-write").check();
   assert.equal(await node("规划者").locator(".wf-cnode-marks em").count(), 1, "A node that may edit files says so on the canvas");
   await detail.getByTestId("limit-write").uncheck();
+  // A harness with nothing to hold a node to reading leaves no such choice.
+  await detail.locator('[data-field="harness"]').selectOption("opencode");
+  assert.deepEqual([await detail.getByTestId("limit-write").isChecked(), await detail.getByTestId("limit-write").isDisabled()], [true, true]);
+  await detail.locator('[data-field="harness"]').selectOption("codex");
+  await detail.getByTestId("limit-write").uncheck();
+  await detail.getByTestId("limit-ask").check();
+  await detail.getByTestId("limit-ask").uncheck();
   // One sentence rewrites the definition; the name the user sees stays theirs to change.
   await detail.getByTestId("node-redraft").fill("审查方案有没有遗漏");
   await page.keyboard.press("Enter");
@@ -306,8 +314,8 @@ try {
   assert.match(await nodeRun.locator(".wf-node-brief pre").innerText(), /先把任务拆成可验证的步骤/);
   await page.screenshot({ path: join(output, "run-in-conversation.png") });
 
-  // `/workflow` in a conversation that already exists. One reviewer fails: the one still running
-  // is cancelled, and a retry reruns only those two.
+  // `/workflow` in a conversation that already exists. One reviewer fails every time it is tried:
+  // the others finish, nothing after them starts, and a retry reruns only what is left.
   await page.getByTestId("thread-list").getByRole("button", { name: /修正 Codex 用量显示/ }).first().click();
   await page.getByTestId("composer-input").fill("/work");
   await page.getByTestId("slash-menu").waitFor();
@@ -317,7 +325,7 @@ try {
   await send("评审分页接口的改动");
   await card().waitFor({ timeout: 8_000 });
   await settled("failed");
-  assert.deepEqual((await strip()).sort(), ["cancelled", "done", "failed", "pending"]);
+  assert.deepEqual((await strip()).sort(), ["done", "done", "failed", "pending"]);
   assert.match(await page.getByTestId("workflow-failure").innerText(), /可维护性审查/);
   await page.screenshot({ path: join(output, "run-failed.png") });
   await page.getByTestId("workflow-retry").click();
@@ -326,7 +334,7 @@ try {
   assert.equal(await page.getByTestId("workflow-run-card").count(), 1, "A retry continues the same run");
   assert.deepEqual(await strip(), ["done", "done", "done", "done"]);
   assert.equal(await page.getByTestId("workflow-failure").count(), 0);
-  assert.equal(await panel.locator(".wf-run-facts dd").nth(2).innerText(), "6", "Three first attempts, two reruns and the summary");
+  assert.equal(await panel.locator(".wf-run-facts dd").nth(2).innerText(), "8", "Two reviews, four attempts at the third, its rerun and the summary");
 
   // The loop takes a second round because the judge sent the first plan back.
   await startFromLibrary("规划 · 反驳 · 执行", "为导出接口补上分页参数的校验");

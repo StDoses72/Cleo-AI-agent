@@ -17,6 +17,10 @@ export interface WorkflowHarness {
   available: boolean;
   /** Why it cannot run now (signed out, not installed); shown next to the choice. */
   reason?: string | null;
+  /** It can hold a node to reading: a node on a harness that cannot always may edit files. */
+  readOnly: boolean;
+  /** It receives Cleo's tools, which is how a node returns a verdict or a list. */
+  tools: boolean;
   models: import("./types").RuntimeModelOption[];
 }
 
@@ -25,6 +29,9 @@ export type WorkflowAccess = "read" | "write";
 export type WorkflowWorkspace = "shared" | "worktree";
 /** Whether the node may hand subtasks to other models; "default" follows the routing switch. */
 export type WorkflowDelegation = "default" | "on" | "off";
+/** What a node does when an action needs approval: goes on within its limits, or asks in the
+ * conversation that started the run. */
+export type WorkflowApproval = "auto" | "ask";
 
 /** What a node is, apart from where it sits: the part that can be kept and used again. */
 export interface WorkflowNodeFields {
@@ -39,6 +46,7 @@ export interface WorkflowNodeFields {
   access: WorkflowAccess;
   workspace: WorkflowWorkspace;
   delegation: WorkflowDelegation;
+  approval: WorkflowApproval;
   /** Runs one copy per item of the list the node before it returned, up to this many; `null` runs once. */
   each: number | null;
 }
@@ -113,7 +121,8 @@ export interface WorkflowSession {
   threadId?: string;
 }
 
-export type WorkflowRunStatus = "running" | "completed" | "failed" | "cancelled";
+/** "paused": the app quit or crashed while it ran; it goes on from the nodes that had not finished. */
+export type WorkflowRunStatus = "running" | "paused" | "completed" | "failed" | "cancelled";
 
 export interface WorkflowRun {
   id: string;

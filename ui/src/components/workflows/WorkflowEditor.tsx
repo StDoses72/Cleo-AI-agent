@@ -1,5 +1,5 @@
 import { t as tr } from "../../../electron/i18n.mjs";
-import { ArrowLeft, BookmarkPlus, Check, CircleAlert, LoaderCircle, MessageSquare, PanelRight, Play, Redo2, Sparkles, Trash2, Undo2, X } from "lucide-react";
+import { ArrowLeft, BookmarkPlus, Check, CircleAlert, LoaderCircle, Play, Redo2, Sparkles, Trash2, Undo2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, useLayoutEffect } from "react";
 import { effortLabels } from "../../runtime-labels";
 import type { WorkflowDefinition, WorkflowEdge, WorkflowHarness, WorkflowNode, WorkflowNodeFields, WorkflowRole } from "../../workflow-types";
@@ -28,9 +28,6 @@ interface WorkflowEditorProps {
   onSaveRole: (fields: WorkflowNodeFields) => Promise<void>;
 }
 
-/** How an opened node shows what it is set to: a card beside it, or a panel at the side. */
-type DetailStyle = "card" | "panel";
-const DETAIL_KEY = "cleo-workflow-detail";
 const CARD_WIDTH = 320;
 
 /** Ready-made nodes for the menu: a blank one, a few common roles, and what the user kept. */
@@ -51,9 +48,6 @@ function nodePresets(roles: readonly WorkflowRole[]): NodePreset[] {
  * a node shows only its name, and what it is set to opens when it is selected. */
 export function WorkflowEditor({ definition, onChange, harnesses, roles, saved, dirty, saving, error, onSave, onRun, onBack, onNotify, onDraftNode, onSaveRole }: WorkflowEditorProps) {
   const [selection, setSelection] = useState<CanvasSelection>(null);
-  const [detail, setDetail] = useState<DetailStyle>(() => {
-    try { return localStorage.getItem(DETAIL_KEY) === "panel" ? "panel" : "card"; } catch { return "card"; }
-  });
   const [drafting, setDrafting] = useState<ReadonlySet<string>>(new Set());
   const [issuesOpen, setIssuesOpen] = useState(false);
   const issues = useMemo(() => workflowIssues(definition, harnesses), [definition, harnesses]);
@@ -117,10 +111,6 @@ export function WorkflowEditor({ definition, onChange, harnesses, roles, saved, 
     }).catch((reason: unknown) => onNotify(reason instanceof Error ? reason.message : String(reason), "error"))
       .finally(() => setDrafting((current) => { const next = new Set(current); next.delete(nodeId); return next; }));
   };
-  const chooseDetail = (style: DetailStyle) => {
-    setDetail(style);
-    try { localStorage.setItem(DETAIL_KEY, style); } catch { /* per-viewer convenience */ }
-  };
   const openIssue = (issue: WorkflowIssue) => {
     setIssuesOpen(false);
     if (issue.nodeId) setSelection({ kind: "node", id: issue.nodeId });
@@ -147,7 +137,7 @@ export function WorkflowEditor({ definition, onChange, harnesses, roles, saved, 
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [node?.id, detail]);
+  }, [node?.id]);
   /** A card beside its node: to the right where there is room, otherwise to the left; level with
    * the node's top, moved up as far as it must to stay inside the canvas. */
   const beside = (frame: CanvasFrame, nodeId: string) => {
@@ -159,7 +149,7 @@ export function WorkflowEditor({ definition, onChange, harnesses, roles, saved, 
   };
 
   return (
-    <div className="wf-editor" data-testid="workflow-editor" data-detail={detail} onKeyDown={keyDown}>
+    <div className="wf-editor" data-testid="workflow-editor" onKeyDown={keyDown}>
       <header className="wf-editor-bar">
         <button type="button" className="icon-button" onClick={onBack} aria-label={tr("workflows.title")} title={tr("workflows.title")} data-testid="workflow-back"><ArrowLeft size={16} /></button>
         <input className="wf-name-input" value={definition.name} maxLength={60} placeholder={tr("workflows.name_placeholder")} title={definition.description || undefined}
@@ -183,12 +173,6 @@ export function WorkflowEditor({ definition, onChange, harnesses, roles, saved, 
               ) : null}
             </div>
           ) : null}
-          <div className="segmented-control wf-detail-switch" role="group" aria-label={tr("workflows.detail_style")}>
-            <button type="button" className={detail === "card" ? "active" : ""} aria-pressed={detail === "card"} data-testid="detail-card"
-              aria-label={tr("workflows.detail_card")} title={tr("workflows.detail_card")} onClick={() => chooseDetail("card")}><MessageSquare size={14} /></button>
-            <button type="button" className={detail === "panel" ? "active" : ""} aria-pressed={detail === "panel"} data-testid="detail-panel"
-              aria-label={tr("workflows.detail_panel")} title={tr("workflows.detail_panel")} onClick={() => chooseDetail("panel")}><PanelRight size={14} /></button>
-          </div>
           <button type="button" className="icon-button" disabled={!history.current.past.length} onClick={undo}
             aria-label={tr("workflows.undo")} title={tr("workflows.undo")} data-testid="workflow-undo"><Undo2 size={15} /></button>
           <button type="button" className="icon-button" disabled={!history.current.future.length} onClick={redo}
@@ -209,7 +193,6 @@ export function WorkflowEditor({ definition, onChange, harnesses, roles, saved, 
         onNotice={(message) => onNotify(message, "error")}>
         {(frame) => {
           if (node) {
-            if (detail === "panel") return <aside className="wf-detail panel" data-testid="node-detail" aria-label={tr("workflows.node")}>{nodeCard}</aside>;
             const at = beside(frame, node.id);
             return at ? <div ref={cardElement} className="wf-detail card surface-popover" data-testid="node-detail" role="dialog" aria-label={tr("workflows.node")} style={at}>{nodeCard}</div> : null;
           }
@@ -316,7 +299,7 @@ function NodeCard({ node, harnesses, busy, issues, onChange, onRedraft, onKeep, 
 
       <details className="wf-card-more">
         <summary>{tr("workflows.more")}</summary>
-        <Toggle label={tr("workflows.limit_write")} checked={node.access === "write"} testId="limit-write"
+        <Toggle label={tr("workflows.limit_write")} checked={node.access === "write"} testId="limit-write" disabled={harness?.readOnly === false}
           onChange={(checked) => onChange({ ...node, access: checked ? "write" : "read", workspace: checked ? node.workspace : "shared" }, "access")} />
         {node.access === "write" ? (
           <Toggle label={tr("workflows.limit_worktree")} checked={node.workspace === "worktree"}
@@ -324,6 +307,8 @@ function NodeCard({ node, harnesses, busy, issues, onChange, onRedraft, onKeep, 
         ) : null}
         <Toggle label={tr("workflows.limit_delegate")} checked={node.delegation === "on"}
           onChange={(checked) => onChange({ ...node, delegation: checked ? "on" : "off" }, "delegation")} />
+        <Toggle label={tr("workflows.limit_ask")} checked={node.approval === "ask"} testId="limit-ask"
+          onChange={(checked) => onChange({ ...node, approval: checked ? "ask" : "auto" }, "approval")} />
         <Toggle label={tr("workflows.copies_each")} checked={node.each !== null}
           onChange={(checked) => onChange({ ...node, each: checked ? node.each ?? 4 : null }, "each")}>
           {node.each !== null ? (
@@ -336,18 +321,19 @@ function NodeCard({ node, harnesses, busy, issues, onChange, onRedraft, onKeep, 
   );
 }
 
-function Toggle({ label, checked, onChange, testId, children }: {
+function Toggle({ label, checked, onChange, testId, disabled, children }: {
   label: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
   testId?: string;
+  disabled?: boolean;
   children?: React.ReactNode;
 }) {
   return (
     <div className="wf-toggle">
       <span>{label}</span>
       {children}
-      <label className="switch"><input type="checkbox" checked={checked} aria-label={label} data-testid={testId} onChange={(event) => onChange(event.target.checked)} /><span /></label>
+      <label className="switch"><input type="checkbox" checked={checked} disabled={disabled} aria-label={label} data-testid={testId} onChange={(event) => onChange(event.target.checked)} /><span /></label>
     </div>
   );
 }

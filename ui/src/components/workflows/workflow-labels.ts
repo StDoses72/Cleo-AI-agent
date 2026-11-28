@@ -51,6 +51,7 @@ export function issueText(issue: WorkflowIssue) {
     case "loop_rounds": return tr("workflows.issue_loop_rounds", { p0: subject });
     case "loop_leak": return tr("workflows.issue_loop_leak", { p0: subject });
     case "loop_overlap": return tr("workflows.issue_loop_overlap", { p0: subject });
+    case "tools_missing": return tr("workflows.issue_tools_missing", { p0: subject });
     case "each_predecessor": return tr("workflows.issue_each_predecessor", { p0: subject });
     case "each_range": return tr("workflows.issue_each_range", { p0: subject });
   }
@@ -65,6 +66,7 @@ export function refusalText(refusal: ConnectRefusal) {
 
 export function runStatusLabel(status: WorkflowRunStatus) {
   return status === "running" ? tr("workflows.status_running")
+    : status === "paused" ? tr("workflows.status_paused")
     : status === "completed" ? tr("workflows.status_done")
     : status === "failed" ? tr("workflows.status_failed") : tr("workflows.status_cancelled");
 }

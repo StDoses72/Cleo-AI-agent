@@ -13,12 +13,18 @@ const {
 } = model;
 
 const harnesses = [
-  { id: "codex", label: "Codex", available: true, models: [
+  { id: "codex", label: "Codex", available: true, readOnly: true, tools: true, models: [
     { id: "fast", label: "Fast", isDefault: false, supportedEfforts: ["low", "high"], defaultEffort: "low", serviceTiers: [{ id: "default", label: "Standard" }, { id: "priority", label: "Priority" }] },
     { id: "deep", label: "Deep", isDefault: true, supportedEfforts: ["medium", "high"], defaultEffort: "medium" },
   ] },
-  { id: "claude", label: "Claude", available: false, reason: "signed out", models: [
+  { id: "claude", label: "Claude", available: false, reason: "signed out", readOnly: true, tools: true, models: [
     { id: "b", label: "B", isDefault: true, supportedEfforts: [], defaultEffort: null },
+  ] },
+  { id: "acp", label: "ACP", available: true, readOnly: false, tools: true, models: [
+    { id: "c", label: "C", isDefault: true, supportedEfforts: [], defaultEffort: null },
+  ] },
+  { id: "bare", label: "Bare", available: true, readOnly: true, tools: false, models: [
+    { id: "d", label: "D", isDefault: true, supportedEfforts: [], defaultEffort: null },
   ] },
 ];
 const agent = (role, extra = {}) => newNode(0, 0, { role, instructions: `${role} instructions`, ...extra });
@@ -81,6 +87,24 @@ test("a nameless node is reported once; a named one for each gap it has", () => 
   assert.deepEqual(codes(definition), ["instructions_missing", "runtime_unknown", "runtime_unavailable", "runtime_unknown"]);
 });
 
+test("a harness that cannot hold a node to reading makes it one that may edit", () => {
+  const node = agent("worker");
+  assert.equal(node.access, "read");
+  assert.equal(withRuntime(node, harnesses, { harness: "acp" }).access, "write");
+  assert.equal(withRuntime(node, harnesses, { harness: "codex" }).access, "read");
+  assert.equal(withRuntime({ ...node, harness: "acp", model: "c" }, harnesses, { model: "c" }).access, "write");
+});
+
+test("a node that returns a verdict or a list needs a harness that receives tools", () => {
+  const bare = { harness: "bare", model: "d" };
+  const loop = graph([agent("plan"), agent("judge", bare)], ["start>plan", "plan>judge", "judge>plan", "judge>end"]);
+  assert.deepEqual(codes(loop), ["tools_missing"]);
+  const each = graph([agent("list", bare), agent("item", { each: 3 }), agent("last", bare)], ["start>list", "list>item", "item>last", "last>end"]);
+  assert.deepEqual(workflowIssues(each, harnesses).map((issue) => [issue.code, issue.subject]), [["tools_missing", "list"]]);
+  const plain = graph([agent("one", bare)], ["start>one", "one>end"]);
+  assert.deepEqual(codes(plain), []);
+});
+
 test("choosing where a node runs keeps what still applies and drops what does not", () => {
   const node = agent("worker");
   const picked = withRuntime(node, harnesses, { harness: "codex" });
@@ -98,7 +122,7 @@ test("choosing where a node runs keeps what still applies and drops what does no
 test("a node kept for reuse is its definition, without its place or identity", () => {
   const node = { ...newNode(40, 80, { role: "reviewer", instructions: "review", harness: "codex", model: "deep", access: "write", each: 3 }), drafted: true };
   const kept = fieldsOf(node);
-  assert.deepEqual(Object.keys(kept).sort(), ["access", "delegation", "each", "effort", "harness", "instructions", "model", "role", "speed", "workspace"]);
+  assert.deepEqual(Object.keys(kept).sort(), ["access", "approval", "delegation", "each", "effort", "harness", "instructions", "model", "role", "speed", "workspace"]);
   const reused = newNode(0, 0, kept);
   assert.notEqual(reused.id, node.id);
   assert.deepEqual(fieldsOf(reused), kept);

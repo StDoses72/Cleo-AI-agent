@@ -23,15 +23,19 @@ const fast = [{ id: "fast" as const, label: "Fast", description: "1.5x speed, in
 
 /** The same harnesses and models the composer's picker offers in demo mode. */
 export const mockHarnesses: WorkflowHarness[] = [
-  { id: "codex", label: "Codex", available: true, models: [
+  { id: "codex", label: "Codex", available: true, readOnly: true, tools: true, models: [
     { id: "gpt-5.6-sol", label: "GPT-5.6-Sol", description: "Frontier coding model", isDefault: true, defaultEffort: "medium", supportedEfforts: efforts, serviceTiers: fast },
     { id: "gpt-5.6-terra", label: "GPT-5.6-Terra", description: "Balanced coding model", isDefault: false, defaultEffort: "medium", supportedEfforts: efforts, serviceTiers: fast },
   ] },
-  { id: "claude", label: "Claude", available: true, models: [
+  { id: "claude", label: "Claude", available: true, readOnly: true, tools: true, models: [
     { id: "claude-opus-5", label: "Claude Opus 5", description: "Configured model", isDefault: true, defaultEffort: "high", supportedEfforts: efforts },
     { id: "claude-sonnet-demo", label: "Claude Sonnet (demo)", description: "Mock harness choice", isDefault: false, defaultEffort: null, supportedEfforts: [] },
   ] },
-  { id: "antigravity", label: "Antigravity", available: false, reason: "未登录", models: [
+  // An ACP harness has approvals and no sandbox: nothing holds a node on it to reading.
+  { id: "opencode", label: "OpenCode", available: true, readOnly: false, tools: true, models: [
+    { id: "opencode-default", label: "OpenCode (demo)", description: "Mock harness choice", isDefault: true, defaultEffort: null, supportedEfforts: [] },
+  ] },
+  { id: "antigravity", label: "Antigravity", available: false, reason: "未登录", readOnly: true, tools: false, models: [
     { id: "gemini-pro-demo", label: "Gemini Pro (demo)", description: "Mock harness choice", isDefault: true, defaultEffort: null, supportedEfforts: [] },
   ] },
 ];
@@ -44,7 +48,7 @@ const SONNET: Runtime = { harness: "claude", model: "claude-sonnet-demo", effort
 
 function node(id: string, role: string, runtime: Runtime, instructions: string,
   options: Partial<Pick<WorkflowNode, "access" | "workspace" | "delegation" | "each">> = {}): WorkflowNode {
-  return { id, role, ...runtime, instructions, access: "read", workspace: "shared", delegation: "default", each: null, x: 0, y: 0, ...options };
+  return { id, role, ...runtime, instructions, access: "read", workspace: "shared", delegation: "default", approval: "auto", each: null, x: 0, y: 0, ...options };
 }
 
 const edge = (id: string, from: string, to: string, loop?: WorkflowEdge["loop"]): WorkflowEdge => ({ id, from, to, ...(loop ? { loop } : {}) });
@@ -168,8 +172,11 @@ function hash(text: string) {
 }
 
 class Stopped extends Error {}
-/** Another node of the run failed, so this one was cancelled. */
-class Aborted extends Error {}
+/** The app went away under the run: it waits to be continued. */
+class Paused extends Error {}
+
+/** A node that fails is tried again this many times before the run gives up on it. */
+const RETRIES = 3;
 
 function excerpt(text: string, length: number) {
   const flat = text.replace(/\s+/g, " ").trim();
@@ -188,7 +195,7 @@ interface Progress {
 export class MockWorkflowClient implements WorkflowClient {
   private workflows = clone(seedWorkflows);
   private roles: WorkflowRole[] = [{ id: "role-security", fields: {
-    role: "安全审查", ...OPUS, access: "read", workspace: "shared", delegation: "off", each: null,
+    role: "安全审查", ...OPUS, access: "read", workspace: "shared", delegation: "off", approval: "auto", each: null,
     instructions: "做什么：只看安全，包括输入校验、路径与权限、敏感信息是否外泄。\n交回：按严重程度排列的问题清单，没有问题时明确说没有。\n不做：不评价风格，不修改代码。",
   } }];
   private readonly runs = new Map<string, WorkflowRun>();
@@ -202,9 +209,12 @@ export class MockWorkflowClient implements WorkflowClient {
   private readonly live = new Map<string, { after: number; pace: number }>();
   /** Runs left under way that wait, at the session they are in, until someone looks at them. */
   private readonly held = new Set<string>();
-  /** The demo's failure path: this reviewer's first attempt hits a usage limit. A replayed run
-   * names its own failure as `runId:nodeId` and leaves this one for the user's first run. */
-  private readonly failOnce = new Set(["s2-maintain"]);
+  /** The demo's failure path: this reviewer hits a usage limit on its first attempt and on every
+   * retry the run makes by itself. A replayed run names its own failure as `runId:nodeId` and
+   * leaves this one for the user's first run. */
+  private readonly failures = new Map([["s2-maintain", 1 + RETRIES]]);
+  /** Runs that were under way when the app quit: they stop in the session they reach after this many. */
+  private readonly quitAfter = new Map<string, number>();
   private readonly replayed = new Set<string>();
   /** What each session was handed when it started: the outputs it builds on, by who produced them. */
   private readonly given = new Map<string, { from: string; text: string }[]>();
@@ -325,15 +335,16 @@ export class MockWorkflowClient implements WorkflowClient {
    * without waiting so its sessions and times read as real. `liveAfter` leaves it running: after
    * that many sessions it is in real time, where it waits in the session it reached until
    * `release`, then goes on `pace` times slower than a run the user starts. Nothing about it
-   * changes while nobody looks. `failed` names a node whose first attempt fails; `retried` then
-   * resumes it once. */
+   * changes while nobody looks. `failed` names a node that fails until the run gives up on it;
+   * `retried` then resumes it once. `quitAfter` leaves it paused in the session after that many. */
   seed(workflowId: string, task: string, projectId: string,
-    options: { startedAt: number; liveAfter?: number; pace?: number; failed?: string; retried?: boolean }): string {
+    options: { startedAt: number; liveAfter?: number; pace?: number; failed?: string; retried?: boolean; quitAfter?: number }): string {
     const run = this.createRun(seedWorkflows.find((item) => item.id === workflowId)!, task, projectId, options.startedAt);
     this.instant.add(run.id);
     this.replayed.add(run.id);
     if (options.liveAfter !== undefined) { this.live.set(run.id, { after: options.liveAfter, pace: options.pace ?? 1 }); this.held.add(run.id); }
-    if (options.failed) this.failOnce.add(`${run.id}:${options.failed}`);
+    if (options.failed) this.failures.set(`${run.id}:${options.failed}`, 1 + RETRIES);
+    if (options.quitAfter !== undefined) this.quitAfter.set(run.id, options.quitAfter);
     void this.execute(run.id).then(() => {
       if (run.status !== "failed" || !options.retried) return;
       // The retry came a while after the failure.
@@ -418,9 +429,11 @@ export class MockWorkflowClient implements WorkflowClient {
     await delay(60);
   }
 
-  /** Runs again from where it failed, keeping what the finished nodes produced. */
+  /** Runs again from where it failed or was left, keeping what the finished nodes produced. */
   async resume(runId: string): Promise<boolean> {
-    if (this.runs.get(runId)?.status !== "failed") return false;
+    const status = this.runs.get(runId)?.status;
+    if (status !== "failed" && status !== "paused") return false;
+    this.quitAfter.delete(runId);
     // A retry the user asks for happens now, whenever the run it continues took place.
     this.instant.delete(runId);
     void this.restart(runId);
@@ -464,7 +477,7 @@ export class MockWorkflowClient implements WorkflowClient {
 
   /** Purpose: Push the task along the edges. A node starts once every node before it has
    * finished; nodes that are ready together run together. A judge that does not pass sends the
-   * stretch it judges round again; one failure cancels whatever else is running. */
+   * stretch it judges round again; after a failure nothing new starts, and what is running finishes. */
   private async execute(runId: string) {
     const run = this.runs.get(runId)!;
     const progress = this.progress.get(runId)!;
@@ -473,7 +486,6 @@ export class MockWorkflowClient implements WorkflowClient {
     const sources = (id: string) => forward.filter((link) => link.to === id).map((link) => link.from);
     const finished = (id: string) => id === START || progress.done.has(id);
     const running = new Map<string, Promise<{ id: string; error?: unknown }>>();
-    const group = { aborted: false };
     let failure: unknown = null;
     for (;;) {
       if (!failure) {
@@ -481,17 +493,14 @@ export class MockWorkflowClient implements WorkflowClient {
           if (progress.done.has(current.id) || running.has(current.id)) continue;
           const before = sources(current.id);
           if (!before.length || !before.every(finished)) continue;
-          running.set(current.id, this.runNode(run, progress, current, group)
+          running.set(current.id, this.runNode(run, progress, current)
             .then(() => ({ id: current.id }), (error: unknown) => ({ id: current.id, error })));
         }
       }
       if (!running.size) break;
       const settled = await Promise.race(running.values());
       running.delete(settled.id);
-      if (settled.error) {
-        if (!(settled.error instanceof Aborted)) { failure ??= settled.error; group.aborted = true; }
-        continue;
-      }
+      if (settled.error) { failure ??= settled.error; continue; }
       progress.done.add(settled.id);
       const back = definition.edges.find((link) => link.loop && link.from === settled.id);
       if (back && progress.outputs.get(settled.id)?.verdict !== "pass") {
@@ -507,12 +516,12 @@ export class MockWorkflowClient implements WorkflowClient {
           for (const id of body) progress.done.delete(id);
           const judge = definition.nodes.find((item) => item.id === back.from)?.role ?? "";
           failure ??= new Error(`${judge}在 ${back.loop!.maxRounds} 轮后仍未通过，需要你决定怎样继续。`);
-          group.aborted = true;
         }
       }
     }
     const last = sources(END);
     if (failure instanceof Stopped) run.status = "cancelled";
+    else if (failure instanceof Paused) run.status = "paused";
     else if (failure) { run.status = "failed"; run.error = failure instanceof Error ? failure.message : String(failure); }
     else if (!last.length || !last.every(finished)) { run.status = "failed"; run.error = "流程没有到达结果：有节点没有接到前面的输出。"; }
     else {
@@ -527,7 +536,7 @@ export class MockWorkflowClient implements WorkflowClient {
   }
 
   /** One node: a single session, or one per item of the list the node before it returned. */
-  private async runNode(run: WorkflowRun, progress: Progress, current: WorkflowNode, group: { aborted: boolean }) {
+  private async runNode(run: WorkflowRun, progress: Progress, current: WorkflowNode) {
     const definition = run.definition;
     const forward = forwardEdges(definition);
     const loop = loopEdges(definition).find((back) => loopBody(definition, back).includes(current.id));
@@ -540,24 +549,30 @@ export class MockWorkflowClient implements WorkflowClient {
     const judge = definition.edges.some((link) => link.loop && link.from === current.id);
     const listForNext = forward.some((link) => link.from === current.id
       && definition.nodes.find((item) => item.id === link.to)?.each != null);
-    const session = (item?: string) => this.runSession(run, progress, current, { round, item, judge, listForNext, group });
+    const session = (item?: string) => this.runSession(run, progress, current, { round, item, judge, listForNext });
     if (current.each === null) { progress.outputs.set(current.id, await session()); return; }
     const before = forward.find((link) => link.to === current.id)?.from ?? "";
     const items = (progress.outputs.get(before)?.items ?? []).slice(0, current.each);
     if (!items.length) throw new Error(`${current.role}没有可以展开的清单：上一个节点没有返回列表。`);
-    const results = await Promise.allSettled(items.map((item) => session(item).catch((error: unknown) => {
-      if (!(error instanceof Aborted)) group.aborted = true;
-      throw error;
-    })));
+    const results = await Promise.allSettled(items.map((item) => session(item)));
     const reasons = results.flatMap((result) => result.status === "rejected" ? [result.reason as unknown] : []);
-    const cause = reasons.find((reason) => reason instanceof Stopped) ?? reasons.find((reason) => !(reason instanceof Aborted)) ?? reasons[0];
+    const cause = reasons.find((reason) => reason instanceof Stopped || reason instanceof Paused) ?? reasons[0];
     if (cause) throw cause;
     progress.outputs.set(current.id, { items: [],
       text: results.map((result, index) => `【${items[index]}】\n${result.status === "fulfilled" ? result.value.text : ""}`).join("\n\n") });
   }
 
+  /** One piece of a node's work: a session, and a new one for each time it has to be tried again. */
   private async runSession(run: WorkflowRun, progress: Progress, current: WorkflowNode,
-    options: { round?: number; item?: string; judge: boolean; listForNext: boolean; group: { aborted: boolean } }): Promise<Handoff> {
+    options: { round?: number; item?: string; judge: boolean; listForNext: boolean }): Promise<Handoff> {
+    for (let attempt = 0; ; attempt += 1) {
+      try { return await this.runAttempt(run, progress, current, options); }
+      catch (error) { if (error instanceof Stopped || error instanceof Paused || attempt >= RETRIES) throw error; }
+    }
+  }
+
+  private async runAttempt(run: WorkflowRun, progress: Progress, current: WorkflowNode,
+    options: { round?: number; item?: string; judge: boolean; listForNext: boolean }): Promise<Handoff> {
     // A run seeded as under way has replayed what is behind it: from here it goes on in real
     // time, and what was replayed moves so that it ends now.
     const live = this.live.get(run.id);
@@ -593,6 +608,11 @@ export class MockWorkflowClient implements WorkflowClient {
       record.elapsedMs = now() - record.startedAt!;
       this.changed(run.id);
     };
+    if ((this.quitAfter.get(run.id) ?? Infinity) < run.sessions.length) {
+      progress.clock += duration * 12;
+      finish("cancelled");
+      throw new Paused();
+    }
     if (replay) progress.clock += duration * 40;
     else {
       // Left waiting: the time that passes meanwhile is not part of the run.
@@ -611,10 +631,12 @@ export class MockWorkflowClient implements WorkflowClient {
       while (Date.now() - started < duration) {
         await delay(80);
         if (this.stopRequests.has(run.id)) { finish("cancelled"); throw new Stopped(); }
-        if (options.group.aborted) { finish("cancelled"); throw new Aborted(); }
       }
     }
-    if (this.failOnce.delete(`${run.id}:${current.id}`) || (!this.replayed.has(run.id) && this.failOnce.delete(current.id))) {
+    const failing = this.failures.has(`${run.id}:${current.id}`) ? `${run.id}:${current.id}` : this.replayed.has(run.id) ? "" : current.id;
+    const left = this.failures.get(failing) ?? 0;
+    if (left > 0) {
+      this.failures.set(failing, left - 1);
       record.error = "Claude 的用量窗口已满，约 12 分钟后重置。";
       finish("failed");
       throw new Error(`${current.role}没有完成：${record.error}`);
