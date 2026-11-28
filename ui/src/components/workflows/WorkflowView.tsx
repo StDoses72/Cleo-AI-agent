@@ -51,7 +51,7 @@ export function WorkflowView({ client, screen, onScreenChange, onRun, onAsk, onL
   const refresh = useCallback(async () => {
     const request = ++requests.current;
     try {
-      const loaded = await client.library();
+      const loaded = await client.library({ models: true });
       if (request === requests.current) { setLibrary(loaded); setLoadError(null); }
     } catch (error) {
       if (request === requests.current) setLoadError(message(error));

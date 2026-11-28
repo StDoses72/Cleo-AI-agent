@@ -14,7 +14,9 @@ export function runtimeLabel(node: Pick<WorkflowNodeFields, "harness" | "model" 
   if (node.harness === null) return tr("workflows.runtime_inherit");
   const harness = harnesses.find((item) => item.id === node.harness);
   const model = harness?.models.find((item) => item.id === node.model);
-  if (!harness || !model) return tr("workflows.runtime_unknown");
+  if (!harness) return tr("workflows.runtime_unknown");
+  // Where the harness's models have not been read, the node's own model id still says what runs.
+  if (!model) return [harness.label, node.model ?? ""].filter(Boolean).join(" · ");
   return [harness.label, model.label, node.effort ? effortLabels[node.effort] : "",
     node.speed ? model.serviceTiers?.find((tier) => tier.id === node.speed)?.label ?? "" : ""].filter(Boolean).join(" · ");
 }

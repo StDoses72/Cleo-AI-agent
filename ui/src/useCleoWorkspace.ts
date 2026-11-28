@@ -921,7 +921,8 @@ export function useCleoWorkspace() {
     runLocks.current.set(threadId, token);
     // A workflow command shows as the task it was given, here as in the saved conversation.
     const workflow = workflowCommand(prompt);
-    const shown = workflow ? workflow.task || tr("workflows.retry_failed") : prompt;
+    const paused = thread.items.findLast((item) => item.type === "workflow")?.run.status === "paused";
+    const shown = workflow ? workflow.task || tr(paused ? "workflows.continue_run" : "workflows.retry_failed") : prompt;
     const userItem: TimelineItem = {
       id: `${threadId}-user-${Date.now()}`,
       type: "message",

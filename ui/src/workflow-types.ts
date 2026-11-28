@@ -155,7 +155,9 @@ export interface WorkflowLibrary {
 /** The library of workflows and node definitions. A workflow is started in a conversation, with
  * the `/workflow` command, and its run arrives there as a timeline item; nothing here runs one. */
 export interface WorkflowClient {
-  library(): Promise<WorkflowLibrary>;
+  /** `models` asks for every harness's models too, which the canvas needs and which can take a
+   * while; without it the answer is immediate. */
+  library(options?: { models?: boolean }): Promise<WorkflowLibrary>;
   save(definition: WorkflowDefinition): Promise<WorkflowDefinition>;
   remove(workflowId: string): Promise<void>;
   /** Have Cleo write one node's definition from a sentence. It is shown the workflow the node

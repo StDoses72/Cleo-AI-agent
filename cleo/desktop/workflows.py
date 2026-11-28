@@ -14,8 +14,6 @@ from cleo.workflows.store import WorkflowStore
 
 # A generic ACP harness has approvals and no sandbox: nothing holds a node on it to reading.
 _NO_READ_ONLY = {"acp"}
-# Harnesses Cleo cannot hand its tools to, so a node on one cannot return a verdict or a list.
-_NO_TOOLS = {"antigravity_sdk"}
 
 
 class WorkflowLibrary:
@@ -33,7 +31,9 @@ class WorkflowLibrary:
             "harnesses": [
                 {"id": name, "type": provider.type,
                  "readOnly": provider.type not in _NO_READ_ONLY,
-                 "tools": provider.type not in _NO_TOOLS,
+                 # A verdict or a list comes back in the reply for now (ADR 0020), which every
+                 # harness can do; this turns false for some once it comes back through a tool.
+                 "tools": True,
                  # The presets a session on it offers; none when it has only its own modes.
                  "permissions": list(NATIVE_PRESETS.get(provider.type, {}))}
                 for name, provider in task_providers(self._productivity).items()
