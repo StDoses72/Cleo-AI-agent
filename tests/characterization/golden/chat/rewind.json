@@ -310,7 +310,8 @@
       "limit": 0,
       "output": null,
       "used": null
-    }
+    },
+    "workflowSession": null
   },
   "timeline_after_edit": {
     "after": "<after:2>",

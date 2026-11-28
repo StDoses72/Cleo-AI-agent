@@ -1546,5 +1546,37 @@
   "host.start_search_did_not_open": {
     "zh-CN": "开始菜单搜索没有打开，没有输入应用名称。请截图确认后改用点击开始按钮或任务栏图标。",
     "en": "Start search did not open, so the application name was not typed. Take a screenshot, then click the Start button or a taskbar icon instead."
+  },
+  "workflows.continue": {
+    "zh-CN": "继续",
+    "en": "Continue"
+  },
+  "workflows.retry": {
+    "zh-CN": "从失败处重试",
+    "en": "Retry from the failure"
+  },
+  "workflows.round": {
+    "zh-CN": "第 {p0} 轮",
+    "en": "Round {p0}"
+  },
+  "workflows.not_found": {
+    "zh-CN": "没有找到这个工作流。",
+    "en": "That workflow was not found."
+  },
+  "workflows.task_required": {
+    "zh-CN": "需要一个任务。",
+    "en": "A task is needed."
+  },
+  "workflows.nothing_to_take_up": {
+    "zh-CN": "没有可以继续或重试的运行。",
+    "en": "There is no run to continue or retry."
+  },
+  "workflows.cannot_run": {
+    "zh-CN": "工作流还不能运行：{p0}",
+    "en": "The workflow cannot run yet: {p0}"
+  },
+  "workflows.cannot_hold_to_reading": {
+    "zh-CN": "「{p0}」设为只读，但它的 harness 不能强制只读。",
+    "en": "“{p0}” may only read, but its harness cannot hold it to that."
   }
 }

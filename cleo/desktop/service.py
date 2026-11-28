@@ -61,6 +61,7 @@ from cleo.desktop.turn_hooks import (
     TurnRequest,
     timed_reply,
 )
+from cleo.desktop.workflow_runs import WorkflowRuns
 from cleo.desktop.workflows import WorkflowLibrary
 from cleo.harnesses.capabilities import Capability, capabilities_of
 from cleo.harnesses.control import HarnessModel, SessionOptions
@@ -181,6 +182,7 @@ class DesktopService:
         self._agent_factory = agent_factory
         self._dream_agent_factory = dream_agent_factory
         self._adapter_instance = adapter
+        self._workflow_runs = WorkflowRuns(self)
         # Account usage per harness: (time read, windows). A reading is reused for a minute.
         self._harness_usage: dict[str, tuple[float, list[dict[str, Any]]]] = {}
         self._chat = ChatRuntime(
@@ -230,6 +232,7 @@ class DesktopService:
         return self.runtime.ui_language
 
     async def load_workspace(self) -> dict[str, Any]:
+        self._workflow_runs.sweep()
         self._debug("load rows")
         rows = sorted(
             self.store.list_sessions(), key=lambda row: not self._runs.is_running(row["id"])
@@ -1237,6 +1240,9 @@ class DesktopService:
         steering = None
         try:
             await self._background_memory.cancel()
+            if manifest["space"] == "productivity" and prompt.split(maxsplit=1)[0] == "/workflow":
+                await self._workflow_runs.turn(manifest, prompt, emit)
+                return
             if prompt.startswith("/"):
                 await self._run_command(manifest, prompt, emit)
                 return
@@ -1519,6 +1525,12 @@ class DesktopService:
         manifest = self.store.load_manifest(thread_id)
         from cleo.routing.approvals import resolve_worker_approval
 
+        node_session = self._workflow_runs.approval_owner(approval_id)
+        if node_session is not None:
+            # Asked by a workflow node's session, shown in the conversation the run is in.
+            result = await self._adapter().resolve_approval(node_session, approval_id, decision)
+            self._workflow_runs.approval_resolved(thread_id, approval_id)
+            return result
         routed = resolve_worker_approval(self.store, thread_id, approval_id, decision)
         if routed is not None:
             self._runs.drop_approval(thread_id, approval_id)

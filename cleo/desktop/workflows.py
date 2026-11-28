@@ -41,6 +41,12 @@ class WorkflowLibrary:
             ],
         }
 
+    def definition(self, workflow_id: str) -> Definition | None:
+        try:
+            return self._store.get(workflow_id)
+        except ValueError:
+            return None
+
     def save(self, definition: dict[str, Any]) -> dict[str, Any]:
         return _wire(self._store.save(Definition.model_validate(definition)))
 
