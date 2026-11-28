@@ -422,6 +422,25 @@ try {
   await page.getByTestId("open-workflows").click();
   assert.equal(await page.getByLabel("工作流名称", { exact: true }).inputValue(), "临时流程");
   assert.deepEqual(await counts(), [1, 0]);
+
+  // Hold one save until the user has typed the next edit.
+  await page.evaluate(async () => {
+    const { cleoClient } = await import("/src/services/cleoClient.ts");
+    const workflows = cleoClient.workflows;
+    const save = workflows.save.bind(workflows);
+    workflows.save = async (definition) => {
+      workflows.save = save;
+      await new Promise((resolve) => { window.finishWorkflowSave = resolve; });
+      return save(definition);
+    };
+  });
+  await page.getByTestId("workflow-save").click();
+  const workflowName = page.getByLabel("工作流名称", { exact: true });
+  await workflowName.fill("继续编辑");
+  await page.evaluate(() => window.finishWorkflowSave());
+  await page.waitForFunction(() => !document.querySelector('[data-testid="workflow-save"] .spin'));
+  assert.equal(await workflowName.inputValue(), "继续编辑");
+  assert.equal(await page.getByTestId("workflow-save").isEnabled(), true);
   await page.getByTestId("workflow-back").click();
 
   // The minimum window width keeps the editor usable.

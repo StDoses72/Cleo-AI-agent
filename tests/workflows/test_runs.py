@@ -164,6 +164,60 @@ def test_a_failed_run_is_taken_up_again_in_the_same_card(desk) -> None:
         turn(desk, "/workflow retry")
 
 
+def test_writable_workflow_shares_the_workspace_with_ordinary_turns(desk, tmp_path):
+    service = desk.service
+    service.settings.active_directory_profile = SimpleNamespace(root_path=tmp_path)
+    peer = desk.store.create_session(session_id="other", space="productivity", project="general",
+                                     provider="codex", owner_type="user", cwd=str(tmp_path))
+    save(desk, graph([agent("edit", access="write")], ["start>edit", "edit>end"]))
+
+    async def emit(event):
+        if event["type"] == "turn-started":
+            with pytest.raises(ValueError):
+                await service.undo_changes(thread_id="other")
+            with pytest.raises(ValueError):
+                await service.reset_workspace()
+            await service._claim_workspace(peer)
+            assert all(desk.store.load_manifest(key)["undo_checkpoint_shared"]
+                       for key in ("talk", "other"))
+
+    asyncio.run(service._workflow_runs.turn(desk.store.load_manifest("talk"),
+                                            "/workflow wf edit", emit))
+
+
+def test_delegated_node_approval_round_trips_through_the_conversation(desk):
+    from cleo.routing.approvals import worker_approval
+    from cleo.routing.catalog import atomic_json
+
+    save(desk, graph([agent("edit", access="write", delegation="on")], ["start>edit", "edit>end"]))
+    desk.harnesses.resolve_approval = AsyncMock()
+
+    async def prompt(node_id, text, on_event=None):
+        task_id = "task_" + "a" * 32
+        desk.store.create_session(session_id="worker", space="productivity", project="general",
+                                  provider="codex", owner_type="user")
+        desk.store.update_manifest("worker", parent_session_id=node_id, routing_task_id=task_id)
+        atomic_json(desk.store.memory_root / ".routing" / "tasks" / f"{task_id}.json", {
+            "parent_session_id": node_id, "status": "running",
+            "attempts": [{"session_id": "worker", "status": "running"}]})
+        request = {"id": "edit-file", "availableDecisions": ["accept", "cancel"]}
+        await worker_approval(desk.store, desk.harnesses, node_id, "worker", task_id, request)
+        return SimpleNamespace(status="completed", response="done", error=None)
+
+    async def emit(event):
+        if event["type"] == "approval-request":
+            request = event["request"]
+            assert request["threadId"] == "talk"
+            await desk.service.resolve_approval(thread_id="talk", approval_id=request["id"],
+                                                decision="accept")
+
+    desk.harnesses.prompt = prompt
+    parent = desk.store.load_manifest("talk")
+    workflow_turn = desk.service._workflow_runs.turn(parent, "/workflow wf edit", emit)
+    asyncio.run(asyncio.wait_for(workflow_turn, timeout=5))
+    desk.harnesses.resolve_approval.assert_awaited_once_with("worker", "edit-file", "accept")
+
+
 def test_a_run_the_app_quit_under_is_paused_and_continued(desk) -> None:
     save(desk, graph([agent("a"), agent("b")], ["start>a", "a>b", "b>end"]))
     runs = desk.service._workflow_runs

@@ -1,6 +1,6 @@
 import { t as tr } from "../../../electron/i18n.mjs";
 import { CircleAlert, Copy, LoaderCircle, Play, Plus, Sparkles, Trash2, Workflow, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { WorkflowClient, WorkflowDefinition, WorkflowLibrary } from "../../workflow-types";
 import { WorkflowEditor } from "./WorkflowEditor";
 import { END, NODE_HEIGHT, NODE_WIDTH, START, TERMINAL_HEIGHT, TERMINAL_WIDTH, duplicateWorkflow, newWorkflow, workflowIssues } from "./workflow-model";
@@ -17,7 +17,7 @@ export const workflowHome: WorkflowScreen = { name: "library" };
 interface WorkflowViewProps {
   client: WorkflowClient;
   screen: WorkflowScreen;
-  onScreenChange: (screen: WorkflowScreen) => void;
+  onScreenChange: Dispatch<SetStateAction<WorkflowScreen>>;
   /** Start the workflow: it runs in a conversation, so this leaves the page for one. */
   onRun: (definition: WorkflowDefinition) => void;
   /** Describe a workflow to Cleo instead of drawing it: this leaves the page for a conversation. */
@@ -80,12 +80,22 @@ export function WorkflowView({ client, screen, onScreenChange, onRun, onAsk, onL
   if (screen.name === "editor") {
     const dirty = screen.baseline === null || JSON.stringify(screen.definition) !== screen.baseline;
     const untouched = screen.baseline === null && !screen.definition.nodes.length;
-    const keep = () => {
+    const keep = async () => {
       setSaving(true);
       setActionError(null);
-      return save(screen.definition)
-        .then((saved) => { onScreenChange({ ...screen, definition: saved, baseline: JSON.stringify(saved) }); return saved; })
-        .finally(() => setSaving(false));
+      try {
+        const submitted = screen.definition;
+        const saved = await save(submitted);
+        onScreenChange((current) => {
+          if (current.name !== "editor" || current.definition.id !== submitted.id) return current;
+          // Keep edits made while saving. The saved copy becomes their new baseline.
+          const definition = current.definition === submitted ? saved : current.definition;
+          return { ...current, definition, baseline: JSON.stringify(saved) };
+        });
+        return saved;
+      } finally {
+        setSaving(false);
+      }
     };
     return (
       <main className="workflow-view editing" data-testid="workflow-view">

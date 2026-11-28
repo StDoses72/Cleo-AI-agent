@@ -1273,13 +1273,7 @@ class DesktopService:
             manifest = self.store.load_manifest(thread_id)
             if self._routing_permission_setting(manifest) != "inherit":
                 await emit({"type": "runtime", "runtime": self._runtime_profile(manifest)})
-            async with self._runs.workspace_guard:
-                root = await asyncio.to_thread(self._workspace_root, manifest)
-                peers = self._runs.claim_workspace(thread_id, root)
-                self.store.update_manifest(thread_id, undo_checkpoint_shared=False)
-                if peers:
-                    for key in [thread_id, *peers]:
-                        self.store.update_manifest(key, undo_checkpoint_shared=True)
+            await self._claim_workspace(manifest)
             terminal = None
 
             async def run_event(event):
@@ -1522,6 +1516,16 @@ class DesktopService:
         status = inspect_git_status(cwd)
         return os.path.normcase(str(Path(status.repo_root if status else cwd).resolve()))
 
+    async def _claim_workspace(self, manifest: dict[str, Any]) -> None:
+        """Disable per-turn undo when multiple runs can edit the same workspace."""
+        thread_id = manifest["id"]
+        async with self._runs.workspace_guard:
+            root = await asyncio.to_thread(self._workspace_root, manifest)
+            peers = self._runs.claim_workspace(thread_id, root)
+            self.store.update_manifest(thread_id, undo_checkpoint_shared=bool(peers))
+            for peer in peers:
+                self.store.update_manifest(peer, undo_checkpoint_shared=True)
+
     async def cancel_run(self, *, thread_id: str, run_id: str | None = None) -> dict[str, Any]:
         return await self._runs.cancel(thread_id, run_id)
 
@@ -1537,8 +1541,10 @@ class DesktopService:
 
         node_session = self._workflow_runs.approval_owner(thread_id, approval_id)
         if node_session is not None:
-            # Asked by a workflow node's session, shown in the conversation the run is in.
-            result = await self._adapter().resolve_approval(node_session, approval_id, decision)
+            # A node may ask directly or delegate to a worker with a file-backed approval.
+            result = resolve_worker_approval(self.store, node_session, approval_id, decision)
+            if result is None:
+                result = await self._adapter().resolve_approval(node_session, approval_id, decision)
             self._workflow_runs.approval_resolved(thread_id, approval_id)
             return result
         routed = resolve_worker_approval(self.store, thread_id, approval_id, decision)

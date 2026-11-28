@@ -23,6 +23,7 @@ from cleo.desktop.projection import _message, stream_event_item
 from cleo.desktop.workflows import WORKFLOW_TOOL_PROVIDERS
 from cleo.harnesses.capabilities import Capability
 from cleo.i18n import tr
+from cleo.routing.approvals import watch_worker_approvals
 from cleo.routing.permissions import NATIVE_PRESETS
 from cleo.workflows.authoring import node_request, read_node, read_workflow
 from cleo.workflows.engine import Handoff, NodeFailed, NodeTask, execute, leave, new_run
@@ -209,6 +210,8 @@ class WorkflowRuns:
                           project_id=str(manifest["project"]))
             run["threadId"] = manifest["id"]
             shown = task
+        if any(node["access"] == "write" for node in run["definition"]["nodes"]):
+            await service._claim_workspace(manifest)
         turn_id = f"turn-{secrets.token_hex(12)}"
         run.setdefault("turnId", turn_id)
         if not manifest.get("title"):
@@ -360,21 +363,23 @@ class WorkflowRuns:
                     **stored, "routing_mode": "auto" if node.delegation == "on" else "manual"})
             state: dict[str, Any] = {"run_id": record["id"]}
 
+            async def forward_approval(event: dict[str, Any]) -> None:
+                if event["type"] == "approval-request":
+                    request = {**event["request"], "threadId": manifest["id"]}
+                    self._approvals[(manifest["id"], request["id"])] = session.id
+                    service._runs.add_approval(manifest["id"], request)
+                    await emit({"type": "approval-request", "request": request})
+                elif event["type"] == "approval-resolved":
+                    self.approval_resolved(manifest["id"], event["response"]["id"])
+                    await emit(event)
+
             async def on_event(event: Any) -> None:
-                # The session writes its own timeline; the conversation is only told of what
-                # needs the user: an action waiting for approval.
                 for projected in stream_event_item(event, state):
-                    if projected["type"] == "approval-request":
-                        request = {**projected["request"], "threadId": manifest["id"]}
-                        self._approvals[(manifest["id"], request["id"])] = session.id
-                        service._runs.add_approval(manifest["id"], request)
-                        await emit({"type": "approval-request", "request": request})
-                    elif projected["type"] == "approval-resolved":
-                        self.approval_resolved(manifest["id"], projected["response"]["id"])
-                        await emit(projected)
+                    await forward_approval(projected)
 
             service._productivity_sessions[session.id] = session
-            result = await adapter.prompt(session.id, node_prompt(task), on_event=on_event)
+            async with watch_worker_approvals(service.store, session.id, forward_approval):
+                result = await adapter.prompt(session.id, node_prompt(task), on_event=on_event)
         except asyncio.CancelledError:
             try:
                 await asyncio.shield(adapter.cancel(session.id))
