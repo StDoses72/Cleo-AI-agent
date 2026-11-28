@@ -129,3 +129,35 @@ def test_a_kept_node_replaces_the_one_of_the_same_name(tmp_path) -> None:
     assert store.roles() == []
     with pytest.raises(ValueError):
         store.save_role("r3", NodeFields())
+
+
+def test_the_desktop_serves_the_library_and_what_each_harness_can_be_held_to(tmp_path) -> None:
+    import asyncio
+    from types import SimpleNamespace
+
+    from cleo.config.settings import ProductivitySettings
+    from cleo.desktop.service import DesktopService
+
+    settings = SimpleNamespace(DATA_DIR=tmp_path, productivity=ProductivitySettings())
+    service = DesktopService(settings_model=settings, store=SimpleNamespace(),
+                             runtime=SimpleNamespace(), adapter=SimpleNamespace())
+    definition = graph([agent("a")], ["start>a", "a>end"]).model_dump(by_alias=True)
+
+    async def scenario() -> dict:
+        saved = await service.save_workflow(definition=definition)
+        role = await service.save_workflow_role(fields={"role": "Reviewer", "instructions": "x"})
+        library = await service.get_workflow_library()
+        assert library["workflows"] == [saved] and library["roles"] == [role]
+        assert saved["nodes"][0]["harness"] is None and saved["edges"][0]["from"] == "start"
+        await service.remove_workflow(workflow_id=saved["id"])
+        await service.remove_workflow_role(role_id=role["id"])
+        return library
+
+    library = asyncio.run(scenario())
+    harnesses = {item["id"]: item for item in library["harnesses"]}
+    assert (harnesses["claude"]["readOnly"], harnesses["claude"]["tools"]) == (True, True)
+    assert harnesses["antigravity"]["readOnly"] is False
+    assert harnesses["antigravity-sdk"]["tools"] is False
+    assert asyncio.run(service.get_workflow_library())["workflows"] == []
+    with pytest.raises(ValidationError):
+        asyncio.run(service.save_workflow(definition={**definition, "nodes": "none"}))

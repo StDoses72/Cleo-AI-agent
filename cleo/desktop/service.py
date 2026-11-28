@@ -61,6 +61,7 @@ from cleo.desktop.turn_hooks import (
     TurnRequest,
     timed_reply,
 )
+from cleo.desktop.workflows import WorkflowLibrary
 from cleo.harnesses.capabilities import Capability, capabilities_of
 from cleo.harnesses.control import HarnessModel, SessionOptions
 from cleo.i18n import tr
@@ -1856,6 +1857,25 @@ class DesktopService:
             "defaultProductivityProvider": self.settings.productivity.default_provider,
             "defaultRoutingMode": self._routing_mode(None),
         }
+
+    def _workflow_library(self) -> WorkflowLibrary:
+        return WorkflowLibrary(self.settings.DATA_DIR / "workflows", self.settings.productivity)
+
+    async def get_workflow_library(self) -> dict[str, Any]:
+        """Output: Saved workflows, kept node definitions and the harnesses a node can run on."""
+        return self._workflow_library().view()
+
+    async def save_workflow(self, *, definition: dict[str, Any]) -> dict[str, Any]:
+        return self._workflow_library().save(definition)
+
+    async def remove_workflow(self, *, workflow_id: str) -> None:
+        self._workflow_library().remove(workflow_id)
+
+    async def save_workflow_role(self, *, fields: dict[str, Any]) -> dict[str, Any]:
+        return self._workflow_library().save_role(fields)
+
+    async def remove_workflow_role(self, *, role_id: str) -> None:
+        self._workflow_library().remove_role(role_id)
 
     async def get_local_skills(
         self, *, provider: str, project_path: str | None = None
