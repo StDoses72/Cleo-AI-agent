@@ -299,7 +299,7 @@
   .wf-editor-bar { flex-wrap: wrap; }
   .wf-name-input { flex-basis: 120px; }
   /* No room beside a node: what it is set to rises from the bottom instead. */
-  .wf-detail.card,
+  .wf-detail.card { top: auto !important; right: 8px; bottom: 8px !important; left: 8px !important; width: auto; max-height: 62%; border: 1px solid var(--border-strong); border-radius: var(--radius-md); }
 }
 
 /* ---------- A workflow an agent wrote, handed back in the conversation ---------- */
