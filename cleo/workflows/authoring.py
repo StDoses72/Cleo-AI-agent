@@ -79,8 +79,9 @@ def workflow_request(needs: str, harnesses: list[str]) -> str:
     return "\n\n".join([
         "Design a Cleo workflow for the user's request. Use the conversation and, when helpful, "
         "read the project. Identify the deliverable and how the user can tell it is complete. "
-        "If you can infer a useful outcome, draft it now. Choose sensible defaults for missing "
-        "details and briefly mention any assumption that affects the design. Ask one short "
+        "If you can infer a useful outcome, draft it now. For example, 'review my PRs' is enough "
+        "to draft a review that returns findings. Choose sensible defaults for missing details "
+        "and briefly mention any assumption that affects the design. Ask one short "
         "question only if the request is so vague that even with context you cannot infer "
         "a useful outcome. In that case, wait for the answer before drafting.",
         GUIDE,

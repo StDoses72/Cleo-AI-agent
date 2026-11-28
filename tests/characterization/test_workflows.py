@@ -85,14 +85,16 @@ def test_a_saved_workflow_runs_in_a_conversation(backend: Backend, cleo_home: Cl
 
 def test_create_workflow_hands_back_a_card(backend: Backend, cleo_home: CleoHome) -> None:
     task = _task(backend, cleo_home)
-    stream = backend.stream_turn(task["id"], "/create-workflow review every change twice")
+    request = "/create-workflow fix the editor losing new edits during a save"
+    stream = backend.stream_turn(task["id"], request)
     assert stream.result(timeout=120) is None
     thread = backend.call("load_thread", thread_id=task["id"])
     (proposal,) = _items(thread, "workflow-proposal")
     definition = proposal["definition"]
     assert definition["origin"] == "drafted"
-    assert [node["role"] for node in definition["nodes"]] == ["Planner", "Reviewer", "Executor"]
-    assert _items(thread, "message")[0]["content"] == "/create-workflow review every change twice"
+    # The scripted harness echoes the worked example from the authoring prompt.
+    assert [node["role"] for node in definition["nodes"]] == ["Fixer", "Reviewer"]
+    assert _items(thread, "message")[0]["content"] == request
     assert backend.call("get_workflow_library")["workflows"] == [], "saving is the user's"
     # What was handed back can be saved as it is.
     assert backend.call("save_workflow", definition=definition)["name"] == definition["name"]
