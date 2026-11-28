@@ -20,45 +20,77 @@ BLOCK = re.compile(r"```cleo-workflow\s*\n(.*?)\n```", re.S)
 NODE_BLOCK = re.compile(r"```cleo-node\s*\n(.*?)\n```", re.S)
 NODE_WIDTH, NODE_HEIGHT, TERMINAL_WIDTH, TERMINAL_HEIGHT = 208, 64, 64, 30
 
-GUIDE = f"""A Cleo workflow is a graph of agent nodes between two fixed ends, "start" (the task \
-going in) and "end" (the result coming out). The user owns the graph: an agent inside a node \
-cannot skip or add a step, and sees only the task and what the nodes before it produced.
+GUIDE = f"""The user owns the graph from "start" (their task) to "end" (their deliverable).
+A node sees the original task and the outputs of its immediate predecessors. Give it an input
+and an output. Write its instructions in three short lines:
+1. What to do with the input.
+2. What to hand back so the next step can act, such as a file location and a test result.
+3. Its scope and permissions. Use read access by default and write access for steps that edit.
 
-Edges are the only control there is:
-- an edge from one node to the next runs them in sequence;
-- several edges out of one node (or out of "start") run side by side, and a node with several \
-edges in waits for all of them;
-- an edge back to an earlier node is a loop: the node it leaves judges the work, and the stretch \
-between the two repeats until the judge passes it, at most "maxRounds" times (1 to {MAX_ROUNDS});
-- a node with "each" set runs one copy per item of the list the single node before it returns, \
-up to that many (2 to {MAX_ITEMS}).
+Choose the simplest graph that can deliver the result. One node is often enough. Split off a
+step when it needs an independent judgment, different permissions, or work that can run in
+parallel. If two adjacent roles would hand each other the same thing, combine them.
 
-Write each node's "instructions" as that node's whole responsibility in three short lines: what \
-it does, what it hands back, what it must not do. A node reads files only, unless "access" is \
-"write". Give every node an input and an output, keep a loop closed (work enters it at its \
-first node and leaves it through the judge), and use as few nodes as the job needs."""
+Choose edges to match the work:
+- In sequence, the next node uses the previous output. Independent branches can run in parallel.
+  A join waits for every incoming branch.
+- For a review loop, enter at the first node and exit through the judge. Point the return edge
+  at the step that can make the correction. Set "maxRounds" from 1 to {MAX_ROUNDS}.
+- Use "each" when every item from one predecessor can be processed independently under the same
+  criteria. Set its limit from 2 to {MAX_ITEMS}. The predecessor submits an ordered list via MCP.
 
-SHAPE = """```cleo-workflow
-{"name": "...", "description": "one sentence on why this shape fits",
- "nodes": [{"key": "plan", "role": "Planner", "instructions": "...", "access": "read"},
-           {"key": "review", "role": "Reviewer", "instructions": "..."},
-           {"key": "do", "role": "Executor", "instructions": "...", "access": "write"}],
- "edges": [{"from": "start", "to": "plan"}, {"from": "plan", "to": "review"},
-           {"from": "review", "to": "plan", "maxRounds": 3},
-           {"from": "review", "to": "do"}, {"from": "do", "to": "end"}]}
-```"""
+Give a judge a few observable checks. For pass, ask for the evidence that each check was met.
+For revise, ask which check failed or still lacks evidence, what was observed, and what needs
+to change or be verified on the next round. The judge submits its verdict and feedback via MCP.
+Ordinary handoffs can be plain text."""
+
+
+EXAMPLE = {
+    "name": "Keep edits made during save",
+    "description": "One step fixes the editor and a second checks the result.",
+    "nodes": [
+        {
+            "key": "fix", "role": "Fixer", "access": "write",
+            "instructions": (
+                "Fix the loss of edits made while a save is pending.\n"
+                "Hand back the changed files and steps to repeat the edit.\n"
+                "Keep changes within the editor save flow."
+            ),
+        },
+        {
+            "key": "verify", "role": "Reviewer", "access": "read",
+            "instructions": (
+                "Save A and type B before it finishes. Check that B stays editable and that "
+                "saving again keeps B after reopening.\n"
+                "Report what name you observed at each check and give your verdict.\n"
+                "Verify the behavior in the editor and send corrections to the fixer."
+            ),
+        },
+    ],
+    "edges": [
+        {"from": "start", "to": "fix"}, {"from": "fix", "to": "verify"},
+        {"from": "verify", "to": "fix", "maxRounds": 2}, {"from": "verify", "to": "end"},
+    ],
+}
 
 
 def workflow_request(needs: str, harnesses: list[str]) -> str:
     """The message that asks the conversation's agent for a workflow."""
     return "\n\n".join([
-        "Design a Cleo workflow for what the user needs. You may read the project to fit it.",
+        "Design a Cleo workflow for the user's request. Use the conversation and, when helpful, "
+        "read the project. Identify the deliverable and how the user can tell it is complete. "
+        "If you can infer a useful outcome, draft it now. Choose sensible defaults for missing "
+        "details and briefly mention any assumption that affects the design. Ask one short "
+        "question only if the request is so vague that even with context you cannot infer "
+        "a useful outcome. In that case, wait for the answer before drafting.",
         GUIDE,
         ('A node may name a "harness" from this list when the user asks for a particular one; '
          f"otherwise leave it out and the node follows the conversation: {', '.join(harnesses)}."),
-        "Reply with a few sentences on the design, then exactly one block in this shape "
-        "(role names in the user's language):\n" + SHAPE,
-        f"What the user needs:\n{needs or '(not said yet: ask what the workflow is for)'}",
+        "When drafting, explain the design in a few sentences and return exactly one "
+        "cleo-workflow JSON block. Use role names in the user's language. Here is one example. "
+        "Choose the nodes and checks that fit the actual request.\n"
+        f"```cleo-workflow\n{json.dumps(EXAMPLE, indent=2)}\n```",
+        f"What the user needs:\n{needs or '(no additional description)'}",
     ])
 
 

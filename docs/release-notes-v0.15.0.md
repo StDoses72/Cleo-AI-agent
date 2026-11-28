@@ -5,6 +5,7 @@ Cleo can now run reusable workflows in a development conversation. For example, 
 ## Build and run a workflow
 
 - Open **Workflows** to connect steps on the canvas, or use `/create-workflow` in a development conversation to describe the workflow you want. You can edit the draft before saving it to your library.
+- The workflow author drafts as soon as it can infer a useful outcome. Its guidance favors small graphs, clear handoffs, and review criteria that a reviewer can check against evidence.
 - Run a saved workflow from the library or with `/workflow <id> <task>`. Follow progress in the conversation and open a step to read its inputs, output, and tool activity.
 - Connect steps in sequence, review a result in a bounded loop, or split a list into parallel tasks. Each step can inherit the conversation’s model or use one you select.
 
